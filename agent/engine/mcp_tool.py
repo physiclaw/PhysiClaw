@@ -9,7 +9,7 @@ from contextlib import AsyncExitStack
 from typing import Any
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +20,10 @@ class McpClient:
         async with McpClient() as mcp:
             tools = await mcp.list_tools()
             blocks = await mcp.call_tool("tap", {"bbox": [0.4, 0.5, 0.5, 0.6]})
+
+    `server_instructions` is the `instructions` field the server sent back
+    in its initialize response — empty string if the server set nothing.
+    Caller injects it into the system prompt.
     """
 
     def __init__(self, base_url: str | None = None):
@@ -27,15 +31,17 @@ class McpClient:
         self._url = base.rstrip("/") + "/mcp"
         self._stack = AsyncExitStack()
         self._session: ClientSession | None = None
+        self.server_instructions: str = ""
 
     async def __aenter__(self) -> "McpClient":
         read, write, _ = await self._stack.enter_async_context(
-            streamablehttp_client(self._url)
+            streamable_http_client(self._url)
         )
         self._session = await self._stack.enter_async_context(
             ClientSession(read, write)
         )
-        await self._session.initialize()
+        init = await self._session.initialize()
+        self.server_instructions = (init.instructions or "").rstrip()
         return self
 
     async def __aexit__(self, *exc) -> None:

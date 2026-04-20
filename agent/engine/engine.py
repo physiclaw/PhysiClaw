@@ -92,6 +92,7 @@ async def run(
                 memory_ctx=memory.load_context(),
                 cron_ctx=jobs.format_fired(triggers),
                 skills_ctx=skill.render_section(skill_registry),
+                mcp_instructions=mcp.server_instructions,
             )
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},

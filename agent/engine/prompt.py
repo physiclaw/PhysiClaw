@@ -20,10 +20,21 @@ def render_system(
     memory_ctx: str,
     cron_ctx: str,
     skills_ctx: str = "",
+    mcp_instructions: str = "",
 ) -> str:
     """Compose the full SYSTEM for one session. Tool schemas are provided
-    to the model via the native `tools=` API, not rendered here."""
-    parts: list[str] = [_AGENT, _ENGINE_CONVENTIONS]
+    to the model via the native `tools=` API, not rendered here.
+
+    Order is identity → device → engine rules → state:
+      AGENT.md             who you are + loop + soul
+      mcp_instructions     how to operate this tool surface (server-authored)
+      CONVENTION.md        engine turn-level rules (overrides conflicts)
+      skills / memory / cron
+    """
+    parts: list[str] = [_AGENT]
+    if mcp_instructions:
+        parts.append(mcp_instructions)
+    parts.append(_ENGINE_CONVENTIONS)
     if skills_ctx:
         parts.append(skills_ctx)
     if memory_ctx:
