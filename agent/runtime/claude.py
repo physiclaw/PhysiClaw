@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 # --- Paths ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-CLAUDE_MD = PROJECT_ROOT / ".claude" / "CLAUDE.md"
+AGENT_MD = PROJECT_ROOT / "agent" / "instructions" / "AGENT.md"
 TOOLS_PY = PROJECT_ROOT / "physiclaw" / "server" / "tools.py"
 LOG_DIR = PROJECT_ROOT / "log" / "claude"
 
@@ -191,8 +191,8 @@ class _SessionLog:
 # --- Main ---
 
 def _build_cmd(triggers: list[Trigger]) -> list[str]:
-    if not CLAUDE_MD.exists():
-        raise FileNotFoundError(f"CLAUDE.md not found: {CLAUDE_MD}")
+    if not AGENT_MD.exists():
+        raise FileNotFoundError(f"AGENT.md not found: {AGENT_MD}")
     allowed = _discover_mcp_tools() + _ALLOWED
     return [
         "claude",
@@ -205,7 +205,7 @@ def _build_cmd(triggers: list[Trigger]) -> list[str]:
         "--mcp-config", _mcp_config(),
         "--allowedTools", ",".join(allowed),
         "--disallowedTools", ",".join(_DISALLOWED),
-        "--append-system-prompt-file", str(CLAUDE_MD),
+        "--append-system-prompt-file", str(AGENT_MD),
     ]
 
 
