@@ -9,10 +9,10 @@ import datetime as dt
 import json
 import logging
 import os
-import re
 from pathlib import Path
 
 from agent.runtime.hook import Trigger
+from agent.runtime.sentinel import parse_sentinel
 
 log = logging.getLogger(__name__)
 
@@ -85,8 +85,6 @@ def _build_prompt(triggers: list[Trigger]) -> str:
 
 # --- Logging ---
 
-SENTINEL = re.compile(r">+ (DONE|STUCK|IDLE|WAIT) - (.+)")
-
 
 def _redact_images(content):
     """Replace base64 image data with a length placeholder so logs stay readable."""
@@ -131,12 +129,10 @@ class _SessionLog:
         otherwise the run crashed even if the agent claimed DONE earlier.
         """
         last_line = next(
-            (l for l in reversed(self._last_text.splitlines()) if l.strip()), ""
+            (line for line in reversed(self._last_text.splitlines()) if line.strip()), ""
         )
-        m = SENTINEL.match(last_line.strip()) if returncode == 0 else None
-        if m:
-            status, recap = m.group(1), m.group(2).strip()
-        else:
+        status, recap = parse_sentinel(last_line) if returncode == 0 else (None, "")
+        if not status:
             status = "UNDONE"
             recap = (last_line or "(no text)").strip()[:200]
         self._write(f"OUTCOME: {status} - {recap}")
