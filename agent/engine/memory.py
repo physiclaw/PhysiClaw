@@ -1,6 +1,6 @@
 """Memory retrieval + update for the engine.
 
-`load_context` snapshots `memory/memory.md` plus the last 7 daily logs into a
+`load_context` snapshots `memory/memory.md` plus the last 3 daily logs into a
 markdown block injected into the SYSTEM prompt at turn 0. `append_log` and
 `save_fact` are called from the engine loop when the model emits `log_entry`
 or `memory_save` in its JSON response.
@@ -10,11 +10,11 @@ from pathlib import Path
 
 MEMORY_DIR = Path("memory")
 MEMORY_FILE = MEMORY_DIR / "memory.md"
-_DAILY_LOOKBACK = 7
+_DAILY_LOOKBACK = 3
 
 
 def load_context() -> str:
-    """Return a markdown block: persistent memory + last 7 days of logs."""
+    """Return a markdown block: persistent memory + last 3 days of logs."""
     sections: list[str] = []
 
     if MEMORY_FILE.exists():
@@ -34,7 +34,7 @@ def load_context() -> str:
             continue
         dailies.append(body if body.startswith("#") else f"### {d.isoformat()}\n\n{body}")
     if dailies:
-        sections.append("## Recent activity (last 7 days)\n\n" + "\n\n".join(dailies))
+        sections.append("## Recent activity (last 3 days)\n\n" + "\n\n".join(dailies))
 
     return "\n\n".join(sections)
 

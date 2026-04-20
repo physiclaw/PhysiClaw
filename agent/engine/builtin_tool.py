@@ -230,7 +230,7 @@ _CREATE_CRON = LocalTool(
 _READ_MEMORY = LocalTool(
     name="read_memory",
     description=(
-        "Re-read memory/memory.md plus the last 7 daily logs. Returns the "
+        "Re-read memory/memory.md plus the last 3 daily logs. Returns the "
         "same markdown block you saw at session start — useful for verifying "
         "what was saved this session before you close."
     ),

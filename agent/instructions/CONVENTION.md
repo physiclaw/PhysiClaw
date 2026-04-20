@@ -29,7 +29,7 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   "remember this" or a lasting preference comes up).
 - `update_memory(old, new)` — replace or remove a line in memory.
   `old` must match exactly one place; empty `new` deletes the line.
-- `read_memory()` — re-read memory.md plus the last 7 daily logs.
+- `read_memory()` — re-read memory.md plus the last 3 daily logs.
 - `list_jobs(status?)` / `cancel_cron(id)` — inspect or stop scheduled
   jobs.
 
