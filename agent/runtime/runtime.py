@@ -72,9 +72,14 @@ class Runtime:
             returns, so a slow reaction naturally throttles the loop.
     """
 
-    def __init__(self, react: React, *, interval: float = 1.0):
+    def __init__(
+        self, react: React, *, interval: float = 1.0, label: str = ""
+    ):
         self.react = react
         self.interval = interval
+        # human-readable engine/provider tag, surfaced in ready logs so the
+        # operator sees what's driving the loop without scrolling startup.
+        self.label = label
         self._running = False
 
     async def start(self) -> None:
@@ -84,6 +89,7 @@ class Runtime:
         log.info("runtime started (interval=%.2fs)", self.interval)
         last_ready: bool | None = None
         in_blip = False
+        suffix = f" [{self.label}]" if self.label else ""
         try:
             while self._running:
                 try:
@@ -96,7 +102,7 @@ class Runtime:
                             log.warning("status poll failed: %s", e)
                         in_blip = True
                     if ready != last_ready:
-                        log.info("physiclaw ready=%s", ready)
+                        log.info("physiclaw ready=%s%s", ready, suffix)
                         last_ready = ready
                     if not ready or in_blip:
                         await asyncio.sleep(self.interval)

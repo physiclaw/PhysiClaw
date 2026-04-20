@@ -76,16 +76,17 @@ def launch() -> None:
     if choice == EXTERNAL:
         from agent.runtime.claude import spawn_claude as react
 
-        log.info("engine: claude-code (claude -p subprocess) [%s]", source)
+        label = "engine=claude-code"
     else:
         from agent.engine import run as engine_run
 
         react = partial(engine_run, provider_name=choice)
-        log.info("engine: physiclaw, provider=%r [%s]", choice, source)
+        label = f"engine=physiclaw, provider={choice}"
+    log.info("%s [%s]", label, source)
 
     try:
         asyncio.run(
-            Runtime(react=react, interval=args.interval).start()
+            Runtime(react=react, interval=args.interval, label=label).start()
         )
     except KeyboardInterrupt:
         pass
