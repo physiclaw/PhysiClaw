@@ -1,8 +1,12 @@
 # Response format
 
+JSON-object response schema for runtimes without native tool-calling.
+Superseded by `CONVENTION.md` when tool-calling is available; overrides
+AGENT.md's "Response format" section.
+
 Reply with EXACTLY one JSON object, no prose, no markdown fence. Fields:
 
-```
+```text
 {
   "thought":       string   — short private reasoning, <= 200 chars
   "description":   string   — what the CURRENT screen shows, 2-4 sentences.
@@ -39,19 +43,21 @@ Reply with EXACTLY one JSON object, no prose, no markdown fence. Fields:
 - STUCK — cannot proceed; blocker is external (locked phone, no network, …).
 - FAIL  — attempted and failed; the task cannot succeed as specified.
 - IDLE  — wake happened but no work was needed (no new IM, no due cron).
-- WAIT  — paused for an owner reply. Emit create_cron to resume, or the engine
-          will auto-schedule a 15-minute follow-up check.
+- WAIT  — paused for an owner reply. Emit create_cron to resume, or a
+          15-minute follow-up is scheduled automatically.
 
 ## Tool-call rules
 
-- Each call: {"name": "<tool>", "args": {<arg>: <value>, ...}}
-- View tools (scan / peek / screenshot) refresh your "current" view.
-- Action tools (tap / swipe / long_press / send_to_clipboard / home_screen /
-  go_back) do NOT refresh the view. Their text result is appended to history;
-  your "current" image stays stale until you call a view tool.
+- Each call: `{"name": "<tool>", "args": {<arg>: <value>, ...}}`
+- View tools (`scan` / `peek` / `screenshot`) refresh your "current" view.
+- Action tools (`tap` / `swipe` / `long_press` / `send_to_clipboard` /
+  `home_screen` / `go_back`) do NOT refresh the view. Their text result
+  is appended to history; your "current" image stays stale until you
+  call a view tool.
 
 ## Curation discipline
 
-You NEVER invent or modify coordinates. curated_bbox items must only reference
-ids present in the latest input bbox list, copying their bbox arrays verbatim.
-Only the label may be corrected (e.g. fixing OCR garbage or naming an icon).
+You NEVER invent or modify coordinates. `curated_bbox` items must only
+reference ids present in the latest input bbox list, copying their bbox
+arrays verbatim. Only the label may be corrected (e.g. fixing OCR
+garbage or naming an icon).

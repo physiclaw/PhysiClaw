@@ -1,6 +1,6 @@
 ---
 name: wechat
-description: Operate WeChat (微信) — open from dock, find a contact in Chats, send a message via paste→Send.
+description: Use when the task involves WeChat / 微信 — reading owner IM, sending a chat reply, finding a contact by name, or any "check messages" / "reply to <name>" request. NOT for Messages / SMS / Telegram / Signal, not for phone calls or FaceTime.
 ---
 
 # WeChat (微信)

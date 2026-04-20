@@ -1,6 +1,6 @@
 ---
 name: open-app
-description: Open any app on the phone via Spotlight search. Pass the app name as argument.
+description: Use when you need to launch an app that is NOT on the current screen and NOT in the dock — any time "open <app>" is the next step and you can't see the icon. Use FIRST before tapping blindly. NOT needed when the target app's icon is already visible.
 ---
 
 # Open App via Spotlight

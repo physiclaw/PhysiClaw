@@ -1,6 +1,6 @@
 ---
 name: jd
-description: Shop groceries via 京东七鲜 (JD 7Fresh) on the 京东 app. Handles the add-to-cart-returns-to-item quirk and the screenshot share-popup trap.
+description: Use when the task is grocery / fresh-food shopping via JD / 京东 / 七鲜 / 7Fresh — owner asks to buy 零食, 水果, 蔬菜, 日用品, or to place an order on 京东. NOT for clothing, electronics, or non-grocery shopping, NOT for other grocery apps (Meituan / 盒马 / Dingdong).
 ---
 
 # JD (京东) — Grocery shopping
