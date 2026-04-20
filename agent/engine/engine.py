@@ -28,7 +28,7 @@ from agent.engine.provider import (
     make_provider,
     tool_result_to_wire,
 )
-from agent.engine.trace import Trace
+from agent.engine.trace import Trace, brief, brief_args, brief_content
 from agent.engine.validator import ValidationError, validate_arguments
 from agent.runtime.hook import Trigger
 from agent.runtime.sentinel import WAIT
@@ -39,42 +39,6 @@ MAX_TURNS = 40
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = 5.0
 WAIT_DEFAULT_MINUTES = 15
-
-
-# ---------- log formatting helpers ----------
-
-
-def _brief(value: Any, limit: int = 60) -> str:
-    """One-line truncated repr for log output."""
-    s = value if isinstance(value, str) else repr(value)
-    return s if len(s) <= limit else s[: limit - 1] + "…"
-
-
-def _brief_args(args: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={_brief(v, 40)}" for k, v in args.items())
-
-
-def _brief_content(content: str | list[dict]) -> str:
-    """Compact summary of a ToolResult.content for log output."""
-    if isinstance(content, str):
-        return _brief(content, 80)
-    if not isinstance(content, list):
-        return _brief(repr(content), 80)
-    parts: list[str] = []
-    for b in content:
-        if not isinstance(b, dict):
-            parts.append("?")
-            continue
-        t = b.get("type")
-        if t == "text":
-            parts.append(_brief(b.get("text", ""), 60))
-        elif t == "image_url":
-            url = (b.get("image_url") or {}).get("url", "")
-            _, _, data = url.partition(",")
-            parts.append(f"<image {len(data)}b>")
-        else:
-            parts.append(t or "?")
-    return " + ".join(parts) or "(empty)"
 
 
 async def run(
@@ -88,19 +52,23 @@ async def run(
     through the launcher, which resolves PHYSICLAW_PROVIDER.
     """
     sid = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    tr = Trace(sid)
-    tr.write({
-        "event": "wake", "session": sid, "provider": provider_name,
-        "triggers": [{"source": t.source, "description": t.description} for t in triggers],
-    })
-    log.info(
-        "wake session=%s provider=%s triggers=%s",
-        sid, provider_name, [t.source or "?" for t in triggers],
-    )
-
     provider: Provider | None = None
     session = Session()
+    tr: Trace | None = None
     try:
+        # Open inside the try so the finally block's tr.close() runs even
+        # if Trace construction fails midway (disk full, perms, etc.).
+        tr = Trace(sid)
+        tr.write({
+            "event": "wake", "session": sid, "provider": provider_name,
+            "triggers": [
+                {"source": t.source, "description": t.description} for t in triggers
+            ],
+        })
+        log.info(
+            "wake session=%s provider=%s triggers=%s",
+            sid, provider_name, [t.source or "?" for t in triggers],
+        )
         async with McpClient() as mcp:
             mcp_tools = await mcp.list_tools()
             skill_registry = skill.discover()
@@ -155,11 +123,13 @@ async def run(
         })
     except Exception:
         log.exception("engine session crashed")
-        tr.write({"event": "crashed"})
+        if tr is not None:
+            tr.write({"event": "crashed"})
     finally:
         if provider is not None:
             await provider.aclose()
-        tr.close()
+        if tr is not None:
+            tr.close()
 
 
 # ---------- core loop ----------
@@ -282,7 +252,7 @@ async def _dispatch(
     ToolResult — never raises (principle 5 + principle 6 require that every
     ToolCall is paired with a ToolResult even on failure).
     """
-    log.info("  → %s(%s)", call.name, _brief_args(call.arguments))
+    log.info("  → %s(%s)", call.name, brief_args(call.arguments))
 
     schema = schema_by_name.get(call.name)
     if schema is None:
@@ -319,7 +289,7 @@ async def _dispatch(
                 "name": call.name, "id": call.id,
                 "arguments": call.arguments, "text": text,
             })
-            log.info("  ✓ %s → %s", call.name, _brief(text, 80))
+            log.info("  ✓ %s → %s", call.name, brief(text, 80))
             return ToolResult(tool_call_id=call.id, content=text)
 
         blocks = await mcp.call_tool(call.name, call.arguments)
@@ -329,7 +299,7 @@ async def _dispatch(
             "name": call.name, "id": call.id,
             "arguments": call.arguments, "blocks": blocks,
         })
-        log.info("  ✓ %s → %s", call.name, _brief_content(content))
+        log.info("  ✓ %s → %s", call.name, brief_content(content))
         return ToolResult(tool_call_id=call.id, content=content)
 
     except Exception as e:
