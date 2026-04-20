@@ -132,6 +132,16 @@ def main():
         from physiclaw.server import warm_start
 
         def _warm_start_thread():
+            # Wait for uvicorn's listening socket before we might SIGINT.
+            # Sending the signal mid-startup leaks CancelledError tracebacks
+            # out of the lifespan machinery.
+            if not warm_start.wait_for_port(args.host, args.port):
+                log.error(
+                    "warm-start: server never started accepting connections; "
+                    "exiting."
+                )
+                os.kill(os.getpid(), signal.SIGINT)
+                return
             if not warm_start.try_resume(args.cam_index):
                 log.error(
                     "Exiting. Re-run without --warm-start and then setup.py to "

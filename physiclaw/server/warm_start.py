@@ -15,6 +15,7 @@ invariant (crash, power cut, arm bumped).
 """
 
 import logging
+import socket
 import sys
 import time
 
@@ -25,6 +26,37 @@ BRIDGE_WAIT_TIMEOUT = 120
 # After a /bridge load is detected, let the page finish rendering before
 # we start tapping dots at it.
 BRIDGE_SETTLE_SECONDS = 2.0
+
+# How long to wait for uvicorn's listening socket to be accepting
+# connections, in seconds. IPv4 only — if --host is IPv6 this will time
+# out; today all callers use v4.
+PORT_WAIT_TIMEOUT = 10.0
+PORT_WAIT_CONNECT_TIMEOUT = 0.2
+PORT_WAIT_INTERVAL = 0.1
+
+
+def wait_for_port(
+    host: str, port: int, timeout: float = PORT_WAIT_TIMEOUT
+) -> bool:
+    """Block until something is accepting TCP connections on (host, port).
+
+    Returns True on first successful connect, False if `timeout` elapses.
+    Lives here because the warm-start thread uses it to synchronize with
+    uvicorn startup — signalling SIGINT mid-startup leaks CancelledError
+    tracebacks through the lifespan machinery.
+    """
+    probe_host = "127.0.0.1" if host in ("0.0.0.0", "") else host
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(PORT_WAIT_CONNECT_TIMEOUT)
+            try:
+                s.connect((probe_host, port))
+                return True
+            except OSError:
+                pass
+        time.sleep(PORT_WAIT_INTERVAL)
+    return False
 
 
 def _wait_for_bridge(bridge) -> bool:
