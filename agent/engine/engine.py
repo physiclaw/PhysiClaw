@@ -32,11 +32,11 @@ from agent.engine.provider import (
 from agent.engine.trace import RawLog, Trace, brief, brief_args, brief_content
 from agent.engine.validator import ValidationError, validate_arguments
 from agent.runtime.hook import Trigger
-from agent.runtime.sentinel import WAIT
+from agent.runtime.sentinel import STUCK, WAIT
 
 log = logging.getLogger(__name__)
 
-MAX_TURNS = 40
+MAX_TURNS = 60
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = 5.0
 WAIT_DEFAULT_MINUTES = 15
@@ -45,16 +45,40 @@ WAIT_DEFAULT_MINUTES = 15
 async def run(
     triggers: list[Trigger], *, provider_name: str
 ) -> None:
-    """One engine session. Drives model ↔ tools loop until `end_session`
-    closes it or a budget (MAX_TURNS / provider retries) is exhausted.
+    """Run an engine session for `triggers`, retrying on STUCK.
+
+    STUCK happens when the loop hit MAX_TURNS without a clean close, the
+    provider exhausted its retries, or the session crashed. Up to
+    MAX_ATTEMPTS fresh attempts run before we accept the STUCK outcome.
+    DONE / FAIL / IDLE / WAIT are final on first occurrence — no retry.
 
     `provider_name` selects which `Provider` impl to instantiate via
     `provider.make_provider`. Required (no default) — every caller goes
     through the launcher, which resolves PHYSICLAW_PROVIDER.
     """
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        session = Session()
+        await _run_session(triggers, provider_name=provider_name, session=session)
+        if session.sentinel_status != STUCK:
+            break
+        if attempt < MAX_ATTEMPTS:
+            log.warning(
+                "session STUCK (attempt %d/%d): %r — retrying",
+                attempt, MAX_ATTEMPTS, session.sentinel_recap,
+            )
+    jobs.mark_outcome(triggers, session.sentinel_status, session.sentinel_recap)
+
+
+async def _run_session(
+    triggers: list[Trigger],
+    *,
+    provider_name: str,
+    session: Session,
+) -> None:
+    """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider
+    per call. Writes outcome to `session.sentinel_*`; never raises."""
     sid = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     provider: Provider | None = None
-    session = Session()
     tr: Trace | None = None
     rlog: RawLog | None = None
     try:
@@ -124,7 +148,6 @@ async def run(
             "session done: status=%s recap=%r",
             session.sentinel_status, session.sentinel_recap,
         )
-        jobs.mark_outcome(triggers, session.sentinel_status, session.sentinel_recap)
         if session.sentinel_status == WAIT and not session.sentinel_turn_created_cron:
             log.warning("WAIT with no create_cron — auto-scheduling %d-min follow-up", WAIT_DEFAULT_MINUTES)
             _auto_schedule_wait_check(sid, tr)
@@ -134,10 +157,15 @@ async def run(
             "sentinel": session.sentinel_status,
             "recap": session.sentinel_recap,
         })
-    except Exception:
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        # Crashes count as STUCK so the retry loop gives it another shot.
         log.exception("engine session crashed")
         if tr is not None:
             tr.write({"event": "crashed"})
+        session.sentinel_status = STUCK
+        session.sentinel_recap = f"session crashed: {e}"
     finally:
         if provider is not None:
             await provider.aclose()
@@ -176,7 +204,7 @@ async def _loop(
         except Exception as e:
             log.exception("provider exhausted retries")
             tr.write({"event": "provider_failed", "turn": turn, "error": str(e)})
-            session.sentinel_status = "STUCK"
+            session.sentinel_status = STUCK
             session.sentinel_recap = f"provider error: {e}"
             return
 
@@ -248,7 +276,7 @@ async def _loop(
             return
 
     log.warning("engine hit max turns (%d)", MAX_TURNS)
-    session.sentinel_status = "STUCK"
+    session.sentinel_status = STUCK
     session.sentinel_recap = f"max turns ({MAX_TURNS}) reached"
 
 
