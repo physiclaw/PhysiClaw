@@ -8,27 +8,23 @@ allowed-tools: Bash, Read
 
 Set up three iOS Shortcuts (take screenshot · upload latest · clipboard sync) and bind them to AssistiveTouch taps. The server must be running.
 
-## Step 1: Stable `<name>.local` hostname
+## Step 1: Check `<name>.local` hostname
 
 Shortcuts that embed the LAN IP break when DHCP changes it. `<name>.local` survives IP changes on the same Wi-Fi.
 
-Skip if the current name already ends with `-xxx` (3 lowercase letters) and `ping` succeeds:
+Check the current name resolves:
 
 ```bash
 CUR=$(scutil --get LocalHostName) && echo "$CUR" && ping -c 1 -W 1000 "${CUR}.local"
 ```
 
-Otherwise rename (strips either our old `-xxx` suffix or macOS's numeric collision suffix like `-2`/`-3`; sets `LocalHostName` only — `ComputerName`/`HostName` don't drive mDNS):
+Use whatever the current name is — do **not** rename automatically. If the user wants a more stable or unique name (e.g. to avoid macOS numeric collision suffixes like `-2`), they can rename it themselves with:
 
 ```bash
-BASE=$(scutil --get LocalHostName | sed -E 's/-([a-z]{3}|[0-9]+)$//') && \
-NAME="${BASE}-$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c 3)" && \
-sudo scutil --set LocalHostName "$NAME" && \
-dscacheutil -flushcache && \
-echo "Set to: $NAME"
+sudo scutil --set LocalHostName "new-name" && dscacheutil -flushcache
 ```
 
-Shortcut URLs use the lowercase form (`macair-qqd.local`).
+Shortcut URLs use the lowercase form (`<name>.local`).
 
 ## Step 2: Server URLs
 
