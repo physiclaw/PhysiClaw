@@ -1,7 +1,7 @@
 # Response conventions
 
-Use native tool_calls. Supersedes `SCHEMA.md` when the runtime supports
-tool-calling; overrides AGENT.md's "Response format" section.
+Use native tool_calls. `SCHEMA.md` is the fallback spec for runtimes
+without native tool-calling; this file is what the engine uses today.
 
 ## Turn rules
 
@@ -35,5 +35,4 @@ DONE / STUCK / FAIL / IDLE / WAIT.
 
 ## Skills
 
-Invoke via the `Skill` tool: `Skill(name="wechat")`. AGENT.md's `/name`
-syntax is for a different runtime — never emit it as a tool_call name.
+Invoke via the `Skill` tool: `Skill(name="wechat")`.

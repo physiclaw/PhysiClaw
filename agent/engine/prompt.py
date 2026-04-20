@@ -2,8 +2,8 @@
 
 With native tool-calling (principle 1), tool schemas flow through the
 provider's `tools=` parameter — they are NOT rendered into the prompt.
-The prompt carries only behavior (AGENT.md doctrine), engine conventions
-that override AGENT.md's JSON-response section, memory, and cron context.
+The prompt carries only AGENT.md doctrine, CONVENTION.md turn-rules,
+MCP server instructions, memory, and cron context.
 
 `prefix_hash` anchors the provider's cache breakpoint at the SYSTEM message.
 """

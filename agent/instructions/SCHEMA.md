@@ -1,8 +1,8 @@
 # Response format
 
-JSON-object response schema for runtimes without native tool-calling.
-Superseded by `CONVENTION.md` when tool-calling is available; overrides
-AGENT.md's "Response format" section.
+JSON-object response schema — fallback for runtimes without native
+tool-calling. `CONVENTION.md` is the primary spec when tool-calling is
+available; this file is currently unused by the engine.
 
 Reply with EXACTLY one JSON object, no prose, no markdown fence. Fields:
 
@@ -16,7 +16,8 @@ Reply with EXACTLY one JSON object, no prose, no markdown fence. Fields:
                               later turns. Each item: {id, role, label, bbox}
                               with bbox = [x1, y1, x2, y2] copied verbatim from
                               the input. Drop noise / status bars / decoration.
-                              Empty [] allowed.
+                              At least one item required whenever a view tool
+                              was the last call.
   "tool_calls":    array    — [{name, args}] — tools to run, in order.
                               Empty [] only when emitting a sentinel.
   "log_entry":     string|null — "[HH:MM] app: page → page — what you did".
