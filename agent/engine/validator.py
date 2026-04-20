@@ -32,6 +32,11 @@ _TYPE_MAP = {
 }
 
 
+def _is_number(v: Any) -> bool:
+    """True iff v is int or float — NOT bool (Python bool is subclass of int)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
 def validate_arguments(args: dict[str, Any], schema: dict[str, Any]) -> None:
     """Check `args` against a JSONSchema `schema`. Raises ValidationError.
 
@@ -68,6 +73,26 @@ def _check_value(key: str, value: Any, prop: dict[str, Any]) -> None:
             f"{key}: value {value!r} is not one of {enum}"
         )
 
+    if _is_number(value):
+        minimum = prop.get("minimum")
+        if minimum is not None and value < minimum:
+            raise ValidationError(f"{key}: {value} < minimum {minimum}")
+        maximum = prop.get("maximum")
+        if maximum is not None and value > maximum:
+            raise ValidationError(f"{key}: {value} > maximum {maximum}")
+
+    if isinstance(value, str):
+        min_len = prop.get("minLength")
+        if min_len is not None and len(value) < min_len:
+            raise ValidationError(
+                f"{key}: string length {len(value)} < minLength {min_len}"
+            )
+        max_len = prop.get("maxLength")
+        if max_len is not None and len(value) > max_len:
+            raise ValidationError(
+                f"{key}: string length {len(value)} > maxLength {max_len}"
+            )
+
     expected_type = prop.get("type")
     if expected_type is None:
         return
@@ -88,7 +113,7 @@ def _check_value(key: str, value: Any, prop: dict[str, Any]) -> None:
                 break
             continue
         if t in ("integer", "number") and isinstance(value, bool):
-            continue
+            continue  # bool is int subclass; _is_number() semantics here too
         if isinstance(value, py_type):
             matched = True
             break

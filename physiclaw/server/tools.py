@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP, Image
 
 from physiclaw.core import PhysiClaw
 from physiclaw.logger import logged, save_tool_call
+from physiclaw.server.types import Bbox, ClipboardText
 
 
 def register(mcp: FastMCP, physiclaw: PhysiClaw):
@@ -54,7 +55,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
-    async def tap(bbox: list[float]) -> str:
+    async def tap(bbox: Bbox) -> str:
         """Single tap at the bbox center.
 
         Use for: buttons, links, selecting items, dismissing dialogs.
@@ -63,7 +64,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
-    async def double_tap(bbox: list[float]) -> str:
+    async def double_tap(bbox: Bbox) -> str:
         """Double tap at the bbox center.
 
         Use for: zooming maps/photos/web pages, selecting a word.
@@ -72,7 +73,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
-    async def long_press(bbox: list[float]) -> str:
+    async def long_press(bbox: Bbox) -> str:
         """Long press at the bbox center. ~1.2s hold.
 
         Use for: context menus, edit mode, paste, rearranging icons.
@@ -84,7 +85,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def swipe(
-        bbox: list[float],
+        bbox: Bbox,
         direction: Literal["up", "down", "left", "right"],
         size: Literal["s", "m", "l", "xl", "xxl"] = "m",
         speed: Literal["slow", "medium", "fast"] = "medium",
@@ -135,7 +136,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
-    async def send_to_clipboard(text: str) -> str:
+    async def send_to_clipboard(text: ClipboardText) -> str:
         """Copy text into the phone's clipboard.
 
         Use for: entering text into a field — on-screen typing is slow.

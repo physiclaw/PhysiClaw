@@ -507,6 +507,11 @@ class PhysiClaw:
             self._swipe(bbox, direction, size, speed)
             return f"Swiped {direction} {size} at bbox {bbox}"
         if tool == "send_to_clipboard":
+            if not isinstance(arg, str):
+                raise ValueError(
+                    f"send_to_clipboard arg must be a string, got "
+                    f"{type(arg).__name__}: {arg!r}"
+                )
             return self._send_to_clipboard(arg)
         raise ValueError(f"tool {tool!r} not allowed in sequence")
 

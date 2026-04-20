@@ -41,6 +41,42 @@ RETRY_BACKOFF = 5.0
 WAIT_DEFAULT_MINUTES = 15
 
 
+# ---------- log formatting helpers ----------
+
+
+def _brief(value: Any, limit: int = 60) -> str:
+    """One-line truncated repr for log output."""
+    s = value if isinstance(value, str) else repr(value)
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+def _brief_args(args: dict[str, Any]) -> str:
+    return ", ".join(f"{k}={_brief(v, 40)}" for k, v in args.items())
+
+
+def _brief_content(content: str | list[dict]) -> str:
+    """Compact summary of a ToolResult.content for log output."""
+    if isinstance(content, str):
+        return _brief(content, 80)
+    if not isinstance(content, list):
+        return _brief(repr(content), 80)
+    parts: list[str] = []
+    for b in content:
+        if not isinstance(b, dict):
+            parts.append("?")
+            continue
+        t = b.get("type")
+        if t == "text":
+            parts.append(_brief(b.get("text", ""), 60))
+        elif t == "image_url":
+            url = (b.get("image_url") or {}).get("url", "")
+            _, _, data = url.partition(",")
+            parts.append(f"<image {len(data)}b>")
+        else:
+            parts.append(t or "?")
+    return " + ".join(parts) or "(empty)"
+
+
 async def run(
     triggers: list[Trigger], *, provider_name: str
 ) -> None:
@@ -57,6 +93,10 @@ async def run(
         "event": "wake", "session": sid, "provider": provider_name,
         "triggers": [{"source": t.source, "description": t.description} for t in triggers],
     })
+    log.info(
+        "wake session=%s provider=%s triggers=%s",
+        sid, provider_name, [t.source or "?" for t in triggers],
+    )
 
     provider: Provider | None = None
     session = Session()
@@ -72,6 +112,10 @@ async def run(
                 "mcp": [s["name"] for s in mcp_tools],
                 "local": sorted(local_registry.keys()),
             })
+            log.info(
+                "tools loaded: %d MCP + %d local + %d skills",
+                len(mcp_tools), len(local_registry), len(skill_registry),
+            )
 
             system_prompt = prompt.render_system(
                 memory_ctx=memory.load_context(),
@@ -95,6 +139,10 @@ async def run(
                 tr=tr,
             )
 
+        log.info(
+            "session done: status=%s recap=%r",
+            session.sentinel_status, session.sentinel_recap,
+        )
         jobs.mark_outcome(triggers, session.sentinel_status, session.sentinel_recap)
         if session.sentinel_status == WAIT and not session.sentinel_turn_created_cron:
             log.warning("WAIT with no create_cron — auto-scheduling %d-min follow-up", WAIT_DEFAULT_MINUTES)
@@ -136,6 +184,7 @@ async def _loop(
 
     for turn in range(MAX_TURNS):
         tr.write({"event": "request", "turn": turn, "message_count": len(messages)})
+        log.info("turn %d: %d messages → provider", turn + 1, len(messages))
 
         try:
             asst = await _chat_with_retry(provider, messages, tool_schemas)
@@ -156,6 +205,11 @@ async def _loop(
                 for tc in asst.tool_calls
             ],
         })
+        log.info(
+            "turn %d: finish=%s calls=%s",
+            turn + 1, asst.finish_reason,
+            [tc.name for tc in asst.tool_calls] or None,
+        )
 
         # Principle 2: strip provider-specific fields before echoing back.
         messages.append(assistant_to_wire(asst))
@@ -228,9 +282,12 @@ async def _dispatch(
     ToolResult — never raises (principle 5 + principle 6 require that every
     ToolCall is paired with a ToolResult even on failure).
     """
+    log.info("  → %s(%s)", call.name, _brief_args(call.arguments))
+
     schema = schema_by_name.get(call.name)
     if schema is None:
         tr.write({"event": "tool_unknown", "turn": turn, "name": call.name, "id": call.id})
+        log.warning("  ✗ %s: unknown tool", call.name)
         return ToolResult(
             tool_call_id=call.id,
             content=f"unknown tool: {call.name!r}",
@@ -246,6 +303,7 @@ async def _dispatch(
             "name": call.name, "id": call.id,
             "arguments": call.arguments, "error": str(e),
         })
+        log.warning("  ✗ %s: invalid args — %s", call.name, e)
         return ToolResult(
             tool_call_id=call.id,
             content=f"invalid arguments for {call.name}: {e}",
@@ -261,6 +319,7 @@ async def _dispatch(
                 "name": call.name, "id": call.id,
                 "arguments": call.arguments, "text": text,
             })
+            log.info("  ✓ %s → %s", call.name, _brief(text, 80))
             return ToolResult(tool_call_id=call.id, content=text)
 
         blocks = await mcp.call_tool(call.name, call.arguments)
@@ -270,10 +329,11 @@ async def _dispatch(
             "name": call.name, "id": call.id,
             "arguments": call.arguments, "blocks": blocks,
         })
+        log.info("  ✓ %s → %s", call.name, _brief_content(content))
         return ToolResult(tool_call_id=call.id, content=content)
 
     except Exception as e:
-        log.error("tool %s failed: %s", call.name, e)
+        log.error("  ✗ %s failed: %s", call.name, e)
         tr.write({"event": "tool_error", "turn": turn, "name": call.name, "error": str(e)})
         return ToolResult(
             tool_call_id=call.id,

@@ -87,6 +87,11 @@ async def handle_clipboard_fetch(request, bridge: BridgeState):
     text = bridge.fetch_text()
     if text is None:
         return PlainTextResponse("", status_code=204)
+    # Defence-in-depth: some upstream paths (mis-typed sequence args) could
+    # slip a non-string through. str()-coerce rather than crash the handler.
+    if not isinstance(text, str):
+        log.warning("Bridge: non-string clipboard value %r — coercing", text)
+        text = str(text)
     log.info(f"Bridge: clipboard fetched — '{text}'")
     return PlainTextResponse(text)
 

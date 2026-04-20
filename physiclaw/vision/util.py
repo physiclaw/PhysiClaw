@@ -331,8 +331,13 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
     }
 
 
-def validate_bbox(bbox: list[float]):
-    """Raise ValueError if bbox is malformed."""
+def validate_bbox(bbox: list[float]) -> list[float]:
+    """Raise ValueError if bbox is malformed; return `bbox` unchanged.
+
+    Returning the input makes this usable as a Pydantic `AfterValidator`
+    (FastMCP tool types) while staying backward-compatible with the
+    existing call sites that ignore the return.
+    """
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         raise ValueError(f"bbox must be [left, top, right, bottom], got {bbox!r}")
     left, top, right, bottom = bbox
@@ -342,6 +347,7 @@ def validate_bbox(bbox: list[float]):
         raise ValueError(f"bbox values must be in [0, 1], got {bbox!r}")
     if left >= right or top >= bottom:
         raise ValueError(f"bbox must have left < right and top < bottom, got {bbox!r}")
+    return bbox
 
 
 def bbox_on_screen(bbox: list[float]) -> bool:
