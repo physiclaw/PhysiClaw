@@ -25,10 +25,18 @@ from physiclaw.logger import setup_logging
 def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
     """Launch the hook loop as a child process.
 
-    Runs out-of-process so long-running hooks (e.g. shelling out to `claude`)
-    don't block the MCP event loop. Terminated via atexit when the server
-    exits.
+    Runs out-of-process so long-running hooks (e.g. shelling out to `claude`,
+    or driving the in-process engine) don't block the MCP event loop.
+    Terminated via atexit when the server exits.
+
+    Engine + provider are picked by PHYSICLAW_PROVIDER (or auto-detected
+    from API-key env vars). The subprocess inherits the env automatically;
+    we just log what got picked.
     """
+    # Tiny leaf import — avoids pulling agent.engine + httpx into the
+    # parent process on the default claude-code path.
+    from agent.runtime.config import EXTERNAL, PROVIDER_DEFAULT, PROVIDER_ENV_VAR
+
     log = logging.getLogger(__name__)
     cmd = [
         sys.executable,
@@ -39,8 +47,11 @@ def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
     ]
     if verbose:
         cmd.append("--verbose")
+    choice = os.environ.get(PROVIDER_ENV_VAR, PROVIDER_DEFAULT)
+    label = ("engine=claude-code" if choice == EXTERNAL
+             else f"engine=physiclaw, provider={choice}")
     proc = subprocess.Popen(cmd)
-    log.info(f"Runtime loop started as subprocess (pid={proc.pid})")
+    log.info(f"Runtime loop started as subprocess (pid={proc.pid}, {label})")
     return proc
 
 

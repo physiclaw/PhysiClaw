@@ -31,8 +31,35 @@ from agent.engine.dto import (
 
 log = logging.getLogger(__name__)
 
-_DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-_DEFAULT_MODEL = "qwen3.6-plus"
+# Public registry of provider names → factory. The launcher's auto-detect
+# (PHYSICLAW_ENGINE / credential env vars) accepts these (plus "claude-code"
+# for the external CLI subprocess path). Add a provider here AND an entry
+# to its endpoint config + factory below to enable a new one.
+PROVIDER_NAMES = ("qwen", "kimi", "chatgpt", "claude")
+
+# Per-provider endpoint defaults. `claude` is intentionally absent —
+# Anthropic isn't OpenAI-compatible and needs a different Provider class.
+_PROVIDER_ENDPOINTS: dict[str, tuple[str, str]] = {
+    # name: (base_url, default_model)
+    "qwen":    ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.6-plus"),
+    "kimi":    ("https://api.moonshot.cn/v1",                        "kimi-latest"),
+    "chatgpt": ("https://api.openai.com/v1",                         "gpt-4o"),
+}
+
+
+def provider_endpoint(name: str) -> tuple[str, str]:
+    """Return (base_url, default_model) for an OpenAI-compatible provider.
+
+    Raises KeyError if the provider isn't OpenAI-compatible (e.g. anthropic
+    Claude needs its own Provider class — not in this map).
+    """
+    try:
+        return _PROVIDER_ENDPOINTS[name]
+    except KeyError:
+        raise KeyError(
+            f"no OpenAI-compatible endpoint for provider {name!r}; "
+            f"known: {tuple(_PROVIDER_ENDPOINTS)}"
+        ) from None
 
 
 class ProviderError(Exception):
@@ -64,16 +91,17 @@ class QwenProvider:
         self,
         model: str | None = None,
         timeout: float = 120.0,
-        base_url: str = _DASHSCOPE_BASE,
+        base_url: str | None = None,
     ):
         key = os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY")
         if not key:
             raise RuntimeError(
                 "QWEN_API_KEY (or DASHSCOPE_API_KEY) must be set in the environment"
             )
-        self._model = model or os.environ.get("QWEN_MODEL", _DEFAULT_MODEL)
+        endpoint, default_model = provider_endpoint("qwen")
+        self._model = model or os.environ.get("QWEN_MODEL", default_model)
         self._client = httpx.AsyncClient(
-            base_url=base_url,
+            base_url=base_url or endpoint,
             timeout=timeout,
             headers={
                 "Authorization": f"Bearer {key}",
@@ -112,6 +140,31 @@ class QwenProvider:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+# Factory dict — populated below after each Provider class is defined.
+# Adding a provider: implement the class, register it here, list it in
+# PROVIDER_NAMES (and, if OpenAI-compatible, _PROVIDER_ENDPOINTS).
+_PROVIDER_FACTORIES: dict[str, type[Provider]] = {}
+
+
+def make_provider(name: str) -> Provider:
+    """name → Provider instance. Credentials come from the chosen
+    Provider's own env-var lookup in __init__."""
+    factory = _PROVIDER_FACTORIES.get(name)
+    if factory is not None:
+        return factory()
+    if name in PROVIDER_NAMES:
+        raise NotImplementedError(
+            f"Provider {name!r} listed in PROVIDER_NAMES but not registered "
+            f"in _PROVIDER_FACTORIES. Add a Provider subclass and register it."
+        )
+    raise ValueError(
+        f"unknown provider {name!r} (known: {', '.join(PROVIDER_NAMES)})"
+    )
+
+
+_PROVIDER_FACTORIES["qwen"] = QwenProvider
 
 
 # ---------- wire adapters (one provider, one format; add impls here later) ----------
@@ -265,6 +318,9 @@ __all__ = [
     "ProviderError",
     "ProviderTransientError",
     "ProviderPermanentError",
+    "PROVIDER_NAMES",
+    "provider_endpoint",
+    "make_provider",
     "assistant_to_wire",
     "tool_result_to_wire",
     "blocks_to_tool_content",

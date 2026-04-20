@@ -23,9 +23,9 @@ from agent.engine.dto import AssistantMessage, FinishReason, ToolCall, ToolResul
 from agent.engine.provider import (
     Provider,
     ProviderTransientError,
-    QwenProvider,
     assistant_to_wire,
     blocks_to_tool_content,
+    make_provider,
     tool_result_to_wire,
 )
 from agent.engine.trace import Trace
@@ -41,18 +41,24 @@ RETRY_BACKOFF = 5.0
 WAIT_DEFAULT_MINUTES = 15
 
 
-async def run(triggers: list[Trigger]) -> None:
+async def run(
+    triggers: list[Trigger], *, provider_name: str
+) -> None:
     """One engine session. Drives model ↔ tools loop until `end_session`
     closes it or a budget (MAX_TURNS / provider retries) is exhausted.
+
+    `provider_name` selects which `Provider` impl to instantiate via
+    `provider.make_provider`. Required (no default) — every caller goes
+    through the launcher, which resolves PHYSICLAW_PROVIDER.
     """
     sid = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     tr = Trace(sid)
     tr.write({
-        "event": "wake", "session": sid,
+        "event": "wake", "session": sid, "provider": provider_name,
         "triggers": [{"source": t.source, "description": t.description} for t in triggers],
     })
 
-    provider: QwenProvider | None = None
+    provider: Provider | None = None
     session = Session()
     try:
         async with McpClient() as mcp:
@@ -77,7 +83,7 @@ async def run(triggers: list[Trigger]) -> None:
                 {"role": "user", "content": _format_triggers(triggers)},
             ]
 
-            provider = QwenProvider()
+            provider = make_provider(provider_name)
             await _loop(
                 mcp=mcp,
                 provider=provider,
