@@ -1,28 +1,29 @@
-"""Per-day human-readable log for engine sessions.
+"""Engine session logs — two sinks per run.
 
-One file per day, shared across all sessions — matches the shape of
-`log/claude/claude-YYYY-MM-DD.log` so operators can scan either runtime's
-trail the same way.
+  1. `Trace` — per-day human-readable log
+       log/engine/engine-YYYY-MM-DD.log
+     Matches the shape of `agent/runtime/claude.py`'s _SessionLog so
+     operators scan either runtime the same way. One-line summaries
+     via `_summarize(event)`; internal bookkeeping events in
+     `_SILENT_EVENTS` are skipped.
 
-  log/engine/engine-YYYY-MM-DD.log
-
-Format per line:
-  [HH:MM:SS] <summary>
-
-Sessions bookended by `============` banners and WAKE / OUTCOME lines.
-Long values (tool args, result content, image data) are truncated.
-Image base64 is replaced with a `<image Nb>` shape marker.
-
-`Trace.write(event: dict)` takes the same event shape the previous
-JSONL writer accepted — `_summarize()` maps each event type to a single
-log line. Unknown events fall back to a compact repr so nothing gets
-dropped silently.
+  2. `RawLog` — per-session structured capture
+       log/engine/raw/<session-id>.jsonl
+     One JSON line per provider round-trip:
+       {"t":..., "turn":..., "kind":"request",  "messages": [...]}
+       {"t":..., "turn":..., "kind":"response", "raw": {...}}
+     Full request messages and full provider response are kept, with
+     base64 image payloads replaced by `<Nb elided>` stubs so an
+     image-heavy session still produces a ~100 KB file instead of MBs.
+     Use these for prompt-engineering analysis / regression triage.
 """
 import datetime as dt
+import json
 from pathlib import Path
 from typing import Any
 
 _LOG_DIR = Path("log/engine")
+_RAW_DIR = _LOG_DIR / "raw"
 
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
@@ -191,3 +192,73 @@ def _summarize(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat disp
         return None
     # Fallback — compact repr so nothing disappears silently.
     return f"event {name}: {brief(repr(event), 200)}"
+
+
+# ---------- RawLog: per-session structured capture ----------
+
+
+class RawLog:
+    """Per-session JSONL sink for later analysis.
+
+    One line per provider round-trip (request OR response). Open inside
+    the engine's try/finally — call `close()` on session end.
+    """
+
+    def __init__(self, session_id: str):
+        _RAW_DIR.mkdir(parents=True, exist_ok=True)
+        self.path = _RAW_DIR / f"{session_id}.jsonl"
+        self._f = open(self.path, "a")
+
+    def write_request(self, turn: int, messages: list[dict]) -> None:
+        self._emit({
+            "t": dt.datetime.now().isoformat(timespec="seconds"),
+            "turn": turn,
+            "kind": "request",
+            "messages": _scrub_images(messages),
+        })
+
+    def write_response(self, turn: int, raw: dict[str, Any]) -> None:
+        self._emit({
+            "t": dt.datetime.now().isoformat(timespec="seconds"),
+            "turn": turn,
+            "kind": "response",
+            "raw": raw,
+        })
+
+    def close(self) -> None:
+        if not self._f.closed:
+            self._f.close()
+
+    def _emit(self, obj: dict[str, Any]) -> None:
+        self._f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        self._f.flush()
+
+
+def _scrub_images(messages: list[dict]) -> list[dict]:
+    """Copy of `messages` with base64 image data replaced by byte-count
+    stubs. Keeps a 300 KB image down to ~30 bytes in the raw log — the
+    bbox text and model decisions are what we care about for analysis,
+    and the full pixels still live one level up in log/claude/... or the
+    original tool_result if we ever need them."""
+    out: list[dict] = []
+    for m in messages:
+        c = m.get("content")
+        if not isinstance(c, list):
+            out.append(m)
+            continue
+        new_c: list[dict] = []
+        for b in c:
+            if not isinstance(b, dict):
+                new_c.append(b)
+                continue
+            if b.get("type") == "image_url":
+                url = (b.get("image_url") or {}).get("url", "")
+                head, _, data = url.partition(",")
+                new_c.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"{head},<{len(data)}b elided>"},
+                })
+            else:
+                new_c.append(b)
+        out.append({**m, "content": new_c})
+    return out

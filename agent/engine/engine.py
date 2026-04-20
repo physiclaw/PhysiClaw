@@ -28,7 +28,7 @@ from agent.engine.provider import (
     make_provider,
     tool_result_to_wire,
 )
-from agent.engine.trace import Trace, brief, brief_args, brief_content
+from agent.engine.trace import RawLog, Trace, brief, brief_args, brief_content
 from agent.engine.validator import ValidationError, validate_arguments
 from agent.runtime.hook import Trigger
 from agent.runtime.sentinel import WAIT
@@ -55,10 +55,12 @@ async def run(
     provider: Provider | None = None
     session = Session()
     tr: Trace | None = None
+    rlog: RawLog | None = None
     try:
-        # Open inside the try so the finally block's tr.close() runs even
-        # if Trace construction fails midway (disk full, perms, etc.).
+        # Open inside the try so the finally block's close() runs even
+        # if construction fails midway (disk full, perms, etc.).
         tr = Trace(sid)
+        rlog = RawLog(sid)
         tr.write({
             "event": "wake", "session": sid, "provider": provider_name,
             "triggers": [
@@ -105,6 +107,7 @@ async def run(
                 local_registry=local_registry,
                 session=session,
                 tr=tr,
+                rlog=rlog,
             )
 
         log.info(
@@ -130,6 +133,8 @@ async def run(
             await provider.aclose()
         if tr is not None:
             tr.close()
+        if rlog is not None:
+            rlog.close()
 
 
 # ---------- core loop ----------
@@ -145,6 +150,7 @@ async def _loop(
     local_registry: dict[str, LocalTool],
     session: Session,
     tr: Trace,
+    rlog: RawLog,
 ) -> None:
     # SYSTEM is immutable after bootstrap; hash once at pin time and don't
     # recompute per turn. Any mutation would be a bug upstream (a caller
@@ -154,6 +160,7 @@ async def _loop(
 
     for turn in range(MAX_TURNS):
         tr.write({"event": "request", "turn": turn, "message_count": len(messages)})
+        rlog.write_request(turn, messages)
         log.info("turn %d: %d messages → provider", turn + 1, len(messages))
 
         try:
@@ -165,6 +172,7 @@ async def _loop(
             session.sentinel_recap = f"provider error: {e}"
             return
 
+        rlog.write_response(turn, asst.raw)
         tr.write({
             "event": "response",
             "turn": turn,
