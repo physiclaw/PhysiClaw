@@ -1,10 +1,51 @@
 """Context compaction.
 
-Keeps raw-image footprint bounded: at most one image lives in history
-at a time. The model's prior-turn description + curated_bbox (stored in
-the assistant message) covers anything older.
+Two jobs, both about keeping per-turn image payload small:
+
+  1. `prior_image` — history invariant: only the most recent image-bearing
+     message retains pixels; older images get stripped. The model's prior
+     `describe_view` response (in the assistant message) covers the stale
+     ones.
+
+  2. `scale_image_bytes` — ingress re-encode: normalize every incoming
+     tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
+     transparency (fine for screenshots), typically cuts payload 3–10×.
 """
+import logging
 from typing import Any
+
+import cv2
+import numpy as np
+
+log = logging.getLogger(__name__)
+
+MAX_IMAGE_EDGE = 1566
+JPEG_QUALITY = 85
+
+
+def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
+    """Decode, scale long-edge to MAX_IMAGE_EDGE if larger, re-encode JPEG.
+
+    Returns (bytes, mime_type). On decode/encode failure returns the input
+    unchanged with a generic mime so the caller still has something to
+    forward — context bloat is preferable to a dropped screenshot.
+    """
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        log.warning("scale_image_bytes: decode failed on %d bytes", len(raw))
+        return raw, "application/octet-stream"
+    h, w = img.shape[:2]
+    long_edge = max(h, w)
+    if long_edge > MAX_IMAGE_EDGE:
+        scale = MAX_IMAGE_EDGE / long_edge
+        new_size = (int(round(w * scale)), int(round(h * scale)))
+        img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+    if not ok:
+        log.warning("scale_image_bytes: encode failed")
+        return raw, "application/octet-stream"
+    return buf.tobytes(), "image/jpeg"
 
 
 def prior_image(messages: list[dict[str, Any]]) -> None:

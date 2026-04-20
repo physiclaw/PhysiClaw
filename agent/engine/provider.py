@@ -12,6 +12,7 @@ Principle 3: preserve the real `finish_reason`. Do not derive it from
 content. The engine routes differently on "length" / "content_filter" /
 "tool_calls" / "stop".
 """
+import base64
 import json
 import logging
 import os
@@ -20,6 +21,7 @@ from typing import Any, Protocol
 
 import httpx
 
+from agent.engine import compact
 from agent.engine.dto import (
     AssistantMessage,
     FinishReason,
@@ -219,7 +221,13 @@ def tool_result_to_wire(call: ToolCall, result: ToolResult) -> dict[str, Any]:
 
 def blocks_to_tool_content(blocks: list[dict]) -> str | list[dict]:
     """MCP content blocks → OpenAI tool-role content. Returns a bare string
-    when no images are present so common text-only tools stay cheap."""
+    when no images are present so common text-only tools stay cheap.
+
+    Every image is re-encoded via `compact.scale_image_bytes` on the way
+    through: PNG → JPEG, long edge clamped to MAX_IMAGE_EDGE. Keeps each
+    turn's image payload small before it enters history (where the prefix
+    cache has to re-transmit it on every subsequent request).
+    """
     # Fast path: text-only, single block.
     if len(blocks) == 1 and blocks[0].get("type") == "text":
         return blocks[0]["text"]
@@ -230,10 +238,17 @@ def blocks_to_tool_content(blocks: list[dict]) -> str | list[dict]:
         if b.get("type") == "text":
             texts.append(b["text"])
         elif b.get("type") == "image":
-            mime = b.get("mime_type") or "image/jpeg"
+            try:
+                raw = base64.b64decode(b["data"])
+                scaled, mime = compact.scale_image_bytes(raw)
+                new_b64 = base64.b64encode(scaled).decode()
+            except Exception:
+                log.exception("failed to scale image block; forwarding original")
+                new_b64 = b["data"]
+                mime = b.get("mime_type") or "image/jpeg"
             images.append({
                 "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{b['data']}"},
+                "image_url": {"url": f"data:{mime};base64,{new_b64}"},
             })
     if images:
         parts: list[dict[str, Any]] = []
