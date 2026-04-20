@@ -14,6 +14,7 @@
 import asyncio
 import datetime as dt
 import logging
+import time
 from typing import Any
 
 from agent.engine import builtin_tool, compact, jobs, memory, prompt, skill
@@ -98,6 +99,13 @@ async def run(
             ]
 
             provider = make_provider(provider_name)
+            prompt_hash = prompt.prefix_hash(messages)
+            rlog.write_session_start(
+                provider=provider_name,
+                model=provider.model,
+                prompt_hash=prompt_hash,
+                tools=tool_schemas,
+            )
             await _loop(
                 mcp=mcp,
                 provider=provider,
@@ -106,6 +114,7 @@ async def run(
                 schema_by_name=schema_by_name,
                 local_registry=local_registry,
                 session=session,
+                prompt_hash=prompt_hash,
                 tr=tr,
                 rlog=rlog,
             )
@@ -149,20 +158,18 @@ async def _loop(
     schema_by_name: dict[str, dict],
     local_registry: dict[str, LocalTool],
     session: Session,
+    prompt_hash: str,
     tr: Trace,
     rlog: RawLog,
 ) -> None:
-    # SYSTEM is immutable after bootstrap; hash once at pin time and don't
-    # recompute per turn. Any mutation would be a bug upstream (a caller
-    # touching messages[0]), so one assertion at entry is enough.
-    pinned = prompt.prefix_hash(messages)
-    tr.write({"event": "prefix_pinned", "hash": pinned})
+    tr.write({"event": "prefix_pinned", "hash": prompt_hash})
 
     for turn in range(MAX_TURNS):
         tr.write({"event": "request", "turn": turn, "message_count": len(messages)})
         rlog.write_request(turn, messages)
         log.info("turn %d: %d messages → provider", turn + 1, len(messages))
 
+        t0 = time.perf_counter()
         try:
             asst = await _chat_with_retry(provider, messages, tool_schemas)
         except Exception as e:
@@ -172,7 +179,8 @@ async def _loop(
             session.sentinel_recap = f"provider error: {e}"
             return
 
-        rlog.write_response(turn, asst.raw)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        rlog.write_response(turn, asst.raw, elapsed_ms=elapsed_ms)
         tr.write({
             "event": "response",
             "turn": turn,

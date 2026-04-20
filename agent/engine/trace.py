@@ -9,13 +9,19 @@
 
   2. `RawLog` — per-session structured capture
        log/engine/raw/<session-id>.jsonl
-     One JSON line per provider round-trip:
-       {"t":..., "turn":..., "kind":"request",  "messages": [...]}
-       {"t":..., "turn":..., "kind":"response", "raw": {...}}
-     Full request messages and full provider response are kept, with
-     base64 image payloads replaced by `<Nb elided>` stubs so an
-     image-heavy session still produces a ~100 KB file instead of MBs.
-     Use these for prompt-engineering analysis / regression triage.
+     Three line shapes:
+       {"t":..., "kind":"session_start", "provider":..., "model":...,
+        "prompt_hash":..., "tools":[...]}
+       {"t":..., "turn":..., "kind":"request",  "messages":[...]}
+       {"t":..., "turn":..., "kind":"response", "elapsed_ms":...,
+        "raw": {...}}
+     `session_start` fires once, before turn 0, so analysis can tell a
+     hallucinated tool_call from a real one and know which model produced
+     the trace. Full request messages and full provider response are kept
+     afterwards, with base64 image payloads replaced by `<Nb elided>`
+     stubs so an image-heavy session still produces a ~100 KB file
+     instead of MBs. Use these for prompt-engineering analysis /
+     regression triage.
 """
 import datetime as dt
 import json
@@ -200,8 +206,9 @@ def _summarize(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat disp
 class RawLog:
     """Per-session JSONL sink for later analysis.
 
-    One line per provider round-trip (request OR response). Open inside
-    the engine's try/finally — call `close()` on session end.
+    Emits `session_start` once, then one line per provider round-trip
+    (request OR response). Open inside the engine's try/finally — call
+    `close()` on session end.
     """
 
     def __init__(self, session_id: str):
@@ -209,29 +216,45 @@ class RawLog:
         self.path = _RAW_DIR / f"{session_id}.jsonl"
         self._f = open(self.path, "a")
 
-    def write_request(self, turn: int, messages: list[dict]) -> None:
-        self._emit({
-            "t": dt.datetime.now().isoformat(timespec="seconds"),
-            "turn": turn,
-            "kind": "request",
-            "messages": _scrub_images(messages),
-        })
+    def write_session_start(
+        self,
+        *,
+        provider: str,
+        model: str,
+        prompt_hash: str,
+        tools: list[dict],
+    ) -> None:
+        # Tools don't change mid-session (engine builds the registry once
+        # at bootstrap), so logging them once at start is sufficient and
+        # keeps per-turn records lean.
+        self._emit(
+            "session_start",
+            provider=provider, model=model,
+            prompt_hash=prompt_hash, tools=tools,
+        )
 
-    def write_response(self, turn: int, raw: dict[str, Any]) -> None:
-        self._emit({
-            "t": dt.datetime.now().isoformat(timespec="seconds"),
-            "turn": turn,
-            "kind": "response",
-            "raw": raw,
-        })
+    def write_request(self, turn: int, messages: list[dict]) -> None:
+        self._emit("request", turn=turn, messages=_scrub_images(messages))
+
+    def write_response(
+        self, turn: int, raw: dict[str, Any], *, elapsed_ms: int,
+    ) -> None:
+        self._emit("response", turn=turn, elapsed_ms=elapsed_ms, raw=raw)
 
     def close(self) -> None:
         if not self._f.closed:
             self._f.close()
 
-    def _emit(self, obj: dict[str, Any]) -> None:
+    def _emit(self, kind: str, **data: Any) -> None:
+        obj = {"t": _now(), "kind": kind, **data}
         self._f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         self._f.flush()
+
+
+def _now() -> str:
+    # ms precision makes per-turn latency analysis possible without having
+    # to correlate against the engine log.
+    return dt.datetime.now().isoformat(timespec="milliseconds")
 
 
 def _scrub_images(messages: list[dict]) -> list[dict]:

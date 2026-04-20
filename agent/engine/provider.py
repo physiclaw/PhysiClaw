@@ -75,6 +75,8 @@ class ProviderPermanentError(ProviderError):
 
 
 class Provider(Protocol):
+    model: str
+
     async def chat(
         self,
         messages: list[dict],
@@ -99,7 +101,7 @@ class QwenProvider:
                 "QWEN_API_KEY (or DASHSCOPE_API_KEY) must be set in the environment"
             )
         endpoint, default_model = provider_endpoint("qwen")
-        self._model = model or os.environ.get("QWEN_MODEL", default_model)
+        self.model = model or os.environ.get("QWEN_MODEL", default_model)
         self._client = httpx.AsyncClient(
             base_url=base_url or endpoint,
             timeout=timeout,
@@ -115,7 +117,7 @@ class QwenProvider:
         tools: list[dict],
     ) -> AssistantMessage:
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": self.model,
             "messages": messages,
         }
         if tools:
