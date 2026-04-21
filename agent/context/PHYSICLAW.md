@@ -20,21 +20,11 @@ See the screen, pick a target, do something. All `bbox` arguments are `[left, to
 
 ## Picking a view tool
 
-Default to `peek` or `scan` — cheap, non-mutating, tap-accurate.
+Three view tools, three jobs. Pick by purpose, not by speed:
 
-- `scan` (~3s) — listing only, no image. Use for reading and blind polling.
-- `peek` (~4s) — camera view with annotated bboxes. Default choice for planning a tap.
-- `screenshot` (~12s) — phone's own screenshot. **Only when `peek` / `scan` don't list your target** (tiny icon the camera misses, element lost to glare, fine print you need to read).
-
-### Escalate when scan can't find your target
-
-If a `scan` listing doesn't contain the element you're looking for,
-**switch to `peek` on the next turn** — don't scan again. Scan is
-text-only, so repeated scans of the same page give you the same listing
-and teach the model nothing new. `peek` gives you the visual context
-that tells you what page you're actually on (different app, dialog,
-Safari instead of home, …). If `peek` still doesn't list it, escalate
-to `screenshot` for the phone's own pixel-perfect capture.
+- **Verify** — did my last action take effect? Use `scan` (~3s, listing only). Cheapest, fast enough to poll. If the listing changed, the action landed; if it looks identical to before, it didn't.
+- **Plan an action** — what should I tap / swipe / long-press next? Use `peek` (~4s, camera view + annotated bboxes). The visual context tells you what page you're actually on, and the listing gives you the bbox to act on. **Never plan a tap from a `scan` alone** — text-only listings can match the wrong element (e.g. a "JD" link in a Safari debug page vs the JD app icon).
+- **Plan, when peek isn't enough** — escalate to `screenshot` (~12s, phone's own pixel-perfect capture). Use when `peek` doesn't list the target you need (tiny icon the camera misses, element lost to camera glare, fine print). Don't fall back to `scan` — scan is the same camera, just text-only. **`screenshot()` has side effects — read the next section first.**
 
 ## iPhone keyboard bboxes
 
@@ -55,10 +45,10 @@ App-specific input fields (text-input field bbox, paste-button popover location,
 
 ## Operating loop
 
-1. **Orient** — `scan` or `peek`.
-2. **Plan** — pick a bbox from the listing. If the target isn't there, `screenshot` once, then `peek` to re-orient.
-3. **Act** — gesture tool.
-4. **Verify** — `scan` or `peek`. If the screen didn't change, retry the gesture (stylus occasionally misses); if still unchanged, the bbox was likely wrong.
+1. **Orient + Plan** — `peek`. The bbox you'll act on must come from this listing.
+2. **If `peek` doesn't list the target** — `screenshot` once for pixel-perfect bboxes; act on those.
+3. **Act** — gesture tool, with the bbox from step 1 or 2.
+4. **Verify** — `scan`. If the listing didn't change, the action didn't land — retry the gesture (stylus occasionally misses) or re-`peek` because the bbox was likely wrong.
 
 ## Safety
 

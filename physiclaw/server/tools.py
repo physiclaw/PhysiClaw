@@ -92,17 +92,13 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     async def tap(bbox: Bbox) -> str:
         """Tap once at the center of `bbox` — for buttons, links, list items, dismissing dialogs.
 
-        After this, call `scan` or `peek` to verify the screen changed —
-        scan is faster when you only need to confirm new text/icons
-        appeared, peek when you also need to see them. If nothing changed,
-        the stylus may have missed (retry once) or the bbox was wrong
-        (re-orient with peek and pick a different element).
+        After this, `scan` to verify the screen changed (cheapest), or
+        `peek` if your next move needs a bbox from the new screen. If
+        the listing is identical to before, the tap missed (retry once)
+        or the bbox was wrong (re-`peek` and pick a different element).
         """
         result = await asyncio.to_thread(physiclaw.tap, bbox)
-        return (
-            f"{result} — call `peek` (or `scan`) to verify; "
-            "if the view looks identical, the tap missed or the bbox was wrong"
-        )
+        return f"{result} — `scan` to verify (or `peek` if your next move needs a bbox)"
 
     @mcp.tool()
     @logged
@@ -113,7 +109,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         in editable text. Don't use for buttons — that's `tap`.
         """
         result = await asyncio.to_thread(physiclaw.double_tap, bbox)
-        return f"{result} — call `scan` or `peek` to confirm the zoom / selection"
+        return f"{result} — `scan` to verify the zoom / selection landed"
 
     @mcp.tool()
     @logged
@@ -122,11 +118,11 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
         Use for: opening context menus, entering edit mode (rearrange
         icons), triggering the paste popover after `send_to_clipboard`.
-        Always `scan` or `peek` after — the menu/popover that appears
-        is what you tap next.
+        Always `peek` next — you need a fresh bbox from the just-revealed
+        popover to tap (Paste / Copy / etc.).
         """
         result = await asyncio.to_thread(physiclaw.long_press, bbox)
-        return f"{result} — call `scan` or `peek` to see the menu / popover that appeared"
+        return f"{result} — `peek` next: you'll need a fresh bbox from the popover to tap (Paste / Copy / etc.)"
 
     # ─── Swipe ───────────────────────────────────────────────
 
@@ -142,8 +138,9 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
         Use for: scrolling content, dismissing cards, paging carousels,
         revealing swipe-actions on list items, opening Control Center
-        (swipe down from top-right). Always `scan` or `peek` after to
-        see the new state.
+        (swipe down from top-right). After this, `scan` to verify the
+        page scrolled, or `peek` if your next move needs a bbox from
+        the new view.
 
         Common gotcha — direction is the STYLUS motion, not the page:
           - swipe UP   → page scrolls DOWN (reveals content below)
@@ -163,7 +160,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
                 more momentum on iOS scroll lists (swipes keep coasting).
         """
         result = await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
-        return f"{result} — call `scan` or `peek` to see the new state"
+        return f"{result} — `scan` to verify the page scrolled (or `peek` if your next move needs a bbox from the new view)"
 
     # ─── Navigate ────────────────────────────────────────────
 
@@ -174,10 +171,10 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
         Issues the iPhone swipe-up-from-bottom gesture. Use to start a
         fresh task or recover from getting lost in app navigation. After
-        this, `scan` or `peek` to see the home-screen icon layout.
+        this, `peek` to plan your next tap on the home-screen icons.
         """
         result = await asyncio.to_thread(physiclaw.home_screen)
-        return f"{result} — call `scan` or `peek` to see the home-screen icons"
+        return f"{result} — `peek` to plan your next tap on the home-screen icons"
 
     @mcp.tool()
     @logged
@@ -191,7 +188,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         re-enter, or look for an in-screen "Back" / "<" button to tap.
         """
         result = await asyncio.to_thread(physiclaw.go_back)
-        return f"{result} — call `scan` or `peek` to confirm navigation"
+        return f"{result} — `scan` to verify navigation landed (or `peek` if your next move needs a bbox from the new screen)"
 
     @mcp.tool()
     @logged
@@ -214,7 +211,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         → Never; trade-off is faster display wear).
         """
         result = await asyncio.to_thread(physiclaw.unlock_phone)
-        return f"{result} — call `scan` or `peek` to confirm you're on the home screen"
+        return f"{result} — `peek` to confirm you're on the home screen and plan the next tap"
 
     # ─── Text ────────────────────────────────────────────────
 
@@ -271,4 +268,4 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         """
         steps = [s for s in (step1, step2, step3, step4, step5) if s is not None]
         result = await asyncio.to_thread(physiclaw.sequence, steps)
-        return f"{result}\n— call `scan` or `peek` to verify the final state"
+        return f"{result}\n— `scan` to verify the final state (or `peek` if your next move needs a bbox from the new view)"
