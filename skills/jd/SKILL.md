@@ -15,8 +15,11 @@ Prefer `scan()` and `peek()` — cheap, no app-side reactions. Reach for `screen
 
 1. `/open-app 京东` (or `JD`). Make sure you're on the **首页** tab (top nav), then tap into 京东七鲜.
 2. Tap the search box. If it has stale text, tap **backspace** (bbox in PHYSICLAW.md "iPhone keyboard bboxes") until empty — see also `Skill(name="search-in-app")` for the full clear-paste-submit flow. Type/paste the item, open its shop page.
-3. Tap 加入购物车. The app returns to the item page — **don't tap again**; the item is in the cart.
-4. Tap the cart icon, review line items, tap 去结算.
+3. Tap 加入购物车 (Add to cart).
+   - **A spec-selection sheet often slides up** (size, brand, weight). Pick the right spec, then tap **确定** to confirm. The sheet dismisses, the item is added, and you land back on the product page.
+   - Items without variants skip the sheet — one tap on 加入购物车 adds directly.
+   - **NEVER tap 加入购物车 again on the product page.** The product page looks the same before and after add — you cannot tell from the layout alone whether the add succeeded. Re-tapping just re-opens the spec sheet, you re-confirm, and you've now added the item TWICE. Trust that 确定 worked; verify by checking the cart-icon badge count (top-right corner of the page) or by going to the cart in step 4.
+4. Tap the cart icon, review line items, tap 去结算. **Always review the cart here** — if quantities look wrong (item appearing twice when you only meant once), that's a sign step 3 was tapped twice; remove the dup before checkout.
 5. Send the owner: item, qty, price, address, fees, ETA. Wait for explicit OK.
 6. Tap 提交订单 / 立即支付.
 
