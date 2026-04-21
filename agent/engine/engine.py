@@ -393,10 +393,8 @@ async def _chat_with_retry(
 
 
 def _format_triggers(triggers: list[Trigger]) -> str:
-    # Stamp the wake with an absolute now. Memory logs use "今天" / "明天"
-    # relative phrasing, which leaves the model triangulating today's date
-    # from prior entries — costs multiple turns of CoT and sometimes ships
-    # the wrong weekday in user-facing replies.
+    # Absolute `Now` — memory logs are relative, so without this the
+    # model burns turns triangulating today's date.
     now = dt.datetime.now()
     lines = [f"Now: {now.strftime('%Y-%m-%d %A %H:%M')}", "", "Wake triggers:"]
     for t in triggers:
