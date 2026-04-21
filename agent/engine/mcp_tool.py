@@ -1,7 +1,10 @@
 """MCP HTTP client wrapper for the engine.
 
-Holds a single MCP session open for the duration of a turn loop — opening a
-new session per tool call would add ~100ms of handshake per step.
+Holds one MCP session open for the runtime process's lifetime — opening
+a new session per agent wake would add ~100ms of handshake per cycle
+and spam the log with "GET stream disconnected" on every close.
+Module-level `get_mcp()` returns the singleton; `close_mcp()` tears it
+down at process exit.
 """
 import logging
 import os
@@ -42,6 +45,7 @@ class McpClient:
         )
         init = await self._session.initialize()
         self.server_instructions = (init.instructions or "").rstrip()
+        log.info("MCP client connected (%s)", self._url)
         return self
 
     async def __aexit__(self, *exc) -> None:
@@ -91,3 +95,54 @@ class McpClient:
             joined = " | ".join(b.get("text", "") for b in blocks if b["type"] == "text")
             raise RuntimeError(f"tool {name!r} failed: {joined}")
         return blocks
+
+
+# ---------- process-level singleton ----------
+
+_stack: AsyncExitStack | None = None
+_mcp: "McpClient | None" = None
+_tools_cache: list[dict] | None = None
+
+
+async def get_mcp() -> McpClient:
+    """Return the process-level McpClient, opening it on first call.
+
+    Persists across agent wakes so the SSE channel and initialize
+    handshake are paid once per runtime process, not once per session.
+    """
+    global _stack, _mcp
+    if _mcp is None:
+        stack = AsyncExitStack()
+        await stack.__aenter__()
+        try:
+            _mcp = await stack.enter_async_context(McpClient())
+        except BaseException:
+            # Unwind anything entered before the failure so the stack
+            # doesn't leak transports / sessions on a half-open client.
+            await stack.aclose()
+            raise
+        _stack = stack
+    return _mcp
+
+
+async def list_tools_cached() -> list[dict]:
+    """Cached MCP tool schemas. Stable for the runtime's lifetime — the
+    MCP server is the runtime's parent process, so the tool surface can't
+    change without restarting both."""
+    global _tools_cache
+    if _tools_cache is None:
+        mcp = await get_mcp()
+        _tools_cache = await mcp.list_tools()
+    return _tools_cache
+
+
+async def close_mcp() -> None:
+    """Close the singleton if it's open. Safe to call when it isn't."""
+    global _stack, _mcp, _tools_cache
+    if _stack is None:
+        return
+    stack, _stack, _mcp, _tools_cache = _stack, None, None, None
+    try:
+        await stack.aclose()
+    except Exception:
+        log.warning("MCP client close failed", exc_info=True)

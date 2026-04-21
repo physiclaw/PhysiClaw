@@ -26,7 +26,7 @@ DEFAULT_STEPS: tuple[str, ...] = (
     "1. Open the IM app and read the latest message.",
     "2. Call update_plan with owner_said + understanding + concrete steps.",
     "3. Execute the plan, verifying each step via scan/peek.",
-    "4. Reply in IM, then append_log, then end_session.",
+    "4. append_log, reply in IM, go_back, home_screen, then end_session.",
 )
 
 

@@ -19,7 +19,7 @@ from typing import Any
 
 from agent.engine import builtin_tool, compact, jobs, memory, plan, prompt, skill
 from agent.engine.builtin_tool import LocalTool, Session
-from agent.engine.mcp_tool import McpClient
+from agent.engine.mcp_tool import McpClient, get_mcp, list_tools_cached
 from agent.engine.dto import AssistantMessage, FinishReason, ToolCall, ToolResult
 from agent.engine.provider import (
     Provider,
@@ -96,58 +96,58 @@ async def _run_session(
             "wake session=%s provider=%s triggers=%s",
             sid, provider_name, [t.source or "?" for t in triggers],
         )
-        async with McpClient() as mcp:
-            mcp_tools = await mcp.list_tools()
-            skill_registry = skill.discover()
-            local_registry = builtin_tool.build_registry(skill_registry)
-            local_schemas = builtin_tool.schemas(local_registry)
-            # Full merged list goes to provider.chat(tools=) for invocation;
-            # the inline `## Tooling` card pulls MCP names from AST so it
-            # stays complete even offline. Each source has one consumer.
-            tool_schemas = list(mcp_tools) + local_schemas
-            schema_by_name = {s["name"]: s for s in tool_schemas}
-            tr.write({
-                "event": "tools_loaded",
-                "mcp": [s["name"] for s in mcp_tools],
-                "local": sorted(local_registry.keys()),
-            })
-            log.info(
-                "tools loaded: %d MCP + %d local + %d skills",
-                len(mcp_tools), len(local_registry), len(skill_registry),
-            )
+        mcp = await get_mcp()
+        mcp_tools = await list_tools_cached()
+        skill_registry = skill.discover()
+        local_registry = builtin_tool.build_registry(skill_registry)
+        local_schemas = builtin_tool.schemas(local_registry)
+        # Full merged list goes to provider.chat(tools=) for invocation;
+        # the inline `## Tooling` card pulls MCP names from AST so it
+        # stays complete even offline. Each source has one consumer.
+        tool_schemas = list(mcp_tools) + local_schemas
+        schema_by_name = {s["name"]: s for s in tool_schemas}
+        tr.write({
+            "event": "tools_loaded",
+            "mcp": [s["name"] for s in mcp_tools],
+            "local": sorted(local_registry.keys()),
+        })
+        log.info(
+            "tools loaded: %d MCP + %d local + %d skills",
+            len(mcp_tools), len(local_registry), len(skill_registry),
+        )
 
-            system_prompt = prompt.render_system(
-                local_tool_schemas=local_schemas,
-                memory_ctx=memory.load_persistent(),
-                cron_ctx=jobs.format_fired(triggers),
-                skills_ctx=skill.render_section(skill_registry),
-                provider_name=provider_name,
-            )
-            messages: list[dict[str, Any]] = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": _format_triggers(triggers)},
-            ]
+        system_prompt = prompt.render_system(
+            local_tool_schemas=local_schemas,
+            memory_ctx=memory.load_persistent(),
+            cron_ctx=jobs.format_fired(triggers),
+            skills_ctx=skill.render_section(skill_registry),
+            provider_name=provider_name,
+        )
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": _format_triggers(triggers)},
+        ]
 
-            provider = make_provider(provider_name)
-            prompt_hash = prompt.prefix_hash(messages)
-            rlog.write_session_start(
-                provider=provider_name,
-                model=provider.model,
-                prompt_hash=prompt_hash,
-                tools=tool_schemas,
-            )
-            await _loop(
-                mcp=mcp,
-                provider=provider,
-                messages=messages,
-                tool_schemas=tool_schemas,
-                schema_by_name=schema_by_name,
-                local_registry=local_registry,
-                session=session,
-                prompt_hash=prompt_hash,
-                tr=tr,
-                rlog=rlog,
-            )
+        provider = make_provider(provider_name)
+        prompt_hash = prompt.prefix_hash(messages)
+        rlog.write_session_start(
+            provider=provider_name,
+            model=provider.model,
+            prompt_hash=prompt_hash,
+            tools=tool_schemas,
+        )
+        await _loop(
+            mcp=mcp,
+            provider=provider,
+            messages=messages,
+            tool_schemas=tool_schemas,
+            schema_by_name=schema_by_name,
+            local_registry=local_registry,
+            session=session,
+            prompt_hash=prompt_hash,
+            tr=tr,
+            rlog=rlog,
+        )
 
         log.info(
             "session done: status=%s recap=%r",

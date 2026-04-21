@@ -1,15 +1,19 @@
 """Context compaction — two jobs, both about keeping image payload small:
 
   1. `drop_stale_screens` — "latest screen wins": only the most recent
-     screen-observation (asst + its tool_results) pair survives in
-     history. Older scan/peek/screenshot pairs are deleted outright. The
-     `note.screen` argument on each physical-action turn preserves what
-     the agent saw as text, so the decision trail is never lost.
+     scan/peek/screenshot tool_result carries pixels + full listing.
+     Earlier view tool_results are stubbed in place with the textual
+     description of what that image showed (pulled from the NEXT turn's
+     `note.screen`, which was composed while that image was the latest
+     view). The assistant message and its tool_calls stay intact —
+     the agent's decision history ("I called scan here, tap there") is
+     preserved; only the bulky result payload is elided.
 
   2. `scale_image_bytes` — ingress re-encode: normalize every incoming
      tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
      transparency (fine for screenshots), typically cuts payload 3–10×.
 """
+import json
 import logging
 from typing import Any
 
@@ -81,39 +85,85 @@ def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
     return any(n in SCREEN_OBS_TOOLS for n in names)
 
 
+def _extract_note_screen(asst: dict[str, Any]) -> str:
+    """Return the `screen` argument of a `note` tool_call on `asst`, or ''
+    if absent. Arguments arrive as a JSON string (wire format produced by
+    `assistant_to_wire`)."""
+    for tc in asst.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        if fn.get("name") != "note":
+            continue
+        raw = fn.get("arguments")
+        if not isinstance(raw, str):
+            return ""
+        try:
+            args = json.loads(raw)
+        except json.JSONDecodeError:
+            return ""
+        s = args.get("screen")
+        if isinstance(s, str) and s.strip():
+            return s.strip()
+    return ""
+
+
 def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
-    """Delete every screen-observation pair except the most recent one.
+    """Stub earlier view tool_results; keep asst + tool_call history intact.
 
-    Walks messages in place. A "pair" is an assistant screen-obs turn
-    plus its following `tool` messages. Earlier screen-obs pairs have
-    been superseded by the newest view of the phone and carry no signal
-    the agent still needs — their `note.summary` was scratch reasoning,
-    and their `note.screen` (if any) duplicates what the next action's
-    `note.screen` captures. The latest pair survives untouched.
+    For each screen-observation turn X before the latest:
+      - Keep the assistant message (tool_calls list untouched).
+      - Keep the `note` tool_result (small text, harmless).
+      - Replace the view tool's tool_result content with a short string
+        like `"(superseded <tool> — past view: <desc>)"` (or `"(superseded
+        <tool> — past view)"` if no description is available). `<desc>`
+        comes from the NEXT turn's `note.screen` — that turn was composed
+        while image_X was the latest visible, so its note.screen
+        describes what we're about to elide.
 
-    Idempotent: running twice yields the same result as running once.
+    The latest screen-observation's pair is untouched — its pixels and
+    listing are still the agent's live view.
+
+    Runs in place. Idempotent: the stubbed tool_result is plain text;
+    a second pass finds the same descriptions and writes the same stub.
     """
-    latest = -1
-    for i in range(len(messages) - 1, -1, -1):
-        if _is_screen_obs_turn(messages[i]):
-            latest = i
-            break
-    if latest < 0:
+    obs_indices = [i for i, m in enumerate(messages) if _is_screen_obs_turn(m)]
+    if len(obs_indices) <= 1:
         return
 
-    to_drop: list[int] = []
-    i = 0
-    while i < latest:
-        if _is_screen_obs_turn(messages[i]):
-            to_drop.append(i)
-            j = i + 1
-            while j < len(messages) and messages[j].get("role") == "tool":
-                to_drop.append(j)
-                j += 1
-            i = j
-        else:
-            i += 1
+    for i in obs_indices[:-1]:
+        asst = messages[i]
+        name_by_id = {
+            tc["id"]: ((tc.get("function") or {}).get("name", ""))
+            for tc in asst.get("tool_calls") or []
+            if tc.get("id")
+        }
 
-    # Delete in reverse so earlier indices stay valid as we remove.
-    for idx in reversed(to_drop):
-        del messages[idx]
+        # Scan contiguous tool_results for the single view one. The
+        # [note, one-other] rule guarantees at most one view per turn,
+        # so first match wins — break on find.
+        view_tr_idx = -1
+        view_tool_name = ""
+        j = i + 1
+        while j < len(messages) and messages[j].get("role") == "tool":
+            name = name_by_id.get(messages[j].get("tool_call_id", ""), "")
+            if name in SCREEN_OBS_TOOLS:
+                view_tr_idx = j
+                view_tool_name = name
+                j += 1
+                break
+            j += 1
+        # Advance j past the remainder of the tool-result run so the
+        # next-asst lookup below points at the following assistant.
+        while j < len(messages) and messages[j].get("role") == "tool":
+            j += 1
+
+        if view_tr_idx < 0:
+            continue
+
+        description = ""
+        if j < len(messages) and messages[j].get("role") == "assistant":
+            description = _extract_note_screen(messages[j])
+
+        tail = f": {description}" if description else ""
+        messages[view_tr_idx]["content"] = (
+            f"(superseded {view_tool_name} — past view{tail})"
+        )

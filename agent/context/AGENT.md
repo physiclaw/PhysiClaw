@@ -15,7 +15,9 @@
 1. Verify result on screen.
 2. `append_log("[HH:MM] app: page → page — what you did")`. Purchases: include merchant, brand, spec, quantity, price.
 3. Go to IM. Reply to owner. Never reply before logging.
-4. `end_session(status, recap)`. If a follow-up is expected (owner asked to be reminded, order awaiting ack), use `end_session(WAIT, ...)` plus `create_cron` for the resume. Otherwise `end_session(DONE, ...)`.
+4. `go_back()` to exit the chat thread back to the IM chat list — prevents landing the next wake inside a stale thread.
+5. `home_screen()` to return to the home screen — leaves the phone in a clean state so the next wake starts from a known launch pad.
+6. `end_session(status, recap)`. If a follow-up is expected (owner asked to be reminded, order awaiting ack), use `end_session(WAIT, ...)` plus `create_cron` for the resume. Otherwise `end_session(DONE, ...)`.
 
 ## Boundaries
 

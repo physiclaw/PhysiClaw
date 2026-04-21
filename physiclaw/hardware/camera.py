@@ -18,6 +18,8 @@ grant camera access to your terminal app, then retry.
 """
 
 import logging
+import os
+import signal
 import subprocess
 import threading
 import time
@@ -65,6 +67,11 @@ class Camera:
     # cv2.VideoCapture. Recovers from real disconnects.
     STALE_RECONNECT_SECONDS = 5.0
 
+    # If the reader gets no frame for this long, give up and SIGINT the
+    # process. Reopen can't revive a stream the OS has cut (display sleep,
+    # bus suspend) — better to die cleanly than spam the log forever.
+    FATAL_AFTER_SECONDS = 60.0
+
     # Max time _fresh_frame() waits for the reader to produce a frame
     # before returning whatever it last had (or None).
     FRAME_WAIT_SECONDS = 2.0
@@ -82,6 +89,10 @@ class Camera:
         self.rotation: int = -1  # no rotation until calibration step 3 sets it
         self._frame = None
         self._frame_time = 0.0
+        # Separate from _frame_time because _reopen() resets _frame_time —
+        # which would otherwise postpone the FATAL_AFTER_SECONDS check
+        # indefinitely. _first_fail_time resets only on a real good frame.
+        self._first_fail_time: float | None = None
         self._cond = threading.Condition()
         self._stopped = threading.Event()
 
@@ -154,21 +165,38 @@ class Camera:
                 ok, frame = self.cap.read()
             except Exception as e:
                 log.warning(f"Camera {self.index}: cap.read() raised {e!r}")
-                self._reopen()
-                self._stopped.wait(self.READER_BACKOFF_SECONDS)
-                continue
+                ok, frame = False, None
+
             now = time.monotonic()
+
             if ok and frame is not None:
+                self._first_fail_time = None
                 with self._cond:
                     self._frame = frame
                     self._frame_time = now
                     self._cond.notify_all()
-            else:
-                with self._cond:
-                    stale = now - self._frame_time
-                if stale > self.STALE_RECONNECT_SECONDS:
-                    self._reopen()
-                    self._stopped.wait(self.READER_BACKOFF_SECONDS)
+                continue
+
+            if self._first_fail_time is None:
+                self._first_fail_time = now
+            fail_duration = now - self._first_fail_time
+            if fail_duration >= self.FATAL_AFTER_SECONDS:
+                log.error(
+                    f"Camera {self.index}: no frames for {fail_duration:.0f}s "
+                    "— giving up and exiting process "
+                    "(display sleep / bus suspend / hardware gone)"
+                )
+                os.kill(os.getpid(), signal.SIGINT)
+                return
+
+            with self._cond:
+                stale = now - self._frame_time
+            if stale > self.STALE_RECONNECT_SECONDS:
+                self._reopen()
+            # Unconditional on the fail path: caps iteration rate if
+            # cap.read() raises or returns empty every tick (e.g. display
+            # asleep), otherwise the loop would spin at full CPU.
+            self._stopped.wait(self.READER_BACKOFF_SECONDS)
 
     # ─── Frame accessors ────────────────────────────────────────
 

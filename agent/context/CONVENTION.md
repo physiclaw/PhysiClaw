@@ -59,6 +59,11 @@ DONE / STUCK / FAIL / IDLE / WAIT.
 
 - On DONE / STUCK / FAIL, also call `append_log(entry)` with one line in
   the form `[HH:MM] app: page → page — what you did`.
+- **Exit the way you came in, then head home.** Before `end_session`,
+  first `go_back()` out of the current thread / detail view to the
+  parent list, then `home_screen()`. Two steps: the `go_back` clears the
+  deep context; the `home_screen` lands on a known launch pad. Skip
+  either and the next wake wastes turns re-orienting.
 - On WAIT, call `create_cron(...)` to schedule the resume check. If you
   don't, a 15-minute follow-up is scheduled automatically.
 

@@ -31,6 +31,7 @@ import logging
 import os
 from functools import partial
 
+from agent.engine.mcp_tool import close_mcp
 from agent.engine.provider import PROVIDER_NAMES
 from agent.runtime import Runtime
 from agent.runtime.config import EXTERNAL, PROVIDER_DEFAULT, PROVIDER_ENV_VAR
@@ -84,9 +85,15 @@ def launch() -> None:
         label = f"engine=physiclaw, provider={choice}"
     log.info("%s [%s]", label, source)
 
+    async def _main():
+        try:
+            await Runtime(
+                react=react, interval=args.interval, label=label,
+            ).start()
+        finally:
+            await close_mcp()
+
     try:
-        asyncio.run(
-            Runtime(react=react, interval=args.interval, label=label).start()
-        )
+        asyncio.run(_main())
     except KeyboardInterrupt:
         pass
