@@ -17,7 +17,7 @@ import logging
 import time
 from typing import Any
 
-from agent.engine import builtin_tool, compact, jobs, memory, prompt, skill
+from agent.engine import builtin_tool, compact, jobs, memory, plan, prompt, skill
 from agent.engine.builtin_tool import LocalTool, Session
 from agent.engine.mcp_tool import McpClient
 from agent.engine.dto import AssistantMessage, FinishReason, ToolCall, ToolResult
@@ -32,7 +32,7 @@ from agent.engine.provider import (
 from agent.engine.trace import RawLog, Trace, brief, brief_args, brief_content
 from agent.engine.validator import ValidationError, validate_arguments
 from agent.runtime.hook import Trigger
-from agent.runtime.sentinel import STUCK, WAIT
+from agent.runtime.sentinel import FAIL, STUCK, WAIT
 
 log = logging.getLogger(__name__)
 
@@ -199,13 +199,19 @@ async def _loop(
     tr.write({"event": "prefix_pinned", "hash": prompt_hash})
 
     for turn in range(MAX_TURNS):
-        tr.write({"event": "request", "turn": turn, "message_count": len(messages)})
-        rlog.write_request(turn, messages)
-        log.info("turn %d: %d messages → provider", turn + 1, len(messages))
+        # Plan tail is just-in-time: `messages[]` stays plan-free so the
+        # prefix cache hits everything above the final user(<plan>) block.
+        # Re-rendered every turn so update_plan tool calls take effect on
+        # the NEXT request. request_messages is what the provider actually
+        # sees; messages stays as canonical history.
+        request_messages = plan.inject_tail(messages, session.plan)
+        tr.write({"event": "request", "turn": turn, "message_count": len(request_messages)})
+        rlog.write_request(turn, request_messages)
+        log.info("turn %d: %d messages → provider", turn + 1, len(request_messages))
 
         t0 = time.perf_counter()
         try:
-            asst = await _chat_with_retry(provider, messages, tool_schemas)
+            asst = await _chat_with_retry(provider, request_messages, tool_schemas)
         except Exception as e:
             log.exception("provider exhausted retries")
             tr.write({"event": "provider_failed", "turn": turn, "error": str(e)})
@@ -225,10 +231,10 @@ async def _loop(
                 for tc in asst.tool_calls
             ],
         })
+        called = asst.tool_names()
         log.info(
             "turn %d: finish=%s calls=%s",
-            turn + 1, asst.finish_reason,
-            [tc.name for tc in asst.tool_calls] or None,
+            turn + 1, asst.finish_reason, called or None,
         )
 
         # Principle 2: strip provider-specific fields before echoing back.
@@ -237,20 +243,41 @@ async def _loop(
         # Principle 3: route on finish_reason.
         if asst.finish_reason == FinishReason.CONTENT_FILTER:
             log.error("content_filter — stopping session")
-            session.sentinel_status = "FAIL"
+            session.sentinel_status = FAIL
             session.sentinel_recap = "content filter blocked response"
             return
 
+        # Shape checks may reject the turn. The rejected assistant message
+        # must come back out of history: leaving orphan tool_calls behind
+        # breaks providers' "tool_calls → matching tool messages" rule and
+        # anchors the model on its own failure on retry.
         if not asst.tool_calls:
-            # Model ended the turn with only text. Every turn must act or
-            # close. Inject corrective and re-request; the prefix stays
-            # byte-identical, and the conversation tree stays replayable.
+            messages.pop()
             messages.append({
                 "role": "user",
                 "content": (
                     "Your last turn had no tool_calls. Every turn must "
                     "either call tools or call end_session(status, recap) "
-                    "to close. Reply again as a tool call."
+                    "to close. Reply again as a tool call — and include "
+                    "note(summary=...) alongside."
+                ),
+            })
+            continue
+
+        # Turn shape: exactly [note, one-other]. `note` keeps a permanent
+        # trace even after image tool_results are compacted away; the
+        # one-other cap forces one action per turn.
+        if len(called) != 2 or called.count("note") != 1:
+            log.warning("turn %d: bad turn shape tool_calls=%s — injecting corrective", turn, called)
+            tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
+            messages.pop()
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"Your last turn called {called!r}. Every turn must call "
+                    "exactly two tools: `note` plus one other. Split any "
+                    "extra work into separate turns. "
+                    "Re-issue as [note, one-other]."
                 ),
             })
             continue
@@ -275,7 +302,7 @@ async def _loop(
             )
             messages.append(tool_result_to_wire(call, result))
 
-        compact.prior_image(messages)
+        compact.drop_stale_screens(messages)
 
         if session.sentinel_status:
             return
@@ -360,11 +387,6 @@ async def _dispatch(
             content=f"{call.name} failed: {e}",
             is_error=True,
         )
-
-
-# ---------- adapters ----------
-
-
 
 
 # ---------- helpers ----------

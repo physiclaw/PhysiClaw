@@ -42,6 +42,9 @@ class AssistantMessage:
     finish_reason: FinishReason
     raw: dict[str, Any] = field(default_factory=dict)
 
+    def tool_names(self) -> list[str]:
+        return [tc.name for tc in self.tool_calls]
+
 
 @dataclass(frozen=True)
 class ToolResult:

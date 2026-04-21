@@ -169,9 +169,9 @@ def _render_skills(skills_ctx: str) -> list[str]:
 
 
 def _render_examples() -> list[str]:
-    """Concrete ❌ Wrong / ✅ Right patterns for the four failure modes
-    Qwen hits most often. Each pattern restates a rule already in
-    AGENT.md or CONVENTION.md, paired with a worked example.
+    """Concrete ❌ Wrong / ✅ Right patterns for the failure modes Qwen
+    hits most often. Each pattern restates a rule already in AGENT.md or
+    CONVENTION.md, paired with a worked example.
 
     OpenClaw scatters this style throughout (Silent Replies, Reply Tags,
     etc.); we collect it into one section because our failure surface
@@ -179,21 +179,29 @@ def _render_examples() -> list[str]:
     return [
         "## Examples",
         "",
-        "**Every turn must act.** A text-only turn stalls the loop.",
-        "❌ Wrong: assistant replies `\"Let me check the messages.\"` with no tool_calls.",
-        "✅ Right: assistant calls `screenshot()` (or whatever advances the task) in the same turn.",
+        "**Every turn is exactly `[note, one-other]`.** No more, no less. Splits clearly across turns — one action per turn.",
+        "❌ Wrong: `[scan]` alone (missing note), or `[note, append_log, end_session]` (too many).",
+        "✅ Right: `[note(summary=\"looking for Send button\", screen=\"WeChat chat with Alice\"), scan()]`.",
         "",
-        "**Describe every view.** The raw image is dropped after one turn.",
-        "❌ Wrong: call `screenshot()` → next turn call `tap(...)` directly. The model is now blind to what it saw.",
-        "✅ Right: call `screenshot()` AND `describe_view(description=..., curated_bbox=[...])` in the SAME turn.",
+        "**Update the plan the moment you learn the task.** It pins at the tail of every request — keep it current.",
+        "❌ Wrong: read the owner's IM, then keep working with the default plan that says \"check IM\".",
+        "✅ Right: after reading the IM, the next turn is `[note(summary=\"updating plan with real task\"), update_plan(owner_said=..., understanding=..., steps=[...])]`.",
         "",
-        "**Log before reply.** Owner-facing reply must come after the daily log.",
-        "❌ Wrong: send the IM reply, then call `append_log(...)`, then `end_session(DONE)`.",
-        "✅ Right: `append_log(...)` first, then send the IM reply, then `end_session(DONE)`.",
+        "**Only the latest screen survives.** Earlier scan/peek/screenshot results get dropped from history.",
+        "❌ Wrong: rely on a `peek` from three turns ago to plan the current tap.",
+        "✅ Right: if you need to re-check, re-observe — `scan` and `peek` are cheap. Your `note.screen` from past turns carries the context you need.",
         "",
-        "**WAIT pairs with create_cron.** Otherwise the engine auto-schedules a 15-min follow-up.",
-        "❌ Wrong: `end_session(WAIT, recap=\"waiting for owner OK\")` alone.",
-        "✅ Right: `create_cron(id=..., schedule=..., context=\"resume after owner OK\")` then `end_session(WAIT, ...)`.",
+        "**Bboxes come from the listing, never from eyeballing.** Every bbox you pass to tap/swipe/sequence must be copied verbatim from the most recent scan/peek/screenshot listing.",
+        "❌ Wrong: `tap(bbox=[0.47, 0.82, 0.51, 0.88])` where those numbers came from looking at the image.",
+        "✅ Right: find the target row in the listing, copy its `[left,top,right,bottom]` verbatim into `tap(bbox=...)`. If the target isn't in the listing, re-scan — don't fabricate coords.",
+        "",
+        "**Close-out is multiple turns.** Each admin step is its own `[note, one-other]`.",
+        "❌ Wrong: `[note, append_log, end_session]` (three tools in one turn — rejected).",
+        "✅ Right: turn K = `[note, append_log]`, turn K+1 = `[note, end_session(DONE, ...)]`.",
+        "",
+        "**WAIT pairs with create_cron, across two turns.** Otherwise the engine auto-schedules a 15-min follow-up.",
+        "❌ Wrong: `[note, end_session(WAIT, ...)]` alone, or trying to cram `[note, create_cron, end_session]`.",
+        "✅ Right: turn K = `[note, create_cron(...)]`, turn K+1 = `[note, end_session(WAIT, ...)]`.",
         "",
     ]
 

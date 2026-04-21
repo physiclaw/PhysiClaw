@@ -5,7 +5,10 @@ Each tool has:
   - an async handler: (session, args) → ToolResult content
 
 Tools defined here:
-  - describe_view / append_log / save_memory / read_memory / update_memory
+  - note — MUST ride alongside every turn's other tool calls.
+  - update_plan — mutates `session.plan`, which is pinned at the tail of
+    every provider request.
+  - append_log / save_memory / read_memory / update_memory
   - create_cron / list_jobs / cancel_cron
   - end_session — records sentinel status; engine exits after dispatch
   - Skill — fetch a SKILL.md body as text
@@ -14,10 +17,11 @@ Tools defined here:
 `create_cron` flags the session so the engine skips its auto-WAIT schedule.
 Other handlers are stateless.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from agent.engine import jobs, memory, skill
+from agent.engine.plan import Plan
 from agent.jobs import KIND_ONE_TIME, KIND_PERIODIC, load_jobs
 from agent.runtime.sentinel import STATUSES
 
@@ -28,6 +32,7 @@ class Session:
     sentinel_status: str | None = None
     sentinel_recap: str = ""
     sentinel_turn_created_cron: bool = False
+    plan: Plan = field(default_factory=Plan)
 
 
 Handler = Callable[[Session, dict], Awaitable[str]]
@@ -44,14 +49,20 @@ class LocalTool:
 # ---------- handlers ----------
 
 
-async def _handle_describe_view(_session: Session, args: dict) -> str:
-    # The description + curated_bbox live in the assistant message the
-    # model just emitted (history), not in session state. This handler's
-    # only job is to acknowledge the recording so the engine pairs the
-    # call with a tool_result (principle 6).
-    desc = args["description"].strip()
-    return f"recorded description ({len(desc)} chars, " \
-           f"{len(args['curated_bbox'])} curated ids)"
+async def _handle_note(_session: Session, args: dict) -> str:
+    # The note's text lives in the assistant message's tool_calls arguments
+    # (in history), not in session state. Handler only pairs the call with
+    # a tool_result (principle 6) and surfaces a minimal ack.
+    summary = (args.get("summary") or "").strip()
+    screen = (args.get("screen") or "").strip()
+    if screen:
+        return f"noted: {summary} | screen: {len(screen)} chars"
+    return f"noted: {summary}"
+
+
+async def _handle_update_plan(session: Session, args: dict) -> str:
+    session.plan.update(**args)
+    return "plan updated"
 
 
 async def _handle_append_log(_session: Session, args: dict) -> str:
@@ -126,46 +137,67 @@ def _handle_skill_factory(skill_registry: dict[str, skill.Skill]) -> Handler:
 # ---------- tool definitions ----------
 
 
-_DESCRIBE_VIEW = LocalTool(
-    name="describe_view",
+_NOTE = LocalTool(
+    name="note",
     description=(
-        "MUST be called after any view tool (scan / peek / screenshot) "
-        "returns an image. Records what you saw so the engine can compact "
-        "the image out of history. Other tools may be called in the same "
-        "turn after this one."
+        "MUST be called on every turn, alongside whatever other tools you "
+        "call. One line in `summary` saying what you're doing this turn "
+        "and why. Fill `screen` whenever a view tool just ran or you're "
+        "about to take a physical action — that text becomes the permanent "
+        "record after the raw image is dropped from history."
     ),
     input_schema={
         "type": "object",
         "properties": {
-            "description": {
+            "summary": {
                 "type": "string",
-                "description": "2-4 sentences describing the current screen.",
+                "description": "One line: what am I doing this turn and why.",
             },
-            "curated_bbox": {
-                "type": "array",
-                "description": "Subset of input bboxes worth keeping for "
-                               "later turns. Each item references an id "
-                               "from the input list.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "role": {"type": "string"},
-                        "label": {"type": "string"},
-                        "bbox": {
-                            "type": "array",
-                            "items": {"type": "number"},
-                            "minItems": 4,
-                        },
-                    },
-                    "required": ["id", "bbox"],
-                },
-                "minItems": 1,
+            "screen": {
+                "type": "string",
+                "description": (
+                    "What I see on screen right now (app, page, relevant "
+                    "elements). Fill on observation turns and physical-action "
+                    "turns; omit for pure admin turns (read_memory, "
+                    "update_plan, end_session)."
+                ),
             },
         },
-        "required": ["description", "curated_bbox"],
+        "required": ["summary"],
     },
-    handler=_handle_describe_view,
+    handler=_handle_note,
+)
+
+
+_UPDATE_PLAN = LocalTool(
+    name="update_plan",
+    description=(
+        "Update the session's working plan. The plan is pinned at the tail "
+        "of every request, so you never lose track of the goal. Call as "
+        "soon as you read what the owner wants, and again whenever the "
+        "plan shifts (unexpected screen, owner adjusts, partial failure). "
+        "Pass only the fields you want to change."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "owner_said": {
+                "type": "string",
+                "description": "What the owner literally said — quote the IM message.",
+            },
+            "understanding": {
+                "type": "string",
+                "description": "One sentence: what you think they want and why.",
+            },
+            "steps": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Ordered imperative steps to reach the goal.",
+            },
+        },
+        "required": [],
+    },
+    handler=_handle_update_plan,
 )
 
 
@@ -358,7 +390,8 @@ def build_registry(
     discovered (keeps the tool surface minimal when no skills exist).
     """
     tools: dict[str, LocalTool] = {
-        _DESCRIBE_VIEW.name: _DESCRIBE_VIEW,
+        _NOTE.name: _NOTE,
+        _UPDATE_PLAN.name: _UPDATE_PLAN,
         _APPEND_LOG.name: _APPEND_LOG,
         _SAVE_MEMORY.name: _SAVE_MEMORY,
         _READ_MEMORY.name: _READ_MEMORY,
@@ -384,4 +417,3 @@ def build_registry(
     return tools
 
 
-VIEW_TOOL_NAMES = frozenset({"scan", "peek", "screenshot"})

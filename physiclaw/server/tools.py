@@ -98,7 +98,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         the stylus may have missed (retry once) or the bbox was wrong
         (re-orient with peek and pick a different element).
         """
-        return await asyncio.to_thread(physiclaw.tap, bbox)
+        result = await asyncio.to_thread(physiclaw.tap, bbox)
+        return f"{result} — call `scan` or `peek` to verify the screen changed"
 
     @mcp.tool()
     @logged
@@ -108,7 +109,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         Use for: zooming maps / photos / web pages, or selecting a word
         in editable text. Don't use for buttons — that's `tap`.
         """
-        return await asyncio.to_thread(physiclaw.double_tap, bbox)
+        result = await asyncio.to_thread(physiclaw.double_tap, bbox)
+        return f"{result} — call `scan` or `peek` to confirm the zoom / selection"
 
     @mcp.tool()
     @logged
@@ -120,7 +122,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         Always `scan` or `peek` after — the menu/popover that appears
         is what you tap next.
         """
-        return await asyncio.to_thread(physiclaw.long_press, bbox)
+        result = await asyncio.to_thread(physiclaw.long_press, bbox)
+        return f"{result} — call `scan` or `peek` to see the menu / popover that appeared"
 
     # ─── Swipe ───────────────────────────────────────────────
 
@@ -156,7 +159,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
             speed: stylus velocity (default "medium"). Faster strokes build
                 more momentum on iOS scroll lists (swipes keep coasting).
         """
-        return await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
+        result = await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
+        return f"{result} — call `scan` or `peek` to see the new state"
 
     # ─── Navigate ────────────────────────────────────────────
 
@@ -169,7 +173,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         fresh task or recover from getting lost in app navigation. After
         this, `scan` or `peek` to see the home-screen icon layout.
         """
-        return await asyncio.to_thread(physiclaw.home_screen)
+        result = await asyncio.to_thread(physiclaw.home_screen)
+        return f"{result} — call `scan` or `peek` to see the home-screen icons"
 
     @mcp.tool()
     @logged
@@ -182,7 +187,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         (modals, root tabs, lock screen) — try `home_screen` and
         re-enter, or look for an in-screen "Back" / "<" button to tap.
         """
-        return await asyncio.to_thread(physiclaw.go_back)
+        result = await asyncio.to_thread(physiclaw.go_back)
+        return f"{result} — call `scan` or `peek` to confirm navigation"
 
     @mcp.tool()
     @logged
@@ -204,7 +210,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         disable auto-lock (Settings → Display & Brightness → Auto-Lock
         → Never; trade-off is faster display wear).
         """
-        return await asyncio.to_thread(physiclaw.unlock_phone)
+        result = await asyncio.to_thread(physiclaw.unlock_phone)
+        return f"{result} — call `scan` or `peek` to confirm you're on the home screen"
 
     # ─── Text ────────────────────────────────────────────────
 
@@ -221,7 +228,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         Fall back to the keyboard only if the field rejects paste (rare
         — passcode fields, some search bars).
         """
-        return await asyncio.to_thread(physiclaw.send_to_clipboard, text)
+        result = await asyncio.to_thread(physiclaw.send_to_clipboard, text)
+        return f"{result} — next: `long_press` the target field, then `tap` the Paste button that appears"
 
     # ─── Sequence ────────────────────────────────────────────
 
@@ -259,4 +267,5 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
             step2-5: additional actions (optional, executed in order).
         """
         steps = [s for s in (step1, step2, step3, step4, step5) if s is not None]
-        return await asyncio.to_thread(physiclaw.sequence, steps)
+        result = await asyncio.to_thread(physiclaw.sequence, steps)
+        return f"{result}\n— call `scan` or `peek` to verify the final state"
