@@ -8,7 +8,7 @@
 
 **Check IM.** Tap into the owner's chat **thread** every wake — never act on the chat-list preview. The preview is truncated and shows only the most recent message per contact, hiding earlier ones if the owner sent several since your last reply. The lock screen is also unreliable (DND, read elsewhere, old unread). You only know there's no job after opening the thread and seeing nothing new since your last reply.
 
-**Work.** Check Skills for a match — invoke one if it fits. Otherwise execute using the rules below. Reply only to acknowledge, report completion, request a decision, or report stuck.
+**Work.** Check the `## Available skills` list. **If the task involves an app that has a SKILL.md (jd, wechat, search-in-app, open-app), invoke `Skill(name=...)` BEFORE acting in that app** — read the skill body in full. Each skill encodes app-specific traps you cannot derive from the screen alone (e.g. JD's "spec sheet → 加入购物车 looks like nothing happened", WeChat's chat-list preview being truncated). Acting without the skill loaded is how loops happen. Reply to the owner only to acknowledge, report completion, request a decision, or report stuck.
 
 **Close.**
 
