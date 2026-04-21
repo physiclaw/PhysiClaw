@@ -1,7 +1,8 @@
 # Convention
 
-Use native tool_calls. `SCHEMA.md` is the fallback spec for runtimes
-without native tool-calling; this file is what the engine uses today.
+Use native tool_calls. Every supported runtime (Anthropic Claude Code
+plus the OpenAI-compatible providers driving the in-process engine —
+qwen / kimi / chatgpt / claude) has them.
 
 ## Turn rules
 
