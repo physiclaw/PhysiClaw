@@ -1,8 +1,6 @@
 # Convention
 
-Use native tool_calls. Every supported runtime (Anthropic Claude Code
-plus the OpenAI-compatible providers driving the in-process engine —
-qwen / kimi / chatgpt / claude) has them.
+Use native tool_calls.
 
 ## Turn rules
 
