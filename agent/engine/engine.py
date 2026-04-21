@@ -100,7 +100,11 @@ async def _run_session(
             mcp_tools = await mcp.list_tools()
             skill_registry = skill.discover()
             local_registry = builtin_tool.build_registry(skill_registry)
-            tool_schemas = _merge_schemas(mcp_tools, local_registry)
+            local_schemas = builtin_tool.schemas(local_registry)
+            # Full merged list goes to provider.chat(tools=) for invocation;
+            # the inline `## Tooling` card pulls MCP names from AST so it
+            # stays complete even offline. Each source has one consumer.
+            tool_schemas = list(mcp_tools) + local_schemas
             schema_by_name = {s["name"]: s for s in tool_schemas}
             tr.write({
                 "event": "tools_loaded",
@@ -113,10 +117,11 @@ async def _run_session(
             )
 
             system_prompt = prompt.render_system(
-                memory_ctx=memory.load_context(),
+                local_tool_schemas=local_schemas,
+                memory_ctx=memory.load_persistent(),
                 cron_ctx=jobs.format_fired(triggers),
                 skills_ctx=skill.render_section(skill_registry),
-                mcp_instructions=mcp.server_instructions,
+                provider_name=provider_name,
             )
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
@@ -360,17 +365,6 @@ async def _dispatch(
 # ---------- adapters ----------
 
 
-def _merge_schemas(
-    mcp_tools: list[dict], local_registry: dict[str, LocalTool]
-) -> list[dict]:
-    out = list(mcp_tools)
-    for lt in local_registry.values():
-        out.append({
-            "name": lt.name,
-            "description": lt.description,
-            "input_schema": lt.input_schema,
-        })
-    return out
 
 
 # ---------- helpers ----------
@@ -393,13 +387,19 @@ async def _chat_with_retry(
 
 
 def _format_triggers(triggers: list[Trigger]) -> str:
-    # Absolute `Now` — memory logs are relative, so without this the
-    # model burns turns triangulating today's date.
+    # Leading `Now:` line is the absolute-date anchor — memory logs use
+    # relative dates, and the model burns turns triangulating today without
+    # it. Each trigger then uses a uniform `[stamp] source: body` envelope.
     now = dt.datetime.now()
-    lines = [f"Now: {now.strftime('%Y-%m-%d %A %H:%M')}", "", "Wake triggers:"]
+    stamp = now.strftime("%Y-%m-%d %a %H:%M")
+    lines = [
+        f"Now: {stamp}",
+        "",
+        "[Current wake — act on this]",
+    ]
     for t in triggers:
-        tag = f"[{t.source}] " if t.source else ""
-        lines.append(f"- {tag}{t.description}")
+        source = t.source or "manual"
+        lines.append(f"[{stamp}] {source}: {t.description}")
     return "\n".join(lines)
 
 

@@ -230,9 +230,11 @@ _CREATE_CRON = LocalTool(
 _READ_MEMORY = LocalTool(
     name="read_memory",
     description=(
-        "Re-read memory/memory.md plus the last 3 daily logs. Returns the "
-        "same markdown block you saw at session start — useful for verifying "
-        "what was saved this session before you close."
+        "Fetch memory/memory.md plus the last 3 daily logs. Daily logs are "
+        "NOT auto-injected at wake — call this whenever you need recent "
+        "activity context (yesterday's purchases, prior IM exchanges, "
+        "open follow-ups). Persistent memory.md is already in your "
+        "context but re-reading it here is cheap."
     ),
     input_schema={"type": "object", "properties": {}, "required": []},
     handler=_handle_read_memory,
@@ -334,6 +336,19 @@ _SKILL_SCHEMA = {
     },
     "required": ["name"],
 }
+
+
+def schemas(registry: dict[str, LocalTool]) -> list[dict]:
+    """Flatten a local-tool registry into wire-shape dicts (the same shape
+    as MCP `list_tools()` entries)."""
+    return [
+        {
+            "name": lt.name,
+            "description": lt.description,
+            "input_schema": lt.input_schema,
+        }
+        for lt in registry.values()
+    ]
 
 
 def build_registry(

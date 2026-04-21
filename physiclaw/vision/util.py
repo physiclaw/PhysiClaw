@@ -442,7 +442,7 @@ def format_elements(items: list[dict]) -> str:
     """Human/agent-friendly element list — one line per element, no JSON noise.
 
     The header line is also documented for the agent in
-    ``physiclaw/server/instructions.md`` — keep the two in sync.
+    ``agent/context/PHYSICLAW.md`` — keep the two in sync.
     """
     lines = ['id [kind] "label" [left,top,right,bottom] conf']
     for e in items:

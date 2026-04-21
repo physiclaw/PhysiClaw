@@ -3,7 +3,6 @@
 Streams tool calls and responses to log/claude/claude-YYYY-MM-DD.log.
 """
 
-import ast
 import asyncio
 import datetime as dt
 import json
@@ -11,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 
+from agent.engine.mcp_inventory import discover_mcp_tools
 from agent.runtime.hook import Trigger
 from agent.runtime.sentinel import parse_sentinel
 
@@ -18,8 +18,7 @@ log = logging.getLogger(__name__)
 
 # --- Paths ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-AGENT_MD = PROJECT_ROOT / "agent" / "instructions" / "AGENT.md"
-TOOLS_PY = PROJECT_ROOT / "physiclaw" / "server" / "tools.py"
+AGENT_MD = PROJECT_ROOT / "agent" / "context" / "AGENT.md"
 LOG_DIR = PROJECT_ROOT / "log" / "claude"
 
 TIMEOUT = 180  # 3min, per-line inactivity timeout
@@ -37,31 +36,9 @@ _DISALLOWED = [
 ]
 
 
-def _is_mcp_tool_decorator(dec: ast.expr) -> bool:
-    """True for `@mcp.tool` or `@mcp.tool(...)`."""
-    call = dec.func if isinstance(dec, ast.Call) else dec
-    return (
-        isinstance(call, ast.Attribute)
-        and call.attr == "tool"
-        and isinstance(call.value, ast.Name)
-        and call.value.id == "mcp"
-    )
-
-
 def _discover_mcp_tools() -> list[str]:
-    """Auto-detect MCP tool names from @mcp.tool decorators in tools.py."""
-    try:
-        tree = ast.parse(TOOLS_PY.read_text())
-    except FileNotFoundError:
-        return []
-    # ast.walk (not tree.body) because tools are nested inside register().
-    names = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and any(_is_mcp_tool_decorator(d) for d in node.decorator_list)
-    ]
-    return [f"mcp__physiclaw__{n}" for n in names]
+    """MCP tool names with the `mcp__physiclaw__` Claude Code prefix."""
+    return [f"mcp__physiclaw__{t['name']}" for t in discover_mcp_tools()]
 
 
 def _mcp_config() -> str:

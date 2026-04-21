@@ -1,4 +1,4 @@
-# Response conventions
+# Convention
 
 Use native tool_calls. `SCHEMA.md` is the fallback spec for runtimes
 without native tool-calling; this file is what the engine uses today.
