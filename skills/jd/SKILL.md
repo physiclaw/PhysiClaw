@@ -14,7 +14,7 @@ Prefer `scan()` and `peek()` — cheap, no app-side reactions. Reach for `screen
 ## Flow
 
 1. `/open-app 京东` (or `JD`). Make sure you're on the **首页** tab (top nav), then tap into 京东七鲜.
-2. Tap the search box. If it has stale text, tap **backspace** at `[0.867, 0.804, 0.994, 0.857]` (iOS keyboard, Z-row far right) until empty. Type/paste the item, open its shop page.
+2. Tap the search box. If it has stale text, tap **backspace** (bbox in PHYSICLAW.md "iPhone keyboard bboxes") until empty — see also `Skill(name="search-in-app")` for the full clear-paste-submit flow. Type/paste the item, open its shop page.
 3. Tap 加入购物车. The app returns to the item page — **don't tap again**; the item is in the cart.
 4. Tap the cart icon, review line items, tap 去结算.
 5. Send the owner: item, qty, price, address, fees, ETA. Wait for explicit OK.

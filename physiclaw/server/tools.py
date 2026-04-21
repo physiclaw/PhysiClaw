@@ -99,7 +99,10 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         (re-orient with peek and pick a different element).
         """
         result = await asyncio.to_thread(physiclaw.tap, bbox)
-        return f"{result} — call `scan` or `peek` to verify the screen changed"
+        return (
+            f"{result} — call `peek` (or `scan`) to verify; "
+            "if the view looks identical, the tap missed or the bbox was wrong"
+        )
 
     @mcp.tool()
     @logged

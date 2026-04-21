@@ -11,13 +11,15 @@ The owner's primary IM.
 
 High-frequency app. Use `scan()` (~1s, text-only) to check chat status.
 
+**Never act on a chat-list preview.** Rows on the Chats tab show only the most recent message per contact, and it's truncated. To read the owner's actual messages, you MUST tap the row and enter the thread, then scan there.
+
 ## Flow — read messages
 
 1. If already in the right chat, skip to step 5.
 2. From Home, tap the WeChat dock icon.
 3. If not on the **Chats** tab, tap it.
-4. Tap the target 1:1 contact's row.
-5. Read the new messages.
+4. **Tap the target 1:1 contact's row** — this step is non-skippable. A chat-list preview is truncated and hides earlier messages if the owner sent multiple since your last reply.
+5. Read the new messages. The thread opens at the bottom; if the topmost visible bubble doesn't connect to your last reply (or looks like a new unrelated message), swipe down on the bubble area to scroll up until you see the first bubble after your last reply.
 
 ## Flow — voice message
 
@@ -88,8 +90,8 @@ Each row is **0.08 tall**. Derive the Nth row from the 1st by adding `0.08 × (N
 | Text input area | keyboard hidden     | `[0.100, 0.910, 0.700, 0.960]`  |
 | Text input area | keyboard visible    | `[0.100, 0.575, 0.700, 0.625]`  |
 | Paste button    | long-pressing input | `[0.050, 0.530, 0.220, 0.570]`  |
-| send (keyboard) | keyboard visible    | `[0.752, 0.864, 0.992, 0.917]`  |
-| backspace `⌫`   | keyboard visible    | `[0.867, 0.804, 0.994, 0.857]`  |
+
+The send key on the keyboard and the backspace key are standard iPhone keyboard positions — see PHYSICLAW.md "iPhone keyboard bboxes".
 
 ### Hide keyboard
 
