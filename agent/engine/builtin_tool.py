@@ -27,7 +27,6 @@ from agent.engine import jobs, memory, skill
 from agent.engine.plan import Plan
 from agent.engine.job_store import KIND_ONE_TIME, KIND_PERIODIC, NEVER, load_jobs
 from agent.runtime.sentinel import STATUSES
-from physiclaw.vision.util import validate_bbox
 
 
 @dataclass
@@ -59,17 +58,9 @@ async def _handle_note(_session: Session, args: dict) -> str:
     # a tool_result (principle 6) and surfaces a minimal ack.
     summary = (args.get("summary") or "").strip()
     screen = (args.get("screen") or "").strip()
-    pinned = args.get("key_ui_elements") or {}
-    # JSONSchema can't express left<right / top<bottom. Reject here so bad
-    # pins fail loudly now, not at tap time many turns later.
-    for semantic, spec in pinned.items():
-        validate_bbox(spec["bbox"])
-    parts = [f"noted: {summary}"]
     if screen:
-        parts.append(f"screen: {len(screen)} chars")
-    if pinned:
-        parts.append(f"pinned {len(pinned)}: {', '.join(pinned)}")
-    return " | ".join(parts)
+        return f"noted: {summary} | screen: {len(screen)} chars"
+    return f"noted: {summary}"
 
 
 async def _handle_update_plan(session: Session, args: dict) -> str:
@@ -184,10 +175,7 @@ _NOTE = LocalTool(
         "call. One line in `summary` saying what you're doing this turn "
         "and why. Fill `screen` whenever a view tool just ran or you're "
         "about to take a physical action — that text becomes the permanent "
-        "record after the raw image is dropped from history. Use "
-        "`key_ui_elements` to pin bboxes that must survive the latest-screen-"
-        "wins compaction (e.g. bboxes captured from a `screenshot` listing "
-        "that a subsequent `peek` will bump out of history)."
+        "record after the raw image is dropped from history."
     ),
     input_schema={
         "type": "object",
@@ -204,54 +192,6 @@ _NOTE = LocalTool(
                     "turns; omit for pure admin turns (read_logs, "
                     "update_plan, end_session)."
                 ),
-            },
-            "key_ui_elements": {
-                "type": "object",
-                "description": (
-                    "Working-set cache of actionable bboxes on the "
-                    "current screen type — CTAs and nav anchors you'll "
-                    "tap across multiple future turns. Typical pins for "
-                    "a list page: search box, cart icon, footer tabs, "
-                    "back arrow, + add-to-cart buttons, product rows "
-                    "you plan to open. For a detail page: primary CTA "
-                    "(add to cart / buy now), back, spec selector. "
-                    "Pins survive compaction via note args, so you "
-                    "don't re-ground every turn. DO NOT pin (a) the "
-                    "bbox you're tapping THIS turn (it's already in the "
-                    "tap args), (b) decoration you won't tap (prices, "
-                    "timestamps, descriptive text next to a button), "
-                    "(c) elements on a screen type you're leaving and "
-                    "won't return to. Re-pin when the screen type "
-                    "changes. Keys are slug-style handles you'll "
-                    "reference on later turns (e.g. 'add_to_cart', "
-                    "'search_box', 'row_3_plus'). Values carry the "
-                    "matching listing row's kind + label + bbox. `bbox` "
-                    "MUST be transcribed character-for-character from "
-                    "the listing row — same digits, same order; `0.520` "
-                    "stays `0.520`, don't shorten to `0.52` or drift to "
-                    "`0.518`. Do not retype from memory, do not re-read "
-                    "off the image. `label` is YOUR reading of what "
-                    "that element is: fill for every entry (no "
-                    "empties), correct garbled OCR if needed, and for "
-                    "icons describe what it looks like. Cap: 8 pins "
-                    "per turn."
-                ),
-                "maxProperties": 8,
-                "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
-                "additionalProperties": {
-                    "type": "object",
-                    "properties": {
-                        "kind": {"type": "string", "enum": ["icon", "text"]},
-                        "label": {"type": "string", "minLength": 1},
-                        "bbox": {
-                            "type": "array",
-                            "items": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                            "minItems": 4,
-                            "maxItems": 4,
-                        },
-                    },
-                    "required": ["kind", "label", "bbox"],
-                },
             },
         },
         "required": ["summary"],

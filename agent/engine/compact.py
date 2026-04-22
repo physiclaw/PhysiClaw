@@ -1,15 +1,14 @@
 """Context compaction — two jobs, both about keeping image payload small:
 
   1. `drop_stale_screens` — "latest screen wins": only the most recent
-     peek/screenshot tool_result carries pixels + full listing.
-     Earlier view tool_results are stubbed in place with what the agent
-     chose to remember from that view: the `note.screen` description
-     and the `note.key_ui_elements` pins from the NEXT turn (the turn
-     composed while that image was the latest, so its note describes
-     what to carry forward). Everything else — pixels, full listing —
-     is elided. The assistant message and its tool_calls stay intact,
-     so the decision history ("I called peek here, tap there") is
-     preserved.
+     peek/screenshot tool_result carries the image + full listing.
+     Earlier view tool_results are stubbed down to a header line plus
+     the listing's TEXT rows (icon-kind rows are dropped; without the
+     image, numbered icon boxes are opaque anyway). Text rows are
+     self-documenting — the label tells the agent what and where —
+     and survive as re-targetable anchors across compaction.
+     The assistant message and its tool_calls stay intact, so the
+     decision history ("I called peek here, tap there") is preserved.
 
   2. `scale_image_bytes` — ingress re-encode: normalize every incoming
      tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
@@ -87,78 +86,23 @@ def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
     return any(n in SCREEN_OBS_TOOLS for n in names)
 
 
-def _note_args(asst: dict[str, Any]) -> dict:
-    """Return the parsed `note` tool_call arguments on `asst`, or {}.
-    Arguments arrive as a JSON string (wire format produced by
-    `assistant_to_wire`)."""
+def _note_screen(asst: dict[str, Any]) -> str:
+    """Pull `note.screen` off an assistant message. Empty string if
+    absent or malformed. Used to label stubbed views."""
     for tc in asst.get("tool_calls") or []:
         fn = tc.get("function") or {}
         if fn.get("name") != "note":
             continue
         raw = fn.get("arguments")
         if not isinstance(raw, str):
-            return {}
+            return ""
         try:
-            return json.loads(raw) or {}
+            args = json.loads(raw) or {}
         except json.JSONDecodeError:
-            return {}
-    return {}
-
-
-def _format_pinned(pinned: dict) -> str:
-    """Render `note.key_ui_elements` as a listing block. One line per entry
-    in the same shape as the live element listing: `<semantic> [kind]
-    "label" [bbox]`. Skips malformed entries silently."""
-    lines: list[str] = []
-    for semantic, spec in pinned.items():
-        if not isinstance(semantic, str) or not isinstance(spec, dict):
-            continue
-        kind = spec.get("kind")
-        label = spec.get("label")
-        bbox = spec.get("bbox")
-        if not (isinstance(kind, str) and isinstance(label, str)
-                and isinstance(bbox, list) and len(bbox) == 4):
-            continue
-        coords = ",".join(f"{c:.3f}" for c in bbox)
-        lines.append(f'  {semantic} [{kind}] "{label}" [{coords}]')
-    return "\n".join(lines)
-
-
-# ---------- pin validation ----------
-#
-# The model sometimes regenerates bbox digits rather than copying them
-# verbatim ("0.520" → "0.518"). For small targets that 0.002 drift can
-# land on the neighboring icon. Before the assistant message gets wired
-# into history, we check each pinned bbox against the bboxes in the
-# latest view listing; anything that doesn't match (within tolerance)
-# is dropped silently. Conservative fallbacks: if we can't locate a
-# listing to compare against, pins pass through unchanged.
-
-PIN_MATCH_TOLERANCE = 1e-6  # floats only — `0.520` == `0.52` exactly.
-
-
-def _parse_listing(text: str) -> list[tuple[float, ...]]:
-    """Pull bboxes from a live listing text block. Each row is
-    `id [kind] "label" [left,top,right,bottom] conf`; the bbox is the
-    second `[...]` pair."""
-    out: list[tuple[float, ...]] = []
-    for line in text.splitlines():
-        kind_close = line.find("]")
-        if kind_close < 0:
-            continue
-        bbox_open = line.find("[", kind_close + 1)
-        if bbox_open < 0:
-            continue
-        bbox_close = line.find("]", bbox_open + 1)
-        if bbox_close < 0:
-            continue
-        try:
-            coords = tuple(float(x) for x in line[bbox_open + 1:bbox_close].split(","))
-        except ValueError:
-            continue
-        if len(coords) == 4:
-            out.append(coords)
-    return out
+            return ""
+        s = args.get("screen")
+        return s.strip() if isinstance(s, str) else ""
+    return ""
 
 
 def _extract_text(content: Any) -> str:
@@ -173,67 +117,32 @@ def _extract_text(content: Any) -> str:
     return ""
 
 
-def _latest_listing_bboxes(messages: list[dict[str, Any]]) -> list[tuple[float, ...]] | None:
-    """Parse bboxes from the most recent view tool_result. Returns None
-    when we can't locate a listing (no view yet, stubbed, or zero rows
-    parsed) — caller treats None as "can't validate, leave pins alone"."""
-    for i in range(len(messages) - 1, -1, -1):
-        asst = messages[i]
-        if not _is_screen_obs_turn(asst):
-            continue
-        name_by_id = {
-            tc["id"]: ((tc.get("function") or {}).get("name", ""))
-            for tc in asst.get("tool_calls") or []
-            if tc.get("id")
-        }
-        j = i + 1
-        while j < len(messages) and messages[j].get("role") == "tool":
-            name = name_by_id.get(messages[j].get("tool_call_id", ""), "")
-            if name in SCREEN_OBS_TOOLS:
-                bboxes = _parse_listing(_extract_text(messages[j].get("content")))
-                return bboxes or None
-            j += 1
-        return None
-    return None
+def _filter_text_rows(listing: str) -> str:
+    """Keep only `[text]`-kind rows from an element listing. Icon rows
+    are opaque once the image is gone; text rows self-document via their
+    label. Returns header + kept rows, or empty string if nothing was
+    kept (so the caller can omit the block entirely instead of
+    embedding a header with no content).
 
-
-def _bbox_matches_any(bbox: list, rows: list[tuple[float, ...]]) -> bool:
-    try:
-        coords = tuple(float(c) for c in bbox)
-    except (TypeError, ValueError):
-        return False
-    if len(coords) != 4:
-        return False
-    return any(
-        all(abs(a - b) <= PIN_MATCH_TOLERANCE for a, b in zip(coords, row))
-        for row in rows
-    )
-
-
-def filter_note_pins(messages: list[dict[str, Any]], note_args: dict) -> int:
-    """Drop pins whose bbox doesn't match any row in the latest view
-    listing. Mutates `note_args['key_ui_elements']` in place; returns
-    the count of dropped entries for caller's logging. Silent to the
-    agent — no error, no warning, the dropped entries simply don't
-    appear in history.
+    Format coupling: the row shape `id [kind] "label" [bbox] conf` is
+    produced by `physiclaw.vision.util.format_elements`. If that
+    formatter changes, update the parse below to match.
     """
-    pinned = note_args.get("key_ui_elements") or {}
-    if not isinstance(pinned, dict) or not pinned:
-        return 0
-    rows = _latest_listing_bboxes(messages)
-    if rows is None:
-        return 0
-    kept: dict = {}
-    dropped = 0
-    for semantic, spec in pinned.items():
-        bbox = spec.get("bbox") if isinstance(spec, dict) else None
-        if isinstance(bbox, list) and _bbox_matches_any(bbox, rows):
-            kept[semantic] = spec
-        else:
-            dropped += 1
-    if dropped:
-        note_args["key_ui_elements"] = kept
-    return dropped
+    lines = listing.splitlines()
+    if not lines:
+        return ""
+    header, rest = lines[0], lines[1:]
+    kept: list[str] = []
+    for line in rest:
+        open_ = line.find("[")
+        close = line.find("]", open_ + 1)
+        if open_ < 0 or close < 0:
+            continue
+        if line[open_ + 1:close] == "text":
+            kept.append(line)
+    if not kept:
+        return ""
+    return "\n".join([header] + kept)
 
 
 def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
@@ -242,18 +151,21 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
     For each screen-observation turn X before the latest:
       - Keep the assistant message (tool_calls list untouched).
       - Keep the `note` tool_result (small text, harmless).
-      - Replace the view tool's tool_result content with a stub built
-        from the NEXT turn's `note` args: its `screen` (textual view
-        description) and its `key_ui_elements` (agent-pinned bboxes to
-        carry forward). The next turn was composed while image_X was
-        the latest visible — its note carries what the agent chose to
-        remember from that view.
+      - Replace the view tool's tool_result content with a header line
+        (`"(superseded <tool> — past view: <desc>)"`, where `<desc>`
+        comes from the NEXT turn's `note.screen`) followed by the
+        text-kind rows from the original listing. Icon rows and the
+        image are dropped: without the image, numbered icon boxes are
+        opaque; text rows self-document via their label.
 
     The latest screen-observation's pair is untouched — its pixels and
-    listing are still the agent's live view.
+    full listing are still the agent's live view.
 
-    Runs in place. Idempotent: the stubbed tool_result is plain text;
-    a second pass finds the same note args and writes the same stub.
+    Runs in place. Idempotency is carried by the `isinstance(content,
+    str)` guard below: fresh view results arrive as multipart lists
+    (text + image_url); once stubbed, content is a plain string and
+    further passes skip it. That guard — not the filter — is what
+    makes the pass safe to repeat.
     """
     obs_indices = [i for i, m in enumerate(messages) if _is_screen_obs_turn(m)]
     if len(obs_indices) <= 1:
@@ -281,26 +193,29 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
                 j += 1
                 break
             j += 1
-        # Advance j past the remainder of the tool-result run so the
-        # next-asst lookup below points at the following assistant.
         while j < len(messages) and messages[j].get("role") == "tool":
             j += 1
 
         if view_tr_idx < 0:
             continue
 
-        next_args: dict = {}
-        if j < len(messages) and messages[j].get("role") == "assistant":
-            next_args = _note_args(messages[j])
+        # Skip anything whose content is already a plain string: either
+        # already-stubbed from a prior pass, or a failed-tool synthetic
+        # result. Fresh view results arrive as multipart lists (text +
+        # image_url); only those are eligible for compaction.
+        content = messages[view_tr_idx].get("content")
+        if isinstance(content, str):
+            continue
 
-        screen = next_args.get("screen") or ""
-        screen = screen.strip() if isinstance(screen, str) else ""
-        pinned = next_args.get("key_ui_elements") or {}
-        pinned_block = _format_pinned(pinned) if isinstance(pinned, dict) else ""
+        listing = _extract_text(content)
+        text_rows = _filter_text_rows(listing)
+
+        screen = _note_screen(messages[j]) if (
+            j < len(messages) and messages[j].get("role") == "assistant"
+        ) else ""
 
         head = f"(superseded {view_tool_name} — past view"
         head += f": {screen})" if screen else ")"
-        if pinned_block:
-            messages[view_tr_idx]["content"] = f"{head}\npinned from this view:\n{pinned_block}"
-        else:
-            messages[view_tr_idx]["content"] = head
+        messages[view_tr_idx]["content"] = (
+            f"{head}\n{text_rows}" if text_rows else head
+        )

@@ -236,17 +236,6 @@ async def _loop(
             turn + 1, asst.finish_reason, called or None,
         )
 
-        # Silently drop pinned elements whose bbox doesn't match any row in
-        # the latest view listing — the model sometimes regenerates digits
-        # instead of copying verbatim, and a fabricated bbox would mislead
-        # every downstream turn that reads it back from history.
-        for _tc in asst.tool_calls:
-            if _tc.name == "note":
-                dropped = compact.filter_note_pins(messages, _tc.arguments)
-                if dropped:
-                    tr.write({"event": "pins_dropped", "turn": turn, "count": dropped})
-                    log.info("  dropped %d invalid pin(s) (no matching listing row)", dropped)
-
         # Principle 2: strip provider-specific fields before echoing back.
         messages.append(assistant_to_wire(asst))
 

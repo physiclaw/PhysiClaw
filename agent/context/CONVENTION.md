@@ -39,28 +39,28 @@ message on every turn.
 ## Compaction: latest screen wins
 
 Only the most recent `peek` / `screenshot` tool_result keeps its image
-+ listing. Earlier view results are stubbed in place with
-`(superseded <tool> — past view: <desc>)`, followed by a block of
-pinned elements if the next turn's note carried any. Both `<desc>` and
-the pinned block are pulled from the **next turn's** `note` (composed
-while that image was still the latest view) — so always fill
-`note.screen` on the turn right after a view tool runs, and fill
-`note.key_ui_elements` if you need specific bboxes to survive past
-this turn. The assistant messages and `note` tool_results stay intact;
-the agent's decision history is preserved, only the bulky pixel
-payload is elided.
+and full listing. Earlier view results are stubbed down to a header
+line (`(superseded <tool> — past view: <desc>)`) plus the **text-kind
+rows** from the original listing. Icon rows are dropped — without the
+image, their numbered boxes are opaque — but text rows stay
+re-targetable because their label tells you what and where. `<desc>`
+comes from the **next turn's** `note.screen`, composed while that
+image was still the latest view, so always fill `note.screen` on the
+turn right after a view tool runs. The assistant messages and `note`
+tool_results stay intact; decision history is preserved.
 
-Consequence: don't rely on a `peek` from three turns ago to plan the
-current tap. If you need to re-check, re-observe — it's cheap. If you
-need a specific bbox to survive, pin it in the next turn's
-`note.key_ui_elements`.
+Consequence: for a tap on a labelled target you've seen before (a
+nav tab, a CTA like "加入购物车", a category name), the text row
+survives compaction — you can reference it many turns later without
+re-observing. For anything icon-only (app icons without a label, raw
+thumbnails, detail-page controls that show only an icon), re-`peek`
+when you need it.
 
 ## Bboxes come from the listing, never from eyeballing
 
 Every physical-action bbox must be copied verbatim from a bbox in the
-most recent `peek` / `screenshot` listing — or from a prior
-`note.key_ui_elements` entry whose pinned screen is still current (see
-next section).
+most recent `peek` / `screenshot` listing, or from a text row that
+survived compaction in an earlier view's stub.
 
 **Verbatim means character-for-character.** Transcribe the four numbers
 *between the brackets* of the listing row you picked — do not retype
@@ -76,75 +76,14 @@ brackets `[left,top,right,bottom]`, put exactly those four numbers
 (same decimal digits, same order) into the bbox argument.
 
 Never guess, never round, never average two listing rows, never
-"eyeball" coordinates from the image. If the element you want isn't in
-the current listing and isn't pinned, re-observe with a more accurate
-view — `screenshot` > `peek` in fidelity. Step up the ladder rather
-than re-running `peek` and hoping for a better listing.
+"eyeball" coordinates from the image. If the element you want isn't
+in any current or surviving listing row, re-observe with a more
+accurate view — `screenshot` > `peek` in fidelity. Step up the ladder
+rather than re-running `peek` and hoping for a better listing.
 
-This is what makes `sequence` safe: each step's bbox is grounded in the
-listing that was live when you planned the chain. A made-up bbox turns
-`sequence` into blind tapping and compounds errors step by step.
-
-## Pinning bboxes across compaction (`note.key_ui_elements`)
-
-Compaction stubs every view tool_result except the latest. Pins live in
-`note` args, which survive compaction forever — think of them as a
-**working-set cache of actionable bboxes on the current screen type**
-that you'll tap across many future turns.
-
-### What to pin
-
-Pin the call-to-action and navigation anchors that stay visible as
-long as you're on (or returning to) this screen type. On a typical
-list/search page that's something like:
-
-- **CTAs on each row** — `+` add-to-cart buttons, order / buy / like /
-  follow buttons, inline actions.
-- **Navigation anchors** — the search box at top, the cart icon in
-  the footer, the bottom-tab row (分类 / 购物车 / 我), the back arrow,
-  visible category tabs you might switch to.
-- **Product / row handles** — the tappable region of items you plan
-  to open (image / title bbox for each row you'll click into).
-
-On a detail page the working set is different: the primary CTA (加入
-购物车, 立即购买), the back arrow, spec/variant selector, quantity
-stepper.
-
-The pinned set is the agent's reusable dispatch table for this screen.
-You tap back and forth — open an item, come back, tap the next one,
-tap `+` on a third — all using bboxes from the pin set. No re-
-grounding per turn.
-
-### What NOT to pin
-
-- **The bbox you're tapping THIS turn.** It's already in the tap /
-  swipe / long_press args; pinning is duplicate.
-- **Pure decoration** — prices, timestamps, descriptive text next to
-  a button. You won't tap them; they just bloat every future stub.
-- **Elements on a different screen type.** A detail-page pin is stale
-  the moment you return to the list; a home-screen pin is dead once
-  you open an app. When the screen type changes, re-pin the new one's
-  working set.
-
-### Per-entry rules
-
-- **Key** — slug-style handle (`add_to_cart`, `cart_icon`, `back`,
-  `search_box`, `row_3_plus`). Lowercase + underscores. This is what
-  you'll reference on later turns.
-- **`kind`** — `"icon"` or `"text"`. Matches the listing row.
-- **`label`** — YOUR reading of what the element is. Fill every entry
-  (no empties). For text rows where the OCR is garbled, write the
-  correct text. For icons, describe what it looks like
-  (`"shopping cart"`, `"back arrow"`, `"+"`). Bad labels mean you'll
-  pick the wrong bbox later.
-- **`bbox`** — copied **character-for-character** from the listing
-  row's bracket contents. Transcribe `[0.520,0.662,0.717,0.775]` as
-  `[0.520, 0.662, 0.717, 0.775]` — exact same digits, no retyping from
-  memory, no rounding `0.520` to `0.52` or drifting to `0.518`. Same
-  rule as the top-level "Bboxes come from the listing" section — it
-  applies here too, since pinned bboxes are read back later like live
-  listing rows.
-
+This is what makes `sequence` safe: each step's bbox is grounded in
+the listing that was live when you planned the chain. A made-up bbox
+turns `sequence` into blind tapping and compounds errors step by step.
 
 ## Session close
 
