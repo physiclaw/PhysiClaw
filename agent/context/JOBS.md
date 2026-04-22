@@ -54,6 +54,14 @@ be auto-cleaned — `purge_stale` only sweeps terminal jobs). On the
 next wake, run `list_jobs("fired")` if you suspect orphaned jobs and
 finish them then.
 
+## Id format
+
+`<owner>-<topic>-<YYYY-MM-DD>` — lowercase letters, digits, and hyphens
+only (no spaces). `<owner>` is the person the job is for (contact being
+messaged, user who asked); `<topic>` is 1–3 hyphenated words, e.g.
+`alice-water-plants-2026-05-01`. The date keeps repeat-style ids
+(`<owner>-sleep-reminder-…`) unique across days without `-v2` suffixes.
+
 ## Jobs are immutable — to change, finish + create
 
 There is no `update_job`. Jobs are append-only: once created, the only
@@ -64,10 +72,10 @@ cancel), the pattern is:
 1. `finish_job(old_id, "cancel", "rescheduling — new id <new_id>")`
 2. `create_job(new_id, description, new_schedule, new_context, kind?)`
 
-Use a fresh id for the replacement (e.g. `remind-foo` →
-`remind-foo-v2`); duplicate ids are rejected even when the prior entry
-is terminal. Old terminal entries auto-purge from jobs.md after 7 days
-of inactivity.
+Use a fresh id for the replacement (bump the date, or append `-v2` if
+rescheduling within the same day); duplicate ids are rejected even when
+the prior entry is terminal. Old terminal entries auto-purge from
+jobs.md after 7 days of inactivity.
 
 ## When to use what
 

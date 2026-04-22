@@ -32,7 +32,7 @@ Reply with your reading + planned action and wait for OK before executing. ASR m
 Two states: **keyboard hidden** (input bar at bottom) and **keyboard visible** (shifted up, send key on keyboard).
 
 1. Confirm right contact in the chat header.
-2. If keyboard is hidden, tap the input box (keyboard-hidden bbox) — the keyboard becomes visible.
+2. If keyboard is hidden, tap the input box (keyboard-hidden bbox) — the keyboard opens and the input shifts to the keyboard-visible row.
 3. If the input has stale text, tap **backspace** until empty.
 4. `send_to_clipboard(text)`, then long-press the input box (keyboard-visible bbox).
 5. Tap **Paste** in the popup.
