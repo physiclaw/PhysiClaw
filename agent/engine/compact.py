@@ -2,19 +2,21 @@
 
   1. `drop_stale_screens` — "latest screen wins": only the most recent
      peek/screenshot tool_result carries the image + full listing.
-     Earlier view tool_results are stubbed down to a header line plus
-     the listing's TEXT rows (icon-kind rows are dropped; without the
-     image, numbered icon boxes are opaque anyway). Text rows are
-     self-documenting — the label tells the agent what and where —
-     and survive as re-targetable anchors across compaction.
+     Earlier view tool_results are stubbed down to a marker line
+     (`"(superseded <tool>)"`) plus the listing's TEXT rows (icon-kind
+     rows are dropped; without the image, numbered icon boxes are
+     opaque anyway). Text rows are self-documenting — the label tells
+     the agent what and where — and survive as re-targetable anchors.
      The assistant message and its tool_calls stay intact, so the
-     decision history ("I called peek here, tap there") is preserved.
+     decision history ("I called peek here, tap there") is preserved;
+     the next turn's `note.summary` already sits in that assistant
+     message, immediately after the stub, so no need to duplicate it
+     in the stub header.
 
   2. `scale_image_bytes` — ingress re-encode: normalize every incoming
      tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
      transparency (fine for screenshots), typically cuts payload 3–10×.
 """
-import json
 import logging
 from typing import Any
 
@@ -86,25 +88,6 @@ def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
     return any(n in SCREEN_OBS_TOOLS for n in names)
 
 
-def _note_screen(asst: dict[str, Any]) -> str:
-    """Pull `note.screen` off an assistant message. Empty string if
-    absent or malformed. Used to label stubbed views."""
-    for tc in asst.get("tool_calls") or []:
-        fn = tc.get("function") or {}
-        if fn.get("name") != "note":
-            continue
-        raw = fn.get("arguments")
-        if not isinstance(raw, str):
-            return ""
-        try:
-            args = json.loads(raw) or {}
-        except json.JSONDecodeError:
-            return ""
-        s = args.get("screen")
-        return s.strip() if isinstance(s, str) else ""
-    return ""
-
-
 def _extract_text(content: Any) -> str:
     """Pull the text payload from a tool_result content — either a plain
     string or a multipart `[{type:text,text:...}, {type:image_url,...}]`."""
@@ -151,12 +134,13 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
     For each screen-observation turn X before the latest:
       - Keep the assistant message (tool_calls list untouched).
       - Keep the `note` tool_result (small text, harmless).
-      - Replace the view tool's tool_result content with a header line
-        (`"(superseded <tool> — past view: <desc>)"`, where `<desc>`
-        comes from the NEXT turn's `note.screen`) followed by the
-        text-kind rows from the original listing. Icon rows and the
-        image are dropped: without the image, numbered icon boxes are
-        opaque; text rows self-document via their label.
+      - Replace the view tool's tool_result content with a marker line
+        (`"(superseded <tool>)"`) followed by the text-kind rows from
+        the original listing. Icon rows and the image are dropped:
+        without the image, numbered icon boxes are opaque; text rows
+        self-document via their label. No summary is embedded in the
+        header — the next turn's `note.summary` is already in that
+        turn's assistant message immediately after this stub.
 
     The latest screen-observation's pair is untouched — its pixels and
     full listing are still the agent's live view.
@@ -190,10 +174,7 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
             if name in SCREEN_OBS_TOOLS:
                 view_tr_idx = j
                 view_tool_name = name
-                j += 1
                 break
-            j += 1
-        while j < len(messages) and messages[j].get("role") == "tool":
             j += 1
 
         if view_tr_idx < 0:
@@ -210,12 +191,7 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
         listing = _extract_text(content)
         text_rows = _filter_text_rows(listing)
 
-        screen = _note_screen(messages[j]) if (
-            j < len(messages) and messages[j].get("role") == "assistant"
-        ) else ""
-
-        head = f"(superseded {view_tool_name} — past view"
-        head += f": {screen})" if screen else ")"
+        head = f"(superseded {view_tool_name})"
         messages[view_tr_idx]["content"] = (
             f"{head}\n{text_rows}" if text_rows else head
         )

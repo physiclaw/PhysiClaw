@@ -57,9 +57,6 @@ async def _handle_note(_session: Session, args: dict) -> str:
     # (in history), not in session state. Handler only pairs the call with
     # a tool_result (principle 6) and surfaces a minimal ack.
     summary = (args.get("summary") or "").strip()
-    screen = (args.get("screen") or "").strip()
-    if screen:
-        return f"noted: {summary} | screen: {len(screen)} chars"
     return f"noted: {summary}"
 
 
@@ -173,9 +170,10 @@ _NOTE = LocalTool(
     description=(
         "MUST be called on every turn, alongside whatever other tools you "
         "call. One line in `summary` saying what you're doing this turn "
-        "and why. Fill `screen` whenever a view tool just ran or you're "
-        "about to take a physical action — that text becomes the permanent "
-        "record after the raw image is dropped from history."
+        "and why. The summary survives compaction — it becomes the "
+        "breadcrumb that labels any view image dropped from history, so "
+        "write it to make sense of the surrounding tap / view in a "
+        "transcript read cold."
     ),
     input_schema={
         "type": "object",
@@ -183,15 +181,6 @@ _NOTE = LocalTool(
             "summary": {
                 "type": "string",
                 "description": "One line: what am I doing this turn and why.",
-            },
-            "screen": {
-                "type": "string",
-                "description": (
-                    "What I see on screen right now (app, page, relevant "
-                    "elements). Fill on observation turns and physical-action "
-                    "turns; omit for pure admin turns (read_logs, "
-                    "update_plan, end_session)."
-                ),
             },
         },
         "required": ["summary"],

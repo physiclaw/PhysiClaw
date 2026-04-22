@@ -5,10 +5,11 @@ Use native tool_calls.
 ## Turn rules
 
 - **Every turn is exactly two tool calls: `note` plus one other.** No
-  more, no less. `note.summary` is one line saying what you're doing this
-  turn and why. Fill `note.screen` whenever a view tool just ran or
-  you're about to take a physical action — that text becomes the
-  permanent record after the raw image is dropped from history.
+  more, no less. `note.summary` is one line saying what you're doing
+  this turn and why. That single line is the permanent record: it
+  survives compaction and labels any view image later dropped from
+  history, so write it so a reader picking up cold still understands
+  the move.
 - Split admin across separate turns: `append_log` → next turn
   `end_session`. `save_memory` → next turn `append_log` → next turn
   `end_session`. Each close-out step is its own `[note, one-other]`
@@ -39,14 +40,14 @@ message on every turn.
 ## Compaction: latest screen wins
 
 Only the most recent `peek` / `screenshot` tool_result keeps its image
-and full listing. Earlier view results are stubbed down to a header
-line (`(superseded <tool> — past view: <desc>)`) plus the **text-kind
-rows** from the original listing. Icon rows are dropped — without the
-image, their numbered boxes are opaque — but text rows stay
-re-targetable because their label tells you what and where. `<desc>`
-comes from the **next turn's** `note.screen`, composed while that
-image was still the latest view, so always fill `note.screen` on the
-turn right after a view tool runs. The assistant messages and `note`
+and full listing. Earlier view results are stubbed down to a marker
+line (`(superseded <tool>)`) plus the **text-kind rows** from the
+original listing. Icon rows are dropped — without the image, their
+numbered boxes are opaque — but text rows stay re-targetable because
+their label tells you what and where. The next turn's `note.summary`
+already sits in that turn's assistant message immediately after the
+stub, so the transcript reads naturally as "stub → what I did next"
+without any duplicated prose. The assistant messages and `note`
 tool_results stay intact; decision history is preserved.
 
 Consequence: for a tap on a labelled target you've seen before (a
