@@ -48,7 +48,8 @@ _KNOWN_FIELDS = {
     "Execution time",
     "Execution result",
 }
-_NEVER_VALUES = {"", "(never)", "never", "-"}
+NEVER = "(never)"
+_NEVER_VALUES = {"", NEVER, "never", "-"}
 
 STATUS_PEND = "pend"
 STATUS_FIRED = "fired"

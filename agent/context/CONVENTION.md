@@ -38,10 +38,14 @@ message on every turn.
 
 ## Compaction: latest screen wins
 
-Only the most recent `scan` / `peek` / `screenshot` result survives in
-history. Earlier observations are deleted — the engine drops the whole
-assistant + tool_result pair. Your `note.screen` from subsequent
-physical-action turns preserves what each earlier image showed as text.
+Only the most recent `scan` / `peek` / `screenshot` tool_result keeps
+its image + listing. Earlier view results are stubbed in place with
+`(superseded <tool> — past view: <desc>)`. The `<desc>` is pulled from
+the **next turn's** `note.screen`, composed while that image was still
+the latest view — so always fill `note.screen` on the turn right after
+a view tool runs, or the stub loses its description. The assistant
+messages and `note` tool_results stay intact; the agent's decision
+history is preserved, only the bulky pixel payload is elided.
 
 Consequence: don't rely on a `peek` from three turns ago to plan the
 current tap. If you need to re-check, re-observe — it's cheap.
@@ -51,8 +55,10 @@ current tap. If you need to re-check, re-observe — it's cheap.
 Every physical-action bbox must be copied verbatim from a bbox in the
 most recent `scan` / `peek` / `screenshot` listing. Never guess, never
 round, never average two listing rows, never "eyeball" coordinates from
-an image. If the element you want isn't in the current listing, re-scan
-— don't fabricate coords.
+an image. If the element you want isn't in the current listing,
+re-observe with a more accurate view — `screenshot` > `peek` > `scan`
+in fidelity. Step up the ladder rather than re-running the same tool
+and hoping for a better listing.
 
 This is what makes `sequence` safe: each step's bbox is grounded in the
 listing that was live when you planned the chain. A made-up bbox turns
@@ -70,8 +76,14 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   parent list, then `home_screen()`. Two steps: the `go_back` clears the
   deep context; the `home_screen` lands on a known launch pad. Skip
   either and the next wake wastes turns re-orienting.
-- On WAIT, call `create_cron(...)` to schedule the resume check. If you
-  don't, a 15-minute follow-up is scheduled automatically.
+- On WAIT, **always** call `create_cron(...)` to schedule the resume
+  check — pick the right delay for what you're waiting on. If you skip
+  it, the engine reschedules a single canonical job
+  (`wait-check-auto`) for 15 minutes from now. That entry is reused
+  across sessions (no `wait-check-<sid>` accumulation), and the
+  generic delay is usually wrong (too soon for "delivery in 2h", too
+  late for "owner replying now"). The auto-schedule is a safety net,
+  not the default.
 
 ## Memory and jobs
 

@@ -18,6 +18,7 @@ from agent.jobs import (
     JOBS_PATH,
     KIND_ONE_TIME,
     KIND_PERIODIC,
+    NEVER,
     STATUS_CANCEL,
     STATUS_DONE,
     STATUS_FAIL,
@@ -35,6 +36,12 @@ log = logging.getLogger(__name__)
 
 _CRON_PREFIX = "cron:"
 _FAIL_RECAP = {STUCK: "stuck", FAIL: "failed"}
+
+AUTO_WAIT_JOB_ID = "wait-check-auto"
+_AUTO_WAIT_DESCRIPTION = "Auto follow-up after WAIT with no explicit create_cron."
+_AUTO_WAIT_CONTEXT = (
+    "Previous session ended with WAIT. Re-check IM / state and continue the task."
+)
 
 
 def fired_job_ids(triggers: list[Trigger]) -> list[str]:
@@ -150,7 +157,7 @@ def create_job(
     now = dt.datetime.now()
     nxt = next_fire(schedule, now)
     stamp_now = format_minute(now)
-    stamp_next = format_minute(nxt) if nxt else "(never)"
+    stamp_next = format_minute(nxt) if nxt else NEVER
 
     block = (
         f"\n## {id}\n"
@@ -161,9 +168,9 @@ def create_job(
         f"- Context: {context.strip()}\n"
         f"- Create time: {stamp_now}\n"
         f"- Next fire time: {stamp_next}\n"
-        f"- Last fire time: (never)\n"
-        f"- Execution time: (never)\n"
-        f"- Execution result: (never)\n"
+        f"- Last fire time: {NEVER}\n"
+        f"- Execution time: {NEVER}\n"
+        f"- Execution result: {NEVER}\n"
     )
     JOBS_PATH.parent.mkdir(parents=True, exist_ok=True)
     existed = JOBS_PATH.exists()
@@ -172,6 +179,33 @@ def create_job(
             f.write("# Jobs\n")
         f.write(block)
     log.info("jobs: created %s (schedule=%r, next=%s)", id, schedule, stamp_next)
+
+
+def upsert_auto_wait_check(at: dt.datetime) -> None:
+    """Singleton auto-follow-up after WAIT. Reuses one canonical id so
+    jobs.md doesn't grow one entry per close; resets prior fire/exec
+    history on reschedule so the row reads as a fresh pending job."""
+    schedule = f"{at.minute} {at.hour} {at.day} {at.month} *"
+    if AUTO_WAIT_JOB_ID in {j.id for j in load_jobs()}:
+        update_fields(JOBS_PATH, {AUTO_WAIT_JOB_ID: {
+            "Schedule": f"`{schedule}`",
+            "Status": STATUS_PEND,
+            "Next fire time": format_minute(at),
+            "Last fire time": NEVER,
+            "Execution time": NEVER,
+            "Execution result": NEVER,
+        }})
+        log.info(
+            "jobs: rescheduled %s (schedule=%r, next=%s)",
+            AUTO_WAIT_JOB_ID, schedule, format_minute(at),
+        )
+    else:
+        create_job(
+            id=AUTO_WAIT_JOB_ID,
+            description=_AUTO_WAIT_DESCRIPTION,
+            schedule=schedule,
+            context=_AUTO_WAIT_CONTEXT,
+        )
 
 
 def cancel_job(id: str) -> None:

@@ -155,7 +155,7 @@ async def _run_session(
         )
         if session.sentinel_status == WAIT and not session.sentinel_turn_created_cron:
             log.warning("WAIT with no create_cron — auto-scheduling %d-min follow-up", WAIT_DEFAULT_MINUTES)
-            _auto_schedule_wait_check(sid, tr)
+            _auto_schedule_wait_check(tr)
 
         tr.write({
             "event": "done",
@@ -425,21 +425,19 @@ def _format_triggers(triggers: list[Trigger]) -> str:
     return "\n".join(lines)
 
 
-def _auto_schedule_wait_check(sid: str, tr: Trace) -> None:
-    now = dt.datetime.now()
-    at = now + dt.timedelta(minutes=WAIT_DEFAULT_MINUTES)
-    schedule = f"{at.minute} {at.hour} {at.day} {at.month} *"
-    job_id = f"wait-check-{sid.lower()}"
+def _auto_schedule_wait_check(tr: Trace) -> None:
+    """Schedule the singleton auto-WAIT-check job to fire in
+    WAIT_DEFAULT_MINUTES. Reuses one canonical job id across sessions
+    (see `jobs.upsert_auto_wait_check`) so jobs.md doesn't grow one
+    entry per WAIT close.
+    """
+    at = dt.datetime.now() + dt.timedelta(minutes=WAIT_DEFAULT_MINUTES)
     try:
-        jobs.create_job(
-            id=job_id,
-            description="Auto follow-up after WAIT with no explicit create_cron.",
-            schedule=schedule,
-            context="Previous session ended with WAIT. Re-check IM / state and continue the task.",
-        )
+        jobs.upsert_auto_wait_check(at)
         tr.write({
             "event": "wait_auto_scheduled",
-            "job_id": job_id, "at": at.isoformat(timespec="minutes"),
+            "job_id": jobs.AUTO_WAIT_JOB_ID,
+            "at": at.isoformat(timespec="minutes"),
         })
     except Exception as e:
         log.exception("failed to auto-schedule WAIT follow-up")
