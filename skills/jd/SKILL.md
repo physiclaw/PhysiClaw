@@ -25,13 +25,24 @@ Prefer `peek()` — cheap, no app-side reactions. Reach for `screenshot()` only 
 
 ## Gotcha — screenshot triggers share popup
 
-JD intercepts the iOS screenshot gesture and overlays a 分享截屏 menu (朋友圈 / QQ / 微信好友 / 保存图片 / 搜问题). The screenshot still captured the real page — recover without re-shooting:
+JD intercepts the iOS screenshot gesture and overlays a 分享截屏 menu (朋友圈 / QQ / 微信好友 / 保存图片 / 搜问题). The screenshot still captured the real page — pin the bboxes you need before the overlay forces another view:
 
-1. `screenshot()` — capture bboxes from the pre-overlay page.
-2. `peek()` — if it shows share-sheet text + dim area, the popup is covering the page.
-3. Dismiss the popup (see below).
-4. `peek()` — confirm the overlay is gone.
-5. **Use the original screenshot's bboxes** for the next tap. Saves ~12s vs retaking.
+1. `screenshot()` — pixel-perfect bboxes from the pre-overlay page.
+2. **Next turn: pin targets in `note.key_ui_elements`, then `peek`.** The `peek` will stub the screenshot's listing out of history, but the pinned bboxes survive. Example:
+   ```
+   note(
+     summary="pinning product-page targets before share-sheet check",
+     screen="JD product page (screenshot pre-overlay)",
+     key_ui_elements={
+       "add_to_cart": {"kind": "icon", "label": "加入购物车", "bbox": [...]},
+       "cart_icon":   {"kind": "icon", "label": "shopping cart top-right", "bbox": [...]},
+     },
+   )
+   peek()
+   ```
+3. If peek shows share-sheet text + dim area, dismiss the popup (see below).
+4. `peek` again to confirm the overlay is gone.
+5. **Tap using the pinned bboxes** — `tap(bbox=<pinned add_to_cart bbox>)`. Saves ~12s vs retaking a screenshot and avoids triggering the overlay a second time.
 
 ## Dismiss popup / share sheet / bottom sheet
 
