@@ -76,7 +76,7 @@ async def _run_session(
 ) -> None:
     """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider
     per call. Writes outcome to `session.sentinel_*`; never raises."""
-    sid = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    sid = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     provider: Provider | None = None
     tr: Trace | None = None
     rlog: RawLog | None = None

@@ -18,18 +18,43 @@
      `session_start` fires once, before turn 0, so analysis can tell a
      hallucinated tool_call from a real one and know which model produced
      the trace. Full request messages and full provider response are kept
-     afterwards, with base64 image payloads replaced by `<Nb elided>`
-     stubs so an image-heavy session still produces a ~100 KB file
-     instead of MBs. Use these for prompt-engineering analysis /
-     regression triage.
+     afterwards, with inline base64 image payloads extracted to
+     `log/engine/raw/images/<session_id>_<NNNNN>.<ext>` (sequential
+     counter per session, 5-digit zero-padded; `<ext>` picked from the
+     mime type — typically `.jpg`) and replaced in the jsonl by that
+     relative path. Filenames sort chronologically within a session and
+     don't collide across sessions. On each session bootstrap, raw
+     files older than 7 days are purged so the directory stays bounded.
+     Use these for prompt-engineering analysis / regression triage.
 """
+import base64
 import datetime as dt
 import json
+import logging
+import time
 from pathlib import Path
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 _LOG_DIR = Path("log/engine")
 _RAW_DIR = _LOG_DIR / "raw"
+_IMAGE_DIR = _RAW_DIR / "images"
+
+# Purge raw jsonl logs + extracted images older than this on session
+# bootstrap. One week is generous for post-mortem debugging while
+# keeping disk usage bounded for long-running operators.
+_RETENTION_DAYS = 7
+
+# mime → filename suffix for images extracted from data-URLs. Everything
+# we actually serve is JPEG via compact.scale_image_bytes, but keep the
+# fallback open for PNG / WebP in case an upstream tool starts emitting
+# them.
+_MIME_EXT = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
@@ -205,8 +230,11 @@ class RawLog:
 
     def __init__(self, session_id: str):
         _RAW_DIR.mkdir(parents=True, exist_ok=True)
+        _purge_old()
+        self.session_id = session_id
         self.path = _RAW_DIR / f"{session_id}.jsonl"
         self._f = open(self.path, "a")
+        self._image_counter = 0
 
     def write_session_start(
         self,
@@ -226,7 +254,7 @@ class RawLog:
         )
 
     def write_request(self, turn: int, messages: list[dict]) -> None:
-        self._emit("request", turn=turn, messages=_scrub_images(messages))
+        self._emit("request", turn=turn, messages=self._scrub_images(messages))
 
     def write_response(
         self, turn: int, raw: dict[str, Any], *, elapsed_ms: int,
@@ -242,6 +270,63 @@ class RawLog:
         self._f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         self._f.flush()
 
+    def _persist_image(self, mime: str, b64_data: str) -> str:
+        """Decode `b64_data`, write to
+        `log/engine/raw/images/<session_id>_<NNNNN><ext>`, return the
+        path relative to the raw log dir. The counter is per-RawLog
+        instance — one per session — so filenames sort chronologically
+        within a session and don't collide across sessions. Returns ""
+        on decode failure so the caller can fall back to a byte-count
+        stub."""
+        try:
+            raw = base64.b64decode(b64_data, validate=False)
+        except (ValueError, TypeError):
+            return ""
+        self._image_counter += 1
+        ext = _MIME_EXT.get(mime, ".bin")
+        rel = f"images/{self.session_id}_{self._image_counter:05d}{ext}"
+        path = _RAW_DIR / rel
+        _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+        return rel
+
+    def _scrub_images(self, messages: list[dict]) -> list[dict]:
+        """Copy of `messages` with inline base64 image data replaced by
+        a reference to an on-disk file under
+        `images/<session_id>_<NNNNN>.ext`. Each call gets a fresh
+        counter value — no cross-request dedup, which is by design: the
+        numbered sequence preserves turn order on disk for debugging.
+
+        On decode failure, falls back to a byte-count stub so the raw
+        log still distinguishes an image from a tap result."""
+        out: list[dict] = []
+        for m in messages:
+            c = m.get("content")
+            if not isinstance(c, list):
+                out.append(m)
+                continue
+            new_c: list[dict] = []
+            for b in c:
+                if not isinstance(b, dict) or b.get("type") != "image_url":
+                    new_c.append(b)
+                    continue
+                url = (b.get("image_url") or {}).get("url", "")
+                if not url.startswith("data:"):
+                    # Already a reference (e.g. a prior scrub ran or the
+                    # upstream gave us a URL to begin with). Pass through.
+                    new_c.append(b)
+                    continue
+                head, _, data = url.partition(",")
+                mime = head[5:].partition(";")[0]  # strip "data:" and ";base64"
+                rel = self._persist_image(mime, data) if data else ""
+                scrubbed_url = rel or f"{head},<{len(data)}b unreadable>"
+                new_c.append({
+                    "type": "image_url",
+                    "image_url": {"url": scrubbed_url},
+                })
+            out.append({**m, "content": new_c})
+        return out
+
 
 def _now() -> str:
     # ms precision makes per-turn latency analysis possible without having
@@ -249,31 +334,24 @@ def _now() -> str:
     return dt.datetime.now().isoformat(timespec="milliseconds")
 
 
-def _scrub_images(messages: list[dict]) -> list[dict]:
-    """Copy of `messages` with base64 image data replaced by byte-count
-    stubs. Keeps a 300 KB image down to ~30 bytes in the raw log — the
-    bbox text and model decisions are what we care about for analysis,
-    and the full pixels still live one level up in log/claude/... or the
-    original tool_result if we ever need them."""
-    out: list[dict] = []
-    for m in messages:
-        c = m.get("content")
-        if not isinstance(c, list):
-            out.append(m)
-            continue
-        new_c: list[dict] = []
-        for b in c:
-            if not isinstance(b, dict):
-                new_c.append(b)
-                continue
-            if b.get("type") == "image_url":
-                url = (b.get("image_url") or {}).get("url", "")
-                head, _, data = url.partition(",")
-                new_c.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"{head},<{len(data)}b elided>"},
-                })
-            else:
-                new_c.append(b)
-        out.append({**m, "content": new_c})
-    return out
+def _purge_old(*, days: int = _RETENTION_DAYS) -> None:
+    """Delete files under `log/engine/raw/` (jsonl + extracted images)
+    whose mtime is older than `days`. Runs once per session bootstrap
+    so the dir stays bounded even on long-running operators; mtime
+    beats filename-date parsing because it tolerates clock skew and
+    handles files appended to long after creation."""
+    cutoff = time.time() - days * 86400
+    removed = 0
+    try:
+        entries = list(_RAW_DIR.rglob("*"))
+    except OSError:
+        return
+    for path in entries:
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            pass
+    if removed:
+        log.info("purged %d raw log file(s) older than %d days", removed, days)
