@@ -75,7 +75,7 @@ def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
     """True iff `asst` is a screen-observation turn — its tool_calls are
     entirely within SCREEN_OBS ∪ {"note"}, AND at least one tool_call is
     an actual screen observation. A turn with a non-screen tool (tap,
-    read_memory, update_plan, …) is a boundary and stays put."""
+    read_logs, update_plan, …) is a boundary and stays put."""
     names = _tool_names(asst)
     if not names:
         return False

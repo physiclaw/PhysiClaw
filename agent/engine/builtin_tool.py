@@ -8,7 +8,7 @@ Tools defined here:
   - note — MUST ride alongside every turn's other tool calls.
   - update_plan — mutates `session.plan`, which is pinned at the tail of
     every provider request.
-  - append_log / save_memory / read_memory / update_memory
+  - append_log / save_memory / read_memory / read_logs / update_memory
   - create_cron / list_jobs / cancel_cron
   - end_session — records sentinel status; engine exits after dispatch
   - Skill — fetch a SKILL.md body as text
@@ -88,8 +88,14 @@ async def _handle_create_cron(session: Session, args: dict) -> str:
 
 
 async def _handle_read_memory(_session: Session, _args: dict) -> str:
-    ctx = memory.load_context()
-    return ctx if ctx else "(memory is empty)"
+    out = memory.load_persistent()
+    return out if out else "(memory.md is empty)"
+
+
+async def _handle_read_logs(_session: Session, args: dict) -> str:
+    days = args.get("days", memory.DAILY_LOOKBACK)
+    out = memory.load_recent_activity(days)
+    return out if out else f"(no daily logs in last {days} days)"
 
 
 async def _handle_update_memory(_session: Session, args: dict) -> str:
@@ -158,7 +164,7 @@ _NOTE = LocalTool(
                 "description": (
                     "What I see on screen right now (app, page, relevant "
                     "elements). Fill on observation turns and physical-action "
-                    "turns; omit for pure admin turns (read_memory, "
+                    "turns; omit for pure admin turns (read_logs, "
                     "update_plan, end_session)."
                 ),
             },
@@ -204,8 +210,10 @@ _UPDATE_PLAN = LocalTool(
 _APPEND_LOG = LocalTool(
     name="append_log",
     description=(
-        "Append one line to today's memory/YYYY-MM-DD.md daily log. Use on "
-        "DONE/STUCK/FAIL to record what you did."
+        "Append one line to today's memory/YYYY-MM-DD.md daily log. Call "
+        "after every major step (purchase, message sent, item added) AND "
+        "once at session close on DONE/STUCK/FAIL. See PERSISTENCE.md "
+        "for the rationale."
     ),
     input_schema={
         "type": "object",
@@ -262,14 +270,40 @@ _CREATE_CRON = LocalTool(
 _READ_MEMORY = LocalTool(
     name="read_memory",
     description=(
-        "Fetch memory/memory.md plus the last 3 daily logs. Daily logs are "
-        "NOT auto-injected at wake — call this whenever you need recent "
-        "activity context (yesterday's purchases, prior IM exchanges, "
-        "open follow-ups). Persistent memory.md is already in your "
-        "context but re-reading it here is cheap."
+        "Re-read `memory/memory.md` from disk. SYSTEM already shows it "
+        "under `## memory.md` at session start; call this only after a "
+        "`save_memory`/`update_memory` mid-session, before another "
+        "`update_memory` whose `old` must match byte-exactly."
     ),
     input_schema={"type": "object", "properties": {}, "required": []},
     handler=_handle_read_memory,
+)
+
+
+_READ_LOGS = LocalTool(
+    name="read_logs",
+    description=(
+        "Fetch the last N daily logs (`memory/YYYY-MM-DD.md`). Daily logs "
+        "are NOT auto-injected at wake — call this whenever you need "
+        "recent activity context (yesterday's purchases, prior IM "
+        "exchanges, open follow-ups)."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30,
+                "description": (
+                    f"Lookback window in days (default "
+                    f"{memory.DAILY_LOOKBACK})."
+                ),
+            },
+        },
+        "required": [],
+    },
+    handler=_handle_read_logs,
 )
 
 
@@ -280,7 +314,9 @@ _UPDATE_MEMORY = LocalTool(
         "If `new` is empty, the line containing `old` is removed. Errors if "
         "`old` is not found or matches more than one place — in that case, "
         "narrow `old` with enough surrounding text to pin exactly one match. "
-        "Call `read_memory` first to see the current contents byte-exactly."
+        "SYSTEM's `## memory.md` block shows current contents byte-exact "
+        "as of session start. After any prior save_memory / update_memory "
+        "this session, that snapshot is stale — call `read_memory` first."
     ),
     input_schema={
         "type": "object",
@@ -395,6 +431,7 @@ def build_registry(
         _APPEND_LOG.name: _APPEND_LOG,
         _SAVE_MEMORY.name: _SAVE_MEMORY,
         _READ_MEMORY.name: _READ_MEMORY,
+        _READ_LOGS.name: _READ_LOGS,
         _UPDATE_MEMORY.name: _UPDATE_MEMORY,
         _CREATE_CRON.name: _CREATE_CRON,
         _LIST_JOBS.name: _LIST_JOBS,

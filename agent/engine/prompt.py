@@ -35,6 +35,8 @@ DOCTRINE_FILE_ORDER = (
     "AGENT.md",       # operational rules: Loop / Boundaries / Rules / Continuity
     "PHYSICLAW.md",   # tool-surface mechanics — also shipped via MCP initialize
     "TOOLS.md",       # extra owner-authored tool guidance
+    "PERSISTENCE.md", # memory.md vs YYYY-MM-DD.md + read/write tools
+    "JOBS.md",        # jobs.md + create_cron/list_jobs/cancel_cron
     "CONVENTION.md",  # engine turn rules — last so it sits next to mechanics
 )
 
@@ -58,7 +60,8 @@ def render_system(
       ## Skill selection  decision-tree wrapper around `skills_ctx`
       ## Examples         ❌/✅ for the most common per-turn failures
       ## Reasoning Format  Qwen-only `<think>` wrapper
-      ## Memory           session-stable persistent facts (memory/memory.md)
+      ## memory.md        session-stable persistent facts — live file
+                          dump (the spec lives in the PERSISTENCE.md slot)
       CACHE_BOUNDARY      seam between session-stable and wake-volatile
       cron_ctx            jobs firing now (changes every wake)
     """
@@ -204,9 +207,13 @@ def _render_examples() -> list[str]:
         "❌ Wrong: `peek` home screen, no JD icon listed → `peek` again, still no JD → tap a Safari link labeled \"JD\" because it's the only `JD`-string match. Land on the wrong page, loop until STUCK.",
         "✅ Right: `peek` home screen, no JD icon → next turn `screenshot` for pixel-perfect bboxes. The JD icon was always there; the camera just couldn't resolve it.",
         "",
+        "**`append_log` after every major step, not just at close.** Per-step logs let the next wake recover partial progress if a session ends STUCK halfway. A purchase placed, a message sent, an item added to cart — each gets its own log line right after you verify the screen.",
+        "❌ Wrong: complete 3 cart additions in a multi-item order, only `append_log` once at Close. Session goes STUCK before checkout — next wake has no idea what's already in the cart.",
+        "✅ Right: after each verified add-to-cart, `[note, append_log(\"[HH:MM] jd: added <item> to cart\")]` as its own turn. Then close with a final summary log.",
+        "",
         "**Close-out is multiple turns: go_back → home_screen → end_session.** Each admin step is its own `[note, one-other]`. `go_back` exits the current thread / detail view; `home_screen` lands on the launch pad; only then close.",
         "❌ Wrong: `[note, append_log, end_session]` (three tools in one turn — rejected), or `end_session` while still inside a chat thread / app detail view.",
-        "✅ Right: turn K = `[note, append_log]`, K+1 = `[note, go_back()]`, K+2 = `[note, home_screen()]`, K+3 = `[note, end_session(DONE, ...)]`.",
+        "✅ Right: turn K = `[note, append_log]` (close summary), K+1 = `[note, go_back()]`, K+2 = `[note, home_screen()]`, K+3 = `[note, end_session(DONE, ...)]`.",
         "",
         "**WAIT pairs with create_cron, across two turns.** Otherwise the engine auto-schedules a 15-min follow-up.",
         "❌ Wrong: `[note, end_session(WAIT, ...)]` alone, or trying to cram `[note, create_cron, end_session]`.",
@@ -235,7 +242,7 @@ def _render_memory(memory_ctx: str) -> list[str]:
     identically on every turn within one wake."""
     if not memory_ctx:
         return []
-    return ["## Memory", "", memory_ctx, ""]
+    return ["## memory.md", "", memory_ctx, ""]
 
 
 # ---------- helpers ----------

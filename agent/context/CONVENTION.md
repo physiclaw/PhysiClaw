@@ -69,8 +69,10 @@ listing that was live when you planned the chain. A made-up bbox turns
 Close with `end_session(status, recap)` where status is one of
 DONE / STUCK / FAIL / IDLE / WAIT.
 
-- On DONE / STUCK / FAIL, also call `append_log(entry)` with one line in
-  the form `[HH:MM] app: page → page — what you did`.
+- On DONE / STUCK / FAIL, call `append_log(entry)` with one line in
+  the form `[HH:MM] app: page → page — what you did` summarizing the
+  close. This is in addition to the per-step `append_log`s you've
+  already written during Work — see PERSISTENCE.md.
 - **Exit the way you came in, then head home.** Before `end_session`,
   first `go_back()` out of the current thread / detail view to the
   parent list, then `home_screen()`. Two steps: the `go_back` clears the
@@ -83,18 +85,5 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   across sessions (no `wait-check-<sid>` accumulation), and the
   generic delay is usually wrong (too soon for "delivery in 2h", too
   late for "owner replying now"). The auto-schedule is a safety net,
-  not the default.
+  not the default. See JOBS.md for the full job model.
 
-## Memory and jobs
-
-- `save_memory(text)` — append a durable fact (when the owner says
-  "remember this" or a lasting preference comes up).
-- `update_memory(old, new)` — replace or remove a line in memory.
-  `old` must match exactly one place; empty `new` deletes the line.
-- `read_memory()` — re-read memory.md plus the last 3 daily logs.
-- `list_jobs(status?)` / `cancel_cron(id)` — inspect or stop scheduled
-  jobs.
-
-## Skills
-
-Invoke via the `Skill` tool: `Skill(name="wechat")`.
