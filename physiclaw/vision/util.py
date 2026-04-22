@@ -56,6 +56,18 @@ def crop_to_phone_screen(
     return cropped
 
 
+def laplacian_variance(frame: np.ndarray) -> float:
+    """Variance of Laplacian — a focus/blur estimate. Higher = sharper.
+
+    Sharp phone screenshots with text/icons typically score 300+; severe
+    motion blur or out-of-focus drops it under 80. Run on the cropped
+    phone-screen region — backgrounds (cutting mat, ruler) contain their
+    own edges that would mask real blur on the screen.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_16S).var())
+
+
 def decode_image(data: bytes) -> np.ndarray:
     """Decode image bytes (PNG or JPEG) to a BGR frame. Raises on failure."""
     arr = np.frombuffer(data, dtype=np.uint8)

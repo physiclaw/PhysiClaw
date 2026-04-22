@@ -32,6 +32,7 @@ from physiclaw.vision.util import (
     encode_jpeg,
     format_elements,
     find_numpad_digit,
+    laplacian_variance,
     phone_screen_crop_box,
     validate_bbox,
 )
@@ -285,18 +286,13 @@ class PhysiClaw:
         elements = results_to_elements(results, self.transforms)
         return [e for e in elements if bbox_on_screen(e["bbox"])]
 
-    def _detect(self, frame, crop: bool = False) -> tuple[str, Any]:
+    def _detect(self, frame) -> tuple[str, Any]:
         """Icon detection + OCR on a frame. Caller holds the lock.
 
-        Set ``crop=True`` when ``frame`` is a raw camera view — it'll be
-        cropped to the phone-screen region first so detection runs on
-        screen pixels only (the camera also sees desk, ruler, etc).
-        Phone-own screenshots already span 0-1 of the screen, so pass
-        them with ``crop=False``.
+        ``frame`` must already span the phone screen (0-1) — camera
+        views need to be cropped via ``crop_to_phone_screen`` first.
         Returns (formatted element listing, annotated frame).
         """
-        if crop:
-            frame = crop_to_phone_screen(frame, self.transforms)
         elements, annotated = detect_ui_elements(
             frame,
             icon_detector=self._get_icon_detector(),
@@ -304,8 +300,12 @@ class PhysiClaw:
         )
         return format_elements(elements_to_json(elements)), annotated
 
+    PEEK_BLUR_THRESHOLD = 80.0
+
     def peek(self) -> tuple[bytes, str]:
         """Overhead camera snapshot + icon detection + OCR.
+
+        If the first frame is too blurry, waits 2s and re-grabs once.
 
         Returns an annotated JPEG (icon bboxes drawn on the cropped
         camera view) and the matching element listing — same shape as
@@ -314,7 +314,16 @@ class PhysiClaw:
         """
         with self.locked():
             self.park()
-            listing, annotated = self._detect(self.camera_view(), crop=True)
+            cropped = crop_to_phone_screen(self.camera_view(), self.transforms)
+            sharpness = laplacian_variance(cropped)
+            if sharpness < self.PEEK_BLUR_THRESHOLD:
+                log.warning(
+                    "peek: blurry frame (laplacian var=%.1f < %.0f) — retrying",
+                    sharpness, self.PEEK_BLUR_THRESHOLD,
+                )
+                time.sleep(2.0)
+                cropped = crop_to_phone_screen(self.camera_view(), self.transforms)
+            listing, annotated = self._detect(cropped)
             return encode_jpeg(annotated), listing
 
     def screenshot(self) -> tuple[bytes, str]:
