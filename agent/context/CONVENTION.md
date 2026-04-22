@@ -78,7 +78,7 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   parent list, then `home_screen()`. Two steps: the `go_back` clears the
   deep context; the `home_screen` lands on a known launch pad. Skip
   either and the next wake wastes turns re-orienting.
-- On WAIT, **always** call `create_cron(...)` to schedule the resume
+- On WAIT, **always** call `create_job(...)` to schedule the resume
   check — pick the right delay for what you're waiting on. If you skip
   it, the engine reschedules a single canonical job
   (`wait-check-auto`) for 15 minutes from now. That entry is reused

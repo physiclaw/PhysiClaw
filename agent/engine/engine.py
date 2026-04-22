@@ -66,7 +66,6 @@ async def run(
                 "session STUCK (attempt %d/%d): %r — retrying",
                 attempt, MAX_ATTEMPTS, session.sentinel_recap,
             )
-    jobs.mark_outcome(triggers, session.sentinel_status, session.sentinel_recap)
 
 
 async def _run_session(
@@ -153,8 +152,8 @@ async def _run_session(
             "session done: status=%s recap=%r",
             session.sentinel_status, session.sentinel_recap,
         )
-        if session.sentinel_status == WAIT and not session.sentinel_turn_created_cron:
-            log.warning("WAIT with no create_cron — auto-scheduling %d-min follow-up", WAIT_DEFAULT_MINUTES)
+        if session.sentinel_status == WAIT and not session.sentinel_turn_created_job:
+            log.warning("WAIT with no create_job — auto-scheduling %d-min follow-up", WAIT_DEFAULT_MINUTES)
             _auto_schedule_wait_check(tr)
 
         tr.write({

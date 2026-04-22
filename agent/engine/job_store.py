@@ -59,7 +59,7 @@ STATUS_FAIL = "fail"
 _VALID_STATUS = {STATUS_PEND, STATUS_FIRED, STATUS_CANCEL, STATUS_DONE, STATUS_FAIL}
 
 _PURGE_AFTER = dt.timedelta(days=7)
-_TERMINAL_STATUSES = {STATUS_CANCEL, STATUS_DONE, STATUS_FAIL}
+TERMINAL_STATUSES = frozenset({STATUS_CANCEL, STATUS_DONE, STATUS_FAIL})
 
 
 @dataclass(frozen=True)
@@ -382,7 +382,7 @@ def purge_stale(
 
     to_remove: set[str] = set()
     for j in jobs:
-        if j.status not in _TERMINAL_STATUSES:
+        if j.status not in TERMINAL_STATUSES:
             continue
         ts = _latest_timestamp(j)
         if ts is None or now - ts >= _PURGE_AFTER:

@@ -9,12 +9,12 @@ Tools defined here:
   - update_plan — mutates `session.plan`, which is pinned at the tail of
     every provider request.
   - append_log / save_memory / read_memory / read_logs / update_memory
-  - create_cron / list_jobs / cancel_cron
+  - create_job / get_job / list_jobs / finish_job
   - end_session — records sentinel status; engine exits after dispatch
   - Skill — fetch a SKILL.md body as text
 
 `end_session` carries state back to the engine via the `Session` object;
-`create_cron` flags the session so the engine skips its auto-WAIT schedule.
+`create_job` flags the session so the engine skips its auto-WAIT schedule.
 Other handlers are stateless.
 """
 from dataclasses import dataclass, field
@@ -22,7 +22,7 @@ from typing import Any, Awaitable, Callable
 
 from agent.engine import jobs, memory, skill
 from agent.engine.plan import Plan
-from agent.jobs import KIND_ONE_TIME, KIND_PERIODIC, load_jobs
+from agent.engine.job_store import KIND_ONE_TIME, KIND_PERIODIC, NEVER, load_jobs
 from agent.runtime.sentinel import STATUSES
 
 
@@ -31,7 +31,7 @@ class Session:
     """Ephemeral state the engine and local tools share for one session."""
     sentinel_status: str | None = None
     sentinel_recap: str = ""
-    sentinel_turn_created_cron: bool = False
+    sentinel_turn_created_job: bool = False
     plan: Plan = field(default_factory=Plan)
 
 
@@ -75,7 +75,7 @@ async def _handle_save_memory(_session: Session, args: dict) -> str:
     return "fact saved to memory.md"
 
 
-async def _handle_create_cron(session: Session, args: dict) -> str:
+async def _handle_create_job(session: Session, args: dict) -> str:
     jobs.create_job(
         id=args["id"],
         description=args["description"],
@@ -83,8 +83,24 @@ async def _handle_create_cron(session: Session, args: dict) -> str:
         context=args["context"],
         kind=args.get("kind", "one-time"),
     )
-    session.sentinel_turn_created_cron = True
+    session.sentinel_turn_created_job = True
     return f"scheduled job {args['id']!r}"
+
+
+async def _handle_get_job(_session: Session, args: dict) -> str:
+    job = jobs.get_job(args["id"])
+    return (
+        f"## {job.id}\n"
+        f"{job.description}\n\n"
+        f"- Type: {job.kind}\n"
+        f"- Status: {job.status}\n"
+        f"- Schedule: `{job.schedule}`\n"
+        f"- Context: {job.context}\n"
+        f"- Next fire time: {job.next_fire_time or NEVER}\n"
+        f"- Last fire time: {job.last_fire_time or NEVER}\n"
+        f"- Execution time: {job.execution_time or NEVER}\n"
+        f"- Execution result: {job.execution_result or NEVER}\n"
+    )
 
 
 async def _handle_read_memory(_session: Session, _args: dict) -> str:
@@ -113,14 +129,14 @@ async def _handle_list_jobs(_session: Session, args: dict) -> str:
         return f"no jobs{suffix}"
     lines = [f"{len(rows)} job(s):"]
     for j in rows:
-        nxt = j.next_fire_time or "(never)"
+        nxt = j.next_fire_time or NEVER
         lines.append(f"  [{j.kind}] [{j.status}] {j.id} — {j.description} (next: {nxt})")
     return "\n".join(lines)
 
 
-async def _handle_cancel_cron(_session: Session, args: dict) -> str:
-    jobs.cancel_job(args["id"])
-    return f"cancelled {args['id']}"
+async def _handle_finish_job(_session: Session, args: dict) -> str:
+    jobs.finish_job(id=args["id"], status=args["status"], recap=args["recap"])
+    return f"finished job {args['id']!r} as {args['status']}"
 
 
 async def _handle_end_session(session: Session, args: dict) -> str:
@@ -246,11 +262,11 @@ _SAVE_MEMORY = LocalTool(
 )
 
 
-_CREATE_CRON = LocalTool(
-    name="create_cron",
+_CREATE_JOB = LocalTool(
+    name="create_job",
     description=(
         "Schedule a follow-up job in jobs/jobs.md. Use for WAIT (to auto-resume), "
-        "or when the user asks for a recurring task."
+        "or when the owner asks for a recurring task."
     ),
     input_schema={
         "type": "object",
@@ -263,7 +279,24 @@ _CREATE_CRON = LocalTool(
         },
         "required": ["id", "description", "schedule", "context"],
     },
-    handler=_handle_create_cron,
+    handler=_handle_create_job,
+)
+
+
+_GET_JOB = LocalTool(
+    name="get_job",
+    description=(
+        "Return all fields of a single job (description, type, status, "
+        "schedule, context, fire times). Use when `list_jobs`' one-line "
+        "summary isn't enough — e.g. owner asks what a queued reminder "
+        "is about. Raises if the id does not exist."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "required": ["id"],
+    },
+    handler=_handle_get_job,
 )
 
 
@@ -351,19 +384,29 @@ _LIST_JOBS = LocalTool(
 )
 
 
-_CANCEL_CRON = LocalTool(
-    name="cancel_cron",
+_FINISH_JOB = LocalTool(
+    name="finish_job",
     description=(
-        "Cancel a scheduled job (sets Status: cancel in jobs.md). Use when "
-        "the owner says to stop an upcoming or recurring job. Raises if the "
-        "id does not exist."
+        "Mark a job as terminated. `status` is `done` (the work the job "
+        "was meant to trigger is complete), `fail` (couldn't be done — "
+        "blocked or impossible), or `cancel` (no longer needed; e.g. "
+        "owner changed their mind, or the underlying task already "
+        "happened). Call once per fired job during the session — there "
+        "is no engine fallback; forgotten jobs sit in `fired` "
+        "indefinitely. Periodic jobs reset to `pend` on done/fail "
+        "(still fire next cycle); `cancel` is permanent. Raises on "
+        "already-terminal jobs."
     ),
     input_schema={
         "type": "object",
-        "properties": {"id": {"type": "string"}},
-        "required": ["id"],
+        "properties": {
+            "id": {"type": "string"},
+            "status": {"type": "string", "enum": ["done", "fail", "cancel"]},
+            "recap": {"type": "string", "description": "one-line outcome summary"},
+        },
+        "required": ["id", "status", "recap"],
     },
-    handler=_handle_cancel_cron,
+    handler=_handle_finish_job,
 )
 
 
@@ -373,7 +416,7 @@ _END_SESSION = LocalTool(
         "Close the session. `status` is DONE (complete, result verified), "
         "STUCK (blocker outside your control), FAIL (task cannot succeed), "
         "IDLE (wake triggered but no work needed), or WAIT (paused for "
-        "owner reply — pair with create_cron to auto-resume)."
+        "owner reply — pair with create_job to auto-resume)."
     ),
     input_schema={
         "type": "object",
@@ -433,9 +476,10 @@ def build_registry(
         _READ_MEMORY.name: _READ_MEMORY,
         _READ_LOGS.name: _READ_LOGS,
         _UPDATE_MEMORY.name: _UPDATE_MEMORY,
-        _CREATE_CRON.name: _CREATE_CRON,
+        _CREATE_JOB.name: _CREATE_JOB,
+        _GET_JOB.name: _GET_JOB,
         _LIST_JOBS.name: _LIST_JOBS,
-        _CANCEL_CRON.name: _CANCEL_CRON,
+        _FINISH_JOB.name: _FINISH_JOB,
         _END_SESSION.name: _END_SESSION,
     }
     if skill_registry:

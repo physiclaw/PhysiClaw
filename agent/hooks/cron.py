@@ -6,16 +6,17 @@ marks completion via `done <id>` or `fail <id>` through the CLI below.
 Terminal jobs (cancel/done/fail) auto-purge after 7 days.
 
 The durable data model (Job dataclass, parser, field updates) lives in
-`agent.jobs`. This file only owns:
+`agent.engine.job_store`. This file only owns:
   - the `@register`'d hook that does the ticking
   - the CLI used by the `/cron` skill and runtime
 """
 import datetime as dt
 import logging
 
-from agent.jobs import (
+from agent.engine.job_store import (
     JOBS_PATH,
     KIND_ONE_TIME,
+    NEVER,
     STATUS_CANCEL,
     STATUS_DONE,
     STATUS_FAIL,
@@ -94,7 +95,7 @@ async def cron() -> Trigger | None:
             "Status": STATUS_FIRED,
         }
         if j.kind == KIND_ONE_TIME:
-            fields["Next fire time"] = "(never)"
+            fields["Next fire time"] = NEVER
         else:
             nxt = next_fire(j.schedule, now)
             fields["Next fire time"] = format_minute(nxt)
@@ -137,10 +138,10 @@ def _cli() -> int:
             print(f"  [{j.kind:8s}] [{j.status:6s}] {j.id}")
             print(f"    {j.description}")
             print(f"    schedule: {j.schedule}")
-            print(f"    next: {j.next_fire_time or '(never)'}")
-            print(f"    last: {j.last_fire_time or '(never)'}")
-            print(f"    exec: {j.execution_time or '(never)'}")
-            print(f"    result: {j.execution_result or '(never)'}")
+            print(f"    next: {j.next_fire_time or NEVER}")
+            print(f"    last: {j.last_fire_time or NEVER}")
+            print(f"    exec: {j.execution_time or NEVER}")
+            print(f"    result: {j.execution_result or NEVER}")
             print(f"    context: {j.context}")
             print()
         return 0

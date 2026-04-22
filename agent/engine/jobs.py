@@ -4,25 +4,29 @@ In-process replacement for the bash-CLI loopback `claude -p` used. This
 module:
   - extracts cron-fired job ids from Triggers,
   - formats firings into the SYSTEM prompt,
-  - persists outcomes to jobs.md when the sentinel fires,
-  - creates new jobs when the model's response includes `create_cron`.
+  - creates new jobs when the model's response includes `create_job`.
 
-Data model + jobs.md I/O lives in `agent.jobs`. The hook that actually ticks
-and fires is `agent.hooks.cron`.
+Outcome marking is the agent's responsibility via `finish_job` — there
+is no engine-side fallback. Jobs forgotten in `fired` status remain
+there until the agent explicitly closes them.
+
+Data model + jobs.md I/O lives in `agent.engine.job_store`. The hook
+that actually ticks and fires is `agent.hooks.cron`.
 """
 import datetime as dt
 import logging
 
-from agent.jobs import (
+from agent.engine.job_store import (
     ID_RE,
     JOBS_PATH,
     KIND_ONE_TIME,
     KIND_PERIODIC,
     NEVER,
-    STATUS_CANCEL,
     STATUS_DONE,
     STATUS_FAIL,
     STATUS_PEND,
+    TERMINAL_STATUSES,
+    Job,
     format_minute,
     load_jobs,
     next_fire,
@@ -30,15 +34,13 @@ from agent.jobs import (
     validate_schedule,
 )
 from agent.runtime.hook import Trigger
-from agent.runtime.sentinel import DONE, FAIL, STUCK
 
 log = logging.getLogger(__name__)
 
 _CRON_PREFIX = "cron:"
-_FAIL_RECAP = {STUCK: "stuck", FAIL: "failed"}
 
 AUTO_WAIT_JOB_ID = "wait-check-auto"
-_AUTO_WAIT_DESCRIPTION = "Auto follow-up after WAIT with no explicit create_cron."
+_AUTO_WAIT_DESCRIPTION = "Auto follow-up after WAIT with no explicit create_job."
 _AUTO_WAIT_CONTEXT = (
     "Previous session ended with WAIT. Re-check IM / state and continue the task."
 )
@@ -80,52 +82,6 @@ def format_fired(triggers: list[Trigger]) -> str:
     return "## Scheduled jobs firing now\n\n" + "\n\n".join(blocks)
 
 
-def mark_outcome(
-    triggers: list[Trigger], sentinel: str | None, recap: str
-) -> None:
-    """Persist the session outcome to jobs.md for each fired cron job.
-
-    DONE / STUCK / FAIL all consume a one-time job (status → done or fail) and
-    reset a periodic job to pend. WAIT leaves the job in fired status; the
-    engine's auto-schedule covers the next check. IDLE is a no-op.
-    """
-    ids = fired_job_ids(triggers)
-    if not ids or not sentinel:
-        return
-    try:
-        jobs = {j.id: j for j in load_jobs()}
-    except Exception:
-        log.exception("jobs: failed to load jobs.md for outcome")
-        return
-
-    stamp = format_minute(dt.datetime.now())
-    updates: dict[str, dict[str, str]] = {}
-
-    for jid in ids:
-        j = jobs.get(jid)
-        if j is None:
-            continue
-        fields: dict[str, str] = {}
-        if sentinel == DONE:
-            fields["Execution time"] = stamp
-            fields["Execution result"] = recap or "done"
-            fields["Status"] = STATUS_DONE if j.kind == KIND_ONE_TIME else STATUS_PEND
-        elif sentinel in (STUCK, FAIL):
-            fields["Execution time"] = stamp
-            fields["Execution result"] = recap or _FAIL_RECAP[sentinel]
-            fields["Status"] = STATUS_FAIL if j.kind == KIND_ONE_TIME else STATUS_PEND
-        else:
-            # WAIT / IDLE — no jobs.md mutation here.
-            continue
-        updates[jid] = fields
-
-    if updates:
-        try:
-            update_fields(JOBS_PATH, updates)
-        except Exception:
-            log.exception("jobs: failed to persist outcome to jobs.md")
-
-
 def create_job(
     *,
     id: str,
@@ -134,11 +90,15 @@ def create_job(
     context: str,
     kind: str = KIND_ONE_TIME,
 ) -> None:
-    """Append a new job section to jobs.md. Model-facing, called when the
-    response carries a `create_cron` object.
+    """Append a new job section to jobs.md. Pure append — never edits or
+    overwrites an existing entry. To "edit" a job, finish_job the old
+    one and create_job with a new id (e.g. `remind-foo` →
+    `remind-foo-v2`). To revive a finished job at a new schedule, same
+    pattern.
 
-    Raises ValueError on duplicate id, invalid kind, invalid schedule, or
-    when required fields don't meet the parser's constraints.
+    Raises ValueError on duplicate id (even if the existing entry is
+    terminal — the agent must pick a fresh id), invalid kind, invalid
+    schedule, missing description, or context shorter than 10 chars.
     """
     if not ID_RE.match(id):
         raise ValueError(f"invalid job id {id!r} (lowercase + digits + hyphens)")
@@ -208,14 +168,45 @@ def upsert_auto_wait_check(at: dt.datetime) -> None:
         )
 
 
-def cancel_job(id: str) -> None:
-    """Set Status: cancel on an existing job. Raises ValueError on unknown id.
-    No-op (returns silently) if the job is already cancelled.
-    """
+def get_job(id: str) -> Job:
+    """Return the full Job for `id`. Raises ValueError on unknown id."""
     existing = {j.id: j for j in load_jobs()}
     if id not in existing:
         raise ValueError(f"no job with id {id!r}")
-    if existing[id].status == STATUS_CANCEL:
-        return
-    update_fields(JOBS_PATH, {id: {"Status": STATUS_CANCEL}})
-    log.info("jobs: cancelled %s", id)
+    return existing[id]
+
+
+def finish_job(*, id: str, status: str, recap: str) -> None:
+    """Mark a job as terminated. `status` is one of done / fail / cancel.
+
+    Sets Status (or pend reset for periodic done/fail), Execution time
+    (now), and Execution result (recap). Raises ValueError on unknown
+    id, invalid status, or already-terminal status (re-finishing a
+    closed job is a bug, not idempotent).
+
+    For periodic jobs, done/fail reset to pend so the next firing still
+    happens; cancel is permanent (to revive, create_job with a new id).
+    """
+    if status not in TERMINAL_STATUSES:
+        raise ValueError(
+            f"status must be one of {sorted(TERMINAL_STATUSES)}, got {status!r}"
+        )
+    existing = {j.id: j for j in load_jobs()}
+    if id not in existing:
+        raise ValueError(f"no job with id {id!r}")
+    j = existing[id]
+    if j.status in TERMINAL_STATUSES:
+        raise ValueError(
+            f"job {id!r} is already in terminal status {j.status!r}"
+        )
+    new_status = (
+        STATUS_PEND
+        if j.kind == KIND_PERIODIC and status in (STATUS_DONE, STATUS_FAIL)
+        else status
+    )
+    update_fields(JOBS_PATH, {id: {
+        "Status": new_status,
+        "Execution time": format_minute(dt.datetime.now()),
+        "Execution result": recap.strip() or status,
+    }})
+    log.info("jobs: finished %s as %s", id, status)

@@ -36,7 +36,7 @@ DOCTRINE_FILE_ORDER = (
     "PHYSICLAW.md",   # tool-surface mechanics — also shipped via MCP initialize
     "TOOLS.md",       # extra owner-authored tool guidance
     "PERSISTENCE.md", # memory.md vs YYYY-MM-DD.md + read/write tools
-    "JOBS.md",        # jobs.md + create_cron/list_jobs/cancel_cron
+    "JOBS.md",        # jobs.md + create_job/get_job/list_jobs/finish_job (immutable, append-only)
     "CONVENTION.md",  # engine turn rules — last so it sits next to mechanics
 )
 
@@ -215,9 +215,9 @@ def _render_examples() -> list[str]:
         "❌ Wrong: `[note, append_log, end_session]` (three tools in one turn — rejected), or `end_session` while still inside a chat thread / app detail view.",
         "✅ Right: turn K = `[note, append_log]` (close summary), K+1 = `[note, go_back()]`, K+2 = `[note, home_screen()]`, K+3 = `[note, end_session(DONE, ...)]`.",
         "",
-        "**WAIT pairs with create_cron, across two turns.** Otherwise the engine auto-schedules a 15-min follow-up.",
-        "❌ Wrong: `[note, end_session(WAIT, ...)]` alone, or trying to cram `[note, create_cron, end_session]`.",
-        "✅ Right: turn K = `[note, create_cron(...)]`, turn K+1 = `[note, end_session(WAIT, ...)]`.",
+        "**WAIT pairs with create_job, across two turns.** Otherwise the engine auto-schedules a 15-min follow-up.",
+        "❌ Wrong: `[note, end_session(WAIT, ...)]` alone, or trying to cram `[note, create_job, end_session]`.",
+        "✅ Right: turn K = `[note, create_job(...)]`, turn K+1 = `[note, end_session(WAIT, ...)]`.",
         "",
     ]
 

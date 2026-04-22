@@ -159,14 +159,6 @@ def _summarize(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat disp
         return f"{pfx}log: {brief(event.get('entry',''), 200)}"
     if name == "memory_save":
         return f"{pfx}memory: {brief(event.get('text',''), 200)}"
-    if name == "cron_create":
-        job = event.get("job") or {}
-        return (
-            f"{pfx}create_cron id={job.get('id')} "
-            f"schedule={job.get('schedule')!r}"
-        )
-    if name == "cron_create_error":
-        return f"{pfx}create_cron failed: {brief(event.get('error',''), 200)}"
     if name == "sentinel":
         return (
             f"{pfx}SENTINEL {event.get('name','?')} — "

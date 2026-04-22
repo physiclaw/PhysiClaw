@@ -17,7 +17,7 @@
 3. Go to IM. Reply to owner. Never reply before logging.
 4. `go_back()` to exit the chat thread back to the IM chat list — prevents landing the next wake inside a stale thread.
 5. `home_screen()` to return to the home screen — leaves the phone in a clean state so the next wake starts from a known launch pad.
-6. `end_session(status, recap)`. If a follow-up is expected (owner asked to be reminded, order awaiting ack), use `end_session(WAIT, ...)` plus `create_cron` for the resume — see JOBS.md. Otherwise `end_session(DONE, ...)`.
+6. `end_session(status, recap)`. If a follow-up is expected (owner asked to be reminded, order awaiting ack), use `end_session(WAIT, ...)` plus `create_job` for the resume — see JOBS.md. Otherwise `end_session(DONE, ...)`.
 
 ## Boundaries
 
@@ -33,7 +33,7 @@ Sensitive apps (banking, health, photos, email): only open when explicitly asked
 
 **Read exactly.** Report prices, names, addresses as displayed — never guess or round.
 
-**Confirm before payment.** Send the owner: item, quantity, price, address, fees, delivery time. Then `end_session(WAIT, ...)` + `create_cron` for a ~10-minute resume. Only pay after they explicitly reply OK.
+**Confirm before payment.** Send the owner: item, quantity, price, address, fees, delivery time. Then `end_session(WAIT, ...)` + `create_job` for a ~10-minute resume. Only pay after they explicitly reply OK.
 
 See-and-act mechanics (view tool choice, verify loop, screenshot side effects) live in the tool-surface instructions — don't re-reason from scratch.
 
