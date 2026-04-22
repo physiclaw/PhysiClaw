@@ -10,6 +10,8 @@ Tools defined here:
     every provider request.
   - append_log / save_memory / read_memory / read_logs / update_memory
   - create_job / get_job / list_jobs / finish_job
+  - wait — block the loop briefly (≤60s), for short in-session waits
+    (the long-wait counterpart is `end_session(WAIT, …) + create_job`)
   - end_session — records sentinel status; engine exits after dispatch
   - Skill — fetch a SKILL.md body as text
 
@@ -17,6 +19,7 @@ Tools defined here:
 `create_job` flags the session so the engine skips its auto-WAIT schedule.
 Other handlers are stateless.
 """
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -137,6 +140,12 @@ async def _handle_list_jobs(_session: Session, args: dict) -> str:
 async def _handle_finish_job(_session: Session, args: dict) -> str:
     jobs.finish_job(id=args["id"], status=args["status"], recap=args["recap"])
     return f"finished job {args['id']!r} as {args['status']}"
+
+
+async def _handle_wait(_session: Session, args: dict) -> str:
+    seconds = args["seconds"]
+    await asyncio.sleep(seconds)
+    return f"waited {seconds}s"
 
 
 async def _handle_end_session(session: Session, args: dict) -> str:
@@ -410,6 +419,26 @@ _FINISH_JOB = LocalTool(
 )
 
 
+_WAIT = LocalTool(
+    name="wait",
+    description=(
+        "Block briefly (1-60s), then return so your next turn can "
+        "re-observe. For short in-session waits when the owner is "
+        "actively engaged (e.g. you sent a message and they're typing). "
+        "For longer waits, close with `end_session(WAIT, ...)` + "
+        "`create_job` instead."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "seconds": {"type": "integer", "minimum": 1, "maximum": 60},
+        },
+        "required": ["seconds"],
+    },
+    handler=_handle_wait,
+)
+
+
 _END_SESSION = LocalTool(
     name="end_session",
     description=(
@@ -480,6 +509,7 @@ def build_registry(
         _GET_JOB.name: _GET_JOB,
         _LIST_JOBS.name: _LIST_JOBS,
         _FINISH_JOB.name: _FINISH_JOB,
+        _WAIT.name: _WAIT,
         _END_SESSION.name: _END_SESSION,
     }
     if skill_registry:

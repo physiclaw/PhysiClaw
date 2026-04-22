@@ -86,4 +86,12 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   generic delay is usually wrong (too soon for "delivery in 2h", too
   late for "owner replying now"). The auto-schedule is a safety net,
   not the default. See JOBS.md for the full job model.
+- **Wait for owner: short-wait first, escalate to WAIT only after
+  retrying.** When you've sent the owner a message and need a reply,
+  the pattern is: `wait(30-60)` → `peek` IM → if no reply, `wait`
+  again (up to ~3 attempts, total ≤3 min). Only after that, give up
+  the session and escalate: `end_session(WAIT, ...)` + `create_job`
+  for a minutes/hours-scale resume. Short waits keep you in-flow if
+  the owner is actively engaged; the cap on retries prevents holding
+  the loop open when they've genuinely stepped away.
 

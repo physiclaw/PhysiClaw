@@ -219,6 +219,10 @@ def _render_examples() -> list[str]:
         "❌ Wrong: `[note, end_session(WAIT, ...)]` alone, or trying to cram `[note, create_job, end_session]`.",
         "✅ Right: turn K = `[note, create_job(...)]`, turn K+1 = `[note, end_session(WAIT, ...)]`.",
         "",
+        "**Waiting for owner: retry short waits first, escalate to WAIT only if owner is genuinely away.** Pattern: `wait(30-60)` → `peek` IM → repeat up to ~3 times → only then close with WAIT + `create_job`. ≤60s in-session beats closing + respawning when the owner is actively typing.",
+        "❌ Wrong: send a confirmation, immediately `[note, end_session(WAIT, ...)]` + `create_job(+10min)` without giving the owner a few seconds first. OR: keep `wait`-ing forever, never escalating.",
+        "✅ Right: send confirmation, then `[note, wait(30)]` → `[note, peek()]` (no reply) → `[note, wait(30)]` → `[note, peek()]` (no reply) → after ~3 tries, `[note, create_job(+10min)]` then `[note, end_session(WAIT, ...)]`.",
+        "",
     ]
 
 
