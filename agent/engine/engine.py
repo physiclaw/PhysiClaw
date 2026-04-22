@@ -36,7 +36,7 @@ from agent.runtime.sentinel import FAIL, STUCK, WAIT
 
 log = logging.getLogger(__name__)
 
-MAX_TURNS = 100
+MAX_TURNS = 200
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = 5.0
 WAIT_DEFAULT_MINUTES = 15
