@@ -16,7 +16,7 @@ refer to the **Fixed elements** table at the bottom.
    — copy the app name (use the exact text the owner asked for, e.g.
    `"美团"`, `"WeChat"`).
 2. `home_screen()` — return to a clean launch pad. **Skip if you're
-   already on the home screen** (peek/scan shows app-icon grid + dock,
+   already on the home screen** (peek shows app-icon grid + dock,
    no in-app chrome) — slow physical motion (~2s); don't waste it.
 3. `swipe(bbox=<spotlight-pull>, direction="down", size="l")`
    — open Spotlight. Bbox is mid-screen (NOT the top edge — that

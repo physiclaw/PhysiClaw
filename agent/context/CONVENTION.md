@@ -38,8 +38,8 @@ message on every turn.
 
 ## Compaction: latest screen wins
 
-Only the most recent `scan` / `peek` / `screenshot` tool_result keeps
-its image + listing. Earlier view results are stubbed in place with
+Only the most recent `peek` / `screenshot` tool_result keeps its image
++ listing. Earlier view results are stubbed in place with
 `(superseded <tool> — past view: <desc>)`. The `<desc>` is pulled from
 the **next turn's** `note.screen`, composed while that image was still
 the latest view — so always fill `note.screen` on the turn right after
@@ -53,12 +53,12 @@ current tap. If you need to re-check, re-observe — it's cheap.
 ## Bboxes come from the listing, never from eyeballing
 
 Every physical-action bbox must be copied verbatim from a bbox in the
-most recent `scan` / `peek` / `screenshot` listing. Never guess, never
-round, never average two listing rows, never "eyeball" coordinates from
-an image. If the element you want isn't in the current listing,
-re-observe with a more accurate view — `screenshot` > `peek` > `scan`
-in fidelity. Step up the ladder rather than re-running the same tool
-and hoping for a better listing.
+most recent `peek` / `screenshot` listing. Never guess, never round,
+never average two listing rows, never "eyeball" coordinates from an
+image. If the element you want isn't in the current listing, re-observe
+with a more accurate view — `screenshot` > `peek` in fidelity. Step up
+the ladder rather than re-running `peek` and hoping for a better
+listing.
 
 This is what makes `sequence` safe: each step's bbox is grounded in the
 listing that was live when you planned the chain. A made-up bbox turns

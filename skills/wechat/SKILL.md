@@ -9,9 +9,9 @@ The owner's primary IM.
 
 ## Tool choice
 
-High-frequency app. Use `scan()` (~1s, text-only) to check chat status.
+High-frequency app. Use `peek()` to check chat status — the camera view reliably reads Chinese text bubbles.
 
-**Never act on a chat-list preview.** Rows on the Chats tab show only the most recent message per contact, and it's truncated. To read the owner's actual messages, you MUST tap the row and enter the thread, then scan there.
+**Never act on a chat-list preview.** Rows on the Chats tab show only the most recent message per contact, and it's truncated. To read the owner's actual messages, you MUST tap the row and enter the thread, then peek there.
 
 ## Flow — read messages
 
@@ -23,7 +23,7 @@ High-frequency app. Use `scan()` (~1s, text-only) to check chat status.
 
 ## Flow — voice message
 
-Use the convert-to-text option, then `scan()` the transcript that renders under the bubble.
+Use the convert-to-text option, then `peek()` the transcript that renders under the bubble.
 
 Reply with your reading + planned action and wait for OK before executing. ASR mishears names, amounts, addresses — never act on a voice instruction unconfirmed.
 
@@ -59,7 +59,7 @@ After the sequence: hide keyboard, confirm bubble, tap back arrow (steps 7–9 a
 
 ## Fixed elements
 
-Bboxes `[left, top, right, bottom]` in 0-1 screen coords. Rescan if a row looks off — banners shift the layout.
+Bboxes `[left, top, right, bottom]` in 0-1 screen coords. Re-peek if a row looks off — banners shift the layout.
 
 **WeChat dock icon (Home Screen):** `[0.294, 0.891, 0.474, 0.967]`
 

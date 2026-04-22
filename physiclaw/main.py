@@ -84,7 +84,7 @@ def main():
     parser.add_argument(
         "--save-tool-calls",
         action="store_true",
-        help="Write every scan/peek/screenshot output to data/tool_calls/.",
+        help="Write every peek/screenshot output to data/tool_calls/.",
     )
     parser.add_argument(
         "--save-snapshots",

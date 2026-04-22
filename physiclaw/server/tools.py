@@ -29,33 +29,17 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
-    async def scan() -> str:
-        """Read what's on the phone screen as a text listing — fastest view tool.
-
-        Use whenever you need to know WHAT elements exist (icons + OCR text)
-        without needing to see the screen visually. ~3s vs peek's ~4s. Use
-        peek instead when planning a tap and you want pixel-level confirmation.
-
-        Returns: plain-text element listing, one row per element:
-            id [kind] "label" [x1,y1,x2,y2] conf
-        where kind is "icon" or "text", bbox coords are 0-1 normalized.
-        """
-        listing = await asyncio.to_thread(physiclaw.scan)
-        save_tool_call("scan", listing)
-        return listing
-
-    @mcp.tool()
-    @logged
     async def peek() -> list:
-        """Look at the phone via the overhead camera — default view tool for planning a tap.
+        """Look at the phone via the overhead camera — default view tool.
 
         Call before any tap/swipe to confirm the target's bbox, and after
-        to verify the screen changed. ~4s. Cheaper than `screenshot` and
-        non-mutating (no side effects).
+        to verify the screen changed. ~4s. Non-mutating (no side effects).
 
         Returns: [Image, listing] — a JPEG of the cropped camera view
         with icon bboxes drawn (so you can visually confirm what you'll
-        tap), plus the same plain-text element listing `scan` returns.
+        tap), plus a plain-text element listing, one row per element:
+            id [kind] "label" [left,top,right,bottom] conf
+        where kind is "icon" or "text", bbox coords are 0-1 decimals.
         """
         jpeg, listing = await asyncio.to_thread(physiclaw.peek)
         save_tool_call("peek", listing, jpeg)
@@ -64,7 +48,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def screenshot() -> list:
-        """Capture the phone's own screenshot (~12s, MUTATING) — only when peek/scan miss the target.
+        """Capture the phone's own screenshot (~12s, MUTATING) — only when peek misses the target.
 
         Triggers the iOS screenshot gesture, which apps observe and react
         to (share sheet pops up, shopping apps show similar-items panel,
@@ -92,13 +76,13 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     async def tap(bbox: Bbox) -> str:
         """Tap once at the center of `bbox` — for buttons, links, list items, dismissing dialogs.
 
-        After this, `scan` to verify the screen changed (cheapest), or
-        `peek` if your next move needs a bbox from the new screen. If
-        the listing is identical to before, the tap missed (retry once)
-        or the bbox was wrong (re-`peek` and pick a different element).
+        After this, `peek` to verify the screen changed and get a fresh
+        bbox for your next move. If the listing is identical to before,
+        the tap missed (retry once) or the bbox was wrong (pick a
+        different element from the new peek).
         """
         result = await asyncio.to_thread(physiclaw.tap, bbox)
-        return f"{result} — `scan` to verify (or `peek` if your next move needs a bbox)"
+        return f"{result} — `peek` to verify and plan the next move"
 
     @mcp.tool()
     @logged
@@ -109,7 +93,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         in editable text. Don't use for buttons — that's `tap`.
         """
         result = await asyncio.to_thread(physiclaw.double_tap, bbox)
-        return f"{result} — `scan` to verify the zoom / selection landed"
+        return f"{result} — `peek` to verify the zoom / selection landed"
 
     @mcp.tool()
     @logged
@@ -138,9 +122,8 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
         Use for: scrolling content, dismissing cards, paging carousels,
         revealing swipe-actions on list items, opening Control Center
-        (swipe down from top-right). After this, `scan` to verify the
-        page scrolled, or `peek` if your next move needs a bbox from
-        the new view.
+        (swipe down from top-right). After this, `peek` to verify the
+        page scrolled and get fresh bboxes from the new view.
 
         Common gotcha — direction is the STYLUS motion, not the page:
           - swipe UP   → page scrolls DOWN (reveals content below)
@@ -148,7 +131,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
           - swipe LEFT → page scrolls RIGHT (next photo / next page)
 
         Args:
-            bbox: where to start the gesture (0-1 normalized).
+            bbox: where to start the gesture (0-1 decimals).
             direction: which way the stylus moves — "up", "down", "left", "right".
             size: stroke length (default "m"):
                 "s"   ≈ 1cm  — small nudge
@@ -160,7 +143,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
                 more momentum on iOS scroll lists (swipes keep coasting).
         """
         result = await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
-        return f"{result} — `scan` to verify the page scrolled (or `peek` if your next move needs a bbox from the new view)"
+        return f"{result} — `peek` to verify the page scrolled and plan the next move"
 
     # ─── Navigate ────────────────────────────────────────────
 
@@ -181,14 +164,14 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     async def go_back() -> str:
         """Pop back one screen via the iPhone swipe-from-left-edge gesture.
 
-        Works in apps with a navigation stack (most do). If `scan` or
-        `peek` after this shows the same screen, either the gesture
-        didn't register (retry once) or this screen has no back action
+        Works in apps with a navigation stack (most do). If `peek`
+        after this shows the same screen, either the gesture didn't
+        register (retry once) or this screen has no back action
         (modals, root tabs, lock screen) — try `home_screen` and
         re-enter, or look for an in-screen "Back" / "<" button to tap.
         """
         result = await asyncio.to_thread(physiclaw.go_back)
-        return f"{result} — `scan` to verify navigation landed (or `peek` if your next move needs a bbox from the new screen)"
+        return f"{result} — `peek` to verify navigation landed and plan the next move"
 
     @mcp.tool()
     @logged
@@ -268,4 +251,4 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         """
         steps = [s for s in (step1, step2, step3, step4, step5) if s is not None]
         result = await asyncio.to_thread(physiclaw.sequence, steps)
-        return f"{result}\n— `scan` to verify the final state (or `peek` if your next move needs a bbox from the new view)"
+        return f"{result}\n— `peek` to verify the final state and plan the next move"

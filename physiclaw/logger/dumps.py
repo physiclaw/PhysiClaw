@@ -36,7 +36,7 @@ def _mkdir(sub: str) -> Path:
     return d
 
 
-ToolKind = Literal["scan", "peek", "screenshot"]
+ToolKind = Literal["peek", "screenshot"]
 
 
 def save_tool_call(kind: ToolKind, listing: str, jpeg: bytes | None = None) -> None:

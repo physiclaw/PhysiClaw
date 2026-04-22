@@ -304,15 +304,6 @@ class PhysiClaw:
         )
         return format_elements(elements_to_json(elements)), annotated
 
-    def scan(self) -> str:
-        """Icon detection + OCR on the overhead camera view. Returns the
-        element listing only (no image), same line format as peek() and
-        screenshot()."""
-        with self.locked():
-            self.park()
-            listing, _ = self._detect(self.camera_view(), crop=True)
-            return listing
-
     def peek(self) -> tuple[bytes, str]:
         """Overhead camera snapshot + icon detection + OCR.
 

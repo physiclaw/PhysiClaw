@@ -1,12 +1,12 @@
 """Context compaction — two jobs, both about keeping image payload small:
 
   1. `drop_stale_screens` — "latest screen wins": only the most recent
-     scan/peek/screenshot tool_result carries pixels + full listing.
+     peek/screenshot tool_result carries pixels + full listing.
      Earlier view tool_results are stubbed in place with the textual
      description of what that image showed (pulled from the NEXT turn's
      `note.screen`, which was composed while that image was the latest
      view). The assistant message and its tool_calls stay intact —
-     the agent's decision history ("I called scan here, tap there") is
+     the agent's decision history ("I called peek here, tap there") is
      preserved; only the bulky result payload is elided.
 
   2. `scale_image_bytes` — ingress re-encode: normalize every incoming
@@ -28,7 +28,7 @@ JPEG_QUALITY = 85
 # Tools that return a fresh view of the phone screen. An assistant turn
 # whose tool_calls are ENTIRELY within SCREEN_OBS ∪ {"note"} is a
 # "screen-observation turn" — collapsible under drop_stale_screens.
-SCREEN_OBS_TOOLS = frozenset({"scan", "peek", "screenshot"})
+SCREEN_OBS_TOOLS = frozenset({"peek", "screenshot"})
 
 
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:

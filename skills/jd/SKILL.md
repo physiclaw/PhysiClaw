@@ -9,7 +9,7 @@ Use **京东七鲜** (JD 7Fresh) for groceries. Other JD categories need explici
 
 ## Tool choice
 
-Prefer `scan()` and `peek()` — cheap, no app-side reactions. Reach for `screenshot()` only when the target is icon-only (no text label). **`screenshot()` on a commodity detail page triggers the share overlay** — see Gotcha.
+Prefer `peek()` — cheap, no app-side reactions. Reach for `screenshot()` only when the target is icon-only (no text label). **`screenshot()` on a commodity detail page triggers the share overlay** — see Gotcha.
 
 ## Flow
 
@@ -27,12 +27,11 @@ Prefer `scan()` and `peek()` — cheap, no app-side reactions. Reach for `screen
 
 JD intercepts the iOS screenshot gesture and overlays a 分享截屏 menu (朋友圈 / QQ / 微信好友 / 保存图片 / 搜问题). The screenshot still captured the real page — recover without re-shooting:
 
-1. `scan()` — baseline.
-2. `screenshot()` — capture bboxes.
-3. `scan()` — if it differs (share-sheet text + dim area), the popup is covering the page.
-4. Dismiss the popup (see below).
-5. `scan()` — should match the baseline.
-6. **Use the original screenshot's bboxes** for the next tap. Saves ~12s vs retaking.
+1. `screenshot()` — capture bboxes from the pre-overlay page.
+2. `peek()` — if it shows share-sheet text + dim area, the popup is covering the page.
+3. Dismiss the popup (see below).
+4. `peek()` — confirm the overlay is gone.
+5. **Use the original screenshot's bboxes** for the next tap. Saves ~12s vs retaking.
 
 ## Dismiss popup / share sheet / bottom sheet
 
