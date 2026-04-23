@@ -40,7 +40,7 @@ from physiclaw.config import CONFIG
 
 # Runaway-loop backstop, not a context-safety limit. Prompt tokens grow
 # ~624·t + 13k empirically (R²=0.97); at 1M context (Qwen3.6-plus) the
-# hard wall is ~1,580 turns, so 200 leaves ample headroom.
+# hard wall is ~1,580 turns, so 300 leaves ample headroom.
 MAX_TURNS = CONFIG.engine.max_turns
 MAX_ATTEMPTS = CONFIG.engine.max_attempts
 RETRY_BACKOFF = CONFIG.engine.retry_backoff_seconds

@@ -45,7 +45,7 @@ class WarmStartConfig:
 
 @dataclass
 class EngineConfig:
-    max_turns: int = 200
+    max_turns: int = 300
     max_attempts: int = 3
     retry_backoff_seconds: float = 5.0
     wait_default_minutes: int = 15
