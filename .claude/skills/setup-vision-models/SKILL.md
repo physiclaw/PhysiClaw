@@ -28,8 +28,8 @@ uv sync
 
 ```bash
 uv run python -c "
-from physiclaw.vision.icon_detect import IconDetector
-from physiclaw.vision.ocr import OCRReader
+from physiclaw.core.vision.icon_detect import IconDetector
+from physiclaw.core.vision.ocr import OCRReader
 IconDetector(); OCRReader()
 print('OK')
 "

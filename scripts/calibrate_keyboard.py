@@ -20,9 +20,9 @@ from pathlib import Path
 
 import cv2
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from physiclaw.vision.keyboard import (
+from physiclaw.core.vision.keyboard import (
     detect_key_boxes,
     draw_detected_keys,
     label_keyboard,

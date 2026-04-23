@@ -30,7 +30,7 @@ Shortcut URLs use the lowercase form (`<name>.local`).
 
 ```bash
 uv run python -c "
-from physiclaw.bridge import bridge_base_urls
+from physiclaw.core.bridge import bridge_base_urls
 p, f = bridge_base_urls(8048)
 if p != f: print(f'Recommended: {p}')
 print(f'Fallback (IP): {f}')

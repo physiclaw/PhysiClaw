@@ -4,7 +4,7 @@ Useful for reviewing the rendered prompt, A/B-ing edits to context files
 or prompt.py, and counting tokens before they hit a provider.
 
 Runs fully offline: MCP tools come from AST parse of
-`physiclaw/server/tools.py`, local tools from `builtin_tool.build_registry`.
+`src/physiclaw/core/server/tools.py`, local tools from `builtin_tool.build_registry`.
 No MCP server needed.
 
 Usage:
@@ -17,9 +17,9 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from agent.engine import builtin_tool, jobs, memory, prompt, skill  # noqa: E402
+from physiclaw.agent.engine import builtin_tool, jobs, memory, prompt, skill  # noqa: E402
 
 
 def _build(args: argparse.Namespace) -> str:

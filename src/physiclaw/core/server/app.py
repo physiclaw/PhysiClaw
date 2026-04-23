@@ -1,0 +1,63 @@
+"""Application assembly: construct singletons and wire registrations.
+
+The MCP instance lives in `physiclaw.core.server.mcp`. This module owns the
+hardware/state singletons and binds every tool/route module to that
+instance. Importing this module has the side effect of fully wiring the
+server — `physiclaw.core.server.__init__` re-exports the public surface.
+"""
+
+import logging
+
+from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
+from physiclaw.core.calibration.state import Calibration
+from physiclaw.core import PhysiClaw
+from physiclaw.core.server.bridge import register as _register_bridge
+from physiclaw.core.server.calibration import register as _register_calibration
+from physiclaw.core.server.hardware import register as _register_hardware
+from physiclaw.core.server.mcp import mcp
+from physiclaw.core.server.tools import register as _register_tools
+from physiclaw.core.server.watch import register as _register_watch
+
+log = logging.getLogger(__name__)
+
+# ─── Singletons ─────────────────────────────────────────────
+
+physiclaw = PhysiClaw()
+_bridge = BridgeState()
+_calib = CalibrationState()
+_phone = PageState(_bridge, _calib)
+physiclaw.attach_bridge(_bridge)
+
+# ─── Warm restart ───────────────────────────────────────────
+
+_loaded = Calibration.load()
+if _loaded is not None:
+    physiclaw.calibration = _loaded
+    if _loaded.viewport_shift is not None:
+        # Mirror into the bridge-side state so calibration handlers that read
+        # calib.viewport_shift (e.g. show_assistive_touch) see it too.
+        _calib.viewport_shift = _loaded.viewport_shift
+        physiclaw.assistive_touch.compute_at_screen_pos(_loaded.viewport_shift)
+    if _loaded.screen_dimension is not None:
+        # Restore the CSS-pt dimensions so warm-start's validate can run
+        # without waiting for the phone's /bridge page to reload and POST
+        # them again.
+        _calib.screen_dimension = _loaded.screen_dimension
+    log.info(
+        f"Restored calibration from disk: complete={_loaded.complete}, "
+        f"z_tap={_loaded.z_tap}mm, rotation={_loaded.cam_rotation}"
+    )
+
+
+def shutdown():
+    """Clean up hardware resources."""
+    physiclaw.shutdown()
+
+
+# ─── Wire tools and routes ──────────────────────────────────
+
+_register_tools(mcp, physiclaw)
+_register_bridge(mcp, physiclaw, _bridge, _calib, _phone)
+_register_hardware(mcp, physiclaw, _phone)
+_register_calibration(mcp, physiclaw, _bridge, _calib, _phone)
+_register_watch(mcp, physiclaw)
