@@ -199,7 +199,8 @@ _TODO = STATUS_ICON[PENDING]
 _UPDATE_PROGRESS = LocalTool(
     name="update_progress",
     description=(
-        "Track and advance the plan for this wake. The plan — drafted "
+        "Draft the plan the moment you learn the task, then flip step "
+        "status as each step's intent is achieved. The plan — drafted "
         "once up-front, ticked after every step — is pinned to the tail "
         "of every request, so the `in_progress` step is always 'what to "
         "do now'. Follow the plan step-by-step; flip the status the "
@@ -325,10 +326,11 @@ _UPDATE_PROGRESS = LocalTool(
 _APPEND_LOG = LocalTool(
     name="append_log",
     description=(
-        "Append one line to today's memory/YYYY-MM-DD.md daily log. Call "
-        "after every major step (purchase, message sent, item added) AND "
-        "once at session close on DONE/STUCK/FAIL. See PERSISTENCE.md "
-        "for the rationale."
+        "Append one line after every major step (purchase placed, message "
+        "sent, item added) and at session close on DONE/STUCK/FAIL — "
+        "writes to today's memory/YYYY-MM-DD.md daily log. Per-step "
+        "breadcrumbs survive session end, so a later wake can recover "
+        "what's already done. See PERSISTENCE.md for the rationale."
     ),
     input_schema={
         "type": "object",
@@ -586,6 +588,14 @@ def build_registry(
 ) -> dict[str, LocalTool]:
     """All local tools keyed by name. Skill is included iff skills were
     discovered (keeps the tool surface minimal when no skills exist).
+
+    **Insertion order matters.** `schemas()` iterates `.values()`, and the
+    engine concatenates MCP tools + these to build `tool_schemas`, so the
+    order here directly determines the order of `tools[]` in the provider
+    request. LLMs show mild position bias — the turn-shape primitives
+    (`note`, `update_progress`) are listed first so they sit near the top
+    of the array. Don't reshuffle, and don't refactor this dict into a
+    set or comprehension.
     """
     tools: dict[str, LocalTool] = {
         _NOTE.name: _NOTE,
@@ -606,9 +616,10 @@ def build_registry(
         tools["Skill"] = LocalTool(
             name="Skill",
             description=(
-                "Progressive loader for skill workflows. Default returns "
-                "the skill's SKILL.md body for you to follow. Pass "
-                "`reference=<path>` to load an on-demand details file "
+                f"Load a skill's workflow ({'/'.join(sorted(skill_registry))}) "
+                "before acting in that app — don't tap blind. Default "
+                "returns the skill's SKILL.md body for you to follow. "
+                "Pass `reference=<path>` to load an on-demand details file "
                 "from the skill's references/ directory — use it when the "
                 "body explicitly points at a reference."
             ),

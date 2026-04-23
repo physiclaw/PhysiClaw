@@ -10,6 +10,14 @@ its own; param semantics and return shape go in the body below.
 
 All tools are async — blocking hardware I/O runs in a thread pool via
 asyncio.to_thread() so the event loop stays free for HTTP routes.
+
+Source order here is wire order. FastMCP registers tools in decorator-
+call order (module top-to-bottom), and the MCP `list_tools()` RPC
+replays them in that order. The engine concatenates MCP tools + local
+tools in `tool_schemas`, so the order in this file directly determines
+where each tool sits in the provider's `tools[]` array. LLMs show mild
+position bias, so keep the most-reached-for tools (`peek`, `tap`) near
+the top and don't shuffle without reason.
 """
 
 import asyncio
