@@ -4,11 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "physiclaw"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.2"
+description = "Give AI agents a physical finger to operate any phone — robotic stylus + camera, no APIs needed."
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{ name = "Qiao Qian", email = "qiaoqianda@gmail.com" }]
+keywords = ["robotics", "mcp", "llm-agent", "phone-automation", "vision", "stylus", "grbl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Hardware",
+]
 dependencies = [
     "pyserial>=3.5",
     "opencv-python>=4.8",
@@ -17,7 +27,14 @@ dependencies = [
     "croniter>=6.2.2",
     "rapidocr>=3.7.0",
     "onnxruntime>=1.24.0",
+    "typer>=0.12",
+    "platformdirs>=4.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/echosprint/PhysiClaw"
+Repository = "https://github.com/echosprint/PhysiClaw"
+Issues = "https://github.com/echosprint/PhysiClaw/issues"
 
 [dependency-groups]
 convert = ["ultralytics", "onnx", "onnxslim>=0.1.71"]
@@ -31,7 +48,7 @@ dev = [
 packages = ["src/physiclaw"]
 
 [project.scripts]
-physiclaw = "physiclaw.core.main:main"
+physiclaw = "physiclaw.cli:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

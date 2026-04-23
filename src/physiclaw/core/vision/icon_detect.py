@@ -32,13 +32,9 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-MODEL_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "data"
-    / "model"
-    / "omniparser_icon_detect"
-    / "model.onnx"
-)
+from physiclaw import paths
+
+MODEL_PATH = paths.omniparser_onnx()
 INPUT_SIZE = 1280  # V2 was trained at 1280
 MIN_CONFIDENCE = 0.3
 NMS_THRESHOLD = 0.5

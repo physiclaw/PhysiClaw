@@ -402,12 +402,11 @@ def label_keyboard(
 
 # ─── Preset template generation ───────────────────────────────
 
-TEMPLATE_PATH = (
-    Path(__file__).resolve().parents[4]
-    / ".claude"
-    / "skills"
-    / "calibrate-keyboard"
-    / "template.md"
+from importlib.resources import files as _pkg_files
+
+# Bundled in the wheel at physiclaw/core/vision/presets/keyboard_template.md
+TEMPLATE_PATH = Path(
+    str(_pkg_files("physiclaw.core.vision.presets") / "keyboard_template.md")
 )
 
 
