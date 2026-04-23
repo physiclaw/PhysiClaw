@@ -43,10 +43,12 @@ _LOG_DIR = paths.engine_log_dir()
 _RAW_DIR = _LOG_DIR / "raw"
 _IMAGE_DIR = _RAW_DIR / "images"
 
+from physiclaw.config import CONFIG
+
 # Purge raw jsonl logs + extracted images older than this on session
 # bootstrap. One week is generous for post-mortem debugging while
 # keeping disk usage bounded for long-running operators.
-_RETENTION_DAYS = 7
+_RETENTION_DAYS = CONFIG.retention.trace_days
 
 # mime → filename suffix for images extracted from data-URLs. Everything
 # we actually serve is JPEG via compact.scale_image_bytes, but keep the

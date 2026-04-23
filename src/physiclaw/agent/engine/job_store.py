@@ -24,6 +24,7 @@ from pathlib import Path
 from croniter import croniter
 
 from physiclaw import paths
+from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ STATUS_DONE = "done"
 STATUS_FAIL = "fail"
 _VALID_STATUS = {STATUS_PEND, STATUS_FIRED, STATUS_CANCEL, STATUS_DONE, STATUS_FAIL}
 
-_PURGE_AFTER = dt.timedelta(days=7)
+_PURGE_AFTER = dt.timedelta(days=CONFIG.retention.trace_days)
 TERMINAL_STATUSES = frozenset({STATUS_CANCEL, STATUS_DONE, STATUS_FAIL})
 
 

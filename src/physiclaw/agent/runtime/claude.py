@@ -25,8 +25,9 @@ LOG_DIR = paths.claude_log_dir()
 # has no repo root to inherit.
 PROJECT_ROOT = paths.HOME
 
-TIMEOUT = 180  # 3min, per-line inactivity timeout
-STREAM_BUFFER = 10 * 1024 * 1024  # 10MB readline limit (default 64KB blows up on screenshot base64)
+from physiclaw.config import CONFIG
+
+TIMEOUT = CONFIG.claude.timeout_seconds  # per-line inactivity timeout
 
 # --- Tool permissions ---
 _ALLOWED = [
@@ -203,8 +204,8 @@ async def _stream(proc, slog: _SessionLog) -> dict | None:
     return result_data
 
 
-MAX_ATTEMPTS = 3
-RETRY_BACKOFF = 5.0  # seconds between retry attempts
+MAX_ATTEMPTS = CONFIG.claude.max_attempts
+RETRY_BACKOFF = CONFIG.claude.retry_backoff_seconds
 
 
 async def spawn_claude(triggers: list[Trigger]) -> None:
@@ -222,7 +223,8 @@ async def spawn_claude(triggers: list[Trigger]) -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(PROJECT_ROOT),
-            limit=STREAM_BUFFER,
+            # Default 64KB readline limit blows up on screenshot base64 lines.
+            limit=CONFIG.claude.stream_buffer_mb * 1024 * 1024,
         )
 
         slog = _SessionLog(sources)

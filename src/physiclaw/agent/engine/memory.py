@@ -15,11 +15,12 @@ import datetime as dt
 from pathlib import Path
 
 from physiclaw import paths
+from physiclaw.config import CONFIG
 
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = MEMORY_DIR / "memory.md"
 OWNER_FILE = MEMORY_DIR / "OWNER.md"
-DAILY_LOOKBACK = 3
+DAILY_LOOKBACK = CONFIG.memory.daily_lookback_days
 
 
 def load_owner() -> str:

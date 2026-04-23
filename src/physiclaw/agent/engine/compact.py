@@ -23,10 +23,12 @@ from typing import Any
 import cv2
 import numpy as np
 
+from physiclaw.config import CONFIG
+
 log = logging.getLogger(__name__)
 
-MAX_IMAGE_EDGE = 1566
-JPEG_QUALITY = 85
+MAX_IMAGE_EDGE = CONFIG.compact.max_image_edge_px
+JPEG_QUALITY = CONFIG.compact.jpeg_quality
 
 # Tools that return a fresh view of the phone screen. An assistant turn
 # whose tool_calls are ENTIRELY within SCREEN_OBS ∪ {"note"} is a

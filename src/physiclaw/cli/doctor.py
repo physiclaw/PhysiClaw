@@ -79,6 +79,21 @@ def doctor(
         typer.echo(_fmt_ok("created user dirs"))
 
     typer.echo()
+    typer.echo(typer.style("Config", bold=True))
+    # If the config failed to parse, `from physiclaw.config import CONFIG`
+    # at doctor's own import would have raised — so reaching here means
+    # the file is either absent or valid.
+    from physiclaw import config as _cfg
+
+    cp = _cfg.config_path()
+    if cp.exists():
+        typer.echo(_fmt_ok(f"config.toml: {cp}"))
+    else:
+        typer.echo(_fmt_warn(
+            f"no config yet — using built-in defaults. Edit via `physiclaw config edit` ({cp})"
+        ))
+
+    typer.echo()
     typer.echo(typer.style("Assets", bold=True))
     model = paths.omniparser_onnx()
     if model.exists():

@@ -15,6 +15,8 @@ step is `in_progress` at a time — matching Claude Code's TodoWrite rule.
 """
 from dataclasses import dataclass, field
 
+from physiclaw.config import CONFIG
+
 
 PENDING = "pending"
 IN_PROGRESS = "in_progress"
@@ -47,12 +49,12 @@ class Step:
 # tip at turn 8 may fire mid-step — intentional: the tip is advisory,
 # not rejecting, and reminding the model to re-check beats missing a
 # real forgot-to-flip.
-STALE_TICK_AFTER = 8
+STALE_TICK_AFTER = CONFIG.engine.stale_tick_threshold
 # When the plan is still in its default state this long into a wake, the
 # model almost certainly forgot to call update_progress after reading the
 # IM. Turn 0-1 is usually peek + (optional) skill-load, so 2 is the right
 # cutoff — earlier would false-positive, later would let drift compound.
-DEFAULT_STATE_AFTER = 2
+DEFAULT_STATE_AFTER = CONFIG.engine.state_decay_turns
 
 
 @dataclass

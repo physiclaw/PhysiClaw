@@ -54,9 +54,7 @@ async def _check_ready() -> bool:
     return bool(r.json().get("ready"))
 
 
-# Cooldown after react ends: lets screen animations settle, and exceeds
-# watchdog EMA_STALE so the next poll re-initializes its baseline.
-REACT_COOLDOWN = 6.0
+from physiclaw.config import CONFIG
 
 
 class Runtime:
@@ -113,7 +111,9 @@ class Runtime:
                         sources = [t.source or "?" for t in triggers]
                         log.info("triggers fired: %s", sources)
                         await _maybe_await(self.react(triggers))
-                        await asyncio.sleep(REACT_COOLDOWN)
+                        # Lets screen animations settle + exceeds watchdog
+                        # EMA_STALE so the next poll re-inits its baseline.
+                        await asyncio.sleep(CONFIG.engine.react_cooldown_seconds)
                 except asyncio.CancelledError:
                     raise
                 except Exception:

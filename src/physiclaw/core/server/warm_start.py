@@ -19,20 +19,22 @@ import socket
 import sys
 import time
 
+from physiclaw.config import CONFIG
+
 log = logging.getLogger(__name__)
 
 # How long to wait for the phone to (re)load /bridge, in seconds.
-BRIDGE_WAIT_TIMEOUT = 120
+BRIDGE_WAIT_TIMEOUT = CONFIG.warm_start.bridge_wait_timeout_seconds
 # After a /bridge load is detected, let the page finish rendering before
 # we start tapping dots at it.
-BRIDGE_SETTLE_SECONDS = 2.0
+BRIDGE_SETTLE_SECONDS = CONFIG.warm_start.bridge_settle_seconds
 
 # How long to wait for uvicorn's listening socket to be accepting
 # connections, in seconds. IPv4 only — if --host is IPv6 this will time
 # out; today all callers use v4.
-PORT_WAIT_TIMEOUT = 10.0
-PORT_WAIT_CONNECT_TIMEOUT = 0.2
-PORT_WAIT_INTERVAL = 0.1
+PORT_WAIT_TIMEOUT = CONFIG.warm_start.port_wait_timeout_seconds
+PORT_WAIT_CONNECT_TIMEOUT = CONFIG.warm_start.port_wait_connect_timeout_seconds
+PORT_WAIT_INTERVAL = CONFIG.warm_start.port_wait_interval_seconds
 
 
 def wait_for_port(

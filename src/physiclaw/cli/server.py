@@ -11,6 +11,8 @@ from typing import Annotated, Optional
 
 import typer
 
+from physiclaw.config import CONFIG
+
 
 def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
     """Run the hook loop out-of-process so long-running hooks don't block
@@ -47,8 +49,12 @@ def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
 
 
 def server(
-    port: Annotated[int, typer.Option("--port", help="MCP server port.")] = 8048,
-    host: Annotated[str, typer.Option("--host", help="Bind address.")] = "0.0.0.0",
+    port: Annotated[
+        int, typer.Option("--port", help="MCP server port.")
+    ] = CONFIG.server.port,
+    host: Annotated[
+        str, typer.Option("--host", help="Bind address.")
+    ] = CONFIG.server.host,
     verbose: Annotated[
         bool,
         typer.Option("-v", "--verbose", help="Show detailed debug output."),
@@ -82,21 +88,21 @@ def server(
             "--save-tool-calls",
             help="Write every peek/screenshot output under the user data dir.",
         ),
-    ] = False,
+    ] = CONFIG.server.save_tool_calls,
     save_snapshots: Annotated[
         bool,
         typer.Option(
             "--save-snapshots",
             help="Write every raw camera frame under the user data dir.",
         ),
-    ] = False,
+    ] = CONFIG.server.save_snapshots,
     save_screenshots: Annotated[
         bool,
         typer.Option(
             "--save-screenshots",
             help="Write every raw phone-own screenshot under the user data dir.",
         ),
-    ] = False,
+    ] = CONFIG.server.save_screenshots,
 ) -> None:
     """Run the PhysiClaw MCP server."""
     from physiclaw.core.logger import setup_logging

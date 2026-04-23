@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import __version__ as _pkg_version
+from physiclaw.cli.config_cmd import config_app
 from physiclaw.cli.doctor import doctor
 from physiclaw.cli.onboard import onboard
 from physiclaw.cli.server import server
@@ -30,6 +31,11 @@ app.add_typer(
     setup_app,
     name="setup",
     help="One-time configuration: hardware, local models, phone.",
+)
+app.add_typer(
+    config_app,
+    name="config",
+    help="Show or edit the user config file.",
 )
 
 
