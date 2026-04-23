@@ -200,9 +200,10 @@ async def _loop(
     for turn in range(MAX_TURNS):
         # Plan tail is just-in-time: `messages[]` stays plan-free so the
         # prefix cache hits everything above the final user(<plan>) block.
-        # Re-rendered every turn so update_plan tool calls take effect on
+        # Re-rendered every turn so update_progress tool calls take effect on
         # the NEXT request. request_messages is what the provider actually
         # sees; messages stays as canonical history.
+        session.plan.tick_turn()
         request_messages = plan.inject_tail(messages, session.plan)
         tr.write({"event": "request", "turn": turn, "message_count": len(request_messages)})
         rlog.write_request(turn, request_messages)

@@ -6,7 +6,7 @@ Each tool has:
 
 Tools defined here:
   - note — MUST ride alongside every turn's other tool calls.
-  - update_plan — mutates `session.plan`, which is pinned at the tail of
+  - update_progress — mutates `session.plan`, which is pinned at the tail of
     every provider request.
   - append_log / save_memory / read_memory / read_logs / update_memory
   - create_job / get_job / list_jobs / finish_job
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from agent.engine import jobs, memory, skill
-from agent.engine.plan import Plan
+from agent.engine.plan import COMPLETED, IN_PROGRESS, PENDING, STATUS_ICON, Plan
 from agent.engine.job_store import KIND_ONE_TIME, KIND_PERIODIC, NEVER, load_jobs
 from agent.runtime.sentinel import STATUSES
 
@@ -60,9 +60,12 @@ async def _handle_note(_session: Session, args: dict) -> str:
     return f"noted: {summary}"
 
 
-async def _handle_update_plan(session: Session, args: dict) -> str:
-    session.plan.update(**args)
-    return "plan updated"
+async def _handle_update_progress(session: Session, args: dict) -> str:
+    try:
+        session.plan.update(**args)
+    except ValueError as e:
+        return f"update_progress rejected: {e}"
+    return "progress updated"
 
 
 async def _handle_append_log(_session: Session, args: dict) -> str:
@@ -189,35 +192,133 @@ _NOTE = LocalTool(
 )
 
 
-_UPDATE_PLAN = LocalTool(
-    name="update_plan",
+_DONE = STATUS_ICON[COMPLETED]
+_ACTIVE = STATUS_ICON[IN_PROGRESS]
+_TODO = STATUS_ICON[PENDING]
+
+_UPDATE_PROGRESS = LocalTool(
+    name="update_progress",
     description=(
-        "Update the session's working plan. The plan is pinned at the tail "
-        "of every request, so you never lose track of the goal. Call as "
-        "soon as you read what the owner wants, and again whenever the "
-        "plan shifts (unexpected screen, owner adjusts, partial failure). "
-        "Pass only the fields you want to change."
+        "Track and advance the plan for this wake. The plan — drafted "
+        "once up-front, ticked after every step — is pinned to the tail "
+        "of every request, so the `in_progress` step is always 'what to "
+        "do now'. Follow the plan step-by-step; flip the status the "
+        "moment a step's intent is achieved.\n"
+        "\n"
+        "Each step has a status: `pending` (not started), `in_progress` "
+        "(currently doing), or `completed`. **Exactly one step may be "
+        "`in_progress` at a time** — the engine rejects plans that break "
+        "this rule.\n"
+        "\n"
+        "The tick rhythm:\n"
+        "  - A step is a LOGICAL INTENT (e.g. 'Search chips and add to "
+        "cart'), not a single tap. One step typically spans many "
+        "tap+peek turns — maybe 10–15 for something like 'add an item "
+        "to cart'. Stay `in_progress` for the whole span.\n"
+        "  - Mark a step `in_progress` BEFORE the first action of that "
+        "step.\n"
+        "  - Flip to `completed` the MOMENT the screen shows the "
+        "step's intent is achieved (e.g. 'added to cart' toast appears, "
+        "item count badge increments). Same turn, flip the next step "
+        "to `in_progress`. Don't batch multiple step-flips.\n"
+        "  - If you've been on the same `in_progress` step for 15+ "
+        "turns with no visible progress, you're stuck — re-plan (split "
+        "the step into narrower ones, or add a recovery step) or peek "
+        "the screen fresh.\n"
+        "\n"
+        "Every step is ONE tool_call's worth of work. Do NOT smash "
+        "multiple actions into one step — `'Log, go back, home, "
+        "end_session'` is WRONG; those are four separate steps.\n"
+        "\n"
+        "When to call:\n"
+        "  1. ONCE, right after reading the owner's IM, with a THOROUGH "
+        "step list covering every action from the current screen all the "
+        "way to end_session. Don't plan just the next few steps — draft "
+        "the whole flow top-to-bottom. The wrap-up is ALWAYS at least "
+        "three separate steps at the end, each on its own line: "
+        "(i) reply to the owner in IM with the outcome, (ii) append_log "
+        "one line, (iii) end_session DONE/FAIL. First call: every step "
+        "is `pending` except the one you're about to start "
+        "(`in_progress`).\n"
+        "  2. WHEN A STEP'S INTENT IS ACHIEVED (the screen confirms the "
+        "step's goal): flip that step to `completed` and the next one "
+        "to `in_progress`. Not after every tap — after every step.\n"
+        "  3. When the plan shifts (unexpected screen, owner adjusts, "
+        "fallback path, new sub-goal) — re-emit `steps` with the revised "
+        "list; keep statuses consistent.\n"
+        "\n"
+        "Skip `update_progress` entirely if the wake has ≤2 concrete "
+        "steps (just execute them — a plan-for-two-steps is overhead).\n"
+        "\n"
+        "Each step is ONE concrete action, imperative. Example — owner "
+        "asks 'buy me some snacks on JD'. After the first two steps are "
+        "done and you're Searching for chips, the plan renders as:\n"
+        f"  {_DONE}Open JD via Spotlight\n"
+        f"  {_DONE}Tap the 7Fresh grocery entry point\n"
+        f"  {_ACTIVE}Search 'chips', tap first matching item, Add to cart\n"
+        f"  {_TODO}Search 'cola', tap first matching item, Add to cart\n"
+        f"  {_TODO}Open cart, Checkout, confirm shipping address\n"
+        f"  {_TODO}Send order summary to owner in IM for confirm\n"
+        f"  {_TODO}end_session WAIT + create_job to resume after owner OK\n"
+        f"  {_TODO}[on resume] tap Pay, complete checkout\n"
+        f"  {_TODO}Reply to owner in IM: 'Order placed ✅'\n"
+        f"  {_TODO}append_log one line describing the outcome\n"
+        f"  {_TODO}end_session DONE\n"
+        f"(`{_DONE.strip()}`=completed, `{_ACTIVE.strip()}`=in_progress, "
+        f"`{_TODO.strip()}`=pending; you set the status values, the "
+        "renderer picks the icons.)\n"
+        "\n"
+        "Pass only changed fields. First call: usually owner_said + "
+        "understanding + steps. Subsequent calls: usually just steps."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "owner_said": {
                 "type": "string",
+                "minLength": 5,
+                "maxLength": 1000,
                 "description": "What the owner literally said — quote the IM message.",
             },
             "understanding": {
                 "type": "string",
+                "minLength": 5,
+                "maxLength": 1000,
                 "description": "One sentence: what you think they want and why.",
             },
             "steps": {
                 "type": "array",
-                "items": {"type": "string"},
-                "description": "Ordered imperative steps to reach the goal.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1000,
+                            "description": "One concrete imperative action.",
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "in_progress", "completed"],
+                            "description": (
+                                "pending = not started; in_progress = "
+                                "currently doing (max ONE at a time); "
+                                "completed = finished."
+                            ),
+                        },
+                    },
+                    "required": ["content", "status"],
+                },
+                "description": (
+                    "Full ordered step list. Exactly one step may be "
+                    "in_progress at a time; the engine rejects plans that "
+                    "violate this."
+                ),
             },
         },
         "required": [],
     },
-    handler=_handle_update_plan,
+    handler=_handle_update_progress,
 )
 
 
@@ -488,7 +589,7 @@ def build_registry(
     """
     tools: dict[str, LocalTool] = {
         _NOTE.name: _NOTE,
-        _UPDATE_PLAN.name: _UPDATE_PLAN,
+        _UPDATE_PROGRESS.name: _UPDATE_PROGRESS,
         _APPEND_LOG.name: _APPEND_LOG,
         _SAVE_MEMORY.name: _SAVE_MEMORY,
         _READ_MEMORY.name: _READ_MEMORY,

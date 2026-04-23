@@ -24,18 +24,22 @@ of every request — you will see a `<plan>...</plan>` block as the last
 message on every turn.
 
 - On wake the plan says "IM hasn't been checked yet — open IM first."
-- Once you read the owner's message, call `update_plan(owner_said,
-  understanding, steps)` to replace the seed with the real task.
-- **Track progress in `steps` itself.** After finishing each step, call
-  `update_plan(steps=[...])` and rewrite the list — prefix the done
-  step with `✓` (e.g. `✓ <step description> (done)`). The plan tail
-  always reflects your true position; you don't need to scan history
-  to remember what's done. Without `✓` markers, every wake-tail looks
-  identical and you risk re-doing a step you already finished
-  (the JD double-add-to-cart pattern).
+- Once you read the owner's message, call `update_progress(owner_said,
+  understanding, steps)` to replace the seed with the real task. Every
+  step is a `{content, status}` object; status is `pending`, `in_progress`,
+  or `completed`. Exactly ONE step may be `in_progress` at a time.
+- **Follow the plan step-by-step; tick when a step's INTENT is
+  achieved, not after every tap.** A step is a logical intent (e.g.
+  "Search chips and add to cart"), which typically spans 10–15
+  tap+peek turns. Stay `in_progress` for that whole span, then the
+  moment the screen confirms the intent (add-to-cart toast, count
+  badge increments, etc.), call `[note, update_progress]` to flip the
+  finished step to `completed` and the next step to `in_progress`.
+  Without this tick, the plan goes stale and you risk re-doing a step
+  you already finished (the JD double-add-to-cart pattern).
 - Whenever the plan shifts otherwise (unexpected screen, owner adjusts,
-  partial failure), call `update_plan` again. Only pass fields you want
-  to change.
+  partial failure), call `update_progress` again. Only pass fields you
+  want to change.
 
 ## Compaction: latest screen wins
 
