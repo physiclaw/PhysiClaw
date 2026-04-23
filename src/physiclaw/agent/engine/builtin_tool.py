@@ -145,7 +145,11 @@ async def _handle_finish_job(_session: Session, args: dict) -> str:
 async def _handle_wait(_session: Session, args: dict) -> str:
     seconds = args["seconds"]
     await asyncio.sleep(seconds)
-    return f"waited {seconds}s"
+    return (
+        f"waited {seconds}s — `peek` now to see what changed. "
+        "Don't chain another `wait` without observing first; if still "
+        "nothing, escalate with `end_session(WAIT, ...)` + `create_job`."
+    )
 
 
 async def _handle_end_session(session: Session, args: dict) -> str:
@@ -517,8 +521,10 @@ _WAIT = LocalTool(
         "Block briefly (1-60s), then return so your next turn can "
         "re-observe. For short in-session waits when the owner is "
         "actively engaged (e.g. you sent a message and they're typing). "
-        "For longer waits, close with `end_session(WAIT, ...)` + "
-        "`create_job` instead."
+        "**After `wait`, your very next call must be `peek`** — chaining "
+        "`wait → wait` without observing is a bug; if the first peek "
+        "shows no change, escalate with `end_session(WAIT, ...)` + "
+        "`create_job` rather than waiting again."
     ),
     input_schema={
         "type": "object",
