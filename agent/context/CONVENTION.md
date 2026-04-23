@@ -67,28 +67,20 @@ Every physical-action bbox must be copied verbatim from a bbox in the
 most recent `peek` / `screenshot` listing, or from a text row that
 survived compaction in an earlier view's stub.
 
-**Verbatim means character-for-character.** Transcribe the four numbers
-*between the brackets* of the listing row you picked — do not retype
-them from memory, do not re-read the digits off the image, do not
-round or normalize. `0.520` stays `0.520` (not `0.52`, not `0.518`).
-A one-digit drift sounds tiny but can land a tap on the neighboring
-icon for small targets — and the model's natural tendency is to
-regenerate digits rather than copy them, so this rule is a deliberate
-correction, not a suggestion.
+**Verbatim means character-for-character.** Find the target row in the
+listing, read the four numbers between its brackets `[left,top,right,bottom]`,
+and put exactly those digits (same decimals, same order) into the bbox
+argument. `0.520` stays `0.520` — not `0.52`, not `0.518`. A one-digit
+drift can land a tap on the neighboring icon; the model's natural
+tendency is to regenerate rather than copy, so this rule is a deliberate
+correction.
 
-Procedure: find the target row in the listing, identify its bbox
-brackets `[left,top,right,bottom]`, put exactly those four numbers
-(same decimal digits, same order) into the bbox argument.
-
-Never guess, never round, never average two listing rows, never
-"eyeball" coordinates from the image. If the element you want isn't
-in any current or surviving listing row, re-observe with a more
-accurate view — `screenshot` > `peek` in fidelity. Step up the ladder
-rather than re-running `peek` and hoping for a better listing.
+If the target isn't in any current or surviving listing row, step up
+the ladder — `screenshot` > `peek` in fidelity. Re-running `peek` and
+hoping for a better listing is how loops happen.
 
 This is what makes `sequence` safe: each step's bbox is grounded in
-the listing that was live when you planned the chain. A made-up bbox
-turns `sequence` into blind tapping and compounds errors step by step.
+the listing that was live when you planned the chain.
 
 ## Session close
 
@@ -120,4 +112,3 @@ DONE / STUCK / FAIL / IDLE / WAIT.
   for a minutes/hours-scale resume. Short waits keep you in-flow if
   the owner is actively engaged; the cap on retries prevents holding
   the loop open when they've genuinely stepped away.
-

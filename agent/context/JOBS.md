@@ -6,41 +6,20 @@ prompt when the job fires.
 
 ## Lifecycle
 
-The two `kind`s diverge at `finish_job`:
+Every job follows the same path:
 
-**One-time** — fires once, then terminates. Use for follow-ups,
-reminders, deferred actions. Auto-purged from jobs.md 7 days after
-termination.
-
-```
-create_job(kind="one-time")
-    │
-    ▼
+```text
 [pend] ──(cron fires)──▶ [fired] ──(finish_job)──▶ [done|fail|cancel]
-                                                         │
-                                                         ▼
-                                              auto-purged after 7 days
 ```
 
-**Periodic** — fires every cycle until explicitly cancelled. Use for
-recurring tasks, daily checks, monitoring.
+Two `kind`s diverge only at `finish_job`:
 
-```
-create_job(kind="periodic")
-    │
-    ▼                ┌──────────────────────────────────────┐
-[pend] ─(cron fires)─▶ [fired] ─(finish_job done/fail)─▶ [pend] ─▶ ...
-                          │
-                          └─(finish_job cancel)─▶ [cancel]  (permanent)
-```
-
-Key difference: `finish_job(id, "done", recap)` on a **one-time**
-terminates the job; on a **periodic** it resets Status to `pend` so
-the next scheduled cycle still fires (Next fire time was already
-advanced when the cron hook fired). Only `finish_job(id, "cancel",
-recap)` ends a periodic for good. Same for `"fail"` — it's "this
-cycle failed, try again next cycle" for periodic, "this job failed,
-done forever" for one-time.
+- **one-time** (default) — terminal. Use for follow-ups, reminders,
+  deferred actions. Auto-purged 7 days after termination.
+- **periodic** — `finish_job(id, "done" | "fail")` resets Status to
+  `pend` so the next scheduled cycle fires (Next fire time was already
+  advanced). Only `finish_job(id, "cancel")` is permanent. Use for
+  recurring tasks, daily checks.
 
 **You own outcome marking.** The engine never auto-marks jobs at
 session close. Every fired job in this wake needs an explicit
@@ -79,13 +58,13 @@ jobs.md after 7 days of inactivity.
 
 ## When to use what
 
-| Want to... | Use |
-|---|---|
-| Schedule a follow-up | `create_job(id, ...)` |
-| "Edit" a job (any change) | `finish_job(old_id, "cancel", recap)` then `create_job(new_id, ...)` |
-| Mark a fired job's outcome | `finish_job(id, status, recap)` |
-| See full details of one job | `get_job(id)` |
-| List jobs (one-liners) | `list_jobs(status?)` |
+| Want to...                  | Use                                           |
+| --------------------------- | --------------------------------------------- |
+| Schedule a follow-up        | `create_job(id, ...)`                         |
+| Edit/reschedule a job       | `finish_job(cancel)` + `create_job` (new id)  |
+| Mark a fired job's outcome  | `finish_job(id, status, recap)`               |
+| See full details of one job | `get_job(id)`                                 |
+| List jobs (one-liners)      | `list_jobs(status?)`                          |
 
 ## Tools
 
