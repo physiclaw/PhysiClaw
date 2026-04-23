@@ -1,8 +1,7 @@
 """``physiclaw setup phone`` — learn the on-screen keyboard.
 
-Port of the old ``scripts/calibrate_keyboard.py``. Takes phone screenshots
-with the keyboard visible, detects key positions, and writes a UI-preset
-markdown file that the agent uses for typing.
+Takes phone screenshots with the keyboard visible, detects key positions,
+and writes a UI-preset markdown file that the agent uses for typing.
 """
 
 import logging

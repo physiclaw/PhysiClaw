@@ -56,13 +56,13 @@ If any check fails, ask the user to fix and re-screenshot.
 Then run detection:
 
 ```bash
-uv run python scripts/calibrate_keyboard.py
+physiclaw setup phone data/image/keyboard/*
 ```
 
 This detects key bounding boxes and generates:
 
-- Bounding box images in `data/image/keyboard/bbox/`
-- A preset template at `.claude/ui-presets/system-keyboard.md` with positions filled in
+- Bounding box images in `keyboard-bbox/` (cwd-relative; override with `--bbox-dir`)
+- A preset template at `~/.physiclaw/ui-presets/system-keyboard.md` with positions filled in
 
 Check the output: it should report 4 rows per keyboard, ~33 keys for alpha, ~35 for numeric.
 If detection fails or key counts are wrong, ask the user to retake screenshots (original image, no resize, no editing).
@@ -70,7 +70,7 @@ If detection fails or key counts are wrong, ask the user to retake screenshots (
 ## Step 3: Fill ??? labels
 
 Keys marked ??? need to be identified. After filling, tell the user:
-"You can open `.claude/ui-presets/system-keyboard.md` to check my editing."
+"You can open `~/.physiclaw/ui-presets/system-keyboard.md` to check my editing."
 
 For each keyboard page:
 
@@ -125,13 +125,13 @@ After filling all ???, verify that no Position values were accidentally modified
 the Position columns of the filled file against the reference copy:
 
 ```bash
-diff <(grep -oP '\[[\d., ]+\]' .claude/ui-presets/system-keyboard.md) \
-     <(grep -oP '\[[\d., ]+\]' data/image/keyboard/bbox/system-keyboard.ref.md)
+diff <(grep -oP '\[[\d., ]+\]' ~/.physiclaw/ui-presets/system-keyboard.md) \
+     <(grep -oP '\[[\d., ]+\]' keyboard-bbox/system-keyboard.ref.md)
 ```
 
 If no output, all positions match. If there are differences, the Position column was accidentally
 edited — restore those rows from the reference file.
 
-Then ask the user to review the final `.claude/ui-presets/system-keyboard.md`.
+Then ask the user to review the final `~/.physiclaw/ui-presets/system-keyboard.md`.
 
 Done. The AI agent can now use the keyboard preset for typing.

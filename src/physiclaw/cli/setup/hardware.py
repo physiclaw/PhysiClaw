@@ -1,7 +1,6 @@
 """``physiclaw setup hardware`` — interactive arm + camera calibration.
 
-Talks to a running ``physiclaw server`` over HTTP. Migrated verbatim from
-the old ``scripts/setup.py`` — only the entry point changed.
+Talks to a running ``physiclaw server`` over HTTP.
 """
 
 import base64

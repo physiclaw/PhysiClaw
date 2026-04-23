@@ -7,9 +7,9 @@ allowed-tools: Bash
 # Setup
 
 ```bash
-uv run python scripts/setup.py           # interactive, default
-uv run python scripts/setup.py -y        # auto mode, skip prompts
-uv run python scripts/setup.py --trace   # add edge-trace visual check at end
+physiclaw setup hardware            # interactive, default
+physiclaw setup hardware -y         # auto mode, skip prompts
+physiclaw setup hardware --trace    # add edge-trace visual check at end
 ```
 
 Fails with non-zero exit and prints which step failed. Fix the physical setup and rerun.
