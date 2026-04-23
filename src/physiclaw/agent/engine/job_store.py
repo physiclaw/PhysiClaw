@@ -23,9 +23,11 @@ from pathlib import Path
 
 from croniter import croniter
 
+from physiclaw import paths
+
 log = logging.getLogger(__name__)
 
-JOBS_PATH = Path("jobs/jobs.md")
+JOBS_PATH = paths.jobs_file()
 
 KIND_PERIODIC = "periodic"
 KIND_ONE_TIME = "one-time"

@@ -1,46 +1,35 @@
-"""OS-standard user paths (macOS-first).
+"""PhysiClaw's single data root.
 
-All persistent state the package reads or writes at runtime lives here —
-calibration bundles, vision-model cache, logs, jobs, memory. Every path
-is overridable with a matching ``PHYSICLAW_*`` env var for tests or
-non-default installs.
+All persistent state — calibration, memory, jobs, model cache, logs —
+lives under ``~/.physiclaw/``. Override with ``PHYSICLAW_HOME`` (read once
+at import, so set it *before* the first ``import physiclaw`` in tests).
 
-Defaults on macOS:
-  DATA_DIR   ~/Library/Application Support/physiclaw
-  CACHE_DIR  ~/Library/Caches/physiclaw
-  CONFIG_DIR ~/Library/Application Support/physiclaw
-  LOG_DIR    ~/Library/Logs/physiclaw
+Layout::
+
+    ~/.physiclaw/
+    ├── calibration/{bundle.json, cache/}
+    ├── memory/{memory.md, OWNER.md, YYYY-MM-DD.md}
+    ├── jobs/jobs.md
+    ├── models/omniparser_icon_detect/model.onnx
+    ├── snapshots/, screenshots/, tool_calls/
+    └── log/{claude/, engine/}
 """
 
 import os
 from pathlib import Path
 
-from platformdirs import (
-    user_cache_dir,
-    user_config_dir,
-    user_data_dir,
-    user_log_dir,
-)
-
-_APP = "physiclaw"
+HOME: Path = Path(os.environ.get("PHYSICLAW_HOME", "~/.physiclaw")).expanduser()
+LOG_DIR: Path = HOME / "log"
 
 
-def _env_or(var: str, default: str) -> Path:
-    raw = os.environ.get(var)
-    return Path(raw).expanduser() if raw else Path(default)
+def ensure_dirs() -> None:
+    """Create HOME and LOG_DIR. Safe to call repeatedly."""
+    HOME.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-
-DATA_DIR: Path = _env_or("PHYSICLAW_DATA_DIR", user_data_dir(_APP))
-CACHE_DIR: Path = _env_or("PHYSICLAW_CACHE_DIR", user_cache_dir(_APP))
-CONFIG_DIR: Path = _env_or("PHYSICLAW_CONFIG_DIR", user_config_dir(_APP))
-LOG_DIR: Path = _env_or("PHYSICLAW_LOG_DIR", user_log_dir(_APP))
-
-
-# --- specific resources ---
 
 def model_cache() -> Path:
-    """Root for downloaded vision models (OmniParser ONNX, OCR weights)."""
-    return CACHE_DIR / "models"
+    return HOME / "models"
 
 
 def omniparser_onnx() -> Path:
@@ -48,38 +37,36 @@ def omniparser_onnx() -> Path:
 
 
 def calibration_bundle() -> Path:
-    return DATA_DIR / "calibration" / "bundle.json"
+    return HOME / "calibration" / "bundle.json"
 
 
 def calibration_cache_dir() -> Path:
-    return DATA_DIR / "calibration" / "cache"
+    return HOME / "calibration" / "cache"
 
 
 def snapshots_dir() -> Path:
-    return DATA_DIR / "snapshots"
+    return HOME / "snapshots"
 
 
 def screenshots_dir() -> Path:
-    return DATA_DIR / "screenshots"
+    return HOME / "screenshots"
 
 
 def tool_calls_dir() -> Path:
-    return DATA_DIR / "tool_calls"
+    return HOME / "tool_calls"
 
 
 def jobs_file() -> Path:
-    return DATA_DIR / "jobs" / "jobs.md"
+    return HOME / "jobs" / "jobs.md"
 
 
 def memory_dir() -> Path:
-    return DATA_DIR / "memory"
+    return HOME / "memory"
 
 
 def claude_log_dir() -> Path:
     return LOG_DIR / "claude"
 
 
-def ensure_dirs() -> None:
-    """Create all user dirs if missing. Cheap — safe to call at import time."""
-    for d in (DATA_DIR, CACHE_DIR, CONFIG_DIR, LOG_DIR):
-        d.mkdir(parents=True, exist_ok=True)
+def engine_log_dir() -> Path:
+    return LOG_DIR / "engine"

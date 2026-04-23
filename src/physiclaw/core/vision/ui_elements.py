@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from physiclaw import paths
 from physiclaw.core.vision.render import annotate_elements
 
 log = logging.getLogger(__name__)
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     out_path = (
         Path(args.output)
         if args.output
-        else Path("data/snapshots") / (Path(args.image).stem + "_ui_elements.jpg")
+        else paths.snapshots_dir() / (Path(args.image).stem + "_ui_elements.jpg")
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out_path), annotated)

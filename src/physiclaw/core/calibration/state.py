@@ -33,7 +33,9 @@ ROTATION_NAMES: dict[int, str] = {
 
 DEFAULT_ROTATION: int = cv2.ROTATE_90_COUNTERCLOCKWISE
 
-BUNDLE_PATH = Path("data/calibration/bundle.json")
+from physiclaw import paths
+
+BUNDLE_PATH = paths.calibration_bundle()
 
 
 @dataclasses.dataclass

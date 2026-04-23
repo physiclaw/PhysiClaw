@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "physiclaw"
-version = "0.0.2"
+version = "0.0.3"
 description = "Give AI agents a physical finger to operate any phone — robotic stylus + camera, no APIs needed."
 license = "MIT"
 readme = "README.md"
@@ -28,7 +28,6 @@ dependencies = [
     "rapidocr>=3.7.0",
     "onnxruntime>=1.24.0",
     "typer>=0.12",
-    "platformdirs>=4.0",
 ]
 
 [project.urls]

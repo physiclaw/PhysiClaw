@@ -16,15 +16,14 @@ from physiclaw.agent.runtime.sentinel import parse_sentinel
 
 log = logging.getLogger(__name__)
 
-# --- Paths ---
 from physiclaw import paths
 
 _HERE = Path(__file__).resolve()
 AGENT_MD = _HERE.parents[1] / "context" / "AGENT.md"
 LOG_DIR = paths.claude_log_dir()
-# PROJECT_ROOT is the cwd for the spawned `claude` subprocess. For a pip
-# install there is no repo root to inherit — just use the user data dir.
-PROJECT_ROOT = paths.DATA_DIR
+# cwd for the spawned `claude` subprocess — just HOME, since a pip install
+# has no repo root to inherit.
+PROJECT_ROOT = paths.HOME
 
 TIMEOUT = 180  # 3min, per-line inactivity timeout
 STREAM_BUFFER = 10 * 1024 * 1024  # 10MB readline limit (default 64KB blows up on screenshot base64)

@@ -37,7 +37,9 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-_LOG_DIR = Path("log/engine")
+from physiclaw import paths
+
+_LOG_DIR = paths.engine_log_dir()
 _RAW_DIR = _LOG_DIR / "raw"
 _IMAGE_DIR = _RAW_DIR / "images"
 
@@ -229,7 +231,7 @@ class RawLog:
     """
 
     def __init__(self, session_id: str):
-        _RAW_DIR.mkdir(parents=True, exist_ok=True)
+        _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
         _purge_old()
         self.session_id = session_id
         self.path = _RAW_DIR / f"{session_id}.jsonl"
@@ -286,7 +288,6 @@ class RawLog:
         ext = _MIME_EXT.get(mime, ".bin")
         rel = f"images/{self.session_id}_{self._image_counter:05d}{ext}"
         path = _RAW_DIR / rel
-        _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
         return rel
 

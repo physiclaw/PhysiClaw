@@ -64,14 +64,15 @@ def doctor(
 
     typer.echo()
     typer.echo(typer.style("Paths", bold=True))
-    for name, p in (
-        ("DATA_DIR  ", paths.DATA_DIR),
-        ("CACHE_DIR ", paths.CACHE_DIR),
-        ("CONFIG_DIR", paths.CONFIG_DIR),
-        ("LOG_DIR   ", paths.LOG_DIR),
+    for label, p in (
+        ("home       ", paths.HOME),
+        ("calibration", paths.calibration_bundle().parent),
+        ("memory     ", paths.memory_dir()),
+        ("jobs       ", paths.jobs_file().parent),
+        ("models     ", paths.model_cache()),
+        ("logs       ", paths.LOG_DIR),
     ):
-        exists = p.exists()
-        typer.echo(f"  {name}  {p}  {'' if exists else '(missing)'}")
+        typer.echo(f"  {label}  {p}  {'' if p.exists() else '(missing)'}")
 
     if fix:
         paths.ensure_dirs()

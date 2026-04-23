@@ -43,7 +43,9 @@ log = logging.getLogger(__name__)
 SLOW_Z_SPEED = 6000
 PROBE_Z_SPEED = 6000
 
-VIEWPORT_CACHE_STEM = Path("data/calibration/cache/viewport")
+from physiclaw import paths
+
+VIEWPORT_CACHE_STEM = paths.calibration_cache_dir() / "viewport"
 
 
 def grid_positions(cal: "CalibrationState"):

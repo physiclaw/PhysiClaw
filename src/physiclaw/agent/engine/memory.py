@@ -14,7 +14,9 @@ Write paths used by the local tool handlers: `append_log`, `save_fact`,
 import datetime as dt
 from pathlib import Path
 
-MEMORY_DIR = Path("memory")
+from physiclaw import paths
+
+MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = MEMORY_DIR / "memory.md"
 OWNER_FILE = MEMORY_DIR / "OWNER.md"
 DAILY_LOOKBACK = 3
