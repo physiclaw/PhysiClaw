@@ -36,6 +36,9 @@ from agent.runtime.sentinel import FAIL, STUCK, WAIT
 
 log = logging.getLogger(__name__)
 
+# Runaway-loop backstop, not a context-safety limit. Prompt tokens grow
+# ~624·t + 13k empirically (R²=0.97); at 1M context (Qwen3.6-plus) the
+# hard wall is ~1,580 turns, so 200 leaves ample headroom.
 MAX_TURNS = 200
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = 5.0
