@@ -6,14 +6,15 @@ Usage: uv run python scripts/download_omniparser.py
 
 import logging
 import urllib.request
-from pathlib import Path
+
+from physiclaw import paths
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
-MODEL_DIR = Path(__file__).parent.parent / "data" / "model" / "omniparser_icon_detect"
+ONNX_PATH = paths.omniparser_onnx()
+MODEL_DIR = ONNX_PATH.parent
 PT_PATH = MODEL_DIR / "model.pt"
-ONNX_PATH = MODEL_DIR / "model.onnx"
 PT_URL = "https://huggingface.co/microsoft/OmniParser-v2.0/resolve/main/icon_detect/model.pt"
 
 

@@ -8,7 +8,7 @@ Algorithm:
 
 The detected boxes are drawn on a bounding box image. An AI (Claude) then
 labels each numbered box to produce a UI preset file at
-.claude/ui-presets/system-keyboard.md — which the agent uses at runtime.
+~/.physiclaw/ui-presets/system-keyboard.md — which the agent uses at runtime.
 
 No hardcoded layouts. Works with any keyboard.
 """
@@ -448,10 +448,10 @@ def _render_pages(
 def generate_preset(
     pages: dict[str, list[list[dict]]], bbox_images: dict[str, str] | None = None
 ) -> str:
-    """Generate .claude/ui-presets/system-keyboard.md content.
+    """Generate ~/.physiclaw/ui-presets/system-keyboard.md content.
 
-    Reads the template from .claude/skills/calibrate-keyboard/template.md
-    and fills in the {{pages}} placeholder with detected key tables.
+    Reads the bundled template from physiclaw.core.vision.presets and fills
+    in the {{pages}} placeholder with detected key tables.
     """
     template = TEMPLATE_PATH.read_text()
     pages_md = _render_pages(pages, bbox_images)

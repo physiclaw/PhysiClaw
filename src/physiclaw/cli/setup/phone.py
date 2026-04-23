@@ -11,6 +11,8 @@ from typing import Annotated
 
 import typer
 
+from physiclaw import paths
+
 
 def phone(
     images: Annotated[
@@ -31,10 +33,10 @@ def phone(
         Path,
         typer.Option(
             "--preset",
-            help="Output preset file. Default lands in the current project's "
-            ".claude/ui-presets/ if you're running inside a Claude Code project.",
+            help="Output preset file. Defaults to "
+            "~/.physiclaw/ui-presets/system-keyboard.md.",
         ),
-    ] = Path(".claude/ui-presets/system-keyboard.md"),
+    ] = paths.ui_presets_dir() / "system-keyboard.md",
 ) -> None:
     """Detect keyboard keys from phone screenshots and generate a UI preset.
 

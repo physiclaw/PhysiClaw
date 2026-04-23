@@ -1,28 +1,37 @@
 """Skill discovery and tiered dispatch.
 
-Layout. A skill is a folder under `skills/<name>/`:
+A skill is a folder containing:
   SKILL.md             frontmatter (name, description) + body (the workflow)
   references/          detail files — loaded on demand (tier 3)
   assets/              freeform resources a reference may point at
+
+Two roots are scanned, in order. The primary root is
+``~/.physiclaw/skills/<name>/`` so a ``uv tool install``-ed server finds
+skills without a repo cwd. The fallback is ``./skills/<name>/`` relative
+to the current working directory — convenient when iterating on skills
+from inside the repo. Primary wins on name collision.
 
 Tiers (progressive disclosure):
   1. Metadata (name + description) is injected into the SYSTEM prompt by
      `render_section`. This is the ONLY signal the model has to decide
      whether the skill is relevant — descriptions must name triggers.
   2. `Skill(name=...)` returns the SKILL.md body as a tool_result.
-  3. `Skill(name=..., reference=<path>)` loads `skills/<name>/references/
-     <path>` as text, resolved under the skill's dir only.
+  3. `Skill(name=..., reference=<path>)` loads `<skill>/references/<path>`
+     as text, resolved under the winning skill's dir only.
 
-Discovery is realpath-scoped: symlinks under `skills/` that resolve outside
-`skills/` are rejected so third-party skill installs can't path-traverse.
+Discovery is realpath-scoped within each root: a symlink that escapes
+its root is rejected so third-party skill installs can't path-traverse.
 """
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from physiclaw import paths
+
 log = logging.getLogger(__name__)
 
-SKILLS_DIR = Path("skills")
+HOME_SKILLS_DIR = paths.skills_dir()
+CWD_SKILLS_DIR = Path("skills")
 
 
 @dataclass
@@ -37,21 +46,25 @@ class Skill:
 
 
 def discover() -> dict[str, Skill]:
-    """Scan SKILLS_DIR for SKILL.md files.
-
-    Symlinked skills must resolve inside SKILLS_DIR or they're skipped with
-    a warning. Missing SKILL.md skips silently — a broken skill shouldn't
-    take down the session.
+    """Scan cwd then home skill roots. Home wins on name collision
+    (scanned last so `out[name] =` replaces). Missing SKILL.md skips
+    silently — a broken skill shouldn't take down the session.
     """
-    if not SKILLS_DIR.exists():
-        return {}
-    root = SKILLS_DIR.resolve()
     out: dict[str, Skill] = {}
-    for d in sorted(SKILLS_DIR.iterdir()):
+    _scan_root(CWD_SKILLS_DIR, out)
+    _scan_root(HOME_SKILLS_DIR, out)
+    return out
+
+
+def _scan_root(root: Path, out: dict[str, Skill]) -> None:
+    if not root.exists():
+        return
+    root_real = root.resolve()
+    for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith("_"):
             continue
         real = d.resolve()
-        if not real.is_relative_to(root):
+        if not real.is_relative_to(root_real):
             log.warning(
                 "skill %s resolves outside %s; skipping (path traversal guard)",
                 d.name, root,
@@ -68,7 +81,6 @@ def discover() -> dict[str, Skill]:
             body=body.strip(),
             dir=real,
         )
-    return out
 
 
 def dispatch(skills: dict[str, Skill], args: dict) -> str:
