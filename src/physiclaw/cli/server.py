@@ -125,6 +125,15 @@ def server(
     mcp.settings.port = port
     mcp.settings.log_level = "WARNING"
 
+    # Record the live (host, port) so `physiclaw doctor` probes the actual
+    # server, not the config-default port. atexit covers normal exits and
+    # KeyboardInterrupt; SIGTERM-without-cleanup is handled by doctor's
+    # pid-liveness check on read.
+    from physiclaw import runtime_state
+
+    runtime_state.write(host, port)
+    atexit.register(runtime_state.clear)
+
     from physiclaw.core.bridge import bridge_base_urls
 
     log = logging.getLogger(__name__)
