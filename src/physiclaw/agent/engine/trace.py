@@ -169,6 +169,11 @@ def _summarize(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat disp
     if name == "response":
         calls = [c.get("name") for c in event.get("tool_calls") or []]
         return f"{pfx}response finish={event.get('finish_reason','?')} calls={calls}"
+    if name == "cache":
+        return (
+            f"{pfx}cache hit={event.get('hit',0)} create={event.get('create',0)} "
+            f"new={event.get('new',0)} / total={event.get('total',0)}"
+        )
     if name == "tool_result":
         args = brief_args(event.get("arguments") or {})
         if "text" in event:

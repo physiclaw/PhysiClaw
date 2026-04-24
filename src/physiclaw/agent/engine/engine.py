@@ -123,13 +123,14 @@ async def _run_session(
         system_prompt = prompt.render_system(
             local_tool_schemas=local_schemas,
             memory_ctx=memory.load_persistent(),
-            cron_ctx=jobs.format_fired(triggers),
             skills_ctx=skill.render_section(skill_registry),
             provider_name=provider_name,
         )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": _format_triggers(triggers)},
+            {"role": "user", "content": _format_triggers(
+                triggers, cron_ctx=jobs.format_fired(triggers),
+            )},
         ]
 
         provider = make_provider(provider_name)
@@ -210,6 +211,7 @@ async def _loop(
         # sees; messages stays as canonical history.
         session.plan.tick_turn()
         request_messages = plan.inject_tail(messages, session.plan)
+        prompt.apply_cache_markers(request_messages)
         tr.write({"event": "request", "turn": turn, "message_count": len(request_messages)})
         rlog.write_request(turn, request_messages)
         log.info("turn %d: %d messages → provider", turn + 1, len(request_messages))
@@ -236,10 +238,12 @@ async def _loop(
                 for tc in asst.tool_calls
             ],
         })
+        cache_summary = _log_cache_usage(turn, asst.raw, tr)
         called = asst.tool_names()
         log.info(
-            "turn %d: finish=%s calls=%s",
+            "turn %d: finish=%s calls=%s%s",
             turn + 1, asst.finish_reason, called or None,
+            f", {cache_summary}" if cache_summary else "",
         )
 
         # Principle 2: strip provider-specific fields before echoing back.
@@ -413,10 +417,36 @@ async def _chat_with_retry(
     raise RuntimeError(f"provider failed after {MAX_ATTEMPTS} attempts: {last_err}")
 
 
-def _format_triggers(triggers: list[Trigger]) -> str:
+def _log_cache_usage(turn: int, raw: dict, tr: Trace) -> str:
+    """Extract DashScope prompt-cache stats from the raw usage block,
+    emit a trace event, and return a short `token: X.Xk, cache: YY%`
+    summary for the per-turn log line. Empty string when the provider
+    didn't report usage (no numbers to show)."""
+    usage = (raw or {}).get("usage") or {}
+    total = usage.get("prompt_tokens", 0) or 0
+    details = usage.get("prompt_tokens_details") or {}
+    hit = details.get("cached_tokens", 0) or 0
+    create = details.get("cache_creation_input_tokens", 0) or 0
+    new = max(0, total - hit - create)
+    tr.write({
+        "event": "cache",
+        "turn": turn,
+        "hit": hit,
+        "create": create,
+        "new": new,
+        "total": total,
+    })
+    if not total:
+        return ""
+    return f"token: {total / 1000:.1f}k, cache: {100 * hit / total:.0f}%"
+
+
+def _format_triggers(triggers: list[Trigger], *, cron_ctx: str = "") -> str:
     # Leading `Now:` line is the absolute-date anchor — memory logs use
     # relative dates, and the model burns turns triangulating today without
     # it. Each trigger then uses a uniform `[stamp] source: body` envelope.
+    # cron_ctx (jobs firing now) rides in this user message, not the system,
+    # so the system stays byte-stable across wakes for cross-session caching.
     now = dt.datetime.now()
     stamp = now.strftime("%Y-%m-%d %a %H:%M")
     lines = [
@@ -427,7 +457,10 @@ def _format_triggers(triggers: list[Trigger]) -> str:
     for t in triggers:
         source = t.source or "manual"
         lines.append(f"[{stamp}] {source}: {t.description}")
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if cron_ctx:
+        text += "\n\n" + cron_ctx
+    return text
 
 
 def _auto_schedule_wait_check(tr: Trace) -> None:

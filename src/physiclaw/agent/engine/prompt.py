@@ -3,10 +3,13 @@
 Each section is a `list[str]` builder; the final prompt is `"\\n".join(lines)`.
 Disabled sections return `[]` so their absence costs nothing.
 
-Cache layout: session-stable content above CACHE_BOUNDARY (doctrine, tools,
-memory); wake-volatile content below (cron-fired jobs). `prefix_hash`
-anchors on the prefix so it stays constant across wakes whose only
-difference is which crons fired.
+Cache layout: the system message is entirely session-stable, so it
+caches once and hits on every subsequent turn — and on the first turn
+of every later wake within the 5-min TTL. Wake-volatile content (the
+cron-fired jobs block, the trigger stamps) lives in the wake-trigger
+user message that follows, keeping the system bytes identical across
+wakes. DashScope caches at message granularity, so this is the only
+structure that gets cross-session hits.
 
 The inline `## Tooling` index card duplicates the schema sent via the
 provider's `tools=` API — open-weight models often miss tools that appear
@@ -17,12 +20,11 @@ import logging
 from pathlib import Path
 
 from physiclaw.agent.engine import memory, mcp_inventory
+from physiclaw.agent.engine.compact import STUB_PREFIX
 
 log = logging.getLogger(__name__)
 
 CONTEXT_DIR = Path(__file__).resolve().parent.parent / "context"
-
-CACHE_BOUNDARY = "<!-- prefix-cache-boundary -->"
 
 # OpenClaw-style modular doctrine: each named file is a slot with a defined
 # role. Files are rendered in this fixed order; any missing file contributes
@@ -45,11 +47,10 @@ def render_system(
     *,
     local_tool_schemas: list[dict] | None = None,
     memory_ctx: str = "",
-    cron_ctx: str = "",
     skills_ctx: str = "",
     provider_name: str = "",
 ) -> str:
-    """Compose the full SYSTEM for one session.
+    """Compose the full SYSTEM for one session — entirely session-stable.
 
     Order (above → below):
       # Doctrine          file-loop over DOCTRINE_FILE_ORDER. Slots:
@@ -62,8 +63,11 @@ def render_system(
       ## Reasoning Format  Qwen-only `<think>` wrapper
       ## memory.md        session-stable persistent facts — live file
                           dump (the spec lives in the PERSISTENCE.md slot)
-      CACHE_BOUNDARY      seam between session-stable and wake-volatile
-      cron_ctx            jobs firing now (changes every wake)
+
+    Wake-volatile content (fired-jobs block, trigger stamps) lives in
+    the user message the engine appends right after — keeping the
+    system message byte-stable across wakes for cross-session cache
+    hits.
     """
     lines: list[str] = [
         *_render_doctrine(),
@@ -72,8 +76,6 @@ def render_system(
         *_render_examples(),
         *_render_reasoning_format(provider_name),
         *_render_memory(memory_ctx),
-        CACHE_BOUNDARY,
-        cron_ctx,
     ]
     return "\n".join(lines)
 
@@ -243,14 +245,75 @@ def _first_sentence(text: str) -> str:
     return line[:200].rstrip()
 
 
-# ---------- cache-anchor verification ----------
+# ---------- cache-anchor verification + marker annotation ----------
+
+# 5-minute TTL prefix cache; reused as the value of every cache_control
+# block we emit. DashScope + Anthropic both accept this shape. Treat as
+# immutable — never mutate the shared dict.
+_EPHEMERAL = {"type": "ephemeral"}
+
+
+def apply_cache_markers(messages: list[dict]) -> None:
+    """Attach the two ephemeral cache_control markers that win the
+    DashScope (and Anthropic-style) prefix cache for PhysiClaw.
+
+    Placement — chosen so the cached bytes survive across turns AND
+    across sessions:
+
+      1. System message (index 0). The entire system content is
+         session-stable (wake-volatile content lives in the user
+         message that follows), so one cache_creation ever per
+         `cache_key`, and the cache hits not just every turn within a
+         session but the first turn of every later wake within the
+         5-min TTL. DashScope caches at message granularity — any
+         byte change in the system message would invalidate the
+         whole cache, so the system MUST stay identical across wakes.
+
+      2. Latest superseded screen-obs tool_result (the most recent
+         message whose content starts with `STUB_PREFIX`). The
+         deepest byte-stable point before the live multipart image,
+         which `compact.drop_stale_screens` rewrites to a stub on the
+         next turn — marking through the image would cache bytes
+         that mutate away.
+
+    Two markers ≡ the minimum that yields a steady-state hit every turn
+    without blowing the provider's marker budget.
+
+    Mutates `messages` in place by replacing individual entries with
+    shallow-copied dicts; caller-held dict references are NOT mutated.
+    Assumes `messages` enters free of cache_control (engine always
+    passes a fresh `request_messages` list from `plan.inject_tail`).
+    """
+    if messages and messages[0].get("role") == "system":
+        messages[0] = _with_cache_marker(messages[0])
+
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if m.get("role") != "tool":
+            continue
+        c = m.get("content")
+        if isinstance(c, str) and c.startswith(STUB_PREFIX):
+            messages[i] = _with_cache_marker(m)
+            return
+
+
+def _with_cache_marker(msg: dict) -> dict:
+    """Shallow-copy `msg` and wrap its string content in a single text
+    block carrying an ephemeral cache_control. Callers in
+    `apply_cache_markers` guarantee string content.
+    """
+    out = dict(msg)
+    out["content"] = [{
+        "type": "text", "text": msg["content"],
+        "cache_control": _EPHEMERAL,
+    }]
+    return out
 
 
 def prefix_hash(messages: list[dict]) -> str:
-    """sha256 of the SYSTEM message's stable prefix (everything ABOVE
-    CACHE_BOUNDARY). Logged at session start so cache-hit rates are
-    verifiable; the boundary anchor means cron context changes between
-    sessions don't move the hash."""
+    """sha256 of the SYSTEM message content. Logged at session start so
+    cache-hit rates are verifiable across wakes — the hash stays
+    identical while doctrine/memory/tools don't change."""
     if not messages or messages[0].get("role") != "system":
         raise ValueError("prefix_hash: messages[0] must be the system message")
     content = messages[0].get("content", "")
@@ -258,8 +321,7 @@ def prefix_hash(messages: list[dict]) -> str:
         raise ValueError(
             f"prefix_hash: system content must be str, got {type(content).__name__}"
         )
-    stable = content.split(CACHE_BOUNDARY, 1)[0]
-    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 # ---------- offline dump ----------
@@ -269,24 +331,15 @@ def dump(
     *,
     local_tool_schemas: list[dict] | None = None,
     memory_ctx: str = "",
-    cron_ctx: str = "",
     skills_ctx: str = "",
     provider_name: str = "",
-    keep_boundary: bool = True,
 ) -> str:
     """Render the SYSTEM prompt the same way the engine does, with all
     inputs optional so callers can dump the static skeleton without
-    spinning up MCP / loading memory / firing cron.
-
-    `keep_boundary=False` strips the boundary marker for a cleaner read
-    (useful when paging the dump into a terminal)."""
-    out = render_system(
+    spinning up MCP or loading memory."""
+    return render_system(
         local_tool_schemas=local_tool_schemas,
         memory_ctx=memory_ctx,
-        cron_ctx=cron_ctx,
         skills_ctx=skills_ctx,
         provider_name=provider_name,
     )
-    if not keep_boundary:
-        out = out.replace(CACHE_BOUNDARY + "\n", "").replace(CACHE_BOUNDARY, "")
-    return out

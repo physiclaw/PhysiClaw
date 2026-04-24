@@ -3,7 +3,7 @@
   1. `drop_stale_screens` — "latest screen wins": only the most recent
      peek/screenshot tool_result carries the image + full listing.
      Earlier view tool_results are stubbed down to a marker line
-     (`"(superseded <tool>)"`) plus the listing's TEXT rows (icon-kind
+     (`STUB_PREFIX + tool + ")"`) plus the listing's TEXT rows (icon-kind
      rows are dropped; without the image, numbered icon boxes are
      opaque anyway). Text rows are self-documenting — the label tells
      the agent what and where — and survive as re-targetable anchors.
@@ -16,6 +16,9 @@
   2. `scale_image_bytes` — ingress re-encode: normalize every incoming
      tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
      transparency (fine for screenshots), typically cuts payload 3–10×.
+
+Cache-marker placement lives in `prompt.py::apply_cache_markers`; it
+reads `STUB_PREFIX` here to locate the most recent superseded stub.
 """
 import logging
 from typing import Any
@@ -34,6 +37,11 @@ JPEG_QUALITY = CONFIG.compact.jpeg_quality
 # whose tool_calls are ENTIRELY within SCREEN_OBS ∪ {"note"} is a
 # "screen-observation turn" — collapsible under drop_stale_screens.
 SCREEN_OBS_TOOLS = frozenset({"peek", "screenshot"})
+
+# Stub header prefix for superseded screen-obs tool_results. Shared with
+# apply_cache_markers so the cache-marker step can locate the most
+# recent stub via `content.startswith(STUB_PREFIX)` without re-parsing.
+STUB_PREFIX = "(superseded "
 
 
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
@@ -193,7 +201,7 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
         listing = _extract_text(content)
         text_rows = _filter_text_rows(listing)
 
-        head = f"(superseded {view_tool_name})"
+        head = f"{STUB_PREFIX}{view_tool_name})"
         messages[view_tr_idx]["content"] = (
             f"{head}\n{text_rows}" if text_rows else head
         )
