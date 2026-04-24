@@ -7,6 +7,7 @@ server). When the server is offline, doctor actively probes the GRBL
 arm and enumerates cameras.
 """
 
+import contextlib
 import logging
 import os
 import platform
@@ -27,10 +28,26 @@ def _fmt_warn(msg: str) -> str:
     return typer.style("! ", fg=typer.colors.YELLOW) + msg
 
 
-def _list_serial_ports() -> list[str]:
-    from serial.tools.list_ports import comports
+@contextlib.contextmanager
+def _silenced_stderr():
+    """Redirect OS-level stderr (fd 2) to /dev/null for the block.
 
-    return [p.device for p in comports()]
+    OpenCV/AVFoundation/ffmpeg print "out device of bound" and similar
+    via C-level fprintf, bypassing Python's logging — only an fd-level
+    redirect catches them.
+    """
+    sys.stderr.flush()
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        saved = os.dup(2)
+        try:
+            os.dup2(devnull, 2)
+            yield
+        finally:
+            os.dup2(saved, 2)
+            os.close(saved)
+    finally:
+        os.close(devnull)
 
 
 def _list_cameras(max_index: int = 4) -> list[int]:
@@ -40,24 +57,27 @@ def _list_cameras(max_index: int = 4) -> list[int]:
 
     found: list[int] = []
     misses = 0
-    for i in range(max_index + 1):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            found.append(i)
-            misses = 0
-        else:
-            misses += 1
-        cap.release()
-        if misses >= 2:
-            break
+    with _silenced_stderr():
+        for i in range(max_index + 1):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                found.append(i)
+                misses = 0
+            else:
+                misses += 1
+            cap.release()
+            if misses >= 2:
+                break
     return found
 
 
-def _probe_server() -> tuple[str, int, dict | None]:
+def _probe_server() -> tuple[str, int, bool, dict | None]:
     """Find the live server (or guess from config) and GET /api/status.
 
-    Returns ``(host, port, status_dict_or_None)``. Any httpx/JSON failure
-    → status None. Matches the runtime's simple httpx-with-timeout pattern.
+    Returns ``(display_host, port, bind_all, status)``. ``bind_all`` is
+    True when the configured host was the 0.0.0.0 wildcard — display_host
+    is rewritten to "localhost" in that case so output reads cleanly,
+    but the flag lets doctor surface the exposure warning separately.
     """
     live = runtime_state.read_live()
     if live:
@@ -66,12 +86,14 @@ def _probe_server() -> tuple[str, int, dict | None]:
         from physiclaw.config import CONFIG
 
         host, port = CONFIG.server.host, CONFIG.server.port
-    connect_host = "127.0.0.1" if host == "0.0.0.0" else host
+    bind_all = host == "0.0.0.0"
+    if bind_all:
+        host = "localhost"
     try:
-        r = httpx.get(f"http://{connect_host}:{port}/api/status", timeout=1.0)
-        return (host, port, r.json())
+        r = httpx.get(f"http://{host}:{port}/api/status", timeout=1.0)
+        return (host, port, bind_all, r.json())
     except (httpx.HTTPError, ValueError):
-        return (host, port, None)
+        return (host, port, bind_all, None)
 
 
 def doctor() -> None:
@@ -121,10 +143,15 @@ def doctor() -> None:
 
     typer.echo()
     typer.echo(typer.style("Hardware", bold=True))
-    host, port, status = _probe_server()
+    host, port, bind_all, status = _probe_server()
     if status is not None:
         # Server is up — its view of arm/camera/calibration is authoritative.
         typer.echo(_fmt_ok(f"server: running on {host}:{port}"))
+        if bind_all:
+            typer.echo(_fmt_warn(
+                "bind: 0.0.0.0 — required for the phone bridge. Use only "
+                "on a private LAN. Do not run on a public-IP host."
+            ))
         for label in ("arm", "camera", "calibrated", "ready"):
             if status.get(label):
                 typer.echo(_fmt_ok(f"{label}: yes"))
@@ -134,7 +161,7 @@ def doctor() -> None:
         # Server offline — safe to probe hardware ourselves.
         typer.echo(_fmt_warn("server: not running"))
         typer.echo("  Probing serial ports for GRBL (active $I query, ~2s/port)…")
-        from physiclaw.core.hardware.grbl import detect_grbl
+        from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
 
         # detect_grbl logs its own narration; doctor speaks for itself.
         grbl_logger = logging.getLogger("physiclaw.core.hardware.grbl")
@@ -147,11 +174,11 @@ def doctor() -> None:
         if grbl_port:
             typer.echo(_fmt_ok(f"GRBL arm: {grbl_port}"))
         else:
-            all_ports = _list_serial_ports()
-            if all_ports:
+            relevant = candidate_ports()
+            if relevant:
                 typer.echo(_fmt_warn(
-                    f"no GRBL detected (saw {len(all_ports)} serial port(s): "
-                    f"{', '.join(all_ports)})"
+                    f"no GRBL detected (saw {len(relevant)} candidate port(s): "
+                    f"{', '.join(relevant)})"
                 ))
             else:
                 typer.echo(_fmt_warn(

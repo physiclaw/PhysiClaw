@@ -5,6 +5,7 @@ import time
 
 import serial
 import serial.tools.list_ports
+from serial.tools.list_ports_common import ListPortInfo
 
 log = logging.getLogger(__name__)
 
@@ -51,27 +52,34 @@ def _port_priority(port_info) -> int:
     return 50  # unknown, probe after likely ones
 
 
+def _candidate_port_infos() -> list[ListPortInfo]:
+    """port_info objects that look worth probing (skipping bluetooth/debug etc.).
+
+    Sorted by likelihood — likely USB-serial chips first. Shared by
+    detect_grbl() (which probes them) and candidate_ports() (diagnostics).
+    """
+    return sorted(
+        [p for p in serial.tools.list_ports.comports() if _port_priority(p) < 99],
+        key=lambda p: (_port_priority(p), p.device),
+    )
+
+
+def candidate_ports() -> list[str]:
+    """Device names that detect_grbl() would probe. For diagnostics."""
+    return [p.device for p in _candidate_port_infos()]
+
+
 def detect_grbl() -> str | None:
     """Scan serial ports and return the first GRBL device port, or None.
 
     Skips Bluetooth/debug ports and probes likely USB-serial ports first.
     """
-    all_ports = serial.tools.list_ports.comports()
-    ports = sorted(
-        [p for p in all_ports if _port_priority(p) < 99],
-        key=lambda p: (_port_priority(p), p.device),
-    )
-    skipped = len(all_ports) - len(ports)
-
+    ports = _candidate_port_infos()
     if not ports:
         log.warning("No candidate serial ports found.")
         return None
 
-    msg = f"Scanning {len(ports)} serial port(s) for GRBL"
-    if skipped:
-        msg += f" (skipped {skipped} Bluetooth/debug)"
-    log.debug(msg)
-
+    log.debug(f"Scanning {len(ports)} serial port(s) for GRBL")
     for port_info in ports:
         desc = port_info.description or ""
         log.debug(f"  Probing {port_info.device}  ({desc})")
