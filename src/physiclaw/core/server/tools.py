@@ -177,6 +177,12 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         register (retry once) or this screen has no back action
         (modals, root tabs, lock screen) — try `home_screen` and
         re-enter, or look for an in-screen "Back" / "<" button to tap.
+
+        Known trap — full-screen image viewers (tap a product image on
+        a shop detail page, tap a photo in Messages/WeChat, etc.): the
+        viewer reclaims left/right swipes to cycle through images, so
+        the edge-swipe won't pop. Close via the in-viewer "X" or
+        "Done" button instead.
         """
         result = await asyncio.to_thread(physiclaw.go_back)
         return f"{result} — `peek` to verify navigation landed and plan the next move"
