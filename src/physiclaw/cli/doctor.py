@@ -1,14 +1,22 @@
-"""``physiclaw doctor`` — health check and environment diagnostics."""
+"""``physiclaw doctor`` — read-only health check.
 
+Server-aware: if a PhysiClaw server is running, the live ``/api/status``
+response wins over local probes (the server holds the serial port and
+camera, so re-probing them would either fail with "busy" or break the
+server). When the server is offline, doctor actively probes the GRBL
+arm and enumerates cameras.
+"""
+
+import logging
 import os
 import platform
 import shutil
 import sys
-from typing import Annotated
 
+import httpx
 import typer
 
-from physiclaw import __version__, paths
+from physiclaw import __version__, paths, runtime_state
 
 
 def _fmt_ok(msg: str) -> str:
@@ -45,13 +53,31 @@ def _list_cameras(max_index: int = 4) -> list[int]:
     return found
 
 
-def doctor(
-    fix: Annotated[
-        bool,
-        typer.Option("--fix", help="Attempt to auto-repair any issues found."),
-    ] = False,
-) -> None:
+def _probe_server() -> tuple[str, int, dict | None]:
+    """Find the live server (or guess from config) and GET /api/status.
+
+    Returns ``(host, port, status_dict_or_None)``. Any httpx/JSON failure
+    → status None. Matches the runtime's simple httpx-with-timeout pattern.
+    """
+    live = runtime_state.read_live()
+    if live:
+        host, port = live["host"], live["port"]
+    else:
+        from physiclaw.config import CONFIG
+
+        host, port = CONFIG.server.host, CONFIG.server.port
+    connect_host = "127.0.0.1" if host == "0.0.0.0" else host
+    try:
+        r = httpx.get(f"http://{connect_host}:{port}/api/status", timeout=1.0)
+        return (host, port, r.json())
+    except (httpx.HTTPError, ValueError):
+        return (host, port, None)
+
+
+def doctor() -> None:
     """Check environment, hardware, and assets. Report what's missing."""
+    paths.ensure_dirs()
+
     typer.echo(typer.style("PhysiClaw doctor", bold=True))
     typer.echo(f"  physiclaw:  {__version__}")
     typer.echo(f"  python:     {sys.version.split()[0]} ({sys.executable})")
@@ -64,25 +90,13 @@ def doctor(
 
     typer.echo()
     typer.echo(typer.style("Paths", bold=True))
-    for label, p in (
-        ("home       ", paths.HOME),
-        ("calibration", paths.calibration_bundle().parent),
-        ("memory     ", paths.memory_dir()),
-        ("jobs       ", paths.jobs_file().parent),
-        ("models     ", paths.model_cache()),
-        ("logs       ", paths.LOG_DIR),
-    ):
-        typer.echo(f"  {label}  {p}  {'' if p.exists() else '(missing)'}")
-
-    if fix:
-        paths.ensure_dirs()
-        typer.echo(_fmt_ok("created user dirs"))
+    typer.echo(f"  data: {paths.HOME}")
 
     typer.echo()
     typer.echo(typer.style("Config", bold=True))
-    # If the config failed to parse, `from physiclaw.config import CONFIG`
-    # at doctor's own import would have raised — so reaching here means
-    # the file is either absent or valid.
+    # If config.toml failed to parse, importing physiclaw.config at the top
+    # of this module would have raised — so reaching here means the file is
+    # either absent or valid.
     from physiclaw import config as _cfg
 
     cp = _cfg.config_path()
@@ -107,35 +121,50 @@ def doctor(
 
     typer.echo()
     typer.echo(typer.style("Hardware", bold=True))
-    from physiclaw.core.hardware.grbl import _LIKELY_KEYWORDS, _SKIP_KEYWORDS
-
-    all_ports = _list_serial_ports()
-    likely = [
-        p for p in all_ports
-        if any(kw in p.lower() for kw in _LIKELY_KEYWORDS)
-        and not any(kw in p.lower() for kw in _SKIP_KEYWORDS)
-    ]
-    if likely:
-        typer.echo(_fmt_ok(f"USB serial candidates: {', '.join(likely)}"))
-    elif all_ports:
-        typer.echo(_fmt_warn(
-            f"no likely GRBL ports, but these serial ports are present: "
-            f"{', '.join(all_ports)}"
-        ))
+    host, port, status = _probe_server()
+    if status is not None:
+        # Server is up — its view of arm/camera/calibration is authoritative.
+        typer.echo(_fmt_ok(f"server: running on {host}:{port}"))
+        for label in ("arm", "camera", "calibrated", "ready"):
+            if status.get(label):
+                typer.echo(_fmt_ok(f"{label}: yes"))
+            else:
+                typer.echo(_fmt_warn(f"{label}: no"))
     else:
-        typer.echo(_fmt_warn(
-            "no USB serial ports detected — connect the arm and re-run. "
-            "If your board uses CH340/CP210x, you may need a driver."
-        ))
+        # Server offline — safe to probe hardware ourselves.
+        typer.echo(_fmt_warn("server: not running"))
+        typer.echo("  Probing serial ports for GRBL (active $I query, ~2s/port)…")
+        from physiclaw.core.hardware.grbl import detect_grbl
 
-    cams = _list_cameras()
-    if cams:
-        typer.echo(_fmt_ok(f"cameras at indices: {cams}"))
-    else:
-        typer.echo(_fmt_warn(
-            "no cameras detected. On first use, macOS shows a "
-            "Camera-permission prompt — accept it for this terminal app."
-        ))
+        # detect_grbl logs its own narration; doctor speaks for itself.
+        grbl_logger = logging.getLogger("physiclaw.core.hardware.grbl")
+        prev_level = grbl_logger.level
+        grbl_logger.setLevel(logging.CRITICAL)
+        try:
+            grbl_port = detect_grbl()
+        finally:
+            grbl_logger.setLevel(prev_level)
+        if grbl_port:
+            typer.echo(_fmt_ok(f"GRBL arm: {grbl_port}"))
+        else:
+            all_ports = _list_serial_ports()
+            if all_ports:
+                typer.echo(_fmt_warn(
+                    f"no GRBL detected (saw {len(all_ports)} serial port(s): "
+                    f"{', '.join(all_ports)})"
+                ))
+            else:
+                typer.echo(_fmt_warn(
+                    "no serial ports detected — connect the arm and re-run."
+                ))
+        cams = _list_cameras()
+        if cams:
+            typer.echo(_fmt_ok(f"cameras: {len(cams)} detected (indices {cams})"))
+        else:
+            typer.echo(_fmt_warn(
+                "cameras: none detected. On first use, macOS shows a "
+                "Camera-permission prompt — accept it for this terminal app."
+            ))
 
     typer.echo()
     typer.echo(typer.style("Calibration", bold=True))
@@ -145,11 +174,11 @@ def doctor(
     else:
         typer.echo(_fmt_warn(
             f"no calibration yet: {bundle}\n"
-            "    Run: physiclaw setup hardware (starts the server + guides you)"
+            "    Run: physiclaw setup hardware (needs the server running)"
         ))
 
     typer.echo()
-    typer.echo(typer.style("Environment", bold=True))
+    typer.echo(typer.style("Provider creds", bold=True))
     for var in (
         "PHYSICLAW_PROVIDER",
         "QWEN_API_KEY",
@@ -161,8 +190,14 @@ def doctor(
 
     typer.echo()
     typer.echo(typer.style("Next steps", bold=True))
+    steps = []
     if not model.exists():
-        typer.echo("  1. physiclaw setup local-vision-model")
-    if not bundle.exists():
-        typer.echo("  2. physiclaw setup hardware")
-    typer.echo("  3. physiclaw server")
+        steps.append("physiclaw setup local-vision-model")
+    if status is None:
+        steps.append("physiclaw server   (leave running in one shell)")
+    if not (status and status.get("ready")):
+        steps.append("physiclaw setup hardware   (in another shell — talks to the server)")
+    for i, step in enumerate(steps, 1):
+        typer.echo(f"  {i}. {step}")
+    if not steps:
+        typer.echo("  All set.")
