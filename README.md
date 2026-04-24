@@ -11,6 +11,29 @@ Just unlock your phone, put it on the desk, and let the agent work.
 
 The tradeoff? PhysiClaw needs hardware: an embedded system running GRBL/grblHAL firmware to control a gantry (X/Y) and stylus (Z), plus a USB camera. A compact desktop rig that gives your AI agent physical presence.
 
+## Quickstart
+
+macOS only for now. Hardware bill-of-materials [below](#bill-of-materials).
+
+```bash
+# 1. Install the CLI (uv + Python 3.12 + physiclaw, all isolated under ~/.local/bin)
+curl -fsSL https://raw.githubusercontent.com/echosprint/PhysiClaw/main/install.sh | bash
+
+# 2. Check your environment
+physiclaw doctor
+
+# 3. Download the local vision model (~100 MB, one-time)
+physiclaw setup local-vision-model
+
+# 4. Plug in the GRBL arm + USB camera, then start the server
+physiclaw server                 # leave running in one shell
+
+# 5. In another shell — interactive arm/camera calibration
+physiclaw setup hardware
+```
+
+Then point your MCP client (Claude Desktop, etc.) at `http://localhost:8048/mcp`.
+
 ## How It Works
 
 ```text
@@ -142,19 +165,19 @@ Tools communicate via stdio or SSE with JSON messages. MCP is a standard, langua
 
 ### Language
 
-Python 3.11+
+Python 3.12+
 
-### Dependencies
+### Key dependencies
 
-```bash
-pip install pyserial opencv-python mcp
-```
+(All installed automatically by `install.sh` — listed here for reference.)
 
-- pyserial: Send G-code to GRBL board via USB serial
-- opencv-python: USB camera capture
-- mcp: MCP Server framework
+- `pyserial` — send G-code to the GRBL board over USB serial
+- `opencv-python` — USB camera capture
+- `mcp` — MCP server framework
+- `rapidocr` + `onnxruntime` — on-device OCR + icon detection
+- `httpx`, `typer`, `croniter` — runtime, CLI, scheduling
 
-No Anthropic SDK needed — Claude runs on the MCP client side.
+No Anthropic SDK needed — Claude (or any other LLM) runs on the MCP client side.
 
 ### Platform Compatibility
 
