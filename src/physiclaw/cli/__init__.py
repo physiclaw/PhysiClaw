@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import __version__ as _pkg_version
-from physiclaw.cli.config_cmd import config_app
+from physiclaw.cli.config import config_app
 from physiclaw.cli.doctor import doctor
 from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
