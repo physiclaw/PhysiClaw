@@ -260,6 +260,88 @@ def get(cfg: Config, dotted: str) -> Any:
     return cursor
 
 
+def _coerce(raw: str, current: Any) -> Any:
+    """Cast a CLI string argument to the type of ``current`` (the field default)."""
+    if isinstance(current, bool):  # bool before int — bool is an int subclass
+        if raw.lower() in ("true", "1", "yes", "on"):
+            return True
+        if raw.lower() in ("false", "0", "no", "off"):
+            return False
+        raise ConfigError(f"can't parse {raw!r} as bool (use true/false)")
+    if isinstance(current, int):
+        try:
+            return int(raw)
+        except ValueError as e:
+            raise ConfigError(f"can't parse {raw!r} as int") from e
+    if isinstance(current, float):
+        try:
+            return float(raw)
+        except ValueError as e:
+            raise ConfigError(f"can't parse {raw!r} as float") from e
+    return raw  # str
+
+
+def _validate_dotted(dotted: str) -> tuple[str, str]:
+    """Confirm ``dotted`` is a known ``section.field`` and return the parts."""
+    parts = dotted.split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ConfigError(f"key must be section.field (got {dotted!r})")
+    section, field_name = parts
+    if section not in _SECTION_TYPES:
+        raise ConfigError(
+            f"unknown section {section!r}; valid: {sorted(_SECTION_TYPES)}"
+        )
+    field_names = {f.name for f in fields(_SECTION_TYPES[section])}
+    if field_name not in field_names:
+        raise ConfigError(
+            f"unknown key {field_name!r} at {section}; valid: {sorted(field_names)}"
+        )
+    return section, field_name
+
+
+def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
+    """Update one ``section.field`` in ``config.toml`` in place.
+
+    Preserves comments + ordering via tomlkit. The new value is coerced to
+    the field's default type. Re-validates by reloading via the strict
+    ``load()`` so the file is never left unparseable.
+    """
+    import tomlkit
+
+    path = path or config_path()
+    section, field_name = _validate_dotted(dotted)
+    current = getattr(getattr(load(path), section), field_name)
+    coerced = _coerce(raw_value, current)
+
+    if not path.exists():
+        write_default(path)
+    doc = tomlkit.parse(path.read_text())
+    if section not in doc:
+        doc.add(section, tomlkit.table())
+    doc[section][field_name] = coerced
+    path.write_text(tomlkit.dumps(doc))
+    load(path)  # re-validate; raises ConfigError on schema drift
+
+
+def unset_dotted(dotted: str, path: Path | None = None) -> bool:
+    """Remove one ``section.field`` from ``config.toml`` so the built-in
+    default applies. Returns True if a key was actually removed.
+    """
+    import tomlkit
+
+    path = path or config_path()
+    section, field_name = _validate_dotted(dotted)
+    if not path.exists():
+        return False
+    doc = tomlkit.parse(path.read_text())
+    if section not in doc or field_name not in doc[section]:
+        return False
+    del doc[section][field_name]
+    path.write_text(tomlkit.dumps(doc))
+    load(path)  # re-validate
+    return True
+
+
 # Module-level singleton, evaluated once at import. See CONFIG usage in the
 # migrated consumers (engine, claude, runtime, plan, compact, memory, trace,
 # warm_start, job_store).
@@ -318,6 +400,8 @@ __all__ = [
     "provider_name",
     "qwen_api_key",
     "qwen_api_key_source",
+    "set_dotted",
     "to_toml",
+    "unset_dotted",
     "write_default",
 ]

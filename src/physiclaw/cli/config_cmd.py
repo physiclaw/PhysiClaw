@@ -1,8 +1,8 @@
 """``physiclaw config`` — inspect and edit ``~/.physiclaw/config.toml``.
 
-No ``set``/``unset`` — programmatic edits without losing comments and
-ordering need a TOML round-trip lib (tomlkit) we'd rather not pull in
-for a one-feature gain. Users edit by hand via ``physiclaw config edit``.
+``set`` / ``unset`` use tomlkit so user comments + ordering survive the
+round-trip. For secrets like API keys, prefer ``physiclaw config edit``
+to keep them out of shell history.
 """
 
 import dataclasses
@@ -83,6 +83,48 @@ def _get(
         typer.echo("true" if val else "false")
     else:
         typer.echo(val)
+
+
+@config_app.command("set")
+def _set(
+    dotted: Annotated[
+        str,
+        typer.Argument(help="Section.field, e.g. engine.max_turns."),
+    ],
+    value: Annotated[
+        str,
+        typer.Argument(help="New value (parsed by type — int/float/bool/str)."),
+    ],
+) -> None:
+    """Set one dotted key. Preserves comments. Note: secrets passed here
+    land in shell history — use ``physiclaw config edit`` for API keys."""
+    try:
+        _config.set_dotted(dotted, value)
+    except _config.ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(typer.style(f"✓ {dotted} updated", fg=typer.colors.GREEN))
+    typer.echo("Restart `physiclaw server` to apply.")
+
+
+@config_app.command("unset")
+def _unset(
+    dotted: Annotated[
+        str,
+        typer.Argument(help="Section.field to revert to its built-in default."),
+    ],
+) -> None:
+    """Remove one dotted key from the file so the built-in default applies."""
+    try:
+        removed = _config.unset_dotted(dotted)
+    except _config.ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1)
+    if removed:
+        typer.echo(typer.style(f"✓ {dotted} reverted to default", fg=typer.colors.GREEN))
+        typer.echo("Restart `physiclaw server` to apply.")
+    else:
+        typer.echo(f"  {dotted} was already at default (not present in file)")
 
 
 @config_app.command("edit")
