@@ -21,3 +21,16 @@ def warn(msg: str) -> str:
 def next_hint(line: str) -> str:
     """Bold ``Next:`` prefix + the rest of the line."""
     return typer.style("Next:", bold=True) + " " + line
+
+
+def info(msg: str) -> str:
+    """Two-space indent + msg. Use for neutral state lines that shouldn't
+    read as a problem (unlike ``warn``) or a confirmation (unlike ``ok``)."""
+    return f"  {msg}"
+
+
+def section(title: str) -> str:
+    """Bold bright-cyan section header. Distinct from ok (green) and warn
+    (yellow) so the reader can scan section boundaries at a glance in
+    commands that emit multi-section reports (``doctor``, ``status``)."""
+    return typer.style(title, fg=typer.colors.BRIGHT_CYAN, bold=True)

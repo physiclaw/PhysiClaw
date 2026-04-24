@@ -16,22 +16,49 @@ import time
 from physiclaw import paths
 
 
-def write(host: str, port: int) -> None:
-    """Record this process as the running server. Overwrites any prior file."""
+def write(
+    host: str,
+    port: int,
+    *,
+    provider: str | None = None,
+    provider_source: str | None = None,
+) -> None:
+    """Record this process as the running server. Overwrites any prior file.
+
+    ``provider`` / ``provider_source`` capture what the server resolved at
+    startup so ``physiclaw doctor`` in a different shell can report the
+    live choice instead of re-running ``resolve()`` against a shell that
+    doesn't have the env var set. ``None`` marks "not recorded"; readers
+    gate on truthiness so the JSON-``null`` round-trip works unchanged.
+    """
     p = paths.runtime_state_file()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({
         "pid": os.getpid(),
         "host": host,
         "port": port,
+        "provider": provider,
+        "provider_source": provider_source,
         "started_at": time.time(),
     }))
 
 
 def clear() -> None:
-    """Best-effort delete; safe to call when file is absent."""
+    """Best-effort delete of this process's state file. Refuses to remove
+    a file written by a different pid so stray debug scripts can't kill
+    a live server's recorded state (the server re-writes only on its
+    own startup, not per-request, so a mis-clear would persist until
+    restart).
+    """
+    p = paths.runtime_state_file()
     try:
-        paths.runtime_state_file().unlink()
+        state = json.loads(p.read_text())
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return
+    if state.get("pid") != os.getpid():
+        return
+    try:
+        p.unlink()
     except FileNotFoundError:
         pass
 

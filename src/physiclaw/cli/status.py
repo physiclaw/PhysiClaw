@@ -5,12 +5,12 @@ import sys
 import typer
 
 from physiclaw import paths
-from physiclaw.cli._format import next_hint
+from physiclaw.cli._format import next_hint, section
 
 
 def status() -> None:
     """Show calibration + model state at a glance. Doesn't probe hardware."""
-    typer.echo(typer.style("PhysiClaw status", bold=True))
+    typer.echo(section("PhysiClaw status"))
 
     model = paths.omniparser_onnx()
     if model.exists():

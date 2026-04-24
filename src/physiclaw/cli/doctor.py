@@ -16,7 +16,9 @@ from typing import Annotated
 import typer
 
 from physiclaw import __version__, paths, runtime_state
+from physiclaw.cli._format import info as _fmt_info
 from physiclaw.cli._format import ok as _fmt_ok
+from physiclaw.cli._format import section as _fmt_section
 from physiclaw.cli._format import warn as _fmt_warn
 
 
@@ -43,19 +45,22 @@ def _list_cameras(max_index: int = 4) -> list[int]:
     return found
 
 
-def _probe_server() -> tuple[str, int, bool, dict | None]:
-    """Find the live server (or guess from config) and GET /api/status.
+def _probe_server(live: dict | None) -> tuple[str, int, bool, dict | None]:
+    """GET /api/status from the server at ``live['host']:live['port']``,
+    falling back to ``config.toml`` when no live state is passed.
 
     Returns ``(display_host, port, bind_all, status)``. ``bind_all`` is
     True when the configured host was the 0.0.0.0 wildcard — display_host
     is rewritten to "localhost" in that case so output reads cleanly,
     but the flag lets doctor surface the exposure warning separately.
+
+    Caller-supplied ``live`` so doctor runs one ``read_live()`` per
+    invocation — used twice (server probe + Provider section).
     """
     # Lazy: httpx import is ~100ms — paid only when doctor actually runs,
     # not on every `physiclaw --help`.
     import httpx
 
-    live = runtime_state.read_live()
     if live:
         host, port = live["host"], live["port"]
     else:
@@ -113,12 +118,26 @@ def _probe_camera_frame(index: int) -> str:
 
 
 def _probe_calibration_deep() -> str:
+    # `complete` is a @property on `Calibration`, not a serialized field,
+    # so `data.get("complete")` was always None — bundles that finished
+    # the full setup were still reported as "partial". Reconstruct the
+    # dataclass and check the live property instead.
+    from physiclaw.core.calibration.state import Calibration
+
     data = paths.load_calibration_bundle()
     if data is None:
         return _fmt_warn("calibration: parse failed or not a JSON object")
-    if data.get("complete"):
+    try:
+        cal = Calibration.from_dict(data)
+    except (TypeError, ValueError, KeyError) as e:
+        return _fmt_warn(f"calibration: bundle unreadable — {e}")
+    if cal.complete:
         return _fmt_ok("calibration: bundle complete")
-    return _fmt_warn(f"calibration: partial (keys: {sorted(data.keys())})")
+    missing = [k for k, v in data.items() if v is None]
+    return _fmt_warn(
+        f"calibration: partial (missing: {missing})" if missing
+        else f"calibration: partial (keys: {sorted(data.keys())})"
+    )
 
 
 def _probe_bridge_deep(host: str, port: int) -> str:
@@ -128,10 +147,13 @@ def _probe_bridge_deep(host: str, port: int) -> str:
         r = httpx.get(f"http://{host}:{port}/api/bridge/state", timeout=1.0)
         connected = r.json().get("connected", False)
     except (httpx.HTTPError, ValueError) as e:
+        # Network/parse failure is a real problem — keep the warn.
         return _fmt_warn(f"bridge: {type(e).__name__}: {e}")
-    return (_fmt_ok if connected else _fmt_warn)(
-        f"bridge: phone {'connected' if connected else 'not paired yet'}"
-    )
+    if connected:
+        return _fmt_ok("bridge: phone connected")
+    # "not paired yet" is a transient state (phone hasn't opened /bridge),
+    # not a broken configuration — surface the fact without `!`.
+    return _fmt_info("bridge: phone not paired yet")
 
 
 def _skills_lines() -> list[str]:
@@ -204,7 +226,7 @@ def doctor(
     """Check environment, hardware, and assets. Report what's missing."""
     paths.ensure_dirs()
 
-    typer.echo(typer.style("PhysiClaw doctor", bold=True))
+    typer.echo(_fmt_section("PhysiClaw doctor"))
     typer.echo(f"  physiclaw:  {__version__}")
     typer.echo(f"  python:     {sys.version.split()[0]} ({sys.executable})")
     typer.echo(
@@ -215,11 +237,11 @@ def doctor(
     typer.echo(f"  uv:         {uv or '(not found — not required for runtime)'}")
 
     typer.echo()
-    typer.echo(typer.style("Paths", bold=True))
-    typer.echo(f"  data: {paths.HOME}")
+    typer.echo(_fmt_section("Paths"))
+    typer.echo(f"  home: {paths.HOME}")
 
     typer.echo()
-    typer.echo(typer.style("Config", bold=True))
+    typer.echo(_fmt_section("Config"))
     # If config.toml failed to parse, importing physiclaw.config at the top
     # of this module would have raised — so reaching here means the file is
     # either absent or valid.
@@ -234,7 +256,7 @@ def doctor(
         ))
 
     typer.echo()
-    typer.echo(typer.style("Assets", bold=True))
+    typer.echo(_fmt_section("Assets"))
     model = paths.omniparser_onnx()
     if model.exists():
         size_mb = model.stat().st_size / 1024 / 1024
@@ -248,16 +270,19 @@ def doctor(
         ))
 
     typer.echo()
-    typer.echo(typer.style("Hardware", bold=True))
-    host, port, bind_all, status = _probe_server()
+    typer.echo(_fmt_section("Hardware"))
+    # One read_live() per doctor run — reused by _probe_server and the
+    # Provider section below.
+    live = runtime_state.read_live()
+    host, port, bind_all, status = _probe_server(live)
     if status is not None:
         # Server is up — its view of arm/camera/calibration is authoritative.
         typer.echo(_fmt_ok(f"server: running on {host}:{port}"))
         if bind_all:
-            typer.echo(_fmt_warn(
-                "bind: 0.0.0.0 — required for the phone bridge. Use only "
-                "on a private LAN. Do not run on a public-IP host."
-            ))
+            # Bind mode is a config decision the user already made; surface
+            # the fact without the yellow `!` since a healthy server isn't
+            # a warning state. Security notes live in the README.
+            typer.echo(_fmt_info("bind: 0.0.0.0 (LAN-reachable; intended for the phone bridge)"))
         for label in ("arm", "camera", "calibrated", "ready"):
             if status.get(label):
                 typer.echo(_fmt_ok(f"{label}: yes"))
@@ -305,7 +330,7 @@ def doctor(
             ))
 
     typer.echo()
-    typer.echo(typer.style("Calibration", bold=True))
+    typer.echo(_fmt_section("Calibration"))
     bundle = paths.calibration_bundle()
     if bundle.exists():
         typer.echo(_fmt_ok(f"calibration bundle: {bundle}"))
@@ -318,33 +343,48 @@ def doctor(
         ))
 
     typer.echo()
-    typer.echo(typer.style("Provider", bold=True))
+    typer.echo(_fmt_section("Provider"))
 
-    from physiclaw.agent.runtime.launcher import resolve
+    # Prefer the live server's recorded choice — resolving here would pull
+    # from the current shell's env, which may be missing PHYSICLAW_PROVIDER
+    # even when the server has it set. Fall back to a fresh resolve when no
+    # server is running.
+    live_provider = live.get("provider") if live else None
+    if live_provider:
+        provider_choice = live_provider
+        provider_source = f"live server, {live.get('provider_source') or '?'}"
+        typer.echo(_fmt_ok(f"provider: {provider_choice} ({provider_source})"))
+    else:
+        from physiclaw.agent.runtime.launcher import resolve
 
-    try:
-        provider_choice, provider_source = resolve()
-        typer.echo(_fmt_ok(f"provider: {provider_choice} (from {provider_source})"))
-    except RuntimeError as e:
-        provider_choice = None
-        typer.echo(_fmt_warn(f"provider: invalid — {e}"))
+        try:
+            provider_choice, provider_source = resolve()
+            typer.echo(_fmt_ok(f"provider: {provider_choice} (from {provider_source})"))
+        except RuntimeError as e:
+            provider_choice = None
+            typer.echo(_fmt_warn(f"provider: invalid — {e}"))
 
-    # Only show keys that map to a wired provider today (just qwen).
-    qwen_src = _cfg.qwen_api_key_source()
-    if qwen_src:
-        typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
-        if deep:
-            typer.echo(_probe_qwen_api_deep())
-    elif provider_choice == "qwen":
-        typer.echo(_fmt_warn("qwen api key: (unset) — required for provider=qwen"))
+    # When a live server is running with provider=qwen, the `Provider` line
+    # above is already the proof the key works — don't add a second line.
+    # Otherwise surface the key status for the current shell's config.
+    if live_provider != "qwen":
+        qwen_src = _cfg.qwen_api_key_source()
+        if qwen_src:
+            typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
+            if deep:
+                typer.echo(_probe_qwen_api_deep())
+        elif provider_choice == "qwen":
+            typer.echo(_fmt_warn(
+                "qwen api key: (unset) — required for provider=qwen"
+            ))
 
     typer.echo()
-    typer.echo(typer.style("Skills", bold=True))
+    typer.echo(_fmt_section("Skills"))
     for line in _skills_lines():
         typer.echo(line)
 
     typer.echo()
-    typer.echo(typer.style("Next steps", bold=True))
+    typer.echo(_fmt_section("Next steps"))
     steps = []
     if not model.exists():
         steps.append("physiclaw setup local-vision-model")

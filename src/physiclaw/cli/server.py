@@ -130,8 +130,20 @@ def server(
     # KeyboardInterrupt; SIGTERM-without-cleanup is handled by doctor's
     # pid-liveness check on read.
     from physiclaw import runtime_state
+    from physiclaw.agent.runtime.launcher import resolve as _resolve_provider
 
-    runtime_state.write(host, port)
+    # Resolve here (once, in the same env the user invoked `physiclaw server`
+    # from) so `doctor` in another shell can read the live choice instead of
+    # re-resolving against an env that may be missing PHYSICLAW_PROVIDER. A
+    # bad provider at this point is non-fatal for the HTTP server — record
+    # nothing and let the runtime subprocess report the real error.
+    try:
+        _provider, _provider_source = _resolve_provider()
+    except RuntimeError:
+        _provider, _provider_source = None, None
+    runtime_state.write(
+        host, port, provider=_provider, provider_source=_provider_source,
+    )
     atexit.register(runtime_state.clear)
 
     from physiclaw.core.bridge import bridge_base_urls
