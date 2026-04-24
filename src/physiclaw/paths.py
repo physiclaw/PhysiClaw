@@ -18,6 +18,7 @@ Layout::
     └── log/{claude/, engine/}
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -41,6 +42,18 @@ def omniparser_onnx() -> Path:
 
 def calibration_bundle() -> Path:
     return HOME / "calibration" / "bundle.json"
+
+
+def load_calibration_bundle() -> dict | None:
+    """Read+parse ``calibration/bundle.json``. None on missing/unreadable/invalid."""
+    p = calibration_bundle()
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def calibration_cache_dir() -> Path:

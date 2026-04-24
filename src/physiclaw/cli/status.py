@@ -1,6 +1,5 @@
 """``physiclaw status`` — quick snapshot (compare to `doctor` which probes deeper)."""
 
-import json
 import sys
 
 import typer
@@ -24,20 +23,16 @@ def status() -> None:
             typer.style("  vision model  ", fg=typer.colors.YELLOW) + "missing"
         )
 
-    bundle = paths.calibration_bundle()
-    if bundle.exists():
-        try:
-            data = json.loads(bundle.read_text())
-            complete = data.get("complete", False)
-        except (json.JSONDecodeError, OSError):
-            complete = False
-        tag = "complete" if complete else "partial"
-        color = typer.colors.GREEN if complete else typer.colors.YELLOW
-        typer.echo(typer.style("  calibration   ", fg=color) + tag)
-    else:
+    data = paths.load_calibration_bundle()
+    if data is None:
         typer.echo(
             typer.style("  calibration   ", fg=typer.colors.YELLOW) + "missing"
         )
+    else:
+        complete = bool(data.get("complete"))
+        tag = "complete" if complete else "partial"
+        color = typer.colors.GREEN if complete else typer.colors.YELLOW
+        typer.echo(typer.style("  calibration   ", fg=color) + tag)
 
     jobs = paths.jobs_file()
     if jobs.exists():

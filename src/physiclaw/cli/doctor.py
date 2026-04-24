@@ -13,6 +13,7 @@ import os
 import platform
 import shutil
 import sys
+from typing import Annotated
 
 import httpx
 import typer
@@ -96,7 +97,101 @@ def _probe_server() -> tuple[str, int, bool, dict | None]:
         return (host, port, bind_all, None)
 
 
-def doctor() -> None:
+# --- Deep probes (only run with --deep). ------------------------------------
+# Each returns a pre-formatted line ready for typer.echo. Failures are
+# non-fatal — doctor reports them and moves on.
+
+
+def _probe_vision_model_deep() -> str:
+    try:
+        import onnxruntime as ort
+
+        sess = ort.InferenceSession(
+            str(paths.omniparser_onnx()), providers=["CPUExecutionProvider"]
+        )
+        shape = sess.get_inputs()[0].shape
+        return _fmt_ok(f"vision model: loads OK (input {shape})")
+    except (OSError, RuntimeError, ValueError, ImportError) as e:
+        return _fmt_warn(f"vision model: load failed — {type(e).__name__}: {e}")
+
+
+def _probe_camera_frame(index: int) -> str:
+    """cap.read() catches the macOS-TCC-denied case (isOpened lies)."""
+    import cv2
+
+    with _silenced_stderr():
+        cap = cv2.VideoCapture(index)
+        try:
+            for _ in range(3):
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    h, w = frame.shape[:2]
+                    return _fmt_ok(f"camera {index}: frame OK ({w}x{h})")
+            return _fmt_warn(
+                f"camera {index}: opens but no frame (likely denied Camera "
+                "permission — System Settings → Privacy & Security)"
+            )
+        finally:
+            cap.release()
+
+
+def _probe_calibration_deep() -> str:
+    data = paths.load_calibration_bundle()
+    if data is None:
+        return _fmt_warn("calibration: parse failed or not a JSON object")
+    if data.get("complete"):
+        return _fmt_ok("calibration: bundle complete")
+    return _fmt_warn(f"calibration: partial (keys: {sorted(data.keys())})")
+
+
+def _probe_bridge_deep(host: str, port: int) -> str:
+    try:
+        r = httpx.get(f"http://{host}:{port}/api/bridge/state", timeout=1.0)
+        connected = r.json().get("connected", False)
+    except (httpx.HTTPError, ValueError) as e:
+        return _fmt_warn(f"bridge: {type(e).__name__}: {e}")
+    return (_fmt_ok if connected else _fmt_warn)(
+        f"bridge: phone {'connected' if connected else 'not paired yet'}"
+    )
+
+
+def _probe_qwen_api_deep() -> str:
+    """1-token completion to confirm the key actually works (not just present)."""
+    from physiclaw.agent.engine.provider import provider_endpoint
+    from physiclaw.config import qwen_api_key
+
+    key = qwen_api_key()
+    if not key:
+        return _fmt_warn("qwen api: skipped (no key)")
+    base_url, model = provider_endpoint("qwen")
+    try:
+        r = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            },
+            timeout=10.0,
+        )
+    except httpx.HTTPError as e:
+        return _fmt_warn(f"qwen api: {type(e).__name__}: {e}")
+    if r.status_code == 200:
+        return _fmt_ok(f"qwen api: {r.status_code} OK ({model})")
+    return _fmt_warn(f"qwen api: HTTP {r.status_code}: {r.text[:80]}")
+
+
+def doctor(
+    deep: Annotated[
+        bool,
+        typer.Option(
+            "--deep",
+            help="Run active probes (model load, camera frame, API call). "
+            "May take several seconds.",
+        ),
+    ] = False,
+) -> None:
     """Check environment, hardware, and assets. Report what's missing."""
     paths.ensure_dirs()
 
@@ -135,6 +230,8 @@ def doctor() -> None:
     if model.exists():
         size_mb = model.stat().st_size / 1024 / 1024
         typer.echo(_fmt_ok(f"vision model: {model}  ({size_mb:.1f} MB)"))
+        if deep:
+            typer.echo(_probe_vision_model_deep())
     else:
         typer.echo(_fmt_warn(
             f"vision model missing: {model}\n"
@@ -157,6 +254,8 @@ def doctor() -> None:
                 typer.echo(_fmt_ok(f"{label}: yes"))
             else:
                 typer.echo(_fmt_warn(f"{label}: no"))
+        if deep:
+            typer.echo(_probe_bridge_deep(host, port))
     else:
         # Server offline — safe to probe hardware ourselves.
         typer.echo(_fmt_warn("server: not running"))
@@ -187,6 +286,9 @@ def doctor() -> None:
         cams = _list_cameras()
         if cams:
             typer.echo(_fmt_ok(f"cameras: {len(cams)} detected (indices {cams})"))
+            if deep:
+                for idx in cams:
+                    typer.echo(_probe_camera_frame(idx))
         else:
             typer.echo(_fmt_warn(
                 "cameras: none detected. On first use, macOS shows a "
@@ -198,6 +300,8 @@ def doctor() -> None:
     bundle = paths.calibration_bundle()
     if bundle.exists():
         typer.echo(_fmt_ok(f"calibration bundle: {bundle}"))
+        if deep:
+            typer.echo(_probe_calibration_deep())
     else:
         typer.echo(_fmt_warn(
             f"no calibration yet: {bundle}\n"
@@ -220,6 +324,8 @@ def doctor() -> None:
     qwen_src = _cfg.qwen_api_key_source()
     if qwen_src:
         typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
+        if deep:
+            typer.echo(_probe_qwen_api_deep())
     elif provider_choice == "qwen":
         typer.echo(_fmt_warn("qwen api key: (unset) — required for provider=qwen"))
 
