@@ -5,6 +5,7 @@ import sys
 import typer
 
 from physiclaw import paths
+from physiclaw.cli._format import next_hint
 
 
 def status() -> None:
@@ -48,7 +49,6 @@ def status() -> None:
     # Suppress on pipe — `status` is a quick snapshot meant for grep/jq.
     if sys.stdout.isatty():
         typer.echo()
-        typer.echo(
-            typer.style("Next:", bold=True)
-            + " physiclaw doctor  (for deeper checks — server, hardware, provider)"
-        )
+        typer.echo(next_hint(
+            "physiclaw doctor  (for deeper checks — server, hardware, provider)"
+        ))

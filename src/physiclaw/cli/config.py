@@ -15,6 +15,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import config as _config
+from physiclaw.cli._format import ok
 
 config_app = typer.Typer(
     help="Show or edit the user config file.",
@@ -103,7 +104,7 @@ def _set(
     except _config.ConfigError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
-    typer.echo(typer.style(f"✓ {dotted} updated", fg=typer.colors.GREEN))
+    typer.echo(ok(f"{dotted} updated"))
     typer.echo("Restart `physiclaw server` to apply.")
 
 
@@ -121,7 +122,7 @@ def _unset(
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
     if removed:
-        typer.echo(typer.style(f"✓ {dotted} reverted to default", fg=typer.colors.GREEN))
+        typer.echo(ok(f"{dotted} reverted to default"))
         typer.echo("Restart `physiclaw server` to apply.")
     else:
         typer.echo(f"  {dotted} was already at default (not present in file)")
@@ -146,7 +147,7 @@ def _edit() -> None:
         raise typer.Exit(code=1)
     subprocess.run([editor, str(path)], check=False)
     _load_or_exit(path)
-    typer.echo(typer.style("✓ config OK", fg=typer.colors.GREEN))
+    typer.echo(ok("config OK"))
     typer.echo("Restart `physiclaw server` to apply.")
 
 

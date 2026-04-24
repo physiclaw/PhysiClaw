@@ -13,6 +13,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import paths
+from physiclaw.cli._format import next_hint, ok
 
 log = logging.getLogger(__name__)
 
@@ -70,9 +71,8 @@ def vision(
     typer.echo(f"  {onnx.stat().st_size / 1024 / 1024:.1f} MB at {onnx}")
 
     pt_path.unlink(missing_ok=True)
-    typer.echo(typer.style("✓ vision model ready", fg=typer.colors.GREEN))
+    typer.echo(ok("vision model ready"))
     typer.echo()
-    typer.echo(
-        typer.style("Next:", bold=True)
-        + " physiclaw setup hardware  (plug in the arm + USB camera first)"
-    )
+    typer.echo(next_hint(
+        "physiclaw setup hardware  (plug in the arm + USB camera first)"
+    ))

@@ -15,18 +15,11 @@ import shutil
 import sys
 from typing import Annotated
 
-import httpx
 import typer
 
 from physiclaw import __version__, paths, runtime_state
-
-
-def _fmt_ok(msg: str) -> str:
-    return typer.style("✓ ", fg=typer.colors.GREEN) + msg
-
-
-def _fmt_warn(msg: str) -> str:
-    return typer.style("! ", fg=typer.colors.YELLOW) + msg
+from physiclaw.cli._format import ok as _fmt_ok
+from physiclaw.cli._format import warn as _fmt_warn
 
 
 @contextlib.contextmanager
@@ -80,6 +73,10 @@ def _probe_server() -> tuple[str, int, bool, dict | None]:
     is rewritten to "localhost" in that case so output reads cleanly,
     but the flag lets doctor surface the exposure warning separately.
     """
+    # Lazy: httpx import is ~100ms — paid only when doctor actually runs,
+    # not on every `physiclaw --help`.
+    import httpx
+
     live = runtime_state.read_live()
     if live:
         host, port = live["host"], live["port"]
@@ -145,6 +142,8 @@ def _probe_calibration_deep() -> str:
 
 
 def _probe_bridge_deep(host: str, port: int) -> str:
+    import httpx  # cached after _probe_server's first import
+
     try:
         r = httpx.get(f"http://{host}:{port}/api/bridge/state", timeout=1.0)
         connected = r.json().get("connected", False)
@@ -157,6 +156,8 @@ def _probe_bridge_deep(host: str, port: int) -> str:
 
 def _probe_qwen_api_deep() -> str:
     """1-token completion to confirm the key actually works (not just present)."""
+    import httpx
+
     from physiclaw.agent.engine.provider import provider_endpoint
     from physiclaw.config import qwen_api_key
 
