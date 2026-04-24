@@ -38,6 +38,26 @@ die()  { printf '%s%s✗%s %s\n'   "$B" "$R" "$N" "$*" >&2; exit 1; }
 # uv drops its tool shims under ~/.local/bin.
 export PATH="$HOME/.local/bin:$PATH"
 
+# git is only needed by `physiclaw skills install` (clones a repo with
+# skills/<name>/SKILL.md layout). Escalation: native CLT installer (ships
+# git) → brew if already present → docs warn. Warns-and-continues on
+# miss so users without CLT/brew can still finish the physiclaw install.
+if ! command -v git >/dev/null 2>&1; then
+  if ! xcode-select -p >/dev/null 2>&1; then
+    info "Triggering Xcode Command Line Tools installer (ships git)…"
+    xcode-select --install >/dev/null 2>&1 || true
+    warn "Click Install in the popup and wait ~5 min, then re-run this script."
+    warn "Continuing — \`physiclaw skills install\` stays unavailable until CLT finishes."
+  elif command -v brew >/dev/null 2>&1; then
+    info "CLT present but git missing — installing via Homebrew…"
+    brew install git >/dev/null
+  else
+    warn "git not found. Run one of:"
+    warn "    xcode-select --install    # macOS Command Line Tools (native)"
+    warn "    brew install git          # if you install Homebrew first"
+  fi
+fi
+
 FRESH_UV=0
 if ! command -v uv >/dev/null 2>&1; then
   info "Installing uv (Python + tool manager)…"

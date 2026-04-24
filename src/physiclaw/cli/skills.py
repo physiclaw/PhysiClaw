@@ -75,15 +75,24 @@ def read_provenance(skill_dir: Path) -> dict | None:
 
 
 def _normalize_source(source: str) -> str:
-    """Accept ``owner/repo`` shorthand and full URLs. Shorthand expands
-    to ``https://github.com/owner/repo.git``. Anything containing ``://``
-    or starting with ``git@`` is returned unchanged."""
+    """Accept several source forms:
+
+    - URLs (``https://…``, ``ssh://…``, ``git@host:…``) — passed through.
+    - Local paths (``/…``, ``./…``, ``../…``, ``~/…``) — passed through
+      with ``~`` expanded. Explicit prefixes bypass the ``owner/repo``
+      rewrite; ``./foo`` would otherwise look like the strict shorthand
+      form because ``.`` is a valid char in the shorthand's first segment.
+    - ``owner/repo`` shorthand — expanded to
+      ``https://github.com/owner/repo.git``. A ``.git`` suffix is kept;
+      otherwise added.
+    """
     s = source.strip()
     if not s:
         return s
     if "://" in s or s.startswith("git@"):
         return s
-    # owner/repo form
+    if s.startswith(("/", "./", "../", "~")):
+        return str(Path(s).expanduser())
     if re.fullmatch(r"[A-Za-z0-9._\-]+/[A-Za-z0-9._\-]+(\.git)?", s):
         if not s.endswith(".git"):
             s += ".git"
@@ -92,20 +101,51 @@ def _normalize_source(source: str) -> str:
 
 
 def _resolve_source(from_flag: str | None) -> str:
-    """``--from`` wins; config default is the fallback; else error."""
+    """``--from`` wins; config default is the fallback; else error.
+    Rejects sources that resolve inside ``paths.HOME`` — skills install
+    from an external repo, never from PhysiClaw's own state dir."""
     if from_flag:
-        return _normalize_source(from_flag)
-    cfg = _load_config()
-    if cfg.skills.default_source:
-        return _normalize_source(cfg.skills.default_source)
+        source = _normalize_source(from_flag)
+    else:
+        cfg = _load_config()
+        if not cfg.skills.default_source:
+            typer.echo(
+                "error: no skill source configured.\n\n"
+                "Options:\n"
+                "  • Install from a specific repo:\n"
+                "      physiclaw skills install <name> --from owner/repo\n"
+                "  • Set a permanent default:\n"
+                "      physiclaw config set skills.default_source owner/repo\n"
+                "  • Repo convention: top-level skills/<name>/SKILL.md.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        source = _normalize_source(cfg.skills.default_source)
+    _reject_physiclaw_home_source(source)
+    return source
+
+
+def _reject_physiclaw_home_source(source: str) -> None:
+    """Refuse ``--from`` / ``default_source`` that resolves inside
+    ``paths.HOME``. A self-copy would create weird provenance and
+    briefly copy agent state (memory/, logs, calibration) through
+    $TMPDIR. URLs and SSH forms skip this check — only local paths
+    can land inside HOME."""
+    if "://" in source or source.startswith("git@"):
+        return
+    try:
+        src_path = Path(source).resolve()
+    except (OSError, ValueError):
+        return
+    try:
+        src_path.relative_to(paths.HOME.resolve())
+    except ValueError:
+        return
     typer.echo(
-        "error: no skill source configured.\n\n"
-        "Options:\n"
-        "  • Install from a specific repo:\n"
-        "      physiclaw skills install <name> --from owner/repo\n"
-        "  • Set a permanent default:\n"
-        "      physiclaw config set skills.default_source owner/repo\n"
-        "  • Repo convention: top-level skills/<name>/SKILL.md.",
+        f"error: --from {source!r} resolves inside {paths.HOME} "
+        "(PhysiClaw's own home).\n"
+        "Skills install from an external git repo. Pick a path outside "
+        "the PhysiClaw home, or use a remote URL.",
         err=True,
     )
     raise typer.Exit(code=1)
@@ -124,13 +164,23 @@ def _validate_name(name: str) -> None:
 def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run ``git`` with captured output. Non-zero exit surfaces as Exit(1)
     with stderr echoed — no stack trace for expected failures (bad ref,
-    network down, auth prompt)."""
-    result = subprocess.run(
-        ["git", *args],
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-    )
+    network down, auth prompt). Git-not-installed also short-circuits
+    here rather than dumping a FileNotFoundError traceback."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        typer.echo(
+            "error: `git` not found on PATH. Install it and retry:\n"
+            "  macOS: xcode-select --install  (or `brew install git`)\n"
+            "  linux: apt install git  (or your distro's package manager)",
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
     if result.returncode != 0:
         err = (result.stderr or result.stdout or "").strip()
         typer.echo(f"error: git {args[0]} failed: {err}", err=True)
