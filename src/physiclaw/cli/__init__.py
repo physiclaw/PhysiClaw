@@ -1,8 +1,4 @@
-"""PhysiClaw command-line interface.
-
-Subcommands mirror openclaw's shape where meaningful (`doctor`, `onboard`,
-`status`, `setup`) so users familiar with that CLI can adapt quickly.
-"""
+"""PhysiClaw command-line interface."""
 
 from typing import Annotated
 
@@ -11,7 +7,6 @@ import typer
 from physiclaw import __version__ as _pkg_version
 from physiclaw.cli.config_cmd import config_app
 from physiclaw.cli.doctor import doctor
-from physiclaw.cli.onboard import onboard
 from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
 from physiclaw.cli.status import status
@@ -24,7 +19,6 @@ app = typer.Typer(
 )
 
 app.command()(doctor)
-app.command()(onboard)
 app.command()(server)
 app.command()(status)
 app.add_typer(
