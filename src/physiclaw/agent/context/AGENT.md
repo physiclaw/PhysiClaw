@@ -5,7 +5,7 @@
 **Wake.** Two trigger sources can wake you:
 
 - **Camera** detects a screen change (new IM message, owner picked up the phone, app notification). The screen at wake tells you nothing — lock, stale app, random banner. Don't infer "no work" from it. Proceed by checking IM.
-- **Cron** fires a scheduled job whose `Next fire time` arrived. The job's context is injected into SYSTEM under `## Scheduled jobs firing now` — read it for what to do, and `finish_job(id, status, recap)` once the work is settled (see JOBS.md).
+- **Cron** fires a scheduled job whose `Next fire time` arrived. The job's context appears in your wake context under `## Scheduled jobs firing now` — read it for what to do, and `finish_job(id, status, recap)` once the work is settled (see JOBS.md).
 
 A single wake can have both (camera change AND a cron firing) or multiple cron jobs at once. Process all of them before closing.
 
@@ -19,14 +19,15 @@ A single wake can have both (camera change AND a cron firing) or multiple cron j
 - **`append_log` after every major step — don't wait for Close.** Format and rationale in PERSISTENCE.md.
 - **Reply to the owner sparingly** — only to acknowledge, report completion, request a decision, or report stuck.
 
-**Close.**
+**Close.** Each step below is its own `[note, one-other]` turn (per CONVENTION § Turn rules):
 
-1. Verify result on screen.
-2. `append_log("[HH:MM] app: page → page — what you did")` summarizing the close (in addition to any per-step logs you wrote during Work). Purchases: include merchant, brand, spec, quantity, price.
+1. Verify result on screen — final `peek`.
+2. `append_log("[HH:MM] app: page → page — what you did")` summarizing the close (in addition to any per-step logs you wrote during Work). Purchases: include merchant, brand, spec, quantity, price. **Skip on WAIT / IDLE** — those statuses don't write a close log; per-step logs already capture what happened.
 3. Go to IM. Reply to owner. Never reply before logging.
 4. `go_back()` to exit the chat thread back to the IM chat list — prevents landing the next wake inside a stale thread.
 5. `home_screen()` to return to the home screen — leaves the phone in a clean state so the next wake starts from a known launch pad.
-6. `end_session(status, recap)`. If a follow-up is expected (owner asked to be reminded, order awaiting ack), use `end_session(WAIT, ...)` plus `create_job` for the resume — see JOBS.md. Otherwise `end_session(DONE, ...)`.
+6. `create_job(...)` to schedule the resume check — **only on WAIT** (owner asked to be reminded, order awaiting ack, etc.); see JOBS.md. Skip on DONE / STUCK / FAIL / IDLE.
+7. `end_session(status, recap)`.
 
 ## Boundaries
 

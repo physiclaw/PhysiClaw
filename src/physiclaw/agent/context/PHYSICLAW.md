@@ -45,7 +45,7 @@ App-specific input fields (text-input field bbox, paste-button popover location,
 ## Operating loop
 
 1. **Orient + Plan** — `peek`. The bbox you'll act on must come from this listing.
-2. **If `peek` doesn't list the target** — `screenshot` once for pixel-perfect bboxes; `peek` again to refresh state (since `screenshot` is mutating); act on the bboxes you captured.
+2. **If `peek` doesn't list the target** — `screenshot` once for pixel-perfect bboxes; `peek` again to refresh state (since `screenshot` is mutating); act on the bboxes from the screenshot listing.
 3. **Act** — gesture tool, with the bbox from step 1 or 2.
 4. **Verify + replan** — `peek` again. If the listing didn't change, the action didn't land — retry the gesture (stylus occasionally misses) or pick a different bbox from the new listing.
 

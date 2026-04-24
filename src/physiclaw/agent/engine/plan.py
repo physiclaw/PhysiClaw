@@ -33,8 +33,9 @@ DEFAULT_UNDERSTANDING = (
 
 DEFAULT_SEED_STEP = (
     "(no plan yet — after reading the owner's IM, call update_progress "
-    "with the full step list through end_session; see update_progress "
-    "docstring for format and worked example)"
+    "with the full step list through end_session; see CONVENTION § "
+    "'The plan' for rules, update_progress docstring for the worked "
+    "example)"
 )
 
 
