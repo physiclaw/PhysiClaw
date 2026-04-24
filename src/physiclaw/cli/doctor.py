@@ -154,6 +154,34 @@ def _probe_bridge_deep(host: str, port: int) -> str:
     )
 
 
+def _skills_lines() -> list[str]:
+    """One formatted line per installed skill. CLI-installed skills carry
+    a ``.installed-from`` JSON marker (see ``cli/skills.py``); user-authored
+    dirs are valid too and render as ``(local)``."""
+    from physiclaw.cli.skills import (
+        PROVENANCE_FILE,
+        installed_skill_dirs,
+        read_provenance,
+    )
+
+    entries = installed_skill_dirs()
+    if not entries:
+        return [f"  (none installed in {paths.skills_dir()})"]
+    out: list[str] = []
+    for d in entries:
+        prov = read_provenance(d)
+        if prov is not None:
+            ref = prov.get("ref") or (prov.get("sha", "") or "")[:7] or "?"
+            out.append(_fmt_ok(f"{d.name}  ← {prov.get('source', '?')} @ {ref}"))
+        elif (d / PROVENANCE_FILE).exists():
+            # Marker present but unparseable — rare, worth flagging
+            # separately from user-authored so the user can fix it.
+            out.append(_fmt_warn(f"{d.name}: provenance unreadable"))
+        else:
+            out.append(_fmt_ok(f"{d.name}  (local)"))
+    return out
+
+
 def _probe_qwen_api_deep() -> str:
     """1-token completion to confirm the key actually works (not just present)."""
     import httpx
@@ -329,6 +357,11 @@ def doctor(
             typer.echo(_probe_qwen_api_deep())
     elif provider_choice == "qwen":
         typer.echo(_fmt_warn("qwen api key: (unset) — required for provider=qwen"))
+
+    typer.echo()
+    typer.echo(typer.style("Skills", bold=True))
+    for line in _skills_lines():
+        typer.echo(line)
 
     typer.echo()
     typer.echo(typer.style("Next steps", bold=True))

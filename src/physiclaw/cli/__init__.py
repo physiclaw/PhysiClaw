@@ -9,6 +9,7 @@ from physiclaw.cli.config import config_app
 from physiclaw.cli.doctor import doctor
 from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
+from physiclaw.cli.skills import skills_app
 from physiclaw.cli.status import status
 
 app = typer.Typer(
@@ -30,6 +31,11 @@ app.add_typer(
     config_app,
     name="config",
     help="Show or edit the user config file.",
+)
+app.add_typer(
+    skills_app,
+    name="skills",
+    help="Install, list, and remove skills from a git-repo source.",
 )
 
 

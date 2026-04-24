@@ -100,6 +100,14 @@ class RetentionConfig:
 
 
 @dataclass
+class SkillsConfig:
+    """Source repo for ``physiclaw skills install``. Empty = no default;
+    users must pass ``--from`` or set this key. Convention: the source
+    repo must contain a top-level ``skills/<name>/SKILL.md`` layout."""
+    default_source: str = ""
+
+
+@dataclass
 class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     warm_start: WarmStartConfig = field(default_factory=WarmStartConfig)
@@ -109,6 +117,7 @@ class Config:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     claude: ClaudeConfig = field(default_factory=ClaudeConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)
 
 
 _SECTION_TYPES: dict[str, type] = {
@@ -120,6 +129,7 @@ _SECTION_TYPES: dict[str, type] = {
     "memory": MemoryConfig,
     "claude": ClaudeConfig,
     "retention": RetentionConfig,
+    "skills": SkillsConfig,
 }
 
 
@@ -140,6 +150,10 @@ _SECTION_COMMENTS: dict[str, str] = {
     "memory": "How many recent daily memory logs to surface on wake-up.",
     "claude": "Applied when PHYSICLAW_PROVIDER=claude-code (external CLI subprocess).",
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
+    "skills": (
+        "Default source repo for `physiclaw skills install`. Empty = require "
+        "`--from`. Accepts `owner/repo` shorthand or a full git URL."
+    ),
 }
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
