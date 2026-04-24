@@ -71,3 +71,8 @@ def vision(
 
     pt_path.unlink(missing_ok=True)
     typer.echo(typer.style("✓ vision model ready", fg=typer.colors.GREEN))
+    typer.echo()
+    typer.echo(
+        typer.style("Next:", bold=True)
+        + " physiclaw setup hardware  (plug in the arm + USB camera first)"
+    )

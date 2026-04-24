@@ -1,6 +1,7 @@
 """``physiclaw status`` — quick snapshot (compare to `doctor` which probes deeper)."""
 
 import json
+import sys
 
 import typer
 
@@ -47,4 +48,12 @@ def status() -> None:
         typer.echo(
             typer.style("  jobs file     ", fg=typer.colors.YELLOW)
             + f"none yet ({jobs})"
+        )
+
+    # Suppress on pipe — `status` is a quick snapshot meant for grep/jq.
+    if sys.stdout.isatty():
+        typer.echo()
+        typer.echo(
+            typer.style("Next:", bold=True)
+            + " physiclaw doctor  (for deeper checks — server, hardware, provider)"
         )
