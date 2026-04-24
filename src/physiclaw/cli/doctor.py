@@ -7,9 +7,7 @@ server). When the server is offline, doctor actively probes the GRBL
 arm and enumerates cameras.
 """
 
-import contextlib
 import logging
-import os
 import platform
 import shutil
 import sys
@@ -22,36 +20,16 @@ from physiclaw.cli._format import ok as _fmt_ok
 from physiclaw.cli._format import warn as _fmt_warn
 
 
-@contextlib.contextmanager
-def _silenced_stderr():
-    """Redirect OS-level stderr (fd 2) to /dev/null for the block.
-
-    OpenCV/AVFoundation/ffmpeg print "out device of bound" and similar
-    via C-level fprintf, bypassing Python's logging — only an fd-level
-    redirect catches them.
-    """
-    sys.stderr.flush()
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    try:
-        saved = os.dup(2)
-        try:
-            os.dup2(devnull, 2)
-            yield
-        finally:
-            os.dup2(saved, 2)
-            os.close(saved)
-    finally:
-        os.close(devnull)
-
-
 def _list_cameras(max_index: int = 4) -> list[int]:
     # Each failed index on macOS can block 1–3s in AVFoundation, so stop
     # after a couple of consecutive misses.
     import cv2
 
+    from physiclaw.core.hardware.camera import silenced_stderr
+
     found: list[int] = []
     misses = 0
-    with _silenced_stderr():
+    with silenced_stderr():
         for i in range(max_index + 1):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
@@ -116,7 +94,9 @@ def _probe_camera_frame(index: int) -> str:
     """cap.read() catches the macOS-TCC-denied case (isOpened lies)."""
     import cv2
 
-    with _silenced_stderr():
+    from physiclaw.core.hardware.camera import silenced_stderr
+
+    with silenced_stderr():
         cap = cv2.VideoCapture(index)
         try:
             for _ in range(3):
@@ -314,7 +294,7 @@ def doctor(
                 ))
         cams = _list_cameras()
         if cams:
-            typer.echo(_fmt_ok(f"cameras: {len(cams)} detected (indices {cams})"))
+            typer.echo(_fmt_ok(f"cameras: {len(cams)} detected"))
             if deep:
                 for idx in cams:
                     typer.echo(_probe_camera_frame(idx))

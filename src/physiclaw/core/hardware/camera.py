@@ -17,10 +17,12 @@ If the camera returns blank frames, run `imagesnap` once first to
 grant camera access to your terminal app, then retry.
 """
 
+import contextlib
 import logging
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 
@@ -29,6 +31,34 @@ import cv2
 from physiclaw.core.logger import save_snapshot
 
 log = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def silenced_stderr():
+    """Redirect OS-level stderr (fd 2) to /dev/null for the block.
+
+    OpenCV/AVFoundation/ffmpeg print things like ``out device of bound``
+    and ``camera failed to properly initialize`` via C-level fprintf,
+    bypassing Python's logging — only an fd-level redirect catches them.
+    Wrap any code that probes or opens a ``cv2.VideoCapture`` whose index
+    might not exist.
+
+    Process-global: fd 2 is shared, so any other thread logging to
+    stderr inside the ``with`` block drops to /dev/null too. Keep the
+    wrapped region short.
+    """
+    sys.stderr.flush()
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        saved = os.dup(2)
+        try:
+            os.dup2(devnull, 2)
+            yield
+        finally:
+            os.dup2(saved, 2)
+            os.close(saved)
+    finally:
+        os.close(devnull)
 
 
 def _ensure_camera_permission():
@@ -110,10 +140,11 @@ class Camera:
 
     def _open(self):
         """Open the underlying ``cv2.VideoCapture``. Retries with macOS perm prompt."""
-        self.cap = cv2.VideoCapture(self.index)
-        if not self.cap.isOpened():
-            _ensure_camera_permission()
+        with silenced_stderr():
             self.cap = cv2.VideoCapture(self.index)
+            if not self.cap.isOpened():
+                _ensure_camera_permission()
+                self.cap = cv2.VideoCapture(self.index)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open camera index {self.index}")
         # AVFoundation (macOS) ignores this; V4L (Linux) honors it.
