@@ -5,6 +5,7 @@ ordering need a TOML round-trip lib (tomlkit) we'd rather not pull in
 for a one-feature gain. Users edit by hand via ``physiclaw config edit``.
 """
 
+import dataclasses
 import os
 import shutil
 import subprocess
@@ -37,10 +38,31 @@ def _path() -> None:
     typer.echo(_config.config_path())
 
 
+def _redact_secrets(cfg: _config.Config) -> _config.Config:
+    """Return a copy of cfg with any ``*_api_key`` field masked.
+
+    Self-maintaining via the field-name suffix — new credential fields
+    added later are masked automatically.
+    """
+    p = cfg.provider
+    masked = {
+        f.name: ("<redacted>" if getattr(p, f.name) else "")
+        for f in dataclasses.fields(p)
+        if f.name.endswith("_api_key")
+    }
+    return dataclasses.replace(cfg, provider=dataclasses.replace(p, **masked))
+
+
 @config_app.command("show")
 def _show() -> None:
-    """Dump the effective (merged) config as TOML."""
-    typer.echo(_config.to_toml(_load_or_exit()), nl=False)
+    """Dump the effective (merged) config as TOML. API keys are masked."""
+    cfg = _load_or_exit()
+    typer.echo(
+        f"# API key values are masked. Read the file directly to see them: "
+        f"{_config.config_path()}"
+    )
+    typer.echo()
+    typer.echo(_config.to_toml(_redact_secrets(cfg)), nl=False)
 
 
 @config_app.command("get")
