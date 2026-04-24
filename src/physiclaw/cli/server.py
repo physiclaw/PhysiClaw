@@ -14,19 +14,14 @@ import typer
 from physiclaw.config import CONFIG
 
 
-def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
+def _spawn_runtime(port: int, verbose: bool, label: str) -> subprocess.Popen:
     """Run the hook loop out-of-process so long-running hooks don't block
     the MCP event loop. Terminated via atexit when the server exits.
 
-    Engine + provider are picked by PHYSICLAW_PROVIDER (or auto-detected
-    from API-key env vars). The subprocess inherits the env.
+    `label` is the pre-resolved engine string (e.g. "engine=claude-code")
+    passed by the caller — the caller already did provider resolution to
+    record into runtime_state, so reuse that instead of resolving again.
     """
-    from physiclaw.agent.runtime.config import (
-        EXTERNAL,
-        PROVIDER_DEFAULT,
-        PROVIDER_ENV_VAR,
-    )
-
     log = logging.getLogger(__name__)
     cmd = [
         sys.executable,
@@ -37,12 +32,6 @@ def _spawn_runtime(port: int, verbose: bool) -> subprocess.Popen:
     ]
     if verbose:
         cmd.append("--verbose")
-    choice = os.environ.get(PROVIDER_ENV_VAR, PROVIDER_DEFAULT)
-    label = (
-        "engine=claude-code"
-        if choice == EXTERNAL
-        else f"engine=physiclaw, provider={choice}"
-    )
     proc = subprocess.Popen(cmd)
     log.info(f"Runtime loop started as subprocess (pid={proc.pid}, {label})")
     return proc
@@ -130,17 +119,20 @@ def server(
     # KeyboardInterrupt; SIGTERM-without-cleanup is handled by doctor's
     # pid-liveness check on read.
     from physiclaw import runtime_state
-    from physiclaw.agent.runtime.launcher import resolve as _resolve_provider
+    from physiclaw.agent.runtime.launcher import engine_label, resolve as _resolve_provider
 
-    # Resolve here (once, in the same env the user invoked `physiclaw server`
+    # Resolve once here (in the same env the user invoked `physiclaw server`
     # from) so `doctor` in another shell can read the live choice instead of
-    # re-resolving against an env that may be missing PHYSICLAW_PROVIDER. A
-    # bad provider at this point is non-fatal for the HTTP server — record
-    # nothing and let the runtime subprocess report the real error.
+    # re-resolving against an env that may be missing PHYSICLAW_PROVIDER.
+    # The runtime subprocess gets this same resolution via the pre-built
+    # label. A bad provider at this point is non-fatal for the HTTP server —
+    # record nothing and let the runtime subprocess report the real error.
     try:
         _provider, _provider_source = _resolve_provider()
+        _runtime_label = engine_label(_provider)
     except RuntimeError:
         _provider, _provider_source = None, None
+        _runtime_label = "engine=(unset)"
     runtime_state.write(
         host, port, provider=_provider, provider_source=_provider_source,
     )
@@ -195,7 +187,7 @@ def server(
         )
 
     if not no_runtime:
-        runtime_proc = _spawn_runtime(port, verbose)
+        runtime_proc = _spawn_runtime(port, verbose, _runtime_label)
 
         def _stop_runtime() -> None:
             if runtime_proc.poll() is None:

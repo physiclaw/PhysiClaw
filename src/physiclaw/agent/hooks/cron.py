@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 
 def _build_trigger_description(due: list[Job]) -> str:
-    """Format due jobs into a Trigger description for spawn_claude."""
+    """Format due jobs into a Trigger description for the active engine."""
     blocks: list[str] = []
     for j in due:
         block = [f"job: {j.id}", f"description: {j.description}"]

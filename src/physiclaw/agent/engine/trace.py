@@ -2,7 +2,7 @@
 
   1. `Trace` — per-day human-readable log
        log/engine/engine-YYYY-MM-DD.log
-     Matches the shape of `src/physiclaw/agent/runtime/claude.py`'s _SessionLog so
+     Matches the shape of `agent/claude/spawn.py`'s _SessionLog so
      operators scan either runtime the same way. One-line summaries
      via `_summarize(event)`; internal bookkeeping events in
      `_SILENT_EVENTS` are skipped.

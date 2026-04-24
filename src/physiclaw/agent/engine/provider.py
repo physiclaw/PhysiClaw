@@ -32,13 +32,15 @@ from physiclaw.agent.engine.dto import (
 log = logging.getLogger(__name__)
 
 # Public registry of provider names that have a working Provider class.
-# The launcher accepts these (plus "claude-code" for the external CLI
-# subprocess path). Adding a provider: implement the class, register it
-# in _PROVIDER_FACTORIES below, and add the name here.
+# The launcher may augment these with other engine names it discovers at
+# runtime; the engine itself only knows about its own providers. Adding
+# one: implement the class, register it in _PROVIDER_FACTORIES below,
+# and add the name here.
 PROVIDER_NAMES = ("qwen",)
 
-# Per-provider endpoint defaults. `claude` is intentionally absent —
-# Anthropic isn't OpenAI-compatible and needs a different Provider class.
+# Per-provider endpoint defaults. Only OpenAI-compatible endpoints are
+# modelled here — providers with bespoke wire formats need their own
+# Provider class and live outside this map.
 _PROVIDER_ENDPOINTS: dict[str, tuple[str, str]] = {
     # name: (base_url, default_model)
     "qwen":    ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.6-plus"),

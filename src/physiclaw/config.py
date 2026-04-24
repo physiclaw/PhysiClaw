@@ -367,17 +367,29 @@ CONFIG: Config = load()
 # count as "unset" and fall through to the next layer.
 
 
-def provider_name() -> str:
-    """Resolve effective provider: PHYSICLAW_PROVIDER > config > default."""
-    # Lazy: importing physiclaw.agent.runtime traverses its __init__ which
-    # pulls in Runtime → physiclaw.config — a cycle if done at module top.
-    from physiclaw.agent.runtime.config import PROVIDER_DEFAULT
+PROVIDER_ENV_VAR = "PHYSICLAW_PROVIDER"
 
-    return (
-        os.environ.get("PHYSICLAW_PROVIDER")
-        or CONFIG.provider.name
-        or PROVIDER_DEFAULT
-    )
+
+def provider_name() -> str:
+    """Resolve effective provider: PHYSICLAW_PROVIDER > config > default.
+
+    The default is the Claude engine name iff `agent/claude/` is installed.
+    If the Claude package is removed AND no explicit provider is set, this
+    raises — there is no universal sensible fallback.
+    """
+    explicit = os.environ.get(PROVIDER_ENV_VAR) or CONFIG.provider.name
+    if explicit:
+        return explicit
+    # Lazy: importing agent.claude pulls in claude.spawn; keep it off the
+    # import graph unless we actually need the default.
+    try:
+        from physiclaw.agent.claude import ENGINE_NAME
+    except ImportError:
+        raise RuntimeError(
+            "no provider configured and agent/claude/ is not installed. "
+            "Set PHYSICLAW_PROVIDER env var or [provider] name in config.toml."
+        ) from None
+    return ENGINE_NAME
 
 
 def qwen_api_key() -> str | None:

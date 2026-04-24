@@ -343,28 +343,28 @@ def doctor(
         ))
 
     typer.echo()
-    typer.echo(_fmt_section("Provider"))
+    typer.echo(_fmt_section("Engine"))
 
     # Prefer the live server's recorded choice — resolving here would pull
     # from the current shell's env, which may be missing PHYSICLAW_PROVIDER
     # even when the server has it set. Fall back to a fresh resolve when no
     # server is running.
+    from physiclaw.agent.runtime.launcher import engine_label, resolve
+
     live_provider = live.get("provider") if live else None
     if live_provider:
         provider_choice = live_provider
         provider_source = f"live server, {live.get('provider_source') or '?'}"
-        typer.echo(_fmt_ok(f"provider: {provider_choice} ({provider_source})"))
+        typer.echo(_fmt_ok(f"{engine_label(provider_choice)} ({provider_source})"))
     else:
-        from physiclaw.agent.runtime.launcher import resolve
-
         try:
             provider_choice, provider_source = resolve()
-            typer.echo(_fmt_ok(f"provider: {provider_choice} (from {provider_source})"))
+            typer.echo(_fmt_ok(f"{engine_label(provider_choice)} (from {provider_source})"))
         except RuntimeError as e:
             provider_choice = None
-            typer.echo(_fmt_warn(f"provider: invalid — {e}"))
+            typer.echo(_fmt_warn(f"engine: invalid — {e}"))
 
-    # When a live server is running with provider=qwen, the `Provider` line
+    # When a live server is running with provider=qwen, the Engine line
     # above is already the proof the key works — don't add a second line.
     # Otherwise surface the key status for the current shell's config.
     if live_provider != "qwen":

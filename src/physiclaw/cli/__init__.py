@@ -1,5 +1,6 @@
 """PhysiClaw command-line interface."""
 
+from importlib.util import find_spec
 from typing import Annotated
 
 import typer
@@ -22,6 +23,31 @@ app = typer.Typer(
 app.command()(doctor)
 app.command()(server)
 app.command()(status)
+
+# Claude-code-specific commands — registered only when agent/claude/ is
+# importable. The body defers the heavy import (spawn.py → engine.skill
+# → mcp_inventory → …) until the command actually runs, so
+# `physiclaw --help` stays fast.
+if find_spec("physiclaw.agent.claude") is not None:
+
+    @app.command(name="claude-preview")
+    def _claude_preview(
+        trigger: Annotated[
+            str,
+            typer.Option(
+                "--trigger", "-t",
+                help="Synthetic trigger description to preview against.",
+            ),
+        ] = "manual preview wake",
+        full: Annotated[
+            bool,
+            typer.Option("--full", help="Print the full system prompt and full argv."),
+        ] = False,
+    ) -> None:
+        """Assemble the `claude -p` command for a synthetic trigger without spawning."""
+        from physiclaw.agent.claude.preview import claude_preview
+
+        claude_preview(trigger=trigger, full=full)
 app.add_typer(
     setup_app,
     name="setup",
