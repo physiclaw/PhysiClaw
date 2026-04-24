@@ -31,11 +31,11 @@ from physiclaw.agent.engine.dto import (
 
 log = logging.getLogger(__name__)
 
-# Public registry of provider names → factory. The launcher's auto-detect
-# (PHYSICLAW_ENGINE / credential env vars) accepts these (plus "claude-code"
-# for the external CLI subprocess path). Add a provider here AND an entry
-# to its endpoint config + factory below to enable a new one.
-PROVIDER_NAMES = ("qwen", "kimi", "chatgpt", "claude")
+# Public registry of provider names that have a working Provider class.
+# The launcher accepts these (plus "claude-code" for the external CLI
+# subprocess path). Adding a provider: implement the class, register it
+# in _PROVIDER_FACTORIES below, and add the name here.
+PROVIDER_NAMES = ("qwen",)
 
 # Per-provider endpoint defaults. `claude` is intentionally absent —
 # Anthropic isn't OpenAI-compatible and needs a different Provider class.

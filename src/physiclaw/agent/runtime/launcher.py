@@ -14,15 +14,17 @@ Two engines:
   - `claude-code` — subprocess to Anthropic's `claude` CLI; the loop is
                     Claude Code's own.
 
-Single env var `PHYSICLAW_PROVIDER` selects the whole stack:
-  qwen | kimi | chatgpt | claude   → physiclaw engine + that provider
-                                     (`claude` = Anthropic's API direct)
-  claude-code                      → external Claude Code subprocess
+Single env var `PHYSICLAW_PROVIDER` (or [provider] name in config.toml)
+selects the whole stack:
+  qwen          → physiclaw engine + Qwen (DashScope, OpenAI-compatible)
+  claude-code   → external Claude Code subprocess
 
-Default (unset) is `claude-code`. Each provider needs its own credential
-env var (QWEN_API_KEY, KIMI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY) —
-the chosen `Provider` reads its credential at startup and fails loudly if
-missing.
+Default (unset) is `claude-code`. Each in-process provider reads its
+credential at startup (e.g. QWEN_API_KEY env var or [provider]
+qwen_api_key in config.toml) and fails loudly if missing.
+
+Kimi/OpenAI/Anthropic providers are planned but not yet implemented —
+their key fields exist in config.toml as forward-compat placeholders.
 """
 
 import argparse
