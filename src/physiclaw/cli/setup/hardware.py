@@ -63,6 +63,22 @@ def wait(msg):
     input(f"  {msg} [Enter] ")
 
 
+def _photo_booth_adjust(prompt: str) -> None:
+    """Open Photo Booth for camera aim, wait for the user, then quit
+    it so AVFoundation releases the camera before the server reconnects.
+    Without the quit + ~0.5s settle, the next ``Camera(...)`` open hits
+    a still-exclusive AVCaptureSession and surfaces as "Camera not
+    connected" downstream. Graceful AppleScript quit (not ``killall``)
+    so macOS tears the session down cleanly."""
+    subprocess.run(["open", "-a", "Photo Booth"])
+    wait(prompt)
+    subprocess.run(
+        ["osascript", "-e", 'tell application "Photo Booth" to quit'],
+        capture_output=True,
+    )
+    time.sleep(0.5)
+
+
 def ask(msg, auto):
     return True if auto else input(f"  {msg} [Enter/q] ").strip().lower() != "q"
 
@@ -122,8 +138,7 @@ def run(auto: bool = False, trace: bool = False) -> None:
 
     print("\n── 2. Position phone ──")
     if not auto:
-        subprocess.run(["open", "-a", "Photo Booth"])
-        wait("Place phone under camera, adjust in Photo Booth, then close Photo Booth")
+        _photo_booth_adjust("Place phone under camera, adjust in Photo Booth")
         _done("Phone positioned")
     else:
         _done("Skipped (auto)")
@@ -219,9 +234,14 @@ def run(auto: bool = False, trace: bool = False) -> None:
     print("\n── 8. Camera calibration ──")
     print("  Adjust camera, then detect rotation + check phone fills the frame.")
     if not auto:
-        subprocess.run(["open", "-a", "Photo Booth"])
-        wait("Adjust camera angle/distance if needed, then close Photo Booth")
-    api("POST", "/api/connect-camera", {"index": cam})
+        _photo_booth_adjust("Adjust camera angle/distance if needed")
+    r_conn = api("POST", "/api/connect-camera", {"index": cam})
+    if not ok(r_conn):
+        _fail(
+            f"Reconnect camera failed: {(r_conn or {}).get('message', 'no response')}. "
+            "Another app (Photo Booth, Zoom, FaceTime) may still be holding the camera."
+        )
+        sys.exit(1)
     r = calibrate("camera", 15)
     if not ok(r):
         _fail(f"Camera calibration failed: {r}")
