@@ -46,15 +46,23 @@ PROVIDER_CHOICES = (*PROVIDER_NAMES, EXTERNAL)
 
 def resolve() -> tuple[str, str]:
     """Return (choice, source). `choice` is either a provider name or the
-    sentinel "claude-code"; default is "claude-code" when env is unset."""
-    explicit = os.environ.get(PROVIDER_ENV_VAR)
-    if explicit is None:
-        return PROVIDER_DEFAULT, "default"
-    if explicit not in PROVIDER_CHOICES:
+    sentinel "claude-code"; source describes where the value came from
+    so log lines and error messages can point users to the right knob."""
+    from physiclaw.config import CONFIG
+
+    env_val = os.environ.get(PROVIDER_ENV_VAR)
+    if env_val is not None:
+        choice, source = env_val, f"{PROVIDER_ENV_VAR} env"
+    elif CONFIG.provider.name:
+        choice, source = CONFIG.provider.name, "config.toml [provider] name"
+    else:
+        choice, source = PROVIDER_DEFAULT, "default"
+
+    if choice not in PROVIDER_CHOICES:
         raise RuntimeError(
-            f"{PROVIDER_ENV_VAR}={explicit!r} is not one of {PROVIDER_CHOICES}"
+            f"provider {choice!r} (from {source}) is not one of {PROVIDER_CHOICES}"
         )
-    return explicit, f"{PROVIDER_ENV_VAR} override"
+    return choice, source
 
 
 def launch() -> None:

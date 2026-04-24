@@ -95,10 +95,14 @@ class QwenProvider:
         timeout: float = 120.0,
         base_url: str | None = None,
     ):
-        key = os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY")
+        from physiclaw.config import qwen_api_key
+
+        key = qwen_api_key()
         if not key:
             raise RuntimeError(
-                "QWEN_API_KEY (or DASHSCOPE_API_KEY) must be set in the environment"
+                "Qwen credential not found. Set QWEN_API_KEY (or "
+                "DASHSCOPE_API_KEY) in the environment, or "
+                "[provider] qwen_api_key in ~/.physiclaw/config.toml."
             )
         endpoint, default_model = provider_endpoint("qwen")
         self.model = model or os.environ.get("QWEN_MODEL", default_model)

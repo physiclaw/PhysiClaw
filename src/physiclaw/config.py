@@ -13,6 +13,7 @@ Layering (first match wins):
 """
 
 import dataclasses
+import os
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -55,6 +56,26 @@ class EngineConfig:
 
 
 @dataclass
+class ProviderConfig:
+    """Provider selection + API keys.
+
+    Empty strings mean "fall back to env / built-in default" — see the
+    ``provider_name()`` / ``*_api_key()`` helpers below for resolution order.
+
+    Today only ``name="qwen"`` (or ``"claude-code"``) and ``qwen_api_key`` are
+    wired to working code. Kimi/OpenAI/Anthropic provider classes don't exist
+    yet; their key fields are accepted here for forward compatibility but
+    read by nothing until those providers are implemented.
+    """
+
+    name: str = ""
+    qwen_api_key: str = ""
+    kimi_api_key: str = ""
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+
+
+@dataclass
 class CompactConfig:
     max_image_edge_px: int = 1566
     jpeg_quality: int = 85
@@ -83,6 +104,7 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     warm_start: WarmStartConfig = field(default_factory=WarmStartConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
+    provider: ProviderConfig = field(default_factory=ProviderConfig)
     compact: CompactConfig = field(default_factory=CompactConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     claude: ClaudeConfig = field(default_factory=ClaudeConfig)
@@ -93,6 +115,7 @@ _SECTION_TYPES: dict[str, type] = {
     "server": ServerConfig,
     "warm_start": WarmStartConfig,
     "engine": EngineConfig,
+    "provider": ProviderConfig,
     "compact": CompactConfig,
     "memory": MemoryConfig,
     "claude": ClaudeConfig,
@@ -109,6 +132,10 @@ _FILE_HEADER = """\
 _SECTION_COMMENTS: dict[str, str] = {
     "warm_start": "Timeouts for `physiclaw server --warm-start` hardware reconnect.",
     "engine": "Runaway safeguard + retry + pacing for the agent's tool-call loop.",
+    "provider": (
+        "Provider selection + API keys. Env vars (PHYSICLAW_PROVIDER, "
+        "QWEN_API_KEY, …) override these. Treat keys here like ssh keys."
+    ),
     "compact": "Screenshot compression before sending to the LLM.",
     "memory": "How many recent daily memory logs to surface on wake-up.",
     "claude": "Applied when PHYSICLAW_PROVIDER=claude-code (external CLI subprocess).",
@@ -238,6 +265,49 @@ def get(cfg: Config, dotted: str) -> Any:
 # warm_start, job_store).
 CONFIG: Config = load()
 
+
+# --- Provider credential resolution. -----------------------------------------
+# Order: env var > config.toml > built-in default. Empty strings in config
+# count as "unset" and fall through to the next layer.
+
+
+def provider_name() -> str:
+    """Resolve effective provider: PHYSICLAW_PROVIDER > config > default."""
+    # Lazy: importing physiclaw.agent.runtime traverses its __init__ which
+    # pulls in Runtime → physiclaw.config — a cycle if done at module top.
+    from physiclaw.agent.runtime.config import PROVIDER_DEFAULT
+
+    return (
+        os.environ.get("PHYSICLAW_PROVIDER")
+        or CONFIG.provider.name
+        or PROVIDER_DEFAULT
+    )
+
+
+def qwen_api_key() -> str | None:
+    """Resolve Qwen credential: QWEN_API_KEY > DASHSCOPE_API_KEY > config > None."""
+    return (
+        os.environ.get("QWEN_API_KEY")
+        or os.environ.get("DASHSCOPE_API_KEY")
+        or CONFIG.provider.qwen_api_key
+        or None
+    )
+
+
+def qwen_api_key_source() -> str | None:
+    """Where ``qwen_api_key()`` found a value, or None if unset.
+
+    Mirrors ``qwen_api_key()`` resolution order — keep in sync.
+    """
+    if os.environ.get("QWEN_API_KEY"):
+        return "QWEN_API_KEY env"
+    if os.environ.get("DASHSCOPE_API_KEY"):
+        return "DASHSCOPE_API_KEY env"
+    if CONFIG.provider.qwen_api_key:
+        return "config.toml [provider] qwen_api_key"
+    return None
+
+
 __all__ = [
     "CONFIG",
     "Config",
@@ -245,6 +315,9 @@ __all__ = [
     "config_path",
     "get",
     "load",
+    "provider_name",
+    "qwen_api_key",
+    "qwen_api_key_source",
     "to_toml",
     "write_default",
 ]

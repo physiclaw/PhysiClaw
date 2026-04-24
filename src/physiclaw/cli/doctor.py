@@ -178,15 +178,23 @@ def doctor() -> None:
         ))
 
     typer.echo()
-    typer.echo(typer.style("Provider creds", bold=True))
-    for var in (
-        "PHYSICLAW_PROVIDER",
-        "QWEN_API_KEY",
-        "KIMI_API_KEY",
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-    ):
-        typer.echo(f"  {var:20s} {'set' if var in os.environ else '(unset)'}")
+    typer.echo(typer.style("Provider", bold=True))
+
+    from physiclaw.agent.runtime.launcher import resolve
+
+    try:
+        provider_choice, provider_source = resolve()
+        typer.echo(_fmt_ok(f"provider: {provider_choice} (from {provider_source})"))
+    except RuntimeError as e:
+        provider_choice = None
+        typer.echo(_fmt_warn(f"provider: invalid — {e}"))
+
+    # Only show keys that map to a wired provider today (just qwen).
+    qwen_src = _cfg.qwen_api_key_source()
+    if qwen_src:
+        typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
+    elif provider_choice == "qwen":
+        typer.echo(_fmt_warn("qwen api key: (unset) — required for provider=qwen"))
 
     typer.echo()
     typer.echo(typer.style("Next steps", bold=True))
