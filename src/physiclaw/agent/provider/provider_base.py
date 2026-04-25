@@ -94,9 +94,9 @@ class Provider(Protocol):
 # ---------- shared constants ----------
 
 
-# 5-minute TTL prefix-cache marker. DashScope + Anthropic both accept
-# `{type: "ephemeral"}` (in their respective surrounding shapes). Treat
-# as immutable — never mutate the shared dict.
+# 5-minute TTL prefix-cache marker. DashScope, Moonshot K2, and
+# Anthropic all accept `{type: "ephemeral"}` in their respective
+# surrounding shapes. Treat as immutable — never mutate.
 EPHEMERAL_CACHE_CONTROL = {"type": "ephemeral"}
 
 

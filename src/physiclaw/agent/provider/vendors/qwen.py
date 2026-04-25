@@ -3,7 +3,7 @@
 Uses native tool_calls. The DashScope `compatible-mode` endpoint accepts
 the standard OpenAI request shape; the only Qwen-specific details are
 the `reasoning_content` field on responses (handled in
-`base.parse_openai_response`) and the `<think>...</think>` system-prompt
+`OpenAICompatibleProvider._parse_response`) and the `<think>...</think>` system-prompt
 fragment (declared via `THINKING_FORMAT="qwen"`).
 
 Auth: `QWEN_API_KEY` / `DASHSCOPE_API_KEY` env, or

@@ -41,10 +41,7 @@ from physiclaw.agent.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
-from physiclaw.agent.provider.openai_compat import (
-    OpenAICompatibleProvider,
-    parse_openai_response,
-)
+from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.agent.provider.vendors.anthropic import AnthropicProvider
 from physiclaw.agent.provider.vendors.google import GoogleProvider
 from physiclaw.agent.provider.vendors.moonshot import MoonshotProvider
@@ -165,7 +162,6 @@ __all__ = [
     "in_process_provider_ids",
     "make_provider",
     "mcp_blocks_to_content_blocks",
-    "parse_openai_response",
     "provider_class",
     "provider_endpoint",
     "tool_result_to_wire",

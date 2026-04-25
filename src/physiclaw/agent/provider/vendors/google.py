@@ -8,7 +8,7 @@ other vendor here.
 
 Gemini 3 series uses dynamic thinking by default; reasoning surfaces
 through the shim's `reasoning_content` field (handled in
-`base.parse_openai_response`). No extra wiring needed.
+`OpenAICompatibleProvider._parse_response`). No extra wiring needed.
 
 Auth: `GOOGLE_API_KEY` env, or `[provider] google_api_key` in
 `~/.physiclaw/config.toml`.
