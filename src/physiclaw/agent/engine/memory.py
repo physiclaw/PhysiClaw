@@ -27,6 +27,13 @@ OWNER_FILE = MEMORY_DIR / "OWNER.md"
 # Owner-tunable via `[memory] default_log_entries` in config.toml.
 DEFAULT_LOG_ENTRIES = CONFIG.memory.default_log_entries
 
+# How many log entries to preload into the memory slot at session
+# bootstrap. Smaller than `DEFAULT_LOG_ENTRIES` because every wake pays
+# this in prompt tokens whether the agent needs the history or not;
+# the agent can always call `read_logs` for a deeper window. Owner-
+# tunable via `[memory] bootstrap_log_entries` in config.toml.
+BOOTSTRAP_LOG_ENTRIES = CONFIG.memory.bootstrap_log_entries
+
 # Hard ceiling on how far back to scan when collecting entries. Guards
 # against an indefinite loop on a near-empty memory dir; missing days
 # are skipped cheaply so the cost is just calendar arithmetic.

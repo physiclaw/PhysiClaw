@@ -30,6 +30,7 @@ import logging
 import cv2
 import numpy as np
 
+from physiclaw.agent.engine import memory
 from physiclaw.agent.engine.dto import (
     AssistantMessage,
     ContentBlock,
@@ -118,11 +119,17 @@ def new_summary_placeholder() -> UserMessage:
 
 
 def new_memory_placeholder() -> UserMessage:
-    """The pre-allocated memory-load slot at `messages[3]`. Holds the
-    full text of any `read_memory` / `read_logs` result that would
-    otherwise be dropped by collapse — these are durable references
-    the agent loaded for the rest of the session."""
-    return UserMessage(content=MEMORY_INITIAL)
+    """The pre-allocated memory-load slot at `messages[3]`. Pre-populated
+    at bootstrap with the latest log entries as a synthetic `read_logs`
+    artifact so recent activity is in context from turn 0; falls back to
+    `(none yet)` when no log files exist."""
+    log_text = memory.load_recent_entries(memory.BOOTSTRAP_LOG_ENTRIES)
+    if not log_text:
+        return UserMessage(content=MEMORY_INITIAL)
+    entry = _format_artifact_text(
+        "read_logs", {"entries": memory.BOOTSTRAP_LOG_ENTRIES}, log_text,
+    )
+    return UserMessage(content=_render_slot(MEMORY_HEADER, [entry], sep="\n\n"))
 
 
 def new_skills_placeholder() -> UserMessage:
@@ -263,8 +270,15 @@ def _format_artifact(tc: ToolCall, result: ToolResultMessage | None) -> str:
         return ""
     if not isinstance(result.content, str):
         return ""
-    args_str = json.dumps(tc.arguments, ensure_ascii=False, sort_keys=True)
-    return f"{tc.name}({args_str}) →\n{result.content}"
+    return _format_artifact_text(tc.name, tc.arguments, result.content)
+
+
+def _format_artifact_text(name: str, arguments: dict, content: str) -> str:
+    """Render the slot-entry text for a (tool_name, args, result) triple.
+    Shared by real artifact harvesting and synthetic bootstrap entries
+    so both surfaces produce identical formatting."""
+    args_str = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+    return f"{name}({args_str}) →\n{content}"
 
 
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:

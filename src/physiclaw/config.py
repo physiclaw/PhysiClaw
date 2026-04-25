@@ -99,6 +99,7 @@ class CompactConfig:
 @dataclass
 class MemoryConfig:
     default_log_entries: int = 20
+    bootstrap_log_entries: int = 10
 
 
 @dataclass
@@ -171,7 +172,7 @@ _SECTION_COMMENTS: dict[str, str] = {
         "keys here like ssh keys."
     ),
     "compact": "Screenshot compression before sending to the LLM.",
-    "memory": "Default `read_logs` size when the agent doesn't pass `entries`.",
+    "memory": "Daily-log loading: bootstrap preload + on-demand `read_logs` defaults.",
     "claude": "Applied when [agent] model = 'claude-code/...' (external CLI subprocess).",
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "skills": (
@@ -184,6 +185,8 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("server", "save_tool_calls"): "dump every peek/screenshot output",
     ("server", "save_snapshots"): "dump every raw camera frame",
     ("server", "save_screenshots"): "dump every raw phone-own screenshot",
+    ("memory", "default_log_entries"): "on-demand `read_logs` default size (max 200)",
+    ("memory", "bootstrap_log_entries"): "auto-preloaded into the memory slot at every wake",
 }
 
 
