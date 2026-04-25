@@ -251,7 +251,7 @@ _UPDATE_PROGRESS = LocalTool(
         "properties": {
             "owner_said": {
                 "type": "string",
-                "minLength": 5,
+                "minLength": 1,
                 "maxLength": 1000,
                 "description": "What the owner literally said — quote the IM message.",
             },
