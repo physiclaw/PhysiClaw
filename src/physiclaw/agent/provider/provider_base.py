@@ -73,6 +73,9 @@ class ProviderPermanentError(ProviderError):
 
 class Provider(Protocol):
     model: str
+    COLLAPSE_FIRST_AT_TURN: int
+    KEEP_RECENT_TURNS: int
+    COLLAPSE_INTERVAL_TURNS: int
 
     async def chat(
         self,
@@ -153,6 +156,21 @@ class BaseProvider:
     MODELS: tuple[ModelEntry, ...] = ()
     API_KEY_ENV_VARS: tuple[str, ...] = ()
     THINKING_FORMAT: str | None = None
+
+    # Turn-age summary collapse — see `compact.collapse_old_turns`.
+    # All three knobs live here so vendor-specific tuning (cache
+    # mechanics differ per provider) can override any of them in one
+    # place; defaults are tuned for Anthropic/Qwen-style anchored
+    # caches. `MoonshotProvider` overrides `COLLAPSE_INTERVAL_TURNS`
+    # because K-series cache invalidates whole prefixes — see EOQ
+    # analysis comments in compact.py.
+    #
+    #   F = COLLAPSE_FIRST_AT_TURN    first collapse threshold
+    #   K = KEEP_RECENT_TURNS         recent turns kept per collapse
+    #   I = COLLAPSE_INTERVAL_TURNS   subsequent collapse cadence
+    COLLAPSE_FIRST_AT_TURN: int = 30
+    KEEP_RECENT_TURNS: int = 10
+    COLLAPSE_INTERVAL_TURNS: int = 20
 
     def __init__(
         self,

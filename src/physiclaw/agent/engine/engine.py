@@ -140,6 +140,7 @@ async def _run_session(
             UserMessage(content=_format_triggers(
                 triggers, cron_ctx=jobs.format_fired(triggers),
             )),
+            compact.new_summary_placeholder(),
         ]
 
         provider = make_provider(provider_id, model_id)
@@ -320,6 +321,12 @@ async def _loop(
             messages.append(result)
 
         compact.drop_stale_screens(messages)
+        compact.collapse_old_turns(
+            messages,
+            first_at=provider.COLLAPSE_FIRST_AT_TURN,
+            interval=provider.COLLAPSE_INTERVAL_TURNS,
+            keep=provider.KEEP_RECENT_TURNS,
+        )
 
         if session.sentinel_status:
             return

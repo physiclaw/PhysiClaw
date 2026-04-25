@@ -46,6 +46,13 @@ class MoonshotProvider(OpenAICompatibleProvider):
         ModelEntry("kimi-k2.5", context_window=256_000),
     )
 
+    # Whole-prefix invalidation on K2.x (no anchor support) makes the
+    # per-collapse tax ~3× higher than for Anthropic/Qwen. EOQ on
+    # Moonshot K2.6 pricing (¥1.10 cached / ¥6.50 fresh) gives
+    # Q* ≈ √(2·0.092 / 0.000275) ≈ 26 — round up to 30 to amortize
+    # the tax across more turns.
+    COLLAPSE_INTERVAL_TURNS = 30
+
     def _parse_usage(self, raw: dict) -> Usage:
         """K2 may surface `cached_tokens` at the top of the `usage`
         block instead of nested under `prompt_tokens_details`. Inherit

@@ -36,6 +36,7 @@ from physiclaw.agent.engine.dto import (
     Message,
     TextBlock,
     ToolResultMessage,
+    UserMessage,
 )
 from physiclaw.config import CONFIG
 
@@ -54,6 +55,114 @@ SCREEN_OBS_TOOLS = frozenset({"peek", "screenshot"})
 # marker code does NOT parse this — providers find stubs via the
 # `is_superseded` flag on `ToolResultMessage`.
 STUB_PREFIX = "(superseded "
+
+
+# ---------- summary collapse (turn-age pruning) ----------
+
+# Slot for collapsed earlier-turn summaries. Allocated at session
+# bootstrap as `messages[2]` (right after `[system, trigger]`) so
+# `collapse_old_turns` always knows where to write — no "find existing
+# summary" lookup, no shifting of positions when the slot fills.
+SUMMARY_HEADER = "[earlier turns]"
+SUMMARY_INITIAL = f"{SUMMARY_HEADER}\n(none yet)"
+
+# Three knobs for collapse behavior, all on the `Provider` class:
+#
+#   F = COLLAPSE_FIRST_AT_TURN     first collapse fires at this turn
+#   K = KEEP_RECENT_TURNS          recent turns kept intact per collapse
+#   I = COLLAPSE_INTERVAL_TURNS    cadence between subsequent collapses
+#
+# Defaults (F=30, K=10, I=20) are an EOQ optimum for vendors with
+# anchored caches (Anthropic/Qwen). Moonshot's whole-prefix
+# invalidation pushes its optimum to I=30 — overridden on
+# `MoonshotProvider`.
+
+
+def new_summary_placeholder() -> UserMessage:
+    """The pre-allocated summary slot. Engine bootstrap puts this at
+    `messages[2]`; `collapse_old_turns` mutates it in place once enough
+    turns accumulate. Empty-state body keeps the position stable from
+    turn 0 — no "first collapse inserts a new message and shifts all
+    indices" surprise."""
+    return UserMessage(content=SUMMARY_INITIAL)
+
+
+def collapse_old_turns(
+    messages: list[Message],
+    *,
+    first_at: int,
+    interval: int,
+    keep: int,
+) -> None:
+    """Fold turns older than `keep` into the summary slot at
+    `messages[2]`. Cuts at turn boundaries (an `AssistantMessage`
+    starts a turn) so every collapsed `tool_use` block has its
+    matching `tool_result` collapsed too — no API-rejecting orphans.
+
+    Trigger:
+      - First collapse: when complete-turn count reaches `first_at`.
+      - Subsequent: when count reaches `keep + interval` (i.e.
+        `interval` more turns since the last collapse).
+
+    All three knobs come from the active provider's class attributes
+    (`COLLAPSE_FIRST_AT_TURN`, `KEEP_RECENT_TURNS`, `COLLAPSE_INTERVAL_TURNS`).
+    The engine threads them through; this function stays vendor-
+    agnostic.
+
+    "First vs subsequent" is detected by the summary slot's content —
+    the placeholder body persists until the first collapse rewrites it.
+
+    Source material: each turn's `note(summary=...)` argument. The
+    agent already writes one-line summaries per turn; we just concat
+    them with bullets. No model call to generate a summary.
+
+    Each collapse mutates the prefix bytes between system and the next
+    stub anchor → triggers one cache_creation event. The vendor's
+    defaults amortize this tax against the bounded-prompt savings
+    (EOQ analysis in this file's module-level comment).
+    """
+    if len(messages) < 3 or not isinstance(messages[2], UserMessage):
+        log.warning("collapse_old_turns: no summary slot at messages[2]")
+        return
+
+    turn_starts = [
+        i for i, m in enumerate(messages)
+        if isinstance(m, AssistantMessage)
+    ]
+    is_first_collapse = (messages[2].content == SUMMARY_INITIAL)
+    threshold = first_at if is_first_collapse else keep + interval
+    if len(turn_starts) < threshold:
+        return
+
+    cut = turn_starts[-keep]
+
+    # Carry forward existing summary lines (older collapses) so the
+    # running history stays continuous across multiple collapse events.
+    lines: list[str] = []
+    existing = messages[2].content
+    if isinstance(existing, str) and existing.startswith(SUMMARY_HEADER):
+        body = existing.removeprefix(SUMMARY_HEADER).lstrip()
+        if body and body != "(none yet)":
+            lines.extend(line for line in body.split("\n") if line)
+
+    # Append new notes from the to-be-collapsed range
+    # (messages[3:cut] — skip the placeholder at [2]).
+    for i in range(3, cut):
+        m = messages[i]
+        if not isinstance(m, AssistantMessage):
+            continue
+        for tc in m.tool_calls:
+            if tc.name != "note":
+                continue
+            s = (tc.arguments.get("summary") or "").replace("\n", " ").strip()
+            if s:
+                lines.append(f"- {s}")
+
+    if not lines:
+        return  # nothing collected (e.g. all turns lacked a note tool_call)
+
+    new_summary = UserMessage(content=SUMMARY_HEADER + "\n" + "\n".join(lines))
+    messages[2:cut] = [new_summary]
 
 
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
