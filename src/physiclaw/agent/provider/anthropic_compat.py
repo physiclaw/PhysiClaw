@@ -271,22 +271,27 @@ def _from_anthropic_response(resp) -> AssistantMessage:
 
 
 def _parse_anthropic_usage(resp) -> Usage:
-    """Anthropic's `usage` block → normalized `Usage`. Anthropic uses
-    `input_tokens` / `output_tokens` (vs OpenAI's `prompt_tokens` /
-    `completion_tokens`) and reports cache stats as separate top-level
-    fields (`cache_read_input_tokens`, `cache_creation_input_tokens`)
-    rather than nested under a `_details` block.
+    """Anthropic's `usage` block → normalized `Usage`.
 
-    Per Anthropic's accounting, `prompt_tokens` (in the normalized
-    `Usage`) maps to `input_tokens` — which already includes the cache
-    hit count. Engine downstream computes `new = total - hit - create`
-    so the math stays consistent."""
+    Anthropic reports the three input components disjointly:
+      - `input_tokens`               — fresh, neither cached nor cache-creation
+      - `cache_read_input_tokens`    — cache hit
+      - `cache_creation_input_tokens` — written to cache (still billed as input)
+
+    Total input is the SUM of all three. Our normalized `Usage` follows
+    OpenAI semantics where `prompt_tokens` is the full input and the
+    engine derives `new = total - cached - created`, so we sum them
+    here. Earlier code took only `input_tokens`, which mis-displayed
+    cold turns as "0.6k" when the real total was ~19k."""
     u = getattr(resp, "usage", None)
     if u is None:
         return Usage()
+    fresh = int(getattr(u, "input_tokens", 0) or 0)
+    cached = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+    created = int(getattr(u, "cache_creation_input_tokens", 0) or 0)
     return Usage(
-        prompt_tokens=int(getattr(u, "input_tokens", 0) or 0),
+        prompt_tokens=fresh + cached + created,
         completion_tokens=int(getattr(u, "output_tokens", 0) or 0),
-        cached_tokens=int(getattr(u, "cache_read_input_tokens", 0) or 0),
-        cache_creation_tokens=int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+        cached_tokens=cached,
+        cache_creation_tokens=created,
     )
