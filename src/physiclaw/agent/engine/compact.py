@@ -24,6 +24,7 @@ bearing content with a stub string, AND sets `is_superseded=True` on
 the new DTO. Providers find the latest stub via the typed flag — no
 string parsing across modules.
 """
+import json
 import logging
 
 import cv2
@@ -35,6 +36,7 @@ from physiclaw.agent.engine.dto import (
     ImageBlock,
     Message,
     TextBlock,
+    ToolCall,
     ToolResultMessage,
     UserMessage,
 )
@@ -59,12 +61,40 @@ STUB_PREFIX = "(superseded "
 
 # ---------- summary collapse (turn-age pruning) ----------
 
-# Slot for collapsed earlier-turn summaries. Allocated at session
-# bootstrap as `messages[2]` (right after `[system, trigger]`) so
-# `collapse_old_turns` always knows where to write — no "find existing
-# summary" lookup, no shifting of positions when the slot fills.
+# Three pre-allocated slots, allocated at session bootstrap right after
+# `[system, trigger]`, so `collapse_old_turns` always knows where to
+# write — no "find existing slot" lookup, no shifting positions when
+# the slots fill:
+#
+#   messages[2]  summary slot     `note(summary=...)` bullets
+#   messages[3]  memory slot      `read_memory` / `read_logs` results
+#   messages[4]  skills slot      `Skill(...)` results (bodies + refs)
+#
+# Memory and skill loads are durable artifacts the agent loaded
+# specifically for persistent reference — summarizing them would
+# defeat the load. They get carried through collapse as full
+# tool_call args + result text. Multiple loads concat with `\n\n`
+# (no dedup; if the agent reloaded the same skill, both copies
+# survive — keeps the implementation predictable).
 SUMMARY_HEADER = "[earlier turns]"
 SUMMARY_INITIAL = f"{SUMMARY_HEADER}\n(none yet)"
+
+MEMORY_HEADER = "[memory loads]"
+MEMORY_INITIAL = f"{MEMORY_HEADER}\n(none yet)"
+
+SKILLS_HEADER = "[loaded skills]"
+SKILLS_INITIAL = f"{SKILLS_HEADER}\n(none yet)"
+
+# Tool calls whose results are durable artifacts. Their tool_results
+# would otherwise be dropped by the slice; the collapse harvests them
+# into the dedicated slots so subsequent turns can still see what the
+# agent loaded earlier.
+MEMORY_TOOL_NAMES = frozenset({"read_memory", "read_logs"})
+SKILL_TOOL_NAMES = frozenset({"Skill"})
+
+# First message index after the three pre-allocated slots. The collapse
+# range is `[_FIRST_TURN_INDEX:cut]`.
+_FIRST_TURN_INDEX = 5
 
 # Three knobs for collapse behavior, all on the `Provider` class:
 #
@@ -87,6 +117,22 @@ def new_summary_placeholder() -> UserMessage:
     return UserMessage(content=SUMMARY_INITIAL)
 
 
+def new_memory_placeholder() -> UserMessage:
+    """The pre-allocated memory-load slot at `messages[3]`. Holds the
+    full text of any `read_memory` / `read_logs` result that would
+    otherwise be dropped by collapse — these are durable references
+    the agent loaded for the rest of the session."""
+    return UserMessage(content=MEMORY_INITIAL)
+
+
+def new_skills_placeholder() -> UserMessage:
+    """The pre-allocated skills-load slot at `messages[4]`. Holds the
+    full body of any `Skill(...)` result that would otherwise be
+    dropped by collapse. The skill body is the workflow doctrine the
+    agent is following; a one-line summary cannot replace it."""
+    return UserMessage(content=SKILLS_INITIAL)
+
+
 def collapse_old_turns(
     messages: list[Message],
     *,
@@ -94,15 +140,18 @@ def collapse_old_turns(
     interval: int,
     keep: int,
 ) -> None:
-    """Fold turns older than `keep` into the summary slot at
-    `messages[2]`. Cuts at turn boundaries (an `AssistantMessage`
-    starts a turn) so every collapsed `tool_use` block has its
-    matching `tool_result` collapsed too — no API-rejecting orphans.
+    """Fold turns older than `keep` into three slots:
+      - `messages[2]` — `note(summary=...)` bullets
+      - `messages[3]` — `read_memory` / `read_logs` results in full
+      - `messages[4]` — `Skill(...)` bodies + references in full
+
+    Cuts at turn boundaries (an `AssistantMessage` starts a turn) so
+    every collapsed `tool_use` block has its matching `tool_result`
+    collapsed too — no API-rejecting orphans.
 
     Trigger:
       - First collapse: when complete-turn count reaches `first_at`.
-      - Subsequent: when count reaches `keep + interval` (i.e.
-        `interval` more turns since the last collapse).
+      - Subsequent: when count reaches `keep + interval`.
 
     All three knobs come from the active provider's class attributes
     (`COLLAPSE_FIRST_AT_TURN`, `KEEP_RECENT_TURNS`, `COLLAPSE_INTERVAL_TURNS`).
@@ -112,17 +161,27 @@ def collapse_old_turns(
     "First vs subsequent" is detected by the summary slot's content —
     the placeholder body persists until the first collapse rewrites it.
 
-    Source material: each turn's `note(summary=...)` argument. The
-    agent already writes one-line summaries per turn; we just concat
-    them with bullets. No model call to generate a summary.
+    Source material:
+      - summary: each turn's `note(summary=...)` — string concat,
+        flattened to one line per bullet, no model call.
+      - memory / skills: paired (tool_use, tool_result) carried
+        verbatim. These are durable artifacts the agent loaded
+        specifically for persistent reference; a summary cannot
+        replace them. Multiple loads concat with `\\n\\n`. No dedup —
+        if the agent reloaded the same skill, both copies survive.
 
     Each collapse mutates the prefix bytes between system and the next
     stub anchor → triggers one cache_creation event. The vendor's
     defaults amortize this tax against the bounded-prompt savings
     (EOQ analysis in this file's module-level comment).
     """
-    if len(messages) < 3 or not isinstance(messages[2], UserMessage):
-        log.warning("collapse_old_turns: no summary slot at messages[2]")
+    if (
+        len(messages) < _FIRST_TURN_INDEX
+        or not isinstance(messages[2], UserMessage)
+        or not isinstance(messages[3], UserMessage)
+        or not isinstance(messages[4], UserMessage)
+    ):
+        log.warning("collapse_old_turns: missing summary/memory/skill slots")
         return
 
     turn_starts = [
@@ -136,33 +195,76 @@ def collapse_old_turns(
 
     cut = turn_starts[-keep]
 
-    # Carry forward existing summary lines (older collapses) so the
-    # running history stays continuous across multiple collapse events.
-    lines: list[str] = []
-    existing = messages[2].content
-    if isinstance(existing, str) and existing.startswith(SUMMARY_HEADER):
-        body = existing.removeprefix(SUMMARY_HEADER).lstrip()
-        if body and body != "(none yet)":
-            lines.extend(line for line in body.split("\n") if line)
+    # Carry forward existing slot bodies so running history stays
+    # continuous across multiple collapse events.
+    summary_lines = _carry_items(messages[2].content, SUMMARY_HEADER, sep="\n")
+    memory_entries = _carry_items(messages[3].content, MEMORY_HEADER, sep="\n\n")
+    skill_entries = _carry_items(messages[4].content, SKILLS_HEADER, sep="\n\n")
 
-    # Append new notes from the to-be-collapsed range
-    # (messages[3:cut] — skip the placeholder at [2]).
-    for i in range(3, cut):
+    # Pair tool_call ids with their results within the collapsed range.
+    # The cut is at a turn boundary, so every AssistantMessage in
+    # [..cut] has its ToolResultMessage in [..cut].
+    result_by_id: dict[str, ToolResultMessage] = {
+        m.tool_call_id: m
+        for m in messages[_FIRST_TURN_INDEX:cut]
+        if isinstance(m, ToolResultMessage)
+    }
+
+    for i in range(_FIRST_TURN_INDEX, cut):
         m = messages[i]
         if not isinstance(m, AssistantMessage):
             continue
         for tc in m.tool_calls:
-            if tc.name != "note":
-                continue
-            s = (tc.arguments.get("summary") or "").replace("\n", " ").strip()
-            if s:
-                lines.append(f"- {s}")
+            if tc.name == "note":
+                s = (tc.arguments.get("summary") or "").replace("\n", " ").strip()
+                if s:
+                    summary_lines.append(f"- {s}")
+            elif tc.name in MEMORY_TOOL_NAMES:
+                entry = _format_artifact(tc, result_by_id.get(tc.id))
+                if entry:
+                    memory_entries.append(entry)
+            elif tc.name in SKILL_TOOL_NAMES:
+                entry = _format_artifact(tc, result_by_id.get(tc.id))
+                if entry:
+                    skill_entries.append(entry)
 
-    if not lines:
-        return  # nothing collected (e.g. all turns lacked a note tool_call)
+    if not (summary_lines or memory_entries or skill_entries):
+        return  # nothing salvageable; leave bytes in place
 
-    new_summary = UserMessage(content=SUMMARY_HEADER + "\n" + "\n".join(lines))
-    messages[2:cut] = [new_summary]
+    messages[2:cut] = [
+        UserMessage(content=_render_slot(SUMMARY_HEADER, summary_lines, sep="\n")),
+        UserMessage(content=_render_slot(MEMORY_HEADER, memory_entries, sep="\n\n")),
+        UserMessage(content=_render_slot(SKILLS_HEADER, skill_entries, sep="\n\n")),
+    ]
+
+
+def _carry_items(existing: str | list, header: str, *, sep: str) -> list[str]:
+    """Pull `sep`-separated items out of an existing slot body. Used
+    to round-trip a slot's content across consecutive collapses so
+    the running history stays continuous."""
+    if not isinstance(existing, str) or not existing.startswith(header):
+        return []
+    body = existing.removeprefix(header).lstrip()
+    if not body or body == "(none yet)":
+        return []
+    return [item for item in body.split(sep) if item]
+
+
+def _render_slot(header: str, items: list[str], *, sep: str) -> str:
+    body = sep.join(items) if items else "(none yet)"
+    return f"{header}\n{body}"
+
+
+def _format_artifact(tc: ToolCall, result: ToolResultMessage | None) -> str:
+    """Format one (tool_call, tool_result) pair as a slot entry. Skips
+    error results and non-string content (image-bearing tool_results
+    aren't memory/skill loads anyway)."""
+    if result is None or result.is_error:
+        return ""
+    if not isinstance(result.content, str):
+        return ""
+    args_str = json.dumps(tc.arguments, ensure_ascii=False, sort_keys=True)
+    return f"{tc.name}({args_str}) →\n{result.content}"
 
 
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:

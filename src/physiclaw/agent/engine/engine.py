@@ -141,6 +141,8 @@ async def _run_session(
                 triggers, cron_ctx=jobs.format_fired(triggers),
             )),
             compact.new_summary_placeholder(),
+            compact.new_memory_placeholder(),
+            compact.new_skills_placeholder(),
         ]
 
         provider = make_provider(provider_id, model_id)
