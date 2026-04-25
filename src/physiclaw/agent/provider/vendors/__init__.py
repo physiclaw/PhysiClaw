@@ -6,7 +6,8 @@ One file per vendor — each subclasses one of the two wire-shape bases
 and declares its endpoint, model catalog, auth lookup, and (optionally)
 a `THINKING_FORMAT` flag.
 
-Imports + registry assembly happen in `agent/provider/__init__.py`; this
-file stays empty so tooling that scans the vendors/ directory (e.g. `ls`,
-import-by-discovery patterns later) finds only vendor files.
+Registry assembly (id → class map, lookup helpers) lives in
+`agent/provider/registry.py`; this file stays empty so tooling that
+scans the vendors/ directory (e.g. `ls`, import-by-discovery patterns
+later) finds only vendor files.
 """

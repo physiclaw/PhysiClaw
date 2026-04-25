@@ -184,33 +184,64 @@ def _skills_lines() -> list[str]:
     return out
 
 
-def _probe_qwen_api_deep() -> str:
-    """1-token completion to confirm the key actually works (not just present)."""
-    import httpx
+def _probe_provider_chat_deep(provider_id: str, model_id: str) -> str:
+    """Send a real `provider.chat()` round-trip — proves network, auth,
+    billing, AND model response in one shot. Uses the same code path as
+    a live wake (DTO history → provider.serialize_history → chat → parse).
+    Reports model latency + token usage + a short reply preview so a bad
+    response (e.g. tool-only output, content-filter, length-truncated)
+    is visible inline."""
+    import asyncio
+    import time
 
-    from physiclaw.agent.provider import provider_endpoint
-    from physiclaw.config import qwen_api_key
+    from physiclaw.agent.engine.dto import SystemMessage, UserMessage
+    from physiclaw.agent.engine.trace import brief
+    from physiclaw.agent.provider import make_provider
 
-    key = qwen_api_key()
-    if not key:
-        return _fmt_warn("qwen api: skipped (no key)")
-    base_url, model = provider_endpoint("qwen")
     try:
-        r = httpx.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 1,
-            },
-            timeout=10.0,
+        prov = make_provider(provider_id, model_id)
+    except (ValueError, RuntimeError) as e:
+        return _fmt_warn(f"{provider_id}/{model_id} api: setup — {e}")
+
+    history = [
+        SystemMessage(content="You are a one-word reply bot. Reply with exactly one word."),
+        UserMessage(content="Reply with the word 'pong'."),
+    ]
+
+    async def _run():
+        try:
+            return await prov.chat(history, tools=[])
+        finally:
+            await prov.aclose()
+
+    t0 = time.perf_counter()
+    try:
+        asst = asyncio.run(_run())
+    except Exception as e:
+        # Provider raised — could be transport (network), auth (401/403),
+        # billing (402 / vendor-specific), or rate limit (429). Surface the
+        # message so the user sees which.
+        return _fmt_warn(
+            f"{provider_id}/{model_id} api: {type(e).__name__}: {brief(str(e), 120)}"
         )
-    except httpx.HTTPError as e:
-        return _fmt_warn(f"qwen api: {type(e).__name__}: {e}")
-    if r.status_code == 200:
-        return _fmt_ok(f"qwen api: {r.status_code} OK ({model})")
-    return _fmt_warn(f"qwen api: HTTP {r.status_code}: {r.text[:80]}")
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+
+    reply = (asst.content or "").strip().replace("\n", " ")
+    if not reply and not asst.tool_calls:
+        return _fmt_warn(
+            f"{provider_id}/{model_id} api: empty reply (finish={asst.finish_reason}, "
+            f"{elapsed_ms}ms)"
+        )
+    preview = brief(reply, 40) if reply else f"<{len(asst.tool_calls)} tool_calls>"
+    u = asst.usage
+    usage_str = (
+        f"{u.prompt_tokens}p+{u.completion_tokens}c"
+        if u.prompt_tokens else "no usage reported"
+    )
+    return _fmt_ok(
+        f"{provider_id}/{model_id} api: reply={preview!r} "
+        f"({elapsed_ms}ms, {usage_str})"
+    )
 
 
 def doctor(
@@ -365,21 +396,28 @@ def doctor(
         except RuntimeError as e:
             typer.echo(_fmt_warn(f"engine: invalid — {e}"))
 
-    active_provider = parse_model_ref(active_ref)[0] if active_ref else None
+    active_provider, active_model = (None, None)
+    if active_ref:
+        try:
+            active_provider, active_model = parse_model_ref(active_ref)
+        except ValueError:
+            pass
 
-    # When a live server is running with provider=qwen, the Engine line
-    # above is already the proof the key works — don't add a second line.
-    # Otherwise surface the key status for the current shell's config.
-    if active_provider != "qwen":
-        qwen_src = _cfg.qwen_api_key_source()
-        if qwen_src:
-            typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
-            if deep:
-                typer.echo(_probe_qwen_api_deep())
-        elif active_provider == "qwen":
+    # Surface the active provider's key status. In `--deep` mode, send a
+    # real `chat()` round-trip on the active provider (proves network +
+    # auth + billing + model response).
+    from physiclaw.agent.provider import CLAUDE_CODE_ID, provider_key_status
+    if active_provider and active_provider != CLAUDE_CODE_ID:
+        masked, source = provider_key_status(active_provider)
+        if masked is None:
             typer.echo(_fmt_warn(
-                "qwen api key: (unset) — required for provider=qwen"
+                f"{active_provider} api key: (unset) — required for the active model. "
+                f"Set via `physiclaw models key {active_provider}` or env var."
             ))
+        else:
+            typer.echo(_fmt_ok(f"{active_provider} api key: {masked} ({source})"))
+            if deep and active_model:
+                typer.echo(_probe_provider_chat_deep(active_provider, active_model))
 
     typer.echo()
     typer.echo(_fmt_section("Skills"))

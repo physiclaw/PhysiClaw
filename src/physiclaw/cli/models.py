@@ -76,19 +76,14 @@ def _key_config_path(provider_id: str) -> str:
 
 
 def _format_key_row(provider_id: str, *, indent: int = 2) -> str:
-    """One-line key status for a provider, masked. Mirrors
-    `BaseProvider._api_key()` resolution so what's shown is what the
-    server will pick up at runtime."""
-    from physiclaw.agent.provider import provider_class
-    cls = provider_class(provider_id)
+    """One-line key status for a provider, masked. Resolution lives in
+    `provider.provider_key_status` — same source the runtime uses."""
+    from physiclaw.agent.provider import provider_key_status
     pad = " " * indent
-    if cls is None:
-        return f"{pad}{provider_id} api key: (unknown provider)"
-    env_vars = cls.API_KEY_ENV_VARS or (f"{cls.PROVIDER_ID.upper()}_API_KEY",)
-    val, source = _config.resolve_provider_key(env_vars, f"{cls.PROVIDER_ID}_api_key")
-    if not val:
+    masked, source = provider_key_status(provider_id)
+    if masked is None:
         return f"{pad}{provider_id} api key: (unset)"
-    return f"{pad}{provider_id} api key: ********  [{source}]"
+    return f"{pad}{provider_id} api key: {masked}  [{source}]"
 
 
 @models_app.callback()
