@@ -1,0 +1,292 @@
+"""Anthropic-compatible base — `/v1/messages` wire format via the
+official `anthropic` SDK.
+
+OpenClaw's docs warn that Anthropic's OpenAI-compat shim breaks on
+multi-round tool calls — every PhysiClaw wake is multi-round, so we
+use the native messages endpoint. Vendors speaking this shape (just
+`anthropic` today) inherit from `AnthropicCompatibleProvider` and only
+declare catalog + auth.
+
+Cache-control marker layout (the *why* — block-level translation rules
+live with the functions that emit them):
+  1. `system` field, sent as `[{type: text, text, cache_control: ephemeral}]`.
+  2. Latest stubbed screen-obs `tool_result` — the source DTO has
+     `is_superseded=True` (set by `compact.drop_stale_screens`); the
+     base `serialize_history` template invokes `_mark_stub` to attach
+     `cache_control` to the inner tool_result block. No string
+     parsing, no post-pass.
+
+`thinking` blocks in the response are stripped from the assistant-echo
+path (principle 2) — they would break re-serialization to history. The
+full raw payload is preserved on `AssistantMessage.raw` for log-side
+inspection.
+"""
+import logging
+import uuid
+
+from physiclaw.agent.engine.dto import (
+    AssistantMessage,
+    FinishReason,
+    ImageBlock,
+    Message,
+    SystemMessage,
+    TextBlock,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
+from physiclaw.agent.provider.provider_base import (
+    EPHEMERAL_CACHE_CONTROL,
+    BaseProvider,
+    ProviderPermanentError,
+    ProviderTransientError,
+)
+
+# `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
+# `physiclaw --help` (and any session that doesn't pick this provider)
+# avoids loading the ~3MB SDK + transitive deps.
+
+log = logging.getLogger(__name__)
+
+# Anthropic requires `max_tokens` on every request. 8192 is comfortable
+# for tool-loop turns; bump if responses get truncated.
+_DEFAULT_MAX_TOKENS = 8192
+
+_STOP_REASON_MAP: dict[str, FinishReason] = {
+    "end_turn":      FinishReason.STOP,
+    "stop_sequence": FinishReason.STOP,
+    "max_tokens":    FinishReason.LENGTH,
+    "tool_use":      FinishReason.TOOL_CALLS,
+    # `refusal`, `pause_turn`, etc. fall through to STOP.
+}
+
+
+class AnthropicCompatibleProvider(BaseProvider):
+    """Base for providers speaking Anthropic's `/v1/messages` shape via
+    `AsyncAnthropic`. See `BaseProvider` for the catalog/auth declarations
+    vendors are expected to set; this class plugs the wire-shape hooks
+    (`_encode_message` / `_mark_stub`) into the inherited
+    `serialize_history` template, and adds the request flow in
+    `chat()`. `_mark_system` stays the base no-op — Anthropic's system
+    rides outside the messages array, so it's marked on the top-level
+    `system` payload field in `chat()`."""
+
+    def _build_client(self, key: str, *, timeout: float, base_url: str | None):
+        """Override: use Anthropic's official async SDK instead of httpx
+        directly. Lazy-imported so non-anthropic sessions don't pay the
+        SDK load cost."""
+        from anthropic import AsyncAnthropic
+        return AsyncAnthropic(api_key=key, base_url=base_url, timeout=timeout)
+
+    async def aclose(self) -> None:
+        # AsyncAnthropic uses .close(), not .aclose() like httpx.
+        await self._client.close()
+
+    # ---------- serialize_history hooks (called by BaseProvider) ----------
+
+    def _encode_message(self, msg: Message) -> dict | None:
+        if isinstance(msg, SystemMessage):
+            # Skipped here — system content rides outside the messages
+            # array. `chat()` reads it via `_extract_system_text`.
+            return None
+        if isinstance(msg, UserMessage):
+            return {"role": "user", "content": _content_to_anthropic(msg.content)}
+        if isinstance(msg, AssistantMessage):
+            return {"role": "assistant", "content": _assistant_blocks(msg)}
+        if isinstance(msg, ToolResultMessage):
+            return {
+                "role": "user",
+                "content": [{
+                    "type":         "tool_result",
+                    "tool_use_id":  msg.tool_call_id,
+                    "content":      _content_to_anthropic(msg.content),
+                }],
+            }
+        log.warning("anthropic: dropping unknown message type %r", type(msg).__name__)
+        return None
+
+    def _mark_stub(self, entry: dict) -> dict:
+        """Anthropic accepts `cache_control` directly on a `tool_result`
+        block. The entry shape from `_encode_message(ToolResultMessage)`
+        is `{role: user, content: [tr_block]}`; we shallow-copy the
+        wrapper and the inner block so caller-held dicts aren't
+        mutated."""
+        tr_block = entry["content"][0]
+        return {
+            **entry,
+            "content": [{**tr_block, "cache_control": EPHEMERAL_CACHE_CONTROL}],
+        }
+
+    # ---------- request flow ----------
+
+    async def chat(
+        self,
+        history: list[Message],
+        tools: list[dict],
+    ) -> AssistantMessage:
+        from anthropic import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
+
+        am_messages = self.serialize_history(history)
+        system = _extract_system_text(history)
+        payload: dict = {
+            "model":      self.model,
+            "max_tokens": _DEFAULT_MAX_TOKENS,
+            "messages":   am_messages,
+        }
+        if system:
+            # Anthropic's `system` accepts a list of text blocks; a
+            # `cache_control` on the trailing block caches the whole
+            # system for 5 min — the cross-wake anchor.
+            payload["system"] = [{
+                "type":          "text",
+                "text":          system,
+                "cache_control": EPHEMERAL_CACHE_CONTROL,
+            }]
+        if tools:
+            payload["tools"] = [_tool_to_anthropic(t) for t in tools]
+
+        try:
+            resp = await self._client.messages.create(**payload)
+        except (APIConnectionError, APITimeoutError) as e:
+            raise ProviderTransientError(f"transport: {e}") from e
+        except RateLimitError as e:
+            raise ProviderTransientError(f"rate limited: {e}") from e
+        except APIStatusError as e:
+            text = (e.message or "")[:500]
+            if e.status_code >= 500:
+                log.warning("anthropic HTTP %s (transient): %s", e.status_code, text)
+                raise ProviderTransientError(f"HTTP {e.status_code}: {text}") from e
+            log.error("anthropic HTTP %s (permanent): %s", e.status_code, text)
+            raise ProviderPermanentError(f"HTTP {e.status_code}: {text}") from e
+
+        return _from_anthropic_response(resp)
+
+
+# ---------- request translation (DTO → Anthropic blocks) ----------
+
+
+def _extract_system_text(history: list[Message]) -> str:
+    """Concatenate all `SystemMessage` content into the single string
+    Anthropic's top-level `system` field expects. Empty when no system
+    messages are present."""
+    return "\n\n".join(
+        m.content for m in history
+        if isinstance(m, SystemMessage) and m.content
+    )
+
+
+def _content_to_anthropic(content) -> str | list[dict]:
+    """User / tool-result content (`str` or list of `ContentBlock`) →
+    Anthropic content (string or block list)."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return str(content) if content is not None else ""
+    blocks: list[dict] = []
+    for block in content:
+        if isinstance(block, TextBlock):
+            blocks.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageBlock):
+            blocks.append({
+                "type":   "image",
+                "source": {
+                    "type":       "base64",
+                    "media_type": block.media_type,
+                    "data":       block.data_b64,
+                },
+            })
+        else:
+            log.warning("anthropic: dropping unknown block type %r", type(block).__name__)
+    return blocks or [{"type": "text", "text": ""}]
+
+
+def _assistant_blocks(msg: AssistantMessage) -> list[dict]:
+    """`AssistantMessage` (text + tool_calls) → Anthropic content blocks."""
+    blocks: list[dict] = []
+    if msg.content:
+        blocks.append({"type": "text", "text": msg.content})
+    for tc in msg.tool_calls:
+        blocks.append({
+            "type":  "tool_use",
+            "id":    tc.id or f"auto_{uuid.uuid4().hex[:8]}",
+            "name":  tc.name,
+            "input": tc.arguments,
+        })
+    if not blocks:
+        # Anthropic rejects empty assistant content arrays.
+        blocks.append({"type": "text", "text": ""})
+    return blocks
+
+
+def _tool_to_anthropic(tool: dict) -> dict:
+    """Local tool schema → Anthropic `tools=` entry. The shape happens to
+    match our local format almost verbatim — `input_schema` is the same key."""
+    return {
+        "name":         tool["name"],
+        "description":  tool.get("description", ""),
+        "input_schema": tool.get("input_schema") or {"type": "object", "properties": {}},
+    }
+
+
+# ---------- response translation (Anthropic → AssistantMessage) ----------
+
+
+def _from_anthropic_response(resp) -> AssistantMessage:
+    """Anthropic `Message` (Pydantic model) → `AssistantMessage`.
+
+    Drops `thinking` blocks and other provider-specific content from the
+    assistant-echo path (principle 2) — they would break re-serialization
+    to history. The full raw payload is preserved on `.raw` for log-side
+    inspection."""
+    text_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+    for block in (resp.content or []):
+        bt = getattr(block, "type", None)
+        if bt == "text":
+            text_parts.append(getattr(block, "text", "") or "")
+        elif bt == "tool_use":
+            tool_calls.append(ToolCall(
+                id=getattr(block, "id", None) or f"auto_{uuid.uuid4().hex[:8]}",
+                name=getattr(block, "name", "") or "",
+                arguments=getattr(block, "input", None) or {},
+            ))
+
+    stop_raw = getattr(resp, "stop_reason", None) or "end_turn"
+    finish = _STOP_REASON_MAP.get(stop_raw, FinishReason.STOP)
+    raw_dict = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+
+    return AssistantMessage(
+        content="\n".join(text_parts),
+        tool_calls=tool_calls,
+        finish_reason=finish,
+        usage=_parse_anthropic_usage(resp),
+        raw=raw_dict,
+    )
+
+
+def _parse_anthropic_usage(resp) -> Usage:
+    """Anthropic's `usage` block → normalized `Usage`. Anthropic uses
+    `input_tokens` / `output_tokens` (vs OpenAI's `prompt_tokens` /
+    `completion_tokens`) and reports cache stats as separate top-level
+    fields (`cache_read_input_tokens`, `cache_creation_input_tokens`)
+    rather than nested under a `_details` block.
+
+    Per Anthropic's accounting, `prompt_tokens` (in the normalized
+    `Usage`) maps to `input_tokens` — which already includes the cache
+    hit count. Engine downstream computes `new = total - hit - create`
+    so the math stays consistent."""
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return Usage()
+    return Usage(
+        prompt_tokens=int(getattr(u, "input_tokens", 0) or 0),
+        completion_tokens=int(getattr(u, "output_tokens", 0) or 0),
+        cached_tokens=int(getattr(u, "cache_read_input_tokens", 0) or 0),
+        cache_creation_tokens=int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+    )

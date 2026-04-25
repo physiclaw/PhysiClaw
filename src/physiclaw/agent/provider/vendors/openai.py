@@ -10,7 +10,8 @@ Auth: `OPENAI_API_KEY` env, or `[provider] openai_api_key` in
 
 Model ref examples:  `openai/gpt-5.4`, `openai/gpt-5.4-mini`.
 """
-from physiclaw.agent.provider.base import ModelEntry, OpenAICompatibleProvider
+from physiclaw.agent.provider.provider_base import ModelEntry
+from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 
 
 class OpenAIProvider(OpenAICompatibleProvider):

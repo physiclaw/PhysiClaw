@@ -15,19 +15,24 @@ import asyncio
 import datetime as dt
 import logging
 import time
-from typing import Any
 
 from physiclaw.agent.engine import builtin_tool, compact, jobs, memory, plan, prompt, skill
 from physiclaw.agent.engine.builtin_tool import LocalTool, Session
 from physiclaw.agent.engine.mcp_tool import McpClient, get_mcp, list_tools_cached
-from physiclaw.agent.engine.dto import AssistantMessage, FinishReason, ToolCall, ToolResult
+from physiclaw.agent.engine.dto import (
+    AssistantMessage,
+    FinishReason,
+    Message,
+    SystemMessage,
+    ToolCall,
+    ToolResultMessage,
+    UserMessage,
+)
 from physiclaw.agent.provider import (
     Provider,
     ProviderTransientError,
-    assistant_to_wire,
-    blocks_to_tool_content,
     make_provider,
-    tool_result_to_wire,
+    mcp_blocks_to_content_blocks,
 )
 from physiclaw.agent.engine.trace import RawLog, Trace, brief, brief_args, brief_content
 from physiclaw.agent.engine.validator import ValidationError, validate_arguments
@@ -130,15 +135,15 @@ async def _run_session(
             skills_ctx=skill.render_section(skill_registry),
             provider_id=provider_id,
         )
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": _format_triggers(
+        messages: list[Message] = [
+            SystemMessage(content=system_prompt),
+            UserMessage(content=_format_triggers(
                 triggers, cron_ctx=jobs.format_fired(triggers),
-            )},
+            )),
         ]
 
         provider = make_provider(provider_id, model_id)
-        prompt_hash = prompt.prefix_hash(messages)
+        prompt_hash = prompt.prefix_hash(system_prompt)
         rlog.write_session_start(
             provider=provider_id,
             model=provider.model,
@@ -196,7 +201,7 @@ async def _loop(
     *,
     mcp: McpClient,
     provider: Provider,
-    messages: list[dict[str, Any]],
+    messages: list[Message],
     tool_schemas: list[dict],
     schema_by_name: dict[str, dict],
     local_registry: dict[str, LocalTool],
@@ -215,9 +220,12 @@ async def _loop(
         # sees; messages stays as canonical history.
         session.plan.tick_turn()
         request_messages = plan.inject_tail(messages, session.plan)
-        prompt.apply_cache_markers(request_messages)
+        # Cache markers + the actual wire format are the provider's
+        # business now; engine logs the wire form for debugging by asking
+        # the provider to serialize once.
+        wire_for_log = provider.serialize_history(request_messages)
         tr.write({"event": "request", "turn": turn, "message_count": len(request_messages)})
-        rlog.write_request(turn, request_messages)
+        rlog.write_request(turn, wire_for_log)
         log.info("turn %d: %d messages → provider", turn + 1, len(request_messages))
 
         t0 = time.perf_counter()
@@ -242,7 +250,7 @@ async def _loop(
                 for tc in asst.tool_calls
             ],
         })
-        cache_summary = _log_cache_usage(turn, asst.raw, tr)
+        cache_summary = _log_usage(turn, asst, tr)
         called = asst.tool_names()
         log.info(
             "turn %d: finish=%s calls=%s%s",
@@ -250,8 +258,10 @@ async def _loop(
             f", {cache_summary}" if cache_summary else "",
         )
 
-        # Principle 2: strip provider-specific fields before echoing back.
-        messages.append(assistant_to_wire(asst))
+        # Principle 2: AssistantMessage already has provider-specific
+        # fields (reasoning_content, thinking blocks) stripped at parse
+        # time inside the provider — append directly.
+        messages.append(asst)
 
         # Principle 3: route on finish_reason.
         if asst.finish_reason == FinishReason.CONTENT_FILTER:
@@ -266,15 +276,12 @@ async def _loop(
         # anchors the model on its own failure on retry.
         if not asst.tool_calls:
             messages.pop()
-            messages.append({
-                "role": "user",
-                "content": (
-                    "Your last turn had no tool_calls. Every turn must "
-                    "either call tools or call end_session(status, recap) "
-                    "to close. Reply again as a tool call — and include "
-                    "note(summary=...) alongside."
-                ),
-            })
+            messages.append(UserMessage(content=(
+                "Your last turn had no tool_calls. Every turn must "
+                "either call tools or call end_session(status, recap) "
+                "to close. Reply again as a tool call — and include "
+                "note(summary=...) alongside."
+            )))
             continue
 
         # Turn shape: exactly [note, one-other]. `note` keeps a permanent
@@ -284,15 +291,12 @@ async def _loop(
             log.warning("turn %d: bad turn shape tool_calls=%s — injecting corrective", turn, called)
             tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
             messages.pop()
-            messages.append({
-                "role": "user",
-                "content": (
-                    f"Your last turn called {called!r}. Every turn must call "
-                    "exactly two tools: `note` plus one other. Split any "
-                    "extra work into separate turns. "
-                    "Re-issue as [note, one-other]."
-                ),
-            })
+            messages.append(UserMessage(content=(
+                f"Your last turn called {called!r}. Every turn must call "
+                "exactly two tools: `note` plus one other. Split any "
+                "extra work into separate turns. "
+                "Re-issue as [note, one-other]."
+            )))
             continue
 
         # Principle 6: each tool_call gets exactly one ToolResult, in order,
@@ -313,7 +317,7 @@ async def _loop(
                 tr=tr,
                 turn=turn,
             )
-            messages.append(tool_result_to_wire(call, result))
+            messages.append(result)
 
         compact.drop_stale_screens(messages)
 
@@ -337,18 +341,17 @@ async def _dispatch(
     session: Session,
     tr: Trace,
     turn: int,
-) -> ToolResult:
+) -> ToolResultMessage:
     """Validate, then route to local handler or MCP. Always returns a
-    ToolResult — never raises (principle 5 + principle 6 require that every
-    ToolCall is paired with a ToolResult even on failure).
-    """
+    ToolResultMessage — never raises (principle 5 + principle 6 require
+    that every ToolCall is paired with a ToolResult even on failure)."""
     log.info("  → %s(%s)", call.name, brief_args(call.arguments))
 
     schema = schema_by_name.get(call.name)
     if schema is None:
         tr.write({"event": "tool_unknown", "turn": turn, "name": call.name, "id": call.id})
         log.warning("  ✗ %s: unknown tool", call.name)
-        return ToolResult(
+        return ToolResultMessage(
             tool_call_id=call.id,
             content=f"unknown tool: {call.name!r}",
             is_error=True,
@@ -364,7 +367,7 @@ async def _dispatch(
             "arguments": call.arguments, "error": str(e),
         })
         log.warning("  ✗ %s: invalid args — %s", call.name, e)
-        return ToolResult(
+        return ToolResultMessage(
             tool_call_id=call.id,
             content=f"invalid arguments for {call.name}: {e}",
             is_error=True,
@@ -380,22 +383,22 @@ async def _dispatch(
                 "arguments": call.arguments, "text": text,
             })
             log.info("  ✓ %s → %s", call.name, brief(text, 80))
-            return ToolResult(tool_call_id=call.id, content=text)
+            return ToolResultMessage(tool_call_id=call.id, content=text)
 
         blocks = await mcp.call_tool(call.name, call.arguments)
-        content = blocks_to_tool_content(blocks)
+        content = mcp_blocks_to_content_blocks(blocks)
         tr.write({
             "event": "tool_result", "turn": turn,
             "name": call.name, "id": call.id,
             "arguments": call.arguments, "blocks": blocks,
         })
         log.info("  ✓ %s → %s", call.name, brief_content(content))
-        return ToolResult(tool_call_id=call.id, content=content)
+        return ToolResultMessage(tool_call_id=call.id, content=content)
 
     except Exception as e:
         log.error("  ✗ %s failed: %s", call.name, e)
         tr.write({"event": "tool_error", "turn": turn, "name": call.name, "error": str(e)})
-        return ToolResult(
+        return ToolResultMessage(
             tool_call_id=call.id,
             content=f"{call.name} failed: {e}",
             is_error=True,
@@ -406,7 +409,7 @@ async def _dispatch(
 
 
 async def _chat_with_retry(
-    provider: Provider, messages: list[dict], tools: list[dict],
+    provider: Provider, messages: list[Message], tools: list[dict],
 ) -> AssistantMessage:
     """Retry transient errors only (principle 3: permanent 4xx fails fast)."""
     last_err: Exception | None = None
@@ -421,28 +424,28 @@ async def _chat_with_retry(
     raise RuntimeError(f"provider failed after {MAX_ATTEMPTS} attempts: {last_err}")
 
 
-def _log_cache_usage(turn: int, raw: dict, tr: Trace) -> str:
-    """Extract DashScope prompt-cache stats from the raw usage block,
-    emit a trace event, and return a short `token: X.Xk, cache: YY%`
-    summary for the per-turn log line. Empty string when the provider
-    didn't report usage (no numbers to show)."""
-    usage = (raw or {}).get("usage") or {}
-    total = usage.get("prompt_tokens", 0) or 0
-    details = usage.get("prompt_tokens_details") or {}
-    hit = details.get("cached_tokens", 0) or 0
-    create = details.get("cache_creation_input_tokens", 0) or 0
-    new = max(0, total - hit - create)
+def _log_usage(turn: int, asst: AssistantMessage, tr: Trace) -> str:
+    """Read normalized `AssistantMessage.usage`, emit a trace event,
+    return a short `token: X.Xk, cache: YY%` summary for the per-turn
+    log line. Empty string when the provider didn't report usage (zero
+    prompt_tokens) — readers treat that as 'no data'.
+
+    Each provider populates `Usage` from its native usage block at parse
+    time, so this code is provider-agnostic."""
+    u = asst.usage
+    total = u.prompt_tokens
+    new = max(0, total - u.cached_tokens - u.cache_creation_tokens)
     tr.write({
         "event": "cache",
         "turn": turn,
-        "hit": hit,
-        "create": create,
+        "hit": u.cached_tokens,
+        "create": u.cache_creation_tokens,
         "new": new,
         "total": total,
     })
     if not total:
         return ""
-    return f"token: {total / 1000:.1f}k, cache: {100 * hit / total:.0f}%"
+    return f"token: {total / 1000:.1f}k, cache: {100 * u.cached_tokens / total:.0f}%"
 
 
 def _format_triggers(triggers: list[Trigger], *, cron_ctx: str = "") -> str:

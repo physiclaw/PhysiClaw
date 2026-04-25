@@ -21,7 +21,8 @@ parameter, but defaults to off. Until we wire that param, it would
 return non-reasoning responses, which violates PhysiClaw's requirement.
 Gemini 3 series (`gemini-3.x-*-preview`) uses dynamic thinking by default.
 """
-from physiclaw.agent.provider.base import ModelEntry, OpenAICompatibleProvider
+from physiclaw.agent.provider.provider_base import ModelEntry
+from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 
 
 class GoogleProvider(OpenAICompatibleProvider):

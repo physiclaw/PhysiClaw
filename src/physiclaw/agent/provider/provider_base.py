@@ -1,45 +1,40 @@
-"""Provider Protocol, model catalog, errors, and OpenAI-compatible base.
+"""Provider Protocol, model catalog, errors, and the abstract base.
 
-Principle 2: normalize at the boundary.
-  - Request: build wire-format from standard chat messages + tool schemas.
-  - Response: parse into `AssistantMessage` (with `ToolCall` list and real
-    `finish_reason`). Strip provider-specific fields like Qwen's
-    `reasoning_content` before returning — they MUST NOT leak into engine
-    history, or re-serializing will break the prefix cache or confuse the
-    next turn's model.
+This file is the slim core: no wire-format, no HTTP request flow. Two
+concrete bases sit on top of `BaseProvider`:
+  - `OpenAICompatibleProvider` (in `openai_compat.py`) — vendors
+    speaking the OpenAI `/chat/completions` shape (Qwen, OpenAI,
+    Moonshot, Google).
+  - `AnthropicCompatibleProvider` (in `anthropic_compat.py`) —
+    vendors speaking Anthropic's `/v1/messages` shape (Anthropic).
 
-Principle 3: preserve the real `finish_reason`. Do not derive it from
-content. The engine routes differently on "length" / "content_filter" /
-"tool_calls" / "stop".
+A new vendor declares `PROVIDER_ID` / `BASE_URL` / `MODELS` /
+`API_KEY_ENV_VARS` / `THINKING_FORMAT` on a subclass of one of those
+two; this base file owns the shared infra (auth lookup, HTTP client
+construction, model-catalog helpers, system-prompt fragments).
 
-Each concrete provider declares (declarations only — no methods needed
-in the typical case):
-  - `PROVIDER_ID`, `BASE_URL` — what URL to talk to
-  - `MODELS` — tuple of `ModelEntry`; first entry is the implicit default
-  - `API_KEY_ENV_VARS` — env vars to check, in order (first hit wins);
-    config.toml `[provider] <PROVIDER_ID>_api_key` is the fallback
-  - `THINKING_FORMAT` — flag consumed by `prompt.py` to render the right
-    system-prompt fragment (replaces ad-hoc `if "qwen" in name` checks)
-
-Adding a provider: drop a file in `agent/provider/vendors/` subclassing
-`OpenAICompatibleProvider`, set the five class attrs above, register in
-`__init__.py`. The default `_api_key()` and `_missing_key_message()`
-read from the env-vars / config-key declarations — no methods need
-overriding for vanilla OpenAI-compatible vendors.
+Principle 2: normalize at the boundary — providers return
+`AssistantMessage` regardless of their wire shape.
+Principle 3: preserve the real `finish_reason` — never derive it.
 """
-import json
 import logging
 import os
-import uuid
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 import httpx
 
-from physiclaw.agent.engine.dto import AssistantMessage, FinishReason, ToolCall
-from physiclaw.agent.provider.wire import tool_to_wire
+from physiclaw.agent.engine.dto import (
+    AssistantMessage,
+    Message,
+    SystemMessage,
+    ToolResultMessage,
+)
 
 log = logging.getLogger(__name__)
+
+
+# ---------- catalog / errors / Protocol ----------
 
 
 @dataclass(frozen=True)
@@ -81,11 +76,28 @@ class Provider(Protocol):
 
     async def chat(
         self,
-        messages: list[dict],
+        history: list[Message],
         tools: list[dict],
     ) -> AssistantMessage: ...
 
+    def serialize_history(self, history: list[Message]) -> list[dict]:
+        """Convert engine DTOs into the wire-format messages this provider
+        will send, with cache-control markers applied. Engine calls this
+        for trace logging; `chat()` calls the same internally before
+        POSTing — the two calls produce equivalent fresh wire so the log
+        faithfully captures what hits the API."""
+        ...
+
     async def aclose(self) -> None: ...
+
+
+# ---------- shared constants ----------
+
+
+# 5-minute TTL prefix-cache marker. DashScope + Anthropic both accept
+# `{type: "ephemeral"}` (in their respective surrounding shapes). Treat
+# as immutable — never mutate the shared dict.
+EPHEMERAL_CACHE_CONTROL = {"type": "ephemeral"}
 
 
 # Reasoning-format snippets shared across providers. Add a new entry when
@@ -100,11 +112,16 @@ _THINKING_FRAGMENTS: dict[str, str] = {
 }
 
 
-class OpenAICompatibleProvider:
-    """Base for providers that speak the OpenAI `/chat/completions` wire
-    format. Concrete provider files (qwen.py, moonshot.py, openai.py)
-    just declare endpoint + catalog + auth; this base owns the
-    request/response flow.
+# ---------- BaseProvider ----------
+
+
+class BaseProvider:
+    """Catalog declarations + auth resolution + HTTP-client construction.
+
+    Subclasses (`OpenAICompatibleProvider`, `AnthropicCompatibleProvider`)
+    layer wire-format and request/response flow on top. Vendors
+    (`QwenProvider`, `AnthropicProvider`, …) inherit from one of those
+    two and only declare class attrs.
 
     Subclass MUST set:
       - `PROVIDER_ID` — short id, also the `make_provider` key
@@ -127,7 +144,8 @@ class OpenAICompatibleProvider:
       - `_api_key()` if auth doesn't fit the env-var/config pattern
       - `_missing_key_message()` for a richer error string
       - `_model_env_var()` if the env override isn't `<ID>_MODEL`
-      - `chat()` for provider-specific request/response quirks
+      - `chat()` and `serialize_history()` — provided by the wire-shape
+        intermediate base; vendors normally don't touch them
     """
 
     PROVIDER_ID: str = ""
@@ -160,11 +178,13 @@ class OpenAICompatibleProvider:
         )
         self._client = self._build_client(key, timeout=timeout, base_url=base_url)
 
+    # ---------- HTTP client ----------
+
     def _build_client(self, key: str, *, timeout: float, base_url: str | None):
-        """Construct the underlying HTTP client. Default is an
-        OpenAI-compatible `httpx.AsyncClient` with Bearer auth. Override
-        when a vendor uses an SDK or non-Bearer auth (e.g. Anthropic
-        returns `AsyncAnthropic`)."""
+        """Construct the underlying HTTP client. Default is a stock
+        `httpx.AsyncClient` with Bearer auth (works for every OpenAI-
+        compatible vendor). Override when a vendor uses an SDK or a
+        non-Bearer auth scheme."""
         return httpx.AsyncClient(
             base_url=base_url or self.BASE_URL,
             timeout=timeout,
@@ -177,6 +197,11 @@ class OpenAICompatibleProvider:
         `_build_client`; vendors that override `_build_client` (e.g.
         Anthropic's SDK) typically don't need this hook."""
         return {"Authorization": f"Bearer {key}"}
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    # ---------- catalog helpers ----------
 
     @classmethod
     def has_model(cls, model_id: str) -> bool:
@@ -197,6 +222,8 @@ class OpenAICompatibleProvider:
         """Provider-specific system-prompt addition (reasoning wrapper, etc.).
         Empty string if no fragment applies."""
         return _THINKING_FRAGMENTS.get(cls.THINKING_FORMAT or "", "")
+
+    # ---------- auth lookup ----------
 
     def _api_key(self) -> str | None:
         """Default lookup: env vars (in `API_KEY_ENV_VARS` order, defaulting
@@ -224,89 +251,66 @@ class OpenAICompatibleProvider:
     def _model_env_var(self) -> str:
         return f"{self.PROVIDER_ID.upper()}_MODEL"
 
+    # ---------- DTO → wire (template method, shared across wire shapes) ----------
+
+    def serialize_history(self, history: list[Message]) -> list[dict]:
+        """Single-pass DTO history → provider wire-format messages, with
+        cache markers attached to:
+          - the `SystemMessage` at index 0 (via `_mark_system`), and
+          - the latest `ToolResultMessage` flagged `is_superseded`
+            (via `_mark_stub`).
+
+        Subclasses implement `_encode_message` (DTO → wire dict, or
+        `None` to skip — e.g. Anthropic's `SystemMessage` rides outside
+        the messages array, not as an entry). The marker hooks default
+        to no-ops; wire-shape subclasses override them to attach
+        provider-specific `cache_control`. The base body stays small
+        because the algorithm is wire-shape-agnostic."""
+        out: list[dict] = []
+        last_stub_idx: int | None = None
+        for i, msg in enumerate(history):
+            entry = self._encode_message(msg)
+            if entry is None:
+                continue
+            if i == 0 and isinstance(msg, SystemMessage):
+                entry = self._mark_system(entry)
+            elif isinstance(msg, ToolResultMessage) and msg.is_superseded:
+                last_stub_idx = len(out)
+            out.append(entry)
+        if last_stub_idx is not None:
+            out[last_stub_idx] = self._mark_stub(out[last_stub_idx])
+        return out
+
+    def _encode_message(self, msg: Message) -> dict | None:
+        """Encode one DTO into a provider wire dict, or return `None`
+        to skip (e.g. when the DTO rides outside the messages array).
+        MUST be implemented by wire-shape subclasses."""
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _encode_message"
+        )
+
+    def _mark_system(self, entry: dict) -> dict:
+        """Attach `cache_control` to the system entry. Default: no-op
+        (Anthropic marks system on the top-level `system` field, not on
+        a messages-array entry). OpenAI-shape providers override to
+        wrap the string content in a cache-controlled text block."""
+        return entry
+
+    def _mark_stub(self, entry: dict) -> dict:
+        """Attach `cache_control` to a stubbed `tool_result` entry.
+        Default: no-op. Override per wire shape — OpenAI wraps the
+        whole entry's content; Anthropic annotates the inner
+        `tool_result` block."""
+        return entry
+
+    # ---------- request flow: provided by wire-shape subclasses ----------
+
     async def chat(
         self,
-        messages: list[dict],
+        history: list[Message],
         tools: list[dict],
     ) -> AssistantMessage:
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-        }
-        if tools:
-            payload["tools"] = [tool_to_wire(t) for t in tools]
-            # tool_choice "auto" is the OpenAI default; being explicit avoids
-            # provider surprises.
-            payload["tool_choice"] = "auto"
-
-        try:
-            r = await self._client.post("/chat/completions", json=payload)
-        except (httpx.TransportError, httpx.TimeoutException) as e:
-            raise ProviderTransientError(f"transport: {e}") from e
-
-        if r.status_code == 429 or r.status_code >= 500:
-            log.warning("provider HTTP %s (transient): %s", r.status_code, r.text[:200])
-            raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:200]}")
-        if r.status_code >= 400:
-            log.error("provider HTTP %s (permanent): %s", r.status_code, r.text[:500])
-            raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:500]}")
-
-        return parse_openai_response(r.json())
-
-    async def aclose(self) -> None:
-        await self._client.aclose()
-
-
-def parse_openai_response(raw: dict) -> AssistantMessage:
-    """OpenAI chat completion → `AssistantMessage`. Drops provider-specific
-    fields (e.g. Qwen's `reasoning_content`) from the returned content so
-    they never leak into engine history; the raw dict is preserved on the
-    return value for log-side inspection."""
-    choice = raw.get("choices", [{}])[0]
-    message = choice.get("message") or {}
-    finish_raw = choice.get("finish_reason") or "stop"
-
-    content = message.get("content") or ""
-    if not isinstance(content, str):
-        content = json.dumps(content, ensure_ascii=False)
-
-    raw_tool_calls = message.get("tool_calls") or []
-    tool_calls: list[ToolCall] = []
-    for tc in raw_tool_calls:
-        try:
-            fn = tc.get("function") or {}
-            args_str = fn.get("arguments") or "{}"
-            try:
-                args = json.loads(args_str) if isinstance(args_str, str) else args_str
-                if not isinstance(args, dict):
-                    args = {"_raw": args}
-            except json.JSONDecodeError:
-                # Principle 4/5: don't silently drop; pass malformed args
-                # through so the validator can flag it as an error on
-                # dispatch (and pair a tool_result).
-                args = {"_malformed_json": args_str}
-            tool_calls.append(ToolCall(
-                id=tc.get("id") or f"auto_{uuid.uuid4().hex[:8]}",
-                name=fn.get("name") or "",
-                arguments=args,
-            ))
-        except Exception:
-            log.exception("failed to parse tool_call: %s", tc)
-
-    return AssistantMessage(
-        content=content,
-        tool_calls=tool_calls,
-        finish_reason=_normalize_finish(finish_raw),
-        raw=raw,
-    )
-
-
-def _normalize_finish(r: str) -> FinishReason:
-    # OpenAI surfaces: stop, length, tool_calls, content_filter, function_call.
-    if r == "function_call":
-        return FinishReason.TOOL_CALLS
-    try:
-        return FinishReason(r)
-    except ValueError:
-        log.warning("unknown finish_reason %r — treating as stop", r)
-        return FinishReason.STOP
+        raise NotImplementedError(
+            f"{type(self).__name__} must inherit from a wire-shape base "
+            "(OpenAICompatibleProvider or AnthropicCompatibleProvider)"
+        )

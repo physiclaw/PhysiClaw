@@ -80,28 +80,36 @@ def brief_args(args: dict[str, Any]) -> str:
 
 
 def brief_content(content: Any) -> str:
-    """Compact summary of a ToolResult.content or MCP blocks list."""
+    """Compact summary of a `ToolResultMessage.content` (DTO) or an MCP
+    blocks list (raw dicts). Handles both because `_dispatch` summarizes
+    after MCP→DTO conversion, but tools that bypass that path still pass
+    raw blocks through."""
+    from physiclaw.agent.engine.dto import ImageBlock, TextBlock
+
     if isinstance(content, str):
         return brief(content, 80)
     if not isinstance(content, list):
         return brief(repr(content), 80)
     parts: list[str] = []
     for b in content:
-        if not isinstance(b, dict):
-            parts.append("?")
-            continue
-        t = b.get("type")
-        if t == "text":
-            parts.append(brief(b.get("text", ""), 80))
-        elif t == "image":
-            data = b.get("data", "")
-            parts.append(f"<image {len(data)}b>")
-        elif t == "image_url":
-            url = (b.get("image_url") or {}).get("url", "")
-            _, _, data = url.partition(",")
-            parts.append(f"<image {len(data)}b>")
+        if isinstance(b, TextBlock):
+            parts.append(brief(b.text, 80))
+        elif isinstance(b, ImageBlock):
+            parts.append(f"<image {len(b.data_b64)}b>")
+        elif isinstance(b, dict):
+            t = b.get("type")
+            if t == "text":
+                parts.append(brief(b.get("text", ""), 80))
+            elif t == "image":
+                parts.append(f"<image {len(b.get('data', ''))}b>")
+            elif t == "image_url":
+                url = (b.get("image_url") or {}).get("url", "")
+                _, _, data = url.partition(",")
+                parts.append(f"<image {len(data)}b>")
+            else:
+                parts.append(t or "?")
         else:
-            parts.append(t or "?")
+            parts.append("?")
     return " + ".join(parts) or "(empty)"
 
 
@@ -305,6 +313,13 @@ class RawLog:
         counter value — no cross-request dedup, which is by design: the
         numbered sequence preserves turn order on disk for debugging.
 
+        Handles two wire shapes (recognized at the block level, not the
+        provider level):
+
+          - OpenAI: `{"type": "image_url", "image_url": {"url": "data:..."}}`
+          - Anthropic: `{"type": "image", "source": {"type": "base64",
+            "media_type": "...", "data": "..."}}`
+
         On decode failure, falls back to a byte-count stub so the raw
         log still distinguishes an image from a tap result."""
         out: list[dict] = []
@@ -315,25 +330,47 @@ class RawLog:
                 continue
             new_c: list[dict] = []
             for b in c:
-                if not isinstance(b, dict) or b.get("type") != "image_url":
+                if isinstance(b, dict):
+                    new_c.append(self._scrub_block(b))
+                else:
                     new_c.append(b)
-                    continue
-                url = (b.get("image_url") or {}).get("url", "")
-                if not url.startswith("data:"):
-                    # Already a reference (e.g. a prior scrub ran or the
-                    # upstream gave us a URL to begin with). Pass through.
-                    new_c.append(b)
-                    continue
-                head, _, data = url.partition(",")
-                mime = head[5:].partition(";")[0]  # strip "data:" and ";base64"
-                rel = self._persist_image(mime, data) if data else ""
-                scrubbed_url = rel or f"{head},<{len(data)}b unreadable>"
-                new_c.append({
-                    "type": "image_url",
-                    "image_url": {"url": scrubbed_url},
-                })
             out.append({**m, "content": new_c})
         return out
+
+    def _scrub_block(self, b: dict) -> dict:
+        """Scrub one content block; handles OpenAI `image_url`, Anthropic
+        `image`, and Anthropic `tool_result` (whose nested `content` may
+        itself contain image blocks). Pass-through for everything else
+        (text, tool_use, …)."""
+        bt = b.get("type")
+        if bt == "image_url":
+            url = (b.get("image_url") or {}).get("url", "")
+            if not url.startswith("data:"):
+                return b
+            head, _, data = url.partition(",")
+            mime = head[5:].partition(";")[0]
+            rel = self._persist_image(mime, data) if data else ""
+            scrubbed = rel or f"{head},<{len(data)}b unreadable>"
+            return {"type": "image_url", "image_url": {"url": scrubbed}}
+        if bt == "image":
+            src = b.get("source") or {}
+            if src.get("type") != "base64":
+                return b
+            data = src.get("data") or ""
+            mime = src.get("media_type") or "image/jpeg"
+            rel = self._persist_image(mime, data) if data else ""
+            scrubbed = {"type": "ref", "ref": rel} if rel else {"type": "base64", "byte_count": len(data)}
+            return {"type": "image", "source": scrubbed}
+        if bt == "tool_result":
+            inner = b.get("content")
+            if isinstance(inner, list):
+                scrubbed_inner = [
+                    self._scrub_block(x) if isinstance(x, dict) else x
+                    for x in inner
+                ]
+                return {**b, "content": scrubbed_inner}
+            return b
+        return b
 
 
 def _now() -> str:

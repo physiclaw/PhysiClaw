@@ -1,5 +1,4 @@
-"""Provider package — one file per provider, sharing an
-OpenAI-compatible base + a per-provider model catalog.
+"""Provider package — one file per vendor, two wire-shape bases.
 
 Provider ids follow OpenClaw's convention: the API surface (vendor /
 company), not the brand. So `openai` (not `chatgpt`), `moonshot` (not
@@ -8,17 +7,24 @@ company), not the brand. So `openai` (not `chatgpt`), `moonshot` (not
 concept (subprocess engine, not direct Anthropic API).
 
 Layout:
-  - `base.py`        — `Provider` Protocol, `ModelEntry`, errors,
-                       `OpenAICompatibleProvider` (catalog +
-                       thinking-format hooks)
-  - `wire.py`        — wire-format adapters (request + history shapes)
-  - `vendors/`         — one file per concrete vendor:
-      - `qwen.py`      — `QwenProvider` (DashScope) — the only ready provider
-      - `moonshot.py`  — `MoonshotProvider` (Kimi models) — STUB
-      - `openai.py`    — `OpenAIProvider` (GPT-4o, GPT-5, …) — STUB
-      - `anthropic.py` — `AnthropicProvider` (Claude direct API) — STUB
-                         (read its wire-format gotcha before implementing)
-      - `google.py`    — `GoogleProvider` (Gemini via OpenAI-compat shim) — STUB
+  - `provider_base.py`     — `Provider` Protocol, `ModelEntry`, errors,
+                             `BaseProvider` (catalog + auth +
+                             system-prompt fragment hooks +
+                             `serialize_history` template)
+  - `openai_compat.py`     — `OpenAICompatibleProvider`:
+                             `/chat/completions` wire flow + cache
+                             markers + response parser
+  - `anthropic_compat.py`  — `AnthropicCompatibleProvider`:
+                             `/v1/messages` wire flow (Anthropic SDK) +
+                             per-block cache markers
+  - `wire.py`              — DTO ↔ OpenAI wire-format adapters used by
+                             `openai_compat.py`
+  - `vendors/`             — one file per concrete vendor:
+      - `qwen.py`      — `QwenProvider` (DashScope)   — OpenAI-compat
+      - `moonshot.py`  — `MoonshotProvider` (Kimi)    — OpenAI-compat
+      - `openai.py`    — `OpenAIProvider` (GPT-5)     — OpenAI-compat
+      - `google.py`    — `GoogleProvider` (Gemini)    — OpenAI-compat
+      - `anthropic.py` — `AnthropicProvider` (Claude) — Anthropic-compat
 
 Selection: the user picks a `provider/model` ref (e.g. `qwen/qwen3.6-plus`)
 in `~/.physiclaw/config.toml [agent] model`. The launcher parses the ref
@@ -26,13 +32,17 @@ and routes on the provider id — `claude-code` goes to the subprocess
 engine, anything else here goes to the in-process engine via
 `make_provider(provider_id, model_id)`.
 """
-from physiclaw.agent.provider.base import (
+from physiclaw.agent.provider.anthropic_compat import AnthropicCompatibleProvider
+from physiclaw.agent.provider.provider_base import (
+    BaseProvider,
     ModelEntry,
-    OpenAICompatibleProvider,
     Provider,
     ProviderError,
     ProviderPermanentError,
     ProviderTransientError,
+)
+from physiclaw.agent.provider.openai_compat import (
+    OpenAICompatibleProvider,
     parse_openai_response,
 )
 from physiclaw.agent.provider.vendors.anthropic import AnthropicProvider
@@ -42,9 +52,10 @@ from physiclaw.agent.provider.vendors.openai import OpenAIProvider
 from physiclaw.agent.provider.vendors.qwen import QwenProvider
 from physiclaw.agent.provider.wire import (
     assistant_to_wire,
-    blocks_to_tool_content,
+    mcp_blocks_to_content_blocks,
     tool_result_to_wire,
     tool_to_wire,
+    user_content_to_openai,
 )
 
 
@@ -56,7 +67,8 @@ CLAUDE_CODE_ID = "claude-code"
 
 # Single source of truth: each provider class declares its own
 # PROVIDER_ID / BASE_URL / MODELS. The registry just maps id → class.
-_PROVIDER_CLASSES: dict[str, type[OpenAICompatibleProvider]] = {
+# Typed against `BaseProvider` so both wire-shape lineages fit.
+_PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
     QwenProvider.PROVIDER_ID:      QwenProvider,
     MoonshotProvider.PROVIDER_ID:  MoonshotProvider,
     OpenAIProvider.PROVIDER_ID:    OpenAIProvider,
@@ -72,7 +84,7 @@ def in_process_provider_ids() -> tuple[str, ...]:
     return tuple(_PROVIDER_CLASSES)
 
 
-def provider_class(provider_id: str) -> type[OpenAICompatibleProvider] | None:
+def provider_class(provider_id: str) -> type[BaseProvider] | None:
     """Class for an in-process provider id, or None if `provider_id`
     isn't one of ours (e.g. `claude-code`)."""
     return _PROVIDER_CLASSES.get(provider_id)
@@ -136,24 +148,27 @@ def make_provider(provider_id: str, model_id: str) -> Provider:
 
 __all__ = [
     "CLAUDE_CODE_ID",
+    "AnthropicCompatibleProvider",
+    "AnthropicProvider",
+    "BaseProvider",
+    "GoogleProvider",
     "ModelEntry",
+    "MoonshotProvider",
     "OpenAICompatibleProvider",
+    "OpenAIProvider",
     "Provider",
     "ProviderError",
     "ProviderPermanentError",
     "ProviderTransientError",
     "QwenProvider",
-    "MoonshotProvider",
-    "OpenAIProvider",
-    "AnthropicProvider",
-    "GoogleProvider",
     "assistant_to_wire",
-    "blocks_to_tool_content",
     "in_process_provider_ids",
     "make_provider",
+    "mcp_blocks_to_content_blocks",
     "parse_openai_response",
     "provider_class",
     "provider_endpoint",
     "tool_result_to_wire",
     "tool_to_wire",
+    "user_content_to_openai",
 ]

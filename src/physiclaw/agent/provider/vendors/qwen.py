@@ -11,7 +11,8 @@ Auth: `QWEN_API_KEY` / `DASHSCOPE_API_KEY` env, or
 
 Model ref examples:  `qwen/qwen3.6-plus`, `qwen/qwen3-max`.
 """
-from physiclaw.agent.provider.base import ModelEntry, OpenAICompatibleProvider
+from physiclaw.agent.provider.provider_base import ModelEntry
+from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 
 
 class QwenProvider(OpenAICompatibleProvider):

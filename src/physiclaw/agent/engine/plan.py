@@ -2,11 +2,11 @@
 
 The plan lives on `Session`, never in `messages[]`. Before each
 `provider.chat(...)` call the engine appends `plan.render()` as a final
-user-role message so the model sees its current plan on every turn
-without being lost in the scroll of tool_results. After the model
-responds, the plan message is discarded; only the assistant reply lands
-in history. This keeps the prefix byte-stable across turns — prefix
-cache still hits everything above; only the short tail recomputes.
+`UserMessage` so the model sees its current plan on every turn without
+being lost in the scroll of tool_results. After the model responds, the
+plan message is discarded; only the assistant reply lands in history.
+This keeps the prefix byte-stable across turns — prefix cache still
+hits everything above; only the short tail recomputes.
 
 Mutation funnels through the `update_progress` tool (handler in
 `builtin_tool.py`). Each step has a typed status (pending / in_progress
@@ -15,6 +15,7 @@ step is `in_progress` at a time — matching Claude Code's TodoWrite rule.
 """
 from dataclasses import dataclass, field
 
+from physiclaw.agent.engine.dto import Message, UserMessage
 from physiclaw.config import CONFIG
 
 
@@ -144,6 +145,6 @@ class Plan:
         return None
 
 
-def inject_tail(messages: list[dict], plan: Plan) -> list[dict]:
-    """Return `messages + [plan-tail user message]`. Original list untouched."""
-    return messages + [{"role": "user", "content": plan.render()}]
+def inject_tail(messages: list[Message], plan: Plan) -> list[Message]:
+    """Return `messages + [plan-tail UserMessage]`. Original list untouched."""
+    return messages + [UserMessage(content=plan.render())]

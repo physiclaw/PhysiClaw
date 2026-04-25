@@ -3,7 +3,7 @@
   1. `drop_stale_screens` — "latest screen wins": only the most recent
      peek/screenshot tool_result carries the image + full listing.
      Earlier view tool_results are stubbed down to a marker line
-     (`STUB_PREFIX + tool + ")"`) plus the listing's TEXT rows (icon-kind
+     (`(superseded <tool>)`) plus the listing's TEXT rows (icon-kind
      rows are dropped; without the image, numbered icon boxes are
      opaque anyway). Text rows are self-documenting — the label tells
      the agent what and where — and survive as re-targetable anchors.
@@ -17,15 +17,26 @@
      tool-result image to JPEG with long edge ≤ MAX_IMAGE_EDGE. Drops PNG
      transparency (fine for screenshots), typically cuts payload 3–10×.
 
-Cache-marker placement lives in `prompt.py::apply_cache_markers`; it
-reads `STUB_PREFIX` here to locate the most recent superseded stub.
+`drop_stale_screens` operates on `Message` DTOs: it finds
+`AssistantMessage` turns whose tool_calls are all screen-obs, locates
+the matching adjacent `ToolResultMessage`, replaces its `ImageBlock`-
+bearing content with a stub string, AND sets `is_superseded=True` on
+the new DTO. Providers find the latest stub via the typed flag — no
+string parsing across modules.
 """
 import logging
-from typing import Any
 
 import cv2
 import numpy as np
 
+from physiclaw.agent.engine.dto import (
+    AssistantMessage,
+    ContentBlock,
+    ImageBlock,
+    Message,
+    TextBlock,
+    ToolResultMessage,
+)
 from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
@@ -38,9 +49,10 @@ JPEG_QUALITY = CONFIG.compact.jpeg_quality
 # "screen-observation turn" — collapsible under drop_stale_screens.
 SCREEN_OBS_TOOLS = frozenset({"peek", "screenshot"})
 
-# Stub header prefix for superseded screen-obs tool_results. Shared with
-# apply_cache_markers so the cache-marker step can locate the most
-# recent stub via `content.startswith(STUB_PREFIX)` without re-parsing.
+# Human-readable lead-in for the stubbed content. Operators reading raw
+# logs see `(superseded peek)` and immediately know what happened. Cache-
+# marker code does NOT parse this — providers find stubs via the
+# `is_superseded` flag on `ToolResultMessage`.
 STUB_PREFIX = "(superseded "
 
 
@@ -69,27 +81,12 @@ def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
     return buf.tobytes(), "image/jpeg"
 
 
-def _tool_names(asst: dict[str, Any]) -> list[str]:
-    """Pull tool names out of an assistant-role wire message. Non-assistant
-    or tool_call-free messages return []."""
-    if asst.get("role") != "assistant":
-        return []
-    calls = asst.get("tool_calls") or []
-    out: list[str] = []
-    for tc in calls:
-        fn = tc.get("function") or {}
-        name = fn.get("name")
-        if isinstance(name, str):
-            out.append(name)
-    return out
-
-
-def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
-    """True iff `asst` is a screen-observation turn — its tool_calls are
-    entirely within SCREEN_OBS ∪ {"note"}, AND at least one tool_call is
-    an actual screen observation. A turn with a non-screen tool (tap,
-    read_logs, update_progress, …) is a boundary and stays put."""
-    names = _tool_names(asst)
+def _is_screen_obs_turn(asst: AssistantMessage) -> bool:
+    """True iff every tool_call in `asst` is in SCREEN_OBS ∪ {"note"} AND
+    at least one is an actual screen observation. A turn with a
+    non-screen tool (tap, read_logs, update_progress, …) is a boundary
+    and stays put."""
+    names = asst.tool_names()
     if not names:
         return False
     allowed = SCREEN_OBS_TOOLS | {"note"}
@@ -98,16 +95,24 @@ def _is_screen_obs_turn(asst: dict[str, Any]) -> bool:
     return any(n in SCREEN_OBS_TOOLS for n in names)
 
 
-def _extract_text(content: Any) -> str:
-    """Pull the text payload from a tool_result content — either a plain
-    string or a multipart `[{type:text,text:...}, {type:image_url,...}]`."""
+def _content_to_text(content: str | list[ContentBlock]) -> str:
+    """Pull the first text out of a tool_result content — a plain string
+    or the first `TextBlock` in a multipart list."""
     if isinstance(content, str):
         return content
-    if isinstance(content, list):
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                return part.get("text") or ""
+    for block in content:
+        if isinstance(block, TextBlock):
+            return block.text
     return ""
+
+
+def _has_image(content: str | list[ContentBlock]) -> bool:
+    """True iff `content` carries at least one `ImageBlock` — i.e. the
+    content is multipart and includes a fresh screen capture. Stubbed
+    content (plain string) returns False so re-passes are no-ops."""
+    if isinstance(content, str):
+        return False
+    return any(isinstance(b, ImageBlock) for b in content)
 
 
 def _filter_text_rows(listing: str) -> str:
@@ -138,40 +143,39 @@ def _filter_text_rows(listing: str) -> str:
     return "\n".join([header] + kept)
 
 
-def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
+def drop_stale_screens(messages: list[Message]) -> None:
     """Stub earlier view tool_results; keep asst + tool_call history intact.
 
     For each screen-observation turn X before the latest:
-      - Keep the assistant message (tool_calls list untouched).
-      - Keep the `note` tool_result (small text, harmless).
-      - Replace the view tool's tool_result content with a marker line
-        (`"(superseded <tool>)"`) followed by the text-kind rows from
-        the original listing. Icon rows and the image are dropped:
-        without the image, numbered icon boxes are opaque; text rows
-        self-document via their label. No summary is embedded in the
-        header — the next turn's `note.summary` is already in that
-        turn's assistant message immediately after this stub.
+      - Keep the `AssistantMessage` (tool_calls list untouched).
+      - Keep the `note` `ToolResultMessage` (small text, harmless).
+      - Replace the view tool's `ToolResultMessage.content` with a
+        marker line (`"(superseded <tool>)"`) followed by the text-kind
+        rows from the original listing. Icon rows and the image are
+        dropped: without the image, numbered icon boxes are opaque;
+        text rows self-document via their label. No summary is embedded
+        in the header — the next turn's `note.summary` is already in
+        that turn's assistant message immediately after this stub.
 
     The latest screen-observation's pair is untouched — its pixels and
     full listing are still the agent's live view.
 
-    Runs in place. Idempotency is carried by the `isinstance(content,
-    str)` guard below: fresh view results arrive as multipart lists
-    (text + image_url); once stubbed, content is a plain string and
-    further passes skip it. That guard — not the filter — is what
-    makes the pass safe to repeat.
+    Runs in place. Idempotency is carried by the `_has_image` guard:
+    fresh view results carry an `ImageBlock`; once stubbed, content is
+    a plain string (and `is_superseded=True`) so further passes skip it.
     """
-    obs_indices = [i for i, m in enumerate(messages) if _is_screen_obs_turn(m)]
+    obs_indices = [
+        i for i, m in enumerate(messages)
+        if isinstance(m, AssistantMessage) and _is_screen_obs_turn(m)
+    ]
     if len(obs_indices) <= 1:
         return
 
     for i in obs_indices[:-1]:
         asst = messages[i]
-        name_by_id = {
-            tc["id"]: ((tc.get("function") or {}).get("name", ""))
-            for tc in asst.get("tool_calls") or []
-            if tc.get("id")
-        }
+        assert isinstance(asst, AssistantMessage)  # guaranteed by obs_indices filter
+
+        name_by_id = {tc.id: tc.name for tc in asst.tool_calls if tc.id}
 
         # Scan contiguous tool_results for the single view one. The
         # [note, one-other] rule guarantees at most one view per turn,
@@ -179,8 +183,10 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
         view_tr_idx = -1
         view_tool_name = ""
         j = i + 1
-        while j < len(messages) and messages[j].get("role") == "tool":
-            name = name_by_id.get(messages[j].get("tool_call_id", ""), "")
+        while j < len(messages) and isinstance(messages[j], ToolResultMessage):
+            tr = messages[j]
+            assert isinstance(tr, ToolResultMessage)
+            name = name_by_id.get(tr.tool_call_id, "")
             if name in SCREEN_OBS_TOOLS:
                 view_tr_idx = j
                 view_tool_name = name
@@ -190,18 +196,20 @@ def drop_stale_screens(messages: list[dict[str, Any]]) -> None:
         if view_tr_idx < 0:
             continue
 
-        # Skip anything whose content is already a plain string: either
-        # already-stubbed from a prior pass, or a failed-tool synthetic
-        # result. Fresh view results arrive as multipart lists (text +
-        # image_url); only those are eligible for compaction.
-        content = messages[view_tr_idx].get("content")
-        if isinstance(content, str):
+        view_tr = messages[view_tr_idx]
+        assert isinstance(view_tr, ToolResultMessage)
+        if not _has_image(view_tr.content):
+            # Already stubbed (or never had an image — synthetic error result).
             continue
 
-        listing = _extract_text(content)
+        listing = _content_to_text(view_tr.content)
         text_rows = _filter_text_rows(listing)
 
         head = f"{STUB_PREFIX}{view_tool_name})"
-        messages[view_tr_idx]["content"] = (
-            f"{head}\n{text_rows}" if text_rows else head
+        new_content = f"{head}\n{text_rows}" if text_rows else head
+        messages[view_tr_idx] = ToolResultMessage(
+            tool_call_id=view_tr.tool_call_id,
+            content=new_content,
+            is_error=view_tr.is_error,
+            is_superseded=True,
         )

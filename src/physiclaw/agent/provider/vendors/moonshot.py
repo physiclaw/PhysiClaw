@@ -19,7 +19,8 @@ chat lineage (text-only, doesn't satisfy PhysiClaw's vision
 requirement). Use the explicit K-series ids; both are native multimodal
 agentic models with vision.
 """
-from physiclaw.agent.provider.base import ModelEntry, OpenAICompatibleProvider
+from physiclaw.agent.provider.provider_base import ModelEntry
+from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 
 
 class MoonshotProvider(OpenAICompatibleProvider):
