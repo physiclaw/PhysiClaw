@@ -8,6 +8,7 @@ import typer
 from physiclaw import __version__ as _pkg_version
 from physiclaw.cli.config import config_app
 from physiclaw.cli.doctor import doctor
+from physiclaw.cli.models import models_app
 from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
 from physiclaw.cli.skills import skills_app
@@ -57,6 +58,11 @@ app.add_typer(
     config_app,
     name="config",
     help="Show or edit the user config file.",
+)
+app.add_typer(
+    models_app,
+    name="models",
+    help="List, inspect, and switch the active model.",
 )
 app.add_typer(
     skills_app,

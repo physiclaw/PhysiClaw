@@ -28,7 +28,7 @@ def _build(args: argparse.Namespace) -> str:
         local_tool_schemas=builtin_tool.schemas(local_registry),
         skills_ctx=skill.render_section(skill_registry),
         memory_ctx=memory.load_persistent(),
-        provider_name=args.provider,
+        provider_id=args.provider,
     )
 
 
@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="qwen",
-        help="provider name (gates Qwen-only sections like Reasoning Format)",
+        help="provider id (gates provider-specific sections like Reasoning Format)",
     )
     parser.add_argument(
         "--save",

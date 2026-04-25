@@ -21,7 +21,7 @@ from physiclaw.agent.engine import builtin_tool, compact, jobs, memory, plan, pr
 from physiclaw.agent.engine.builtin_tool import LocalTool, Session
 from physiclaw.agent.engine.mcp_tool import McpClient, get_mcp, list_tools_cached
 from physiclaw.agent.engine.dto import AssistantMessage, FinishReason, ToolCall, ToolResult
-from physiclaw.agent.engine.provider import (
+from physiclaw.agent.provider import (
     Provider,
     ProviderTransientError,
     assistant_to_wire,
@@ -48,7 +48,7 @@ WAIT_DEFAULT_MINUTES = CONFIG.engine.wait_default_minutes
 
 
 async def run(
-    triggers: list[Trigger], *, provider_name: str
+    triggers: list[Trigger], *, model_ref: str
 ) -> None:
     """Run an engine session for `triggers`, retrying on STUCK.
 
@@ -57,13 +57,14 @@ async def run(
     MAX_ATTEMPTS fresh attempts run before we accept the STUCK outcome.
     DONE / FAIL / IDLE / WAIT are final on first occurrence — no retry.
 
-    `provider_name` selects which `Provider` impl to instantiate via
-    `provider.make_provider`. Required (no default) — every caller goes
-    through the launcher, which resolves PHYSICLAW_PROVIDER.
+    `model_ref` is a `provider/model` string (e.g. `"qwen/qwen3.6-plus"`).
+    Parsed inside `_run_session`; the provider is instantiated via
+    `provider.make_provider(provider_id, model_id)`. Required — every
+    caller goes through the launcher, which resolves `PHYSICLAW_MODEL`.
     """
     for attempt in range(1, MAX_ATTEMPTS + 1):
         session = Session()
-        await _run_session(triggers, provider_name=provider_name, session=session)
+        await _run_session(triggers, model_ref=model_ref, session=session)
         if session.sentinel_status != STUCK:
             break
         if attempt < MAX_ATTEMPTS:
@@ -76,11 +77,14 @@ async def run(
 async def _run_session(
     triggers: list[Trigger],
     *,
-    provider_name: str,
+    model_ref: str,
     session: Session,
 ) -> None:
     """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider
     per call. Writes outcome to `session.sentinel_*`; never raises."""
+    from physiclaw.config import parse_model_ref
+    provider_id, model_id = parse_model_ref(model_ref)
+
     sid = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     provider: Provider | None = None
     tr: Trace | None = None
@@ -91,14 +95,14 @@ async def _run_session(
         tr = Trace(sid)
         rlog = RawLog(sid)
         tr.write({
-            "event": "wake", "session": sid, "provider": provider_name,
+            "event": "wake", "session": sid, "model_ref": model_ref,
             "triggers": [
                 {"source": t.source, "description": t.description} for t in triggers
             ],
         })
         log.info(
-            "wake session=%s provider=%s triggers=%s",
-            sid, provider_name, [t.source or "?" for t in triggers],
+            "wake session=%s model=%s triggers=%s",
+            sid, model_ref, [t.source or "?" for t in triggers],
         )
         mcp = await get_mcp()
         mcp_tools = await list_tools_cached()
@@ -124,7 +128,7 @@ async def _run_session(
             local_tool_schemas=local_schemas,
             memory_ctx=memory.load_persistent(),
             skills_ctx=skill.render_section(skill_registry),
-            provider_name=provider_name,
+            provider_id=provider_id,
         )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -133,10 +137,10 @@ async def _run_session(
             )},
         ]
 
-        provider = make_provider(provider_name)
+        provider = make_provider(provider_id, model_id)
         prompt_hash = prompt.prefix_hash(messages)
         rlog.write_session_start(
-            provider=provider_name,
+            provider=provider_id,
             model=provider.model,
             prompt_hash=prompt_hash,
             tools=tool_schemas,

@@ -119,22 +119,22 @@ def server(
     # KeyboardInterrupt; SIGTERM-without-cleanup is handled by doctor's
     # pid-liveness check on read.
     from physiclaw import runtime_state
-    from physiclaw.agent.runtime.launcher import engine_label, resolve as _resolve_provider
+    from physiclaw.agent.runtime.launcher import engine_label, resolve as _resolve_model
 
     # Resolve once here (in the same env the user invoked `physiclaw server`
     # from) so `doctor` in another shell can read the live choice instead of
-    # re-resolving against an env that may be missing PHYSICLAW_PROVIDER.
+    # re-resolving against an env that may be missing PHYSICLAW_MODEL.
     # The runtime subprocess gets this same resolution via the pre-built
-    # label. A bad provider at this point is non-fatal for the HTTP server —
+    # label. A bad ref at this point is non-fatal for the HTTP server —
     # record nothing and let the runtime subprocess report the real error.
     try:
-        _provider, _provider_source = _resolve_provider()
-        _runtime_label = engine_label(_provider)
+        _model_ref, _model_source = _resolve_model()
+        _runtime_label = engine_label(_model_ref)
     except RuntimeError:
-        _provider, _provider_source = None, None
+        _model_ref, _model_source = None, None
         _runtime_label = "engine=(unset)"
     runtime_state.write(
-        host, port, provider=_provider, provider_source=_provider_source,
+        host, port, model_ref=_model_ref, model_source=_model_source,
     )
     atexit.register(runtime_state.clear)
 

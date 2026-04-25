@@ -8,26 +8,23 @@ out-of-process from the MCP server. This isolates long-running hook work
 (claude -p subprocess, or the in-process engine) from the FastMCP event
 loop.
 
-Two engines, one hook loop:
+Two engines, one hook loop, one config knob:
 
   - `physiclaw`   — in-process tool-call loop (agent/engine/). Drives one
-                    of the providers registered in engine.provider.
+                    of the providers in agent/provider/.
   - `claude-code` — subprocess to Anthropic's `claude` CLI. Lives under
                     agent/claude/. Loaded lazily — if the package is
-                    deleted, the string `claude-code` is simply not a
-                    valid choice; the engine path keeps working.
+                    deleted, any `claude-code/...` ref errors out; the
+                    engine path keeps working.
 
-Single env var `PHYSICLAW_PROVIDER` (or [provider] name in config.toml)
-selects the whole stack:
-  qwen          → physiclaw engine + Qwen (DashScope, OpenAI-compatible)
-  claude-code   → agent/claude/ subprocess
+Single config field `[agent] model` (or `PHYSICLAW_MODEL` env) selects
+the whole stack via a `provider/model` ref:
+  qwen/qwen3.6-plus            → physiclaw engine + Qwen
+  claude-code/claude-sonnet-4-6 → agent/claude/ subprocess
 
 Each in-process provider reads its credential at startup (e.g.
 QWEN_API_KEY env var or [provider] qwen_api_key in config.toml) and
 fails loudly if missing.
-
-Kimi/OpenAI/Anthropic providers are planned but not yet implemented —
-their key fields exist in config.toml as forward-compat placeholders.
 """
 
 import argparse
@@ -37,78 +34,68 @@ import os
 from functools import partial
 
 from physiclaw.agent.engine.mcp_tool import close_mcp
-from physiclaw.agent.engine.provider import PROVIDER_NAMES
+from physiclaw.agent.provider import (
+    CLAUDE_CODE_ID,
+    in_process_provider_ids,
+    provider_class,
+)
 from physiclaw.agent.runtime import Runtime
-from physiclaw.config import PROVIDER_ENV_VAR
+from physiclaw.config import model_ref_with_source, parse_model_ref
 from physiclaw.core.logger import setup_logging
 
 log = logging.getLogger(__name__)
 
 
-def _claude_name() -> str | None:
-    """Return the Claude engine name if agent/claude/ is installed, else None.
+def _claude_available() -> bool:
+    """Whether the claude-code subprocess engine is installed.
 
     Lazy + isolated: importing agent.claude touches Claude-specific code
     (plugin dir, spawn). If the package is removed, the import fails and
-    `claude-code` is not a selectable choice. Any other exception is a
+    `claude-code/...` refs are unselectable. Any other exception is a
     real bug in agent/claude/ that we want to surface — don't swallow.
     """
     try:
-        from physiclaw.agent.claude import ENGINE_NAME
+        import physiclaw.agent.claude  # noqa: F401
     except ImportError:
-        return None
-    return ENGINE_NAME
+        return False
+    return True
 
 
-def _provider_choices() -> tuple[str, ...]:
-    """All currently selectable engine names, claude-code included iff
-    agent/claude/ is installed."""
-    claude = _claude_name()
-    return (*PROVIDER_NAMES, *([claude] if claude else ()))
-
-
-def engine_label(choice: str) -> str:
-    """Human-readable label for the resolved engine choice.
-
-    `claude-code` is a whole engine (the subprocess runner); the other
-    choices select a provider inside the in-process physiclaw engine.
-    Surface the distinction so operators see "engine=..." consistently
-    — used by startup logs, doctor, and server-side state.
-    """
-    claude = _claude_name()
-    if claude and choice == claude:
-        return f"engine={choice}"
-    return f"engine=physiclaw, provider={choice}"
+def engine_label(ref: str) -> str:
+    """Human-readable engine label for a model ref. `claude-code` is a
+    whole engine (the subprocess runner); other providers run inside the
+    in-process physiclaw engine."""
+    provider_id, model_id = parse_model_ref(ref)
+    if provider_id == CLAUDE_CODE_ID:
+        return f"engine=claude-code, model={model_id}"
+    return f"engine=physiclaw, provider={provider_id}, model={model_id}"
 
 
 def resolve() -> tuple[str, str]:
-    """Return (choice, source). `choice` is either a provider name or the
-    claude engine name; source describes where the value came from so
-    log lines and error messages can point users to the right knob."""
-    from physiclaw.config import CONFIG, provider_name
+    """Return `(ref, source)` for the active model ref.
 
-    # Empty string is treated as unset — `export PHYSICLAW_PROVIDER=`
-    # is a common way shells "unset" a var for a single command, and
-    # failing membership on `""` yields a confusing error.
-    env_val = os.environ.get(PROVIDER_ENV_VAR) or None
-    if env_val:
-        choice, source = env_val, f"{PROVIDER_ENV_VAR} env"
-    elif CONFIG.provider.name:
-        choice, source = CONFIG.provider.name, "config.toml [provider] name"
-    else:
-        choice, source = provider_name(), "default"
-
-    choices = _provider_choices()
-    if choice not in choices:
-        if not choices:
+    `source` describes where the value came from so log lines and error
+    messages can point users at the right knob. Validates that the
+    provider id is selectable; does NOT validate `model_id` against the
+    catalog — that happens inside `launch()` for in-process refs and
+    inside the `claude` CLI itself for claude-code.
+    """
+    ref, source = model_ref_with_source()  # raises if not configured
+    provider_id, _ = parse_model_ref(ref)
+    known_in_process = in_process_provider_ids()
+    if provider_id == CLAUDE_CODE_ID:
+        if not _claude_available():
             raise RuntimeError(
-                "no engines available: install agent/claude/ or register a "
-                "provider in agent/engine/provider.py"
+                f"model ref {ref!r} (from {source}) selects claude-code "
+                "but agent/claude/ is not installed."
             )
+    elif provider_id not in known_in_process:
+        choices = (*known_in_process,) + ((CLAUDE_CODE_ID,) if _claude_available() else ())
         raise RuntimeError(
-            f"provider {choice!r} (from {source}) is not one of {choices}"
+            f"unknown provider {provider_id!r} in ref {ref!r} (from {source}); "
+            f"known: {choices}"
         )
-    return choice, source
+    return ref, source
 
 
 def launch() -> None:
@@ -117,7 +104,8 @@ def launch() -> None:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
-    choice, source = resolve()
+    ref, source = resolve()
+    provider_id, model_id = parse_model_ref(ref)
 
     # Hooks read this to know where the MCP server lives. Must be set
     # before load_hooks() imports them.
@@ -128,14 +116,22 @@ def launch() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-    claude_name = _claude_name()
-    if claude_name is not None and choice == claude_name:
+    if provider_id == CLAUDE_CODE_ID:
         from physiclaw.agent.claude import spawn_claude as react
     else:
-        from physiclaw.agent.engine import run as engine_run
+        # Validate against the in-process catalog before the loop starts —
+        # better to fail fast at launch than mid-session.
+        cls = provider_class(provider_id)
+        if cls is not None and not cls.has_model(model_id):
+            known = ", ".join(m.id for m in cls.MODELS)
+            raise RuntimeError(
+                f"model {model_id!r} not in {provider_id} catalog (known: {known}); "
+                f"declare it in agent/provider/vendors/{provider_id}.py to add"
+            )
+        from physiclaw.agent.engine.engine import run as engine_run
+        react = partial(engine_run, model_ref=ref)
 
-        react = partial(engine_run, provider_name=choice)
-    label = engine_label(choice)
+    label = engine_label(ref)
     log.info("%s [%s]", label, source)
 
     async def _main():

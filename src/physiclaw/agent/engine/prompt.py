@@ -48,21 +48,23 @@ def render_system(
     local_tool_schemas: list[dict] | None = None,
     memory_ctx: str = "",
     skills_ctx: str = "",
-    provider_name: str = "",
+    provider_id: str = "",
 ) -> str:
     """Compose the full SYSTEM for one session — entirely session-stable.
 
     Order (above → below):
-      # Doctrine          file-loop over DOCTRINE_FILE_ORDER. Slots:
-                          IDENTITY, OWNER, SOUL, AGENT, PHYSICLAW, TOOLS,
-                          CONVENTION — each rendered as `## <name>` block;
-                          missing = skipped. OWNER reads from memory/.
-      ## Tooling          inline tool index card (Qwen reliability)
-      ## Skill selection  decision-tree wrapper around `skills_ctx`
-      ## Examples         ❌/✅ for the most common per-turn failures
-      ## Reasoning Format  Qwen-only `<think>` wrapper
-      ## memory.md        session-stable persistent facts — live file
-                          dump (the spec lives in the PERSISTENCE.md slot)
+      # Doctrine           file-loop over DOCTRINE_FILE_ORDER. Slots:
+                           IDENTITY, OWNER, SOUL, AGENT, PHYSICLAW, TOOLS,
+                           CONVENTION — each rendered as `## <name>` block;
+                           missing = skipped. OWNER reads from memory/.
+      ## Tooling           inline tool index card (Qwen reliability)
+      ## Skill selection   decision-tree wrapper around `skills_ctx`
+      ## Examples          ❌/✅ for the most common per-turn failures
+      ## Reasoning Format  provider-specific reasoning wrapper (e.g. Qwen
+                           `<think>...</think>`); pulled from
+                           `OpenAICompatibleProvider.system_prompt_fragment()`
+      ## memory.md         session-stable persistent facts — live file
+                           dump (the spec lives in the PERSISTENCE.md slot)
 
     Wake-volatile content (fired-jobs block, trigger stamps) lives in
     the user message the engine appends right after — keeping the
@@ -74,7 +76,7 @@ def render_system(
         *_render_tooling(local_tool_schemas or []),
         *_render_skills(skills_ctx),
         *_render_examples(),
-        *_render_reasoning_format(provider_name),
+        *_render_reasoning_format(provider_id),
         *_render_memory(memory_ctx),
     ]
     return "\n".join(lines)
@@ -129,8 +131,8 @@ def _render_tooling(local_tool_schemas: list[dict]) -> list[str]:
     engine tools come from the caller. The two sources don't overlap by
     name, so the merge is a simple concat.
 
-    Why the inline card at all: open-weight models (Qwen, Kimi) routinely
-    forget tools that appear only in the native `tools=` payload."""
+    Why the inline card at all: open-weight models (Qwen, Moonshot)
+    routinely forget tools that appear only in the native `tools=` payload."""
     all_tools = mcp_inventory.discover_mcp_tools() + (local_tool_schemas or [])
     if not all_tools:
         return []
@@ -204,18 +206,24 @@ def _render_examples() -> list[str]:
     ]
 
 
-def _render_reasoning_format(provider_name: str) -> list[str]:
-    """Qwen-family wrapper: keep chain-of-thought inside `<think>...</think>`
-    so it does not leak into tool arguments. No-op for Anthropic/OpenAI
-    providers, which handle reasoning out-of-band."""
-    if "qwen" not in (provider_name or "").lower():
+def _render_reasoning_format(provider_id: str) -> list[str]:
+    """Provider-specific reasoning fragment (e.g. Qwen's `<think>` wrapper).
+
+    Pulled from `OpenAICompatibleProvider.system_prompt_fragment()` —
+    the provider class declares its `THINKING_FORMAT` flag, which maps
+    to a fragment in `base._THINKING_FRAGMENTS`. Replaces the old
+    substring-match `if "qwen" in provider_name`, so adding a new
+    provider doesn't require editing this file.
+    """
+    from physiclaw.agent.provider import provider_class
+
+    cls = provider_class(provider_id)
+    if cls is None:
         return []
-    return [
-        "## Reasoning Format",
-        "Wrap internal reasoning in `<think>...</think>`. Anything outside `<think>` is interpreted as either a tool call or a user-visible reply.",
-        "Never put reasoning inside tool arguments — handlers receive `args` raw, not your scratchpad.",
-        "",
-    ]
+    fragment = cls.system_prompt_fragment()
+    if not fragment:
+        return []
+    return ["## Reasoning Format", fragment, ""]
 
 
 def _render_memory(memory_ctx: str) -> list[str]:
@@ -332,7 +340,7 @@ def dump(
     local_tool_schemas: list[dict] | None = None,
     memory_ctx: str = "",
     skills_ctx: str = "",
-    provider_name: str = "",
+    provider_id: str = "",
 ) -> str:
     """Render the SYSTEM prompt the same way the engine does, with all
     inputs optional so callers can dump the static skeleton without
@@ -341,5 +349,5 @@ def dump(
         local_tool_schemas=local_tool_schemas,
         memory_ctx=memory_ctx,
         skills_ctx=skills_ctx,
-        provider_name=provider_name,
+        provider_id=provider_id,
     )

@@ -188,7 +188,7 @@ def _probe_qwen_api_deep() -> str:
     """1-token completion to confirm the key actually works (not just present)."""
     import httpx
 
-    from physiclaw.agent.engine.provider import provider_endpoint
+    from physiclaw.agent.provider import provider_endpoint
     from physiclaw.config import qwen_api_key
 
     key = qwen_api_key()
@@ -346,34 +346,37 @@ def doctor(
     typer.echo(_fmt_section("Engine"))
 
     # Prefer the live server's recorded choice — resolving here would pull
-    # from the current shell's env, which may be missing PHYSICLAW_PROVIDER
+    # from the current shell's env, which may be missing PHYSICLAW_MODEL
     # even when the server has it set. Fall back to a fresh resolve when no
     # server is running.
     from physiclaw.agent.runtime.launcher import engine_label, resolve
+    from physiclaw.config import parse_model_ref
 
-    live_provider = live.get("provider") if live else None
-    if live_provider:
-        provider_choice = live_provider
-        provider_source = f"live server, {live.get('provider_source') or '?'}"
-        typer.echo(_fmt_ok(f"{engine_label(provider_choice)} ({provider_source})"))
+    live_ref = live.get("model_ref") if live else None
+    active_ref: str | None = None
+    if live_ref:
+        active_ref = live_ref
+        ref_source = f"live server, {live.get('model_source') or '?'}"
+        typer.echo(_fmt_ok(f"{engine_label(active_ref)} ({ref_source})"))
     else:
         try:
-            provider_choice, provider_source = resolve()
-            typer.echo(_fmt_ok(f"{engine_label(provider_choice)} (from {provider_source})"))
+            active_ref, ref_source = resolve()
+            typer.echo(_fmt_ok(f"{engine_label(active_ref)} (from {ref_source})"))
         except RuntimeError as e:
-            provider_choice = None
             typer.echo(_fmt_warn(f"engine: invalid — {e}"))
+
+    active_provider = parse_model_ref(active_ref)[0] if active_ref else None
 
     # When a live server is running with provider=qwen, the Engine line
     # above is already the proof the key works — don't add a second line.
     # Otherwise surface the key status for the current shell's config.
-    if live_provider != "qwen":
+    if active_provider != "qwen":
         qwen_src = _cfg.qwen_api_key_source()
         if qwen_src:
             typer.echo(_fmt_ok(f"qwen api key: set ({qwen_src})"))
             if deep:
                 typer.echo(_probe_qwen_api_deep())
-        elif provider_choice == "qwen":
+        elif active_provider == "qwen":
             typer.echo(_fmt_warn(
                 "qwen api key: (unset) — required for provider=qwen"
             ))

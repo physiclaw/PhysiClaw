@@ -56,23 +56,38 @@ class EngineConfig:
 
 
 @dataclass
-class ProviderConfig:
-    """Provider selection + API keys.
+class AgentConfig:
+    """Agent runtime selection.
 
-    Empty strings mean "fall back to env / built-in default" — see the
-    ``provider_name()`` / ``*_api_key()`` helpers below for resolution order.
-
-    Today only ``name="qwen"`` (or ``"claude-code"``) and ``qwen_api_key`` are
-    wired to working code. Kimi/OpenAI/Anthropic provider classes don't exist
-    yet; their key fields are accepted here for forward compatibility but
-    read by nothing until those providers are implemented.
+    ``model`` is a ``provider/model`` ref, e.g. ``"qwen/qwen3.6-plus"`` or
+    ``"claude-code/claude-sonnet-4-6"``. The first segment selects the
+    engine + provider; the second selects the model within that provider's
+    catalog. Empty string means "use ``PHYSICLAW_MODEL`` env var, then
+    fail loudly" — there is no universal default.
     """
 
-    name: str = ""
+    model: str = ""
+
+
+@dataclass
+class ProviderConfig:
+    """Per-provider credentials (only).
+
+    Empty strings mean "fall back to env / built-in default" — see the
+    ``*_api_key()`` helpers below for resolution order. Provider/model
+    selection lives under ``[agent] model``.
+
+    Field names match the provider id (qwen/moonshot/openai/anthropic) —
+    same convention OpenClaw uses. Today only ``qwen_api_key`` is wired
+    to working code; the others are accepted for forward compatibility
+    but read by nothing until those providers are de-stubbed.
+    """
+
     qwen_api_key: str = ""
-    kimi_api_key: str = ""
+    moonshot_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    google_api_key: str = ""
 
 
 @dataclass
@@ -112,6 +127,7 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     warm_start: WarmStartConfig = field(default_factory=WarmStartConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
     compact: CompactConfig = field(default_factory=CompactConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
@@ -124,6 +140,7 @@ _SECTION_TYPES: dict[str, type] = {
     "server": ServerConfig,
     "warm_start": WarmStartConfig,
     "engine": EngineConfig,
+    "agent": AgentConfig,
     "provider": ProviderConfig,
     "compact": CompactConfig,
     "memory": MemoryConfig,
@@ -142,13 +159,20 @@ _FILE_HEADER = """\
 _SECTION_COMMENTS: dict[str, str] = {
     "warm_start": "Timeouts for `physiclaw server --warm-start` hardware reconnect.",
     "engine": "Runaway safeguard + retry + pacing for the agent's tool-call loop.",
+    "agent": (
+        "Engine + model selection. `model` is a `provider/model` ref, e.g. "
+        "`qwen/qwen3.6-plus` or `claude-code/claude-sonnet-4-6`. "
+        "`PHYSICLAW_MODEL` env var overrides."
+    ),
     "provider": (
-        "Provider selection + API keys. Env vars (PHYSICLAW_PROVIDER, "
-        "QWEN_API_KEY, …) override these. Treat keys here like ssh keys."
+        "Per-provider API keys. Field names match the provider id "
+        "(qwen/moonshot/openai/anthropic). Env vars (QWEN_API_KEY, "
+        "MOONSHOT_API_KEY, OPENAI_API_KEY, …) override these. Treat "
+        "keys here like ssh keys."
     ),
     "compact": "Screenshot compression before sending to the LLM.",
     "memory": "How many recent daily memory logs to surface on wake-up.",
-    "claude": "Applied when PHYSICLAW_PROVIDER=claude-code (external CLI subprocess).",
+    "claude": "Applied when [agent] model = 'claude-code/...' (external CLI subprocess).",
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "skills": (
         "Default source repo for `physiclaw skills install`. Empty = require "
@@ -362,69 +386,112 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
 CONFIG: Config = load()
 
 
-# --- Provider credential resolution. -----------------------------------------
-# Order: env var > config.toml > built-in default. Empty strings in config
-# count as "unset" and fall through to the next layer.
+# --- Model + provider selection ----------------------------------------------
+# Order: env var > config.toml > raise. There is no implicit default —
+# the user must configure a model. Refs use `provider/model` shape.
 
 
-PROVIDER_ENV_VAR = "PHYSICLAW_PROVIDER"
+MODEL_ENV_VAR = "PHYSICLAW_MODEL"
+
+_NO_MODEL_MSG = (
+    f"no model configured. Set {MODEL_ENV_VAR} env var or [agent] model "
+    "in ~/.physiclaw/config.toml — e.g. 'qwen/qwen3.6-plus' or "
+    "'claude-code/claude-sonnet-4-6'."
+)
 
 
-def provider_name() -> str:
-    """Resolve effective provider: PHYSICLAW_PROVIDER > config > default.
+def model_ref() -> str:
+    """Resolve effective model ref: PHYSICLAW_MODEL > [agent] model > raise.
 
-    The default is the Claude engine name iff `agent/claude/` is installed.
-    If the Claude package is removed AND no explicit provider is set, this
-    raises — there is no universal sensible fallback.
+    Returns a `provider/model` string like `"qwen/qwen3.6-plus"`. Use
+    `parse_model_ref` to split into the two parts. Display callers
+    that want the source label too should call `model_ref_with_source`.
     """
-    explicit = os.environ.get(PROVIDER_ENV_VAR) or CONFIG.provider.name
-    if explicit:
-        return explicit
-    # Lazy: importing agent.claude pulls in claude.spawn; keep it off the
-    # import graph unless we actually need the default.
-    try:
-        from physiclaw.agent.claude import ENGINE_NAME
-    except ImportError:
-        raise RuntimeError(
-            "no provider configured and agent/claude/ is not installed. "
-            "Set PHYSICLAW_PROVIDER env var or [provider] name in config.toml."
-        ) from None
-    return ENGINE_NAME
+    return model_ref_with_source()[0]
+
+
+def model_ref_with_source() -> tuple[str, str]:
+    """`(ref, source)` for the active model — same env > config order as
+    `model_ref`. Raises `RuntimeError` when nothing is configured.
+    `source` is a human-readable string for log / diagnostic output
+    (`"PHYSICLAW_MODEL env"` or `"config.toml [agent] model"`).
+    """
+    if os.environ.get(MODEL_ENV_VAR):
+        return os.environ[MODEL_ENV_VAR], f"{MODEL_ENV_VAR} env"
+    if CONFIG.agent.model:
+        return CONFIG.agent.model, "config.toml [agent] model"
+    raise RuntimeError(_NO_MODEL_MSG)
+
+
+def parse_model_ref(ref: str) -> tuple[str, str]:
+    """Split `"provider/model-id"` on the FIRST slash.
+
+    `"qwen/qwen3.6-plus"`  →  `("qwen", "qwen3.6-plus")`.
+    `"openrouter/openai/gpt-5"`  →  `("openrouter", "openai/gpt-5")`.
+    """
+    if "/" not in ref:
+        raise ValueError(
+            f"model ref {ref!r} must be 'provider/model' "
+            "(e.g. 'qwen/qwen3.6-plus')"
+        )
+    provider_id, model_id = ref.split("/", 1)
+    if not (provider_id and model_id):
+        raise ValueError(
+            f"model ref {ref!r} has empty provider or model segment"
+        )
+    return provider_id, model_id
+
+
+# --- Provider credential resolution. -----------------------------------------
+# Order: env var(s) in declaration order > config.toml > None. Empty
+# strings in config count as "unset" and fall through to the next layer.
+
+
+def resolve_provider_key(
+    env_vars: tuple[str, ...],
+    config_key: str,
+) -> tuple[str | None, str | None]:
+    """Generic credential resolver. Returns ``(key, source)``; both
+    ``None`` if not set anywhere.
+
+    ``env_vars`` are checked in order (first hit wins). If none match,
+    falls through to ``CONFIG.provider.<config_key>``. ``source`` is a
+    human-readable string for diagnostic output (``"OPENAI_API_KEY env"``
+    or ``"config.toml [provider] openai_api_key"``).
+    """
+    for var in env_vars:
+        val = os.environ.get(var)
+        if val:
+            return val, f"{var} env"
+    val = getattr(CONFIG.provider, config_key, "")
+    if val:
+        return val, f"config.toml [provider] {config_key}"
+    return None, None
 
 
 def qwen_api_key() -> str | None:
     """Resolve Qwen credential: QWEN_API_KEY > DASHSCOPE_API_KEY > config > None."""
-    return (
-        os.environ.get("QWEN_API_KEY")
-        or os.environ.get("DASHSCOPE_API_KEY")
-        or CONFIG.provider.qwen_api_key
-        or None
-    )
+    return resolve_provider_key(("QWEN_API_KEY", "DASHSCOPE_API_KEY"), "qwen_api_key")[0]
 
 
 def qwen_api_key_source() -> str | None:
-    """Where ``qwen_api_key()`` found a value, or None if unset.
-
-    Mirrors ``qwen_api_key()`` resolution order — keep in sync.
-    """
-    if os.environ.get("QWEN_API_KEY"):
-        return "QWEN_API_KEY env"
-    if os.environ.get("DASHSCOPE_API_KEY"):
-        return "DASHSCOPE_API_KEY env"
-    if CONFIG.provider.qwen_api_key:
-        return "config.toml [provider] qwen_api_key"
-    return None
+    """Where ``qwen_api_key()`` found a value, or None if unset."""
+    return resolve_provider_key(("QWEN_API_KEY", "DASHSCOPE_API_KEY"), "qwen_api_key")[1]
 
 
 __all__ = [
     "CONFIG",
     "Config",
     "ConfigError",
+    "MODEL_ENV_VAR",
     "config_path",
     "get",
     "load",
-    "provider_name",
+    "model_ref",
+    "model_ref_with_source",
+    "parse_model_ref",
     "qwen_api_key",
+    "resolve_provider_key",
     "qwen_api_key_source",
     "set_dotted",
     "to_toml",

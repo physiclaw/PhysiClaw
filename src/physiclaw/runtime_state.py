@@ -20,16 +20,17 @@ def write(
     host: str,
     port: int,
     *,
-    provider: str | None = None,
-    provider_source: str | None = None,
+    model_ref: str | None = None,
+    model_source: str | None = None,
 ) -> None:
     """Record this process as the running server. Overwrites any prior file.
 
-    ``provider`` / ``provider_source`` capture what the server resolved at
-    startup so ``physiclaw doctor`` in a different shell can report the
-    live choice instead of re-running ``resolve()`` against a shell that
-    doesn't have the env var set. ``None`` marks "not recorded"; readers
-    gate on truthiness so the JSON-``null`` round-trip works unchanged.
+    ``model_ref`` / ``model_source`` capture the `provider/model` ref the
+    server resolved at startup so ``physiclaw doctor`` in a different
+    shell can report the live choice instead of re-running ``resolve()``
+    against a shell that doesn't have the env var set. ``None`` marks
+    "not recorded"; readers gate on truthiness so the JSON-``null``
+    round-trip works unchanged.
     """
     p = paths.runtime_state_file()
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -37,8 +38,8 @@ def write(
         "pid": os.getpid(),
         "host": host,
         "port": port,
-        "provider": provider,
-        "provider_source": provider_source,
+        "model_ref": model_ref,
+        "model_source": model_source,
         "started_at": time.time(),
     }))
 

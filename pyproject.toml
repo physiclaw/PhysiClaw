@@ -30,6 +30,7 @@ dependencies = [
     "onnxruntime>=1.24.0",
     "typer>=0.12",
     "tomlkit>=0.13",
+    "anthropic>=0.40",
 ]
 
 [project.urls]
