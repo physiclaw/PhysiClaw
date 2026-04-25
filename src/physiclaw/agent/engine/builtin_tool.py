@@ -392,13 +392,12 @@ _READ_LOGS = LocalTool(
     name="read_logs",
     description=(
         "Fetch the last N log entries across `memory/YYYY-MM-DD.md` "
-        "files, most recent first. If today's file has fewer than N, "
-        "walks back through prior days until N are collected. Each "
-        "`[HH:MM]` is rewritten to `[YYYY-MM-DD HH:MM]` so cross-day "
-        "order is unambiguous in the merged view. Daily logs are NOT "
-        "auto-injected at wake — call this whenever you need recent "
-        "activity context (yesterday's purchases, prior IM exchanges, "
-        "open follow-ups)."
+        "files, most recent first. Call at wake for recent activity "
+        "(yesterday's purchases, prior IM exchanges, open follow-"
+        "ups). If today's file has fewer than N, walks back through "
+        "prior days until N are collected. Each `[HH:MM]` is "
+        "rewritten to `[YYYY-MM-DD HH:MM]` so cross-day order is "
+        "unambiguous."
     ),
     input_schema={
         "type": "object",

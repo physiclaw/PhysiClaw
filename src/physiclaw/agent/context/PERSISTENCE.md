@@ -9,10 +9,9 @@ Two kinds of persistent state, different purposes:
   curated (owner preferences, durable facts, things the owner said
   to remember). Mutate via `save_memory` / `update_memory`.
 - **`memory/YYYY-MM-DD.md`** (one file per calendar day, accumulates
-  over time) — append-only daily activity log. NOT auto-injected —
-  fetch on demand via `read_logs(entries?)`. Holds what you did each
-  day; written via `append_log` after every major step AND once at
-  session close.
+  over time) — append-only daily activity log. Loaded at wake via
+  `read_logs`; written via `append_log` after every major step AND
+  once at session close.
 
 Persistent state is accessed only through these tools — you have no
 file-edit access to `memory/`. Tools:
@@ -27,10 +26,10 @@ file-edit access to `memory/`. Tools:
   only after a `save_memory` / `update_memory` mid-session, when the
   SYSTEM snapshot is stale and you need byte-exact current contents.
 - `read_logs(entries?)` — fetch the last N log entries across daily
-  files, most recent first. Walks back through prior days when the
-  latest file has fewer than N. Each `[HH:MM]` is rewritten to
-  `[YYYY-MM-DD HH:MM]` so cross-day order is unambiguous. `entries`
-  defaults to 20, max 200.
+  files, most recent first. Call at wake for recent activity. Walks
+  back through prior days when the latest file has fewer than N.
+  Each `[HH:MM]` is rewritten to `[YYYY-MM-DD HH:MM]` so cross-day
+  order is unambiguous. `entries` defaults to 20, max 200.
 - `append_log(entry)` — append one line to today's daily log
   (`memory/YYYY-MM-DD.md`). Format: `[HH:MM] app: page → page —
   what you did`. **Call after every major step** (purchase placed,
