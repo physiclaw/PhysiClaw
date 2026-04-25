@@ -4,15 +4,16 @@ Read paths:
   - `load_owner` — `memory/OWNER.md`. Routed through the doctrine renderer
     so it appears as a slot inside `# Doctrine`.
   - `load_persistent` — `memory/memory.md`. Auto-injected at session start.
-  - `load_recent_activity` — last N `memory/YYYY-MM-DD.md` daily logs.
-    Fetched on demand via `read_logs`; injecting them every wake would
-    burn context in days.
+  - `load_recent_entries` — last N entries across `memory/YYYY-MM-DD.md`
+    daily logs, walking back through prior days when the latest file
+    has fewer than N. Fetched on demand via `read_logs`; injecting
+    them every wake would burn context.
 
 Write paths used by the local tool handlers: `append_log`, `save_fact`,
 `update_fact`.
 """
 import datetime as dt
-from pathlib import Path
+import re
 
 from physiclaw import paths
 from physiclaw.config import CONFIG
@@ -20,7 +21,21 @@ from physiclaw.config import CONFIG
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = MEMORY_DIR / "memory.md"
 OWNER_FILE = MEMORY_DIR / "OWNER.md"
-DAILY_LOOKBACK = CONFIG.memory.daily_lookback_days
+
+# `read_logs` default. Counts entry lines (one log step), not files —
+# a low-activity recent day spills into older days until N is reached.
+# Owner-tunable via `[memory] default_log_entries` in config.toml.
+DEFAULT_LOG_ENTRIES = CONFIG.memory.default_log_entries
+
+# Hard ceiling on how far back to scan when collecting entries. Guards
+# against an indefinite loop on a near-empty memory dir; missing days
+# are skipped cheaply so the cost is just calendar arithmetic.
+_LOOKBACK_DAYS_CEILING = 365
+
+# `append_log` writes `[HH:MM] …`. `read_logs` rewrites the prefix to
+# `[YYYY-MM-DD HH:MM] …` using the file's date so a merged-day view
+# stays unambiguous about cross-day order.
+_TIME_PREFIX_RE = re.compile(r"^\[(\d{2}:\d{2})\]\s*(.*)$")
 
 
 def load_owner() -> str:
@@ -41,27 +56,56 @@ def load_persistent() -> str:
     return MEMORY_FILE.read_text().strip()
 
 
-def load_recent_activity(lookback_days: int = DAILY_LOOKBACK) -> str:
-    """Last N daily logs as a single markdown block, or "" if none.
+def load_recent_entries(n: int = DEFAULT_LOG_ENTRIES) -> str:
+    """Last N log entries across daily files, most recent first.
 
-    Fetched on demand via the `read_logs` tool — NOT auto-injected at
-    session start. The model decides when it needs recent context."""
+    Walks `memory/YYYY-MM-DD.md` from today backward, accumulating
+    non-empty content lines. If today's file has fewer than N entries,
+    yesterday's is read too, and so on, up to `_LOOKBACK_DAYS_CEILING`.
+    The `# YYYY-MM-DD` header line and blank lines are skipped — only
+    actual entries count toward N.
+
+    Each line's `[HH:MM]` prefix is rewritten to `[YYYY-MM-DD HH:MM]`
+    using the file's date so the merged stream is unambiguous about
+    when each entry happened. Lines without a time prefix pass through
+    unchanged.
+
+    Returns "" if no entries are found within the ceiling.
+    """
     today = dt.date.today()
-    dailies: list[str] = []
-    for i in range(lookback_days):
+    collected: list[str] = []
+    for i in range(_LOOKBACK_DAYS_CEILING):
+        if len(collected) >= n:
+            break
         d = today - dt.timedelta(days=i)
         p = MEMORY_DIR / f"{d.isoformat()}.md"
-        if not p.exists():
+        try:
+            text = p.read_text()
+        except FileNotFoundError:
             continue
-        body = p.read_text().strip()
-        if not body:
-            continue
-        dailies.append(
-            body if body.startswith("#") else f"### {d.isoformat()}\n\n{body}"
-        )
-    if not dailies:
+        # Files are append-order (oldest line first). Reverse before
+        # taking from a single file so the most recent line in that
+        # file appears first in the merged output.
+        per_file: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            per_file.append(_stamp_date(stripped, d))
+        for line in reversed(per_file):
+            collected.append(line)
+            if len(collected) >= n:
+                break
+    if not collected:
         return ""
-    return f"## Recent activity (last {lookback_days} days)\n\n" + "\n\n".join(dailies)
+    return "\n".join(collected)
+
+
+def _stamp_date(line: str, d: dt.date) -> str:
+    m = _TIME_PREFIX_RE.match(line)
+    if not m:
+        return line
+    return f"[{d.isoformat()} {m.group(1)}] {m.group(2)}"
 
 
 def append_log(entry: str) -> None:

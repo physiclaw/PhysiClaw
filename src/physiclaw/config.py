@@ -98,7 +98,7 @@ class CompactConfig:
 
 @dataclass
 class MemoryConfig:
-    daily_lookback_days: int = 3
+    default_log_entries: int = 20
 
 
 @dataclass
@@ -171,7 +171,7 @@ _SECTION_COMMENTS: dict[str, str] = {
         "keys here like ssh keys."
     ),
     "compact": "Screenshot compression before sending to the LLM.",
-    "memory": "How many recent daily memory logs to surface on wake-up.",
+    "memory": "Default `read_logs` size when the agent doesn't pass `entries`.",
     "claude": "Applied when [agent] model = 'claude-code/...' (external CLI subprocess).",
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "skills": (

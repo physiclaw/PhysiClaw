@@ -112,9 +112,9 @@ async def _handle_read_memory(_session: Session, _args: dict) -> str:
 
 
 async def _handle_read_logs(_session: Session, args: dict) -> str:
-    days = args.get("days", memory.DAILY_LOOKBACK)
-    out = memory.load_recent_activity(days)
-    return out if out else f"(no daily logs in last {days} days)"
+    n = args.get("entries", memory.DEFAULT_LOG_ENTRIES)
+    out = memory.load_recent_entries(n)
+    return out if out else "(no log entries found)"
 
 
 async def _handle_update_memory(_session: Session, args: dict) -> str:
@@ -391,21 +391,25 @@ _READ_MEMORY = LocalTool(
 _READ_LOGS = LocalTool(
     name="read_logs",
     description=(
-        "Fetch the last N daily logs (`memory/YYYY-MM-DD.md`). Daily logs "
-        "are NOT auto-injected at wake — call this whenever you need "
-        "recent activity context (yesterday's purchases, prior IM "
-        "exchanges, open follow-ups)."
+        "Fetch the last N log entries across `memory/YYYY-MM-DD.md` "
+        "files, most recent first. If today's file has fewer than N, "
+        "walks back through prior days until N are collected. Each "
+        "`[HH:MM]` is rewritten to `[YYYY-MM-DD HH:MM]` so cross-day "
+        "order is unambiguous in the merged view. Daily logs are NOT "
+        "auto-injected at wake — call this whenever you need recent "
+        "activity context (yesterday's purchases, prior IM exchanges, "
+        "open follow-ups)."
     ),
     input_schema={
         "type": "object",
         "properties": {
-            "days": {
+            "entries": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 30,
+                "maximum": 200,
                 "description": (
-                    f"Lookback window in days (default "
-                    f"{memory.DAILY_LOOKBACK})."
+                    f"How many recent entries to return (default "
+                    f"{memory.DEFAULT_LOG_ENTRIES})."
                 ),
             },
         },
