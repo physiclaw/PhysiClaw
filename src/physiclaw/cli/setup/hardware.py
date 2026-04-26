@@ -83,15 +83,15 @@ def ask(msg, auto):
     return True if auto else input(f"  {msg} [Enter/q] ").strip().lower() != "q"
 
 
-def calibrate(step, timeout=60):
-    return api("POST", f"/api/calibrate/{step}", timeout=timeout)
+def calibrate(step, timeout=60, body=None):
+    return api("POST", f"/api/calibrate/{step}", body=body, timeout=timeout)
 
 
-def calibrate_retry(step, fail_msg, retry_prompt, auto, predicate=None, timeout=30):
+def calibrate_retry(step, fail_msg, retry_prompt, auto, predicate=None, timeout=30, body=None):
     if predicate is None:
         predicate = ok
     while True:
-        r = calibrate(step, timeout)
+        r = calibrate(step, timeout, body=body)
         if predicate(r):
             return r
         msg = fail_msg(r) if callable(fail_msg) else fail_msg
@@ -218,7 +218,13 @@ def run(auto: bool = False, trace: bool = False) -> None:
                 f"{(resp or {}).get('message', 'no response')}"
             )
 
-        r = calibrate_retry("arm", _arm_fail, "Retry?", auto, timeout=120)
+        # Interactive setup forces a fresh first-contact descent —
+        # the cached z_tap from `bundle.json` is only trusted in auto
+        # mode (e.g., warm-start re-calibration where speed matters).
+        r = calibrate_retry(
+            "arm", _arm_fail, "Retry?", auto, timeout=120,
+            body={"fresh": not auto},
+        )
         z_note = " (cached)" if r.get("z_cached") else ""
         tilt = r.get("tilt_ratio", 0)
         if not r.get("aligned"):

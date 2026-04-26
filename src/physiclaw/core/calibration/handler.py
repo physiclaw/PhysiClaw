@@ -76,19 +76,31 @@ async def handle_calibrate_arm(
 ):
     """POST /api/calibrate/arm — unified Z depth + screen↔arm mapping.
 
-    Uses ``physiclaw.calibration.z_tap`` as the Phase A descent hint if
-    already known (from a loaded bundle or an earlier in-session run),
-    then runs the probe triangle + 15-point grid taps with z-bump-on-miss
-    and fits the screen↔arm affine. Writes ``z_tap``, ``pct_to_grbl``,
-    and the arm direction mapping into the in-memory bundle. Bundle is
-    only persisted to disk on full setup success (validate).
+    By default uses ``physiclaw.calibration.z_tap`` as the Phase A
+    descent hint if already known (from a loaded bundle or an earlier
+    in-session run) — speeds up warm-start re-calibration. The body
+    flag ``{"fresh": true}`` forces a fresh first-contact descent and
+    ignores the cached value; interactive `physiclaw setup hardware`
+    sends this so the operator gets a real recalibration, not the
+    cached number from a possibly-stale bundle.
+
+    Then runs the probe triangle + 15-point grid taps with
+    z-bump-on-miss and fits the screen↔arm affine. Writes ``z_tap``,
+    ``pct_to_grbl``, and the arm direction mapping into the in-memory
+    bundle. Bundle is only persisted to disk on full setup success
+    (validate).
     """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    fresh = bool(body.get("fresh"))
 
     def _do():
         if physiclaw._arm is None:
             raise RuntimeError("Arm not connected")
         phone.set_mode("calibrate", phase="center")
-        hint = physiclaw.calibration.z_tap
+        hint = None if fresh else physiclaw.calibration.z_tap
         physiclaw.acquire()
         try:
             z_tap, pct_to_grbl, tilt, touches = calibrate_arm(
