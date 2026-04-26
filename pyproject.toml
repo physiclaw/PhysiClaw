@@ -44,6 +44,7 @@ stylus = ["manifold3d>=3.4.0", "trimesh>=4.11.4"]
 drawing = ["reportlab>=4.4.10", "fonttools>=4.62"]
 dev = [
     "ruff>=0.15.9",
+    "pytest>=8",
 ]
 
 [tool.hatch.build.targets.wheel]
