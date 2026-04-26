@@ -79,6 +79,19 @@ class Calibration:
             cam_size=self.cam_size,
         )
 
+    def pct_to_grbl_mm(self, x: float, y: float) -> tuple[float, float] | None:
+        """Convert screen pct (0-1, x=horizontal, y=vertical) to GRBL mm
+        using just `pct_to_grbl`. Returns None until that affine is set
+        (e.g. before step 7). Unlike `transforms()`, doesn't require the
+        camera mapping — usable between steps 7 and 9. Negative values
+        and values >1 are valid (off-phone positions in the same
+        coordinate frame)."""
+        if self.pct_to_grbl is None:
+            return None
+        pt = np.array([x, y, 1.0])
+        result = self.pct_to_grbl @ pt
+        return (float(result[0]), float(result[1]))
+
     def summary(self) -> dict:
         """Per-step status for /api/status — one line per filled field."""
         out: dict = {}

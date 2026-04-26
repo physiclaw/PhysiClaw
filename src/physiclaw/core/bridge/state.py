@@ -77,6 +77,31 @@ class BridgeState:
         """
         return time.time() - self.last_seen < 0.5
 
+    def wait_for_connection(
+        self, timeout: float, settle_seconds: float = 1.0
+    ) -> bool:
+        """Block until the phone has been polling steadily for
+        `settle_seconds` continuously, or `timeout` elapses.
+
+        Sustained polling implies the page is foreground and actively
+        repainting; `connected` alone could be a tab that briefly opened
+        and got backgrounded. Any dropout resets the clock. Used before
+        operations that require active canvas rendering on the phone
+        (auto-pick RGBY corners, warm-start sanity tap).
+        """
+        deadline = time.monotonic() + timeout
+        stable_since: float | None = None
+        while time.monotonic() < deadline:
+            if self.connected:
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                elif time.monotonic() - stable_since >= settle_seconds:
+                    return True
+            else:
+                stable_since = None
+            time.sleep(0.2)
+        return False
+
     def send_text(self, text: str):
         """Set text for the phone to display and copy on tap."""
         with self.lock:

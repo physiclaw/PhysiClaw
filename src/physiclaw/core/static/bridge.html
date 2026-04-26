@@ -235,7 +235,12 @@ body.mode-bridge #bridge-layer{
         //   R G
         //   Y B
         (function drawCornerClusters(){
-          var bs = Math.min(W, H) * 0.06;  // block size (one RGBY quadrant)
+          // 10% of phone's shorter side per quadrant → 2×2 cluster ≈ 20%
+          // of phone's shorter side. Camera-side `max_cluster_span` is 25%
+          // of frame's shorter side (vision/util.py:detect_bridge_corners),
+          // so even with the phone filling most of the frame the cluster
+          // stays well under the cross-cluster cutoff.
+          var bs = Math.min(W, H) * 0.10;  // block size (one RGBY quadrant)
           function cluster(x, y){
             rect(x,      y,      bs, bs, '#ff0000', 0);  // R
             rect(x+bs,   y,      bs, bs, '#00ff00', 0);  // G

@@ -9,7 +9,6 @@ server — `physiclaw.core.server.__init__` re-exports the public surface.
 import logging
 
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
-from physiclaw.core.calibration.state import Calibration
 from physiclaw.core import PhysiClaw
 from physiclaw.core.server.bridge import register as _register_bridge
 from physiclaw.core.server.calibration import register as _register_calibration
@@ -28,25 +27,13 @@ _calib = CalibrationState()
 _phone = PageState(_bridge, _calib)
 physiclaw.attach_bridge(_bridge)
 
-# ─── Warm restart ───────────────────────────────────────────
-
-_loaded = Calibration.load()
-if _loaded is not None:
-    physiclaw.calibration = _loaded
-    if _loaded.viewport_shift is not None:
-        # Mirror into the bridge-side state so calibration handlers that read
-        # calib.viewport_shift (e.g. show_assistive_touch) see it too.
-        _calib.viewport_shift = _loaded.viewport_shift
-        physiclaw.assistive_touch.compute_at_screen_pos(_loaded.viewport_shift)
-    if _loaded.screen_dimension is not None:
-        # Restore the CSS-pt dimensions so warm-start's validate can run
-        # without waiting for the phone's /bridge page to reload and POST
-        # them again.
-        _calib.screen_dimension = _loaded.screen_dimension
-    log.info(
-        f"Restored calibration from disk: complete={_loaded.complete}, "
-        f"z_tap={_loaded.z_tap}mm, rotation={_loaded.cam_rotation}"
-    )
+# Calibration starts empty. The on-disk bundle at
+# `~/.physiclaw/calibration/bundle.json` is loaded ONLY by
+# `--warm-start` (in `core/server/warm_start.py:try_resume`). A plain
+# `physiclaw server` boot ignores the bundle so a stale calibration
+# can't silently leak into a fresh setup. `cli/status.py` and
+# `cli/doctor.py` still read the bundle directly from disk for display
+# purposes — that's unaffected by this change.
 
 
 def shutdown():

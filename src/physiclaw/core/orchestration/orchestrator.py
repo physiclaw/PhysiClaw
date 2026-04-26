@@ -103,6 +103,9 @@ class PhysiClaw:
         return {
             "arm": self._arm is not None,
             "camera": self._cam is not None,
+            "bridge": (
+                self._bridge.connected if self._bridge is not None else False
+            ),
             "steps": steps,
             "calibrated": self.hardware_ready,
             "ready": self.ready,
@@ -159,12 +162,12 @@ class PhysiClaw:
     def connect_arm(self):
         """Connect to the GRBL stylus arm (auto-detect USB port).
 
-        Closes any previously connected arm first. Keeps the current
-        Calibration bundle — on a warm restart we propagate its z_tap
-        and direction mapping to the freshly-constructed arm so we can
-        fast-path through setup. If the bundle is stale (arm swapped,
-        phone moved), the user can delete data/calibration/bundle.json
-        to force a fresh calibration.
+        Closes any previously connected arm first. ``_apply_bundle_to_arm``
+        propagates cached `z_tap` + direction mapping into the freshly-
+        constructed arm IF a bundle has been loaded into
+        ``self.calibration`` — only true on ``--warm-start``. Plain
+        ``physiclaw server`` boots with empty calibration, so the
+        propagation is a no-op and step 7 of setup measures fresh.
         """
         if self._arm is not None:
             self._arm.close()
@@ -180,7 +183,10 @@ class PhysiClaw:
         Closes any previously connected camera first. The user picks the
         index after previewing each one via /api/camera-preview/{index}
         during /setup, so we don't try to auto-detect. Propagates the
-        cached rotation from the Calibration bundle if one is loaded.
+        cached rotation from ``self.calibration`` IF a bundle has been
+        loaded — only true on ``--warm-start``. Plain ``physiclaw server``
+        boots with empty calibration, so step 8 of setup detects rotation
+        fresh.
         """
         if self._cam is not None:
             self._cam.close()
@@ -224,9 +230,21 @@ class PhysiClaw:
     # ─── Primitive movements ─────────────────────────────────
 
     def park(self):
-        """Move stylus off-screen to (-0.1, -0.05) — left of the screen, slightly above top edge."""
-        gx, gy = self.transforms.pct_to_grbl_mm(-0.1, -0.05)
-        self._arm._fast_move(gx, gy)
+        """Move stylus off-screen to (-0.1, -0.05) — left of the screen,
+        slightly above top edge.
+
+        Defensive: no-ops if the arm isn't connected or `pct_to_grbl`
+        isn't set yet. This makes parking safe between calibration
+        steps (e.g. after step 7 when only the arm-side affine is
+        ready, or before step 7 when nothing is). Caller must hold
+        the hardware lock.
+        """
+        if self._arm is None:
+            return
+        park_xy = self.calibration.pct_to_grbl_mm(-0.1, -0.05)
+        if park_xy is None:
+            return
+        self._arm._fast_move(*park_xy)
         self._arm.wait_idle()
 
     def camera_view(self):

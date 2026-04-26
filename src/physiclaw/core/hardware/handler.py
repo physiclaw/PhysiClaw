@@ -16,7 +16,17 @@ from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.render import watermark_index
 from physiclaw.core.vision.util import detect_bridge_corners, encode_jpeg
 
+from physiclaw.config import CONFIG
+
 log = logging.getLogger(__name__)
+
+
+# Timeouts for the auto-pick wait-for-bridge gate (mirrors the
+# warm-start pattern; see core/server/warm_start.py). Values come from
+# `CONFIG.auto_pick.bridge_*` so operators can tune them via
+# `physiclaw config edit`.
+AUTO_PICK_BRIDGE_TIMEOUT = CONFIG.auto_pick.bridge_wait_timeout_seconds
+AUTO_PICK_BRIDGE_SETTLE = CONFIG.auto_pick.bridge_settle_seconds
 
 
 # ─── Status ─────────────────────────────────────────────────
@@ -100,7 +110,11 @@ def _auto_pick_camera_index() -> int | None:
     markers arranged clockwise — only the camera actually pointing at
     the phone can possibly see them, so the match is unambiguous.
     """
-    for idx in range(4):
+    # macOS Continuity Camera + iPhone Webcam can occupy low indices,
+    # pushing the actual USB camera to 4+. Probing 0..7 covers the
+    # typical configurations without measurably slowing the loop —
+    # missing-index opens fail fast on macOS.
+    for idx in range(8):
         frame = _capture_raw(idx)
         if frame is None:
             continue
@@ -131,6 +145,20 @@ async def handle_connect_camera(request, physiclaw, phone):
     def _do():
         nonlocal index
         if index is None or index == "auto":
+            # Wait for the phone /bridge tab to be actively polling
+            # before flipping to the corners phase. If the screen is
+            # asleep or the tab is backgrounded, set_mode would update
+            # server state but the canvas would never paint the RGBY
+            # markers — and auto-pick would always fail. (warm-start
+            # uses the same gate.)
+            if not physiclaw._bridge.wait_for_connection(
+                AUTO_PICK_BRIDGE_TIMEOUT, AUTO_PICK_BRIDGE_SETTLE
+            ):
+                raise RuntimeError(
+                    f"auto-pick: /bridge page not polling within "
+                    f"{AUTO_PICK_BRIDGE_TIMEOUT}s — open or refresh /bridge "
+                    f"on the phone, then retry."
+                )
             phone.set_mode("calibrate", phase="corners")
             time.sleep(0.5)  # give bridge.html time to render the corners
             try:

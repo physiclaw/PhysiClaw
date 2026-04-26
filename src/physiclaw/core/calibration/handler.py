@@ -41,6 +41,15 @@ def _ok(payload):
     return JSONResponse({"status": "ok", **payload})
 
 
+async def _read_body(request) -> dict:
+    """Parse JSON body, returning {} for empty/malformed input. Used by
+    handlers whose body fields are all optional (e.g. `{"fresh": bool}`)."""
+    try:
+        return await request.json()
+    except Exception:
+        return {}
+
+
 def _err(message, status_code=500):
     return JSONResponse(
         {"status": "error", "message": message}, status_code=status_code
@@ -53,11 +62,17 @@ def _err(message, status_code=500):
 async def handle_measure_viewport_shift(
     request, physiclaw, calib: CalibrationState, bridge: BridgeState, phone: PageState
 ):
-    """POST /api/calibrate/viewport-shift — measure viewport→screenshot offset and DPR."""
+    """POST /api/calibrate/viewport-shift — measure viewport→screenshot offset and DPR.
+
+    Body flag ``{"fresh": true}`` bypasses the disk-cached screenshot
+    and waits for a fresh upload; interactive `physiclaw setup hardware`
+    sends this so the operator gets a real measurement, not a stale one.
+    """
+    fresh = bool((await _read_body(request)).get("fresh"))
 
     def _do():
         phone.set_mode("calibrate", phase="screenshot_cal")
-        result = measure_viewport_shift(calib, bridge)
+        result = measure_viewport_shift(calib, bridge, fresh=fresh)
         physiclaw.calibration.viewport_shift = result
         return result
 
@@ -90,11 +105,7 @@ async def handle_calibrate_arm(
     bundle. Bundle is only persisted to disk on full setup success
     (validate).
     """
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    fresh = bool(body.get("fresh"))
+    fresh = bool((await _read_body(request)).get("fresh"))
 
     def _do():
         if physiclaw._arm is None:
@@ -112,6 +123,12 @@ async def handle_calibrate_arm(
             right_vec = (float(pct_to_grbl[0, 0]), float(pct_to_grbl[1, 0]))
             down_vec = (float(pct_to_grbl[0, 1]), float(pct_to_grbl[1, 1]))
             physiclaw._arm.set_direction_mapping(right_vec, down_vec)
+            # Park off-phone before returning so step 8's Photo Booth
+            # adjustment shows an unobstructed phone (the stylus would
+            # otherwise sit at the last grid-tap position over the
+            # screen). `physiclaw.park()` is defensive — it works as
+            # soon as `pct_to_grbl` is set, which happens above.
+            physiclaw.park()
             return {
                 "z_tap": z_tap,
                 "pairs": len(touches) + 3,
@@ -137,20 +154,27 @@ async def handle_calibrate_camera_frame(
 ):
     """POST /api/calibrate/camera — one-frame camera setup + rotation.
 
-    Runs the physical-setup diagnostic (shape, coverage, edge straightness)
-    and picks the cv2 rotation code from UP/RIGHT markers off the same
-    overhead frame. Writes ``cam_rotation`` into the calibration bundle;
-    diagnostic ``issues`` and measurements are returned for the caller
-    to surface to the user.
+    Parks the stylus off the phone's top-left corner (screen pct
+    (-0.1, -0.05)) before reading the frame so the arm doesn't occlude
+    the screen during shape/coverage/rotation analysis. Then runs the
+    physical-setup diagnostic and picks the cv2 rotation code from
+    UP/RIGHT markers. Writes ``cam_rotation`` into the calibration
+    bundle; diagnostic ``issues`` and measurements are returned for
+    the caller to surface to the user.
     """
 
     def _do():
         if physiclaw._cam is None:
             raise RuntimeError("Camera not connected")
-        result = calibrate_camera_frame(physiclaw._cam, calib)
-        physiclaw.calibration.cam_rotation = result["rotation"]
-        physiclaw._cam.rotation = result["rotation"]
-        return result
+        physiclaw.acquire()
+        try:
+            physiclaw.park()
+            result = calibrate_camera_frame(physiclaw._cam, calib)
+            physiclaw.calibration.cam_rotation = result["rotation"]
+            physiclaw._cam.rotation = result["rotation"]
+            return result
+        finally:
+            physiclaw.release()
 
     try:
         result = await _run_blocking(_do)
@@ -171,12 +195,7 @@ async def handle_compute_camera_mapping(request, physiclaw, calib: CalibrationSt
         rotation = physiclaw.calibration.effective_rotation()
         physiclaw.acquire()
         try:
-            # Park the arm 80mm off the top edge so it doesn't occlude the dots
-            if physiclaw._arm and physiclaw._arm.MOVE_DIRECTIONS:
-                ux, uy = physiclaw._arm.MOVE_DIRECTIONS["top"]
-                mag = (ux**2 + uy**2) ** 0.5 or 1
-                physiclaw._arm._fast_move(ux / mag * 80, uy / mag * 80)
-                physiclaw._arm.wait_idle()
+            physiclaw.park()
             pct_to_cam, cam_size = compute_camera_mapping(
                 physiclaw._cam, calib, rotation
             )
@@ -231,6 +250,9 @@ async def handle_validate_calibration(
                 # doesn't have to wait for a fresh /bridge page load.
                 physiclaw.calibration.screen_dimension = calib.screen_dimension
                 physiclaw.calibration.save()
+            # Park off-phone after the validation taps so step 11's
+            # AssistiveTouch interaction shows an unobstructed phone.
+            physiclaw.park()
             return {
                 "results": results,
                 "passed": passed,
@@ -261,6 +283,9 @@ async def handle_trace_edge(request, physiclaw, phone: PageState):
         try:
             trace_screen_edge(physiclaw.arm, physiclaw.transforms)
             phone.set_mode("bridge")
+            # Park off-phone after tracing so the rig ends in a clean
+            # state — same convention as steps 7, 8, 9, 10.
+            physiclaw.park()
             return {"ok": True}
         finally:
             physiclaw.release()

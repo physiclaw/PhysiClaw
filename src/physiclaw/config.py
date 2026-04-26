@@ -45,6 +45,17 @@ class WarmStartConfig:
 
 
 @dataclass
+class AutoPickConfig:
+    """Timeouts for the camera auto-pick step in `physiclaw setup hardware`.
+    Values are tighter than warm-start: interactive setup wants snappier
+    feedback when the phone /bridge page isn't responding. Cap stays
+    below the CLI's HTTP timeout (60s) so the auto-pick loop has time
+    to iterate camera indices after the bridge comes online."""
+    bridge_wait_timeout_seconds: int = 25
+    bridge_settle_seconds: float = 1.5
+
+
+@dataclass
 class EngineConfig:
     max_turns: int = 300
     max_attempts: int = 3
@@ -127,6 +138,7 @@ class SkillsConfig:
 class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     warm_start: WarmStartConfig = field(default_factory=WarmStartConfig)
+    auto_pick: AutoPickConfig = field(default_factory=AutoPickConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
@@ -140,6 +152,7 @@ class Config:
 _SECTION_TYPES: dict[str, type] = {
     "server": ServerConfig,
     "warm_start": WarmStartConfig,
+    "auto_pick": AutoPickConfig,
     "engine": EngineConfig,
     "agent": AgentConfig,
     "provider": ProviderConfig,
@@ -159,6 +172,7 @@ _FILE_HEADER = """\
 
 _SECTION_COMMENTS: dict[str, str] = {
     "warm_start": "Timeouts for `physiclaw server --warm-start` hardware reconnect.",
+    "auto_pick": "Timeouts for the camera auto-pick step in `physiclaw setup hardware`.",
     "engine": "Runaway safeguard + retry + pacing for the agent's tool-call loop.",
     "agent": (
         "Engine + model selection. `model` is a `provider/model` ref, e.g. "

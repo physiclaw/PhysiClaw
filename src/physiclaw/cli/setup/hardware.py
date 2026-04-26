@@ -80,7 +80,9 @@ def _photo_booth_adjust(prompt: str) -> None:
 
 
 def ask(msg, auto):
-    return True if auto else input(f"  {msg} [Enter/q] ").strip().lower() != "q"
+    # Prompt label matches `wait()`'s `[Enter]` for visual consistency.
+    # `q` still quits — kept as a silent safety affordance, not advertised.
+    return True if auto else input(f"  {msg} [Enter] ").strip().lower() != "q"
 
 
 def calibrate(step, timeout=60, body=None):
@@ -130,11 +132,14 @@ def run(auto: bool = False, trace: bool = False) -> None:
         return
 
     print("\n── 1. Scan QR code ──")
-    print(f"  Phone URL: http://{lan_ip()}:8048/bridge")
-    if not auto:
-        webbrowser.open(f"{BASE}/api/bridge/qr")
-        wait("Scan QR on phone, confirm page shows 'PhysiClaw'")
-    _done("Phone page ready")
+    if status.get("bridge"):
+        _done("Phone page already connected")
+    else:
+        print(f"  Phone URL: http://{lan_ip()}:8048/bridge")
+        if not auto:
+            webbrowser.open(f"{BASE}/api/bridge/qr")
+            wait("Scan QR on phone, confirm page shows 'PhysiClaw'")
+        _done("Phone page ready")
 
     print("\n── 2. Position phone ──")
     if not auto:
@@ -152,9 +157,9 @@ def run(auto: bool = False, trace: bool = False) -> None:
 
     print("\n── 4. Connect camera ──")
     print("  Auto-picking by the RGBY corner markers on /bridge.")
-    print("  If this fails, refresh /bridge in Safari (pull-to-refresh)")
-    print("  so it picks up the latest page, then retry.")
-    r = api("POST", "/api/connect-camera", {"index": "auto"}, timeout=30)
+    print("  Open or refresh /bridge on the phone (foreground, not locked).")
+    print("  Server waits up to 25s for steady polling.")
+    r = api("POST", "/api/connect-camera", {"index": "auto"}, timeout=60)
     if ok(r):
         cam = r.get("index", 0)
         _done(f"Camera {cam} auto-picked")
@@ -183,16 +188,21 @@ def run(auto: bool = False, trace: bool = False) -> None:
         _done(f"Camera {cam} connected")
 
     print("\n── 5. Viewport shift ──")
+    # Cache policy: interactive setup always re-measures; --auto trusts
+    # the cached screenshot at ~/.physiclaw/calibration/cache/viewport.png
+    # if it exists. Mirrors the z_tap `fresh` flag in step 7.
     vp_cache = next(
         (p for p in _viewport_cache_candidates() if p.exists()), None
     )
-    if vp_cache is not None:
+    if auto and vp_cache is not None:
         print(f"  Using cached screenshot: {vp_cache} (delete to re-measure)")
     else:
+        if vp_cache is not None:
+            print(f"  Cached screenshot at {vp_cache} ignored (interactive: fresh measurement).")
         print("  Phone shows an orange square.")
         print("  Tap AssistiveTouch once (screenshot), then double-tap (upload).")
     while True:
-        if ok(calibrate("viewport-shift", 35)):
+        if ok(calibrate("viewport-shift", 35, body={"fresh": not auto})):
             break
         wait("Failed. Tap AT once, then double-tap. Ready to retry?")
     _done("Viewport shift measured")
@@ -333,7 +343,7 @@ def run(auto: bool = False, trace: bool = False) -> None:
 def hardware(
     auto: Annotated[
         bool,
-        typer.Option("-y", "--yes", help="Auto mode: skip prompts."),
+        typer.Option("-a", "--auto", help="Auto mode: skip prompts."),
     ] = False,
     trace: Annotated[
         bool,

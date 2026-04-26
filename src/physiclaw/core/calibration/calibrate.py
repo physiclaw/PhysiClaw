@@ -78,7 +78,7 @@ def _tap_once(arm: StylusArm, z: float, z_speed: int = PROBE_Z_SPEED):
 
 
 def measure_viewport_shift(
-    cal: CalibrationState, bridge: BridgeState
+    cal: CalibrationState, bridge: BridgeState, *, fresh: bool = False,
 ) -> ViewportShift:
     """Measure the viewport→screenshot pixel offset and DPR.
 
@@ -91,6 +91,11 @@ def measure_viewport_shift(
     This must run before arm calibration so that all subsequent touch
     coordinates are correctly converted from viewport space to
     screenshot 0-1 space.
+
+    `fresh=True` bypasses the disk cache at `VIEWPORT_CACHE_STEM` and
+    always waits for a fresh screenshot — interactive setup defaults to
+    this so the operator gets a real measurement, not a cached one
+    from a possibly-stale rig position.
 
     Returns the ViewportShift and stores it on cal.viewport_shift.
     """
@@ -110,7 +115,7 @@ def measure_viewport_shift(
     time.sleep(0.5)
     log.info("  Phase: screenshot_cal — showing orange square at CSS (100, 200)")
 
-    cached = _find_viewport_cache()
+    cached = None if fresh else _find_viewport_cache()
     if cached is not None:
         data = cached.read_bytes()
         log.info(f"  Using cached screenshot: {cached} ({len(data)} bytes)")

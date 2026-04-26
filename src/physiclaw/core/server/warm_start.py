@@ -1,9 +1,10 @@
 """Warm-start: resume from the saved Calibration bundle.
 
-On ``uv run physiclaw --warm-start``, the bundle is already loaded into
-``physiclaw.calibration`` at ``physiclaw.core.server.app`` import time. This
-module handles what remains: reconnect hardware, run an end-to-end
-sanity tap, and flip the ready flag only if every test passes.
+``try_resume`` (called only when ``physiclaw server --warm-start`` is
+passed) loads the bundle from disk into ``physiclaw.calibration``,
+reconnects hardware, runs an end-to-end sanity tap, and flips the ready
+flag only if every test passes. A plain ``physiclaw server`` boot
+ignores the bundle entirely — see ``core/server/app.py``.
 
 The clean-shutdown invariant is what makes warm-start work at all.
 ``PhysiClaw.shutdown()`` fast-moves the stylus to ``(0, 0)`` (= screen
@@ -61,27 +62,6 @@ def wait_for_port(
     return False
 
 
-def _wait_for_bridge(bridge) -> bool:
-    """Block until the phone's /bridge tab has been actively polling for
-    at least BRIDGE_SETTLE_SECONDS continuously. One-shot ``connected``
-    could be a tab that briefly opened and got backgrounded — requiring
-    a sustained heartbeat catches that. Any dropout resets the clock."""
-    deadline = time.monotonic() + BRIDGE_WAIT_TIMEOUT
-    stable_since: float | None = None
-    while time.monotonic() < deadline:
-        if bridge.connected:
-            if stable_since is None:
-                stable_since = time.monotonic()
-            elif time.monotonic() - stable_since >= BRIDGE_SETTLE_SECONDS:
-                return True
-        else:
-            stable_since = None
-        time.sleep(0.2)
-    log.error(
-        f"--warm-start: /bridge page not polling steadily within "
-        f"{BRIDGE_WAIT_TIMEOUT}s — open or refresh /bridge on the phone."
-    )
-    return False
 
 
 def _sanity(physiclaw, calib, phone) -> bool:
@@ -142,11 +122,31 @@ def try_resume(cam_index_override: int | None) -> bool:
     The caller exits non-zero so the user can fall back to plain
     ``uv run physiclaw`` + ``setup.py``.
     """
+    from physiclaw.core.calibration.state import Calibration
     from physiclaw.core.server.app import physiclaw, _calib, _phone
+
+    loaded = Calibration.load()
+    if loaded is None:
+        log.error("--warm-start: no calibration bundle on disk")
+        return False
+    physiclaw.calibration = loaded
+    if loaded.viewport_shift is not None:
+        # Mirror into the bridge-side state so calibration handlers that
+        # read `calib.viewport_shift` (e.g. show_assistive_touch) see it.
+        _calib.viewport_shift = loaded.viewport_shift
+        physiclaw.assistive_touch.compute_at_screen_pos(loaded.viewport_shift)
+    if loaded.screen_dimension is not None:
+        # Restore the CSS-pt dimensions so warm-start's validate can run
+        # without waiting for the phone's /bridge page to POST them again.
+        _calib.screen_dimension = loaded.screen_dimension
+    log.info(
+        f"--warm-start: loaded bundle (z_tap={loaded.z_tap}mm, "
+        f"rotation={loaded.cam_rotation}, complete={loaded.complete})"
+    )
 
     cal = physiclaw.calibration
     if not cal.complete:
-        log.error("--warm-start: no complete calibration on disk")
+        log.error("--warm-start: bundle on disk is incomplete")
         return False
     cam_index = cam_index_override if cam_index_override is not None else (
         cal.cam_index if cal.cam_index is not None else 0
@@ -166,10 +166,16 @@ def try_resume(cam_index_override: int | None) -> bool:
         print()
         print("━" * 60)
         print("Warm-start")
-        print("  Open or refresh the phone's /bridge page.")
-        print("  Warm-start will proceed automatically once it loads.")
+        print("  Open or refresh /bridge on the phone (foreground, not locked).")
+        print(f"  Server waits up to {BRIDGE_WAIT_TIMEOUT}s for steady polling.")
         print("━" * 60)
-        if not _wait_for_bridge(physiclaw._bridge):
+        if not physiclaw._bridge.wait_for_connection(
+            BRIDGE_WAIT_TIMEOUT, BRIDGE_SETTLE_SECONDS
+        ):
+            log.error(
+                f"--warm-start: /bridge page not polling within "
+                f"{BRIDGE_WAIT_TIMEOUT}s — open or refresh /bridge on the phone."
+            )
             return False
     else:
         log.info("--warm-start: non-interactive; running sanity immediately")

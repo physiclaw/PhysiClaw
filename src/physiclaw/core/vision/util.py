@@ -203,9 +203,10 @@ def detect_bridge_corners(
     whose clockwise order is a cyclic rotation of RGBY.
 
     ``max_cluster_span`` defaults to 25% of the frame's shorter side —
-    each on-phone cluster is ~12% of the phone's shorter side, and the
-    phone always spans a big fraction of the frame during setup, so 25%
-    is comfortable margin without admitting cross-cluster pairings.
+    each on-phone cluster is ~20% of the phone's shorter side (`bs` =
+    10% per quadrant in bridge.html's ``corners`` case), and the phone
+    fills 60–80% of the frame during setup, so 25% leaves comfortable
+    margin without admitting cross-cluster pairings.
     """
     if max_cluster_span is None:
         max_cluster_span = min(frame.shape[:2]) * 0.25
