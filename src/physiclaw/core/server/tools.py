@@ -38,16 +38,15 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def peek() -> list:
-        """Look at the phone via the overhead camera — default view tool.
+        """Default view tool — overhead camera (~4s, non-mutating).
 
-        Call before any tap/swipe to confirm the target's bbox, and after
-        to verify the screen changed. ~4s. Non-mutating (no side effects).
+        Call BEFORE any tap/swipe to ground the target's bbox; AFTER to
+        verify the screen changed. Identical listing across two peeks =
+        the screen didn't change.
 
-        Returns: [Image, listing] — a JPEG of the cropped camera view
-        with icon bboxes drawn (so you can visually confirm what you'll
-        tap), plus a plain-text element listing, one row per element:
+        Returns: [Image, listing] — JPEG with icon bboxes drawn, plus
+        plain-text listing, one row per element:
             id [kind] "label" [left,top,right,bottom] conf
-        where kind is "icon" or "text", bbox coords are 0-1 decimals.
         """
         jpeg, listing = await asyncio.to_thread(physiclaw.peek)
         save_tool_call("peek", listing, jpeg)
@@ -56,22 +55,20 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def screenshot() -> list:
-        """Capture the phone's own screenshot (~12s, MUTATING) — only when peek misses the target.
+        """Phone's pixel-perfect capture (~12s, MUTATING) — escalate when peek misses the target.
 
-        Triggers the iOS screenshot gesture, which apps observe and react
-        to (share sheet pops up, shopping apps show similar-items panel,
-        some apps watermark the captured frame). Treat as a mutating
-        call — always `peek` AFTER one before tapping anything, since the
-        screen state may have changed.
+        Triggers the iOS screenshot gesture; apps observe and react
+        (share sheet, similar-items panel, watermarked frames). **Always
+        `peek` after `screenshot` before tapping** — screen state may
+        have changed.
 
         Use only when:
-          - The target is too small for the camera to detect (`peek` listing
-            doesn't include it).
+          - The target is too small for the camera (`peek` omits it).
           - Camera glare or motion blur makes peek unreadable.
           - You need to read fine print the camera can't resolve.
 
-        Returns: [Image, listing] — same shape as peek, but the JPEG is
-        the phone's pixel-perfect screen capture, not a camera frame.
+        Returns: [Image, listing] — same shape as `peek`, but the JPEG
+        is the phone's pixel-perfect capture.
         """
         jpeg, listing = await asyncio.to_thread(physiclaw.screenshot)
         save_tool_call("screenshot", listing, jpeg)
@@ -82,12 +79,11 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def tap(bbox: Bbox) -> str:
-        """Tap once at the center of `bbox` — for buttons, links, list items, dismissing dialogs.
+        """Tap once at the bbox center — buttons, links, list items, dismissing dialogs.
 
-        After this, `peek` to verify the screen changed and get a fresh
-        bbox for your next move. If the listing is identical to before,
-        the tap missed (retry once) or the bbox was wrong (pick a
-        different element from the new peek).
+        After this, `peek` to verify and ground the next target.
+        Identical listing to before = the tap missed (retry once) or the
+        bbox was wrong (pick a different element from the new peek).
         """
         result = await asyncio.to_thread(physiclaw.tap, bbox)
         return f"{result} — `peek` to verify and plan the next move"
@@ -95,10 +91,10 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def double_tap(bbox: Bbox) -> str:
-        """Two quick taps (~150ms apart) at the center of `bbox` — for zooming or word-select.
+        """Two quick taps (~150ms apart) at the bbox center — for zoom or word-select.
 
-        Use for: zooming maps / photos / web pages, or selecting a word
-        in editable text. Don't use for buttons — that's `tap`.
+        Use for zooming maps / photos / web pages, or selecting a word
+        in editable text. For buttons, use `tap`.
         """
         result = await asyncio.to_thread(physiclaw.double_tap, bbox)
         return f"{result} — `peek` to verify the zoom / selection landed"
@@ -106,12 +102,12 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def long_press(bbox: Bbox) -> str:
-        """Press and hold at the bbox center for ~1.2s — opens context menus, edit mode, paste menus.
+        """Press and hold ~1.2s at the bbox center — context menus, edit mode, paste popover.
 
-        Use for: opening context menus, entering edit mode (rearrange
-        icons), triggering the paste popover after `send_to_clipboard`.
-        Always `peek` next — you need a fresh bbox from the just-revealed
-        popover to tap (Paste / Copy / etc.).
+        Use for opening context menus, entering icon-rearrange edit
+        mode, or triggering the paste popover after `send_to_clipboard`.
+        Always `peek` next — you need a fresh bbox from the just-
+        revealed popover to tap (Paste / Copy / etc.).
         """
         result = await asyncio.to_thread(physiclaw.long_press, bbox)
         return f"{result} — `peek` next: you'll need a fresh bbox from the popover to tap (Paste / Copy / etc.)"
@@ -126,29 +122,26 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         size: Literal["s", "m", "l", "xl", "xxl"] = "m",
         speed: Literal["slow", "medium", "fast"] = "medium",
     ) -> str:
-        """Slide the stylus across `bbox` in `direction` — STYLUS motion, not page motion.
+        """Slide the stylus across `bbox` in `direction` (1–8cm) — for scrolling, paging, dismissing cards, opening Control / Notification Center.
 
-        Use for: scrolling content, dismissing cards, paging carousels,
-        revealing swipe-actions on list items, opening Control Center
-        (swipe down from top-right). After this, `peek` to verify the
-        page scrolled and get fresh bboxes from the new view.
+        After this, `peek` to verify the page scrolled.
 
-        Common gotcha — direction is the STYLUS motion, not the page:
+        **Direction is the STYLUS motion, not the page motion:**
           - swipe UP   → page scrolls DOWN (reveals content below)
-          - swipe DOWN → page scrolls UP (reveals content above / opens Notification Center)
+          - swipe DOWN → page scrolls UP (opens Notification Center)
           - swipe LEFT → page scrolls RIGHT (next photo / next page)
 
         Args:
-            bbox: where to start the gesture (0-1 decimals).
-            direction: which way the stylus moves — "up", "down", "left", "right".
-            size: stroke length (default "m"):
-                "s"   ≈ 1cm  — small nudge
-                "m"   ≈ 2cm  — default, fits most scrolls
-                "l"   ≈ 4cm  — long scroll
-                "xl"  ≈ 6cm  — page-sized scroll
-                "xxl" ≈ 8cm  — full-screen swipe (Control Center, Notification Center)
-            speed: stylus velocity (default "medium"). Faster strokes build
-                more momentum on iOS scroll lists (swipes keep coasting).
+            bbox: gesture origin (0–1 decimals).
+            direction: stylus motion — `up` / `down` / `left` / `right`.
+            size: stroke length (default `m`):
+                `s`   ≈ 1cm — small nudge
+                `m`   ≈ 2cm — most scrolls
+                `l`   ≈ 4cm — long scroll
+                `xl`  ≈ 6cm — page-sized scroll
+                `xxl` ≈ 8cm — full-screen (Control / Notification Center)
+            speed: stylus velocity (default `medium`). Faster strokes
+                coast further on iOS scroll lists.
         """
         result = await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
         return f"{result} — `peek` to verify the page scrolled and plan the next move"
@@ -158,11 +151,10 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def home_screen() -> str:
-        """Return to the iPhone home screen — exit any app from a known state.
+        """Return to the iPhone home screen — exit any app to a known launch pad.
 
         Issues the iPhone swipe-up-from-bottom gesture. Use to start a
-        fresh task or recover from getting lost in app navigation. After
-        this, `peek` to plan your next tap on the home-screen icons.
+        fresh task or recover from getting lost in app navigation.
         """
         result = await asyncio.to_thread(physiclaw.home_screen)
         return f"{result} — `peek` to plan your next tap on the home-screen icons"
@@ -170,19 +162,18 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def go_back() -> str:
-        """Pop back one screen via the iPhone swipe-from-left-edge gesture.
+        """Pop back one screen via the iPhone left-edge swipe gesture.
 
-        Works in apps with a navigation stack (most do). If `peek`
-        after this shows the same screen, either the gesture didn't
-        register (retry once) or this screen has no back action
-        (modals, root tabs, lock screen) — try `home_screen` and
-        re-enter, or look for an in-screen "Back" / "<" button to tap.
+        Works in apps with a navigation stack (most do). Same screen
+        after `peek` = either the gesture didn't register (retry once)
+        or this screen has no back action (modals, root tabs, lock
+        screen) — try `home_screen` and re-enter, or tap an in-screen
+        `<` / Back button.
 
-        Known trap — full-screen image viewers (tap a product image on
-        a shop detail page, tap a photo in Messages/WeChat, etc.): the
-        viewer reclaims left/right swipes to cycle through images, so
-        the edge-swipe won't pop. Close via the in-viewer "X" or
-        "Done" button instead.
+        Trap — full-screen image viewers (product images, Messages /
+        WeChat photos): the viewer reclaims left/right swipes for image
+        navigation, so edge-swipe won't pop. Close via the in-viewer
+        `X` / `Done` button instead.
         """
         result = await asyncio.to_thread(physiclaw.go_back)
         return f"{result} — `peek` to verify navigation landed and plan the next move"
@@ -190,22 +181,22 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def unlock_phone() -> str:
-        """Unlock the phone by entering passcode 111111 (~12s).
+        """Unlock the phone with passcode `111111` (~12s).
 
-        Wakes the screen, swipes up, waits for Face ID to fail, OCRs the
-        keypad, taps each digit. Hardcoded to 111111 — a throwaway
-        tool-phone code so a real password never leaks via git or logs.
+        Wakes the screen, swipes up, waits for Face ID to fail, OCRs
+        the keypad, taps each digit. Hardcoded to `111111` — a
+        throwaway tool-phone code so a real password never leaks via
+        git or logs.
 
-        If unlock fails there's nothing else you can do — every other
-        tool needs the phone unlocked, and you can't even reach IM to
-        message the owner. Don't retry. Just:
+        On failure, don't retry — every other tool needs the phone
+        unlocked. Close out:
           1. `append_log("[HH:MM] tried unlock_phone — failed")`
-          2. `end_session("STUCK", "phone unlock failed — owner needs to
-             set passcode to 111111 or disable auto-lock")`
+          2. `end_session("STUCK", "phone unlock failed — owner needs
+             passcode 111111 or auto-lock disabled")`
 
-        The owner can fix it later: set phone passcode to 111111, or
-        disable auto-lock (Settings → Display & Brightness → Auto-Lock
-        → Never; trade-off is faster display wear).
+        Owner fix: set passcode to `111111`, or disable auto-lock
+        (Settings → Display & Brightness → Auto-Lock → Never;
+        trade-off: faster display wear).
         """
         result = await asyncio.to_thread(physiclaw.unlock_phone)
         return f"{result} — `peek` to confirm you're on the home screen and plan the next tap"
@@ -215,15 +206,15 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     @mcp.tool()
     @logged
     async def send_to_clipboard(text: ClipboardText) -> str:
-        """Copy `text` to the phone's clipboard — use whenever you need to type into a field (much faster than the on-screen keyboard).
+        """Copy `text` to the phone's clipboard — paste is far faster than typing.
 
         Standard flow:
-          1. Call this with the text.
-          2. `long_press(field_bbox)` to open the paste popover.
-          3. `tap` the "Paste" button (or "粘贴" in zh) that appears.
+          1. `send_to_clipboard(text)`
+          2. `long_press(field_bbox)` — opens the paste popover.
+          3. `tap` the `Paste` (or `粘贴`) button that appears.
 
-        Fall back to the keyboard only if the field rejects paste (rare
-        — passcode fields, some search bars).
+        Fall back to the keyboard only if the field rejects paste
+        (passcode fields, some search bars).
         """
         result = await asyncio.to_thread(physiclaw.send_to_clipboard, text)
         return f"{result} — next: `long_press` the target field, then `tap` the Paste button that appears"
@@ -241,27 +232,26 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
     ) -> str:
         """Run up to 5 actions in one call — saves turns on deterministic flows.
 
-        Use when intermediate observations would add nothing (opening an
-        app via tap → tap → tap, or pasting + sending an IM message).
+        Use when intermediate observations would add nothing (opening
+        an app via tap → tap → tap, or paste + send an IM message).
         Stops at the first failure; earlier steps are NOT rolled back —
-        `peek` after a failure to see where it left off before retrying.
+        `peek` after a failure to see where it landed before retrying.
 
-        DON'T use sequence when:
+        DON'T use `sequence` when:
           - You'd want to confirm the screen changed between steps
-            (e.g. dialogs that may or may not appear).
-          - The target's bbox is uncertain — verify with peek first.
+            (dialogs that may or may not appear).
+          - The target's bbox is uncertain — verify with `peek` first.
 
         Each step is a dict with two fields:
-            tool_name: one of "tap", "double_tap", "long_press",
-                       "swipe", "send_to_clipboard".
-            arg:       that tool's argument (see its docstring) — for
-                       tap/double_tap/long_press a Bbox; for swipe a dict
-                       of {bbox, direction, size?, speed?}; for
-                       send_to_clipboard a string.
+            tool_name: `tap` / `double_tap` / `long_press` / `swipe` /
+                       `send_to_clipboard`.
+            arg:       that tool's argument — Bbox for tap/double_tap/
+                       long_press; `{bbox, direction, size?, speed?}`
+                       for swipe; string for send_to_clipboard.
 
         Args:
             step1: first action (required).
-            step2-5: additional actions (optional, executed in order).
+            step2-5: additional actions (optional, run in order).
         """
         steps = [s for s in (step1, step2, step3, step4, step5) if s is not None]
         result = await asyncio.to_thread(physiclaw.sequence, steps)

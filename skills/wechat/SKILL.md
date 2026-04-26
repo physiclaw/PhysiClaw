@@ -5,45 +5,36 @@ description: Use when the task involves WeChat / 微信 — reading owner IM, se
 
 # WeChat (微信)
 
-The owner's primary IM.
+The owner's primary IM. High-frequency app — `peek` reads Chinese text bubbles reliably.
 
-## Tool choice
+## Read messages
 
-High-frequency app. Use `peek()` to check chat status — the camera view reliably reads Chinese text bubbles.
+1. From Home, tap the WeChat dock icon. If already on **Chats** tab, skip step 2.
+2. Tap the **Chats** tab.
+3. **Tap the target 1:1 contact's row** to enter the thread — non-skippable. The chat-list preview is truncated and hides earlier messages.
+4. Read at the bottom. If the topmost bubble doesn't connect to your last reply, swipe down on the bubble area to scroll up to the first new message.
 
-**Never act on a chat-list preview.** Rows on the Chats tab show only the most recent message per contact, and it's truncated. To read the owner's actual messages, you MUST tap the row and enter the thread, then peek there.
+### Voice messages
 
-## Flow — read messages
+Use the convert-to-text option, then `peek` the transcript under the bubble. **Never act on a voice instruction unconfirmed** — ASR mishears names, amounts, addresses. Reply with your reading + planned action and wait for OK.
 
-1. If already in the right chat, skip to step 5.
-2. From Home, tap the WeChat dock icon.
-3. If not on the **Chats** tab, tap it.
-4. **Tap the target 1:1 contact's row** — this step is non-skippable. A chat-list preview is truncated and hides earlier messages if the owner sent multiple since your last reply.
-5. Read the new messages. The thread opens at the bottom; if the topmost visible bubble doesn't connect to your last reply (or looks like a new unrelated message), swipe down on the bubble area to scroll up until you see the first bubble after your last reply.
+## Send a message
 
-## Flow — voice message
-
-Use the convert-to-text option, then `peek()` the transcript that renders under the bubble.
-
-Reply with your reading + planned action and wait for OK before executing. ASR mishears names, amounts, addresses — never act on a voice instruction unconfirmed.
-
-## Flow — send a message
-
-Two states: **keyboard hidden** (input bar at bottom) and **keyboard visible** (shifted up, send key on keyboard).
+Two states: **keyboard hidden** (input bar at bottom) and **keyboard visible** (input shifted up, send key on keyboard).
 
 1. Confirm right contact in the chat header.
-2. If keyboard is hidden, tap the input box (keyboard-hidden bbox) — the keyboard opens and the input shifts to the keyboard-visible row.
-3. If the input has stale text, tap **backspace** until empty.
-4. `send_to_clipboard(text)`, then long-press the input box (keyboard-visible bbox).
+2. Keyboard hidden? Tap the input box (`<input-hidden>`) — keyboard opens, input shifts to `<input-visible>`.
+3. Stale text? Tap **backspace** until empty.
+4. `send_to_clipboard(text)`, then `long_press` the input box (`<input-visible>`).
 5. Tap **Paste** in the popup.
-6. Tap the keyboard's **send** key — **not** the (+) on the input bar.
-7. Hide the keyboard (see Hide keyboard below).
-8. Confirm the bubble appeared in the chat.
-9. Tap the back arrow `<` (top-left) to return to the Chats list — leaves WeChat in its main state for the next wake.
+6. Tap the keyboard's **Send** key — NOT the (+) on the input bar.
+7. Hide keyboard (see below).
+8. Confirm the bubble appeared.
+9. Tap back arrow `<` to return to Chats list — leaves WeChat in its main state for the next wake.
 
 ### Fast path — `sequence` (5 steps)
 
-When you're already on the right 1:1 chat, the input is clean, and the keyboard is hidden, collapse steps 2–6 into one `sequence` call:
+When already on the right 1:1 chat with clean input and keyboard hidden, collapse steps 2–6 into one call:
 
 ```python
 sequence(
@@ -55,13 +46,21 @@ sequence(
 )
 ```
 
-After the sequence: hide keyboard, confirm bubble, tap back arrow (steps 7–9 above).
+After: hide keyboard, confirm bubble, tap back (steps 7–9).
+
+### Hide keyboard
+
+Small upward swipe in the empty chat area dismisses without scrolling the just-sent bubble off-screen:
+
+```python
+swipe(bbox=[0.300, 0.300, 0.700, 0.500], direction="up", size="s")
+```
 
 ## Fixed elements
 
-Bboxes `[left, top, right, bottom]` in 0-1 screen coords. Re-peek if a row looks off — banners shift the layout.
+Bboxes `[left, top, right, bottom]` in 0–1 coords. Re-peek if a row looks off — banners shift the layout.
 
-**WeChat dock icon (Home Screen):** `[0.294, 0.891, 0.474, 0.967]`
+**Dock icon (Home):** `[0.294, 0.891, 0.474, 0.967]`
 
 ### Bottom nav
 
@@ -74,7 +73,7 @@ Bboxes `[left, top, right, bottom]` in 0-1 screen coords. Re-peek if a row looks
 
 ### Chats list rows
 
-Each row is **0.08 tall**. Derive the Nth row from the 1st by adding `0.08 × (N-1)` to the y values.
+Each row is **0.08 tall**. Nth row = 1st row + `0.08 × (N-1)` on the y values.
 
 | Row | Bbox                            |
 | --- | ------------------------------- |
@@ -83,18 +82,12 @@ Each row is **0.08 tall**. Derive the Nth row from the 1st by adding `0.08 × (N
 
 ### Chat page
 
-| Element         | When                | Bbox                            |
-| --------------- | ------------------- | ------------------------------- |
-| Back arrow `<`  | always              | `[0.016, 0.066, 0.082, 0.102]`  |
-| Contact name    | always              | `[0.400, 0.060, 0.600, 0.100]`  |
-| Text input area | keyboard hidden     | `[0.100, 0.910, 0.700, 0.960]`  |
-| Text input area | keyboard visible    | `[0.100, 0.575, 0.700, 0.625]`  |
-| Paste button    | long-pressing input | `[0.050, 0.530, 0.220, 0.570]`  |
+| Element             | When                | Bbox                            |
+| ------------------- | ------------------- | ------------------------------- |
+| Back arrow `<`      | always              | `[0.016, 0.066, 0.082, 0.102]`  |
+| Contact name        | always              | `[0.400, 0.060, 0.600, 0.100]`  |
+| `<input-hidden>`    | keyboard hidden     | `[0.100, 0.910, 0.700, 0.960]`  |
+| `<input-visible>`   | keyboard visible    | `[0.100, 0.575, 0.700, 0.625]`  |
+| Paste button        | long-pressing input | `[0.050, 0.530, 0.220, 0.570]`  |
 
-The send key on the keyboard and the backspace key are standard iPhone keyboard positions — see PHYSICLAW.md "iPhone keyboard bboxes".
-
-### Hide keyboard
-
-A small upward swipe in the empty chat scroll area dismisses the keyboard without scrolling the just-sent bubble off-screen.
-
-`swipe(bbox=[0.300, 0.300, 0.700, 0.500], direction="up", size="s")`
+Send + backspace keys: see PHYSICLAW § iPhone keyboard bboxes.

@@ -1,30 +1,17 @@
 """Local (engine-side) tools, exposed via the same tools= API as MCP tools.
 
-Each tool has:
-  - name + description + JSONSchema (shared shape with MCP tools)
-  - an async handler: (session, args) → ToolResult content
-
-Tools defined here:
-  - note — MUST ride alongside every turn's other tool calls.
-  - update_progress — mutates `session.plan`, which is pinned at the tail of
-    every provider request.
-  - append_log / save_memory / read_memory / read_logs / update_memory
-  - create_job / get_job / list_jobs / finish_job
-  - wait — block the loop briefly (≤60s), for short in-session waits
-    (the long-wait counterpart is `end_session(WAIT, …) + create_job`)
-  - end_session — records sentinel status; engine exits after dispatch
-  - Skill — fetch a SKILL.md body as text
-
-`end_session` carries state back to the engine via the `Session` object;
-`create_job` flags the session so the engine skips its auto-WAIT schedule.
-Other handlers are stateless.
+Local handlers run in-process and may mutate `Session` (the engine reads
+`sentinel_status`, `sentinel_turn_created_job`, and `plan` after each
+turn). Other handlers are stateless. Source of truth for the registry is
+`build_registry()` at the bottom; insertion order there determines wire
+order in `tools[]` and exploits LLM position bias.
 """
 import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from physiclaw.agent.engine import jobs, memory, skill
-from physiclaw.agent.engine.plan import COMPLETED, IN_PROGRESS, PENDING, STATUS_ICON, Plan
+from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.job_store import KIND_ONE_TIME, KIND_PERIODIC, NEVER, load_jobs
 from physiclaw.agent.runtime.sentinel import STATUSES
 
@@ -145,11 +132,7 @@ async def _handle_finish_job(_session: Session, args: dict) -> str:
 async def _handle_wait(_session: Session, args: dict) -> str:
     seconds = args["seconds"]
     await asyncio.sleep(seconds)
-    return (
-        f"waited {seconds}s — `peek` now to see what changed. "
-        "Don't chain another `wait` without observing first; if still "
-        "nothing, escalate with `end_session(WAIT, ...)` + `create_job`."
-    )
+    return f"waited {seconds}s — `peek` now to see what changed."
 
 
 async def _handle_end_session(session: Session, args: dict) -> str:
@@ -175,19 +158,19 @@ def _handle_skill_factory(skill_registry: dict[str, skill.Skill]) -> Handler:
 _NOTE = LocalTool(
     name="note",
     description=(
-        "MUST be called on every turn, alongside whatever other tools you "
-        "call. One line in `summary` saying what you're doing this turn "
-        "and why. The summary survives compaction — it becomes the "
-        "breadcrumb that labels any view image dropped from history, so "
-        "write it to make sense of the surrounding tap / view in a "
-        "transcript read cold."
+        "MUST be called every turn alongside whatever other tool you call. "
+        "`summary` is one line (≤20 words) saying what you're doing this turn "
+        "and why. **It is the ONLY part of the turn that survives "
+        "compaction** — once a turn ages out, the screen, the tap, every "
+        "other tool_result is gone; your `summary` alone represents that turn. "
+        "Write it to read cold."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "summary": {
                 "type": "string",
-                "description": "One line: what am I doing this turn and why.",
+                "description": "One line, ≤20 words: what you're doing this turn and why.",
             },
         },
         "required": ["summary"],
@@ -196,55 +179,18 @@ _NOTE = LocalTool(
 )
 
 
-_DONE = STATUS_ICON[COMPLETED]
-_ACTIVE = STATUS_ICON[IN_PROGRESS]
-_TODO = STATUS_ICON[PENDING]
-
 _UPDATE_PROGRESS = LocalTool(
     name="update_progress",
     description=(
-        "Mutate the working plan that's pinned at the tail of every "
-        "request. Pass any subset of `owner_said` (the owner's "
-        "verbatim ask), `understanding` (your one-line read of it), "
-        "and `steps` (the full ordered step list — each step is "
-        "`{content, status}`).\n"
+        "Mutate the plan pinned at the tail of every request. Pass "
+        "any subset of `owner_said` (IM verbatim), `understanding` (one-line "
+        "read), `steps` (full ordered list of `{content, status}`). Status is "
+        "`pending` / `in_progress` / `completed`; **exactly one step may be "
+        "`in_progress`** — engine rejects violators.\n"
         "\n"
-        "Status is `pending` / `in_progress` / `completed`. **Exactly "
-        "one step may be `in_progress` at a time** — the engine "
-        "rejects plans that break this rule.\n"
-        "\n"
-        "Behavior rules — when to call (draft once → tick after each "
-        "step → re-plan on shift), step granularity (one objective "
-        "per step), the mandatory closing sequence (append_log → "
-        "reply → go_back → home_screen → create_job → end_session, "
-        "with append_log only on DONE/STUCK/FAIL and create_job only "
-        "on WAIT), and the skip-if-≤2-steps rule — all live in "
-        "CONVENTION § 'The plan'. Read it.\n"
-        "\n"
-        "Worked example — owner asks 'buy me some snacks on JD'. "
-        "After opening JD and entering 7Fresh, the plan reads:\n"
-        f"  {_DONE}Open JD via Spotlight\n"
-        f"  {_DONE}Tap the 7Fresh grocery entry point\n"
-        f"  {_ACTIVE}Search 'chips', tap first matching item, Add to cart\n"
-        f"  {_TODO}Search 'cola', tap first matching item, Add to cart\n"
-        f"  {_TODO}Open cart, Checkout, confirm shipping address\n"
-        f"  {_TODO}Send order summary to owner in IM for confirm\n"
-        f"  {_TODO}go_back to exit the chat thread\n"
-        f"  {_TODO}home_screen\n"
-        f"  {_TODO}create_job to resume after owner OK\n"
-        f"  {_TODO}end_session WAIT\n"
-        f"  {_TODO}[on resume] tap Pay, complete checkout\n"
-        f"  {_TODO}append_log one line describing the outcome\n"
-        f"  {_TODO}Reply to owner in IM: 'Order placed ✅'\n"
-        f"  {_TODO}go_back to exit the chat thread\n"
-        f"  {_TODO}home_screen\n"
-        f"  {_TODO}end_session DONE\n"
-        f"(`{_DONE.strip()}`=completed, `{_ACTIVE.strip()}`=in_progress, "
-        f"`{_TODO.strip()}`=pending; you set the status values, the "
-        "renderer picks the icons.)\n"
-        "\n"
-        "Pass only changed fields. First call: usually owner_said + "
-        "understanding + steps. Subsequent calls: usually just steps."
+        "Rules — when to call (draft once → tick after each step → re-plan "
+        "on shift), step granularity (one objective per step), and the "
+        "skip-if-≤2-steps shortcut — all in CONVENTION § The plan."
     ),
     input_schema={
         "type": "object",
@@ -300,18 +246,16 @@ _UPDATE_PROGRESS = LocalTool(
 _APPEND_LOG = LocalTool(
     name="append_log",
     description=(
-        "Append one line after every major step (purchase placed, message "
-        "sent, item added) and at session close on DONE/STUCK/FAIL — "
-        "writes to today's memory/YYYY-MM-DD.md daily log. Per-step "
-        "breadcrumbs survive session end, so a later wake can recover "
-        "what's already done. See PERSISTENCE.md for the rationale."
+        "Append one line to today's `memory/YYYY-MM-DD.md` daily log. See "
+        "PERSISTENCE § When to write for trigger rules and § Format for the "
+        "line shape."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "entry": {
                 "type": "string",
-                "description": "One line, format '[HH:MM] app: page -> page - what you did'.",
+                "description": "Format: `[HH:MM] app: page -> page - what you did`",
             },
         },
         "required": ["entry"],
@@ -323,8 +267,9 @@ _APPEND_LOG = LocalTool(
 _SAVE_MEMORY = LocalTool(
     name="save_memory",
     description=(
-        "Append a durable fact or preference to memory/memory.md. Only when "
-        "the owner says 'remember this' or you learned a lasting preference."
+        "Append a durable fact or preference to `memory/memory.md`. Use only "
+        "when the owner says 'remember this' or you learn a lasting preference "
+        "— not for session detail (that's `append_log`)."
     ),
     input_schema={
         "type": "object",
@@ -340,8 +285,9 @@ _SAVE_MEMORY = LocalTool(
 _CREATE_JOB = LocalTool(
     name="create_job",
     description=(
-        "Schedule a follow-up job in jobs/jobs.md. Use for WAIT (to auto-resume), "
-        "or when the owner asks for a recurring task."
+        "Schedule a follow-up in `jobs/jobs.md`. Use on WAIT to set the "
+        "resume check, or when the owner asks for a recurring task. See "
+        "JOBS for lifecycle and id format."
     ),
     input_schema={
         "type": "object",
@@ -361,10 +307,9 @@ _CREATE_JOB = LocalTool(
 _GET_JOB = LocalTool(
     name="get_job",
     description=(
-        "Return all fields of a single job (description, type, status, "
-        "schedule, context, fire times). Use when `list_jobs`' one-line "
-        "summary isn't enough — e.g. owner asks what a queued reminder "
-        "is about. Raises if the id does not exist."
+        "Return all fields of one job (description, type, status, schedule, "
+        "context, fire times). Use when `list_jobs`' one-line summary isn't "
+        "enough. Raises if the id does not exist."
     ),
     input_schema={
         "type": "object",
@@ -378,10 +323,10 @@ _GET_JOB = LocalTool(
 _READ_MEMORY = LocalTool(
     name="read_memory",
     description=(
-        "Re-read `memory/memory.md` from disk. SYSTEM already shows it "
-        "under `## memory.md` at session start; call this only after a "
-        "`save_memory`/`update_memory` mid-session, before another "
-        "`update_memory` whose `old` must match byte-exactly."
+        "Re-read `memory/memory.md` from disk. SYSTEM already shows it under "
+        "`## memory.md` at session start — call this only after a "
+        "`save_memory` / `update_memory` mid-session, before another "
+        "`update_memory` whose `old` must match byte-exact."
     ),
     input_schema={"type": "object", "properties": {}, "required": []},
     handler=_handle_read_memory,
@@ -391,13 +336,11 @@ _READ_MEMORY = LocalTool(
 _READ_LOGS = LocalTool(
     name="read_logs",
     description=(
-        "Fetch the last N log entries across `memory/YYYY-MM-DD.md` "
-        "files, most recent first. Call at wake for recent activity "
-        "(yesterday's purchases, prior IM exchanges, open follow-"
-        "ups). If today's file has fewer than N, walks back through "
-        "prior days until N are collected. Each `[HH:MM]` is "
-        "rewritten to `[YYYY-MM-DD HH:MM]` so cross-day order is "
-        "unambiguous."
+        "Fetch the last N log entries across `memory/YYYY-MM-DD.md` files, "
+        "most recent first. Recent entries are auto-injected at wake — call "
+        "this only when you need MORE history. Walks back through prior days "
+        "if today's file has fewer than N. Each `[HH:MM]` is rewritten to "
+        "`[YYYY-MM-DD HH:MM]` for unambiguous cross-day order."
     ),
     input_schema={
         "type": "object",
@@ -407,7 +350,7 @@ _READ_LOGS = LocalTool(
                 "minimum": 1,
                 "maximum": 200,
                 "description": (
-                    f"How many recent entries to return (default "
+                    f"Number of entries to return (default "
                     f"{memory.DEFAULT_LOG_ENTRIES})."
                 ),
             },
@@ -421,19 +364,17 @@ _READ_LOGS = LocalTool(
 _UPDATE_MEMORY = LocalTool(
     name="update_memory",
     description=(
-        "Replace the single occurrence of `old` with `new` in memory/memory.md. "
-        "If `new` is empty, the line containing `old` is removed. Errors if "
-        "`old` is not found or matches more than one place — in that case, "
-        "narrow `old` with enough surrounding text to pin exactly one match. "
-        "SYSTEM's `## memory.md` block shows current contents byte-exact "
-        "as of session start. After any prior save_memory / update_memory "
-        "this session, that snapshot is stale — call `read_memory` first."
+        "Replace the single occurrence of `old` with `new` in "
+        "`memory/memory.md`. Empty `new` deletes the line. Errors if `old` is "
+        "not found or matches more than once — narrow with surrounding text. "
+        "After any prior `save_memory` / `update_memory` this session, the "
+        "SYSTEM snapshot is stale; call `read_memory` first."
     ),
     input_schema={
         "type": "object",
         "properties": {
-            "old": {"type": "string", "description": "exact substring to replace"},
-            "new": {"type": "string", "description": "replacement; empty string deletes the line"},
+            "old": {"type": "string", "description": "Exact substring to replace."},
+            "new": {"type": "string", "description": "Replacement; empty string deletes the line."},
         },
         "required": ["old", "new"],
     },
@@ -444,9 +385,8 @@ _UPDATE_MEMORY = LocalTool(
 _LIST_JOBS = LocalTool(
     name="list_jobs",
     description=(
-        "List jobs from jobs/jobs.md. Optional `status` filter: all (default) "
-        "/ pend / fired / cancel / done / fail. Returns a one-line summary "
-        "per job."
+        "List jobs from `jobs/jobs.md` as one-line summaries. Optional "
+        "`status` filter: all (default) / pend / fired / cancel / done / fail."
     ),
     input_schema={
         "type": "object",
@@ -465,22 +405,19 @@ _LIST_JOBS = LocalTool(
 _FINISH_JOB = LocalTool(
     name="finish_job",
     description=(
-        "Mark a job as terminated. `status` is `done` (the work the job "
-        "was meant to trigger is complete), `fail` (couldn't be done — "
-        "blocked or impossible), or `cancel` (no longer needed; e.g. "
-        "owner changed their mind, or the underlying task already "
-        "happened). Call once per fired job during the session — there "
-        "is no engine fallback; forgotten jobs sit in `fired` "
-        "indefinitely. Periodic jobs reset to `pend` on done/fail "
-        "(still fire next cycle); `cancel` is permanent. Raises on "
-        "already-terminal jobs."
+        "Mark a fired job as terminated. `status` is `done` (work complete), "
+        "`fail` (blocked / impossible), or `cancel` (no longer needed — owner "
+        "changed mind, task already happened, or rescheduling). One per fired "
+        "job per wake — engine never auto-marks. Periodic jobs reset to "
+        "`pend` on done/fail; `cancel` is permanent. Raises on already-"
+        "terminal jobs."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "id": {"type": "string"},
             "status": {"type": "string", "enum": ["done", "fail", "cancel"]},
-            "recap": {"type": "string", "description": "one-line outcome summary"},
+            "recap": {"type": "string", "description": "One-line outcome summary."},
         },
         "required": ["id", "status", "recap"],
     },
@@ -491,13 +428,11 @@ _FINISH_JOB = LocalTool(
 _WAIT = LocalTool(
     name="wait",
     description=(
-        "Block briefly (1-60s), then return so your next turn can "
-        "re-observe. For short in-session waits when the owner is "
-        "actively engaged (e.g. you sent a message and they're typing). "
-        "**After `wait`, your very next call must be `peek`** — chaining "
-        "`wait → wait` without observing is a bug; if the first peek "
-        "shows no change, escalate with `end_session(WAIT, ...)` + "
-        "`create_job` rather than waiting again."
+        "Block 1–60s, then return. For short in-session waits when the "
+        "owner is actively engaged. **Your next call must be `peek`** — "
+        "chaining `wait → wait` without observing is a bug. See CONVENTION "
+        "§ Wait-retry for the full pattern (max 3 attempts, escalate via "
+        "`end_session(WAIT)` + `create_job`)."
     ),
     input_schema={
         "type": "object",
@@ -513,16 +448,16 @@ _WAIT = LocalTool(
 _END_SESSION = LocalTool(
     name="end_session",
     description=(
-        "Close the session. `status` is DONE (complete, result verified), "
+        "Close the session. `status` is one of: DONE (complete, verified), "
         "STUCK (blocker outside your control), FAIL (task cannot succeed), "
-        "IDLE (wake triggered but no work needed), or WAIT (paused for "
-        "owner reply — pair with create_job to auto-resume)."
+        "IDLE (wake triggered, no work needed), WAIT (paused for owner reply "
+        "— pair with `create_job` to auto-resume)."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "status": {"type": "string", "enum": sorted(STATUSES)},
-            "recap": {"type": "string", "description": "one-line summary"},
+            "recap": {"type": "string", "description": "One-line outcome summary."},
         },
         "required": ["status", "recap"],
     },
@@ -535,14 +470,15 @@ _SKILL_SCHEMA = {
     "properties": {
         "name": {
             "type": "string",
-            "description": "Skill name, e.g. 'wechat'.",
+            "description": "Skill name, e.g. `wechat`.",
         },
         "reference": {
             "type": "string",
-            "description": "Optional. Path under the skill's references/ "
-                           "directory. Loads that file's text instead of "
-                           "SKILL.md — use for details / edge cases the "
-                           "SKILL.md body explicitly points at.",
+            "description": (
+                "Optional path under the skill's `references/` directory. "
+                "Loads that file's text instead of SKILL.md — use only when "
+                "SKILL.md explicitly points at a reference."
+            ),
         },
     },
     "required": ["name"],
@@ -596,11 +532,10 @@ def build_registry(
             name="Skill",
             description=(
                 f"Load a skill's workflow ({'/'.join(sorted(skill_registry))}) "
-                "before acting in that app — don't tap blind. Default "
-                "returns the skill's SKILL.md body for you to follow. "
-                "Pass `reference=<path>` to load an on-demand details file "
-                "from the skill's references/ directory — use it when the "
-                "body explicitly points at a reference."
+                "before acting in that app — don't tap blind. Default returns "
+                "the skill's SKILL.md body. Pass `reference=<path>` to load a "
+                "details file from the skill's `references/` directory when "
+                "SKILL.md points at one."
             ),
             input_schema=_SKILL_SCHEMA,
             handler=_handle_skill_factory(skill_registry),

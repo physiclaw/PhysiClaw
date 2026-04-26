@@ -5,29 +5,29 @@ description: Use when typing a query into a search box / search field inside any
 
 # Search in App
 
-Most apps with a search bar follow the same pattern: tap to focus, paste your query, hit return.
+Most apps with a search bar follow the same pattern: tap to focus, paste, hit return.
 
 ## Flow
 
 1. `send_to_clipboard(text)` — your query.
 2. `tap` the search field to focus it (bbox from a prior `peek`); the keyboard appears.
-3. **If the field has stale text from a previous search, tap `backspace` 10–20 times.** Pasting onto a non-empty field does not replace the existing text, so partial-clear leaves you searching for `"oldnew"` and matching nothing. Over-tapping is safe — extra presses on an empty field are no-ops, and you usually can't tell from a `peek` how many characters are in a focused field.
-4. `long_press` the search field. **This must be its own turn** — the Paste popover doesn't exist until long_press fires, so you can't include `tap_Paste` in the same `sequence` call without inventing a bbox.
-5. Next turn: `peek` to find the actual Paste popover bbox (its position depends on where you long-pressed).
+3. **Stale text?** Tap `backspace` 10–20 times. Pasting onto a non-empty field does NOT replace existing text — partial-clear leaves you searching for `"oldnew"` and matching nothing. Over-tapping is safe; you usually can't tell from `peek` how many characters are in a focused field.
+4. `long_press` the search field. **Its own turn** — the Paste popover doesn't exist until `long_press` fires, so it can't share a `sequence` with the tap that triggers it.
+5. Next turn: `peek` to find the actual Paste popover bbox (depends on where you long-pressed).
 6. `tap` the Paste button using the bbox from step 5.
-7. `tap` the keyboard's return key (bbox in PHYSICLAW.md "iPhone keyboard bboxes").
-8. Verify with `peek` that the results page rendered.
+7. `tap` the keyboard's return key (PHYSICLAW § iPhone keyboard bboxes).
+8. `peek` to verify the results page rendered.
 
-### `sequence` — what bundles, what doesn't
+### What `sequence` can bundle
 
-- ✅ Safe to bundle: **N×backspace** in one sequence (5–20 taps on the same fixed bbox).
-- ❌ Don't bundle `long_press` + `tap_Paste` in this generic flow. The Paste popover is born from the long_press itself, and a generic search field's input position varies app-to-app — you'd be tapping a guessed bbox in step 2, which violates "bboxes come from the listing." Do them as two turns.
-- ✅ Safe to bundle once Paste is located (step 5 done): `tap_Paste` + `tap_Return` (both bboxes are now grounded — Paste from step 5's peek, Return from PHYSICLAW.md's keyboard table).
+- ✅ **N×backspace** in one sequence (5–20 taps on the same fixed bbox).
+- ❌ `long_press` + `tap_Paste` in this generic flow — the Paste popover bbox is born from the long_press itself, so bundling means tapping a guessed bbox, violating CONVENTION § Bboxes. Two turns.
+- ✅ **After Paste is located** (step 5 done): `tap_Paste` + `tap_Return` — both bboxes are grounded (Paste from step 5's peek, Return from PHYSICLAW).
 
-> Exception: app-specific skills with a **pinned input bbox** (e.g. `wechat/SKILL.md`'s fast-path, where the input always sits at the bottom and the Paste popover bbox is therefore predictable) can bundle `long_press + tap_Paste`. That's a property of those apps, not a generic move.
+App-specific skills with a **pinned input bbox** (e.g. wechat fast-path) can bundle `long_press + tap_Paste` because their Paste popover position is predictable. That's a property of those apps, not a generic move.
 
-## Common pitfalls
+## Pitfalls
 
-- **Auto-suggest dropdown**: typing or pasting may surface a list of suggestions. The keyboard return key submits **your typed string** — tap it instead of any suggestion unless you specifically want a suggestion.
-- **Camera misses the keyboard**: `peek` of the keyboard area can be glare-prone. If a `tap` on backspace seems to do nothing for several attempts, `screenshot` once to confirm the keyboard is actually visible (it may have hidden, or the field may have lost focus).
-- **Tap didn't open the keyboard**: the field may already be focused (cursor visible, no keyboard) — tap once more, or tap a non-field area first then re-tap the search field to reset.
+- **Auto-suggest dropdown** — typing surfaces a list of suggestions. Return submits **your typed string**; tap it instead of any suggestion unless you specifically want one.
+- **Camera misses the keyboard** — keyboard-area `peek` can be glare-prone. Backspace tap doing nothing for several attempts → `screenshot` once to confirm the keyboard is actually visible.
+- **Tap didn't open the keyboard** — field may already be focused (cursor visible, no keyboard). Tap once more, or tap a non-field area first then re-tap to reset.
