@@ -238,6 +238,12 @@ class PhysiClaw:
         steps (e.g. after step 7 when only the arm-side affine is
         ready, or before step 7 when nothing is). Caller must hold
         the hardware lock.
+
+        Same coordinate `(-0.1, -0.05)` is used inline by
+        `validate_calibration` in core/calibration/calibrate.py for
+        its per-test park (different call path because that function
+        takes raw `pct_to_grbl`, not the orchestrator). Keep the two
+        in sync.
         """
         if self._arm is None:
             return

@@ -696,8 +696,10 @@ def validate_calibration(
         )
 
         # 2. Camera detects orange dot
-        # Park arm first so it doesn't occlude
-        park_gx, park_gy = pct_to_grbl @ np.array([0.5, -0.1, 1.0])
+        # Park arm first so it doesn't occlude. Same screen pct
+        # (-0.1, -0.05) as `physiclaw.park()` — keep one canonical
+        # off-phone spot across the codebase.
+        park_gx, park_gy = pct_to_grbl @ np.array([-0.1, -0.05, 1.0])
         arm._fast_move(float(park_gx), float(park_gy))
         arm.wait_idle()
         time.sleep(0.3)

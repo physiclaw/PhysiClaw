@@ -196,11 +196,11 @@ tools or the jobs skill.
 
 Three memory files:
 
-| File                   | Purpose                                     | You write?                     |
-|------------------------|---------------------------------------------|--------------------------------|
-| `memory/USER.md`      | User profile; curated by the user         | No — read only                 |
-| `memory/memory.md`     | Durable facts, one per line                 | Append, edit                   |
-| `memory/YYYY-MM-DD.md` | Today's activity log, `[HH:MM] …` per line  | Append each major step + close |
+| File                   | Purpose                                    | You write?                     |
+|------------------------|--------------------------------------------|--------------------------------|
+| `memory/USER.md`       | User profile; curated by the user          | No — read only                 |
+| `memory/memory.md`     | Durable facts, one per line                | Append, edit                   |
+| `memory/YYYY-MM-DD.md` | Today's activity log, `[HH:MM] …` per line | Append each major step + close |
 
 When to write:
 

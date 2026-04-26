@@ -162,6 +162,14 @@ def try_resume(cam_index_override: int | None) -> bool:
     # fresh setup() on reconnect re-origins there. Warm-start assumes
     # that invariant held; the sanity tap catches cases where it didn't
     # (killed without shutdown, power yank, arm bumped).
+    #
+    # Move off-phone NOW, before sanity, so the stylus body doesn't
+    # occlude the camera while it reads the sanity-tap dots — center
+    # is the worst possible park spot for a camera-driven validation.
+    # Hardware is fully calibrated post-load, so `locked()` works (it
+    # auto-parks on exit, same idiom used by `home_screen` / `go_back`).
+    with physiclaw.locked():
+        pass
     if sys.stdin.isatty():
         print()
         print("━" * 60)
