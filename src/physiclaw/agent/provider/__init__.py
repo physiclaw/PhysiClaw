@@ -2,9 +2,9 @@
 
 Provider ids follow OpenClaw's convention: the API surface (vendor /
 company), not the brand. So `openai` (not `chatgpt`), `moonshot` (not
-`kimi`), `google` (not `gemini`), `qwen` (Alibaba's Qwen API),
-`anthropic` (direct API). The existing `claude-code` is a separate
-concept (subprocess engine, not direct Anthropic API).
+`kimi`), `qwen` (Alibaba's Qwen API), `anthropic` (direct API). The
+existing `claude-code` is a separate concept (subprocess engine, not
+direct Anthropic API).
 
 Layout:
   - `provider_base.py`     — `Provider` Protocol, `ModelEntry`, errors,
@@ -27,7 +27,6 @@ Layout:
       - `qwen.py`      — `QwenProvider` (DashScope)   — OpenAI-compat
       - `moonshot.py`  — `MoonshotProvider` (Kimi)    — OpenAI-compat
       - `openai.py`    — `OpenAIProvider` (GPT-5)     — OpenAI-compat
-      - `google.py`    — `GoogleProvider` (Gemini)    — OpenAI-compat
       - `anthropic.py` — `AnthropicProvider` (Claude) — Anthropic-compat
 
 This `__init__.py` is a thin re-export surface — import from here
@@ -58,7 +57,6 @@ from physiclaw.agent.provider.registry import (
     provider_key_status,
 )
 from physiclaw.agent.provider.vendors.anthropic import AnthropicProvider
-from physiclaw.agent.provider.vendors.google import GoogleProvider
 from physiclaw.agent.provider.vendors.moonshot import MoonshotProvider
 from physiclaw.agent.provider.vendors.openai import OpenAIProvider
 from physiclaw.agent.provider.vendors.qwen import QwenProvider
@@ -75,7 +73,6 @@ __all__ = [
     "AnthropicCompatibleProvider",
     "AnthropicProvider",
     "BaseProvider",
-    "GoogleProvider",
     "ModelEntry",
     "MoonshotProvider",
     "OpenAICompatibleProvider",

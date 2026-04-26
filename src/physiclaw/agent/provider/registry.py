@@ -8,7 +8,6 @@ surface stays a thin re-export layer.
 """
 from physiclaw.agent.provider.provider_base import BaseProvider, Provider
 from physiclaw.agent.provider.vendors.anthropic import AnthropicProvider
-from physiclaw.agent.provider.vendors.google import GoogleProvider
 from physiclaw.agent.provider.vendors.moonshot import MoonshotProvider
 from physiclaw.agent.provider.vendors.openai import OpenAIProvider
 from physiclaw.agent.provider.vendors.qwen import QwenProvider
@@ -28,7 +27,6 @@ _PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
     MoonshotProvider.PROVIDER_ID:  MoonshotProvider,
     OpenAIProvider.PROVIDER_ID:    OpenAIProvider,
     AnthropicProvider.PROVIDER_ID: AnthropicProvider,
-    GoogleProvider.PROVIDER_ID:    GoogleProvider,
 }
 
 
