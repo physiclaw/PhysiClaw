@@ -32,7 +32,6 @@ import datetime as dt
 import json
 import logging
 import time
-from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -77,6 +76,34 @@ def brief(value: Any, limit: int = 80) -> str:
 
 def brief_args(args: dict[str, Any]) -> str:
     return ", ".join(f"{k}={brief(v, 40)}" for k, v in args.items())
+
+
+def _full_args(args: dict[str, Any]) -> str:
+    """Like `brief_args` but no per-value truncation — for tools whose
+    args carry irreplaceable planning/decision context (`update_progress`
+    steps, etc.) that get hidden by 40-char truncation."""
+    return ", ".join(f"{k}={v!r}" for k, v in args.items())
+
+
+def format_call_args(tool_name: str, args: dict[str, Any]) -> str:
+    """Render tool-call args for the human log. `update_progress`
+    bypasses the default 40-char truncation — the plan content IS the
+    point of the call, and it never appears in the result line (which
+    is just "progress updated"). Other tools use the brief default."""
+    if tool_name == "update_progress":
+        return _full_args(args)
+    return brief_args(args)
+
+
+def format_call_result(tool_name: str, text: str) -> str:
+    """Render a tool's result text for the human log. `note` bypasses
+    the default 80-char truncation — its result is `noted: <summary>`,
+    a literal echo of the summary that's the sole turn-survivor under
+    compaction (CONVENTION § Compaction); truncating the result hides
+    the canonical record of what the agent committed to."""
+    if tool_name == "note":
+        return text
+    return brief(text, 80)
 
 
 def brief_content(content: Any) -> str:
@@ -183,12 +210,13 @@ def _summarize(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat disp
             f"new={event.get('new',0)} / total={event.get('total',0)}"
         )
     if name == "tool_result":
-        args = brief_args(event.get("arguments") or {})
+        tool_name = event.get("name", "?")
+        args = format_call_args(tool_name, event.get("arguments") or {})
         if "text" in event:
-            result = brief(event["text"], 80)
+            result = format_call_result(tool_name, event["text"])
         else:
             result = brief_content(event.get("blocks") or [])
-        return f"{pfx}{event.get('name','?')}({args}) → {result}"
+        return f"{pfx}{tool_name}({args}) → {result}"
     if name == "tool_invalid_args":
         return f"{pfx}{event.get('name','?')} invalid args: {brief(event.get('error',''), 200)}"
     if name == "tool_unknown":

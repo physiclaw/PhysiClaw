@@ -34,7 +34,7 @@ from physiclaw.agent.provider import (
     make_provider,
     mcp_blocks_to_content_blocks,
 )
-from physiclaw.agent.engine.trace import RawLog, Trace, brief, brief_args, brief_content
+from physiclaw.agent.engine.trace import RawLog, Trace, brief_content, format_call_args, format_call_result
 from physiclaw.agent.engine.validator import ValidationError, validate_arguments
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK, WAIT
@@ -354,7 +354,7 @@ async def _dispatch(
     """Validate, then route to local handler or MCP. Always returns a
     ToolResultMessage — never raises (principle 5 + principle 6 require
     that every ToolCall is paired with a ToolResult even on failure)."""
-    log.info("  → %s(%s)", call.name, brief_args(call.arguments))
+    log.info("  → %s(%s)", call.name, format_call_args(call.name, call.arguments))
 
     schema = schema_by_name.get(call.name)
     if schema is None:
@@ -391,7 +391,7 @@ async def _dispatch(
                 "name": call.name, "id": call.id,
                 "arguments": call.arguments, "text": text,
             })
-            log.info("  ✓ %s → %s", call.name, brief(text, 80))
+            log.info("  ✓ %s → %s", call.name, format_call_result(call.name, text))
             return ToolResultMessage(tool_call_id=call.id, content=text)
 
         blocks = await mcp.call_tool(call.name, call.arguments)
