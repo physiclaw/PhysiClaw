@@ -346,19 +346,22 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
 def validate_bbox(bbox: list[float]) -> list[float]:
     """Raise ValueError if bbox is malformed; return `bbox` unchanged.
 
-    Returning the input makes this usable as a Pydantic `AfterValidator`
-    (FastMCP tool types) while staying backward-compatible with the
-    existing call sites that ignore the return.
+    Defense-in-depth runtime check before any GRBL move. IDENTICAL
+    LOGIC to the engine validator's bbox check (in
+    `src/physiclaw/agent/engine/validator.py`) — same checks, same
+    order, same messages — so the agent sees the same diagnostic
+    regardless of which layer catches the violation. Keep the two in
+    sync.
     """
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-        raise ValueError(f"bbox must be [left, top, right, bottom], got {bbox!r}")
-    left, top, right, bottom = bbox
+        raise ValueError(f"bbox: must be [left, top, right, bottom]; got {bbox!r}")
     if not all(isinstance(v, (int, float)) for v in bbox):
-        raise ValueError(f"bbox values must be numbers, got {bbox!r}")
-    if not all(0 <= v <= 1 for v in bbox):
-        raise ValueError(f"bbox values must be in [0, 1], got {bbox!r}")
-    if left >= right or top >= bottom:
-        raise ValueError(f"bbox must have left < right and top < bottom, got {bbox!r}")
+        raise ValueError(f"bbox: each coord must be a number; got {bbox!r}")
+    l, t, r, b = bbox
+    if any(v < 0 or v > 1 for v in bbox):
+        raise ValueError(f"bbox: each coord must be in [0, 1]; got [{l}, {t}, {r}, {b}]")
+    if l >= r or t >= b:
+        raise ValueError(f"bbox: left < right, top < bottom; got [{l}, {t}, {r}, {b}]")
     return bbox
 
 

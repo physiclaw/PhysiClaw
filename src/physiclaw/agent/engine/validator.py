@@ -62,6 +62,24 @@ def validate_arguments(args: Any, schema: dict[str, Any]) -> None:
     if missing:
         raise ValidationError(f"missing required argument(s): {', '.join(sorted(missing))}")
 
+    # Bbox shape — IDENTICAL LOGIC to `validate_bbox` in
+    # core/vision/util.py (same checks, same order, same messages). Keep
+    # the two in sync. Runs before the per-key `_check_value` loop so
+    # the bbox-specific error fires before the generic schema type
+    # check. The orchestrator calls validate_bbox at gesture time as
+    # defense-in-depth.
+    bbox = args.get("bbox")
+    if bbox is not None:
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            raise ValidationError(f"bbox: must be [left, top, right, bottom]; got {bbox!r}")
+        if not all(isinstance(v, (int, float)) for v in bbox):
+            raise ValidationError(f"bbox: each coord must be a number; got {bbox!r}")
+        l, t, r, b = bbox
+        if any(v < 0 or v > 1 for v in bbox):
+            raise ValidationError(f"bbox: each coord must be in [0, 1]; got [{l}, {t}, {r}, {b}]")
+        if l >= r or t >= b:
+            raise ValidationError(f"bbox: left < right, top < bottom; got [{l}, {t}, {r}, {b}]")
+
     for key, value in args.items():
         prop = properties.get(key)
         if prop is None:
@@ -69,20 +87,6 @@ def validate_arguments(args: Any, schema: dict[str, Any]) -> None:
             # true in JSONSchema). Strict mode could reject here.
             continue
         _check_value(key, value, prop)
-
-    # Cross-element invariants JSONSchema can't express. The orchestrator
-    # runs the same check at gesture time as defense-in-depth.
-    bbox = args.get("bbox")
-    if isinstance(bbox, list) and len(bbox) == 4 and all(_is_number(x) for x in bbox):
-        l, t, r, b = bbox
-        if l >= r:
-            raise ValidationError(
-                f"bbox: must have left < right, got [{l}, {t}, {r}, {b}]"
-            )
-        if t >= b:
-            raise ValidationError(
-                f"bbox: must have top < bottom, got [{l}, {t}, {r}, {b}]"
-            )
 
 
 def _check_value(key: str, value: Any, prop: dict[str, Any]) -> None:
