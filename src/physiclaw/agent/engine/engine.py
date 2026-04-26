@@ -294,12 +294,7 @@ async def _loop(
             log.warning("turn %d: bad turn shape tool_calls=%s — injecting corrective", turn, called)
             tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
             messages.pop()
-            messages.append(UserMessage(content=(
-                f"Your last turn called {called!r}. Every turn must call "
-                "exactly two tools: `note` plus one other. Split any "
-                "extra work into separate turns. "
-                "Re-issue as [note, one-other]."
-            )))
+            messages.append(UserMessage(content=_corrective_for_bad_shape(called)))
             continue
 
         # Principle 6: each tool_call gets exactly one ToolResult, in order,
@@ -455,6 +450,53 @@ def _log_usage(turn: int, asst: AssistantMessage, tr: Trace) -> str:
     if not total:
         return ""
     return f"token: {total / 1000:.1f}k, cache: {100 * u.cached_tokens / total:.0f}%"
+
+
+def _corrective_for_bad_shape(called: list[str]) -> str:
+    """Build a turn-specific corrective for a [note, one-other] shape
+    violation.
+
+    Naming the rejected tool nudges the model to retry the same action
+    on the next turn instead of switching to whatever fits the shape.
+    Without this, models often interpret the generic "re-issue as
+    [note, one-other]" as licence to pick a different second tool —
+    silently dropping the rejected action entirely.
+    """
+    n_notes = called.count("note")
+    others = [c for c in called if c != "note"]
+
+    if n_notes == 0 and len(others) == 1:
+        # Most common: agent forgot note alongside its action.
+        return (
+            f"Your last turn called `{others[0]}` without `note`. Every "
+            f"turn must call `note` (one-line summary) plus exactly one "
+            f"other tool. Re-issue as `[note(summary=...), {others[0]}(...)]` "
+            f"with the same arguments."
+        )
+
+    if n_notes == 0:
+        # No note + multiple other tools.
+        return (
+            f"Your last turn called {called!r} without `note` and with "
+            f"too many tools. Every turn = exactly `[note, one-other]`. "
+            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
+            f"split {others[1:]!r} into later turns."
+        )
+
+    if n_notes >= 2:
+        return (
+            f"Your last turn called `note` {n_notes} times. `note` must "
+            f"be called exactly once per turn. Re-issue as "
+            f"`[note, one-other]`."
+        )
+
+    # 1 note + 2+ others
+    return (
+        f"Your last turn called {called!r} — `note` plus {len(others)} "
+        f"other tools. Every turn = exactly `[note, one-other]`. Keep "
+        f"`[note, {others[0]}]` for this turn; split {others[1:]!r} "
+        f"into later turns."
+    )
 
 
 def _format_triggers(triggers: list[Trigger], *, cron_ctx: str = "") -> str:
