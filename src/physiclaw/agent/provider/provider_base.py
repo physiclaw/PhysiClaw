@@ -160,10 +160,10 @@ class BaseProvider:
     # Turn-age summary collapse — see `compact.collapse_old_turns`.
     # All three knobs live here so vendor-specific tuning (cache
     # mechanics differ per provider) can override any of them in one
-    # place; defaults are tuned for Anthropic/Qwen-style anchored
-    # caches. `MoonshotProvider` overrides `COLLAPSE_INTERVAL_TURNS`
-    # because K-series cache invalidates whole prefixes — see EOQ
-    # analysis comments in compact.py.
+    # place. Current defaults match every shipping provider; Moonshot
+    # carries the highest cost-per-collapse (whole-prefix invalidation
+    # vs anchored caches on Anthropic/Qwen) but accepts the tax in
+    # exchange for tighter prompts on long sessions.
     #
     #   F = COLLAPSE_FIRST_AT_TURN    first collapse threshold
     #   K = KEEP_RECENT_TURNS         recent turns kept per collapse

@@ -104,9 +104,11 @@ _FIRST_TURN_INDEX = 5
 #   I = COLLAPSE_INTERVAL_TURNS    cadence between subsequent collapses
 #
 # Defaults (F=30, K=10, I=20) are an EOQ optimum for vendors with
-# anchored caches (Anthropic/Qwen). Moonshot's whole-prefix
-# invalidation pushes its optimum to I=30 — overridden on
-# `MoonshotProvider`.
+# anchored caches (Anthropic/Qwen). Moonshot accepts the same I=20
+# despite its whole-prefix cache invalidation — the EOQ analysis
+# alone would suggest I≈30 there, but the tighter prompt at I=20
+# wins on long-session quality. See `MoonshotProvider` for the
+# trade-off rationale.
 
 
 def new_summary_placeholder() -> UserMessage:
