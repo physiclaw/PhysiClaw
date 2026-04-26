@@ -545,6 +545,19 @@ class PhysiClaw:
             self._swipe([0.0, 0.4, 0.04, 0.6], "right", "xxl", speed="fast")
             return "Went back"
 
+    def force_quit(self) -> str:
+        """Force-quit current app via the iOS app-switcher gesture.
+
+        Step 1's swipe is short on purpose — a longer upward swipe from
+        the bottom edge would go home instead of opening the switcher.
+        """
+        with self.locked():
+            self._swipe([0.4, 0.96, 0.6, 0.98], "up", "s", speed="slow")
+            self._swipe([0.4, 0.45, 0.6, 0.55], "left", "m", speed="medium")
+            self._swipe([0.4, 0.70, 0.6, 0.80], "up", "xl", speed="fast")
+            self._tap([0.4, 0.92, 0.6, 0.96])
+            return "Force-quit current app"
+
     def unlock_phone(self) -> str:
         """Unlock the phone: wake → swipe up → wait for Face ID to fail → enter passcode.
 

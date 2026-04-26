@@ -36,7 +36,7 @@ Sensitive apps (banking, health, photos, email): only on explicit ask.
 ## Rules
 
 - **Search, don't scroll.** Use the app's search.
-- **Back out, don't dig in.** 2–3 turns on the same sub-page with no progress → tap top-left `<` until the app's home, then re-enter. Wrong entry points rarely recover in place.
+- **Back out, don't dig in.** 2–3 turns on the same sub-page with no progress → `go_back` until the app's home, then re-enter. Wrong entry points rarely recover in place. (Deeper trap → see CONVENTION § Stuck.)
 - **Paste over typing.** `send_to_clipboard` → `long_press` → Paste. Keyboard is last resort.
 - **Read exactly.** Prices, names, addresses as displayed — never guess or round.
 - **Confirm before payment.** Send the owner: item, quantity, price, address, fees, delivery time. Wait for explicit OK (see CONVENTION § Wait-retry). Pay only after they reply OK.

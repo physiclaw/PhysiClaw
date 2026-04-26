@@ -51,9 +51,13 @@ Target missing from current and surviving listings? Step up: `screenshot` > `pee
 
 This is what makes `sequence` safe — each step's bbox is grounded in the listing live when the chain was planned.
 
-## Stuck signal
+## Stuck
 
-15+ turns on the same `in_progress` step with no visible progress = stuck. Re-plan: split the step, or add a recovery step. Re-`peek`ing won't make the screen change.
+**10+ turns on the same `in_progress` step with no visible progress = stuck.**
+
+1. **Re-plan** — split the step or add a recovery step.
+2. **Back out** — `go_back` to the app's top, re-pick the entry.
+3. **Force-quit + reopen** — `force_quit` resets app state, then reopen the app fresh. Use when popups won't dismiss, the back stack loops, or the wrong page keeps returning.
 
 ## Wait-retry for owner replies
 

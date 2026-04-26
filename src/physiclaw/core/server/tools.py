@@ -180,6 +180,20 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
 
     @mcp.tool()
     @logged
+    async def force_quit() -> str:
+        """Force-quit the current app via the iOS app-switcher gesture (~7s) — hard reset when you're stuck on the wrong app page and can't find the entry you need from here.
+
+        Lands on home screen. Reopen the app fresh from there.
+
+        Use after `go_back` hasn't gotten you to the right entry point —
+        when popups won't dismiss, the back stack loops, or the wrong
+        page keeps returning.
+        """
+        result = await asyncio.to_thread(physiclaw.force_quit)
+        return f"{result} — now on home screen; reopen the app fresh"
+
+    @mcp.tool()
+    @logged
     async def unlock_phone() -> str:
         """Unlock the phone with passcode `111111` (~12s).
 
