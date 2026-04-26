@@ -1,11 +1,11 @@
 ---
 name: wechat
-description: Use when the task involves WeChat / 微信 — reading owner IM, sending a chat reply, finding a contact by name, or any "check messages" / "reply to <name>" request. NOT for Messages / SMS / Telegram / Signal, not for phone calls or FaceTime.
+description: Use when the task involves WeChat / 微信 — reading user IM, sending a chat reply, finding a contact by name, or any "check messages" / "reply to <name>" request. NOT for Messages / SMS / Telegram / Signal, not for phone calls or FaceTime.
 ---
 
 # WeChat (微信)
 
-The owner's primary IM. High-frequency app — `peek` reads Chinese text bubbles reliably.
+The user's primary IM. High-frequency app — `peek` reads Chinese text bubbles reliably.
 
 ## Read messages
 

@@ -1,11 +1,11 @@
 ---
 name: jd
-description: Use when the task is grocery / fresh-food shopping via JD / 京东 / 七鲜 / 7Fresh — owner asks to buy 零食, 水果, 蔬菜, 日用品, or to place an order on 京东. NOT for clothing, electronics, or non-grocery shopping, NOT for other grocery apps (Meituan / 盒马 / Dingdong).
+description: Use when the task is grocery / fresh-food shopping via JD / 京东 / 七鲜 / 7Fresh — user asks to buy 零食, 水果, 蔬菜, 日用品, or to place an order on 京东. NOT for clothing, electronics, or non-grocery shopping, NOT for other grocery apps (Meituan / 盒马 / Dingdong).
 ---
 
 # JD (京东) — Grocery shopping
 
-Use **京东七鲜** (JD 7Fresh) for groceries. Other JD categories require explicit owner ask.
+Use **京东七鲜** (JD 7Fresh) for groceries. Other JD categories require explicit user ask.
 
 `peek` is the default; `screenshot` only when the target is icon-only with no text label. **`screenshot` on a product detail page triggers a share overlay** (see Gotcha).
 
@@ -18,7 +18,7 @@ Use **京东七鲜** (JD 7Fresh) for groceries. Other JD categories require expl
    - Items without variants skip the sheet — one tap adds directly.
    - **NEVER tap 加入购物车 twice on the same product page.** The page looks identical before and after — re-tapping re-opens the spec sheet, you re-confirm, and the item is added TWICE. Verify via the cart-icon badge or in step 4.
 4. Tap the cart icon, review line items, tap **去结算**. **Always review here** — duplicate quantities mean step 3 was tapped twice; remove dupes before checkout.
-5. Send the owner: item, qty, price, address, fees, ETA. Wait for explicit OK.
+5. Send the user: item, qty, price, address, fees, ETA. Wait for explicit OK.
 6. Tap **提交订单 / 立即支付**.
 
 ## Gotcha — screenshot triggers share overlay

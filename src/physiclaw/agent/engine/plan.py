@@ -26,14 +26,14 @@ STATUSES: frozenset[str] = frozenset({PENDING, IN_PROGRESS, COMPLETED})
 
 STATUS_ICON = {PENDING: "- ", IN_PROGRESS: "▸ ", COMPLETED: "✓ "}
 
-DEFAULT_OWNER_SAID = "(not yet read)"
+DEFAULT_USER_SAID = "(not yet read)"
 
 DEFAULT_UNDERSTANDING = (
     "Unknown — open IM, read the latest message, then call update_progress."
 )
 
 DEFAULT_SEED_STEP = (
-    "(no plan yet — after reading the owner's IM, call update_progress "
+    "(no plan yet — after reading the user's IM, call update_progress "
     "with the full step list through end_session; see CONVENTION § "
     "'The plan' for rules, update_progress docstring for the worked "
     "example)"
@@ -61,7 +61,7 @@ DEFAULT_STATE_AFTER = CONFIG.engine.state_decay_turns
 
 @dataclass
 class Plan:
-    owner_said: str = DEFAULT_OWNER_SAID
+    user_said: str = DEFAULT_USER_SAID
     understanding: str = DEFAULT_UNDERSTANDING
     steps: list[Step] = field(
         default_factory=lambda: [Step(DEFAULT_SEED_STEP)]
@@ -77,13 +77,13 @@ class Plan:
     def update(
         self,
         *,
-        owner_said: str | None = None,
+        user_said: str | None = None,
         understanding: str | None = None,
         steps: list[dict] | None = None,
     ) -> None:
-        if owner_said is None and understanding is None and steps is None:
+        if user_said is None and understanding is None and steps is None:
             raise ValueError(
-                "update needs at least one of owner_said / understanding / steps"
+                "update needs at least one of user_said / understanding / steps"
             )
         # Validate everything before mutating — partial updates on failure
         # leave the plan in a confusing mixed state.
@@ -98,8 +98,8 @@ class Plan:
                     "exactly one step may be in_progress at a time — "
                     "mark the others pending or completed"
                 )
-        if owner_said is not None:
-            self.owner_said = owner_said.strip()
+        if user_said is not None:
+            self.user_said = user_said.strip()
         if understanding is not None:
             self.understanding = understanding.strip()
         if parsed_steps is not None:
@@ -114,7 +114,7 @@ class Plan:
             step_lines = ["  (none)"]
         lines = [
             "<plan>",
-            f"Owner said: {self.owner_said}",
+            f"User said: {self.user_said}",
             f"My understanding: {self.understanding}",
             f"Progress: {done}/{total}",
             "Steps:",
@@ -130,11 +130,11 @@ class Plan:
         """Contextual reminder line appended to render() when a signal
         fires. Silent when the plan is fresh — the model learns to ignore
         messages that always appear."""
-        is_default = self.owner_said == DEFAULT_OWNER_SAID
+        is_default = self.user_said == DEFAULT_USER_SAID
         if is_default and self.turns_since_update >= DEFAULT_STATE_AFTER:
             return (
                 f"⚠ Plan still default after {self.turns_since_update} "
-                "turns — read the owner's IM and call update_progress."
+                "turns — read the user's IM and call update_progress."
             )
         if not is_default and self.turns_since_update >= STALE_TICK_AFTER:
             return (

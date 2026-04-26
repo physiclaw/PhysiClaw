@@ -31,11 +31,11 @@ CONTEXT_DIR = Path(__file__).resolve().parent.parent / "context"
 # on next session start without touching code.
 DOCTRINE_FILE_ORDER = (
     "IDENTITY.md",    # who PhysiClaw is — short, one-paragraph card
-    "OWNER.md",       # who PhysiClaw serves — read from memory/OWNER.md
+    "USER.md",        # who PhysiClaw serves — read from memory/USER.md
     "SOUL.md",        # personality / tone / voice — gets embody-note prepended
     "AGENT.md",       # operational rules: Loop / Boundaries / Rules / Continuity
     "PHYSICLAW.md",   # tool-surface mechanics — also shipped via MCP initialize
-    "TOOLS.md",       # extra owner-authored tool guidance
+    "TOOLS.md",       # extra user-authored tool guidance
     "PERSISTENCE.md", # memory.md vs YYYY-MM-DD.md + read/write tools
     "JOBS.md",        # jobs.md + create_job/get_job/list_jobs/finish_job (immutable, append-only)
     "CONVENTION.md",  # engine turn rules — last so it sits next to mechanics
@@ -53,9 +53,9 @@ def render_system(
 
     Order (above → below):
       # Doctrine           file-loop over DOCTRINE_FILE_ORDER. Slots:
-                           IDENTITY, OWNER, SOUL, AGENT, PHYSICLAW, TOOLS,
+                           IDENTITY, USER, SOUL, AGENT, PHYSICLAW, TOOLS,
                            CONVENTION — each rendered as `## <name>` block;
-                           missing = skipped. OWNER reads from memory/.
+                           missing = skipped. USER reads from memory/.
       ## Tooling           inline tool index card (Qwen reliability)
       ## Skill selection   decision-tree wrapper around `skills_ctx`
       ## Examples          ❌/✅ for the most common per-turn failures
@@ -105,13 +105,13 @@ def _load_doctrine_files() -> list[tuple[str, str]]:
     and are non-empty, in order. Missing or empty files are skipped — the
     user opts in to a slot by creating the file.
 
-    OWNER.md routes through `memory.load_owner()` so the gitignored
-    owner-private file (in `memory/`, not `src/physiclaw/agent/context/`) renders
+    USER.md routes through `memory.load_user()` so the gitignored
+    user-private file (in `memory/`, not `src/physiclaw/agent/context/`) renders
     inside `# Doctrine` from a single source of truth."""
     out: list[tuple[str, str]] = []
     for name in DOCTRINE_FILE_ORDER:
-        if name == "OWNER.md":
-            body = memory.load_owner()
+        if name == "USER.md":
+            body = memory.load_user()
         else:
             path = CONTEXT_DIR / name
             body = path.read_text().rstrip() if path.exists() else ""
@@ -187,7 +187,7 @@ def _render_examples() -> list[str]:
         "",
         "**Draft the plan and tick it step-by-step.** (Rationale in CONVENTION.md § The plan.)",
         "❌ Wrong: complete step 1, never call `update_progress` again, lose track at step 3. Or: tick after every tap (a step spans many taps; tick on intent-achieved, not per action).",
-        "✅ Right: after reading the IM, `[note, update_progress(owner_said=..., understanding=..., steps=[...])]` with every step statused (first step `in_progress`, rest `pending`). When the screen confirms a step's intent (add-to-cart toast appears, search results load, etc.): `[note, update_progress(steps=[...])]` flipping that step to `completed` and the next to `in_progress`.",
+        "✅ Right: after reading the IM, `[note, update_progress(user_said=..., understanding=..., steps=[...])]` with every step statused (first step `in_progress`, rest `pending`). When the screen confirms a step's intent (add-to-cart toast appears, search results load, etc.): `[note, update_progress(steps=[...])]` flipping that step to `completed` and the next to `in_progress`.",
         "",
         "**Only the latest screen survives.** Earlier peek/screenshot results get dropped from history.",
         "❌ Wrong: rely on a `peek` from three turns ago to plan the current tap.",

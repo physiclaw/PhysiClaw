@@ -16,7 +16,7 @@ The engine pins your plan at the tail of every request as `<plan>...</plan>`. Mu
 
 - **Draft once, up front** — right after reading the IM, full step list through `end_session`.
 - **Tick after every step** — the moment the screen confirms intent (cart toast, badge increment, page change), flip `completed` → next `in_progress` in the same call. Skip → risk re-doing the step (JD double-add pattern).
-- **Re-plan on shift** — unexpected screen, owner adjusts the ask, fallback path needed → re-emit `steps`. Pass only changed fields.
+- **Re-plan on shift** — unexpected screen, user adjusts the ask, fallback path needed → re-emit `steps`. Pass only changed fields.
 
 **One objective per step, concrete imperative.** Two shapes:
 
@@ -59,9 +59,9 @@ This is what makes `sequence` safe — each step's bbox is grounded in the listi
 2. **Back out** — `go_back` to the app's top, re-pick the entry.
 3. **Force-quit + reopen** — `force_quit` resets app state, then reopen the app fresh. Use when popups won't dismiss, the back stack loops, or the wrong page keeps returning.
 
-## Wait-retry for owner replies
+## Wait-retry for user replies
 
-Pattern: `wait(30-60)` → `peek` IM → no reply → `wait` again. **Max 3 attempts, ≤3 min total.** After that, escalate: `end_session(WAIT, ...)` + `create_job` for a minutes/hours-scale resume. Short waits keep you in-flow if the owner is engaged; the cap prevents holding the loop open when they've stepped away.
+Pattern: `wait(30-60)` → `peek` IM → no reply → `wait` again. **Max 3 attempts, ≤3 min total.** After that, escalate: `end_session(WAIT, ...)` + `create_job` for a minutes/hours-scale resume. Short waits keep you in-flow if the user is engaged; the cap prevents holding the loop open when they've stepped away.
 
 ## Session close
 

@@ -93,7 +93,7 @@ def create_job(
     """Append a new job section to jobs.md. Pure append — never edits or
     overwrites an existing entry.
 
-    Id format: `<owner>-<topic>-<YYYY-MM-DD>` — see JOBS.md § Id format.
+    Id format: `<user>-<topic>-<YYYY-MM-DD>` — see JOBS.md § Id format.
 
     Raises ValueError on duplicate id (even if the existing entry is
     terminal — the agent must pick a fresh id), invalid kind, invalid

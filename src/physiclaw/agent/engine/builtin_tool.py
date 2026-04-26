@@ -183,7 +183,7 @@ _UPDATE_PROGRESS = LocalTool(
     name="update_progress",
     description=(
         "Mutate the plan pinned at the tail of every request. Pass "
-        "any subset of `owner_said` (IM verbatim), `understanding` (one-line "
+        "any subset of `user_said` (IM verbatim), `understanding` (one-line "
         "read), `steps` (full ordered list of `{content, status}`). Status is "
         "`pending` / `in_progress` / `completed`; **exactly one step may be "
         "`in_progress`** — engine rejects violators.\n"
@@ -195,11 +195,11 @@ _UPDATE_PROGRESS = LocalTool(
     input_schema={
         "type": "object",
         "properties": {
-            "owner_said": {
+            "user_said": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1000,
-                "description": "What the owner literally said — quote the IM message.",
+                "description": "What the user literally said — quote the IM message.",
             },
             "understanding": {
                 "type": "string",
@@ -268,7 +268,7 @@ _SAVE_MEMORY = LocalTool(
     name="save_memory",
     description=(
         "Append a durable fact or preference to `memory/memory.md`. Use only "
-        "when the owner says 'remember this' or you learn a lasting preference "
+        "when the user says 'remember this' or you learn a lasting preference "
         "— not for session detail (that's `append_log`)."
     ),
     input_schema={
@@ -286,7 +286,7 @@ _CREATE_JOB = LocalTool(
     name="create_job",
     description=(
         "Schedule a follow-up in `jobs/jobs.md`. Use on WAIT to set the "
-        "resume check, or when the owner asks for a recurring task. See "
+        "resume check, or when the user asks for a recurring task. See "
         "JOBS for lifecycle and id format."
     ),
     input_schema={
@@ -406,7 +406,7 @@ _FINISH_JOB = LocalTool(
     name="finish_job",
     description=(
         "Mark a fired job as terminated. `status` is `done` (work complete), "
-        "`fail` (blocked / impossible), or `cancel` (no longer needed — owner "
+        "`fail` (blocked / impossible), or `cancel` (no longer needed — user "
         "changed mind, task already happened, or rescheduling). One per fired "
         "job per wake — engine never auto-marks. Periodic jobs reset to "
         "`pend` on done/fail; `cancel` is permanent. Raises on already-"
@@ -429,7 +429,7 @@ _WAIT = LocalTool(
     name="wait",
     description=(
         "Block 1–60s, then return. For short in-session waits when the "
-        "owner is actively engaged. **Your next call must be `peek`** — "
+        "user is actively engaged. **Your next call must be `peek`** — "
         "chaining `wait → wait` without observing is a bug. See CONVENTION "
         "§ Wait-retry for the full pattern (max 3 attempts, escalate via "
         "`end_session(WAIT)` + `create_job`)."
@@ -450,7 +450,7 @@ _END_SESSION = LocalTool(
     description=(
         "Close the session. `status` is one of: DONE (complete, verified), "
         "STUCK (blocker outside your control), FAIL (task cannot succeed), "
-        "IDLE (wake triggered, no work needed), WAIT (paused for owner reply "
+        "IDLE (wake triggered, no work needed), WAIT (paused for user reply "
         "— pair with `create_job` to auto-resume)."
     ),
     input_schema={

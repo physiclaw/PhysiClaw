@@ -46,4 +46,4 @@ App-specific input fields (text-input bbox, paste-popover position) live in each
 
 ## Setup
 
-If a tool returns "Hardware not set up", tell the owner to run `/setup`.
+If a tool returns "Hardware not set up", tell the user to run `/setup`.

@@ -1,7 +1,7 @@
 """Memory retrieval + update for the engine.
 
 Read paths:
-  - `load_owner` — `memory/OWNER.md`. Routed through the doctrine renderer
+  - `load_user` — `memory/USER.md`. Routed through the doctrine renderer
     so it appears as a slot inside `# Doctrine`.
   - `load_persistent` — `memory/memory.md`. Auto-injected at session start.
   - `load_recent_entries` — last N entries across `memory/YYYY-MM-DD.md`
@@ -20,17 +20,17 @@ from physiclaw.config import CONFIG
 
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = MEMORY_DIR / "memory.md"
-OWNER_FILE = MEMORY_DIR / "OWNER.md"
+USER_FILE = MEMORY_DIR / "USER.md"
 
 # `read_logs` default. Counts entry lines (one log step), not files —
 # a low-activity recent day spills into older days until N is reached.
-# Owner-tunable via `[memory] default_log_entries` in config.toml.
+# User-tunable via `[memory] default_log_entries` in config.toml.
 DEFAULT_LOG_ENTRIES = CONFIG.memory.default_log_entries
 
 # How many log entries to preload into the memory slot at session
 # bootstrap. Smaller than `DEFAULT_LOG_ENTRIES` because every wake pays
 # this in prompt tokens whether the agent needs the history or not;
-# the agent can always call `read_logs` for a deeper window. Owner-
+# the agent can always call `read_logs` for a deeper window. User-
 # tunable via `[memory] bootstrap_log_entries` in config.toml.
 BOOTSTRAP_LOG_ENTRIES = CONFIG.memory.bootstrap_log_entries
 
@@ -45,12 +45,12 @@ _LOOKBACK_DAYS_CEILING = 365
 _TIME_PREFIX_RE = re.compile(r"^\[(\d{2}:\d{2})\]\s*(.*)$")
 
 
-def load_owner() -> str:
-    """`memory/OWNER.md` body, or "" if missing/empty. Called by the
-    doctrine renderer for the OWNER.md slot."""
-    if not OWNER_FILE.exists():
+def load_user() -> str:
+    """`memory/USER.md` body, or "" if missing/empty. Called by the
+    doctrine renderer for the USER.md slot."""
+    if not USER_FILE.exists():
         return ""
-    return OWNER_FILE.read_text().strip()
+    return USER_FILE.read_text().strip()
 
 
 def load_persistent() -> str:

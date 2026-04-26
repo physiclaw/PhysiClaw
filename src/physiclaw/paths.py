@@ -8,7 +8,7 @@ Layout::
 
     ~/.physiclaw/
     ├── calibration/{bundle.json, cache/}
-    ├── memory/{memory.md, OWNER.md, YYYY-MM-DD.md}
+    ├── memory/{memory.md, USER.md, YYYY-MM-DD.md}
     ├── jobs/jobs.md
     ├── models/omniparser_icon_detect/model.onnx
     ├── skills/<name>/SKILL.md           (user-authored; overrides bundled)

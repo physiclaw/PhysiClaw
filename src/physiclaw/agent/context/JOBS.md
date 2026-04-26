@@ -19,7 +19,7 @@ The engine never auto-marks. Every fired job in this wake needs an explicit `fin
 
 ## Id format
 
-`<owner>-<topic>-<YYYY-MM-DD>` — lowercase letters, digits, hyphens only. Example: `alice-water-plants-2026-05-01`. The date keeps recurring topics unique without `-v2` suffixes.
+`<user>-<topic>-<YYYY-MM-DD>` — lowercase letters, digits, hyphens only. Example: `alice-water-plants-2026-05-01`. The date keeps recurring topics unique without `-v2` suffixes.
 
 ## Immutability
 

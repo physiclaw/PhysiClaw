@@ -11,7 +11,7 @@ Each step is one `[note, one-other]` turn. Placeholders refer to **Fixed element
 
 ## Steps
 
-1. `send_to_clipboard(text="<app name>")` — use the exact text the owner asked for.
+1. `send_to_clipboard(text="<app name>")` — use the exact text the user asked for.
 2. `home_screen()` — return to a clean launch pad. **Skip if already on the home screen** (peek shows app-icon grid + dock, no in-app chrome) — physical motion is ~2s; don't waste it.
 3. `swipe(bbox=<spotlight-pull>, direction="down", size="l")` — open Spotlight. Mid-screen origin (the top edge opens Notification Center instead). `size="l"` (~4cm) avoids overshoot.
 4. `peek()` — search field + keyboard should be visible.

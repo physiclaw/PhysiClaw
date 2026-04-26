@@ -10,7 +10,7 @@ Two stores, different purposes. Mutated only via tools — no file-edit access t
 ## When to write
 
 - `append_log` after every major step (purchase placed, message sent, item added, decision recorded), AND once at session close on DONE / STUCK / FAIL. Per-step entries are how a future wake recovers partial progress when a session ends STUCK halfway.
-- `save_memory` only when the owner says "remember this" or a lasting preference comes up. Don't dump session detail here — that's the daily log.
+- `save_memory` only when the user says "remember this" or a lasting preference comes up. Don't dump session detail here — that's the daily log.
 
 ## Format
 

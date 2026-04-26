@@ -205,10 +205,10 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         On failure, don't retry — every other tool needs the phone
         unlocked. Close out:
           1. `append_log("[HH:MM] tried unlock_phone — failed")`
-          2. `end_session("STUCK", "phone unlock failed — owner needs
+          2. `end_session("STUCK", "phone unlock failed — user needs
              passcode 111111 or auto-lock disabled")`
 
-        Owner fix: set passcode to `111111`, or disable auto-lock
+        User fix: set passcode to `111111`, or disable auto-lock
         (Settings → Display & Brightness → Auto-Lock → Never;
         trade-off: faster display wear).
         """
