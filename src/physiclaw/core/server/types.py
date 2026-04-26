@@ -2,19 +2,22 @@
 
 FastMCP propagates the `Field(...)` constraints (ge/le/min_length/etc.)
 into each tool's JSONSchema, which the model sees via the `tools=[...]`
-API. The engine-side validator (src/physiclaw/agent/engine/validator.py) enforces the
-same schema before dispatch. The `AfterValidator` catches cross-element
-constraints JSONSchema can't express (e.g. left < right).
+API. The engine-side validator (src/physiclaw/agent/engine/validator.py)
+enforces the same schema before dispatch AND catches cross-element
+constraints JSONSchema can't express (e.g. left < right) — failing
+there produces a clean `invalid arguments` tool_result the agent can
+self-correct from, vs. a Pydantic ValidationError from the MCP layer.
+The orchestrator runs `validate_bbox` again as defense-in-depth before
+any GRBL move.
 """
 from typing import Annotated
 
-from pydantic import AfterValidator, Field
-
-from physiclaw.core.vision.util import validate_bbox
+from pydantic import Field
 
 # Each bbox coordinate in [0, 1]. FastMCP emits `minimum`/`maximum` for
-# each item; `min_length`/`max_length` for the outer list; description +
-# the AfterValidator chain for the left<right / top<bottom cross-element rule.
+# each item and `min_length`/`max_length` for the outer list. The
+# left<right / top<bottom invariant lives in the engine validator and
+# the orchestrator — see module docstring.
 _BboxCoord = Annotated[float, Field(ge=0.0, le=1.0)]
 
 Bbox = Annotated[
@@ -26,7 +29,6 @@ Bbox = Annotated[
         ),
         min_length=4, max_length=4,
     ),
-    AfterValidator(validate_bbox),
 ]
 
 

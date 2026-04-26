@@ -37,8 +37,13 @@ def _is_number(v: Any) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-def validate_arguments(args: dict[str, Any], schema: dict[str, Any]) -> None:
+def validate_arguments(args: Any, schema: dict[str, Any]) -> None:
     """Check `args` against a JSONSchema `schema`. Raises ValidationError.
+
+    `args` is typed `Any` because it crosses a trust boundary — the data
+    is JSON-decoded LLM output, so a wrong top-level type (list, string,
+    null) is a possibility we have to defend against, even though every
+    in-process caller passes a dict.
 
     The schema is expected to look like:
         {
@@ -64,6 +69,20 @@ def validate_arguments(args: dict[str, Any], schema: dict[str, Any]) -> None:
             # true in JSONSchema). Strict mode could reject here.
             continue
         _check_value(key, value, prop)
+
+    # Cross-element invariants JSONSchema can't express. The orchestrator
+    # runs the same check at gesture time as defense-in-depth.
+    bbox = args.get("bbox")
+    if isinstance(bbox, list) and len(bbox) == 4 and all(_is_number(x) for x in bbox):
+        l, t, r, b = bbox
+        if l >= r:
+            raise ValidationError(
+                f"bbox: must have left < right, got [{l}, {t}, {r}, {b}]"
+            )
+        if t >= b:
+            raise ValidationError(
+                f"bbox: must have top < bottom, got [{l}, {t}, {r}, {b}]"
+            )
 
 
 def _check_value(key: str, value: Any, prop: dict[str, Any]) -> None:
