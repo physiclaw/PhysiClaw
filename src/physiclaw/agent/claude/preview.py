@@ -66,6 +66,14 @@ def claude_preview(
     minus the subprocess. The plugin dir is kept under TMPDIR for manual
     inspection; its path is echoed at the end.
     """
+    from physiclaw.config import model_ref_with_source, parse_model_ref
+    try:
+        ref, _ = model_ref_with_source()
+        _, model_id = parse_model_ref(ref)
+    except (RuntimeError, ValueError) as e:
+        typer.echo(warn(f"agent.model not set or invalid: {e}"))
+        raise typer.Exit(2) from None
+
     trig = Trigger(source="manual", description=trigger)
     sid = "preview"
 
@@ -81,6 +89,7 @@ def claude_preview(
             plugin_dir=plugin_dir,
             system_prompt=system_prompt,
             mcp_tools=mcp_tools,
+            model_id=model_id,
         )
     except FileNotFoundError as e:
         typer.echo(warn(str(e)))

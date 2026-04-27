@@ -72,9 +72,9 @@ class AgentConfig:
 
     ``model`` is a ``provider/model`` ref, e.g. ``"qwen/qwen3.6-plus"`` or
     ``"claude-code/claude-sonnet-4-6"``. The first segment selects the
-    engine + provider; the second selects the model within that provider's
-    catalog. Empty string means "use ``PHYSICLAW_MODEL`` env var, then
-    fail loudly" — there is no universal default.
+    engine + provider; the second is the model id passed to that
+    provider verbatim. Empty string means "use ``PHYSICLAW_MODEL`` env
+    var, then fail loudly" — there is no universal default.
     """
 
     model: str = ""
@@ -84,14 +84,12 @@ class AgentConfig:
 class ProviderConfig:
     """Per-provider credentials (only).
 
-    Empty strings mean "fall back to env / built-in default" — see the
-    ``*_api_key()`` helpers below for resolution order. Provider/model
-    selection lives under ``[agent] model``.
+    Empty strings mean "fall back to env" — see ``resolve_provider_key``
+    for the env-var → config-key precedence each provider applies.
+    Provider/model selection lives under ``[agent] model``.
 
-    Field names match the provider id (qwen/moonshot/openai/anthropic) —
-    same convention OpenClaw uses. Today only ``qwen_api_key`` is wired
-    to working code; the others are accepted for forward compatibility
-    but read by nothing until those providers are de-stubbed.
+    Field names match the provider id (qwen/moonshot/openai/anthropic/
+    google/deepseek) — same convention OpenClaw uses.
     """
 
     qwen_api_key: str = ""
@@ -165,6 +163,13 @@ _SECTION_TYPES: dict[str, type] = {
 }
 
 
+# Top-level sections parsed elsewhere — accepted by the loader but
+# skipped by the dataclass validator. `providers` holds per-provider
+# overrides like `[providers.<id>] base_url = "..."` (read directly via
+# `provider_base_url_override`).
+_FREEFORM_SECTIONS: frozenset[str] = frozenset({"providers"})
+
+
 _FILE_HEADER = """\
 # PhysiClaw config. Edit with `physiclaw config edit`. Changes apply on
 # next `physiclaw server` start. Delete a key to revert to the built-in
@@ -229,7 +234,7 @@ def load(path: Path | None = None) -> Config:
     except (OSError, tomllib.TOMLDecodeError) as e:
         raise ConfigError(f"failed to read {path}: {e}") from e
 
-    unknown_sections = set(raw) - set(_SECTION_TYPES)
+    unknown_sections = set(raw) - set(_SECTION_TYPES) - _FREEFORM_SECTIONS
     if unknown_sections:
         raise ConfigError(
             f"unknown section(s) in {path}: {sorted(unknown_sections)} — "
@@ -376,7 +381,28 @@ def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
         doc.add(section, tomlkit.table())
     doc[section][field_name] = coerced
     path.write_text(tomlkit.dumps(doc))
-    load(path)  # re-validate; raises ConfigError on schema drift
+    # Refresh module-level CONFIG so same-process callers see the write
+    # (re-import wouldn't trigger between CLI commands and immediate use).
+    global CONFIG
+    CONFIG = load(path)
+
+
+def provider_base_url_override(provider_id: str) -> str | None:
+    """Read `[providers.<provider_id>] base_url` from user config.toml.
+    Lets users point a builtin provider at a proxy / alt endpoint
+    (e.g. Moonshot's .ai vs .cn). Returns None when unset or the file
+    is absent. Called once at provider construction — no caching."""
+    path = config_path()
+    try:
+        raw = path.read_text()
+    except (FileNotFoundError, OSError):
+        return None
+    try:
+        doc = tomllib.loads(raw)
+    except tomllib.TOMLDecodeError:
+        return None
+    val = doc.get("providers", {}).get(provider_id, {}).get("base_url")
+    return val if isinstance(val, str) else None
 
 
 def unset_dotted(dotted: str, path: Path | None = None) -> bool:
@@ -394,7 +420,8 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
         return False
     del doc[section][field_name]
     path.write_text(tomlkit.dumps(doc))
-    load(path)  # re-validate
+    global CONFIG
+    CONFIG = load(path)
     return True
 
 
@@ -487,16 +514,6 @@ def resolve_provider_key(
     return None, None
 
 
-def qwen_api_key() -> str | None:
-    """Resolve Qwen credential: QWEN_API_KEY > DASHSCOPE_API_KEY > config > None."""
-    return resolve_provider_key(("QWEN_API_KEY", "DASHSCOPE_API_KEY"), "qwen_api_key")[0]
-
-
-def qwen_api_key_source() -> str | None:
-    """Where ``qwen_api_key()`` found a value, or None if unset."""
-    return resolve_provider_key(("QWEN_API_KEY", "DASHSCOPE_API_KEY"), "qwen_api_key")[1]
-
-
 __all__ = [
     "CONFIG",
     "Config",
@@ -508,9 +525,8 @@ __all__ = [
     "model_ref",
     "model_ref_with_source",
     "parse_model_ref",
-    "qwen_api_key",
+    "provider_base_url_override",
     "resolve_provider_key",
-    "qwen_api_key_source",
     "set_dotted",
     "to_toml",
     "unset_dotted",

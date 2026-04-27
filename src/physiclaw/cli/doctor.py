@@ -184,28 +184,74 @@ def _skills_lines() -> list[str]:
     return out
 
 
-def _probe_provider_chat_deep(provider_id: str, model_id: str) -> str:
-    """Send a real `provider.chat()` round-trip — proves network, auth,
-    billing, AND model response in one shot. Uses the same code path as
-    a live wake (DTO history → provider.serialize_history → chat → parse).
-    Reports model latency + token usage + a short reply preview so a bad
-    response (e.g. tool-only output, content-filter, length-truncated)
-    is visible inline."""
+# 96x24 PNG, "PhysiClaw" black-on-white in 14pt Arial Bold. ~1.1 KB.
+# The probe asks the model to read the word back — confirms not just
+# that the wire accepts image_url, but that the model can actually see
+# (and OCR) what it received.
+_PROBE_IMAGE_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAGAAAAAYCAIAAACKi2/DAAAEQ0lEQVR42u2Y2yt0exjHv2stLcyi"
+    "aCQih2kKpZkmkVvmDpFElEYM01zIP+BwxYUYSU5RbswIFw45xIU7KXKDnJXcGKdmxiGnMfPsi197"
+    "7dnjfXdv70vZmu/d+v2eeQ6f+f2e9bQ4IkJAPxcfQBAAFAAUABQA9P8BFBQUxHEcx3E8zwcHB6tU"
+    "qp6eHrbFcVxUVNSHRPVzdXBwUFFRER0dLYpiSkpKe3u7x+P58KC/Kfq3BEF4bzM5OcmmAaVSSR+t"
+    "jY2N8PBwv4g1NTVs95OC/rp+DOj+/t7r9drt9tLSUgCVlZVyrisrK2q1WpKkuro6t9tNRHq9HsDC"
+    "wgLzUF9fD2BoaIiIRkZGUlNTQ0JCoqOjDQbD7e3t+7K1Wi2A/Pz8o6Mjl8vV1NTEGO3t7flZLi4u"
+    "6nS60NDQsLAwvV5/fHxMRBkZGYIguFwuOXRLSwsRHR4eAsjNzf0sQB6P5/LysrCw0BdQSEiI779t"
+    "s9mIaHh4GIDJZGIekpKSBEG4vr7e3NzkOM73XBgMBj9A+/v7ACRJcjqdcg55eXnd3d1PT0++lna7"
+    "PTg42NdbXl4eETU3NwOYmZkhIo1GA0Cv1xNRf38/AIvF8imA/DQ/Py8P3G1tbQ6Hw2g0AmhoaCAi"
+    "h8MhimJsbKzX693e3pZTHB8fB2A0Gl9fX/2j/l327OwsAJ1O99P83l0xr9e7u7sLQK1WE9Ha2hrL"
+    "xOl08jzPcZwkSW63u6SkhHW3zwLEcZxCodBqtaOjo3Kuoii+vb0R0eTkJIDa2lq2VVBQAGB9fb2t"
+    "rQ3A4OAgEd3c3CQnJ7MK2aG4v7/3K3t6ehqAVqv9FUB3d3dWq9VsNqelpQGIj48nIo/Ho1Qq09PT"
+    "5+bmABQVFQHY2NhQKpUqleoTe9B/58oKMxqN7NFmswFobGzMzs4WBOHy8pKtu1yuoaGh8vLypKQk"
+    "ABkZGX6utra2ACgUCofDIQcqKSnp6Oh4fHz0tTw/P1er1Tqdbnx8/PT0lOf5hIQEZl9RUQGgqqqK"
+    "47j19XV2l+UD/iUAPTw8KBSKxMREnudzcnLe/9Zut0dERABgfVp25fV6U1NTARQUFJycnNzd3bW2"
+    "trLzu7u762tpsVgAVFdX397eDgwMAEhMTGTOR0dHAQiCoNFoiCgmJoZVsby8/FUAEVFZWRm7m/39"
+    "/Wylr6/Pr5fJvcbX1erqqkKh8LM0m81+lmNjY/8MbzwfFhYme7i6uuJ5HkB9fT0RsTevJEnPz89f"
+    "CBBb4Xn+4uJCXuzu7k5LS2Ov+dLS0rOzsx+23p2dneLi4sjIyNDQ0PT09K6uLo/H42f59vZmNpsj"
+    "IiLi4uKsVmtxcTGAo6MjZpaVlQVgYmKCiHp7ewEUFhZ+yhz021paWgKQmZlJ30tBfz6LPz09ud3u"
+    "zs5OAPJF+z76c8ZTU1OiKEZGRppMppeXl292grjAJ9fA544AoACgAKCvq78Atz3+gKHHygsAAAAA"
+    "SUVORK5CYII="
+)
+
+
+_PROBE_IMAGE_WORD = "PhysiClaw"
+
+
+def _probe_provider_deep(provider_id: str, model_id: str) -> str:
+    """One round-trip with text + a tiny inline image — exercises the
+    full path PhysiClaw needs (network, auth, billing, vision input,
+    text output). PhysiClaw requires vision on every peek, so a text-
+    only probe wouldn't add coverage.
+
+    The probe asks the model to read the word in the image (`PhysiClaw`)
+    and validates the reply contains it. "Non-empty reply" alone isn't
+    enough: some endpoints (e.g. DashScope's compat shim for text-only
+    Qwen models) accept image_url parts and silently drop them server-
+    side, then hallucinate an answer. Demanding the actual word back
+    catches that case.
+    """
     import asyncio
     import time
 
-    from physiclaw.agent.engine.dto import SystemMessage, UserMessage
+    from physiclaw.agent.engine.dto import (
+        ImageBlock,
+        SystemMessage,
+        TextBlock,
+        UserMessage,
+    )
     from physiclaw.agent.engine.trace import brief
     from physiclaw.agent.provider import make_provider
 
     try:
         prov = make_provider(provider_id, model_id)
     except (ValueError, RuntimeError) as e:
-        return _fmt_warn(f"{provider_id}/{model_id} api: setup — {e}")
+        return _fmt_warn(f"{provider_id}/{model_id}: setup — {e}")
 
     history = [
-        SystemMessage(content="You are a one-word reply bot. Reply with exactly one word."),
-        UserMessage(content="Reply with the word 'pong'."),
+        SystemMessage(content="You are a one-word reply bot."),
+        UserMessage(content=[
+            TextBlock(text="What word is in this image? Reply with just the word."),
+            ImageBlock(media_type="image/png", data_b64=_PROBE_IMAGE_B64),
+        ]),
     ]
 
     async def _run():
@@ -218,28 +264,31 @@ def _probe_provider_chat_deep(provider_id: str, model_id: str) -> str:
     try:
         asst = asyncio.run(_run())
     except Exception as e:
-        # Provider raised — could be transport (network), auth (401/403),
-        # billing (402 / vendor-specific), or rate limit (429). Surface the
-        # message so the user sees which.
         return _fmt_warn(
-            f"{provider_id}/{model_id} api: {type(e).__name__}: {brief(str(e), 120)}"
+            f"{provider_id}/{model_id}: {type(e).__name__}: {brief(str(e), 140)}"
         )
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
     reply = (asst.content or "").strip().replace("\n", " ")
-    if not reply and not asst.tool_calls:
+    if not reply:
         return _fmt_warn(
-            f"{provider_id}/{model_id} api: empty reply (finish={asst.finish_reason}, "
-            f"{elapsed_ms}ms)"
+            f"{provider_id}/{model_id}: empty reply "
+            f"(finish={asst.finish_reason}, {elapsed_ms}ms)"
         )
-    preview = brief(reply, 40) if reply else f"<{len(asst.tool_calls)} tool_calls>"
+    if _PROBE_IMAGE_WORD.lower() not in reply.lower():
+        return _fmt_warn(
+            f"{provider_id}/{model_id}: vision check failed — expected "
+            f"{_PROBE_IMAGE_WORD!r} in reply, got {brief(reply, 60)!r} "
+            f"({elapsed_ms}ms). Likely a text-only model that silently "
+            "drops images."
+        )
     u = asst.usage
     usage_str = (
         f"{u.prompt_tokens}p+{u.completion_tokens}c"
-        if u.prompt_tokens else "no usage reported"
+        if u.prompt_tokens else "no usage"
     )
     return _fmt_ok(
-        f"{provider_id}/{model_id} api: reply={preview!r} "
+        f"{provider_id}/{model_id}: reply={brief(reply, 40)!r} "
         f"({elapsed_ms}ms, {usage_str})"
     )
 
@@ -417,7 +466,7 @@ def doctor(
         else:
             typer.echo(_fmt_ok(f"{active_provider} api key: {masked} ({source})"))
             if deep and active_model:
-                typer.echo(_probe_provider_chat_deep(active_provider, active_model))
+                typer.echo(_probe_provider_deep(active_provider, active_model))
 
     typer.echo()
     typer.echo(_fmt_section("Skills"))

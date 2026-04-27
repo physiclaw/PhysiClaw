@@ -7,24 +7,22 @@ model-relevant TOML fields:
   - ``[provider] *_api_key``    → ``physiclaw models key <provider> [val]``
                                   / ``physiclaw models keys``
 
-Validates against the per-provider ``MODELS`` tuple before writing, so a
-typo fails at set-time instead of the next ``physiclaw server`` start.
+Models come from each vendor's live ``/v1/models`` endpoint, cached
+locally by ``physiclaw models discover <provider>`` (and automatically
+by ``models key`` right after writing the key). PhysiClaw doesn't ship
+a curated model list — discovery is the source of truth.
 
 Subcommands:
 
   - ``physiclaw models``                — bare: active ref + source +
-                                          catalog row + key status for
-                                          the active provider
-  - ``physiclaw models list [provider]``— all `provider/model` refs;
-                                          optional filter to one provider
-  - ``physiclaw models use <ref|keyword>``
-                                        — switch active model. ``<ref>``
-                                          is an exact ``provider/model``
-                                          string; a bare keyword (no
-                                          slash) substring-matches every
-                                          catalog ref and resolves
-                                          when unique
-                                          (alias: ``set``)
+                                          key status for active provider
+  - ``physiclaw models list [provider]``— per-provider discovery cache
+  - ``physiclaw models use <provider/model>``
+                                        — switch active model. Exact
+                                          ref required (e.g.
+                                          ``openai/gpt-5.4``). Run
+                                          ``models list`` to see
+                                          candidates. (alias: ``set``)
   - ``physiclaw models key <provider> [<value>]``
                                         — set provider API key;
                                           prompts with hidden input if
@@ -32,6 +30,8 @@ Subcommands:
   - ``physiclaw models keys``           — list every provider's key
                                           status (env / config / unset),
                                           values masked
+  - ``physiclaw models discover <provider>``
+                                        — re-fetch the live model list
 """
 from typing import Annotated
 
@@ -50,23 +50,6 @@ models_app = typer.Typer(
     invoke_without_command=True,
     add_completion=False,
 )
-
-
-def _format_model_row(provider_id: str, m_id: str, *, indent: int = 2) -> str:
-    from physiclaw.agent.provider import provider_class
-    cls = provider_class(provider_id)
-    if cls is None:
-        return " " * indent + f"{provider_id}/{m_id}"
-    entry = cls.find_model(m_id)
-    if entry is None:
-        return " " * indent + f"{provider_id}/{m_id}  (not in catalog)"
-    bits = []
-    if entry.reasoning:
-        bits.append("reasoning")
-    if entry.context_window is not None:
-        bits.append(f"ctx={entry.context_window:,}")
-    suffix = f"  [{' · '.join(bits)}]" if bits else ""
-    return " " * indent + f"{provider_id}/{m_id}{suffix}"
 
 
 def _key_config_path(provider_id: str) -> str:
@@ -105,7 +88,7 @@ def _root(ctx: typer.Context) -> None:
         typer.echo(warn(f"{ref} (from {source}) — invalid ref: {e}"))
         return
     typer.echo(ok(f"{ref}  (from {source})"))
-    typer.echo(_format_model_row(provider_id, model_id, indent=2))
+    typer.echo(f"  {provider_id}/{model_id}")
     typer.echo(_format_key_row(provider_id, indent=2))
 
 
@@ -118,89 +101,60 @@ def _list(
         ),
     ] = None,
 ) -> None:
-    """List `provider/model` refs declared in each provider's catalog.
+    """List discovered models per provider.
 
-    Stubs (moonshot, openai) are included — their catalog entries are valid
-    targets for `models use`, but server start will fail until their
-    `_api_key()` is wired up.
+    Reads each provider's discovery cache. If a provider has never been
+    discovered, prints a hint to run `physiclaw models discover`.
     """
     from physiclaw.agent.provider import (
         CLAUDE_CODE_ID,
+        discovered,
         in_process_provider_ids,
-        provider_class,
+        is_known,
     )
 
-    if provider is not None and provider == CLAUDE_CODE_ID:
-        # claude-code has no in-process catalog — model selection is
-        # whatever the `claude` CLI accepts. Show a hint instead of
-        # silently empty output.
+    if provider == CLAUDE_CODE_ID:
         typer.echo(info(
-            "claude-code has no in-process catalog — pass any model id "
+            "claude-code has no discovery list — pass any model id "
             "the `claude` CLI accepts, e.g. `claude-code/claude-sonnet-4-6`."
         ))
         return
+    if provider is not None and not is_known(provider):
+        typer.echo(warn(f"unknown provider {provider!r}; "
+                        f"known: {in_process_provider_ids()}"))
+        raise typer.Exit(code=1)
+
     targets = (provider,) if provider else in_process_provider_ids()
     for pid in targets:
-        cls = provider_class(pid)
-        if cls is None:
-            typer.echo(warn(f"unknown provider {pid!r}; "
-                            f"known: {in_process_provider_ids()}"))
-            raise typer.Exit(code=1)
         typer.echo(section(pid))
-        for entry in cls.MODELS:
-            typer.echo(_format_model_row(pid, entry.id, indent=2))
+        ids = sorted(discovered.model_ids(pid))
+        if not ids:
+            typer.echo(f"  (no discovery cache — run `physiclaw models discover {pid}`)")
+        else:
+            for mid in ids:
+                typer.echo(f"  {pid}/{mid}")
         typer.echo()
 
 
-def _resolve_query(query: str) -> str:
-    """Resolve a user-supplied query to a canonical `provider/model` ref.
-
-    Slash present → treat as exact ref (caller validates against catalog).
-    No slash → case-insensitive substring search across every in-process
-    provider's catalog; resolve only if exactly one ref matches.
-    """
-    if "/" in query:
-        return query
-    from physiclaw.agent.provider import in_process_provider_ids, provider_class
-    needle = query.lower()
-    matches: list[str] = []
-    for pid in in_process_provider_ids():
-        cls = provider_class(pid)
-        if cls is None:
-            continue
-        for entry in cls.MODELS:
-            ref = f"{pid}/{entry.id}"
-            if needle in ref.lower():
-                matches.append(ref)
-    if not matches:
-        typer.echo(
-            f"error: no model matches {query!r}\n"
-            "  run `physiclaw models list` to see available refs.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    if len(matches) > 1:
-        listing = "\n".join(f"  {m}" for m in matches)
-        typer.echo(
-            f"error: {query!r} is ambiguous — matches:\n{listing}\n"
-            "  pass the full `provider/model` ref to disambiguate.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    return matches[0]
-
-
-def _use_impl(query: str) -> None:
-    """Switch the active model — resolves keyword (or accepts an exact
-    ref), validates against the provider's catalog, and writes to
-    `[agent] model`. Use `physiclaw models list` to see available refs."""
+def _use_impl(ref: str) -> None:
+    """Switch the active model — validates the `provider/model` ref
+    against the discovery cache and writes to `[agent] model`. Run
+    `physiclaw models discover <provider>` first if the cache is empty."""
     from physiclaw.agent.provider import (
         CLAUDE_CODE_ID,
+        discovered,
         in_process_provider_ids,
-        provider_class,
+        is_known,
     )
 
-    ref = _resolve_query(query)
+    if "/" not in ref:
+        typer.echo(
+            f"error: {ref!r} is not a `provider/model` ref. "
+            "Pass an exact ref like `openai/gpt-5.4` "
+            "(run `physiclaw models list` to see candidates).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     try:
         provider_id, model_id = _config.parse_model_ref(ref)
@@ -208,22 +162,20 @@ def _use_impl(query: str) -> None:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
 
-    # claude-code has no in-process catalog; trust the claude CLI to
-    # validate the model id at spawn time.
+    # claude-code has no discovery — trust the claude CLI to validate at spawn.
     if provider_id != CLAUDE_CODE_ID:
-        cls = provider_class(provider_id)
-        if cls is None:
+        if not is_known(provider_id):
             known = (*in_process_provider_ids(), CLAUDE_CODE_ID)
             typer.echo(
                 f"error: unknown provider {provider_id!r} (known: {known})",
                 err=True,
             )
             raise typer.Exit(code=1)
-        if not cls.has_model(model_id):
-            known = ", ".join(m.id for m in cls.MODELS)
+        if not discovered.is_cached(provider_id, model_id):
             typer.echo(
-                f"error: model {model_id!r} not in {provider_id} catalog "
-                f"(known: {known})",
+                f"error: model {model_id!r} not in {provider_id} discovery cache.\n"
+                f"  hint: run `physiclaw models discover {provider_id}` "
+                "to refresh the live list, then retry.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -233,31 +185,26 @@ def _use_impl(query: str) -> None:
     except _config.ConfigError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
-    if ref != query:
-        typer.echo(ok(f"matched {query!r} → {ref}"))
     typer.echo(ok(f"agent.model = {ref}"))
-    typer.echo(_format_model_row(provider_id, model_id, indent=2))
+    typer.echo(f"  {provider_id}/{model_id}")
     typer.echo("Restart `physiclaw server` to apply.")
 
 
 @models_app.command("use")
 def _use(
-    query: Annotated[
+    ref: Annotated[
         str,
         typer.Argument(
-            help="Exact `provider/model` ref OR a unique keyword "
-                 "(e.g. `kimi`, `qwen3-max`, `sonnet`).",
+            help="Exact `provider/model` ref, e.g. `openai/gpt-5.4` "
+                 "or `claude-code/claude-sonnet-4-6`.",
         ),
     ],
 ) -> None:
-    """Switch the active model. Pass an exact `provider/model` ref or a
-    keyword that uniquely matches one catalog entry. Run `physiclaw
-    models list` to see all refs."""
-    _use_impl(query)
+    """Switch the active model. Pass an exact `provider/model` ref. Run
+    `physiclaw models list` to see candidates."""
+    _use_impl(ref)
 
 
-# `set` retained as a hidden alias for one release — early users +
-# docs referenced it before the rename. Same function under two names.
 models_app.command("set", hidden=True)(_use)
 
 
@@ -278,10 +225,10 @@ def _key(
     """Set the API key for one provider — writes
     `[provider] <id>_api_key`. Prompts with hidden input if `value` is
     omitted; that's the safer default since shell history retains
-    args."""
-    from physiclaw.agent.provider import in_process_provider_ids, provider_class
-    cls = provider_class(provider)
-    if cls is None:
+    args. After writing, fetches the live model list from the
+    provider's API so you can pick one with `models use` immediately."""
+    from physiclaw.agent.provider import in_process_provider_ids, is_known
+    if not is_known(provider):
         known = ", ".join(in_process_provider_ids())
         typer.echo(
             f"error: unknown provider {provider!r} (known: {known})",
@@ -297,7 +244,47 @@ def _key(
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
     typer.echo(ok(f"{path} set"))
-    typer.echo("Restart `physiclaw server` to apply.")
+    typer.echo()
+    try:
+        models = _fetch_live_models(provider)
+    except Exception as e:
+        typer.echo(warn(f"couldn't fetch live models — {type(e).__name__}: {e}"))
+        typer.echo(next_hint(f"physiclaw models discover {provider}"))
+        return
+    _print_live_models_table(provider, models)
+
+
+def _fetch_live_models(provider: str) -> list[dict]:
+    """Build a provider client and fetch its `/v1/models` list. Raises
+    on any failure (caller decides whether fatal)."""
+    import asyncio
+
+    from physiclaw.agent.provider import provider_class
+    cls = provider_class(provider)
+    p = cls(model="")
+
+    async def _run():
+        try:
+            return await p.list_models()
+        finally:
+            await p.aclose()
+
+    return asyncio.run(_run())
+
+
+def _print_live_models_table(provider: str, models: list[dict]) -> None:
+    """Save the live list to the discovery cache and print it."""
+    from physiclaw.agent.provider import discovered
+    discovered.save(provider, models)
+
+    typer.echo(section(f"{provider} — {len(models)} model(s) live"))
+    for m in models:
+        typer.echo(f"    {m.get('id', '')}")
+    typer.echo()
+    typer.echo(next_hint(f"physiclaw models use {provider}/<id>           # pick one"))
+    typer.echo(next_hint(
+        f"physiclaw models discover {provider}     # re-fetch later for new releases"
+    ))
 
 
 @models_app.command("keys")
@@ -309,6 +296,36 @@ def _keys() -> None:
     typer.echo(section("Provider API keys"))
     for pid in in_process_provider_ids():
         typer.echo(_format_key_row(pid, indent=2))
+
+
+@models_app.command("discover")
+def _discover(
+    provider: Annotated[
+        str,
+        typer.Argument(help="Provider id, e.g. `openai`, `qwen`, `anthropic`."),
+    ],
+) -> None:
+    """Fetch the live model list from <provider>'s API.
+
+    `models key` runs this automatically after writing a key, so this is
+    mostly for re-checking later when new releases land.
+    """
+    from physiclaw.agent.provider import in_process_provider_ids, is_known
+
+    if not is_known(provider):
+        typer.echo(
+            f"error: unknown provider {provider!r} "
+            f"(known: {', '.join(in_process_provider_ids())})",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        models = _fetch_live_models(provider)
+    except Exception as e:
+        typer.echo(f"error: discover failed — {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(code=1)
+    _print_live_models_table(provider, models)
 
 
 __all__ = ["models_app"]

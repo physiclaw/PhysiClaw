@@ -7,9 +7,9 @@ company), not the brand. So `openai` (not `chatgpt`), `moonshot` (not
 concept (subprocess engine, not direct Anthropic API).
 
 Layout:
-  - `provider_base.py`     — `Provider` Protocol, `ModelEntry`, errors,
-                             `BaseProvider` (catalog + auth +
-                             system-prompt fragment hooks +
+  - `provider_base.py`     — `Provider` Protocol, errors,
+                             `BaseProvider` (auth + HTTP-client +
+                             `system_prompt_fragment` hook +
                              `serialize_history` template)
   - `openai_compat.py`     — `OpenAICompatibleProvider`:
                              `/chat/completions` wire flow + cache
@@ -21,7 +21,7 @@ Layout:
                              `openai_compat.py`
   - `registry.py`          — id → class map, lookup helpers
                              (`make_provider`, `provider_class`,
-                             `provider_endpoint`, `provider_key_status`,
+                             `provider_key_status`, `is_known`,
                              `in_process_provider_ids`, `CLAUDE_CODE_ID`)
   - `vendors/`             — one file per concrete vendor:
       - `qwen.py`      — `QwenProvider` (DashScope)   — OpenAI-compat
@@ -43,7 +43,6 @@ from physiclaw.agent.provider.anthropic_compat import AnthropicCompatibleProvide
 from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.agent.provider.provider_base import (
     BaseProvider,
-    ModelEntry,
     Provider,
     ProviderError,
     ProviderPermanentError,
@@ -52,9 +51,9 @@ from physiclaw.agent.provider.provider_base import (
 from physiclaw.agent.provider.registry import (
     CLAUDE_CODE_ID,
     in_process_provider_ids,
+    is_known,
     make_provider,
     provider_class,
-    provider_endpoint,
     provider_key_status,
 )
 from physiclaw.agent.provider.vendors.anthropic import AnthropicProvider
@@ -76,7 +75,6 @@ __all__ = [
     "AnthropicProvider",
     "BaseProvider",
     "GoogleProvider",
-    "ModelEntry",
     "MoonshotProvider",
     "OpenAICompatibleProvider",
     "OpenAIProvider",
@@ -87,10 +85,10 @@ __all__ = [
     "QwenProvider",
     "assistant_to_wire",
     "in_process_provider_ids",
+    "is_known",
     "make_provider",
     "mcp_blocks_to_content_blocks",
     "provider_class",
-    "provider_endpoint",
     "provider_key_status",
     "tool_result_to_wire",
     "tool_to_wire",

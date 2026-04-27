@@ -354,23 +354,44 @@ def _warn_stray_context() -> None:
 
 # --- Main ---
 
+_CLAUDE_ALIASES = ("opus", "sonnet", "haiku")
+
+
+def _normalize_claude_model_id(model_id: str) -> str:
+    """Coerce common user-input forms into what `claude --model` accepts.
+
+    The CLI accepts bare aliases (`opus` / `sonnet` / `haiku`) and full
+    ids prefixed with `claude-` (`claude-opus-4-7`, `claude-haiku-4-5-20251001`).
+    It rejects de-prefixed forms (`opus-4-7`, `sonnet-4-6`) — a common
+    mistake when users copy a version off Anthropic's docs without the
+    brand prefix. Add it back so an obvious typo doesn't cost a wake."""
+    if model_id in _CLAUDE_ALIASES or model_id.startswith("claude-"):
+        return model_id
+    return f"claude-{model_id}"
+
+
 def _build_cmd(
     triggers: list[Trigger],
     *,
     plugin_dir: Path,
     system_prompt: str,
     mcp_tools: list[dict],
+    model_id: str,
 ) -> list[str]:
     """Assemble argv from pre-computed pieces. Callers (spawn_claude,
     preview) build the plugin dir + system prompt + tool list once per
     wake and reuse them; this keeps `_build_cmd` pure (no side effects)
-    and makes the retry loop cheap."""
+    and makes the retry loop cheap.
+
+    `model_id` is the second segment of `[agent] model = "claude-code/<id>"`,
+    normalized via `_normalize_claude_model_id` before passing as `--model`."""
     if not CLAUDE_MD.exists():
         raise FileNotFoundError(f"CLAUDE.md not found: {CLAUDE_MD}")
     allowed = [t["name"] for t in mcp_tools] + _ALLOWED_STATIC
     return [
         "claude",
         "-p", _build_trigger_prompt(triggers),
+        "--model", _normalize_claude_model_id(model_id),
         "--append-system-prompt", system_prompt,
         "--plugin-dir", str(plugin_dir),
         "--setting-sources", "user",
@@ -402,7 +423,7 @@ async def _stream(proc, slog: _SessionLog) -> dict | None:
     return result_data
 
 
-async def spawn_claude(triggers: list[Trigger]) -> None:
+async def spawn_claude(triggers: list[Trigger], *, model_id: str) -> None:
     sources = [t.source or "?" for t in triggers]
     _warn_stray_context()
 
@@ -429,6 +450,7 @@ async def spawn_claude(triggers: list[Trigger]) -> None:
             plugin_dir=plugin_dir,
             system_prompt=system_prompt,
             mcp_tools=mcp_tools,
+            model_id=model_id,
         )
 
         log.info(

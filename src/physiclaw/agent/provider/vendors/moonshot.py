@@ -3,13 +3,8 @@ surface (`moonshot`), not the brand (`kimi`).
 
 Auth: `MOONSHOT_API_KEY` env, or `[provider] moonshot_api_key` in
 `~/.physiclaw/config.toml`. `BASE_URL` defaults to the China endpoint;
-override per-instance with `base_url=` for `api.moonshot.ai` (a key
-minted for one domain returns 401 on the other).
-
-Model ref examples: `moonshot/kimi-k2.6`, `moonshot/kimi-k2.5`. Catalog
-omits `kimi-latest` (text-only, fails our vision requirement) and the
-legacy `moonshot-v1-*` family (uses an explicit `/v1/caching` flow we
-don't implement).
+override via `[providers.moonshot] base_url = "https://api.moonshot.ai/v1"`
+in user config (a key minted for one domain returns 401 on the other).
 
 Caching: Moonshot honors `cache_control: {type: ephemeral}` markers on
 text blocks — same shape as DashScope. We INHERIT the parent's
@@ -34,17 +29,11 @@ from dataclasses import replace
 
 from physiclaw.agent.engine.dto import Usage
 from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.agent.provider.provider_base import ModelEntry
 
 
 class MoonshotProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "moonshot"
     BASE_URL = "https://api.moonshot.cn/v1"
-    # API_KEY_ENV_VARS defaults to ("MOONSHOT_API_KEY",) by convention.
-    MODELS = (
-        ModelEntry("kimi-k2.6", context_window=256_000),
-        ModelEntry("kimi-k2.5", context_window=256_000),
-    )
 
     # Inherits base default (COLLAPSE_INTERVAL_TURNS = 20) — same
     # cadence as Anthropic/Qwen. The whole-prefix invalidation on K2.x

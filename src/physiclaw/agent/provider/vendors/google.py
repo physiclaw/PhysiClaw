@@ -41,7 +41,6 @@ from physiclaw.agent.engine.dto import (
     ToolResultMessage,
 )
 from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.agent.provider.provider_base import ModelEntry
 from physiclaw.agent.provider.wire import (
     assistant_to_wire,
     user_content_to_openai,
@@ -56,12 +55,14 @@ _SIG_BYPASS = "skip_thought_signature_validator"
 class GoogleProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "google"
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-    # API_KEY_ENV_VARS defaults to ("GOOGLE_API_KEY",) by convention.
-    MODELS = (
-        ModelEntry("gemini-3.1-pro-preview", context_window=2_000_000),
-        ModelEntry("gemini-3-flash-preview", context_window=1_000_000),
-        ModelEntry("gemini-2.5-pro",         context_window=2_000_000),
-    )
+
+    async def list_models(self) -> list[dict]:
+        """Strip Gemini's `models/` id prefix so the user-facing form
+        is uniform across providers (`gemini-2.5-flash`, not
+        `models/gemini-2.5-flash`). The OpenAI shim accepts both forms
+        on the chat side, so no re-prefixing is needed when sending."""
+        raw = await super().list_models()
+        return [{**m, "id": m.get("id", "").removeprefix("models/")} for m in raw]
 
     # ---------- cache markers: disabled for Google ----------
     #

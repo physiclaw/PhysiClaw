@@ -1,8 +1,8 @@
 """OpenAI-compatible base — `/chat/completions` wire format.
 
 Vendors that speak this shape (Qwen/DashScope, OpenAI, Moonshot, Google)
-inherit from `OpenAICompatibleProvider` and only declare endpoint +
-catalog + auth. This file owns:
+inherit from `OpenAICompatibleProvider` and declare `BASE_URL` plus
+any auth quirks. This file owns:
 
   - the request/response flow (`chat`)
   - DTO → wire serialization (`serialize_history`, delegating block-
@@ -64,8 +64,8 @@ log = logging.getLogger(__name__)
 
 class OpenAICompatibleProvider(BaseProvider):
     """Base for providers that speak the OpenAI `/chat/completions` wire
-    format. See `BaseProvider` for the catalog/auth declarations vendors
-    are expected to set; this class plugs the wire-shape hooks
+    format. See `BaseProvider` for the auth declarations vendors are
+    expected to set; this class plugs the wire-shape hooks
     (`_encode_message` / `_mark_system` / `_mark_stub`) into the
     inherited `serialize_history` template, and adds the HTTP request
     flow in `chat()`."""
@@ -99,6 +99,19 @@ class OpenAICompatibleProvider(BaseProvider):
             raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:500]}")
 
         return self._parse_response(r.json())
+
+    async def list_models(self) -> list[dict]:
+        """OpenAI-compatible providers all expose `GET /models`. Returns
+        the `data` array verbatim — typically a list of dicts with `id`,
+        `object`, `created`, `owned_by`."""
+        try:
+            r = await self._client.get("/models")
+        except (httpx.TransportError, httpx.TimeoutException) as e:
+            raise ProviderTransientError(f"transport: {e}") from e
+        if r.status_code >= 400:
+            raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:300]}")
+        body = r.json()
+        return body.get("data") or []
 
     # ---------- serialize_history hooks (called by BaseProvider) ----------
 

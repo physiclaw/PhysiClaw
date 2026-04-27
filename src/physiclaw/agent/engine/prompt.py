@@ -206,14 +206,9 @@ def _render_examples() -> list[str]:
 
 
 def _render_reasoning_format(provider_id: str) -> list[str]:
-    """Provider-specific reasoning fragment (e.g. Qwen's `<think>` wrapper).
-
-    Pulled from `OpenAICompatibleProvider.system_prompt_fragment()` —
-    the provider class declares its `THINKING_FORMAT` flag, which maps
-    to a fragment in `base._THINKING_FRAGMENTS`. Replaces the old
-    substring-match `if "qwen" in provider_name`, so adding a new
-    provider doesn't require editing this file.
-    """
+    """Provider-specific reasoning fragment (e.g. Qwen's `<think>` wrapper),
+    pulled from the vendor class's `system_prompt_fragment()` classmethod.
+    Empty when the provider doesn't override it."""
     from physiclaw.agent.provider import provider_class
 
     cls = provider_class(provider_id)

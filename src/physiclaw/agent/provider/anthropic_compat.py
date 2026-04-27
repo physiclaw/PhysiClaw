@@ -4,8 +4,8 @@ official `anthropic` SDK.
 OpenClaw's docs warn that Anthropic's OpenAI-compat shim breaks on
 multi-round tool calls — every PhysiClaw wake is multi-round, so we
 use the native messages endpoint. Vendors speaking this shape (just
-`anthropic` today) inherit from `AnthropicCompatibleProvider` and only
-declare catalog + auth.
+`anthropic` today) inherit from `AnthropicCompatibleProvider` and
+declare `BASE_URL` plus any auth quirks.
 
 Cache-control marker layout (the *why* — block-level translation rules
 live with the functions that emit them):
@@ -64,7 +64,7 @@ _STOP_REASON_MAP: dict[str, FinishReason] = {
 
 class AnthropicCompatibleProvider(BaseProvider):
     """Base for providers speaking Anthropic's `/v1/messages` shape via
-    `AsyncAnthropic`. See `BaseProvider` for the catalog/auth declarations
+    `AsyncAnthropic`. See `BaseProvider` for the auth declarations
     vendors are expected to set; this class plugs the wire-shape hooks
     (`_encode_message` / `_mark_stub`) into the inherited
     `serialize_history` template, and adds the request flow in
@@ -82,6 +82,15 @@ class AnthropicCompatibleProvider(BaseProvider):
     async def aclose(self) -> None:
         # AsyncAnthropic uses .close(), not .aclose() like httpx.
         await self._client.close()
+
+    async def list_models(self) -> list[dict]:
+        """Anthropic exposes models via `client.models.list()`. Each
+        entry surfaces `id`, `display_name`, `created_at`."""
+        resp = await self._client.models.list()
+        return [
+            {"id": m.id, "display_name": m.display_name, "created_at": str(m.created_at)}
+            for m in resp.data
+        ]
 
     # ---------- serialize_history hooks (called by BaseProvider) ----------
 

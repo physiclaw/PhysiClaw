@@ -37,7 +37,6 @@ from physiclaw.agent.engine.mcp_tool import close_mcp
 from physiclaw.agent.provider import (
     CLAUDE_CODE_ID,
     in_process_provider_ids,
-    provider_class,
 )
 from physiclaw.agent.runtime import Runtime
 from physiclaw.config import model_ref_with_source, parse_model_ref
@@ -49,16 +48,11 @@ log = logging.getLogger(__name__)
 def _claude_available() -> bool:
     """Whether the claude-code subprocess engine is installed.
 
-    Lazy + isolated: importing agent.claude touches Claude-specific code
-    (plugin dir, spawn). If the package is removed, the import fails and
-    `claude-code/...` refs are unselectable. Any other exception is a
-    real bug in agent/claude/ that we want to surface — don't swallow.
-    """
-    try:
-        import physiclaw.agent.claude  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    Pure availability check via importlib — does not execute the
+    package, so a missing plugin dir or other side-effect failure is
+    surfaced later when `spawn_claude` actually imports it."""
+    from importlib.util import find_spec
+    return find_spec("physiclaw.agent.claude") is not None
 
 
 def engine_label(ref: str) -> str:
@@ -76,10 +70,8 @@ def resolve() -> tuple[str, str]:
 
     `source` describes where the value came from so log lines and error
     messages can point users at the right knob. Validates that the
-    provider id is selectable; does NOT validate `model_id` against the
-    catalog — that happens inside `launch()` for in-process refs and
-    inside the `claude` CLI itself for claude-code.
-    """
+    provider id is selectable; the model id is passed through verbatim
+    — provider APIs reject unknown ids on the first chat."""
     ref, source = model_ref_with_source()  # raises if not configured
     provider_id, _ = parse_model_ref(ref)
     known_in_process = in_process_provider_ids()
@@ -117,17 +109,9 @@ def launch() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     if provider_id == CLAUDE_CODE_ID:
-        from physiclaw.agent.claude import spawn_claude as react
+        from physiclaw.agent.claude import spawn_claude
+        react = partial(spawn_claude, model_id=model_id)
     else:
-        # Validate against the in-process catalog before the loop starts —
-        # better to fail fast at launch than mid-session.
-        cls = provider_class(provider_id)
-        if cls is not None and not cls.has_model(model_id):
-            known = ", ".join(m.id for m in cls.MODELS)
-            raise RuntimeError(
-                f"model {model_id!r} not in {provider_id} catalog (known: {known}); "
-                f"declare it in agent/provider/vendors/{provider_id}.py to add"
-            )
         from physiclaw.agent.engine.engine import run as engine_run
         react = partial(engine_run, model_ref=ref)
 

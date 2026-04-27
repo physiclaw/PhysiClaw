@@ -1,17 +1,14 @@
 """Qwen / DashScope — OpenAI-compatible endpoint.
 
 Uses native tool_calls. The DashScope `compatible-mode` endpoint accepts
-the standard OpenAI request shape; the only Qwen-specific details are
-the `reasoning_content` field on responses (handled in
-`OpenAICompatibleProvider._parse_response`) and the `<think>...</think>` system-prompt
-fragment (declared via `THINKING_FORMAT="qwen"`).
+the standard OpenAI request shape; Qwen-specific details are the
+`reasoning_content` field on responses (handled in
+`OpenAICompatibleProvider._parse_response`) and the `<think>...</think>`
+system-prompt fragment overridden below.
 
 Auth: `QWEN_API_KEY` / `DASHSCOPE_API_KEY` env, or
 `[provider] qwen_api_key` in `~/.physiclaw/config.toml`.
-
-Model ref examples:  `qwen/qwen3.6-plus`, `qwen/qwen3-max`.
 """
-from physiclaw.agent.provider.provider_base import ModelEntry
 from physiclaw.agent.provider.openai_compat import OpenAICompatibleProvider
 
 
@@ -19,11 +16,12 @@ class QwenProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "qwen"
     BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     API_KEY_ENV_VARS = ("QWEN_API_KEY", "DASHSCOPE_API_KEY")
-    THINKING_FORMAT = "qwen"
-    # First entry is the implicit default when no model is passed.
-    # PhysiClaw requires vision + reasoning. `qwen3-max` is text-only
-    # (VL flagships live under `qwen-vl-*` / `qwen3-vl-*` ids).
-    # `qwen3.6-flash` doesn't think by default (the "flash" tier).
-    MODELS = (
-        ModelEntry("qwen3.6-plus", context_window=1_000_000),
-    )
+
+    @classmethod
+    def system_prompt_fragment(cls) -> str:
+        return (
+            "Wrap internal reasoning in `<think>...</think>`. Anything outside "
+            "`<think>` is interpreted as either a tool call or a user-visible reply.\n"
+            "Never put reasoning inside tool arguments — handlers receive `args` "
+            "raw, not your scratchpad."
+        )
