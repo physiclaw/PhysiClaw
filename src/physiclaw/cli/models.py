@@ -38,11 +38,35 @@ from typing import Annotated
 import typer
 
 from physiclaw import config as _config
-from physiclaw.cli._format import info, next_hint, ok, section, warn
+from physiclaw.cli._format import next_hint, ok, section, warn
 
 # Provider package imports happen inside command bodies — pulling
 # `agent.provider` at module load drags httpx (~80ms) into every
 # `physiclaw --help` invocation.
+
+# Provider-id aliases for discovery cache + API key sourcing.
+# Read as: <alias> reuses <target>'s catalog and key.
+# claude-code routes through the `claude` CLI, which talks to the
+# Anthropic API — its model ids and key live under anthropic.
+# Hardcoded (rather than imported as `CLAUDE_CODE_ID`) to keep this
+# module's load cost independent of `agent.provider`.
+_PROVIDER_ALIAS: dict[str, str] = {
+    "claude-code": "anthropic",
+}
+
+
+def _discovery_source(provider_id: str) -> str:
+    """Provider id whose discovery cache (and API key) backs this one.
+    Returns the input unchanged unless `provider_id` is an alias."""
+    return _PROVIDER_ALIAS.get(provider_id, provider_id)
+
+
+def _known_provider_ids() -> tuple[str, ...]:
+    """All provider ids the CLI accepts — in-process + alias keys.
+    Lazy-imports `agent.provider` so `physiclaw --help` stays fast."""
+    from physiclaw.agent.provider import in_process_provider_ids
+    return (*in_process_provider_ids(), *_PROVIDER_ALIAS.keys())
+
 
 models_app = typer.Typer(
     help="List, inspect, and switch the active model.",
@@ -105,29 +129,22 @@ def _list(
 
     Reads each provider's discovery cache. If a provider has never been
     discovered, prints a hint to run `physiclaw models discover`.
+    `claude-code` reuses anthropic's catalog — the `claude` CLI talks to
+    the Anthropic API, so its accepted model ids are anthropic's.
     """
-    from physiclaw.agent.provider import (
-        CLAUDE_CODE_ID,
-        discovered,
-        in_process_provider_ids,
-        is_known,
-    )
+    from physiclaw.agent.provider import discovered
 
-    if provider == CLAUDE_CODE_ID:
-        typer.echo(info(
-            "claude-code has no discovery list — pass any model id "
-            "the `claude` CLI accepts, e.g. `claude-code/claude-sonnet-4-6`."
-        ))
-        return
-    if provider is not None and not is_known(provider):
-        typer.echo(warn(f"unknown provider {provider!r}; "
-                        f"known: {in_process_provider_ids()}"))
+    known_all = _known_provider_ids()
+    if provider is not None and provider not in known_all:
+        typer.echo(warn(f"unknown provider {provider!r} "
+                        f"(known: {', '.join(known_all)})"))
         raise typer.Exit(code=1)
 
-    targets = (provider,) if provider else in_process_provider_ids()
+    targets = (provider,) if provider else known_all
     for pid in targets:
+        source = _discovery_source(pid)
         typer.echo(section(pid))
-        ids = sorted(discovered.model_ids(pid))
+        ids = sorted(discovered.model_ids(source))
         if not ids:
             typer.echo(f"  (no discovery cache — run `physiclaw models discover {pid}`)")
         else:
@@ -140,12 +157,7 @@ def _use_impl(ref: str) -> None:
     """Switch the active model — validates the `provider/model` ref
     against the discovery cache and writes to `[agent] model`. Run
     `physiclaw models discover <provider>` first if the cache is empty."""
-    from physiclaw.agent.provider import (
-        CLAUDE_CODE_ID,
-        discovered,
-        in_process_provider_ids,
-        is_known,
-    )
+    from physiclaw.agent.provider import discovered
 
     if "/" not in ref:
         typer.echo(
@@ -162,23 +174,23 @@ def _use_impl(ref: str) -> None:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1)
 
-    # claude-code has no discovery — trust the claude CLI to validate at spawn.
-    if provider_id != CLAUDE_CODE_ID:
-        if not is_known(provider_id):
-            known = (*in_process_provider_ids(), CLAUDE_CODE_ID)
-            typer.echo(
-                f"error: unknown provider {provider_id!r} (known: {known})",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-        if not discovered.is_cached(provider_id, model_id):
-            typer.echo(
-                f"error: model {model_id!r} not in {provider_id} discovery cache.\n"
-                f"  hint: run `physiclaw models discover {provider_id}` "
-                "to refresh the live list, then retry.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
+    known_all = _known_provider_ids()
+    if provider_id not in known_all:
+        typer.echo(
+            f"error: unknown provider {provider_id!r} (known: {', '.join(known_all)})",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    source = _discovery_source(provider_id)
+    if not discovered.is_cached(source, model_id):
+        typer.echo(
+            f"error: model {model_id!r} not in {provider_id} discovery cache.\n"
+            f"  hint: run `physiclaw models discover {provider_id}` "
+            "to refresh the live list, then retry.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     try:
         _config.set_dotted("agent.model", ref)
@@ -227,11 +239,18 @@ def _key(
     omitted; that's the safer default since shell history retains
     args. After writing, fetches the live model list from the
     provider's API so you can pick one with `models use` immediately."""
-    from physiclaw.agent.provider import in_process_provider_ids, is_known
-    if not is_known(provider):
-        known = ", ".join(in_process_provider_ids())
+    if provider in _PROVIDER_ALIAS:
+        target = _PROVIDER_ALIAS[provider]
         typer.echo(
-            f"error: unknown provider {provider!r} (known: {known})",
+            f"error: {provider} reuses {target}'s key — set it there.\n"
+            f"  hint: run `physiclaw models key {target}`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    known_all = _known_provider_ids()
+    if provider not in known_all:
+        typer.echo(
+            f"error: unknown provider {provider!r} (known: {', '.join(known_all)})",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -272,18 +291,30 @@ def _fetch_live_models(provider: str) -> list[dict]:
     return asyncio.run(_run())
 
 
-def _print_live_models_table(provider: str, models: list[dict]) -> None:
-    """Save the live list to the discovery cache and print it."""
+def _print_live_models_table(
+    provider: str,
+    models: list[dict],
+    *,
+    display: str | None = None,
+) -> None:
+    """Save the live list to the discovery cache and print it.
+
+    `provider` is the cache key (where the list is saved).
+    `display` is what to show in the header/hints; defaults to `provider`.
+    Diverges only for aliases like `claude-code → anthropic`, where the
+    user typed `claude-code` and should see that name echoed back.
+    """
     from physiclaw.agent.provider import discovered
     discovered.save(provider, models)
+    label = display or provider
 
-    typer.echo(section(f"{provider} — {len(models)} model(s) live"))
+    typer.echo(section(f"{label} — {len(models)} model(s) live"))
     for m in models:
         typer.echo(f"    {m.get('id', '')}")
     typer.echo()
-    typer.echo(next_hint(f"physiclaw models use {provider}/<id>           # pick one"))
+    typer.echo(next_hint(f"physiclaw models use {label}/<id>           # pick one"))
     typer.echo(next_hint(
-        f"physiclaw models discover {provider}     # re-fetch later for new releases"
+        f"physiclaw models discover {label}     # re-fetch later for new releases"
     ))
 
 
@@ -302,30 +333,33 @@ def _keys() -> None:
 def _discover(
     provider: Annotated[
         str,
-        typer.Argument(help="Provider id, e.g. `openai`, `qwen`, `anthropic`."),
+        typer.Argument(help="Provider id, e.g. `openai`, `qwen`, `anthropic`. "
+                            "`claude-code` aliases `anthropic` (shared catalog)."),
     ],
 ) -> None:
     """Fetch the live model list from <provider>'s API.
 
     `models key` runs this automatically after writing a key, so this is
-    mostly for re-checking later when new releases land.
+    mostly for re-checking later when new releases land. `claude-code`
+    routes to anthropic — the `claude` CLI talks to the Anthropic API,
+    so its model catalog is anthropic's.
     """
-    from physiclaw.agent.provider import in_process_provider_ids, is_known
-
-    if not is_known(provider):
+    known_all = _known_provider_ids()
+    if provider not in known_all:
         typer.echo(
             f"error: unknown provider {provider!r} "
-            f"(known: {', '.join(in_process_provider_ids())})",
+            f"(known: {', '.join(known_all)})",
             err=True,
         )
         raise typer.Exit(code=1)
 
+    source = _discovery_source(provider)
     try:
-        models = _fetch_live_models(provider)
+        models = _fetch_live_models(source)
     except Exception as e:
         typer.echo(f"error: discover failed — {type(e).__name__}: {e}", err=True)
         raise typer.Exit(code=1)
-    _print_live_models_table(provider, models)
+    _print_live_models_table(source, models, display=provider)
 
 
 __all__ = ["models_app"]
