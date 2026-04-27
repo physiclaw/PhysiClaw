@@ -16,7 +16,7 @@ import datetime as dt
 import logging
 import time
 
-from physiclaw.agent.engine import builtin_tool, compact, jobs, memory, plan, prompt, skill
+from physiclaw.agent.engine import builtin_tool, compact, jobs, memory, plan, prompt, scratchpad, skill
 from physiclaw.agent.engine.builtin_tool import LocalTool, Session
 from physiclaw.agent.engine.mcp_tool import McpClient, get_mcp, list_tools_cached
 from physiclaw.agent.engine.dto import (
@@ -216,13 +216,12 @@ async def _loop(
     tr.write({"event": "prefix_pinned", "hash": prompt_hash})
 
     for turn in range(MAX_TURNS):
-        # Plan tail is just-in-time: `messages[]` stays plan-free so the
-        # prefix cache hits everything above the final user(<plan>) block.
-        # Re-rendered every turn so update_progress tool calls take effect on
-        # the NEXT request. request_messages is what the provider actually
-        # sees; messages stays as canonical history.
+        # Plan + scratchpad are just-in-time tails — keeps `messages[]`
+        # cache-stable across writes. Plan goes last so the model reads
+        # "what to do next" last.
         session.plan.tick_turn()
-        request_messages = plan.inject_tail(messages, session.plan)
+        request_messages = scratchpad.inject_tail(messages, session.scratchpad)
+        request_messages = plan.inject_tail(request_messages, session.plan)
         # Cache markers + the actual wire format are the provider's
         # business now; engine logs the wire form for debugging by asking
         # the provider to serialize once.

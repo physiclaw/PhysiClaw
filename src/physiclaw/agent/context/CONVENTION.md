@@ -33,13 +33,21 @@ Two layers, both automatic.
 
 → Labelled targets (`加入购物车`, nav tabs, category names) survive — reference them many turns later. Icon-only targets — re-`peek`.
 
-**Turn-age: collapse old turns into pinned slots.** After ~30 turns, older turns fold into three pinned slots near the top of the transcript. The most recent ~10 turns stay intact; the plan stays at the tail.
+**Turn-age: collapse old turns into pinned slots.** After ~30 turns, older turns fold into three pinned slots near the top of the transcript. The most recent ~10 turns stay intact; the plan and the scratchpad (§ Scratchpad) sit at the tail.
 
 - `[earlier turns]` — one bullet per old turn, taken from that turn's `note.summary`. The full turn (tool_calls, results, taps) is gone — only the bullet remains.
 - `[memory loads]` — every prior `read_memory` / `read_logs` result, in full. Pinned because reloading defeats the load.
 - `[loaded skills]` — every prior `Skill(...)` body and reference, in full. Pinned for the same reason.
 
-→ Don't try to "remember" a 25-turn-old screen — only your `note.summary` bullet survives. DO trust skill bodies and `read_logs` results loaded earlier are still in context — don't reload.
+→ Don't try to "remember" a 25-turn-old screen — only your `note.summary` bullet survives. DO trust skill bodies and `read_logs` results loaded earlier are still in context — don't reload. For payloads bigger than a one-line summary, use the scratchpad (§ Scratchpad).
+
+## Scratchpad
+
+Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Use it for derived data that won't fit a `note.summary`: a list scraped from one app to send via another, intermediate counts, a draft reply you're refining over multiple turns.
+
+The plan is for *what to do next*; the scratchpad is for *what you've found out*.
+
+Write API and replace-verbatim semantics: see the `scratchpad` tool.
 
 ## Bboxes — copy verbatim, never eyeball
 

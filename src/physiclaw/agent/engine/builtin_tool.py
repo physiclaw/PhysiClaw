@@ -10,7 +10,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from physiclaw.agent.engine import jobs, memory, skill
+from physiclaw.agent.engine import jobs, memory, scratchpad, skill
 from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.job_store import KIND_ONE_TIME, KIND_PERIODIC, NEVER, load_jobs
 from physiclaw.agent.runtime.sentinel import STATUSES
@@ -23,6 +23,7 @@ class Session:
     sentinel_recap: str = ""
     sentinel_turn_created_job: bool = False
     plan: Plan = field(default_factory=Plan)
+    scratchpad: str = ""
 
 
 Handler = Callable[[Session, dict], Awaitable[str]]
@@ -53,6 +54,13 @@ async def _handle_update_progress(session: Session, args: dict) -> str:
     except ValueError as e:
         return f"update_progress rejected: {e}"
     return "progress updated"
+
+
+async def _handle_scratchpad(session: Session, args: dict) -> str:
+    try:
+        return scratchpad.write(session, args.get("content", ""))
+    except ValueError as e:
+        return f"scratchpad rejected: {e}"
 
 
 async def _handle_append_log(_session: Session, args: dict) -> str:
@@ -240,6 +248,29 @@ _UPDATE_PROGRESS = LocalTool(
         "required": [],
     },
     handler=_handle_update_progress,
+)
+
+
+_SCRATCHPAD = LocalTool(
+    name="scratchpad",
+    description=(
+        "Replace the scratchpad with `content`. **Survives compaction.** "
+        "Replaces previous content verbatim; reissue the full text to "
+        "update; pass empty string to clear.\n"
+        "\n"
+        "When and what to use it for — CONVENTION § Scratchpad."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "Full scratchpad content. Replaces previous.",
+            },
+        },
+        "required": ["content"],
+    },
+    handler=_handle_scratchpad,
 )
 
 
@@ -515,6 +546,7 @@ def build_registry(
     tools: dict[str, LocalTool] = {
         _NOTE.name: _NOTE,
         _UPDATE_PROGRESS.name: _UPDATE_PROGRESS,
+        _SCRATCHPAD.name: _SCRATCHPAD,
         _APPEND_LOG.name: _APPEND_LOG,
         _SAVE_MEMORY.name: _SAVE_MEMORY,
         _READ_MEMORY.name: _READ_MEMORY,
