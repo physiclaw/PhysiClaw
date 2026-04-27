@@ -47,8 +47,6 @@ Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` b
 
 The plan is for *what to do next*; the scratchpad is for *what you've found out*.
 
-Write API and replace-verbatim semantics: see the `scratchpad` tool.
-
 ## Bboxes — copy verbatim, never eyeball
 
 Every physical-action bbox must come verbatim from the most recent `peek` / `screenshot` listing, or a text row that survived compaction in an earlier stub.

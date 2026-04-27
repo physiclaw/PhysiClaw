@@ -7,8 +7,9 @@ just before the plan tail. Stays out of `messages[]` for the same
 reason the plan does: a write invalidates only the volatile tail, not
 the cached body of the transcript.
 
-Mutation funnels through the `scratchpad` tool (handler in
-`builtin_tool.py`), which delegates to `write()` here.
+Mutation funnels through the optional `scratchpad` field on the `note`
+tool — every turn already calls `note`, so a write costs no turn slot.
+The note handler delegates to `write()` here.
 """
 from physiclaw.agent.engine.dto import Message, UserMessage
 

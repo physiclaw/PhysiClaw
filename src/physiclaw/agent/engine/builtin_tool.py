@@ -40,12 +40,21 @@ class LocalTool:
 # ---------- handlers ----------
 
 
-async def _handle_note(_session: Session, args: dict) -> str:
+async def _handle_note(session: Session, args: dict) -> str:
     # The note's text lives in the assistant message's tool_calls arguments
-    # (in history), not in session state. Handler only pairs the call with
-    # a tool_result (principle 6) and surfaces a minimal ack.
+    # (in history), not in session state. Handler pairs the call with a
+    # tool_result (principle 6) and — if `scratchpad` was passed — also
+    # mutates `session.scratchpad`. Merging scratchpad into note avoids
+    # spending a `[note, one-other]` action slot on a write-down.
     summary = (args.get("summary") or "").strip()
-    return f"noted: {summary}"
+    msg = f"noted: {summary}"
+    sp_arg = args.get("scratchpad")
+    if sp_arg is not None:
+        try:
+            msg += f" | {scratchpad.write(session, sp_arg)}"
+        except ValueError as e:
+            msg += f" | scratchpad rejected: {e}"
+    return msg
 
 
 async def _handle_update_progress(session: Session, args: dict) -> str:
@@ -54,13 +63,6 @@ async def _handle_update_progress(session: Session, args: dict) -> str:
     except ValueError as e:
         return f"update_progress rejected: {e}"
     return "progress updated"
-
-
-async def _handle_scratchpad(session: Session, args: dict) -> str:
-    try:
-        return scratchpad.write(session, args.get("content", ""))
-    except ValueError as e:
-        return f"scratchpad rejected: {e}"
 
 
 async def _handle_append_log(_session: Session, args: dict) -> str:
@@ -171,7 +173,9 @@ _NOTE = LocalTool(
         "and why. **It is the ONLY part of the turn that survives "
         "compaction** — once a turn ages out, the screen, the tap, every "
         "other tool_result is gone; your `summary` alone represents that turn. "
-        "Write it to read cold."
+        "Write it to read cold.\n"
+        "\n"
+        "Optional `scratchpad` field — see CONVENTION § Scratchpad."
     ),
     input_schema={
         "type": "object",
@@ -179,6 +183,13 @@ _NOTE = LocalTool(
             "summary": {
                 "type": "string",
                 "description": "One line, ≤20 words: what you're doing this turn and why.",
+            },
+            "scratchpad": {
+                "type": "string",
+                "description": (
+                    "Optional. Replace the scratchpad's full content. "
+                    "Reissue the full text to update; pass empty string to clear."
+                ),
             },
         },
         "required": ["summary"],
@@ -248,29 +259,6 @@ _UPDATE_PROGRESS = LocalTool(
         "required": [],
     },
     handler=_handle_update_progress,
-)
-
-
-_SCRATCHPAD = LocalTool(
-    name="scratchpad",
-    description=(
-        "Replace the scratchpad with `content`. **Survives compaction.** "
-        "Replaces previous content verbatim; reissue the full text to "
-        "update; pass empty string to clear.\n"
-        "\n"
-        "When and what to use it for — CONVENTION § Scratchpad."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "content": {
-                "type": "string",
-                "description": "Full scratchpad content. Replaces previous.",
-            },
-        },
-        "required": ["content"],
-    },
-    handler=_handle_scratchpad,
 )
 
 
@@ -546,7 +534,6 @@ def build_registry(
     tools: dict[str, LocalTool] = {
         _NOTE.name: _NOTE,
         _UPDATE_PROGRESS.name: _UPDATE_PROGRESS,
-        _SCRATCHPAD.name: _SCRATCHPAD,
         _APPEND_LOG.name: _APPEND_LOG,
         _SAVE_MEMORY.name: _SAVE_MEMORY,
         _READ_MEMORY.name: _READ_MEMORY,
