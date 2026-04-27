@@ -462,10 +462,15 @@ def _corrective_for_bad_shape(called: list[str]) -> str:
     [note, one-other]" as licence to pick a different second tool —
     silently dropping the rejected action entirely.
     """
+    # Each branch tests (n_notes, len(others)) explicitly so the
+    # coverage matrix is readable top-to-bottom: no implicit fallthrough,
+    # no overlap. Caller filters out (0,0) and (1,1) — every other
+    # non-empty shape lands in exactly one branch below.
     n_notes = called.count("note")
     others = [c for c in called if c != "note"]
+    n_others = len(others)
 
-    if n_notes == 0 and len(others) == 1:
+    if n_notes == 0 and n_others == 1:
         # Most common: agent forgot note alongside its action.
         return (
             f"Your last turn called `{others[0]}` without `note`. Every "
@@ -474,13 +479,27 @@ def _corrective_for_bad_shape(called: list[str]) -> str:
             f"with the same arguments."
         )
 
-    if n_notes == 0:
-        # No note + multiple other tools.
+    if n_notes == 0 and n_others >= 2:
         return (
             f"Your last turn called {called!r} without `note` and with "
             f"too many tools. Every turn = exactly `[note, one-other]`. "
             f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
             f"split {others[1:]!r} into later turns."
+        )
+
+    if n_notes == 1 and n_others == 0:
+        return (
+            "Your last turn called `note` alone with no action tool. "
+            "Every turn must be `[note(summary=...), one-other(...)]` — "
+            "`note` traces, the other tool acts. Re-issue with both."
+        )
+
+    if n_notes == 1 and n_others >= 2:
+        return (
+            f"Your last turn called {called!r} — `note` plus {n_others} "
+            f"other tools. Every turn = exactly `[note, one-other]`. Keep "
+            f"`[note, {others[0]}]` for this turn; split {others[1:]!r} "
+            f"into later turns."
         )
 
     if n_notes >= 2:
@@ -490,13 +509,7 @@ def _corrective_for_bad_shape(called: list[str]) -> str:
             f"`[note, one-other]`."
         )
 
-    # 1 note + 2+ others
-    return (
-        f"Your last turn called {called!r} — `note` plus {len(others)} "
-        f"other tools. Every turn = exactly `[note, one-other]`. Keep "
-        f"`[note, {others[0]}]` for this turn; split {others[1:]!r} "
-        f"into later turns."
-    )
+    raise AssertionError(f"unreachable: called={called!r}")
 
 
 def _format_triggers(triggers: list[Trigger], *, cron_ctx: str = "") -> str:
