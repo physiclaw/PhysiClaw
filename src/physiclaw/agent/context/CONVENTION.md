@@ -43,7 +43,7 @@ Two layers, both automatic.
 
 ## Scratchpad
 
-Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Use it for derived data that won't fit a `note.summary`: a list scraped from one app to send via another, intermediate counts, a draft reply you're refining over multiple turns.
+Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Use it for derived data that won't fit a `note.summary`: a list scraped from one page to use on another, intermediate counts, a draft reply you're refining over multiple turns.
 
 The plan is for *what to do next*; the scratchpad is for *what you've found out*.
 

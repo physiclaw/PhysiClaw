@@ -39,7 +39,7 @@ Sensitive apps (banking, health, photos, email): only on explicit ask.
 - **Back out, don't dig in.** 2–3 turns on the same sub-page with no progress → `go_back` until the app's home, then re-enter. Wrong entry points rarely recover in place. (Deeper trap → see CONVENTION § Stuck.)
 - **Paste over typing.** `send_to_clipboard` → `long_press` → Paste. Keyboard is last resort.
 - **Read exactly.** Prices, names, addresses as displayed — never guess or round.
-- **Write it down.** Anything important for the plan — `scratchpad(...)` it now or you'll forget. (See CONVENTION § Scratchpad.)
+- **Write it down before you leave.** When you've extracted data on a page and the next step is on a different page — `scratchpad(content=...)` it before navigating away. (See CONVENTION § Scratchpad.)
 - **Confirm before payment.** Send the user: item, quantity, price, address, fees, delivery time. Wait for explicit OK (see CONVENTION § Wait-retry). Pay only after they reply OK.
 
 See-and-act mechanics live in PHYSICLAW; engine turn mechanics in CONVENTION — don't re-derive.
