@@ -278,31 +278,38 @@ class BaseProvider:
           - the latest `ToolResultMessage` flagged `is_superseded`
             (via `_mark_stub`).
 
-        Subclasses implement `_encode_message` (DTO → wire dict, or
-        `None` to skip — e.g. Anthropic's `SystemMessage` rides outside
-        the messages array, not as an entry). The marker hooks default
-        to no-ops; wire-shape subclasses override them to attach
-        provider-specific `cache_control`. The base body stays small
-        because the algorithm is wire-shape-agnostic."""
+        Subclasses implement `_encode_message` (DTO → wire dict, list of
+        wire dicts, or `None` to skip). Most encodings are 1:1; the list
+        form is for vendor-specific splits — e.g. Google's shim rejects
+        `image_url` parts in `role: tool`, so `GoogleProvider` splits a
+        ToolResultMessage with images into [text-only tool, synthetic
+        user with images]. Anthropic's `SystemMessage` returns `None`
+        (system rides outside the messages array). Cache markers attach
+        to the first entry of any split; superseded results don't carry
+        images, so their list is always single-element."""
         out: list[dict] = []
         last_stub_idx: int | None = None
         for i, msg in enumerate(history):
-            entry = self._encode_message(msg)
-            if entry is None:
+            entries = self._encode_message(msg)
+            if entries is None:
+                continue
+            if isinstance(entries, dict):
+                entries = [entries]
+            if not entries:
                 continue
             if i == 0 and isinstance(msg, SystemMessage):
-                entry = self._mark_system(entry)
+                entries[0] = self._mark_system(entries[0])
             elif isinstance(msg, ToolResultMessage) and msg.is_superseded:
                 last_stub_idx = len(out)
-            out.append(entry)
+            out.extend(entries)
         if last_stub_idx is not None:
             out[last_stub_idx] = self._mark_stub(out[last_stub_idx])
         return out
 
-    def _encode_message(self, msg: Message) -> dict | None:
-        """Encode one DTO into a provider wire dict, or return `None`
-        to skip (e.g. when the DTO rides outside the messages array).
-        MUST be implemented by wire-shape subclasses."""
+    def _encode_message(self, msg: Message) -> dict | list[dict] | None:
+        """Encode one DTO into a provider wire dict (or list of dicts
+        for vendor splits, or `None` to skip). MUST be implemented by
+        wire-shape subclasses."""
         raise NotImplementedError(
             f"{type(self).__name__} must implement _encode_message"
         )

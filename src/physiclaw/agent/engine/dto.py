@@ -134,12 +134,20 @@ class AssistantMessage:
     the per-call token accounting (cache-aware); each provider populates
     it from its own response shape. `raw` retains the provider's
     original response dict for trace replay / debugging.
+
+    `vendor_extra` carries opaque tokens a provider needs to round-trip
+    verbatim across turns to preserve hidden state — e.g. Gemini 3's
+    `thought_signature` (links the model's prior internal reasoning to
+    the next turn). Keyed by `PROVIDER_ID` so multiple vendors can
+    coexist in mixed-history scenarios. Engine code never reads this;
+    only the originating provider does, on serialize.
     """
     content: str
     tool_calls: list[ToolCall]
     finish_reason: FinishReason
     usage: Usage = field(default_factory=Usage)
     raw: dict[str, Any] = field(default_factory=dict)
+    vendor_extra: dict[str, Any] = field(default_factory=dict)
 
     def tool_names(self) -> list[str]:
         return [tc.name for tc in self.tool_calls]
