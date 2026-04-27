@@ -474,39 +474,43 @@ def _corrective_for_bad_shape(called: list[str]) -> str:
         # Most common: agent forgot note alongside its action.
         return (
             f"Your last turn called `{others[0]}` without `note`. Every "
-            f"turn must call `note` (one-line summary) plus exactly one "
-            f"other tool. Re-issue as `[note(summary=...), {others[0]}(...)]` "
-            f"with the same arguments."
+            f"turn = exactly `[note, one-other]`. Re-issue as "
+            f"`[note(summary=...), {others[0]}(...)]` with the same arguments."
         )
 
     if n_notes == 0 and n_others >= 2:
         return (
             f"Your last turn called {called!r} without `note` and with "
-            f"too many tools. Every turn = exactly `[note, one-other]`. "
+            f"too many action tools. Every turn = exactly `[note, one-other]`. "
             f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
             f"split {others[1:]!r} into later turns."
         )
 
     if n_notes == 1 and n_others == 0:
+        # Naming `peek()` as the default breaks the anchoring loop when
+        # the model has no concrete action in mind (e.g. ambient warm-
+        # start triggers): without a suggestion, models pick `note` again
+        # because every other tool feels unjustified.
         return (
             "Your last turn called `note` alone with no action tool. "
-            "Every turn must be `[note(summary=...), one-other(...)]` — "
-            "`note` traces, the other tool acts. Re-issue with both."
+            "Every turn = exactly `[note, one-other]`. If unsure what to "
+            "do next, `peek()` is the safe default — re-issue as "
+            "`[note(summary=...), peek()]`."
         )
 
     if n_notes == 1 and n_others >= 2:
         return (
             f"Your last turn called {called!r} — `note` plus {n_others} "
-            f"other tools. Every turn = exactly `[note, one-other]`. Keep "
-            f"`[note, {others[0]}]` for this turn; split {others[1:]!r} "
-            f"into later turns."
+            f"action tools. Every turn = exactly `[note, one-other]`. "
+            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
+            f"split {others[1:]!r} into later turns."
         )
 
     if n_notes >= 2:
         return (
-            f"Your last turn called `note` {n_notes} times. `note` must "
-            f"be called exactly once per turn. Re-issue as "
-            f"`[note, one-other]`."
+            f"Your last turn called `note` {n_notes} times. Every turn = "
+            f"exactly `[note, one-other]`. Re-issue with `note(summary=...)` "
+            f"once plus one action tool."
         )
 
     raise AssertionError(f"unreachable: called={called!r}")
