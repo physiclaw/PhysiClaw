@@ -161,3 +161,227 @@ def test_try_resume_returns_false_when_hardware_connect_raises(
         "hardware reconnect failed: port unavailable" in r.getMessage()
         for r in caplog.records
     )
+
+
+# ---------- try_resume: post-connect flow ----------
+
+
+pytestmark_phase5 = [pytest.mark.integration]
+
+
+def _ready_bundle() -> MagicMock:
+    """A complete-and-loaded Calibration mock."""
+    cal = MagicMock()
+    cal.complete = True
+    cal.viewport_shift = MagicMock()
+    cal.screen_dimension = (390, 844)
+    cal.cam_index = 1
+    cal.z_tap = -2.0
+    cal.cam_rotation = 0
+    cal.pct_to_grbl = MagicMock()
+    cal.pct_to_cam = MagicMock()
+    cal.cam_size = (1920, 1080)
+    cal.effective_rotation.return_value = 0
+    return cal
+
+
+def _ready_app(cal) -> MagicMock:
+    app = MagicMock()
+    app.calibration = cal
+    app.assistive_touch = MagicMock()
+    return app
+
+
+@pytest.mark.integration
+def test_try_resume_succeeds_on_clean_path(mocker) -> None:
+    cal = _ready_bundle()
+    app = _ready_app(cal)
+    mocker.patch(
+        "physiclaw.core.calibration.state.Calibration.load", return_value=cal,
+    )
+    mocker.patch("physiclaw.core.server.app.physiclaw", app)
+    fake_calib_state = MagicMock()
+    mocker.patch("physiclaw.core.server.app._calib", fake_calib_state)
+    mocker.patch("physiclaw.core.server.app._phone", MagicMock())
+    mocker.patch.object(warm_start, "_sanity", return_value=True)
+    mocker.patch.object(warm_start.sys.stdin, "isatty", return_value=False)
+
+    result = warm_start.try_resume(cam_index_override=None)
+
+    assert result is True
+    # Bundle replaced into the app + viewport_shift mirrored to bridge state.
+    assert app.calibration is cal
+    assert fake_calib_state.viewport_shift is cal.viewport_shift
+    assert fake_calib_state.screen_dimension == (390, 844)
+    app.assistive_touch.compute_at_screen_pos.assert_called_once_with(
+        cal.viewport_shift,
+    )
+    app.connect_arm.assert_called_once()
+    app.connect_camera.assert_called_once_with(1)
+    app.home_screen.assert_called_once()
+    app.mark_ready.assert_called_once()
+
+
+@pytest.mark.integration
+def test_try_resume_uses_cam_index_override(mocker) -> None:
+    cal = _ready_bundle()
+    app = _ready_app(cal)
+    mocker.patch(
+        "physiclaw.core.calibration.state.Calibration.load", return_value=cal,
+    )
+    mocker.patch("physiclaw.core.server.app.physiclaw", app)
+    mocker.patch("physiclaw.core.server.app._calib", MagicMock())
+    mocker.patch("physiclaw.core.server.app._phone", MagicMock())
+    mocker.patch.object(warm_start, "_sanity", return_value=True)
+    mocker.patch.object(warm_start.sys.stdin, "isatty", return_value=False)
+
+    warm_start.try_resume(cam_index_override=3)
+
+    app.connect_camera.assert_called_once_with(3)
+
+
+@pytest.mark.integration
+def test_try_resume_falls_back_to_cam_index_zero(mocker) -> None:
+    cal = _ready_bundle()
+    cal.cam_index = None
+    app = _ready_app(cal)
+    mocker.patch(
+        "physiclaw.core.calibration.state.Calibration.load", return_value=cal,
+    )
+    mocker.patch("physiclaw.core.server.app.physiclaw", app)
+    mocker.patch("physiclaw.core.server.app._calib", MagicMock())
+    mocker.patch("physiclaw.core.server.app._phone", MagicMock())
+    mocker.patch.object(warm_start, "_sanity", return_value=True)
+    mocker.patch.object(warm_start.sys.stdin, "isatty", return_value=False)
+
+    warm_start.try_resume(cam_index_override=None)
+
+    app.connect_camera.assert_called_once_with(0)
+
+
+@pytest.mark.integration
+def test_try_resume_returns_false_when_bridge_never_connects(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    cal = _ready_bundle()
+    app = _ready_app(cal)
+    app._bridge.wait_for_connection.return_value = False
+    mocker.patch(
+        "physiclaw.core.calibration.state.Calibration.load", return_value=cal,
+    )
+    mocker.patch("physiclaw.core.server.app.physiclaw", app)
+    mocker.patch("physiclaw.core.server.app._calib", MagicMock())
+    mocker.patch("physiclaw.core.server.app._phone", MagicMock())
+    mocker.patch.object(warm_start.sys.stdin, "isatty", return_value=True)
+
+    with caplog.at_level(logging.ERROR, logger="physiclaw.core.server.warm_start"):
+        result = warm_start.try_resume(cam_index_override=None)
+
+    assert result is False
+    assert any("/bridge page not polling" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.integration
+def test_try_resume_returns_false_when_sanity_fails(mocker) -> None:
+    cal = _ready_bundle()
+    app = _ready_app(cal)
+    mocker.patch(
+        "physiclaw.core.calibration.state.Calibration.load", return_value=cal,
+    )
+    mocker.patch("physiclaw.core.server.app.physiclaw", app)
+    mocker.patch("physiclaw.core.server.app._calib", MagicMock())
+    mocker.patch("physiclaw.core.server.app._phone", MagicMock())
+    mocker.patch.object(warm_start, "_sanity", return_value=False)
+    mocker.patch.object(warm_start.sys.stdin, "isatty", return_value=False)
+
+    result = warm_start.try_resume(cam_index_override=None)
+
+    assert result is False
+    app.mark_ready.assert_not_called()
+
+
+# ---------- _sanity ----------
+
+
+@pytest.mark.integration
+def test_sanity_passes_when_all_taps_within_tolerance(mocker) -> None:
+    fake_validate = mocker.patch(
+        "physiclaw.core.calibration.calibrate.validate_calibration",
+        return_value=[
+            {"passed": True, "error": 0.5},
+            {"passed": True, "error": 0.6},
+        ],
+    )
+    pl = MagicMock()
+    pl.calibration = _ready_bundle()
+    phone = MagicMock()
+
+    out = warm_start._sanity(pl, MagicMock(), phone)
+
+    assert out is True
+    fake_validate.assert_called_once()
+    # Bridge mode restored on success.
+    assert phone.set_mode.call_args_list[-1].args == ("bridge",)
+
+
+@pytest.mark.integration
+def test_sanity_fails_when_no_taps_received(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+    mocker.patch(
+        "physiclaw.core.calibration.calibrate.validate_calibration",
+        return_value=[
+            {"passed": False, "error": 999},
+            {"passed": False, "error": 999},
+        ],
+    )
+    pl = MagicMock()
+    pl.calibration = _ready_bundle()
+
+    with caplog.at_level(logging.ERROR, logger="physiclaw.core.server.warm_start"):
+        out = warm_start._sanity(pl, MagicMock(), MagicMock())
+
+    assert out is False
+    assert any("no taps registered" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.integration
+def test_sanity_fails_when_taps_received_but_off(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+    mocker.patch(
+        "physiclaw.core.calibration.calibrate.validate_calibration",
+        return_value=[
+            {"passed": False, "error": 12.5},
+            {"passed": True, "error": 1.0},
+        ],
+    )
+    pl = MagicMock()
+    pl.calibration = _ready_bundle()
+
+    with caplog.at_level(logging.ERROR, logger="physiclaw.core.server.warm_start"):
+        out = warm_start._sanity(pl, MagicMock(), MagicMock())
+
+    assert out is False
+    assert any("looks stale" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.integration
+def test_sanity_restores_bridge_mode_on_validate_exception(mocker) -> None:
+    mocker.patch(
+        "physiclaw.core.calibration.calibrate.validate_calibration",
+        side_effect=RuntimeError("hardware down"),
+    )
+    pl = MagicMock()
+    pl.calibration = _ready_bundle()
+    phone = MagicMock()
+
+    with pytest.raises(RuntimeError):
+        warm_start._sanity(pl, MagicMock(), phone)
+
+    # Phone goes calibrate → bridge even on exception.
+    assert phone.set_mode.call_args_list[-1].args == ("bridge",)
