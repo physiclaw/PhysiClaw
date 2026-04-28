@@ -1,0 +1,218 @@
+"""Tests for `physiclaw.core.logger.logger`."""
+from __future__ import annotations
+
+import logging
+import time
+from unittest.mock import MagicMock
+
+import pytest
+
+from physiclaw.core.logger import logger as logger_mod
+from physiclaw.core.logger.logger import (
+    _colorize,
+    _format_args,
+    _TaggedFormatter,
+    logged,
+    setup_logging,
+)
+
+
+# ---------- _colorize ----------
+
+
+def test_colorize_true_when_tty_and_no_color_unset(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    mocker.patch.object(logger_mod.sys.stderr, "isatty", return_value=True)
+
+    assert _colorize() is True
+
+
+def test_colorize_false_when_not_tty(mocker) -> None:
+    mocker.patch.object(logger_mod.sys.stderr, "isatty", return_value=False)
+
+    assert _colorize() is False
+
+
+def test_colorize_false_when_no_color_env_set(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mocker.patch.object(logger_mod.sys.stderr, "isatty", return_value=True)
+    monkeypatch.setenv("NO_COLOR", "1")
+
+    assert _colorize() is False
+
+
+# ---------- _TaggedFormatter ----------
+
+
+def _record(msg: str = "hi", level: int = logging.INFO) -> logging.LogRecord:
+    return logging.LogRecord(
+        name="x", level=level, pathname="x.py", lineno=1,
+        msg=msg, args=(), exc_info=None,
+    )
+
+
+def test_formatter_plain_mode_renders_tag_and_message() -> None:
+    fmt = _TaggedFormatter(tag="physiclaw", color=False)
+
+    out = fmt.format(_record("hello"))
+
+    assert "[physiclaw]" in out
+    assert "hello" in out
+    # No ANSI escape sequences in plain mode.
+    assert "\033[" not in out
+
+
+def test_formatter_color_mode_paints_tag(mocker) -> None:
+    fmt = _TaggedFormatter(tag="physiclaw", color=True)
+
+    out = fmt.format(_record("hello"))
+
+    # Cyan ANSI for "physiclaw".
+    assert "\033[36m" in out
+
+
+def test_formatter_paints_warning_yellow() -> None:
+    fmt = _TaggedFormatter(tag="physiclaw", color=True)
+
+    out = fmt.format(_record("warn", level=logging.WARNING))
+
+    assert "\033[33m" in out
+
+
+def test_formatter_paints_error_red() -> None:
+    fmt = _TaggedFormatter(tag="physiclaw", color=True)
+
+    out = fmt.format(_record("oh no", level=logging.ERROR))
+
+    assert "\033[31m" in out
+
+
+def test_formatter_indents_continuation_lines() -> None:
+    fmt = _TaggedFormatter(tag="runtime", color=False)
+
+    out = fmt.format(_record("line one\nline two"))
+
+    lines = out.split("\n")
+    # Continuation indent matches the prefix length.
+    assert "line one" in lines[0]
+    assert lines[1].startswith(" " * len("00:00 [runtime] "))
+
+
+# ---------- setup_logging ----------
+
+
+def test_setup_logging_force_replaces_handlers(mocker) -> None:
+    mocker.patch.object(logger_mod, "_colorize", return_value=False)
+
+    setup_logging("physiclaw", level=logging.WARNING)
+
+    root = logging.getLogger()
+    assert root.level == logging.WARNING
+    # Last handler is the one we just added with our formatter.
+    assert any(
+        isinstance(h.formatter, _TaggedFormatter) for h in root.handlers
+    )
+
+
+# ---------- _format_args ----------
+
+
+def test_format_args_send_to_clipboard_redacts_text() -> None:
+    out = _format_args("send_to_clipboard", {"text": "secret password"})
+
+    # Length only, never the value.
+    assert "secret" not in out
+    assert "<15 chars>" in out
+
+
+def test_format_args_send_to_clipboard_handles_missing_text() -> None:
+    out = _format_args("send_to_clipboard", {})
+
+    assert "<0 chars>" in out
+
+
+def test_format_args_sequence_summarizes_tool_names() -> None:
+    out = _format_args("sequence", {
+        "step1": {"tool_name": "tap", "arg": [0, 0, 1, 1]},
+        "step2": {"tool_name": "swipe", "arg": {}},
+        "step3": None,
+    })
+
+    assert "2 steps:" in out
+    assert "tap" in out
+    assert "swipe" in out
+
+
+def test_format_args_default_renders_repr() -> None:
+    out = _format_args("tap", {"bbox": [0.1, 0.2, 0.3, 0.4]})
+
+    assert "bbox=[0.1, 0.2, 0.3, 0.4]" in out
+
+
+def test_format_args_truncates_long_arg_strings() -> None:
+    long_text = "x" * 200
+    out = _format_args("custom", {"value": long_text})
+
+    # Truncated to _MAX_ARG_LOG_LEN with ellipsis.
+    assert out.endswith("...")
+    assert len(out) == 80  # _MAX_ARG_LOG_LEN
+
+
+# ---------- logged decorator ----------
+
+
+@pytest.mark.asyncio
+async def test_logged_calls_wrapped_function(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @logged
+    async def my_tool(bbox):
+        return f"tapped {bbox}"
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        out = await my_tool(bbox=[0, 0, 1, 1])
+
+    assert out == "tapped [0, 0, 1, 1]"
+    assert any(
+        "my_tool" in r.getMessage() and "—" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_logged_skips_logging_when_info_disabled(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    @logged
+    async def my_tool():
+        return "ok"
+
+    # Disable info-level logging.
+    mocker.patch.object(
+        logger_mod.log, "isEnabledFor", return_value=False,
+    )
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        out = await my_tool()
+
+    assert out == "ok"
+    assert not [r for r in caplog.records if "my_tool" in r.getMessage()]
+
+
+@pytest.mark.asyncio
+async def test_logged_logs_even_when_function_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @logged
+    async def my_tool():
+        raise RuntimeError("boom")
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        with pytest.raises(RuntimeError, match="boom"):
+            await my_tool()
+
+    # `logged` wraps in try/finally; the log line still fires.
+    assert any("my_tool" in r.getMessage() for r in caplog.records)

@@ -86,3 +86,132 @@ def test_resolve_succeeds_for_claude_code_when_available(
 
     assert ref == "claude-code/claude-test"
     assert source == "PHYSICLAW_MODEL env"
+
+
+# ---------- launch() ----------
+
+
+@pytest.mark.integration
+def test_launch_runs_engine_path_for_in_process_provider(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
+    monkeypatch.setattr("sys.argv", ["runtime", "--server", "http://x:9000"])
+    mocker.patch.object(launcher, "setup_logging")
+
+    fake_runtime = mocker.MagicMock()
+
+    async def _start():
+        return None
+    fake_runtime.start.side_effect = _start
+
+    runtime_cls = mocker.patch.object(
+        launcher, "Runtime", return_value=fake_runtime,
+    )
+
+    async def _close():
+        return None
+    mocker.patch.object(launcher, "close_mcp", side_effect=_close)
+
+    fake_engine_run = mocker.MagicMock()
+    mocker.patch.dict(
+        "sys.modules",
+        {"physiclaw.agent.engine.engine": mocker.MagicMock(run=fake_engine_run)},
+    )
+
+    launcher.launch()
+
+    runtime_cls.assert_called_once()
+    kwargs = runtime_cls.call_args.kwargs
+    assert kwargs["interval"] == 1.0
+    assert kwargs["label"].startswith("engine=physiclaw")
+
+
+@pytest.mark.integration
+def test_launch_runs_claude_path_for_claude_code(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_MODEL", "claude-code/claude-test")
+    monkeypatch.setattr("sys.argv", ["runtime"])
+    mocker.patch.object(launcher, "setup_logging")
+    mocker.patch.object(launcher, "_claude_available", return_value=True)
+
+    fake_runtime = mocker.MagicMock()
+
+    async def _start():
+        return None
+    fake_runtime.start.side_effect = _start
+    runtime_cls = mocker.patch.object(
+        launcher, "Runtime", return_value=fake_runtime,
+    )
+
+    async def _close():
+        return None
+    mocker.patch.object(launcher, "close_mcp", side_effect=_close)
+
+    fake_spawn = mocker.MagicMock()
+    mocker.patch.dict(
+        "sys.modules",
+        {"physiclaw.agent.claude": mocker.MagicMock(spawn_claude=fake_spawn)},
+    )
+
+    launcher.launch()
+
+    runtime_cls.assert_called_once()
+    assert runtime_cls.call_args.kwargs["label"].startswith("engine=claude-code")
+
+
+@pytest.mark.integration
+def test_launch_swallows_keyboard_interrupt(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
+    monkeypatch.setattr("sys.argv", ["runtime"])
+    mocker.patch.object(launcher, "setup_logging")
+    mocker.patch.object(launcher.asyncio, "run", side_effect=KeyboardInterrupt)
+    mocker.patch.dict(
+        "sys.modules",
+        {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
+    )
+
+    # Must not raise.
+    launcher.launch()
+
+
+@pytest.mark.integration
+def test_launch_seeds_physiclaw_server_env(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
+    monkeypatch.delenv("PHYSICLAW_SERVER", raising=False)
+    monkeypatch.setattr("sys.argv", ["runtime", "--server", "http://h:42"])
+    mocker.patch.object(launcher, "setup_logging")
+    mocker.patch.object(launcher.asyncio, "run")
+    mocker.patch.dict(
+        "sys.modules",
+        {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
+    )
+
+    launcher.launch()
+
+    import os
+    assert os.environ.get("PHYSICLAW_SERVER") == "http://h:42"
+
+
+@pytest.mark.integration
+def test_launch_verbose_flag_sets_debug_level(
+    mocker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import logging as _logging
+    monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
+    monkeypatch.setattr("sys.argv", ["runtime", "--verbose"])
+    setup_spy = mocker.patch.object(launcher, "setup_logging")
+    mocker.patch.object(launcher.asyncio, "run")
+    mocker.patch.dict(
+        "sys.modules",
+        {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
+    )
+
+    launcher.launch()
+
+    setup_spy.assert_called_once_with("runtime", _logging.DEBUG)
