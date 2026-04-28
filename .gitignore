@@ -33,6 +33,3 @@ memory/
 
 # Runtime logs
 log/
-
-# Local tests (machine-specific, may contain API keys)
-tests/
