@@ -43,9 +43,11 @@ Two layers, both automatic.
 
 ## Scratchpad
 
-Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Use it for derived data that won't fit a `note.summary`: a list scraped from one page to use on another, intermediate counts, a draft reply you're refining over multiple turns.
+Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Accumulate everything that contributes to the answer: order details, item lists, prices, addresses, a draft reply. By the time you compose the reply, the scratchpad is the complete picture.
 
-The plan is for *what to do next*; the scratchpad is for *what you've found out*.
+Write via the optional `scratchpad` field on `note` — `note(summary=..., scratchpad=...)`. Reissue the full text to extend; empty string clears.
+
+The plan is for *what to do next*; the scratchpad is for *what you've gathered to fulfill the plan*.
 
 ## Bboxes — copy verbatim, never eyeball
 
