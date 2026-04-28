@@ -1,0 +1,607 @@
+"""Tests for `physiclaw.core.calibration.handler` — calibration HTTP routes."""
+from __future__ import annotations
+
+import dataclasses
+import json
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+
+from physiclaw.core.calibration import handler
+from physiclaw.core.calibration.handler import (
+    _err,
+    _ok,
+    _read_body,
+    _run_blocking,
+    handle_calibrate_arm,
+    handle_calibrate_camera_frame,
+    handle_compute_camera_mapping,
+    handle_measure_viewport_shift,
+    handle_show_assistive_touch,
+    handle_trace_edge,
+    handle_validate_calibration,
+    handle_verify_assistive_touch,
+)
+from physiclaw.core.calibration.transforms import ViewportShift
+
+
+def _async(value: Any):
+    async def _coro():
+        return value
+    return _coro
+
+
+def _async_raise(exc: Exception):
+    async def _coro():
+        raise exc
+    return _coro
+
+
+def _fake_request(json_obj: Any = None, raise_on_json: bool = False):
+    req = SimpleNamespace()
+    if raise_on_json:
+        req.json = _async_raise(RuntimeError("bad body"))
+    else:
+        req.json = _async(json_obj)
+    return req
+
+
+def _read_json(response) -> dict:
+    return json.loads(bytes(response.body).decode())
+
+
+# ---------- helpers ----------
+
+
+def test_ok_wraps_payload() -> None:
+    resp = _ok({"a": 1})
+
+    assert _read_json(resp) == {"status": "ok", "a": 1}
+
+
+def test_err_default_500() -> None:
+    resp = _err("boom")
+
+    assert resp.status_code == 500
+    assert _read_json(resp) == {"status": "error", "message": "boom"}
+
+
+def test_err_custom_status_code() -> None:
+    resp = _err("bad input", status_code=400)
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_read_body_parses_json() -> None:
+    out = await _read_body(_fake_request(json_obj={"x": 1}))
+
+    assert out == {"x": 1}
+
+
+@pytest.mark.asyncio
+async def test_read_body_returns_empty_dict_on_failure() -> None:
+    out = await _read_body(_fake_request(raise_on_json=True))
+
+    assert out == {}
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_runs_sync_callable() -> None:
+    out = await _run_blocking(lambda: "result")
+
+    assert out == "result"
+
+
+# ---------- handle_measure_viewport_shift ----------
+
+
+def _viewport_shift() -> ViewportShift:
+    return ViewportShift(
+        offset_x=0.0, offset_y=0.0, dpr=3.0,
+        screenshot_width=1170, screenshot_height=2532,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_measure_viewport_shift_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw.calibration = SimpleNamespace()
+    calib = MagicMock()
+    bridge = MagicMock()
+    phone = MagicMock()
+    vs = _viewport_shift()
+    spy = mocker.patch.object(handler, "measure_viewport_shift", return_value=vs)
+
+    resp = await handle_measure_viewport_shift(
+        _fake_request(json_obj={"fresh": True}), physiclaw, calib, bridge, phone,
+    )
+
+    body = _read_json(resp)
+    assert body["status"] == "ok"
+    assert body == {"status": "ok", **dataclasses.asdict(vs)}
+    spy.assert_called_once_with(calib, bridge, fresh=True)
+    phone.set_mode.assert_called_once_with("calibrate", phase="screenshot_cal")
+    assert physiclaw.calibration.viewport_shift is vs
+
+
+@pytest.mark.asyncio
+async def test_handle_measure_viewport_shift_default_fresh_false(mocker) -> None:
+    physiclaw = MagicMock()
+    calib = MagicMock()
+    bridge = MagicMock()
+    phone = MagicMock()
+    vs = _viewport_shift()
+    spy = mocker.patch.object(handler, "measure_viewport_shift", return_value=vs)
+
+    await handle_measure_viewport_shift(
+        _fake_request(raise_on_json=True), physiclaw, calib, bridge, phone,
+    )
+
+    spy.assert_called_once_with(calib, bridge, fresh=False)
+
+
+@pytest.mark.asyncio
+async def test_handle_measure_viewport_shift_returns_err_on_exception(mocker) -> None:
+    physiclaw = MagicMock()
+    calib = MagicMock()
+    mocker.patch.object(
+        handler, "measure_viewport_shift", side_effect=RuntimeError("no upload"),
+    )
+
+    resp = await handle_measure_viewport_shift(
+        _fake_request(json_obj={}), physiclaw, calib, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "no upload" in _read_json(resp)["message"]
+
+
+# ---------- handle_calibrate_arm ----------
+
+
+def _identity_pct_to_grbl() -> np.ndarray:
+    return np.array([
+        [10.0, 0.0, 0.0],
+        [0.0, 20.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_arm_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(z_tap=None)
+    calib = MagicMock()
+    phone = MagicMock()
+    pct_to_grbl = _identity_pct_to_grbl()
+    mocker.patch.object(
+        handler, "calibrate_arm",
+        return_value=(-2.5, pct_to_grbl, 0.01, [(0.1, 0.1, 0)]),
+    )
+    mocker.patch.object(handler, "TILT_ALIGNED_THRESHOLD", 0.05)
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={"fresh": True}), physiclaw, calib, phone,
+    )
+
+    body = _read_json(resp)
+    assert body["status"] == "ok"
+    assert body["z_tap"] == -2.5
+    assert body["pairs"] == 4  # 1 touch + 3 probe
+    assert body["aligned"] is True
+    assert body["z_cached"] is False  # fresh=True → hint None
+    physiclaw._arm.set_direction_mapping.assert_called_once_with(
+        (10.0, 0.0), (0.0, 20.0),
+    )
+    physiclaw.park.assert_called_once()
+    assert physiclaw.calibration.z_tap == -2.5
+    assert physiclaw.calibration.pct_to_grbl is pct_to_grbl
+    physiclaw.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_arm_uses_cached_z_when_not_fresh(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(z_tap=-3.0)
+    spy = mocker.patch.object(
+        handler, "calibrate_arm",
+        return_value=(-3.0, _identity_pct_to_grbl(), 0.001, []),
+    )
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={"fresh": False}), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["z_tap_hint"] == -3.0
+    assert _read_json(resp)["z_cached"] is True
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_arm_arm_not_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = None
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={}), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "Arm not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_arm_releases_on_failure(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(z_tap=None)
+    mocker.patch.object(
+        handler, "calibrate_arm", side_effect=RuntimeError("z descent failed"),
+    )
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={}), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    physiclaw.release.assert_called_once()
+
+
+# ---------- handle_calibrate_camera_frame ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_camera_frame_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = MagicMock()
+    physiclaw.calibration = SimpleNamespace()
+    mocker.patch.object(
+        handler, "calibrate_camera_frame",
+        return_value={"rotation": 90, "issues": []},
+    )
+
+    resp = await handle_calibrate_camera_frame(
+        _fake_request(json_obj={}), physiclaw, MagicMock(),
+    )
+
+    body = _read_json(resp)
+    assert body["rotation"] == 90
+    assert physiclaw.calibration.cam_rotation == 90
+    assert physiclaw._cam.rotation == 90
+    physiclaw.park.assert_called_once()
+    physiclaw.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_camera_frame_camera_not_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = None
+
+    resp = await handle_calibrate_camera_frame(
+        _fake_request(), physiclaw, MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "Camera not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_camera_frame_releases_on_failure(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = MagicMock()
+    mocker.patch.object(
+        handler, "calibrate_camera_frame", side_effect=RuntimeError("no markers"),
+    )
+
+    resp = await handle_calibrate_camera_frame(
+        _fake_request(), physiclaw, MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    physiclaw.release.assert_called_once()
+
+
+# ---------- handle_compute_camera_mapping ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_compute_camera_mapping_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = MagicMock()
+    physiclaw.calibration = SimpleNamespace(effective_rotation=lambda: 90)
+    pct_to_cam = np.eye(3)
+    mocker.patch.object(
+        handler, "compute_camera_mapping", return_value=(pct_to_cam, (1920, 1080)),
+    )
+
+    resp = await handle_compute_camera_mapping(
+        _fake_request(), physiclaw, MagicMock(),
+    )
+
+    body = _read_json(resp)
+    assert body["ok"] is True
+    assert body["dots"] == 15
+    assert body["cam_size"] == [1920, 1080]
+    assert physiclaw.calibration.pct_to_cam is pct_to_cam
+    assert physiclaw.calibration.cam_size == (1920, 1080)
+
+
+@pytest.mark.asyncio
+async def test_handle_compute_camera_mapping_camera_not_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = None
+
+    resp = await handle_compute_camera_mapping(
+        _fake_request(), physiclaw, MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "Camera not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_compute_camera_mapping_releases_on_failure(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._cam = MagicMock()
+    physiclaw.calibration = SimpleNamespace(effective_rotation=lambda: 0)
+    mocker.patch.object(
+        handler, "compute_camera_mapping", side_effect=RuntimeError("dots missing"),
+    )
+
+    resp = await handle_compute_camera_mapping(
+        _fake_request(), physiclaw, MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    physiclaw.release.assert_called_once()
+
+
+# ---------- handle_validate_calibration ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_validate_calibration_happy_path_and_persists(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    cal = MagicMock()
+    cal.transforms_ready = True
+    cal.z_tap = -2.0
+    cal.pct_to_grbl = _identity_pct_to_grbl()
+    cal.pct_to_cam = np.eye(3)
+    cal.cam_size = (1920, 1080)
+    cal.effective_rotation.return_value = 0
+    physiclaw.calibration = cal
+    calib = MagicMock()
+    calib.screen_dimension = (390, 844)
+    phone = MagicMock()
+
+    results = [{"passed": True}, {"passed": True}, {"passed": False}]
+    mocker.patch.object(handler, "validate_calibration", return_value=results)
+
+    resp = await handle_validate_calibration(
+        _fake_request(), physiclaw, calib, phone,
+    )
+
+    body = _read_json(resp)
+    assert body["passed"] == 2
+    assert body["total"] == 3
+    assert body["calibrated"] is True
+    phone.set_mode.assert_called_once_with("bridge")
+    cal.save.assert_called_once()
+    assert cal.screen_dimension == (390, 844)
+
+
+@pytest.mark.asyncio
+async def test_handle_validate_calibration_does_not_save_when_not_calibrated(
+    mocker,
+) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    cal = MagicMock()
+    cal.transforms_ready = True
+    cal.z_tap = -2.0
+    cal.pct_to_grbl = _identity_pct_to_grbl()
+    cal.pct_to_cam = np.eye(3)
+    cal.cam_size = (1920, 1080)
+    cal.effective_rotation.return_value = 0
+    physiclaw.calibration = cal
+    phone = MagicMock()
+    mocker.patch.object(
+        handler, "validate_calibration",
+        return_value=[{"passed": False}, {"passed": True}],
+    )
+
+    resp = await handle_validate_calibration(
+        _fake_request(), physiclaw, MagicMock(), phone,
+    )
+
+    body = _read_json(resp)
+    assert body["calibrated"] is False
+    cal.save.assert_not_called()
+    phone.set_mode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_validate_calibration_arm_not_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = None
+
+    resp = await handle_validate_calibration(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "Arm not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_validate_calibration_requires_transforms_ready() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    cal = MagicMock()
+    cal.transforms_ready = False
+    cal.z_tap = None
+    physiclaw.calibration = cal
+
+    resp = await handle_validate_calibration(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "arm calibration" in _read_json(resp)["message"]
+
+
+# ---------- handle_trace_edge ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_trace_edge_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw.transforms = MagicMock()  # truthy → calibrated
+    phone = MagicMock()
+    spy = mocker.patch(
+        "physiclaw.core.calibration.calibrate.trace_screen_edge",
+    )
+
+    resp = await handle_trace_edge(_fake_request(), physiclaw, phone)
+
+    assert _read_json(resp) == {"status": "ok", "ok": True}
+    phone.set_mode.assert_called_once_with("bridge")
+    physiclaw.park.assert_called_once()
+    spy.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_trace_edge_uncalibrated_returns_error() -> None:
+    physiclaw = MagicMock()
+    physiclaw.transforms = None
+
+    resp = await handle_trace_edge(_fake_request(), physiclaw, MagicMock())
+
+    assert resp.status_code == 500
+    assert "Not calibrated" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_trace_edge_releases_on_failure(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw.transforms = MagicMock()
+    mocker.patch(
+        "physiclaw.core.calibration.calibrate.trace_screen_edge",
+        side_effect=RuntimeError("arm off"),
+    )
+
+    resp = await handle_trace_edge(_fake_request(), physiclaw, MagicMock())
+
+    assert resp.status_code == 500
+    physiclaw.release.assert_called_once()
+
+
+# ---------- handle_show_assistive_touch ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_show_assistive_touch_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw.assistive_touch.at_screen = (0.1, 0.2)
+    calib = SimpleNamespace(viewport_shift=_viewport_shift())
+    phone = MagicMock()
+    mocker.patch.object(handler, "generate_nonce", return_value=[1, 0, 1])
+
+    resp = await handle_show_assistive_touch(
+        _fake_request(), physiclaw, calib, phone,
+    )
+
+    body = _read_json(resp)
+    assert body["status"] == "ok"
+    assert body["at_screen"] == [0.1, 0.2]
+    assert body["nonce_count"] == 3
+    physiclaw.assistive_touch.compute_at_screen_pos.assert_called_once_with(
+        calib.viewport_shift,
+    )
+    phone.set_mode.assert_called_once_with(
+        "calibrate", phase="assistive_touch", nonce_bits=[1, 0, 1],
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_show_assistive_touch_requires_viewport_shift() -> None:
+    physiclaw = MagicMock()
+    calib = SimpleNamespace(viewport_shift=None)
+
+    resp = await handle_show_assistive_touch(
+        _fake_request(), physiclaw, calib, MagicMock(),
+    )
+
+    assert resp.status_code == 400
+    assert "viewport-shift" in _read_json(resp)["message"]
+
+
+# ---------- handle_verify_assistive_touch ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_verify_assistive_touch_happy_path(mocker) -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=_identity_pct_to_grbl())
+    physiclaw.assistive_touch.at_screen = (0.1, 0.2)
+    spy = mocker.patch.object(
+        handler, "verify_assistive_touch", return_value={"verified": True},
+    )
+
+    resp = await handle_verify_assistive_touch(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert _read_json(resp) == {"status": "ok", "verified": True}
+    spy.assert_called_once()
+    physiclaw.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_verify_assistive_touch_arm_not_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = None
+
+    resp = await handle_verify_assistive_touch(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "Arm not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_verify_assistive_touch_requires_pct_to_grbl() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=None)
+
+    resp = await handle_verify_assistive_touch(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "arm calibration" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_verify_assistive_touch_requires_at_show() -> None:
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=_identity_pct_to_grbl())
+    physiclaw.assistive_touch.at_screen = None  # show step not run
+
+    resp = await handle_verify_assistive_touch(
+        _fake_request(), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert resp.status_code == 500
+    assert "assistive-touch/show" in _read_json(resp)["message"]
