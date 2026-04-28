@@ -518,3 +518,546 @@ def test_measure_viewport_shift_png_cache_extension(
 
     # Cached as .png because PNG signature detected.
     assert cache_stem.with_suffix(".png").exists()
+
+
+# ---------- calibrate_arm ----------
+
+
+def _make_cal(*, viewport_shift=None) -> MagicMock:
+    """A CalibrationState mock with the grid constants surfaced."""
+    cal = MagicMock()
+    cal.GRID_COLS_PCT = CalibrationState.GRID_COLS_PCT
+    cal.GRID_ROWS_PCT = CalibrationState.GRID_ROWS_PCT
+    cal.viewport_shift = viewport_shift
+    return cal
+
+
+def _scripted_touches(touches: list[dict]) -> "callable":
+    """Build a flush_touches side_effect that yields one touch per call,
+    interleaved with empty pre-tap clears."""
+    queue = list(touches)
+
+    def _flush():
+        # Two flushes per tap: clear (returns []), then read (returns one).
+        # We cycle: every odd-call-index returns the next scripted touch.
+        if not _flush.call_count % 2:
+            _flush.call_count += 1
+            return []
+        if queue:
+            _flush.call_count += 1
+            return [queue.pop(0)]
+        _flush.call_count += 1
+        return []
+
+    _flush.call_count = 0
+    return _flush
+
+
+def test_calibrate_arm_succeeds_with_z_hint(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+
+    # 3 probes + 15 grid taps = 18 touches. Use a regular grid for clean
+    # affine fit. Probes at screen (0.5, 0.5), (0.6, 0.5), (0.5, 0.6),
+    # then 15 grid points scaled the same way.
+    probe_touches = [
+        {"x": 0.5, "y": 0.5},
+        {"x": 0.6, "y": 0.5},
+        {"x": 0.5, "y": 0.6},
+    ]
+    grid_touches = [
+        {"x": col, "y": row}
+        for row in cal.GRID_ROWS_PCT
+        for col in cal.GRID_COLS_PCT
+    ]
+
+    # Mock _tap_and_read directly to bypass the inner flush_touches loop.
+    tap_returns = iter([
+        (probe_touches[0], -2.0),
+        (probe_touches[1], -2.0),
+        (probe_touches[2], -2.0),
+    ] + [(t, -2.0) for t in grid_touches])
+    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=lambda *a, **kw: next(tap_returns))
+
+    z_tap, pct_to_grbl, tilt, gtouches = cal_mod.calibrate_arm(
+        arm, cal, z_tap_hint=-2.0,
+    )
+
+    assert z_tap == -2.0
+    assert pct_to_grbl.shape == (2, 3)
+    assert isinstance(tilt, float)
+    assert len(gtouches) == 15
+    arm.set_origin.assert_called_once()
+
+
+def test_calibrate_arm_descends_when_no_hint(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+
+    descend_spy = mocker.patch.object(
+        cal_mod, "_descend_to_contact", return_value=-2.0,
+    )
+    probe = [
+        {"x": 0.5, "y": 0.5},
+        {"x": 0.6, "y": 0.5},
+        {"x": 0.5, "y": 0.6},
+    ]
+    grid = [
+        {"x": col, "y": row}
+        for row in cal.GRID_ROWS_PCT
+        for col in cal.GRID_COLS_PCT
+    ]
+    tap_returns = iter([
+        (probe[0], -1.75), (probe[1], -1.75), (probe[2], -1.75),
+    ] + [(t, -1.75) for t in grid])
+    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=lambda *a, **kw: next(tap_returns))
+
+    cal_mod.calibrate_arm(arm, cal)
+
+    descend_spy.assert_called_once()
+
+
+def test_calibrate_arm_raises_on_probe_center_miss(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+    mocker.patch.object(
+        cal_mod, "_tap_and_read", side_effect=[(None, -2.0)],
+    )
+
+    with pytest.raises(RuntimeError, match="no touch at center"):
+        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+
+
+def test_calibrate_arm_raises_on_probe_x_miss(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+    mocker.patch.object(
+        cal_mod, "_tap_and_read",
+        side_effect=[
+            ({"x": 0.5, "y": 0.5}, -2.0),
+            (None, -2.0),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no touch at \\+10mm X"):
+        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+
+
+def test_calibrate_arm_raises_on_probe_y_miss(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+    mocker.patch.object(
+        cal_mod, "_tap_and_read",
+        side_effect=[
+            ({"x": 0.5, "y": 0.5}, -2.0),
+            ({"x": 0.6, "y": 0.5}, -2.0),
+            (None, -2.0),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no touch at \\+10mm Y"):
+        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+
+
+def test_calibrate_arm_raises_when_too_few_grid_hits(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    cal = _make_cal()
+    # 3 probes succeed, all 15 grid taps miss (None) — only 3 valid pairs.
+    probe = [
+        ({"x": 0.5, "y": 0.5}, -2.0),
+        ({"x": 0.6, "y": 0.5}, -2.0),
+        ({"x": 0.5, "y": 0.6}, -2.0),
+    ]
+    grid_misses = [(None, -2.0)] * 15
+    mocker.patch.object(
+        cal_mod, "_tap_and_read", side_effect=probe + grid_misses,
+    )
+
+    with pytest.raises(RuntimeError, match="only 3 valid taps"):
+        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+
+
+def test_calibrate_arm_uses_viewport_pct_when_shift_set(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    vshift = ViewportShift(
+        offset_x=0, offset_y=0, dpr=3.0,
+        screenshot_width=1170, screenshot_height=2532,
+    )
+    cal = _make_cal(viewport_shift=vshift)
+    cal.viewport_pct_to_screenshot_pct.side_effect = lambda c, r: (c, r)
+
+    probe = [
+        ({"x": 0.5, "y": 0.5}, -2.0),
+        ({"x": 0.6, "y": 0.5}, -2.0),
+        ({"x": 0.5, "y": 0.6}, -2.0),
+    ]
+    grid = [
+        ({"x": col, "y": row}, -2.0)
+        for row in cal.GRID_ROWS_PCT
+        for col in cal.GRID_COLS_PCT
+    ]
+    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=probe + grid)
+
+    cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+
+    # viewport_pct_to_screenshot_pct was used for grid prediction.
+    assert cal.viewport_pct_to_screenshot_pct.call_count == 15
+
+
+# ---------- compute_camera_mapping ----------
+
+
+def _grid_dot_image(rows=5, cols=3, w=600, h=900) -> np.ndarray:
+    """Build a frame with red dots at grid_positions × frame size."""
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    for row in CalibrationState.GRID_ROWS_PCT:
+        for col in CalibrationState.GRID_COLS_PCT:
+            cv2.circle(
+                img, (int(col * w), int(row * h)),
+                radius=10, color=(0, 0, 255), thickness=-1,
+            )
+    return img
+
+
+def test_compute_camera_mapping_succeeds(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    cam = MagicMock()
+    cam._fresh_frame.return_value = _grid_dot_image()
+    cal = _make_cal()
+
+    pct_to_cam, cam_size = cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
+
+    assert pct_to_cam.shape == (2, 3)
+    assert cam_size == (600, 900)
+
+
+def test_compute_camera_mapping_camera_dead(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    cam = MagicMock()
+    cam._fresh_frame.return_value = None
+    cal = _make_cal()
+
+    with pytest.raises(RuntimeError, match="camera read failed"):
+        cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
+
+
+def test_compute_camera_mapping_retries_then_fails(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    cam = MagicMock()
+    blank = np.zeros((600, 900, 3), dtype=np.uint8)
+    cam._fresh_frame.return_value = blank
+    cal = _make_cal()
+
+    with pytest.raises(RuntimeError, match=r"detected 0 dots, expected 15"):
+        cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
+
+
+def test_compute_camera_mapping_applies_rotation(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    cam = MagicMock()
+    # Pre-rotated dot image; camera returns the source orientation.
+    img = _grid_dot_image()
+    cam._fresh_frame.return_value = img
+    cal = _make_cal()
+
+    rotate_spy = mocker.spy(cal_mod.cv2, "rotate")
+
+    cal_mod.compute_camera_mapping(cam, cal, rotation=cv2.ROTATE_90_CLOCKWISE)
+
+    assert rotate_spy.called
+
+
+def test_compute_camera_mapping_uses_viewport_shift(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    cam = MagicMock()
+    cam._fresh_frame.return_value = _grid_dot_image()
+    vshift = ViewportShift(
+        offset_x=0, offset_y=0, dpr=3.0,
+        screenshot_width=1170, screenshot_height=2532,
+    )
+    cal = _make_cal(viewport_shift=vshift)
+    cal.viewport_pct_to_screenshot_pct.side_effect = lambda c, r: (c, r)
+
+    cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
+
+    assert cal.viewport_pct_to_screenshot_pct.call_count == 15
+
+
+# ---------- validate_calibration ----------
+
+
+def _identity_pct_to_grbl() -> np.ndarray:
+    return np.array([
+        [10.0, 0.0, 0.0],
+        [0.0, 20.0, 0.0],
+    ])
+
+
+def _identity_pct_to_cam() -> np.ndarray:
+    return np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ])
+
+
+def test_validate_calibration_records_passed_when_touches_match(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "random", return_value=0.5)
+    arm = MagicMock()
+    cam = MagicMock()
+    cam._fresh_frame.return_value = np.zeros((100, 100, 3), np.uint8)
+    cal = _make_cal()
+
+    # detect_orange_dot returns the dot at the same pct (camera 0-1 = screen 0-1).
+    mocker.patch.object(
+        cal_mod, "_detect_orange_dot",
+        side_effect=lambda f: (50, 50),  # at center of 100×100 → 0.5 pct
+    )
+    # Touches always come back at the expected position.
+    cal.flush_touches.side_effect = (
+        [[], [{"x": 0.5, "y": 0.5}]] * 5
+    )
+
+    results = cal_mod.validate_calibration(
+        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        pct_to_grbl=_identity_pct_to_grbl(),
+        pct_to_cam=_identity_pct_to_cam(),
+        cam_size=(100, 100), num_tests=2,
+    )
+
+    assert len(results) == 2
+    assert all(r["passed"] for r in results)
+
+
+def test_validate_calibration_falls_back_when_dot_undetected(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "random", return_value=0.5)
+    arm = MagicMock()
+    cam = MagicMock()
+    cam._fresh_frame.return_value = np.zeros((100, 100, 3), np.uint8)
+    cal = _make_cal()
+    mocker.patch.object(cal_mod, "_detect_orange_dot", return_value=None)
+    cal.flush_touches.side_effect = (
+        [[], [{"x": 0.5, "y": 0.5}]] * 1
+    )
+
+    results = cal_mod.validate_calibration(
+        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        pct_to_grbl=_identity_pct_to_grbl(),
+        pct_to_cam=_identity_pct_to_cam(),
+        cam_size=(100, 100), num_tests=1,
+    )
+
+    assert len(results) == 1
+    # Fallback used expected position → should pass.
+    assert results[0]["passed"] is True
+
+
+def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "random", return_value=0.5)
+    arm = MagicMock()
+    cam = MagicMock()
+    cam._fresh_frame.return_value = np.zeros((100, 100, 3), np.uint8)
+    cal = _make_cal()
+    mocker.patch.object(
+        cal_mod, "_detect_orange_dot", return_value=(50, 50),
+    )
+    # All flushes return empty → tap retries 4 times, each fails.
+    cal.flush_touches.return_value = []
+
+    results = cal_mod.validate_calibration(
+        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        pct_to_grbl=_identity_pct_to_grbl(),
+        pct_to_cam=_identity_pct_to_cam(),
+        cam_size=(100, 100), num_tests=1,
+    )
+
+    assert len(results) == 1
+    assert results[0]["passed"] is False
+    assert results[0]["error"] == 999.0
+
+
+def test_validate_calibration_retries_with_z_bump_on_miss(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "random", return_value=0.5)
+    arm = MagicMock()
+    cam = MagicMock()
+    cam._fresh_frame.return_value = np.zeros((100, 100, 3), np.uint8)
+    cal = _make_cal()
+    mocker.patch.object(cal_mod, "_detect_orange_dot", return_value=(50, 50))
+
+    # First two flushes (clear + miss) then clear + hit on retry.
+    cal.flush_touches.side_effect = [
+        [], [],                      # attempt 0: clear + miss
+        [], [{"x": 0.5, "y": 0.5}],  # attempt 1: clear + hit
+    ]
+
+    results = cal_mod.validate_calibration(
+        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        pct_to_grbl=_identity_pct_to_grbl(),
+        pct_to_cam=_identity_pct_to_cam(),
+        cam_size=(100, 100), num_tests=1,
+    )
+
+    assert results[0]["passed"] is True
+
+
+# ---------- trace_screen_edge ----------
+
+
+def test_trace_screen_edge_visits_all_check_points(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    transforms = MagicMock()
+    transforms.pct_to_grbl_mm.side_effect = lambda x, y: (x * 100, y * 100)
+
+    cal_mod.trace_screen_edge(arm, transforms)
+
+    # 9 check points + 2 return_to_origin → 9 fast moves + 2 origin returns.
+    assert arm._fast_move.call_count == 9
+    assert arm.return_to_origin.call_count == 2
+
+
+# ---------- verify_assistive_touch ----------
+
+
+def test_verify_assistive_touch_raises_when_at_unset(mocker) -> None:
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = None
+
+    with pytest.raises(RuntimeError, match="AT position not set"):
+        cal_mod.verify_assistive_touch(arm, at, MagicMock(), MagicMock(), _identity_pct_to_grbl())
+
+
+def test_verify_assistive_touch_raises_when_no_nonce(mocker) -> None:
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    cal = _make_cal()
+    cal._screenshot_nonce = None
+
+    with pytest.raises(RuntimeError, match="No nonce set"):
+        cal_mod.verify_assistive_touch(arm, at, MagicMock(), cal, _identity_pct_to_grbl())
+
+
+def test_verify_assistive_touch_returns_failed_dict_on_screenshot_timeout(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    cal = _make_cal()
+    cal._screenshot_nonce = [1, 0, 1, 0]
+    bridge = MagicMock()
+    bridge.wait_screenshot.return_value = None  # timeout
+
+    out = cal_mod.verify_assistive_touch(
+        arm, at, bridge, cal, _identity_pct_to_grbl(),
+    )
+
+    assert out["passed"] is False
+    assert out["screenshot"]["passed"] is False
+    assert out["clipboard"]["fetched"] is False
+
+
+def test_verify_assistive_touch_returns_failed_dict_on_decode_error(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    cal = _make_cal()
+    cal._screenshot_nonce = [1, 0, 1, 0]
+    bridge = MagicMock()
+    bridge.wait_screenshot.return_value = b"not an image"
+
+    out = cal_mod.verify_assistive_touch(
+        arm, at, bridge, cal, _identity_pct_to_grbl(),
+    )
+
+    assert out["passed"] is False
+
+
+def test_verify_assistive_touch_raises_when_viewport_shift_unset(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    cal = _make_cal()
+    cal._screenshot_nonce = [1, 0, 1, 0]
+    cal.viewport_shift = None
+    bridge = MagicMock()
+    img = np.zeros((400, 400, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    bridge.wait_screenshot.return_value = buf.tobytes()
+
+    with pytest.raises(RuntimeError, match="viewport_shift not set"):
+        cal_mod.verify_assistive_touch(arm, at, bridge, cal, _identity_pct_to_grbl())
+
+
+def test_verify_assistive_touch_full_success_path(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(
+        cal_mod.random, "randbytes", return_value=b"\xab\xcd\xef",
+    )
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    vshift = ViewportShift(
+        offset_x=0, offset_y=0, dpr=3.0,
+        screenshot_width=1170, screenshot_height=2532,
+    )
+    cal = _make_cal(viewport_shift=vshift)
+    cal._screenshot_nonce = [1, 0, 1, 0]
+    bridge = MagicMock()
+    bridge.wait_clipboard.return_value = True
+    img = np.zeros((400, 400, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    bridge.wait_screenshot.return_value = buf.tobytes()
+
+    mocker.patch.object(cal_mod, "verify_nonce", return_value=(True, 4))
+
+    out = cal_mod.verify_assistive_touch(
+        arm, at, bridge, cal, _identity_pct_to_grbl(),
+    )
+
+    assert out["passed"] is True
+    assert out["screenshot"]["passed"] is True
+    assert out["clipboard"]["fetched"] is True
+    assert out["clipboard"]["text"].startswith("PhysiClaw-")
+
+
+def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "randbytes", return_value=b"\x01\x02\x03")
+    arm = MagicMock()
+    at = MagicMock()
+    at.at_screen = (0.05, 0.1)
+    vshift = ViewportShift(
+        offset_x=0, offset_y=0, dpr=3.0,
+        screenshot_width=1170, screenshot_height=2532,
+    )
+    cal = _make_cal(viewport_shift=vshift)
+    cal._screenshot_nonce = [1, 0, 1, 0]
+    bridge = MagicMock()
+    bridge.wait_clipboard.return_value = False
+    img = np.zeros((400, 400, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    bridge.wait_screenshot.return_value = buf.tobytes()
+    mocker.patch.object(cal_mod, "verify_nonce", return_value=(True, 4))
+
+    out = cal_mod.verify_assistive_touch(
+        arm, at, bridge, cal, _identity_pct_to_grbl(),
+    )
+
+    # Screenshot passed but clipboard didn't → overall failure.
+    assert out["passed"] is False
+    assert out["screenshot"]["passed"] is True
+    assert out["clipboard"]["fetched"] is False
