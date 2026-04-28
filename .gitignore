@@ -29,7 +29,7 @@ wheels/
 /jobs/
 
 # Agent memory (task logs, machine-local)
-memory/
+/memory/
 
 # Runtime logs
 log/
