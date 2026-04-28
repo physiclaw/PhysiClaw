@@ -75,7 +75,6 @@ branch = true
 source = ["src/physiclaw"]
 omit = [
     "src/physiclaw/agent/runtime/__main__.py",
-    "src/physiclaw/agent/claude/skills/jobs/jobs.py",
 ]
 
 [tool.coverage.report]
