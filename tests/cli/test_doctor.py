@@ -602,6 +602,153 @@ def test_doctor_deep_runs_probes(mocker) -> None:
     provider_spy.assert_called_once()
 
 
+# ---------- _probe_provider_deep ----------
+
+
+def _make_async(value):
+    async def _coro(*a, **kw):
+        return value
+    return _coro
+
+
+def test_probe_provider_deep_setup_error_returns_warn(mocker) -> None:
+    fake_provider = MagicMock()
+    fake_provider.make_provider.side_effect = ValueError("missing api key")
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_provider},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    assert "setup" in out
+    assert "missing api key" in out
+
+
+def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
+    """Non-empty reply check happens before this; the chat itself raises."""
+    from physiclaw.agent.engine.dto import AssistantMessage, FinishReason, Usage
+
+    fake_prov = MagicMock()
+    fake_prov.chat = mocker.MagicMock(side_effect=RuntimeError("network"))
+    fake_prov.aclose = _make_async(None)
+
+    fake_module = MagicMock()
+    fake_module.make_provider.return_value = fake_prov
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_module},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    assert "RuntimeError" in out
+    assert "network" in out
+
+
+def test_probe_provider_deep_empty_reply_returns_warn(mocker) -> None:
+    from physiclaw.agent.engine.dto import (
+        AssistantMessage, FinishReason, Usage,
+    )
+
+    asst = AssistantMessage(
+        content="", tool_calls=[],
+        finish_reason=FinishReason.STOP,
+    )
+    fake_prov = MagicMock()
+    fake_prov.chat = _make_async(asst)
+    fake_prov.aclose = _make_async(None)
+
+    fake_module = MagicMock()
+    fake_module.make_provider.return_value = fake_prov
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_module},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    assert "empty reply" in out
+
+
+def test_probe_provider_deep_vision_check_fails(mocker) -> None:
+    from physiclaw.agent.engine.dto import (
+        AssistantMessage, FinishReason, Usage,
+    )
+
+    asst = AssistantMessage(
+        content="something else",  # no "physiclaw" in reply
+        tool_calls=[],
+        finish_reason=FinishReason.STOP,
+        usage=Usage(prompt_tokens=100, completion_tokens=10),
+    )
+    fake_prov = MagicMock()
+    fake_prov.chat = _make_async(asst)
+    fake_prov.aclose = _make_async(None)
+
+    fake_module = MagicMock()
+    fake_module.make_provider.return_value = fake_prov
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_module},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    assert "vision check failed" in out
+    assert "PhysiClaw" in out
+
+
+def test_probe_provider_deep_success_with_usage(mocker) -> None:
+    from physiclaw.agent.engine.dto import (
+        AssistantMessage, FinishReason, Usage,
+    )
+
+    asst = AssistantMessage(
+        content="PhysiClaw",
+        tool_calls=[],
+        finish_reason=FinishReason.STOP,
+        usage=Usage(prompt_tokens=200, completion_tokens=2),
+    )
+    fake_prov = MagicMock()
+    fake_prov.chat = _make_async(asst)
+    fake_prov.aclose = _make_async(None)
+
+    fake_module = MagicMock()
+    fake_module.make_provider.return_value = fake_prov
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_module},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    # Success rendered as ok.
+    assert "PhysiClaw" in out
+    assert "200p+2c" in out
+
+
+def test_probe_provider_deep_success_no_usage(mocker) -> None:
+    from physiclaw.agent.engine.dto import (
+        AssistantMessage, FinishReason, Usage,
+    )
+
+    asst = AssistantMessage(
+        content="PhysiClaw",
+        tool_calls=[],
+        finish_reason=FinishReason.STOP,
+        usage=Usage(prompt_tokens=0, completion_tokens=0),
+    )
+    fake_prov = MagicMock()
+    fake_prov.chat = _make_async(asst)
+    fake_prov.aclose = _make_async(None)
+
+    fake_module = MagicMock()
+    fake_module.make_provider.return_value = fake_prov
+    mocker.patch.dict(
+        "sys.modules", {"physiclaw.agent.provider": fake_module},
+    )
+
+    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+
+    assert "no usage" in out
+
+
 def test_doctor_invalid_active_model_ref(mocker) -> None:
     _patch_doctor_environment(
         mocker,
