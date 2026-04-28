@@ -1,0 +1,494 @@
+"""Tests for `physiclaw.agent.engine.builtin_tool` — local tool handlers.
+
+The engine's local tools call out to memory/jobs/scratchpad/skill —
+those modules are mocked so handler tests stay focused on the tool
+surface (input parsing, return strings, session mutation).
+
+`schemas()` and `build_registry()` are exercised at the bottom for
+the wire-format and ordering contract.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from physiclaw.agent.engine import builtin_tool
+from physiclaw.agent.engine.builtin_tool import (
+    LocalTool,
+    Session,
+    _handle_append_log,
+    _handle_create_job,
+    _handle_end_session,
+    _handle_finish_job,
+    _handle_get_job,
+    _handle_list_jobs,
+    _handle_note,
+    _handle_read_logs,
+    _handle_read_memory,
+    _handle_save_memory,
+    _handle_skill_factory,
+    _handle_update_memory,
+    _handle_update_progress,
+    _handle_wait,
+    build_registry,
+    schemas,
+)
+from physiclaw.agent.engine.plan import Plan
+from physiclaw.agent.engine.skill import Skill
+
+
+# ---------- Session ----------
+
+
+def test_session_default_state() -> None:
+    s = Session()
+
+    assert s.sentinel_status is None
+    assert s.sentinel_recap == ""
+    assert s.sentinel_turn_created_job is False
+    assert isinstance(s.plan, Plan)
+    assert s.scratchpad == ""
+
+
+def test_session_default_plans_not_shared() -> None:
+    a = Session()
+    b = Session()
+
+    a.plan.user_said = "hello"
+
+    assert b.plan.user_said != "hello"
+
+
+# ---------- _handle_note ----------
+
+
+@pytest.mark.asyncio
+async def test_note_handler_returns_summary_message() -> None:
+    s = Session()
+
+    out = await _handle_note(s, {"summary": "looking for Send button"})
+
+    assert out == "noted: looking for Send button"
+
+
+@pytest.mark.asyncio
+async def test_note_handler_writes_scratchpad_when_provided() -> None:
+    s = Session()
+
+    out = await _handle_note(s, {"summary": "x", "scratchpad": "remember this"})
+
+    assert "scratchpad updated" in out
+    assert s.scratchpad == "remember this"
+
+
+@pytest.mark.asyncio
+async def test_note_handler_records_scratchpad_rejection_on_oversize() -> None:
+    s = Session()
+    too_big = "x" * (64 * 1024 + 1)
+
+    out = await _handle_note(s, {"summary": "x", "scratchpad": too_big})
+
+    assert "scratchpad rejected" in out
+    assert "Summarize before writing" in out
+
+
+@pytest.mark.asyncio
+async def test_note_handler_no_scratchpad_if_arg_omitted() -> None:
+    s = Session()
+
+    await _handle_note(s, {"summary": "x"})
+
+    assert s.scratchpad == ""
+
+
+# ---------- _handle_update_progress ----------
+
+
+@pytest.mark.asyncio
+async def test_update_progress_calls_plan_update() -> None:
+    s = Session()
+
+    out = await _handle_update_progress(s, {"user_said": "buy bananas"})
+
+    assert out == "progress updated"
+    assert s.plan.user_said == "buy bananas"
+
+
+@pytest.mark.asyncio
+async def test_update_progress_returns_rejected_message_on_validation_error() -> None:
+    s = Session()
+
+    out = await _handle_update_progress(s, {})  # no args raises ValueError
+
+    assert out.startswith("update_progress rejected:")
+
+
+# ---------- _handle_append_log / _handle_save_memory ----------
+
+
+@pytest.mark.asyncio
+async def test_append_log_calls_memory_append_log(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.memory.append_log")
+
+    out = await _handle_append_log(Session(), {"entry": "did stuff"})
+
+    assert out == "log appended"
+    spy.assert_called_once_with("did stuff")
+
+
+@pytest.mark.asyncio
+async def test_save_memory_calls_memory_save_fact(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.memory.save_fact")
+
+    out = await _handle_save_memory(Session(), {"text": "user prefers metric"})
+
+    assert out == "fact saved to memory.md"
+    spy.assert_called_once_with("user prefers metric")
+
+
+# ---------- _handle_create_job ----------
+
+
+@pytest.mark.asyncio
+async def test_create_job_calls_jobs_create_and_marks_session(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.jobs.create_job")
+    s = Session()
+
+    out = await _handle_create_job(s, {
+        "id": "user-greet", "description": "d",
+        "schedule": "0 7 * * *", "context": "ten chars at least",
+    })
+
+    assert out == "scheduled job 'user-greet'"
+    assert s.sentinel_turn_created_job is True
+    spy.assert_called_once_with(
+        id="user-greet", description="d", schedule="0 7 * * *",
+        context="ten chars at least", kind="one-time",
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_job_uses_explicit_kind_when_provided(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.jobs.create_job")
+
+    await _handle_create_job(Session(), {
+        "id": "x", "description": "d", "schedule": "* * * * *",
+        "context": "ten chars at least", "kind": "periodic",
+    })
+
+    assert spy.call_args.kwargs["kind"] == "periodic"
+
+
+# ---------- _handle_get_job ----------
+
+
+@pytest.mark.asyncio
+async def test_get_job_renders_full_job_block(mocker) -> None:
+    fake_job = type("J", (), {})()
+    fake_job.id = "x"
+    fake_job.description = "Say hi"
+    fake_job.kind = "periodic"
+    fake_job.status = "pend"
+    fake_job.schedule = "0 7 * * *"
+    fake_job.context = "morning context"
+    fake_job.next_fire_time = "2026-04-29T07:00"
+    fake_job.last_fire_time = ""
+    fake_job.execution_time = ""
+    fake_job.execution_result = ""
+    mocker.patch(
+        "physiclaw.agent.engine.jobs.get_job", return_value=fake_job
+    )
+
+    out = await _handle_get_job(Session(), {"id": "x"})
+
+    assert "## x" in out
+    assert "Say hi" in out
+    assert "- Schedule: `0 7 * * *`" in out
+    # Empty fields render as NEVER ("(never)").
+    assert "- Last fire time: (never)" in out
+
+
+# ---------- _handle_read_memory / _handle_read_logs ----------
+
+
+@pytest.mark.asyncio
+async def test_read_memory_returns_persistent_or_placeholder(mocker) -> None:
+    mocker.patch(
+        "physiclaw.agent.engine.memory.load_persistent",
+        return_value="user prefers metric\nuses AT",
+    )
+
+    out = await _handle_read_memory(Session(), {})
+
+    assert out == "user prefers metric\nuses AT"
+
+
+@pytest.mark.asyncio
+async def test_read_memory_placeholder_when_empty(mocker) -> None:
+    mocker.patch(
+        "physiclaw.agent.engine.memory.load_persistent", return_value=""
+    )
+
+    out = await _handle_read_memory(Session(), {})
+
+    assert out == "(memory.md is empty)"
+
+
+@pytest.mark.asyncio
+async def test_read_logs_uses_default_entries_when_omitted(mocker) -> None:
+    spy = mocker.patch(
+        "physiclaw.agent.engine.memory.load_recent_entries",
+        return_value="line",
+    )
+
+    await _handle_read_logs(Session(), {})
+
+    # Default = memory.DEFAULT_LOG_ENTRIES (positive int).
+    assert spy.call_args.args[0] > 0
+
+
+@pytest.mark.asyncio
+async def test_read_logs_uses_explicit_entries(mocker) -> None:
+    spy = mocker.patch(
+        "physiclaw.agent.engine.memory.load_recent_entries",
+        return_value="entries",
+    )
+
+    await _handle_read_logs(Session(), {"entries": 5})
+
+    spy.assert_called_once_with(5)
+
+
+@pytest.mark.asyncio
+async def test_read_logs_placeholder_when_empty(mocker) -> None:
+    mocker.patch(
+        "physiclaw.agent.engine.memory.load_recent_entries", return_value=""
+    )
+
+    out = await _handle_read_logs(Session(), {})
+
+    assert out == "(no log entries found)"
+
+
+# ---------- _handle_update_memory ----------
+
+
+@pytest.mark.asyncio
+async def test_update_memory_calls_memory_update_fact(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.memory.update_fact")
+
+    out = await _handle_update_memory(
+        Session(), {"old": "metric", "new": "imperial"}
+    )
+
+    assert out == "memory.md updated"
+    spy.assert_called_once_with("metric", "imperial")
+
+
+# ---------- _handle_list_jobs ----------
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_returns_no_jobs_message_when_empty(mocker) -> None:
+    mocker.patch(
+        "physiclaw.agent.engine.builtin_tool.load_jobs", return_value=[]
+    )
+
+    out = await _handle_list_jobs(Session(), {})
+
+    assert out == "no jobs"
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_filters_by_status(mocker) -> None:
+    fake = [type("J", (), {})(), type("J", (), {})()]
+    fake[0].id, fake[0].kind, fake[0].status = "a", "periodic", "pend"
+    fake[1].id, fake[1].kind, fake[1].status = "b", "one-time", "done"
+    for j in fake:
+        j.description = "d"
+        j.next_fire_time = ""
+
+    mocker.patch(
+        "physiclaw.agent.engine.builtin_tool.load_jobs", return_value=fake
+    )
+
+    out = await _handle_list_jobs(Session(), {"status": "pend"})
+
+    assert "1 job(s)" in out
+    assert " a — " in out  # specific match: id `a` not the letter elsewhere
+    assert " b — " not in out
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_no_match_message_when_filter_empty(mocker) -> None:
+    fake = [type("J", (), {})()]
+    fake[0].id, fake[0].kind, fake[0].status = "a", "periodic", "done"
+    fake[0].description = "d"
+    fake[0].next_fire_time = ""
+    mocker.patch(
+        "physiclaw.agent.engine.builtin_tool.load_jobs", return_value=fake
+    )
+
+    out = await _handle_list_jobs(Session(), {"status": "fail"})
+
+    assert out == "no jobs with status='fail'"
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_renders_job_lines(mocker) -> None:
+    fake = type("J", (), {})()
+    fake.id, fake.kind, fake.status = "x", "periodic", "pend"
+    fake.description = "do things"
+    fake.next_fire_time = "2026-04-28T07:00"
+    mocker.patch(
+        "physiclaw.agent.engine.builtin_tool.load_jobs", return_value=[fake]
+    )
+
+    out = await _handle_list_jobs(Session(), {})
+
+    assert "[periodic] [pend] x — do things (next: 2026-04-28T07:00)" in out
+
+
+# ---------- _handle_finish_job ----------
+
+
+@pytest.mark.asyncio
+async def test_finish_job_calls_jobs_finish(mocker) -> None:
+    spy = mocker.patch("physiclaw.agent.engine.jobs.finish_job")
+
+    out = await _handle_finish_job(
+        Session(), {"id": "x", "status": "done", "recap": "ok"}
+    )
+
+    assert out == "finished job 'x' as done"
+    spy.assert_called_once_with(id="x", status="done", recap="ok")
+
+
+# ---------- _handle_wait ----------
+
+
+@pytest.mark.asyncio
+async def test_wait_sleeps_for_given_seconds(mocker) -> None:
+    sleep = mocker.patch("asyncio.sleep")
+
+    out = await _handle_wait(Session(), {"seconds": 5})
+
+    assert out == "waited 5s — `peek` now to see what changed."
+    sleep.assert_awaited_once_with(5)
+
+
+# ---------- _handle_end_session ----------
+
+
+@pytest.mark.asyncio
+async def test_end_session_marks_status_and_recap() -> None:
+    s = Session()
+
+    out = await _handle_end_session(s, {"status": "DONE", "recap": "ok"})
+
+    assert out == "session closing: DONE"
+    assert s.sentinel_status == "DONE"
+    assert s.sentinel_recap == "ok"
+
+
+@pytest.mark.asyncio
+async def test_end_session_strips_recap() -> None:
+    s = Session()
+
+    await _handle_end_session(s, {"status": "DONE", "recap": "  ok  "})
+
+    assert s.sentinel_recap == "ok"
+
+
+@pytest.mark.asyncio
+async def test_end_session_recap_default_empty_string() -> None:
+    s = Session()
+
+    await _handle_end_session(s, {"status": "DONE"})
+
+    assert s.sentinel_recap == ""
+
+
+@pytest.mark.asyncio
+async def test_end_session_raises_on_invalid_status() -> None:
+    s = Session()
+
+    with pytest.raises(ValueError, match=r"^status must be one of"):
+        await _handle_end_session(s, {"status": "MAYBE", "recap": ""})
+
+
+# ---------- _handle_skill_factory ----------
+
+
+@pytest.mark.asyncio
+async def test_skill_handler_dispatches_via_skill_module(mocker) -> None:
+    fake_dispatch = mocker.patch(
+        "physiclaw.agent.engine.skill.dispatch", return_value="skill body"
+    )
+    handler = _handle_skill_factory({})
+
+    out = await handler(Session(), {"name": "wechat"})
+
+    assert out == "skill body"
+    fake_dispatch.assert_called_once_with({}, {"name": "wechat"})
+
+
+# ---------- schemas ----------
+
+
+def test_schemas_flattens_registry_to_wire_dicts() -> None:
+    registry = build_registry({})
+
+    out = schemas(registry)
+
+    assert all(set(d) == {"name", "description", "input_schema"} for d in out)
+    assert {d["name"] for d in out} >= {"note", "update_progress", "wait", "end_session"}
+
+
+# ---------- build_registry ----------
+
+
+def test_build_registry_first_two_tools_are_note_and_update_progress() -> None:
+    reg = build_registry({})
+    keys = list(reg.keys())
+
+    assert keys[0] == "note"
+    assert keys[1] == "update_progress"
+
+
+def test_build_registry_omits_skill_when_no_skills_discovered() -> None:
+    reg = build_registry({})
+
+    assert "Skill" not in reg
+
+
+def test_build_registry_includes_skill_tool_when_skills_present(
+    tmp_path: Path,
+) -> None:
+    skill_registry = {
+        "wechat": Skill(name="wechat", description="d", body="", dir=tmp_path),
+    }
+
+    reg = build_registry(skill_registry)
+
+    assert "Skill" in reg
+    assert "wechat" in reg["Skill"].description
+
+
+def test_build_registry_returns_local_tool_instances() -> None:
+    reg = build_registry({})
+
+    assert all(isinstance(t, LocalTool) for t in reg.values())
+
+
+def test_build_registry_includes_all_tool_categories() -> None:
+    keys = set(build_registry({}).keys())
+
+    assert keys == {
+        "note", "update_progress", "append_log", "save_memory",
+        "read_memory", "read_logs", "update_memory",
+        "create_job", "get_job", "list_jobs", "finish_job",
+        "wait", "end_session",
+    }
