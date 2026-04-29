@@ -30,6 +30,33 @@ from physiclaw.core.logger import logged, save_tool_call
 from physiclaw.core.server.types import Bbox, ClipboardText
 
 
+# ─── Trailing hints ───────────────────────────────────────────
+#
+# Each tool ends with a short hint that nudges the agent toward the
+# correct next step. These are part of the prompt contract — silent
+# edits change agent behavior with no signal. Tests pin every hint by
+# constant, so any rewording surfaces as a failed test.
+#
+HINT_PEEK_AFTER_TAP = "— `peek` to verify and plan the next move"
+HINT_PEEK_AFTER_DOUBLE_TAP = "— `peek` to verify the zoom / selection landed"
+HINT_PEEK_AFTER_LONG_PRESS = (
+    "— `peek` next: you'll need a fresh bbox from the popover to tap "
+    "(Paste / Copy / etc.)"
+)
+HINT_PEEK_AFTER_SWIPE = "— `peek` to verify the page scrolled and plan the next move"
+HINT_PEEK_AFTER_HOME = "— `peek` to plan your next tap on the home-screen icons"
+HINT_PEEK_AFTER_BACK = "— `peek` to verify navigation landed and plan the next move"
+HINT_AFTER_FORCE_QUIT = "— now on home screen; reopen the app fresh"
+HINT_PEEK_AFTER_UNLOCK = (
+    "— `peek` to confirm you're on the home screen and plan the next tap"
+)
+HINT_AFTER_CLIPBOARD = (
+    "— next: `long_press` the target field, then `tap` the Paste "
+    "button that appears"
+)
+HINT_PEEK_AFTER_SEQUENCE = "— `peek` to verify the final state and plan the next move"
+
+
 def register(mcp: FastMCP, physiclaw: PhysiClaw):
     """Register every MCP tool on the given FastMCP instance."""
 
@@ -86,7 +113,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         bbox was wrong (pick a different element from the new peek).
         """
         result = await asyncio.to_thread(physiclaw.tap, bbox)
-        return f"{result} — `peek` to verify and plan the next move"
+        return f"{result} {HINT_PEEK_AFTER_TAP}"
 
     @mcp.tool()
     @logged
@@ -97,7 +124,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         in editable text. For buttons, use `tap`.
         """
         result = await asyncio.to_thread(physiclaw.double_tap, bbox)
-        return f"{result} — `peek` to verify the zoom / selection landed"
+        return f"{result} {HINT_PEEK_AFTER_DOUBLE_TAP}"
 
     @mcp.tool()
     @logged
@@ -110,7 +137,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         revealed popover to tap (Paste / Copy / etc.).
         """
         result = await asyncio.to_thread(physiclaw.long_press, bbox)
-        return f"{result} — `peek` next: you'll need a fresh bbox from the popover to tap (Paste / Copy / etc.)"
+        return f"{result} {HINT_PEEK_AFTER_LONG_PRESS}"
 
     # ─── Swipe ───────────────────────────────────────────────
 
@@ -144,7 +171,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
                 coast further on iOS scroll lists.
         """
         result = await asyncio.to_thread(physiclaw.swipe, bbox, direction, size, speed)
-        return f"{result} — `peek` to verify the page scrolled and plan the next move"
+        return f"{result} {HINT_PEEK_AFTER_SWIPE}"
 
     # ─── Navigate ────────────────────────────────────────────
 
@@ -157,7 +184,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         fresh task or recover from getting lost in app navigation.
         """
         result = await asyncio.to_thread(physiclaw.home_screen)
-        return f"{result} — `peek` to plan your next tap on the home-screen icons"
+        return f"{result} {HINT_PEEK_AFTER_HOME}"
 
     @mcp.tool()
     @logged
@@ -176,7 +203,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         `X` / `Done` button instead.
         """
         result = await asyncio.to_thread(physiclaw.go_back)
-        return f"{result} — `peek` to verify navigation landed and plan the next move"
+        return f"{result} {HINT_PEEK_AFTER_BACK}"
 
     @mcp.tool()
     @logged
@@ -190,7 +217,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         page keeps returning.
         """
         result = await asyncio.to_thread(physiclaw.force_quit)
-        return f"{result} — now on home screen; reopen the app fresh"
+        return f"{result} {HINT_AFTER_FORCE_QUIT}"
 
     @mcp.tool()
     @logged
@@ -213,7 +240,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         trade-off: faster display wear).
         """
         result = await asyncio.to_thread(physiclaw.unlock_phone)
-        return f"{result} — `peek` to confirm you're on the home screen and plan the next tap"
+        return f"{result} {HINT_PEEK_AFTER_UNLOCK}"
 
     # ─── Text ────────────────────────────────────────────────
 
@@ -231,7 +258,7 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         (passcode fields, some search bars).
         """
         result = await asyncio.to_thread(physiclaw.send_to_clipboard, text)
-        return f"{result} — next: `long_press` the target field, then `tap` the Paste button that appears"
+        return f"{result} {HINT_AFTER_CLIPBOARD}"
 
     # ─── Sequence ────────────────────────────────────────────
 
@@ -269,4 +296,4 @@ def register(mcp: FastMCP, physiclaw: PhysiClaw):
         """
         steps = [s for s in (step1, step2, step3, step4, step5) if s is not None]
         result = await asyncio.to_thread(physiclaw.sequence, steps)
-        return f"{result}\n— `peek` to verify the final state and plan the next move"
+        return f"{result}\n{HINT_PEEK_AFTER_SEQUENCE}"

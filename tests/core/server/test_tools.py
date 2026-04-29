@@ -3,13 +3,20 @@
 Each tool is registered via `@mcp.tool()` and delegates to a method on
 the PhysiClaw orchestrator via `asyncio.to_thread`. We feed register a
 fake mcp that records and exposes each registered tool, then invoke
-each one and verify it dispatches.
+each one and verify it dispatches with the right args, returns the
+right shape, and ends with the right hint constant.
+
+Hint strings are pinned to module-level constants in `tools.py`. Any
+silent reword to a hint surfaces here as a failed test — the hints
+are part of the prompt contract sent to the agent.
 """
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 import pytest
+
+from mcp.server.fastmcp import Image
 
 from physiclaw.core.server import tools as tools_mod
 
@@ -21,7 +28,7 @@ pytestmark = [pytest.mark.integration]
 
 
 class FakeMcp:
-    """Records every @mcp.tool()'d coroutine."""
+    """Records every @mcp.tool()'d coroutine in registration order."""
 
     def __init__(self) -> None:
         self.tools: dict = {}
@@ -38,30 +45,24 @@ class FakeMcp:
 
 @pytest.fixture
 def registered(mocker):
-    """Build a registered mcp + a fake physiclaw with every method
-    returning a string sentinel (or (jpeg, listing) for peek/screenshot)."""
+    """Build a registered mcp + a bare-mock physiclaw.
+
+    Each test stubs only the orchestrator methods it touches. The
+    fixture itself sets nothing — fewer cross-test couplings, easier
+    to add new tools."""
     mcp = FakeMcp()
     pl = MagicMock()
-    pl.peek.return_value = (b"PEEK_JPG", "peek-listing")
-    pl.screenshot.return_value = (b"SS_JPG", "ss-listing")
-    pl.tap.return_value = "tap result"
-    pl.double_tap.return_value = "dt result"
-    pl.long_press.return_value = "lp result"
-    pl.swipe.return_value = "swipe result"
-    pl.home_screen.return_value = "home result"
-    pl.go_back.return_value = "back result"
-    pl.force_quit.return_value = "fq result"
-    pl.unlock_phone.return_value = "unlock result"
-    pl.send_to_clipboard.return_value = "clip result"
-    pl.sequence.return_value = "seq ok"
-
     mocker.patch.object(tools_mod, "save_tool_call")
-
     tools_mod.register(mcp, pl)
     return mcp, pl
 
 
+# ---------- Registration ----------
+
+
 def test_register_wires_all_expected_tools(registered) -> None:
+    """Every documented tool is registered. Set-based — answers
+    'is anything missing or extra' independent of order."""
     mcp, _ = registered
 
     expected = {
@@ -70,128 +71,235 @@ def test_register_wires_all_expected_tools(registered) -> None:
         "home_screen", "go_back", "force_quit", "unlock_phone",
         "send_to_clipboard", "sequence",
     }
-    assert expected.issubset(set(mcp.tools.keys()))
+    assert set(mcp.tools.keys()) == expected
+
+
+def test_tool_registration_order_is_stable(registered) -> None:
+    """Source order is wire order (per module docstring); LLM position
+    bias means changing it can change agent behavior. Lock the sequence."""
+    mcp, _ = registered
+
+    assert list(mcp.tools.keys()) == [
+        "peek", "screenshot",
+        "tap", "double_tap", "long_press", "swipe",
+        "home_screen", "go_back", "force_quit", "unlock_phone",
+        "send_to_clipboard", "sequence",
+    ]
+
+
+# ---------- peek / screenshot ----------
 
 
 @pytest.mark.asyncio
-async def test_peek_returns_image_and_listing(registered, mocker) -> None:
+async def test_peek_returns_image_and_listing(registered) -> None:
     mcp, pl = registered
-    save_spy = tools_mod.save_tool_call
+    pl.peek.return_value = (b"PEEK_JPG", "peek-listing")
 
     out = await mcp.tools["peek"]()
 
     assert pl.peek.called
     assert len(out) == 2
-    # First item is an mcp Image; second is the listing string.
+    assert isinstance(out[0], Image)
+    assert out[0].data == b"PEEK_JPG"
+    assert out[0]._mime_type == "image/jpeg"
     assert out[1] == "peek-listing"
-    save_spy.assert_called_once_with("peek", "peek-listing", b"PEEK_JPG")
+    tools_mod.save_tool_call.assert_called_once_with(
+        "peek", "peek-listing", b"PEEK_JPG",
+    )
 
 
 @pytest.mark.asyncio
 async def test_screenshot_returns_image_and_listing(registered) -> None:
     mcp, pl = registered
+    pl.screenshot.return_value = (b"SS_JPG", "ss-listing")
 
     out = await mcp.tools["screenshot"]()
 
     assert pl.screenshot.called
+    assert len(out) == 2
+    assert isinstance(out[0], Image)
+    assert out[0].data == b"SS_JPG"
+    assert out[0]._mime_type == "image/jpeg"
     assert out[1] == "ss-listing"
+    tools_mod.save_tool_call.assert_called_once_with(
+        "screenshot", "ss-listing", b"SS_JPG",
+    )
+
+
+# ---------- tap / double_tap / long_press ----------
 
 
 @pytest.mark.asyncio
-async def test_tap_dispatches_with_bbox_and_appends_hint(registered) -> None:
+async def test_tap_dispatches_and_appends_hint(registered) -> None:
     mcp, pl = registered
+    pl.tap.return_value = "tap result"
 
     out = await mcp.tools["tap"]([0.1, 0.1, 0.2, 0.2])
 
     pl.tap.assert_called_once_with([0.1, 0.1, 0.2, 0.2])
-    assert "tap result" in out
-    assert "peek" in out
+    assert out.startswith("tap result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_TAP)
 
 
 @pytest.mark.asyncio
-async def test_double_tap_dispatches(registered) -> None:
+async def test_double_tap_dispatches_and_appends_hint(registered) -> None:
     mcp, pl = registered
+    pl.double_tap.return_value = "dt result"
 
     out = await mcp.tools["double_tap"]([0, 0, 1, 1])
 
     pl.double_tap.assert_called_once_with([0, 0, 1, 1])
-    assert "dt result" in out
+    assert out.startswith("dt result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_DOUBLE_TAP)
 
 
 @pytest.mark.asyncio
-async def test_long_press_dispatches(registered) -> None:
+async def test_long_press_dispatches_and_appends_hint(registered) -> None:
     mcp, pl = registered
+    pl.long_press.return_value = "lp result"
 
     out = await mcp.tools["long_press"]([0, 0, 1, 1])
 
     pl.long_press.assert_called_once_with([0, 0, 1, 1])
-    assert "lp result" in out
+    assert out.startswith("lp result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_LONG_PRESS)
+
+
+# ---------- swipe ----------
 
 
 @pytest.mark.asyncio
 async def test_swipe_dispatches_with_all_args(registered) -> None:
     mcp, pl = registered
+    pl.swipe.return_value = "swipe result"
 
     out = await mcp.tools["swipe"]([0, 0, 1, 1], "up", "l", "fast")
 
     pl.swipe.assert_called_once_with([0, 0, 1, 1], "up", "l", "fast")
-    assert "swipe result" in out
+    assert out.startswith("swipe result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_SWIPE)
 
 
 @pytest.mark.asyncio
-async def test_swipe_uses_default_size_and_speed(registered) -> None:
+async def test_swipe_default_size_when_only_speed_given(registered) -> None:
+    """size defaults to 'm'."""
     mcp, pl = registered
+    pl.swipe.return_value = "ok"
+
+    await mcp.tools["swipe"]([0, 0, 1, 1], "down", speed="fast")
+
+    pl.swipe.assert_called_once_with([0, 0, 1, 1], "down", "m", "fast")
+
+
+@pytest.mark.asyncio
+async def test_swipe_default_speed_when_only_size_given(registered) -> None:
+    """speed defaults to 'medium'."""
+    mcp, pl = registered
+    pl.swipe.return_value = "ok"
+
+    await mcp.tools["swipe"]([0, 0, 1, 1], "down", size="l")
+
+    pl.swipe.assert_called_once_with([0, 0, 1, 1], "down", "l", "medium")
+
+
+@pytest.mark.asyncio
+async def test_swipe_both_defaults(registered) -> None:
+    mcp, pl = registered
+    pl.swipe.return_value = "ok"
 
     await mcp.tools["swipe"]([0, 0, 1, 1], "down")
 
     pl.swipe.assert_called_once_with([0, 0, 1, 1], "down", "m", "medium")
 
 
-@pytest.mark.asyncio
-async def test_navigation_tools_dispatch(registered) -> None:
-    mcp, pl = registered
+# ---------- Navigation ----------
 
-    out_home = await mcp.tools["home_screen"]()
+
+@pytest.mark.asyncio
+async def test_home_screen_dispatches_and_appends_hint(registered) -> None:
+    mcp, pl = registered
+    pl.home_screen.return_value = "home result"
+
+    out = await mcp.tools["home_screen"]()
+
     assert pl.home_screen.called
-    assert "home result" in out_home
-
-    out_back = await mcp.tools["go_back"]()
-    assert pl.go_back.called
-    assert "back result" in out_back
-
-    out_fq = await mcp.tools["force_quit"]()
-    assert pl.force_quit.called
-    assert "fq result" in out_fq
-
-    out_unlock = await mcp.tools["unlock_phone"]()
-    assert pl.unlock_phone.called
-    assert "unlock result" in out_unlock
+    assert out.startswith("home result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_HOME)
 
 
 @pytest.mark.asyncio
-async def test_send_to_clipboard_dispatches(registered) -> None:
+async def test_go_back_dispatches_and_appends_hint(registered) -> None:
     mcp, pl = registered
+    pl.go_back.return_value = "back result"
+
+    out = await mcp.tools["go_back"]()
+
+    assert pl.go_back.called
+    assert out.startswith("back result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_BACK)
+
+
+@pytest.mark.asyncio
+async def test_force_quit_dispatches_and_appends_hint(registered) -> None:
+    mcp, pl = registered
+    pl.force_quit.return_value = "fq result"
+
+    out = await mcp.tools["force_quit"]()
+
+    assert pl.force_quit.called
+    assert out.startswith("fq result ")
+    assert out.endswith(tools_mod.HINT_AFTER_FORCE_QUIT)
+
+
+@pytest.mark.asyncio
+async def test_unlock_phone_dispatches_and_appends_hint(registered) -> None:
+    mcp, pl = registered
+    pl.unlock_phone.return_value = "unlock result"
+
+    out = await mcp.tools["unlock_phone"]()
+
+    assert pl.unlock_phone.called
+    assert out.startswith("unlock result ")
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_UNLOCK)
+
+
+# ---------- send_to_clipboard ----------
+
+
+@pytest.mark.asyncio
+async def test_send_to_clipboard_dispatches_and_appends_hint(registered) -> None:
+    mcp, pl = registered
+    pl.send_to_clipboard.return_value = "clip result"
 
     out = await mcp.tools["send_to_clipboard"]("hello world")
 
     pl.send_to_clipboard.assert_called_once_with("hello world")
-    assert "clip result" in out
+    assert out.startswith("clip result ")
+    assert out.endswith(tools_mod.HINT_AFTER_CLIPBOARD)
+
+
+# ---------- sequence ----------
 
 
 @pytest.mark.asyncio
 async def test_sequence_filters_none_steps(registered) -> None:
     mcp, pl = registered
+    pl.sequence.return_value = "seq ok"
     s1 = {"tool_name": "tap", "arg": [0, 0, 1, 1]}
     s2 = {"tool_name": "tap", "arg": [0, 0, 1, 1]}
 
-    await mcp.tools["sequence"](s1, s2, None, None, None)
+    out = await mcp.tools["sequence"](s1, s2, None, None, None)
 
     pl.sequence.assert_called_once_with([s1, s2])
+    assert out.endswith(tools_mod.HINT_PEEK_AFTER_SEQUENCE)
+    # Hint sits on its own line after a result newline.
+    assert "\n" + tools_mod.HINT_PEEK_AFTER_SEQUENCE in out
 
 
 @pytest.mark.asyncio
 async def test_sequence_required_step_only(registered) -> None:
     mcp, pl = registered
+    pl.sequence.return_value = "ok"
     s1 = {"tool_name": "home_screen", "arg": None}
 
     await mcp.tools["sequence"](s1)
@@ -202,8 +310,64 @@ async def test_sequence_required_step_only(registered) -> None:
 @pytest.mark.asyncio
 async def test_sequence_all_five_steps(registered) -> None:
     mcp, pl = registered
+    pl.sequence.return_value = "ok"
     steps = [{"tool_name": "tap", "arg": [0, 0, 1, 1]} for _ in range(5)]
 
     await mcp.tools["sequence"](*steps)
 
     pl.sequence.assert_called_once_with(steps)
+
+
+# ---------- Error propagation ----------
+
+
+@pytest.mark.asyncio
+async def test_tap_propagates_hardware_error(registered) -> None:
+    """Hardware exceptions surface unchanged so the engine sees the
+    real error, not a string-wrapped placeholder."""
+    mcp, pl = registered
+    pl.tap.side_effect = RuntimeError("stylus offline")
+
+    with pytest.raises(RuntimeError, match=r"^stylus offline$"):
+        await mcp.tools["tap"]([0, 0, 1, 1])
+
+
+@pytest.mark.asyncio
+async def test_peek_propagates_camera_error(registered) -> None:
+    mcp, pl = registered
+    pl.peek.side_effect = RuntimeError("camera busy")
+
+    with pytest.raises(RuntimeError, match=r"^camera busy$"):
+        await mcp.tools["peek"]()
+
+
+@pytest.mark.asyncio
+async def test_screenshot_propagates_timeout_error(registered) -> None:
+    mcp, pl = registered
+    pl.screenshot.side_effect = TimeoutError("upload timed out")
+
+    with pytest.raises(TimeoutError, match=r"^upload timed out$"):
+        await mcp.tools["screenshot"]()
+
+
+@pytest.mark.asyncio
+async def test_sequence_propagates_mid_flight_failure(registered) -> None:
+    """`sequence` docstring promises stop-at-first-failure, no rollback.
+    The orchestrator surfaces the exception as-is; the tool wrapper
+    must not swallow it into a string."""
+    mcp, pl = registered
+    pl.sequence.side_effect = ValueError("step 2: arm jammed")
+
+    with pytest.raises(ValueError, match=r"^step 2: arm jammed$"):
+        await mcp.tools["sequence"](
+            {"tool_name": "tap", "arg": [0, 0, 1, 1]},
+        )
+
+
+@pytest.mark.asyncio
+async def test_send_to_clipboard_propagates_bridge_error(registered) -> None:
+    mcp, pl = registered
+    pl.send_to_clipboard.side_effect = ConnectionError("bridge gone")
+
+    with pytest.raises(ConnectionError, match=r"^bridge gone$"):
+        await mcp.tools["send_to_clipboard"]("x")
