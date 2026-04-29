@@ -1,13 +1,13 @@
 # Phase 2 — Test Plan
 
-Built from `/TEST.md` (standards) + `tests/_AUDIT.md` (recon). Inner `src/physiclaw/TEST.md` does **not** exist (verified — no conflict).
+Built from `./TEST.md` (standards) + `./_AUDIT.md` (recon).
 
 ## Coupling map (one-pass survey)
 
 Counts from `grep -lE '<pattern>' -r src/physiclaw --include=*.py`:
 
 | Coupling | Files | Implication for tests |
-|---|---:|---|
+| --- | ---: | --- |
 | `cv2.*` | 16 | Vision/calibration/compact/dumps/keyboard. Test with synthetic `np.ndarray`; reserve real-image fixtures only for content-dependent paths (orange-dot, OCR). |
 | `serial` | 3 | `arm.py`, `grbl.py`, hardware handler. Mock at `serial.Serial` import site. |
 | `subprocess` | 6 | `cli/skills.py` (git), `cli/server.py`, `cli/setup/hardware.py`, `cli/config.py`, `core/bridge/lan.py`, `core/hardware/camera.py`. Mock with `pytest-mock`. |
@@ -22,7 +22,7 @@ Counts from `grep -lE '<pattern>' -r src/physiclaw --include=*.py`:
 After reading the easy-win files end-to-end:
 
 | Module | Pure? | Verdict |
-|---|---|---|
+| --- | --- | --- |
 | `core/calibration/transforms.py` | yes (numpy math) | Round-trip + boundary tests, no fakes. |
 | `core/bridge/nonce.py` | yes (numpy + random) | Property test on `generate→verify` round-trip. |
 | `agent/engine/validator.py` | yes | Heavy parametrize candidate (≥10 equivalence classes). |
@@ -176,7 +176,7 @@ Requires Phase 3 to add `respx` to dev group.
 ## Roll-up estimates
 
 | sprint | risk-focus | tests (est.) | new fixtures/fakes |
-|---|---|---:|---|
+| --- | --- | ---: | --- |
 | 1 | pure logic | 110 | none |
 | 2 | time + fs | 90 | `freezegun`, `tmp_path` |
 | 3 | vision pure | 60 | synthetic numpy + small fixture images |

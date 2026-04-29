@@ -1,6 +1,6 @@
 # Phase 1 — Recon Audit
 
-Source of truth for testing standards: `/TEST.md` (repo root).
+Source of truth for testing standards: `./TEST.md`.
 
 ## Suite state
 
@@ -12,7 +12,7 @@ Source of truth for testing standards: `/TEST.md` (repo root).
 ## Stack inventory (vs TEST.md §Stack)
 
 | Required | In `pyproject.toml` | Status |
-|---|---|---|
+| --- | --- | --- |
 | `pytest` | `pytest>=8` (dev group) | ✅ |
 | `pytest-cov` | — | ❌ missing |
 | `hypothesis` | — | ❌ missing |
@@ -21,7 +21,9 @@ Source of truth for testing standards: `/TEST.md` (repo root).
 | `mutmut` | — | ❌ missing |
 | `responses`/`respx` (HTTP fakes) | — | ❌ missing — relevant for `agent/provider/*` |
 
-`[tool.pytest.ini_options]` only sets `pythonpath = ["src"]`. No coverage config, no markers (`slow`, `integration`) registered, no `[tool.coverage.*]` block. All of these are Phase 3 (Scaffold) work.
+`[tool.pytest.ini_options]` only sets `pythonpath = ["src"]`. No coverage
+config, no markers (`slow`, `integration`) registered, no `[tool.coverage.*]`
+block. All of these are Phase 3 (Scaffold) work.
 
 ## Source tree shape
 
@@ -31,18 +33,25 @@ Source of truth for testing standards: `/TEST.md` (repo root).
 
 ## Risk rubric
 
-- **HIGH** — external I/O (serial, USB camera, HTTP, subprocess), branch-heavy logic, security-sensitive paths, or modules many others depend on (single-point-of-failure).
-- **MED** — pure logic with non-trivial branching, some I/O at the edge, schema/format conversion, time-dependent.
-- **LOW** — dataclasses, constants, thin re-exports, dispatch wrappers under ~50 LOC.
+- **HIGH** — external I/O (serial, USB camera, HTTP, subprocess), branch-heavy
+  logic, security-sensitive paths, or modules many others depend on
+  (single-point-of-failure).
+- **MED** — pure logic with non-trivial branching, some I/O at the edge,
+  schema/format conversion, time-dependent.
+- **LOW** — dataclasses, constants, thin re-exports, dispatch wrappers under
+  ~50 LOC.
 
 ## Module table
 
-Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov | risk`. `existing_tests`, `line_cov`, `branch_cov` are uniformly empty/none across the repo; shown for the first row of each section, then `…` to keep the table readable.
+Columns: `module | LOC | public_symbols | existing_tests | line_cov |
+branch_cov | risk`. `existing_tests`, `line_cov`, `branch_cov` are uniformly
+empty/none across the repo; shown for the first row of each section, then `…`
+to keep the table readable.
 
 ### `core/hardware/` — physical device drivers
 
 | module | LOC | public_symbols | existing_tests | line_cov | branch_cov | risk |
-|---|---:|---|---|---:|---:|---|
+| --- | ---: | --- | --- | ---: | ---: | --- |
 | `core/hardware/arm.py` | 391 | `StylusArm` | none | — | — | **HIGH** |
 | `core/hardware/camera.py` | 300 | `Camera`, `silenced_stderr()` | none | — | — | **HIGH** |
 | `core/hardware/handler.py` | 206 | `handle_status()`, `handle_connect_arm()`, `handle_connect_camera()`, `camera_preview()`, `handle_camera_preview()` | … | — | — | **HIGH** |
@@ -53,7 +62,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `core/vision/` — image processing
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `core/vision/util.py` | 468 | `encode_jpeg`, `phone_screen_crop_box`, `crop_to_phone_screen`, `laplacian_variance`, `decode_image`, `find_all_hsv_blobs`, `find_largest_hsv_blob`, `detect_bridge_corners`, `frame_similarity`, `check_phone_in_frame`, `validate_bbox`, `bbox_on_screen`, `find_numpad_digit`, `compact_json`, `format_elements` | **HIGH** |
 | `core/vision/keyboard.py` | 458 | `detect_space_bottom`, `detect_row_boundaries`, `detect_keys_in_row`, `detect_key_boxes`, `draw_detected_keys`, `boxes_to_text`, `label_keyboard`, `generate_preset` | **HIGH** |
 | `core/vision/ui_elements.py` | 220 | `UIElement`, `detect_ui_elements()`, `elements_to_json()` | **HIGH** |
@@ -68,7 +77,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `core/calibration/` — screen↔arm coord transforms
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `core/calibration/calibrate.py` | 967 | `grid_positions`, `measure_viewport_shift`, `calibrate_camera_frame`, `calibrate_arm`, `compute_camera_mapping`, `validate_calibration`, `trace_screen_edge`, `verify_assistive_touch` | **HIGH** |
 | `core/calibration/handler.py` | 351 | 8 `handle_*` request handlers | **HIGH** |
 | `core/calibration/state.py` | 174 | `Calibration` | MED |
@@ -78,7 +87,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `core/orchestration/` & `core/server/` — coordination + MCP
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `core/orchestration/orchestrator.py` | 623 | `PhysiClaw` | **HIGH** |
 | `core/server/tools.py` | 272 | `register()` | MED |
 | `core/server/warm_start.py` | 204 | `wait_for_port()`, `try_resume()` | MED |
@@ -95,7 +104,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `core/bridge/` — phone HTTP bridge (LAN + nonce auth)
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `core/bridge/calib.py` | 184 | `CalibrationState` | MED |
 | `core/bridge/state.py` | 181 | `BridgeState` | MED |
 | `core/bridge/handler.py` | 149 | 9 `serve_*` / `handle_*` handlers | MED |
@@ -107,7 +116,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `core/logger/`
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `core/logger/logger.py` | 119 | `setup_logging()`, `logged()` | MED |
 | `core/logger/dumps.py` | 63 | `save_tool_call()`, `save_snapshot()`, `save_screenshot()` | MED |
 | `core/logger/__init__.py` | 10 | (re-exports) | LOW |
@@ -115,7 +124,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### Root modules
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `config.py` | 534 | `ConfigError`, `ServerConfig`, `WarmStartConfig`, `AutoPickConfig`, `EngineConfig`, `AgentConfig`, `ProviderConfig`, `CompactConfig`, `MemoryConfig`, `ClaudeConfig`, `RetentionConfig`, `SkillsConfig`, `Config`, `config_path`, `load`, `to_toml`, `write_default`, `get`, `set_dotted`, `unset_dotted`, `provider_base_url_override`, `model_ref`, `model_ref_with_source`, `parse_model_ref`, `resolve_provider_key` | **HIGH** |
 | `paths.py` | 100 | 17 path helpers (`ensure_dirs`, `model_cache`, `omniparser_onnx`, `calibration_bundle`, …) | MED |
 | `runtime_state.py` | 97 | `write()`, `clear()`, `read_live()` | MED |
@@ -124,7 +133,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `agent/engine/` — agentic loop
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `agent/engine/builtin_tool.py` | 564 | `Session`, `LocalTool`, `schemas()`, `build_registry()` | **HIGH** |
 | `agent/engine/engine.py` | 556 | `run()` | **HIGH** |
 | `agent/engine/compact.py` | 442 | `new_summary_placeholder`, `new_memory_placeholder`, `new_skills_placeholder`, `collapse_old_turns`, `scale_image_bytes`, `drop_stale_screens` | **HIGH** |
@@ -145,7 +154,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `agent/provider/` — multi-vendor LLM clients
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `agent/provider/anthropic_compat.py` | 306 | `AnthropicCompatibleProvider` | **HIGH** |
 | `agent/provider/provider_base.py` | 303 | `ProviderError`, `ProviderTransientError`, `ProviderPermanentError`, `Provider`, `BaseProvider` | MED |
 | `agent/provider/openai_compat.py` | 226 | `OpenAICompatibleProvider` | **HIGH** |
@@ -164,7 +173,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `agent/runtime/`, `agent/hooks/`, `agent/claude/`
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `agent/claude/spawn.py` | 500 | `spawn_claude()` | **HIGH** (subprocess + IO) |
 | `agent/hooks/cron.py` | 215 | `cron()` | **HIGH** (time/cron) |
 | `agent/claude/preview.py` | 168 | `claude_preview()` | MED |
@@ -184,7 +193,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ### `cli/` — typer CLI
 
 | module | LOC | public_symbols | risk |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `cli/doctor.py` | 488 | `doctor()` | MED |
 | `cli/skills.py` | 410 | `installed_skill_dirs`, `read_provenance` | **HIGH** (git subprocess) |
 | `cli/models.py` | 365 | (typer cmds) | MED |
@@ -201,7 +210,7 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 ## Risk roll-up
 
 | risk | module count | total LOC |
-|---|---:|---:|
+| --- | ---: | ---: |
 | HIGH | 21 | ~7,820 |
 | MED | 38 | ~6,790 |
 | LOW | 46 | ~1,210 |
@@ -210,20 +219,32 @@ Columns: `module | LOC | public_symbols | existing_tests | line_cov | branch_cov
 
 ## Notable observations for Phase 2 (Plan)
 
-1. **Hardware-coupled modules dominate the HIGH bucket.** `core/hardware/*` and `core/calibration/calibrate.py` are not testable without fakes for serial (`pyserial`), camera (`cv2.VideoCapture`), and the GRBL protocol. Phase 3 needs a fakes layer before Phase 4 can start.
+1. **Hardware-coupled modules dominate the HIGH bucket.** `core/hardware/*` and
+   `core/calibration/calibrate.py` are not testable without fakes for serial
+   (`pyserial`), camera (`cv2.VideoCapture`), and the GRBL protocol. Phase 3
+   needs a fakes layer before Phase 4 can start.
 2. **Pure-logic islands worth targeting first** (high value, low setup cost):
    - `core/calibration/transforms.py` — pure math, used by everything.
    - `core/bridge/nonce.py` — security, ~74 LOC, pure crypto.
-   - `core/vision/util.py` — many pure helpers (`validate_bbox`, `bbox_on_screen`, `compact_json`, etc.) testable without images.
-   - `agent/engine/job_store.py` — cron/schedule logic; `freezegun` makes it deterministic.
-   - `agent/engine/validator.py` — schema validation, parser-shaped, ideal for Hypothesis.
+   - `core/vision/util.py` — many pure helpers (`validate_bbox`,
+     `bbox_on_screen`, `compact_json`, etc.) testable without images.
+   - `agent/engine/job_store.py` — cron/schedule logic; `freezegun` makes it
+     deterministic.
+   - `agent/engine/validator.py` — schema validation, parser-shaped, ideal for
+     Hypothesis.
    - `agent/engine/dto.py` — dataclasses, sanity checks only.
    - `agent/provider/wire.py` — message format conversion, round-trip testable.
    - `paths.py` / `runtime_state.py` — filesystem helpers, `tmp_path` fixture.
-3. **Provider modules** (`anthropic_compat`, `openai_compat`, vendor adapters) need an HTTP-fake layer (`responses` or `respx`) — flag as Phase 3 dependency.
-4. **`core/calibration/calibrate.py` at 967 LOC is the largest single file.** Likely candidate for the Phase 2 "hard to test — propose minimal refactor" callout if its functions aren't separable from hardware I/O.
-5. **No `conftest.py` exists yet.** Phase 3 will create the top-level one; module-scoped ones can be added during Phase 4 as needed.
-6. **Two `TEST.md` files exist:** one at repo root (the standards doc, source of truth) and `src/physiclaw/TEST.md` (untracked, content unknown — flag for the user before Phase 2).
+3. **Provider modules** (`anthropic_compat`, `openai_compat`, vendor adapters)
+   need an HTTP-fake layer (`responses` or `respx`) — flag as Phase 3
+   dependency.
+4. **`core/calibration/calibrate.py` at 967 LOC is the largest single file.**
+   Likely candidate for the Phase 2 "hard to test — propose minimal refactor"
+   callout if its functions aren't separable from hardware I/O.
+5. **No `conftest.py` exists yet.** Phase 3 will create the top-level one;
+   module-scoped ones can be added during Phase 4 as needed.
+6. **`TEST.md` is the standards doc and source of truth.** Lives next to this
+   file at `tests/TEST.md`.
 
 ## Phase 1 status: complete
 
