@@ -17,10 +17,10 @@ If the camera returns blank frames, run `imagesnap` once first to
 grant camera access to your terminal app, then retry.
 """
 
+import _thread
 import contextlib
 import logging
 import os
-import signal
 import sys
 import threading
 import time
@@ -84,9 +84,12 @@ class Camera:
     # cv2.VideoCapture. Recovers from real disconnects.
     STALE_RECONNECT_SECONDS = 5.0
 
-    # If the reader gets no frame for this long, give up and SIGINT the
-    # process. Reopen can't revive a stream the OS has cut (display sleep,
-    # bus suspend) — better to die cleanly than spam the log forever.
+    # If the reader gets no frame for this long, give up and raise
+    # KeyboardInterrupt in the main thread (via _thread.interrupt_main —
+    # cross-platform; os.kill(SIGINT) on Windows would TerminateProcess
+    # and skip atexit). Reopen can't revive a stream the OS has cut
+    # (display sleep, bus suspend) — better to die cleanly than spam
+    # the log forever.
     FATAL_AFTER_SECONDS = 60.0
 
     # Max time _fresh_frame() waits for the reader to produce a frame
@@ -204,7 +207,7 @@ class Camera:
                     "— giving up and exiting process "
                     "(display sleep / bus suspend / hardware gone)"
                 )
-                os.kill(os.getpid(), signal.SIGINT)
+                _thread.interrupt_main()
                 return
 
             with self._cond:

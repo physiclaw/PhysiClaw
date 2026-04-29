@@ -10,7 +10,7 @@ For HSV color tests we draw saturated pixels into a BGR canvas:
   - Blue:   [255, 0, 0]
   - Yellow: [0, 255, 255]
 
-`check_phone_in_frame` writes to `/tmp/physiclaw_camera_rotation.jpg`
+`check_phone_in_frame` writes a debug JPEG under `tempfile.gettempdir()`
 as a side effect; tests mock `cv2.imwrite` to keep the host clean.
 """
 from __future__ import annotations

@@ -277,7 +277,7 @@ def test_warm_start_thread_exits_on_port_timeout(mocker) -> None:
         return MagicMock()
 
     mocker.patch.object(server_mod.threading, "Thread", side_effect=fake_thread)
-    kill_spy = mocker.patch.object(server_mod.os, "kill")
+    interrupt_spy = mocker.patch.object(server_mod._thread, "interrupt_main")
 
     server_mod.server(
         port=8048, host="127.0.0.1", verbose=False,
@@ -288,9 +288,7 @@ def test_warm_start_thread_exits_on_port_timeout(mocker) -> None:
     # Run the thread body manually.
     captured["target"]()
 
-    kill_spy.assert_called_once()
-    args = kill_spy.call_args.args
-    assert args[1] == server_mod.signal.SIGINT
+    interrupt_spy.assert_called_once_with()
 
 
 def test_warm_start_thread_exits_on_resume_failure(mocker) -> None:
@@ -303,7 +301,7 @@ def test_warm_start_thread_exits_on_resume_failure(mocker) -> None:
         return MagicMock()
 
     mocker.patch.object(server_mod.threading, "Thread", side_effect=fake_thread)
-    kill_spy = mocker.patch.object(server_mod.os, "kill")
+    interrupt_spy = mocker.patch.object(server_mod._thread, "interrupt_main")
 
     server_mod.server(
         port=8048, host="127.0.0.1", verbose=False,
@@ -313,7 +311,7 @@ def test_warm_start_thread_exits_on_resume_failure(mocker) -> None:
 
     captured["target"]()
 
-    kill_spy.assert_called_once()
+    interrupt_spy.assert_called_once_with()
 
 
 def test_warm_start_thread_exits_silently_when_resume_succeeds(mocker) -> None:
@@ -326,7 +324,7 @@ def test_warm_start_thread_exits_silently_when_resume_succeeds(mocker) -> None:
         return MagicMock()
 
     mocker.patch.object(server_mod.threading, "Thread", side_effect=fake_thread)
-    kill_spy = mocker.patch.object(server_mod.os, "kill")
+    interrupt_spy = mocker.patch.object(server_mod._thread, "interrupt_main")
 
     server_mod.server(
         port=8048, host="127.0.0.1", verbose=False,
@@ -336,11 +334,11 @@ def test_warm_start_thread_exits_silently_when_resume_succeeds(mocker) -> None:
 
     captured["target"]()
 
-    kill_spy.assert_not_called()
+    interrupt_spy.assert_not_called()
 
 
 def test_server_warm_start_starts_thread(mocker) -> None:
-    deps = _patch_server_runtime_deps(mocker)
+    _patch_server_runtime_deps(mocker)
     thread_spy = mocker.patch.object(server_mod.threading, "Thread")
 
     server_mod.server(

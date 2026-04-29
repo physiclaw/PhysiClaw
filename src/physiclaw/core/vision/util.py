@@ -2,11 +2,15 @@
 
 import json
 import logging
+import tempfile
+from pathlib import Path
 
 import cv2
 import numpy as np
 
 log = logging.getLogger(__name__)
+
+_ROTATION_DEBUG_PATH = str(Path(tempfile.gettempdir()) / "physiclaw_camera_rotation.jpg")
 
 FRAME_SIMILARITY_SIZE = (320, 240)
 
@@ -257,7 +261,7 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
     """Shape/coverage/straightness diagnostic from one overhead frame.
 
     Returns ``{ok, issues, coverage, aspect_ratio, image_size, phone_region}``.
-    Saves an annotated frame to /tmp/physiclaw_camera_rotation.jpg.
+    Saves an annotated frame to ``<tempdir>/physiclaw_camera_rotation.jpg``.
     Raises if no bright region is detected (camera read failed or phone off).
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -287,7 +291,7 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
         (0, 255, 0),
         2,
     )
-    cv2.imwrite("/tmp/physiclaw_camera_rotation.jpg", annotated)
+    cv2.imwrite(_ROTATION_DEBUG_PATH, annotated)
 
     # Phone edges should be parallel to image edges (< 3° deviation).
     pts = cv2.boxPoints(rect)

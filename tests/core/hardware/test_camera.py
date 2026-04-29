@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
 import threading
 import time
 from typing import Callable
@@ -260,16 +259,14 @@ def test_reader_loop_fatal_after_long_failure(mocker) -> None:
     cam.cap = FakeVideoCapture(index=0, read_results=[(False, None)] * 5)
     cam._first_fail_time = time.monotonic() - cam.FATAL_AFTER_SECONDS - 1
     cam._stopped.clear()
-    kill_spy = mocker.patch.object(camera_mod.os, "kill")
+    interrupt_spy = mocker.patch.object(camera_mod._thread, "interrupt_main")
     mocker.patch.object(
         cam._stopped, "wait", side_effect=lambda t: cam._stopped.set(),
     )
 
     cam._reader_loop()
 
-    kill_spy.assert_called_once()
-    args = kill_spy.call_args.args
-    assert args[1] == signal.SIGINT
+    interrupt_spy.assert_called_once_with()
 
 
 # ---------- _reopen ----------

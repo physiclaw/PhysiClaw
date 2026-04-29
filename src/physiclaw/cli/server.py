@@ -1,9 +1,9 @@
 """``physiclaw server`` — run the MCP server (and the agent runtime subprocess)."""
 
+import _thread
 import atexit
 import logging
 import os
-import signal
 import subprocess
 import sys
 import threading
@@ -159,8 +159,10 @@ def server(
     if warm_start:
         # Run warm-start in a background thread so mcp.run() below can start
         # serving HTTP first — the phone needs the server listening to load
-        # /bridge and POST screen_dimension / touches. On failure, send
-        # SIGINT to the main thread so mcp.run exits and atexit handlers
+        # /bridge and POST screen_dimension / touches. On failure, raise
+        # KeyboardInterrupt in the main thread (via _thread.interrupt_main —
+        # cross-platform; os.kill(SIGINT) on Windows would TerminateProcess
+        # and skip atexit) so mcp.run exits and atexit handlers
         # (shutdown, arm return-to-origin) still fire cleanly.
         from physiclaw.core.server import warm_start as ws
 
@@ -170,14 +172,14 @@ def server(
                     "warm-start: server never started accepting connections; "
                     "exiting."
                 )
-                os.kill(os.getpid(), signal.SIGINT)
+                _thread.interrupt_main()
                 return
             if not ws.try_resume(cam_index):
                 log.error(
                     "Exiting. Re-run without --warm-start, then "
                     "`physiclaw setup hardware` to recalibrate."
                 )
-                os.kill(os.getpid(), signal.SIGINT)
+                _thread.interrupt_main()
 
         threading.Thread(target=_warm_start_thread, daemon=True).start()
     else:
