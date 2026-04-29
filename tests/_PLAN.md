@@ -170,8 +170,7 @@ Requires Phase 3 to add `respx` to dev group.
 5. `agent/hooks/cron.py` — `cron()` end-to-end with `freezegun`. **15–20 tests.**
 6. `agent/hooks/poll.py` — `phone_watch`. **5–8 tests.**
 7. `agent/claude/spawn.py` — `spawn_claude` (mock asyncio subprocess). **20–30 tests.**
-8. `agent/claude/preview.py` — `claude_preview`. **10–15 tests.**
-9. `agent/claude/plugin.py` — `prepare_plugin_dir` (`tmp_path`). **8–12 tests.**
+8. `agent/claude/plugin.py` — `prepare_plugin_dir` (`tmp_path`). **8–12 tests.**
 
 ## Roll-up estimates
 

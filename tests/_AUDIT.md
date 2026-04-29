@@ -176,7 +176,6 @@ to keep the table readable.
 | --- | ---: | --- | --- |
 | `agent/claude/spawn.py` | 500 | `spawn_claude()` | **HIGH** (subprocess + IO) |
 | `agent/hooks/cron.py` | 215 | `cron()` | **HIGH** (time/cron) |
-| `agent/claude/preview.py` | 168 | `claude_preview()` | MED |
 | `agent/claude/skills/jobs/jobs.py` | 148 | `main()` | MED |
 | `agent/claude/plugin.py` | 142 | `prepare_plugin_dir()` | MED |
 | `agent/runtime/launcher.py` | 132 | `engine_label()`, `resolve()`, `launch()` | MED |

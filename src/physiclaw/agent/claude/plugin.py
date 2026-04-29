@@ -65,7 +65,7 @@ def prepare_plugin_dir(
     `skills` lets the caller reuse an already-discovered map — the
     spawn path scans once at wake start and threads the result through
     here and the system-prompt renderer. When None, we scan ourselves
-    (preview.py, tests).
+    (tests).
 
     Layout:
         <tmp>/physiclaw-plugin-<sid>-XXXX/
