@@ -6,6 +6,7 @@ from physiclaw.core.hardware.handler import (
     handle_status,
     handle_connect_arm,
     handle_connect_camera,
+    handle_disconnect_camera,
     handle_camera_preview,
 )
 
@@ -26,6 +27,10 @@ def register(mcp, physiclaw, phone):
     @mcp.custom_route("/api/connect-camera", methods=["POST"])
     async def _connect_camera(request):
         return await handle_connect_camera(request, physiclaw, phone)
+
+    @mcp.custom_route("/api/disconnect-camera", methods=["POST"])
+    async def _disconnect_camera(request):
+        return await handle_disconnect_camera(request, physiclaw)
 
     @mcp.custom_route("/api/camera-preview/{index}", methods=["GET"])
     async def _camera_preview(request):

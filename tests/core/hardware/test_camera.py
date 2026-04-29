@@ -117,6 +117,17 @@ def test_camera_init_warms_up_and_starts_reader(mocker) -> None:
     try:
         # _open set BUFFERSIZE.
         assert (cv2.CAP_PROP_BUFFERSIZE, 1) in vc.set_calls
+        # _open set FOURCC + width/height from CONFIG.camera, in that order.
+        # FOURCC must precede width/height — Windows MSMF re-negotiates on
+        # format change, so width/height set before FOURCC gets discarded.
+        from physiclaw.config import CONFIG
+        props = [p for p, _ in vc.set_calls]
+        fourcc_idx = props.index(cv2.CAP_PROP_FOURCC)
+        width_idx = props.index(cv2.CAP_PROP_FRAME_WIDTH)
+        height_idx = props.index(cv2.CAP_PROP_FRAME_HEIGHT)
+        assert fourcc_idx < width_idx < height_idx
+        assert (cv2.CAP_PROP_FRAME_WIDTH, CONFIG.camera.width) in vc.set_calls
+        assert (cv2.CAP_PROP_FRAME_HEIGHT, CONFIG.camera.height) in vc.set_calls
         assert cam._frame is not None
         assert cam._thread.is_alive()
     finally:

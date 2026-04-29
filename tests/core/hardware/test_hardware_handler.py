@@ -19,6 +19,7 @@ from physiclaw.core.hardware.handler import (
     handle_camera_preview,
     handle_connect_arm,
     handle_connect_camera,
+    handle_disconnect_camera,
     handle_status,
 )
 
@@ -352,6 +353,44 @@ async def test_handle_connect_camera_stores_index_in_calibration(mocker) -> None
 
     # Stored on the calibration namespace as int.
     assert physiclaw.calibration.cam_index == 2
+
+
+# ---------- handle_disconnect_camera ----------
+
+
+@pytest.mark.asyncio
+async def test_handle_disconnect_camera_releases_when_connected() -> None:
+    physiclaw = MagicMock()
+    physiclaw.disconnect_camera.return_value = True
+
+    resp = await handle_disconnect_camera(_fake_request(), physiclaw)
+
+    body = _read_json(resp)
+    assert body == {"status": "ok", "released": True}
+    physiclaw.disconnect_camera.assert_called_once()
+    physiclaw.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_disconnect_camera_idempotent_when_no_camera() -> None:
+    physiclaw = MagicMock()
+    physiclaw.disconnect_camera.return_value = False
+
+    resp = await handle_disconnect_camera(_fake_request(), physiclaw)
+
+    body = _read_json(resp)
+    assert body == {"status": "ok", "released": False}
+
+
+@pytest.mark.asyncio
+async def test_handle_disconnect_camera_releases_lock_on_failure() -> None:
+    physiclaw = MagicMock()
+    physiclaw.disconnect_camera.side_effect = RuntimeError("close failed")
+
+    resp = await handle_disconnect_camera(_fake_request(), physiclaw)
+
+    assert resp.status_code == 500
+    physiclaw.release.assert_called_once()
 
 
 # ---------- handle_camera_preview ----------

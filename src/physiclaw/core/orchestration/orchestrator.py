@@ -196,6 +196,21 @@ class PhysiClaw:
             self._cam.rotation = self.calibration.cam_rotation
         log.info(f"Camera {index} connected")
 
+    def disconnect_camera(self) -> bool:
+        """Release the camera device handle so another app can use it.
+
+        Returned True if a camera was actually closed. Used by `/setup`
+        step 8 on Windows so the OS Camera preview app can claim the
+        device — Media Foundation enforces exclusive access, so the
+        server has to let go before the aim app opens.
+        """
+        if self._cam is None:
+            return False
+        self._cam.close()
+        self._cam = None
+        log.info("Camera disconnected")
+        return True
+
     def _apply_bundle_to_arm(self):
         """Propagate cached calibration into the newly-connected arm."""
         if self._arm is None:

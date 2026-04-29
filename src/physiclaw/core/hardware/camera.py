@@ -27,6 +27,7 @@ import time
 
 import cv2
 
+from physiclaw.config import CONFIG
 from physiclaw.core import platform
 from physiclaw.core.logger import save_snapshot
 
@@ -139,6 +140,15 @@ class Camera:
             raise RuntimeError(f"Cannot open camera index {self.index}")
         # AVFoundation (macOS) ignores this; V4L (Linux) honors it.
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # FOURCC must be set before width/height — Windows MSMF re-negotiates
+        # on format change. YUY2 (the default) caps at 640×480 over USB even
+        # for 4K cameras; MJPG-compressed makes 1920×1080 actually reachable.
+        # Drivers snap to the nearest supported mode; _warmup logs the truth.
+        self.cap.set(
+            cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*CONFIG.camera.fourcc)
+        )
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CONFIG.camera.width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CONFIG.camera.height)
 
     def _warmup(self):
         """Discard initial auto-exposure frames and verify reads work."""

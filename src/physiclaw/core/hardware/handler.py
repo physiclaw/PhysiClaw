@@ -191,6 +191,27 @@ async def handle_connect_camera(request, physiclaw, phone):
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
+async def handle_disconnect_camera(request, physiclaw):
+    """POST /api/disconnect-camera — release the camera device handle.
+
+    Used by `setup hardware` step 8 so the OS camera-preview app can
+    claim the device while the user adjusts the camera angle. Idempotent
+    — returns ``released=False`` if no camera was connected.
+    """
+    def _do() -> bool:
+        physiclaw.acquire()
+        try:
+            return physiclaw.disconnect_camera()
+        finally:
+            physiclaw.release()
+
+    try:
+        released = await asyncio.get_event_loop().run_in_executor(None, _do)
+        return JSONResponse({"status": "ok", "released": released})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
 async def handle_camera_preview(request):
     """GET /api/camera-preview/{index} — capture one frame from a camera index."""
     index = int(request.path_params["index"])

@@ -74,10 +74,18 @@ def wait(msg):
 
 
 def _camera_aim_adjust(prompt: str) -> None:
-    """Open the OS camera-preview app for aim, wait for the user, then
-    quit it so the camera device handle is released before the server
-    reconnects. Platform-specific app choices live in
-    ``physiclaw.core.platform``."""
+    """Release the server's camera, open the OS camera-preview app for
+    aim, wait for the user, then quit the aim app so the next
+    ``/api/connect-camera`` can reacquire. Platform-specific app
+    choices live in ``physiclaw.core.platform``.
+
+    The leading disconnect is idempotent — at step 2 no camera is
+    connected yet and the server returns ``released=False``. From step
+    8 onward the server has been holding the device since step 4;
+    Windows Media Foundation enforces exclusive access, so without the
+    disconnect the OS Camera app shows "another app is using the
+    camera"."""
+    api("POST", "/api/disconnect-camera")
     platform.open_camera_aim_app()
     wait(prompt)
     platform.quit_camera_aim_app()

@@ -266,12 +266,16 @@ def test_camera_aim_adjust_opens_waits_quits(mocker) -> None:
     open_spy = mocker.patch.object(hw_mod.platform, "open_camera_aim_app")
     quit_spy = mocker.patch.object(hw_mod.platform, "quit_camera_aim_app")
     wait_spy = mocker.patch.object(hw_mod, "wait")
+    api_spy = mocker.patch.object(hw_mod, "api", return_value={"status": "ok"})
 
     hw_mod._camera_aim_adjust("position")
 
+    api_spy.assert_called_once_with("POST", "/api/disconnect-camera")
     open_spy.assert_called_once()
     wait_spy.assert_called_once_with("position")
     quit_spy.assert_called_once()
+    # Disconnect must happen before the aim app opens.
+    assert api_spy.call_args_list[0] == mocker.call("POST", "/api/disconnect-camera")
 
 
 # ---------- run() early-exit branches ----------

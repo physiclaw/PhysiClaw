@@ -57,6 +57,21 @@ class AutoPickConfig:
 
 
 @dataclass
+class CameraConfig:
+    """Resolution + pixel format the server requests from cv2.VideoCapture.
+
+    On Windows MSMF the default negotiation picks an uncompressed YUY2
+    mode that fits USB bandwidth, which usually caps at 640×480 even
+    on 4K cameras. Switching to MJPG-compressed lets us actually hit
+    1920×1080 over a single USB cable. cv2.set() is best-effort —
+    drivers snap to their nearest supported mode; the actual size is
+    logged by Camera._warmup after the first frame."""
+    width: int = 1920
+    height: int = 1080
+    fourcc: str = "MJPG"
+
+
+@dataclass
 class EngineConfig:
     max_turns: int = 300
     max_attempts: int = 3
@@ -139,6 +154,7 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     warm_start: WarmStartConfig = field(default_factory=WarmStartConfig)
     auto_pick: AutoPickConfig = field(default_factory=AutoPickConfig)
+    camera: CameraConfig = field(default_factory=CameraConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
@@ -153,6 +169,7 @@ _SECTION_TYPES: dict[str, type] = {
     "server": ServerConfig,
     "warm_start": WarmStartConfig,
     "auto_pick": AutoPickConfig,
+    "camera": CameraConfig,
     "engine": EngineConfig,
     "agent": AgentConfig,
     "provider": ProviderConfig,
@@ -180,6 +197,11 @@ _FILE_HEADER = """\
 _SECTION_COMMENTS: dict[str, str] = {
     "warm_start": "Timeouts for `physiclaw server --warm-start` hardware reconnect.",
     "auto_pick": "Timeouts for the camera auto-pick step in `physiclaw setup hardware`.",
+    "camera": (
+        "Resolution + pixel format requested from cv2.VideoCapture. MJPG "
+        "is needed on Windows to hit 1080p — the YUY2 default snaps to "
+        "640×480 over USB. Drivers may round to the nearest supported mode."
+    ),
     "engine": "Runaway safeguard + retry + pacing for the agent's tool-call loop.",
     "agent": (
         "Engine + model selection. `model` is a `provider/model` ref, e.g. "
