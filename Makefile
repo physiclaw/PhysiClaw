@@ -114,6 +114,15 @@ publish:
 	@if git rev-parse "v$(PKG_VERSION)" >/dev/null 2>&1; then \
 		echo "✗ tag v$(PKG_VERSION) already exists — was this version already published?"; \
 		exit 1; fi
+	@printf 'Uploading to PyPI:\n'
+	@printf '  dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl\n'
+	@printf '  dist/physiclaw-$(PKG_VERSION).tar.gz\n'
+	@OTHER=$$(ls dist/physiclaw-*.whl 2>/dev/null | grep -v "physiclaw-$(PKG_VERSION)-py3" || true); \
+	 if [ -n "$$OTHER" ]; then \
+		printf '\nOlder builds in dist/ (ignored — explicit file args):\n'; \
+		echo "$$OTHER" | sed 's|^|  |'; \
+	 fi
+	@printf '\n'
 	uv publish dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl dist/physiclaw-$(PKG_VERSION).tar.gz
 	git tag -a v$(PKG_VERSION) -m "physiclaw v$(PKG_VERSION)"
 	git push origin main
