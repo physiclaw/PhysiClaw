@@ -231,6 +231,18 @@ def load(path: Path | None = None) -> Config:
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
+    except UnicodeDecodeError as e:
+        # TOML mandates UTF-8. On non-UTF-8 Windows codepages (cp936, cp1252)
+        # an editor or an old physiclaw build that called write_text without
+        # an explicit encoding could leave the file in the system codepage.
+        # Surface a friendly recovery hint instead of a stack trace.
+        raise ConfigError(
+            f"{path} is not valid UTF-8 (got byte 0x{e.object[e.start]:02x} at "
+            f"position {e.start}). TOML requires UTF-8.\n"
+            f"  Recover: delete the file and re-run.\n"
+            f"      Windows: Remove-Item \"{path}\"\n"
+            f"      macOS/Linux: rm \"{path}\""
+        ) from e
     except (OSError, tomllib.TOMLDecodeError) as e:
         raise ConfigError(f"failed to read {path}: {e}") from e
 
@@ -293,7 +305,12 @@ def write_default(path: Path | None = None) -> Path:
     path = path or config_path()
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(to_toml(Config(), with_comments=True))
+        # Pin UTF-8 — TOML requires it and the template has em-dashes /
+        # ellipsis in section comments. Without an explicit encoding,
+        # Path.write_text uses locale.getencoding() (cp936 on Chinese
+        # Windows, cp1252 on Western Windows), and the next tomllib.load
+        # blows up with UnicodeDecodeError on the non-ASCII bytes.
+        path.write_text(to_toml(Config(), with_comments=True), encoding="utf-8")
     return path
 
 
@@ -376,11 +393,11 @@ def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
 
     if not path.exists():
         write_default(path)
-    doc = tomlkit.parse(path.read_text())
+    doc = tomlkit.parse(path.read_text(encoding="utf-8"))
     if section not in doc:
         doc.add(section, tomlkit.table())
     doc[section][field_name] = coerced
-    path.write_text(tomlkit.dumps(doc))
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
     # Refresh module-level CONFIG so same-process callers see the write
     # (re-import wouldn't trigger between CLI commands and immediate use).
     global CONFIG
@@ -394,8 +411,12 @@ def provider_base_url_override(provider_id: str) -> str | None:
     is absent. Called once at provider construction — no caching."""
     path = config_path()
     try:
-        raw = path.read_text()
-    except (FileNotFoundError, OSError):
+        raw = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        # Encoding errors get the same fail-soft as a missing file —
+        # this code path is best-effort (returns None when no override).
+        # The friendly recovery hint comes from `load()` when the user
+        # actually runs a command that needs the config.
         return None
     try:
         doc = tomllib.loads(raw)
@@ -415,11 +436,11 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
     section, field_name = _validate_dotted(dotted)
     if not path.exists():
         return False
-    doc = tomlkit.parse(path.read_text())
+    doc = tomlkit.parse(path.read_text(encoding="utf-8"))
     if section not in doc or field_name not in doc[section]:
         return False
     del doc[section][field_name]
-    path.write_text(tomlkit.dumps(doc))
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
     global CONFIG
     CONFIG = load(path)
     return True
@@ -428,7 +449,20 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
 # Module-level singleton, evaluated once at import. See CONFIG usage in the
 # migrated consumers (engine, claude, runtime, plan, compact, memory, trace,
 # warm_start, job_store).
-CONFIG: Config = load()
+#
+# Catch ConfigError at import-time so a corrupted ~/.physiclaw/config.toml
+# doesn't brick the entire CLI — without this, ``physiclaw uninstall`` and
+# even ``physiclaw config edit`` would crash with a stack trace before they
+# ever start, leaving the user no in-band recovery path. We fall back to
+# defaults and emit ONE clear stderr line; the user still sees the error
+# the moment they run a command that actually depends on their config.
+try:
+    CONFIG: Config = load()
+except ConfigError as _e:
+    import sys as _sys
+    print(f"physiclaw: {_e}", file=_sys.stderr)
+    print("physiclaw: continuing with default config; fix the file or delete it.", file=_sys.stderr)
+    CONFIG = Config()
 
 
 # --- Model + provider selection ----------------------------------------------

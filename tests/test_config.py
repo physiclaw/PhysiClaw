@@ -137,6 +137,30 @@ def test_load_returns_default_config_when_file_missing(tmp_path: Path) -> None:
     assert cfg == config.Config()
 
 
+def test_load_raises_friendly_ConfigError_when_file_isnt_utf8(
+    tmp_path: Path,
+) -> None:
+    """Regression: on Chinese Windows (cp936), Path.write_text without
+    encoding= silently encoded the template's em-dashes / ellipsis as GBK,
+    then tomllib.load (which mandates UTF-8) raised an opaque
+    UnicodeDecodeError that propagated all the way out and crashed the
+    CLI at every subsequent invocation. The fix pins UTF-8 on every write
+    AND converts a non-UTF-8 file into a ConfigError with a recovery hint.
+    """
+    p = tmp_path / "corrupted.toml"
+    # Mimic the user's bug: "—" in a comment encoded as GBK (0xa1 0xad).
+    p.write_bytes(b'# header with em-dash \xa1\xad and a key\nfoo = 1\n')
+
+    with pytest.raises(config.ConfigError) as exc_info:
+        config.load(p)
+
+    msg = str(exc_info.value)
+    assert "not valid UTF-8" in msg
+    assert "0xa1" in msg              # the offending byte the user actually saw
+    assert "delete the file" in msg   # recovery hint
+    assert str(p) in msg              # path so the user knows where to delete
+
+
 def test_load_parses_valid_toml(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     p.write_text(
