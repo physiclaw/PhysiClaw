@@ -1,15 +1,12 @@
 """Tests for `physiclaw.core.bridge.lan` — LAN address helpers.
 
-Network calls (`socket.socket`, `subprocess.run`, `socket.gethostbyname`)
-are mocked so tests don't hit the real network.
+Network calls (`socket.socket`, `socket.gethostbyname`) and the platform
+hostname helper are mocked so tests don't hit the real network or shell.
 """
 from __future__ import annotations
 
 import socket
-import subprocess
 from unittest.mock import MagicMock
-
-import pytest
 
 from physiclaw.core.bridge import lan
 
@@ -44,68 +41,45 @@ def test_get_lan_ip_falls_back_to_loopback_on_timeout(mocker) -> None:
 # ---------- get_mdns_host ----------
 
 
-def test_get_mdns_host_returns_lowercased_local_when_scutil_succeeds(mocker) -> None:
-    fake_result = MagicMock(returncode=0, stdout="My-Mac\n")
-    mocker.patch.object(subprocess, "run", return_value=fake_result)
-    # Resolve OK.
+def test_get_mdns_host_returns_lowercased_local_when_platform_provides_name(
+    mocker,
+) -> None:
+    mocker.patch.object(lan.platform, "local_hostname", return_value="My-Mac")
     mocker.patch.object(socket, "gethostbyname", return_value="192.168.1.5")
 
     assert lan.get_mdns_host() == "my-mac.local"
 
 
-def test_get_mdns_host_returns_none_when_scutil_returns_empty(mocker) -> None:
-    fake_result = MagicMock(returncode=0, stdout="\n")
-    mocker.patch.object(subprocess, "run", return_value=fake_result)
-    mocker.patch.object(
-        socket, "gethostname", return_value=""
-    )
+def test_get_mdns_host_returns_none_when_platform_returns_none(mocker) -> None:
+    mocker.patch.object(lan.platform, "local_hostname", return_value=None)
 
     assert lan.get_mdns_host() is None
 
 
-def test_get_mdns_host_falls_back_to_hostname_when_scutil_missing(
-    mocker,
-) -> None:
-    mocker.patch.object(subprocess, "run", side_effect=FileNotFoundError)
-    mocker.patch.object(socket, "gethostname", return_value="fallback-name")
-    mocker.patch.object(socket, "gethostbyname", return_value="10.0.0.1")
-
-    assert lan.get_mdns_host() == "fallback-name.local"
-
-
-def test_get_mdns_host_falls_back_when_scutil_times_out(mocker) -> None:
-    mocker.patch.object(
-        subprocess, "run",
-        side_effect=subprocess.TimeoutExpired(cmd="scutil", timeout=1),
-    )
-    mocker.patch.object(socket, "gethostname", return_value="other")
-    mocker.patch.object(socket, "gethostbyname", return_value="10.0.0.1")
-
-    assert lan.get_mdns_host() == "other.local"
-
-
 def test_get_mdns_host_returns_none_when_resolution_fails(mocker) -> None:
-    fake_result = MagicMock(returncode=0, stdout="my-mac")
-    mocker.patch.object(subprocess, "run", return_value=fake_result)
+    mocker.patch.object(lan.platform, "local_hostname", return_value="my-mac")
     mocker.patch.object(socket, "gethostbyname", side_effect=socket.gaierror)
 
     assert lan.get_mdns_host() is None
 
 
-def test_get_mdns_host_strips_dotted_suffix_from_socket_hostname(mocker) -> None:
-    fake_result = MagicMock(returncode=1)
-    mocker.patch.object(subprocess, "run", return_value=fake_result)
-    mocker.patch.object(socket, "gethostname", return_value="host.example.com")
-    mocker.patch.object(socket, "gethostbyname", return_value="10.0.0.1")
-
-    assert lan.get_mdns_host() == "host.local"
-
-
-def test_get_mdns_host_returns_none_when_hostname_call_raises(mocker) -> None:
-    mocker.patch.object(subprocess, "run", side_effect=FileNotFoundError)
-    mocker.patch.object(socket, "gethostname", side_effect=OSError)
+def test_get_mdns_host_returns_none_when_resolution_times_out(mocker) -> None:
+    mocker.patch.object(lan.platform, "local_hostname", return_value="my-mac")
+    mocker.patch.object(socket, "gethostbyname", side_effect=socket.timeout)
 
     assert lan.get_mdns_host() is None
+
+
+def test_get_mdns_host_restores_default_socket_timeout(mocker) -> None:
+    mocker.patch.object(lan.platform, "local_hostname", return_value="my-mac")
+    mocker.patch.object(socket, "gethostbyname", return_value="10.0.0.1")
+    prev = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(7.5)
+        lan.get_mdns_host()
+        assert socket.getdefaulttimeout() == 7.5
+    finally:
+        socket.setdefaulttimeout(prev)
 
 
 # ---------- bridge_base_urls ----------

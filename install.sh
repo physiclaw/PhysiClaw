@@ -33,7 +33,9 @@ info() { printf '%s%s→%s %s\n'   "$B" "$G" "$N" "$*"; }
 warn() { printf '%s%s!%s %s\n'   "$B" "$Y" "$N" "$*" >&2; }
 die()  { printf '%s%s✗%s %s\n'   "$B" "$R" "$N" "$*" >&2; exit 1; }
 
-[[ "$(uname -s)" == "Darwin" ]] || die "PhysiClaw currently supports macOS only."
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  die "install.sh is for macOS. On Windows, use install.ps1 (irm <url>/install.ps1 | iex)."
+fi
 
 # uv drops its tool shims under ~/.local/bin.
 export PATH="$HOME/.local/bin:$PATH"

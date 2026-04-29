@@ -1,7 +1,8 @@
 """Network helpers for the LAN bridge."""
 
 import socket
-import subprocess
+
+from physiclaw.core import platform
 
 
 def get_lan_ip() -> str:
@@ -18,31 +19,14 @@ def get_lan_ip() -> str:
 
 
 def get_mdns_host() -> str | None:
-    """Return the Mac's mDNS hostname (e.g. 'physiclaw-mac.local'), or None.
+    """Return the host's mDNS name (e.g. 'physiclaw-mac.local'), or None.
 
     Survives DHCP-driven IP shifts: iOS resolves *.local via Bonjour on the
     same Wi-Fi. Returns None if the name can't be determined or isn't
-    resolvable on this network (e.g. mDNS blocked).
+    resolvable on this network (e.g. mDNS blocked, Bonjour for Windows
+    not installed).
     """
-    name: str | None = None
-    try:
-        result = subprocess.run(
-            ["scutil", "--get", "LocalHostName"],
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if result.returncode == 0:
-            name = result.stdout.strip() or None
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    if not name:
-        try:
-            name = socket.gethostname().split(".")[0] or None
-        except Exception:
-            return None
-
+    name = platform.local_hostname()
     if not name:
         return None
 

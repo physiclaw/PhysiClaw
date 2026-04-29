@@ -7,17 +7,19 @@ import base64
 import json
 import os
 import socket
-import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from physiclaw import paths
+from physiclaw.core import platform
 
 BASE = os.environ.get("PHYSICLAW_SERVER", "http://localhost:8048")
 
@@ -63,20 +65,14 @@ def wait(msg):
     input(f"  {msg} [Enter] ")
 
 
-def _photo_booth_adjust(prompt: str) -> None:
-    """Open Photo Booth for camera aim, wait for the user, then quit
-    it so AVFoundation releases the camera before the server reconnects.
-    Without the quit + ~0.5s settle, the next ``Camera(...)`` open hits
-    a still-exclusive AVCaptureSession and surfaces as "Camera not
-    connected" downstream. Graceful AppleScript quit (not ``killall``)
-    so macOS tears the session down cleanly."""
-    subprocess.run(["open", "-a", "Photo Booth"])
+def _camera_aim_adjust(prompt: str) -> None:
+    """Open the OS camera-preview app for aim, wait for the user, then
+    quit it so the camera device handle is released before the server
+    reconnects. Platform-specific app choices live in
+    ``physiclaw.core.platform``."""
+    platform.open_camera_aim_app()
     wait(prompt)
-    subprocess.run(
-        ["osascript", "-e", 'tell application "Photo Booth" to quit'],
-        capture_output=True,
-    )
-    time.sleep(0.5)
+    platform.quit_camera_aim_app()
 
 
 def ask(msg, auto):
@@ -143,7 +139,7 @@ def run(auto: bool = False, trace: bool = False) -> None:
 
     print("\n── 2. Position phone ──")
     if not auto:
-        _photo_booth_adjust("Place phone under camera, adjust in Photo Booth")
+        _camera_aim_adjust("Place phone under camera, adjust in the camera preview app")
         _done("Phone positioned")
     else:
         _done("Skipped (auto)")
@@ -164,16 +160,20 @@ def run(auto: bool = False, trace: bool = False) -> None:
         cam = r.get("index", 0)
         _done(f"Camera {cam} auto-picked")
     else:
-        subprocess.run("rm -f /tmp/physiclaw_cam*.jpg", shell=True)
+        tmp_dir = Path(tempfile.gettempdir())
+        for stale in tmp_dir.glob("physiclaw_cam*.jpg"):
+            stale.unlink(missing_ok=True)
+        preview_paths: list[str] = []
         for i in range(4):
             rr = api("GET", f"/api/camera-preview/{i}?watermark=1", timeout=10)
             if rr and rr.get("image"):
-                with open(f"/tmp/physiclaw_cam{i}.jpg", "wb") as f:
-                    f.write(base64.b64decode(rr["image"]))
+                p = tmp_dir / f"physiclaw_cam{i}.jpg"
+                p.write_bytes(base64.b64decode(rr["image"]))
+                preview_paths.append(str(p))
         if auto:
             cam = 0
         else:
-            subprocess.run("open /tmp/physiclaw_cam*.jpg", shell=True)
+            platform.open_image_files(preview_paths)
             try:
                 cam = int(
                     input(
@@ -250,12 +250,12 @@ def run(auto: bool = False, trace: bool = False) -> None:
     print("\n── 8. Camera calibration ──")
     print("  Adjust camera, then detect rotation + check phone fills the frame.")
     if not auto:
-        _photo_booth_adjust("Adjust camera angle/distance if needed")
+        _camera_aim_adjust("Adjust camera angle/distance if needed")
     r_conn = api("POST", "/api/connect-camera", {"index": cam})
     if not ok(r_conn):
         _fail(
             f"Reconnect camera failed: {(r_conn or {}).get('message', 'no response')}. "
-            "Another app (Photo Booth, Zoom, FaceTime) may still be holding the camera."
+            "Another app (Photo Booth / Camera / Zoom / FaceTime) may still be holding the camera."
         )
         sys.exit(1)
     r = calibrate("camera", 15)

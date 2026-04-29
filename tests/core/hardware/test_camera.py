@@ -22,7 +22,6 @@ import pytest
 from physiclaw.core.hardware import camera as camera_mod
 from physiclaw.core.hardware.camera import (
     Camera,
-    _ensure_camera_permission,
     silenced_stderr,
 )
 
@@ -43,37 +42,6 @@ def test_silenced_stderr_swallows_block_output(capfd: pytest.CaptureFixture) -> 
     captured = capfd.readouterr()
     assert "silenced" not in captured.err
     assert "audible" in captured.err
-
-
-# ---------- _ensure_camera_permission ----------
-
-
-def test_ensure_camera_permission_calls_imagesnap(mocker) -> None:
-    spy = mocker.patch.object(camera_mod.subprocess, "run")
-
-    _ensure_camera_permission()
-
-    spy.assert_called_once()
-    args = spy.call_args.args[0]
-    assert args[0] == "imagesnap"
-
-
-def test_ensure_camera_permission_swallows_missing_imagesnap(mocker) -> None:
-    mocker.patch.object(
-        camera_mod.subprocess, "run", side_effect=FileNotFoundError,
-    )
-
-    # Must not raise.
-    _ensure_camera_permission()
-
-
-def test_ensure_camera_permission_swallows_timeout(mocker) -> None:
-    mocker.patch.object(
-        camera_mod.subprocess, "run",
-        side_effect=camera_mod.subprocess.TimeoutExpired(cmd="imagesnap", timeout=5),
-    )
-
-    _ensure_camera_permission()
 
 
 # ---------- FakeVideoCapture ----------
@@ -162,7 +130,7 @@ def test_camera_init_retries_on_first_open_failure(mocker) -> None:
     closed = FakeVideoCapture(index=0, is_open=False)
     open_ = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     mocker.patch.object(cv2, "VideoCapture", side_effect=[closed, open_])
-    perm_spy = mocker.patch.object(camera_mod, "_ensure_camera_permission")
+    perm_spy = mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     cam = Camera(index=0)
     try:
@@ -175,7 +143,7 @@ def test_camera_init_retries_on_first_open_failure(mocker) -> None:
 def test_camera_init_raises_when_open_keeps_failing(mocker) -> None:
     closed = FakeVideoCapture(index=0, is_open=False)
     mocker.patch.object(cv2, "VideoCapture", return_value=closed)
-    mocker.patch.object(camera_mod, "_ensure_camera_permission")
+    mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     with pytest.raises(RuntimeError, match="Cannot open camera"):
         Camera(index=0)
@@ -186,7 +154,7 @@ def test_camera_warmup_retries_on_bad_read(mocker) -> None:
     bad = FakeVideoCapture(index=0, read_results=[(False, None)] * 200)
     good = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     mocker.patch.object(cv2, "VideoCapture", side_effect=[bad, good])
-    mocker.patch.object(camera_mod, "_ensure_camera_permission")
+    mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     cam = Camera(index=0)
     try:
@@ -204,7 +172,7 @@ def test_camera_warmup_raises_after_repeated_read_failures(mocker) -> None:
         for _ in range(3)
     ]
     mocker.patch.object(cv2, "VideoCapture", side_effect=bad_caps)
-    mocker.patch.object(camera_mod, "_ensure_camera_permission")
+    mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     with pytest.raises(RuntimeError, match="read failed"):
         Camera(index=0)
@@ -316,7 +284,7 @@ def test_reopen_swallows_release_failure(mocker) -> None:
         index=0, read_results=[(True, _frame())] * 200,
     )
     mocker.patch.object(cv2, "VideoCapture", return_value=new_vc)
-    mocker.patch.object(camera_mod, "_ensure_camera_permission")
+    mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     # Disable warmup so _open's call doesn't loop trying to read.
     mocker.patch.object(cam, "_warmup")

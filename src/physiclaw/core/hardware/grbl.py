@@ -14,8 +14,13 @@ GRBL_BAUDRATE = 115200
 # Skip ports that are never GRBL devices
 _SKIP_KEYWORDS = {"bluetooth", "bt-", "debug", "wlan", "wifi", "airpods"}
 
-# GRBL boards typically use CH340/CP210x/FTDI USB-serial chips
-_LIKELY_KEYWORDS = {"ch340", "cp210", "ftdi", "usbserial", "usbmodem", "wch", "serial"}
+# GRBL boards typically use CH340/CP210x/FTDI USB-serial chips. Match on
+# both macOS-style device names (`/dev/tty.usbserial-XXXX`) and Windows-style
+# port descriptions (`USB-SERIAL CH340 (COM3)`, `Arduino Uno (COM5)`).
+_LIKELY_KEYWORDS = {
+    "ch340", "cp210", "ftdi", "usbserial", "usbmodem", "wch",
+    "serial", "arduino", "prolific",
+}
 
 
 def _probe_port(port: str, baudrate: int = GRBL_BAUDRATE) -> str | None:

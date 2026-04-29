@@ -21,13 +21,13 @@ import contextlib
 import logging
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time
 
 import cv2
 
+from physiclaw.core import platform
 from physiclaw.core.logger import save_snapshot
 
 log = logging.getLogger(__name__)
@@ -59,19 +59,6 @@ def silenced_stderr():
             os.close(saved)
     finally:
         os.close(devnull)
-
-
-def _ensure_camera_permission():
-    """On macOS, OpenCV won't trigger the camera permission dialog.
-    Run imagesnap once to force the OS prompt, then discard the result."""
-    try:
-        subprocess.run(
-            ["imagesnap", "-w", "0", "/dev/null"],
-            capture_output=True,
-            timeout=5,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass  # imagesnap not installed or hung — skip
 
 
 # ─── Reusable Camera class ──────────────────────────────────────
@@ -143,7 +130,7 @@ class Camera:
         with silenced_stderr():
             self.cap = cv2.VideoCapture(self.index)
             if not self.cap.isOpened():
-                _ensure_camera_permission()
+                platform.ensure_camera_permission()
                 self.cap = cv2.VideoCapture(self.index)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open camera index {self.index}")
@@ -165,7 +152,7 @@ class Camera:
                 return
             # Read returned no frame — likely macOS perm denied silently.
             self.cap.release()
-            _ensure_camera_permission()
+            platform.ensure_camera_permission()
             self._open()
         raise RuntimeError(f"Camera {self.index}: read failed")
 

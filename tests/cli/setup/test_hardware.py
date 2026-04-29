@@ -2,7 +2,7 @@
 
 The full `run()` flow is interactive and 12 steps deep; we cover the
 testable helpers (api / ok / lan_ip / calibrate / calibrate_retry /
-ask / _done / _fail / _photo_booth_adjust) and the early-exit
+ask / _done / _fail / _camera_aim_adjust) and the early-exit
 branches of `run` (server down, already ready, already calibrated)
 plus the `hardware` typer entry point.
 """
@@ -260,19 +260,19 @@ def test_warn_prints_yellow(capsys: pytest.CaptureFixture) -> None:
     assert "\033[33m" in out
 
 
-# ---------- _photo_booth_adjust ----------
+# ---------- _camera_aim_adjust ----------
 
 
-def test_photo_booth_adjust_opens_quits_and_settles(mocker) -> None:
-    run_spy = mocker.patch.object(hw_mod.subprocess, "run")
-    sleep_spy = mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod, "wait")
+def test_camera_aim_adjust_opens_waits_quits(mocker) -> None:
+    open_spy = mocker.patch.object(hw_mod.platform, "open_camera_aim_app")
+    quit_spy = mocker.patch.object(hw_mod.platform, "quit_camera_aim_app")
+    wait_spy = mocker.patch.object(hw_mod, "wait")
 
-    hw_mod._photo_booth_adjust("position")
+    hw_mod._camera_aim_adjust("position")
 
-    # Two subprocess.run calls: open + osascript quit.
-    assert run_spy.call_count == 2
-    sleep_spy.assert_called_once_with(0.5)
+    open_spy.assert_called_once()
+    wait_spy.assert_called_once_with("position")
+    quit_spy.assert_called_once()
 
 
 # ---------- run() early-exit branches ----------
@@ -343,8 +343,7 @@ def test_hardware_passes_auto_and_trace(mocker) -> None:
 def test_run_full_auto_path(mocker, tmp_path) -> None:
     """Walk every step in --auto mode with api() stubbed to always succeed."""
     mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod.subprocess, "run")
-    mocker.patch.object(hw_mod, "_photo_booth_adjust")
+    mocker.patch.object(hw_mod, "_camera_aim_adjust")
     mocker.patch.object(
         hw_mod, "_viewport_cache_candidates",
         return_value=[],  # no cache → fresh measurement.
@@ -396,8 +395,7 @@ def test_run_full_auto_path(mocker, tmp_path) -> None:
 def test_run_full_auto_with_warn_issues(mocker) -> None:
     """Step 8 surfaces issues from camera calibrate via _warn."""
     mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod.subprocess, "run")
-    mocker.patch.object(hw_mod, "_photo_booth_adjust")
+    mocker.patch.object(hw_mod, "_camera_aim_adjust")
     mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[])
 
     def fake_api(method, path, body=None, timeout=60):
@@ -437,7 +435,7 @@ def test_run_full_auto_with_warn_issues(mocker) -> None:
 
 def test_run_arm_connect_failure_exits(mocker) -> None:
     mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod, "_photo_booth_adjust")
+    mocker.patch.object(hw_mod, "_camera_aim_adjust")
     mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[])
 
     def fake_api(method, path, body=None, timeout=60):
@@ -453,10 +451,11 @@ def test_run_arm_connect_failure_exits(mocker) -> None:
         hw_mod.run(auto=True, trace=False)
 
 
-def test_run_camera_auto_pick_falls_back_to_manual(mocker) -> None:
+def test_run_camera_auto_pick_falls_back_to_manual(mocker, tmp_path) -> None:
     mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod.subprocess, "run")
-    mocker.patch.object(hw_mod, "_photo_booth_adjust")
+    mocker.patch.object(hw_mod.tempfile, "gettempdir", return_value=str(tmp_path))
+    mocker.patch.object(hw_mod.platform, "open_image_files")
+    mocker.patch.object(hw_mod, "_camera_aim_adjust")
     mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[])
 
     call_count = {"connect": 0}
@@ -500,7 +499,7 @@ def test_run_uses_cached_viewport_in_auto_mode(
     cache.write_bytes(b"x")
     mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[cache])
     mocker.patch.object(hw_mod.time, "sleep")
-    mocker.patch.object(hw_mod, "_photo_booth_adjust")
+    mocker.patch.object(hw_mod, "_camera_aim_adjust")
 
     def fake_api(method, path, body=None, timeout=60):
         if path == "/api/status":
