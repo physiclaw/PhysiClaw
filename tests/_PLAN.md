@@ -79,15 +79,15 @@ Ordered for execution. **Sprint = "stop and report" boundary** per TEST.md §Pha
 
 ### Sprint 2 — time-dependent + filesystem (≈90 tests)
 
-8. `agent/engine/job_store.py` — parser (header regex, field regex, missing required, duplicate id, invalid kind/status/schedule, Next-fire mismatch, ISO parse error), `validate_schedule`, `matches_now`, `next_fire`, `format_minute`, `find_due`, `update_fields` (single + multi-job + missing field), `purge_stale` (terminal+old vs young vs non-terminal vs no-timestamp). **35–45 tests.** `freezegun` for cron, `tmp_path` for files.
-9. `agent/engine/scratchpad.py` — `write` appends/replaces, `inject_tail` formats. **5–7 tests.**
-10. `agent/engine/plan.py` — `Step`/`Plan` dataclasses, `inject_tail`. **8–10 tests.**
-11. `agent/engine/memory.py` — `load_user`, `load_persistent`, `load_recent_entries`, `append_log` (date-rolling), `save_fact`/`update_fact`. **15–20 tests.** `tmp_path` + `freezegun`.
-12. `core/calibration/state.py` — `Calibration` dataclass (serialization, defaults). **10–15 tests.**
+1. `agent/engine/job_store.py` — parser (header regex, field regex, missing required, duplicate id, invalid kind/status/schedule, Next-fire mismatch, ISO parse error), `validate_schedule`, `matches_now`, `next_fire`, `format_minute`, `find_due`, `update_fields` (single + multi-job + missing field), `purge_stale` (terminal+old vs young vs non-terminal vs no-timestamp). **35–45 tests.** `freezegun` for cron, `tmp_path` for files.
+2. `agent/engine/scratchpad.py` — `write` appends/replaces, `inject_tail` formats. **5–7 tests.**
+3. `agent/engine/plan.py` — `Step`/`Plan` dataclasses, `inject_tail`. **8–10 tests.**
+4. `agent/engine/memory.py` — `load_user`, `load_persistent`, `load_recent_entries`, `append_log` (date-rolling), `save_fact`/`update_fact`. **15–20 tests.** `tmp_path` + `freezegun`.
+5. `core/calibration/state.py` — `Calibration` dataclass (serialization, defaults). **10–15 tests.**
 
 ### Sprint 3 — vision pure helpers (synthetic arrays, ≈60 tests)
 
-13. `core/vision/util.py` — testable purely:
+1. `core/vision/util.py` — testable purely:
     - `validate_bbox` (mirror of validator's bbox; same message family) — 6 cases
     - `bbox_on_screen` — 4 cases
     - `compact_json` — 3 cases
@@ -100,78 +100,78 @@ Ordered for execution. **Sprint = "stop and report" boundary** per TEST.md §Pha
     - `detect_bridge_corners` — 2 cases (with markers / without)
     - `check_phone_in_frame` — 3 cases
     - **38–45 tests total.** Mix of synthetic numpy + small fixture images committed under `tests/data/img/`.
-14. `core/vision/render.py` — `watermark_index`, `annotate_elements`. **5–8 tests.**
-15. `core/calibration/calibrate.py` (pure helpers only) — `grid_positions`, `_tilt_from_affine`, `_pick_rotation_from_markers`. **8–12 tests.**
+2. `core/vision/render.py` — `watermark_index`, `annotate_elements`. **5–8 tests.**
+3. `core/calibration/calibrate.py` (pure helpers only) — `grid_positions`, `_tilt_from_affine`, `_pick_rotation_from_markers`. **8–12 tests.**
 
 ### Sprint 4 — config + small bridge state (≈70 tests)
 
-16. `config.py` — load default, TOML round-trip, `set_dotted`/`unset_dotted`/`get`, `parse_model_ref` (3 forms), `model_ref` resolution (config > env > built-in > error), `provider_base_url_override`, validation errors per dataclass. **40–50 tests.** `tmp_path` + isolated `Config()` instances.
-17. `core/bridge/page.py` — `PageState` (10 tests).
-18. `core/bridge/state.py` — `BridgeState` thread-safe set/get assertions (15 tests, patch `time.sleep`).
-19. `core/bridge/calib.py` — `CalibrationState` (10 tests).
+1. `config.py` — load default, TOML round-trip, `set_dotted`/`unset_dotted`/`get`, `parse_model_ref` (3 forms), `model_ref` resolution (config > env > built-in > error), `provider_base_url_override`, validation errors per dataclass. **40–50 tests.** `tmp_path` + isolated `Config()` instances.
+2. `core/bridge/page.py` — `PageState` (10 tests).
+3. `core/bridge/state.py` — `BridgeState` thread-safe set/get assertions (15 tests, patch `time.sleep`).
+4. `core/bridge/calib.py` — `CalibrationState` (10 tests).
 
 ### Sprint 5 — provider stack with HTTP fakes (≈110 tests)
 
 Requires Phase 3 to add `respx` to dev group.
 
-20. `agent/provider/registry.py` — id resolution, key-status logic. **10–15 tests.**
-21. `agent/provider/discovered.py` — `cache_path`/save/load/`is_cached`. **8–10 tests.**
-22. `agent/provider/provider_base.py` — error hierarchy + base behavior. **10–15 tests.**
-23. `agent/provider/anthropic_compat.py` (+ `vendors/anthropic.py`) — request shape, response parse (text + tool_use + thinking-stripped), retry on transient, permanent error mapping, `Usage` extraction. **20–25 tests** with `respx`.
-24. `agent/provider/openai_compat.py` (+ `vendors/{openai,deepseek,moonshot,qwen}.py`) — same shape per vendor. **25–30 tests.**
-25. `agent/provider/vendors/google.py` — distinct API shape (Gemini), `vendor_extra.thought_signature` round-trip. **15–20 tests.**
+1. `agent/provider/registry.py` — id resolution, key-status logic. **10–15 tests.**
+2. `agent/provider/discovered.py` — `cache_path`/save/load/`is_cached`. **8–10 tests.**
+3. `agent/provider/provider_base.py` — error hierarchy + base behavior. **10–15 tests.**
+4. `agent/provider/anthropic_compat.py` (+ `vendors/anthropic.py`) — request shape, response parse (text + tool_use + thinking-stripped), retry on transient, permanent error mapping, `Usage` extraction. **20–25 tests** with `respx`.
+5. `agent/provider/openai_compat.py` (+ `vendors/{openai,deepseek,moonshot,qwen}.py`) — same shape per vendor. **25–30 tests.**
+6. `agent/provider/vendors/google.py` — distinct API shape (Gemini), `vendor_extra.thought_signature` round-trip. **15–20 tests.**
 
 ### Sprint 6 — engine glue (≈170 tests, hardest cluster)
 
-26. `agent/engine/jobs.py` — `fired_job_ids`, `format_fired`, `create_job`, `upsert_auto_wait_check`, `get_job`, `finish_job`. **20–25 tests.** `tmp_path` + `freezegun`.
-27. `agent/engine/skill.py` — `Skill.discover`/`dispatch`/`render_section`. **15–20 tests.**
-28. `agent/engine/mcp_inventory.py` — `discover_mcp_tools` against fake MCP client. **8–10 tests.**
-29. `agent/engine/mcp_tool.py` — `McpClient` lifecycle, list/cache. **15–20 tests.**
-30. `agent/engine/trace.py` — `brief`, `brief_args`, `format_call_args`, `format_call_result`, `brief_content`, `Trace`/`RawLog`. **20–30 tests.**
-31. `agent/engine/prompt.py` — `render_system`, `prefix_hash` (deterministic, sensitive to input), `dump`. **15–20 tests.**
-32. `agent/engine/compact.py` — `scale_image_bytes` (limits, preserved aspect), placeholder shape, `collapse_old_turns` (keeps boundary intact), `drop_stale_screens` (rewrites superseded only). **25–35 tests.**
-33. `agent/engine/builtin_tool.py` — `Session`, `LocalTool` (one test per built-in), `schemas()`, `build_registry()`. **30–40 tests.** Mocked `PhysiClaw` orchestrator.
-34. `agent/engine/engine.py` — `run()` integration via `FakeProvider` returning scripted turns. Cover: tool-call dispatch, validation-error correction, loop termination on `STOP`, max-turns guard, cache marker placement, exception handling per turn. **30–50 tests.** Heavy fixture work.
+1. `agent/engine/jobs.py` — `fired_job_ids`, `format_fired`, `create_job`, `upsert_auto_wait_check`, `get_job`, `finish_job`. **20–25 tests.** `tmp_path` + `freezegun`.
+2. `agent/engine/skill.py` — `Skill.discover`/`dispatch`/`render_section`. **15–20 tests.**
+3. `agent/engine/mcp_inventory.py` — `discover_mcp_tools` against fake MCP client. **8–10 tests.**
+4. `agent/engine/mcp_tool.py` — `McpClient` lifecycle, list/cache. **15–20 tests.**
+5. `agent/engine/trace.py` — `brief`, `brief_args`, `format_call_args`, `format_call_result`, `brief_content`, `Trace`/`RawLog`. **20–30 tests.**
+6. `agent/engine/prompt.py` — `render_system`, `prefix_hash` (deterministic, sensitive to input), `dump`. **15–20 tests.**
+7. `agent/engine/compact.py` — `scale_image_bytes` (limits, preserved aspect), placeholder shape, `collapse_old_turns` (keeps boundary intact), `drop_stale_screens` (rewrites superseded only). **25–35 tests.**
+8. `agent/engine/builtin_tool.py` — `Session`, `LocalTool` (one test per built-in), `schemas()`, `build_registry()`. **30–40 tests.** Mocked `PhysiClaw` orchestrator.
+9. `agent/engine/engine.py` — `run()` integration via `FakeProvider` returning scripted turns. Cover: tool-call dispatch, validation-error correction, loop termination on `STOP`, max-turns guard, cache marker placement, exception handling per turn. **30–50 tests.** Heavy fixture work.
 
 ### Sprint 7 — bridge HTTP + server wiring (≈80 tests)
 
-35. `core/bridge/lan.py` — mock socket / subprocess. **8–12 tests.**
-36. `core/bridge/handler.py` — fake state + content. **15–20 tests.**
-37. `core/bridge/nonce.py` covered in Sprint 1.
-38. `core/server/warm_start.py` — `wait_for_port` (success/timeout), `try_resume` (every branch). **12–15 tests.**
-39. `core/server/{tools,bridge,calibration,hardware,watch,app}.py` — `register()` mounts expected routes against a fake `McpServer`. **20–25 tests.**
-40. `core/server/types.py`, `mcp.py` — small (5–8 tests).
+1. `core/bridge/lan.py` — mock socket / subprocess. **8–12 tests.**
+2. `core/bridge/handler.py` — fake state + content. **15–20 tests.**
+3. `core/bridge/nonce.py` covered in Sprint 1.
+4. `core/server/warm_start.py` — `wait_for_port` (success/timeout), `try_resume` (every branch). **12–15 tests.**
+5. `core/server/{tools,bridge,calibration,hardware,watch,app}.py` — `register()` mounts expected routes against a fake `McpServer`. **20–25 tests.**
+6. `core/server/types.py`, `mcp.py` — small (5–8 tests).
 
 ### Sprint 8 — hardware + orchestrator (≈140 tests, most fakes)
 
-41. `core/hardware/grbl.py` — `_probe_port`, `candidate_ports`, `detect_grbl`. **8–12 tests.** Mock `serial.tools.list_ports`, `serial.Serial`.
-42. `core/hardware/arm.py` — `StylusArm.connect`, `move_*`, `_pen_*`, `wait_idle`, error paths, safety bounds. **20–30 tests.**
-43. `core/hardware/camera.py` — `Camera` open/read/release, threading, frame-conversion. **15–20 tests.** Mock `cv2.VideoCapture`.
-44. `core/hardware/iphone.py` — `AssistiveTouch` builds correct shortcut payloads, subprocess invocation. **8–12 tests.**
-45. `core/hardware/handler.py` — handler delegates correctly. **10–15 tests.**
-46. `core/calibration/handler.py` — 8 handlers; verify they call `calibrate.*` with correct args (the underlying functions stay `@integration`). **15–20 tests.**
-47. `core/orchestration/orchestrator.py` — `PhysiClaw` lifecycle, gesture dispatch, error propagation. **30–50 tests.** Fake hardware composite fixture.
-48. `core/vision/{ocr,icon_detect,screen_match,watchdog,grid_detect,keyboard,ui_elements}.py` — model-loading paths mocked, branch coverage on detection logic. **40–60 tests** total. Some tests gated on the OmniParser model file presence — skip with reason if absent.
+1. `core/hardware/grbl.py` — `_probe_port`, `candidate_ports`, `detect_grbl`. **8–12 tests.** Mock `serial.tools.list_ports`, `serial.Serial`.
+2. `core/hardware/arm.py` — `StylusArm.connect`, `move_*`, `_pen_*`, `wait_idle`, error paths, safety bounds. **20–30 tests.**
+3. `core/hardware/camera.py` — `Camera` open/read/release, threading, frame-conversion. **15–20 tests.** Mock `cv2.VideoCapture`.
+4. `core/hardware/iphone.py` — `AssistiveTouch` builds correct shortcut payloads, subprocess invocation. **8–12 tests.**
+5. `core/hardware/handler.py` — handler delegates correctly. **10–15 tests.**
+6. `core/calibration/handler.py` — 8 handlers; verify they call `calibrate.*` with correct args (the underlying functions stay `@integration`). **15–20 tests.**
+7. `core/orchestration/orchestrator.py` — `PhysiClaw` lifecycle, gesture dispatch, error propagation. **30–50 tests.** Fake hardware composite fixture.
+8. `core/vision/{ocr,icon_detect,screen_match,watchdog,grid_detect,keyboard,ui_elements}.py` — model-loading paths mocked, branch coverage on detection logic. **40–60 tests** total. Some tests gated on the OmniParser model file presence — skip with reason if absent.
 
 ### Sprint 9 — CLI (typer, ≈90 tests)
 
-49. `cli/_format.py` — output funcs (5 tests).
-50. `cli/__init__.py`, `cli/status.py` — wiring + status (10 tests).
-51. `cli/config.py` — typer `CliRunner`, every subcommand. **15–20 tests.**
-52. `cli/skills.py` — git operations mocked. **15–20 tests.**
-53. `cli/server.py`, `cli/setup/{hardware,phone,vision}.py`, `cli/doctor.py`, `cli/models.py` — typer `CliRunner` per subcommand, mock everything below. **30–40 tests.**
+1. `cli/_format.py` — output funcs (5 tests).
+2. `cli/__init__.py`, `cli/status.py` — wiring + status (10 tests).
+3. `cli/config.py` — typer `CliRunner`, every subcommand. **15–20 tests.**
+4. `cli/skills.py` — git operations mocked. **15–20 tests.**
+5. `cli/server.py`, `cli/setup/{hardware,phone,vision}.py`, `cli/doctor.py`, `cli/models.py` — typer `CliRunner` per subcommand, mock everything below. **30–40 tests.**
 
 ### Sprint 10 — agent runtime + claude + hooks (≈90 tests)
 
-54. `agent/runtime/sentinel.py` — `parse_sentinel`. **5–7 tests.**
-55. `agent/runtime/runtime.py` — `Runtime` class. **10–15 tests.**
-56. `agent/runtime/launcher.py` — `engine_label`, `resolve`, `launch`. **15–20 tests.**
-57. `agent/runtime/hook.py` — `Trigger`, `register`, `check_hooks`, `clear`, `load_hooks`. **15–20 tests.**
-58. `agent/hooks/cron.py` — `cron()` end-to-end with `freezegun`. **15–20 tests.**
-59. `agent/hooks/poll.py` — `phone_watch`. **5–8 tests.**
-60. `agent/claude/spawn.py` — `spawn_claude` (mock asyncio subprocess). **20–30 tests.**
-61. `agent/claude/preview.py` — `claude_preview`. **10–15 tests.**
-62. `agent/claude/plugin.py` — `prepare_plugin_dir` (`tmp_path`). **8–12 tests.**
+1. `agent/runtime/sentinel.py` — `parse_sentinel`. **5–7 tests.**
+2. `agent/runtime/runtime.py` — `Runtime` class. **10–15 tests.**
+3. `agent/runtime/launcher.py` — `engine_label`, `resolve`, `launch`. **15–20 tests.**
+4. `agent/runtime/hook.py` — `Trigger`, `register`, `check_hooks`, `clear`, `load_hooks`. **15–20 tests.**
+5. `agent/hooks/cron.py` — `cron()` end-to-end with `freezegun`. **15–20 tests.**
+6. `agent/hooks/poll.py` — `phone_watch`. **5–8 tests.**
+7. `agent/claude/spawn.py` — `spawn_claude` (mock asyncio subprocess). **20–30 tests.**
+8. `agent/claude/preview.py` — `claude_preview`. **10–15 tests.**
+9. `agent/claude/plugin.py` — `prepare_plugin_dir` (`tmp_path`). **8–12 tests.**
 
 ## Roll-up estimates
 
