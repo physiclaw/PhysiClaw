@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish
+.PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish release
 
 PY ?= uv run
 
@@ -22,6 +22,8 @@ help:
 	@echo "  build                 — uv build wheel + sdist for the version in pyproject.toml"
 	@echo "  publish               — upload dist/* to PyPI, tag vX.Y.Z, push. Irreversible."
 	@echo "                          Reads version from pyproject.toml. Needs UV_PUBLISH_TOKEN."
+	@echo "  release [VERSION=X.Y.Z]"
+	@echo "                        — full release: bump + build + publish in one shot."
 
 test:
 	$(PY) pytest
@@ -129,3 +131,14 @@ publish:
 	git push origin v$(PKG_VERSION)
 	@printf '\n\033[32m✓\033[0m Published $(PKG_VERSION) to PyPI and pushed to GitHub.\n'
 	@echo "  https://pypi.org/project/physiclaw/$(PKG_VERSION)/"
+
+# `make release [VERSION=X.Y.Z]` — bump + build + publish in one shot.
+#
+# Make reserves `-p` (print database), so a `make bump -p` style custom
+# flag isn't possible — this meta-target is the equivalent.
+#
+# Make runs prerequisites left-to-right (no -j); the deferred-eval
+# PKG_VERSION re-reads pyproject.toml at recipe time, so build and
+# publish pick up the freshly-bumped version that bump just wrote.
+release: bump build publish
+	@printf '\n\033[32m✓\033[0m Release flow complete for $(PKG_VERSION).\n'
