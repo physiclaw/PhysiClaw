@@ -188,7 +188,23 @@ def server(
             "hardware and calibrate — server is waiting."
         )
 
-    if not no_runtime:
+    if no_runtime:
+        log.info("Runtime loop disabled by --no-runtime.")
+    elif _model_ref is None:
+        # First-run case: server is useful for hardware setup + manual MCP
+        # tool calls, but the agent can't wake without a model. Skip spawn
+        # rather than letting the subprocess crash with a stack trace.
+        # Reuse `_NO_MODEL_MSG` so this hint stays in sync with the
+        # RuntimeError raised elsewhere — single source of truth.
+        from physiclaw.config import _NO_MODEL_MSG
+        log.warning(
+            "Runtime loop NOT started — %s\n"
+            "  The MCP server is running and you can use it for hardware setup,\n"
+            "  but the agent won't wake. After setting a model, restart "
+            "`physiclaw server`.",
+            _NO_MODEL_MSG,
+        )
+    else:
         runtime_proc = _spawn_runtime(port, verbose, _runtime_label)
 
         def _stop_runtime() -> None:

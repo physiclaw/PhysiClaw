@@ -668,12 +668,13 @@ def test_provider_base_url_override_returns_none_for_non_string_value(
 
 
 def test_model_ref_raises_when_neither_env_nor_config_set() -> None:
-    # Exact-equality on the full multiline-concatenated message so any
-    # XX-wrap on either continuation fragment fails the regex.
+    # Exact-equality on the full message so any prose drift fails the test.
     expected = (
-        "no model configured. Set PHYSICLAW_MODEL env var or [agent] model "
-        "in ~/.physiclaw/config.toml — e.g. 'qwen/qwen3.6-plus' or "
-        "'claude-code/claude-sonnet-4-6'."
+        "no model configured.\n"
+        "  Quick start:\n"
+        "    physiclaw models key <provider>     # e.g. anthropic, openai, qwen\n"
+        "    physiclaw models use <provider/model>\n"
+        "  Or set PHYSICLAW_MODEL=<provider>/<model> in your shell."
     )
     with pytest.raises(RuntimeError) as exc_info:
         config.model_ref()

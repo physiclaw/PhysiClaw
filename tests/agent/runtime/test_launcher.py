@@ -176,6 +176,28 @@ def _stub_asyncio_run(mocker, *, raise_kbd_interrupt: bool = False):
 
 
 @pytest.mark.integration
+def test_launch_exits_cleanly_when_no_model_configured(
+    mocker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture,
+) -> None:
+    """First-run UX: runtime subprocess shouldn't dump a Python stack
+    trace into the parent shell when no model is set — print a friendly
+    message to stderr and exit 1."""
+    monkeypatch.delenv("PHYSICLAW_MODEL", raising=False)
+    # Ensure the in-config default is also empty.
+    from physiclaw import config as _cfg
+    monkeypatch.setattr(_cfg.CONFIG.agent, "model", "")
+    monkeypatch.setattr("sys.argv", ["runtime"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        launcher.launch()
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "no model configured" in captured.err
+    assert "physiclaw models" in captured.err
+
+
+@pytest.mark.integration
 def test_launch_swallows_keyboard_interrupt(
     mocker, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -439,9 +439,11 @@ CONFIG: Config = load()
 MODEL_ENV_VAR = "PHYSICLAW_MODEL"
 
 _NO_MODEL_MSG = (
-    f"no model configured. Set {MODEL_ENV_VAR} env var or [agent] model "
-    "in ~/.physiclaw/config.toml — e.g. 'qwen/qwen3.6-plus' or "
-    "'claude-code/claude-sonnet-4-6'."
+    "no model configured.\n"
+    "  Quick start:\n"
+    "    physiclaw models key <provider>     # e.g. anthropic, openai, qwen\n"
+    "    physiclaw models use <provider/model>\n"
+    f"  Or set {MODEL_ENV_VAR}=<provider>/<model> in your shell."
 )
 
 

@@ -102,7 +102,10 @@ def _root(ctx: typer.Context) -> None:
     try:
         ref, source = _config.model_ref_with_source()
     except RuntimeError:
-        typer.echo(warn("none — set one with `physiclaw models use <provider/model>`"))
+        typer.echo(warn(
+            "none — run `physiclaw models key <provider>`, "
+            "then `physiclaw models use <provider/model>`"
+        ))
         typer.echo()
         typer.echo(next_hint("physiclaw models list"))
         return

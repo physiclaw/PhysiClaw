@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 from functools import partial
 
 from physiclaw.agent.engine.mcp_tool import close_mcp
@@ -96,7 +97,13 @@ def launch() -> None:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
-    ref, source = resolve()
+    try:
+        ref, source = resolve()
+    except RuntimeError as e:
+        # Friendly exit: print the (already actionable) message to stderr
+        # and bail. No Python stack trace bleeds into the parent shell.
+        print(f"physiclaw runtime: {e}", file=sys.stderr)
+        sys.exit(1)
     provider_id, model_id = parse_model_ref(ref)
 
     # Hooks read this to know where the MCP server lives. Must be set

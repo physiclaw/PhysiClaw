@@ -158,6 +158,28 @@ def test_server_records_unset_when_resolve_fails(mocker) -> None:
     assert kwargs.get("model_source") is None
 
 
+def test_server_skips_runtime_spawn_when_no_model_configured(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """First-run UX: with no model set, the MCP server still starts but the
+    runtime subprocess is not spawned (a stack trace is the bug we're avoiding).
+    The user is told why + how to fix."""
+    _patch_server_runtime_deps(mocker, resolve_raises=True)
+    spawn_spy = mocker.patch.object(server_mod, "_spawn_runtime")
+
+    with caplog.at_level(logging.WARNING, logger="physiclaw.cli.server"):
+        server_mod.server(
+            port=8048, host="127.0.0.1", verbose=False,
+            no_runtime=False, warm_start=False, cam_index=None,
+            save_tool_calls=False, save_snapshots=False, save_screenshots=False,
+        )
+
+    spawn_spy.assert_not_called()
+    msgs = " ".join(r.getMessage() for r in caplog.records)
+    assert "no model configured" in msgs
+    assert "physiclaw models" in msgs
+
+
 def test_server_keyboard_interrupt_is_swallowed(mocker) -> None:
     deps = _patch_server_runtime_deps(mocker)
     deps["mcp"].run.side_effect = KeyboardInterrupt
