@@ -161,6 +161,20 @@ def test_launch_runs_claude_path_for_claude_code(
     assert runtime_cls.call_args.kwargs["label"].startswith("engine=claude-code")
 
 
+def _stub_asyncio_run(mocker, *, raise_kbd_interrupt: bool = False):
+    """Stub `asyncio.run` so it accepts the inner `_main()` coroutine
+    without awaiting it. Without `.close()`, Python flags the unawaited
+    coro with a RuntimeWarning (often attributed to whichever test
+    happens to be running when GC sweeps it)."""
+
+    def _run(coro):
+        coro.close()  # release the coroutine so it isn't garbage-collected unawaited
+        if raise_kbd_interrupt:
+            raise KeyboardInterrupt
+
+    return mocker.patch.object(launcher.asyncio, "run", side_effect=_run)
+
+
 @pytest.mark.integration
 def test_launch_swallows_keyboard_interrupt(
     mocker, monkeypatch: pytest.MonkeyPatch,
@@ -168,7 +182,7 @@ def test_launch_swallows_keyboard_interrupt(
     monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
     monkeypatch.setattr("sys.argv", ["runtime"])
     mocker.patch.object(launcher, "setup_logging")
-    mocker.patch.object(launcher.asyncio, "run", side_effect=KeyboardInterrupt)
+    _stub_asyncio_run(mocker, raise_kbd_interrupt=True)
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
@@ -186,7 +200,7 @@ def test_launch_seeds_physiclaw_server_env(
     monkeypatch.delenv("PHYSICLAW_SERVER", raising=False)
     monkeypatch.setattr("sys.argv", ["runtime", "--server", "http://h:42"])
     mocker.patch.object(launcher, "setup_logging")
-    mocker.patch.object(launcher.asyncio, "run")
+    _stub_asyncio_run(mocker)
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
@@ -206,7 +220,7 @@ def test_launch_verbose_flag_sets_debug_level(
     monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
     monkeypatch.setattr("sys.argv", ["runtime", "--verbose"])
     setup_spy = mocker.patch.object(launcher, "setup_logging")
-    mocker.patch.object(launcher.asyncio, "run")
+    _stub_asyncio_run(mocker)
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.agent.engine.engine": mocker.MagicMock(run=mocker.MagicMock())},
