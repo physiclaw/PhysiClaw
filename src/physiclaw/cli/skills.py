@@ -29,6 +29,7 @@ import typer
 from physiclaw import paths
 from physiclaw.cli._format import next_hint, ok, warn
 from physiclaw.config import load as _load_config
+from physiclaw.text import read_text, write_text
 
 skills_app = typer.Typer(
     help="Install, list, and remove skills from a git-repo source.",
@@ -70,7 +71,7 @@ def read_provenance(skill_dir: Path) -> dict | None:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return json.loads(read_text(p))
     except (OSError, ValueError):
         return None
 
@@ -204,7 +205,7 @@ def _clone(source: str, ref: str | None, dest: Path) -> str:
 def _read_skill_name(skill_md: Path, fallback: str) -> str:
     """Pull ``name:`` from SKILL.md frontmatter; fall back to the directory
     name if the frontmatter omits it."""
-    text = skill_md.read_text()
+    text = read_text(skill_md)
     if not text.startswith("---"):
         return fallback
     _, _, rest = text[3:].partition("---")
@@ -226,7 +227,7 @@ def _write_provenance(dest: Path, source: str, ref: str | None, sha: str) -> Non
         "sha": sha,
         "installed_at": dt.datetime.now().isoformat(timespec="seconds"),
     }
-    (dest / PROVENANCE_FILE).write_text(json.dumps(payload, indent=2) + "\n")
+    write_text(dest / PROVENANCE_FILE, json.dumps(payload, indent=2) + "\n")
 
 
 def _atomic_replace(src: Path, dst: Path) -> None:

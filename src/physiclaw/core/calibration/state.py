@@ -21,6 +21,7 @@ import numpy as np
 
 from physiclaw import paths
 from physiclaw.core.calibration.transforms import ScreenTransforms, ViewportShift
+from physiclaw.text import read_text, write_text
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class Calibration:
     def save(self, path: Path = BUNDLE_PATH) -> None:
         """Write this bundle to disk as JSON."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2))
+        write_text(path, json.dumps(self.to_dict(), indent=2))
         log.info(f"Saved calibration bundle → {path}")
 
     @classmethod
@@ -167,7 +168,7 @@ class Calibration:
         if not path.exists():
             return None
         try:
-            return cls.from_dict(json.loads(path.read_text()))
+            return cls.from_dict(json.loads(read_text(path)))
         except (json.JSONDecodeError, TypeError, ValueError, KeyError) as e:
             log.warning(f"Failed to load calibration bundle from {path}: {e}")
             return None

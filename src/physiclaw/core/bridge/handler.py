@@ -14,6 +14,7 @@ from physiclaw.core.bridge.lan import bridge_base_urls
 from physiclaw.core.bridge.state import BridgeState
 from physiclaw.core.bridge.calib import CalibrationState
 from physiclaw.core.bridge.page import PageState
+from physiclaw.text import read_text
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ async def serve_bridge_page(request):
     and the phone renders nothing.
     """
     return HTMLResponse(
-        (STATIC_DIR / "bridge.html").read_text(),
+        read_text(STATIC_DIR / "bridge.html"),
         headers={"Cache-Control": "no-store"},
     )
 
@@ -126,7 +127,7 @@ async def handle_mode_switch(request, phone: PageState):
 async def serve_qr_page(request):
     """Serve a QR code page for the phone bridge URL."""
     primary, fallback = bridge_base_urls(request.url.port or 8048)
-    html = (STATIC_DIR / "qr.html").read_text()
+    html = read_text(STATIC_DIR / "qr.html")
     html = html.replace("__PHONE_URL__", f"{primary}/bridge").replace(
         "__PHONE_URL_FALLBACK__", f"{fallback}/bridge"
     )

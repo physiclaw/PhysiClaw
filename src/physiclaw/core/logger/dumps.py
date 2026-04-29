@@ -21,6 +21,7 @@ from typing import Literal
 import cv2
 
 from physiclaw import paths
+from physiclaw.text import write_text
 
 _ENSURED: set[Path] = set()
 
@@ -44,7 +45,7 @@ def save_tool_call(kind: ToolKind, listing: str, jpeg: bytes | None = None) -> N
         return
     d = _mkdir(paths.tool_calls_dir())
     stamp = _stamp()
-    (d / f"{stamp}_{kind}.txt").write_text(listing, encoding="utf-8")
+    write_text(d / f"{stamp}_{kind}.txt", listing)
     if jpeg is not None:
         (d / f"{stamp}_{kind}.jpg").write_bytes(jpeg)
 

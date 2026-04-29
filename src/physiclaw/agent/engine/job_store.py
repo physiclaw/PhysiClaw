@@ -25,6 +25,7 @@ from croniter import croniter
 
 from physiclaw import paths
 from physiclaw.config import CONFIG
+from physiclaw.text import read_text, write_text
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def load_jobs(path: Path | None = None) -> list[Job]:
         path = JOBS_PATH  # read at call time, not def time
     if not path.exists():
         return []
-    text = path.read_text()
+    text = read_text(path)
 
     parts = _HEADING_RE.split(text)
     jobs: list[Job] = []
@@ -323,11 +324,11 @@ def update_fields(path: Path, updates: dict[str, dict[str, str]]) -> None:
     """
     if not updates:
         return
-    text = path.read_text()
+    text = read_text(path)
     for job_id, fields in updates.items():
         for field_name, value in fields.items():
             text = _update_field(text, job_id, field_name, value)
-    path.write_text(text)
+    write_text(path, text)
 
 
 # ---------- auto-purge stale jobs ----------
@@ -348,7 +349,7 @@ def _remove_sections(path: Path, job_ids: set[str]) -> None:
     """Delete entire `## <id>` sections from the file."""
     if not job_ids:
         return
-    text = path.read_text()
+    text = read_text(path)
     for job_id in job_ids:
         pattern = re.compile(
             rf"^##\s+{re.escape(job_id)}\s*$\n(?:(?!^##\s)[\s\S])*?(?=^##\s|\Z)",
@@ -357,7 +358,7 @@ def _remove_sections(path: Path, job_ids: set[str]) -> None:
         text = pattern.sub("", text)
     # Clean up any resulting triple+ blank lines.
     text = re.sub(r"\n{3,}", "\n\n", text)
-    path.write_text(text)
+    write_text(path, text)
 
 
 def purge_stale(

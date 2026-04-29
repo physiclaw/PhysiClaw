@@ -44,6 +44,7 @@ from pathlib import Path
 
 from physiclaw.agent.engine import skill
 from physiclaw.agent.engine.skill import Skill
+from physiclaw.text import write_text
 
 log = logging.getLogger(__name__)
 
@@ -78,11 +79,12 @@ def prepare_plugin_dir(
     root = Path(tempfile.mkdtemp(prefix=f"physiclaw-plugin-{sid}-"))
     meta = root / ".claude-plugin"
     meta.mkdir()
-    (meta / "plugin.json").write_text(
+    write_text(
+        meta / "plugin.json",
         json.dumps(
             {"name": f"{_PLUGIN_NAME_PREFIX}-{sid}", "skills": "./skills"},
             indent=2,
-        ) + "\n"
+        ) + "\n",
     )
     skills_dir = root / "skills"
     skills_dir.mkdir()

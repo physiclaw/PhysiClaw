@@ -20,6 +20,7 @@ import logging
 from pathlib import Path
 
 from physiclaw.agent.engine import memory, mcp_inventory
+from physiclaw.text import read_text
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ def _load_doctrine_files() -> list[tuple[str, str]]:
             body = memory.load_user()
         else:
             path = CONTEXT_DIR / name
-            body = path.read_text().rstrip() if path.exists() else ""
+            body = read_text(path).rstrip() if path.exists() else ""
         if not body:
             continue
         out.append((name, body))

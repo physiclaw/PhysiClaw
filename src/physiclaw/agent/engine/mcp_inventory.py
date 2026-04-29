@@ -11,6 +11,8 @@ import ast
 import logging
 from pathlib import Path
 
+from physiclaw.text import read_text
+
 log = logging.getLogger(__name__)
 
 _TOOLS_PY = (
@@ -28,7 +30,7 @@ def discover_mcp_tools() -> list[dict]:
         log.debug("mcp_inventory: %s missing; skipping static MCP tools", _TOOLS_PY)
         return []
     try:
-        tree = ast.parse(_TOOLS_PY.read_text(encoding="utf-8"))
+        tree = ast.parse(read_text(_TOOLS_PY))
     except SyntaxError:
         log.exception("mcp_inventory: failed to parse %s", _TOOLS_PY)
         return []

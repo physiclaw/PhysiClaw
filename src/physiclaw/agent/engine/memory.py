@@ -17,6 +17,7 @@ import re
 
 from physiclaw import paths
 from physiclaw.config import CONFIG
+from physiclaw.text import append_text, read_text, write_text
 
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = MEMORY_DIR / "memory.md"
@@ -50,7 +51,7 @@ def load_user() -> str:
     doctrine renderer for the USER.md slot."""
     if not USER_FILE.exists():
         return ""
-    return USER_FILE.read_text().strip()
+    return read_text(USER_FILE).strip()
 
 
 def load_persistent() -> str:
@@ -60,7 +61,7 @@ def load_persistent() -> str:
     PERSISTENCE.md doctrine slot.)"""
     if not MEMORY_FILE.exists():
         return ""
-    return MEMORY_FILE.read_text().strip()
+    return read_text(MEMORY_FILE).strip()
 
 
 def load_recent_entries(n: int = DEFAULT_LOG_ENTRIES) -> str:
@@ -87,7 +88,7 @@ def load_recent_entries(n: int = DEFAULT_LOG_ENTRIES) -> str:
         d = today - dt.timedelta(days=i)
         p = MEMORY_DIR / f"{d.isoformat()}.md"
         try:
-            text = p.read_text()
+            text = read_text(p)
         except FileNotFoundError:
             continue
         # Files are append-order (oldest line first). Reverse before
@@ -123,7 +124,7 @@ def append_log(entry: str) -> None:
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
     path = MEMORY_DIR / f"{dt.date.today().isoformat()}.md"
     is_new = not path.exists()
-    with open(path, "a") as f:
+    with open(path, "a", encoding="utf-8") as f:
         if is_new:
             f.write(f"# {dt.date.today().isoformat()}\n\n")
         f.write(entry + "\n")
@@ -135,8 +136,7 @@ def save_fact(text: str) -> None:
     if not text:
         return
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    with open(MEMORY_FILE, "a") as f:
-        f.write(text + "\n")
+    append_text(MEMORY_FILE, text + "\n")
 
 
 def update_fact(old: str, new: str) -> None:
@@ -149,7 +149,7 @@ def update_fact(old: str, new: str) -> None:
     """
     if not MEMORY_FILE.exists():
         raise FileNotFoundError(f"{MEMORY_FILE} does not exist")
-    text = MEMORY_FILE.read_text()
+    text = read_text(MEMORY_FILE)
     count = text.count(old)
     if count == 0:
         raise ValueError(f"old text not found in memory.md: {old!r}")
@@ -170,4 +170,4 @@ def update_fact(old: str, new: str) -> None:
                 continue
             out.append(line)
         updated = "".join(out)
-    MEMORY_FILE.write_text(updated)
+    write_text(MEMORY_FILE, updated)

@@ -14,6 +14,7 @@ import os
 import time
 
 from physiclaw import paths
+from physiclaw.text import read_text, write_text
 
 
 def write(
@@ -34,7 +35,7 @@ def write(
     """
     p = paths.runtime_state_file()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({
+    write_text(p, json.dumps({
         "pid": os.getpid(),
         "host": host,
         "port": port,
@@ -53,7 +54,7 @@ def clear() -> None:
     """
     p = paths.runtime_state_file()
     try:
-        state = json.loads(p.read_text())
+        state = json.loads(read_text(p))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return
     if state.get("pid") != os.getpid():
@@ -74,7 +75,7 @@ def read_live() -> dict | None:
     if not p.exists():
         return None
     try:
-        state = json.loads(p.read_text())
+        state = json.loads(read_text(p))
     except (OSError, json.JSONDecodeError):
         return None
     pid = state.get("pid")

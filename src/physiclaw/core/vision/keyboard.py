@@ -20,6 +20,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from physiclaw.text import read_text
+
 log = logging.getLogger(__name__)
 
 
@@ -452,6 +454,6 @@ def generate_preset(
     Reads the bundled template from physiclaw.core.vision.presets and fills
     in the {{pages}} placeholder with detected key tables.
     """
-    template = TEMPLATE_PATH.read_text()
+    template = read_text(TEMPLATE_PATH)
     pages_md = _render_pages(pages, bbox_images)
     return template.replace("{{pages}}", pages_md).rstrip() + "\n"

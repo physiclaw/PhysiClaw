@@ -147,7 +147,7 @@ class Trace:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.session_id = session_id
         self._date = dt.datetime.now().strftime("%Y-%m-%d")
-        self._f = open(_LOG_DIR / f"engine-{self._date}.log", "a")
+        self._f = open(_LOG_DIR / f"engine-{self._date}.log", "a", encoding="utf-8")
         self._f.write(f"\n{'=' * 60}\n")
         self._f.flush()
 
@@ -170,7 +170,7 @@ class Trace:
             self._f.flush()
             self._f.close()
             self._date = today
-            self._f = open(_LOG_DIR / f"engine-{today}.log", "a")
+            self._f = open(_LOG_DIR / f"engine-{today}.log", "a", encoding="utf-8")
             self._f.write(
                 f"\n[{now:%H:%M:%S}] ROLLOVER ← continued from previous day\n"
             )
@@ -277,7 +277,7 @@ class RawLog:
         _purge_old()
         self.session_id = session_id
         self.path = _RAW_DIR / f"{session_id}.jsonl"
-        self._f = open(self.path, "a")
+        self._f = open(self.path, "a", encoding="utf-8")
         self._image_counter = 0
 
     def write_session_start(

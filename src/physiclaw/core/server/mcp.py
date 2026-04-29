@@ -17,9 +17,9 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from physiclaw.text import read_text
+
 _PKG_ROOT = Path(__file__).resolve().parents[2]
-_INSTRUCTIONS = (_PKG_ROOT / "agent" / "context" / "PHYSICLAW.md").read_text(
-    encoding="utf-8"
-)
+_INSTRUCTIONS = read_text(_PKG_ROOT / "agent" / "context" / "PHYSICLAW.md")
 
 mcp = FastMCP("physiclaw", instructions=_INSTRUCTIONS)

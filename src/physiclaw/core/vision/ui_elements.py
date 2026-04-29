@@ -15,6 +15,7 @@ import numpy as np
 
 from physiclaw import paths
 from physiclaw.core.vision.render import annotate_elements
+from physiclaw.text import write_text
 
 log = logging.getLogger(__name__)
 
@@ -214,7 +215,7 @@ if __name__ == "__main__":
     cv2.imwrite(str(out_path), annotated)
 
     json_path = out_path.with_suffix(".json")
-    json_path.write_text(compact_json(elements_to_json(elements)))
+    write_text(json_path, compact_json(elements_to_json(elements)))
 
     print(f"image: {out_path}")
     print(f"json:  {json_path}")

@@ -11,6 +11,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import paths
+from physiclaw.text import write_text
 
 
 def phone(
@@ -107,9 +108,9 @@ def phone(
 
     rendered = generate_preset(pages, bbox_images)
     preset.parent.mkdir(parents=True, exist_ok=True)
-    preset.write_text(rendered)
+    write_text(preset, rendered)
     ref_path = bbox_dir / "system-keyboard.ref.md"
-    ref_path.write_text(rendered)
+    write_text(ref_path, rendered)
     typer.echo(f"\n{'=' * 60}")
     typer.echo(f"Preset written to {preset}")
     typer.echo(f"Reference copy saved to {ref_path}")

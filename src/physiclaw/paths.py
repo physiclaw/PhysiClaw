@@ -22,6 +22,8 @@ import json
 import os
 from pathlib import Path
 
+from physiclaw.text import read_text
+
 HOME: Path = Path(os.environ.get("PHYSICLAW_HOME", "~/.physiclaw")).expanduser()
 LOG_DIR: Path = HOME / "log"
 
@@ -50,7 +52,7 @@ def load_calibration_bundle() -> dict | None:
     if not p.exists():
         return None
     try:
-        data = json.loads(p.read_text())
+        data = json.loads(read_text(p))
     except (OSError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None

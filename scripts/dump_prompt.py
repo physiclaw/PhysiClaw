@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from physiclaw.agent.engine import builtin_tool, memory, prompt, skill  # noqa: E402
+from physiclaw.text import write_text  # noqa: E402
 
 
 def _build(args: argparse.Namespace) -> str:
@@ -50,7 +51,7 @@ def main() -> None:
 
     if args.save:
         args.save.parent.mkdir(parents=True, exist_ok=True)
-        args.save.write_text(text)
+        write_text(args.save, text)
         print(f"wrote {len(text):,} chars to {args.save}", file=sys.stderr)
     else:
         print(text)

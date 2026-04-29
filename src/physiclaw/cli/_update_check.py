@@ -22,6 +22,7 @@ from pathlib import Path
 
 from physiclaw import __version__ as _pkg_version
 from physiclaw import paths
+from physiclaw.text import read_text, write_text
 
 _PYPI_URL = "https://pypi.org/pypi/physiclaw/json"
 _HTTP_TIMEOUT_SECONDS = 2.0
@@ -38,7 +39,7 @@ def _read_cache() -> dict | None:
     if not p.exists():
         return None
     try:
-        data = json.loads(p.read_text())
+        data = json.loads(read_text(p))
         return data if isinstance(data, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
@@ -48,7 +49,7 @@ def _write_cache(latest_version: str) -> None:
     p = _cache_file()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({
+        write_text(p, json.dumps({
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "latest_version": latest_version,
         }))

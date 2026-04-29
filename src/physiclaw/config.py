@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from physiclaw import paths
+from physiclaw.text import read_text, write_text
 
 
 class ConfigError(ValueError):
@@ -305,12 +306,7 @@ def write_default(path: Path | None = None) -> Path:
     path = path or config_path()
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Pin UTF-8 — TOML requires it and the template has em-dashes /
-        # ellipsis in section comments. Without an explicit encoding,
-        # Path.write_text uses locale.getencoding() (cp936 on Chinese
-        # Windows, cp1252 on Western Windows), and the next tomllib.load
-        # blows up with UnicodeDecodeError on the non-ASCII bytes.
-        path.write_text(to_toml(Config(), with_comments=True), encoding="utf-8")
+        write_text(path, to_toml(Config(), with_comments=True))
     return path
 
 
@@ -393,11 +389,11 @@ def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
 
     if not path.exists():
         write_default(path)
-    doc = tomlkit.parse(path.read_text(encoding="utf-8"))
+    doc = tomlkit.parse(read_text(path))
     if section not in doc:
         doc.add(section, tomlkit.table())
     doc[section][field_name] = coerced
-    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text(path, tomlkit.dumps(doc))
     # Refresh module-level CONFIG so same-process callers see the write
     # (re-import wouldn't trigger between CLI commands and immediate use).
     global CONFIG
@@ -411,7 +407,7 @@ def provider_base_url_override(provider_id: str) -> str | None:
     is absent. Called once at provider construction — no caching."""
     path = config_path()
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = read_text(path)
     except (FileNotFoundError, OSError, UnicodeDecodeError):
         # Encoding errors get the same fail-soft as a missing file —
         # this code path is best-effort (returns None when no override).
@@ -436,11 +432,11 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
     section, field_name = _validate_dotted(dotted)
     if not path.exists():
         return False
-    doc = tomlkit.parse(path.read_text(encoding="utf-8"))
+    doc = tomlkit.parse(read_text(path))
     if section not in doc or field_name not in doc[section]:
         return False
     del doc[section][field_name]
-    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text(path, tomlkit.dumps(doc))
     global CONFIG
     CONFIG = load(path)
     return True

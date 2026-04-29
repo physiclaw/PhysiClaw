@@ -24,6 +24,7 @@ import logging
 from pathlib import Path
 
 from physiclaw import paths
+from physiclaw.text import read_text, write_text
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def save(provider_id: str, models: list[dict]) -> None:
         "models": models,
     }
     try:
-        cache_path(provider_id).write_text(json.dumps(payload, indent=2))
+        write_text(cache_path(provider_id), json.dumps(payload, indent=2))
     except OSError as e:
         log.warning("failed to write discovered cache for %s: %s", provider_id, e)
 
@@ -53,7 +54,7 @@ def load(provider_id: str) -> list[dict]:
     """Return the cached `models` list, or [] if the cache doesn't
     exist or is unreadable."""
     try:
-        payload = json.loads(cache_path(provider_id).read_text())
+        payload = json.loads(read_text(cache_path(provider_id)))
     except FileNotFoundError:
         return []
     except (OSError, json.JSONDecodeError) as e:

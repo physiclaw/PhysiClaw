@@ -23,6 +23,7 @@ from physiclaw import paths
 from physiclaw.agent.claude.plugin import prepare_plugin_dir
 from physiclaw.agent.engine import skill
 from physiclaw.agent.engine.mcp_inventory import discover_mcp_tools
+from physiclaw.text import read_text
 from physiclaw.agent.engine.skill import Skill
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import parse_sentinel
@@ -136,7 +137,7 @@ def _render_system_prompt(mcp_tools: list[dict], skills: dict[str, Skill]) -> st
          content; written as Tier-1 triggers so Claude knows which
          skill to invoke before acting in which app.
     """
-    parts = [CLAUDE_MD.read_text().rstrip()]
+    parts = [read_text(CLAUDE_MD).rstrip()]
     card = _tooling_card(mcp_tools)
     if card:
         parts.append(card)
@@ -199,7 +200,7 @@ class _SessionLog:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         self._date = dt.datetime.now().strftime("%Y-%m-%d")
         self._last_text = ""  # most recent assistant text block, for sentinel check
-        self._f = open(LOG_DIR / f"claude-{self._date}.log", "a")
+        self._f = open(LOG_DIR / f"claude-{self._date}.log", "a", encoding="utf-8")
         self._f.write(f"\n{'='*60}\n")
         self._write(f"WAKE triggers={sources}")
 
@@ -251,7 +252,7 @@ class _SessionLog:
             self._f.flush()
             self._f.close()
             self._date = today
-            self._f = open(LOG_DIR / f"claude-{today}.log", "a")
+            self._f = open(LOG_DIR / f"claude-{today}.log", "a", encoding="utf-8")
             self._f.write(f"\n[{now:%H:%M:%S}] ROLLOVER ← continued from previous day\n")
         self._f.write(f"[{now:%H:%M:%S}] {msg}\n")
         self._f.flush()

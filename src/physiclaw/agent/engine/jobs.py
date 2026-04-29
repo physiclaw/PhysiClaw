@@ -133,7 +133,7 @@ def create_job(
     )
     JOBS_PATH.parent.mkdir(parents=True, exist_ok=True)
     existed = JOBS_PATH.exists()
-    with open(JOBS_PATH, "a") as f:
+    with open(JOBS_PATH, "a", encoding="utf-8") as f:
         if not existed:
             f.write("# Jobs\n")
         f.write(block)

@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from physiclaw import paths
+from physiclaw.text import read_text
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def _scan_root(root: Path, out: dict[str, Skill]) -> None:
         md = real / "SKILL.md"
         if not md.exists():
             continue
-        fm, body = _split_frontmatter(md.read_text())
+        fm, body = _split_frontmatter(read_text(md))
         name = fm.get("name") or d.name
         out[name] = Skill(
             name=name,
@@ -115,7 +116,7 @@ def _load_reference(skill: Skill, ref_path: str) -> str:
         raise FileNotFoundError(
             f"reference {ref_path!r} not found in skill {skill.name!r}"
         )
-    return target.read_text()
+    return read_text(target)
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
