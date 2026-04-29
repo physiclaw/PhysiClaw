@@ -20,6 +20,7 @@ from physiclaw.cli._format import info as _fmt_info
 from physiclaw.cli._format import ok as _fmt_ok
 from physiclaw.cli._format import section as _fmt_section
 from physiclaw.cli._format import warn as _fmt_warn
+from physiclaw.cli._update_check import maybe_print_update_banner
 
 
 def _list_cameras(max_index: int = 4) -> list[int]:
@@ -486,3 +487,5 @@ def doctor(
         typer.echo(f"  {i}. {step}")
     if not steps:
         typer.echo("  All set.")
+
+    maybe_print_update_banner()

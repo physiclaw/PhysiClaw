@@ -6,6 +6,7 @@ import typer
 
 from physiclaw import paths
 from physiclaw.cli._format import next_hint, section
+from physiclaw.cli._update_check import maybe_print_update_banner
 
 
 def status() -> None:
@@ -52,3 +53,5 @@ def status() -> None:
         typer.echo(next_hint(
             "physiclaw doctor  (for deeper checks — server, hardware, provider)"
         ))
+
+    maybe_print_update_banner()
