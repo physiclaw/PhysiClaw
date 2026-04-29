@@ -150,35 +150,69 @@ stable will resume where it stopped.
     }
 
     Info "Installing $pkg…"
-    & uv tool install $pkg --python 3.12 --force *> $null
-    if ($LASTEXITCODE -ne 0) {
+    # Don't redirect uv's output to $null — on Windows, uv may exit
+    # non-zero even when the install succeeds (Defender briefly locking
+    # the new physiclaw.exe shim, or a stderr write failing on a non-UTF8
+    # console codepage). Showing uv's actual output is the most reliable
+    # diagnostic for users.
+    & uv tool install $pkg --python 3.12 --force
+    $installExit = $LASTEXITCODE
+
+    # Trust the binary, not the exit code. uv may have reported failure
+    # while the package is in fact installed and working — verify by
+    # actually invoking it.
+    $physiclawCmd = Get-Command physiclaw -ErrorAction SilentlyContinue
+    $verifiedVersion = $null
+    if ($physiclawCmd) {
+        try {
+            $verOutput = & physiclaw --version 2>&1
+            if ($LASTEXITCODE -eq 0) { $verifiedVersion = ($verOutput | Select-Object -First 1).ToString() }
+        } catch {
+            $verifiedVersion = $null
+        }
+    }
+
+    if (-not $verifiedVersion) {
+        # Genuine failure: either the shim never appeared, or running it
+        # errors out. Surface uv's exit code in the diagnostic.
+        if (-not $physiclawCmd) {
+            Warn "Install reported exit $installExit and ``physiclaw`` isn't on PATH for this session."
+            Warn ""
+            Warn "If uv's output above shows a successful install, the binary may"
+            Warn "exist but PATH isn't refreshed. Add this to your PowerShell profile"
+            Warn "(`$PROFILE`), then open a new shell:"
+            Warn "    `$env:PATH = `"`$env:USERPROFILE\.local\bin;`$env:PATH`""
+            Warn ""
+            Warn "Or run it directly without changing your profile:"
+            Warn "    & `"`$env:USERPROFILE\.local\bin\physiclaw.exe`" --version"
+            Die "``physiclaw`` not on PATH after install. See uv output above + the fixes above."
+        }
+
         $verHint = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
         Die @"
-``uv tool install $pkg`` failed (exit $LASTEXITCODE).
+``uv tool install $pkg`` failed (exit $installExit) and the installed
+``physiclaw`` shim isn't runnable.
 
 Likely causes:
   - Pinned version does not exist. Check available versions:
       https://pypi.org/project/physiclaw/#history
   - Network blip while downloading wheels — retry.
-  - A native build dep (e.g. opencv-python) failed to install. Run the
-    command manually with output visible to see the real error:
-      uv tool install $verHint --python 3.12 --force
+  - A native build dep (e.g. opencv-python) failed to install. uv's
+    output above should show the real error.
+
+To debug, run manually with verbose output:
+  uv tool install $verHint --python 3.12 --force --verbose
 "@
     }
 
-    if (-not (Get-Command physiclaw -ErrorAction SilentlyContinue)) {
-        Warn "Install succeeded but ``physiclaw`` isn't on PATH for this session."
-        Warn ""
-        Warn "Add this to your PowerShell profile (`$PROFILE`), then open a new shell:"
-        Warn "    `$env:PATH = `"`$env:USERPROFILE\.local\bin;`$env:PATH`""
-        Warn ""
-        Warn "Or run it directly without changing your profile:"
-        Warn "    & `"`$env:USERPROFILE\.local\bin\physiclaw.exe`" --version"
-        Die "``physiclaw`` not found on PATH. See above for fixes."
+    if ($installExit -ne 0) {
+        # uv claimed failure but the binary works — common on Windows when
+        # Defender briefly locks the shim or a stderr write hits a bad
+        # codepage. Tell the user we noticed, but don't bail.
+        Warn "uv reported exit $installExit, but ``physiclaw`` is installed and runs."
+        Warn "Continuing — likely a Defender / codepage false positive."
     }
-
-    $ver = & physiclaw --version
-    Info "Installed: $ver"
+    Info "Installed: $verifiedVersion"
 
     Write-Host ""
     if ($useColor) { Write-Host "✓ Done." -ForegroundColor Green -NoNewline; Write-Host " Next steps:" }
