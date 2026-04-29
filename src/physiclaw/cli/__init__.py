@@ -13,6 +13,7 @@ from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
 from physiclaw.cli.skills import skills_app
 from physiclaw.cli.status import status
+from physiclaw.cli.uninstall import uninstall
 
 app = typer.Typer(
     help="PhysiClaw — let AI agents physically operate a phone.",
@@ -24,6 +25,7 @@ app = typer.Typer(
 app.command()(doctor)
 app.command()(server)
 app.command()(status)
+app.command()(uninstall)
 
 # Claude-code-specific commands — registered only when agent/claude/ is
 # importable. The body defers the heavy import (spawn.py → engine.skill
