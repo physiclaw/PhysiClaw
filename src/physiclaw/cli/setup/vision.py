@@ -1,9 +1,11 @@
 """``physiclaw setup local-vision-model`` — fetch the OmniParser icon detector.
 
 Upstream ships PyTorch weights; we convert to ONNX once and cache under
-the user's cache dir. Conversion needs ``ultralytics`` + ``onnx`` + ``onnxslim``,
-which are heavy (~500 MB) and not in the default install — kept opt-in so
-``physiclaw`` itself stays small.
+the user's data dir. Conversion needs ``ultralytics`` + ``onnx`` + ``onnxslim``,
+exposed as the ``[vision]`` extra. install.sh / install.ps1 install with
+``physiclaw[vision]``, run this command, then reinstall physiclaw without
+the extra to free the ~500 MB. Manual users can do the same dance —
+the message printed below shows the commands.
 """
 
 import logging
@@ -40,17 +42,18 @@ def vision(
     try:
         from ultralytics import YOLO  # type: ignore[import-not-found]
     except ImportError:
+        typer.echo(typer.style(
+            "The local vision model needs a few extra packages first.",
+            fg=typer.colors.YELLOW, bold=True,
+        ))
         typer.echo(
-            typer.style("Conversion deps missing.", fg=typer.colors.YELLOW, bold=True)
-        )
-        typer.echo(
-            "The OmniParser upstream ships PyTorch weights; converting them "
-            "to ONNX needs `ultralytics`, `onnx`, and `onnxslim`. These "
-            "aren't in the default install to keep PhysiClaw small.\n\n"
-            "Install into the same tool environment and re-run:\n"
-            "    uv tool install physiclaw --reinstall \\\n"
-            "        --with ultralytics --with onnx --with 'onnxslim>=0.1.71'\n"
+            "Converting the upstream PyTorch weights to ONNX requires "
+            "`ultralytics`, `onnx`, and `onnxslim` (about 500 MB). They're "
+            "not in the default install so `physiclaw` itself stays small.\n\n"
+            "Add them, run the conversion, then drop them again:\n\n"
+            "    uv tool install 'physiclaw[vision]' --reinstall\n"
             "    physiclaw setup local-vision-model\n"
+            "    uv tool install physiclaw --reinstall   # frees the ~500 MB\n"
         )
         raise typer.Abort()
 

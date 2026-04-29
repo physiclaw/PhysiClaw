@@ -19,7 +19,7 @@ If OK, tell the user it's already set up and stop.
 ## Step 2: Install, convert, clean up
 
 ```bash
-uv sync --group convert
+uv sync --extra vision
 uv run python scripts/download_omniparser.py
 uv sync
 ```

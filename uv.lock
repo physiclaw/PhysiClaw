@@ -1549,12 +1549,14 @@ dependencies = [
     { name = "typer" },
 ]
 
-[package.dev-dependencies]
-convert = [
+[package.optional-dependencies]
+vision = [
     { name = "onnx" },
     { name = "onnxslim" },
     { name = "ultralytics" },
 ]
+
+[package.dev-dependencies]
 dev = [
     { name = "freezegun" },
     { name = "hypothesis" },
@@ -1581,20 +1583,19 @@ requires-dist = [
     { name = "croniter", specifier = ">=6.2.2" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.2" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "onnx", marker = "extra == 'vision'", specifier = ">=1.18" },
     { name = "onnxruntime", specifier = ">=1.24.0" },
+    { name = "onnxslim", marker = "extra == 'vision'", specifier = ">=0.1.71" },
     { name = "opencv-python", specifier = ">=4.8" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "rapidocr", specifier = ">=3.7.0" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "ultralytics", marker = "extra == 'vision'", specifier = ">=8.4" },
 ]
+provides-extras = ["vision"]
 
 [package.metadata.requires-dev]
-convert = [
-    { name = "onnx" },
-    { name = "onnxslim", specifier = ">=0.1.71" },
-    { name = "ultralytics" },
-]
 dev = [
     { name = "freezegun", specifier = ">=1.5" },
     { name = "hypothesis", specifier = ">=6.100" },

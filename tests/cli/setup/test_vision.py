@@ -50,7 +50,11 @@ def test_vision_aborts_when_ultralytics_missing(
 
     # typer.Abort exits with code 1.
     assert result.exit_code == 1
-    assert "Conversion deps missing" in result.output
+    assert "needs a few extra packages" in result.output
+    # Three-step fix command: add extras, convert, drop extras again.
+    assert "uv tool install 'physiclaw[vision]' --reinstall" in result.output
+    assert "physiclaw setup local-vision-model" in result.output
+    assert "uv tool install physiclaw --reinstall" in result.output
 
 
 def test_vision_downloads_and_converts(tmp_path: Path, mocker) -> None:

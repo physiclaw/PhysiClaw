@@ -38,8 +38,19 @@ Homepage = "https://github.com/echosprint/PhysiClaw"
 Repository = "https://github.com/echosprint/PhysiClaw"
 Issues = "https://github.com/echosprint/PhysiClaw/issues"
 
+[project.optional-dependencies]
+# Heavy ~500 MB. Needed only at install time, by `physiclaw setup
+# local-vision-model`, which converts upstream PyTorch icon-detector
+# weights to ONNX once. install.sh / install.ps1 do this conversion
+# and then reinstall physiclaw WITHOUT this extra to free the disk —
+# inference at runtime uses the small `onnxruntime` (already a core
+# dep). Manual one-shot:
+#   uv tool install 'physiclaw[vision]' --reinstall
+#   physiclaw setup local-vision-model
+#   uv tool install physiclaw --reinstall   # drop the heavy deps
+vision = ["ultralytics>=8.4", "onnx>=1.18", "onnxslim>=0.1.71"]
+
 [dependency-groups]
-convert = ["ultralytics", "onnx", "onnxslim>=0.1.71"]
 stylus = ["manifold3d>=3.4.0", "trimesh>=4.11.4"]
 drawing = ["reportlab>=4.4.10", "fonttools>=4.62"]
 dev = [

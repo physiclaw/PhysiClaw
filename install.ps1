@@ -10,13 +10,18 @@
 #   $env:PHYSICLAW_VERSION = '0.0.5'   # pin a version
 #   $env:NO_COLOR = '1'                # plain output
 #
-# What it does (and only this — hardware/model setup is separate):
+# What it does (hardware setup is still a separate step at the end):
 #   1. Checks you're on Windows.
 #   2. Installs `uv` if missing (via astral.sh installer, run in a child shell
 #      so its `exit 1` on failure never reaches your session).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
-#   4. Installs/upgrades `physiclaw` as an isolated uv tool — shim goes in
-#      %USERPROFILE%\.local\bin\physiclaw.exe. Idempotent; safe to re-run.
+#   4. (a) Installs `physiclaw[vision]` (with conversion deps, ~500 MB)
+#      (b) Runs `physiclaw setup local-vision-model` to convert the upstream
+#          PyTorch icon-detector weights to ONNX (~30 s)
+#      (c) Reinstalls `physiclaw` WITHOUT the vision extras — drops the
+#          ~500 MB conversion deps, keeps the small ONNX file
+#      Idempotent; re-running this script does the same dance, no-ops the
+#      conversion if the ONNX is already cached.
 #
 # Prerequisites:
 #   - PowerShell 5.1+ (ships with Windows 11) or PowerShell 7+.
@@ -144,18 +149,24 @@ stable will resume where it stopped.
 
     $version = $env:PHYSICLAW_VERSION
     if ([string]::IsNullOrEmpty($version)) {
-        $pkg = 'physiclaw'
+        $specVision = 'physiclaw[vision]'
+        $specPlain = 'physiclaw'
     } else {
-        $pkg = "physiclaw==$version"
+        $specVision = "physiclaw[vision]==$version"
+        $specPlain = "physiclaw==$version"
     }
+    $pkg = $specVision  # for diagnostic messages below
 
-    Info "Installing $pkg…"
+    Info "Installing $specVision (incl. conversion deps, ~500 MB)…"
+    # `--refresh` invalidates uv's cached PyPI metadata so re-runs always
+    # resolve to the actual latest version, not whatever was in the cache
+    # from a previous `uv tool install` an hour ago.
     # Don't redirect uv's output to $null — on Windows, uv may exit
     # non-zero even when the install succeeds (Defender briefly locking
     # the new physiclaw.exe shim, or a stderr write failing on a non-UTF8
     # console codepage). Showing uv's actual output is the most reliable
     # diagnostic for users.
-    & uv tool install $pkg --python 3.12 --force
+    & uv tool install $specVision --python 3.12 --force --refresh
     $installExit = $LASTEXITCODE
 
     # Trust the binary, not the exit code. uv may have reported failure
@@ -214,12 +225,39 @@ To debug, run manually with verbose output:
     }
     Info "Installed: $verifiedVersion"
 
+    # Step 4b: convert the upstream PyTorch weights to ONNX (no-op if already
+    # cached on disk).
+    Info "Converting vision model to ONNX (one-time, ~30 s)…"
+    & physiclaw setup local-vision-model
+    if ($LASTEXITCODE -ne 0) {
+        Die @"
+``physiclaw setup local-vision-model`` failed (exit $LASTEXITCODE).
+
+The conversion download or convert step errored out. Re-running this
+script will resume — uv caches the wheels and the ONNX is only built
+once.
+"@
+    }
+
+    # Step 4c: slim down — drop the heavy conversion deps. The ONNX file
+    # persists under %USERPROFILE%\.physiclaw\models\; runtime inference
+    # uses the small `onnxruntime` (already in core deps).
+    Info "Removing conversion deps (ONNX cached, freeing ~500 MB)…"
+    & uv tool install $specPlain --python 3.12 --reinstall
+    if ($LASTEXITCODE -ne 0) {
+        # Slim-down failure is not fatal — physiclaw still works with the
+        # extras present, just uses ~500 MB more disk.
+        Warn "Slim-down step (uv tool install $specPlain --reinstall) reported"
+        Warn "exit $LASTEXITCODE. physiclaw still works, but the conversion"
+        Warn "deps are still installed (~500 MB). To free that space later:"
+        Warn "    uv tool install $specPlain --reinstall"
+    }
+
     Write-Host ""
     if ($useColor) { Write-Host "✓ Done." -ForegroundColor Green -NoNewline; Write-Host " Next steps:" }
     else           { Write-Host "✓ Done. Next steps:" }
-    Write-Host "    physiclaw doctor                    check your environment"
-    Write-Host "    physiclaw setup local-vision-model  download the icon detector (~100 MB)"
-    Write-Host "    physiclaw setup hardware            calibrate the arm + camera (plug them in first)"
+    Write-Host "    physiclaw doctor            check your environment"
+    Write-Host "    physiclaw setup hardware    calibrate the arm + camera (plug them in first)"
     if ($freshUv) {
         Write-Host ""
         Warn "Open a new PowerShell window so uv is on PATH in your interactive shell."
