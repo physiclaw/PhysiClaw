@@ -32,3 +32,13 @@ def test_version_flag_prints_pkg_version() -> None:
 
     assert result.exit_code == 0
     assert physiclaw.__version__ in result.stdout
+
+
+def test_help_header_includes_pkg_version() -> None:
+    """Bare ``physiclaw`` (and ``physiclaw --help``) should show the
+    version in the description line — matches the uv / cargo / npm
+    convention so users can sanity-check what they have installed."""
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert physiclaw.__version__ in result.stdout

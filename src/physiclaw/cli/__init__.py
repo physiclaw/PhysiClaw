@@ -15,7 +15,7 @@ from physiclaw.cli.status import status
 from physiclaw.cli.uninstall import uninstall
 
 app = typer.Typer(
-    help="PhysiClaw — let AI agents physically operate a phone.",
+    help=f"PhysiClaw {_pkg_version} — let AI agents physically operate a phone.",
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True,
     add_completion=False,
