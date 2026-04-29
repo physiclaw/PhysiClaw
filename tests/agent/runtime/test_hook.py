@@ -125,8 +125,10 @@ async def test_check_hooks_logs_exception_and_continues(
         out = await check_hooks()
 
     assert out == [Trigger(description="survived")]
+    # Anchored equality so `XX...XX` literal mutations (mutmut's string
+    # wrapping) can't sneak through the substring check.
     assert any(
-        "hook failed: boom" in r.getMessage() for r in caplog.records
+        r.getMessage() == "hook failed: boom" for r in caplog.records
     )
 
 
@@ -186,6 +188,46 @@ def test_load_hooks_skips_underscore_prefixed_modules(mocker) -> None:
     assert f"{hook.HOOKS_PACKAGE}._private" not in imported_names
 
 
+def test_load_hooks_logs_loaded_module_name(
+    mocker, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Asserts the success log line (anchored on full message)."""
+    import logging
+
+    fake_pkg = mocker.MagicMock()
+    fake_pkg.__path__ = ["/fake/path"]
+    mocker.patch.object(hook.importlib, "import_module", return_value=fake_pkg)
+    info = mocker.MagicMock()
+    info.name = f"{hook.HOOKS_PACKAGE}.cron"
+    mocker.patch.object(hook.pkgutil, "iter_modules", return_value=[info])
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.agent.runtime.hook"):
+        hook.load_hooks()
+
+    expected = f"loaded hook module: {hook.HOOKS_PACKAGE}.cron"
+    assert any(r.getMessage() == expected for r in caplog.records)
+
+
+def test_load_hooks_continues_past_underscored_module_to_next(mocker) -> None:
+    """Underscore-prefixed comes FIRST; if `continue` were `break`, the
+    real module after it would never get imported."""
+    fake_pkg = mocker.MagicMock()
+    fake_pkg.__path__ = ["/fake/path"]
+    mocker.patch.object(hook.importlib, "import_module", return_value=fake_pkg)
+    fake_modinfos = [mocker.MagicMock(), mocker.MagicMock()]
+    fake_modinfos[0].name = f"{hook.HOOKS_PACKAGE}._private"  # comes first
+    fake_modinfos[1].name = f"{hook.HOOKS_PACKAGE}.real_mod"
+    mocker.patch.object(hook.pkgutil, "iter_modules", return_value=fake_modinfos)
+    import_spy = mocker.spy(hook.importlib, "import_module")
+
+    hook.load_hooks()
+
+    imported = [c.args[0] for c in import_spy.call_args_list]
+    # `real_mod` must be reached even though `_private` came first —
+    # `continue` (not `break`) is required.
+    assert f"{hook.HOOKS_PACKAGE}.real_mod" in imported
+
+
 def test_load_hooks_logs_but_continues_on_module_import_failure(
     mocker, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -207,7 +249,5 @@ def test_load_hooks_logs_but_continues_on_module_import_failure(
     with caplog.at_level(logging.ERROR, logger="physiclaw.agent.runtime.hook"):
         hook.load_hooks()  # must not raise
 
-    assert any(
-        "failed to load hook module" in r.getMessage()
-        for r in caplog.records
-    )
+    expected = f"failed to load hook module: {hook.HOOKS_PACKAGE}.broken"
+    assert any(r.getMessage() == expected for r in caplog.records)
