@@ -9,7 +9,6 @@ plus the `hardware` typer entry point.
 from __future__ import annotations
 
 import importlib
-import io
 import json
 from unittest.mock import MagicMock
 
@@ -299,7 +298,7 @@ def test_run_returns_when_already_ready(mocker, capsys: pytest.CaptureFixture) -
 def test_run_finalizes_when_already_calibrated(
     mocker, capsys: pytest.CaptureFixture,
 ) -> None:
-    api_spy = mocker.patch.object(
+    mocker.patch.object(
         hw_mod, "api",
         side_effect=[
             {"ready": False, "calibrated": True},  # GET /api/status

@@ -34,15 +34,14 @@ import logging
 import time
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from physiclaw import paths
+from physiclaw.config import CONFIG
+
+log = logging.getLogger(__name__)
 
 _LOG_DIR = paths.engine_log_dir()
 _RAW_DIR = _LOG_DIR / "raw"
 _IMAGE_DIR = _RAW_DIR / "images"
-
-from physiclaw.config import CONFIG
 
 # Purge raw jsonl logs + extracted images older than this on session
 # bootstrap. One week is generous for post-mortem debugging while

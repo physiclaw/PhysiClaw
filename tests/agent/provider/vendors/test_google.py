@@ -20,7 +20,6 @@ from physiclaw.agent.engine.dto import (
     ToolResultMessage,
     UserMessage,
 )
-from physiclaw.agent.provider.vendors import google as google_mod
 from physiclaw.agent.provider.vendors.google import (
     GoogleProvider,
     _SIG_BYPASS,

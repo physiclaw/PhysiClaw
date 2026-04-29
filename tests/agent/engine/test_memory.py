@@ -23,7 +23,6 @@ Accepted equivalent mutants:
 """
 from __future__ import annotations
 
-import datetime as dt
 import importlib
 from pathlib import Path
 

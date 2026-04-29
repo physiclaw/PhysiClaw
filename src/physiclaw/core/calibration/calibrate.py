@@ -25,6 +25,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from physiclaw import paths
 from physiclaw.core.bridge import BridgeState, CalibrationState
 from physiclaw.core.bridge.nonce import NONCE_COUNT, verify_nonce
 from physiclaw.core.calibration.transforms import ScreenTransforms, ViewportShift
@@ -42,8 +43,6 @@ log = logging.getLogger(__name__)
 
 SLOW_Z_SPEED = 6000
 PROBE_Z_SPEED = 6000
-
-from physiclaw import paths
 
 VIEWPORT_CACHE_STEM = paths.calibration_cache_dir() / "viewport"
 

@@ -19,9 +19,6 @@ import pytest
 
 from physiclaw.core.calibration import calibrate as cal_mod
 from physiclaw.core.calibration.calibrate import (
-    PROBE_D,
-    SLOW_Z_SPEED,
-    TILT_ALIGNED_THRESHOLD,
     _descend_to_contact,
     _find_viewport_cache,
     _pick_rotation_from_markers,

@@ -8,7 +8,6 @@ FakeProvider and FakeMcpClient. Existing pure-helper tests live in
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -25,7 +24,6 @@ from physiclaw.agent.engine.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.agent.provider import ProviderTransientError
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK, WAIT
 

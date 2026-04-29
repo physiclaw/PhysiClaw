@@ -13,7 +13,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from physiclaw.agent.engine import scratchpad
 from physiclaw.agent.engine.dto import UserMessage
 from physiclaw.agent.engine.scratchpad import MAX_CHARS, inject_tail, write
 

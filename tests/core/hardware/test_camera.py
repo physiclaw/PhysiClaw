@@ -11,7 +11,6 @@ import logging
 import os
 import threading
 import time
-from typing import Callable
 from unittest.mock import MagicMock
 
 import cv2

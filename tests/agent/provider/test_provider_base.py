@@ -16,7 +16,6 @@ Accepted equivalent mutmut survivors:
 """
 from __future__ import annotations
 
-from typing import Any
 
 import httpx
 import pytest
@@ -29,7 +28,6 @@ from physiclaw.agent.engine.dto import (
     ToolResultMessage,
     UserMessage,
 )
-from physiclaw.agent.provider import provider_base
 from physiclaw.agent.provider.provider_base import (
     EPHEMERAL_CACHE_CONTROL,
     BaseProvider,

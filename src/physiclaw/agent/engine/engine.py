@@ -38,10 +38,9 @@ from physiclaw.agent.engine.trace import RawLog, Trace, brief_content, format_ca
 from physiclaw.agent.engine.validator import ValidationError, validate_arguments
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK, WAIT
+from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
-
-from physiclaw.config import CONFIG
 
 # Runaway-loop backstop, not a context-safety limit. Prompt tokens grow
 # ~624·t + 13k empirically (R²=0.97); at 1M context (Qwen3.6-plus) the

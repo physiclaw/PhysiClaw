@@ -19,16 +19,16 @@ import os
 import shutil
 from pathlib import Path
 
+from physiclaw import paths
 from physiclaw.agent.claude.plugin import prepare_plugin_dir
 from physiclaw.agent.engine import skill
 from physiclaw.agent.engine.mcp_inventory import discover_mcp_tools
 from physiclaw.agent.engine.skill import Skill
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import parse_sentinel
+from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
-
-from physiclaw import paths
 
 _HERE = Path(__file__).resolve()
 CLAUDE_MD = _HERE.parent / "CLAUDE.md"
@@ -43,8 +43,6 @@ LOG_DIR = paths.claude_log_dir()
 # silently mix into the doctrine we just appended.
 # `_warn_stray_context()` runs on every spawn and logs any drift.
 PROJECT_ROOT = paths.HOME
-
-from physiclaw.config import CONFIG
 
 TIMEOUT = CONFIG.claude.timeout_seconds  # per-line inactivity timeout
 MAX_ATTEMPTS = CONFIG.claude.max_attempts

@@ -10,11 +10,9 @@ the wire-format and ordering contract.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from physiclaw.agent.engine import builtin_tool
 from physiclaw.agent.engine.builtin_tool import (
     LocalTool,
     Session,

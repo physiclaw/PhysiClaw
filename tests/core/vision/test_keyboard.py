@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
 

@@ -4,11 +4,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import cv2
 import numpy as np
 import pytest
 
-from physiclaw.core.vision import ocr
 from physiclaw.core.vision.ocr import (
     OCRReader,
     TextResult,
@@ -44,7 +42,6 @@ def _new_reader(mocker, ocr_callable):
 
 
 def test_ocr_reader_raises_when_rapidocr_missing(mocker) -> None:
-    import sys
     # Ensure import raises ImportError.
     real_import = __builtins__["__import__"] if isinstance(
         __builtins__, dict) else __builtins__.__import__

@@ -28,7 +28,6 @@ from physiclaw.agent.engine.dto import (
     AssistantMessage,
     FinishReason,
     ImageBlock,
-    Message,
     SystemMessage,
     TextBlock,
     ToolCall,
@@ -36,7 +35,6 @@ from physiclaw.agent.engine.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.agent.provider import anthropic_compat
 from physiclaw.agent.provider.anthropic_compat import (
     AnthropicCompatibleProvider,
     _DEFAULT_MAX_TOKENS,

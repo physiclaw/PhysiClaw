@@ -21,7 +21,6 @@ import cv2
 import numpy as np
 import pytest
 
-from physiclaw.core.calibration import calibrate
 from physiclaw.core.calibration.calibrate import (
     _pick_rotation_from_markers,
     _tilt_from_affine,

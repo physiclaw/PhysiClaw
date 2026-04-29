@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 

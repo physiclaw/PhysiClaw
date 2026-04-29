@@ -1,8 +1,7 @@
 """Tests for `physiclaw.core.orchestration.orchestrator` — PhysiClaw class."""
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest

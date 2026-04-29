@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import importlib
-import logging
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
-import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -70,7 +68,6 @@ def test_probe_server_uses_live_state_when_provided(mocker) -> None:
     fake_resp = MagicMock()
     fake_resp.json.return_value = {"ready": True}
     mocker.patch.object(doctor_mod, "httpx", create=True)
-    import httpx as real_httpx
     mocker.patch("httpx.get", return_value=fake_resp)
 
     host, port, bind_all, status = doctor_mod._probe_server(
@@ -325,7 +322,7 @@ def test_skills_lines_with_provenance(mocker, tmp_path: Path) -> None:
 
     lines = doctor_mod._skills_lines()
 
-    assert any("alpha" in l and "owner/repo" in l for l in lines)
+    assert any("alpha" in line and "owner/repo" in line for line in lines)
 
 
 def test_skills_lines_uses_sha_when_no_ref(mocker, tmp_path: Path) -> None:
@@ -342,7 +339,7 @@ def test_skills_lines_uses_sha_when_no_ref(mocker, tmp_path: Path) -> None:
 
     lines = doctor_mod._skills_lines()
 
-    assert any("abcdef0" in l for l in lines)
+    assert any("abcdef0" in line for line in lines)
 
 
 def test_skills_lines_local_skill(mocker, tmp_path: Path) -> None:
@@ -357,7 +354,7 @@ def test_skills_lines_local_skill(mocker, tmp_path: Path) -> None:
 
     lines = doctor_mod._skills_lines()
 
-    assert any("myown" in l and "(local)" in l for l in lines)
+    assert any("myown" in line and "(local)" in line for line in lines)
 
 
 def test_skills_lines_unparseable_provenance(mocker, tmp_path: Path) -> None:
@@ -373,7 +370,7 @@ def test_skills_lines_unparseable_provenance(mocker, tmp_path: Path) -> None:
 
     lines = doctor_mod._skills_lines()
 
-    assert any("provenance unreadable" in l for l in lines)
+    assert any("provenance unreadable" in line for line in lines)
 
 
 # ---------- doctor command (smoke) ----------
@@ -594,7 +591,7 @@ def test_doctor_deep_runs_probes(mocker) -> None:
         doctor_mod, "_probe_provider_deep", return_value="✓ provider OK",
     )
 
-    result = runner.invoke(app, ["--deep"])
+    runner.invoke(app, ["--deep"])
 
     vision_spy.assert_called_once()
     bridge_spy.assert_called_once()
@@ -626,7 +623,6 @@ def test_probe_provider_deep_setup_error_returns_warn(mocker) -> None:
 
 def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
     """Non-empty reply check happens before this; the chat itself raises."""
-    from physiclaw.agent.engine.dto import AssistantMessage, FinishReason, Usage
 
     fake_prov = MagicMock()
     fake_prov.chat = mocker.MagicMock(side_effect=RuntimeError("network"))
@@ -646,7 +642,7 @@ def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
 
 def test_probe_provider_deep_empty_reply_returns_warn(mocker) -> None:
     from physiclaw.agent.engine.dto import (
-        AssistantMessage, FinishReason, Usage,
+        AssistantMessage, FinishReason,
     )
 
     asst = AssistantMessage(

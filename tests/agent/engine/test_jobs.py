@@ -18,14 +18,11 @@ from freezegun import freeze_time
 
 from physiclaw.agent.engine import job_store, jobs
 from physiclaw.agent.engine.job_store import (
-    KIND_ONE_TIME,
     KIND_PERIODIC,
     NEVER,
     STATUS_CANCEL,
     STATUS_DONE,
     STATUS_FAIL,
-    STATUS_FIRED,
-    STATUS_PEND,
 )
 from physiclaw.agent.runtime.hook import Trigger
 

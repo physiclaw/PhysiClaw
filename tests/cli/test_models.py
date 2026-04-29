@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import importlib
 
-import pytest
 from typer.testing import CliRunner
 
 from physiclaw import config as _config

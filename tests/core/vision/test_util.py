@@ -15,7 +15,6 @@ as a side effect; tests mock `cv2.imwrite` to keep the host clean.
 """
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 from typing import Any
 

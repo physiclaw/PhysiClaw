@@ -30,9 +30,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-log = logging.getLogger(__name__)
-
 from physiclaw import paths
+
+log = logging.getLogger(__name__)
 
 MODEL_PATH = paths.omniparser_onnx()
 INPUT_SIZE = 1280  # V2 was trained at 1280

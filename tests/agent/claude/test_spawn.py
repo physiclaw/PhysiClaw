@@ -7,15 +7,10 @@ detail. Full integration deferred — async subprocess + streaming json
 """
 from __future__ import annotations
 
-import asyncio
-import datetime as dt
-import io
 import json
 import logging
-import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -37,7 +32,6 @@ from physiclaw.agent.claude.spawn import (
     _tooling_card,
     _warn_stray_context,
 )
-from physiclaw.agent.engine.skill import Skill
 from physiclaw.agent.runtime.hook import Trigger
 
 

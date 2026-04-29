@@ -22,6 +22,7 @@ from typing import Awaitable, Callable, Union
 import httpx
 
 from physiclaw.agent.runtime.hook import Trigger, check_hooks, load_hooks
+from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
 
@@ -52,9 +53,6 @@ async def _check_ready() -> bool:
     r = await _get_client().get("/api/status")
     r.raise_for_status()
     return bool(r.json().get("ready"))
-
-
-from physiclaw.config import CONFIG
 
 
 class Runtime:

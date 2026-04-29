@@ -1,9 +1,7 @@
 """Tests for `physiclaw.core.vision.screen_match`."""
 from __future__ import annotations
 
-import cv2
 import numpy as np
-import pytest
 
 from physiclaw.core.vision.screen_match import (
     MatchResult,

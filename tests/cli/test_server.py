@@ -125,7 +125,7 @@ def test_server_default_invocation_runs_mcp(mocker) -> None:
 def test_server_save_flags_set_env_vars(
     mocker, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    deps = _patch_server_runtime_deps(mocker)
+    _patch_server_runtime_deps(mocker)
     monkeypatch.delenv("PHYSICLAW_SAVE_TOOL_CALLS", raising=False)
     monkeypatch.delenv("PHYSICLAW_SAVE_SNAPSHOTS", raising=False)
     monkeypatch.delenv("PHYSICLAW_SAVE_SCREENSHOTS", raising=False)
@@ -171,7 +171,7 @@ def test_server_keyboard_interrupt_is_swallowed(mocker) -> None:
 
 
 def test_server_spawns_runtime_subprocess_by_default(mocker) -> None:
-    deps = _patch_server_runtime_deps(mocker)
+    _patch_server_runtime_deps(mocker)
     spawn_spy = mocker.patch.object(
         server_mod, "_spawn_runtime", return_value=MagicMock(),
     )
@@ -201,7 +201,7 @@ def test_server_no_runtime_skips_subprocess(mocker) -> None:
 def test_server_logs_single_phone_url_when_no_mdns(
     mocker, caplog: pytest.LogCaptureFixture,
 ) -> None:
-    deps = _patch_server_runtime_deps(
+    _patch_server_runtime_deps(
         mocker,
         primary="http://127.0.0.1:8048",
         fallback="http://127.0.0.1:8048",
@@ -220,7 +220,7 @@ def test_server_logs_single_phone_url_when_no_mdns(
 
 
 def test_server_runtime_stop_terminates_subprocess(mocker) -> None:
-    deps = _patch_server_runtime_deps(mocker)
+    _patch_server_runtime_deps(mocker)
     fake_proc = MagicMock()
     fake_proc.poll.return_value = None  # still running
     mocker.patch.object(server_mod, "_spawn_runtime", return_value=fake_proc)
@@ -244,7 +244,7 @@ def test_server_runtime_stop_terminates_subprocess(mocker) -> None:
 
 
 def test_server_runtime_stop_kills_after_timeout(mocker) -> None:
-    deps = _patch_server_runtime_deps(mocker)
+    _patch_server_runtime_deps(mocker)
     fake_proc = MagicMock()
     fake_proc.poll.return_value = None
     fake_proc.wait.side_effect = server_mod.subprocess.TimeoutExpired("cmd", 5)

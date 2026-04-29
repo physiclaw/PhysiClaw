@@ -61,7 +61,6 @@ from freezegun import freeze_time
 
 from physiclaw.agent.engine import job_store
 from physiclaw.agent.engine.job_store import (
-    KIND_ONE_TIME,
     KIND_PERIODIC,
     NEVER,
     STATUS_CANCEL,

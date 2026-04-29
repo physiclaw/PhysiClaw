@@ -74,11 +74,15 @@ def validate_arguments(args: Any, schema: dict[str, Any]) -> None:
             raise ValidationError(f"bbox: must be [left, top, right, bottom]; got {bbox!r}")
         if not all(isinstance(v, (int, float)) for v in bbox):
             raise ValidationError(f"bbox: each coord must be a number; got {bbox!r}")
-        l, t, r, b = bbox
+        left, top, right, bottom = bbox
         if any(v < 0 or v > 1 for v in bbox):
-            raise ValidationError(f"bbox: each coord must be in [0, 1]; got [{l}, {t}, {r}, {b}]")
-        if l >= r or t >= b:
-            raise ValidationError(f"bbox: left < right, top < bottom; got [{l}, {t}, {r}, {b}]")
+            raise ValidationError(
+                f"bbox: each coord must be in [0, 1]; got [{left}, {top}, {right}, {bottom}]"
+            )
+        if left >= right or top >= bottom:
+            raise ValidationError(
+                f"bbox: left < right, top < bottom; got [{left}, {top}, {right}, {bottom}]"
+            )
 
     for key, value in args.items():
         prop = properties.get(key)

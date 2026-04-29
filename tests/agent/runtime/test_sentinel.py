@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from physiclaw.agent.runtime.sentinel import (
-    DONE, FAIL, IDLE, STATUSES, STUCK, WAIT, parse_sentinel,
+    STATUSES, parse_sentinel,
 )
 
 

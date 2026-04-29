@@ -1,7 +1,6 @@
 """Tests for `physiclaw.cli._format`."""
 from __future__ import annotations
 
-import pytest
 
 from physiclaw.cli._format import info, next_hint, ok, section, warn
 

@@ -14,6 +14,7 @@ No hardcoded layouts. Works with any keyboard.
 """
 
 import logging
+from importlib.resources import files as _pkg_files
 from pathlib import Path
 
 import cv2
@@ -401,8 +402,6 @@ def label_keyboard(
 
 
 # ─── Preset template generation ───────────────────────────────
-
-from importlib.resources import files as _pkg_files
 
 # Bundled in the wheel at physiclaw/core/vision/presets/keyboard_template.md
 TEMPLATE_PATH = Path(

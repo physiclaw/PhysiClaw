@@ -16,7 +16,6 @@ is vetted by eye, not by unit tests.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from physiclaw.core.vision.render import annotate_elements, watermark_index
 

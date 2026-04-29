@@ -19,7 +19,6 @@ strings. Joining an empty or 1-element list ignores the separator.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest

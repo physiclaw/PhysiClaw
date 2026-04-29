@@ -19,6 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from physiclaw import paths
 from physiclaw.core.calibration.transforms import ScreenTransforms, ViewportShift
 
 log = logging.getLogger(__name__)
@@ -32,8 +33,6 @@ ROTATION_NAMES: dict[int, str] = {
 }
 
 DEFAULT_ROTATION: int = cv2.ROTATE_90_COUNTERCLOCKWISE
-
-from physiclaw import paths
 
 BUNDLE_PATH = paths.calibration_bundle()
 

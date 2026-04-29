@@ -104,7 +104,7 @@ async def test_phone_watch_resets_blip_state_on_recovery(
     import httpx
     import logging
 
-    route = respx_mock.get("http://test.host:8048/api/phone/watch").mock(
+    respx_mock.get("http://test.host:8048/api/phone/watch").mock(
         side_effect=[
             httpx.ConnectError("first"),
             httpx.Response(200, json={"wake": False}),

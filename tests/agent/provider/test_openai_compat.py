@@ -9,7 +9,6 @@ throughout; an autouse fixture supplies the API key.
 """
 from __future__ import annotations
 
-from typing import Any
 
 import httpx
 import pytest
@@ -18,7 +17,6 @@ import respx
 from physiclaw.agent.engine.dto import (
     AssistantMessage,
     FinishReason,
-    Message,
     SystemMessage,
     TextBlock,
     ToolCall,
@@ -26,7 +24,6 @@ from physiclaw.agent.engine.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.agent.provider import openai_compat
 from physiclaw.agent.provider.openai_compat import (
     OpenAICompatibleProvider,
     _normalize_finish,

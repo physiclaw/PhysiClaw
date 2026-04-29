@@ -7,9 +7,7 @@ wiring without re-importing (which would fight pytest's import cache).
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
-import pytest
 
 
 # ---------- module-level singletons ----------
