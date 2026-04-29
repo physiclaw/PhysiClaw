@@ -32,6 +32,7 @@ from physiclaw.config import load as _load_config
 
 skills_app = typer.Typer(
     help="Install, list, and remove skills from a git-repo source.",
+    epilog="Example: physiclaw skills install wechat --from echosprint/PhysiClaw",
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True,
     add_completion=False,
@@ -237,7 +238,11 @@ def _atomic_replace(src: Path, dst: Path) -> None:
     src.rename(dst)
 
 
-@skills_app.command("install")
+@skills_app.command(
+    "install",
+    no_args_is_help=True,
+    epilog="Example: physiclaw skills install wechat --from echosprint/PhysiClaw",
+)
 def _install(
     name: Annotated[
         str, typer.Argument(help="Skill name (matches a skills/<name>/ dir in the source repo)."),
@@ -262,10 +267,7 @@ def _install(
     ] = False,
 ) -> None:
     """Install a skill by copying ``skills/<name>/`` from the source repo
-    into ``~/.physiclaw/skills/<name>/``.
-
-    Example: physiclaw skills install wechat --from echosprint/PhysiClaw
-    """
+    into ``~/.physiclaw/skills/<name>/``."""
     _validate_name(name)
     source = _resolve_source(from_)
 
@@ -357,12 +359,12 @@ def _install(
     typer.echo(next_hint(f"restart `physiclaw server` to pick up {name}."))
 
 
-@skills_app.command("list")
+@skills_app.command(
+    "list",
+    epilog="Example: physiclaw skills list",
+)
 def _list() -> None:
-    """List skills installed in ``~/.physiclaw/skills/``.
-
-    Example: physiclaw skills list
-    """
+    """List skills installed in ``~/.physiclaw/skills/``."""
     entries = installed_skill_dirs()
     if not entries:
         typer.echo(f"(no skills installed in {paths.skills_dir()})")
@@ -376,7 +378,11 @@ def _list() -> None:
             typer.echo(f"  {d.name}  ← {prov.get('source', '?')} @ {ref_or_sha}")
 
 
-@skills_app.command("uninstall")
+@skills_app.command(
+    "uninstall",
+    no_args_is_help=True,
+    epilog="Example: physiclaw skills uninstall wechat",
+)
 def _uninstall(
     name: Annotated[
         str, typer.Argument(help="Skill name to remove."),
@@ -390,10 +396,7 @@ def _uninstall(
 ) -> None:
     """Remove a skill from ``~/.physiclaw/skills/``. Refuses to delete
     user-authored skills (no ``.installed-from`` marker) unless ``--force``
-    is set.
-
-    Example: physiclaw skills uninstall wechat
-    """
+    is set."""
     _validate_name(name)
     target = paths.skills_dir() / name
     if not target.exists():
