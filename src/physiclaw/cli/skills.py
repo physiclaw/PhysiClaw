@@ -262,7 +262,10 @@ def _install(
     ] = False,
 ) -> None:
     """Install a skill by copying ``skills/<name>/`` from the source repo
-    into ``~/.physiclaw/skills/<name>/``."""
+    into ``~/.physiclaw/skills/<name>/``.
+
+    Example: physiclaw skills install wechat --from echosprint/PhysiClaw
+    """
     _validate_name(name)
     source = _resolve_source(from_)
 
@@ -356,7 +359,10 @@ def _install(
 
 @skills_app.command("list")
 def _list() -> None:
-    """List skills installed in ``~/.physiclaw/skills/``."""
+    """List skills installed in ``~/.physiclaw/skills/``.
+
+    Example: physiclaw skills list
+    """
     entries = installed_skill_dirs()
     if not entries:
         typer.echo(f"(no skills installed in {paths.skills_dir()})")
@@ -384,7 +390,10 @@ def _uninstall(
 ) -> None:
     """Remove a skill from ``~/.physiclaw/skills/``. Refuses to delete
     user-authored skills (no ``.installed-from`` marker) unless ``--force``
-    is set."""
+    is set.
+
+    Example: physiclaw skills uninstall wechat
+    """
     _validate_name(name)
     target = paths.skills_dir() / name
     if not target.exists():
