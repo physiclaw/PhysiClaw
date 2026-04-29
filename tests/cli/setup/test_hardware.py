@@ -37,7 +37,7 @@ def _resp(payload: dict, status: int = 200) -> MagicMock:
 
 def test_api_get_no_body(mocker) -> None:
     spy = mocker.patch.object(
-        hw_mod.urllib.request, "urlopen",
+        hw_mod._OPENER, "open",
         return_value=_resp({"x": 1}),
     )
 
@@ -50,7 +50,7 @@ def test_api_get_no_body(mocker) -> None:
 
 def test_api_post_with_body(mocker) -> None:
     spy = mocker.patch.object(
-        hw_mod.urllib.request, "urlopen",
+        hw_mod._OPENER, "open",
         return_value=_resp({"status": "ok"}),
     )
 
@@ -63,7 +63,7 @@ def test_api_post_with_body(mocker) -> None:
 
 def test_api_post_no_body_sends_empty_bytes(mocker) -> None:
     spy = mocker.patch.object(
-        hw_mod.urllib.request, "urlopen",
+        hw_mod._OPENER, "open",
         return_value=_resp({"status": "ok"}),
     )
 
@@ -79,7 +79,7 @@ def test_api_returns_parsed_error_body_on_http_error(mocker) -> None:
         url="x", code=500, msg="boom", hdrs=None, fp=None,
     )
     err.read = lambda: b'{"status": "error", "message": "x"}'
-    mocker.patch.object(hw_mod.urllib.request, "urlopen", side_effect=err)
+    mocker.patch.object(hw_mod._OPENER, "open", side_effect=err)
 
     out = hw_mod.api("GET", "/api/x")
 
@@ -91,14 +91,14 @@ def test_api_returns_none_on_unparseable_error_body(mocker) -> None:
         url="x", code=500, msg="boom", hdrs=None, fp=None,
     )
     err.read = lambda: b"not json"
-    mocker.patch.object(hw_mod.urllib.request, "urlopen", side_effect=err)
+    mocker.patch.object(hw_mod._OPENER, "open", side_effect=err)
 
     assert hw_mod.api("GET", "/api/x") is None
 
 
 def test_api_returns_none_on_connection_error(mocker) -> None:
     mocker.patch.object(
-        hw_mod.urllib.request, "urlopen",
+        hw_mod._OPENER, "open",
         side_effect=ConnectionError("refused"),
     )
 

@@ -62,6 +62,8 @@ def _probe_server(live: dict | None) -> tuple[str, int, bool, dict | None]:
     # not on every `physiclaw --help`.
     import httpx
 
+    from physiclaw.core import platform
+
     if live:
         host, port = live["host"], live["port"]
     else:
@@ -72,7 +74,11 @@ def _probe_server(live: dict | None) -> tuple[str, int, bool, dict | None]:
     if bind_all:
         host = "localhost"
     try:
-        r = httpx.get(f"http://{host}:{port}/api/status", timeout=1.0)
+        r = httpx.get(
+            f"http://{host}:{port}/api/status",
+            timeout=1.0,
+            trust_env=platform.TRUST_PROXY_ENV,
+        )
         return (host, port, bind_all, r.json())
     except (httpx.HTTPError, ValueError):
         return (host, port, bind_all, None)
@@ -144,8 +150,14 @@ def _probe_calibration_deep() -> str:
 def _probe_bridge_deep(host: str, port: int) -> str:
     import httpx  # cached after _probe_server's first import
 
+    from physiclaw.core import platform
+
     try:
-        r = httpx.get(f"http://{host}:{port}/api/bridge/state", timeout=1.0)
+        r = httpx.get(
+            f"http://{host}:{port}/api/bridge/state",
+            timeout=1.0,
+            trust_env=platform.TRUST_PROXY_ENV,
+        )
         connected = r.json().get("connected", False)
     except (httpx.HTTPError, ValueError) as e:
         # Network/parse failure is a real problem — keep the warn.

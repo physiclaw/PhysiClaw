@@ -24,6 +24,7 @@ local_hostname = _impl.local_hostname
 open_camera_aim_app = _impl.open_camera_aim_app
 quit_camera_aim_app = _impl.quit_camera_aim_app
 open_image_files = _impl.open_image_files
+TRUST_PROXY_ENV = _impl.TRUST_PROXY_ENV
 
 __all__ = [
     "ensure_camera_permission",
@@ -31,4 +32,5 @@ __all__ = [
     "open_camera_aim_app",
     "quit_camera_aim_app",
     "open_image_files",
+    "TRUST_PROXY_ENV",
 ]

@@ -12,6 +12,15 @@ from unittest.mock import MagicMock
 from physiclaw.core.platform import darwin
 
 
+# ---------- TRUST_PROXY_ENV ----------
+
+
+def test_trust_proxy_env_is_true_on_darwin() -> None:
+    # macOS proxy bypass list reliably excludes localhost, so urllib /
+    # httpx can trust env-derived proxy settings on loopback.
+    assert darwin.TRUST_PROXY_ENV is True
+
+
 # ---------- ensure_camera_permission ----------
 
 

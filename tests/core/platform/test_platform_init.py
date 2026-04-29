@@ -23,12 +23,13 @@ def test_dispatch_binds_correct_backend_for_this_os() -> None:
     assert platform.open_camera_aim_app is expected.open_camera_aim_app
     assert platform.quit_camera_aim_app is expected.quit_camera_aim_app
     assert platform.open_image_files is expected.open_image_files
+    assert platform.TRUST_PROXY_ENV == expected.TRUST_PROXY_ENV
 
 
 def test_public_api_surface_is_exhaustive() -> None:
-    # Every entry in __all__ must be a callable bound on the package.
+    # Every entry in __all__ must be defined (callable or constant).
     for name in platform.__all__:
-        assert callable(getattr(platform, name)), name
+        assert hasattr(platform, name), name
 
 
 def test_darwin_and_windows_export_the_same_api() -> None:

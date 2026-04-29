@@ -8,6 +8,12 @@ import socket
 import subprocess
 import time
 
+# urllib's ProxyHandler / httpx's `trust_env` consult the system proxy
+# config for loopback HTTP. macOS exposes its bypass list (which usually
+# includes 127.0.0.1, localhost, *.local) via getproxies_macosx_sysconf,
+# and urllib/httpx honor it — so trusting env on darwin is safe.
+TRUST_PROXY_ENV = True
+
 
 def ensure_camera_permission() -> None:
     """Trigger the macOS camera permission dialog via ``imagesnap``.

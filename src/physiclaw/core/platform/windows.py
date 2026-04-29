@@ -9,6 +9,12 @@ import socket
 import subprocess
 import time
 
+# Windows registry's ProxyOverride is unreliable for loopback bypass —
+# corporate ProxyOverride often lacks `<local>` / `localhost`, and an
+# `HTTP_PROXY` env var bypasses no-proxy rules entirely. Tell urllib /
+# httpx to skip system proxy when calling our own server.
+TRUST_PROXY_ENV = False
+
 
 def ensure_camera_permission() -> None:
     """No-op on Windows — MediaFoundation surfaces the camera-access prompt

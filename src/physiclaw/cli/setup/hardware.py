@@ -23,6 +23,14 @@ from physiclaw.core import platform
 
 BASE = os.environ.get("PHYSICLAW_SERVER", "http://localhost:8048")
 
+# Trust the system proxy for loopback only on platforms where the bypass
+# list reliably excludes localhost (see physiclaw.core.platform).
+_OPENER = (
+    urllib.request.build_opener()
+    if platform.TRUST_PROXY_ENV
+    else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+)
+
 
 def _viewport_cache_candidates() -> list:
     root = paths.calibration_cache_dir()
@@ -34,7 +42,7 @@ def api(method, path, body=None, timeout=60):
     hdrs = {"Content-Type": "application/json"} if body else {}
     req = urllib.request.Request(BASE + path, data=data, method=method, headers=hdrs)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _OPENER.open(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         try:

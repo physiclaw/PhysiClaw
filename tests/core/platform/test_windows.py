@@ -15,6 +15,15 @@ import pytest
 from physiclaw.core.platform import windows
 
 
+# ---------- TRUST_PROXY_ENV ----------
+
+
+def test_trust_proxy_env_is_false_on_windows() -> None:
+    # Windows registry / env proxies don't reliably bypass loopback,
+    # so urllib / httpx must skip system proxy on this platform.
+    assert windows.TRUST_PROXY_ENV is False
+
+
 # ---------- ensure_camera_permission ----------
 
 
