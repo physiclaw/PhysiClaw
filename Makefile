@@ -119,10 +119,9 @@ publish:
 	@printf 'Uploading to PyPI:\n'
 	@printf '  dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl\n'
 	@printf '  dist/physiclaw-$(PKG_VERSION).tar.gz\n'
-	@OTHER=$$(ls dist/physiclaw-*.whl 2>/dev/null | grep -v "physiclaw-$(PKG_VERSION)-py3" || true); \
-	 if [ -n "$$OTHER" ]; then \
-		printf '\nOlder builds in dist/ (ignored — explicit file args):\n'; \
-		echo "$$OTHER" | sed 's|^|  |'; \
+	@COUNT=$$(ls dist/physiclaw-*.whl 2>/dev/null | grep -vc "physiclaw-$(PKG_VERSION)-py3" || true); \
+	 if [ "$$COUNT" -gt 0 ]; then \
+		printf '  (%s older wheels in dist/ ignored)\n' "$$COUNT"; \
 	 fi
 	@printf '\n'
 	uv publish dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl dist/physiclaw-$(PKG_VERSION).tar.gz
