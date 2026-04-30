@@ -13,13 +13,14 @@
 #   1. Checks you're on macOS.
 #   2. Installs `uv` if missing (curl -fsSL https://astral.sh/uv/install.sh | sh).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
-#   4. (a) Installs `physiclaw[vision]` (with conversion deps, ~500 MB)
-#      (b) Runs `physiclaw setup local-vision-model` to convert the
-#          upstream PyTorch icon-detector weights to ONNX (~30 s)
-#      (c) Reinstalls `physiclaw` WITHOUT the vision extras — drops the
-#          ~500 MB conversion deps, keeps the small ONNX file
-#      Idempotent; re-running this script does the same dance, no-ops
-#      conversion if the ONNX is already cached.
+#   4. Installs `physiclaw` (small — no heavy ML deps in the package).
+#   5. Runs `physiclaw setup local-vision-model` to convert the upstream
+#      PyTorch icon-detector weights to ONNX. The conversion runs inside
+#      an ephemeral `uv run --with` env in a scratch dir under
+#      ~/.physiclaw/models/, which is rm -rf'd on success. The heavy
+#      conversion deps never enter the physiclaw install.
+#      Idempotent; re-running this script no-ops conversion if the ONNX
+#      is already cached.
 
 set -euo pipefail
 
@@ -79,16 +80,15 @@ if ! uv python find 3.12 >/dev/null 2>&1; then
 fi
 
 VERSION="${PHYSICLAW_VERSION:-}"
-SPEC_VISION="physiclaw[vision]${VERSION:+==$VERSION}"
 SPEC_PLAIN="physiclaw${VERSION:+==$VERSION}"
 
-# Step 4a: install with [vision] extra so the one-time PT→ONNX conversion
-# can run. ~500 MB temp footprint (ultralytics + onnx + onnxslim).
-# `--refresh` invalidates uv's cached PyPI metadata so re-runs always
-# resolve to the actual latest version of physiclaw, not whatever was
-# in the cache from the last `uv tool install` an hour ago.
-info "Installing ${SPEC_VISION} (incl. conversion deps, ~500 MB)…"
-uv tool install "$SPEC_VISION" --python 3.12 --force --refresh >/dev/null
+# Step 4: install physiclaw. No [vision] extra — conversion deps live in
+# a uv-managed ephemeral env, not in the physiclaw install. `--refresh`
+# invalidates uv's cached PyPI metadata so re-runs always resolve to the
+# actual latest version of physiclaw, not whatever was in the cache from
+# the last `uv tool install` an hour ago.
+info "Installing ${SPEC_PLAIN}…"
+uv tool install "$SPEC_PLAIN" --python 3.12 --force --refresh >/dev/null
 
 command -v physiclaw >/dev/null 2>&1 || {
   warn "physiclaw CLI not on PATH. Add this to ~/.zshrc and open a new terminal:"
@@ -98,15 +98,12 @@ command -v physiclaw >/dev/null 2>&1 || {
 
 info "Installed: $(physiclaw --version)"
 
-# Step 4b: convert PyTorch weights to ONNX (no-op if already cached).
+# Step 5: convert PyTorch weights to ONNX in an ephemeral uv env (no-op
+# if already cached). The setup command creates a scratch dir under
+# ~/.physiclaw/models/, runs the conversion via `uv run --with`, moves
+# the ONNX into place, and rm -rf's the scratch dir.
 info "Converting vision model to ONNX (one-time, ~30 s)…"
 physiclaw setup local-vision-model
-
-# Step 4c: slim down — drop the heavy conversion deps. The ONNX file
-# persists under ~/.physiclaw/models/; runtime inference uses the small
-# `onnxruntime` (already in core deps).
-info "Removing conversion deps (ONNX cached, freeing ~500 MB)…"
-uv tool install "$SPEC_PLAIN" --python 3.12 --reinstall >/dev/null
 
 printf '\n%s%s✓ Done.%s Next steps:\n' "$B" "$G" "$N"
 printf '    %sphysiclaw doctor%s            check your environment\n' "$B" "$N"

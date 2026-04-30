@@ -15,13 +15,14 @@
 #   2. Installs `uv` if missing (via astral.sh installer, run in a child shell
 #      so its `exit 1` on failure never reaches your session).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
-#   4. (a) Installs `physiclaw[vision]` (with conversion deps, ~500 MB)
-#      (b) Runs `physiclaw setup local-vision-model` to convert the upstream
-#          PyTorch icon-detector weights to ONNX (~30 s)
-#      (c) Reinstalls `physiclaw` WITHOUT the vision extras — drops the
-#          ~500 MB conversion deps, keeps the small ONNX file
-#      Idempotent; re-running this script does the same dance, no-ops the
-#      conversion if the ONNX is already cached.
+#   4. Installs `physiclaw` (small — no heavy ML deps in the package).
+#   5. Runs `physiclaw setup local-vision-model` to convert the upstream
+#      PyTorch icon-detector weights to ONNX. The conversion runs inside
+#      an ephemeral `uv run --with` env in a scratch dir under
+#      %USERPROFILE%\.physiclaw\models\, which is rm -rf'd on success.
+#      The heavy conversion deps never enter the physiclaw install.
+#      Idempotent; re-running this script no-ops conversion if the ONNX
+#      is already cached.
 #
 # Prerequisites:
 #   - PowerShell 5.1+ (ships with Windows 11) or PowerShell 7+.
@@ -149,15 +150,12 @@ stable will resume where it stopped.
 
     $version = $env:PHYSICLAW_VERSION
     if ([string]::IsNullOrEmpty($version)) {
-        $specVision = 'physiclaw[vision]'
         $specPlain = 'physiclaw'
     } else {
-        $specVision = "physiclaw[vision]==$version"
         $specPlain = "physiclaw==$version"
     }
-    $pkg = $specVision  # for diagnostic messages below
 
-    Info "Installing $specVision (incl. conversion deps, ~500 MB)…"
+    Info "Installing $specPlain…"
     # `--refresh` invalidates uv's cached PyPI metadata so re-runs always
     # resolve to the actual latest version, not whatever was in the cache
     # from a previous `uv tool install` an hour ago.
@@ -166,7 +164,7 @@ stable will resume where it stopped.
     # the new physiclaw.exe shim, or a stderr write failing on a non-UTF8
     # console codepage). Showing uv's actual output is the most reliable
     # diagnostic for users.
-    & uv tool install $specVision --python 3.12 --force --refresh
+    & uv tool install $specPlain --python 3.12 --force --refresh
     $installExit = $LASTEXITCODE
 
     # Trust the binary, not the exit code. uv may have reported failure
@@ -201,7 +199,7 @@ stable will resume where it stopped.
 
         $verHint = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
         Die @"
-``uv tool install $pkg`` failed (exit $installExit) and the installed
+``uv tool install $specPlain`` failed (exit $installExit) and the installed
 ``physiclaw`` shim isn't runnable.
 
 Likely causes:
@@ -225,8 +223,11 @@ To debug, run manually with verbose output:
     }
     Info "Installed: $verifiedVersion"
 
-    # Step 4b: convert the upstream PyTorch weights to ONNX (no-op if already
-    # cached on disk).
+    # Step 5: convert the upstream PyTorch weights to ONNX in an ephemeral
+    # uv env (no-op if already cached on disk). The setup command creates
+    # a scratch dir under %USERPROFILE%\.physiclaw\models\, runs the
+    # conversion via `uv run --with`, moves the ONNX into place, and
+    # rm -rf's the scratch dir.
     Info "Converting vision model to ONNX (one-time, ~30 s)…"
     & physiclaw setup local-vision-model
     if ($LASTEXITCODE -ne 0) {
@@ -235,22 +236,9 @@ To debug, run manually with verbose output:
 
 The conversion download or convert step errored out. Re-running this
 script will resume — uv caches the wheels and the ONNX is only built
-once.
+once. The scratch dir is kept on failure for debugging:
+  %USERPROFILE%\.physiclaw\models\omniparser_icon_detect\convert\
 "@
-    }
-
-    # Step 4c: slim down — drop the heavy conversion deps. The ONNX file
-    # persists under %USERPROFILE%\.physiclaw\models\; runtime inference
-    # uses the small `onnxruntime` (already in core deps).
-    Info "Removing conversion deps (ONNX cached, freeing ~500 MB)…"
-    & uv tool install $specPlain --python 3.12 --reinstall
-    if ($LASTEXITCODE -ne 0) {
-        # Slim-down failure is not fatal — physiclaw still works with the
-        # extras present, just uses ~500 MB more disk.
-        Warn "Slim-down step (uv tool install $specPlain --reinstall) reported"
-        Warn "exit $LASTEXITCODE. physiclaw still works, but the conversion"
-        Warn "deps are still installed (~500 MB). To free that space later:"
-        Warn "    uv tool install $specPlain --reinstall"
     }
 
     Write-Host ""
