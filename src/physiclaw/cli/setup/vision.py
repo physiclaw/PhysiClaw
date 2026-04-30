@@ -34,10 +34,17 @@ _CONVERT_DEPS = (
     "onnxslim>=0.1.71",
 )
 
+# Filenames inside convert/. Ultralytics derives the .onnx name from the
+# .pt name, so the two must stay in lockstep — pinning both as constants
+# makes that linkage explicit.
+_PT_NAME = "model.pt"
+_ONNX_NAME = "model.onnx"
+_SCRIPT_NAME = "convert.py"
+
 # Real file (not -c) so it stays in convert/ for debugging on failure.
-_CONVERT_SCRIPT = """\
+_CONVERT_SCRIPT = f"""\
 from ultralytics import YOLO
-YOLO("model.pt").export(format="onnx", imgsz=1280)
+YOLO("{_PT_NAME}").export(format="onnx", imgsz=1280)
 """
 
 
@@ -84,9 +91,9 @@ def vision(
         # from a partial prior run.
         shutil.rmtree(convert_dir)
     convert_dir.mkdir(parents=True, exist_ok=True)
-    pt_path = convert_dir / "model.pt"
-    script_path = convert_dir / "convert.py"
-    onnx_in_scratch = convert_dir / "model.onnx"
+    pt_path = convert_dir / _PT_NAME
+    script_path = convert_dir / _SCRIPT_NAME
+    onnx_in_scratch = convert_dir / _ONNX_NAME
 
     if not pt_path.exists():
         typer.echo(f"Downloading {_PT_URL} …")
@@ -101,7 +108,7 @@ def vision(
         "--python", "3.12",
         "--no-project",
         *(arg for dep in _CONVERT_DEPS for arg in ("--with", dep)),
-        "python", "convert.py",
+        "python", _SCRIPT_NAME,
     ]
     result = subprocess.run(cmd, cwd=convert_dir)
     if result.returncode != 0:

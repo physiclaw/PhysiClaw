@@ -29,10 +29,10 @@ def _stub_download(mocker, payload: bytes = b"PT") -> None:
 
 
 def _stub_uv_run(mocker, *, onnx_bytes: bytes = b"ONNX") -> object:
-    """Make `uv run` write convert/model.onnx and return 0. Returns the spy."""
+    """Make `uv run` write convert/<onnx> and return 0. Returns the spy."""
 
     def _fake_run(cmd, cwd, **_kw):
-        (Path(cwd) / "model.onnx").write_bytes(onnx_bytes)
+        (Path(cwd) / vision_mod._ONNX_NAME).write_bytes(onnx_bytes)
         return subprocess.CompletedProcess(cmd, 0)
 
     return mocker.patch.object(vision_mod.subprocess, "run", side_effect=_fake_run)
@@ -84,7 +84,7 @@ def test_vision_downloads_converts_and_cleans_up(
     assert "run" in cmd
     assert "--no-project" in cmd
     assert "--python" in cmd and "3.12" in cmd
-    assert "convert.py" in cmd
+    assert vision_mod._SCRIPT_NAME in cmd
     with_args = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--with"]
     assert any(a.startswith("ultralytics") for a in with_args)
     assert any(a.startswith("onnx>=") for a in with_args)
@@ -116,7 +116,7 @@ def test_vision_force_purges_stale_scratch(tmp_path: Path, mocker) -> None:
 
     convert_dir = onnx.parent / "convert"
     convert_dir.mkdir()
-    (convert_dir / "model.pt").write_bytes(b"stale PT")
+    (convert_dir / vision_mod._PT_NAME).write_bytes(b"stale PT")
 
     download_spy = mocker.patch.object(
         vision_mod.urllib.request, "urlretrieve",
@@ -139,7 +139,7 @@ def test_vision_skips_download_when_pt_already_exists(
 
     convert_dir = onnx.parent / "convert"
     convert_dir.mkdir(parents=True)
-    (convert_dir / "model.pt").write_bytes(b"existing PT")
+    (convert_dir / vision_mod._PT_NAME).write_bytes(b"existing PT")
 
     download_spy = mocker.patch.object(
         vision_mod.urllib.request, "urlretrieve",
