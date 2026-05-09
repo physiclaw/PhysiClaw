@@ -2,8 +2,7 @@
 
 import math
 
-import FreeCAD as App
-
+from parts._fc import App
 from parts._helpers import (
     add_circle,
     add_regular_polygon,

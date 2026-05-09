@@ -1,7 +1,6 @@
 """NEMA 17 stepper motor — body, filleted corners, mount holes, boss, shaft."""
 
-import FreeCAD as App
-
+from parts._fc import App
 from parts._helpers import (
     add_4_hole_pattern,
     add_centered_rect,

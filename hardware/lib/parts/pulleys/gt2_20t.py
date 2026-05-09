@@ -5,10 +5,7 @@ assembly modelling and clearance checks a small circular cavity at
 each tooth position is sufficient and keeps the headless build short.
 """
 
-import FreeCAD as App
-import Part
-from Sketcher import Constraint
-
+from parts._fc import App, Constraint, Part
 from parts._helpers import (
     add_circle,
     attach_sketch_to_plane,

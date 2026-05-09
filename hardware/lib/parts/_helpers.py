@@ -8,9 +8,7 @@ the legacy `Spreadsheet.alias` form.
 
 import math
 
-import FreeCAD as App
-import Part
-from Sketcher import Constraint
+from parts._fc import App, Constraint, Part
 
 # ─── VarSet ──────────────────────────────────────────────────────────
 

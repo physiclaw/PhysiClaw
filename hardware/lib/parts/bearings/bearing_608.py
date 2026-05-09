@@ -4,8 +4,7 @@ Real 608ZZ has races, balls, and shields; for assembly modeling and
 clearance checks the outer envelope is what matters.
 """
 
-import FreeCAD as App
-
+from parts._fc import App
 from parts._helpers import (
     add_circle,
     attach_sketch_to_plane,

@@ -14,11 +14,16 @@ import time
 import traceback
 from pathlib import Path
 
-import FreeCAD as App
-import Part
+# FreeCAD's `-c` invocation doesn't add hardware/lib to sys.path, so the
+# `parts` package and the sibling `render_views` aren't otherwise findable.
+LIB_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(LIB_DIR))
+sys.path.insert(0, str(LIB_DIR / "scripts"))
 
-LIB_DIR = Path(__file__).resolve().parent.parent           # hardware/lib
-HARDWARE_DIR = LIB_DIR.parent                              # hardware
+from parts._fc import App, Part  # noqa: E402
+from render_views import render_part_views  # noqa: E402
+
+HARDWARE_DIR = LIB_DIR.parent
 FCSTD_DIR = HARDWARE_DIR / "freecad"
 STEP_DIR = HARDWARE_DIR / "step"
 VIEWS_DIR = HARDWARE_DIR / "views"
@@ -26,13 +31,6 @@ VIEWS_DIR = HARDWARE_DIR / "views"
 for d in (FCSTD_DIR, STEP_DIR, VIEWS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-# Make `parts` package importable when FreeCAD runs the script with -c
-sys.path.insert(0, str(LIB_DIR))
-sys.path.insert(0, str(LIB_DIR / "scripts"))
-
-from render_views import render_part_views  # noqa: E402
-
-# (module path, output filename)
 PARTS = [
     ("parts.fasteners.m3_screw",        "M3x10"),
     ("parts.bearings.bearing_608",      "Bearing_608"),

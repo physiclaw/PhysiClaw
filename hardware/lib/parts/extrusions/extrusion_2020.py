@@ -9,10 +9,7 @@ within a fixed 2020 profile — they swap to a different `extrusion_*`
 file instead.
 """
 
-import FreeCAD as App
-import Part
-from Sketcher import Constraint
-
+from parts._fc import App, Constraint, Part
 from parts._helpers import (
     add_centered_rect,
     add_circle,
