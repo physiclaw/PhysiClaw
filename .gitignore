@@ -38,3 +38,15 @@ log/
 .coverage
 .mutmut-cache
 htmlcov/
+
+# FreeCAD generated artifacts (sources live under hardware/lib/)
+hardware/freecad/
+hardware/step/
+hardware/stl/
+hardware/views/
+hardware/custom/exports/
+*.FCStd
+*.FCStd1
+*.FCBak
+*.step
+*.stl
