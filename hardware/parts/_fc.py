@@ -12,7 +12,7 @@ except ImportError as exc:  # pragma: no cover — only happens outside FreeCAD
         "FreeCAD APIs are not available — these scripts must run inside "
         "FreeCAD's embedded interpreter. Try:\n"
         "    /Applications/FreeCAD.app/Contents/MacOS/FreeCAD -c "
-        "hardware/lib/scripts/build_all.py"
+        "hardware/scripts/build_all_fc.py"
     ) from exc
 
 __all__ = ["App", "Part", "Constraint"]

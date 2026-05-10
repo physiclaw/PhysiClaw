@@ -2,7 +2,7 @@
 
 Headless and dependency-free — runs inside FreeCAD's embedded interpreter
 without GUI or matplotlib. Each generated `.FCStd` is projected to a
-handful of standard views and written under `hardware/views/`. Useful for
+handful of standard views and written under `hardware/output/views/`. Useful for
 spotting "the script ran but the geometry is wrong" issues without
 opening the FreeCAD GUI.
 
