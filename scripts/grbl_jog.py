@@ -83,11 +83,19 @@ def connect(port: str | None) -> serial.Serial:
     return ser
 
 
+_OPTIONAL_ERRORS = frozenset({
+    "error:3",    # setting/command not recognized (GRBL + FluidNC)
+    "error:162",  # FluidNC: setting disabled (now lives in YAML)
+})
+
+
 def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
     """Send one line, block until 'ok'. Raise on error/alarm.
 
-    optional=True swallows `error:3` (command not recognized) — some
-    firmware forks reject `$N=` writes that live in YAML config instead.
+    optional=True swallows error codes that mean "this firmware doesn't
+    take this setting at runtime" (`error:3`, `error:162`) — the value
+    lives in YAML config (FluidNC) or simply isn't supported. Only the
+    error codes we've observed empirically are swallowed.
     """
     print(f"  >>> {cmd}")
     ser.write((cmd + "\r\n").encode())
@@ -104,7 +112,7 @@ def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
         if line == "ok":
             return
         if line.startswith("error"):
-            if optional and line.replace(" ", "") == "error:3":
+            if optional and line.replace(" ", "") in _OPTIONAL_ERRORS:
                 print(f"  !!! {cmd} not supported by this firmware — skipping")
                 return
             raise RuntimeError(f"GRBL error on {cmd!r}: {line}")
