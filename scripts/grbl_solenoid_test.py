@@ -28,7 +28,7 @@ except ImportError:
     raise SystemExit("pyserial not installed.")
 
 
-# ─── Shared GRBL helpers (identical in scripts/grbl_jog_x.py) ────────
+# ─── Shared GRBL helpers (identical in scripts/grbl_jog.py) ─────────
 
 BAUD = 115200
 _SKIP = ("bluetooth", "bt-", "debug", "wlan", "wifi", "airpods")
