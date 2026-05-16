@@ -1,0 +1,106 @@
+# FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
+# Comments ONLY on their own lines (FluidNC YAML subset rule)
+# Tune: steps_per_mm, max_travel_mm, acceleration, direction pins
+
+board: MKS-DLC32 V2.1
+name: PhysiClaw
+
+# I2S bus — hardwired on DLC32 v2.1, do not change
+i2so:
+  bck_pin: gpio.16
+  data_pin: gpio.21
+  ws_pin: gpio.17
+
+# I2S_STATIC only — I2S_STREAM causes drift on this board
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 250
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+
+kinematics:
+  corexy:
+
+axes:
+  shared_stepper_disable_pin: I2SO.0
+
+  x:
+    # Tune: (motor_steps x microsteps) / mm_per_rev
+    # e.g. 200 x 16 / 40mm (20T GT2) = 80
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 5000.000
+    acceleration_mm_per_sec2: 500.000
+    # Set max_travel_mm to your actual X travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    homing:
+      cycle: 1
+      positive_direction: false
+      mpos_mm: 0.000
+      feed_mm_per_min: 200.000
+      seek_mm_per_min: 2000.000
+      settle_ms: 500
+      seek_scaler: 1.100
+      feed_scaler: 1.100
+
+    motor0:
+      # X- endstop on gpio.36, triggered at GND
+      limit_neg_pin: gpio.36:low
+      hard_limits: false
+      pulloff_mm: 2.000
+      stepstick:
+        step_pin: I2SO.1
+        # Add :low after I2SO.2 if X runs backwards
+        direction_pin: I2SO.2:low
+
+  y:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 5000.000
+    acceleration_mm_per_sec2: 500.000
+    # Set max_travel_mm to your actual Y travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    homing:
+      cycle: 2
+      positive_direction: false
+      mpos_mm: 0.000
+      feed_mm_per_min: 200.000
+      seek_mm_per_min: 2000.000
+      settle_ms: 500
+      seek_scaler: 1.100
+      feed_scaler: 1.100
+
+    motor0:
+      # Y- endstop on gpio.35, triggered at GND
+      limit_neg_pin: gpio.35:low
+      hard_limits: false
+      pulloff_mm: 2.000
+      stepstick:
+        step_pin: I2SO.5
+        # Add :low after I2SO.6 if Y runs backwards
+        direction_pin: I2SO.6:low
+
+# Solenoid via Spindle interface (gpio.32)
+# Hit-and-hold usage:
+#   M3 S1000   full strike power
+#   G4 P0.05   wait 50ms
+#   M3 S300    hold current (tune from S150 up)
+#   M5         release
+PWM:
+  pwm_hz: 1000
+  output_pin: gpio.32
+  enable_pin: NO_PIN
+  direction_pin: NO_PIN
+  disable_with_s0: false
+  s0_with_disable: true
+  spinup_ms: 0
+  spindown_ms: 0
+  tool_num: 0
+  speed_map: 0=0% 1000=100%
+  off_on_alarm: true
+
+start:
+  must_home: false
