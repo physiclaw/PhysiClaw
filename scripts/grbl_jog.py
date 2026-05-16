@@ -1,13 +1,21 @@
-"""Jog GRBL X axis to confirm wiring on a fresh board.
+"""Jog GRBL through four phases — confirms X/Y wiring on a fresh board.
+
+Phases run in order:
+
+    1. X-only         X+ then X-
+    2. Y-only         Y+ then Y-
+    3. diagonal       (X+,Y+) then (X-,Y-)
+    4. anti-diagonal  (X+,Y-) then (X-,Y+)
+
+Each phase loops --loops times. Forward + back leaves the machine back
+at origin before the next phase, so the run ends at WPos 0,0,0.
 
 Self-contained — only depends on pyserial.
 
 Usage:
-    .venv/bin/python scripts/grbl_jog_x.py
-    .venv/bin/python scripts/grbl_jog_x.py --dx 15 --loops 2
-    .venv/bin/python scripts/grbl_jog_x.py --port /dev/tty.usbserial-XXXX
-
-Each loop runs forward, back, forward (net +dx). Default 2 loops × 15 mm.
+    .venv/bin/python scripts/grbl_jog.py
+    .venv/bin/python scripts/grbl_jog.py --dist 15 --loops 2
+    .venv/bin/python scripts/grbl_jog.py --port /dev/tty.usbserial-XXXX
 """
 
 import argparse
@@ -138,15 +146,25 @@ def wait_idle(ser: serial.Serial, timeout: float = 10.0) -> None:
     raise RuntimeError(f"not idle after {timeout}s")
 
 
+# Phase table: (name, (x_sign, y_sign)). Forward jog = signs × dist,
+# back jog = -forward. Signs are -1 / 0 / +1.
+PHASES: tuple[tuple[str, tuple[int, int]], ...] = (
+    ("X-only",        (+1,  0)),
+    ("Y-only",        ( 0, +1)),
+    ("diagonal",      (+1, +1)),
+    ("anti-diagonal", (+1, -1)),
+)
+
+
 # ─── Main ────────────────────────────────────────────────────────────
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Jog GRBL X axis back and forth.")
+    ap = argparse.ArgumentParser(description="Jog GRBL through X, Y, and diagonal phases.")
     ap.add_argument("--port", help="serial device (default: auto-detect)")
-    ap.add_argument("--dx", type=float, default=15.0, help="X distance in mm (default: 15)")
+    ap.add_argument("--dist", type=float, default=15.0, help="distance in mm (default: 15)")
     ap.add_argument("--feed", type=int, default=1000, help="feed rate mm/min (default: 1000)")
-    ap.add_argument("--loops", type=int, default=2, help="forward/back/forward cycles (default: 2)")
+    ap.add_argument("--loops", type=int, default=2, help="forward/back cycles per phase (default: 2)")
     args = ap.parse_args()
 
     with connect(args.port) as ser:
@@ -157,18 +175,25 @@ def main() -> int:
         send(ser, "G92 X0 Y0 Z0")  # zero work coords here
         send(ser, "$10=0")         # report WPos in '?'
 
-        def jog(dx: float) -> None:
-            print(f"\n  jog X {dx:+.3f} mm at F{args.feed}")
-            send(ser, f"G91 G0 X{dx:.3f} F{args.feed}")
+        def jog(dx: float, dy: float) -> None:
+            parts = []
+            if dx:
+                parts.append(f"X{dx:.3f}")
+            if dy:
+                parts.append(f"Y{dy:.3f}")
+            move = " ".join(parts)
+            print(f"\n  jog {move} at F{args.feed}")
+            send(ser, f"G91 G0 {move} F{args.feed}")
             send(ser, "G90")
             wait_idle(ser, timeout=15)
 
-        # Each loop: forward, back, forward (net +dx).
-        for i in range(args.loops):
-            print(f"\n=== loop {i + 1}/{args.loops} ===")
-            jog(+args.dx)
-            jog(-args.dx)
-            jog(+args.dx)
+        for name, (sx, sy) in PHASES:
+            fx, fy = sx * args.dist, sy * args.dist
+            print(f"\n### phase: {name} ###")
+            for i in range(args.loops):
+                print(f"\n=== loop {i + 1}/{args.loops} ({name}) ===")
+                jog(+fx, +fy)
+                jog(-fx, -fy)
 
         print(f"\nFinal status: {query_status(ser)}")
     print("Done.")
