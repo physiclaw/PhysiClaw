@@ -13,13 +13,28 @@ Top-level machine BOM. The CoreXY frame + slider is subassembly
 
 ### 1. Frame
 
+> All three extrusions are made-to-order — message the seller with the
+> cut, tapping and counterbore specs before checkout. The linked SKU is
+> the seller's generic profile listing. Ask the seller to include 8×
+> M6×25 socket-head cap screws in the same shipment (paid separately,
+> just saves ordering them elsewhere — covers §5 item 20).
+>
+> **Message to send the seller:**
+>
+> 1. 2040 profile, L 170 mm × 2, black anodized, tapped M6 both ends.
+> 2. 2040 profile, L 335 mm × 2, black anodized, Ø6.6 through-hole +
+>    Ø11 counterbore, 10 mm from each end.
+> 3. 1020 profile, L 165 mm × 1, black anodized.
+> 4. M6×25 socket-head cap screws × 8.
+
 | #   | Part No.        | Description             | Spec                     | Qty | Unit | Material | Supplier P/N | Unit Price | Subtotal | Remarks                                               |
 | --- | --------------- | ----------------------- | ------------------------ | --- | ---- | -------- | ------------ | ---------- | -------- | ----------------------------------------------------- |
-| 1   | PC-FRM-2040-170 | Aluminum extrusion 2040 | L 170 mm, black anodized | 2   | pc   | Aluminum | TDT-2040     | 4.35       | 8.7      | Both ends tapped M6                                   |
-| 2   | PC-FRM-2040-335 | Aluminum extrusion 2040 | L 335 mm, black anodized | 2   | pc   | Aluminum | TDT-2040     | 8.5        | 17       | Counterbore Ø6.6 through, Ø11 c'bore, 10 mm from ends |
-| 3   | PC-FRM-1020-165 | Aluminum extrusion 1020 | L 165 mm, black anodized | 1   | pc   | Aluminum | TDT-1020     | 1.72       | 1.72     |                                                       |
+| 1   | PC-FRM-2040-170 | Aluminum extrusion 2040 | L 170 mm, black anodized | 2   | pc   | Aluminum | [TDT-2040](https://item.taobao.com/item.htm?id=609835216661&skuId=4459722638632)     | 4.35       | 8.70     | Both ends tapped M6                                   |
+| 2   | PC-FRM-2040-335 | Aluminum extrusion 2040 | L 335 mm, black anodized | 2   | pc   | Aluminum | [TDT-2040](https://item.taobao.com/item.htm?id=609835216661&skuId=4459722638632)     | 8.50       | 17.00    | Counterbore Ø6.6 through, Ø11 c'bore, 10 mm from ends |
+| 3   | PC-FRM-1020-165 | Aluminum extrusion 1020 | L 165 mm, black anodized | 1   | pc   | Aluminum | [TDT-1020](https://item.taobao.com/item.htm?id=628103627886&skuId=4627298391628)     | 1.72       | 1.72     |                                                       |
 
-Section subtotal: Parts ¥28.33 + machining ¥12.00 + freight ¥9.74 = ¥50.00(discounted)
+Section subtotal: **¥ 50.00** (line-items ¥27.42 + machining ¥12 +
+freight ¥10 + screws ¥1)
 
 ### 2. Motion
 
@@ -62,7 +77,7 @@ Listed once per GB code, grouped by family (screws → nuts → washers/rings).
 | 17  | GB/T 70.1     | Socket head cap screw | M3×8     | 30  | pc   | Carriage / brackets |
 | 18  | GB/T 70.1     | Socket head cap screw | M5×16    | 16  | pc   | Frame / rail        |
 | 19  | GB/T 70.1     | Socket head cap screw | M5×10    | 12  | pc   | Rail to extrusion   |
-| 20  | GB/T 70.1     | Socket head cap screw | M6×25    | 5   | pc   | Frame end-fastening |
+| 20  | GB/T 70.1     | Socket head cap screw | M6×25    | 8   | pc   | Frame end-fastening; ships w/ §1 order |
 | 21  | GB/T 6170     | Hex nut               | M5       | 16  | pc   |                     |
 | 22  | GB/T 818      | T-slot nut            | 2020, M5 | 28  | pc   | Extrusion fastening |
 | 23  | GB/T 894      | Retaining ring        | Shaft 5  | 8   | pc   | Idler shafts        |
@@ -111,12 +126,12 @@ fabricated to our cut/machining spec by an outsource supplier.
 
 | Subassembly / Section              | ¥          |
 | ---------------------------------- | ---------- |
-| CXY · 1. Frame (parts + machining) | 43.00      |
+| CXY · 1. Frame (supplier quote)    | 50.00      |
 | CXY · 2. Motion                    | 130.00     |
 | CXY · 3. Transmission              | 50.00      |
 | CXY · 4. Drive                     | 96.00      |
 | ELP · 6. Electronics & Power       | 200.00     |
-| **Subtotal**                       | **519.00** |
+| **Subtotal**                       | **526.00** |
 
 **Standard parts:** estimate per fastener kit, fill in after sourcing.
 **Total:** **¥ TBD**
