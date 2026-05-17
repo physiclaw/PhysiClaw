@@ -27,6 +27,17 @@ slot2_tail_y   =  width / 2 + slot_overshoot
 # ── Top face: through-holes concentric with the slot round ends ───────────────
 top_hole_diameter = M3_NORMAL
 
+# ── Top face: through-cut along the -Y edge, joins its mirror image ───────────
+# Pre-mirror: left edge 9 mm in from the -X edge, right edge ON x = length/2
+# (the mirror plane), so the mirror copy joins it into a single 22 × 3
+# through-pocket. Bottom edge sits on the -Y face edge; cut goes full thickness.
+top_center_cut_pre_left = 9  * MM                          # rect left edge from -X edge of face
+top_center_cut_pre_w    = length - top_center_cut_pre_left  # right edge sits on x = length/2
+top_center_cut_h        = 3  * MM                          # along Y
+top_center_cut_depth    = thickness                        # along Z — through cut
+top_center_cut_center_x = length / 2 - top_center_cut_pre_w / 2
+top_center_cut_center_y = -width / 2 + top_center_cut_h / 2
+
 # ── Left face: two through-slots (2.2 mm wide), same X column ─────────────────
 # Slot 1 cuts the top edge of the face; slot 2 (3.1 mm below slot 1) cuts the bottom.
 side_slot_w                     = 2.2 * MM   # face-local X (= world -Y direction)
@@ -75,9 +86,9 @@ left_rect2_h                = M3_NUT_W   # height = nut width-across-flats
 left_rect2_right_from_front = 3   * MM
 left_rect2_depth            = 7.5 * MM
 
-# ── Fillets (applied as R3 — last) ────────────────────────────────────────────
-cube_corner_fillet_radius = 1 * MM   # 4 outer vertical corners of the mirrored body
-slot_cut_fillet_radius    = 2 * MM   # 8 slot-tail break-out vertical edges
+# ── Fillets (applied last, after mirror) ──────────────────────────────────────
+cube_corner_fillet_radius = 1   * MM   # 4 outer vertical corners of the mirrored body
+slot_cut_fillet_radius    = 1.5 * MM   # 4 slot2 +Y break-out vertical edges (incl. mirror)
 
 
 class BeltClamp(BasePart):
@@ -101,6 +112,12 @@ class BeltClamp(BasePart):
                 with Locations((slot2_center_x, (slot2_center_y + slot2_tail_y) / 2)):
                     Rectangle(2 * slot_radius, slot2_tail_y - slot2_center_y)
             extrude(amount=-slot_depth, mode=Mode.SUBTRACT)
+
+            # Top: half of the through-cut — sits flush against the mirror plane
+            with BuildSketch(top_plane):
+                with Locations((top_center_cut_center_x, top_center_cut_center_y)):
+                    Rectangle(top_center_cut_pre_w, top_center_cut_h)
+            extrude(amount=-top_center_cut_depth, mode=Mode.SUBTRACT)
 
             # Top: through-holes at both slot round ends (single Locations)
             with Locations(
@@ -198,7 +215,10 @@ class BeltClamp(BasePart):
             cube_corners = my_part.edges().filter_by(Axis.Z).group_by(Edge.length)[-1]
             fillet(cube_corners, radius=cube_corner_fillet_radius)
 
-            # Fillet: 8 slot-tail break-out vertical edges (length = slot_depth)
+            # Fillet: slot-tail break-out vertical edges (length = slot_depth).
+            # Slot1's -Y-face break-outs are now consumed/extended by the center
+            # through-cut, so they no longer match the length filter — only
+            # slot2's +Y-face break-outs (and mirror copies) remain.
             slot_cut_edges = [
                 e for e in my_part.edges().filter_by(Axis.Z)
                 if abs(e.length - slot_depth) < 0.1 * MM
