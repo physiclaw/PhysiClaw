@@ -51,14 +51,14 @@ side_slot2_top_below_side_slot1 = 3.1 * MM
 belt_pocket_top_depth    = 6.7 * MM
 belt_pocket_bottom_depth = 6.2 * MM
 belt_pocket_vertices = (   # CW from lower-left, world XY on the top face
-    (-1.0 * MM,  0.4 * MM),    # 1: base of left 45° diagonal
-    ( 3.5 * MM,  4.9 * MM),    # 2: top of left 45° diagonal
-    (10.1 * MM,  4.9 * MM),    # 3: top-right (0.1 past +X edge for break-out)
-    (10.1 * MM,  0.4 * MM),    # 4: bottom-right
-    ( 6.8 * MM,  0.4 * MM),    # 5: notch right-bottom
-    ( 6.8 * MM,  2.9 * MM),    # 6: notch right-top
-    ( 4.3 * MM,  2.9 * MM),    # 7: notch left-top
-    ( 1.8 * MM,  0.4 * MM),    # 8: top of inner 45° diagonal
+    (-1.0 * MM,    0.4 * MM),    # 1: base of left 45° diagonal
+    ( 3.5 * MM,    4.9 * MM),    # 2: top of left 45° diagonal
+    (length / 2,   4.9 * MM),    # 3: top-right, ON +X edge (mirror plane)
+    (length / 2,   0.4 * MM),    # 4: bottom-right, ON +X edge
+    ( 7.5 * MM,    0.4 * MM),    # 5: notch right-bottom
+    ( 7.5 * MM,    2.9 * MM),    # 6: notch right-top
+    ( 4.3 * MM,    2.9 * MM),    # 7: notch left-top
+    ( 1.8 * MM,    0.4 * MM),    # 8: top of inner 45° diagonal
 )
 
 # ── Top face: corner holes near the -X edge (4 mm in from edges) ──────────────
