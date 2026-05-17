@@ -5,7 +5,7 @@ Three fit classes:
   NORMAL — general purpose; default for most mounting.
   LOOSE  — extra clearance; tolerates misalignment.
 
-For FDM-printed parts, real holes print 0.1–0.3 mm undersized. Bump up
+For FDM-printed parts, real holes print 0.1-0.3 mm undersized. Bump up
 by ~0.2 mm above NORMAL, or use LOOSE, when the target is FDM rather
 than machined. Test-print a tolerance gauge if unsure.
 """
@@ -26,3 +26,4 @@ M5_CLOSE, M5_NORMAL, M5_LOOSE = 5.3 * MM, 5.5 * MM, 5.8 * MM
 #                    W         T
 M3_NUT_W, M3_NUT_T = 5.7 * MM, 2.7 * MM
 M4_NUT_W, M4_NUT_T = 7.3 * MM, 3.3 * MM
+M5_NUT_W, M5_NUT_T = 8.3 * MM, 4.0 * MM

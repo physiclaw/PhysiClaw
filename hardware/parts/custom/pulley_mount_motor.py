@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts._fits import M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_NORMAL
+from hardware.parts._fits import M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_CLOSE, M5_NORMAL, M5_NUT_T, M5_NUT_W
 from hardware.parts.base import BasePart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
@@ -15,15 +15,15 @@ top_counterbore_depth    = 13  * MM
 top_outer_hole_diameter  = M4_CLOSE
 top_outer_hole_offset    = 11  * MM   # from center hole, along X
 
-# ── Top face: M4 square-nut socket near the -Y edge ───────────────────────────
-top_pocket_w             = M4_NUT_W
-top_pocket_h             = M4_NUT_T
+# ── Top face: M5 square-nut socket near the -Y edge ───────────────────────────
+top_pocket_w             = M5_NUT_W
+top_pocket_h             = M5_NUT_T
 top_pocket_bottom_offset = 3.5 * MM   # bottom of rect above -Y edge of face
 top_pocket_depth         = 12  * MM
 top_pocket_center_y      = -width / 2 + top_pocket_bottom_offset + top_pocket_h / 2
 
-# ── Front face: M4 clearance hole, centered in X ──────────────────────────────
-front_hole_diameter   = M4_CLOSE
+# ── Front face: M5 clearance hole, centered in X ──────────────────────────────
+front_hole_diameter   = M5_CLOSE
 front_hole_top_offset = 8 * MM   # hole center below top edge
 front_hole_depth      = 6 * MM
 front_hole_center_z   = (thickness / 2) - front_hole_top_offset
