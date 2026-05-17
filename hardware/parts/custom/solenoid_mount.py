@@ -10,7 +10,7 @@ thickness =  2 * MM
 
 # ── Back wall (the "screen"), extruded up from the +Y edge of the plate ───────
 wall_thickness = 4  * MM    # along Y
-wall_height    = 45 * MM    # extruded up (+Z)
+wall_height    = 35 * MM    # extruded up (+Z)
 wall_center_y  = width / 2 - wall_thickness / 2
 
 # ── Keyboard face: 4 corner through-holes ─────────────────────────────────────
@@ -20,13 +20,15 @@ keyboard_rect_h             = width  - 12 * MM   # 17 mm
 keyboard_rect_bottom_offset = 4 * MM             # rect bottom above -Y edge of face
 keyboard_rect_center_y      = -width / 2 + keyboard_rect_bottom_offset + keyboard_rect_h / 2
 
-# ── Screen face: 16-hole pattern (8 pairs, circle 2 = base) ───────────────────
+# ── Screen face: paired hole pattern (N bases × 2 row-shifts × 2 paired rows) ─
+# Hole count = 4 × len(screen_pattern_y_offsets).
 screen_pattern_hole_diameter    = M3_NORMAL
 screen_pattern_spacing          = 4  * MM   # face-local X between consecutive circles
-screen_pattern_base_from_left   = 10 * MM   # base circle X from left edge of face
-screen_pattern_base_from_bottom = 20 * MM   # base circle Y from bottom edge of face
-screen_pattern_y_offsets        = (4, 0, 5, 2, 7, 3, 6, 1)   # mm above base, circles 1..8
+screen_pattern_base_from_left   = 12 * MM   # X of first circle (= base) from left edge of face
+screen_pattern_base_from_bottom = 3  * MM   # base-row Y from bottom edge of face
+screen_pattern_y_offsets        = (3, 0, 2, 4, 1)   # mm above base-row, one per circle (i=0 is first)
 screen_pattern_pair_offset      = 15 * MM   # paired hole sits this far above each circle
+screen_pattern_row_shift        = 5  * MM   # second 10-hole row sits this far above the first
 
 # ── Screen face: 2 corner mount holes ─────────────────────────────────────────
 screen_corner_hole_diameter    = M3_NORMAL
@@ -65,16 +67,17 @@ class SolenoidMount(BasePart):
                 z_dir=(0, -1, 0),
             )
 
-            # Screen face: 16-hole pattern — 8 base positions × 2 paired rows
+            # Screen face: paired hole pattern (N bases × 2 row-shifts × 2 paired rows)
             screen_pattern_locations = [
-                (screen_pattern_base_from_left   + (i - 1) * screen_pattern_spacing,
+                (screen_pattern_base_from_left   + i * screen_pattern_spacing,
                  screen_pattern_base_from_bottom + screen_pattern_y_offsets[i] * MM)
-                for i in range(8)
+                for i in range(len(screen_pattern_y_offsets))
             ]
             with BuildSketch(screen_plane):
                 with Locations(*screen_pattern_locations):
-                    with Locations((0, 0), (0, screen_pattern_pair_offset)):
-                        Circle(radius=screen_pattern_hole_diameter / 2)
+                    with Locations((0, 0), (0, screen_pattern_row_shift)):
+                        with Locations((0, 0), (0, screen_pattern_pair_offset)):
+                            Circle(radius=screen_pattern_hole_diameter / 2)
             extrude(amount=-wall_thickness, mode=Mode.SUBTRACT)
 
             # Screen face: 2 corner mount holes
