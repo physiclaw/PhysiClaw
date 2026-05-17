@@ -6,7 +6,7 @@ from hardware.parts._fits import M3_NORMAL, M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_NOR
 from hardware.parts.base import BasePart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
-length    = 42 * MM
+length    = 41 * MM
 width     = 26 * MM
 thickness =  8 * MM
 
@@ -14,8 +14,8 @@ thickness =  8 * MM
 # Vertices (h, v) relative to the (-X, -Y) corner of the top face.
 cutout_corner_vertices = (
     (22 * MM, 26 * MM),
-    (42 * MM, 26 * MM),
-    (42 * MM, 16 * MM),
+    (41 * MM, 26 * MM),
+    (41 * MM, 16 * MM),
     (32 * MM, 16 * MM),
 )
 
@@ -41,7 +41,7 @@ extra_hole2_dy_from_csk = -5.1 * MM
 # ── Top face: bigger CSK hole, offset from the second extra hole ──────────────
 big_csk_hole_diameter  = M5_NORMAL
 big_csk_head_diameter  = 11  * MM
-big_csk_dx_from_extra2 =  9.1 * MM
+big_csk_dx_from_extra2 =  8.8 * MM
 big_csk_dy_from_extra2 = -8.4 * MM
 
 # ── Front + slant faces: rect pocket (same dimensions; depth differs) ────────
