@@ -5,12 +5,14 @@ from build123d import MM
 
 from hardware.parts.base import build_all
 from hardware.parts.standard.extrusion2020 import Extrusion2020
+from hardware.parts.standard.flat_bracket import FlatBracket
 from hardware.parts.standard.nema17motor import Nema17Motor
 
 ALL_PARTS = [
     Extrusion2020(length=200 * MM, qty=2),
     Extrusion2020(length=100 * MM, qty=2),
     Nema17Motor(qty=2),
+    FlatBracket(qty=6),
 ]
 
 
