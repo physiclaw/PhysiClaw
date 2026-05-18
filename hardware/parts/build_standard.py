@@ -9,6 +9,7 @@ from hardware.parts.standard.flat_bracket import FlatBracket
 from hardware.parts.standard.mgn9h_rail_slider import MGN9HRailSlider
 from hardware.parts.standard.nema17motor import Nema17Motor
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
+from hardware.parts.standard.screw import Screw
 
 ALL_PARTS = [
     Extrusion2020(length=200 * MM, qty=2),
@@ -18,6 +19,8 @@ ALL_PARTS = [
     Pulley2GT20T(toothed=True,  qty=2),
     Pulley2GT20T(toothed=False, qty=2),
     MGN9HRailSlider(rail_length=100 * MM, qty=2),
+    Screw("BHCS",     "M3", 8  * MM),
+    Screw("SHOULDER", "M4", 20 * MM),
 ]
 
 
