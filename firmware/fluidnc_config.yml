@@ -29,27 +29,14 @@ axes:
     # Tune: (motor_steps x microsteps) / mm_per_rev
     # e.g. 200 x 16 / 40mm (20T GT2) = 80
     steps_per_mm: 80.000
-    max_rate_mm_per_min: 5000.000
-    acceleration_mm_per_sec2: 500.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
     # Set max_travel_mm to your actual X travel
     max_travel_mm: 200.000
     soft_limits: false
 
-    homing:
-      cycle: 1
-      positive_direction: false
-      mpos_mm: 0.000
-      feed_mm_per_min: 200.000
-      seek_mm_per_min: 2000.000
-      settle_ms: 500
-      seek_scaler: 1.100
-      feed_scaler: 1.100
-
     motor0:
-      # X- endstop on gpio.36, triggered at GND
-      limit_neg_pin: gpio.36:low
       hard_limits: false
-      pulloff_mm: 2.000
       stepstick:
         step_pin: I2SO.1
         # Add :low after I2SO.2 if X runs backwards
@@ -57,27 +44,14 @@ axes:
 
   y:
     steps_per_mm: 80.000
-    max_rate_mm_per_min: 5000.000
-    acceleration_mm_per_sec2: 500.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
     # Set max_travel_mm to your actual Y travel
     max_travel_mm: 200.000
     soft_limits: false
 
-    homing:
-      cycle: 2
-      positive_direction: false
-      mpos_mm: 0.000
-      feed_mm_per_min: 200.000
-      seek_mm_per_min: 2000.000
-      settle_ms: 500
-      seek_scaler: 1.100
-      feed_scaler: 1.100
-
     motor0:
-      # Y- endstop on gpio.35, triggered at GND
-      limit_neg_pin: gpio.35:low
       hard_limits: false
-      pulloff_mm: 2.000
       stepstick:
         step_pin: I2SO.5
         # Add :low after I2SO.6 if Y runs backwards
