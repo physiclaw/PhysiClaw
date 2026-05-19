@@ -4,6 +4,7 @@ hardware/output/step/. Run: `uv run python -m parts.build_standard`."""
 from build123d import MM
 
 from hardware.parts.base import build_all
+from hardware.parts.standard.bumper import Bumper
 from hardware.parts.standard.extrusion2020 import Extrusion2020
 from hardware.parts.standard.flat_bracket import FlatBracket
 from hardware.parts.standard.hex_driver import HexDriver
@@ -45,6 +46,7 @@ ALL_PARTS = [
     TNut("hammer",   "M4"),
     TNut("hammer",   "M5"),
     Solenoid(),
+    Bumper(),
 ]
 
 
