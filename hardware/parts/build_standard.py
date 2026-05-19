@@ -10,6 +10,7 @@ from hardware.parts.standard.hex_driver import HexDriver
 from hardware.parts.standard.mgn9h_rail_slider import MGN9HRailSlider
 from hardware.parts.standard.nema17motor import Nema17Motor
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
+from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
 
 ALL_PARTS = [
@@ -23,6 +24,10 @@ ALL_PARTS = [
     Screw("BHCS",     "M3", 8  * MM),
     Screw("SHOULDER", "M4", 20 * MM),
     HexDriver("2mm", qty=1),
+    Ring("M3x10x1"),
+    Ring("M5x8x0.5"),
+    Ring("M5x15x12"),
+    Ring("M6x20x12"),
 ]
 
 
