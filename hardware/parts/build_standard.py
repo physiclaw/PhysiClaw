@@ -13,6 +13,7 @@ from hardware.parts.standard.nut import Nut
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
 from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
+from hardware.parts.standard.t_nut import TNut
 
 ALL_PARTS = [
     Extrusion2020(length=200 * MM, qty=2),
@@ -36,6 +37,12 @@ ALL_PARTS = [
     Nut("square", "M3"),
     Nut("square", "M4"),
     Nut("square", "M5"),
+    TNut("standard", "M3"),
+    TNut("standard", "M4"),
+    TNut("standard", "M5"),
+    TNut("hammer",   "M3"),
+    TNut("hammer",   "M4"),
+    TNut("hammer",   "M5"),
 ]
 
 
