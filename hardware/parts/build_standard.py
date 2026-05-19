@@ -6,6 +6,7 @@ from build123d import MM
 from hardware.parts.base import build_all
 from hardware.parts.standard.extrusion2020 import Extrusion2020
 from hardware.parts.standard.flat_bracket import FlatBracket
+from hardware.parts.standard.hex_driver import HexDriver
 from hardware.parts.standard.mgn9h_rail_slider import MGN9HRailSlider
 from hardware.parts.standard.nema17motor import Nema17Motor
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
@@ -21,6 +22,7 @@ ALL_PARTS = [
     MGN9HRailSlider(rail_length=100 * MM, qty=2),
     Screw("BHCS",     "M3", 8  * MM),
     Screw("SHOULDER", "M4", 20 * MM),
+    HexDriver("2mm", qty=1),
 ]
 
 
