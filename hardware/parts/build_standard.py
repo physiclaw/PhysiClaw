@@ -13,6 +13,7 @@ from hardware.parts.standard.nut import Nut
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
 from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
+from hardware.parts.standard.solenoid import Solenoid
 from hardware.parts.standard.t_nut import TNut
 
 ALL_PARTS = [
@@ -43,6 +44,7 @@ ALL_PARTS = [
     TNut("hammer",   "M3"),
     TNut("hammer",   "M4"),
     TNut("hammer",   "M5"),
+    Solenoid(),
 ]
 
 
