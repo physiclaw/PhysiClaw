@@ -16,6 +16,7 @@ from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.solenoid import Solenoid
 from hardware.parts.standard.t_nut import TNut
+from hardware.parts.standard.tip import Tip
 
 ALL_PARTS = [
     Extrusion2020(length=200 * MM, qty=2),
@@ -47,6 +48,7 @@ ALL_PARTS = [
     TNut("hammer",   "M5"),
     Solenoid(),
     Bumper(),
+    Tip(),
 ]
 
 
