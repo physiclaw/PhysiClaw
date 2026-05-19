@@ -9,6 +9,7 @@ from hardware.parts.standard.flat_bracket import FlatBracket
 from hardware.parts.standard.hex_driver import HexDriver
 from hardware.parts.standard.mgn9h_rail_slider import MGN9HRailSlider
 from hardware.parts.standard.nema17motor import Nema17Motor
+from hardware.parts.standard.nut import Nut
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
 from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
@@ -29,6 +30,12 @@ ALL_PARTS = [
     Ring("M5x8x0.5"),
     Ring("M5x15x12"),
     Ring("M6x20x12"),
+    Nut("hex", "M3"),
+    Nut("hex", "M4"),
+    Nut("hex", "M5"),
+    Nut("square", "M3"),
+    Nut("square", "M4"),
+    Nut("square", "M5"),
 ]
 
 
