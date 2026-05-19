@@ -4,16 +4,20 @@ from hardware.parts._fits import M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_CLOSE, M5_NORM
 from hardware.parts.base import BasePart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
-length    = 40 * MM
+length    = 42 * MM
 width     = 20 * MM
 thickness = 18 * MM
 
-# ── Top face: 3 holes in a row (middle one counterbored) ──────────────────────
+# ── Top face center: M5 counterbore ───────────────────────────────────────────
 top_center_hole_diameter = M5_NORMAL
 top_counterbore_diameter = 10  * MM
 top_counterbore_depth    = 13  * MM
-top_outer_hole_diameter  = M4_CLOSE
-top_outer_hole_offset    = 11  * MM   # from center hole, along X
+
+# ── Outer M4 through-holes with counterbore on the bottom face ────────────────
+outer_hole_diameter      = M4_CLOSE
+outer_hole_offset        = 12 * MM    # from center, along X
+outer_cbore_radius       = 5  * MM    # bottom-face counterbore radius
+outer_cbore_depth        = 8  * MM    # bottom-face counterbore depth
 
 # ── Top face: M5 square-nut socket near the -Y edge ───────────────────────────
 top_pocket_w             = M5_NUT_W
@@ -45,15 +49,26 @@ class PulleyMountMotor(BasePart):
         with BuildPart() as my_part:
             Box(length, width, thickness)
 
-            # Top: counterbore at center + two outer through-holes
+            # Top center: M5 counterbore (drilled from the top face).
             with Locations((0, 0, thickness / 2)):
                 CounterBoreHole(
                     radius=top_center_hole_diameter / 2,
                     counter_bore_radius=top_counterbore_diameter / 2,
                     counter_bore_depth=top_counterbore_depth,
                 )
-            with Locations((-top_outer_hole_offset, 0), (top_outer_hole_offset, 0)):
-                Hole(radius=top_outer_hole_diameter / 2)
+            # Bottom outer: two M4 counterbores (drilled from the bottom face).
+            # Plane normal in -Z so the hole/counterbore drill into the body (+Z).
+            bottom_plane = Plane(origin=(0, 0, -thickness / 2),
+                                 x_dir=(1, 0, 0),
+                                 z_dir=(0, 0, -1))
+            with Locations(bottom_plane):
+                with Locations((-outer_hole_offset, 0),
+                               ( outer_hole_offset, 0)):
+                    CounterBoreHole(
+                        radius=outer_hole_diameter / 2,
+                        counter_bore_radius=outer_cbore_radius,
+                        counter_bore_depth=outer_cbore_depth,
+                    )
 
             # Top: rectangle pocket
             top_plane = Plane.XY.offset(thickness / 2)
@@ -62,7 +77,7 @@ class PulleyMountMotor(BasePart):
                     Rectangle(top_pocket_w, top_pocket_h)
             extrude(amount=-top_pocket_depth, mode=Mode.SUBTRACT)
 
-            # Front: M4 hole
+            # Front: M5 clearance hole
             # x_dir = +X forces y_dir = z_dir × x_dir = (0, 0, +1) = world +Z.
             front_plane = Plane(origin=(0, -width / 2, 0), x_dir=(1, 0, 0), z_dir=(0, -1, 0))
             with BuildSketch(front_plane):
