@@ -56,3 +56,8 @@ class Ring(BasePart):
                 mode=Mode.SUBTRACT,
             )
         return p.part
+
+
+if __name__ == "__main__":
+    for spec in SPECS:
+        Ring(spec).export()
