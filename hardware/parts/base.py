@@ -34,6 +34,11 @@ class BasePart:
 
     def build(self):
         shape = self._build()
+        # Default the STEP label to the class name so the exported file is
+        # readable in other CAD tools. _build() can override by setting an
+        # explicit label (e.g. on a Compound).
+        if not getattr(shape, "label", None):
+            shape.label = type(self).__name__
         path = self.output_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         export_step(shape, str(path))

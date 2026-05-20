@@ -81,7 +81,7 @@ class Pulley2GT20T(BasePart):
     """GT2 20-tooth timing pulley or idler.
 
     `pulley` — sits on the motor: always toothed, with an extended hub and
-    an M3 set screw aimed at the motor's D-flat (+Y face, per nema17motor.py).
+    an M3 set screw aimed at the motor's D-flat (+Y face, per motor.py).
     `idler` — free-spinning tension wheel: no hub. The `toothed` flag picks
     between toothed (belt-tracking) and smooth (low-friction) idlers.
     Stacks upward from z = 0 (the motor-facing / mount-facing bottom face)."""
@@ -217,7 +217,7 @@ class Pulley2GT20T(BasePart):
             screw_y = _build_set_screw()
             screw_x = screw_y.rotate(Axis.Z, -90)   # +Y screw → +X screw
             return Compound(
-                label="pulley + set screws",
+                label="pulley",
                 children=[p.part, screw_y, screw_x],
             )
         return p.part

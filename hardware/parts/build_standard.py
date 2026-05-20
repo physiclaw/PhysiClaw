@@ -4,14 +4,14 @@ hardware/output/step/. Run: `uv run python -m parts.build_standard`."""
 from build123d import MM
 
 from hardware.parts.base import build_all
+from hardware.parts.standard.bracket import FlatBracket
 from hardware.parts.standard.bumper import Bumper
-from hardware.parts.standard.extrusion2020 import Extrusion2020
-from hardware.parts.standard.flat_bracket import FlatBracket
-from hardware.parts.standard.hex_driver import HexDriver
+from hardware.parts.standard.driver import HexDriver
+from hardware.parts.standard.extrusion import Extrusion2020
 from hardware.parts.standard.mgn9h import MGN9H
-from hardware.parts.standard.nema17motor import Nema17Motor
+from hardware.parts.standard.motor import Nema17Motor
 from hardware.parts.standard.nut import Nut
-from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
+from hardware.parts.standard.pulley import Pulley2GT20T
 from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.solenoid import Solenoid
