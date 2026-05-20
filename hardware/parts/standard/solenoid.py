@@ -151,7 +151,19 @@ class Solenoid(BasePart):
                 Cylinder(radius=bottom_ring_od / 2, height=bottom_ring_thick)
                 Cylinder(radius=bottom_ring_id / 2, height=bottom_ring_thick, mode=Mode.SUBTRACT)
 
-        return Compound([p.part, spring.part, bottom_ring.part])
+        body = Compound([p.part, spring.part, bottom_ring.part])
+
+        # Mating joint: the bottom rod tip. Identity orientation so a partner
+        # joint placed inside its part (e.g. Tip.solenoid_mount at the M3 hole
+        # bottom) lands the partner upright below the solenoid.
+        RigidJoint(
+            "tip_mount",
+            to_part=body,
+            joint_location=Location(
+                (0, -depth / 2, -outer_h / 2 - bottom_rod_height),
+            ),
+        )
+        return body
 
 
 if __name__ == "__main__":

@@ -64,6 +64,13 @@ class Tip(BasePart):
             # Chamfer both circle edges on the top face (Z=0).
             top_face = p.faces().sort_by(Axis.Z)[-1]
             chamfer(top_face.edges(), length=edge_chamfer)
+
+            # Mating joint: M3 hole bottom (Z = -m3_hole_depth). The solenoid
+            # rod tip touches this point at full insertion.
+            RigidJoint(
+                "solenoid_mount",
+                joint_location=Location((0, 0, -m3_hole_depth)),
+            )
         return p.part
 
 
