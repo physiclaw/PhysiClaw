@@ -167,4 +167,4 @@ class Solenoid(BasePart):
 
 
 if __name__ == "__main__":
-    Solenoid().build()
+    Solenoid().export()

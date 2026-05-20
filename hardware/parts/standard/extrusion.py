@@ -164,5 +164,5 @@ class Extrusion2040(BasePart):
 
 
 if __name__ == "__main__":
-    Extrusion2020().build()
-    Extrusion2040().build()
+    Extrusion2020().export()
+    Extrusion2040().export()

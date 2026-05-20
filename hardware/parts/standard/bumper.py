@@ -43,4 +43,4 @@ class Bumper(BasePart):
 
 
 if __name__ == "__main__":
-    Bumper().build()
+    Bumper().export()

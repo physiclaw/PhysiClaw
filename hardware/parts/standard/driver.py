@@ -69,4 +69,4 @@ class HexDriver(BasePart):
 
 if __name__ == "__main__":
     for size in HEX_DIMS:
-        HexDriver(size=size).build()
+        HexDriver(size=size).export()

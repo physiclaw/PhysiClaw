@@ -100,4 +100,4 @@ class PulleyMountMotor(BasePart):
 
 
 if __name__ == "__main__":
-    PulleyMountMotor().build()
+    PulleyMountMotor().export()

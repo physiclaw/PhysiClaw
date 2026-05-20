@@ -1,9 +1,9 @@
-"""Build every standard part — one .step file per part written to
-hardware/output/step/. Run: `uv run python -m parts.build_standard`."""
+"""Export every standard part — one .step file per part written to
+hardware/output/step/. Run: `uv run python -m hardware.parts.export_standard`."""
 
 from build123d import MM
 
-from hardware.parts.base import build_all
+from hardware.parts.base import export_all
 from hardware.parts.standard.bracket import FlatBracket
 from hardware.parts.standard.bumper import Bumper
 from hardware.parts.standard.driver import HexDriver
@@ -53,4 +53,4 @@ ALL_PARTS = [
 
 
 if __name__ == "__main__":
-    build_all(ALL_PARTS)
+    export_all(ALL_PARTS)

@@ -229,4 +229,4 @@ class BeltClamp(BasePart):
 
 
 if __name__ == "__main__":
-    BeltClamp().build()
+    BeltClamp().export()

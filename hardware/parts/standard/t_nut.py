@@ -162,5 +162,5 @@ class TNut(BasePart):
 
 
 if __name__ == "__main__":
-    TNut("standard", "M5").build()
-    TNut("hammer",   "M5").build()
+    TNut("standard", "M5").export()
+    TNut("hammer",   "M5").export()

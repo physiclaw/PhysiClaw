@@ -104,4 +104,4 @@ class SolenoidMount(BasePart):
 
 
 if __name__ == "__main__":
-    SolenoidMount().build()
+    SolenoidMount().export()

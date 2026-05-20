@@ -87,4 +87,4 @@ class PulleyMountFront(BasePart):
 
 
 if __name__ == "__main__":
-    PulleyMountFront().build()
+    PulleyMountFront().export()

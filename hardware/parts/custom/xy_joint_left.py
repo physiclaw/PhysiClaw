@@ -190,4 +190,4 @@ class XyJointLeft(BasePart):
 
 
 if __name__ == "__main__":
-    XyJointLeft().build()
+    XyJointLeft().export()

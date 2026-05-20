@@ -246,4 +246,4 @@ class MGN9H(BasePart):
 
 
 if __name__ == "__main__":
-    MGN9H().build()
+    MGN9H().export()

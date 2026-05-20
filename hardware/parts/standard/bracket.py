@@ -24,4 +24,4 @@ class FlatBracket(BasePart):
 
 
 if __name__ == "__main__":
-    FlatBracket().build()
+    FlatBracket().export()

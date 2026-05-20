@@ -276,7 +276,7 @@ class Screw(BasePart):
 
 
 if __name__ == "__main__":
-    Screw("SHCS",     "M3", 12 * MM).build()
-    Screw("FHCS",     "M3",  8 * MM).build()
-    Screw("BHCS",     "M3",  8 * MM).build()
-    Screw("SHOULDER", "M4", 20 * MM).build()
+    Screw("SHCS",     "M3", 12 * MM).export()
+    Screw("FHCS",     "M3",  8 * MM).export()
+    Screw("BHCS",     "M3",  8 * MM).export()
+    Screw("SHOULDER", "M4", 20 * MM).export()

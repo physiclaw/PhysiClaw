@@ -125,4 +125,4 @@ class Nema17Motor(BasePart):
 
 
 if __name__ == "__main__":
-    Nema17Motor().build()
+    Nema17Motor().export()

@@ -132,4 +132,4 @@ class Nut(BasePart):
 if __name__ == "__main__":
     for shape, sizes in SPECS.items():
         for size in sizes:
-            Nut(shape, size).build()
+            Nut(shape, size).export()

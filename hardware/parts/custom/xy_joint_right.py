@@ -10,4 +10,4 @@ class XyJointRight(BasePart):
 
 
 if __name__ == "__main__":
-    XyJointRight().build()
+    XyJointRight().export()

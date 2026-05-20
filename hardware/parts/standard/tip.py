@@ -75,4 +75,4 @@ class Tip(BasePart):
 
 
 if __name__ == "__main__":
-    Tip().build()
+    Tip().export()

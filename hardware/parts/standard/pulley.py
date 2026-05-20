@@ -224,6 +224,6 @@ class Pulley2GT20T(BasePart):
 
 
 if __name__ == "__main__":
-    Pulley2GT20T(kind="pulley").build()
-    Pulley2GT20T(kind="idler", toothed=True).build()
-    Pulley2GT20T(kind="idler", toothed=False).build()
+    Pulley2GT20T(kind="pulley").export()
+    Pulley2GT20T(kind="idler", toothed=True).export()
+    Pulley2GT20T(kind="idler", toothed=False).export()
