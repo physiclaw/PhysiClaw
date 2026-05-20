@@ -8,7 +8,7 @@ from hardware.parts.standard.bumper import Bumper
 from hardware.parts.standard.extrusion2020 import Extrusion2020
 from hardware.parts.standard.flat_bracket import FlatBracket
 from hardware.parts.standard.hex_driver import HexDriver
-from hardware.parts.standard.mgn9h_rail_slider import MGN9HRailSlider
+from hardware.parts.standard.mgn9h import MGN9H
 from hardware.parts.standard.nema17motor import Nema17Motor
 from hardware.parts.standard.nut import Nut
 from hardware.parts.standard.pulley_2gt_20t import Pulley2GT20T
@@ -26,7 +26,7 @@ ALL_PARTS = [
     Pulley2GT20T(kind="pulley", qty=2),
     Pulley2GT20T(kind="idler",  toothed=True,  qty=2),
     Pulley2GT20T(kind="idler",  toothed=False, qty=2),
-    MGN9HRailSlider(rail_length=100 * MM, qty=2),
+    MGN9H(rail_length=150 * MM, qty=2),
     Screw("BHCS",     "M3", 8  * MM),
     Screw("SHOULDER", "M4", 20 * MM),
     HexDriver("2mm", qty=1),
