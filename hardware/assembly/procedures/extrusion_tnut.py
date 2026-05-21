@@ -47,6 +47,18 @@ ROW_SPACING      = 60    # mm — exploded: between extrusion centerlines along 
 PREP_START_GAP   = 5     # mm — clearance between extrusion +Z end and first prep nut
 PREP_PITCH       = 15    # mm — Z pitch between adjacent prep nuts in the queue
 
+# 4 nuts on the top short: outer pair 30 mm in from each end, inner
+# pair another 25 mm inboard. Leaves a 60 mm clear span between the
+# inner pair for future mid-frame mounting.
+SHORT_TOP_END_GAP    = 30
+SHORT_TOP_INNER_GAP  = 25
+SHORT_TOP_POSITIONS = [
+    SHORT_TOP_END_GAP,
+    SHORT_TOP_END_GAP + SHORT_TOP_INNER_GAP,
+    SHORT_LENGTH - SHORT_TOP_END_GAP - SHORT_TOP_INNER_GAP,
+    SHORT_LENGTH - SHORT_TOP_END_GAP,
+]
+
 
 def _even_positions(length: float, n: int) -> list[float]:
     """N positions spread evenly along [0, length] with equal end gaps."""
@@ -68,6 +80,7 @@ def ext_with_nuts(
     n_nuts: int,
     cb: bool = False,
     with_prep: bool = True,
+    positions: list[float] | None = None,
 ) -> tuple:
     """Build one 2040 + T-nut sets. Returns (ext, destinations, prep):
     * ext            — the extrusion itself
@@ -75,9 +88,15 @@ def ext_with_nuts(
     * prep           — N loose nuts queued past the +Z end, solid;
                        empty list when ``with_prep=False`` so callers
                        that only want the seated state don't pay for
-                       N unused TNut builds."""
+                       N unused TNut builds.
+
+    ``positions`` (mm along Z) overrides the default even-spread layout
+    when the caller needs custom placement (e.g. the top short's 4
+    nuts use a manually-tuned spread). When supplied, ``n_nuts`` must
+    match ``len(positions)``."""
     ext = Extrusion2040(length=length, cb=cb).build()
-    positions = _even_positions(length, n_nuts)
+    if positions is None:
+        positions = _even_positions(length, n_nuts)
     destinations = _seat_nuts(ext, positions)
     if not with_prep:
         return ext, destinations, []
@@ -100,6 +119,13 @@ class ExtrusionTnut(BaseAssembly):
         No effect on the exploded view (which uses the row layout)."""
         super().__init__(exploded=exploded)
         self.separation = separation
+        # Populated by _build_assembled_frame after .build(): keyed by
+        # "long_left" / "long_right" / "short_top" / "short_bot", each
+        # value is (ext, destinations). Lets a downstream assembly
+        # (e.g. frame_kit) reach the longs' CB joints for placing
+        # screws onto the moved members. Empty in the exploded row
+        # variant — joints there are decoupled from the next step.
+        self.frame_parts: dict = {}
 
     @property
     def camera(self) -> Camera:
@@ -113,15 +139,18 @@ class ExtrusionTnut(BaseAssembly):
 
     def _build_exploded_rows(self) -> Compound:
         specs = [
-            (LONG_LENGTH,  2, True),
-            (LONG_LENGTH,  2, True),
-            (SHORT_LENGTH, 4, False),
-            (SHORT_LENGTH, 0, False),
+            # (length, n_nuts, cb, positions or None for even spread)
+            (LONG_LENGTH,  2, True,  None),
+            (LONG_LENGTH,  2, True,  None),
+            (SHORT_LENGTH, 4, False, SHORT_TOP_POSITIONS),
+            (SHORT_LENGTH, 0, False, None),
         ]
         solid_shapes = []    # extrusion + loose prep nuts
         ghost_shapes = []    # destination silhouettes inside the slot
-        for i, (length, n_nuts, cb) in enumerate(specs):
-            ext, destinations, prep = ext_with_nuts(length, n_nuts, cb=cb)
+        for i, (length, n_nuts, cb, positions) in enumerate(specs):
+            ext, destinations, prep = ext_with_nuts(
+                length, n_nuts, cb=cb, positions=positions,
+            )
             # Bake row offset into each leaf — the solid/ghost wrappers
             # below sit at identity, so projection treats leaf locations
             # as world positions and no nested-parent ambiguity arises.
@@ -150,31 +179,29 @@ class ExtrusionTnut(BaseAssembly):
         bot_z  = cb_end_offset
 
         members = [
-            # long_left  — CB face → world -X
-            ((LONG_LENGTH,  2, True),
+            # name, (length, n_nuts, cb, positions), placement
+            ("long_left",  (LONG_LENGTH,  2, True,  None),
              Plane(origin=(-half_w, 0, LONG_LENGTH),
-                   x_dir=(0, -1, 0), z_dir=(0, 0, -1))),
-            # long_right — CB face → world +X
-            ((LONG_LENGTH,  2, True),
+                   x_dir=(0, -1, 0), z_dir=(0, 0, -1))),   # CB → world -X
+            ("long_right", (LONG_LENGTH,  2, True,  None),
              Plane(origin=(half_w, 0, 0),
-                   x_dir=(0, -1, 0), z_dir=(0, 0, 1))),
-            # short_top with 4 nuts
-            ((SHORT_LENGTH, 4, False),
+                   x_dir=(0, -1, 0), z_dir=(0, 0, 1))),    # CB → world +X
+            ("short_top",  (SHORT_LENGTH, 4, False, SHORT_TOP_POSITIONS),
              Plane(origin=(-SHORT_LENGTH / 2, 0, top_z),
                    x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
-            # short_bot (plain — n_nuts=0 means no destinations)
-            ((SHORT_LENGTH, 0, False),
+            ("short_bot",  (SHORT_LENGTH, 0, False, None),  # n_nuts=0: no nuts
              Plane(origin=(-SHORT_LENGTH / 2, 0, bot_z),
                    x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
         ]
         shapes = []
-        for (length, n_nuts, cb), plane in members:
+        for name, (length, n_nuts, cb, positions), plane in members:
             ext, destinations, _ = ext_with_nuts(
-                length, n_nuts, cb=cb, with_prep=False,
+                length, n_nuts, cb=cb, with_prep=False, positions=positions,
             )
             loc = Location(plane)
             for s in (ext, *destinations):
                 s.move(loc)
+            self.frame_parts[name] = (ext, destinations)
             shapes.append(ext)
             shapes.extend(destinations)
 
