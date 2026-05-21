@@ -1,5 +1,5 @@
-"""Frame assembly step — exploded view of T-nut preload into 2040
-extrusions. Drawn as two layers:
+"""Extrusion + T-nut assembly step — exploded view of T-nut preload
+into 2040 extrusions. Drawn as two layers:
 
   * Solid:  the real parts you hold — extrusions + loose T-nuts
             queued past the +Z end, ready to slide in.
@@ -13,7 +13,7 @@ extrusions. Drawn as two layers:
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.frame_kit
+    uv run --group cad python -m hardware.assembly.procedures.extrusion_tnut
 """
 
 from build123d import Compound, Location
@@ -61,7 +61,7 @@ def _ext_with_nuts(length: float, n_nuts: int, cb: bool = False) -> tuple:
     return ext, destinations, prep
 
 
-class FrameKit(BaseAssembly):
+class ExtrusionTnut(BaseAssembly):
     camera = Camera(120, -20, 90)
 
     def _build(self) -> Compound:
@@ -84,13 +84,13 @@ class FrameKit(BaseAssembly):
             solid_shapes.append(ext)
             solid_shapes.extend(prep)
             ghost_shapes.extend(destinations)
-        return Compound(label="frame_kit", children=[
+        return Compound(label="extrusion_tnut", children=[
             Compound(label=SOLID_LABEL, children=solid_shapes),
             Compound(label=GHOST_LABEL, children=ghost_shapes),
         ])
 
 
 if __name__ == "__main__":
-    asm = FrameKit()
+    asm = ExtrusionTnut()
     asm.export()
     asm.render()
