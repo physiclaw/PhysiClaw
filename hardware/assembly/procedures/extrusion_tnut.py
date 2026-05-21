@@ -1,29 +1,49 @@
-"""Extrusion + T-nut assembly step — exploded view of T-nut preload
-into 2040 extrusions. Drawn as two layers:
+"""Extrusion + T-nut preload — slide standard T-nuts into 2040 slots.
 
-  * Solid:  the real parts you hold — extrusions + loose T-nuts
-            queued past the +Z end, ready to slide in.
-  * Ghost (dashed): the destination positions inside each slot, where
-            each nut will end up after sliding in. Nut isn't actually
-            there yet — the dashed silhouette is a target marker.
+The two variants use intentionally different layouts:
 
-  * 2 x 335 mm extrusion, each with 2 T-nuts (4 prep + 4 destinations)
-  * 1 x 170 mm extrusion with 4 T-nuts (4 prep + 4 destinations)
-  * 1 x 170 mm extrusion, plain
+  * exploded — four extrusions stacked in Y rows.
+      Solid:  extrusion + loose T-nuts queued past its +Z end, ready
+              to slide in.
+      Ghost:  destination silhouettes inside the slot — the seat
+              positions the loose nuts will end up at.
+      Each row's prep queue extends along its OWN +Z direction with no
+      neighbor in the way; the install motion (slide along +Z into
+      slot) reads cleanly per row. Row layout is intentional — easier
+      to follow than a frame layout where prep queues from different
+      members would collide.
+
+  * assembled — the four members arranged as a rectangular frame:
+                longs flush against shorts (separation=0), counterbore
+                faces outboard, each long CB axis collinear with the
+                matching short's end-cell bore. Nuts seated at their
+                destinations; single layer.
+
+  * 2 x 335 mm long extrusion (cb), each with 2 standard M5 T-nuts
+  * 1 x 170 mm short extrusion (top) with 4 standard M5 T-nuts
+  * 1 x 170 mm short extrusion (bottom), plain
 
 Run from the repo root:
 
     uv run --group cad python -m hardware.assembly.procedures.extrusion_tnut
 """
 
-from build123d import Compound, Location
+from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import GHOST_LABEL, SOLID_LABEL, BaseAssembly
 from hardware.assembly.render import Camera
-from hardware.parts.standard.extrusion import Extrusion2040
+from hardware.parts.standard.extrusion import (
+    Extrusion2040,
+    cb_end_offset,
+    leg,
+)
 from hardware.parts.standard.t_nut import LENGTHS as TNUT_LENGTHS, TNut
 
-ROW_SPACING      = 60    # mm — between extrusion centerlines along Y
+LONG_LENGTH      = 335
+SHORT_LENGTH     = 170
+EXT_THICKNESS    = 2 * leg   # 2040 narrow cross-section (= 20 mm)
+
+ROW_SPACING      = 60    # mm — exploded: between extrusion centerlines along Y
 PREP_START_GAP   = 5     # mm — clearance between extrusion +Z end and first prep nut
 PREP_PITCH       = 15    # mm — Z pitch between adjacent prep nuts in the queue
 
@@ -51,12 +71,11 @@ def ext_with_nuts(
 ) -> tuple:
     """Build one 2040 + T-nut sets. Returns (ext, destinations, prep):
     * ext            — the extrusion itself
-    * destinations   — N nuts seated inside the +X slot, ghost-rendered
-                       as target markers
+    * destinations   — N nuts seated inside the +X slot
     * prep           — N loose nuts queued past the +Z end, solid;
                        empty list when ``with_prep=False`` so callers
                        that only want the seated state don't pay for
-                       4 unused TNut builds."""
+                       N unused TNut builds."""
     ext = Extrusion2040(length=length, cb=cb).build()
     positions = _even_positions(length, n_nuts)
     destinations = _seat_nuts(ext, positions)
@@ -72,17 +91,35 @@ def ext_with_nuts(
 
 
 class ExtrusionTnut(BaseAssembly):
-    camera = Camera(120, -20, 90)
+
+    def __init__(self, *, separation: float = 30, exploded: bool = False):
+        """``separation`` (mm) — horizontal gap between each long and
+        the short ends in the assembled view. Default 30 leaves the
+        longs visibly apart from the shorts so the preload reads as
+        "longs placed nearby but not yet joined to the shorts."
+        No effect on the exploded view (which uses the row layout)."""
+        super().__init__(exploded=exploded)
+        self.separation = separation
+
+    @property
+    def camera(self) -> Camera:
+        # Two layouts → two cameras. Exploded looks down the rows from
+        # the side; assembled views the frame head-on from the front.
+        return Camera(120, -20, 90) if self.exploded else Camera(-30, -20)
 
     def _build(self) -> Compound:
+        return (self._build_exploded_rows() if self.exploded
+                else self._build_assembled_frame())
+
+    def _build_exploded_rows(self) -> Compound:
         specs = [
-            (335, 2, True),
-            (335, 2, True),
-            (170, 4, False),
-            (170, 0, False),
+            (LONG_LENGTH,  2, True),
+            (LONG_LENGTH,  2, True),
+            (SHORT_LENGTH, 4, False),
+            (SHORT_LENGTH, 0, False),
         ]
-        solid_shapes: list = []    # extrusion + loose prep nuts
-        ghost_shapes: list = []    # destination silhouettes inside the slot
+        solid_shapes = []    # extrusion + loose prep nuts
+        ghost_shapes = []    # destination silhouettes inside the slot
         for i, (length, n_nuts, cb) in enumerate(specs):
             ext, destinations, prep = ext_with_nuts(length, n_nuts, cb=cb)
             # Bake row offset into each leaf — the solid/ghost wrappers
@@ -99,8 +136,53 @@ class ExtrusionTnut(BaseAssembly):
             Compound(label=GHOST_LABEL, children=ghost_shapes),
         ])
 
+    def _build_assembled_frame(self) -> Compound:
+        # self.separation pulls each long outboard from the short ends
+        # (0 = flush/closed).
+        #
+        # All members: slot face → world -Y (toward front camera) so
+        # seated nuts are visible. The longs also need their +Y (CB)
+        # face outboard horizontally — chirality forces one to be
+        # flipped end-to-end: long_left uses z_dir=(0,0,-1) with origin
+        # at Z=LONG_LENGTH; long_right uses z_dir=(0,0,1).
+        half_w = SHORT_LENGTH / 2 + EXT_THICKNESS / 2 + self.separation
+        top_z  = LONG_LENGTH - cb_end_offset
+        bot_z  = cb_end_offset
+
+        members = [
+            # long_left  — CB face → world -X
+            ((LONG_LENGTH,  2, True),
+             Plane(origin=(-half_w, 0, LONG_LENGTH),
+                   x_dir=(0, -1, 0), z_dir=(0, 0, -1))),
+            # long_right — CB face → world +X
+            ((LONG_LENGTH,  2, True),
+             Plane(origin=(half_w, 0, 0),
+                   x_dir=(0, -1, 0), z_dir=(0, 0, 1))),
+            # short_top with 4 nuts
+            ((SHORT_LENGTH, 4, False),
+             Plane(origin=(-SHORT_LENGTH / 2, 0, top_z),
+                   x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
+            # short_bot (plain — n_nuts=0 means no destinations)
+            ((SHORT_LENGTH, 0, False),
+             Plane(origin=(-SHORT_LENGTH / 2, 0, bot_z),
+                   x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
+        ]
+        shapes = []
+        for (length, n_nuts, cb), plane in members:
+            ext, destinations, _ = ext_with_nuts(
+                length, n_nuts, cb=cb, with_prep=False,
+            )
+            loc = Location(plane)
+            for s in (ext, *destinations):
+                s.move(loc)
+            shapes.append(ext)
+            shapes.extend(destinations)
+
+        return Compound(label="extrusion_tnut", children=shapes)
+
 
 if __name__ == "__main__":
-    asm = ExtrusionTnut(exploded=True)
-    asm.export()
-    asm.render()
+    for exploded in (True, False):
+        asm = ExtrusionTnut(exploded=exploded)
+        asm.export()
+        asm.render()
