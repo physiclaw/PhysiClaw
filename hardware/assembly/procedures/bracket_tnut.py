@@ -1,8 +1,18 @@
 """Bracket fastening step — one flat bracket attached by 2 M5×10 BHCS
-into 2 hammer T-nuts. Exploded view stacks the three part kinds along
-the screw axis (world +Z): t-nuts at the bottom, bracket above, screws
-on top — so the order of operations (drop t-nuts, lay bracket, drive
-screws) reads top-down at a glance.
+into 2 hammer T-nuts.
+
+Two variants:
+
+  * exploded — three part kinds stacked along the screw axis (world
+               +Z): t-nuts at the bottom, bracket above with BRACKET_GAP
+               of air, screws above with SCREW_GAP air below their
+               shank tips. Order of operations reads top-down.
+  * assembled — loose-mate state: each BHCS dropped through the
+                bracket (underhead on the bracket top), with the t-nut
+                hanging from the shank tip (boss top touches the tip).
+                The bracket floats (BHCS_LENGTH − plate_thick) above
+                the t-nut — visible threading clearance, screw not
+                tightened.
 
   * 1 x FlatBracket (40 × 18 × 4 mm, two M5 through-holes 20 mm apart)
   * 2 x BHCS M5 × 10 — driven down through the bracket
@@ -19,10 +29,13 @@ from hardware.assembly.base import BaseAssembly
 from hardware.assembly.render import Camera
 from hardware.parts.standard.bracket import FlatBracket, hole_spacing, plate_thick
 from hardware.parts.standard.screw import Screw
-from hardware.parts.standard.t_nut import LENGTHS as TNUT_LENGTHS, TNut
+from hardware.parts.standard.t_nut import (
+    HAMMER_TOTAL_HEIGHT,
+    LENGTHS as TNUT_LENGTHS,
+    TNut,
+)
 
 SCREW_LENGTH    = 10     # mm — BHCS M5 underhead length
-TNUT_BOSS_TOP   = 4.5    # mm — hammer top above slot floor (1.5 plate + 3 boss)
 BRACKET_GAP     = 20     # mm — visual gap between t-nut top and bracket bottom
 SCREW_GAP       = 8      # mm — visual gap between bracket top and screw shank tip
 
@@ -35,27 +48,45 @@ class BracketTnut(BaseAssembly):
         nuts = [TNut("hammer", "M5").build() for _ in range(2)]
         screws = [Screw("BHCS", "M5", SCREW_LENGTH).build() for _ in range(2)]
 
-        # T-nut local: +Y is bore/boss direction, +Z is slide length. Rotate
-        # so +Y → world +Z (boss up, bore vertical) and the length runs
-        # along world -Y. Shift each t-nut so its bore center (local
-        # x=0, z=length/2) lands at world (±half_hole, 0, 0) — directly
-        # under the matching bracket hole.
+        # T-nut local: +Y is bore/boss direction, +Z is slide length. Both
+        # nuts have +Y → world +Z (boss up, bore vertical); their bores
+        # land at world (±half_hole, 0, 0), directly under the matching
+        # bracket hole. The two slide axes are 90° apart about world Z
+        # — the left nut runs along world -Y, the right along world +X
+        # — so the reader sees both installation orientations.
         half_hole = hole_spacing / 2
-        tnut_half_length = TNUT_LENGTHS["hammer"] / 2
-        for nut, side in zip(nuts, (-half_hole, half_hole)):
-            nut.move(Location(Plane(
-                origin=(side, tnut_half_length, 0),
+        hammer_half_length = TNUT_LENGTHS["hammer"] / 2
+        nut_planes = (
+            Plane(
+                origin=(-half_hole, hammer_half_length, 0),
                 x_dir=(1, 0, 0),
-                z_dir=(0, -1, 0),  # y_dir = (0, 0, 1): boss → world +Z
-            )))
-
-        bracket_z = TNUT_BOSS_TOP + BRACKET_GAP + plate_thick / 2
-        bracket.move(Location((0, 0, bracket_z)))
+                z_dir=(0, -1, 0),  # slide axis along world -Y
+            ),
+            Plane(
+                origin=(half_hole - hammer_half_length, 0, 0),
+                x_dir=(0, 1, 0),
+                z_dir=(1, 0, 0),   # slide axis along world +X
+            ),
+        )
+        for nut, plane in zip(nuts, nut_planes):
+            nut.move(Location(plane))
 
         # Screw default: head at part +Z, shank at part -Z. Identity
-        # rotation keeps head up; the shank tip lands SCREW_GAP above
-        # the bracket top — a visible floating clearance, not penetration.
-        screw_z = bracket_z + plate_thick / 2 + SCREW_GAP + SCREW_LENGTH
+        # rotation keeps head up. Layout per variant:
+        #   exploded:  shank tip floats SCREW_GAP above the bracket top
+        #              (bracket itself sits BRACKET_GAP above the t-nut).
+        #   assembled: BHCS dropped through the bracket (underhead on
+        #              bracket top) with the t-nut hanging from its
+        #              shank tip — bracket floats above the t-nut by
+        #              the shank protrusion (BHCS_LENGTH − plate_thick).
+        if self.exploded:
+            bracket_z = HAMMER_TOTAL_HEIGHT + BRACKET_GAP + plate_thick / 2
+            screw_z   = bracket_z + plate_thick / 2 + SCREW_GAP + SCREW_LENGTH
+        else:
+            screw_z   = HAMMER_TOTAL_HEIGHT + SCREW_LENGTH
+            bracket_z = screw_z - plate_thick / 2
+
+        bracket.move(Location((0, 0, bracket_z)))
         for screw, side in zip(screws, (-half_hole, half_hole)):
             screw.move(Location((side, 0, screw_z)))
 
@@ -65,6 +96,7 @@ class BracketTnut(BaseAssembly):
 
 
 if __name__ == "__main__":
-    asm = BracketTnut(exploded=True)
-    asm.export()
-    asm.render()
+    for exploded in (True, False):
+        asm = BracketTnut(exploded=exploded)
+        asm.export()
+        asm.render()
