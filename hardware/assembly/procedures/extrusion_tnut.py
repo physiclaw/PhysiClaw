@@ -101,6 +101,6 @@ class ExtrusionTnut(BaseAssembly):
 
 
 if __name__ == "__main__":
-    asm = ExtrusionTnut()
+    asm = ExtrusionTnut(exploded=True)
     asm.export()
     asm.render()

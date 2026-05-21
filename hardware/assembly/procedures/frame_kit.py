@@ -112,6 +112,6 @@ class FrameKit(BaseAssembly):
 
 
 if __name__ == "__main__":
-    asm = FrameKit()
+    asm = FrameKit(exploded=True)
     asm.export()
     asm.render()

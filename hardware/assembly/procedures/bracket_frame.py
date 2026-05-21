@@ -218,6 +218,6 @@ class BracketFrame(BaseAssembly):
 
 
 if __name__ == "__main__":
-    asm = BracketFrame()
+    asm = BracketFrame(exploded=True)
     asm.export()
     asm.render()

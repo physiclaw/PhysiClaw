@@ -65,6 +65,6 @@ class BracketTnut(BaseAssembly):
 
 
 if __name__ == "__main__":
-    asm = BracketTnut()
+    asm = BracketTnut(exploded=True)
     asm.export()
     asm.render()

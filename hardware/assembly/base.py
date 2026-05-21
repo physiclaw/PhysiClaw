@@ -35,6 +35,14 @@ class BaseAssembly(BasePart):
     separate SVG layers (ghost = lighter + phantom dashes) — exploded-view
     illustration of prep state vs result. Otherwise the whole assembly is
     one layer.
+
+    Every assembly has two variants: ``exploded=True`` shows the install
+    motion (gaps + ghosts), ``exploded=False`` shows the finished state.
+    The flag is exposed as a ctor kwarg so callers can ``export()`` both
+    from one ``__main__``, and so a downstream assembly can embed an
+    upstream one in its assembled form (e.g. ``FrameKit(exploded=False)``).
+    Output filenames are suffixed ``_exploded`` / ``_assembled`` to keep
+    both on disk side by side.
     """
 
     camera: Camera = ISO
@@ -43,13 +51,22 @@ class BaseAssembly(BasePart):
     ghost_line_weight: float = 0.12
     ghost_line_type: LineType = LineType.PHANTOM
 
+    def __init__(self, *, exploded: bool = False):
+        super().__init__()
+        self.exploded = exploded
+
+    @property
+    def _variant(self) -> str:
+        return "_exploded" if self.exploded else "_assembled"
+
     def name_suffix(self) -> str:
-        # Assemblies are one-offs; drop the inherited "_x{qty}" suffix so the
-        # STEP filename is e.g. solenoid_tip.step instead of solenoid_tip_x1.step.
-        return ""
+        # Assemblies are one-offs; drop the inherited "_x{qty}" suffix and
+        # use the variant tag instead, so the STEP filename is e.g.
+        # solenoid_tip_exploded.step / solenoid_tip_assembled.step.
+        return self._variant
 
     def svg_path(self) -> Path:
-        return SVG_DIR / f"{self._module_stem()}.svg"
+        return SVG_DIR / f"{self._module_stem()}{self._variant}.svg"
 
     def _build(self) -> Compound:
         raise NotImplementedError
