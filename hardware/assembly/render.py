@@ -57,7 +57,8 @@ FRONT = Camera(0, 0)
 RIGHT = Camera(90, 0)
 TOP   = Camera(0, 90)
 # True iso: camera looks along (1,1,1)/√3 so X, Y, Z foreshorten equally.
-ISO   = Camera(45, math.degrees(math.atan(1 / math.sqrt(2))))
+# Elevation = degrees(atan(1/√2)) ≈ 35.2644.
+ISO   = Camera(45, 35.2644)
 
 
 def project(shape, camera: Camera, *, distance_factor: float = 4):
