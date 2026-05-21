@@ -29,16 +29,41 @@ wedge_vertices = (
 hypotenuse_plane = Plane(origin=(0, 0, 0), x_dir=(1, 1, 0), z_dir=(1, -1, 0))
 
 # ── 2040-specific parameters ──────────────────────────────────────────────────
-cell_offset    = leg         # 2040 cell centers at ±10 mm along X
-slot_w         =  6   * MM   # central through-channel width (X)
-slot_h         = 16.4 * MM   # central through-channel height (Y)
+cell_offset       = leg          # 2040 cell centers at ±10 mm along X
+slot_w            =   6   * MM   # central through-channel width (X)
+slot_h            =  16.4 * MM   # central through-channel height (Y)
+slot_lip_under_y  =   8.2 * MM   # cavity belly top, cell-local — T-nut wings
+                                 # seat here against the slot lip underside
 
 # End-counterbore screw access on the +Y (front) face, mirrored on each
 # Z end. Two per end, aligned in X with the bores at ±cell_offset.
 cb_end_offset  = 10  * MM    # axial offset of CB from each end face
 cb_head_d      = 11  * MM    # counterbore (head pocket) diameter
-cb_head_depth  =  6  * MM    # counterbore depth
+cb_head_depth  = 5.5  * MM    # counterbore depth
 cb_shaft_d     = 5.5 * MM    # through-hole diameter
+
+# ── 1020-specific parameters ──────────────────────────────────────────────────
+# Half cross-section outline (right half, x ≥ 0; mirrored across the Y axis
+# for the full profile). Traces, in order:
+# centerline bottom → bottom-right → top-right → top edge to slot lip →
+# lip underside → cavity belly → rib slope → centerline → close.
+half_vertices_1020 = (
+    (0,         0),
+    (9.9 * MM,  0),
+    (9.9 * MM,  9.9 * MM),
+    (3.5 * MM,  9.9 * MM),
+    (3.5 * MM,  9.4 * MM),
+    (3.2 * MM,  9.4 * MM),
+    (3.2 * MM,  8   * MM),
+    (5.6 * MM,  8   * MM),
+    (5.6 * MM,  6.4 * MM),
+    (2.4 * MM,  3.6 * MM),
+    (0,         3.6 * MM),
+)
+half_x_1020       = 9.9 * MM    # half cross-section width
+hole_1020_d       = 4.2 * MM    # through-hole diameter
+hole_1020_x_inset = 3   * MM    # hole center inset from right edge
+hole_1020_y_inset = 3   * MM    # hole center inset from bottom edge
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -104,6 +129,7 @@ class Extrusion2020(BasePart):
             fillet(_outer_corner_edges(z_edges, leg), radius=corner_fillet)
             fillet(_rib_edges(z_edges, (0,)), radius=rib_fillet)
 
+        p.part.label = f"Extrusion2020_{int(self.length)}mm"
         return p.part
 
 
@@ -112,12 +138,19 @@ class Extrusion2040(BasePart):
     extruded. Stacking happens before fillet so the inner contact at X=0
     disappears and only the four true outer corners get rounded."""
 
-    def __init__(self, length: float = default_length, qty: int = 1):
+    def __init__(
+        self,
+        length: float = default_length,
+        qty: int = 1,
+        cb: bool = False,
+    ):
         super().__init__(qty=qty)
         self.length = length
+        self.cb = cb
 
     def name_suffix(self) -> str:
-        return f"_2040_{int(self.length)}mm_x{self.qty}"
+        cb = "_cb" if self.cb else ""
+        return f"_2040_{int(self.length)}mm{cb}_x{self.qty}"
 
     def _build(self):
         face = _cell_face()
@@ -135,34 +168,96 @@ class Extrusion2040(BasePart):
             fillet(_outer_corner_edges(z_edges, 2 * leg), radius=corner_fillet)
             fillet(_rib_edges(z_edges, (-cell_offset, cell_offset)), radius=rib_fillet)
 
-            # ── End counterbores on the +Y (front) face ──
-            # Workplane on +Y face; +Z axis of plane = world +Z, normal
-            # points into the part (-Y), so positive extrude drills inward.
-            front_plane = Plane(
-                origin=(0, leg, 0),
-                x_dir=(1, 0, 0),
-                z_dir=(0, -1, 0),
-            )
-            cb_centers = [
-                (-cell_offset, cb_end_offset),
-                ( cell_offset, cb_end_offset),
-                (-cell_offset, self.length - cb_end_offset),
-                ( cell_offset, self.length - cb_end_offset),
-            ]
-            # Through shaft + head pocket — sketched on the same plane, two
-            # separate extrudes so depths can differ.
-            with BuildSketch(front_plane):
-                with Locations(*cb_centers):
-                    Circle(cb_shaft_d / 2)
-            extrude(amount=2 * leg, mode=Mode.SUBTRACT)
-            with BuildSketch(front_plane):
-                with Locations(*cb_centers):
-                    Circle(cb_head_d / 2)
-            extrude(amount=cb_head_depth, mode=Mode.SUBTRACT)
+            if self.cb:
+                # ── End counterbores on the +Y (front) face ──
+                # Workplane on +Y face; +Z axis of plane = world +Z, normal
+                # points into the part (-Y), so positive extrude drills inward.
+                front_plane = Plane(
+                    origin=(0, leg, 0),
+                    x_dir=(1, 0, 0),
+                    z_dir=(0, -1, 0),
+                )
+                cb_centers = [
+                    (-cell_offset, cb_end_offset),
+                    ( cell_offset, cb_end_offset),
+                    (-cell_offset, self.length - cb_end_offset),
+                    ( cell_offset, self.length - cb_end_offset),
+                ]
+                # Through shaft + head pocket — sketched on the same plane,
+                # two separate extrudes so depths can differ.
+                with BuildSketch(front_plane):
+                    with Locations(*cb_centers):
+                        Circle(cb_shaft_d / 2)
+                extrude(amount=2 * leg, mode=Mode.SUBTRACT)
+                with BuildSketch(front_plane):
+                    with Locations(*cb_centers):
+                        Circle(cb_head_d / 2)
+                extrude(amount=cb_head_depth, mode=Mode.SUBTRACT)
 
+            # Slot as a 1-DOF slide axis along Z, threaded through the +X
+            # (right) face — the 20 mm-wide narrow side, single slot at Y=0.
+            # Axis at the lip underside, X = cell_offset + slot_lip_under_y.
+            LinearJoint(
+                "slot_right",
+                axis=Axis(
+                    origin=(cell_offset + slot_lip_under_y, 0, 0),
+                    direction=(0, 0, 1),
+                ),
+                linear_range=(0, self.length),
+            )
+
+        cb = "_cb" if self.cb else ""
+        p.part.label = f"Extrusion2040_{int(self.length)}mm{cb}"
+        return p.part
+
+
+class Extrusion1020(BasePart):
+    """1020 T-slot extrusion — 19.8 × 9.9 mm cross-section (nominal 20 × 10),
+    slot opening on the +Y face. Two through-holes drilled along Z on the
+    bottom rim, mirrored about the Y axis."""
+
+    def __init__(self, length: float = default_length, qty: int = 1):
+        super().__init__(qty=qty)
+        self.length = length
+
+    def name_suffix(self) -> str:
+        return f"_1020_{int(self.length)}mm_x{self.qty}"
+
+    def _build(self):
+        with BuildPart() as p:
+            with BuildSketch():
+                with BuildLine():
+                    Polyline(*half_vertices_1020, close=True)
+                make_face()
+                mirror(about=Plane.YZ)
+            extrude(amount=self.length)
+
+            # Fillet the 4 true outer corners — Z-parallel edges at
+            # (±half_x_1020, 0) and (±half_x_1020, half_x_1020). Height
+            # equals half-width, so both axes use the same constant.
+            z_edges = p.edges().filter_by(Axis.Z)
+            outer = [
+                e for e in z_edges
+                if _near(e.center().X, half_x_1020)
+                and (_near(e.center().Y, 0) or _near(e.center().Y, half_x_1020))
+            ]
+            fillet(outer, radius=corner_fillet)
+
+            # Two through-holes on the bottom rim, mirrored across the Y axis.
+            hole_centers = [
+                ( half_x_1020 - hole_1020_x_inset, hole_1020_y_inset),
+                (-half_x_1020 + hole_1020_x_inset, hole_1020_y_inset),
+            ]
+            with BuildSketch():
+                with Locations(*hole_centers):
+                    Circle(hole_1020_d / 2)
+            extrude(amount=self.length, mode=Mode.SUBTRACT)
+
+        p.part.label = f"Extrusion1020_{int(self.length)}mm"
         return p.part
 
 
 if __name__ == "__main__":
     Extrusion2020().export()
     Extrusion2040().export()
+    Extrusion1020().export()

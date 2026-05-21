@@ -34,13 +34,21 @@ class BasePart:
         raise NotImplementedError
 
     def build(self):
-        """Return the build123d shape (labeled, no STEP export)."""
+        """Return the build123d shape (labeled, no STEP export).
+
+        Memoized on the instance: callers like ``export()`` + ``render()``
+        on the same object share one build instead of running ``_build()``
+        twice. _build() is expected to be a pure function of self.
+        """
+        if (cached := getattr(self, "_built", None)) is not None:
+            return cached
         shape = self._build()
         # Default the STEP label to the class name so the exported file is
         # readable in other CAD tools. _build() can override by setting an
         # explicit label (e.g. on a Compound).
         if not getattr(shape, "label", None):
             shape.label = type(self).__name__
+        self._built = shape
         return shape
 
     def export(self):

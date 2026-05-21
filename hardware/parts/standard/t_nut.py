@@ -52,6 +52,13 @@ BORE = {
     "M5": 5.0,
 }
 
+# Y of the feature that catches the slot lip from below — the mating point
+# with an extrusion slot LinearJoint. Standard: wing top. Hammer: plate top.
+ENGAGEMENT_Y = {
+    "standard": 3.3,
+    "hammer":   1.5,
+}
+
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
 class TNut(BasePart):
@@ -77,6 +84,7 @@ class TNut(BasePart):
         self.length = LENGTHS[kind]
         self.bore = BORE[size]
         self.half_profile = HALF_PROFILES[kind]
+        self.engagement_y = ENGAGEMENT_Y[kind]
 
     def name_suffix(self) -> str:
         return f"_{self.kind}_{self.size}_x{self.qty}"
@@ -158,6 +166,22 @@ class TNut(BasePart):
                 Circle(self.bore / 2)
             extrude(amount=top_y + 1 * MM, mode=Mode.SUBTRACT)
 
+            # Mating joint: top of the engagement feature, centered along
+            # the slide axis. Connects to an extrusion slot LinearJoint
+            # whose slider frame is identity-oriented (the only frame
+            # build123d's Axis derives from a +Z slide direction). The +90°
+            # Z rotation orients the part so that TNut +Y (bore axis) ends
+            # up along extrusion +X — i.e. mounted in a ±X face slot, with
+            # the screw entering from outside the 20 mm-wide face.
+            RigidJoint(
+                "slot_mount",
+                joint_location=Location(
+                    (0, self.engagement_y, self.length / 2),
+                    (0, 0, 90),
+                ),
+            )
+
+        p.part.label = f"TNut_{self.kind}_{self.size}"
         return p.part
 
 
