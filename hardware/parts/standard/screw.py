@@ -272,6 +272,18 @@ class Screw(BasePart):
                 ]
                 chamfer(top_rim, length=head_top_chamfer)
 
+            # Mating joint at the underhead seating plane. The +90°
+            # X rotation flips the joint frame so that when paired with
+            # an LinearJoint whose default slider frame is identity
+            # (e.g. an extrusion counterbore axis), the screw's local
+            # +Z (head direction) ends up along the host's outward
+            # normal — head outside, shank into the part.
+            RigidJoint(
+                "head",
+                joint_location=Location((0, 0, 0), (90, 0, 0)),
+            )
+
+        p.part.label = f"Screw_{self.screw_type}_{self.size}x{self.length:g}"
         return p.part
 
 

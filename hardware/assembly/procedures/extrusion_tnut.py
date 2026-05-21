@@ -43,15 +43,25 @@ def _seat_nuts(ext, positions: list[float]) -> list:
     return nuts
 
 
-def _ext_with_nuts(length: float, n_nuts: int, cb: bool = False) -> tuple:
-    """Build one 2040 + two T-nut sets. Returns (ext, destinations, prep):
+def ext_with_nuts(
+    length: float,
+    n_nuts: int,
+    cb: bool = False,
+    with_prep: bool = True,
+) -> tuple:
+    """Build one 2040 + T-nut sets. Returns (ext, destinations, prep):
     * ext            — the extrusion itself
     * destinations   — N nuts seated inside the +X slot, ghost-rendered
                        as target markers
-    * prep           — N loose nuts queued past the +Z end, solid"""
+    * prep           — N loose nuts queued past the +Z end, solid;
+                       empty list when ``with_prep=False`` so callers
+                       that only want the seated state don't pay for
+                       4 unused TNut builds."""
     ext = Extrusion2040(length=length, cb=cb).build()
     positions = _even_positions(length, n_nuts)
     destinations = _seat_nuts(ext, positions)
+    if not with_prep:
+        return ext, destinations, []
     prep = _seat_nuts(ext, positions)
     half_len = TNUT_LENGTHS["standard"] / 2
     for i, (nut, pos) in enumerate(zip(prep, positions)):
@@ -74,7 +84,7 @@ class ExtrusionTnut(BaseAssembly):
         solid_shapes: list = []    # extrusion + loose prep nuts
         ghost_shapes: list = []    # destination silhouettes inside the slot
         for i, (length, n_nuts, cb) in enumerate(specs):
-            ext, destinations, prep = _ext_with_nuts(length, n_nuts, cb=cb)
+            ext, destinations, prep = ext_with_nuts(length, n_nuts, cb=cb)
             # Bake row offset into each leaf — the solid/ghost wrappers
             # below sit at identity, so projection treats leaf locations
             # as world positions and no nested-parent ambiguity arises.

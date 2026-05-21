@@ -42,6 +42,15 @@ cb_head_d      = 11  * MM    # counterbore (head pocket) diameter
 cb_head_depth  = 5.5  * MM    # counterbore depth
 cb_shaft_d     = 5.5 * MM    # through-hole diameter
 
+# Joint labels for the four end counterbores on a 2040 with cb=True.
+# Shared so callers can iterate without restating the names (typo risk).
+CB_LABELS = (
+    "cb_bot_left",
+    "cb_bot_right",
+    "cb_top_left",
+    "cb_top_right",
+)
+
 # ── 1020-specific parameters ──────────────────────────────────────────────────
 # Half cross-section outline (right half, x ≥ 0; mirrored across the Y axis
 # for the full profile). Traces, in order:
@@ -177,12 +186,13 @@ class Extrusion2040(BasePart):
                     x_dir=(1, 0, 0),
                     z_dir=(0, -1, 0),
                 )
-                cb_centers = [
+                cb_named = dict(zip(CB_LABELS, [
                     (-cell_offset, cb_end_offset),
                     ( cell_offset, cb_end_offset),
                     (-cell_offset, self.length - cb_end_offset),
                     ( cell_offset, self.length - cb_end_offset),
-                ]
+                ]))
+                cb_centers = list(cb_named.values())
                 # Through shaft + head pocket — sketched on the same plane,
                 # two separate extrudes so depths can differ.
                 with BuildSketch(front_plane):
@@ -193,6 +203,21 @@ class Extrusion2040(BasePart):
                     with Locations(*cb_centers):
                         Circle(cb_head_d / 2)
                 extrude(amount=cb_head_depth, mode=Mode.SUBTRACT)
+
+                # LinearJoint per counterbore — slide axis along the
+                # drilling direction (inward from the +Y face). A partner
+                # RigidJoint (e.g. Screw "head") clamps to a slider
+                # position: 0 = head at the mouth, position>0 inserts
+                # deeper, position<0 explodes the screw outboard.
+                for label, (x, z) in cb_named.items():
+                    LinearJoint(
+                        label,
+                        axis=Axis(
+                            origin=(x, leg, z),
+                            direction=(0, -1, 0),
+                        ),
+                        linear_range=(-100, cb_head_depth),
+                    )
 
             # Slot as a 1-DOF slide axis along Z, threaded through the +X
             # (right) face — the 20 mm-wide narrow side, single slot at Y=0.
