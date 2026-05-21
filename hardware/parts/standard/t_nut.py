@@ -59,6 +59,12 @@ ENGAGEMENT_Y = {
     "hammer":   1.5,
 }
 
+# Hammer t-nut boss — 6×6 mm pad extruded 3 mm above the plate top
+# (see `_build` below). Exposed so callers placing the nut by hand can
+# reason about the total bore-axis height without re-encoding magics.
+HAMMER_BOSS_HEIGHT = 3
+HAMMER_TOTAL_HEIGHT = HALF_PROFILES["hammer"][-1][1] + HAMMER_BOSS_HEIGHT  # 4.5
+
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
 class TNut(BasePart):
@@ -125,8 +131,8 @@ class TNut(BasePart):
                 )
                 with BuildSketch(pad_plane):
                     Rectangle(6 * MM, 6 * MM)
-                extrude(amount=3 * MM)
-                top_y = height + 3
+                extrude(amount=HAMMER_BOSS_HEIGHT * MM)
+                top_y = height + HAMMER_BOSS_HEIGHT
 
                 # Fillet the same diagonal on the boss — the unbroken
                 # curved diagonal from plate to boss reads as a visual
