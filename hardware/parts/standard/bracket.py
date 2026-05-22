@@ -18,8 +18,8 @@ flat_hole_spacing  = 20  * MM   # center-to-center
 # mounting holes sit at the corners of a 31 mm square (NEMA 17 bolt
 # pattern), centered on the shaft hole.
 motor_plate_length = 60   * MM    # along X
-motor_plate_width  = 41   * MM    # along Y
-motor_plate_thick  =  1.9 * MM    # along Z
+motor_plate_width  = 42   * MM    # along Y
+motor_plate_thick  =  2 * MM    # along Z
 
 motor_shaft_d        = 25 * MM    # shaft / pilot pass-through
 motor_shaft_x_offset = 20 * MM    # shaft hole center, from -X (left) edge
@@ -30,7 +30,7 @@ motor_mount_pitch  = 31  * MM     # NEMA 17 square pattern, corner-to-corner
 # Two M5 clearance holes inset from the +X (right) edge, aligned along
 # Y with 25 mm pitch and centered top-to-bottom.
 motor_m5_hole_d   = 5.5 * MM      # M5 clearance
-motor_m5_x_inset  = 10  * MM      # from +X (right) edge
+motor_m5_x_inset  = 8  * MM      # from +X (right) edge
 motor_m5_pitch    = 25  * MM      # center-to-center, along Y
 
 motor_corner_fillet = 3 * MM      # the four Z-parallel outer corners
