@@ -27,7 +27,11 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.render import Camera
-from hardware.parts.standard.bracket import FlatBracket, hole_spacing, plate_thick
+from hardware.parts.standard.bracket import (
+    FlatBracket,
+    flat_hole_spacing as hole_spacing,
+    flat_plate_thick as plate_thick,
+)
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.t_nut import (
     HAMMER_TOTAL_HEIGHT,

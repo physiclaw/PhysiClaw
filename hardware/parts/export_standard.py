@@ -4,7 +4,7 @@ hardware/output/step/. Run: `uv run python -m hardware.parts.export_standard`.""
 from build123d import MM
 
 from hardware.parts.base import export_all
-from hardware.parts.standard.bracket import FlatBracket
+from hardware.parts.standard.bracket import FlatBracket, MotorBracket
 from hardware.parts.standard.bumper import Bumper
 from hardware.parts.standard.driver import HexDriver
 from hardware.parts.standard.extrusion import Extrusion2020
@@ -23,6 +23,7 @@ ALL_PARTS = [
     Extrusion2020(length=100 * MM, qty=2),
     Nema17Motor(qty=2),
     FlatBracket(qty=6),
+    MotorBracket(qty=2),
     Pulley2GT20T(kind="pulley", qty=2),
     Pulley2GT20T(kind="idler",  toothed=True,  qty=2),
     Pulley2GT20T(kind="idler",  toothed=False, qty=2),
