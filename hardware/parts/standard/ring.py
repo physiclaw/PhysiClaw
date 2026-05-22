@@ -12,6 +12,7 @@ from hardware.parts.base import BasePart
 SPECS = {
     "M3x10x1":  {"kind": "washer", "inner_d": 3.2, "outer_d": 10.0, "height":  1.0},
     "M5x8x0.5": {"kind": "washer", "inner_d": 5.3, "outer_d":  8.0, "height":  0.5},
+    "M5x10x9":  {"kind": "spacer", "inner_d": 5.3, "outer_d": 10.0, "height":  9.0},
     "M5x15x12": {"kind": "spacer", "inner_d": 5.3, "outer_d": 15.0, "height": 12.0},
     "M6x20x12": {"kind": "spacer", "inner_d": 6.4, "outer_d": 20.0, "height": 12.0},
 }
