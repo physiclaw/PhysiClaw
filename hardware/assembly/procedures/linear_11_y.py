@@ -42,7 +42,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     LONG_TOP_GAP,
     SHORT_LENGTH,
 )
-from hardware.assembly.procedures.linear_10_y import LI10Y
+from hardware.assembly.procedures.linear_10_y import LI10Y, RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import MO30Pulley
 from hardware.assembly.render import Camera
 from hardware.parts.custom.pulley_mount_front import (
@@ -50,6 +50,10 @@ from hardware.parts.custom.pulley_mount_front import (
     width as ld_block_width,
 )
 from hardware.parts.custom.pulley_mount_motor import length as lu_block_length
+from hardware.parts.standard.mgn9h import (
+    block_top_z as slider_top_z,
+    slider_position,
+)
 
 RAIL_EXPLODE = 40    # mm — exploded: outboard air gap, slot face → rail bottom
 
@@ -81,7 +85,15 @@ class LI11Y(BaseAssembly):
         else:
             rail_bottom_y = slot_face_y
 
+        # Slider position along the rail (MGN9H places it at
+        # slider_position * RAIL_LENGTH from the -X end of the rail).
+        slider_x_offset = -RAIL_LENGTH / 2 + slider_position * RAIL_LENGTH
+
         rails = []
+        # Hook for downstream consumers (linear_20_joint): world (x, y, z)
+        # of each slider's M3 mount-hole grid center (which coincides
+        # with the slider top-face center).
+        self.slider_mount_centers = []
         for world_x in (-half_w, +half_w):
             rail_compound = LI10Y(exploded=False).build()
             rail_compound.move(Location(Plane(
@@ -90,6 +102,11 @@ class LI11Y(BaseAssembly):
                 z_dir=(0, -1, 0),   # rail native +Z (top)    → world -Y
             )))
             rails.append(rail_compound)
+            self.slider_mount_centers.append((
+                world_x,
+                rail_bottom_y - slider_top_z,
+                rail_center_z + slider_x_offset,
+            ))
 
         return Compound(label="linear_11_y", children=[base_compound, *rails])
 
