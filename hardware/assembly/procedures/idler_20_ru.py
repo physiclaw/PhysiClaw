@@ -24,19 +24,28 @@ pocket opening on the same side (LEFT nut in the -X-face pocket,
 RIGHT nut in the +X-face pocket).
 
 Two variants:
-  * exploded — each stack laid out along +Z with EXPLODE_SEPARATION of
-               air between adjacent parts. Both screws share a single
-               shank-tip line (SCREW_GAP above the taller stack) so
-               their thread tips align across columns; with equal
-               shoulder lengths the heads also end up at the same Z.
-               Same convention as motor_10_bracket. The square nuts pull
-               outward by NUT_GAP along their ±X install axis (the
-               side face they slide through).
-  * assembled — stack tight on block top; nut bore vertical, centered
-                in its pocket and aligned with the screw thread.
+  * exploded — idler stacks laid out along +Z with EXPLODE_SEPARATION
+               of air between adjacent parts. Both shoulder screws
+               plus the center M5 BHCS share a single shank-tip line
+               (SCREW_GAP above the taller stack) so all three tips
+               align — heads sit at heights differing only by screw
+               length (the two shoulders end up at the same Z given
+               equal shoulder lengths). Same convention as
+               motor_10_bracket. The two side-pocket M4 nuts pull
+               outward by NUT_GAP along their ±X install axis; the
+               top-pocket M5 nut lifts by TOP_NUT_LIFT along its +Z
+               install axis (clear of the stack tops).
+  * assembled — stacks tight on block top; side-pocket M4 nuts
+                centered in their pockets, bores vertical and aligned
+                with the shoulder-screw threads; center BHCS head
+                bottomed in the cbore; top-pocket M5 nut bore aligned
+                with the front-face M5 hole.
 
-The center M5 counterbore and the -Y face M5 hole are the block's
-frame-mount interface and are not used by this sub-assembly.
+The center M5 counterbore takes a BHCS M5 × 10 that threads into a
+hammer t-nut in the frame extrusion slot below (frame not modelled
+here). The -Y face M5 hole receives a screw (not part of this
+sub-assembly) that threads into the captive M5 square nut sitting in
+the top -Y-edge pocket — the nut is added here so it ships pre-seated.
 
 Run from the repo root:
 
@@ -49,10 +58,13 @@ from hardware.assembly.base import BaseAssembly
 from hardware.assembly.render import Camera
 from hardware.parts.custom.pulley_mount_motor import (
     PulleyMountMotor,
+    front_hole_center_z,
     length as block_length,
     outer_hole_offset,
     side_pocket_center_z,
     thickness as block_thickness,
+    top_counterbore_depth,
+    top_pocket_center_y,
 )
 from hardware.parts.standard.nut import SPECS as NUT_SPECS, Nut
 from hardware.parts.standard.pulley import Pulley2GT20T, flange_belt_h
@@ -63,9 +75,12 @@ WASHER_SPEC        = "M5x8x0.5"
 SPACER_SPEC        = "M5x10x9"
 LEFT_SHOULDER_LEN  = 20    # mm — covers spacer + washer + idler (18 mm)
 RIGHT_SHOULDER_LEN = 20    # mm — covers washer + idler + washer + idler (18 mm)
+CENTER_BHCS_LEN    = 10    # mm — BHCS M5 underhead length (center cbore, frame mount)
 EXPLODE_SEPARATION =  5    # mm — exploded: air between adjacent parts in a stack
 SCREW_GAP          = 12    # mm — exploded: taller-stack top → shared shank-tip line
-NUT_GAP            = 15    # mm — exploded: block side face → nut center, along install axis
+NUT_GAP            = 15    # mm — exploded: block side face → side-pocket nut center, along ±X
+TOP_NUT_LIFT       = 44    # mm — exploded: block top face → top-pocket nut center, along +Z
+                           #      (clears the idler stacks so the nut reads as a separate step)
 
 
 class ID20Ru(BaseAssembly):
@@ -111,8 +126,10 @@ class ID20Ru(BaseAssembly):
             column_tops.append(cursor_z - sep)
 
         # Shared shank-tip line in exploded mode (motor_10_bracket convention):
-        # both screws' thread tips align at thread_tip_z, so heads end up at
-        # heights differing only by (LEFT - RIGHT) shoulder length.
+        # the two shoulder screws and the center BHCS all align their tips at
+        # thread_tip_z. Heads then sit at heights differing only by screw
+        # length — the two shoulders share a Z (equal shoulder lengths) and
+        # the BHCS sits below them.
         if self.exploded:
             thread_tip_z = max(column_tops) + SCREW_GAP
 
@@ -124,6 +141,19 @@ class ID20Ru(BaseAssembly):
                 underhead_z = block_top_z + shoulder_len
             screw.move(Location((x, 0, underhead_z)))
             placed.append(screw)
+
+        # Center M5 BHCS — frame-mount interface. Head bottoms on the
+        # cbore floor (drilled top_counterbore_depth into the top face);
+        # shank exits the block bottom into a frame extrusion slot t-nut
+        # (frame not modelled here). In exploded view the shank tip
+        # joins the shared shoulder-screw line.
+        center_screw = Screw("BHCS", "M5", CENTER_BHCS_LEN).build()
+        if self.exploded:
+            center_underhead_z = thread_tip_z + CENTER_BHCS_LEN
+        else:
+            center_underhead_z = block_top_z - top_counterbore_depth
+        center_screw.move(Location((0, 0, center_underhead_z)))
+        placed.append(center_screw)
 
         # Captive square nut per side pocket, flipped chamfer-down so the
         # chamfer eases the lead-in for the screw thread approaching from
@@ -140,6 +170,28 @@ class ID20Ru(BaseAssembly):
             # by +thickness so the chamfered face lands at the pocket floor.
             nut.move(Location((nut_x, 0, nut_bottom_z + nut_thickness)))
             placed.append(nut)
+
+        # Captive M5 square nut in the top -Y-edge pocket — receives a
+        # screw threaded through the front-face M5 hole (screw not part
+        # of this sub-assembly). -90° X rotation maps local +Z (bore
+        # axis) → world +Y, aligning the bore with the front hole; the
+        # FLAT (un-chamfered) bottom face ends up on the screw-entry
+        # side (world -Y), with the chamfered face at the back of the
+        # pocket. Install axis is +Z (drops in from the top), so
+        # exploded pulls the nut along +Z by TOP_NUT_LIFT above the
+        # block top face — clear of the idler-stack tops.
+        top_nut = Nut("square", "M5").build().rotate(Axis.X, -90)
+        m5_nut_thickness = NUT_SPECS["square"]["M5"]["thickness"]
+        # Rotation maps local z ∈ [0, thickness] → world y ∈ [0, thickness],
+        # so the bore axis sits at world y = ty + thickness/2. Shift so
+        # the bore lands on top_pocket_center_y.
+        top_nut_y = top_pocket_center_y - m5_nut_thickness / 2
+        if self.exploded:
+            top_nut_z = block_top_z + TOP_NUT_LIFT
+        else:
+            top_nut_z = front_hole_center_z
+        top_nut.move(Location((0, top_nut_y, top_nut_z)))
+        placed.append(top_nut)
 
         return Compound(label="idler_20_ru", children=[block, *placed])
 
