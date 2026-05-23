@@ -76,8 +76,8 @@ SHORT_TOP_POSITIONS = [
 # each other across LONG_LENGTH/2 and yield identical world Z's on
 # both sides (top tnut at world z = LONG_LENGTH - LONG_TOP_GAP,
 # bottom tnut at world z = LONG_BOT_GAP).
-LONG_TOP_GAP         = 45
-LONG_BOT_GAP         = 35
+LONG_TOP_GAP         = 43
+LONG_BOT_GAP         = 33
 LONG_POSITIONS_LEFT  = [LONG_TOP_GAP, LONG_LENGTH - LONG_BOT_GAP]
 LONG_POSITIONS_RIGHT = [LONG_BOT_GAP, LONG_LENGTH - LONG_TOP_GAP]
 
