@@ -49,10 +49,16 @@ ROW_SPACING      = 60    # mm — exploded: between extrusion centerlines along 
 PREP_START_GAP   = 5     # mm — clearance between extrusion +Z end and first prep nut
 PREP_PITCH       = 15    # mm — Z pitch between adjacent prep nuts in the queue
 
-# 4 nuts on the top short: outer pair 30 mm in from each end, inner
-# pair another 25 mm inboard. Leaves a 60 mm clear span between the
-# inner pair for future mid-frame mounting.
-SHORT_TOP_END_GAP    = 30
+# 4 nuts on the top short, arranged as two motor-bracket pairs:
+#   positions [0, 1] (left pair)  — motor A bracket M5 holes
+#   positions [2, 3] (right pair) — motor B bracket M5 holes
+# Each pair sits SHORT_TOP_INNER_GAP apart, matching the motor
+# bracket's M5 hole pitch (motor_m5_pitch in parts/standard/bracket.py).
+# The outer nut of each pair is SHORT_TOP_END_GAP in from its end of
+# the extrusion; the gap between the inner nuts of the two pairs
+# leaves room for the motors' bodies hanging down inside the frame
+# rect (see motor_11_frame / motor_21_frame).
+SHORT_TOP_END_GAP    = 35
 SHORT_TOP_INNER_GAP  = 25
 SHORT_TOP_POSITIONS = [
     SHORT_TOP_END_GAP,

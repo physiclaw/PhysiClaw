@@ -22,7 +22,7 @@ X = -10 mm. To centre the pass-through over the motor shaft (at
 world 0, 0), the bracket is translated +10 mm along world X. The
 four M3 holes then land at world (±half_pitch, ±half_pitch),
 directly over the motor's M3 mounts; the two M5 holes land at
-world (+30, ±12.5), well clear of the motor body — that's where
+world (+32, ±12.5), well clear of the motor body — that's where
 the rings hang and the M5 screws drop through.
 
   * 1 x Nema17Motor
@@ -36,7 +36,7 @@ Run from the repo root:
     uv run --group cad python -m hardware.assembly.procedures.motor_10_bracket
 """
 
-from build123d import Compound, Location
+from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.render import Camera
@@ -64,10 +64,21 @@ RING_GAP       = 12          # mm — exploded: bracket bottom → ring top (dro
 
 
 class MO10Bracket(BaseAssembly):
+    # Subclasses share this build logic and only override the two
+    # class attributes below — ``compound_label`` retargets the
+    # STEP / SVG filename, and ``motor_z_rotation`` flips the motor
+    # about Z to swap which side the cable connector ends up on once
+    # the bracket is composed onto a frame. ``_module_stem()`` already
+    # derives the output filename from the subclass's own module, so
+    # no other override is needed.
+    compound_label: str = "motor_10_bracket"
+    motor_z_rotation: float = 180   # 180° puts the plug on native +Y → world
+                                    # -X (LEFT side from top view) when
+                                    # placed via motor_11_frame's mapping.
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
-        motor = Nema17Motor().build()
+        motor = Nema17Motor().build().rotate(Axis.Z, self.motor_z_rotation)
         bracket = MotorBracketPart().build()
         screws_m3 = [Screw("BHCS", "M3", BHCS_M3_LENGTH).build() for _ in range(4)]
         screws_m5 = [Screw("BHCS", "M5", BHCS_M5_LENGTH).build() for _ in range(2)]
@@ -139,12 +150,22 @@ class MO10Bracket(BaseAssembly):
         for ring, (rx, ry) in zip(rings, m5_positions):
             ring.move(Location((rx, ry, ring_top_z - ring_height)))
 
-        # Expose bracket-bottom height (world Z) so a downstream
-        # assembly can flush-mount this sub-assembly, matching the
-        # FR30BracketTnut.bracket_bottom_z hook.
+        # Hooks for a downstream frame composition to flush-mount this
+        # sub-assembly without re-deriving internal bracket geometry:
+        #   * bracket_bottom_z / bracket_top_z — native Z of the
+        #     bracket's bottom / top face (bottom matches
+        #     FR30BracketTnut.bracket_bottom_z). bracket_top_z is the
+        #     seat where a pulley on the shaft would sit.
+        #   * m5_native_x     — native X of the M5 hole pair.
+        #   * ring_height     — height of the ring spacer that the
+        #                       frame composition uses to gauge the
+        #                       bracket-to-slot-face offset.
         self.bracket_bottom_z = bracket_bottom_z
+        self.bracket_top_z    = bracket_top_z
+        self.m5_native_x      = m5_world_x
+        self.ring_height      = ring_height
 
-        return Compound(label="motor_10_bracket", children=[
+        return Compound(label=self.compound_label, children=[
             motor, bracket, *screws_m3, *screws_m5, *rings,
         ])
 
