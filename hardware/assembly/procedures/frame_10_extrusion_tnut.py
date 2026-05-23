@@ -20,6 +20,8 @@ The two variants use intentionally different layouts:
                 destinations; single layer.
 
   * 2 x 335 mm long extrusion (cb), each with 2 standard M5 T-nuts
+    (top nut LONG_TOP_GAP from the frame top edge, bottom nut
+    LONG_BOT_GAP from the frame bottom edge)
   * 1 x 170 mm short extrusion (top) with 4 standard M5 T-nuts
   * 1 x 170 mm short extrusion (bottom), plain
 
@@ -59,10 +61,19 @@ SHORT_TOP_POSITIONS = [
     SHORT_LENGTH - SHORT_TOP_END_GAP,
 ]
 
-
-def _even_positions(length: float, n: int) -> list[float]:
-    """N positions spread evenly along [0, length] with equal end gaps."""
-    return [length * (2 * i + 1) / (2 * n) for i in range(n)]
+# 2 nuts per long extrusion: top nut LONG_TOP_GAP from the frame's
+# top edge, bottom nut LONG_BOT_GAP from the frame's bottom edge.
+# Layout is chiral because long_left is placed with local Z flipped
+# (z_dir=(0,0,-1)) so its local-Z=0 lands at the frame TOP, while
+# long_right uses z_dir=(0,0,+1) so its local-Z=0 lands at the frame
+# BOTTOM. The two _LEFT / _RIGHT position lists are reflections of
+# each other across LONG_LENGTH/2 and yield identical world Z's on
+# both sides (top tnut at world z = LONG_LENGTH - LONG_TOP_GAP,
+# bottom tnut at world z = LONG_BOT_GAP).
+LONG_TOP_GAP         = 45
+LONG_BOT_GAP         = 35
+LONG_POSITIONS_LEFT  = [LONG_TOP_GAP, LONG_LENGTH - LONG_BOT_GAP]
+LONG_POSITIONS_RIGHT = [LONG_BOT_GAP, LONG_LENGTH - LONG_TOP_GAP]
 
 
 def _seat_nuts(ext, positions: list[float]) -> list:
@@ -77,26 +88,21 @@ def _seat_nuts(ext, positions: list[float]) -> list:
 
 def ext_with_nuts(
     length: float,
-    n_nuts: int,
+    positions: list[float],
     cb: bool = False,
     with_prep: bool = True,
-    positions: list[float] | None = None,
 ) -> tuple:
     """Build one 2040 + T-nut sets. Returns (ext, destinations, prep):
     * ext            — the extrusion itself
-    * destinations   — N nuts seated inside the +X slot
-    * prep           — N loose nuts queued past the +Z end, solid;
-                       empty list when ``with_prep=False`` so callers
-                       that only want the seated state don't pay for
-                       N unused TNut builds.
+    * destinations   — one nut per entry in ``positions``, seated inside
+                       the +X slot at that local-Z position
+    * prep           — same count, loose nuts queued past the +Z end,
+                       solid; empty list when ``with_prep=False`` so
+                       callers that only want the seated state don't
+                       pay for unused TNut builds.
 
-    ``positions`` (mm along Z) overrides the default even-spread layout
-    when the caller needs custom placement (e.g. the top short's 4
-    nuts use a manually-tuned spread). When supplied, ``n_nuts`` must
-    match ``len(positions)``."""
+    Pass ``positions=[]`` for a bare extrusion with no nuts."""
     ext = Extrusion2040(length=length, cb=cb).build()
-    if positions is None:
-        positions = _even_positions(length, n_nuts)
     destinations = _seat_nuts(ext, positions)
     if not with_prep:
         return ext, destinations, []
@@ -139,17 +145,20 @@ class FR10ExtrusionTnut(BaseAssembly):
 
     def _build_exploded_rows(self) -> Compound:
         specs = [
-            # (length, n_nuts, cb, positions or None for even spread)
-            (LONG_LENGTH,  2, True,  None),
-            (LONG_LENGTH,  2, True,  None),
-            (SHORT_LENGTH, 4, False, SHORT_TOP_POSITIONS),
-            (SHORT_LENGTH, 0, False, None),
+            # (length, cb, positions). Both long rows share
+            # LONG_POSITIONS_RIGHT for visual symmetry; the actual
+            # chirality is baked in by the assembled-frame plane (one
+            # side flips local Z). short_bot has no nuts → [].
+            (LONG_LENGTH,  True,  LONG_POSITIONS_RIGHT),
+            (LONG_LENGTH,  True,  LONG_POSITIONS_RIGHT),
+            (SHORT_LENGTH, False, SHORT_TOP_POSITIONS),
+            (SHORT_LENGTH, False, []),
         ]
         solid_shapes = []    # extrusion + loose prep nuts
         ghost_shapes = []    # destination silhouettes inside the slot
-        for i, (length, n_nuts, cb, positions) in enumerate(specs):
+        for i, (length, cb, positions) in enumerate(specs):
             ext, destinations, prep = ext_with_nuts(
-                length, n_nuts, cb=cb, positions=positions,
+                length, positions, cb=cb,
             )
             # Bake row offset into each leaf — the solid/ghost wrappers
             # below sit at identity, so projection treats leaf locations
@@ -179,24 +188,24 @@ class FR10ExtrusionTnut(BaseAssembly):
         bot_z  = cb_end_offset
 
         members = [
-            # name, (length, n_nuts, cb, positions), placement
-            ("long_left",  (LONG_LENGTH,  2, True,  None),
+            # name, (length, cb, positions), placement
+            ("long_left",  (LONG_LENGTH,  True,  LONG_POSITIONS_LEFT),
              Plane(origin=(-half_w, 0, LONG_LENGTH),
                    x_dir=(0, -1, 0), z_dir=(0, 0, -1))),   # CB → world -X
-            ("long_right", (LONG_LENGTH,  2, True,  None),
+            ("long_right", (LONG_LENGTH,  True,  LONG_POSITIONS_RIGHT),
              Plane(origin=(half_w, 0, 0),
                    x_dir=(0, -1, 0), z_dir=(0, 0, 1))),    # CB → world +X
-            ("short_top",  (SHORT_LENGTH, 4, False, SHORT_TOP_POSITIONS),
+            ("short_top",  (SHORT_LENGTH, False, SHORT_TOP_POSITIONS),
              Plane(origin=(-SHORT_LENGTH / 2, 0, top_z),
                    x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
-            ("short_bot",  (SHORT_LENGTH, 0, False, None),  # n_nuts=0: no nuts
+            ("short_bot",  (SHORT_LENGTH, False, []),       # no nuts
              Plane(origin=(-SHORT_LENGTH / 2, 0, bot_z),
                    x_dir=(0, -1, 0), z_dir=(1, 0, 0))),
         ]
         shapes = []
-        for name, (length, n_nuts, cb, positions), plane in members:
+        for name, (length, cb, positions), plane in members:
             ext, destinations, _ = ext_with_nuts(
-                length, n_nuts, cb=cb, with_prep=False, positions=positions,
+                length, positions, cb=cb, with_prep=False,
             )
             loc = Location(plane)
             for s in (ext, *destinations):
