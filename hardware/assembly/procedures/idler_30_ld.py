@@ -15,7 +15,7 @@ Two variants:
   * exploded — stack laid out along +Z with EXPLODE_SEPARATION of air
                between adjacent parts; thread tip floats SCREW_GAP
                above the stack top (same shank-tip convention used by
-               idler_mount_lu / motor_bracket). The square nut pulls
+               idler_10_lu / motor_10_bracket). The square nut pulls
                outward NUT_GAP along +Y, the back-face install axis.
   * assembled — stack tight on block top; nut bore vertical, centered
                 in the back pocket and aligned with the screw thread.
@@ -25,7 +25,7 @@ frame-mount interface — not used by this sub-assembly.
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.idler_mount_ld
+    uv run --group cad python -m hardware.assembly.procedures.idler_30_ld
 """
 
 from build123d import Axis, Compound, Location
@@ -51,7 +51,7 @@ SCREW_GAP          = 12    # mm — exploded: stack top → screw thread tip
 NUT_GAP            = 15    # mm — exploded: back face → nut center along +Y install axis
 
 
-class IdlerMountLd(BaseAssembly):
+class ID30Ld(BaseAssembly):
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
@@ -80,7 +80,7 @@ class IdlerMountLd(BaseAssembly):
 
         # Shoulder screw: shoulder bottom seats on the block top face in
         # assembled mode. Exploded: thread tip floats SCREW_GAP above the
-        # stack top (same convention as motor_bracket / idler_mount_lu).
+        # stack top (same convention as motor_10_bracket / idler_10_lu).
         if self.exploded:
             underhead_z = stack_top_z + SCREW_GAP + thread_len + SHOULDER_LEN
         else:
@@ -101,11 +101,11 @@ class IdlerMountLd(BaseAssembly):
         nut.move(Location((0, nut_y, nut_bottom_z + nut_thickness)))
         placed.append(nut)
 
-        return Compound(label="idler_mount_ld", children=[block, *placed])
+        return Compound(label="idler_30_ld", children=[block, *placed])
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = IdlerMountLd(exploded=exploded)
+        asm = ID30Ld(exploded=exploded)
         asm.export()
         asm.render()

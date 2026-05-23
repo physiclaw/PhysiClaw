@@ -33,7 +33,7 @@ the rings hang and the M5 screws drop through.
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.motor_bracket
+    uv run --group cad python -m hardware.assembly.procedures.motor_10_bracket
 """
 
 from build123d import Compound, Location
@@ -63,7 +63,7 @@ RING_GAP       = 12          # mm — exploded: bracket bottom → ring top (dro
                              #      spacer reads as a separate part)
 
 
-class MotorBracket(BaseAssembly):
+class MO10Bracket(BaseAssembly):
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
@@ -144,13 +144,13 @@ class MotorBracket(BaseAssembly):
         # FR30BracketTnut.bracket_bottom_z hook.
         self.bracket_bottom_z = bracket_bottom_z
 
-        return Compound(label="motor_bracket", children=[
+        return Compound(label="motor_10_bracket", children=[
             motor, bracket, *screws_m3, *screws_m5, *rings,
         ])
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = MotorBracket(exploded=exploded)
+        asm = MO10Bracket(exploded=exploded)
         asm.export()
         asm.render()

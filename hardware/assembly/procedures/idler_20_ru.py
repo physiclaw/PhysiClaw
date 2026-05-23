@@ -29,7 +29,7 @@ Two variants:
                shank-tip line (SCREW_GAP above the taller stack) so
                their thread tips align across columns; with equal
                shoulder lengths the heads also end up at the same Z.
-               Same convention as motor_bracket. The square nuts pull
+               Same convention as motor_10_bracket. The square nuts pull
                outward by NUT_GAP along their ±X install axis (the
                side face they slide through).
   * assembled — stack tight on block top; nut bore vertical, centered
@@ -40,7 +40,7 @@ frame-mount interface and are not used by this sub-assembly.
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.idler_mount_ru
+    uv run --group cad python -m hardware.assembly.procedures.idler_20_ru
 """
 
 from build123d import Axis, Compound, Location
@@ -68,7 +68,7 @@ SCREW_GAP          = 12    # mm — exploded: taller-stack top → shared shank-
 NUT_GAP            = 15    # mm — exploded: block side face → nut center, along install axis
 
 
-class IdlerMountRu(BaseAssembly):
+class ID20Ru(BaseAssembly):
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
@@ -110,7 +110,7 @@ class IdlerMountRu(BaseAssembly):
                 cursor_z += h + sep
             column_tops.append(cursor_z - sep)
 
-        # Shared shank-tip line in exploded mode (motor_bracket convention):
+        # Shared shank-tip line in exploded mode (motor_10_bracket convention):
         # both screws' thread tips align at thread_tip_z, so heads end up at
         # heights differing only by (LEFT - RIGHT) shoulder length.
         if self.exploded:
@@ -141,11 +141,11 @@ class IdlerMountRu(BaseAssembly):
             nut.move(Location((nut_x, 0, nut_bottom_z + nut_thickness)))
             placed.append(nut)
 
-        return Compound(label="idler_mount_ru", children=[block, *placed])
+        return Compound(label="idler_20_ru", children=[block, *placed])
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = IdlerMountRu(exploded=exploded)
+        asm = ID20Ru(exploded=exploded)
         asm.export()
         asm.render()
