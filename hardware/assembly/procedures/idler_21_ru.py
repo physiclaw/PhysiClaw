@@ -1,0 +1,28 @@
+"""Idler-mount bracket (right-up) — geometrically identical to
+idler_11_lu (1 flat bracket + 2 M5×10 BHCS + 1 hammer M5 T-nut on the
+LEFT hole). The two files exist as separate sub-assemblies so each can
+be placed independently at its own corner of the frame; the build
+logic lives in idler_11_lu and is reused here via inheritance, with
+just the Compound label retargeted so the STEP / SVG outputs land at
+``idler_21_ru_*`` instead of ``idler_11_lu_*``.
+
+See idler_11_lu for the full part list, variant descriptions, and
+placement math.
+
+Run from the repo root:
+
+    uv run --group cad python -m hardware.assembly.procedures.idler_21_ru
+"""
+
+from hardware.assembly.procedures.idler_11_lu import ID11Lu
+
+
+class ID21Ru(ID11Lu):
+    compound_label = "idler_21_ru"
+
+
+if __name__ == "__main__":
+    for exploded in (True, False):
+        asm = ID21Ru(exploded=exploded)
+        asm.export()
+        asm.render()
