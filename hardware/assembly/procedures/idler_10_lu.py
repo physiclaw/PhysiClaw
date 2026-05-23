@@ -72,7 +72,7 @@ from hardware.parts.standard.screw import SHOULDER_DIMS, Screw
 RING_SPEC          = "M5x8x0.5"
 LEFT_SHOULDER_LEN  = 20    # mm — covers ring + idler + ring + idler (18 mm)
 RIGHT_SHOULDER_LEN = 10    # mm — covers ring + idler (9 mm)
-CENTER_BHCS_LEN    = 10    # mm — BHCS M5 underhead length (center cbore, frame mount)
+FRAME_BHCS_LEN    = 10    # mm — BHCS M5 underhead length (center cbore, frame mount)
 EXPLODE_SEPARATION =  5    # mm — exploded: air between adjacent parts in a stack
 SCREW_GAP          = 12    # mm — exploded: taller-stack top → shared shank-tip line
 NUT_GAP            = 15    # mm — exploded: block side face → side-pocket nut center, along ±X
@@ -139,13 +139,13 @@ class ID10Lu(BaseAssembly):
         # shank exits the block bottom into a frame extrusion slot t-nut
         # (frame not modelled here). In exploded view the shank tip
         # joins the shared shoulder-screw line.
-        center_screw = Screw("BHCS", "M5", CENTER_BHCS_LEN).build()
+        frame_screw = Screw("BHCS", "M5", FRAME_BHCS_LEN).build()
         if self.exploded:
-            center_underhead_z = thread_tip_z + CENTER_BHCS_LEN
+            frame_underhead_z = thread_tip_z + FRAME_BHCS_LEN
         else:
-            center_underhead_z = block_top_z - top_counterbore_depth
-        center_screw.move(Location((0, 0, center_underhead_z)))
-        placed.append(center_screw)
+            frame_underhead_z = block_top_z - top_counterbore_depth
+        frame_screw.move(Location((0, 0, frame_underhead_z)))
+        placed.append(frame_screw)
 
         # Captive square nut per side pocket, flipped chamfer-down so the
         # chamfer eases the lead-in for the screw thread approaching from

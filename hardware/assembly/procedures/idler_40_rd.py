@@ -12,15 +12,23 @@ Stack, in the user's top → bottom order:
 
 Two variants:
   * exploded — stack laid out along +Z with EXPLODE_SEPARATION of air
-               between adjacent parts; thread tip floats SCREW_GAP
-               above the stack top (same shank-tip convention used by
-               idler_10_lu / motor_10_bracket). The square nut pulls
-               outward NUT_GAP along +Y, the back-face install axis.
-  * assembled — stack tight on block top; nut bore vertical, centered
-                in the back pocket and aligned with the screw thread.
+               between adjacent parts. The M4 shoulder screw's thread
+               tip floats SCREW_GAP above the stack top (same shank-tip
+               convention as idler_10_lu / motor_10_bracket). The
+               frame-mount M5 BHCS, sitting on the opposite -Y half of
+               the top face at world y = slot_center_y, floats BHCS_GAP
+               above the block top face — it has no stack to clear, so
+               its shank-tip line sits lower than the shoulder's. The
+               M4 square nut pulls outward NUT_GAP along +Y, the
+               back-face install axis.
+  * assembled — stack tight on block top; M4 nut bore vertical,
+                centered in the back pocket and aligned with the
+                shoulder thread; M5 BHCS head bottomed on the
+                stadium-slot floor.
 
 The block's stadium slot (with its M5 through-hole) is the
-frame-mount interface — not used by this sub-assembly.
+frame-mount interface — its BHCS M5 × 10 threads into a hammer t-nut
+in the frame extrusion slot below (frame not modelled here).
 
 Run from the repo root:
 
@@ -34,6 +42,8 @@ from hardware.assembly.render import Camera
 from hardware.parts.custom.pulley_mount_front import (
     PulleyMountFront,
     back_pocket_center_z,
+    slot_center_y,
+    slot_depth,
     thickness as block_thickness,
     top_hole_y,
     width as block_width,
@@ -46,8 +56,11 @@ from hardware.parts.standard.screw import SHOULDER_DIMS, Screw
 WASHER_SPEC        = "M5x8x0.5"
 SPACER_SPEC        = "M5x10x9"
 SHOULDER_LEN       = 20    # mm — covers spacer + washer + idler (18 mm), 2 mm play
+FRAME_BHCS_LEN     = 10    # mm — BHCS M5 underhead length (stadium-slot frame mount)
 EXPLODE_SEPARATION =  5    # mm — exploded: air between adjacent parts in the stack
-SCREW_GAP          = 12    # mm — exploded: stack top → screw thread tip
+SCREW_GAP          = 12    # mm — exploded: stack top → shoulder thread tip
+BHCS_GAP           = 10    # mm — exploded: block top → BHCS shank tip (sits 2 mm
+                           #      lower than SCREW_GAP since the BHCS has no stack to clear)
 NUT_GAP            = 15    # mm — exploded: back face → nut center along +Y install axis
 
 
@@ -90,6 +103,21 @@ class ID40Rd(BaseAssembly):
         screw = Screw("SHOULDER", "M4", SHOULDER_LEN).build()
         screw.move(Location((0, top_hole_y, underhead_z)))
         placed.append(screw)
+
+        # Frame-mount M5 BHCS in the stadium slot's round end at world
+        # (0, slot_center_y). Head bottoms on the slot floor (drilled
+        # slot_depth into the top face); shank exits the block bottom
+        # into a frame extrusion slot t-nut (frame not modelled here).
+        # In exploded view the shank tip floats BHCS_GAP above the
+        # block top face — the BHCS has no stack to clear (its install
+        # axis sits on the -Y half of the top, opposite the shoulder).
+        frame_screw = Screw("BHCS", "M5", FRAME_BHCS_LEN).build()
+        if self.exploded:
+            frame_underhead_z = block_top_z + BHCS_GAP + FRAME_BHCS_LEN
+        else:
+            frame_underhead_z = block_top_z - slot_depth
+        frame_screw.move(Location((0, slot_center_y, frame_underhead_z)))
+        placed.append(frame_screw)
 
         # Captive square nut in the +Y back pocket, flipped chamfer-down so
         # the chamfer eases the lead-in for the screw thread approaching
