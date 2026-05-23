@@ -1,28 +1,28 @@
 """Frame assembly step — 8 SHCS M6 close the four-member preload into
 a rectangle. The preload itself (4 extrusions + seated T-nuts in the
-populated members) comes from ExtrusionTnut; this file just adds the
+populated members) comes from FR10ExtrusionTnut; this file just adds the
 screws on top.
 
 Two variants:
 
-  * exploded — preload built with ExtrusionTnut(separation=FRAME_GAP),
+  * exploded — preload built with FR10ExtrusionTnut(separation=FRAME_GAP),
                so the longs sit FRAME_GAP outboard of the short ends
                (CB axes still collinear with the short end-cell bores).
                Screws floated further outboard along the entry axis at
                SCREW_EXPLODE.
-  * assembled — preload built with ExtrusionTnut(separation=0), longs
+  * assembled — preload built with FR10ExtrusionTnut(separation=0), longs
                 flush against the short ends. Screws fully bottomed in
                 the counterbores (position=cb_head_depth).
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.frame_kit
+    uv run --group cad python -m hardware.assembly.procedures.frame_20_SHCS
 """
 
 from build123d import Compound
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.procedures.extrusion_tnut import ExtrusionTnut
+from hardware.assembly.procedures.frame_10_extrusion_tnut import FR10ExtrusionTnut
 from hardware.assembly.render import Camera
 from hardware.parts.standard.extrusion import CB_LABELS, cb_head_depth
 from hardware.parts.standard.screw import Screw
@@ -32,7 +32,7 @@ SCREW_EXPLODE = -35     # mm — exploded: negative LinearJoint position = outbo
 SHCS_LENGTH  = 16      # mm — SHCS M6 underhead length
 
 
-class FrameKit(BaseAssembly):
+class FR20SHCS(BaseAssembly):
     camera = Camera(-30, -20)  # front view
 
     def _build(self) -> Compound:
@@ -44,7 +44,7 @@ class FrameKit(BaseAssembly):
         else:
             separation, screw_position = 0, cb_head_depth
 
-        preload = ExtrusionTnut(separation=separation)
+        preload = FR10ExtrusionTnut(separation=separation)
         preload_compound = preload.build()
         long_left_ext, _  = preload.frame_parts["long_left"]
         long_right_ext, _ = preload.frame_parts["long_right"]
@@ -61,7 +61,7 @@ class FrameKit(BaseAssembly):
                 )
                 screws.append(screw)
 
-        return Compound(label="frame_kit", children=[
+        return Compound(label="frame_20_SHCS", children=[
             preload_compound,
             *screws,
         ])
@@ -69,6 +69,6 @@ class FrameKit(BaseAssembly):
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = FrameKit(exploded=exploded)
+        asm = FR20SHCS(exploded=exploded)
         asm.export()
         asm.render()

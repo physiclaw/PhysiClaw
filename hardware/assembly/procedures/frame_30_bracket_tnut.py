@@ -20,7 +20,7 @@ Two variants:
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.bracket_tnut
+    uv run --group cad python -m hardware.assembly.procedures.frame_30_bracket_tnut
 """
 
 from build123d import Compound, Location, Plane
@@ -47,7 +47,7 @@ TNUT_LIFT       = 5      # mm — assembled: nut slid up the shank toward the br
                          #      reads as "screw threaded most of the way in")
 
 
-class BracketTnut(BaseAssembly):
+class FR30BracketTnut(BaseAssembly):
     camera = Camera(15, 45, 10)
 
     def _build(self) -> Compound:
@@ -102,16 +102,16 @@ class BracketTnut(BaseAssembly):
 
         # Expose the bracket-bottom height (local Z) so a host assembly
         # can flush-mount this sub-assembly against a target surface —
-        # e.g. bracket_frame puts bracket_bottom_z on the slot face.
+        # e.g. frame_31_bracket puts bracket_bottom_z on the slot face.
         self.bracket_bottom_z = bracket_z - plate_thick / 2
 
-        return Compound(label="bracket_tnut", children=[
+        return Compound(label="frame_30_bracket_tnut", children=[
             bracket, *nuts, *screws,
         ])
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = BracketTnut(exploded=exploded)
+        asm = FR30BracketTnut(exploded=exploded)
         asm.export()
         asm.render()

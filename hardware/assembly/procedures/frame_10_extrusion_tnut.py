@@ -25,7 +25,7 @@ The two variants use intentionally different layouts:
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.extrusion_tnut
+    uv run --group cad python -m hardware.assembly.procedures.frame_10_extrusion_tnut
 """
 
 from build123d import Compound, Location, Plane
@@ -109,7 +109,7 @@ def ext_with_nuts(
     return ext, destinations, prep
 
 
-class ExtrusionTnut(BaseAssembly):
+class FR10ExtrusionTnut(BaseAssembly):
 
     def __init__(self, *, separation: float = 30, exploded: bool = False):
         """``separation`` (mm) — horizontal gap between each long and
@@ -122,7 +122,7 @@ class ExtrusionTnut(BaseAssembly):
         # Populated by _build_assembled_frame after .build(): keyed by
         # "long_left" / "long_right" / "short_top" / "short_bot", each
         # value is (ext, destinations). Lets a downstream assembly
-        # (e.g. frame_kit) reach the longs' CB joints for placing
+        # (e.g. frame_20_SHCS) reach the longs' CB joints for placing
         # screws onto the moved members. Empty in the exploded row
         # variant — joints there are decoupled from the next step.
         self.frame_parts: dict = {}
@@ -160,7 +160,7 @@ class ExtrusionTnut(BaseAssembly):
             solid_shapes.append(ext)
             solid_shapes.extend(prep)
             ghost_shapes.extend(destinations)
-        return Compound(label="extrusion_tnut", children=[
+        return Compound(label="frame_10_extrusion_tnut", children=[
             Compound(label=SOLID_LABEL, children=solid_shapes),
             Compound(label=GHOST_LABEL, children=ghost_shapes),
         ])
@@ -205,11 +205,11 @@ class ExtrusionTnut(BaseAssembly):
             shapes.append(ext)
             shapes.extend(destinations)
 
-        return Compound(label="extrusion_tnut", children=shapes)
+        return Compound(label="frame_10_extrusion_tnut", children=shapes)
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = ExtrusionTnut(exploded=exploded)
+        asm = FR10ExtrusionTnut(exploded=exploded)
         asm.export()
         asm.render()

@@ -40,7 +40,7 @@ class BaseAssembly(BasePart):
     motion (gaps + ghosts), ``exploded=False`` shows the finished state.
     The flag is exposed as a ctor kwarg so callers can ``export()`` both
     from one ``__main__``, and so a downstream assembly can embed an
-    upstream one in its assembled form (e.g. ``FrameKit(exploded=False)``).
+    upstream one in its assembled form (e.g. ``FR20SHCS(exploded=False)``).
     Output filenames are suffixed ``_exploded`` / ``_assembled`` to keep
     both on disk side by side.
     """

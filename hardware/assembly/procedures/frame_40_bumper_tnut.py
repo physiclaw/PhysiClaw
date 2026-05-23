@@ -1,6 +1,6 @@
 """Bumper fastening step — one cylindrical bumper attached by 1 M5×16
 BHCS driven UP from below into 1 hammer T-nut catching the shank tip
-above. Mirror of bracket_tnut, but with the screw axis inverted: the
+above. Mirror of frame_30_bracket_tnut, but with the screw axis inverted: the
 bumper's bottom-face cbore receives the head from below.
 
 Two variants:
@@ -23,7 +23,7 @@ Two variants:
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.bumper_tnut
+    uv run --group cad python -m hardware.assembly.procedures.frame_40_bumper_tnut
 """
 
 from build123d import Compound, Location, Plane
@@ -47,7 +47,7 @@ TNUT_GAP    = 20     # mm — exploded: vertical gap, bumper top → t-nut boss 
 SCREW_GAP   = 8      # mm — exploded: vertical gap, bumper bottom → shank tip
 
 
-class BumperTnut(BaseAssembly):
+class FR40BumperTnut(BaseAssembly):
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
@@ -97,13 +97,13 @@ class BumperTnut(BaseAssembly):
             z_dir=(0, 1, 0),
         )))
 
-        return Compound(label="bumper_tnut", children=[
+        return Compound(label="frame_40_bumper_tnut", children=[
             bumper, nut, screw,
         ])
 
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = BumperTnut(exploded=exploded)
+        asm = FR40BumperTnut(exploded=exploded)
         asm.export()
         asm.render()

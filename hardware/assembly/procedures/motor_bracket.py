@@ -141,7 +141,7 @@ class MotorBracket(BaseAssembly):
 
         # Expose bracket-bottom height (world Z) so a downstream
         # assembly can flush-mount this sub-assembly, matching the
-        # BracketTnut.bracket_bottom_z hook.
+        # FR30BracketTnut.bracket_bottom_z hook.
         self.bracket_bottom_z = bracket_bottom_z
 
         return Compound(label="motor_bracket", children=[
