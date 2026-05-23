@@ -11,7 +11,7 @@ thickness = 18 * MM
 # ── Top face center: M5 counterbore ───────────────────────────────────────────
 top_center_hole_diameter = M5_NORMAL
 top_counterbore_diameter = 10  * MM
-top_counterbore_depth    = 13  * MM
+top_counterbore_depth    = 14  * MM
 
 # ── Outer M4 through-holes with counterbore on the bottom face ────────────────
 outer_hole_diameter      = M4_CLOSE
