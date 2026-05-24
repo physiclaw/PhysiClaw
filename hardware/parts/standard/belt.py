@@ -354,9 +354,9 @@ RJ1 = (
     _rj_extra_world[2],
 )
 
-# Clamp pin radius — small 2 mm pin inside each belt clamp; the belt
+# Clamp pin radius — small 1.2 mm pin inside each belt clamp; the belt
 # loops around it 180° to lock the belt's tip into the clamp.
-clamp_pin_r = 2 * MM
+clamp_pin_r = 1.2 * MM
 
 # Belt clamp pins and tips. The belt tip enters the clamp going +X (left
 # clamp) / -X (right clamp), wraps 180° around the pin, then exits going
