@@ -59,6 +59,7 @@ class LI41IdlerLj1(BaseAssembly):
         base_compound = base.build()
 
         joint          = base.joint_base
+        self.joint_base = joint   # forwarded for downstream idler procedures.
         bundle_origin  = joint.extra_hole_world_centers[0]    # LEFT joint top, on extra_hole
         pocket_center  = joint.front_pocket_world_centers[0]  # LEFT joint front pocket
         nut_thickness  = NUT_SPECS["square"]["M4"]["thickness"]
