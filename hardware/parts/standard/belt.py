@@ -354,24 +354,25 @@ RJ1 = (
     _rj_extra_world[2],
 )
 
-# Clamp pin radius — small 1.2 mm pin inside each belt clamp; the belt
+# Clamp pin radius — small 1.8 mm pin inside each belt clamp; the belt
 # loops around it 180° to lock the belt's tip into the clamp.
-clamp_pin_r = 1.2 * MM
+clamp_pin_r = 2 * MM
 
 # Belt clamp pins and tips. The belt tip enters the clamp going +X (left
 # clamp) / -X (right clamp), wraps 180° around the pin, then exits going
 # back the opposite way to the adjacent joint idler.
-# Z geometry chains: clamp tip Z + clamp_pin_r = pin Z, and pin Z +
-# clamp_pin_r = adjacent idler's tangent Z (= LJ2.z + wrap_r on the left
-# / RJ1.z - wrap_r on the right). Solve → pin Z = idler_tangent_z ∓ r.
-_pin_left_z  = LJ2[2] + wrap_r - clamp_pin_r
-_pin_right_z = RJ1[2] - wrap_r - clamp_pin_r
+# Z geometry chains: clamp tip Z - clamp_pin_r = pin Z (clamp tip rides
+# ABOVE the pin so the U bends up in top view), and pin Z - clamp_pin_r
+# = adjacent idler's tangent Z (= LJ2.z + wrap_r on the left / RJ1.z -
+# wrap_r on the right). Solve → pin Z = idler_tangent_z + r.
+_pin_left_z  = LJ2[2] + wrap_r + clamp_pin_r
+_pin_right_z = RJ1[2] - wrap_r + clamp_pin_r
 
-PIN_LEFT     = (-10.0, _lower_belt_y, _pin_left_z)
-PIN_RIGHT    = (+10.0, _lower_belt_y, _pin_right_z)
+PIN_LEFT     = (-4.0, _lower_belt_y, _pin_left_z)
+PIN_RIGHT    = (+4.0, _lower_belt_y, _pin_right_z)
 
-CLAMP_LEFT   = (-20.0, _lower_belt_y, _pin_left_z  - clamp_pin_r)
-CLAMP_RIGHT  = (+20.0, _lower_belt_y, _pin_right_z - clamp_pin_r)
+CLAMP_LEFT   = (-20.0, _lower_belt_y, _pin_left_z  + clamp_pin_r)
+CLAMP_RIGHT  = (+20.0, _lower_belt_y, _pin_right_z + clamp_pin_r)
 
 # Path: list of (position, wrap_radius) tuples. radius=None for endpoints.
 motor_a_path = [
