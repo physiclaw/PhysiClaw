@@ -36,9 +36,17 @@ from hardware.assembly.procedures.motor_21_frame import MO21Frame
 from hardware.assembly.render import Camera
 from hardware.parts.standard.pulley import Pulley2GT20T
 
-LEFT_PULLEY_GAP  =  1    # mm — left pulley bottom face above the motor pad top
-RIGHT_PULLEY_GAP =  7    # mm — right pulley sits further along the shaft so the
-                         #      two belt runs occupy distinct planes
+LEFT_PULLEY_GAP  = -3    # mm — LEFT pulley belt-band lands on the LOWER idler
+                         #      plane (Y = -42.75) so motor A's pulley is coplanar
+                         #      with the LU/LD/LJ2/RJ1 idler belt-bands it drives.
+                         #      Negative means the pulley sits BELOW the bracket
+                         #      top face (into the bracket region); see ring spec
+                         #      in motor_10_bracket if a positive gap is required.
+RIGHT_PULLEY_GAP =  6    # mm — RIGHT pulley belt-band lands on the UPPER idler
+                         #      plane (Y = -51.75) so motor B's pulley is coplanar
+                         #      with the LU.top1 / RU.top1 idler belt-bands it
+                         #      drives. The 9 mm gap between the two pulleys
+                         #      keeps the two belt runs in distinct planes.
 PULLEY_EXPLODE   = 30    # mm — exploded: pull each pulley outboard along world
                          #      -Y (the motor shaft direction) so they read as
                          #      separate pieces installed onto the motor shafts.
