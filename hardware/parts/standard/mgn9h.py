@@ -90,17 +90,23 @@ class MGN9H(BasePart):
     compound of a main body (L1=29.9 mm) bracketed by two 5 mm "end-seal"
     caps that are slightly narrower and shorter than the main body."""
 
-    def __init__(self, rail_length: float = 150 * MM, qty: int = 1):
+    def __init__(
+        self,
+        rail_length: float = 150 * MM,
+        slider_position: float = slider_position,
+        qty: int = 1,
+    ):
         super().__init__(qty=qty)
         self.rail_length = rail_length
+        self.slider_position = slider_position
 
     def name_suffix(self) -> str:
         return f"_{int(self.rail_length)}mm_x{self.qty}"
 
     def _build(self):
         rail_plane = Plane.YZ.offset(-self.rail_length / 2)
-        # Slider compound shifted so its center sits at slider_position along the rail.
-        slider_center_x = -self.rail_length / 2 + slider_position * self.rail_length
+        # Slider compound shifted so its center sits at self.slider_position along the rail.
+        slider_center_x = -self.rail_length / 2 + self.slider_position * self.rail_length
         slider_tail_x = slider_center_x - slider_total_length / 2
         slider_base = Plane.YZ.offset(slider_tail_x)
 

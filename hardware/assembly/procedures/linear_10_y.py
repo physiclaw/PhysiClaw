@@ -41,7 +41,12 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.render import Camera
-from hardware.parts.standard.mgn9h import MGN9H, rail_height, rail_hole_pitch
+from hardware.parts.standard.mgn9h import (
+    MGN9H,
+    rail_height,
+    rail_hole_pitch,
+    slider_position as default_slider_position,
+)
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 from hardware.parts.standard.t_nut import (
     HAMMER_TOTAL_HEIGHT,
@@ -63,17 +68,32 @@ SCREW_HOLE_INDICES = (1, 3, 5, 7, 9, 11)
 
 
 class LI10Y(BaseAssembly):
+    # Subclasses share this build logic and only override the four
+    # class attributes below — ``compound_label`` retargets the
+    # STEP / SVG filename, ``rail_length`` swaps in a different MGN9H
+    # length, ``screw_hole_indices`` selects which of the rail's
+    # mounting holes get fastened, and ``slider_position`` (0.0 = -X
+    # end, 1.0 = +X end) moves the slider along the rail.
+    # ``_module_stem()`` already derives the output filename from the
+    # subclass's own module, so no other override is needed.
+    compound_label: str = "linear_10_y"
+    rail_length: float = RAIL_LENGTH
+    screw_hole_indices: tuple = SCREW_HOLE_INDICES
+    slider_position: float = default_slider_position
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
-        mgn = MGN9H(rail_length=RAIL_LENGTH).build()
+        mgn = MGN9H(
+            rail_length=self.rail_length,
+            slider_position=self.slider_position,
+        ).build()
 
         # Reproduce MGN9H's hole grid: GridLocations(rail_hole_pitch,
         # 0, n_holes, 1) centered on rail native X = 0.
-        n_holes = max(1, int(RAIL_LENGTH // rail_hole_pitch))
+        n_holes = max(1, int(self.rail_length // rail_hole_pitch))
         first_hole_x = -((n_holes - 1) * rail_hole_pitch) / 2
         hole_xs = [first_hole_x + i * rail_hole_pitch for i in range(n_holes)]
-        screw_xs = [hole_xs[i - 1] for i in SCREW_HOLE_INDICES]
+        screw_xs = [hole_xs[i - 1] for i in self.screw_hole_indices]
 
         # FHCS head total height (cone + skirt rim) — used to seat the
         # head top flush with the rail top face.
@@ -111,7 +131,7 @@ class LI10Y(BaseAssembly):
             )))
             attachments.append(nut)
 
-        return Compound(label="linear_10_y", children=[mgn, *attachments])
+        return Compound(label=self.compound_label, children=[mgn, *attachments])
 
 
 if __name__ == "__main__":
