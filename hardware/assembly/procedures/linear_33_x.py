@@ -46,9 +46,12 @@ class LI33X(BaseAssembly):
 
         # Read the 1020's slot-face Y and cross-section center Z from
         # the LI31X hooks so this composition stays free of any
-        # frame / joint placement math.
+        # frame / joint placement math. Forward joint_base so further
+        # downstream consumers (linear_41_idler_lj1) can reach the
+        # LI20Joint feature-center hooks without re-deriving placement.
         slot_face_y   = base.beam_slot_face_world_y
         rail_center_z = base.beam_center_world_z
+        self.joint_base = base.joint_base
 
         if self.exploded:
             rail_bottom_y = slot_face_y - RAIL_EXPLODE

@@ -50,9 +50,14 @@ from hardware.parts.custom.xy_joint_left import (
     csk_hole_from_left,
     csk_x_spacing,
     csk_y_spacing,
+    extra_hole_dx_from_csk,
+    extra_hole_dy_from_csk,
     extra_hole2_dx_from_csk,
     extra_hole2_dy_from_csk,
+    front_pocket_depth,
     length as joint_length,
+    pocket_h,
+    pocket_top_offset,
     thickness as joint_thickness,
     width as joint_width,
 )
@@ -115,12 +120,32 @@ class LI20Joint(BaseAssembly):
             extra2_y + big_csk_dy_from_extra2,
         )
 
+        # extra_hole center on the top face, in XyJointLeft's native
+        # frame. The same point in XyJointRight has its X mirrored.
+        extra_hole_native_left = (
+            csk_ll_x + extra_hole_dx_from_csk,
+            csk_ll_y + extra_hole_dy_from_csk,
+        )
+        # Front-pocket center in native — pocket spans native Y =
+        # [-width/2, -width/2 + front_pocket_depth] and is X-aligned
+        # with extra_hole. Native Z (pocket_face_y) sits below the top
+        # face by pocket_top_offset + pocket_h/2.
+        front_pocket_native_left = (
+            extra_hole_native_left[0],
+            -joint_width / 2 + front_pocket_depth / 2,
+            joint_thickness / 2 - pocket_top_offset - pocket_h / 2,
+        )
+
         joints = []
-        # Hook for downstream consumers (linear_30_x): world (x, y, z)
-        # of each joint's big CSK hole center — used by the crossbeam
-        # to position the M5 fastener through the joint into a hammer
-        # t-nut in the 1020 slot.
+        # Hooks for downstream consumers (linear_30_x, linear_41_idler_lj1):
+        # world (x, y, z) per joint of each feature center, indexed
+        # [0] = LEFT slider, [1] = RIGHT slider.
+        #   * big_csk_world_centers      — big CSK (M5 → 1020 t-nut)
+        #   * extra_hole_world_centers   — extra_hole on top face (M4 thru)
+        #   * front_pocket_world_centers — front pocket center (captures M4 nut)
         self.big_csk_world_centers = []
+        self.extra_hole_world_centers = []
+        self.front_pocket_world_centers = []
         # LEFT slider (index 0) gets XyJointRight; RIGHT slider gets
         # XyJointLeft — the joints are swapped (and 180° spun via
         # x_dir below) so their cutout / slant features land on the
@@ -170,19 +195,23 @@ class LI20Joint(BaseAssembly):
             )))
             joints.append(joint_compound)
 
-            # Big CSK center in world — mirrored joints have the CSK
-            # at the X-flipped part position. With this placement
-            # plane: native (a, b, c) → world (origin.x - a,
-            # origin.y - c, origin.z - b). For the CSK at native Z = 0
-            # (joint mid-thickness) the world Y is origin_y.
-            big_csk_native_x, big_csk_native_y = big_csk_native_left
-            if mirrored:
-                big_csk_native_x = -big_csk_native_x
-            self.big_csk_world_centers.append((
-                origin_x - big_csk_native_x,
-                origin_y,                   # joint mid-thickness (native Z = 0)
-                origin_z - big_csk_native_y,
-            ))
+            # Feature centers in world — placement plane maps native
+            # (a, b, c) → world (origin.x - a, origin.y - c, origin.z - b).
+            # Mirrored joints have their X-coordinate flipped in native.
+            def native_to_world(nx, ny, nz):
+                if mirrored:
+                    nx = -nx
+                return (origin_x - nx, origin_y - nz, origin_z - ny)
+
+            self.big_csk_world_centers.append(
+                native_to_world(*big_csk_native_left, 0)
+            )
+            self.extra_hole_world_centers.append(
+                native_to_world(*extra_hole_native_left, joint_thickness / 2)
+            )
+            self.front_pocket_world_centers.append(
+                native_to_world(*front_pocket_native_left)
+            )
 
         return Compound(label="linear_20_joint", children=[base_compound, *joints])
 

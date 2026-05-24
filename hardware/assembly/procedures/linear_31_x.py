@@ -65,13 +65,17 @@ class LI31X(BaseAssembly):
         joint_top_world_y    = big_csk_centers[0][1] - joint_thickness / 2
         joint_bottom_world_y = big_csk_centers[0][1] + joint_thickness / 2
 
-        # Hooks for downstream consumers (linear_33_x):
+        # Hooks for downstream consumers (linear_33_x, linear_41_idler_lj1):
         #   * beam_slot_face_world_y — world Y of the 1020's slot face
         #     (where another rail / part mounts on the 1020).
         #   * beam_center_world_z — world Z of the 1020 cross-section
         #     centerline.
+        #   * joint_base — the LI20Joint instance, forwarded so further
+        #     downstream steps can read its joint-feature world centers
+        #     (extra_hole_world_centers, front_pocket_world_centers, …).
         self.beam_slot_face_world_y = joint_bottom_world_y
         self.beam_center_world_z    = big_csk_centers[0][2]
+        self.joint_base             = base
 
         # ── 1020 sub-assembly (1020 + 2 standard M5 t-nuts) ─────────
         # Slot face touches joint bottom; cross-section centered on
