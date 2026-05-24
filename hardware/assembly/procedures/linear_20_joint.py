@@ -44,10 +44,14 @@ from hardware.assembly.procedures.linear_11_y import LI11Y
 from hardware.assembly.render import Camera
 from hardware.parts.custom.xy_joint_left import (
     XyJointLeft,
+    big_csk_dx_from_extra2,
+    big_csk_dy_from_extra2,
     csk_hole_from_bottom,
     csk_hole_from_left,
     csk_x_spacing,
     csk_y_spacing,
+    extra_hole2_dx_from_csk,
+    extra_hole2_dy_from_csk,
     length as joint_length,
     thickness as joint_thickness,
     width as joint_width,
@@ -85,8 +89,8 @@ class LI20Joint(BaseAssembly):
     camera = Camera(-30, 25)
 
     def _build(self) -> Compound:
-        base = LI11Y(exploded=False)
-        base_compound = base.build()
+        self.base = LI11Y(exploded=False)
+        base_compound = self.base.build()
 
         # FHCS M3 head height (cone + skirt rim) — head top flush with
         # joint top face puts the underhead at joint native Z =
@@ -97,14 +101,33 @@ class LI20Joint(BaseAssembly):
         screw_z = (screw_z_seated + SCREW_EXPLODE
                    if self.exploded else screw_z_seated)
 
+        # Big CSK position in the part-native frame of XyJointLeft:
+        # offset from the upper-right small-CSK hole, derived the
+        # same way xy_joint_left.py builds the cube.
+        csk_ll_x = -joint_length / 2 + csk_hole_from_left
+        csk_ll_y = -joint_width / 2 + csk_hole_from_bottom
+        csk_ur_x = csk_ll_x + csk_x_spacing
+        csk_ur_y = csk_ll_y + csk_y_spacing
+        extra2_x = csk_ur_x + extra_hole2_dx_from_csk
+        extra2_y = csk_ur_y + extra_hole2_dy_from_csk
+        big_csk_native_left = (
+            extra2_x + big_csk_dx_from_extra2,
+            extra2_y + big_csk_dy_from_extra2,
+        )
+
         joints = []
+        # Hook for downstream consumers (linear_30_x): world (x, y, z)
+        # of each joint's big CSK hole center — used by the crossbeam
+        # to position the M5 fastener through the joint into a hammer
+        # t-nut in the 1020 slot.
+        self.big_csk_world_centers = []
         # LEFT slider (index 0) gets XyJointRight; RIGHT slider gets
         # XyJointLeft — the joints are swapped (and 180° spun via
         # x_dir below) so their cutout / slant features land on the
         # correct frame side once installed.
         for slider_center, joint_cls, mirrored in (
-            (base.slider_mount_centers[0], XyJointRight, True),
-            (base.slider_mount_centers[1], XyJointLeft,  False),
+            (self.base.slider_mount_centers[0], XyJointRight, True),
+            (self.base.slider_mount_centers[1], XyJointLeft,  False),
         ):
             csk_positions = _csk_positions(mirrored)
             # In-part hole-grid center — used to compute the placement
@@ -146,6 +169,20 @@ class LI20Joint(BaseAssembly):
                 z_dir=(0, -1, 0),   # joint native +Z (top) → world -Y (outboard)
             )))
             joints.append(joint_compound)
+
+            # Big CSK center in world — mirrored joints have the CSK
+            # at the X-flipped part position. With this placement
+            # plane: native (a, b, c) → world (origin.x - a,
+            # origin.y - c, origin.z - b). For the CSK at native Z = 0
+            # (joint mid-thickness) the world Y is origin_y.
+            big_csk_native_x, big_csk_native_y = big_csk_native_left
+            if mirrored:
+                big_csk_native_x = -big_csk_native_x
+            self.big_csk_world_centers.append((
+                origin_x - big_csk_native_x,
+                origin_y,                   # joint mid-thickness (native Z = 0)
+                origin_z - big_csk_native_y,
+            ))
 
         return Compound(label="linear_20_joint", children=[base_compound, *joints])
 
