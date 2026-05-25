@@ -127,6 +127,28 @@ def _add_bevel(nt, bsdf):
     nt.links.new(bevel.outputs["Normal"], bsdf.inputs["Normal"])
 
 
+def _add_anisotropy(nt, bsdf, amount, rotation):
+    """Directional reflection aligned with each part's local X axis.
+
+    build123d extrudes the MGN9H rail and slider along their local X,
+    so a Radial-X Tangent node locks the streak direction to the rail
+    length without needing UV maps. Skipped silently in Blender builds
+    where the BSDF doesn't expose these inputs.
+    """
+    aniso_in = bsdf.inputs.get("Anisotropic")
+    rot_in   = bsdf.inputs.get("Anisotropic Rotation")
+    tan_in   = bsdf.inputs.get("Tangent")
+    if aniso_in is None or tan_in is None:
+        return
+    aniso_in.default_value = amount
+    if rot_in is not None:
+        rot_in.default_value = rotation
+    tangent = nt.nodes.new("ShaderNodeTangent")
+    tangent.direction_type = "RADIAL"
+    tangent.axis = "X"
+    nt.links.new(tangent.outputs["Tangent"], tan_in)
+
+
 def _add_roughness_noise(nt, bsdf, base_r):
     """Drive Roughness through Noise→ColorRamp so a smooth metal
     doesn't read as polished plastic."""
@@ -167,6 +189,12 @@ def _upgrade_materials():
             _add_bevel(nt, bsdf)
         if params.get("rough_vary"):
             _add_roughness_noise(nt, bsdf, params["roughness"])
+        if "anisotropic" in params:
+            _add_anisotropy(
+                nt, bsdf,
+                params["anisotropic"],
+                params.get("anisotropic_rotation", 0.0),
+            )
         mat.name = name
         upgraded.append(name)
     print(f"[render] upgraded {len(upgraded)} materials: {sorted(set(upgraded))}")

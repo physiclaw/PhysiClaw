@@ -10,6 +10,10 @@ Per-entry params:
     bevel        — inject Bevel-shader normal in Blender.
     rough_vary   — drive Roughness through a Noise→ColorRamp graph
                    so polished metal doesn't read as polished plastic.
+    anisotropic, anisotropic_rotation — directional reflections; the
+                   render driver also wires in a Tangent node (Radial X)
+                   so the streaks follow each part's object-local X
+                   axis. Use for ground/brushed metal like MGN9H rails.
 
 Index order is load-bearing: encode_color(name) returns hue = idx / N,
 so any new material MUST be appended (never reordered), and the GLB
@@ -26,13 +30,17 @@ MATERIAL_LIST = [
         "bevel": True,
     }),
     ("Steel_Chrome", {
-        "base": (0.78, 0.80, 0.84),
+        # Bright stainless rail finish with anisotropic streaks aligned
+        # to each rail's object-local X axis (which build123d's MGN9H
+        # extrudes along).
+        "base": (0.88, 0.89, 0.90),
         "metallic": 1.00,
-        "roughness": 0.13,
-        # Bevel intentionally OFF: it softens the rail flange's sharp
-        # 90° corners, exactly where mirror-polish stainless glints
-        # hardest.
+        "roughness": 0.30,
         "rough_vary": True,
+        "anisotropic": 0.85,
+        # Principled BSDF rotates highlight elongation 90° vs the
+        # Glossy BSDF; +0.25 aligns streaks ALONG the tangent.
+        "anisotropic_rotation": 0.25,
     }),
     ("Steel_Zinc", {
         "base": (0.72, 0.70, 0.66),
