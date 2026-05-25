@@ -14,7 +14,7 @@ hole bore until the rod tip bottoms in the hole.
 
 Run from the repo root:
 
-    uv run --group cad python -m hardware.assembly.procedures.solenoid_tip
+    uv run --group cad python -m hardware.assembly.procedures.tapz_10_solenoid_tip
 """
 
 from build123d import Compound, Location
@@ -27,7 +27,7 @@ from hardware.parts.standard.tip import Tip
 PREP_OFFSET_Z = -25   # mm — prep tip dropped below the seated position
 
 
-class SolenoidTip(BaseAssembly):
+class TZ10SolenoidTip(BaseAssembly):
     camera = Camera(-45, -20, 70)
 
     def _build(self) -> Compound:
@@ -36,14 +36,14 @@ class SolenoidTip(BaseAssembly):
         solenoid.joints["tip_mount"].connect_to(seated.joints["solenoid_mount"])
 
         if not self.exploded:
-            return Compound(label="solenoid_tip", children=[solenoid, seated])
+            return Compound(label="tapz_10_solenoid_tip", children=[solenoid, seated])
 
         # Exploded: a second tip in prep position becomes the solid layer;
         # the seated tip becomes the ghost destination marker.
         prep = Tip().build()
         solenoid.joints["tip_mount"].connect_to(prep.joints["solenoid_mount"])
         prep.move(Location((0, 0, PREP_OFFSET_Z)))
-        return Compound(label="solenoid_tip", children=[
+        return Compound(label="tapz_10_solenoid_tip", children=[
             Compound(label=SOLID_LABEL, children=[solenoid, prep]),
             Compound(label=GHOST_LABEL, children=[seated]),
         ])
@@ -51,6 +51,6 @@ class SolenoidTip(BaseAssembly):
 
 if __name__ == "__main__":
     for exploded in (True, False):
-        asm = SolenoidTip(exploded=exploded)
+        asm = TZ10SolenoidTip(exploded=exploded)
         asm.export()
         asm.render()
