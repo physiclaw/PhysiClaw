@@ -1,7 +1,7 @@
 """Linear X crossbeam on the frame — extends linear_20_joint by
 mounting linear_30_x (an Extrusion1020 sub-assembly with two
 standard M5 T-nuts pre-loaded in its slot) between the two XY
-joints, then driving an M5 × 6 FHCS through each joint's big CSK
+joints, then driving an M5 × 10 FHCS through each joint's big CSK
 hole into the corresponding pre-loaded t-nut.
 
 The t-nut positions are computed inside linear_30_x so that when
@@ -43,7 +43,7 @@ from hardware.assembly.render import Camera
 from hardware.parts.custom.xy_joint_left import thickness as joint_thickness
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 
-FHCS_LENGTH    = 6     # mm — M5 FHCS overall length
+FHCS_LENGTH    = 10    # mm — M5 FHCS overall length
 X_BEAM_EXPLODE = 35    # mm — exploded: 1020 sub-assembly shifts along world +Y
                        #       (deeper into the frame, away from the joint bottoms)
 FHCS_EXPLODE   = 35    # mm — exploded: each FHCS lifts along world -Y
