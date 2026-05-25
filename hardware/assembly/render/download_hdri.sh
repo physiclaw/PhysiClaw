@@ -2,7 +2,10 @@
 # Fetch the studio HDRI used by render_tapz_20.py. Idempotent: skips
 # the download if the file already exists at the expected size.
 #
-# Source: Poly Haven, https://polyhaven.com/a/studio_small_09 (CC0)
+# Source: Poly Haven, https://polyhaven.com/a/brown_photostudio_02 (CC0)
+# Dark moody photography studio with strong rim lighting — gives
+# chrome/aluminum prominent rim highlights against a dark background,
+# classic "premium tech reveal" mood.
 # Destination: hardware/output/render/ (alongside the rendered PNG/GLB)
 
 set -euo pipefail
@@ -11,8 +14,8 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${here}/../../.." && pwd)"
 out_dir="${project_root}/hardware/output/render"
-url="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr"
-dest="${out_dir}/studio_small_09_2k.hdr"
+url="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/brown_photostudio_02_2k.hdr"
+dest="${out_dir}/brown_photostudio_02_2k.hdr"
 expected_size_min=6000000   # full file is ~6.3 MB; refetch if smaller
 
 mkdir -p "${out_dir}"

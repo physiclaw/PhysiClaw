@@ -12,7 +12,7 @@ hardware/assembly/render/
 └── download_hdri.sh       ← fetch the studio HDRI from Poly Haven
 
 hardware/output/render/    ← all generated artifacts land here
-├── studio_small_09_2k.hdr ← downloaded by download_hdri.sh   (~6.3 MB)
+├── brown_photostudio_02_2k.hdr ← downloaded by download_hdri.sh   (~6 MB)
 ├── tapz_20_solenoid_mount.glb ← written by export_tapz_20.py (~11 MB)
 └── tapz_20_solenoid_mount.png ← written by render_tapz_20.py
 ```
@@ -117,9 +117,11 @@ Steps `main()` runs, in order:
 
 ### `download_hdri.sh` — one-time HDRI fetch
 
-Downloads `studio_small_09_2k.hdr` from Poly Haven (CC0) into
+Downloads `brown_photostudio_02_2k.hdr` from Poly Haven (CC0) into
 `hardware/output/render/`. Idempotent: re-running is a no-op when the
 full file is already present. Refetches if the local copy is truncated.
+To swap to a different HDRI, change the URL/filename in the script and
+the matching `HDRI_PATH` in `render_tapz_20.py`.
 
 The studio HDRI matters because Sky Texture's flat gradient makes
 every metal collapse to the same shade — real metals get their

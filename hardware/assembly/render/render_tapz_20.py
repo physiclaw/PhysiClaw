@@ -24,7 +24,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 OUT_DIR   = os.path.join(PROJECT_ROOT, "hardware", "output", "render")
 GLB_PATH  = os.path.join(OUT_DIR, "tapz_20_solenoid_mount.glb")
 PNG_PATH  = os.path.join(OUT_DIR, "tapz_20_solenoid_mount.png")
-HDRI_PATH = os.path.join(OUT_DIR, "studio_small_09_2k.hdr")
+HDRI_PATH = os.path.join(OUT_DIR, "brown_photostudio_02_2k.hdr")
 
 RES_X, RES_Y = 1920, 1440
 SAMPLES      = 256
@@ -202,7 +202,7 @@ def _build_world_sky():
     out = nt.nodes.new("ShaderNodeOutputWorld")
     nt.links.new(env.outputs["Color"], bg.inputs["Color"])
     nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
-    print("[render] World: HDRI studio_small_09")
+    print("[render] World: HDRI brown_photostudio_02")
 
 
 def _add_ground_plane(center, diag, ground_z):
