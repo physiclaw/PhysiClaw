@@ -13,7 +13,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import LEFT_PULLEY_GAP
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 from hardware.parts.custom.pulley_mount_front import (
     slot_center_y as ld_slot_center_y,
     thickness as ld_block_thickness,
@@ -142,7 +142,7 @@ def _perp_y(z_dir):
     return (px / length, py / length, pz / length)
 
 
-class Belt(BasePart):
+class Belt(BaseStandardPart):
     """GT2 belt — rectangular cross-section (width × thickness) extruded
     along each segment of a polyline centerline, then unioned. Width axis
     tracks world Y (the pulley / idler axis direction); thickness is in
@@ -197,6 +197,17 @@ class Belt(BasePart):
     def bom_key(self):
         # Belt is a continuous strip cut to length; one BOM line per machine.
         return ("Belt", "GT2", "loop")
+
+    def geom_key(self):
+        # bom_key collapses A/B belts into one purchasable line, but the
+        # geometry differs per path + motor (motor='B' mirrors and Y-shifts
+        # the path inside __init__). Without this override the cache would
+        # return motor A's geometry for a motor B build.
+        return (
+            "Belt",
+            self.motor,
+            tuple((tuple(p), r) for p, r in self.path),
+        )
 
     def _build(self):
         expanded = _expand_wraps(self.path)

@@ -2,7 +2,7 @@ import math
 
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 # GT2 timing belt geometry — shared between the motor pulley (driven) and a
@@ -77,7 +77,7 @@ def _build_set_screw():
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Pulley2GT20T(BasePart):
+class Pulley2GT20T(BaseStandardPart):
     """GT2 20-tooth timing pulley or idler.
 
     `pulley` — sits on the motor: always toothed, with an extended hub and

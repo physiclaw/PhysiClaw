@@ -1,3 +1,4 @@
+import copy
 import sys
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,13 @@ BomCategory = Literal["standard", "custom"]
 # .rotate) return new objects — id-lookups would silently drop any
 # transformed part.
 BOM_REGISTRY: list[tuple[tuple, int, BomCategory, str | None]] = []
+
+# Geometry cache: maps geom_key → pristine _build() result. build()
+# returns copy.copy() of the cached shape (shares OCCT TShape per
+# build123d's __copy__, deep-copies joints / label / location).
+# Process-wide and never cleared — bounded by the number of unique
+# specs (~30), so a re-collect or --all --write reuses prior work.
+_BUILD_CACHE: dict[tuple, object] = {}
 
 
 class BasePart:
@@ -64,19 +72,44 @@ class BasePart:
         when that default doesn't read naturally for a specific part."""
         return None
 
+    def geom_key(self):
+        """Identity for the SHAPE (geometry-cache key). Default returns
+        ``None`` — no caching, no implicit aliasing of ``bom_key``.
+
+        Standard / custom parts opt in to caching by inheriting from
+        ``BaseStandardPart`` / ``BaseCustomPart``, which alias
+        ``geom_key`` to ``bom_key`` (correct when every BOM-distinct
+        instance also produces a unique shape — the common case).
+        Parts whose geometry varies beyond what ``bom_key`` captures
+        (e.g. MGN9H ``slider_position``, Belt ``path``) override
+        ``geom_key`` directly with their own tuple."""
+        return None
+
     def _build(self):
         raise NotImplementedError
 
     def build(self):
         """Return the build123d shape (labeled, no STEP export).
 
-        Memoized on the instance: callers like ``export()`` + ``render()``
-        on the same object share one build instead of running ``_build()``
-        twice. _build() is expected to be a pure function of self.
+        Memoized on the instance via ``self._built``. Also reuses a
+        process-wide ``_BUILD_CACHE`` keyed by ``geom_key()``: the first
+        instance of each unique geometry runs ``_build()`` and stores
+        the pristine result; subsequent instances return ``copy.copy()``
+        of the cached shape (build123d's shallow-copy pattern — shares
+        the OCCT TShape, deep-copies Python attrs incl. joints). _build()
+        is expected to be a pure function of self.
         """
         if (cached := getattr(self, "_built", None)) is not None:
             return cached
-        shape = self._build()
+        gkey = self.geom_key()
+        if gkey is None:
+            shape = self._build()
+        elif gkey in _BUILD_CACHE:
+            shape = copy.copy(_BUILD_CACHE[gkey])
+        else:
+            shape = self._build()
+            _BUILD_CACHE[gkey] = shape    # cache pristine, never returned directly
+            shape = copy.copy(shape)      # so callers can .move() etc. freely
         # Default the STEP label to the class name so the exported file is
         # readable in other CAD tools. _build() can override by setting an
         # explicit label (e.g. on a Compound).
@@ -96,12 +129,26 @@ class BasePart:
         return shape
 
 
+class BaseStandardPart(BasePart):
+    """Off-the-shelf purchasable parts. Opts into geometry caching by
+    aliasing ``geom_key`` to ``bom_key`` — appropriate when every
+    BOM-distinct instance also produces a unique shape (the common
+    case). Parts that need a different cache key override ``geom_key``
+    in the subclass."""
+
+    def geom_key(self):
+        return self.bom_key()
+
+
 class BaseCustomPart(BasePart):
-    """Parts manufactured for this build (printed / machined). Identical
-    to BasePart except BOM aggregation tags them as ``custom`` so the
-    writer renders them in their own section."""
+    """Parts manufactured for this build (printed / machined). BOM
+    aggregation tags them as ``custom``; geometry caching opted in the
+    same way as ``BaseStandardPart``."""
 
     bom_category: BomCategory = "custom"
+
+    def geom_key(self):
+        return self.bom_key()
 
 
 def export_all(parts):

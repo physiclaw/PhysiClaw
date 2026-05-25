@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 outer_w  = 15 * MM    # X, on XZ plane
@@ -57,7 +57,7 @@ mount_hole_depth     = 1  * MM
 mount_hole_z_spacing = 15 * MM
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Solenoid(BasePart):
+class Solenoid(BaseStandardPart):
     def _build(self):
         with BuildPart() as p:
             # Outer body: 15 × 30 sketch on XZ, extruded 13 mm along the normal.

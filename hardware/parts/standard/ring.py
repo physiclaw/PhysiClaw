@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Dimension tables (mm) ─────────────────────────────────────────────────────
 # Single-arg lookup table for `Ring(spec)`. Keys follow the common washer-
@@ -19,7 +19,7 @@ SPECS = {
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Ring(BasePart):
+class Ring(BaseStandardPart):
     """Annular cylinder — washer / spacer.
 
     Selected by spec key (e.g. 'M3x10x1') from SPECS; kind and dimensions

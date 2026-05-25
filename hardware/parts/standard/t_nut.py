@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Dimension tables (mm) ─────────────────────────────────────────────────────
 # 2020 T-slot nut half cross-section in XY (mirrored about x = 0). Each kind
@@ -67,7 +67,7 @@ HAMMER_TOTAL_HEIGHT = HALF_PROFILES["hammer"][-1][1] + HAMMER_BOSS_HEIGHT  # 4.5
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class TNut(BasePart):
+class TNut(BaseStandardPart):
     """2020 T-slot nut — standard (slide-in) or hammer (drop-and-twist).
 
     Cross-section in XY (x across slot, y depth from cavity floor at y = 0

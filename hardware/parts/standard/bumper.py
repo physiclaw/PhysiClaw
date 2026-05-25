@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 body_diameter  = 20 * MM
@@ -18,7 +18,7 @@ bottom_fillet  = 0.5 * MM
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Bumper(BasePart):
+class Bumper(BaseStandardPart):
     def bom_key(self):
         return ("Bumper", body_diameter, body_diameter, body_height)
 

@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── FlatBracket parameters ────────────────────────────────────────────────────
 flat_plate_width   = 40 * MM    # W, along X
@@ -37,7 +37,7 @@ motor_corner_fillet = 3 * MM      # the four Z-parallel outer corners
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class FlatBracket(BasePart):
+class FlatBracket(BaseStandardPart):
     def name_suffix(self) -> str:
         return f"_flat_x{self.qty}"
 
@@ -53,7 +53,7 @@ class FlatBracket(BasePart):
         return p.part
 
 
-class MotorBracket(BasePart):
+class MotorBracket(BaseStandardPart):
     """NEMA 17 motor mounting plate — 60 × 41 × 1.9 mm with a 25 mm
     shaft pass-through and a 31 mm square pattern of 4 × Ø3.3 M3
     mounting holes around the shaft hole."""

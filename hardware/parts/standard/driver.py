@@ -2,7 +2,7 @@ import math
 
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Dimension tables (mm) ─────────────────────────────────────────────────────
 # Metric L-shape hex driver (Allen key), DIN 911 short-arm series. `s` is the
@@ -18,7 +18,7 @@ HEX_DIMS = {
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class HexDriver(BasePart):
+class HexDriver(BaseStandardPart):
     """L-shape metric hex driver (Allen key).
 
     Long arm runs along −Z down to its tip, short arm runs along +X to its

@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Rail parameters (HIWIN MGN9H spec, G99TE25-2602) ──────────────────────────
 rail_width          = 9   * MM    # W_R
@@ -82,7 +82,7 @@ slider_total_length = slider_main_length + 2 * cap_length
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class MGN9H(BasePart):
+class MGN9H(BaseStandardPart):
     """HIWIN MGN9H linear guideway — 9 mm rail + sliding carriage.
 
     Rail bottom face at Z=0, centered in X and Y. Carriage sits H1=2 mm
@@ -105,6 +105,10 @@ class MGN9H(BasePart):
 
     def bom_key(self):
         return ("MGN9H", int(self.rail_length))
+
+    def geom_key(self):
+        # slider_position affects shape but is irrelevant to BOM aggregation
+        return ("MGN9H", self.rail_length, self.slider_position)
 
     def _build(self):
         rail_plane = Plane.YZ.offset(-self.rail_length / 2)

@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 body_side        = 42 * MM
@@ -43,7 +43,7 @@ body_chamfer     =  5 * MM
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Nema17Motor(BasePart):
+class Nema17Motor(BaseStandardPart):
     def __init__(self, height: float = default_height, qty: int = 1):
         super().__init__(qty=qty)
         self.height = height

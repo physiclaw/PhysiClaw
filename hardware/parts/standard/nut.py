@@ -2,7 +2,7 @@ import math
 
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Dimension tables (mm) ─────────────────────────────────────────────────────
 # Hex nut: ISO 4032 / DIN 934 regular pattern, nominal dims.
@@ -44,7 +44,7 @@ CHAMFER_ANGLE_DEG = 30.0
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Nut(BasePart):
+class Nut(BaseStandardPart):
     """Hex (ISO 4032) or square (DIN 557 / +M3) nut with a smooth through-bore.
 
     Centered on the Z axis with its bottom face at z = 0. Single-chamfered:

@@ -2,7 +2,7 @@ import math
 
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Dimension tables (mm) ─────────────────────────────────────────────────────
 # d = nominal Ø, P = coarse pitch.
@@ -184,7 +184,7 @@ _PROFILE_FNS = {
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Screw(BasePart):
+class Screw(BaseStandardPart):
     """Metric socket screw (SHCS / FHCS / BHCS / SHOULDER).
 
     Z = 0 sits at the underhead seating plane; head at +Z, shank at −Z so the

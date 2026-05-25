@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Shared 2020-cell parameters ───────────────────────────────────────────────
 leg            =  10 * MM    # outer half-extent of one 2020 cell
@@ -118,7 +118,7 @@ def _rib_edges(z_edges, cell_offsets):
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Extrusion2020(BasePart):
+class Extrusion2020(BaseStandardPart):
     def __init__(self, length: float = default_length, qty: int = 1):
         super().__init__(qty=qty)
         self.length = length
@@ -145,7 +145,7 @@ class Extrusion2020(BasePart):
         return p.part
 
 
-class Extrusion2040(BasePart):
+class Extrusion2040(BaseStandardPart):
     """2040 = two 2020 cross-sections unioned at sketch level, then
     extruded. Stacking happens before fillet so the inner contact at X=0
     disappears and only the four true outer corners get rounded."""
@@ -242,7 +242,7 @@ class Extrusion2040(BasePart):
         return p.part
 
 
-class Extrusion1020(BasePart):
+class Extrusion1020(BaseStandardPart):
     """1020 T-slot extrusion — 19.8 × 9.9 mm cross-section (nominal 20 × 10),
     slot opening on the +Y face. Two through-holes drilled along Z on the
     bottom rim, mirrored about the Y axis."""

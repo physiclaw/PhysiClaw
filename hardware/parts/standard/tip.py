@@ -1,6 +1,6 @@
 from build123d import *
 
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 # Stylus tip stack, top → bottom.
@@ -24,7 +24,7 @@ edge_chamfer  = 0.2 * MM    # capped by 0.3 mm radial gap at seg1↔seg2 junctio
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
-class Tip(BasePart):
+class Tip(BaseStandardPart):
     def _build(self):
         segments = [
             (seg1_diameter, seg1_height),
