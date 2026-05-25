@@ -30,10 +30,12 @@ screen_pattern_y_offsets        = (3, 0, 2, 4, 1)   # mm above base-row, one per
 screen_pattern_pair_offset      = 15 * MM   # paired hole sits this far above each circle
 screen_pattern_row_shift        = 5  * MM   # second 10-hole row sits this far above the first
 
-# ── Screen face: 2 corner mount holes ─────────────────────────────────────────
-screen_corner_hole_diameter    = M3_NORMAL
-screen_corner_hole_from_bottom = 12 * MM    # face-local Y from bottom edge
-screen_corner_hole_from_side   = 4  * MM    # face-local X from each side edge
+# ── Screen face: 2 corner mount holes, CSK from the back (solenoid-mating) face ─
+screen_corner_csk_hole_diameter    = M3_NORMAL
+screen_corner_csk_hole_from_side   = 4   * MM   # face-local X from each side edge
+screen_corner_csk_hole_from_bottom = 12  * MM   # face-local Y from bottom edge
+screen_corner_csk_head_diameter    = 6.5 * MM   # 90° CSK head Ø (FHCS M3)
+screen_corner_csk_angle            = 90         # degrees
 
 # ── Fillets ───────────────────────────────────────────────────────────────────
 x_edge_fillet_radius = 0.5 * MM   # all X-parallel edges except the keyboard↔screen join
@@ -80,14 +82,22 @@ class SolenoidMount(BaseCustomPart):
                             Circle(radius=screen_pattern_hole_diameter / 2)
             extrude(amount=-wall_thickness, mode=Mode.SUBTRACT)
 
-            # Screen face: 2 corner mount holes
-            with BuildSketch(screen_plane):
-                with Locations(
-                    (         screen_corner_hole_from_side, screen_corner_hole_from_bottom),
-                    (length - screen_corner_hole_from_side, screen_corner_hole_from_bottom),
-                ):
-                    Circle(radius=screen_corner_hole_diameter / 2)
-            extrude(amount=-wall_thickness, mode=Mode.SUBTRACT)
+            # Screen face: 2 corner mount holes, CSK from the BACK face (the
+            # side the solenoid mates against). Head sinks flush into the back
+            # so the solenoid sits flat; through-hole exits on the screen face.
+            # Rotation (-90, 0, 0) puts the Location's local +Z along world +Y,
+            # so the CSK opens at world Y = width/2 and drills in -Y direction.
+            csk_world_z  = thickness / 2 + screen_corner_csk_hole_from_bottom
+            csk_axis_rot = (-90, 0, 0)
+            with Locations(
+                Location((-length / 2 + screen_corner_csk_hole_from_side, width / 2, csk_world_z), csk_axis_rot),
+                Location((+length / 2 - screen_corner_csk_hole_from_side, width / 2, csk_world_z), csk_axis_rot),
+            ):
+                CounterSinkHole(
+                    radius=screen_corner_csk_hole_diameter / 2,
+                    counter_sink_radius=screen_corner_csk_head_diameter / 2,
+                    counter_sink_angle=screen_corner_csk_angle,
+                )
 
             # Fillet: all X-parallel edges except the keyboard↔screen inner join
             # (the one at world (y = width/2 - wall_thickness, z = thickness/2)).
