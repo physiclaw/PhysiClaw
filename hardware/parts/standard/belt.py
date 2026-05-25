@@ -194,6 +194,10 @@ class Belt(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.name}_x{self.qty}" if self.name else f"_x{self.qty}"
 
+    def bom_key(self):
+        # Belt is a continuous strip cut to length; one BOM line per machine.
+        return ("Belt", "GT2", "loop")
+
     def _build(self):
         expanded = _expand_wraps(self.path)
         with BuildPart() as part:

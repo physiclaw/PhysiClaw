@@ -103,6 +103,9 @@ class MGN9H(BasePart):
     def name_suffix(self) -> str:
         return f"_{int(self.rail_length)}mm_x{self.qty}"
 
+    def bom_key(self):
+        return ("MGN9H", int(self.rail_length))
+
     def _build(self):
         rail_plane = Plane.YZ.offset(-self.rail_length / 2)
         # Slider compound shifted so its center sits at self.slider_position along the rail.

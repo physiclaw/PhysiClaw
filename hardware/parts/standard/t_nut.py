@@ -95,6 +95,9 @@ class TNut(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.kind}_{self.size}_x{self.qty}"
 
+    def bom_key(self):
+        return ("TNut", self.kind, self.size)
+
     def _build(self):
         height = self.half_profile[-1][1]
         top_y = height

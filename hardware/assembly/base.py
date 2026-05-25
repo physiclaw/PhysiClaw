@@ -65,6 +65,9 @@ class BaseAssembly(BasePart):
         # solenoid_tip_exploded.step / solenoid_tip_assembled.step.
         return self._variant
 
+    def bom_key(self):
+        return None  # assemblies are structural; their parts register themselves
+
     def svg_path(self) -> Path:
         return SVG_DIR / f"{self._module_stem()}{self._variant}.svg"
 

@@ -51,6 +51,9 @@ class Nema17Motor(BasePart):
     def name_suffix(self) -> str:
         return f"_{int(self.height)}mm_x{self.qty}"
 
+    def bom_key(self):
+        return ("Nema17Motor", int(self.height))
+
     def _build(self):
         with BuildPart() as p:
             Box(body_side, body_side, self.height)

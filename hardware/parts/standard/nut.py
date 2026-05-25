@@ -75,6 +75,9 @@ class Nut(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.shape}_{self.size}_x{self.qty}"
 
+    def bom_key(self):
+        return ("Nut", self.shape, self.size)
+
     def _build(self):
         af = self.af
         m = self.thickness

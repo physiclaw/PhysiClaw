@@ -224,6 +224,18 @@ class Screw(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.screw_type}_{self.size}x{self.length:g}_x{self.qty}"
 
+    def bom_key(self):
+        if self.screw_type == "SHOULDER":
+            shoulder_d = TABLES[self.screw_type][self.size]["shoulder_d"]
+            return ("Screw", self.screw_type, shoulder_d, self.size, self.length)
+        return ("Screw", self.screw_type, self.size, self.length)
+
+    def bom_display(self):
+        if self.screw_type == "SHOULDER":
+            shoulder_d = TABLES[self.screw_type][self.size]["shoulder_d"]
+            return f"Shoulder Screw {shoulder_d:g}x{self.size}x{self.length:g}"
+        return None
+
     def _build(self):
         d = COMMON[self.size]["d"]
         dim = TABLES[self.screw_type][self.size]

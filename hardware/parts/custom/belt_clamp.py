@@ -1,7 +1,7 @@
 from build123d import *
 
 from hardware.parts._fits import M3_NORMAL, M3_NUT_T, M3_NUT_W
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseCustomPart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
 length    = 20 * MM
@@ -91,7 +91,7 @@ cube_corner_fillet_radius = 1   * MM   # 4 outer vertical corners of the mirrore
 slot_cut_fillet_radius    = 1.5 * MM   # 4 slot2 +Y break-out vertical edges (incl. mirror)
 
 
-class BeltClamp(BasePart):
+class BeltClamp(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)

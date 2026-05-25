@@ -1,7 +1,7 @@
 from build123d import *
 
 from hardware.parts._fits import M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_NORMAL
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseCustomPart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
 length    = 20 * MM
@@ -34,7 +34,7 @@ front_corner_fillet_radius = 1 * MM   # 2 outer vertical corners of the front fa
 back_corner_fillet_radius  = 2 * MM   # 2 outer vertical corners of the back face
 
 
-class PulleyMountFront(BasePart):
+class PulleyMountFront(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)

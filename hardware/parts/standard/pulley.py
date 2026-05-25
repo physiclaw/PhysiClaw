@@ -104,6 +104,9 @@ class Pulley2GT20T(BasePart):
         smooth_tag = "" if self.toothed else "_smooth"
         return f"_{self.kind}{smooth_tag}_x{self.qty}"
 
+    def bom_key(self):
+        return ("Pulley2GT20T", self.kind, "toothed" if self.toothed else "smooth")
+
     def _build(self):
         is_pulley = self.kind == "pulley"
         hub_h = hub_height if is_pulley else 0.0

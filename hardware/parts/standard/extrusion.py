@@ -126,6 +126,9 @@ class Extrusion2020(BasePart):
     def name_suffix(self) -> str:
         return f"_2020_{int(self.length)}mm_x{self.qty}"
 
+    def bom_key(self):
+        return ("Extrusion2020", int(self.length))
+
     def _build(self):
         face = _cell_face()
         with BuildPart() as p:
@@ -160,6 +163,9 @@ class Extrusion2040(BasePart):
     def name_suffix(self) -> str:
         cb = "_cb" if self.cb else ""
         return f"_2040_{int(self.length)}mm{cb}_x{self.qty}"
+
+    def bom_key(self):
+        return ("Extrusion2040", int(self.length), "cb" if self.cb else "plain")
 
     def _build(self):
         face = _cell_face()
@@ -247,6 +253,9 @@ class Extrusion1020(BasePart):
 
     def name_suffix(self) -> str:
         return f"_1020_{int(self.length)}mm_x{self.qty}"
+
+    def bom_key(self):
+        return ("Extrusion1020", int(self.length))
 
     def _build(self):
         with BuildPart() as p:

@@ -1,7 +1,7 @@
 from build123d import *
 
 from hardware.parts._fits import M3_NORMAL
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseCustomPart
 
 # ── Plate dimensions (the "keyboard") ─────────────────────────────────────────
 length    = 40 * MM
@@ -39,7 +39,7 @@ screen_corner_hole_from_side   = 4  * MM    # face-local X from each side edge
 x_edge_fillet_radius = 0.5 * MM   # all X-parallel edges except the keyboard↔screen join
 
 
-class SolenoidMount(BasePart):
+class SolenoidMount(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)

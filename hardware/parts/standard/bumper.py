@@ -19,6 +19,12 @@ bottom_fillet  = 0.5 * MM
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
 class Bumper(BasePart):
+    def bom_key(self):
+        return ("Bumper", body_diameter, body_diameter, body_height)
+
+    def bom_display(self):
+        return f"Bumper {body_diameter:g}x{body_diameter:g}x{body_height:g}"
+
     def _build(self):
         with BuildPart() as p:
             Cylinder(radius=body_diameter / 2, height=body_height)

@@ -3,7 +3,7 @@ import functools
 from build123d import *
 
 from hardware.parts._fits import M3_NORMAL, M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_NORMAL
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseCustomPart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
 length    = 41 * MM
@@ -194,7 +194,7 @@ def _build_shape():
     return my_part.part
 
 
-class XyJointLeft(BasePart):
+class XyJointLeft(BaseCustomPart):
     def _build(self):
         return _build_shape()
 

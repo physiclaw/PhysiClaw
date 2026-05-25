@@ -1,7 +1,7 @@
 from build123d import *
 
 from hardware.parts._fits import M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_CLOSE, M5_NORMAL, M5_NUT_T, M5_NUT_W
-from hardware.parts.base import BasePart
+from hardware.parts.base import BaseCustomPart
 
 # ── Block dimensions ──────────────────────────────────────────────────────────
 length    = 42 * MM
@@ -44,7 +44,7 @@ side_pocket_center_x   = (length - side_pocket_depth) / 2
 cube_corner_fillet_radius = 2 * MM
 
 
-class PulleyMountMotor(BasePart):
+class PulleyMountMotor(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)

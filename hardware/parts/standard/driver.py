@@ -38,6 +38,9 @@ class HexDriver(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.size}_x{self.qty}"
 
+    def bom_key(self):
+        return ("HexDriver", self.size)
+
     def _build(self):
         dim = HEX_DIMS[self.size]
         s = dim["s"]

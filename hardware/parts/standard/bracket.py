@@ -41,6 +41,9 @@ class FlatBracket(BasePart):
     def name_suffix(self) -> str:
         return f"_flat_x{self.qty}"
 
+    def bom_key(self):
+        return ("FlatBracket",)
+
     def _build(self):
         with BuildPart() as p:
             Box(flat_plate_width, flat_plate_height, flat_plate_thick)
@@ -57,6 +60,9 @@ class MotorBracket(BasePart):
 
     def name_suffix(self) -> str:
         return f"_motor_x{self.qty}"
+
+    def bom_key(self):
+        return ("MotorBracket",)
 
     def _build(self):
         # Plate centered on the origin. Shaft hole offset in -X from

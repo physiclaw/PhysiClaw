@@ -42,6 +42,9 @@ class Ring(BasePart):
     def name_suffix(self) -> str:
         return f"_{self.kind}_{self.spec}_x{self.qty}"
 
+    def bom_key(self):
+        return ("Ring", self.kind, self.spec)
+
     def _build(self):
         with BuildPart() as p:
             Cylinder(
