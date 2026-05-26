@@ -1,36 +1,45 @@
 """Build & render every procedure in hardware/assembly/procedures.
 
-Walks the procedures namespace via `hardware.bom.bom.list_procedures`,
-imports each module, picks out the BaseAssembly subclass it defines,
-and invokes .export() (STEP) and .render() (SVG) for both exploded
-and assembled variants. Per-run timings are reported so the assembly-
-state cache's effect is visible.
-
-Modules are visited in dependency order — lower-level layers
-(frame → idler → motor → linear → belt → tapz) first, so each higher
-layer hits a warm `_BUILD_CACHE` when it embeds its predecessors.
+Procedures are grouped by family (frame → idler → motor → linear →
+belt → tapz) in dependency order. Each family is split into batches
+of up to five procedures and each batch runs in its own subprocess —
+OCCT memory accumulated during a batch is returned to the OS before
+the next batch starts. A single all-in-one process accumulates many
+GB of geometry across 42 procedures and gets SIGKILL'd around the
+linear stages; batching at five-per-subprocess keeps every batch
+well under the OOM threshold while still letting the in-batch cache
+warm.
 
 Run from the repo root:
 
     uv run --group cad python -m hardware.assembly.build_procedures
+
+Worker mode (invoked internally by the dispatcher):
+
+    uv run --group cad python -m hardware.assembly.build_procedures --stems frame_10_extrusion_tnut frame_20_SHCS ...
 """
 
 from __future__ import annotations
 
+import argparse
+import subprocess
 import sys
 import time
 import traceback
+from itertools import groupby
 
-from hardware.assembly.base import SVG_DIR, BaseAssembly
+from hardware.assembly.base import SVG_DIR, BaseAssembly, svg_path_for
 from hardware.bom.bom import list_procedures, load_step
 from hardware.parts.base import STEP_DIR
 
 # Family priority — lower index = built first.
-_FAMILY_PRIORITY = {
-    name: i for i, name in enumerate(
-        ("frame", "idler", "motor", "linear", "belt", "tapz")
-    )
-}
+_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz")
+_FAMILY_PRIORITY = {name: i for i, name in enumerate(_FAMILIES)}
+DEFAULT_BATCH_SIZE = 5
+
+
+def _family_of(stem: str) -> str:
+    return stem.split("_", 1)[0]
 
 
 def _ordered_stems() -> list[str]:
@@ -38,7 +47,7 @@ def _ordered_stems() -> list[str]:
     fallback = len(_FAMILY_PRIORITY)
     return sorted(
         list_procedures(),
-        key=lambda s: (_FAMILY_PRIORITY.get(s.split("_", 1)[0], fallback), s),
+        key=lambda s: (_FAMILY_PRIORITY.get(_family_of(s), fallback), s),
     )
 
 
@@ -65,15 +74,7 @@ def _run_one(cls: type[BaseAssembly], exploded: bool) -> tuple[float, float, flo
     return t_build, t_export, t_render
 
 
-def main() -> int:
-    stems = _ordered_stems()
-    if not stems:
-        print("No procedure modules found.")
-        return 1
-    _clear_outputs()
-    # load_step returns an instance; we use type(...) to recover the
-    # class so we can iterate both exploded values without a second
-    # import. Cheap — load_step doesn't call .build().
+def _build_stems(stems: list[str]) -> int:
     classes = [(stem, type(load_step(stem))) for stem in stems]
 
     name_w   = max(len(name) for name, _ in classes)
@@ -125,6 +126,87 @@ def main() -> int:
             traceback.print_exception(type(exc), exc, exc.__traceback__)
         return 1
     return 0
+
+
+def _batches(batch_size: int) -> list[list[str]]:
+    """Family-clustered chunks of up to ``batch_size``, dependency order."""
+    out: list[list[str]] = []
+    for _, group in groupby(_ordered_stems(), key=_family_of):
+        stems = list(group)
+        for i in range(0, len(stems), batch_size):
+            out.append(stems[i:i + batch_size])
+    return out
+
+
+def _run_subprocess(stems: list[str]) -> int:
+    return subprocess.call([
+        sys.executable, "-m", "hardware.assembly.build_procedures",
+        "--stems", *stems,
+    ])
+
+
+def _stem_complete(stem: str) -> bool:
+    """Both variants' SVGs on disk → the full build/export/render
+    finished for this stem (render is last, so SVG presence implies
+    STEP presence)."""
+    return svg_path_for(stem, True).exists() and svg_path_for(stem, False).exists()
+
+
+def _dispatch(batch_size: int) -> int:
+    """Run each batch in its own subprocess; on failure, solo-retry
+    only the stems missing outputs."""
+    _clear_outputs()
+
+    batches = _batches(batch_size)
+    failed_stems: list[str] = []
+    t_wall0 = time.monotonic()
+
+    for batch in batches:
+        label = f"{_family_of(batch[0])}: {batch[0]} … {batch[-1]} ({len(batch)})"
+        print(f"\n=== {label} ===")
+        rc = _run_subprocess(batch)
+        if rc == 0:
+            continue
+        if len(batch) == 1:
+            failed_stems.append(batch[0])
+            continue
+        incomplete = [s for s in batch if not _stem_complete(s)]
+        print(f"\n--- batch exit {rc}; solo-retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
+        for stem in incomplete:
+            print(f"\n--- solo: {stem} ---")
+            if _run_subprocess([stem]) != 0:
+                failed_stems.append(stem)
+
+    wall = time.monotonic() - t_wall0
+    if failed_stems:
+        print("\nFAILED procedures (even solo):")
+        for s in failed_stems:
+            print(f"  {s}")
+        print(f"total wall {wall:.1f}s")
+        return 1
+    print(f"\nAll {len(batches)} batches OK   total wall {wall:.1f}s")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--stems",
+        nargs="+",
+        help="procedure stems to build (worker mode); omit to dispatch all batches as subprocesses",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"max procedures per subprocess in dispatcher mode (default {DEFAULT_BATCH_SIZE})",
+    )
+    args = parser.parse_args(argv)
+
+    if args.stems:
+        return _build_stems(args.stems)
+
+    return _dispatch(args.batch_size)
 
 
 if __name__ == "__main__":

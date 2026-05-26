@@ -27,6 +27,14 @@ SOLID_LABEL = "_layer_solid"
 GHOST_LABEL = "_layer_ghost"
 
 
+def variant_suffix(exploded: bool) -> str:
+    return "_exploded" if exploded else "_assembled"
+
+
+def svg_path_for(stem: str, exploded: bool) -> Path:
+    return SVG_DIR / f"{stem}{variant_suffix(exploded)}.svg"
+
+
 class BaseAssembly(BasePart):
     """Buildable assembly — STEP via .export() (inherited), SVG via .render().
 
@@ -55,21 +63,17 @@ class BaseAssembly(BasePart):
         super().__init__()
         self.exploded = exploded
 
-    @property
-    def _variant(self) -> str:
-        return "_exploded" if self.exploded else "_assembled"
-
     def name_suffix(self) -> str:
         # Assemblies are one-offs; drop the inherited "_x{qty}" suffix and
         # use the variant tag instead, so the STEP filename is e.g.
         # solenoid_tip_exploded.step / solenoid_tip_assembled.step.
-        return self._variant
+        return variant_suffix(self.exploded)
 
     def bom_key(self):
         return None  # assemblies are structural; their parts register themselves
 
     def svg_path(self) -> Path:
-        return SVG_DIR / f"{self._module_stem()}{self._variant}.svg"
+        return svg_path_for(self._module_stem(), self.exploded)
 
     def geom_key(self):
         """Cache key = class + every ctor-set hashable instance attr.

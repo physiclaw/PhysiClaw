@@ -1,6 +1,5 @@
 import copy
 import sys
-from collections import OrderedDict
 from pathlib import Path
 from typing import Literal
 
@@ -17,20 +16,12 @@ BomCategory = Literal["standard", "custom"]
 # transformed part.
 BOM_REGISTRY: list[tuple[tuple, int, BomCategory, str | None]] = []
 
-# Geometry cache: maps geom_key → (pristine _build() result, state dict).
-# `build()` returns copy.copy() of the shape (shares OCCT TShape per
-# build123d's __copy__, gives a fresh Python wrapper / anytree node so
-# the result can be re-parented). The state dict carries post-build
-# instance attrs that downstream consumers expect to read on the
-# returned instance (assemblies use this; parts default to {}).
-#
-# LRU-bounded: each cached assembly compound holds ~hundreds of OCCT
-# wrappers, so the full procedure chain (tapz_20 → belt_30 → ... →
-# frame_10) hits ~8 GB peak resident unbounded — enough to get
-# SIGKILL'd on memory-constrained machines mid-run. Cap at the chain
-# depth + headroom; LRU keeps each step's immediate predecessor warm.
-_BUILD_CACHE: "OrderedDict[tuple, tuple[object, dict]]" = OrderedDict()
-_BUILD_CACHE_MAX = 24
+# Geometry cache: geom_key → (pristine _build() result, post-build
+# state dict). `build()` returns copy.copy() of the shape (shares OCCT
+# TShape; fresh Python wrapper so anytree re-parenting works). State
+# carries post-build instance attrs downstream consumers read. Unbounded;
+# subprocess batching in build_procedures bounds total memory.
+_BUILD_CACHE: dict[tuple, tuple[object, dict]] = {}
 
 
 class BasePart:
@@ -120,8 +111,8 @@ class BasePart:
         instance of each unique geometry runs ``_build()``; subsequent
         instances return ``copy.copy()`` of the cached pristine shape.
         Subclasses (BaseAssembly) can additionally cache/restore
-        post-build instance attributes via the `_snapshot_state` /
-        `_diff_state` / `_restore_state` hooks above.
+        post-build instance attributes via the ``_snapshot_state`` /
+        ``_diff_state`` / ``_restore_state`` hooks above.
         """
         if (cached := getattr(self, "_built", None)) is not None:
             return cached
@@ -130,15 +121,12 @@ class BasePart:
             shape = self._build()
         elif (entry := _BUILD_CACHE.get(gkey)) is not None:
             cached_shape, cached_state = entry
-            _BUILD_CACHE.move_to_end(gkey)   # mark most-recently-used
             shape = copy.copy(cached_shape)
             self._restore_state(cached_state)
         else:
             snap = self._snapshot_state()
             shape = self._build()
             _BUILD_CACHE[gkey] = (shape, self._diff_state(snap))
-            while len(_BUILD_CACHE) > _BUILD_CACHE_MAX:
-                _BUILD_CACHE.popitem(last=False)   # evict oldest
             shape = copy.copy(shape)
         if not getattr(shape, "label", None):
             shape.label = type(self).__name__
