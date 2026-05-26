@@ -26,7 +26,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import FRONT_HIGH_R10
+from hardware.assembly.projection import FRONT_HIGH_L10
 from hardware.parts.standard.bracket import (
     FlatBracket,
     flat_hole_spacing as hole_spacing,
@@ -48,7 +48,7 @@ TNUT_LIFT       = 5      # mm — assembled: nut slid up the shank toward the br
 
 
 class FR30BracketTnut(BaseAssembly):
-    camera = FRONT_HIGH_R10
+    camera = FRONT_HIGH_L10
 
     def _build(self) -> Compound:
         bracket = FlatBracket().build()

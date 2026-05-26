@@ -67,7 +67,7 @@ FRONT_LEFT_LOW     = Camera(-30, -20)
 BACK_RIGHT_HIGH    = Camera(150,  25)
 BACK_RIGHT_LOW_R90 = Camera(120, -20, 90)
 FRONT_LEFT_LOW_R70 = Camera(-45, -20, 70)
-FRONT_HIGH_R10     = Camera( 15,  45, 10)
+FRONT_HIGH_L10     = Camera( 15,  45, -10)
 MAIN_FRAME_VIEW    = Camera( -15, -15, -3)
 
 def camera_view(
