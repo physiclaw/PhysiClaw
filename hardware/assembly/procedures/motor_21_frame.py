@@ -49,15 +49,14 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.motor_11_frame import MO11Frame
 from hardware.assembly.procedures.motor_20_bracket import MO20Bracket
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.standard.extrusion import cb_end_offset
 
 MOTOR_EXPLODE = 40    # mm — exploded: outboard air gap, slot face → bracket bottom
 
 
 class MO21Frame(BaseAssembly):
-    camera = Camera(30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Base layer — always assembled. Bundles frame + all 4 idler
         # corner mounts + their brackets + left motor; this step adds

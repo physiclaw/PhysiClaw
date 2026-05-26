@@ -52,11 +52,20 @@ class Camera:
         return base * math.cos(theta) + view_dir.cross(base) * math.sin(theta)
 
 
-FRONT = Camera(0, 0)
-RIGHT = Camera(90, 0)
-TOP   = Camera(0, 90)
-ISO   = Camera(45, 35.2644)
+ISO = Camera(45, 35.2644)
 
+# Procedure-view presets. Naming encodes azimuth / elevation / non-zero
+# roll so the angle is readable at the import site. `MAIN_FRAME_VIEW` is
+# the one exception — kept semantic because the angle is calibrated to
+# the X-rail bbox.
+FRONT_LEFT_HIGH    = Camera(-30,  25)
+FRONT_RIGHT_HIGH   = Camera( 30,  25)
+FRONT_LEFT_LOW     = Camera(-30, -20)
+BACK_RIGHT_HIGH    = Camera(150,  25)
+BACK_RIGHT_LOW_R90 = Camera(120, -20, 90)
+FRONT_LEFT_LOW_R70 = Camera(-45, -20, 70)
+FRONT_HIGH_R10     = Camera( 15,  45, 10)
+MAIN_FRAME_VIEW    = Camera( 15, -36)
 
 def camera_view(
     shape: Shape,

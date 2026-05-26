@@ -39,7 +39,7 @@ Run from the repo root:
 from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_LEFT_HIGH
 from hardware.parts.custom.pulley_mount_front import (
     PulleyMountFront,
     back_pocket_center_z,
@@ -65,7 +65,7 @@ NUT_GAP            = 15    # mm — exploded: back face → nut center along +Y 
 
 
 class ID30Ld(BaseAssembly):
-    camera = Camera(-30, 25)
+    camera = FRONT_LEFT_HIGH
 
     def _build(self) -> Compound:
         block = PulleyMountFront().build()

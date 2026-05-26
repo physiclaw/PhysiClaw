@@ -66,7 +66,7 @@ from hardware.assembly.procedures.belt_20_clamp import (
 )
 from hardware.assembly.procedures.belt_30_motor_b import BE30MotorB
 from hardware.assembly.procedures.tapz_11_solenoid_attach import TZ11SolenoidAttach
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts._fits import M3_NUT_T
 from hardware.parts.custom.belt_clamp import (
     corner_hole_offset,
@@ -195,8 +195,7 @@ TAPZ11_TO_TAPZ20 = Location(Plane(
 
 
 class TZ20SolenoidMount(BaseAssembly):
-    camera = Camera(-30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         base_compound = BE30MotorB(exploded=False).build()
 

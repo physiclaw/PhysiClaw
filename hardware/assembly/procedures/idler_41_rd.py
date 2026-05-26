@@ -47,7 +47,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.idler_31_ld import ID31Ld
 from hardware.assembly.procedures.idler_40_rd import ID40Rd
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.custom.pulley_mount_front import (
     slot_center_y,
     thickness as block_thickness,
@@ -57,8 +57,7 @@ RD_EXPLODE = 40    # mm — exploded: outboard air gap, slot face → rd block b
 
 
 class ID41Rd(BaseAssembly):
-    camera = Camera(30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Base layer — always assembled. Bundles frame + LU/RU/LD
         # mounts + their brackets; this step adds the RD mount on top.

@@ -42,7 +42,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.frame_31_bracket import FR31Bracket
 from hardware.assembly.procedures.frame_40_bumper_tnut import FR40BumperTnut
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.standard.bumper import body_height as bumper_height
 from hardware.parts.standard.extrusion import cb_end_offset
 
@@ -50,8 +50,7 @@ BUMPER_EXPLODE = 25     # mm — exploded: outboard air gap, +Y slot face → bu
 
 
 class FR41Bumper(BaseAssembly):
-    camera = Camera(150, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Frame layer — always assembled (it's the prior step's result).
         frame = FR31Bracket(exploded=False)

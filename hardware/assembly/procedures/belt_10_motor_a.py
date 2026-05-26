@@ -34,7 +34,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_47_idler_rj2 import LI47IdlerRj2
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.standard.belt import Belt, motor_a_path
 
 BELT_EXPLODE = 30    # mm — exploded: shift the belt outboard along world -Y
@@ -43,8 +43,7 @@ BELT_EXPLODE = 30    # mm — exploded: shift the belt outboard along world -Y
 
 
 class BE10MotorA(BaseAssembly):
-    camera = Camera(-30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         base_compound = LI47IdlerRj2(exploded=False).build()
         belt = Belt(path=motor_a_path, name="motor_a", motor="A").build()

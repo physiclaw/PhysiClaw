@@ -55,7 +55,7 @@ Run from the repo root:
 from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_LEFT_HIGH
 from hardware.parts.custom.pulley_mount_motor import (
     PulleyMountMotor,
     front_hole_center_z,
@@ -84,7 +84,7 @@ TOP_NUT_LIFT       = 44    # mm — exploded: block top face → top-pocket nut 
 
 
 class ID20Ru(BaseAssembly):
-    camera = Camera(-30, 25)
+    camera = FRONT_LEFT_HIGH
 
     def _build(self) -> Compound:
         block = PulleyMountMotor().build()

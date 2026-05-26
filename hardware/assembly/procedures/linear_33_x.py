@@ -32,13 +32,13 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_31_x import LI31X
 from hardware.assembly.procedures.linear_32_x import LI32X
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 
 RAIL_EXPLODE = 30    # mm — exploded: rail lifted outward along world -Y
 
 
 class LI33X(BaseAssembly):
-    camera = Camera(-30, 25)
+    camera = MAIN_FRAME_VIEW
 
     def _build(self) -> Compound:
         base = LI31X(exploded=False)

@@ -33,7 +33,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import GHOST_LABEL, SOLID_LABEL, BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import BACK_RIGHT_LOW_R90, FRONT_LEFT_LOW
 from hardware.parts.standard.extrusion import (
     Extrusion2040,
     cb_end_offset,
@@ -131,6 +131,9 @@ class FR10ExtrusionTnut(BaseAssembly):
         No effect on the exploded view (which uses the row layout)."""
         super().__init__(exploded=exploded)
         self.separation = separation
+        # Two layouts → two cameras. Exploded looks down the rows from
+        # the side; assembled views the frame head-on from the front.
+        self.camera = BACK_RIGHT_LOW_R90 if exploded else FRONT_LEFT_LOW
         # Populated by _build_assembled_frame after .build(): keyed by
         # "long_left" / "long_right" / "short_top" / "short_bot", each
         # value is (ext, destinations). Lets a downstream assembly
@@ -138,12 +141,6 @@ class FR10ExtrusionTnut(BaseAssembly):
         # screws onto the moved members. Empty in the exploded row
         # variant — joints there are decoupled from the next step.
         self.frame_parts: dict = {}
-
-    @property
-    def camera(self) -> Camera:
-        # Two layouts → two cameras. Exploded looks down the rows from
-        # the side; assembled views the frame head-on from the front.
-        return Camera(120, -20, 90) if self.exploded else Camera(-30, -20)
 
     def _build(self) -> Compound:
         return (self._build_exploded_rows() if self.exploded

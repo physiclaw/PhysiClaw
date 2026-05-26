@@ -44,7 +44,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.linear_10_y import LI10Y, RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import MO30Pulley
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.custom.pulley_mount_front import (
     slot_center_y as ld_slot_center_y,
     width as ld_block_width,
@@ -59,8 +59,7 @@ RAIL_EXPLODE = 40    # mm — exploded: outboard air gap, slot face → rail bot
 
 
 class LI11Y(BaseAssembly):
-    camera = Camera(-30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Base layer — always assembled.
         base_compound = MO30Pulley(exploded=False).build()

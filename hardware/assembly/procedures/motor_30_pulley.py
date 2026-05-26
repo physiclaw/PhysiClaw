@@ -33,7 +33,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.motor_21_frame import MO21Frame
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.standard.pulley import Pulley2GT20T
 
 LEFT_PULLEY_GAP  = -3    # mm — LEFT pulley belt-band lands on the LOWER idler
@@ -54,8 +54,7 @@ PULLEY_EXPLODE   = 30    # mm — exploded: pull each pulley outboard along worl
 
 
 class MO30Pulley(BaseAssembly):
-    camera = Camera(-30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Build the prior step and keep the instance so we can read
         # the pulley_plane hooks for both motors. The base is always

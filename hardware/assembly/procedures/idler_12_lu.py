@@ -61,7 +61,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.frame_41_bumper import FR41Bumper
 from hardware.assembly.procedures.idler_10_lu import ID10Lu
 from hardware.assembly.procedures.idler_11_lu import ID11Lu
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.custom.pulley_mount_motor import (
     front_hole_center_z,
     thickness as block_thickness,
@@ -74,8 +74,7 @@ BRACKET_EXPLODE = 30    # mm — exploded: -X air gap, lu block front face → b
 
 
 class ID12Lu(BaseAssembly):
-    camera = Camera(-30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Frame layer — always assembled.
         frame_compound = FR41Bumper(exploded=False).build()

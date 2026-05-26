@@ -46,7 +46,7 @@ from build123d import MM, Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.tapz_10_solenoid_tip import TZ10SolenoidTip
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_LEFT_LOW_R70
 from hardware.parts.custom.solenoid_mount import (
     SolenoidMount,
     screen_pattern_base_from_bottom,
@@ -93,7 +93,7 @@ SCREEN_FACE_X  = MOUNT_ORIGIN_X + (mount_width / 2 - wall_thickness)
 
 
 class TZ11SolenoidAttach(BaseAssembly):
-    camera = Camera(-45, -20, 70)
+    camera = FRONT_LEFT_LOW_R70
 
     def _build(self) -> Compound:
         base_compound = TZ10SolenoidTip(exploded=False).build()

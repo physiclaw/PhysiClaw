@@ -47,7 +47,7 @@ Run from the repo root:
 from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_LEFT_HIGH
 from hardware.parts.standard.pulley import Pulley2GT20T, flange_belt_h
 from hardware.parts.standard.ring import SPECS as RING_SPECS, Ring
 from hardware.parts.standard.screw import SHOULDER_DIMS, Screw
@@ -63,7 +63,7 @@ class LI40IdlerLj1(BaseAssembly):
     toothed: bool        = False
     include_spacer: bool = True
     shoulder_len: int    = 20    # mm — pairs with the 18 mm spacer+washer+idler stack
-    camera = Camera(-30, 25)
+    camera = FRONT_LEFT_HIGH
 
     def _build(self) -> Compound:
         washer_h   = RING_SPECS[WASHER_SPEC]["height"]

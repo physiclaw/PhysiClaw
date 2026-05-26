@@ -37,7 +37,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_HIGH_R10
 from hardware.parts.standard.bracket import (
     FlatBracket,
     flat_hole_spacing as hole_spacing,
@@ -65,7 +65,7 @@ class ID11Lu(BaseAssembly):
     # filename from the subclass's own module, so no other override is
     # needed.
     compound_label: str = "idler_11_lu"
-    camera = Camera(15, 45, 10)
+    camera = FRONT_HIGH_R10
 
     def _build(self) -> Compound:
         bracket = FlatBracket().build()

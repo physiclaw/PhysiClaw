@@ -70,7 +70,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.idler_12_lu import ID12Lu
 from hardware.assembly.procedures.idler_20_ru import ID20Ru
 from hardware.assembly.procedures.idler_21_ru import ID21Ru
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.custom.pulley_mount_motor import (
     front_hole_center_z,
     thickness as block_thickness,
@@ -83,8 +83,7 @@ BRACKET_EXPLODE = 30    # mm — exploded: +X air gap, ru block front face → b
 
 
 class ID22Ru(BaseAssembly):
-    camera = Camera(30, 25)
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Base layer — always assembled. Bundles frame + LU mount + LU
         # bracket; this step adds the RU mount + RU bracket on top.

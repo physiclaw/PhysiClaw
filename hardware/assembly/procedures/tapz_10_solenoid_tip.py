@@ -20,7 +20,7 @@ Run from the repo root:
 from build123d import Compound, Location
 
 from hardware.assembly.base import GHOST_LABEL, SOLID_LABEL, BaseAssembly
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import FRONT_LEFT_LOW_R70
 from hardware.parts.standard.solenoid import Solenoid
 from hardware.parts.standard.tip import Tip
 
@@ -28,7 +28,7 @@ PREP_OFFSET_Z = -25   # mm — prep tip dropped below the seated position
 
 
 class TZ10SolenoidTip(BaseAssembly):
-    camera = Camera(-45, -20, 70)
+    camera = FRONT_LEFT_LOW_R70
 
     def _build(self) -> Compound:
         solenoid = Solenoid().build()

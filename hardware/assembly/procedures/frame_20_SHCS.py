@@ -23,7 +23,7 @@ from build123d import Compound
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.frame_10_extrusion_tnut import FR10ExtrusionTnut
-from hardware.assembly.projection import Camera
+from hardware.assembly.projection import MAIN_FRAME_VIEW
 from hardware.parts.standard.extrusion import CB_LABELS, cb_head_depth
 from hardware.parts.standard.screw import Screw
 
@@ -33,8 +33,7 @@ SHCS_LENGTH  = 16      # mm — SHCS M6 underhead length
 
 
 class FR20SHCS(BaseAssembly):
-    camera = Camera(-30, -20)  # front view
-
+    camera = MAIN_FRAME_VIEW
     def _build(self) -> Compound:
         # Frame geometry (extrusions + seated nuts) comes from the
         # preload step. separation chooses the explode amount;
