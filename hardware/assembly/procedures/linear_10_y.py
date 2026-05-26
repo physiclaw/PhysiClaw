@@ -40,7 +40,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.mgn9h import (
     MGN9H,
     rail_height,

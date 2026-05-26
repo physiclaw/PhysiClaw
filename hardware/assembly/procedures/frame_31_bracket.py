@@ -49,7 +49,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.frame_20_SHCS import FR20SHCS
 from hardware.assembly.procedures.frame_30_bracket_tnut import FR30BracketTnut
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.extrusion import cb_end_offset
 
 BRACKET_EXPLODE = 20   # mm — exploded: air gap, slot face → FR30BracketTnut t-nut floor

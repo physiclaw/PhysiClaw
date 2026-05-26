@@ -55,7 +55,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.idler_22_ru import ID22Ru
 from hardware.assembly.procedures.idler_30_ld import ID30Ld
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.pulley_mount_front import (
     slot_center_y,
     thickness as block_thickness,

@@ -42,7 +42,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.frame_31_bracket import FR31Bracket
 from hardware.assembly.procedures.frame_40_bumper_tnut import FR40BumperTnut
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.bumper import body_height as bumper_height
 from hardware.parts.standard.extrusion import cb_end_offset
 

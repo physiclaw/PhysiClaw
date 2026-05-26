@@ -39,7 +39,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_20_joint import LI20Joint
 from hardware.assembly.procedures.linear_30_x import LI30X, X_BEAM_LENGTH
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.xy_joint_left import thickness as joint_thickness
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 

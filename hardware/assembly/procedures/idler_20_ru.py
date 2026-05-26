@@ -55,7 +55,7 @@ Run from the repo root:
 from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.pulley_mount_motor import (
     PulleyMountMotor,
     front_hole_center_z,

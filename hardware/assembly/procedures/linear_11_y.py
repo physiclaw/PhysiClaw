@@ -44,7 +44,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.linear_10_y import LI10Y, RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import MO30Pulley
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.pulley_mount_front import (
     slot_center_y as ld_slot_center_y,
     width as ld_block_width,

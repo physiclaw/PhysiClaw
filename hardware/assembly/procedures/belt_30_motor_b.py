@@ -21,7 +21,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.belt_20_clamp import BE20Clamp
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.belt import Belt, motor_a_path
 
 BELT_EXPLODE = 30    # mm — exploded: shift motor B's belt further outboard

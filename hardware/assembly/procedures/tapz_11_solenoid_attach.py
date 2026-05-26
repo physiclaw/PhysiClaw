@@ -46,7 +46,7 @@ from build123d import MM, Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.tapz_10_solenoid_tip import TZ10SolenoidTip
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.solenoid_mount import (
     SolenoidMount,
     screen_pattern_base_from_bottom,

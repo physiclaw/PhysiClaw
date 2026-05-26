@@ -35,7 +35,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     EXT_THICKNESS,
     SHORT_LENGTH,
 )
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.xy_joint_left import (
     big_csk_dx_from_extra2,
     csk_hole_from_left,

@@ -49,7 +49,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 )
 from hardware.assembly.procedures.motor_11_frame import MO11Frame
 from hardware.assembly.procedures.motor_20_bracket import MO20Bracket
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.extrusion import cb_end_offset
 
 MOTOR_EXPLODE = 40    # mm — exploded: outboard air gap, slot face → bracket bottom

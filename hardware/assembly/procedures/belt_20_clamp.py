@@ -46,7 +46,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.belt_10_motor_a import BE10MotorA
 from hardware.assembly.procedures.frame_10_extrusion_tnut import EXT_THICKNESS
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.belt_clamp import (
     BeltClamp,
     length as clamp_length,

@@ -42,7 +42,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_45_idler_rj1 import LI45IdlerRj1
 from hardware.assembly.procedures.linear_46_idler_rj2 import LI46IdlerRj2
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.nut import SPECS as NUT_SPECS, Nut
 
 BUNDLE_EXPLODE = 35    # mm — exploded: bundle lifted along world -Y (outboard)

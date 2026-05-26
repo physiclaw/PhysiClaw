@@ -47,7 +47,7 @@ Run from the repo root:
 from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.pulley import Pulley2GT20T, flange_belt_h
 from hardware.parts.standard.ring import SPECS as RING_SPECS, Ring
 from hardware.parts.standard.screw import SHOULDER_DIMS, Screw

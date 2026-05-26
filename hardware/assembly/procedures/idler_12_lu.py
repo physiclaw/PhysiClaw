@@ -61,7 +61,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.frame_41_bumper import FR41Bumper
 from hardware.assembly.procedures.idler_10_lu import ID10Lu
 from hardware.assembly.procedures.idler_11_lu import ID11Lu
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.pulley_mount_motor import (
     front_hole_center_z,
     thickness as block_thickness,

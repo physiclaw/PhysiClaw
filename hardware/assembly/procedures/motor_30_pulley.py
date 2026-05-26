@@ -33,7 +33,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.motor_21_frame import MO21Frame
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.pulley import Pulley2GT20T
 
 LEFT_PULLEY_GAP  = -3    # mm — LEFT pulley belt-band lands on the LOWER idler

@@ -23,7 +23,7 @@ from build123d import Compound
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.frame_10_extrusion_tnut import FR10ExtrusionTnut
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.extrusion import CB_LABELS, cb_head_depth
 from hardware.parts.standard.screw import Screw
 

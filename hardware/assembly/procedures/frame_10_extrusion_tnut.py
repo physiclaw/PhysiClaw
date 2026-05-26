@@ -33,7 +33,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import GHOST_LABEL, SOLID_LABEL, BaseAssembly
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.extrusion import (
     Extrusion2040,
     cb_end_offset,

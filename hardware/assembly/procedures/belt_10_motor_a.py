@@ -34,7 +34,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_47_idler_rj2 import LI47IdlerRj2
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.standard.belt import Belt, motor_a_path
 
 BELT_EXPLODE = 30    # mm — exploded: shift the belt outboard along world -Y

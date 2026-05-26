@@ -14,7 +14,7 @@ from pathlib import Path
 
 from build123d import MM, Compound, ExportSVG, LineType, ShapeList, Unit
 
-from hardware.assembly.render import ISO, Camera, camera_view
+from hardware.assembly.projection import ISO, Camera, camera_view
 from hardware.parts.base import REPO_ROOT, BasePart
 
 SVG_DIR = REPO_ROOT / "hardware" / "output" / "svg"

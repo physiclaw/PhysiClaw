@@ -32,7 +32,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_31_x import LI31X
 from hardware.assembly.procedures.linear_32_x import LI32X
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 
 RAIL_EXPLODE = 30    # mm — exploded: rail lifted outward along world -Y
 

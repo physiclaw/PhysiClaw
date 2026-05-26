@@ -41,7 +41,7 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_11_y import LI11Y
-from hardware.assembly.render import Camera
+from hardware.assembly.projection import Camera
 from hardware.parts.custom.xy_joint_left import (
     XyJointLeft,
     big_csk_x,
