@@ -158,12 +158,19 @@ def _dispatch(batch_size: int) -> int:
     _clear_outputs()
 
     batches = _batches(batch_size)
+    position = {s: i + 1 for i, s in enumerate(s for b in batches for s in b)}
+    total = len(position)
     failed_stems: list[str] = []
     t_wall0 = time.monotonic()
 
+    def header(stems: list[str]) -> str:
+        start, end = position[stems[0]], position[stems[-1]]
+        progress = f"{start}/{total}" if start == end else f"{start}-{end}/{total}"
+        tail = stems[0] if start == end else f"{stems[0]} … {stems[-1]}"
+        return f"\n=== [{progress}] {_family_of(stems[0])}: {tail} ==="
+
     for batch in batches:
-        label = f"{_family_of(batch[0])}: {batch[0]} … {batch[-1]} ({len(batch)})"
-        print(f"\n=== {label} ===")
+        print(header(batch))
         rc = _run_subprocess(batch)
         if rc == 0:
             continue
@@ -173,18 +180,23 @@ def _dispatch(batch_size: int) -> int:
         incomplete = [s for s in batch if not _stem_complete(s)]
         print(f"\n--- batch exit {rc}; solo-retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
         for stem in incomplete:
-            print(f"\n--- solo: {stem} ---")
+            print(header([stem]))
             if _run_subprocess([stem]) != 0:
                 failed_stems.append(stem)
 
-    wall = time.monotonic() - t_wall0
+    wall    = time.monotonic() - t_wall0
+    total   = sum(len(b) for b in batches)
+    ok      = total - len(failed_stems)
+    n_step  = len(list(STEP_DIR.glob("*.step")))
+    n_svg   = len(list(SVG_DIR.glob("*.svg")))
+    tally   = f"{ok}/{total} assemblies   wrote {n_step} .step / {n_svg} .svg   total wall {wall:.1f}s"
     if failed_stems:
         print("\nFAILED procedures (even solo):")
         for s in failed_stems:
             print(f"  {s}")
-        print(f"total wall {wall:.1f}s")
+        print(tally)
         return 1
-    print(f"\nAll {len(batches)} batches OK   total wall {wall:.1f}s")
+    print(f"\nAll {len(batches)} batches OK   {tally}")
     return 0
 
 
