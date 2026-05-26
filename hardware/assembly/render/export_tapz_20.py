@@ -45,7 +45,9 @@ EXACT_LABEL_TO_MATERIAL = {
     "Solenoid":         "Steel_Chrome",
     "Belt":             "Rubber_Belt",
     "Bumper":           "Rubber_Bumper",
-    "Nema17Motor":      "Steel_Black_Coated",
+    # NEMA17 housing painted to match the anodized frame — same look
+    # and band of darkness as the extrusions, no separate housing tone.
+    "Nema17Motor":      "Aluminum_Anod_Black",
     "Nut":              "Steel_Zinc",
     "FlatBracket":      "PA12_Black_MJF",
     "MotorBracket":     "PA12_Black_MJF",

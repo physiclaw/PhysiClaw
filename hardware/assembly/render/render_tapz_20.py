@@ -208,9 +208,14 @@ def _smooth_shade():
 
 
 def _build_world_sky():
-    """HDRI environment so metals reflect a real studio softbox shape
-    instead of a flat sky gradient (which collapses every metal to the
-    same grey on screen)."""
+    """White-backdrop world: HDRI drives reflections on metals, but the
+    camera sees pure white when looking directly at the environment.
+
+    Light-Path "Is Camera Ray" splits the two: Fac=1 (camera ray) →
+    white Background, Fac=0 (diffuse / glossy / reflection ray) → HDRI
+    Background. Standard product-photography trick — gives clean white
+    studio backdrop without sacrificing real material reflections.
+    """
     world = bpy.context.scene.world
     nt = world.node_tree
     for n in list(nt.nodes):
@@ -224,13 +229,33 @@ def _build_world_sky():
     env = nt.nodes.new("ShaderNodeTexEnvironment")
     env.image = bpy.data.images.load(HDRI_PATH)
 
-    bg = nt.nodes.new("ShaderNodeBackground")
-    bg.inputs["Strength"].default_value = 1.8
+    # Desaturate the HDRI before it reaches the reflection background:
+    # any warm tint in the studio HDRI multiplies into metals (F0
+    # tints with the environment at metallic=1.0). Saturation=0 keeps
+    # softbox shape variation for crisp glints but strips the color
+    # cast — metals read as pure neutral steel.
+    desat = nt.nodes.new("ShaderNodeHueSaturation")
+    desat.inputs["Saturation"].default_value = 0.0
 
-    out = nt.nodes.new("ShaderNodeOutputWorld")
-    nt.links.new(env.outputs["Color"], bg.inputs["Color"])
-    nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
-    print("[render] World: HDRI brown_photostudio_02")
+    bg_hdri = nt.nodes.new("ShaderNodeBackground")
+    # Push hard so metals see real bright/dark contrast.
+    bg_hdri.inputs["Strength"].default_value = 3.5
+
+    bg_white = nt.nodes.new("ShaderNodeBackground")
+    bg_white.inputs["Color"].default_value    = (1.0, 1.0, 1.0, 1.0)
+    bg_white.inputs["Strength"].default_value = 1.0
+
+    light_path = nt.nodes.new("ShaderNodeLightPath")
+    mix        = nt.nodes.new("ShaderNodeMixShader")
+    out        = nt.nodes.new("ShaderNodeOutputWorld")
+
+    nt.links.new(env.outputs["Color"],   desat.inputs["Color"])
+    nt.links.new(desat.outputs["Color"], bg_hdri.inputs["Color"])
+    nt.links.new(light_path.outputs["Is Camera Ray"], mix.inputs["Fac"])
+    nt.links.new(bg_hdri.outputs["Background"],  mix.inputs[1])
+    nt.links.new(bg_white.outputs["Background"], mix.inputs[2])
+    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    print("[render] World: white backdrop + desaturated HDRI reflections")
 
 
 def _add_ground_plane(center, diag, ground_z):
@@ -250,9 +275,17 @@ def _add_ground_plane(center, diag, ground_z):
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     if bsdf is not None:
-        bsdf.inputs["Base Color"].default_value = (0.55, 0.55, 0.56, 1.0)
-        bsdf.inputs["Roughness"].default_value  = 0.85
+        # Near-white so the floor blends into the camera-ray backdrop,
+        # but glossy enough to catch a soft reflection of the machine
+        # underbody — without it the assembly looks pasted on the bg.
+        bsdf.inputs["Base Color"].default_value = (0.94, 0.94, 0.94, 1.0)
+        bsdf.inputs["Roughness"].default_value  = 0.55
         bsdf.inputs["Metallic"].default_value   = 0.0
+        # Specular IOR was renamed in Blender 4.4+/5.x; tolerate either.
+        spec = (bsdf.inputs.get("Specular IOR Level")
+                or bsdf.inputs.get("Specular"))
+        if spec is not None:
+            spec.default_value = 0.5
     obj.data.materials.append(mat)
 
 
@@ -297,10 +330,13 @@ def _place_camera_and_lights(mins, maxs):
     )
 
     energy = diag * diag * 12.0
+    # Industrial product ratio (key:fill ≈ 6:1) — smaller key for
+    # sharper metal highlights, dim broader fill so shadow sides
+    # actually go dark, tight strong rim for clean edge separation.
     light_specs = [
-        ("Key",  (1.1, -1.5,  1.7), energy * 1.0,  diag * 0.6),
-        ("Fill", (-1.4, -0.8, 0.7), energy * 0.30, diag * 0.6),
-        ("Rim",  (0.0,  1.6,  1.2), energy * 0.35, diag * 0.5),
+        ("Key",  (1.1, -1.5,  1.7), energy * 1.00, diag * 0.40),
+        ("Fill", (-1.4, -0.8, 0.7), energy * 0.15, diag * 0.80),
+        ("Rim",  (0.0,  1.6,  1.2), energy * 0.50, diag * 0.30),
     ]
     for name, dir_vec, en, size in light_specs:
         l_data = bpy.data.lights.new(name=f"Light_{name}", type="AREA")
@@ -336,8 +372,8 @@ def _configure_cycles():
     sc.cycles.samples   = SAMPLES
     sc.cycles.use_denoising = True
     sc.view_settings.view_transform = "Filmic"
-    sc.view_settings.look           = "Medium Contrast"
-    sc.view_settings.exposure       = 0.7    # +0.7 EV ≈ 1.6× brighter
+    sc.view_settings.look           = "Medium High Contrast"
+    sc.view_settings.exposure       = 0.6    # +0.6 EV — backdrop reads white without crushing highlights
     sc.render.resolution_x = RES_X
     sc.render.resolution_y = RES_Y
     sc.render.resolution_percentage = 100

@@ -3,9 +3,10 @@
 # the download if the file already exists at the expected size.
 #
 # Source: Poly Haven, https://polyhaven.com/a/brown_photostudio_02 (CC0)
-# Dark moody photography studio with strong rim lighting — gives
-# chrome/aluminum prominent rim highlights against a dark background,
-# classic "premium tech reveal" mood.
+# Used purely for the softbox-shape reflections on metals. The render
+# script desaturates it to greyscale and composites a pure-white
+# backdrop via Light Path, so the studio's warm tones never reach the
+# camera ray — only the bright/dark softbox shape variation does.
 # Destination: hardware/output/render/ (alongside the rendered PNG/GLB)
 
 set -euo pipefail

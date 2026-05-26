@@ -24,20 +24,25 @@ import colorsys
 
 MATERIAL_LIST = [
     ("Aluminum_Anod_Black", {
-        "base": (0.045, 0.045, 0.050),
+        # Near-pure-black anodized aluminum — dark metallic-paint look
+        # with a subtle painted sheen rather than open-metal reflection.
+        # Pushed darker than before to maximise contrast against the
+        # brighter Steel_Chrome rails sitting on it.
+        "base": (0.020, 0.020, 0.023),
         "metallic": 1.00,
-        "roughness": 0.35,
+        "roughness": 0.42,
         "bevel": True,
     }),
     ("Steel_Chrome", {
-        # Bright stainless rail finish with anisotropic streaks aligned
-        # to each rail's object-local X axis (which build123d's MGN9H
-        # extrudes along).
-        "base": (0.88, 0.89, 0.90),
+        # Bright stainless rail finish. The HDRI is desaturated upstream
+        # (see _build_world_sky), so the previous cream-tint risk is
+        # gone — push the F0 back toward proper polished stainless so
+        # the rails clearly contrast with the near-black extrusions.
+        "base": (0.78, 0.80, 0.83),
         "metallic": 1.00,
-        "roughness": 0.30,
+        "roughness": 0.16,
         "rough_vary": True,
-        "anisotropic": 0.85,
+        "anisotropic": 0.65,
         # Principled BSDF rotates highlight elongation 90° vs the
         # Glossy BSDF; +0.25 aligns streaks ALONG the tangent.
         "anisotropic_rotation": 0.25,
@@ -50,32 +55,41 @@ MATERIAL_LIST = [
     }),
     ("Steel_Black_Coated", {
         "base": (0.075, 0.072, 0.070),
-        "metallic": 0.30,
+        "metallic": 1.0,
         "roughness": 0.55,
         "bevel": True,
     }),
     ("PA12_Black_MJF", {
-        "base": (0.060, 0.060, 0.060),
+        # A hair lifted from pure black so the matte printed parts
+        # read as dark grey-black against the white studio backdrop,
+        # not as crushed silhouettes.
+        "base": (0.085, 0.085, 0.085),
         "metallic": 0.00,
         "roughness": 0.70,
     }),
+    # Matte black rubber — belt and bumper share the same pure-black
+    # diffuse with grazing-angle Fresnel as their only sheen. Reads as a
+    # near-zero-reflectance contributor to the dark band that includes
+    # the extrusions and motor housings, but distinguishably less
+    # "metallic" because metallic=0 keeps the face flat.
     ("Rubber_Belt", {
-        "base": (0.030, 0.030, 0.030),
+        "base": (0.000, 0.000, 0.000),
         "metallic": 0.00,
         "roughness": 0.85,
     }),
     ("Rubber_Bumper", {
-        "base": (0.025, 0.025, 0.025),
+        "base": (0.000, 0.000, 0.000),
         "metallic": 0.00,
-        # Smooth molded face — catches a clean specular highlight
-        # from the studio HDRI, per design ("the face is smooth").
-        "roughness": 0.25,
+        "roughness": 0.85,
     }),
     ("Aluminum_Polished", {
-        "base": (0.78, 0.78, 0.78),
+        # Machined / brushed-satin aluminum on the GT2 pulleys + idler
+        # bodies + washer rings. F0 pulled down to mid-luminance so the
+        # pulleys don't read as near-white blobs against the darker
+        # extrusions — real machined aluminum sits around 0.55.
+        "base": (0.55, 0.55, 0.55),
         "metallic": 1.00,
-        "roughness": 0.42,
-        # Same bevel reasoning as Steel_Chrome.
+        "roughness": 0.65,
         "rough_vary": True,
     }),
 ]
