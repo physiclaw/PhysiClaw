@@ -1,5 +1,6 @@
 import copy
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from typing import Literal
 
@@ -16,12 +17,20 @@ BomCategory = Literal["standard", "custom"]
 # transformed part.
 BOM_REGISTRY: list[tuple[tuple, int, BomCategory, str | None]] = []
 
-# Geometry cache: maps geom_key → pristine _build() result. build()
-# returns copy.copy() of the cached shape (shares OCCT TShape per
-# build123d's __copy__, deep-copies joints / label / location).
-# Process-wide and never cleared — bounded by the number of unique
-# specs (~30), so a re-collect or --all --write reuses prior work.
-_BUILD_CACHE: dict[tuple, object] = {}
+# Geometry cache: maps geom_key → (pristine _build() result, state dict).
+# `build()` returns copy.copy() of the shape (shares OCCT TShape per
+# build123d's __copy__, gives a fresh Python wrapper / anytree node so
+# the result can be re-parented). The state dict carries post-build
+# instance attrs that downstream consumers expect to read on the
+# returned instance (assemblies use this; parts default to {}).
+#
+# LRU-bounded: each cached assembly compound holds ~hundreds of OCCT
+# wrappers, so the full procedure chain (tapz_20 → belt_30 → ... →
+# frame_10) hits ~8 GB peak resident unbounded — enough to get
+# SIGKILL'd on memory-constrained machines mid-run. Cap at the chain
+# depth + headroom; LRU keeps each step's immediate predecessor warm.
+_BUILD_CACHE: "OrderedDict[tuple, tuple[object, dict]]" = OrderedDict()
+_BUILD_CACHE_MAX = 24
 
 
 class BasePart:
@@ -88,31 +97,49 @@ class BasePart:
     def _build(self):
         raise NotImplementedError
 
+    def _snapshot_state(self):
+        """Capture instance state before `_build()` runs. Override to
+        opt into post-build state caching (assemblies do this).
+        Default: no state."""
+        return None
+
+    def _diff_state(self, snapshot):
+        """Return the state dict to cache. Receives whatever
+        `_snapshot_state` returned."""
+        return {}
+
+    def _restore_state(self, state):
+        """Apply cached state to `self` on a cache hit."""
+        pass
+
     def build(self):
         """Return the build123d shape (labeled, no STEP export).
 
         Memoized on the instance via ``self._built``. Also reuses a
         process-wide ``_BUILD_CACHE`` keyed by ``geom_key()``: the first
-        instance of each unique geometry runs ``_build()`` and stores
-        the pristine result; subsequent instances return ``copy.copy()``
-        of the cached shape (build123d's shallow-copy pattern — shares
-        the OCCT TShape, deep-copies Python attrs incl. joints). _build()
-        is expected to be a pure function of self.
+        instance of each unique geometry runs ``_build()``; subsequent
+        instances return ``copy.copy()`` of the cached pristine shape.
+        Subclasses (BaseAssembly) can additionally cache/restore
+        post-build instance attributes via the `_snapshot_state` /
+        `_diff_state` / `_restore_state` hooks above.
         """
         if (cached := getattr(self, "_built", None)) is not None:
             return cached
         gkey = self.geom_key()
         if gkey is None:
             shape = self._build()
-        elif gkey in _BUILD_CACHE:
-            shape = copy.copy(_BUILD_CACHE[gkey])
+        elif (entry := _BUILD_CACHE.get(gkey)) is not None:
+            cached_shape, cached_state = entry
+            _BUILD_CACHE.move_to_end(gkey)   # mark most-recently-used
+            shape = copy.copy(cached_shape)
+            self._restore_state(cached_state)
         else:
+            snap = self._snapshot_state()
             shape = self._build()
-            _BUILD_CACHE[gkey] = shape    # cache pristine, never returned directly
-            shape = copy.copy(shape)      # so callers can .move() etc. freely
-        # Default the STEP label to the class name so the exported file is
-        # readable in other CAD tools. _build() can override by setting an
-        # explicit label (e.g. on a Compound).
+            _BUILD_CACHE[gkey] = (shape, self._diff_state(snap))
+            while len(_BUILD_CACHE) > _BUILD_CACHE_MAX:
+                _BUILD_CACHE.popitem(last=False)   # evict oldest
+            shape = copy.copy(shape)
         if not getattr(shape, "label", None):
             shape.label = type(self).__name__
         self._built = shape
