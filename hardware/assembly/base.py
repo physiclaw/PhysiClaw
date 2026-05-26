@@ -15,6 +15,7 @@ from pathlib import Path
 from build123d import MM, Compound, ExportSVG, LineType, ShapeList, Unit
 
 from hardware.assembly.projection import ISO, Camera, camera_view
+from hardware.assembly.svg_utils import strip_root_dims
 from hardware.parts.base import REPO_ROOT, BasePart
 
 SVG_DIR = REPO_ROOT / "hardware" / "output" / "svg"
@@ -31,8 +32,11 @@ def variant_suffix(exploded: bool) -> str:
     return "_exploded" if exploded else "_assembled"
 
 
-def svg_path_for(stem: str, exploded: bool) -> Path:
-    return SVG_DIR / f"{stem}{variant_suffix(exploded)}.svg"
+def svg_path_for(stem: str, exploded: bool, index: int | None = None) -> Path:
+    """Output path for a rendered SVG. ``index`` is supplied only when an
+    assembly has a list of cameras — each gets its own ``_<i>.svg`` file."""
+    suffix = "" if index is None else f"_{index}"
+    return SVG_DIR / f"{stem}{variant_suffix(exploded)}{suffix}.svg"
 
 
 class BaseAssembly(BasePart):
@@ -50,10 +54,14 @@ class BaseAssembly(BasePart):
     from one ``__main__``, and so a downstream assembly can embed an
     upstream one in its assembled form (e.g. ``FR20SHCS(exploded=False)``).
     Output filenames are suffixed ``_exploded`` / ``_assembled`` to keep
-    both on disk side by side.
+    both on disk side by side; when ``camera`` is a list, each camera's
+    output also gets an ``_<i>`` suffix so the per-camera renders sit
+    next to each other.
     """
 
-    camera: Camera = ISO
+    # One camera → one SVG per variant; a list of cameras → one SVG per
+    # camera per variant, filenames suffixed ``_0``, ``_1``, ….
+    camera: "Camera | list[Camera]" = ISO
     line_weight: float = 0.25   # mm — heavier than build123d's 0.09 default
     page_margin: float = 5 * MM
     ghost_line_weight: float = 0.12
@@ -72,8 +80,8 @@ class BaseAssembly(BasePart):
     def bom_key(self):
         return None  # assemblies are structural; their parts register themselves
 
-    def svg_path(self) -> Path:
-        return svg_path_for(self._module_stem(), self.exploded)
+    def svg_path(self, index: int | None = None) -> Path:
+        return svg_path_for(self._module_stem(), self.exploded, index=index)
 
     def geom_key(self):
         """Cache key = class + every ctor-set hashable instance attr.
@@ -85,7 +93,10 @@ class BaseAssembly(BasePart):
         """
         items = []
         for k, v in sorted(self.__dict__.items()):
-            if k.startswith("_") or callable(v):
+            # ``camera`` controls rendering, not geometry — including it
+            # would needlessly fragment the cache and breaks hashing when
+            # a procedure sets ``self.camera`` to a list.
+            if k == "camera" or k.startswith("_") or callable(v):
                 continue
             try:
                 hash(v)
@@ -117,30 +128,40 @@ class BaseAssembly(BasePart):
         assembly = self.build()
         solid, ghost = _split_solid_ghost(assembly)
 
-        # Camera + look_at derived from the FULL assembly bbox so solid and
-        # ghost layers align pixel-for-pixel. Without a shared look_at,
-        # project_to_viewport defaults to each subset's own center, which
-        # warps the projection direction per layer.
-        cam_pos, up, look_at = camera_view(assembly, self.camera)
+        cameras = self.camera if isinstance(self.camera, list) else [self.camera]
+        # Filenames stay un-indexed when there's exactly one camera (the
+        # common case) so single-camera procedures don't get gratuitously
+        # renamed; lists always index even at length one, so a procedure
+        # that opts into list form gets a stable indexed scheme.
+        indexed = isinstance(self.camera, list)
 
-        exporter = ExportSVG(unit=Unit.MM, margin=self.page_margin)
-        exporter.add_layer(SOLID_LABEL, line_weight=self.line_weight)
-        if ghost is not None:
-            exporter.add_layer(
-                GHOST_LABEL,
-                line_weight=self.ghost_line_weight,
-                line_type=self.ghost_line_type,
-            )
+        for i, cam in enumerate(cameras):
+            # Camera + look_at derived from the FULL assembly bbox so
+            # solid and ghost layers align pixel-for-pixel. Without a
+            # shared look_at, project_to_viewport defaults to each
+            # subset's own center, which warps the projection direction
+            # per layer.
+            cam_pos, up, look_at = camera_view(assembly, cam)
 
-        solid_visible, _ = solid.project_to_viewport(cam_pos, up, look_at=look_at)
-        exporter.add_shape(ShapeList(solid_visible), layer=SOLID_LABEL)
-        if ghost is not None:
-            ghost_visible, _ = ghost.project_to_viewport(cam_pos, up, look_at=look_at)
-            exporter.add_shape(ShapeList(ghost_visible), layer=GHOST_LABEL)
+            exporter = ExportSVG(unit=Unit.MM, margin=self.page_margin)
+            exporter.add_layer(SOLID_LABEL, line_weight=self.line_weight)
+            if ghost is not None:
+                exporter.add_layer(
+                    GHOST_LABEL,
+                    line_weight=self.ghost_line_weight,
+                    line_type=self.ghost_line_type,
+                )
 
-        path = self.svg_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        exporter.write(str(path))
+            solid_visible, _ = solid.project_to_viewport(cam_pos, up, look_at=look_at)
+            exporter.add_shape(ShapeList(solid_visible), layer=SOLID_LABEL)
+            if ghost is not None:
+                ghost_visible, _ = ghost.project_to_viewport(cam_pos, up, look_at=look_at)
+                exporter.add_shape(ShapeList(ghost_visible), layer=GHOST_LABEL)
+
+            path = self.svg_path(index=i if indexed else None)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            exporter.write(str(path))
+            path.write_text(strip_root_dims(path.read_text()))
 
 
 def _split_solid_ghost(assembly):
