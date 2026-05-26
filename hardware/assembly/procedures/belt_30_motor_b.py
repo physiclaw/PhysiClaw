@@ -21,7 +21,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.belt_20_clamp import BE20Clamp
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import FRONT
 from hardware.parts.standard.belt import Belt, motor_a_path
 
 BELT_EXPLODE = 30    # mm — exploded: shift motor B's belt further outboard
@@ -30,7 +30,7 @@ BELT_EXPLODE = 30    # mm — exploded: shift motor B's belt further outboard
 
 
 class BE30MotorB(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = FRONT
     def _build(self) -> Compound:
         base_compound = BE20Clamp(exploded=False).build()
         belt = Belt(path=motor_a_path, name="motor_b", motor="B").build()

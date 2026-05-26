@@ -52,7 +52,10 @@ class Camera:
         return base * math.cos(theta) + view_dir.cross(base) * math.sin(theta)
 
 
-ISO = Camera(45, 35.2644)
+FRONT = Camera(0, 0)
+RIGHT = Camera(90, 0)
+TOP   = Camera(0, 90)
+ISO   = Camera(45, 35.2644)
 
 # Procedure-view presets. Naming encodes azimuth / elevation / non-zero
 # roll so the angle is readable at the import site. `MAIN_FRAME_VIEW` is
