@@ -145,11 +145,16 @@ def _run_subprocess(stems: list[str]) -> int:
     ])
 
 
-def _stem_complete(stem: str) -> bool:
-    """Both variants' SVGs on disk → the full build/export/render
-    finished for this stem (render is last, so SVG presence implies
-    STEP presence)."""
-    return svg_path_for(stem, True).exists() and svg_path_for(stem, False).exists()
+_VARIANTS = (("exploded", True), ("assembled", False))
+
+
+def _missing_variants(stem: str) -> list[str]:
+    """Variant names ("exploded" / "assembled") whose SVG isn't on disk
+    for this stem. ``_run_one`` writes STEP first then SVG, so SVG
+    presence implies the full build/export/render finished for that
+    variant."""
+    return [name for name, exploded in _VARIANTS
+            if not svg_path_for(stem, exploded).exists()]
 
 
 def _dispatch(batch_size: int) -> int:
@@ -160,7 +165,6 @@ def _dispatch(batch_size: int) -> int:
     batches = _batches(batch_size)
     position = {s: i + 1 for i, s in enumerate(s for b in batches for s in b)}
     total = len(position)
-    failed_stems: list[str] = []
     t_wall0 = time.monotonic()
 
     def header(stems: list[str]) -> str:
@@ -172,28 +176,28 @@ def _dispatch(batch_size: int) -> int:
     for batch in batches:
         print(header(batch))
         rc = _run_subprocess(batch)
-        if rc == 0:
+        if rc == 0 or len(batch) == 1:
             continue
-        if len(batch) == 1:
-            failed_stems.append(batch[0])
-            continue
-        incomplete = [s for s in batch if not _stem_complete(s)]
+        incomplete = [s for s in batch if _missing_variants(s)]
         print(f"\n--- batch exit {rc}; solo-retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
         for stem in incomplete:
             print(header([stem]))
-            if _run_subprocess([stem]) != 0:
-                failed_stems.append(stem)
+            _run_subprocess([stem])
 
-    wall    = time.monotonic() - t_wall0
-    total   = sum(len(b) for b in batches)
-    ok      = total - len(failed_stems)
-    n_step  = len(list(STEP_DIR.glob("*.step")))
-    n_svg   = len(list(SVG_DIR.glob("*.svg")))
-    tally   = f"{ok}/{total} assemblies   wrote {n_step} .step / {n_svg} .svg   total wall {wall:.1f}s"
-    if failed_stems:
-        print("\nFAILED procedures (even solo):")
-        for s in failed_stems:
-            print(f"  {s}")
+    wall = time.monotonic() - t_wall0
+    failed_variants = [(s, v) for s in position for v in _missing_variants(s)]
+    ok_assemblies = sum(1 for s in position if not _missing_variants(s))
+    n_step = len(list(STEP_DIR.glob("*.step")))
+    n_svg  = len(list(SVG_DIR.glob("*.svg")))
+    tally  = (
+        f"{ok_assemblies}/{total} assemblies   "
+        f"wrote {n_step} .step / {n_svg} .svg   "
+        f"total wall {wall:.1f}s"
+    )
+    if failed_variants:
+        print(f"\nFAILED variants ({len(failed_variants)}):")
+        for stem, variant in failed_variants:
+            print(f"  {stem} {variant}")
         print(tally)
         return 1
     print(f"\nAll {len(batches)} batches OK   {tally}")
