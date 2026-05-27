@@ -5,7 +5,7 @@ Run:
     uv run --group cad python -m hardware.assembly.mark <input.svg>
 
 Each save produces ``<src stem>.<id>.svg`` next to the source and
-appends an op entry to ``hardware/output/patch/<src stem>.json``. An
+appends an op entry to ``hardware/assembly/patch/<src stem>.json``. An
 op is ``{id, preop, shapes, viewBox}`` — shapes are typed
 (polygon / rect / circle / ellipse / line / arrow), each with its
 own colour + outlined flag. ``preop`` is the literal ``"orig"``

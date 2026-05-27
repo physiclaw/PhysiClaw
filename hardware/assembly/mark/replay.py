@@ -1,6 +1,6 @@
 """Replay patch JSONs against freshly-regenerated source SVGs.
 
-For each patch file at ``hardware/output/patch/<stem>.json``, walks the
+For each patch file at ``hardware/assembly/patch/<stem>.json``, walks the
 op chain and writes one snapshot per **leaf** op — an op that no other
 op references as its ``preop``. Intermediate ops are applied in memory
 to build each leaf's chain but not written to disk: in a chain

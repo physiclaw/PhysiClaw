@@ -16,8 +16,9 @@ Each save is one *operation*. An op has:
 
 The output snapshot is ``<src stem>.<id>.svg`` next to the source; all
 ops for one source share a single JSON accumulator at
-``hardware/output/patch/<src stem>.json`` (top-level array of entries
-in save order)."""
+``hardware/assembly/patch/<src stem>.json`` (top-level array of entries
+in save order). The patch dir lives inside ``assembly/`` (not
+``output/``) so it stays version-controlled."""
 
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from typing import Iterable, Tuple
 
 from hardware.parts.base import REPO_ROOT
 
-PATCH_DIR     = REPO_ROOT / "hardware" / "output" / "patch"
+PATCH_DIR     = REPO_ROOT / "hardware" / "assembly" / "patch"
 ID_ALPHABET   = string.ascii_lowercase
 ID_LEN        = 4
 ORIG_SENTINEL = "orig"
@@ -66,7 +67,7 @@ def validate_preop(raw) -> str:
 
 
 def patch_path(source_svg: Path) -> Path:
-    """``hardware/output/patch/<src stem>.json`` — one accumulator per
+    """``hardware/assembly/patch/<src stem>.json`` — one accumulator per
     source SVG. A replay script walks this directory to find every
     edited source and rebuilds each op by chaining on its ``preop``."""
     return PATCH_DIR / f"{source_svg.stem}.json"
