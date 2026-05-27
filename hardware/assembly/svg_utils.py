@@ -1,10 +1,11 @@
-"""Root-tag attribute rewriting for build123d-emitted SVGs.
+"""Root-tag attribute rewriting and style injection for build123d-emitted SVGs.
 
-Two operations are shared between the build pipeline (post-render
-stripping of ``width`` / ``height`` so files scale in browsers) and
-the marker tool (setting ``viewBox`` to a user-cropped rect). Both
-touch only the root ``<svg ...>`` opening tag — nested elements with
-their own ``width`` / ``height`` (e.g. ``<rect>``) are untouched."""
+Operations shared between the build pipeline (post-render stripping of
+``width`` / ``height`` + a non-scaling-stroke style block) and the
+marker tool (setting ``viewBox`` to a user-cropped rect). The
+attribute rewrites touch only the root ``<svg ...>`` opening tag —
+nested elements with their own ``width`` / ``height`` (e.g.
+``<rect>``) are untouched."""
 
 from __future__ import annotations
 
@@ -38,6 +39,23 @@ def strip_root_dims(text: str) -> str:
     physical size baked into ``width`` / ``height``."""
     return ROOT_TAG_RE.sub(
         lambda m: _DIM_ATTRS_RE.sub("", m.group(0)),
+        text,
+        count=1,
+    )
+
+
+_NON_SCALING_STROKE_STYLE = (
+    '<style>svg * { vector-effect: non-scaling-stroke; }</style>'
+)
+
+
+def inject_non_scaling_strokes(text: str) -> str:
+    """Insert a ``<style>`` rule right after the root ``<svg>`` tag so
+    stroke widths render at a fixed pixel size regardless of how the
+    SVG is scaled in the consumer (browser, PDF, …). Without this, an
+    SVG shown at 1/4 size has 1/4-thick strokes and lines disappear."""
+    return ROOT_TAG_RE.sub(
+        lambda m: m.group(0) + _NON_SCALING_STROKE_STYLE,
         text,
         count=1,
     )

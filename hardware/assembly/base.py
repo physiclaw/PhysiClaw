@@ -15,7 +15,7 @@ from pathlib import Path
 from build123d import MM, Compound, ExportSVG, LineType, ShapeList, Unit
 
 from hardware.assembly.projection import ISO, Camera, camera_view
-from hardware.assembly.svg_utils import strip_root_dims
+from hardware.assembly.svg_utils import inject_non_scaling_strokes, strip_root_dims
 from hardware.parts.base import REPO_ROOT, BasePart
 
 SVG_DIR = REPO_ROOT / "hardware" / "output" / "svg"
@@ -155,7 +155,7 @@ class BaseAssembly(BasePart):
             path = self.svg_path(index=i)
             path.parent.mkdir(parents=True, exist_ok=True)
             exporter.write(str(path))
-            path.write_text(strip_root_dims(path.read_text()))
+            path.write_text(inject_non_scaling_strokes(strip_root_dims(path.read_text())))
 
 
 def _split_solid_ghost(assembly):
