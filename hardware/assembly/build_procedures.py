@@ -10,6 +10,11 @@ linear stages; batching at five-per-subprocess keeps every batch
 well under the OOM threshold while still letting the in-batch cache
 warm.
 
+After each variant renders, any patch JSON in
+``hardware/assembly/patch/`` whose stem matches a rendered SVG is
+replayed against it, so marker-tool snapshots stay in sync with the
+underlying drawing.
+
 Run from the repo root:
 
     uv run --group cad python -m hardware.assembly.build_procedures
@@ -29,6 +34,8 @@ import traceback
 from itertools import groupby
 
 from hardware.assembly.base import SVG_DIR, BaseAssembly, svg_path_for
+from hardware.assembly.mark.patch import patch_path
+from hardware.assembly.mark.replay import replay_one
 from hardware.bom.bom import list_procedures, load_step
 from hardware.parts.base import STEP_DIR
 
@@ -74,6 +81,25 @@ def _run_one(cls: type[BaseAssembly], exploded: bool) -> tuple[float, float, flo
     return t_build, t_export, t_render
 
 
+def _replay_patches_for(stem: str, exploded: bool) -> int:
+    """For every SVG just rendered for this procedure variant, replay
+    any matching patch JSON in ``hardware/assembly/patch/``. Returns
+    the total number of patch-leaf snapshots written (0 if none of the
+    rendered SVGs has a patch). Per-source failures are logged but
+    don't propagate — patches are user annotations, not build outputs."""
+    variant = "exploded" if exploded else "assembled"
+    written = 0
+    for svg in sorted(SVG_DIR.glob(f"{stem}_{variant}_cam*.svg")):
+        if not patch_path(svg).exists():
+            continue
+        try:
+            written += len(replay_one(svg))
+        except Exception as exc:  # malformed patch / I/O — keep building
+            print(f"    WARN: patch replay failed for {svg.name}: "
+                  f"{type(exc).__name__}: {exc}")
+    return written
+
+
 def _build_stems(stems: list[str]) -> int:
     classes = [(stem, type(load_step(stem))) for stem in stems]
 
@@ -98,9 +124,12 @@ def _build_stems(stems: list[str]) -> int:
                 sums["build"]  += tb
                 sums["export"] += te
                 sums["render"] += tr
+                n_patches = _replay_patches_for(short, exploded)
+                patch_tag = f"  +{n_patches} patch snap" if n_patches else ""
                 print(
                     f"  {short:<{name_w}}  {variant:<9}  "
                     f"{tb:6.2f}s  {te:6.2f}s  {tr:6.2f}s  {tb+te+tr:6.2f}s  ok"
+                    f"{patch_tag}"
                 )
             except Exception as exc:
                 failures.append((short, variant, exc))

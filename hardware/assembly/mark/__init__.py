@@ -18,6 +18,7 @@ Modules:
 * :mod:`hardware.assembly.mark.svg`      — build the snapshot SVG.
 * :mod:`hardware.assembly.mark.patch`    — id naming + JSON accumulator.
 * :mod:`hardware.assembly.mark.validate` — input validation / snapping.
+* :mod:`hardware.assembly.mark.replay`   — replay patch chains against sources.
 * :mod:`hardware.assembly.mark.server`   — HTTP UI server.
 * :mod:`hardware.assembly.mark.__main__` — CLI entry point.
 """
@@ -28,6 +29,7 @@ from hardware.assembly.mark.patch import (
     patch_path,
     write_patch,
 )
+from hardware.assembly.mark.replay import replay_one
 from hardware.assembly.mark.svg import build_shapes_svg
 from hardware.assembly.mark.validate import validate_shapes
 
@@ -36,6 +38,7 @@ __all__ = [
     "load_patch",
     "make_entry",
     "patch_path",
+    "replay_one",
     "validate_shapes",
     "write_patch",
 ]
