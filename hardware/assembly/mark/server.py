@@ -8,7 +8,7 @@ Endpoints:
 - ``POST /save``  — ``{shapes, viewBox, preop}`` from the browser.
                     Backend appends a new op to the patch JSON, replays
                     the chain leading to the new op against the source,
-                    writes the snapshot ``<stem>.<id>.svg``, and returns
+                    writes the snapshot ``<stem>_<id>.svg``, and returns
                     the composited SVG as the response body
                     (``Content-Type: image/svg+xml``); op metadata
                     rides along in ``X-Op-*`` headers so the SVG isn't

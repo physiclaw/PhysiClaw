@@ -14,7 +14,7 @@ Each save is one *operation*. An op has:
                   source-SVG units.
 * ``viewBox``  — ``"x y w h"`` if this op crops, else ``null``.
 
-The output snapshot is ``<src stem>.<id>.svg`` next to the source; all
+The output snapshot is ``<src stem>_<id>.svg`` next to the source; all
 ops for one source share a single JSON accumulator at
 ``hardware/assembly/patch/<src stem>.json`` (top-level array of entries
 in save order). The patch dir lives inside ``assembly/`` (not
@@ -39,8 +39,11 @@ ID_RE         = re.compile(rf"^[{ID_ALPHABET}]{{{ID_LEN}}}$")
 
 
 def snapshot_path(src: Path, op_id: str) -> Path:
-    """``<src dir>/<src stem>.<op_id>.svg`` — the snapshot for one op."""
-    return src.parent / f"{src.stem}.{op_id}.svg"
+    """``<src dir>/<src stem>_<op_id>.svg`` — the snapshot for one op.
+    Uses ``_`` (not ``.``) before the op id so the filename has a
+    single suffix; tools that key on ``Path.stem`` get the full
+    ``<src stem>_<op_id>`` instead of stripping ``.<op_id>`` away."""
+    return src.parent / f"{src.stem}_{op_id}.svg"
 
 
 def new_id(src: Path, taken: set[str] | None = None) -> str:
