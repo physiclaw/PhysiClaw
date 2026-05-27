@@ -16,17 +16,36 @@
   #status { margin-left:auto; font-size:13px; color:#374151; }
   #status.err { color:#b91c1c; }
   #status.ok  { color:#15803d; }
-  #stage { position:absolute; inset:48px 0 0 0; overflow:hidden; }
+  #stage { position:absolute; inset:48px 0 0 56px; overflow:hidden; }
   #stage svg { display:block; width:100%; height:100%; background:#fff; cursor:crosshair; }
   #stage svg.panning { cursor:grabbing; }
-  .mark-line     { stroke:#1e88ff; stroke-width:2; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; }
-  .mark-rubber   { stroke:#1e88ff; stroke-dasharray:4 3; stroke-width:1.5; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; opacity:.7; }
-  .mark-vertex   { fill:#1e88ff; stroke:#fff; stroke-width:1; vector-effect:non-scaling-stroke; pointer-events:none; }
-  .mark-vertex-first { fill:#fff; stroke:#1e88ff; stroke-width:2.5; vector-effect:non-scaling-stroke; pointer-events:none; }
-  .mark-fill     { fill:#1e88ff; fill-opacity:.35; stroke:none; pointer-events:none; }
+  /* mark-* live overlays inherit stroke/fill from #dynamicOverlay; only
+     CSS-side knobs are stroke-width, dash patterns, and the white fill
+     for the first vertex. */
+  .mark-line     { stroke-width:2; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; }
+  .mark-rubber   { stroke-dasharray:4 3; stroke-width:1.5; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; opacity:.7; }
+  .mark-vertex   { stroke:#fff; stroke-width:1; vector-effect:non-scaling-stroke; pointer-events:none; }
+  .mark-vertex-first { fill:#fff; stroke-width:2.5; vector-effect:non-scaling-stroke; pointer-events:none; }
+  .mark-fill     { stroke:none; pointer-events:none; }
   .mark-crop     { stroke:#f59e0b; stroke-width:2; stroke-dasharray:6 4; fill:#f59e0b; fill-opacity:.08; vector-effect:non-scaling-stroke; pointer-events:none; }
   #stage svg.cropping { cursor:crosshair; }
   .hint { padding: 6px 12px; font-size: 12px; color:#6b7280; background:#fff; border-bottom:1px solid #f3f4f6; }
+
+  #palette {
+    position:absolute; left:0; top:48px; bottom:0; width:56px;
+    background:#fff; border-right:1px solid #e5e7eb;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:10px 0;
+  }
+  #palette .swatch {
+    width:38px; height:38px; border:2px solid #d1d5db; border-radius:6px;
+    cursor:pointer; padding:0; background:#fff;
+  }
+  #palette .swatch .fill {
+    display:block; width:100%; height:100%; border-radius:3px;
+  }
+  #palette .swatch:hover { border-color:#9ca3af; }
+  #palette .swatch.selected { border-color:#111; border-width:3px; }
 </style>
 </head>
 <body>
@@ -41,12 +60,23 @@
     Backspace undo vertex · Esc abort · wheel zoom · Space-drag or middle-drag pan ·
     Crop = drag rectangle (Esc cancels)
   </div>
+  <aside id="palette">
+    <!-- Material Blue 600 (#1e88ff) × 3 opacities -->
+    <button class="swatch" data-fill="#1e88ff" data-opacity="0.15" title="Blue pale"  ><span class="fill" style="background:rgba(30,136,255,0.15)"></span></button>
+    <button class="swatch" data-fill="#1e88ff" data-opacity="0.35" title="Blue medium"><span class="fill" style="background:rgba(30,136,255,0.35)"></span></button>
+    <button class="swatch" data-fill="#1e88ff" data-opacity="0.65" title="Blue strong"><span class="fill" style="background:rgba(30,136,255,0.65)"></span></button>
+    <!-- Material Red 600 (#e53935) × 3 opacities -->
+    <button class="swatch" data-fill="#e53935" data-opacity="0.15" title="Red pale"   ><span class="fill" style="background:rgba(229,57,53,0.15)"></span></button>
+    <button class="swatch" data-fill="#e53935" data-opacity="0.35" title="Red medium" ><span class="fill" style="background:rgba(229,57,53,0.35)"></span></button>
+    <button class="swatch" data-fill="#e53935" data-opacity="0.65" title="Red strong" ><span class="fill" style="background:rgba(229,57,53,0.65)"></span></button>
+  </aside>
   <div id="stage"></div>
 
 <script>
 (() => {
-  const stage  = document.getElementById('stage');
-  const status = document.getElementById('status');
+  const stage   = document.getElementById('stage');
+  const status  = document.getElementById('status');
+  const palette = document.getElementById('palette');
   const finishBtn = document.getElementById('finish');
   const clearBtn  = document.getElementById('clear');
   const cropBtn   = document.getElementById('crop');
@@ -61,7 +91,10 @@
   // edits that haven't been saved yet.
   let svg, staticOverlay, dynamicOverlay, cropOverlay;
   let current = [];             // vertices of the polygon being drawn
-  let polygons = [];            // closed polygons not yet sent to /save
+  let polygons = [];            // closed polygons not yet sent to /save —
+                                // each entry is {points, color}; color is
+                                // locked at close() so later swatch picks
+                                // don't repaint earlier shapes.
   let cursorSVG = null;         // last cursor position in SVG coords
   let spaceDown = false;
   let panning = false;
@@ -74,6 +107,8 @@
   let appliedViewBox  = null;   // crop committed by applyCropRect (cleared on save/clear)
   let currentPreop    = 'orig'; // next save's preop = last save's id
                                 // (or 'orig' on first save / after Clear)
+  let selectedColor   = { fill: '#1e88ff', opacity: 0.35 };
+                                // current palette pick (Blue 600 / medium by default)
 
   function setStatus(msg, kind) {
     status.textContent = msg;
@@ -114,13 +149,22 @@
     for (const poly of polygons) {
       const el = document.createElementNS(SVG_NS, 'polygon');
       el.setAttribute('class', 'mark-fill');
-      el.setAttribute('points', poly.map(p => p.join(',')).join(' '));
+      el.setAttribute('points', poly.points.map(p => p.join(',')).join(' '));
+      el.setAttribute('fill', poly.color.fill);
+      el.setAttribute('fill-opacity', poly.color.opacity);
       staticOverlay.appendChild(el);
     }
   }
 
   function renderDynamic() {
     clearChildren(dynamicOverlay);
+    // SVG inheritance: every child of dynamicOverlay reads stroke/fill
+    // from here, so we update the colour once per call instead of per
+    // element. The first-vertex circle keeps its white interior via
+    // CSS (own fill wins over inherited).
+    dynamicOverlay.setAttribute('stroke', selectedColor.fill);
+    dynamicOverlay.setAttribute('fill',   selectedColor.fill);
+
     if (current.length < 1) return;
 
     const path = document.createElementNS(SVG_NS, 'polyline');
@@ -168,7 +212,9 @@
 
   function closePolygon() {
     if (current.length < 3) return;
-    polygons.push(current);
+    // Lock the swatch in at close time so later swatch picks don't
+    // repaint this polygon.
+    polygons.push({ points: current, color: { ...selectedColor } });
     current = [];
     renderStatic();
     renderDynamic();
@@ -415,9 +461,35 @@
     }
   }
 
+  function bindPalette() {
+    const swatches = palette.querySelectorAll('.swatch');
+    swatches.forEach(sw => {
+      sw.addEventListener('click', () => {
+        selectedColor = {
+          fill:    sw.dataset.fill,
+          opacity: parseFloat(sw.dataset.opacity),
+        };
+        swatches.forEach(s => s.classList.remove('selected'));
+        sw.classList.add('selected');
+        // Only the in-progress overlay re-strokes. Closed polygons keep
+        // the colour they were drawn with — picking a different swatch
+        // doesn't repaint history.
+        renderDynamic();
+      });
+      // Visually mark the swatch that matches the initial selectedColor.
+      // Iterating compares numbers, sidestepping the toFixed-vs-literal
+      // formatting trap (e.g. "0.5" wouldn't match a "0.50" query).
+      if (sw.dataset.fill === selectedColor.fill
+          && parseFloat(sw.dataset.opacity) === selectedColor.opacity) {
+        sw.classList.add('selected');
+      }
+    });
+  }
+
   async function boot() {
     setStatus('Loading SVG…');
     bindWindowEvents();
+    bindPalette();
     finishBtn.addEventListener('click', finish);
     clearBtn.addEventListener('click', clearAll);
     cropBtn.addEventListener('click', armCrop);

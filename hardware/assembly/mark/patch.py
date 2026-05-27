@@ -98,13 +98,21 @@ def write_patch(source_svg: Path, entries: list[dict]) -> Path:
 def make_entry(
     op_id: str,
     preop: str,
-    polygons: Iterable[Iterable[Tuple[float, float]]],
+    polygons: Iterable[dict],
     viewbox: str | None,
 ) -> dict:
-    """Shape the in-memory op entry that gets persisted by ``write_patch``."""
+    """Shape the in-memory op entry that gets persisted by
+    ``write_patch``. ``polygons`` is ``[{points, color}, ...]`` — each
+    polygon carries its own colour (locked at draw time)."""
     return {
         "id":       op_id,
         "preop":    preop,
-        "polygons": [[list(pt) for pt in poly] for poly in polygons],
+        "polygons": [
+            {
+                "points": [list(pt) for pt in poly["points"]],
+                "color":  poly["color"],
+            }
+            for poly in polygons
+        ],
         "viewBox":  viewbox,
     }
