@@ -64,9 +64,16 @@
     box-shadow: 0 0 0 3px rgba(30,136,255,.15),
                 0 1px 3px  rgba(0,0,0,.08);
   }
-  #palette .shape, #palette .mode, #palette .swatch {
+  #palette .shape, #palette .mode, #palette .modepick, #palette .swatch, #palette .edit {
     flex:1; height:38px; color:#374151; font-size:20px; line-height:1;
   }
+  #palette .modepick { font-size:13px; font-weight:500; }
+  #palette button:disabled { opacity:.35; cursor:not-allowed; }
+  #palette button:disabled:hover { border-color:#d1d5db; background:#fff; }
+  #palette .edit[data-action="delete"]:not(:disabled):hover {
+    border-color:#dc2626; color:#dc2626;
+  }
+  #stage svg.select-mode { cursor:default; }
   #palette .swatch .fill { display:block; width:100%; height:100%; border-radius:3px; }
 </style>
 </head>
@@ -83,6 +90,14 @@
     Crop = drag rectangle (Esc cancels)
   </div>
   <aside id="palette">
+    <section id="mode-picker">
+      <span class="label">Mode</span>
+      <div class="row">
+        <button class="modepick" data-mode="draw"   title="Draw new shapes">Draw</button>
+        <button class="modepick" data-mode="select" title="Select / move / copy / restyle existing shapes">Select</button>
+      </div>
+    </section>
+
     <section id="shape-picker">
       <span class="label">Shape</span>
       <div class="row">
@@ -94,6 +109,14 @@
         <button class="shape" data-shape="ellipse" title="Ellipse">⬭</button>
         <button class="shape" data-shape="line"    title="Line">／</button>
         <button class="shape" data-shape="arrow"   title="Arrow">→</button>
+      </div>
+    </section>
+
+    <section id="edit-picker" style="display:none">
+      <span class="label">Edit</span>
+      <div class="row">
+        <button class="edit" data-action="duplicate" title="Duplicate selected shape (⌘/Ctrl+D)">⧉</button>
+        <button class="edit" data-action="delete"    title="Delete selected shape (Delete)">🗑</button>
       </div>
     </section>
 
@@ -140,7 +163,7 @@
   // the new op baked in. We swap the <svg> element in #stage each time
   // the backend gives us new bytes. Frontend state below only tracks
   // edits that haven't been saved yet.
-  let svg, staticOverlay, dynamicOverlay, cropOverlay;
+  let svg, staticOverlay, dynamicOverlay, selectionOverlay, cropOverlay;
   let current = [];             // vertices of the polygon being drawn
   let shapes  = [];             // closed shapes not yet sent to /save —
                                 // each entry is {type, geom, color,
@@ -165,6 +188,15 @@
   let selectedShape   = 'polygon';
   let outlined        = false;
   let selectedColor   = { fill: '#1e88ff', opacity: 0.35 };
+
+  // 'draw' = original behaviour (click/drag to create shapes).
+  // 'select' = click an existing shape to highlight it, drag to move,
+  // Cmd/Ctrl+D to duplicate, Delete/Backspace to remove, palette
+  // colour / style picks apply to the selection instead of the global
+  // default.
+  let mode        = 'draw';
+  let selectedIdx = -1;
+  let moveDrag    = null;       // { startSVG, origGeom } while dragging a selected shape
 
   function setStatus(msg, kind) {
     status.textContent = msg;
@@ -251,35 +283,29 @@
     return [stem, [[x2, y2], b1, b2]];
   }
 
-  // Build one SVG element for a shape and pin its style on the element
-  // directly — static shapes each remember the colour + outlined flag
-  // they were drawn with, so they can't inherit from the overlay.
-  function createShapeElement(s) {
+  // Write a shape's geometry into an existing element. Reused by
+  // createShapeElement (initial build) and the move-drag (in-place
+  // mutation each mousemove, no DOM churn).
+  function setShapeGeometry(el, s) {
     const c = s.geom;
-    let el;
     switch (s.type) {
       case 'polygon':
-        el = document.createElementNS(SVG_NS, 'polygon');
         el.setAttribute('points', c.points.map(p => p.join(',')).join(' '));
         break;
       case 'rect':
-        el = document.createElementNS(SVG_NS, 'rect');
         el.setAttribute('x', c.x); el.setAttribute('y', c.y);
         el.setAttribute('width',  c.w); el.setAttribute('height', c.h);
         el.setAttribute('rx', c.rx);    el.setAttribute('ry', c.rx);
         break;
       case 'circle':
-        el = document.createElementNS(SVG_NS, 'circle');
         el.setAttribute('cx', c.cx); el.setAttribute('cy', c.cy);
         el.setAttribute('r',  c.r);
         break;
       case 'ellipse':
-        el = document.createElementNS(SVG_NS, 'ellipse');
         el.setAttribute('cx', c.cx); el.setAttribute('cy', c.cy);
         el.setAttribute('rx', c.rx); el.setAttribute('ry', c.ry);
         break;
       case 'line':
-        el = document.createElementNS(SVG_NS, 'line');
         el.setAttribute('x1', c.x1); el.setAttribute('y1', c.y1);
         el.setAttribute('x2', c.x2); el.setAttribute('y2', c.y2);
         break;
@@ -287,7 +313,7 @@
         // Stem <line> inherits stroke from the wrapping <g>; head
         // <polygon> overrides the group's fill="none" so the filled
         // triangle matches the stem's colour.
-        el = document.createElementNS(SVG_NS, 'g');
+        while (el.firstChild) el.removeChild(el.firstChild);
         const geo = arrowGeometry(c.x1, c.y1, c.x2, c.y2);
         if (geo) {
           const [stem, tri] = geo;
@@ -305,12 +331,17 @@
         break;
       }
     }
+  }
+
+  function createShapeElement(s) {
+    const tag = (s.type === 'arrow') ? 'g' : s.type;
+    const el  = document.createElementNS(SVG_NS, tag);
+    setShapeGeometry(el, s);
     applyShapeStyle(el, s);
     return el;
   }
 
   function applyShapeStyle(el, s) {
-    el.style.pointerEvents = 'none';
     if (s.outlined || isLineLike(s.type)) {
       el.setAttribute('stroke',         s.color.fill);
       el.setAttribute('stroke-opacity', s.color.opacity);
@@ -362,9 +393,157 @@
     return { type, geom };
   }
 
+  function shapeBBox(s) {
+    const c = s.geom;
+    switch (s.type) {
+      case 'polygon': {
+        const xs = c.points.map(p => p[0]);
+        const ys = c.points.map(p => p[1]);
+        return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      }
+      case 'rect':    return [c.x, c.y, c.x + c.w, c.y + c.h];
+      case 'circle':  return [c.cx - c.r,  c.cy - c.r,  c.cx + c.r,  c.cy + c.r];
+      case 'ellipse': return [c.cx - c.rx, c.cy - c.ry, c.cx + c.rx, c.cy + c.ry];
+      case 'line':
+        return [Math.min(c.x1, c.x2), Math.min(c.y1, c.y2),
+                Math.max(c.x1, c.x2), Math.max(c.y1, c.y2)];
+      case 'arrow': {
+        // Include the head triangle vertices — they extend past the stem
+        // endpoints laterally. Matches Python svg.py:_shape_bbox.
+        const geo = arrowGeometry(c.x1, c.y1, c.x2, c.y2);
+        if (!geo) return null;
+        const [, tri] = geo;
+        const xs = [c.x1, c.x2, ...tri.map(p => p[0])];
+        const ys = [c.y1, c.y2, ...tri.map(p => p[1])];
+        return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      }
+    }
+    return null;
+  }
+
+  // Translate ``s`` by (dx, dy) relative to ``origGeom`` (the geom
+  // snapshot taken at drag-start). Working from origGeom keeps the
+  // motion absolute — without it, cumulative rounding would drift.
+  function applyDelta(s, origGeom, dx, dy) {
+    switch (s.type) {
+      case 'polygon':
+        s.geom.points = origGeom.points.map(([px, py]) => [px + dx, py + dy]);
+        break;
+      case 'rect':
+        s.geom.x = origGeom.x + dx; s.geom.y = origGeom.y + dy;
+        break;
+      case 'circle':
+      case 'ellipse':
+        s.geom.cx = origGeom.cx + dx; s.geom.cy = origGeom.cy + dy;
+        break;
+      case 'line':
+      case 'arrow':
+        s.geom.x1 = origGeom.x1 + dx; s.geom.y1 = origGeom.y1 + dy;
+        s.geom.x2 = origGeom.x2 + dx; s.geom.y2 = origGeom.y2 + dy;
+        break;
+    }
+  }
+
+  // Walk up from a click target until we hit a direct child of
+  // staticOverlay; return its data-idx if any. -1 means the click
+  // wasn't on a shape (and the caller should treat it as deselect).
+  function findShapeIdx(target) {
+    let el = target;
+    while (el) {
+      if (el.parentNode === staticOverlay && el.dataset && el.dataset.idx != null) {
+        return parseInt(el.dataset.idx, 10);
+      }
+      el = el.parentNode;
+    }
+    return -1;
+  }
+
+  function selectShape(idx) {
+    selectedIdx = idx;
+    renderSelection();
+    syncEditButtons();
+  }
+
+  function duplicateSelected() {
+    if (selectedIdx < 0) return;
+    const src   = shapes[selectedIdx];
+    const clone = structuredClone(src);
+    const off   = (svg.viewBox.baseVal.width || 1000) * 0.02;
+    applyDelta(clone, src.geom, off, off);  // nudge so the copy is visible
+    shapes.push(clone);
+    selectedIdx = shapes.length - 1;
+    renderStatic();
+    renderSelection();
+    syncEditButtons();
+    setStatus(`Copied (${shapes.length} shape${shapes.length === 1 ? '' : 's'})`);
+  }
+
+  function deleteSelected() {
+    if (selectedIdx < 0) return;
+    shapes.splice(selectedIdx, 1);
+    selectedIdx = -1;
+    renderStatic();
+    renderSelection();
+    syncEditButtons();
+    setStatus(`${shapes.length} shape${shapes.length === 1 ? '' : 's'}`);
+  }
+
+  function setMode(m) {
+    if (m === mode) return;
+    mode = m;
+    if (m !== 'select') { selectedIdx = -1; moveDrag = null; }
+    abortCurrent();
+    dragShape = null;
+    document.getElementById('shape-picker').style.display = (m === 'draw')   ? '' : 'none';
+    document.getElementById('edit-picker' ).style.display = (m === 'select') ? '' : 'none';
+    if (svg) svg.classList.toggle('select-mode', m === 'select');
+    updateHint();
+    renderStatic();
+    renderSelection();
+    syncEditButtons();
+    setStatus(m === 'draw' ? 'Draw mode' : 'Select — click a shape');
+  }
+
+  function updateHint() {
+    const hint = document.querySelector('.hint');
+    hint.textContent = (mode === 'select')
+      ? 'click a shape to select · drag to move · ⌘/Ctrl+D copy · Delete remove · Esc deselect · wheel zoom · Space-drag pan'
+      : 'click to add vertex · click near first / right-click / dbl-click / Enter to close · Backspace undo vertex · Esc abort · wheel zoom · Space-drag or middle-drag pan · Crop = drag rectangle (Esc cancels)';
+  }
+
+  function syncEditButtons() {
+    palette.querySelectorAll('.edit').forEach(b => b.disabled = (selectedIdx < 0));
+  }
+
+  function renderSelection() {
+    clearChildren(selectionOverlay);
+    if (mode !== 'select' || selectedIdx < 0 || !shapes[selectedIdx]) return;
+    const bb = shapeBBox(shapes[selectedIdx]);
+    if (!bb) return;
+    const [x0, y0, x1, y1] = bb;
+    const pad = (svg.viewBox.baseVal.width || 1000) * 0.005;
+    const r = document.createElementNS(SVG_NS, 'rect');
+    r.setAttribute('x', x0 - pad); r.setAttribute('y', y0 - pad);
+    r.setAttribute('width',  x1 - x0 + 2 * pad);
+    r.setAttribute('height', y1 - y0 + 2 * pad);
+    r.setAttribute('fill', 'none');
+    r.setAttribute('stroke', '#f59e0b');
+    r.setAttribute('stroke-width', '2');
+    r.setAttribute('stroke-dasharray', '6 4');
+    r.setAttribute('vector-effect', 'non-scaling-stroke');
+    r.style.pointerEvents = 'none';
+    selectionOverlay.appendChild(r);
+  }
+
   function renderStatic() {
     clearChildren(staticOverlay);
-    for (const s of shapes) staticOverlay.appendChild(createShapeElement(s));
+    for (let i = 0; i < shapes.length; i++) {
+      const el = createShapeElement(shapes[i]);
+      el.dataset.idx = String(i);
+      el.style.pointerEvents = (mode === 'select') ? 'auto' : 'none';
+      if (mode === 'select') el.style.cursor = 'move';
+      staticOverlay.appendChild(el);
+    }
   }
 
   function renderDynamic() {
@@ -564,6 +743,15 @@
       cursorSVG   = clientToSVG(e.clientX, e.clientY);
       cursorShift = e.shiftKey;
       if (cropDrag)  { renderCrop();   return; }
+      if (moveDrag && selectedIdx >= 0) {
+        const dx = cursorSVG[0] - moveDrag.startSVG[0];
+        const dy = cursorSVG[1] - moveDrag.startSVG[1];
+        const s  = shapes[selectedIdx];
+        applyDelta(s, moveDrag.origGeom, dx, dy);
+        setShapeGeometry(moveDrag.el, s);
+        renderSelection();
+        return;
+      }
       if (dragShape) { renderDynamic(); return; }
       if (current.length) renderDynamic();
     });
@@ -573,6 +761,11 @@
       if (cropDrag) {
         const end = clientToSVG(e.clientX, e.clientY) || cursorSVG;
         applyCropRect(cropDrag.startSVG, end);
+        suppressNextClick = true;
+        return;
+      }
+      if (moveDrag) {
+        moveDrag = null;
         suppressNextClick = true;
         return;
       }
@@ -588,10 +781,26 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         if (cropMode) { cancelCrop(); setStatus('Crop cancelled'); }
+        else if (mode === 'select' && selectedIdx >= 0) {
+          selectedIdx = -1;
+          renderStatic();
+          setStatus('Selection cleared');
+        }
         else abortCurrent();
       }
-      else if (e.key === 'Enter')     { e.preventDefault(); closePolygon(); }
-      else if (e.key === 'Backspace') { e.preventDefault(); popVertex(); }
+      else if (e.key === 'Enter') {
+        if (mode === 'draw') { e.preventDefault(); closePolygon(); }
+      }
+      else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        if (mode === 'select' && selectedIdx >= 0) deleteSelected();
+        else popVertex();
+      }
+      else if ((e.key === 'd' || e.key === 'D') && (e.metaKey || e.ctrlKey)
+               && mode === 'select' && selectedIdx >= 0) {
+        e.preventDefault();
+        duplicateSelected();
+      }
       else if (e.key === ' ')         { spaceDown = true; svg.style.cursor = 'grab'; e.preventDefault(); }
       else if (e.key === 'Shift' && dragShape) {
         cursorShift = true;
@@ -610,7 +819,11 @@
   // Re-bound on every installSvg() because the <svg> element itself is
   // replaced. Old listeners die with the discarded element.
   function bindSvgEvents() {
-    svg.addEventListener('contextmenu', e => { e.preventDefault(); closePolygon(); });
+    svg.addEventListener('contextmenu', e => {
+      if (mode !== 'draw') return;
+      e.preventDefault();
+      closePolygon();
+    });
 
     svg.addEventListener('mousedown', e => {
       if (cropMode && e.button === 0) {
@@ -627,6 +840,23 @@
         panStartSVG = clientToSVG(e.clientX, e.clientY);
         return;
       }
+      if (mode === 'select' && e.button === 0) {
+        e.preventDefault();
+        const idx = findShapeIdx(e.target);
+        if (idx >= 0) {
+          selectShape(idx);
+          moveDrag = {
+            startSVG: clientToSVG(e.clientX, e.clientY),
+            origGeom: structuredClone(shapes[idx].geom),
+            el:       staticOverlay.children[idx],
+          };
+        } else if (selectedIdx >= 0) {
+          selectedIdx = -1;
+          renderSelection();
+          syncEditButtons();
+        }
+        return;
+      }
       // Drag-based shapes: rect / circle / ellipse / line / arrow.
       // Polygon stays click-driven (no drag).
       if (e.button === 0 && selectedShape !== 'polygon') {
@@ -639,13 +869,14 @@
       if (e.button !== 0) return;
       if (suppressNextClick) { suppressNextClick = false; return; }
       if (cropMode || spaceDown) return;
+      if (mode === 'select') return;             // mousedown already handled it
       if (selectedShape !== 'polygon') return;   // drag shapes commit via mouseup
       if (tryCloseNearFirst(e.clientX, e.clientY)) return;
       addVertex(e.clientX, e.clientY);
     });
 
     svg.addEventListener('dblclick', e => {
-      if (cropMode || selectedShape !== 'polygon') return;
+      if (cropMode || mode === 'select' || selectedShape !== 'polygon') return;
       // The two clicks of the dblclick each fired and added a vertex.
       // Pop the duplicate before closing.
       if (current.length >= 1) current.pop();
@@ -678,16 +909,22 @@
     const overlay = document.createElementNS(SVG_NS, 'g');
     overlay.setAttribute('class', 'mark-overlay');
 
-    staticOverlay  = document.createElementNS(SVG_NS, 'g');
-    dynamicOverlay = document.createElementNS(SVG_NS, 'g');
-    cropOverlay    = document.createElementNS(SVG_NS, 'g');
+    staticOverlay    = document.createElementNS(SVG_NS, 'g');
+    selectionOverlay = document.createElementNS(SVG_NS, 'g');
+    dynamicOverlay   = document.createElementNS(SVG_NS, 'g');
+    cropOverlay      = document.createElementNS(SVG_NS, 'g');
+    // Selection sits between static (drawn shapes) and dynamic (in-progress
+    // overlay) so the marker is visible above shapes but below any rubber-
+    // band / cursor preview.
     overlay.appendChild(staticOverlay);
+    overlay.appendChild(selectionOverlay);
     overlay.appendChild(dynamicOverlay);
     overlay.appendChild(cropOverlay);
     svg.appendChild(overlay);
 
     bindSvgEvents();
     renderStatic();
+    renderSelection();
     renderDynamic();
   }
 
@@ -742,6 +979,18 @@
     }
 
     bindGroup(
+      palette.querySelectorAll('.modepick'),
+      b => b.dataset.mode === mode,
+      b => setMode(b.dataset.mode),
+    );
+
+    palette.querySelectorAll('.edit').forEach(b => {
+      b.addEventListener('click', () => {
+        if (b.dataset.action === 'duplicate') duplicateSelected();
+        else if (b.dataset.action === 'delete') deleteSelected();
+      });
+    });
+    bindGroup(
       palette.querySelectorAll('.shape'),
       b => b.dataset.shape === selectedShape,
       b => { selectedShape = b.dataset.shape; abortCurrent(); dragShape = null; renderDynamic(); },
@@ -749,7 +998,15 @@
     bindGroup(
       palette.querySelectorAll('.mode'),
       b => (b.dataset.outlined === 'true') === outlined,
-      b => { outlined = b.dataset.outlined === 'true'; renderDynamic(); },
+      b => {
+        outlined = b.dataset.outlined === 'true';
+        if (mode === 'select' && selectedIdx >= 0) {
+          shapes[selectedIdx].outlined = outlined;
+          renderStatic();
+        } else {
+          renderDynamic();
+        }
+      },
     );
     bindGroup(
       palette.querySelectorAll('.swatch'),
@@ -760,9 +1017,12 @@
           fill:    b.dataset.fill,
           opacity: parseFloat(b.dataset.opacity),
         };
-        // Closed shapes keep the colour they were drawn with; only the
-        // in-progress overlay re-strokes.
-        renderDynamic();
+        if (mode === 'select' && selectedIdx >= 0) {
+          shapes[selectedIdx].color = { ...selectedColor };
+          renderStatic();
+        } else {
+          renderDynamic();
+        }
       },
     );
   }
@@ -771,6 +1031,7 @@
     setStatus('Loading SVG…');
     bindWindowEvents();
     bindPalette();
+    updateHint();
     finishBtn.addEventListener('click', finish);
     clearBtn.addEventListener('click', clearAll);
     cropBtn.addEventListener('click', armCrop);
