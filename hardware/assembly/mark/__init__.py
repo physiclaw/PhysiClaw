@@ -5,11 +5,13 @@ Run:
     uv run --group cad python -m hardware.assembly.mark <input.svg>
 
 Each save produces ``<src stem>.<id>.svg`` next to the source and
-appends an op entry to ``hardware/output/patch/<src stem>.json``. An op
-is ``{id, preop, polygons, viewBox}`` — ``preop`` is the literal
-``"orig"`` (apply on the source) or another op's 4-letter id (apply on
-that op's output), so a replay script can chain ops and reproduce
-every intermediate snapshot from a freshly-built original.
+appends an op entry to ``hardware/output/patch/<src stem>.json``. An
+op is ``{id, preop, shapes, viewBox}`` — shapes are typed
+(polygon / rect / circle / ellipse / line / arrow), each with its
+own colour + outlined flag. ``preop`` is the literal ``"orig"``
+(apply on the source) or another op's 4-letter id (apply on that
+op's output), so a replay script can chain ops and reproduce every
+intermediate snapshot from a freshly-built original.
 
 Modules:
 
@@ -26,14 +28,14 @@ from hardware.assembly.mark.patch import (
     patch_path,
     write_patch,
 )
-from hardware.assembly.mark.svg import build_fill_svg
-from hardware.assembly.mark.validate import validate_polygons
+from hardware.assembly.mark.svg import build_shapes_svg
+from hardware.assembly.mark.validate import validate_shapes
 
 __all__ = [
-    "build_fill_svg",
+    "build_shapes_svg",
     "load_patch",
     "make_entry",
     "patch_path",
-    "validate_polygons",
+    "validate_shapes",
     "write_patch",
 ]

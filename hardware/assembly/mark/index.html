@@ -16,12 +16,12 @@
   #status { margin-left:auto; font-size:13px; color:#374151; }
   #status.err { color:#b91c1c; }
   #status.ok  { color:#15803d; }
-  #stage { position:absolute; inset:48px 0 0 56px; overflow:hidden; }
+  #stage { position:absolute; inset:48px 0 0 240px; overflow:hidden; }
   #stage svg { display:block; width:100%; height:100%; background:#fff; cursor:crosshair; }
   #stage svg.panning { cursor:grabbing; }
-  /* mark-* live overlays inherit stroke/fill from #dynamicOverlay; only
-     CSS-side knobs are stroke-width, dash patterns, and the white fill
-     for the first vertex. */
+  /* mark-* live overlays — the in-progress polyline / vertex dots /
+     drag preview all live in #dynamicOverlay and take stroke/fill from
+     it via SVG inheritance. CSS only sets non-colour knobs. */
   .mark-line     { stroke-width:2; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; }
   .mark-rubber   { stroke-dasharray:4 3; stroke-width:1.5; fill:none; vector-effect:non-scaling-stroke; pointer-events:none; opacity:.7; }
   .mark-vertex   { stroke:#fff; stroke-width:1; vector-effect:non-scaling-stroke; pointer-events:none; }
@@ -32,26 +32,48 @@
   .hint { padding: 6px 12px; font-size: 12px; color:#6b7280; background:#fff; border-bottom:1px solid #f3f4f6; }
 
   #palette {
-    position:absolute; left:0; top:48px; bottom:0; width:56px;
+    /* border-box so width:240px includes padding + border-right; without
+       it the palette is actually 261px wide and the rightmost 21px sit
+       under the stage (which starts at left:240px), clipping buttons. */
+    box-sizing:border-box;
+    position:absolute; left:0; top:48px; bottom:0; width:240px;
     background:#fff; border-right:1px solid #e5e7eb;
-    display:flex; flex-direction:column; align-items:center; gap:6px;
-    padding:10px 0;
+    display:flex; flex-direction:column; gap:10px;
+    padding:10px 10px;
+    font-size:12px;
   }
-  #palette .swatch {
-    width:38px; height:38px; border:2px solid #d1d5db; border-radius:6px;
-    cursor:pointer; padding:0; background:#fff;
+  #palette section { display:flex; flex-direction:column; gap:6px; }
+  #palette section .label { color:#6b7280; font-weight:500; }
+  #palette section .row { display:flex; gap:6px; }
+  /* Material-style outlined selectable. Default = neutral 1px border;
+     selected = primary-coloured 2px border + a soft state-layer halo
+     + small elevation shadow. Border-width stays constant on toggle so
+     there's no layout shift (the 1→2px swap is absorbed by box-sizing).
+     Transitions make the state change feel like a Material ripple. */
+  #palette button {
+    box-sizing:border-box;
+    border:1px solid #d1d5db; border-radius:8px; cursor:pointer;
+    padding:0; background:#fff; font:inherit;
+    display:flex; align-items:center; justify-content:center;
+    min-width:0;
+    transition: border-color .12s ease, box-shadow .12s ease;
   }
-  #palette .swatch .fill {
-    display:block; width:100%; height:100%; border-radius:3px;
+  #palette button:hover  { border-color:#9ca3af; background:#f9fafb; }
+  #palette button.selected {
+    border:2px solid #1e88ff;
+    box-shadow: 0 0 0 3px rgba(30,136,255,.15),
+                0 1px 3px  rgba(0,0,0,.08);
   }
-  #palette .swatch:hover { border-color:#9ca3af; }
-  #palette .swatch.selected { border-color:#111; border-width:3px; }
+  #palette .shape, #palette .mode, #palette .swatch {
+    flex:1; height:38px; color:#374151; font-size:20px; line-height:1;
+  }
+  #palette .swatch .fill { display:block; width:100%; height:100%; border-radius:3px; }
 </style>
 </head>
 <body>
   <div id="bar">
     <button id="crop"   title="Drag a rectangle to crop the saved SVG's viewBox">Crop</button>
-    <button id="clear"  title="Remove polygons and undo any crop">Clear</button>
+    <button id="clear"  title="Remove shapes and undo any crop">Clear</button>
     <button id="finish" class="finish" title="Save snapshot SVG + append to patch JSON">Finish</button>
     <span id="status">Loading…</span>
   </div>
@@ -61,14 +83,43 @@
     Crop = drag rectangle (Esc cancels)
   </div>
   <aside id="palette">
-    <!-- Material Blue 600 (#1e88ff) × 3 opacities -->
-    <button class="swatch" data-fill="#1e88ff" data-opacity="0.15" title="Blue pale"  ><span class="fill" style="background:rgba(30,136,255,0.15)"></span></button>
-    <button class="swatch" data-fill="#1e88ff" data-opacity="0.35" title="Blue medium"><span class="fill" style="background:rgba(30,136,255,0.35)"></span></button>
-    <button class="swatch" data-fill="#1e88ff" data-opacity="0.65" title="Blue strong"><span class="fill" style="background:rgba(30,136,255,0.65)"></span></button>
-    <!-- Material Red 600 (#e53935) × 3 opacities -->
-    <button class="swatch" data-fill="#e53935" data-opacity="0.15" title="Red pale"   ><span class="fill" style="background:rgba(229,57,53,0.15)"></span></button>
-    <button class="swatch" data-fill="#e53935" data-opacity="0.35" title="Red medium" ><span class="fill" style="background:rgba(229,57,53,0.35)"></span></button>
-    <button class="swatch" data-fill="#e53935" data-opacity="0.65" title="Red strong" ><span class="fill" style="background:rgba(229,57,53,0.65)"></span></button>
+    <section id="shape-picker">
+      <span class="label">Shape</span>
+      <div class="row">
+        <button class="shape" data-shape="polygon" title="Polygon">⬡</button>
+        <button class="shape" data-shape="rect"    title="Rectangle (round corners)">▭</button>
+        <button class="shape" data-shape="circle"  title="Circle">◯</button>
+      </div>
+      <div class="row">
+        <button class="shape" data-shape="ellipse" title="Ellipse">⬭</button>
+        <button class="shape" data-shape="line"    title="Line">／</button>
+        <button class="shape" data-shape="arrow"   title="Arrow">→</button>
+      </div>
+    </section>
+
+    <section id="fill-toggle">
+      <span class="label">Style</span>
+      <div class="row">
+        <button class="mode" data-outlined="false" title="Filled">Fill</button>
+        <button class="mode" data-outlined="true"  title="Outline">Line</button>
+      </div>
+    </section>
+
+    <section id="color-grid">
+      <span class="label">Color</span>
+      <div class="row">
+        <!-- Material Blue 600 (#1e88ff) — pale / medium / strong -->
+        <button class="swatch" data-fill="#1e88ff" data-opacity="0.15" title="Blue pale"  ><span class="fill" style="background:rgba(30,136,255,0.15)"></span></button>
+        <button class="swatch" data-fill="#1e88ff" data-opacity="0.35" title="Blue medium"><span class="fill" style="background:rgba(30,136,255,0.35)"></span></button>
+        <button class="swatch" data-fill="#1e88ff" data-opacity="0.65" title="Blue strong"><span class="fill" style="background:rgba(30,136,255,0.65)"></span></button>
+      </div>
+      <div class="row">
+        <!-- Material Red 600 (#e53935) — pale / medium / strong -->
+        <button class="swatch" data-fill="#e53935" data-opacity="0.15" title="Red pale"   ><span class="fill" style="background:rgba(229,57,53,0.15)"></span></button>
+        <button class="swatch" data-fill="#e53935" data-opacity="0.35" title="Red medium" ><span class="fill" style="background:rgba(229,57,53,0.35)"></span></button>
+        <button class="swatch" data-fill="#e53935" data-opacity="0.65" title="Red strong" ><span class="fill" style="background:rgba(229,57,53,0.65)"></span></button>
+      </div>
+    </section>
   </aside>
   <div id="stage"></div>
 
@@ -91,24 +142,29 @@
   // edits that haven't been saved yet.
   let svg, staticOverlay, dynamicOverlay, cropOverlay;
   let current = [];             // vertices of the polygon being drawn
-  let polygons = [];            // closed polygons not yet sent to /save —
-                                // each entry is {points, color}; color is
-                                // locked at close() so later swatch picks
-                                // don't repaint earlier shapes.
+  let shapes  = [];             // closed shapes not yet sent to /save —
+                                // each entry is {type, geom, color,
+                                // outlined}; style fields lock at commit
+                                // so later toolbar picks don't repaint
+                                // earlier shapes.
   let cursorSVG = null;         // last cursor position in SVG coords
+  let cursorShift = false;      // shift held at the moment of the latest
+                                // mousemove (used to snap the drag preview)
   let spaceDown = false;
   let panning = false;
   let panStartSVG = null;
   let panStartVB  = null;
   let cropMode = false;         // Crop button armed; awaiting drag
   let cropDrag = null;          // { startSVG: [x,y] } once mousedown fires
+  let dragShape = null;         // { startSVG } for non-polygon shape drag
   let suppressNextClick = false;// swallow the click that fires right
                                 // after a crop-release mouseup
   let appliedViewBox  = null;   // crop committed by applyCropRect (cleared on save/clear)
   let currentPreop    = 'orig'; // next save's preop = last save's id
                                 // (or 'orig' on first save / after Clear)
+  let selectedShape   = 'polygon';
+  let outlined        = false;
   let selectedColor   = { fill: '#1e88ff', opacity: 0.35 };
-                                // current palette pick (Blue 600 / medium by default)
 
   function setStatus(msg, kind) {
     status.textContent = msg;
@@ -144,29 +200,197 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  function isLineLike(type) { return type === 'line' || type === 'arrow'; }
+
+  // Hold Shift while drawing to constrain the drag:
+  //   line / arrow → pure horizontal or vertical (whichever has the
+  //                  larger delta).
+  //   rect         → square (side = min |dx|, |dy|; direction kept so
+  //                  the square stays in the same quadrant as the drag).
+  function snapAxis(start, end) {
+    const dx = Math.abs(end[0] - start[0]);
+    const dy = Math.abs(end[1] - start[1]);
+    return dx >= dy ? [end[0], start[1]] : [start[0], end[1]];
+  }
+  function snapSquare(start, end) {
+    const dx = end[0] - start[0], dy = end[1] - start[1];
+    const side = Math.min(Math.abs(dx), Math.abs(dy));
+    return [start[0] + Math.sign(dx) * side,
+            start[1] + Math.sign(dy) * side];
+  }
+  function maybeSnap(shape, start, end, shift) {
+    if (!shift) return end;
+    if (isLineLike(shape)) return snapAxis(start, end);
+    if (shape === 'rect')  return snapSquare(start, end);
+    return end;
+  }
+
+  // Arrow geometry — returns the stem endpoint (line ends here so it
+  // doesn't poke past the head) and the three vertices of the filled
+  // triangle head ``[tip, base1, base2]``. Drawing the head as a filled
+  // <polygon> with the same colour as the stem keeps the arrowhead
+  // colour-matched without relying on marker / context-stroke quirks.
+  const ARROW_HEAD_HALF_ANGLE = 20 * Math.PI / 180;
+  const ARROW_HEAD_LEN_MAX    = 12;
+  const ARROW_HEAD_FRACTION   = 0.25;
+  function arrowGeometry(x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const L = Math.hypot(dx, dy);
+    if (L === 0) return null;
+    const ang = Math.atan2(dy, dx);
+    const hl  = Math.min(L * ARROW_HEAD_FRACTION, ARROW_HEAD_LEN_MAX);
+    // Stem ends at the triangle base's projection along the line
+    // (hl * cos(half_angle)) — not at distance hl — so it meets the
+    // back edge of the head without a gap.
+    const back = hl * Math.cos(ARROW_HEAD_HALF_ANGLE);
+    const stem = [x2 - back * Math.cos(ang), y2 - back * Math.sin(ang)];
+    const b1 = [x2 - hl * Math.cos(ang - ARROW_HEAD_HALF_ANGLE),
+                y2 - hl * Math.sin(ang - ARROW_HEAD_HALF_ANGLE)];
+    const b2 = [x2 - hl * Math.cos(ang + ARROW_HEAD_HALF_ANGLE),
+                y2 - hl * Math.sin(ang + ARROW_HEAD_HALF_ANGLE)];
+    return [stem, [[x2, y2], b1, b2]];
+  }
+
+  // Build one SVG element for a shape and pin its style on the element
+  // directly — static shapes each remember the colour + outlined flag
+  // they were drawn with, so they can't inherit from the overlay.
+  function createShapeElement(s) {
+    const c = s.geom;
+    let el;
+    switch (s.type) {
+      case 'polygon':
+        el = document.createElementNS(SVG_NS, 'polygon');
+        el.setAttribute('points', c.points.map(p => p.join(',')).join(' '));
+        break;
+      case 'rect':
+        el = document.createElementNS(SVG_NS, 'rect');
+        el.setAttribute('x', c.x); el.setAttribute('y', c.y);
+        el.setAttribute('width',  c.w); el.setAttribute('height', c.h);
+        el.setAttribute('rx', c.rx);    el.setAttribute('ry', c.rx);
+        break;
+      case 'circle':
+        el = document.createElementNS(SVG_NS, 'circle');
+        el.setAttribute('cx', c.cx); el.setAttribute('cy', c.cy);
+        el.setAttribute('r',  c.r);
+        break;
+      case 'ellipse':
+        el = document.createElementNS(SVG_NS, 'ellipse');
+        el.setAttribute('cx', c.cx); el.setAttribute('cy', c.cy);
+        el.setAttribute('rx', c.rx); el.setAttribute('ry', c.ry);
+        break;
+      case 'line':
+        el = document.createElementNS(SVG_NS, 'line');
+        el.setAttribute('x1', c.x1); el.setAttribute('y1', c.y1);
+        el.setAttribute('x2', c.x2); el.setAttribute('y2', c.y2);
+        break;
+      case 'arrow': {
+        // Stem <line> inherits stroke from the wrapping <g>; head
+        // <polygon> overrides the group's fill="none" so the filled
+        // triangle matches the stem's colour.
+        el = document.createElementNS(SVG_NS, 'g');
+        const geo = arrowGeometry(c.x1, c.y1, c.x2, c.y2);
+        if (geo) {
+          const [stem, tri] = geo;
+          const line = document.createElementNS(SVG_NS, 'line');
+          line.setAttribute('x1', c.x1); line.setAttribute('y1', c.y1);
+          line.setAttribute('x2', stem[0]); line.setAttribute('y2', stem[1]);
+          el.appendChild(line);
+          const head = document.createElementNS(SVG_NS, 'polygon');
+          head.setAttribute('points', tri.map(p => p.join(',')).join(' '));
+          head.setAttribute('fill', s.color.fill);
+          head.setAttribute('fill-opacity', s.color.opacity);
+          head.setAttribute('stroke', 'none');
+          el.appendChild(head);
+        }
+        break;
+      }
+    }
+    applyShapeStyle(el, s);
+    return el;
+  }
+
+  function applyShapeStyle(el, s) {
+    el.style.pointerEvents = 'none';
+    if (s.outlined || isLineLike(s.type)) {
+      el.setAttribute('stroke',         s.color.fill);
+      el.setAttribute('stroke-opacity', s.color.opacity);
+      el.setAttribute('stroke-width',   2);
+      el.setAttribute('vector-effect',  'non-scaling-stroke');
+      el.setAttribute('fill',           'none');
+    } else {
+      el.setAttribute('fill',         s.color.fill);
+      el.setAttribute('fill-opacity', s.color.opacity);
+      el.setAttribute('stroke',       'none');
+    }
+  }
+
+  // Convert a drag start + end into a shape body (no style yet).
+  // Returns null for degenerate drags (zero size).
+  function shapeFromDrag(type, start, end) {
+    const [x0, y0] = start, [x1, y1] = end;
+    let geom;
+    switch (type) {
+      case 'rect': {
+        const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+        if (w < 1 || h < 1) return null;
+        geom = {
+          x: Math.min(x0, x1), y: Math.min(y0, y1), w, h,
+          rx: Math.min(w / 4, h / 4, 8),
+        };
+        break;
+      }
+      case 'circle': {
+        const r = Math.hypot(x1 - x0, y1 - y0);
+        if (r < 1) return null;
+        geom = { cx: x0, cy: y0, r };
+        break;
+      }
+      case 'ellipse': {
+        const rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2;
+        if (rx < 1 || ry < 1) return null;
+        geom = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, rx, ry };
+        break;
+      }
+      case 'line':
+      case 'arrow':
+        if (Math.hypot(x1 - x0, y1 - y0) < 1) return null;
+        geom = { x1: x0, y1: y0, x2: x1, y2: y1 };
+        break;
+      default:
+        return null;
+    }
+    return { type, geom };
+  }
+
   function renderStatic() {
     clearChildren(staticOverlay);
-    for (const poly of polygons) {
-      const el = document.createElementNS(SVG_NS, 'polygon');
-      el.setAttribute('class', 'mark-fill');
-      el.setAttribute('points', poly.points.map(p => p.join(',')).join(' '));
-      el.setAttribute('fill', poly.color.fill);
-      el.setAttribute('fill-opacity', poly.color.opacity);
-      staticOverlay.appendChild(el);
-    }
+    for (const s of shapes) staticOverlay.appendChild(createShapeElement(s));
   }
 
   function renderDynamic() {
     clearChildren(dynamicOverlay);
-    // SVG inheritance: every child of dynamicOverlay reads stroke/fill
-    // from here, so we update the colour once per call instead of per
-    // element. The first-vertex circle keeps its white interior via
-    // CSS (own fill wins over inherited).
+    // SVG inheritance: children of dynamicOverlay read stroke / fill
+    // from here, so we update the colour once per call. The first-vertex
+    // circle keeps its white interior via CSS (own fill wins over
+    // inherited).
     dynamicOverlay.setAttribute('stroke', selectedColor.fill);
     dynamicOverlay.setAttribute('fill',   selectedColor.fill);
 
+    // Drag-based shape in progress (rect / circle / ellipse / line / arrow).
+    if (dragShape && cursorSVG) {
+      const end = maybeSnap(selectedShape, dragShape.startSVG, cursorSVG, cursorShift);
+      const tmp = shapeFromDrag(selectedShape, dragShape.startSVG, end);
+      if (tmp) {
+        tmp.color    = selectedColor;
+        tmp.outlined = outlined;
+        dynamicOverlay.appendChild(createShapeElement(tmp));
+      }
+      return;
+    }
+
     if (current.length < 1) return;
 
+    // Polygon-in-progress: polyline + rubber-band + vertex dots.
     const path = document.createElementNS(SVG_NS, 'polyline');
     path.setAttribute('class', 'mark-line');
     path.setAttribute('points', current.map(p => p.join(',')).join(' '));
@@ -191,6 +415,19 @@
     });
   }
 
+  function commitDragShape(end, shift) {
+    const snapped = maybeSnap(selectedShape, dragShape.startSVG, end, shift);
+    const tmp = shapeFromDrag(selectedShape, dragShape.startSVG, snapped);
+    dragShape = null;
+    if (!tmp) { renderDynamic(); return; }
+    tmp.color    = { ...selectedColor };
+    tmp.outlined = outlined;
+    shapes.push(tmp);
+    renderStatic();
+    renderDynamic();
+    setStatus(`${shapes.length} shape${shapes.length === 1 ? '' : 's'}`);
+  }
+
   function tryCloseNearFirst(clientX, clientY) {
     if (current.length < 3) return false;
     const first = current[0];
@@ -212,13 +449,16 @@
 
   function closePolygon() {
     if (current.length < 3) return;
-    // Lock the swatch in at close time so later swatch picks don't
-    // repaint this polygon.
-    polygons.push({ points: current, color: { ...selectedColor } });
+    shapes.push({
+      type:     'polygon',
+      geom:    { points: current },
+      color:    { ...selectedColor },
+      outlined: outlined,
+    });
     current = [];
     renderStatic();
     renderDynamic();
-    setStatus(`${polygons.length} region${polygons.length === 1 ? '' : 's'} marked`);
+    setStatus(`${shapes.length} shape${shapes.length === 1 ? '' : 's'}`);
   }
 
   function abortCurrent() {
@@ -243,7 +483,7 @@
       setStatus('Failed to load /svg: ' + err.message, 'err');
       return;
     }
-    polygons = []; current = [];
+    shapes = []; current = []; dragShape = null;
     appliedViewBox = null;
     currentPreop = 'orig';
     cancelCrop();
@@ -321,8 +561,10 @@
         vb.y = panStartVB.y - (now[1] - panStartSVG[1]);
         return;
       }
-      cursorSVG = clientToSVG(e.clientX, e.clientY);
-      if (cropDrag) { renderCrop(); return; }
+      cursorSVG   = clientToSVG(e.clientX, e.clientY);
+      cursorShift = e.shiftKey;
+      if (cropDrag)  { renderCrop();   return; }
+      if (dragShape) { renderDynamic(); return; }
       if (current.length) renderDynamic();
     });
 
@@ -331,6 +573,12 @@
       if (cropDrag) {
         const end = clientToSVG(e.clientX, e.clientY) || cursorSVG;
         applyCropRect(cropDrag.startSVG, end);
+        suppressNextClick = true;
+        return;
+      }
+      if (dragShape) {
+        const end = clientToSVG(e.clientX, e.clientY) || cursorSVG;
+        commitDragShape(end, e.shiftKey);
         suppressNextClick = true;
       }
     });
@@ -345,9 +593,17 @@
       else if (e.key === 'Enter')     { e.preventDefault(); closePolygon(); }
       else if (e.key === 'Backspace') { e.preventDefault(); popVertex(); }
       else if (e.key === ' ')         { spaceDown = true; svg.style.cursor = 'grab'; e.preventDefault(); }
+      else if (e.key === 'Shift' && dragShape) {
+        cursorShift = true;
+        renderDynamic();   // snap the preview immediately
+      }
     });
     window.addEventListener('keyup', e => {
-      if (e.key === ' ') { spaceDown = false; svg.style.cursor = ''; }
+      if (e.key === ' ')     { spaceDown = false; svg.style.cursor = ''; }
+      if (e.key === 'Shift' && dragShape) {
+        cursorShift = false;
+        renderDynamic();
+      }
     });
   }
 
@@ -369,6 +625,13 @@
         const vb = svg.viewBox.baseVal;
         panStartVB = { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
         panStartSVG = clientToSVG(e.clientX, e.clientY);
+        return;
+      }
+      // Drag-based shapes: rect / circle / ellipse / line / arrow.
+      // Polygon stays click-driven (no drag).
+      if (e.button === 0 && selectedShape !== 'polygon') {
+        e.preventDefault();
+        dragShape = { startSVG: clientToSVG(e.clientX, e.clientY) };
       }
     });
 
@@ -376,12 +639,13 @@
       if (e.button !== 0) return;
       if (suppressNextClick) { suppressNextClick = false; return; }
       if (cropMode || spaceDown) return;
+      if (selectedShape !== 'polygon') return;   // drag shapes commit via mouseup
       if (tryCloseNearFirst(e.clientX, e.clientY)) return;
       addVertex(e.clientX, e.clientY);
     });
 
     svg.addEventListener('dblclick', e => {
-      if (cropMode) return;
+      if (cropMode || selectedShape !== 'polygon') return;
       // The two clicks of the dblclick each fired and added a vertex.
       // Pop the duplicate before closing.
       if (current.length >= 1) current.pop();
@@ -413,6 +677,7 @@
 
     const overlay = document.createElementNS(SVG_NS, 'g');
     overlay.setAttribute('class', 'mark-overlay');
+
     staticOverlay  = document.createElementNS(SVG_NS, 'g');
     dynamicOverlay = document.createElementNS(SVG_NS, 'g');
     cropOverlay    = document.createElementNS(SVG_NS, 'g');
@@ -434,7 +699,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          polygons,
+          shapes,
           viewBox: appliedViewBox,
           preop:   currentPreop,
         }),
@@ -447,7 +712,7 @@
       // Success path is raw SVG; op metadata rides in X-Op-* headers.
       const opId = res.headers.get('X-Op-Id');
       installSvg(await res.text());
-      polygons = []; current = [];
+      shapes = []; current = []; dragShape = null;
       appliedViewBox = null;
       currentPreop = opId;
       setStatus(
@@ -462,28 +727,44 @@
   }
 
   function bindPalette() {
-    const swatches = palette.querySelectorAll('.swatch');
-    swatches.forEach(sw => {
-      sw.addEventListener('click', () => {
-        selectedColor = {
-          fill:    sw.dataset.fill,
-          opacity: parseFloat(sw.dataset.opacity),
-        };
-        swatches.forEach(s => s.classList.remove('selected'));
-        sw.classList.add('selected');
-        // Only the in-progress overlay re-strokes. Closed polygons keep
-        // the colour they were drawn with — picking a different swatch
-        // doesn't repaint history.
-        renderDynamic();
+    // Mutually-exclusive button group helper: clicking a button selects
+    // it (visually) and runs ``onSelect`` once. Used for shapes, fill
+    // mode, and colour swatches alike — same UX pattern.
+    function bindGroup(buttons, isCurrent, onSelect) {
+      buttons.forEach(b => {
+        b.addEventListener('click', () => {
+          buttons.forEach(o => o.classList.remove('selected'));
+          b.classList.add('selected');
+          onSelect(b);
+        });
+        if (isCurrent(b)) b.classList.add('selected');
       });
-      // Visually mark the swatch that matches the initial selectedColor.
-      // Iterating compares numbers, sidestepping the toFixed-vs-literal
-      // formatting trap (e.g. "0.5" wouldn't match a "0.50" query).
-      if (sw.dataset.fill === selectedColor.fill
-          && parseFloat(sw.dataset.opacity) === selectedColor.opacity) {
-        sw.classList.add('selected');
-      }
-    });
+    }
+
+    bindGroup(
+      palette.querySelectorAll('.shape'),
+      b => b.dataset.shape === selectedShape,
+      b => { selectedShape = b.dataset.shape; abortCurrent(); dragShape = null; renderDynamic(); },
+    );
+    bindGroup(
+      palette.querySelectorAll('.mode'),
+      b => (b.dataset.outlined === 'true') === outlined,
+      b => { outlined = b.dataset.outlined === 'true'; renderDynamic(); },
+    );
+    bindGroup(
+      palette.querySelectorAll('.swatch'),
+      b => b.dataset.fill === selectedColor.fill
+        && parseFloat(b.dataset.opacity) === selectedColor.opacity,
+      b => {
+        selectedColor = {
+          fill:    b.dataset.fill,
+          opacity: parseFloat(b.dataset.opacity),
+        };
+        // Closed shapes keep the colour they were drawn with; only the
+        // in-progress overlay re-strokes.
+        renderDynamic();
+      },
+    );
   }
 
   async function boot() {

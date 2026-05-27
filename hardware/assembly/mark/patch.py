@@ -8,8 +8,10 @@ Each save is one *operation*. An op has:
                   literal ``"orig"`` (the source SVG) or another op's
                   4-letter id. Lets a replay reconstruct intermediate
                   snapshots by chaining ops.
-* ``polygons`` — list of polygons (each a list of ``[x, y]`` vertices)
-                  in source-SVG coordinates.
+* ``shapes``   — list of ``{type, geom, color, outlined}`` entries
+                  (polygon / rect / circle / ellipse / line / arrow);
+                  ``geom`` carries the type-specific coordinates in
+                  source-SVG units.
 * ``viewBox``  — ``"x y w h"`` if this op crops, else ``null``.
 
 The output snapshot is ``<src stem>.<id>.svg`` next to the source; all
@@ -98,21 +100,26 @@ def write_patch(source_svg: Path, entries: list[dict]) -> Path:
 def make_entry(
     op_id: str,
     preop: str,
-    polygons: Iterable[dict],
+    shapes: Iterable[dict],
     viewbox: str | None,
 ) -> dict:
     """Shape the in-memory op entry that gets persisted by
-    ``write_patch``. ``polygons`` is ``[{points, color}, ...]`` — each
-    polygon carries its own colour (locked at draw time)."""
-    return {
-        "id":       op_id,
-        "preop":    preop,
-        "polygons": [
-            {
-                "points": [list(pt) for pt in poly["points"]],
-                "color":  poly["color"],
+    ``write_patch``. ``shapes`` is ``[{type, geom, color, outlined},
+    ...]`` — each shape carries its own colour + style (locked at
+    draw time). Polygon vertex tuples are coerced to lists so the
+    JSON round-trip is stable."""
+    out = []
+    for s in shapes:
+        item = dict(s)
+        if s["type"] == "polygon":
+            # Deep-copy geom so the points list isn't aliased.
+            item["geom"] = {
+                "points": [list(pt) for pt in s["geom"]["points"]],
             }
-            for poly in polygons
-        ],
-        "viewBox":  viewbox,
+        out.append(item)
+    return {
+        "id":      op_id,
+        "preop":   preop,
+        "shapes":  out,
+        "viewBox": viewbox,
     }

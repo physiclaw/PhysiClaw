@@ -27,7 +27,7 @@ from hardware.assembly.mark.patch import (
     patch_path,
     snapshot_path,
 )
-from hardware.assembly.mark.svg import build_fill_svg
+from hardware.assembly.mark.svg import build_shapes_svg
 
 
 def find_leaves(entries: list[dict]) -> list[dict]:
@@ -57,12 +57,12 @@ def chain_to(entries: list[dict], leaf_id: str) -> list[dict]:
 
 
 def apply_chain(src_bytes: bytes, chain: list[dict]) -> bytes:
-    """Fold each op's polygons + viewBox onto ``src_bytes`` in order.
-    Each polygon in an op carries its own ``color`` so ``build_fill_svg``
-    needs no extra arg."""
+    """Fold each op's shapes + viewBox onto ``src_bytes`` in order.
+    Each shape carries its own ``color`` + ``outlined`` so
+    ``build_shapes_svg`` needs no extra arg."""
     out = src_bytes
     for op in chain:
-        out = build_fill_svg(out, op["polygons"], viewbox=op["viewBox"])
+        out = build_shapes_svg(out, op["shapes"], viewbox=op["viewBox"])
     return out
 
 

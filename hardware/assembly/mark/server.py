@@ -5,7 +5,7 @@ Endpoints:
 - ``GET  /``      — ``index.html`` (the UI bundle)
 - ``GET  /svg``   — the **original** source SVG bytes (frontend uses
                     this on load and on Clear to reset the canvas)
-- ``POST /save``  — ``{polygons, viewBox, preop}`` from the browser.
+- ``POST /save``  — ``{shapes, viewBox, preop}`` from the browser.
                     Backend appends a new op to the patch JSON, replays
                     the chain leading to the new op against the source,
                     writes the snapshot ``<stem>.<id>.svg``, and returns
@@ -33,7 +33,7 @@ from hardware.assembly.mark.patch import (
     write_patch,
 )
 from hardware.assembly.mark.replay import apply_chain, chain_to
-from hardware.assembly.mark.validate import validate_polygons
+from hardware.assembly.mark.validate import validate_shapes
 from hardware.assembly.svg_utils import validate_viewbox
 
 # Sibling file so it can be edited with HTML / JS tooling.
@@ -68,11 +68,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         try:
             payload = json.loads(body.decode("utf-8") or "{}")
-            polygons = validate_polygons(payload.get("polygons", []))
-            viewbox  = validate_viewbox(payload.get("viewBox"))
-            preop    = validate_preop(payload.get("preop", ORIG_SENTINEL))
-            if not polygons and viewbox is None:
-                raise ValueError("no polygons or viewBox to save")
+            shapes  = validate_shapes(payload.get("shapes", []))
+            viewbox = validate_viewbox(payload.get("viewBox"))
+            preop   = validate_preop(payload.get("preop", ORIG_SENTINEL))
+            if not shapes and viewbox is None:
+                raise ValueError("no shapes or viewBox to save")
         except (ValueError, json.JSONDecodeError) as exc:
             self._send_json(400, {"error": f"{type(exc).__name__}: {exc}"})
             return
@@ -91,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             op_id = new_id(self.src_path, taken=existing_ids)
-            entries.append(make_entry(op_id, preop, polygons, viewbox))
+            entries.append(make_entry(op_id, preop, shapes, viewbox))
             # Replay first; only persist the patch + snapshot once the
             # chain has successfully produced bytes, so a build failure
             # can't corrupt the patch file with a dangling entry.
