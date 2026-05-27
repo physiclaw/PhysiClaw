@@ -6,12 +6,16 @@ already assembled" — the standard blue-overlay convention used in
 assembly manuals. Click polygons around the new part and / or drag a
 crop rect; each save produces:
 
-  * ``xx.filled[.N].svg`` (or ``xx.crop[.N].svg`` for crop-only) — a
-    snapshot SVG carrying the overlay / new viewBox on top of the
-    original line art. Auto-incremented so saves don't clobber.
+  * ``xx.<kind>.<slug>.svg`` — snapshot SVG with the overlay / new
+    viewBox on top of the original line art. ``<kind>`` is ``filled``
+    (polygons present) or ``crop`` (crop-only); ``<slug>`` is a random
+    3-letter token. Fixed name per edit — a replay script writes to the
+    same filename regardless of which other snapshots are present.
   * ``patch/xx.json`` — one accumulator per source SVG, top-level array
-    of ``{kind, polygons, viewBox}`` entries in save order. A replay
-    script can regenerate every snapshot from a freshly-built source.
+    of ``{slug, kind, polygons, viewBox}`` entries in save order. A
+    replay script can regenerate every snapshot from a freshly-built
+    source by reading the patch and reusing each entry's slug for the
+    output filename.
 
 Polygons are inserted as direct children of the root <svg>, in viewBox
 coordinates. The original file is never modified.
@@ -20,7 +24,9 @@ coordinates. The original file is never modified.
 from __future__ import annotations
 
 import json
+import random
 import re
+import string
 import sys
 import threading
 import webbrowser
@@ -45,24 +51,29 @@ def vertex_from_click(x: float, y: float) -> Tuple[float, float]:
 
 SaveKind = Literal["filled", "crop"]
 PATCH_DIRNAME = "patch"
+SLUG_ALPHABET = string.ascii_lowercase
+SLUG_LEN = 3
 
 
-def next_sibling_path(src: Path, kind: SaveKind = "filled") -> Path:
-    """Pick the next unused ``<stem>.<kind>[.N].svg`` next to ``src``.
+def slug_output_path(src: Path, kind: SaveKind, slug: str) -> Path:
+    """Output path for a single save: ``<stem>.<kind>.<slug>.svg``.
 
-    Polygons (with or without a crop) go to ``filled``; crop-only saves
-    go to ``crop`` — keeps the two output streams separately numbered
-    so a polygon save can't bump a crop save's counter and vice versa."""
-    parent, stem = src.parent, src.stem
-    candidate = parent / f"{stem}.{kind}.svg"
-    if not candidate.exists():
-        return candidate
-    i = 1
+    Slugs (3 random lowercase letters) instead of an N-counter so the
+    filename is fixed per edit and a replay script can reproduce the
+    same on-disk layout regardless of which other files are present."""
+    return src.parent / f"{src.stem}.{kind}.{slug}.svg"
+
+
+def new_slug(src: Path, kind: SaveKind) -> str:
+    """Random 3-letter slug whose paired output file isn't on disk yet.
+
+    With ``26**3 = 17576`` options collisions are rare; the loop bails
+    out after a few retries by which point a collision-free draw is
+    overwhelmingly likely."""
     while True:
-        candidate = parent / f"{stem}.{kind}.{i}.svg"
-        if not candidate.exists():
-            return candidate
-        i += 1
+        slug = "".join(random.choices(SLUG_ALPHABET, k=SLUG_LEN))
+        if not slug_output_path(src, kind, slug).exists():
+            return slug
 
 
 def patch_path_for(source_svg: Path) -> Path:
@@ -75,6 +86,7 @@ def patch_path_for(source_svg: Path) -> Path:
 
 def append_patch(
     source_svg: Path,
+    slug: str,
     kind: SaveKind,
     polygons: Iterable[Iterable[Tuple[float, float]]],
     viewbox: str | None,
@@ -82,7 +94,8 @@ def append_patch(
     """Append one edit entry to ``patch_path_for(source_svg)``. The file
     is a JSON array; missing / empty files are treated as ``[]``. Each
     entry carries everything needed to re-apply the edit via
-    ``build_fill_svg``."""
+    ``build_fill_svg`` AND the slug that pins its output filename so a
+    replay produces the same ``<stem>.<kind>.<slug>.svg`` on disk."""
     path = patch_path_for(source_svg)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -97,6 +110,7 @@ def append_patch(
         entries = loaded
 
     entries.append({
+        "slug":     slug,
         "kind":     kind,
         "polygons": [[list(pt) for pt in poly] for poly in polygons],
         "viewBox":  viewbox,
@@ -607,14 +621,16 @@ class Handler(BaseHTTPRequestHandler):
             original = self.src_path.read_bytes()
             new_bytes = build_fill_svg(original, polygons, viewbox=viewbox)
             kind: SaveKind = "filled" if polygons else "crop"
-            out_path = next_sibling_path(self.src_path, kind=kind)
+            slug = new_slug(self.src_path, kind)
+            out_path = slug_output_path(self.src_path, kind, slug)
             out_path.write_bytes(new_bytes)
-            patch_path = append_patch(self.src_path, kind, polygons, viewbox)
+            patch_path = append_patch(self.src_path, slug, kind, polygons, viewbox)
             self._send_json(
                 200,
                 {
                     "path":    str(out_path),
                     "patch":   str(patch_path),
+                    "slug":    slug,
                     "count":   len(polygons),
                     "viewBox": viewbox,
                 },
