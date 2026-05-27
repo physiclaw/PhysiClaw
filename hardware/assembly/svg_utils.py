@@ -22,6 +22,9 @@ _DIM_ATTRS_RE = re.compile(
 _VIEWBOX_ATTR_RE = re.compile(
     r"""viewBox\s*=\s*(?:"[^"]*"|'[^']*')""",
 )
+_VIEWBOX_VAL_CAPTURE_RE = re.compile(
+    r"""\bviewBox\s*=\s*(?:"([^"]*)"|'([^']*)')""",
+)
 
 # Validation for user-supplied viewBox values: exactly four numbers
 # separated by whitespace, decimals + scientific notation allowed.
@@ -59,6 +62,18 @@ def inject_non_scaling_strokes(text: str) -> str:
         text,
         count=1,
     )
+
+
+def get_root_viewbox(text: str) -> str | None:
+    """Return the viewBox value (``"x y w h"``) from the root ``<svg>``
+    opening tag, or ``None`` if the tag has no viewBox attribute."""
+    root = ROOT_TAG_RE.search(text)
+    if root is None:
+        return None
+    m = _VIEWBOX_VAL_CAPTURE_RE.search(root.group(0))
+    if m is None:
+        return None
+    return m.group(1) if m.group(1) is not None else m.group(2)
 
 
 def set_root_viewbox(text: str, viewbox: str) -> str:

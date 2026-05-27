@@ -9,7 +9,7 @@ import math
 import re
 from typing import Iterable, List, Literal, TypedDict
 
-from hardware.assembly.svg_utils import set_root_viewbox
+from hardware.assembly.svg_utils import get_root_viewbox, set_root_viewbox
 
 FILL_GROUP_ID = "manual-fill"
 
@@ -62,6 +62,59 @@ def _arrow_geometry(x1: float, y1: float, x2: float, y2: float):
     base2 = (x2 - hl * math.cos(ang + _ARROW_HEAD_HALF_ANGLE),
              y2 - hl * math.sin(ang + _ARROW_HEAD_HALF_ANGLE))
     return stem_end, [(x2, y2), base1, base2]
+
+def _shape_bbox(s: dict) -> tuple[float, float, float, float] | None:
+    """Tight bounding box of one shape in source-SVG units, or ``None``
+    when the shape has no spatial extent (a zero-length arrow). Stroke
+    widths are pixel-fixed (``non-scaling-stroke``) so they don't
+    contribute to the bbox."""
+    t = s["type"]
+    c = s["geom"]
+    if t == "polygon":
+        xs, ys = zip(*c["points"])
+        return min(xs), min(ys), max(xs), max(ys)
+    if t == "rect":
+        return c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"]
+    if t == "circle":
+        return c["cx"] - c["r"], c["cy"] - c["r"], c["cx"] + c["r"], c["cy"] + c["r"]
+    if t == "ellipse":
+        return c["cx"] - c["rx"], c["cy"] - c["ry"], c["cx"] + c["rx"], c["cy"] + c["ry"]
+    if t == "line":
+        return (min(c["x1"], c["x2"]), min(c["y1"], c["y2"]),
+                max(c["x1"], c["x2"]), max(c["y1"], c["y2"]))
+    if t == "arrow":
+        geo = _arrow_geometry(c["x1"], c["y1"], c["x2"], c["y2"])
+        if geo is None:
+            return None
+        _, tri = geo
+        xs = [c["x1"], c["x2"], *(p[0] for p in tri)]
+        ys = [c["y1"], c["y2"], *(p[1] for p in tri)]
+        return min(xs), min(ys), max(xs), max(ys)
+    raise ValueError(f"unknown shape type {t!r}")
+
+
+def _shapes_bbox(shapes) -> tuple[float, float, float, float] | None:
+    """Union bbox of every shape, or ``None`` if no shape has extent."""
+    bboxes = [b for b in (_shape_bbox(s) for s in shapes) if b is not None]
+    if not bboxes:
+        return None
+    return (min(b[0] for b in bboxes), min(b[1] for b in bboxes),
+            max(b[2] for b in bboxes), max(b[3] for b in bboxes))
+
+
+def _expand_viewbox(vb: str | None, bb: tuple[float, float, float, float]) -> str:
+    """Return a viewBox that contains both ``vb`` (if not None) and the
+    shapes bounding box ``bb``. Without ``vb`` the bbox is the new
+    viewBox outright."""
+    sx0, sy0, sx1, sy1 = bb
+    if vb is None:
+        x0, y0, x1, y1 = sx0, sy0, sx1, sy1
+    else:
+        cx0, cy0, cw, ch = (float(p) for p in vb.split())
+        x0, y0 = min(cx0, sx0), min(cy0, sy0)
+        x1, y1 = max(cx0 + cw, sx1), max(cy0 + ch, sy1)
+    return f"{x0:.4f} {y0:.4f} {x1 - x0:.4f} {y1 - y0:.4f}"
+
 
 # Last ``</svg>`` closer in the file. The marked-shapes group is
 # inserted just before it; trailing comments or nested ``</svg>``
@@ -146,7 +199,11 @@ def build_shapes_svg(
     ``<svg>``'s ``viewBox`` when given. Each shape is a dict with a
     ``type`` discriminator, a ``geom`` dict with type-specific
     coordinates, a ``color``, and an ``outlined`` flag (ignored for
-    line / arrow)."""
+    line / arrow).
+
+    The viewBox is always expanded to include every drawn shape — a
+    shape placed outside the current frame would otherwise be clipped
+    when the snapshot is embedded as ``<img>``."""
     text = original.decode("utf-8")
     matches = list(_SVG_CLOSE_RE.finditer(text))
     if not matches:
@@ -154,6 +211,10 @@ def build_shapes_svg(
     insert_at = matches[-1].start()
 
     shapes = list(shapes)
+
+    shapes_bb = _shapes_bbox(shapes)
+    if shapes_bb is not None:
+        viewbox = _expand_viewbox(viewbox or get_root_viewbox(text), shapes_bb)
 
     lines: List[str] = [
         "  <!-- manual-fill: appended by hardware/assembly/mark -->",
