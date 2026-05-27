@@ -338,6 +338,22 @@
     margin-top: 12mm;
   }
 
+  /* SOLO (one figure filling the page body) */
+  .solo {
+    display: flex;
+    flex-direction: column;
+    height: 155mm;
+  }
+  .solo .fig { flex: 1; min-height: 0; }
+  .solo .caption {
+    font-family: var(--font-mono);
+    font-size: 10pt;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: 3mm;
+    letter-spacing: 0.02em;
+  }
+
   /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
   .grid-4 {
     display: grid;
@@ -476,16 +492,16 @@
 
     <div class="toc-grid">
       <div class="toc-row"><span>Introduction</span><span class="pg">03</span></div>
-      <div class="toc-row"><span>03 — Motor</span><span class="pg">15</span></div>
+      <div class="toc-row"><span>03 — Motor</span><span class="pg">16</span></div>
 
       <div class="toc-row"><span>Hardware reference</span><span class="pg">04</span></div>
-      <div class="toc-row"><span>04 — Linear motion</span><span class="pg">19</span></div>
+      <div class="toc-row"><span>04 — Linear motion</span><span class="pg">20</span></div>
 
       <div class="toc-row"><span>01 — Frame</span><span class="pg">05</span></div>
-      <div class="toc-row"><span>05 — Belt routing</span><span class="pg">28</span></div>
+      <div class="toc-row"><span>05 — Belt routing</span><span class="pg">29</span></div>
 
-      <div class="toc-row"><span>02 — Idler</span><span class="pg">09</span></div>
-      <div class="toc-row"><span>06 — Stylus carriage</span><span class="pg">31</span></div>
+      <div class="toc-row"><span>02 — Idler</span><span class="pg">10</span></div>
+      <div class="toc-row"><span>06 — Stylus carriage</span><span class="pg">32</span></div>
     </div>
 
     <div class="foot">
@@ -662,32 +678,33 @@
 </section>
 
 
-<!-- SECTION 01 — FRAME · grid 1/3 -->
+<!-- SECTION 01 — FRAME · frame_10 (solo) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">FRAME<small>frame_10 · frame_20</small></span>
+      <span class="title">FRAME<small>frame_10</small></span>
       <span class="url">PHYSICLAW PROJECT</span>
     </div>
-    <div class="grid-4">
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_assembled_cam0.svg" alt="frame_10_extrusion_tnut assembled" loading="lazy"></div>
-        <div class="caption">frame_10_extrusion_tnut_assembled</div>
-      </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_exploded_cam0.svg" alt="frame_10_extrusion_tnut exploded" loading="lazy"></div>
-        <div class="caption">frame_10_extrusion_tnut_exploded</div>
-      </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_20_SHCS_assembled_cam0.svg" alt="frame_20_SHCS assembled" loading="lazy"></div>
-        <div class="caption">frame_20_SHCS_assembled</div>
-      </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_20_SHCS_exploded_cam0.svg" alt="frame_20_SHCS exploded" loading="lazy"></div>
-        <div class="caption">frame_20_SHCS_exploded</div>
-      </div>
+    <div class="solo">
+      <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_exploded_cam0.svg" alt="frame_10_extrusion_tnut exploded" loading="lazy"></div>
+      <div class="caption">frame_10_extrusion_tnut_exploded</div>
     </div>
     <div class="foot"><span>6</span><span class="rule"></span><span>6</span></div>
+  </div>
+</section>
+
+<!-- SECTION 01 — FRAME · frame_20 (solo) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">FRAME<small>frame_20</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="solo">
+      <div class="fig"><img src="../output/svg/frame_20_SHCS_exploded_cam0.svg" alt="frame_20_SHCS exploded" loading="lazy"></div>
+      <div class="caption">frame_20_SHCS_exploded</div>
+    </div>
+    <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
   </div>
 </section>
 
@@ -716,7 +733,7 @@
         <div class="caption">frame_31_bracket_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
+    <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
   </div>
 </section>
 
@@ -745,7 +762,7 @@
         <div class="caption">frame_41_bumper_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
+    <div class="foot"><span>9</span><span class="rule"></span><span>9</span></div>
   </div>
 </section>
 
@@ -767,7 +784,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>9</span><span class="rule"></span><span>9</span></div>
+    <div class="foot"><span>10</span><span class="rule"></span><span>10</span></div>
   </div>
 </section>
 
@@ -796,7 +813,7 @@
         <div class="caption">idler_11_lu_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>10</span><span class="rule"></span><span>10</span></div>
+    <div class="foot"><span>11</span><span class="rule"></span><span>11</span></div>
   </div>
 </section>
 
@@ -825,7 +842,7 @@
         <div class="caption">idler_20_ru_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>11</span><span class="rule"></span><span>11</span></div>
+    <div class="foot"><span>12</span><span class="rule"></span><span>12</span></div>
   </div>
 </section>
 
@@ -854,7 +871,7 @@
         <div class="caption">idler_22_ru_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>12</span><span class="rule"></span><span>12</span></div>
+    <div class="foot"><span>13</span><span class="rule"></span><span>13</span></div>
   </div>
 </section>
 
@@ -883,7 +900,7 @@
         <div class="caption">idler_31_ld_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>13</span><span class="rule"></span><span>13</span></div>
+    <div class="foot"><span>14</span><span class="rule"></span><span>14</span></div>
   </div>
 </section>
 
@@ -912,7 +929,7 @@
         <div class="caption">idler_41_rd_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>14</span><span class="rule"></span><span>14</span></div>
+    <div class="foot"><span>15</span><span class="rule"></span><span>15</span></div>
   </div>
 </section>
 
@@ -934,7 +951,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>15</span><span class="rule"></span><span>15</span></div>
+    <div class="foot"><span>16</span><span class="rule"></span><span>16</span></div>
   </div>
 </section>
 
@@ -963,7 +980,7 @@
         <div class="caption">motor_11_frame_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>16</span><span class="rule"></span><span>16</span></div>
+    <div class="foot"><span>17</span><span class="rule"></span><span>17</span></div>
   </div>
 </section>
 
@@ -992,7 +1009,7 @@
         <div class="caption">motor_21_frame_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>17</span><span class="rule"></span><span>17</span></div>
+    <div class="foot"><span>18</span><span class="rule"></span><span>18</span></div>
   </div>
 </section>
 
@@ -1013,7 +1030,7 @@
         <div class="caption">motor_30_pulley_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>18</span><span class="rule"></span><span>18</span></div>
+    <div class="foot"><span>19</span><span class="rule"></span><span>19</span></div>
   </div>
 </section>
 
@@ -1035,7 +1052,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>19</span><span class="rule"></span><span>19</span></div>
+    <div class="foot"><span>20</span><span class="rule"></span><span>20</span></div>
   </div>
 </section>
 
@@ -1064,7 +1081,7 @@
         <div class="caption">linear_11_y_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>20</span><span class="rule"></span><span>20</span></div>
+    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
   </div>
 </section>
 
@@ -1093,7 +1110,7 @@
         <div class="caption">linear_30_x_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
+    <div class="foot"><span>22</span><span class="rule"></span><span>22</span></div>
   </div>
 </section>
 
@@ -1122,7 +1139,7 @@
         <div class="caption">linear_32_x_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>22</span><span class="rule"></span><span>22</span></div>
+    <div class="foot"><span>23</span><span class="rule"></span><span>23</span></div>
   </div>
 </section>
 
@@ -1151,7 +1168,7 @@
         <div class="caption">linear_40_idler_lj1_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>23</span><span class="rule"></span><span>23</span></div>
+    <div class="foot"><span>24</span><span class="rule"></span><span>24</span></div>
   </div>
 </section>
 
@@ -1180,7 +1197,7 @@
         <div class="caption">linear_42_idler_lj2_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>24</span><span class="rule"></span><span>24</span></div>
+    <div class="foot"><span>25</span><span class="rule"></span><span>25</span></div>
   </div>
 </section>
 
@@ -1209,7 +1226,7 @@
         <div class="caption">linear_44_idler_rj1_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>25</span><span class="rule"></span><span>25</span></div>
+    <div class="foot"><span>26</span><span class="rule"></span><span>26</span></div>
   </div>
 </section>
 
@@ -1238,7 +1255,7 @@
         <div class="caption">linear_46_idler_rj2_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>26</span><span class="rule"></span><span>26</span></div>
+    <div class="foot"><span>27</span><span class="rule"></span><span>27</span></div>
   </div>
 </section>
 
@@ -1259,7 +1276,7 @@
         <div class="caption">linear_47_idler_rj2_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>27</span><span class="rule"></span><span>27</span></div>
+    <div class="foot"><span>28</span><span class="rule"></span><span>28</span></div>
   </div>
 </section>
 
@@ -1281,7 +1298,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>28</span><span class="rule"></span><span>28</span></div>
+    <div class="foot"><span>29</span><span class="rule"></span><span>29</span></div>
   </div>
 </section>
 
@@ -1310,7 +1327,7 @@
         <div class="caption">belt_20_clamp_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>29</span><span class="rule"></span><span>29</span></div>
+    <div class="foot"><span>30</span><span class="rule"></span><span>30</span></div>
   </div>
 </section>
 
@@ -1331,7 +1348,7 @@
         <div class="caption">belt_30_motor_b_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>30</span><span class="rule"></span><span>30</span></div>
+    <div class="foot"><span>31</span><span class="rule"></span><span>31</span></div>
   </div>
 </section>
 
@@ -1353,7 +1370,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>31</span><span class="rule"></span><span>31</span></div>
+    <div class="foot"><span>32</span><span class="rule"></span><span>32</span></div>
   </div>
 </section>
 
@@ -1382,7 +1399,7 @@
         <div class="caption">tapz_11_solenoid_attach_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>32</span><span class="rule"></span><span>32</span></div>
+    <div class="foot"><span>33</span><span class="rule"></span><span>33</span></div>
   </div>
 </section>
 
@@ -1403,7 +1420,7 @@
         <div class="caption">tapz_20_solenoid_mount_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>33</span><span class="rule"></span><span>33</span></div>
+    <div class="foot"><span>34</span><span class="rule"></span><span>34</span></div>
   </div>
 </section>
 
