@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysiClaw Assembly Manual</title>
+<style>
+  /* ============================================================
+     PhysiClaw Assembly Manual
+     One section per procedure family (frame, idler, motor,
+     linear, belt, tapz). Each section lists every SVG render for
+     that family in alphabetic filename order, 4 per page.
+     ============================================================ */
+
+  @page { size: A4 landscape; margin: 0; }
+
+  :root {
+    --accent:        #e8344e;
+    --ink:           #1f1f1f;
+    --ink-soft:      #6a6a6a;
+    --ink-faint:     #b8b8b8;
+    --rule:          #d8d8d8;
+    --page-bg:       #ffffff;
+    --link:          #4a8bc7;
+
+    --font-sans:     "Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    --font-mono:     "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: #eaeaea;
+    font-size: 11pt;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 297mm;
+    height: 210mm;
+    margin: 0 auto 8mm auto;
+    padding: 0;
+    background: var(--page-bg);
+    page-break-after: always;
+    position: relative;
+    overflow: hidden;
+  }
+  .page-inner {
+    padding: 12mm 16mm 14mm 16mm;
+    height: 100%;
+    position: relative;
+  }
+  .page:last-child { page-break-after: auto; }
+  @media print {
+    body { background: #fff; }
+    .page { margin: 0; }
+  }
+
+  /* ---------- Header ---------- */
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6mm;
+    line-height: 1.2;
+  }
+  .head .title {
+    color: var(--accent);
+    font-weight: 500;
+    font-size: 13pt;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    max-width: 200mm;
+  }
+  .head .title small {
+    display: block;
+    font-size: 10pt;
+    margin-top: 0.5mm;
+    color: var(--ink-faint);
+    letter-spacing: 0.05em;
+  }
+  .head .url {
+    color: var(--ink-faint);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    font-size: 11pt;
+  }
+
+  /* ---------- Footer ---------- */
+  .foot {
+    position: absolute;
+    left: 16mm; right: 16mm; bottom: 7mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--ink-faint);
+    font-size: 11pt;
+    font-weight: 400;
+  }
+  .foot .rule {
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+    margin: 0 4mm;
+  }
+
+  /* ---------- Red-headed note ---------- */
+  .note { max-width: 90mm; }
+  .note h3 {
+    color: var(--accent);
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 0 0 2mm 0;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+  }
+  .note p {
+    color: var(--ink-soft);
+    font-size: 11pt;
+    line-height: 1.5;
+    margin: 0 0 3mm 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note p a { color: var(--link); text-decoration: none; }
+  .note + .note { margin-top: 6mm; }
+  .note .ref {
+    color: var(--accent);
+    font-size: 11pt;
+    font-weight: 500;
+    margin-top: 1mm;
+  }
+
+  /* ---------- Figure ---------- */
+  .fig {
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  /* Constrain any embedded raster/vector to its container (figures,
+     cover render, hardware-reference icons all share this rule). */
+  .fig img, .fig svg,
+  .cover .render img, .cover .render svg,
+  .hw-entry .icon img, .hw-entry .icon svg {
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  /* Placeholder helper (used when an SVG render is missing) */
+  .ph { width: 100%; height: 100%; }
+  .ph text { fill: #cfcfcf; font-family: var(--font-mono); font-size: 11px; }
+  .ph .frame { fill: none; stroke: #eee; stroke-dasharray: 4,4; }
+
+  /* ====== PAGE-SPECIFIC LAYOUTS ====== */
+
+  /* COVER */
+  .cover .page-inner { padding: 0; height: 100%; position: relative; }
+  .cover .stripes {
+    position: absolute;
+    left: -10mm;
+    bottom: 0;
+    width: 145mm;
+    height: 175mm;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .cover .stripes svg { width: 100%; height: 100%; }
+  .cover .brand {
+    position: absolute;
+    top: 14mm;
+    right: 18mm;
+    text-align: right;
+    z-index: 2;
+  }
+  .cover .brand .mark {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4mm;
+  }
+  .cover .brand .mark svg { width: 22mm; height: auto; }
+  .cover .brand .mark .word {
+    font-size: 30pt;
+    font-weight: 800;
+    color: #1a1a1a;
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }
+  .cover .brand .sub {
+    font-size: 11pt;
+    color: #1a1a1a;
+    letter-spacing: 0.45em;
+    margin-top: 2mm;
+    margin-right: 2mm;
+  }
+  .cover .render {
+    position: absolute;
+    top: 28mm;
+    right: 18mm;
+    width: 130mm;
+    height: 110mm;
+    z-index: 1;
+  }
+  .cover .render img, .cover .render svg {
+    display: block;
+    margin-left: auto;
+  }
+  .cover .title-block {
+    position: absolute;
+    right: 18mm;
+    bottom: 22mm;
+    text-align: right;
+    width: 200mm;
+    z-index: 2;
+  }
+  .cover .title-block h1 {
+    color: var(--accent);
+    font-size: 32pt;
+    font-weight: 500;
+    margin: 0 0 4mm 0;
+    letter-spacing: 0.005em;
+    text-transform: uppercase;
+  }
+  .cover .title-block .tag {
+    color: var(--ink);
+    font-size: 13pt;
+    margin: 0 0 4mm 0;
+    line-height: 1.5;
+  }
+  .cover .title-block .red-rule {
+    height: 1.2px;
+    background: var(--accent);
+    margin-left: auto;
+    width: 100%;
+  }
+  .cover .ver {
+    position: absolute;
+    right: 18mm;
+    bottom: 10mm;
+    color: var(--ink-soft);
+    font-size: 11pt;
+    letter-spacing: 0.15em;
+    z-index: 2;
+  }
+
+  /* TOC */
+  .toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 18mm;
+    row-gap: 0;
+    margin-top: 18mm;
+  }
+  .toc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5mm 0 2mm 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 13pt;
+    color: var(--ink-soft);
+  }
+  .toc-row .pg { color: var(--ink-soft); font-weight: 400; }
+
+  /* HARDWARE REFERENCE */
+  .hw-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    column-gap: 14mm;
+    row-gap: 8mm;
+    margin-top: 4mm;
+    height: 155mm;
+  }
+  .hw-entry {
+    display: grid;
+    grid-template-columns: 50mm 1fr;
+    column-gap: 6mm;
+    align-items: center;
+  }
+  .hw-entry .icon {
+    height: 100%;
+    display: grid;
+    place-items: center;
+  }
+  .hw-entry .note { max-width: none; }
+
+  /* INTRODUCTION */
+  .intro-lead { padding: 8mm 0 0 28mm; }
+  .intro-lead .note { max-width: 175mm; }
+  .intro-spec {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 18mm;
+    row-gap: 7mm;
+    margin: 14mm 0;
+    padding-left: 28mm;
+  }
+
+  /* CHAPTER OPENER */
+  .opener {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 8mm;
+  }
+  .opener .secnum {
+    color: var(--accent);
+    font-size: 14pt;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    margin-bottom: 8mm;
+  }
+  .opener h1 {
+    font-size: 58pt;
+    line-height: 1.05;
+    margin: 0 0 8mm 0;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    max-width: 220mm;
+  }
+  .opener .lede {
+    font-size: 13pt;
+    color: var(--ink-soft);
+    max-width: 200mm;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .opener .bar {
+    width: 60mm;
+    height: 2px;
+    background: var(--accent);
+    margin-top: 12mm;
+  }
+
+  /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
+  .grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 8mm;
+    height: 155mm;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .tile .fig {
+    flex: 1;
+    min-height: 0;
+  }
+  .tile .caption {
+    font-family: var(--font-mono);
+    font-size: 9pt;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: 1.5mm;
+    letter-spacing: 0.02em;
+    word-break: break-all;
+  }
+
+  /* BACK COVER */
+  .back .page-inner {
+    padding: 0;
+    background: #1f1f1f;
+    color: #fff;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .back .top { padding: 28mm 18mm 12mm 18mm; flex: 1; }
+  .back .stamp {
+    font-family: var(--font-mono);
+    font-size: 11pt;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    margin-bottom: 8mm;
+  }
+  .back h2 {
+    font-size: 42pt;
+    line-height: 1.1;
+    margin: 0 0 8mm 0;
+    font-weight: 700;
+    max-width: 220mm;
+    letter-spacing: -0.01em;
+  }
+  .back .quote {
+    font-family: var(--font-mono);
+    font-size: 13pt;
+    color: rgba(255,255,255,0.7);
+    max-width: 200mm;
+    line-height: 1.55;
+    border-left: 3px solid var(--accent);
+    padding-left: 6mm;
+    margin: 10mm 0 0 0;
+  }
+  .back .bottom {
+    padding: 8mm 18mm 14mm 18mm;
+    border-top: 2px solid var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 10pt;
+    color: rgba(255,255,255,0.6);
+  }
+  .back .bottom strong { color: #fff; }
+  .back .bottom .right { text-align: right; font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     COVER
+     ========================================================= -->
+<section class="page cover">
+  <div class="page-inner">
+    <div class="stripes">
+      <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMax meet">
+        <g fill="#e8344e">
+          <path d="M -50,500 L 120,170 L 200,170 L 30,500 Z"/>
+          <path d="M 60,500 L 230,170 L 310,170 L 140,500 Z"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+          <g fill="#e8344e">
+            <path d="M 5,55 L 25,15 L 35,15 L 15,55 Z"/>
+            <path d="M 25,55 L 45,15 L 55,15 L 35,55 Z"/>
+          </g>
+        </svg>
+        <span class="word">PHYSICLAW</span>
+      </div>
+      <div class="sub">PROJECT</div>
+    </div>
+
+    <div class="render">
+      <img src="../output/svg/frame_41_bumper_assembled_cam0.svg"
+           alt="PhysiClaw frame, fully assembled">
+    </div>
+
+    <div class="title-block">
+      <h1>PhysiClaw Assembly Manual</h1>
+      <p class="tag">
+        A robotic operator for touchscreen devices —<br>
+        every tap, swipe, and hold driven by code.
+      </p>
+      <div class="red-rule"></div>
+    </div>
+
+    <div class="ver">VERSION 2026-05-27</div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     TABLE OF CONTENTS
+     Six body sections + front matter, in build order.
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">TABLE OF CONTENTS</span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+
+    <div class="toc-grid">
+      <div class="toc-row"><span>Introduction</span><span class="pg">03</span></div>
+      <div class="toc-row"><span>03 — Motor</span><span class="pg">15</span></div>
+
+      <div class="toc-row"><span>Hardware reference</span><span class="pg">04</span></div>
+      <div class="toc-row"><span>04 — Linear motion</span><span class="pg">19</span></div>
+
+      <div class="toc-row"><span>01 — Frame</span><span class="pg">05</span></div>
+      <div class="toc-row"><span>05 — Belt routing</span><span class="pg">28</span></div>
+
+      <div class="toc-row"><span>02 — Idler</span><span class="pg">09</span></div>
+      <div class="toc-row"><span>06 — Stylus carriage</span><span class="pg">31</span></div>
+    </div>
+
+    <div class="foot">
+      <span>2</span>
+      <span class="rule"></span>
+      <span>2</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     INTRODUCTION
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">INTRODUCTION</span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+
+    <div class="intro-lead">
+      <div class="note">
+        <h3>What you are building</h3>
+        <p>PhysiClaw is a CoreXY motion platform that drives a capacitive stylus across a phone or tablet screen — the robot doesn't know it's holding a stylus, it just executes coordinates, and any app can be driven by code. This manual walks the build from bare extrusions through to a finished tap-test.</p>
+      </div>
+    </div>
+
+    <div class="intro-spec">
+      <div class="note"><h3>Tools you'll need</h3><p>2 mm &amp; 2.5 mm hex keys, M3 nut driver, small adjustable wrench, soldering iron (for heat-set inserts), small ruler / calipers.</p></div>
+      <div class="note"><h3>How to read each section</h3><p>Sections follow build order. Each section's pages list every render for that family in alphabetic filename order — <em>_assembled</em> first, then <em>_exploded</em>.</p></div>
+      <div class="note"><h3>File naming</h3><p>Each step has two views: <strong>_exploded</strong> shows the install motion (gaps, ghosts); <strong>_assembled</strong> shows the finished state. Camera index <strong>_cam0</strong> by default.</p></div>
+      <div class="note"><h3>Source of truth</h3><p>The renders are generated from the build123d procedure files under <em>hardware/assembly/procedures/</em>. If a diagram and the code disagree, the code wins — rebuild the renders.</p></div>
+      <div class="note"><h3>Hardware bag</h3><p>Each step lists exactly the fasteners it consumes (see the BOM at <span class="ref">hardware/output/bom/</span>). Pull the bag for the step you're about to do, finish it, then move on.</p></div>
+      <div class="note"><h3>If something looks wrong</h3><p>Compare the assembled view ( <em>_assembled_cam0.svg</em> ) against your physical state at the end of each step. Backtracking now is cheaper than backtracking later.</p></div>
+    </div>
+
+    <div class="foot">
+      <span>3</span>
+      <span class="rule"></span>
+      <span>3</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     HARDWARE REFERENCE
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">HARDWARE — REFERENCE</span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+
+    <div class="hw-grid">
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ SHCS icon ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>Socket head cap screw (SHCS)</h3>
+          <p>Cylindrical head, hex drive. The default fastener for PhysiClaw — used wherever the head can sit above the surface.</p>
+          <p class="ref">ISO 4762 / DIN 912</p>
+        </div>
+      </div>
+
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ BHCS icon ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>Button head cap screw (BHCS)</h3>
+          <p>Domed head, hex drive. Used on surfaces where a lower profile matters but a flush head isn't required.</p>
+          <p class="ref">ISO 7380-1</p>
+        </div>
+      </div>
+
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ T-nut icon ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>Extrusion T-nut</h3>
+          <p>Drops into a 2020 / 2040 aluminum extrusion channel and locks under a screw head. Every frame-attached part rides on these.</p>
+        </div>
+      </div>
+
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ hex nut icon ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>Hex nut</h3>
+          <p>Standard M3 hex nut, paired with a screw to clamp parts together where a T-nut won't fit.</p>
+          <p class="ref">ISO 4032 / DIN 934</p>
+        </div>
+      </div>
+
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ MGN9H icon ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>MGN9H linear rail + slider</h3>
+          <p>9 mm-wide miniature linear guide. Two rails run the Y axis, two more carry the X beam. Mounting pitch is 16 × 15 mm — don't substitute.</p>
+        </div>
+      </div>
+
+      <div class="hw-entry">
+        <div class="icon">
+          <svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <rect class="frame" x="20" y="20" width="160" height="100"/>
+            <text x="100" y="75" text-anchor="middle">[ GT2 belt + pulley ]</text>
+          </svg>
+        </div>
+        <div class="note">
+          <h3>GT2 belt &amp; pulley</h3>
+          <p>2 mm-pitch open-loop belt, clamped at each end of the moving stage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span>4</span>
+      <span class="rule"></span>
+      <span>4</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 01 — FRAME (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+
+    <div class="opener">
+      <div class="secnum">SECTION 01</div>
+      <h1>Frame.</h1>
+      <p class="lede">
+        Aluminum extrusions, T-nuts, brackets, bumpers. The mechanical chassis everything else bolts onto — squareness here governs every motion downstream.
+      </p>
+      <div class="bar"></div>
+    </div>
+
+    <div class="foot">
+      <span>5</span>
+      <span class="rule"></span>
+      <span>5</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- SECTION 01 — FRAME · grid 1/3 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">FRAME<small>frame_10 · frame_20</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_assembled_cam0.svg" alt="frame_10_extrusion_tnut assembled" loading="lazy"></div>
+        <div class="caption">frame_10_extrusion_tnut_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_exploded_cam0.svg" alt="frame_10_extrusion_tnut exploded" loading="lazy"></div>
+        <div class="caption">frame_10_extrusion_tnut_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_20_SHCS_assembled_cam0.svg" alt="frame_20_SHCS assembled" loading="lazy"></div>
+        <div class="caption">frame_20_SHCS_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_20_SHCS_exploded_cam0.svg" alt="frame_20_SHCS exploded" loading="lazy"></div>
+        <div class="caption">frame_20_SHCS_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>6</span><span class="rule"></span><span>6</span></div>
+  </div>
+</section>
+
+<!-- SECTION 01 — FRAME · grid 2/3 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">FRAME<small>frame_30 · frame_31</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_30_bracket_tnut_assembled_cam0.svg" alt="frame_30_bracket_tnut assembled" loading="lazy"></div>
+        <div class="caption">frame_30_bracket_tnut_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_30_bracket_tnut_exploded_cam0.svg" alt="frame_30_bracket_tnut exploded" loading="lazy"></div>
+        <div class="caption">frame_30_bracket_tnut_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_31_bracket_assembled_cam0.svg" alt="frame_31_bracket assembled" loading="lazy"></div>
+        <div class="caption">frame_31_bracket_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_31_bracket_exploded_cam0.svg" alt="frame_31_bracket exploded" loading="lazy"></div>
+        <div class="caption">frame_31_bracket_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
+  </div>
+</section>
+
+<!-- SECTION 01 — FRAME · grid 3/3 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">FRAME<small>frame_40 · frame_41</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_40_bumper_tnut_assembled_cam0.svg" alt="frame_40_bumper_tnut assembled" loading="lazy"></div>
+        <div class="caption">frame_40_bumper_tnut_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_40_bumper_tnut_exploded_cam0.svg" alt="frame_40_bumper_tnut exploded" loading="lazy"></div>
+        <div class="caption">frame_40_bumper_tnut_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_41_bumper_assembled_cam0.svg" alt="frame_41_bumper assembled" loading="lazy"></div>
+        <div class="caption">frame_41_bumper_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/frame_41_bumper_exploded_cam0.svg" alt="frame_41_bumper exploded" loading="lazy"></div>
+        <div class="caption">frame_41_bumper_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 02 — IDLER (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 02</div>
+      <h1>Idler.</h1>
+      <p class="lede">
+        Smooth pulleys that route the GT2 belts around their corners. Four corner stations (LU / RU / LD / RD), each built up in two or three steps.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>9</span><span class="rule"></span><span>9</span></div>
+  </div>
+</section>
+
+<!-- SECTION 02 — IDLER · grid 1/5 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">IDLER<small>idler_10 · idler_11</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_10_lu_assembled_cam0.svg" alt="idler_10_lu assembled" loading="lazy"></div>
+        <div class="caption">idler_10_lu_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_10_lu_exploded_cam0.svg" alt="idler_10_lu exploded" loading="lazy"></div>
+        <div class="caption">idler_10_lu_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_11_lu_assembled_cam0.svg" alt="idler_11_lu assembled" loading="lazy"></div>
+        <div class="caption">idler_11_lu_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_11_lu_exploded_cam0.svg" alt="idler_11_lu exploded" loading="lazy"></div>
+        <div class="caption">idler_11_lu_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>10</span><span class="rule"></span><span>10</span></div>
+  </div>
+</section>
+
+<!-- SECTION 02 — IDLER · grid 2/5 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">IDLER<small>idler_12 · idler_20</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_12_lu_assembled_cam0.svg" alt="idler_12_lu assembled" loading="lazy"></div>
+        <div class="caption">idler_12_lu_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_12_lu_exploded_cam0.svg" alt="idler_12_lu exploded" loading="lazy"></div>
+        <div class="caption">idler_12_lu_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_20_ru_assembled_cam0.svg" alt="idler_20_ru assembled" loading="lazy"></div>
+        <div class="caption">idler_20_ru_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_20_ru_exploded_cam0.svg" alt="idler_20_ru exploded" loading="lazy"></div>
+        <div class="caption">idler_20_ru_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>11</span><span class="rule"></span><span>11</span></div>
+  </div>
+</section>
+
+<!-- SECTION 02 — IDLER · grid 3/5 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">IDLER<small>idler_21 · idler_22</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_21_ru_assembled_cam0.svg" alt="idler_21_ru assembled" loading="lazy"></div>
+        <div class="caption">idler_21_ru_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_21_ru_exploded_cam0.svg" alt="idler_21_ru exploded" loading="lazy"></div>
+        <div class="caption">idler_21_ru_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_22_ru_assembled_cam0.svg" alt="idler_22_ru assembled" loading="lazy"></div>
+        <div class="caption">idler_22_ru_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_22_ru_exploded_cam0.svg" alt="idler_22_ru exploded" loading="lazy"></div>
+        <div class="caption">idler_22_ru_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>12</span><span class="rule"></span><span>12</span></div>
+  </div>
+</section>
+
+<!-- SECTION 02 — IDLER · grid 4/5 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">IDLER<small>idler_30 · idler_31</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_30_ld_assembled_cam0.svg" alt="idler_30_ld assembled" loading="lazy"></div>
+        <div class="caption">idler_30_ld_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_30_ld_exploded_cam0.svg" alt="idler_30_ld exploded" loading="lazy"></div>
+        <div class="caption">idler_30_ld_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_31_ld_assembled_cam0.svg" alt="idler_31_ld assembled" loading="lazy"></div>
+        <div class="caption">idler_31_ld_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_31_ld_exploded_cam0.svg" alt="idler_31_ld exploded" loading="lazy"></div>
+        <div class="caption">idler_31_ld_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>13</span><span class="rule"></span><span>13</span></div>
+  </div>
+</section>
+
+<!-- SECTION 02 — IDLER · grid 5/5 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">IDLER<small>idler_40 · idler_41</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_40_rd_assembled_cam0.svg" alt="idler_40_rd assembled" loading="lazy"></div>
+        <div class="caption">idler_40_rd_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_40_rd_exploded_cam0.svg" alt="idler_40_rd exploded" loading="lazy"></div>
+        <div class="caption">idler_40_rd_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_41_rd_assembled_cam0.svg" alt="idler_41_rd assembled" loading="lazy"></div>
+        <div class="caption">idler_41_rd_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/idler_41_rd_exploded_cam0.svg" alt="idler_41_rd exploded" loading="lazy"></div>
+        <div class="caption">idler_41_rd_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>14</span><span class="rule"></span><span>14</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 03 — MOTOR (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 03</div>
+      <h1>Motor.</h1>
+      <p class="lede">
+        Brackets, frame-side mounts and pulleys for the two NEMA-17 steppers that drive the CoreXY belt path.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>15</span><span class="rule"></span><span>15</span></div>
+  </div>
+</section>
+
+<!-- SECTION 03 — MOTOR · grid 1/3 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">MOTOR<small>motor_10 · motor_11</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_10_bracket_assembled_cam0.svg" alt="motor_10_bracket assembled" loading="lazy"></div>
+        <div class="caption">motor_10_bracket_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_10_bracket_exploded_cam0.svg" alt="motor_10_bracket exploded" loading="lazy"></div>
+        <div class="caption">motor_10_bracket_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_11_frame_assembled_cam0.svg" alt="motor_11_frame assembled" loading="lazy"></div>
+        <div class="caption">motor_11_frame_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_11_frame_exploded_cam0.svg" alt="motor_11_frame exploded" loading="lazy"></div>
+        <div class="caption">motor_11_frame_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>16</span><span class="rule"></span><span>16</span></div>
+  </div>
+</section>
+
+<!-- SECTION 03 — MOTOR · grid 2/3 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">MOTOR<small>motor_20 · motor_21</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_20_bracket_assembled_cam0.svg" alt="motor_20_bracket assembled" loading="lazy"></div>
+        <div class="caption">motor_20_bracket_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_20_bracket_exploded_cam0.svg" alt="motor_20_bracket exploded" loading="lazy"></div>
+        <div class="caption">motor_20_bracket_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_21_frame_assembled_cam0.svg" alt="motor_21_frame assembled" loading="lazy"></div>
+        <div class="caption">motor_21_frame_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_21_frame_exploded_cam0.svg" alt="motor_21_frame exploded" loading="lazy"></div>
+        <div class="caption">motor_21_frame_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>17</span><span class="rule"></span><span>17</span></div>
+  </div>
+</section>
+
+<!-- SECTION 03 — MOTOR · grid 3/3 (partial — 2 tiles) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">MOTOR<small>motor_30</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_30_pulley_assembled_cam0.svg" alt="motor_30_pulley assembled" loading="lazy"></div>
+        <div class="caption">motor_30_pulley_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/motor_30_pulley_exploded_cam0.svg" alt="motor_30_pulley exploded" loading="lazy"></div>
+        <div class="caption">motor_30_pulley_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>18</span><span class="rule"></span><span>18</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 04 — LINEAR (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 04</div>
+      <h1>Linear motion.</h1>
+      <p class="lede">
+        The MGN9H rails that carry the Y carriage and X beam, plus the joints and idler tabs that tie the X / Y axes into a CoreXY arrangement.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>19</span><span class="rule"></span><span>19</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 1/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_10 · linear_11</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_10_y_assembled_cam0.svg" alt="linear_10_y assembled" loading="lazy"></div>
+        <div class="caption">linear_10_y_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_10_y_exploded_cam0.svg" alt="linear_10_y exploded" loading="lazy"></div>
+        <div class="caption">linear_10_y_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_11_y_assembled_cam0.svg" alt="linear_11_y assembled" loading="lazy"></div>
+        <div class="caption">linear_11_y_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_11_y_exploded_cam0.svg" alt="linear_11_y exploded" loading="lazy"></div>
+        <div class="caption">linear_11_y_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>20</span><span class="rule"></span><span>20</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 2/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_20 · linear_30</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_20_joint_assembled_cam0.svg" alt="linear_20_joint assembled" loading="lazy"></div>
+        <div class="caption">linear_20_joint_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_20_joint_exploded_cam0.svg" alt="linear_20_joint exploded" loading="lazy"></div>
+        <div class="caption">linear_20_joint_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_30_x_assembled_cam0.svg" alt="linear_30_x assembled" loading="lazy"></div>
+        <div class="caption">linear_30_x_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_30_x_exploded_cam0.svg" alt="linear_30_x exploded" loading="lazy"></div>
+        <div class="caption">linear_30_x_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 3/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_31 · linear_32</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_31_x_assembled_cam0.svg" alt="linear_31_x assembled" loading="lazy"></div>
+        <div class="caption">linear_31_x_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_31_x_exploded_cam0.svg" alt="linear_31_x exploded" loading="lazy"></div>
+        <div class="caption">linear_31_x_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_32_x_assembled_cam0.svg" alt="linear_32_x assembled" loading="lazy"></div>
+        <div class="caption">linear_32_x_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_32_x_exploded_cam0.svg" alt="linear_32_x exploded" loading="lazy"></div>
+        <div class="caption">linear_32_x_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>22</span><span class="rule"></span><span>22</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 4/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_33 · linear_40</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_33_x_assembled_cam0.svg" alt="linear_33_x assembled" loading="lazy"></div>
+        <div class="caption">linear_33_x_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_33_x_exploded_cam0.svg" alt="linear_33_x exploded" loading="lazy"></div>
+        <div class="caption">linear_33_x_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_40_idler_lj1_assembled_cam0.svg" alt="linear_40_idler_lj1 assembled" loading="lazy"></div>
+        <div class="caption">linear_40_idler_lj1_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_40_idler_lj1_exploded_cam0.svg" alt="linear_40_idler_lj1 exploded" loading="lazy"></div>
+        <div class="caption">linear_40_idler_lj1_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>23</span><span class="rule"></span><span>23</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 5/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_41 · linear_42</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_41_idler_lj1_assembled_cam0.svg" alt="linear_41_idler_lj1 assembled" loading="lazy"></div>
+        <div class="caption">linear_41_idler_lj1_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_41_idler_lj1_exploded_cam0.svg" alt="linear_41_idler_lj1 exploded" loading="lazy"></div>
+        <div class="caption">linear_41_idler_lj1_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_42_idler_lj2_assembled_cam0.svg" alt="linear_42_idler_lj2 assembled" loading="lazy"></div>
+        <div class="caption">linear_42_idler_lj2_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_42_idler_lj2_exploded_cam0.svg" alt="linear_42_idler_lj2 exploded" loading="lazy"></div>
+        <div class="caption">linear_42_idler_lj2_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>24</span><span class="rule"></span><span>24</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 6/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_43 · linear_44</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_43_idler_lj2_assembled_cam0.svg" alt="linear_43_idler_lj2 assembled" loading="lazy"></div>
+        <div class="caption">linear_43_idler_lj2_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_43_idler_lj2_exploded_cam0.svg" alt="linear_43_idler_lj2 exploded" loading="lazy"></div>
+        <div class="caption">linear_43_idler_lj2_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_44_idler_rj1_assembled_cam0.svg" alt="linear_44_idler_rj1 assembled" loading="lazy"></div>
+        <div class="caption">linear_44_idler_rj1_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_44_idler_rj1_exploded_cam0.svg" alt="linear_44_idler_rj1 exploded" loading="lazy"></div>
+        <div class="caption">linear_44_idler_rj1_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>25</span><span class="rule"></span><span>25</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 7/8 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_45 · linear_46</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_45_idler_rj1_assembled_cam0.svg" alt="linear_45_idler_rj1 assembled" loading="lazy"></div>
+        <div class="caption">linear_45_idler_rj1_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_45_idler_rj1_exploded_cam0.svg" alt="linear_45_idler_rj1 exploded" loading="lazy"></div>
+        <div class="caption">linear_45_idler_rj1_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_46_idler_rj2_assembled_cam0.svg" alt="linear_46_idler_rj2 assembled" loading="lazy"></div>
+        <div class="caption">linear_46_idler_rj2_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_46_idler_rj2_exploded_cam0.svg" alt="linear_46_idler_rj2 exploded" loading="lazy"></div>
+        <div class="caption">linear_46_idler_rj2_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>26</span><span class="rule"></span><span>26</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · grid 8/8 (partial — 2 tiles) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_47</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_47_idler_rj2_assembled_cam0.svg" alt="linear_47_idler_rj2 assembled" loading="lazy"></div>
+        <div class="caption">linear_47_idler_rj2_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/linear_47_idler_rj2_exploded_cam0.svg" alt="linear_47_idler_rj2 exploded" loading="lazy"></div>
+        <div class="caption">linear_47_idler_rj2_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>27</span><span class="rule"></span><span>27</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 05 — BELT (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 05</div>
+      <h1>Belt routing.</h1>
+      <p class="lede">
+        Routing both GT2 belts from the moving stage, around the idler stack, to the motor pulleys. Teeth in, no twists, balanced tension end-to-end.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>28</span><span class="rule"></span><span>28</span></div>
+  </div>
+</section>
+
+<!-- SECTION 05 — BELT · grid 1/2 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">BELT ROUTING<small>belt_10 · belt_20</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_10_motor_a_assembled_cam0.svg" alt="belt_10_motor_a assembled" loading="lazy"></div>
+        <div class="caption">belt_10_motor_a_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_10_motor_a_exploded_cam0.svg" alt="belt_10_motor_a exploded" loading="lazy"></div>
+        <div class="caption">belt_10_motor_a_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_20_clamp_assembled_cam0.svg" alt="belt_20_clamp assembled" loading="lazy"></div>
+        <div class="caption">belt_20_clamp_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_20_clamp_exploded_cam0.svg" alt="belt_20_clamp exploded" loading="lazy"></div>
+        <div class="caption">belt_20_clamp_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>29</span><span class="rule"></span><span>29</span></div>
+  </div>
+</section>
+
+<!-- SECTION 05 — BELT · grid 2/2 (partial — 2 tiles) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">BELT ROUTING<small>belt_30</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_30_motor_b_assembled_cam0.svg" alt="belt_30_motor_b assembled" loading="lazy"></div>
+        <div class="caption">belt_30_motor_b_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/belt_30_motor_b_exploded_cam0.svg" alt="belt_30_motor_b exploded" loading="lazy"></div>
+        <div class="caption">belt_30_motor_b_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>30</span><span class="rule"></span><span>30</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 06 — TAPZ (opener)
+     ========================================================= -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 06</div>
+      <h1>Stylus carriage.</h1>
+      <p class="lede">
+        Solenoid, capacitive stylus tip, carriage mount. The business end of the machine — every tap, swipe, and hold originates here.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>31</span><span class="rule"></span><span>31</span></div>
+  </div>
+</section>
+
+<!-- SECTION 06 — TAPZ · grid 1/2 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">STYLUS CARRIAGE<small>tapz_10 · tapz_11</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_10_solenoid_tip_assembled_cam0.svg" alt="tapz_10_solenoid_tip assembled" loading="lazy"></div>
+        <div class="caption">tapz_10_solenoid_tip_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_10_solenoid_tip_exploded_cam0.svg" alt="tapz_10_solenoid_tip exploded" loading="lazy"></div>
+        <div class="caption">tapz_10_solenoid_tip_exploded</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_11_solenoid_attach_assembled_cam0.svg" alt="tapz_11_solenoid_attach assembled" loading="lazy"></div>
+        <div class="caption">tapz_11_solenoid_attach_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_11_solenoid_attach_exploded_cam0.svg" alt="tapz_11_solenoid_attach exploded" loading="lazy"></div>
+        <div class="caption">tapz_11_solenoid_attach_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>32</span><span class="rule"></span><span>32</span></div>
+  </div>
+</section>
+
+<!-- SECTION 06 — TAPZ · grid 2/2 (partial — 2 tiles) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">STYLUS CARRIAGE<small>tapz_20</small></span>
+      <span class="url">PHYSICLAW PROJECT</span>
+    </div>
+    <div class="grid-4">
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_20_solenoid_mount_assembled_cam0.svg" alt="tapz_20_solenoid_mount assembled" loading="lazy"></div>
+        <div class="caption">tapz_20_solenoid_mount_assembled</div>
+      </div>
+      <div class="tile">
+        <div class="fig"><img src="../output/svg/tapz_20_solenoid_mount_exploded_cam0.svg" alt="tapz_20_solenoid_mount exploded" loading="lazy"></div>
+        <div class="caption">tapz_20_solenoid_mount_exploded</div>
+      </div>
+    </div>
+    <div class="foot"><span>33</span><span class="rule"></span><span>33</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     BACK COVER
+     ========================================================= -->
+<section class="page back">
+  <div class="page-inner">
+    <div class="top">
+      <div class="stamp">END OF MANUAL</div>
+      <h2>Now teach it what to touch.</h2>
+      <p class="quote">
+        &ldquo;The robot doesn't know it's holding a stylus. It just executes coordinates. The intelligence lives in what we tell it to touch.&rdquo;
+      </p>
+    </div>
+    <div class="bottom">
+      <div>
+        <div><strong>PhysiClaw Project</strong></div>
+        <div>Beijing · 2026</div>
+        <div>github.com/echosprint/PhysiClaw</div>
+      </div>
+      <div class="right">
+        <div>v1.0 · Rev A</div>
+        <div>Built from source</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
