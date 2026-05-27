@@ -6,8 +6,8 @@ the composed assembly, handy for CAD inspection) and add ``.render()``
 for the SVG drawing used in the manual.
 
 Default filenames:
-  * ``hardware/output/step/<module_name>.step`` (inherited)
-  * ``hardware/output/svg/<module_name>.svg``  (this class)
+  * ``hardware/output/step/<module_name>_<variant>.step`` (inherited)
+  * ``hardware/output/svg/<module_name>_<variant>_cam<i>.svg`` (this class)
 """
 
 from pathlib import Path
@@ -33,10 +33,9 @@ def variant_suffix(exploded: bool) -> str:
 
 
 def svg_path_for(stem: str, exploded: bool, index: int | None = None) -> Path:
-    """Output path for a rendered SVG. ``index`` is supplied only when an
-    assembly has a list of cameras — each gets its own ``_<i>.svg`` file."""
-    suffix = "" if index is None else f"_{index}"
-    return SVG_DIR / f"{stem}{variant_suffix(exploded)}{suffix}.svg"
+    """Output path for a rendered SVG. Single-camera assemblies use
+    ``_cam0`` so the filename scheme is uniform with multi-camera ones."""
+    return SVG_DIR / f"{stem}{variant_suffix(exploded)}_cam{index or 0}.svg"
 
 
 class BaseAssembly(BasePart):
@@ -54,13 +53,13 @@ class BaseAssembly(BasePart):
     from one ``__main__``, and so a downstream assembly can embed an
     upstream one in its assembled form (e.g. ``FR20SHCS(exploded=False)``).
     Output filenames are suffixed ``_exploded`` / ``_assembled`` to keep
-    both on disk side by side; when ``camera`` is a list, each camera's
-    output also gets an ``_<i>`` suffix so the per-camera renders sit
-    next to each other.
+    both on disk side by side, plus ``_cam<i>`` (always present, ``cam0``
+    for single-camera assemblies) so the scheme is uniform whether
+    ``camera`` is a single Camera or a list.
     """
 
     # One camera → one SVG per variant; a list of cameras → one SVG per
-    # camera per variant, filenames suffixed ``_0``, ``_1``, ….
+    # camera per variant, filenames suffixed ``_cam0``, ``_cam1``, ….
     camera: "Camera | list[Camera]" = ISO
     line_weight: float = 0.25   # mm — heavier than build123d's 0.09 default
     page_margin: float = 5 * MM
@@ -129,11 +128,6 @@ class BaseAssembly(BasePart):
         solid, ghost = _split_solid_ghost(assembly)
 
         cameras = self.camera if isinstance(self.camera, list) else [self.camera]
-        # Filenames stay un-indexed when there's exactly one camera (the
-        # common case) so single-camera procedures don't get gratuitously
-        # renamed; lists always index even at length one, so a procedure
-        # that opts into list form gets a stable indexed scheme.
-        indexed = isinstance(self.camera, list)
 
         for i, cam in enumerate(cameras):
             # Camera + look_at derived from the FULL assembly bbox so
@@ -158,7 +152,7 @@ class BaseAssembly(BasePart):
                 ghost_visible, _ = ghost.project_to_viewport(cam_pos, up, look_at=look_at)
                 exporter.add_shape(ShapeList(ghost_visible), layer=GHOST_LABEL)
 
-            path = self.svg_path(index=i if indexed else None)
+            path = self.svg_path(index=i)
             path.parent.mkdir(parents=True, exist_ok=True)
             exporter.write(str(path))
             path.write_text(strip_root_dims(path.read_text()))
