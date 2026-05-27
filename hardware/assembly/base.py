@@ -61,9 +61,14 @@ class BaseAssembly(BasePart):
     # One camera → one SVG per variant; a list of cameras → one SVG per
     # camera per variant, filenames suffixed ``_cam0``, ``_cam1``, ….
     camera: "Camera | list[Camera]" = ISO
-    line_weight: float = 0.25   # mm — heavier than build123d's 0.09 default
+    # With `vector-effect: non-scaling-stroke` baked into every render,
+    # these values are interpreted as ~device pixels (not millimetres) —
+    # sub-pixel widths still render via anti-aliasing. 0.8 / 0.4 chosen
+    # by eye: heavy enough to read at full zoom, light enough not to
+    # crowd the drawing.
+    line_weight: float = 0.8
     page_margin: float = 5 * MM
-    ghost_line_weight: float = 0.12
+    ghost_line_weight: float = 0.4
     ghost_line_type: LineType = LineType.PHANTOM
 
     def __init__(self, *, exploded: bool = False):
