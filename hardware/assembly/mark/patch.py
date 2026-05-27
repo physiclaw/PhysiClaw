@@ -1,0 +1,110 @@
+"""Op-id naming and the per-source patch JSON.
+
+Each save is one *operation*. An op has:
+
+* ``id``       — 4 random lowercase letters, unique within the source.
+                  Never the literal ``"orig"`` (reserved).
+* ``preop``    — the op this one is applied **on top of**: either the
+                  literal ``"orig"`` (the source SVG) or another op's
+                  4-letter id. Lets a replay reconstruct intermediate
+                  snapshots by chaining ops.
+* ``polygons`` — list of polygons (each a list of ``[x, y]`` vertices)
+                  in source-SVG coordinates.
+* ``viewBox``  — ``"x y w h"`` if this op crops, else ``null``.
+
+The output snapshot is ``<src stem>.<id>.svg`` next to the source; all
+ops for one source share a single JSON accumulator at
+``hardware/output/patch/<src stem>.json`` (top-level array of entries
+in save order)."""
+
+from __future__ import annotations
+
+import json
+import random
+import re
+import string
+from pathlib import Path
+from typing import Iterable, Tuple
+
+from hardware.parts.base import REPO_ROOT
+
+PATCH_DIR     = REPO_ROOT / "hardware" / "output" / "patch"
+ID_ALPHABET   = string.ascii_lowercase
+ID_LEN        = 4
+ORIG_SENTINEL = "orig"
+ID_RE         = re.compile(rf"^[{ID_ALPHABET}]{{{ID_LEN}}}$")
+
+
+def snapshot_path(src: Path, op_id: str) -> Path:
+    """``<src dir>/<src stem>.<op_id>.svg`` — the snapshot for one op."""
+    return src.parent / f"{src.stem}.{op_id}.svg"
+
+
+def new_id(src: Path, taken: set[str] | None = None) -> str:
+    """Random 4-letter op id, never ``"orig"``, that doesn't collide
+    with an existing snapshot or a caller-supplied set of taken ids
+    (typically the ids already in the patch). With ``26**4 = 456 976``
+    options the loop draws again on collision."""
+    taken = taken or set()
+    while True:
+        op_id = "".join(random.choices(ID_ALPHABET, k=ID_LEN))
+        if op_id == ORIG_SENTINEL or op_id in taken:
+            continue
+        if not snapshot_path(src, op_id).exists():
+            return op_id
+
+
+def validate_preop(raw) -> str:
+    """Accept the literal ``"orig"`` or any 4 lowercase letters."""
+    if raw == ORIG_SENTINEL or (isinstance(raw, str) and ID_RE.match(raw)):
+        return raw
+    raise ValueError(
+        f"preop must be {ORIG_SENTINEL!r} or four lowercase letters; got {raw!r}"
+    )
+
+
+def patch_path(source_svg: Path) -> Path:
+    """``hardware/output/patch/<src stem>.json`` — one accumulator per
+    source SVG. A replay script walks this directory to find every
+    edited source and rebuilds each op by chaining on its ``preop``."""
+    return PATCH_DIR / f"{source_svg.stem}.json"
+
+
+def load_patch(source_svg: Path) -> list[dict]:
+    """Return the current patch entries (``[]`` if no file). Raises if
+    the file exists but isn't a JSON array — refuses to silently
+    discard a user's edit history."""
+    path = patch_path(source_svg)
+    if not path.exists():
+        return []
+    try:
+        loaded = json.loads(path.read_text() or "[]")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"existing patch file isn't valid JSON: {exc}") from exc
+    if not isinstance(loaded, list):
+        raise ValueError(f"existing patch file is not a JSON array: {path}")
+    return loaded
+
+
+def write_patch(source_svg: Path, entries: list[dict]) -> Path:
+    """Overwrite the patch file with ``entries``. The caller owns
+    validation — this just persists what it's handed."""
+    path = patch_path(source_svg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries, indent=2))
+    return path
+
+
+def make_entry(
+    op_id: str,
+    preop: str,
+    polygons: Iterable[Iterable[Tuple[float, float]]],
+    viewbox: str | None,
+) -> dict:
+    """Shape the in-memory op entry that gets persisted by ``write_patch``."""
+    return {
+        "id":       op_id,
+        "preop":    preop,
+        "polygons": [[list(pt) for pt in poly] for poly in polygons],
+        "viewBox":  viewbox,
+    }
