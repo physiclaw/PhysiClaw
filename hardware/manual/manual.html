@@ -57,6 +57,10 @@
   @media print {
     body { background: #fff; }
     .page { margin: 0; }
+    /* Force browsers to print CSS background-colors (back cover, accent
+       bars). Without this, "Background graphics" must be ticked in the
+       print dialog or the back cover renders as black text on white. */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 
   /* ---------- Header ---------- */
