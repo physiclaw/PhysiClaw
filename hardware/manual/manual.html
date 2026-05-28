@@ -438,6 +438,24 @@
   }
   .wide-top > .wide { grid-column: span 2; }
 
+  /* MAIN-INSET-BR — main figure fills the page; a smaller inset sits as an
+     opaque overlay anchored to the bottom-right corner. CSS Grid can't draw
+     an L-shape via grid-template-areas (must be rectangular), so the inset
+     uses absolute positioning over a relative container instead. */
+  .main-inset-br {
+    position: relative;
+    height: 155mm;
+  }
+  .main-inset-br > .main  { width: 100%; height: 100%; }
+  .main-inset-br > .inset {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 78mm;
+    height: 60mm;
+    background: var(--page);
+  }
+
   /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
   .grid-4 {
     display: grid;
@@ -1358,21 +1376,19 @@
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_11 (page 21a, temporary holding) -->
+<!-- SECTION 04 — LINEAR · linear_11 (page 21a, main + bottom-right inset) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">LINEAR MOTION<small>linear_11 · temporary</small></span>
+      <span class="title">LINEAR MOTION<small>linear_11</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="grid-4" style="grid-template-rows: 1fr;">
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/linear_11_y_assembled_cam0.svg" alt="linear_11_y assembled" loading="lazy"></div>
-        <div class="caption">linear_11_y_assembled</div>
+    <div class="main-inset-br">
+      <div class="fig main">
+        <img src="../output/svg/linear_11_y_exploded_cam1_xjoj.svg" alt="linear_11_y exploded" loading="lazy">
       </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/linear_11_y_exploded_cam0.svg" alt="linear_11_y exploded" loading="lazy"></div>
-        <div class="caption">linear_11_y_exploded</div>
+      <div class="fig inset">
+        <img src="../output/svg/linear_11_y_assembled_cam0_pgdu.svg" alt="linear_11_y assembled" loading="lazy">
       </div>
     </div>
     <div class="foot"><span>21a</span><span class="rule"></span><span>21a</span></div>
