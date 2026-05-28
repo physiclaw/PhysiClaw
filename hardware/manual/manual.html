@@ -362,16 +362,15 @@
     letter-spacing: 0.02em;
   }
 
-  /* BOM TABLE — by default an absolute-positioned overlay so each page
-     can place it wherever it doesn't obscure the figure. Per-page
-     ``top``/``right``/``bottom``/``left``/``width`` come from inline
+  /* BOM TABLE — always an overlay floating over the figure. Per-page
+     anchor (top / right / bottom / left) and width come from inline
      style. */
   .bom {
-    font-size: 10pt;
     position: absolute;
+    z-index: 2;
+    font-size: 10pt;
     background: rgba(255, 255, 255, 0.95);
     padding: 4mm 0 3mm 5mm;
-    z-index: 2;
   }
   .bom .label {
     display: block;
@@ -414,6 +413,18 @@
     font-family: var(--font-mono);
     font-weight: 500;
   }
+
+  /* TALL-LEFT (one figure on the left spanning full height, two cells
+     stacked on the right). */
+  .tall-left {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 6mm;
+    height: 155mm;
+  }
+  .tall-left > .tall { grid-row: span 2; }
 
   /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
   .grid-4 {
@@ -757,7 +768,7 @@
         <tbody>
           <tr><td>Extrusion 2040</td><td class="spec">335 mm · CB</td><td class="qty">2</td></tr>
           <tr><td>Extrusion 2040</td><td class="spec">170 mm</td><td class="qty">2</td></tr>
-          <tr><td>T-nut</td><td class="spec">standard M5</td><td class="qty">8</td></tr>
+          <tr><td>T-nut</td><td class="spec">Slide-In M5</td><td class="qty">8</td></tr>
         </tbody>
       </table>
     </div>
@@ -790,30 +801,33 @@
   </div>
 </section>
 
-<!-- SECTION 01 — FRAME · grid 2/3 -->
+<!-- SECTION 01 — FRAME · frame_30 + frame_31 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
       <span class="title">FRAME<small>frame_30 · frame_31</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="grid-4">
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_30_bracket_tnut_assembled_cam0.svg" alt="frame_30_bracket_tnut assembled" loading="lazy"></div>
-        <div class="caption">frame_30_bracket_tnut_assembled</div>
+    <div class="tall-left">
+      <div class="fig tall">
+        <img src="../output/svg/frame_31_bracket_assembled_cam0_cljs.svg" alt="frame_31_bracket assembled" loading="lazy">
       </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_30_bracket_tnut_exploded_cam0.svg" alt="frame_30_bracket_tnut exploded" loading="lazy"></div>
-        <div class="caption">frame_30_bracket_tnut_exploded</div>
+      <div class="fig">
+        <img src="../output/svg/frame_30_bracket_tnut_exploded_cam0_gslq.svg" alt="frame_30_bracket_tnut exploded" loading="lazy">
       </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_31_bracket_assembled_cam0.svg" alt="frame_31_bracket assembled" loading="lazy"></div>
-        <div class="caption">frame_31_bracket_assembled</div>
-      </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/frame_31_bracket_exploded_cam0.svg" alt="frame_31_bracket exploded" loading="lazy"></div>
-        <div class="caption">frame_31_bracket_exploded</div>
-      </div>
+    </div>
+    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+      <span class="label">Bill of materials</span>
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>bracket</td><td class="spec">Joining Plate</td><td class="qty">1</td></tr>
+          <tr><td>BHCS</td><td class="spec">M5×10</td><td class="qty">2</td></tr>
+          <tr><td>T-nut</td><td class="spec">Drop-In M5</td><td class="qty">2</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
   </div>
