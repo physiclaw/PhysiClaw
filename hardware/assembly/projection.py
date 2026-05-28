@@ -142,6 +142,16 @@ if __name__ == "__main__":
     # Convert a FreeCAD camera view string (from View → Camera settings)
     # into a ready-to-paste ``Camera(az, el, roll)`` literal.
     #
+    # To grab the view string from FreeCAD, frame the desired angle in the
+    # 3D viewport, then run in the View → Panels → Python console:
+    #
+    #     import FreeCADGui as Gui
+    #     view = Gui.ActiveDocument.ActiveView
+    #     view.getCamera()
+    #
+    # The printed Inventor block (``#Inventor V2.1 ascii ... PerspectiveCamera
+    # { ... }``) is what gets fed to this module.
+    #
     # The string must be passed as a single shell argument or piped on
     # stdin — a bare quoted string at the start of a pipeline is run as
     # a command by the shell, not redirected as input.
@@ -153,5 +163,22 @@ if __name__ == "__main__":
     #
     import sys
     s = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
-    cam = Camera.from_freecad_view(s)
+    try:
+        cam = Camera.from_freecad_view(s)
+    except Exception as err:
+        print(f"error: {err}", file=sys.stderr)
+        print(
+            "\nTo grab the camera string in FreeCAD, frame the angle in the\n"
+            "3D viewport, then run in View → Panels → Python console:\n"
+            "\n"
+            "    import FreeCADGui as Gui\n"
+            "    view = Gui.ActiveDocument.ActiveView\n"
+            "    view.getCamera()\n"
+            "\n"
+            "Pass the printed Inventor block to this module:\n"
+            "\n"
+            "    uv run --group cad python -m hardware.assembly.projection \"$(pbpaste)\"\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     print(f"Camera({cam.azimuth:.2f}, {cam.elevation:.2f}, {cam.roll:.2f})")
