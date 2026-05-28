@@ -41,7 +41,7 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_11_y import LI11Y
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
 from hardware.parts.custom.xy_joint_left import (
     XyJointLeft,
     big_csk_x,
@@ -95,7 +95,7 @@ def _csk_positions(mirrored: bool) -> list[tuple[float, float]]:
 
 
 class LI20Joint(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(-69.27, 20.49, -97.29)]
     def _build(self) -> Compound:
         self.base = LI11Y(exploded=False)
         base_compound = self.base.build()
