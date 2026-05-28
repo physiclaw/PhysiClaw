@@ -59,8 +59,7 @@ SHOULDER_LEN       = 10    # mm — covers ring + idler (9 mm), 1 mm play
 FRAME_BHCS_LEN     = 10    # mm — BHCS M5 underhead length (stadium-slot frame mount)
 EXPLODE_SEPARATION =  5    # mm — exploded: air between adjacent parts in the stack
 SCREW_GAP          = 12    # mm — exploded: stack top → shoulder thread tip
-BHCS_GAP           = 10    # mm — exploded: block top → BHCS shank tip (sits 2 mm
-                           #      lower than SCREW_GAP since the BHCS has no stack to clear)
+BHCS_GAP           = 21    # mm — exploded: block top → BHCS shank tip
 NUT_GAP            = 15    # mm — exploded: back face → nut center along +Y install axis
 
 
