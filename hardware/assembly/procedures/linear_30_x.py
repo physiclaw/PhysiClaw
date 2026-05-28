@@ -35,7 +35,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     EXT_THICKNESS,
     SHORT_LENGTH,
 )
-from hardware.assembly.projection import FRONT_LEFT_HIGH
+from hardware.assembly.projection import FRONT_LEFT_HIGH, Camera
 from hardware.parts.custom.xy_joint_left import (
     big_csk_dx_from_extra2,
     csk_hole_from_left,
@@ -77,7 +77,7 @@ TNUT_POSITIONS = (_end_gap, X_BEAM_LENGTH - _end_gap)
 
 
 class LI30X(BaseAssembly):
-    camera = FRONT_LEFT_HIGH
+    camera = [FRONT_LEFT_HIGH, Camera(138.99, 20.09, -98.56)]
 
     def _build(self) -> Compound:
         beam = Extrusion1020(length=X_BEAM_LENGTH).build()
