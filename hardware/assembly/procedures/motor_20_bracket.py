@@ -16,11 +16,13 @@ Run from the repo root:
 """
 
 from hardware.assembly.procedures.motor_10_bracket import MO10Bracket
+from hardware.assembly.projection import FRONT_LEFT_HIGH, Camera
 
 
 class MO20Bracket(MO10Bracket):
     compound_label = "motor_20_bracket"
     motor_z_rotation = 0    # plug on native -Y → world +X (RIGHT) when frame-mounted
+    camera = [FRONT_LEFT_HIGH, Camera(-16.50, 15.07, 1.95)]
 
 
 if __name__ == "__main__":
