@@ -426,6 +426,18 @@
   }
   .tall-left > .tall { grid-row: span 2; }
 
+  /* WIDE-TOP (one figure on top spanning full width, two cells side-by-side
+     below). */
+  .wide-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 6mm;
+    height: 155mm;
+  }
+  .wide-top > .wide { grid-column: span 2; }
+
   /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
   .grid-4 {
     display: grid;
@@ -1314,22 +1326,46 @@
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · grid 1/8 -->
+<!-- SECTION 04 — LINEAR · linear_10 (wide-top split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">LINEAR MOTION<small>linear_10 · linear_11</small></span>
+      <span class="title">LINEAR MOTION<small>linear_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="grid-4">
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/linear_10_y_assembled_cam0.svg" alt="linear_10_y assembled" loading="lazy"></div>
-        <div class="caption">linear_10_y_assembled</div>
+    <div class="wide-top">
+      <div class="fig wide">
+        <img src="../output/svg/linear_10_y_exploded_cam0_jwgq.svg" alt="linear_10_y exploded" loading="lazy">
       </div>
-      <div class="tile">
-        <div class="fig"><img src="../output/svg/linear_10_y_exploded_cam0.svg" alt="linear_10_y exploded" loading="lazy"></div>
-        <div class="caption">linear_10_y_exploded</div>
+      <div class="fig">
+        <img src="../output/svg/linear_10_y_assembled_cam0.svg" alt="linear_10_y assembled" loading="lazy">
       </div>
+    </div>
+    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+      <span class="label">Bill of materials</span>
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Linear rail</td><td class="spec">MGN9H, 220 mm</td><td class="qty">2</td></tr>
+          <tr><td>FHCS</td><td class="spec">M3×10</td><td class="qty">12</td></tr>
+          <tr><td>T-nut</td><td class="spec">M3 Drop-In</td><td class="qty">12</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
+  </div>
+</section>
+
+<!-- SECTION 04 — LINEAR · linear_11 (page 21a, temporary holding) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">LINEAR MOTION<small>linear_11 · temporary</small></span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+    <div class="grid-4" style="grid-template-rows: 1fr;">
       <div class="tile">
         <div class="fig"><img src="../output/svg/linear_11_y_assembled_cam0.svg" alt="linear_11_y assembled" loading="lazy"></div>
         <div class="caption">linear_11_y_assembled</div>
@@ -1339,7 +1375,7 @@
         <div class="caption">linear_11_y_exploded</div>
       </div>
     </div>
-    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
+    <div class="foot"><span>21a</span><span class="rule"></span><span>21a</span></div>
   </div>
 </section>
 
