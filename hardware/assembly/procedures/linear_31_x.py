@@ -39,7 +39,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_20_joint import LI20Joint
 from hardware.assembly.procedures.linear_30_x import LI30X, X_BEAM_LENGTH
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
 from hardware.parts.custom.xy_joint_left import thickness as joint_thickness
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 
@@ -54,7 +54,7 @@ BEAM_SLOT_FACE_Y_NATIVE = 9.9
 
 
 class LI31X(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(-1.95, -64.14, -1.85)]
     def _build(self) -> Compound:
         base = LI20Joint(exploded=False)
         base_compound = base.build()
