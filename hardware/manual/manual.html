@@ -139,18 +139,29 @@
   }
 
   /* ---------- Figure ---------- */
+  /* Absolute-positioning the img inside a relative .fig is the only
+     reliable way to scale an SVG <img> to its container's *computed*
+     height. The naive `width:100%; height:100%; object-fit:contain`
+     fails when the .fig's height comes from flex (the img's intrinsic
+     SVG size leaks back into the flex track and lets near-square
+     drawings overflow). overflow:hidden is a safety belt for the
+     rare case where the image still exceeds bounds. */
   .fig {
-    display: grid;
-    place-items: center;
     position: relative;
+    overflow: hidden;
   }
-  /* Constrain any embedded raster/vector to its container (figures,
-     cover render, hardware-reference icons all share this rule). */
-  .fig img, .fig svg,
+  .fig > img, .fig > svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
   .cover .render img, .cover .render svg,
   .hw-entry .icon img, .hw-entry .icon svg {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   /* Placeholder helper (used when an SVG render is missing) */
@@ -762,8 +773,18 @@
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="solo">
-      <div class="fig"><img src="../output/svg/frame_20_SHCS_exploded_cam0.svg" alt="frame_20_SHCS exploded" loading="lazy"></div>
-      <div class="caption">frame_20_SHCS_exploded</div>
+      <div class="fig"><img src="../output/svg/frame_20_SHCS_exploded_cam0_nllz.svg" alt="frame_20_SHCS exploded" loading="lazy" style="object-position: 25% center;"></div>
+    </div>
+    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+      <span class="label">Bill of materials</span>
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>SHCS</td><td class="spec">M6×16</td><td class="qty">8</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
   </div>
