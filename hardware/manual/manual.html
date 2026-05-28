@@ -351,6 +351,59 @@
     letter-spacing: 0.02em;
   }
 
+  /* BOM TABLE — by default an absolute-positioned overlay so each page
+     can place it wherever it doesn't obscure the figure. Per-page
+     ``top``/``right``/``bottom``/``left``/``width`` come from inline
+     style. */
+  .bom {
+    font-size: 10pt;
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 4mm 0 3mm 5mm;
+    z-index: 2;
+  }
+  .bom .label {
+    display: block;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 3mm;
+  }
+  .bom table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .bom thead th {
+    text-align: left;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--rule);
+    padding: 2mm 3mm 2mm 0;
+  }
+  .bom thead th:last-child { text-align: right; padding-right: 0; }
+  .bom tbody td {
+    padding: 2.5mm 3mm 2.5mm 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    vertical-align: top;
+  }
+  .bom tbody td.spec {
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 9.5pt;
+  }
+  .bom tbody td.qty {
+    text-align: right;
+    padding-right: 0;
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
   /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
   .grid-4 {
     display: grid;
@@ -674,7 +727,7 @@
 </section>
 
 
-<!-- SECTION 01 — FRAME · frame_10 (solo) -->
+<!-- SECTION 01 — FRAME · frame_10 (solo + BOM overlay) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -683,7 +736,19 @@
     </div>
     <div class="solo">
       <div class="fig"><img src="../output/svg/frame_10_extrusion_tnut_exploded_cam0_rbun.svg" alt="frame_10_extrusion_tnut exploded" loading="lazy"></div>
-      <div class="caption">frame_10_extrusion_tnut_exploded</div>
+    </div>
+    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+      <span class="label">Bill of materials</span>
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Extrusion 2040</td><td class="spec">335 mm · CB</td><td class="qty">2</td></tr>
+          <tr><td>Extrusion 2040</td><td class="spec">170 mm</td><td class="qty">2</td></tr>
+          <tr><td>T-nut</td><td class="spec">standard M5</td><td class="qty">8</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="foot"><span>6</span><span class="rule"></span><span>6</span></div>
   </div>
