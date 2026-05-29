@@ -43,7 +43,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.linear_43_idler_lj2 import LI43IdlerLj2
 from hardware.assembly.procedures.linear_44_idler_rj1 import LI44IdlerRj1
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts.standard.nut import SPECS as NUT_SPECS, Nut
 
 BUNDLE_EXPLODE = 35    # mm — exploded: bundle lifted along world -Y (outboard)
@@ -51,7 +51,7 @@ NUT_EXPLODE    = 25    # mm — exploded: nut lifted along world +Z (pocket open
 
 
 class LI45IdlerRj1(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(68.97, 36.43, 106.12)]
     def _build(self) -> Compound:
         base = LI43IdlerLj2(exploded=False)
         base_compound = base.build()
