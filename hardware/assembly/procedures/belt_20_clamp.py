@@ -46,7 +46,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.belt_10_motor_a import BE10MotorA
 from hardware.assembly.procedures.frame_10_extrusion_tnut import EXT_THICKNESS
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts.custom.belt_clamp import (
     BeltClamp,
     length as clamp_length,
@@ -113,7 +113,7 @@ SLIDER_MOUNT_Z        = _left_joint_origin_z - joint_big_csk_y_n
 
 
 class BE20Clamp(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(-9.68, -51.45, -8.14)]
     def _build(self) -> Compound:
         base_compound = BE10MotorA(exploded=False).build()
 
