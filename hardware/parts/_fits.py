@@ -17,6 +17,15 @@ M4_CLOSE, M4_NORMAL, M4_LOOSE = 4.3 * MM, 4.5 * MM, 4.8 * MM
 M5_CLOSE, M5_NORMAL, M5_LOOSE = 5.3 * MM, 5.5 * MM, 5.8 * MM
 
 
+# ── Countersunk flat-head screw heads (ISO 10642 / DIN 7991, 90° included) ────
+# Max head Ø = top diameter of the conical recess so an FHCS head seats flush;
+# CSK_ANGLE is the included angle (metric flat heads are 90°, not the 82° of
+# inch screws). Cut a CounterSinkHole with counter_sink_radius = head/2 and
+# counter_sink_angle = CSK_ANGLE.
+M3_CSK_HEAD, M4_CSK_HEAD, M5_CSK_HEAD = 6.0 * MM, 8.0 * MM, 10.0 * MM
+CSK_ANGLE = 90
+
+
 # ── Square nut nominal dimensions (DIN 557) ───────────────────────────────────
 # W = width across flats (side of the square)
 # T = thickness (axial dimension)
