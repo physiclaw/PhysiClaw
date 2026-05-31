@@ -31,31 +31,19 @@ import subprocess
 import sys
 import time
 import traceback
-from itertools import groupby
 
 from hardware.assembly.base import SVG_DIR, BaseAssembly, svg_path_for
 from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
-from hardware.bom.bom import list_procedures, load_step
+# Procedure ordering & batching live in bom.py (next to list_procedures) so the
+# BOM and render pipelines share one source of truth.
+from hardware.bom.bom import (
+    DEFAULT_BATCH_SIZE,
+    _batches,
+    _family_of,
+    load_step,
+)
 from hardware.parts.base import STEP_DIR
-
-# Family priority — lower index = built first.
-_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz")
-_FAMILY_PRIORITY = {name: i for i, name in enumerate(_FAMILIES)}
-DEFAULT_BATCH_SIZE = 5
-
-
-def _family_of(stem: str) -> str:
-    return stem.split("_", 1)[0]
-
-
-def _ordered_stems() -> list[str]:
-    """All procedure stems, sorted by dependency-order family then alphabetical."""
-    fallback = len(_FAMILY_PRIORITY)
-    return sorted(
-        list_procedures(),
-        key=lambda s: (_FAMILY_PRIORITY.get(_family_of(s), fallback), s),
-    )
 
 
 def _clear_outputs() -> None:
@@ -155,16 +143,6 @@ def _build_stems(stems: list[str]) -> int:
             traceback.print_exception(type(exc), exc, exc.__traceback__)
         return 1
     return 0
-
-
-def _batches(batch_size: int) -> list[list[str]]:
-    """Family-clustered chunks of up to ``batch_size``, dependency order."""
-    out: list[list[str]] = []
-    for _, group in groupby(_ordered_stems(), key=_family_of):
-        stems = list(group)
-        for i in range(0, len(stems), batch_size):
-            out.append(stems[i:i + batch_size])
-    return out
 
 
 def _run_subprocess(stems: list[str]) -> int:

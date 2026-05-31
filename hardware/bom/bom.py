@@ -20,6 +20,16 @@ CLI usage:
     uv run --group cad python -m hardware.bom.bom belt_20_clamp --json
     uv run --group cad python -m hardware.bom.bom belt_20_clamp --from belt_10_motor_a --delta
     uv run --group cad python -m hardware.bom.bom --all --write
+
+Aggregating a late step transitively builds its whole dependency chain,
+so doing every procedure in one process accumulates many GB of OCCT
+geometry and gets OOM-killed. Like ``hardware.assembly.build_procedures``,
+``--all`` dispatches family-clustered batches to subprocesses, returning
+memory to the OS between batches (the in-batch geometry cache still warms).
+
+Worker mode (invoked internally by ``--all``):
+
+    uv run --group cad python -m hardware.bom.bom --stems belt_10_motor_a belt_20_clamp --write
 """
 
 from __future__ import annotations
@@ -28,9 +38,12 @@ import argparse
 import importlib
 import json
 import re
+import subprocess
 import sys
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass
+from itertools import groupby
 
 from hardware.assembly.base import BaseAssembly
 from hardware.parts.base import BOM_REGISTRY, REPO_ROOT, BomCategory
@@ -165,6 +178,42 @@ def list_procedures() -> list[str]:
     return [stem for _, _, stem in keyed]
 
 
+# ── Procedure ordering & subprocess batching ─────────────────────────────────
+# Single source of truth (here, next to list_procedures);
+# hardware.assembly.build_procedures imports these to batch its renders in the
+# same order. Subprocess batching bounds OCCT memory — a batch's geometry is
+# freed when its worker exits — while same-family clustering keeps the in-batch
+# geometry cache warm on the shared dependency chain.
+_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz")
+_FAMILY_PRIORITY = {name: i for i, name in enumerate(_FAMILIES)}
+DEFAULT_BATCH_SIZE = 5
+
+
+def _family_of(stem: str) -> str:
+    return stem.split("_", 1)[0]
+
+
+def _ordered_stems() -> list[str]:
+    """Procedure stems in dependency-order family, then NN. list_procedures
+    already sorts by (family, NN), but alphabetical family order isn't the
+    dependency/build order — so re-sort by _FAMILY_PRIORITY."""
+    fallback = len(_FAMILY_PRIORITY)
+    return sorted(
+        list_procedures(),
+        key=lambda s: (_FAMILY_PRIORITY.get(_family_of(s), fallback), s),
+    )
+
+
+def _batches(batch_size: int) -> list[list[str]]:
+    """Family-clustered chunks of up to ``batch_size``, dependency order."""
+    out: list[list[str]] = []
+    for _, group in groupby(_ordered_stems(), key=_family_of):
+        stems = list(group)
+        for i in range(0, len(stems), batch_size):
+            out.append(stems[i:i + batch_size])
+    return out
+
+
 # ── Writers ──────────────────────────────────────────────────────────────────
 
 def to_markdown(entries: list[BomEntry], *, title: str) -> str:
@@ -227,29 +276,85 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--all",
         action="store_true",
-        help="process every procedure (use with --write)",
+        help="process every procedure in batched subprocesses (use with --write)",
     )
     p.add_argument(
         "--write",
         action="store_true",
         help="write to hardware/output/bom/ instead of stdout",
     )
+    p.add_argument(
+        "--stems",
+        nargs="+",
+        help="worker mode: process these stems in-process (used internally by --all)",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"max procedures per subprocess for --all (default {DEFAULT_BATCH_SIZE})",
+    )
     args = p.parse_args(argv)
+
+    if args.stems:
+        if args.step or args.all:
+            p.error("--stems is a worker mode; don't combine it with STEP or --all")
+        rc = 0
+        for step_name in args.stems:
+            try:
+                _emit_one(step_name, args, write_only=True)
+            except Exception:
+                traceback.print_exc()
+                rc = 1
+        return rc
 
     if args.all:
         if args.step:
             p.error("--all is incompatible with a positional STEP")
         if not args.write:
             p.error("--all without --write would dump every BOM to stdout; add --write")
-        for step_name in list_procedures():
-            _emit_one(step_name, args, write_only=True)
-        return 0
+        return _dispatch_all(args)
 
     if not args.step:
         p.error("STEP is required (or pass --all --write)")
 
     _emit_one(args.step, args)
     return 0
+
+
+def _dispatch_all(args) -> int:
+    """Run every procedure's BOM in family-clustered batches, each in its
+    own subprocess so OCCT geometry is freed between batches. Passes the
+    output flags (--write/--json/--delta/--from) through to the workers."""
+    passthrough = ["--write"]
+    if args.json:
+        passthrough.append("--json")
+    if args.delta:
+        passthrough.append("--delta")
+    if args.from_step:
+        passthrough += ["--from", args.from_step]
+
+    batches = _batches(args.batch_size)
+    total = sum(len(b) for b in batches)
+    done = 0
+    rc = 0
+    for batch in batches:
+        start = done + 1
+        done += len(batch)
+        span = f"{start}/{total}" if len(batch) == 1 else f"{start}-{done}/{total}"
+        print(f"\n=== [{span}] {_family_of(batch[0])}: {batch[0]} … {batch[-1]} ===")
+        ret = subprocess.call([
+            sys.executable, "-m", "hardware.bom.bom", "--stems", *batch, *passthrough,
+        ])
+        if ret != 0:
+            rc = 1
+            print(f"  batch exited {ret}")
+
+    if rc:
+        print("\nOne or more batches failed.")
+    else:
+        print(f"\nAll {len(batches)} batches OK — {total} BOMs written to {BOM_DIR}")
+    return rc
 
 
 def _emit_one(step_name: str, args, *, write_only: bool = False) -> None:
