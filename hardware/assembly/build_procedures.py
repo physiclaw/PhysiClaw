@@ -1,23 +1,32 @@
 """Build & render every procedure in hardware/assembly/procedures.
 
 Procedures are grouped by family (frame → idler → motor → linear →
-belt → tapz) in dependency order. Each family is split into batches
-of up to five procedures and each batch runs in its own subprocess —
-OCCT memory accumulated during a batch is returned to the OS before
-the next batch starts. A single all-in-one process accumulates many
-GB of geometry across 42 procedures and gets SIGKILL'd around the
-linear stages; batching at five-per-subprocess keeps every batch
-well under the OOM threshold while still letting the in-batch cache
-warm.
+belt → tapz) in dependency order and split into ``DEFAULT_BATCH_SIZE``
+batches, each run in its own subprocess so the OS reclaims all OCCT
+memory on worker exit. OCCT's allocator here is native malloc, which
+never returns freed memory to the OS, so a single all-in-one process
+balloons across the 42 procedures and gets OOM-killed; per-batch
+subprocesses bound peak RSS.
+
+Exact HLR rendering (``project_to_viewport`` → ``HLRBRep_Algo``)
+intermittently SIGSEGVs — a nondeterministic OCCT hazard, not an OOM.
+A crashed stem almost always succeeds when re-run in a fresh process,
+so the dispatcher retries each incomplete stem solo (``MAX_STEM_RETRIES``).
 
 After each variant renders, any patch JSON in
 ``hardware/assembly/patch/`` whose stem matches a rendered SVG is
 replayed against it, so marker-tool snapshots stay in sync with the
 underlying drawing.
 
+Pass ``--bom`` / ``--bom-delta`` to also emit each procedure's BOM to
+output/bom/ in the same pass — the build is already done, so collecting
+the BOM is cheap off the warm leaf cache (one run yields STEP + SVG + BOM).
+
 Run from the repo root:
 
     uv run --group cad python -m hardware.assembly.build_procedures
+    uv run --group cad python -m hardware.assembly.build_procedures --bom
+    uv run --group cad python -m hardware.assembly.build_procedures --bom --bom-delta
 
 Worker mode (invoked internally by the dispatcher):
 
@@ -37,28 +46,35 @@ from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
 # Procedure ordering & batching live in bom.py (next to list_procedures) so the
 # BOM and render pipelines share one source of truth.
-from hardware.bom.bom import (
+from hardware.assembly.dispatch import (
     DEFAULT_BATCH_SIZE,
+    MAX_STEM_RETRIES,
     _batches,
     _family_of,
     load_step,
+    retry_stems,
 )
+from hardware.bom.bom import BOM_DIR, write_bom  # only for the optional --bom feature
 from hardware.parts.base import STEP_DIR
 
 
-def _clear_outputs() -> None:
-    """Wipe stale .step / .svg artifacts so deleted procedures and
-    renamed variants don't survive across runs. Only touches the file
-    extensions we generate — user-placed files in the output dirs are
-    left alone."""
+def _clear_outputs(clear_bom: bool = False) -> None:
+    """Wipe stale .step / .svg artifacts (and .md BOMs when ``clear_bom``)
+    so deleted procedures and renamed variants don't survive across runs.
+    Only touches the file extensions we generate — user-placed files in the
+    output dirs are left alone."""
+    targets = [(STEP_DIR, "*.step"), (SVG_DIR, "*.svg")]
+    if clear_bom:
+        targets.append((BOM_DIR, "*.md"))
     cleared = 0
-    for d, pattern in ((STEP_DIR, "*.step"), (SVG_DIR, "*.svg")):
+    for d, pattern in targets:
         if not d.exists():
             continue
         for f in d.glob(pattern):
             f.unlink()
             cleared += 1
-    print(f"Cleared {cleared} stale .step / .svg file(s)\n")
+    kinds = ".step / .svg" + (" / .md" if clear_bom else "")
+    print(f"Cleared {cleared} stale {kinds} file(s)\n")
 
 
 def _run_one(cls: type[BaseAssembly], exploded: bool) -> tuple[float, float, float]:
@@ -88,7 +104,7 @@ def _replay_patches_for(stem: str, exploded: bool) -> int:
     return written
 
 
-def _build_stems(stems: list[str]) -> int:
+def _build_stems(stems: list[str], *, bom: bool = False, bom_delta: bool = False) -> int:
     classes = [(stem, type(load_step(stem))) for stem in stems]
 
     name_w   = max(len(name) for name, _ in classes)
@@ -127,6 +143,15 @@ def _build_stems(stems: list[str]) -> int:
                     f"{'-':>7}  {'-':>7}  {'-':>7}  {'-':>7}  {msg}"
                 )
 
+        # BOM (cumulative / delta) from the same warm build — nearly free.
+        if bom or bom_delta:
+            try:
+                write_bom(short, cumulative=bom, want_delta=bom_delta)
+                kinds = " + ".join(k for k, on in (("cumulative", bom), ("delta", bom_delta)) if on)
+                print(f"  {short:<{name_w}}  bom        wrote {kinds}")
+            except Exception as exc:
+                print(f"  {short:<{name_w}}  bom        FAIL {type(exc).__name__}: {exc}")
+
     wall = time.monotonic() - t_wall0
     cpu  = sum(sums.values())
     print(
@@ -145,10 +170,10 @@ def _build_stems(stems: list[str]) -> int:
     return 0
 
 
-def _run_subprocess(stems: list[str]) -> int:
+def _run_subprocess(stems: list[str], bom_flags: tuple[str, ...] = ()) -> int:
     return subprocess.call([
         sys.executable, "-m", "hardware.assembly.build_procedures",
-        "--stems", *stems,
+        "--stems", *stems, *bom_flags,
     ])
 
 
@@ -164,10 +189,11 @@ def _missing_variants(stem: str) -> list[str]:
             if not svg_path_for(stem, exploded).exists()]
 
 
-def _dispatch(batch_size: int) -> int:
+def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = ()) -> int:
     """Run each batch in its own subprocess; on failure, solo-retry
-    only the stems missing outputs."""
-    _clear_outputs()
+    only the stems missing outputs. ``bom_flags`` (--bom / --bom-delta)
+    are passed through so workers also emit BOMs."""
+    _clear_outputs(clear_bom=bool(bom_flags))
 
     batches = _batches(batch_size)
     position = {s: i + 1 for i, s in enumerate(s for b in batches for s in b)}
@@ -182,14 +208,20 @@ def _dispatch(batch_size: int) -> int:
 
     for batch in batches:
         print(header(batch))
-        rc = _run_subprocess(batch)
-        if rc == 0 or len(batch) == 1:
+        rc = _run_subprocess(batch, bom_flags)
+        if rc == 0:
             continue
+        # Nondeterministic HLR SIGSEGV: re-run each incomplete stem in a
+        # fresh process (new heap layout) until its outputs land or we
+        # exhaust the retries.
         incomplete = [s for s in batch if _missing_variants(s)]
-        print(f"\n--- batch exit {rc}; solo-retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
-        for stem in incomplete:
-            print(header([stem]))
-            _run_subprocess([stem])
+        print(f"\n--- batch exit {rc}; retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
+        retry_stems(
+            incomplete,
+            run=lambda s: _run_subprocess([s], bom_flags),
+            done=lambda s: not _missing_variants(s),
+            log=lambda s, a: print(header([s]) + f"  (retry {a}/{MAX_STEM_RETRIES})"),
+        )
 
     wall = time.monotonic() - t_wall0
     failed_variants = [(s, v) for s in position for v in _missing_variants(s)]
@@ -224,12 +256,25 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_BATCH_SIZE,
         help=f"max procedures per subprocess in dispatcher mode (default {DEFAULT_BATCH_SIZE})",
     )
+    parser.add_argument(
+        "--bom",
+        action="store_true",
+        help="also write each procedure's cumulative BOM to output/bom/",
+    )
+    parser.add_argument(
+        "--bom-delta",
+        action="store_true",
+        help="also write each procedure's delta-vs-predecessor BOM to output/bom/",
+    )
     args = parser.parse_args(argv)
 
     if args.stems:
-        return _build_stems(args.stems)
+        return _build_stems(args.stems, bom=args.bom, bom_delta=args.bom_delta)
 
-    return _dispatch(args.batch_size)
+    bom_flags = tuple(
+        f for f, on in (("--bom", args.bom), ("--bom-delta", args.bom_delta)) if on
+    )
+    return _dispatch(args.batch_size, bom_flags)
 
 
 if __name__ == "__main__":

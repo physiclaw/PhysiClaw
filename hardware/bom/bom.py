@@ -35,24 +35,27 @@ Worker mode (invoked internally by ``--all``):
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
-import re
 import subprocess
 import sys
 import traceback
 from collections import defaultdict
 from dataclasses import dataclass
-from itertools import groupby
 
 from hardware.assembly.base import BaseAssembly
+from hardware.assembly.dispatch import (
+    DEFAULT_BATCH_SIZE,
+    MAX_STEM_RETRIES,
+    PROCEDURES_DIR,
+    _batches,
+    _family_of,
+    _STEM_RE,
+    load_step,
+    retry_stems,
+)
 from hardware.parts.base import BOM_REGISTRY, REPO_ROOT, BomCategory
 
-PROCEDURES_DIR = REPO_ROOT / "hardware" / "assembly" / "procedures"
 BOM_DIR = REPO_ROOT / "hardware" / "output" / "bom"
-
-# Filename convention: <family>_<NN>_<descriptor>.py (e.g. belt_20_clamp).
-_STEM_RE = re.compile(r"^(?P<family>[a-z]+)_(?P<nn>\d+)_(?P<descriptor>.+)$")
 
 
 @dataclass(frozen=True, order=True)
@@ -145,73 +148,6 @@ def predecessor_module(module_name: str) -> str | None:
     candidates.sort()
     prior_stem = candidates[-1][1]
     return f"hardware.assembly.procedures.{prior_stem}"
-
-
-# ── Step loading ─────────────────────────────────────────────────────────────
-
-def load_step(module_name: str) -> BaseAssembly:
-    """Import a procedure module and instantiate its BaseAssembly
-    subclass. The procedure files each define exactly one such class."""
-    if "." not in module_name:
-        module_name = f"hardware.assembly.procedures.{module_name}"
-    mod = importlib.import_module(module_name)
-    for obj in vars(mod).values():
-        if (
-            isinstance(obj, type)
-            and issubclass(obj, BaseAssembly)
-            and obj is not BaseAssembly
-            and obj.__module__ == mod.__name__
-        ):
-            return obj(exploded=False)
-    raise LookupError(f"No BaseAssembly subclass in {module_name}")
-
-
-def list_procedures() -> list[str]:
-    """All procedure module names, sorted by family then NN."""
-    keyed = []
-    for path in PROCEDURES_DIR.glob("*.py"):
-        m = _STEM_RE.match(path.stem)
-        if not m or path.stem.startswith("_"):
-            continue
-        keyed.append((m["family"], int(m["nn"]), path.stem))
-    keyed.sort()
-    return [stem for _, _, stem in keyed]
-
-
-# ── Procedure ordering & subprocess batching ─────────────────────────────────
-# Single source of truth (here, next to list_procedures);
-# hardware.assembly.build_procedures imports these to batch its renders in the
-# same order. Subprocess batching bounds OCCT memory — a batch's geometry is
-# freed when its worker exits — while same-family clustering keeps the in-batch
-# geometry cache warm on the shared dependency chain.
-_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz")
-_FAMILY_PRIORITY = {name: i for i, name in enumerate(_FAMILIES)}
-DEFAULT_BATCH_SIZE = 5
-
-
-def _family_of(stem: str) -> str:
-    return stem.split("_", 1)[0]
-
-
-def _ordered_stems() -> list[str]:
-    """Procedure stems in dependency-order family, then NN. list_procedures
-    already sorts by (family, NN), but alphabetical family order isn't the
-    dependency/build order — so re-sort by _FAMILY_PRIORITY."""
-    fallback = len(_FAMILY_PRIORITY)
-    return sorted(
-        list_procedures(),
-        key=lambda s: (_FAMILY_PRIORITY.get(_family_of(s), fallback), s),
-    )
-
-
-def _batches(batch_size: int) -> list[list[str]]:
-    """Family-clustered chunks of up to ``batch_size``, dependency order."""
-    out: list[list[str]] = []
-    for _, group in groupby(_ordered_stems(), key=_family_of):
-        stems = list(group)
-        for i in range(0, len(stems), batch_size):
-            out.append(stems[i:i + batch_size])
-    return out
 
 
 # ── Writers ──────────────────────────────────────────────────────────────────
@@ -322,9 +258,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _output_path(step_name: str, args):
+    """Where ``_emit_one`` writes this stem's BOM under the current flags."""
+    suffix = "_delta" if args.delta else ""
+    ext = "json" if args.json else "md"
+    return BOM_DIR / f"{step_name}{suffix}.{ext}"
+
+
+def _run_batch(stems: list[str], passthrough: list[str]) -> int:
+    return subprocess.call([
+        sys.executable, "-m", "hardware.bom.bom", "--stems", *stems, *passthrough,
+    ])
+
+
 def _dispatch_all(args) -> int:
     """Run every procedure's BOM in family-clustered batches, each in its
-    own subprocess so OCCT geometry is freed between batches. Passes the
+    own subprocess so OCCT geometry is freed between batches. A worker can
+    SIGSEGV mid-batch (intermittent OCCT crash), leaving some BOMs
+    unwritten; retry each incomplete stem in a fresh process. Passes the
     output flags (--write/--json/--delta/--from) through to the workers."""
     passthrough = ["--write"]
     if args.json:
@@ -337,24 +288,28 @@ def _dispatch_all(args) -> int:
     batches = _batches(args.batch_size)
     total = sum(len(b) for b in batches)
     done = 0
-    rc = 0
     for batch in batches:
         start = done + 1
         done += len(batch)
         span = f"{start}/{total}" if len(batch) == 1 else f"{start}-{done}/{total}"
         print(f"\n=== [{span}] {_family_of(batch[0])}: {batch[0]} … {batch[-1]} ===")
-        ret = subprocess.call([
-            sys.executable, "-m", "hardware.bom.bom", "--stems", *batch, *passthrough,
-        ])
-        if ret != 0:
-            rc = 1
-            print(f"  batch exited {ret}")
+        if _run_batch(batch, passthrough) == 0:
+            continue
+        incomplete = [s for s in batch if not _output_path(s, args).exists()]
+        print(f"  batch crashed; retrying {len(incomplete)}/{len(batch)} incomplete stem(s)")
+        retry_stems(
+            incomplete,
+            run=lambda s: _run_batch([s], passthrough),
+            done=lambda s: _output_path(s, args).exists(),
+            log=lambda s, a: print(f"    retry {a}/{MAX_STEM_RETRIES}: {s}"),
+        )
 
-    if rc:
-        print("\nOne or more batches failed.")
-    else:
-        print(f"\nAll {len(batches)} batches OK — {total} BOMs written to {BOM_DIR}")
-    return rc
+    missing = [s for b in batches for s in b if not _output_path(s, args).exists()]
+    if missing:
+        print(f"\nFAILED ({len(missing)}): {', '.join(missing)}")
+        return 1
+    print(f"\nAll {len(batches)} batches OK — {total} BOMs written to {BOM_DIR}")
+    return 0
 
 
 def _emit_one(step_name: str, args, *, write_only: bool = False) -> None:
@@ -373,26 +328,40 @@ def _emit_one(step_name: str, args, *, write_only: bool = False) -> None:
         previous = collect(load_step(prev_name))
         entries = delta(current, previous)
         title = f"{step_name} — delta vs. {prev_name.rsplit('.', 1)[-1]}"
-        suffix = "_delta"
     else:
         entries = current
         title = f"{step_name} — cumulative BOM"
-        suffix = ""
 
-    if args.json:
-        text = to_json(entries, step=step_name)
-        ext = "json"
-    else:
-        text = to_markdown(entries, title=title)
-        ext = "md"
+    text = to_json(entries, step=step_name) if args.json else to_markdown(entries, title=title)
 
     if args.write or write_only:
         BOM_DIR.mkdir(parents=True, exist_ok=True)
-        path = BOM_DIR / f"{step_name}{suffix}.{ext}"
+        path = _output_path(step_name, args)
         path.write_text(text)
         print(f"  wrote {path}")
     else:
         print(text, end="")
+
+
+def write_bom(step_name: str, *, cumulative: bool = True, want_delta: bool = False) -> None:
+    """Build ``step_name`` and write its BOM Markdown to ``BOM_DIR`` —
+    cumulative and/or delta-vs-predecessor.
+
+    Library entry point reused by ``hardware.assembly.build_procedures`` so
+    one render pass can also emit BOMs; the build is cheap there because the
+    leaf-part cache is already warm. Delta is skipped silently for the first
+    step in a family (no predecessor) rather than erroring like the CLI."""
+    current = collect(load_step(step_name))
+    BOM_DIR.mkdir(parents=True, exist_ok=True)
+    if cumulative:
+        text = to_markdown(current, title=f"{step_name} — cumulative BOM")
+        (BOM_DIR / f"{step_name}.md").write_text(text)
+    if want_delta:
+        prev_name = predecessor_module(step_name)
+        if prev_name is not None:
+            entries = delta(current, collect(load_step(prev_name)))
+            title = f"{step_name} — delta vs. {prev_name.rsplit('.', 1)[-1]}"
+            (BOM_DIR / f"{step_name}_delta.md").write_text(to_markdown(entries, title=title))
 
 
 if __name__ == "__main__":

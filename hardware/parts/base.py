@@ -106,13 +106,19 @@ class BasePart:
     def build(self):
         """Return the build123d shape (labeled, no STEP export).
 
-        Memoized on the instance via ``self._built``. Also reuses a
+        Memoized on the instance via ``self._built``. Leaf parts
+        (``BaseStandardPart`` / ``BaseCustomPart``) also reuse a
         process-wide ``_BUILD_CACHE`` keyed by ``geom_key()``: the first
         instance of each unique geometry runs ``_build()``; subsequent
         instances return ``copy.copy()`` of the cached pristine shape.
-        Subclasses (BaseAssembly) can additionally cache/restore
-        post-build instance attributes via the ``_snapshot_state`` /
-        ``_diff_state`` / ``_restore_state`` hooks above.
+        That copy is cheap relative to rebuilding an expensive leaf, but
+        it is a full geometry deepcopy (build123d's ``copy.copy`` ⇒
+        ``copy.deepcopy``), so assemblies opt OUT (``geom_key`` → None)
+        and are recomposed from their cached leaves instead of cached and
+        deep-copied. The ``_snapshot_state`` / ``_diff_state`` /
+        ``_restore_state`` hooks below let a caching subclass carry
+        post-build instance attrs across a cache hit; no subclass
+        currently needs them.
         """
         if (cached := getattr(self, "_built", None)) is not None:
             return cached

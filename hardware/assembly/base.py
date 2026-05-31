@@ -87,43 +87,18 @@ class BaseAssembly(BasePart):
     def svg_path(self, index: int | None = None) -> Path:
         return svg_path_for(self._module_stem(), self.exploded, index=index)
 
-    def geom_key(self):
-        """Cache key = class + every ctor-set hashable instance attr.
-
-        Sweeps __dict__ so subclass-specific kwargs (e.g.
-        FR10ExtrusionTnut's `separation`) are captured automatically.
-        Opts out (returns None) if any attr is unhashable — can't
-        safely de-duplicate without value equality.
-        """
-        items = []
-        for k, v in sorted(self.__dict__.items()):
-            # ``camera`` controls rendering, not geometry — including it
-            # would needlessly fragment the cache and breaks hashing when
-            # a procedure sets ``self.camera`` to a list.
-            if k == "camera" or k.startswith("_") or callable(v):
-                continue
-            try:
-                hash(v)
-            except TypeError:
-                return None
-            items.append((k, v))
-        return (type(self).__name__, tuple(items))
-
-    # Cache post-build state (LI20Joint exposes attrs like
-    # big_csk_world_centers that LI31X reads off the instance, so a
-    # shape-only cache would leave those undefined on cache hits).
-    def _snapshot_state(self):
-        return set(self.__dict__.keys())
-
-    def _diff_state(self, pre_keys):
-        return {
-            k: v for k, v in self.__dict__.items()
-            if k not in pre_keys and not k.startswith("_")
-        }
-
-    def _restore_state(self, state):
-        for k, v in state.items():
-            setattr(self, k, v)
+    # Assemblies deliberately DO NOT opt into the geometry cache
+    # (``geom_key`` stays the BasePart default of ``None``). The cache
+    # returns ``copy.copy()`` of the cached shape, and build123d's
+    # ``copy.copy`` is a full ``copy.deepcopy`` — every face is
+    # ``BRepBuilderAPI_Copy``'d and the anytree children recursed. For a
+    # leaf part that's one cheap copy of an expensive-to-build solid, a
+    # clear win. For an assembly *compound* it deep-duplicates the entire
+    # accumulated tree, so caching it costs O(all faces) per reuse and
+    # the cost compounds up the chain — measured at ~50% of build time
+    # and a ~10× peak-memory blow-up on the deepest procedure. An
+    # assembly is cheap to recompose from its already-cached leaf parts,
+    # so we just rebuild it instead of caching+deep-copying.
 
     def _build(self) -> Compound:
         raise NotImplementedError
