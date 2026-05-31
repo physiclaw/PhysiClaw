@@ -20,6 +20,11 @@ keyboard_rect_h             = width  - 12 * MM   # 17 mm
 keyboard_rect_bottom_offset = 4 * MM             # rect bottom above -Y edge of face
 keyboard_rect_center_y      = -width / 2 + keyboard_rect_bottom_offset + keyboard_rect_h / 2
 
+# Keyboard face: rectangular through-slot at the screen base — its +Y edge sits
+# on the keyboard↔screen connection inner edge; cut clean through the plate.
+keyboard_slot_w = 8 * MM   # along X (centered)
+keyboard_slot_h = 3 * MM   # along Y, from the connection edge toward -Y
+
 # ── Screen face: paired hole pattern (N bases × 2 row-shifts × 2 paired rows) ─
 # Hole count = 4 × len(screen_pattern_y_offsets).
 screen_pattern_hole_diameter    = M3_NORMAL
@@ -36,6 +41,13 @@ screen_corner_csk_hole_from_side   = 4   * MM   # face-local X from each side ed
 screen_corner_csk_hole_from_bottom = 12  * MM   # face-local Y from bottom edge
 screen_corner_csk_head_diameter    = 6.5 * MM   # 90° CSK head Ø (FHCS M3)
 screen_corner_csk_angle            = 90         # degrees
+
+# ── Screen face: 2 rectangular through-slots near the top corners ─────────────
+# (top = far from the keyboard plate). Centers 4 mm in from each top corner.
+screen_top_slot_w         = 3 * MM   # face-local X (width)
+screen_top_slot_h         = 5 * MM   # face-local Y (height, vertical)
+screen_top_slot_from_side = 4 * MM   # face-local X from each side edge
+screen_top_slot_from_top  = 4 * MM   # face-local Y below the top edge
 
 # ── Fillets ───────────────────────────────────────────────────────────────────
 x_edge_fillet_radius = 0.5 * MM   # all X-parallel edges except the keyboard↔screen join
@@ -99,14 +111,35 @@ class SolenoidMount(BaseCustomPart):
                     counter_sink_angle=screen_corner_csk_angle,
                 )
 
-            # Fillet: all X-parallel edges except the keyboard↔screen inner join
-            # (the one at world (y = width/2 - wall_thickness, z = thickness/2)).
             join_y = width / 2 - wall_thickness
+
+            # Screen face: 2 rectangular through-slots, centers 4 mm in from each
+            # top corner (top = far from the keyboard plate).
+            top_y = wall_height - screen_top_slot_from_top
+            with BuildSketch(screen_plane):
+                with Locations(
+                    (screen_top_slot_from_side, top_y),
+                    (length - screen_top_slot_from_side, top_y),
+                ):
+                    Rectangle(screen_top_slot_w, screen_top_slot_h)
+            extrude(amount=-wall_thickness, mode=Mode.SUBTRACT)
+
+            # Keyboard-face through-slot: +Y edge on the keyboard↔screen inner
+            # edge (join_y), centered in X.
+            with BuildSketch(top_plane):
+                with Locations((0, join_y - keyboard_slot_h / 2)):
+                    Rectangle(keyboard_slot_w, keyboard_slot_h)
+            extrude(amount=-thickness, mode=Mode.SUBTRACT)
+
+            # Fillet last: break the long X-parallel body edges (0.5 mm). Keep
+            # only full-span (length == `length`) edges, which drops the short
+            # edges of the three rect slots; also skip the keyboard↔screen join.
             join_z = thickness / 2
             x_fillet_edges = [
                 e for e in my_part.edges().filter_by(Axis.X)
-                if not (abs(e.center().Y - join_y) < 1e-3
-                        and abs(e.center().Z - join_z) < 1e-3)
+                if abs(e.length - length) < 1e-3
+                and not (abs(e.center().Y - join_y) < 1e-3
+                         and abs(e.center().Z - join_z) < 1e-3)
             ]
             fillet(x_fillet_edges, radius=x_edge_fillet_radius)
 
