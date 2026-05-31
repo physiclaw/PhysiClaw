@@ -61,6 +61,20 @@ rib_keepout = 1.5 * MM           # clearance around the rib footprint (thin wall
 corner_d = 4 * MM
 edge_tol = 0.5 * MM   # fuzz for matching fillet edges by center
 
+# Cylinder boss on the plate's left (-X) face — centered (Y, mid-thickness),
+# axis along -X. 10 mm overall, 4 mm of it into the plate → 6 mm protrudes.
+left_cyl_d     = 6.5  * MM
+left_cyl_len   = 10 * MM   # overall cylinder length
+left_cyl_embed = 0.5  * MM   # how far it sits into the plate (remainder protrudes)
+# Coaxial bore into that cylinder from its free (-X) tip.
+left_cyl_bore_d     = 5 * MM
+left_cyl_bore_depth = 15  * MM   # deeper than the boss → continues into the plate
+# Gusset bracing that cylinder to the left face: a triangular web in the plate
+# plane (z 0..thickness), widest at the face, tapering out along the cylinder.
+gusset_flare = 4 * MM   # base half-width beyond the cylinder radius
+gusset_proj  = 8 * MM   # how far the apex reaches out along the cylinder
+gusset_embed = 1 * MM   # base set into the plate for a clean weld
+
 
 def standoff_locs(z):
     """The four standoff (x, y) positions lifted to height z."""
@@ -144,6 +158,37 @@ class PcbHolder(BaseCustomPart):
                 and abs(abs(e.center().Y) - plate_half_y) < edge_tol
             ]
             fillet(plate_corners, radius=corner_d / 2)
+
+            # Cylinder boss on the left (-X) face: axis along -X (outward),
+            # centered in Y and at mid-thickness.
+            left_face = Plane(origin=(-plate_half_x + left_cyl_embed, 0, thickness / 2),
+                              x_dir=(0, 1, 0), z_dir=(-1, 0, 0))
+            with Locations(left_face):
+                Cylinder(left_cyl_d / 2, left_cyl_len,
+                         align=(Align.CENTER, Align.CENTER, Align.MIN))
+
+            # Triangular gusset (plate-plane web) bracing the cylinder to the
+            # left face — added before the bore so the bore passes through it.
+            gusset_hy = left_cyl_d / 2 + gusset_flare
+            with BuildSketch(Plane.XY):
+                with BuildLine():
+                    Polyline(
+                        (-plate_half_x + gusset_embed,  gusset_hy),
+                        (-plate_half_x + gusset_embed, -gusset_hy),
+                        (-plate_half_x - gusset_proj, 0),
+                        close=True,
+                    )
+                make_face()
+            extrude(amount=thickness)
+
+            # Coaxial bore into the cylinder from its free (-X) tip, +X inward.
+            cyl_tip_x = -plate_half_x + left_cyl_embed - left_cyl_len
+            bore_face = Plane(origin=(cyl_tip_x, 0, thickness / 2),
+                              x_dir=(0, 1, 0), z_dir=(1, 0, 0))
+            with Locations(bore_face):
+                Cylinder(left_cyl_bore_d / 2, left_cyl_bore_depth,
+                         align=(Align.CENTER, Align.CENTER, Align.MIN),
+                         mode=Mode.SUBTRACT)
 
         return my_part.part
 
