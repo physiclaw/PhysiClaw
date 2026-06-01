@@ -17,6 +17,7 @@ from hardware.parts.standard.ring import Ring
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.solenoid import Solenoid
 from hardware.parts.standard.t_nut import TNut
+from hardware.parts.standard.teflon import Teflon
 from hardware.parts.standard.tip import Tip
 from hardware.parts.standard.tmc2209 import Tmc2209
 
@@ -54,6 +55,7 @@ ALL_PARTS = [
     Solenoid(),
     Bumper(),
     Tip(),
+    Teflon(),
 ]
 
 
