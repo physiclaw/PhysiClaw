@@ -20,16 +20,25 @@ Run from the repo root:
     uv run --group cad python -m hardware.assembly.procedures.camera_20_gooseneck
 """
 
-from build123d import Axis, Compound
+from build123d import Axis
 
 from hardware.assembly.procedures.camera_10_bracket import Camera10Bracket
 from hardware.assembly.projection import FRONT_LEFT_HIGH
-from hardware.parts.standard.gooseneck import Gooseneck, female_collar_len
+from hardware.parts.standard.gooseneck import (
+    Gooseneck,
+    female_collar_len,
+    male_collar_len,
+)
 from hardware.parts.standard.nut import SPECS as NUT_SPECS
 
 NUT_THICK   = NUT_SPECS["hex"]["1/4-20"]["thickness"]   # mm — hex nut height
-GOOSE_RISE  = 150   # mm — vertical span: male end height above the screw axis
-GOOSE_REACH = 85    # mm — horizontal span: male end −X reach beyond the female end
+# Gooseneck arm span. The names follow camera_20's own (bracket-local) frame —
+# RISE along bracket +Z, REACH along bracket +X — but camera_40's mount rotates
+# the bracket 90°, so INSTALLED the bracket-Z rise reads as the HORIZONTAL reach
+# out from the extrusion face and the bracket-X reach as the VERTICAL drop. The
+# values are set for the installed result: 150 mm vertical × 85 mm horizontal.
+GOOSE_REACH  = 100    # along bracket +Z → installed HORIZONTAL (out from the face)
+GOOSE_RISE = 150   # along bracket +X → installed VERTICAL (drop toward the bed)
 GOOSE_GAP   = 16    # mm — exploded: gooseneck slid off the stud along −X
 
 
@@ -37,8 +46,8 @@ class Camera20Gooseneck(Camera10Bracket):
     compound_label = "camera_20_gooseneck"
     camera = FRONT_LEFT_HIGH
 
-    def _build(self) -> Compound:
-        parts = self._parts()   # bracket + frame fasteners + 1/4-20 screw + hex nut
+    def _parts(self) -> list:
+        parts = super()._parts()   # bracket + frame fasteners + 1/4-20 screw + hex nut
 
         # The 1/4-20 screw protrudes on the −X face (head on +X). Thread the
         # female socket onto the exposed stud just past the hex nut: the mouth
@@ -48,7 +57,7 @@ class Camera20Gooseneck(Camera10Bracket):
         mouth_x    = nut_back_x - (GOOSE_GAP if self.exploded else 0)
 
         female_pt = (mouth_x - female_collar_len, self.cam_y, self.cam_z)
-        male_pt   = (female_pt[0] - GOOSE_REACH, self.cam_y, self.cam_z + GOOSE_RISE)
+        male_pt   = (female_pt[0] - GOOSE_RISE, self.cam_y, self.cam_z + GOOSE_REACH)
         goose = Gooseneck(
             point1=male_pt,   direction1=(0, 0, -1),   # male stud points +Z (up)
             point2=female_pt, direction2=(1, 0, 0),    # female mouth opens +X onto the stud
@@ -60,7 +69,16 @@ class Camera20Gooseneck(Camera10Bracket):
         # rising).
         goose = goose.rotate(Axis((female_pt[0], self.cam_y, self.cam_z), (1, 0, 0)), 180)
 
-        return Compound(label=self.compound_label, children=[*parts, goose])
+        # Expose the male-stud mount seat for downstream steps (camera_30
+        # clips a Camera here). Pre-rotation the stud base (male-collar face)
+        # sits male_collar_len above male_pt with the stud pointing +Z; the
+        # 180° flip about X sends it to z = cam_z − GOOSE_RISE − male_collar_len
+        # with the stud pointing −Z.
+        self.stud_base = (male_pt[0], self.cam_y,
+                          self.cam_z - GOOSE_REACH - male_collar_len)
+        self.stud_axis = (0.0, 0.0, -1.0)
+
+        return [*parts, goose]
 
 
 if __name__ == "__main__":
