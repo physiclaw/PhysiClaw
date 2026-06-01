@@ -8,6 +8,7 @@ from hardware.parts.standard.bracket import FlatBracket, MotorBracket
 from hardware.parts.standard.bumper import Bumper
 from hardware.parts.standard.driver import HexDriver
 from hardware.parts.standard.extrusion import Extrusion2020
+from hardware.parts.standard.gooseneck import Gooseneck
 from hardware.parts.standard.mgn9h import MGN9H
 from hardware.parts.standard.board import MksBoard
 from hardware.parts.standard.motor import Nema17Motor
@@ -56,6 +57,7 @@ ALL_PARTS = [
     Bumper(),
     Tip(),
     Teflon(),
+    Gooseneck(),
 ]
 
 
