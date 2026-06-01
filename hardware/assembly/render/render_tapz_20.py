@@ -30,6 +30,15 @@ RES_X, RES_Y = 1920, 1440
 SAMPLES      = 256
 SCENE_SCALE  = 1000.0   # GLB authored in mm; importer reads as meters.
 
+# World HDRI strength — ambient + metal reflections only; the area rig
+# carries the key/fill/rim, so this stays moderate (shares, not dominates).
+WORLD_STRENGTH = 1.7
+# Camera-ray backdrop white. Tuned so the limbo reads the same value as
+# the lit floor under AgX at EXPOSURE — too high and the backdrop is
+# brighter than the floor (a visible horizon returns), too low and it's
+# darker. ~2.0 is the seamless match for this rig.
+WHITE_BG_STRENGTH = 2.0
+
 # Mesh data stays in meters even after the ×1000 transform-scale, so
 # shader-space distances (Bevel radius) are in meters too.
 BEVEL_RADIUS = 0.0002    # 0.2 mm
@@ -207,14 +216,23 @@ def _smooth_shade():
                 poly.use_smooth = True
 
 
-def _build_world_sky():
-    """White-backdrop world: HDRI drives reflections on metals, but the
-    camera sees pure white when looking directly at the environment.
+def _build_world_hdri():
+    """White-limbo world: a clean white backdrop to the camera, the
+    desaturated studio HDRI to everything else.
 
-    Light-Path "Is Camera Ray" splits the two: Fac=1 (camera ray) →
-    white Background, Fac=0 (diffuse / glossy / reflection ray) → HDRI
-    Background. Standard product-photography trick — gives clean white
-    studio backdrop without sacrificing real material reflections.
+    A flat ground plane can only ever cover the frame *up to the horizon*
+    (eye level); above that the camera sees the world directly. So the
+    world's camera ray is a flat white tuned (``WHITE_BG_STRENGTH``) to
+    read the same value as the lit floor under AgX — the two meet with no
+    tonal step, giving a seamless infinite-white studio sweep. (The old
+    setup greyed here under Filmic, which is what made the hard horizon.)
+
+    Reflection / diffuse rays instead see the HDRI, desaturated: any warm
+    tint in a studio HDRI multiplies into metals (F0 tints with the
+    environment at metallic=1.0). Saturation=0 keeps the softbox shape
+    variation for crisp glints but strips the color cast, so metals read
+    as neutral steel. Split via Light-Path "Is Camera Ray" — the standard
+    product-photography trick: clean backdrop, real material reflections.
     """
     world = bpy.context.scene.world
     nt = world.node_tree
@@ -229,21 +247,15 @@ def _build_world_sky():
     env = nt.nodes.new("ShaderNodeTexEnvironment")
     env.image = bpy.data.images.load(HDRI_PATH)
 
-    # Desaturate the HDRI before it reaches the reflection background:
-    # any warm tint in the studio HDRI multiplies into metals (F0
-    # tints with the environment at metallic=1.0). Saturation=0 keeps
-    # softbox shape variation for crisp glints but strips the color
-    # cast — metals read as pure neutral steel.
     desat = nt.nodes.new("ShaderNodeHueSaturation")
     desat.inputs["Saturation"].default_value = 0.0
 
     bg_hdri = nt.nodes.new("ShaderNodeBackground")
-    # Push hard so metals see real bright/dark contrast.
-    bg_hdri.inputs["Strength"].default_value = 3.5
+    bg_hdri.inputs["Strength"].default_value = WORLD_STRENGTH
 
     bg_white = nt.nodes.new("ShaderNodeBackground")
     bg_white.inputs["Color"].default_value    = (1.0, 1.0, 1.0, 1.0)
-    bg_white.inputs["Strength"].default_value = 1.0
+    bg_white.inputs["Strength"].default_value = WHITE_BG_STRENGTH
 
     light_path = nt.nodes.new("ShaderNodeLightPath")
     mix        = nt.nodes.new("ShaderNodeMixShader")
@@ -255,14 +267,29 @@ def _build_world_sky():
     nt.links.new(bg_hdri.outputs["Background"],  mix.inputs[1])
     nt.links.new(bg_white.outputs["Background"], mix.inputs[2])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    print("[render] World: white backdrop + desaturated HDRI reflections")
+    print(f"[render] World: white limbo (camera, strength {WHITE_BG_STRENGTH}) "
+          f"+ desaturated HDRI reflections (strength {WORLD_STRENGTH})")
 
 
 def _add_ground_plane(center, diag, ground_z):
+    """Large flat white floor that catches the grounding contact shadow.
+
+    A camera at this 3/4-down angle never sees a back wall (a vertical
+    backdrop projects above the top of the frame), so a cyclorama sweep
+    buys nothing here — the floor fills the frame up to the horizon and
+    the white-limbo world (`_build_world_hdri`) takes over above it. The
+    floor reads the same white as that limbo, so the two meet seamlessly;
+    the only thing the floor adds is the soft contact shadow that grounds
+    the machine instead of leaving it pasted on a flat backdrop.
+
+    Sized far larger than the frame so its own edges never come into
+    view. Matte neutral diffuse — no metallic, high roughness — so it
+    never throws competing glints, only the shadow.
+    """
     mesh = bpy.data.meshes.new("Ground")
     obj  = bpy.data.objects.new("Ground", mesh)
     bpy.context.scene.collection.objects.link(obj)
-    size = diag * 6
+    size = diag * 30
     mesh.from_pydata(
         [(-size, -size, 0), (size, -size, 0), (size, size, 0), (-size, size, 0)],
         [],
@@ -275,28 +302,37 @@ def _add_ground_plane(center, diag, ground_z):
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     if bsdf is not None:
-        # Near-white so the floor blends into the camera-ray backdrop,
-        # but glossy enough to catch a soft reflection of the machine
-        # underbody — without it the assembly looks pasted on the bg.
-        bsdf.inputs["Base Color"].default_value = (0.94, 0.94, 0.94, 1.0)
-        bsdf.inputs["Roughness"].default_value  = 0.55
+        bsdf.inputs["Base Color"].default_value = (0.95, 0.95, 0.95, 1.0)
+        bsdf.inputs["Roughness"].default_value  = 0.6
         bsdf.inputs["Metallic"].default_value   = 0.0
-        # Specular IOR was renamed in Blender 4.4+/5.x; tolerate either.
-        spec = (bsdf.inputs.get("Specular IOR Level")
-                or bsdf.inputs.get("Specular"))
-        if spec is not None:
-            spec.default_value = 0.5
     obj.data.materials.append(mat)
+
+
+def _material_center(name):
+    """World-space centroid of every face using a material named ``name``
+    (after `_upgrade_materials` renames slots to their decoded names).
+    Returns None if no such face exists. Used to aim an accent light at a
+    specific part — e.g. the Steel_Chrome rails + slider."""
+    total = mathutils.Vector((0.0, 0.0, 0.0))
+    n = 0
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        slots = {i for i, s in enumerate(obj.material_slots)
+                 if s.material and s.material.name == name}
+        if not slots:
+            continue
+        for poly in obj.data.polygons:
+            if poly.material_index in slots:
+                total += obj.matrix_world @ poly.center
+                n += 1
+    return total / n if n else None
 
 
 def _place_camera_and_lights(mins, maxs):
     center = (mins + maxs) * 0.5
     diag   = (maxs - mins).length
     print(f"[render] bbox center=({center.x:.0f},{center.y:.0f},{center.z:.0f}) diag={diag:.0f}")
-
-    # Ground 0.1 mm below the lowest mesh point — avoids z-fighting
-    # without a visible gap at this camera distance.
-    _add_ground_plane(center, diag, mins.z - 0.1)
 
     # Industrial product hero — see render.md for the rationale.
     AZIMUTH_DEG   = 30
@@ -329,23 +365,59 @@ def _place_camera_and_lights(mins, maxs):
         f"az={AZIMUTH_DEG}° el={ELEVATION_DEG}° dist={cam_distance:.0f}"
     )
 
-    energy = diag * diag * 12.0
-    # Industrial product ratio (key:fill ≈ 6:1) — smaller key for
-    # sharper metal highlights, dim broader fill so shadow sides
-    # actually go dark, tight strong rim for clean edge separation.
+    # Floor 0.1 mm below the lowest mesh point — avoids z-fighting
+    # without a visible gap at this camera distance.
+    _add_ground_plane(center, diag, mins.z - 0.1)
+
+    # AREA-light rig — Blender area (plane/"softbox") lights, never point
+    # lights: a point source reflects off the steel as a hard hot dot, the
+    # "point light" look. Each softbox here is sized LARGER than the
+    # subject (size ≳ diag) so it reflects as a soft broad streak with no
+    # hot spot — the bigger the source relative to the subject, the softer
+    # the light (product-photography rule of thumb; see render.md).
+    #
+    # Placement follows the studio standard, then adds wrap so the dark
+    # machine never falls into one unreadable shadow mass: light reaches it
+    # from many angles (key, opposite fill, two back rims, an overhead
+    # softbox, and a camera-side front fill), backed by brighter ambient.
+    #   key       — ~45° to one side, raised: primary form + texture
+    #   fill      — opposite ~45°, lower/broad, ~45% of key: opens shadows
+    #   rim L/R   — back corners, graze top edges for separation
+    #   top       — big overhead softbox: lights top faces + into the gantry
+    #   frontfill — broad, near the camera axis, low: opens the near-camera
+    #               faces and undersides that the angled lights miss
+    #   railkick  — accent aimed at the polished rails/slider (not the scene
+    #               center) so the MGN9H carriage catches a bright stainless
+    #               glint instead of sitting dark in the gantry
+    # Dark anodized/printed parts absorb light, so the whole rig leans bright
+    # to keep shadow-side detail and edges readable everywhere. The key is
+    # pulled down from dominating and the wrap lights brought up, so the
+    # machine is lit evenly (flat, even-detail product look) rather than
+    # carved hard by one bright key.
+    #
+    # Each spec is (name, direction-from-aim, energy, softbox size, target):
+    # target=None aims at the scene center at the rig radius; a material
+    # name aims at that material's centroid, placed closer for a tighter pool.
+    energy = diag * diag * 7.0
     light_specs = [
-        ("Key",  (1.1, -1.5,  1.7), energy * 1.00, diag * 0.40),
-        ("Fill", (-1.4, -0.8, 0.7), energy * 0.15, diag * 0.80),
-        ("Rim",  (0.0,  1.6,  1.2), energy * 0.50, diag * 0.30),
+        ("Key",       ( 1.0, -1.4,  1.5), energy * 0.70, diag * 1.30, None),
+        ("Fill",      (-1.4, -0.9,  0.5), energy * 0.60, diag * 1.80, None),
+        ("RimL",      (-1.0,  1.5,  1.0), energy * 0.60, diag * 0.55, None),
+        ("RimR",      ( 1.0,  1.5,  1.0), energy * 0.60, diag * 0.55, None),
+        ("Top",       ( 0.1, -0.2,  2.2), energy * 0.72, diag * 2.00, None),
+        ("FrontFill", ( 0.2, -1.9,  0.4), energy * 0.50, diag * 1.90, None),
+        ("RailKick",  ( 0.4, -1.0,  1.1), energy * 0.78, diag * 0.70, "Steel_Chrome"),
     ]
-    for name, dir_vec, en, size in light_specs:
+    for name, dir_vec, en, size, target in light_specs:
+        aim  = (_material_center(target) or center) if target else center
+        dist = diag * (1.0 if target else 1.5)
         l_data = bpy.data.lights.new(name=f"Light_{name}", type="AREA")
         l_data.energy = en
         l_data.size   = size
         l_obj = bpy.data.objects.new(f"Light_{name}", l_data)
         bpy.context.scene.collection.objects.link(l_obj)
-        l_obj.location = center + mathutils.Vector(dir_vec).normalized() * (diag * 1.5)
-        l_obj.rotation_euler = (center - l_obj.location).to_track_quat("-Z", "Y").to_euler()
+        l_obj.location = aim + mathutils.Vector(dir_vec).normalized() * dist
+        l_obj.rotation_euler = (aim - l_obj.location).to_track_quat("-Z", "Y").to_euler()
 
 
 def _try_enable_gpu():
@@ -371,9 +443,12 @@ def _configure_cycles():
     sc.render.engine    = "CYCLES"
     sc.cycles.samples   = SAMPLES
     sc.cycles.use_denoising = True
-    sc.view_settings.view_transform = "Filmic"
-    sc.view_settings.look           = "Medium High Contrast"
-    sc.view_settings.exposure       = 0.6    # +0.6 EV — backdrop reads white without crushing highlights
+    # AgX (Blender 4.0+ default) — camera-like highlight rolloff; bright
+    # values roll to white instead of Filmic's flat grey clamp. AgX is
+    # darker than Filmic, so lift exposure to push the lit sweep to white.
+    sc.view_settings.view_transform = "AgX"
+    sc.view_settings.look           = "AgX - Medium High Contrast"
+    sc.view_settings.exposure       = 1.2
     sc.render.resolution_x = RES_X
     sc.render.resolution_y = RES_Y
     sc.render.resolution_percentage = 100
@@ -390,7 +465,7 @@ def main():
     mins, maxs = _orient_for_ground()
     _upgrade_materials()
     _smooth_shade()
-    _build_world_sky()
+    _build_world_hdri()
     _place_camera_and_lights(mins, maxs)
     _configure_cycles()
     print(f"[render] rendering → {PNG_PATH}  ({RES_X}×{RES_Y}, {SAMPLES} spp)")

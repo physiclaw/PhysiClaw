@@ -24,13 +24,18 @@ import colorsys
 
 MATERIAL_LIST = [
     ("Aluminum_Anod_Black", {
-        # Near-pure-black anodized aluminum — dark metallic-paint look
-        # with a subtle painted sheen rather than open-metal reflection.
-        # Pushed darker than before to maximise contrast against the
-        # brighter Steel_Chrome rails sitting on it.
-        "base": (0.020, 0.020, 0.023),
+        # Black anodized aluminum (extrusions + motor housings). Lifted
+        # off pure black to a dark charcoal: a base this low (was 0.02 ≈
+        # sRGB 39, near the "darker than any real material" floor) crushes
+        # the T-slot profile and part forms into one unreadable black mass.
+        # At ~sRGB 55 the grooves and edges catch the environment and read
+        # as black anodized aluminium — dark, but no longer a crushed
+        # silhouette. Uniform roughness (no rough_vary): the noise speckle
+        # read as dirt/staining on the big flat extrusion faces; clean
+        # anodizing wants an even satin sheen.
+        "base": (0.040, 0.040, 0.044),
         "metallic": 1.00,
-        "roughness": 0.42,
+        "roughness": 0.45,
         "bevel": True,
     }),
     ("Steel_Chrome", {
@@ -60,10 +65,10 @@ MATERIAL_LIST = [
         "bevel": True,
     }),
     ("PA12_Black_MJF", {
-        # A hair lifted from pure black so the matte printed parts
-        # read as dark grey-black against the white studio backdrop,
-        # not as crushed silhouettes.
-        "base": (0.085, 0.085, 0.085),
+        # Matte MJF nylon (brackets, mounts). Lifted to a clear dark grey
+        # so the printed parts read as a distinct material with visible
+        # form, not crushed silhouettes merging into the anodized frame.
+        "base": (0.105, 0.105, 0.105),
         "metallic": 0.00,
         "roughness": 0.70,
     }),
@@ -83,14 +88,21 @@ MATERIAL_LIST = [
         "roughness": 0.85,
     }),
     ("Aluminum_Polished", {
-        # Machined / brushed-satin aluminum on the GT2 pulleys + idler
-        # bodies + washer rings. F0 pulled down to mid-luminance so the
-        # pulleys don't read as near-white blobs against the darker
-        # extrusions — real machined aluminum sits around 0.55.
-        "base": (0.55, 0.55, 0.55),
+        # Machined / turned aluminum on the GT2 pulleys + idler bodies +
+        # washer rings. What killed the "metal" read and made it look
+        # plastic was a too-high roughness flattening the reflection into a
+        # uniform grey — metal needs DISTINCT reflections. So: high base
+        # (0.66, bright reflectance), roughness down to 0.40 so the HDRI
+        # softboxes actually reflect, and anisotropy so they reflect as a
+        # brushed/turned streak (lathe finish) rather than a smooth mirror —
+        # the streak reads unmistakably as metal without going glossy.
+        # `_add_anisotropy` wires a Radial-X tangent, so the streaks run
+        # circumferentially around these turned parts.
+        "base": (0.66, 0.66, 0.66),
         "metallic": 1.00,
-        "roughness": 0.65,
-        "rough_vary": True,
+        "roughness": 0.40,
+        "anisotropic": 0.6,
+        "anisotropic_rotation": 0.25,
     }),
 ]
 

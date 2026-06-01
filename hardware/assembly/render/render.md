@@ -105,14 +105,25 @@ Steps `main()` runs, in order:
    real PBR params, optionally inject the Bevel and Roughness-noise
    sub-graphs.
 6. `_smooth_shade()` — `poly.use_smooth = True` for every mesh face.
-7. `_build_world_sky()` — load the HDRI from `output/render/` and wire
-   it into the World output via Background, strength 1.8. Errors with
-   instructions if the file is missing.
-8. `_place_camera_and_lights()` — three-point AREA light rig +
-   55 mm-lens camera at az=30°, el=35° (industrial-product hero
-   view; see notes below).
-9. `_configure_cycles()` — engine=CYCLES, samples, denoise on, Filmic
-   Medium Contrast, GPU best-effort (METAL/OPTIX/CUDA/HIP/ONEAPI, CPU fallback).
+7. `_build_world_hdri()` — white-limbo world: the camera ray sees a flat
+   white tuned (`WHITE_BG_STRENGTH`) to match the lit floor, while
+   reflection/diffuse rays see the desaturated studio HDRI
+   (`WORLD_STRENGTH`) for neutral softbox glints on the metals. Split via
+   Light-Path "Is Camera Ray". Errors with instructions if the HDRI is
+   missing.
+8. `_place_camera_and_lights()` — large flat white floor (grounding
+   contact shadow) + a soft AREA rig (key, broad fill, and **two** back
+   rims) + 55 mm-lens camera at az=30°, el=35° (industrial-product hero
+   view; see notes below). The rig leans bright with a 2.5:1 key:fill and
+   dual rims because the subject is mostly dark anodized/printed parts:
+   dark products absorb light and collapse into one black mass, so they
+   need more fill (shadow-side detail) and edge/rim light (form + contour)
+   than a light-colored product would.
+9. `_configure_cycles()` — engine=CYCLES, samples, denoise on, **AgX**
+   Medium High Contrast (camera-like highlight rolloff; the Blender 4.0+
+   default that replaced Filmic), exposure lifted to push the lit floor
+   and limbo to white, GPU best-effort (METAL/OPTIX/CUDA/HIP/ONEAPI, CPU
+   fallback).
 10. `bpy.ops.render.render(write_still=True)` — output to `PNG_PATH`.
 
 ### `download_hdri.sh` — one-time HDRI fetch
@@ -123,14 +134,40 @@ full file is already present. Refetches if the local copy is truncated.
 To swap to a different HDRI, change the URL/filename in the script and
 the matching `HDRI_PATH` in `render_tapz_20.py`.
 
-The studio HDRI matters because Sky Texture's flat gradient makes
-every metal collapse to the same shade — real metals get their
-visual identity from reflecting bright softboxes vs the dark gaps
-between them, which only an HDRI environment provides.
+The studio HDRI matters because metals get their visual identity from
+reflecting bright softboxes vs the dark gaps between them — a flat
+gradient would make every metal collapse to the same shade. The HDRI is
+desaturated before use (so its warm tint doesn't multiply into the
+metals' F0) and the camera never sees it: the white-limbo world covers
+the camera ray, so the HDRI only drives reflections and ambient.
 
 ---
 
 ## Tuning
+
+### Visible horizon line between floor and backdrop
+The floor and the white-limbo world must read the same value or a seam
+appears at the floor's horizon. Tune `WHITE_BG_STRENGTH` in
+`render_tapz_20.py`: raise it if the backdrop is darker than the floor,
+lower it if brighter. It interacts with `_configure_cycles`' `exposure`
+and `WORLD_STRENGTH` (ambient on the floor), so retune after changing
+either. ~2.0 is the match for the default rig.
+
+### Backdrop / metals too warm or too cool
+Metals reflect the HDRI, which is desaturated to neutral in
+`_build_world_hdri`. To dial reflection contrast use `WORLD_STRENGTH`
+(higher = punchier bright/dark softbox glints). The visible backdrop is
+independent — it's the flat `WHITE_BG_STRENGTH` white, not the HDRI.
+
+### Dark parts read as one black lump
+Two levers, both needed. **Material**: don't crush the anodized/printed
+base colors to near-black — `Aluminum_Anod_Black` sits at ~sRGB 55 and
+`PA12_Black_MJF` at ~sRGB 90 with `rough_vary`, dark enough to read as
+black yet light enough that the T-slot grooves and edges catch the
+environment. **Lighting**: keep the fill up (≈2.5:1 key:fill) and both
+rims on (`RimL`/`RimR`) — they trace the dark frame's edges so its form
+and silhouette read. Deepen the parts by lowering the base color; if they
+then crush, raise fill/rim rather than the base (keeps the black look).
 
 ### Materials look wrong
 Edit `materials_table.py`. After any change to `base` / `metallic` /
@@ -181,9 +218,13 @@ Two knobs in `render_tapz_20.py`:
   from their nearest labelled ancestor via XCAF; if a part isn't
   taking the color you expect, give it a label in the part file (or a
   parent Compound with one).
-* Sky Texture is removed in favour of HDRI; if you want to render
-  without the HDRI, you'll need to restore a `ShaderNodeTexSky`
-  fallback in `_build_world_sky()`.
+* The backdrop is a white limbo, not a modeled cyclorama. At the 3/4-down
+  hero angle a vertical back wall projects above the top of the frame, so
+  a curved sweep buys nothing — the flat floor fills the frame up to the
+  horizon and the white-limbo world takes over above it. If you lower
+  `ELEVATION_DEG` toward eye level the floor's horizon drops into frame;
+  if a hard line appears there, retune `WHITE_BG_STRENGTH` to match the
+  floor (see Tuning), or model a cyc sweep for that near-horizontal view.
 * The output dir (`hardware/output/`) is `.gitignore`d, so the
   rendered PNG and downloaded HDRI never get committed. Run
   `download_hdri.sh` on each fresh checkout.
