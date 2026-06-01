@@ -14,6 +14,8 @@ COMMON = {
     "M5":   {"d": 5.0, "P": 0.80},
     "M6":   {"d": 6.0, "P": 1.00},
     "M8":   {"d": 8.0, "P": 1.25},
+    # 1/4"-20 UNC: d = 1/4", P = 25.4/20 mm. Mates the Gooseneck female socket.
+    "1/4-20": {"d": 6.35, "P": 1.27},
 }
 
 # dk = max head Ø, k = head height, s = hex socket across-flats (Allen key).
@@ -26,6 +28,8 @@ SHCS_DIMS = {
     "M5":   {"dk":  8.5, "k": 5.0, "s": 4.0},
     "M6":   {"dk": 10.0, "k": 6.0, "s": 5.0},
     "M8":   {"dk": 13.0, "k": 8.0, "s": 6.0},
+    # 1/4"-20 UNC SHCS (ASME B18.3): dk = 3/8", k = 1/4", s = 3/16" hex.
+    "1/4-20": {"dk": 9.53, "k": 6.35, "s": 4.76},
 }
 
 # FHCS — ISO 10642 / DIN 7991 (90° countersunk).
@@ -222,7 +226,9 @@ class Screw(BaseStandardPart):
         self.length = length
 
     def name_suffix(self) -> str:
-        return f"_{self.screw_type}_{self.size}x{self.length:g}_x{self.qty}"
+        # Sanitize the size for the filename ("1/4-20" → "1-4-20").
+        safe_size = self.size.replace("/", "-")
+        return f"_{self.screw_type}_{safe_size}x{self.length:g}_x{self.qty}"
 
     def bom_key(self):
         if self.screw_type == "SHOULDER":
@@ -304,3 +310,4 @@ if __name__ == "__main__":
     Screw("FHCS",     "M3",  8 * MM).export()
     Screw("BHCS",     "M3",  8 * MM).export()
     Screw("SHOULDER", "M4", 20 * MM).export()
+    Screw("SHCS",     "1/4-20", 16 * MM).export()

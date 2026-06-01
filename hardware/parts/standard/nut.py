@@ -21,6 +21,9 @@ SPECS = {
         "M3": {"af": 5.5, "thickness": 2.4, "bore": 3.0},
         "M4": {"af": 7.0, "thickness": 3.2, "bore": 4.0},
         "M5": {"af": 8.0, "thickness": 4.7, "bore": 5.0},
+        # 1/4"-20 UNC hex nut (ASME B18.2.2). af = 7/16", thickness = 7/32",
+        # bore = nominal 1/4" — threads onto the Gooseneck male stud.
+        "1/4-20": {"af": 11.11, "thickness": 5.56, "bore": 6.35},
     },
     "square": {
         "M3": {"af": 5.5, "thickness": 2.4, "bore": 3.0},
@@ -73,7 +76,9 @@ class Nut(BaseStandardPart):
         self.bore = s["bore"]
 
     def name_suffix(self) -> str:
-        return f"_{self.shape}_{self.size}_x{self.qty}"
+        # Sanitize the size for the filename ("1/4-20" → "1-4-20").
+        safe_size = self.size.replace("/", "-")
+        return f"_{self.shape}_{safe_size}_x{self.qty}"
 
     def bom_key(self):
         return ("Nut", self.shape, self.size)
