@@ -69,10 +69,16 @@ half_vertices_1020 = (
     (2.4 * MM,  3.6 * MM),
     (0,         3.6 * MM),
 )
-half_x_1020       = 9.9 * MM    # half cross-section width
+half_x_1020       = 9.9 * MM    # half cross-section width (= section height too)
 hole_1020_d       = 4.2 * MM    # through-hole diameter
 hole_1020_x_inset = 3   * MM    # hole center inset from right edge
 hole_1020_y_inset = 3   * MM    # hole center inset from bottom edge
+
+# Optional end-mounting holes (Extrusion1020(hole=True)): one M5 clearance
+# hole drilled vertically (through Y) at the section center, set in from each
+# end face — a bolt passes up through the bottom into the T-slot.
+end_hole_d      = 5.5 * MM      # M5 clearance
+end_hole_offset = 10  * MM      # hole center from each end face, along Z
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -245,17 +251,27 @@ class Extrusion2040(BaseStandardPart):
 class Extrusion1020(BaseStandardPart):
     """1020 T-slot extrusion — 19.8 × 9.9 mm cross-section (nominal 20 × 10),
     slot opening on the +Y face. Two through-holes drilled along Z on the
-    bottom rim, mirrored about the Y axis."""
+    bottom rim, mirrored about the Y axis.
 
-    def __init__(self, length: float = default_length, qty: int = 1):
+    With ``hole=True``, also drills two vertical M5 clearance holes — one set
+    in 10 mm from each end face, centered in width."""
+
+    def __init__(
+        self,
+        length: float = default_length,
+        qty: int = 1,
+        hole: bool = False,
+    ):
         super().__init__(qty=qty)
         self.length = length
+        self.hole = hole
 
     def name_suffix(self) -> str:
-        return f"_1020_{int(self.length)}mm_x{self.qty}"
+        h = "_h" if self.hole else ""
+        return f"_1020_{int(self.length)}mm{h}_x{self.qty}"
 
     def bom_key(self):
-        return ("Extrusion1020", int(self.length))
+        return ("Extrusion1020", int(self.length), "hole" if self.hole else "plain")
 
     def _build(self):
         with BuildPart() as p:
@@ -286,6 +302,14 @@ class Extrusion1020(BaseStandardPart):
                 with Locations(*hole_centers):
                     Circle(hole_1020_d / 2)
             extrude(amount=self.length, mode=Mode.SUBTRACT)
+
+            # Optional vertical M5 holes, set in 10 mm from each end face,
+            # centered in width (axis along Y, through the full section).
+            if self.hole:
+                hole_h = half_x_1020 + 4 * MM   # > section height + overshoot
+                for z in (end_hole_offset, self.length - end_hole_offset):
+                    with Locations(Location((0, half_x_1020 / 2, z), (90, 0, 0))):
+                        Cylinder(end_hole_d / 2, hole_h, mode=Mode.SUBTRACT)
 
         p.part.label = f"Extrusion1020_{int(self.length)}mm"
         return p.part
