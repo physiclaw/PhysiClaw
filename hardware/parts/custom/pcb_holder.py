@@ -1,6 +1,13 @@
 from build123d import *
 
-from hardware.parts._fits import CSK_ANGLE, M3_CSK_HEAD, M3_NORMAL, M3_NUT_W
+from hardware.parts._fits import (
+    CSK_ANGLE,
+    M3_CSK_HEAD,
+    M3_NORMAL,
+    M3_NUT_W,
+    M5_CSK_HEAD,
+    M5_NORMAL,
+)
 from hardware.parts.base import BaseCustomPart
 
 # ── Plate ─────────────────────────────────────────────────────────────────────
@@ -41,7 +48,7 @@ rib_gap   = 9  * MM   # gap between the rib's +X end and the plate short edge
 rib_cx    = plate_half_x - rib_gap - tab_x / 2   # rib center in X
 rib_cy    = 0  * MM                              # rib center in Y
 
-# 2040 mount: two M3 countersink holes through plate + rib, recessed on the
+# 2040 mount: two M5 countersink holes through plate + rib, recessed on the
 # cylinder side (top), threading into the extrusion T-slot below the rib.
 mount_hole_pitch = 20 * MM   # along X, centered on the rib
 
@@ -140,8 +147,8 @@ class PcbHolder(BaseCustomPart):
                 (rib_cx + mount_hole_pitch / 2, rib_cy, thickness),
             ):
                 CounterSinkHole(
-                    radius=M3_NORMAL / 2,
-                    counter_sink_radius=M3_CSK_HEAD / 2,
+                    radius=M5_NORMAL / 2,
+                    counter_sink_radius=M5_CSK_HEAD / 2,
                     counter_sink_angle=CSK_ANGLE,
                 )
 

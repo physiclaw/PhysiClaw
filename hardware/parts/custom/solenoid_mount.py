@@ -23,7 +23,7 @@ keyboard_rect_center_y      = -width / 2 + keyboard_rect_bottom_offset + keyboar
 # Keyboard face: rectangular through-slot at the screen base — its +Y edge sits
 # on the keyboard↔screen connection inner edge; cut clean through the plate.
 keyboard_slot_w = 8 * MM   # along X (centered)
-keyboard_slot_h = 3 * MM   # along Y, from the connection edge toward -Y
+keyboard_slot_h = 4 * MM   # along Y, from the connection edge toward -Y
 
 # ── Screen face: paired hole pattern (N bases × 2 row-shifts × 2 paired rows) ─
 # Hole count = 4 × len(screen_pattern_y_offsets).

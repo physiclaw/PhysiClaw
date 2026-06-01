@@ -33,6 +33,11 @@ default_direction1 = (0, 0, 1)
 default_point2     = (30 * MM, 0, 20 * MM)
 default_direction2 = (1, 0, 0)
 
+# Apex offset (fraction of the chord) inserted when the end tangents oppose, so
+# the U / inverted-U sweep stays clean. Larger = taller bulge (needs a larger
+# tangent_scalar to sweep without kinking).
+WAYPOINT_FRAC = 0.3
+
 
 class Teflon(BaseStandardPart):
     """Hollow PTFE tube swept along a Spline with end-tangent constraints."""
@@ -58,9 +63,19 @@ class Teflon(BaseStandardPart):
         self.tangent_scalars = tangent_scalars
 
     def _spline(self):
-        """The routing spine as a standalone edge (drives length + sweep)."""
-        return Spline(self.point1, self.point2,
-                      tangents=(self.direction1, self.direction2),
+        """The routing spine as a standalone edge (drives length + sweep).
+
+        When the end tangents oppose (dot < 0) a single spline doubles back and
+        the sweep self-intersects, so thread it through an apex derived from the
+        endpoints and tangents — a U / inverted-U bulge along (d1 - d2)."""
+        p1, p2 = Vector(*self.point1), Vector(*self.point2)
+        d1 = Vector(*self.direction1).normalized()
+        d2 = Vector(*self.direction2).normalized()
+        pts = [self.point1, self.point2]
+        if d1.dot(d2) < 0:
+            apex = (p1 + p2) / 2 + (d1 - d2).normalized() * (WAYPOINT_FRAC * (p2 - p1).length)
+            pts = [self.point1, tuple(apex), self.point2]
+        return Spline(*pts, tangents=(self.direction1, self.direction2),
                       tangent_scalars=self.tangent_scalars)
 
     @property
@@ -82,7 +97,8 @@ class Teflon(BaseStandardPart):
         return f"PTFE tube Ø{self.od:g}/{self.id:g} ({round(self.cut_length)} mm)"
 
     def geom_key(self):
-        # Geometry depends on the full routing, not just the spec.
+        # Geometry depends on the full routing, not just the spec (the apex is
+        # derived from these, so it needn't be keyed separately).
         return ("Teflon", self.point1, self.direction1, self.point2,
                 self.direction2, self.od, self.id, self.tangent_scalars)
 
