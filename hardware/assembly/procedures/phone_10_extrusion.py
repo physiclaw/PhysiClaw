@@ -38,7 +38,7 @@ from hardware.parts.standard.extrusion import (
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT, LENGTHS, TNut
 
-BEAM_LENGTH   = 190   # mm — Extrusion1020 length
+BEAM_LENGTH   = 210   # mm — Extrusion1020 length
 BHCS_LENGTH   = 16    # mm — BHCS M5 underhead length
 SCREW_EXPLODE = 55    # mm — exploded: screw drops below the beam
 NUT_EXPLODE   = 25    # mm — exploded: nut lifts above the beam
