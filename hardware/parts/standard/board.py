@@ -28,7 +28,7 @@ Run from the repo root:
 """
 from build123d import *
 
-from hardware.parts._fits import M3_NORMAL
+from hardware.parts._fits import DRIVER_ROW_PITCH, HDR_PITCH, M3_NORMAL
 from hardware.parts.base import BaseStandardPart
 
 # ── PCB ───────────────────────────────────────────────────────────────────────
@@ -52,10 +52,10 @@ label_depth = 0.5 * MM    # engrave depth
 label_cx    = 24 * MM     # center X
 label_cy    = -17 * MM    # center Y
 
-# Connector pitches and sizes.
-XH_PITCH   = 2.5  * MM   # JST XH series (motor connectors)
-HDR_PITCH  = 2.54 * MM   # 0.1" headers (driver-carrier sockets)
-HDR_HEIGHT = 8.5  * MM   # female-header (driver-slot) height above the PCB
+# Connector pitches and sizes. HDR_PITCH / DRIVER_ROW_PITCH come from _fits
+# (shared with the TMC2209 driver module so the two mate).
+XH_PITCH   = 2.5 * MM    # JST XH series (motor connectors)
+HDR_HEIGHT = 8.5 * MM    # female-header (driver-slot) height above the PCB
 
 # Colors (visual aid in STEP viewers; the SVG render pipeline ignores them).
 COL_PCB   = Color(0.05, 0.32, 0.13)   # green solder mask
@@ -246,7 +246,6 @@ MOTOR_Y = 27 * MM                  # Y center, inboard of the +Y corner holes
 # the two rows ``DRIVER_ROW_PITCH`` apart along X. One DIP-3 below each.
 DRIVER_X = (-29 * MM, -11 * MM, 5 * MM)   # X centers of the three slots
 DRIVER_Y = 12 * MM                 # Y center of the socket pair
-DRIVER_ROW_PITCH = 12.7 * MM       # row-to-row spacing
 DIP_Y = -1 * MM                    # microstep DIP just below each slot
 
 # ESP32 module: square can, right face up against the board's right edge.

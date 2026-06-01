@@ -18,6 +18,7 @@ from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.solenoid import Solenoid
 from hardware.parts.standard.t_nut import TNut
 from hardware.parts.standard.tip import Tip
+from hardware.parts.standard.tmc2209 import Tmc2209
 
 ALL_PARTS = [
     Extrusion2020(length=200 * MM, qty=2),
@@ -30,6 +31,7 @@ ALL_PARTS = [
     Pulley2GT20T(kind="idler",  toothed=False, qty=2),
     MGN9H(rail_length=150 * MM, qty=2),
     MksBoard(qty=1),
+    Tmc2209(qty=2),
     Screw("BHCS",     "M3", 8  * MM),
     Screw("SHOULDER", "M4", 20 * MM),
     HexDriver("2mm", qty=1),

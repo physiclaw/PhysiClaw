@@ -36,3 +36,11 @@ CSK_ANGLE = 90
 M3_NUT_W, M3_NUT_T = 5.7 * MM, 2.7 * MM
 M4_NUT_W, M4_NUT_T = 7.3 * MM, 3.3 * MM
 M5_NUT_W, M5_NUT_T = 8.3 * MM, 4.0 * MM
+
+
+# ── 0.1" pin-header / driver-carrier interface ────────────────────────────────
+# Standard 0.1-inch header pitch, and the row-to-row spacing of a 2×8
+# stepper-driver carrier (StepStick / Pololu form factor = 5 × 2.54 mm). Shared
+# by the controller board's driver sockets and the driver module so they mate.
+HDR_PITCH        = 2.54 * MM
+DRIVER_ROW_PITCH = 12.7 * MM
