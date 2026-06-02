@@ -30,7 +30,7 @@ Run from the repo root:
 from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.projection import ISO
+from hardware.assembly.projection import Camera, ISO
 from hardware.parts.standard.bracket import (
     CornerBracket,
     corner_face_depth as face_depth,
@@ -49,12 +49,13 @@ BHCS_LENGTH = 10     # mm — BHCS M5 underhead length (frame side)
 CAM_LENGTH  = 16     # mm — SHCS 1/4-20 underhead length (camera side)
 BRACKET_GAP = 20     # mm — exploded: gap between T-nut tops and the deck bottom
 SCREW_GAP   = 8      # mm — exploded: gap between deck top and BHCS shank tips
-CAM_GAP     = 14     # mm — exploded: camera screw / nut slid apart along ±X
+CAM_GAP     = 14     # mm — exploded: camera nut slid off along −X (gooseneck side)
+CAM_SCREW_GAP = 32   # mm — exploded: SHCS pulled further off the +X install face
 
 
 class Camera10Bracket(BaseAssembly):
     compound_label: str = "camera_10_bracket"
-    camera = ISO
+    camera = [Camera(-14.11, -7.34, 88.02), Camera(-10.74, 22.98, 88.54)]
 
     def _build(self) -> Compound:
         return Compound(label=self.compound_label, children=self._parts())
@@ -82,7 +83,8 @@ class Camera10Bracket(BaseAssembly):
         # nut apart along ±X.
         bracket_z  = HAMMER_TOTAL_HEIGHT + (BRACKET_GAP if self.exploded else 0)
         screw_z    = bracket_z + plate_thick + (SCREW_GAP + BHCS_LENGTH if self.exploded else 0)
-        cam_offset = CAM_GAP if self.exploded else 0
+        cam_offset = CAM_GAP if self.exploded else 0          # nut / gooseneck side (−X)
+        cam_screw_offset = CAM_SCREW_GAP if self.exploded else 0   # SHCS side (+X)
 
         bracket.move(Location((0, 0, bracket_z)))
 
@@ -105,7 +107,7 @@ class Camera10Bracket(BaseAssembly):
         # its head on the +X face and the hex nut clamping the −X face.
         cam_z = bracket_z + face_depth / 2
         cam_screw.move(Location(Plane(
-            origin=(plate_thick + cam_offset, half_pitch, cam_z),
+            origin=(plate_thick + cam_screw_offset, half_pitch, cam_z),
             x_dir=(0, 1, 0),
             z_dir=(1, 0, 0),          # head along +X, shank into the plate (−X)
         )))
