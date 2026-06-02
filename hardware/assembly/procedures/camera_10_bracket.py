@@ -62,10 +62,10 @@ class Camera10Bracket(BaseAssembly):
 
     def _parts(self) -> list:
         """Build and place every part, returning them as a flat list.
-        Split out of ``_build`` so downstream steps (camera_20) can reuse
-        the same bracket + fasteners and add to them. Also stashes the
-        camera-screw anchors (``cam_y`` / ``cam_z`` / ``cam_offset``) a
-        gooseneck step needs to mount onto the 1/4-20 stud."""
+        Also stashes the camera-screw anchors (``cam_y`` / ``cam_z`` /
+        ``cam_offset``) on ``self`` — downstream steps (camera_20) build
+        this assembly and read those anchors to mount onto the 1/4-20
+        stud."""
         bracket = CornerBracket().build()
         bhcs    = [Screw("BHCS", "M5", BHCS_LENGTH).build() for _ in range(2)]
         tnuts   = [TNut("hammer", "M5").build() for _ in range(2)]
