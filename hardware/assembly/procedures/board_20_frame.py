@@ -28,7 +28,7 @@ from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.board_10_holder_tnut import BO10HolderTnut
 from hardware.assembly.procedures.frame_10_extrusion_tnut import LONG_LENGTH
 from hardware.assembly.procedures.phone_40_bed_frame import PH40BedFrame
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts.custom.pcb_holder import rib_cx, tab_thick
 
 SHORT_FACE_Z = LONG_LENGTH    # mm — top short 2040 outward (+Z) side face, = 335
@@ -45,7 +45,7 @@ BOARD_PLACEMENT = Location(
 
 
 class BO20Frame(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(39.94, 62.62, 133.88)]
 
     def _build(self) -> Compound:
         base = PH40BedFrame(exploded=False).build()

@@ -52,7 +52,7 @@ HOLE_X = (rib_cx - mount_hole_pitch / 2, rib_cx + mount_hole_pitch / 2)
 
 
 class BO10HolderTnut(BaseAssembly):
-    camera = [FRONT_LEFT_HIGH, Camera(138.99, 20.09, -98.56)]
+    camera = [FRONT_LEFT_HIGH, Camera(-174.71, 33.92, -91.31)]
 
     def _build(self) -> Compound:
         holder = PcbHolder().build()
