@@ -56,11 +56,11 @@ mount_hole_dia       = 3  * MM
 mount_hole_depth     = 1  * MM
 mount_hole_z_spacing = 15 * MM
 
-# Two lead wires exiting the shell front face (+Y), near the bottom.
-# Each is an L: a circle extruded out along +Y, then bent down along -Z,
+# Two lead wires exiting the shell back face (-Y), near the bottom.
+# Each is an L: a circle extruded out along -Y, then bent down along -Z,
 # with a sphere rounding the elbow.
 wire_radius   = 0.5 * MM
-wire_length   = 4   * MM    # protrusion along +Y from the front face
+wire_length   = 4   * MM    # protrusion along -Y from the back face
 wire_drop     = 8   * MM    # then bends down along -Z
 wire_x_offset = 4   * MM    # half-spacing → wires at x = ±wire_x_offset
 wire_z        = -outer_h / 2 + 4 * MM    # height up from the shell bottom
@@ -162,25 +162,26 @@ class Solenoid(BaseStandardPart):
 
         # Two lead wires: circles drawn on the XZ plane (offset back to the
         # coil's Y center so each wire roots *inside* the coil) and extruded
-        # out along +Y, through the open front face, to protrude as leads.
-        # Plane.XZ normal is -Y, so the offset moves into the body and the
-        # negative extrude amount runs back toward +Y.
+        # out along -Y, through the open back face, to protrude as leads.
+        # Plane.XZ normal is -Y, so a positive extrude amount runs outward
+        # to the back; the tip sits wire_length beyond the back face.
         coil_y = -depth / 2
+        tip_y = -depth - wire_length
         with BuildPart() as wires:
             with BuildSketch(Plane.XZ.offset(-coil_y)):
                 with Locations((-wire_x_offset, wire_z), (wire_x_offset, wire_z)):
                     Circle(wire_radius)
-            extrude(amount=-(wire_length - coil_y))
-            # Bend: from each horizontal tip (Y=wire_length), drop along -Z.
+            extrude(amount=wire_length - coil_y)
+            # Bend: from each horizontal tip (Y=tip_y), drop along -Z.
             with BuildSketch(Plane.XY.offset(wire_z)):
-                with Locations((-wire_x_offset, wire_length), (wire_x_offset, wire_length)):
+                with Locations((-wire_x_offset, tip_y), (wire_x_offset, tip_y)):
                     Circle(wire_radius)
             extrude(amount=-wire_drop)
             # Round elbow: a sphere at each corner fills the outer notch the
             # two perpendicular cylinders leave, fusing them into one wire.
             with Locations(
-                (-wire_x_offset, wire_length, wire_z),
-                (wire_x_offset, wire_length, wire_z),
+                (-wire_x_offset, tip_y, wire_z),
+                (wire_x_offset, tip_y, wire_z),
             ):
                 Sphere(radius=wire_radius)
 
