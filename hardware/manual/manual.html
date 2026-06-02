@@ -2425,28 +2425,40 @@
   </div>
 </section>
 
-<!-- SECTION 07 — PHONE · phone_40 (tall-left split, install on frame, notes only) -->
+<!-- SECTION 07 — PHONE · phone_40 (full-page assembled view, same as page 52) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
       <span class="title">PHONE BED<small>phone_40</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
-      <div class="fig tall">
-        <img src="../output/svg/phone_40_bed_frame_exploded_cam0.svg" alt="phone_40_bed_frame exploded" loading="lazy">
-      </div>
-      <div class="fig">
+    <div class="main-inset-br">
+      <div class="fig main" style="transform: translateX(-35mm);">
         <img src="../output/svg/phone_40_bed_frame_assembled_cam0.svg" alt="phone_40_bed_frame assembled" loading="lazy">
       </div>
     </div>
-    <div class="note overlay sm" style="left:140mm; top:60mm; width:60mm;">
-      <h3>Install the bed on the frame</h3>
-      <p>Slide the two cross-beams' M5 T-nuts into the bottom slots of the long 2040 extrusions, near mid-length. The bed hangs below the frame with the phone facing up toward the stylus mechanism.</p>
+    <div class="note overlay sm" style="right:30mm; top:22mm; width:90mm;">
+      <h3>Install the phone bed</h3>
+      <p>Stand the frame on end first — it's far easier to work vertically. Then slide each beam's T-nuts into the slots on the frame's underside.</p>
     </div>
-    <div class="note overlay sm" style="left:140mm; top:128mm; width:60mm;">
-      <h3>Clamp it down</h3>
-      <p>Once positioned, tighten the four M5 screws on the beam ends to lock the T-nuts against the frame. No new hardware — these are the screws already fitted in phone_10.</p>
+    <div class="note overlay sm" style="right:30mm; top:50mm; width:90mm;">
+      <h3>Position the phone</h3>
+      <p>Place a phone on the bed, pushed into the top-left corner. Jog the X carriage across its full travel and check the stylus tip can reach every part of the screen.</p>
+    </div>
+    <div class="note overlay sm" style="right:30mm; top:85mm; width:90mm;">
+      <h3>Dial in the tap</h3>
+      <p>The tip must tap firmly enough to register, but no harder. Too hard can crack the screen; too far or too light and the tap misses. Adjust the solenoid mount height until taps land reliably.</p>
+    </div>
+    <div class="note overlay sm" style="right:30mm; top:124mm; width:90mm; display:flex; gap:4mm; align-items:flex-start;">
+      <svg viewBox="0 0 24 24" style="flex:none; width:9mm; height:9mm; margin-top:1mm;" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="11" fill="none" stroke="#4a8bc7" stroke-width="2"/>
+        <line x1="12" y1="6" x2="12" y2="14" stroke="#4a8bc7" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="12" cy="18" r="1.4" fill="#4a8bc7"/>
+      </svg>
+      <div>
+        <h3>Keep the screen flat</h3>
+        <p>The rear camera bump lifts one corner, so the phone won't lie flat. Slip a thin shim or a few sheets of paper under the low edge until the screen is level and facing straight up. Make sure the phone can't rock or shift when the stylus taps — any tilt or wobble can make it miss.</p>
+      </div>
     </div>
     <div class="foot"><span>53</span><span class="rule"></span><span>53</span></div>
   </div>
