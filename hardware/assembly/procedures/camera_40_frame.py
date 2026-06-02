@@ -29,7 +29,7 @@ from build123d import Compound, Location, Plane
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.board_40_teflon import BO40Teflon
 from hardware.assembly.procedures.camera_30_mount import Camera30Mount
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts.standard.extrusion import leg
 from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT
 
@@ -61,7 +61,7 @@ CAMERA_PLACEMENT = Plane(
 
 class Camera40Frame(BaseAssembly):
     compound_label = "camera_40_frame"
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(35.39, -56.69, 45.46)]
 
     def _build(self) -> Compound:
         base = BO40Teflon(exploded=False).build()
