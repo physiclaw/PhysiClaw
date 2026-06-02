@@ -2581,24 +2581,33 @@
   </div>
 </section>
 
-<!-- SECTION 08 — BOARD · board_40 (tall-left split, exploded left / assembled BL / BOM BR) -->
+<!-- SECTION 08 — BOARD · board_40 (full-page assembled view, same as page 53) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
       <span class="title">PCB BOARD<small>board_40</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
-      <div class="fig tall">
-        <img src="../output/svg/board_40_teflon_exploded_cam0.svg" alt="board_40_teflon exploded" loading="lazy">
-      </div>
-      <div class="fig">
-        <img src="../output/svg/board_40_teflon_assembled_cam0.svg" alt="board_40_teflon assembled" loading="lazy">
+    <div class="main-inset-br">
+      <div class="fig main" style="transform: translateX(-35mm);">
+        <img src="../output/svg/board_40_teflon_assembled_cam0_nrvk.svg" alt="board_40_teflon assembled" loading="lazy">
       </div>
     </div>
-    <div class="note overlay sm" style="left:140mm; top:60mm; width:60mm;">
-      <h3>Route the Teflon tube</h3>
-      <p>Press one end of the PTFE Ø4/2 tube into the holder's left-face bore (the upper M5 hole), then arc it over in an inverted-U and seat the other end in the solenoid mount's keyboard-face slot. Keep the apex clear above the board.</p>
+    <div class="note overlay sm" style="right:30mm; top:30mm; width:90mm;">
+      <h3>Teflon tube</h3>
+      <p>Run the wires through the Teflon tube — it keeps them tidy and clear of the moving belts and motors.</p>
+    </div>
+    <div class="note overlay sm" style="right:30mm; top:50mm; width:90mm;">
+      <h3>Rough length</h3>
+      <p>Make the tube about 350 mm — long enough to reach from the PCB board to the X carriage at its farthest position.</p>
+    </div>
+    <div class="note overlay sm" style="right:30mm; top:80mm; width:90mm;">
+      <h3>Extend the solenoid leads</h3>
+      <p>The solenoid's stock leads are too short to reach the board — splice on extra wire to connect the solenoid to the PCB.</p>
+    </div>
+    <div class="note overlay sm" style="right:30mm; top:110mm; width:90mm;">
+      <h3>PTFE vs FEP</h3>
+      <p>Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.</p>
     </div>
     <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
       <span class="label">Bill of materials</span>
@@ -2607,7 +2616,7 @@
           <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
         </thead>
         <tbody>
-          <tr><td>PTFE tube</td><td class="spec">Ø4/2, 234 mm</td><td class="qty">1</td></tr>
+          <tr><td>Teflon tube</td><td class="spec">Ø5/4, 350mm</td><td class="qty">1</td></tr>
         </tbody>
       </table>
     </div>
