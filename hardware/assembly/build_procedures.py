@@ -1,12 +1,11 @@
 """Build & render every procedure in hardware/assembly/procedures.
 
-Procedures are grouped by family (frame → idler → motor → linear →
-belt → tapz) in dependency order and split into ``DEFAULT_BATCH_SIZE``
-batches, each run in its own subprocess so the OS reclaims all OCCT
-memory on worker exit. OCCT's allocator here is native malloc, which
-never returns freed memory to the OS, so a single all-in-one process
-balloons across the 42 procedures and gets OOM-killed; per-batch
-subprocesses bound peak RSS.
+Procedures are grouped by family in dependency order and split into
+``DEFAULT_BATCH_SIZE`` batches, each run in its own subprocess so the
+OS reclaims all OCCT memory on worker exit. OCCT's allocator here is
+native malloc, which never returns freed memory to the OS, so a single
+all-in-one process balloons across all the procedures and gets
+OOM-killed; per-batch subprocesses bound peak RSS.
 
 Exact HLR rendering (``project_to_viewport`` → ``HLRBRep_Algo``)
 intermittently SIGSEGVs — a nondeterministic OCCT hazard, not an OOM.

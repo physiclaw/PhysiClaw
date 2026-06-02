@@ -31,7 +31,7 @@ _STEM_RE = re.compile(r"^(?P<family>[a-z]+)_(?P<nn>\d+)_(?P<descriptor>.+)$")
 
 # Dependency-order families — lower index built first. Clustering each batch
 # within a family lets the in-batch geometry cache reuse the shared chain.
-_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz")
+_FAMILIES = ("frame", "idler", "motor", "linear", "belt", "tapz", "phone", "board", "camera")
 _FAMILY_PRIORITY = {name: i for i, name in enumerate(_FAMILIES)}
 DEFAULT_BATCH_SIZE = 5
 MAX_STEM_RETRIES = 3
