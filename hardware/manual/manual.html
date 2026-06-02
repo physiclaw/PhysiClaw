@@ -16,7 +16,7 @@
   @page { size: A4 landscape; margin: 0; }
 
   :root {
-    --accent:        #e8344e;
+    --accent:        #d4511a;
     --ink:           #1f1f1f;
     --ink-soft:      #6a6a6a;
     --ink-faint:     #b8b8b8;
@@ -211,13 +211,18 @@
     justify-content: flex-end;
     gap: 4mm;
   }
-  .cover .brand .mark svg { width: 22mm; height: auto; }
+  .cover .brand .mark svg,
+  .cover .brand .mark img { width: 24mm; height: auto; }
   .cover .brand .mark .word {
     font-size: 30pt;
-    font-weight: 800;
-    color: #1a1a1a;
-    letter-spacing: 0.02em;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.015em;
     line-height: 1;
+  }
+  .cover .brand .mark .word .tld {
+    color: var(--accent);
+    font-weight: 600;
   }
   .cover .render {
     position: absolute;
@@ -502,14 +507,27 @@
   /* BACK COVER */
   .back .page-inner {
     padding: 0;
-    background: #1f1f1f;
-    color: #fff;
+    background: var(--page-bg);
+    color: var(--ink);
     height: 100%;
+    position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
   }
-  .back .top { padding: 28mm 18mm 12mm 18mm; flex: 1; }
+  /* Corner wedge — mirrors the front cover's bottom-left motif. */
+  .back .corner {
+    position: absolute;
+    top: 0;
+    right: -10mm;
+    width: 120mm;
+    height: 145mm;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .back .corner svg { width: 100%; height: 100%; }
+  .back .top { padding: 28mm 18mm 12mm 18mm; flex: 1; position: relative; z-index: 1; }
   .back .stamp {
     font-family: var(--font-mono);
     font-size: 11pt;
@@ -522,14 +540,15 @@
     line-height: 1.1;
     margin: 0 0 8mm 0;
     font-weight: 700;
-    max-width: 220mm;
-    letter-spacing: -0.01em;
+    color: var(--ink);
+    max-width: 200mm;
+    letter-spacing: -0.015em;
   }
   .back .quote {
     font-family: var(--font-mono);
     font-size: 13pt;
-    color: rgba(255,255,255,0.7);
-    max-width: 200mm;
+    color: var(--ink-soft);
+    max-width: 190mm;
     line-height: 1.55;
     border-left: 3px solid var(--accent);
     padding-left: 6mm;
@@ -542,10 +561,18 @@
     justify-content: space-between;
     align-items: flex-end;
     font-size: 10pt;
-    color: rgba(255,255,255,0.6);
+    color: var(--ink-soft);
+    position: relative;
+    z-index: 1;
   }
-  .back .bottom strong { color: #fff; }
-  .back .bottom .right { text-align: right; font-family: var(--font-mono); }
+  .back .bottom strong {
+    color: var(--ink);
+    font-size: 12pt;
+    letter-spacing: 0.01em;
+  }
+  .back .bottom .brand-line { display: flex; align-items: center; gap: 5mm; }
+  .back .bottom .footmark { width: 18mm; height: auto; flex: none; }
+  .back .bottom .right { text-align: right; font-family: var(--font-mono); line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -556,36 +583,29 @@
 <section class="page cover">
   <div class="page-inner">
     <div class="stripes">
+      <!-- Corner wedge: a single solid triangle anchored in the bottom-left
+           corner — bold, minimal flat color block. -->
       <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMax meet">
-        <g fill="#e8344e">
-          <path d="M -50,500 L 120,170 L 200,170 L 30,500 Z"/>
-          <path d="M 60,500 L 230,170 L 310,170 L 140,500 Z"/>
-        </g>
+        <path d="M 0,500 L 0,150 L 300,500 Z" fill="#d4511a"/>
       </svg>
     </div>
 
     <div class="brand">
       <div class="mark">
-        <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-          <g fill="#e8344e">
-            <path d="M 5,55 L 25,15 L 35,15 L 15,55 Z"/>
-            <path d="M 25,55 L 45,15 L 55,15 L 35,55 Z"/>
-          </g>
-        </svg>
-        <span class="word">PhysiClaw.ai</span>
+        <img src="crab.svg" alt="PhysiClaw logo">
+        <span class="word">PhysiClaw<span class="tld">.ai</span></span>
       </div>
     </div>
 
     <div class="render">
-      <img src="../output/svg/frame_41_bumper_assembled_cam0.svg"
-           alt="PhysiClaw.ai frame, fully assembled">
+      <img src="../output/svg/camera_40_frame_assembled_cam0.svg"
+           alt="PhysiClaw.ai, fully assembled">
     </div>
 
     <div class="title-block">
-      <h1>PhysiClaw.ai Assembly Manual</h1>
+      <h1>PhysiClaw Assembly Manual</h1>
       <p class="tag">
-        A robotic operator for touchscreen devices —<br>
-        every tap, swipe, and hold driven by code.
+        We build agents that acts for you in the real world.
       </p>
       <div class="red-rule"></div>
     </div>
@@ -2790,6 +2810,11 @@
      ========================================================= -->
 <section class="page back">
   <div class="page-inner">
+    <div class="corner">
+      <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMaxYMin meet">
+        <path d="M 400,0 L 400,350 L 100,0 Z" fill="#d4511a"/>
+      </svg>
+    </div>
     <div class="top">
       <div class="stamp">END OF MANUAL</div>
       <h2>Now teach it what to touch.</h2>
@@ -2798,14 +2823,12 @@
       </p>
     </div>
     <div class="bottom">
-      <div>
-        <div><strong>PhysiClaw.ai</strong></div>
-        <div>Beijing · 2026</div>
-        <div>github.com/echosprint/PhysiClaw</div>
-      </div>
-      <div class="right">
-        <div>v1.0 · Rev A</div>
-        <div>Built from source</div>
+      <div class="brand-line">
+        <img class="footmark" src="crab.svg" alt="PhysiClaw logo">
+        <div>
+          <div><strong>PhysiClaw.ai</strong></div>
+          <div>github.com/echosprint/PhysiClaw</div>
+        </div>
       </div>
     </div>
   </div>
