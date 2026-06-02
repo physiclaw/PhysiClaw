@@ -22,7 +22,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.board_20_frame import BO20Frame, BOARD_PLACEMENT
-from hardware.assembly.projection import MAIN_FRAME_VIEW
+from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts.custom.pcb_holder import cyl_h, standoff_xy, thickness
 from hardware.parts.standard.board import MksBoard, pcb_th
 from hardware.parts.standard.nut import Nut, SPECS as NUT_SPECS
@@ -39,7 +39,7 @@ NUT_EXPLODE  = 25    # mm — exploded: square nuts dropped below the plate
 
 
 class BO30Pcb(BaseAssembly):
-    camera = MAIN_FRAME_VIEW
+    camera = [MAIN_FRAME_VIEW, Camera(55.44, 46.44, 119.69)]
 
     def _build(self) -> Compound:
         base = BO20Frame(exploded=False).build()
