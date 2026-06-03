@@ -332,15 +332,23 @@
     padding-left: 28mm;
   }
 
-  /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet */
-  .print-page { padding-left: 28mm; padding-top: 4mm; }
+  /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
+     Content (intro + grid) is vertically centred in the page body so the
+     sheet stays balanced now that there is no closing section below it. */
+  .print-page {
+    padding-left: 28mm;
+    min-height: 155mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
   .print-page .note { max-width: 165mm; }
   .spec-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 22mm;
-    row-gap: 9mm;
-    margin: 13mm 0;
+    row-gap: 12mm;
+    margin: 16mm 0 0 0;
     max-width: 165mm;
   }
   .spec-item .k {
@@ -836,26 +844,21 @@
     <div class="print-page">
       <div class="note">
         <h3>Part printing settings and guidelines</h3>
-        <p>PhysiClaw's custom parts are produced by Selective Laser Sintering (SLS), not FDM. A laser fuses nylon powder layer by layer, so parts come out solid, isotropic and support-free — there is no infill, no perimeters and no print orientation for you to set. The settings below are what we print to; match them when sourcing your own parts.</p>
+        <p>PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. This matters here: the parts carry side holes and overhangs that FDM cannot print cleanly. Match the specifications below when sourcing parts.</p>
       </div>
 
       <div class="spec-grid">
         <div class="spec-item"><p class="k">3D Printing Process</p><p class="v">Selective Laser Sintering (SLS)</p></div>
-        <div class="spec-item"><p class="k">Part Density</p><p class="v">Solid — no infill</p></div>
+        <div class="spec-item"><p class="k">Part Density</p><p class="v">Solid (no infill)</p></div>
 
-        <div class="spec-item"><p class="k">Material</p><p class="v">Nylon PA12 (PA2200)</p></div>
-        <div class="spec-item"><p class="k">Dimensional Tolerance</p><p class="v">±0.3 mm (±0.3%)</p></div>
+        <div class="spec-item"><p class="k">Material</p><p class="v">Black PA12 nylon (or equivalent)</p></div>
+        <div class="spec-item"><p class="k">Dimensional Tolerance</p><p class="v">±0.3% (min ±0.3 mm)</p></div>
 
-        <div class="spec-item"><p class="k">Layer Height</p><p class="v">Recommended: 0.10 mm</p></div>
-        <div class="spec-item"><p class="k">Orientation</p><p class="v">Set by the print shop</p></div>
+        <div class="spec-item"><p class="k">Layer Thickness</p><p class="v">100 µm (0.1 mm)</p></div>
+        <div class="spec-item"><p class="k">Orientation</p><p class="v">Service default — no supports</p></div>
 
-        <div class="spec-item"><p class="k">Min Wall Thickness</p><p class="v">Recommended: ≥ 1.0 mm</p></div>
-        <div class="spec-item"><p class="k">Surface Finish</p><p class="v">Bead-blasted, natural grey</p></div>
-      </div>
-
-      <div class="note">
-        <h3>Ordering parts</h3>
-        <p>Most builders don't own an SLS machine. Export the custom parts from <span class="ref">hardware/parts/custom/</span> (run <em>export_custom.py</em>) and send them to any SLS bureau — JLC3DP, Shapeways, or a local service — specifying Nylon PA12. The full set is small and inexpensive to print. Pre-printed kits are also available at <a href="https://PhysiClaw.ai">PhysiClaw.ai</a>.</p>
+        <div class="spec-item"><p class="k">Minimum Wall Thickness</p><p class="v">1.0 mm</p></div>
+        <div class="spec-item"><p class="k">Surface Finish</p><p class="v">Raw / as-printed</p></div>
       </div>
     </div>
 
