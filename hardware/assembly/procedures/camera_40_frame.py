@@ -1,8 +1,8 @@
 """Camera on the frame — mounts the camera_30 arm onto board_40_teflon's RIGHT
 long extrusion, on its outward (+X) side face.
 
-In phone_40 / board_40 world the two long 2040s run along Z at X = ±95; the
-right long's outward side face is its +X face (at X = 105). That 40 mm face
+In phone_40 / board_40 world the two long 2040s run along Z at X = ±105; the
+right long's outward side face is its +X face (at X = 115). That 40 mm face
 carries two T-slots at world Y = ±10 (running along Z). The corner bracket is
 installed HORIZONTALLY — its two hammer T-nuts (30 mm apart) drop into the same
 slot, spaced along Z — so the gooseneck arm reaches out over the phone bed and
@@ -30,14 +30,18 @@ from hardware.assembly.base import BaseAssembly
 from hardware.assembly.procedures.board_40_teflon import BO40Teflon
 from hardware.assembly.procedures.camera_30_mount import Camera30Mount
 from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
+from hardware.assembly.travel_ranges import X_EXTRUSION_LENGTH
 from hardware.parts.standard.extrusion import leg
 from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT
 
-# Right long 2040 — center at world X = +95 (phone_40 frame), 20 mm along X, so
-# its outward +X side face sits at X = 95 + leg = 105. The 40 mm face has two
-# slots at world Y = ±10.
-LONG_CENTER_X = 95
-FACE_X        = LONG_CENTER_X + leg    # = 105, outward +X side face
+# Right long 2040. The two longs butt flush against the ends of the
+# X_EXTRUSION_LENGTH-wide short members, so each long's INNER face sits at
+# X = ±X_EXTRUSION_LENGTH/2 and its center one leg further out. Derived (not a
+# magic 95/105) so it tracks the frame width — a stale literal had the bracket
+# seating 10 mm inside the extrusion. The long is 20 mm along X (two legs); its
+# outward +X side face is the 40 mm face, carrying two slots at world Y = ±10.
+LONG_CENTER_X = X_EXTRUSION_LENGTH / 2 + leg   # = 105 (inner face at 95, +leg)
+FACE_X        = LONG_CENTER_X + leg            # = 115, outward +X side face
 SLOT_Y        = 10                     # the second (lower, +Y / bed-side) slot
 MOUNT_Z       = 147.5                  # along the long, at the bed's mid-length
 DECK_HOLE_X   = 15                     # bracket-local X of the two deck holes
