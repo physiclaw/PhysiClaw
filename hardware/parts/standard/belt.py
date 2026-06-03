@@ -14,13 +14,13 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import LEFT_PULLEY_GAP
 from hardware.parts.base import BaseStandardPart
-from hardware.parts.custom.pulley_mount_front import (
+from hardware.parts.custom.idler_mount_front import (
     slot_center_y as ld_slot_center_y,
     thickness as ld_block_thickness,
     top_hole_y as ld_top_hole_y,
     width as ld_block_width,
 )
-from hardware.parts.custom.pulley_mount_motor import (
+from hardware.parts.custom.idler_mount_motor import (
     length as lu_block_length,
     outer_hole_offset,
     thickness as lu_block_thickness,
@@ -285,7 +285,7 @@ RU_down1 = (+_half_w, _lower_belt_y, _ru_left_col_z)
 RU_top1  = (+_half_w, _upper_belt_y, _ru_left_col_z)
 RU_down2 = (+_half_w, _lower_belt_y, _ru_right_col_z)
 
-# LD / RD: PulleyMountFront block at the bottom t-nut; idler sits on the
+# LD / RD: IdlerMountFront block at the bottom t-nut; idler sits on the
 # block's top-face M4 hole at native (0, top_hole_y, …) — y_dir=(0,0,1)
 # in placement maps native +Y → world +Z, so idler Z = block_z + top_hole_y.
 _ld_block_z = LONG_BOT_GAP - ld_slot_center_y

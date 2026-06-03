@@ -1,4 +1,4 @@
-"""Idler-mount bracket (left-up) — flat bracket tying the PulleyMountMotor
+"""Idler-mount bracket (left-up) — flat bracket tying the IdlerMountMotor
 lu block to a frame extrusion via two M5×10 BHCS. One screw catches a
 hammer T-nut in the frame slot; the other threads into the captive M5
 square nut that idler_10_lu already seated in the lu block's top pocket.

@@ -1,5 +1,5 @@
 """Idler mount (right-down) — single smooth idler raised on an M5×10×9
-spacer, held to a PulleyMountFront block by a 20 mm M4 shoulder screw
+spacer, held to a IdlerMountFront block by a 20 mm M4 shoulder screw
 through the block's top-face M4 hole (at world x = 0, y = top_hole_y,
 on the +Y-half of the top face). The 5 mm shoulder seats on the block
 top; the M4 thread reaches down into the 4.3 mm clearance hole and
@@ -39,8 +39,8 @@ from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.projection import FRONT_LEFT_HIGH
-from hardware.parts.custom.pulley_mount_front import (
-    PulleyMountFront,
+from hardware.parts.custom.idler_mount_front import (
+    IdlerMountFront,
     back_pocket_center_z,
     slot_center_y,
     slot_depth,
@@ -68,7 +68,7 @@ class ID40Rd(BaseAssembly):
     camera = FRONT_LEFT_HIGH
 
     def _build(self) -> Compound:
-        block = PulleyMountFront().build()
+        block = IdlerMountFront().build()
         washer_h      = RING_SPECS[WASHER_SPEC]["height"]
         spacer_h      = RING_SPECS[SPACER_SPEC]["height"]
         nut_thickness = NUT_SPECS["square"]["M4"]["thickness"]

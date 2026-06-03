@@ -62,7 +62,7 @@ from hardware.assembly.procedures.frame_41_bumper import FR41Bumper
 from hardware.assembly.procedures.idler_10_lu import ID10Lu
 from hardware.assembly.procedures.idler_11_lu import ID11Lu
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
-from hardware.parts.custom.pulley_mount_motor import (
+from hardware.parts.custom.idler_mount_motor import (
     front_hole_center_z,
     thickness as block_thickness,
     width as block_width,

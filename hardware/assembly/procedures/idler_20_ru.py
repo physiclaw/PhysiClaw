@@ -1,5 +1,5 @@
 """Idler mount (right-up) — two shoulder-screw stacks fastened into the
-PulleyMountMotor block's two outer M4 through-holes (top face, at
+IdlerMountMotor block's two outer M4 through-holes (top face, at
 x = ±outer_hole_offset). Both columns use a 20 mm shoulder: the LEFT
 column raises a single idler on an M5×10×9 spacer with a thin thrust
 washer between them, the RIGHT column stacks two idlers each on its
@@ -56,8 +56,8 @@ from build123d import Axis, Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.projection import FRONT_LEFT_HIGH
-from hardware.parts.custom.pulley_mount_motor import (
-    PulleyMountMotor,
+from hardware.parts.custom.idler_mount_motor import (
+    IdlerMountMotor,
     front_hole_center_z,
     length as block_length,
     outer_hole_offset,
@@ -87,7 +87,7 @@ class ID20Ru(BaseAssembly):
     camera = FRONT_LEFT_HIGH
 
     def _build(self) -> Compound:
-        block = PulleyMountMotor().build()
+        block = IdlerMountMotor().build()
         washer_h      = RING_SPECS[WASHER_SPEC]["height"]
         spacer_h      = RING_SPECS[SPACER_SPEC]["height"]
         nut_thickness = NUT_SPECS["square"]["M4"]["thickness"]

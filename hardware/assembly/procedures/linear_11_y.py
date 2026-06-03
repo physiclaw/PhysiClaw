@@ -9,8 +9,8 @@ each instance onto the corresponding extrusion:
 
   * The rail is centered in the free world-Z range between the two
     corner-mount blocks on each long extrusion — LU/RU
-    (PulleyMountMotor, 42 mm length) at the top and LD/RD
-    (PulleyMountFront, 20 mm width) at the bottom. Centering on
+    (IdlerMountMotor, 42 mm length) at the top and LD/RD
+    (IdlerMountFront, 20 mm width) at the bottom. Centering on
     LONG_LENGTH/2 would put the rail top past the LU/RU block bottom
     and clash with it; the midpoint of [LD top, LU bottom] sits the
     rail cleanly between them.
@@ -45,11 +45,11 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.linear_10_y import LI10Y, RAIL_LENGTH
 from hardware.assembly.procedures.motor_30_pulley import MO30Pulley
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
-from hardware.parts.custom.pulley_mount_front import (
+from hardware.parts.custom.idler_mount_front import (
     slot_center_y as ld_slot_center_y,
     width as ld_block_width,
 )
-from hardware.parts.custom.pulley_mount_motor import length as lu_block_length
+from hardware.parts.custom.idler_mount_motor import length as lu_block_length
 from hardware.parts.standard.mgn9h import (
     block_top_z as slider_top_z,
     slider_position,
@@ -68,10 +68,10 @@ class LI11Y(BaseAssembly):
         slot_face_y = -EXT_THICKNESS
 
         # World-Z extents of the corner-mount blocks on each long.
-        # LU/RU block (PulleyMountMotor) is centered on the top t-nut
+        # LU/RU block (IdlerMountMotor) is centered on the top t-nut
         # at world z = LONG_LENGTH - LONG_TOP_GAP with its 42 mm
         # length axis along world Z, so its bottom edge sits length/2
-        # below that. LD/RD block (PulleyMountFront) is centered at
+        # below that. LD/RD block (IdlerMountFront) is centered at
         # world z = LONG_BOT_GAP - slot_center_y (off-centre BHCS)
         # with its 20 mm width axis along world Z, so its top edge
         # sits width/2 above that. Center the rail in the gap between.

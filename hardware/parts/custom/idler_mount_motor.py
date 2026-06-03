@@ -44,7 +44,7 @@ side_pocket_center_x   = (length - side_pocket_depth) / 2
 cube_corner_fillet_radius = 2 * MM
 
 
-class PulleyMountMotor(BaseCustomPart):
+class IdlerMountMotor(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)
@@ -100,4 +100,4 @@ class PulleyMountMotor(BaseCustomPart):
 
 
 if __name__ == "__main__":
-    PulleyMountMotor().export()
+    IdlerMountMotor().export()

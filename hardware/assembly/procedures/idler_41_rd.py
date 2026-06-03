@@ -1,10 +1,10 @@
 """RD idler-mount + frame composition — extends idler_31_ld (frame +
 LU/RU mounts + their brackets + LD mount) by adding the right-down
-counterpart: idler_40_rd (single-idler PulleyMountFront block with the
+counterpart: idler_40_rd (single-idler IdlerMountFront block with the
 spacer + washer + idler stack on a 20 mm M4 shoulder screw).
 
 The RD block (20 × 20 × 18) mounts onto long_right's slot face at the
-BOTTOM t-nut. Uses the same orientation as LD — the PulleyMountFront
+BOTTOM t-nut. Uses the same orientation as LD — the IdlerMountFront
 block is symmetric across its own YZ plane and has no front-face
 feature requiring a chiral flip, so mirroring to the right side only
 changes the world X position (-half_w → +half_w).
@@ -48,7 +48,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.idler_31_ld import ID31Ld
 from hardware.assembly.procedures.idler_40_rd import ID40Rd
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
-from hardware.parts.custom.pulley_mount_front import (
+from hardware.parts.custom.idler_mount_front import (
     slot_center_y,
     thickness as block_thickness,
 )

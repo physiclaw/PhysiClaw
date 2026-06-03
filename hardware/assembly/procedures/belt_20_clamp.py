@@ -89,11 +89,11 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     LONG_TOP_GAP,
 )
 from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
-from hardware.parts.custom.pulley_mount_front import (
+from hardware.parts.custom.idler_mount_front import (
     slot_center_y as ld_slot_center_y,
     width as ld_block_width,
 )
-from hardware.parts.custom.pulley_mount_motor import length as lu_block_length
+from hardware.parts.custom.idler_mount_motor import length as lu_block_length
 from hardware.parts.custom.xy_joint_left import (
     big_csk_y as joint_big_csk_y_n,
     csk_hole_from_bottom as joint_csk_hole_from_bottom,

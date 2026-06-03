@@ -34,7 +34,7 @@ front_corner_fillet_radius = 1 * MM   # 2 outer vertical corners of the front fa
 back_corner_fillet_radius  = 2 * MM   # 2 outer vertical corners of the back face
 
 
-class PulleyMountFront(BaseCustomPart):
+class IdlerMountFront(BaseCustomPart):
     def _build(self):
         with BuildPart() as my_part:
             Box(length, width, thickness)
@@ -87,4 +87,4 @@ class PulleyMountFront(BaseCustomPart):
 
 
 if __name__ == "__main__":
-    PulleyMountFront().export()
+    IdlerMountFront().export()

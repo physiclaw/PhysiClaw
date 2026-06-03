@@ -1,12 +1,12 @@
 """LD idler-mount + frame composition — extends idler_22_ru (frame +
 LU mount + RU mount + their brackets) by adding the left-down
-counterpart: idler_30_ld (single-idler PulleyMountFront block populated
+counterpart: idler_30_ld (single-idler IdlerMountFront block populated
 with idler, ring, shoulder screw, captive M4 nut, and frame-mount
 M5 BHCS).
 
 The LD block (20 × 20 × 18) mounts onto long_left's slot face at the
-BOTTOM t-nut. Unlike the LU/RU PulleyMountMotor blocks, the M5 BHCS in
-the PulleyMountFront block is OFF-CENTER (at native y = slot_center_y
+BOTTOM t-nut. Unlike the LU/RU IdlerMountMotor blocks, the M5 BHCS in
+the IdlerMountFront block is OFF-CENTER (at native y = slot_center_y
 = -6) — pinning the BHCS to the t-nut forces the block to extend
 asymmetrically in world Z. The chosen orientation puts the back face
 (native +Y, with the captive M4 nut pocket) toward world +Z (the frame
@@ -56,7 +56,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
 from hardware.assembly.procedures.idler_22_ru import ID22Ru
 from hardware.assembly.procedures.idler_30_ld import ID30Ld
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
-from hardware.parts.custom.pulley_mount_front import (
+from hardware.parts.custom.idler_mount_front import (
     slot_center_y,
     thickness as block_thickness,
 )

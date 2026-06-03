@@ -71,7 +71,7 @@ from hardware.assembly.procedures.idler_12_lu import ID12Lu
 from hardware.assembly.procedures.idler_20_ru import ID20Ru
 from hardware.assembly.procedures.idler_21_ru import ID21Ru
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
-from hardware.parts.custom.pulley_mount_motor import (
+from hardware.parts.custom.idler_mount_motor import (
     front_hole_center_z,
     thickness as block_thickness,
     width as block_width,
