@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PhysiClaw.ai Assembly Manual</title>
-<style>
-  /* ============================================================
+<style>  /* ============================================================
      PhysiClaw.ai Assembly Manual
      One section per procedure family (frame, idler, motor,
      linear, belt, tapz, phone, board, camera). Each section lists
@@ -124,6 +123,7 @@
     letter-spacing: 0.01em;
     line-height: 1.2;
   }
+  .note h3.normal-case { text-transform: none; }
   .note p {
     color: var(--ink-soft);
     font-size: 11pt;
@@ -437,6 +437,9 @@
      style. */
   .bom {
     position: absolute;
+    right: 16mm;
+    bottom: 18mm;
+    width: 75mm;
     z-index: 2;
     font-size: 10pt;
     background: rgba(255, 255, 255, 0.95);
@@ -495,6 +498,8 @@
     height: 155mm;
   }
   .tall-left > .tall { grid-row: span 2; }
+  /* Hero variant — taller top-left figure (top row 1.4×). */
+  .tall-left.hero { grid-template-rows: 1.4fr 1fr; }
 
   /* WIDE-TOP (one figure on top spanning full width, two cells side-by-side
      below). */
@@ -935,7 +940,7 @@
       <h3>Preload the T-nuts</h3>
       <p>Slide every T-nut into its slot before squaring the frame.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -974,7 +979,7 @@
       <h3>Counterbores face out</h3>
       <p>The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1008,7 +1013,7 @@
       <h3>Drop-in, not slide-in</h3>
       <p>One joining plate reinforces each corner. Its drop-in T-nuts seat into the closed frame and quarter-turn to lock, so you never have to take the frame apart.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1048,7 +1053,7 @@
       <h3>Use the screws that come with the bumpers</h3>
       <p>Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1114,7 +1119,7 @@
       <h3>Flat face toward the screw</h3>
       <p>Seat each square nut with its flat face pointing toward its screw.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1143,7 +1148,7 @@
       <span class="title">IDLER<small>idler_12</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/idler_12_lu_exploded_cam1_dgik.svg" alt="idler_12_lu exploded" loading="lazy">
       </div>
@@ -1159,7 +1164,7 @@
       <h3>2 mm gap to the corner plate</h3>
       <p>Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1199,7 +1204,7 @@
       <h3>Spacer must total 9 mm</h3>
       <p>The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1228,7 +1233,7 @@
       <span class="title">IDLER<small>idler_22</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/idler_22_ru_exploded_cam1_lddo.svg" alt="idler_22_ru exploded" loading="lazy">
       </div>
@@ -1240,7 +1245,7 @@
       <h3>Match the left block's gap</h3>
       <p>Set the right block the same 2 mm clear of the frame-corner plate as the left block — keep both gaps equal so the idler stations stay symmetric.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1276,7 +1281,7 @@
       <h3>Motor A idler — sits lower</h3>
       <p>This idler carries Motor A's belt. With no spacer, it rides on the lower belt plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1303,7 +1308,7 @@
       <span class="title">IDLER<small>idler_31</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/idler_31_ld_exploded_cam1_qzxx.svg" alt="idler_31_ld exploded" loading="lazy">
       </div>
@@ -1338,7 +1343,7 @@
       <h3>Motor B idler — sits higher</h3>
       <p>This idler carries Motor B's belt. The 9 mm spacer lifts it onto the upper belt plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1366,7 +1371,7 @@
       <span class="title">IDLER<small>idler_41</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/idler_41_rd_exploded_cam1_skiy.svg" alt="idler_41_rd exploded" loading="lazy">
       </div>
@@ -1431,7 +1436,7 @@
       <h3>Tighten in a cross pattern</h3>
       <p>Run all four motor screws in finger-tight first, then tighten opposite corners in pairs. This pulls the motor flat against the bracket instead of tilting it to one side.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1457,7 +1462,7 @@
       <span class="title">MOTOR<small>motor_11</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/motor_11_frame_exploded_cam1_qued.svg" alt="motor_11_frame exploded" loading="lazy">
       </div>
@@ -1500,7 +1505,7 @@
       <h3>Right motor — mirror image</h3>
       <p>Built like the left motor, but mirrored: the cable connector faces right.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1526,7 +1531,7 @@
       <span class="title">MOTOR<small>motor_21</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/motor_21_frame_exploded_cam1_homb.svg" alt="motor_21_frame exploded" loading="lazy">
       </div>
@@ -1557,7 +1562,7 @@
       <span class="title">MOTOR<small>motor_30</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/motor_30_pulley_exploded_cam1_wcny.svg" alt="motor_30_pulley exploded" loading="lazy">
       </div>
@@ -1574,7 +1579,7 @@
       <p style="color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;">The root of all issues.</p>
       <p>Apply threadlocker to every grub screw — no exceptions. Loose grub screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1653,7 +1658,7 @@
       </div>
     </div>
 
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1705,7 +1710,7 @@
       <span class="title">LINEAR MOTION<small>linear_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/linear_20_joint_exploded_cam1_mleb.svg" alt="linear_20_joint exploded" loading="lazy">
       </div>
@@ -1721,7 +1726,7 @@
       <h3>Tighten in a cross pattern</h3>
       <p>Run all four screws in finger-tight first, then tighten opposite corners in pairs. This seats the joint flat on the slider instead of tilting it to one side.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1757,7 +1762,7 @@
       <h3>Preload the X-beam T-nuts</h3>
       <p>Slide both M5 T-nuts in from the open end now — they're captive once the ends are blocked.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1781,7 +1786,7 @@
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="main-inset-br">
-      <div class="fig main" style="transform: translateX(-15mm);">
+      <div class="fig main" style="transform: translateX(-20mm);">
         <img src="../output/svg/linear_31_x_exploded_cam1_opwr.svg" alt="linear_31_x exploded" loading="lazy">
       </div>
     </div>
@@ -1789,7 +1794,7 @@
       <h3>Check the X beam slides smoothly</h3>
       <p>The X beam should glide freely along the Y rails. If it binds, realign the Y rails until it runs smoothly, then tighten them from the center bolt outward.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1823,7 +1828,7 @@
       <h3>X rail — same as the Y rails</h3>
       <p>Mount this rail just like the Y rails: let the T-nuts hang loose at first, then tighten to draw them up.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1879,7 +1884,7 @@
       <h3>Motor B idler — sits higher</h3>
       <p>This idler carries Motor B's belt on the left joint. The 9 mm spacer lifts it above the others, keeping its belt on the upper plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1904,7 +1909,7 @@
       <span class="title">LINEAR MOTION<small>linear_41</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/linear_41_idler_lj1_exploded_cam1_ekiq.svg" alt="linear_41_idler_lj1 exploded" loading="lazy">
       </div>
@@ -1916,7 +1921,7 @@
       <h3>Use the correct hole</h3>
       <p>The idler mounts in the top hole of the left joint — take care not to use the wrong one.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1951,7 +1956,7 @@
       <p style="color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;">Use the toothed idler here, not the smooth one.</p>
       <p>It carries Motor A's belt and, with no spacer, rides on the lower belt plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -1975,7 +1980,7 @@
       <span class="title">LINEAR MOTION<small>linear_43</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/linear_43_idler_lj2_exploded_cam1_ojoy.svg" alt="linear_43_idler_lj2 exploded" loading="lazy">
       </div>
@@ -1987,7 +1992,7 @@
       <h3>Install in the right position</h3>
       <p>Before tightening, confirm the idler is seated in the correct position on the joint.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2021,7 +2026,7 @@
       <h3>Motor A idler — sits lower</h3>
       <p>This idler carries Motor A's belt on the right joint, in the top hole. With no spacer, it rides on the lower belt plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2045,7 +2050,7 @@
       <span class="title">LINEAR MOTION<small>linear_45</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/linear_45_idler_rj1_exploded_cam1_njol.svg" alt="linear_45_idler_rj1 exploded" loading="lazy">
       </div>
@@ -2057,7 +2062,7 @@
       <h3>Install in the right position</h3>
       <p>Before tightening, confirm the idler is seated in the correct position on the joint.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2092,7 +2097,7 @@
       <p style="color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;">Use the toothed idler here, not the smooth one.</p>
       <p>It carries Motor B's belt and, with the 9 mm spacer, rides on the upper belt plane.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2117,7 +2122,7 @@
       <span class="title">LINEAR MOTION<small>linear_47</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/linear_47_idler_rj2_exploded_cam1_ahca.svg" alt="linear_47_idler_rj2 exploded" loading="lazy">
       </div>
@@ -2129,7 +2134,7 @@
       <h3>Check all four idlers</h3>
       <p>All four idlers are now mounted on the XY joints. Recheck that each one sits in its correct location.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2173,7 +2178,7 @@
       <span class="title">BELT PATH<small>belt_10 · belt_11</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/belt_10_motor_a_exploded_cam0_sstk.svg" alt="belt_10_motor_a exploded" loading="lazy">
       </div>
@@ -2193,7 +2198,7 @@
       <h3>Tension by sliding the motor</h3>
       <p>Leave Motor A's two M5 screws loose, clamp both belt ends into the clamp, then slide the motor to pull the belt tight.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2216,7 +2221,7 @@
       <span class="title">BELT PATH<small>belt_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/belt_20_clamp_exploded_cam1_vbba.svg" alt="belt_20_clamp exploded" loading="lazy">
       </div>
@@ -2232,7 +2237,7 @@
       <h3>Match the Motor B belt length</h3>
       <p>Cut the Motor B belt to the same length before fitting it to its clamp.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2255,7 +2260,7 @@
       <span class="title">BELT PATH<small>belt_30 · belt_11</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/belt_30_motor_b_exploded_cam0_uesm.svg" alt="belt_30_motor_b exploded" loading="lazy">
       </div>
@@ -2294,7 +2299,7 @@
       <p>For a quick check, move the X carriage fully to the motor side and pluck the indicated belts with a finger. The two should feel and sound about the same — matching pitch means roughly equal tension.</p>
     </div>
     <div class="note overlay sm" style="left:152mm; top:120mm; width:112mm;">
-      <h3 style="text-transform:none;">75Hz AT 220mm</h3>
+      <h3 class="normal-case">75Hz AT 220mm</h3>
       <p>For a precise check, measure each belt with a tuning app on your phone while the gantry is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.</p>
     </div>
     <div class="foot"><span>46</span><span class="rule"></span><span>46</span></div>
@@ -2330,7 +2335,7 @@
       <span class="title">STYLUS CARRIAGE<small>tapz_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/tapz_10_solenoid_tip_exploded_cam1_botx.svg" alt="tapz_10_solenoid_tip exploded" loading="lazy">
       </div>
@@ -2346,7 +2351,7 @@
       <h3>Solenoid mount holes</h3>
       <p>Two M3 holes, 15 mm apart.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2369,7 +2374,7 @@
       <span class="title">STYLUS CARRIAGE<small>tapz_11</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/tapz_11_solenoid_attach_exploded_cam1_cjmx.svg" alt="tapz_11_solenoid_attach exploded" loading="lazy">
       </div>
@@ -2385,7 +2390,7 @@
       <h3>Route the wire</h3>
       <p>As indicated, feed the solenoid wire into the rectangular hole on the mount side, then run it up and out through the rectangular hole at the top.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2408,7 +2413,7 @@
       <span class="title">STYLUS CARRIAGE<small>tapz_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/tapz_20_solenoid_mount_exploded_cam1_hmwg.svg" alt="tapz_20_solenoid_mount exploded" loading="lazy">
       </div>
@@ -2420,7 +2425,7 @@
       <h3>Mount the solenoid to the clamp</h3>
       <p>Six screws hold the solenoid assembly to the clamp. To adjust the stylus height later, undo them and refit at a different hole pair.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2478,7 +2483,7 @@
       <h3>Make two</h3>
       <p>You need two identical cross-beams for the bed.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2502,7 +2507,7 @@
       <span class="title">PHONE BED<small>phone_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/phone_20_bed_tnut_exploded_cam1.svg" alt="phone_20_bed_tnut exploded" loading="lazy">
       </div>
@@ -2510,7 +2515,7 @@
         <img src="../output/svg/phone_20_bed_tnut_assembled_cam0.svg" alt="phone_20_bed_tnut assembled" loading="lazy" style="width:70%; height:70%; margin:auto;">
       </div>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2615,7 +2620,7 @@
       <span class="title">PCB BOARD<small>board_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/board_10_holder_tnut_exploded_cam1_bjiv.svg" alt="board_10_holder_tnut exploded" loading="lazy">
       </div>
@@ -2627,7 +2632,7 @@
       <h3>Fit the holder T-nuts</h3>
       <p>Leave them loose for the next step.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2651,7 +2656,7 @@
       <span class="title">PCB BOARD<small>board_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/board_20_frame_assembled_cam1_yszm.svg" alt="board_20_frame exploded" loading="lazy">
       </div>
@@ -2674,7 +2679,7 @@
       <span class="title">PCB BOARD<small>board_30</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/board_30_pcb_exploded_cam1_pyik.svg" alt="board_30_pcb exploded" loading="lazy">
       </div>
@@ -2686,7 +2691,7 @@
       <h3>Fasten the PCB</h3>
       <p>Four screw–nut pairs. The lower two nuts are obscured and not drawn.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2731,7 +2736,7 @@
       <h3>PTFE vs FEP</h3>
       <p>Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2775,7 +2780,7 @@
       <span class="title">CAMERA<small>camera_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/camera_10_bracket_exploded_cam1_dhjg.svg" alt="camera_10_bracket exploded" loading="lazy">
       </div>
@@ -2787,7 +2792,7 @@
       <h3>1/4-20, not metric</h3>
       <p>The socket screw and hex nut that the gooseneck mounts on are 1/4-20 — the imperial tripod thread (≈ 6.35 mm). Don't substitute an M6.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2813,7 +2818,7 @@
       <span class="title">CAMERA<small>camera_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/camera_20_gooseneck_exploded_cam0.svg" alt="camera_20_gooseneck exploded" loading="lazy">
       </div>
@@ -2825,7 +2830,7 @@
       <h3>Thread on the gooseneck</h3>
       <p>Spin the gooseneck's female end onto the stud, snug against the hex nut. The free male end takes the camera next.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
@@ -2847,7 +2852,7 @@
       <span class="title">CAMERA<small>camera_30</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="tall-left" style="grid-template-rows: 1.4fr 1fr;">
+    <div class="tall-left hero">
       <div class="fig tall">
         <img src="../output/svg/camera_30_mount_exploded_cam0.svg" alt="camera_30_mount exploded" loading="lazy">
       </div>
@@ -2859,7 +2864,7 @@
       <h3>Clip on the camera</h3>
       <p>Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.</p>
     </div>
-    <div class="bom" style="right: 16mm; bottom: 18mm; width: 75mm;">
+    <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
         <thead>
