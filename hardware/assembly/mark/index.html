@@ -198,6 +198,11 @@
   let selectedIdx = -1;
   let moveDrag    = null;       // { startSVG, origGeom } while dragging a selected shape
 
+  // When set, the editable ``shapes`` were loaded from an existing patch op
+  // and Save REPLACES that op in place (stable id / filename) rather than
+  // appending a new one. Clear resets it so the next Save appends.
+  let editingId   = null;
+
   function setStatus(msg, kind) {
     status.textContent = msg;
     status.className = kind || '';
@@ -665,8 +670,9 @@
     shapes = []; current = []; dragShape = null;
     appliedViewBox = null;
     currentPreop = 'orig';
+    editingId = null;            // leave edit mode → next Save appends a new op
     cancelCrop();
-    setStatus('Ready — click to mark');
+    setStatus('Ready — click to mark (new op)');
   }
 
   function vbToString(vb) {
@@ -939,6 +945,7 @@
           shapes,
           viewBox: appliedViewBox,
           preop:   currentPreop,
+          id:      editingId,   // null → append a new op; set → replace in place
         }),
       });
       if (!res.ok) {
@@ -948,14 +955,20 @@
       }
       // Success path is raw SVG; op metadata rides in X-Op-* headers.
       const opId = res.headers.get('X-Op-Id');
-      installSvg(await res.text());
-      shapes = []; current = []; dragShape = null;
-      appliedViewBox = null;
-      currentPreop = opId;
-      setStatus(
-        `Saved op ${opId} (preop ${res.headers.get('X-Op-Preop')}) → ${res.headers.get('X-Op-Path')}`,
-        'ok',
-      );
+      if (editingId) {
+        // Replaced the op in place — the canvas already shows its base plus
+        // the live editable shapes, so nothing to reload; keep editing.
+        setStatus(`Saved op ${opId} (in place) → still editing`, 'ok');
+      } else {
+        installSvg(await res.text());
+        shapes = []; current = []; dragShape = null;
+        appliedViewBox = null;
+        currentPreop = opId;
+        setStatus(
+          `Saved op ${opId} (preop ${res.headers.get('X-Op-Preop')}) → ${res.headers.get('X-Op-Path')}`,
+          'ok',
+        );
+      }
     } catch (err) {
       setStatus('Save failed: ' + err.message, 'err');
     } finally {
@@ -1027,6 +1040,46 @@
     );
   }
 
+  // Load the latest saved op (if any) into the editable layer so its shapes
+  // can be selected / moved / recoloured. The canvas shows the op's base (its
+  // preop chain); a subsequent Save replaces this op in place. Returns false
+  // when there's no patch yet (caller stays in fresh draw mode).
+  async function loadLatestForEdit() {
+    let edit;
+    try {
+      const res = await fetch('/patch');
+      if (!res.ok) return false;
+      edit = (await res.json()).edit;
+    } catch (err) {
+      return false;
+    }
+    if (!edit) return false;
+    let baseText;
+    try {
+      const baseUrl = edit.preop === 'orig'
+        ? '/svg'
+        : '/base?upto=' + encodeURIComponent(edit.preop);
+      const b = await fetch(baseUrl);
+      if (!b.ok) throw new Error('HTTP ' + b.status);
+      baseText = await b.text();
+    } catch (err) {
+      setStatus('Failed to load base for op ' + edit.id + ': ' + err.message, 'err');
+      return false;
+    }
+    // Set state first so installSvg's renderStatic paints the loaded shapes.
+    shapes = JSON.parse(JSON.stringify(edit.shapes || []));
+    current = []; dragShape = null;
+    editingId = edit.id;
+    currentPreop = edit.preop;
+    appliedViewBox = edit.viewBox || null;
+    selectedIdx = -1;
+    installSvg(baseText);
+    setMode('select');
+    const n = shapes.length;
+    setStatus(`Editing op ${edit.id} (${n} shape${n === 1 ? '' : 's'}) — select, move, recolour, then Save`, 'ok');
+    return true;
+  }
+
   async function boot() {
     setStatus('Loading SVG…');
     bindWindowEvents();
@@ -1042,7 +1095,10 @@
       setStatus('Ready — click to mark');
     } catch (err) {
       setStatus('Failed to load /svg: ' + err.message, 'err');
+      return;
     }
+    // If this source already has a patch, open its latest op for editing.
+    await loadLatestForEdit();
   }
 
   boot();

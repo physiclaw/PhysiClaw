@@ -1,6 +1,10 @@
 """CLI entry point — opens the browser on the served SVG.
 
     uv run --group cad python -m hardware.assembly.mark <input.svg>
+    uv run --group cad python -m hardware.assembly.mark <patch.json>
+
+Passing a ``patch/<stem>.json`` resolves its source SVG in output/svg and
+opens it with the existing patch loaded for editing (select / move / recolour).
 """
 
 from __future__ import annotations
@@ -11,19 +15,28 @@ import webbrowser
 from pathlib import Path
 from typing import List
 
+from hardware.assembly.mark.patch import source_for_patch
 from hardware.assembly.mark.server import make_server
 
 
 def main(argv: List[str]) -> int:
     if len(argv) != 2:
-        print("usage: python -m hardware.assembly.mark <input.svg>", file=sys.stderr)
+        print("usage: python -m hardware.assembly.mark <input.svg | patch.json>", file=sys.stderr)
         return 2
-    src = Path(argv[1]).expanduser().resolve()
-    if not src.exists():
-        print(f"file not found: {src}", file=sys.stderr)
+    arg = Path(argv[1]).expanduser().resolve()
+    if not arg.exists():
+        print(f"file not found: {arg}", file=sys.stderr)
         return 2
-    if src.suffix.lower() != ".svg":
-        print(f"not an .svg: {src}", file=sys.stderr)
+    if arg.suffix.lower() == ".json":
+        # A patch file → edit its source SVG with the patch loaded.
+        src = source_for_patch(arg)
+        if not src.exists():
+            print(f"no source SVG for patch {arg.name}: expected {src}", file=sys.stderr)
+            return 2
+    elif arg.suffix.lower() == ".svg":
+        src = arg
+    else:
+        print(f"not an .svg or .json: {arg}", file=sys.stderr)
         return 2
 
     server = make_server(src)

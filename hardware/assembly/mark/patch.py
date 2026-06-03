@@ -29,6 +29,7 @@ import string
 from pathlib import Path
 from typing import Iterable, Tuple
 
+from hardware.assembly.base import SVG_DIR
 from hardware.parts.base import REPO_ROOT
 
 PATCH_DIR     = REPO_ROOT / "hardware" / "assembly" / "patch"
@@ -74,6 +75,12 @@ def patch_path(source_svg: Path) -> Path:
     source SVG. A replay script walks this directory to find every
     edited source and rebuilds each op by chaining on its ``preop``."""
     return PATCH_DIR / f"{source_svg.stem}.json"
+
+
+def source_for_patch(patch_file: Path) -> Path:
+    """The source SVG a patch JSON annotates — the inverse of
+    ``patch_path``: ``output/svg/<stem>.svg``."""
+    return SVG_DIR / f"{patch_file.stem}.svg"
 
 
 def load_patch(source_svg: Path) -> list[dict]:
@@ -127,3 +134,14 @@ def make_entry(
         "shapes":  out,
         "viewBox": viewbox,
     }
+
+
+def upsert_entry(src, entries, edit_id, preop, shapes, viewbox):
+    """Append a new op (``edit_id is None``) or replace the op with id
+    ``edit_id`` in place. Returns ``(op_id, updated_entries)``. The caller
+    validates ``edit_id`` (format / existence) first; this just mutates."""
+    if edit_id is not None:
+        entry = make_entry(edit_id, preop, shapes, viewbox)
+        return edit_id, [entry if e["id"] == edit_id else e for e in entries]
+    op_id = new_id(src, taken={e["id"] for e in entries})
+    return op_id, [*entries, make_entry(op_id, preop, shapes, viewbox)]

@@ -22,17 +22,18 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from hardware.assembly.mark.patch import (
+    ID_RE,
     ORIG_SENTINEL,
     load_patch,
-    make_entry,
-    new_id,
     snapshot_path,
+    upsert_entry,
     validate_preop,
     write_patch,
 )
-from hardware.assembly.mark.replay import apply_chain, chain_to
+from hardware.assembly.mark.replay import apply_chain, apply_upto, chain_to, find_leaves
 from hardware.assembly.mark.validate import validate_shapes
 from hardware.assembly.svg_utils import validate_viewbox
 
@@ -58,6 +59,29 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, "image/svg+xml", data)
             return
+        # The latest leaf op (if any) for the frontend to load into its
+        # editable layer — lets you reopen a saved patch and move / recolour
+        # its shapes instead of only drawing new ones.
+        if self.path == "/patch":
+            try:
+                entries = load_patch(self.src_path)
+            except ValueError as exc:
+                self._send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
+                return
+            leaves = find_leaves(entries)
+            self._send_json(200, {"edit": leaves[-1] if leaves else None})
+            return
+        # The composite SVG up to (and including) ``?upto=<id>`` — the base an
+        # edited op sits on (its preop chain). ``upto=orig`` returns the source.
+        if urlparse(self.path).path == "/base":
+            upto = parse_qs(urlparse(self.path).query).get("upto", [ORIG_SENTINEL])[0]
+            try:
+                out = apply_upto(load_patch(self.src_path), self.src_path.read_bytes(), upto)
+            except (OSError, ValueError) as exc:
+                self._send_json(400, {"error": f"{type(exc).__name__}: {exc}"})
+                return
+            self._send(200, "image/svg+xml", out)
+            return
         self._send(404, "text/plain; charset=utf-8", b"not found")
 
     def do_POST(self):  # noqa: N802
@@ -77,21 +101,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": f"{type(exc).__name__}: {exc}"})
             return
 
-        # Validate preop's existence (preop has already passed the
-        # 'orig | 4 letters' format check); a dangling reference would
-        # corrupt the patch if we wrote it.
+        # Optional ``id`` — when present, REPLACE that op in place (keeping
+        # its 4-letter id, so the snapshot filename the manual links stays
+        # stable) instead of appending a new op. Omit it to append.
+        edit_id = payload.get("id")
         try:
             entries = load_patch(self.src_path)
             existing_ids = {e["id"] for e in entries}
             if preop != ORIG_SENTINEL and preop not in existing_ids:
                 raise ValueError(f"preop {preop!r} not found in patch")
+            if edit_id is not None:
+                if not (isinstance(edit_id, str) and ID_RE.match(edit_id)):
+                    raise ValueError(f"id must be four lowercase letters; got {edit_id!r}")
+                if edit_id not in existing_ids:
+                    raise ValueError(f"id {edit_id!r} not found in patch")
+                if edit_id == preop:
+                    raise ValueError("an op cannot be its own preop")
         except ValueError as exc:
             self._send_json(400, {"error": f"{type(exc).__name__}: {exc}"})
             return
 
         try:
-            op_id = new_id(self.src_path, taken=existing_ids)
-            entries.append(make_entry(op_id, preop, shapes, viewbox))
+            op_id, entries = upsert_entry(
+                self.src_path, entries, edit_id, preop, shapes, viewbox)
             # Replay first; only persist the patch + snapshot once the
             # chain has successfully produced bytes, so a build failure
             # can't corrupt the patch file with a dangling entry.

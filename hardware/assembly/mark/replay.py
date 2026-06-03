@@ -66,6 +66,14 @@ def apply_chain(src_bytes: bytes, chain: list[dict]) -> bytes:
     return out
 
 
+def apply_upto(entries: list[dict], src_bytes: bytes, upto: str) -> bytes:
+    """Composite ``src_bytes`` up to (and including) op ``upto``;
+    ``upto == "orig"`` returns the source unchanged."""
+    if upto == ORIG_SENTINEL:
+        return src_bytes
+    return apply_chain(src_bytes, chain_to(entries, upto))
+
+
 def replay_one(src: Path) -> List[Path]:
     """Walk ``patch_path(src)``'s ops, write a snapshot for each leaf."""
     entries = load_patch(src)
