@@ -320,17 +320,21 @@
   }
   .hw-entry .note { max-width: none; }
 
-  /* INTRODUCTION */
-  .intro-lead { padding: 8mm 0 0 28mm; }
-  .intro-lead .note { max-width: 175mm; }
-  .intro-spec {
+  /* INTRODUCTION — two reference notes above GitHub / Docs links */
+  .intro-body { padding: 18mm 0 0 40mm; }
+  .intro-body .note { max-width: 172mm; }
+  .intro-body .note + .note { margin-top: 18mm; }
+  .intro-links {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 18mm;
-    row-gap: 7mm;
-    margin: 14mm 0;
-    padding-left: 28mm;
+    grid-template-columns: 100mm 1fr;
+    align-items: center;
+    row-gap: 16mm;
+    margin-top: 30mm;
   }
+  .intro-logo { display: flex; align-items: center; gap: 6mm; color: var(--ink); }
+  .intro-logo svg, .intro-logo img { height: 16mm; width: auto; }
+  .intro-logo .word { font-size: 27pt; font-weight: 800; letter-spacing: -0.03em; }
+  .intro-url { color: var(--accent); font-size: 15pt; text-decoration: none; letter-spacing: 0.01em; }
 
   /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
      Content (intro + grid) is vertically centred in the page body so the
@@ -347,10 +351,11 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 22mm;
-    row-gap: 12mm;
-    margin: 16mm 0 0 0;
+    row-gap: 9mm;
+    margin: 13mm 0 0 0;
     max-width: 165mm;
   }
+  .spec-grid + .note { margin-top: 16mm; }
   .spec-item .k {
     color: var(--accent);
     font-size: 11.5pt;
@@ -704,20 +709,30 @@
       <span class="url">PhysiClaw.ai</span>
     </div>
 
-    <div class="intro-lead">
+    <div class="intro-body">
       <div class="note">
-        <h3>What you are building</h3>
-        <p>PhysiClaw.ai is a CoreXY motion platform that drives a capacitive stylus across a phone or tablet screen — the robot doesn't know it's holding a stylus, it just executes coordinates, and any app can be driven by code. This manual walks the build from bare extrusions through to a finished tap-test.</p>
+        <h3>Reporting an issue</h3>
+        <p>Should you find an error in this manual or have a suggestion for an improvement, please consider opening an issue on GitHub (<a href="https://github.com/echosprint/PhysiClaw/issues">github.com/echosprint/PhysiClaw/issues</a>). When raising an issue please include the relevant page numbers and a short description; annotated screenshots are also very welcome. We periodically update the manual based on the feedback we get.</p>
       </div>
-    </div>
 
-    <div class="intro-spec">
-      <div class="note"><h3>Tools you'll need</h3><p>2 mm &amp; 2.5 mm hex keys, M3 nut driver, small adjustable wrench, soldering iron (for heat-set inserts), small ruler / calipers.</p></div>
-      <div class="note"><h3>How to read each section</h3><p>Sections follow build order. Each section's pages list every render for that family in alphabetic filename order — <em>_assembled</em> first, then <em>_exploded</em>.</p></div>
-      <div class="note"><h3>File naming</h3><p>Each step has two views: <strong>_exploded</strong> shows the install motion (gaps, ghosts); <strong>_assembled</strong> shows the finished state. Camera index <strong>_cam0</strong> by default.</p></div>
-      <div class="note"><h3>Source of truth</h3><p>The renders are generated from the build123d procedure files under <em>hardware/assembly/procedures/</em>. If a diagram and the code disagree, the code wins — rebuild the renders.</p></div>
-      <div class="note"><h3>Hardware bag</h3><p>Each step lists exactly the fasteners it consumes (see the BOM at <span class="ref">hardware/output/bom/</span>). Pull the bag for the step you're about to do, finish it, then move on.</p></div>
-      <div class="note"><h3>If something looks wrong</h3><p>Compare the assembled view ( <em>_assembled_cam0.svg</em> ) against your physical state at the end of each step. Backtracking now is cheaper than backtracking later.</p></div>
+      <div class="note">
+        <h3>This is just a reference</h3>
+        <p>This manual is designed to be a simple build reference. Assembling a PhysiClaw can be an involved endeavour, so for any section you need clarification on we recommend opening the <span class="ref">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.</p>
+      </div>
+
+      <div class="intro-links">
+        <div class="intro-logo">
+          <svg viewBox="0 0 98 96" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.486-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" fill="currentColor"/></svg>
+          <span class="word">GitHub</span>
+        </div>
+        <a class="intro-url" href="https://github.com/echosprint/PhysiClaw">https://github.com/echosprint/PhysiClaw</a>
+
+        <div class="intro-logo">
+          <img src="crab.svg" alt="">
+          <span class="word">Docs</span>
+        </div>
+        <a class="intro-url" href="https://PhysiClaw.ai">https://PhysiClaw.ai</a>
+      </div>
     </div>
 
     <div class="foot">
@@ -859,6 +874,11 @@
 
         <div class="spec-item"><p class="k">Minimum Wall Thickness</p><p class="v">1.0 mm</p></div>
         <div class="spec-item"><p class="k">Surface Finish</p><p class="v">Raw / as-printed</p></div>
+      </div>
+
+      <div class="note">
+        <h3>File naming</h3>
+        <p>Any file whose name ends in <span class="ref">_x#</span> tells you the quantity of that part required to build the machine — for example a part ending <span class="ref">idler_mount_front_x2.step</span> is needed two times.</p>
       </div>
     </div>
 
