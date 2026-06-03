@@ -154,6 +154,12 @@
   .note.sm p    { font-size: 9.5pt; }
   .note.sm .ref { font-size: 9.5pt; }
 
+  /* Pages 3–5 (intro, hardware reference, printed parts) match page 7's
+     small note type — 9.5pt header and content, same as the .sm variant. */
+  .intro-body .note h3,  .hw-entry .note h3,  .print-page .note h3   { font-size: 9.5pt; }
+  .intro-body .note p,   .hw-entry .note p,   .print-page .note p    { font-size: 9.5pt; }
+  .intro-body .note .ref,.hw-entry .note .ref,.print-page .note .ref { font-size: 9.5pt; }
+
   /* ---------- Figure ---------- */
   /* Absolute-positioning the img inside a relative .fig is the only
      reliable way to scale an SVG <img> to its container's *computed*
@@ -289,7 +295,7 @@
     align-items: baseline;
     padding: 5mm 0 2mm 0;
     border-bottom: 1px solid var(--rule);
-    font-size: 13pt;
+    font-size: 9.5pt;
     color: var(--ink-soft);
   }
   .toc-row .pg { color: var(--ink-soft); font-weight: 400; }
@@ -332,9 +338,9 @@
     margin-top: 30mm;
   }
   .intro-logo { display: flex; align-items: center; gap: 6mm; color: var(--ink); }
-  .intro-logo svg, .intro-logo img { height: 16mm; width: auto; }
+  .intro-logo svg, .intro-logo img { height: 10mm; width: auto; }
   .intro-logo .word { font-size: 27pt; font-weight: 800; letter-spacing: -0.03em; }
-  .intro-url { color: var(--accent); font-size: 15pt; text-decoration: none; letter-spacing: 0.01em; }
+  .intro-url { color: var(--accent); font-size: 9.5pt; text-decoration: none; letter-spacing: 0.01em; }
 
   /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
      Content (intro + grid) is vertically centred in the page body so the
@@ -358,7 +364,7 @@
   .spec-grid + .note { margin-top: 16mm; }
   .spec-item .k {
     color: var(--accent);
-    font-size: 11.5pt;
+    font-size: 9.5pt;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.01em;
@@ -367,7 +373,7 @@
   }
   .spec-item .v {
     color: var(--ink-soft);
-    font-size: 11pt;
+    font-size: 9.5pt;
     line-height: 1.4;
     margin: 0;
   }
