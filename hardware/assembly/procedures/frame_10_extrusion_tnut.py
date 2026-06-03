@@ -34,6 +34,7 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import GHOST_LABEL, SOLID_LABEL, BaseAssembly
 from hardware.assembly.projection import BACK_RIGHT_LOW_R90, MAIN_FRAME_VIEW
+from hardware.assembly.travel_ranges import Y_EXTRUSION_LENGTH, X_EXTRUSION_LENGTH
 from hardware.parts.standard.extrusion import (
     Extrusion2040,
     cb_end_offset,
@@ -41,8 +42,8 @@ from hardware.parts.standard.extrusion import (
 )
 from hardware.parts.standard.t_nut import LENGTHS as TNUT_LENGTHS, TNut
 
-LONG_LENGTH      = 335
-SHORT_LENGTH     = 170
+LONG_LENGTH      = Y_EXTRUSION_LENGTH    # Y-axis frame span — see assembly/travel_ranges.py
+SHORT_LENGTH     = X_EXTRUSION_LENGTH    # frame width — see assembly/travel_ranges.py
 EXT_THICKNESS    = 2 * leg   # 2040 narrow cross-section (= 20 mm)
 
 ROW_SPACING      = 60    # mm — exploded: between extrusion centerlines along Y

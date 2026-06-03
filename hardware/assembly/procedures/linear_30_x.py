@@ -36,6 +36,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     SHORT_LENGTH,
 )
 from hardware.assembly.projection import FRONT_LEFT_HIGH, Camera
+from hardware.assembly.travel_ranges import X_BEAM_LENGTH
 from hardware.parts.custom.xy_joint_left import (
     big_csk_dx_from_extra2,
     csk_hole_from_left,
@@ -50,7 +51,7 @@ from hardware.parts.standard.t_nut import (
     TNut,
 )
 
-X_BEAM_LENGTH = 165    # mm — Extrusion1020 length
+# X_BEAM_LENGTH (Extrusion1020 length) — see assembly/travel_ranges.py
 TNUT_EXPLODE  = 30     # mm — exploded: each t-nut slid further toward open end
 
 # 1020 native Y of the cavity ceiling (where standard t-nut wings

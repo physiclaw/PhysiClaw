@@ -1,4 +1,4 @@
-"""Linear X rail sub-assembly (short) — MGN9H 130 mm guideway with
+"""Linear X rail sub-assembly (short) — MGN9H 150 mm guideway with
 M3 × 10 FHCS in the rail's mounting holes and hammer M3 T-nuts
 hanging loosely from each shank tip, ready to engage.
 
@@ -7,11 +7,9 @@ screw-hole pattern, and slider position differ. The build logic is
 reused via inheritance; this class just overrides four class
 attributes.
 
-Hole layout (6 holes at 20 mm pitch on a 130 mm rail):
-  Screws at 1-indexed hole positions 1, 3, 4, 6 — both ends plus
-  the central pair. Symmetric, 4 screws total at 40 mm / 20 mm /
-  40 mm spacing (= LI10Y's 40 mm pitch maintained except for the
-  shorter central span).
+Hole layout (7 holes at 20 mm pitch on a 150 mm rail):
+  Screws at 1-indexed hole positions 1, 3, 5, 7 — every other hole
+  (40 mm pitch), both ends included. 4 screws total.
 
 Slider position:
   slider_position = 0.5 puts the slider centered along the rail
@@ -27,12 +25,13 @@ Run from the repo root:
 """
 
 from hardware.assembly.procedures.linear_10_y import LI10Y
+from hardware.assembly.travel_ranges import X_RAIL_LENGTH
 
 
 class LI32X(LI10Y):
     compound_label     = "linear_32_x"
-    rail_length        = 130
-    screw_hole_indices = (1, 3, 4, 6)
+    rail_length        = X_RAIL_LENGTH    # mm — see assembly/travel_ranges.py
+    screw_hole_indices = (1, 3, 5, 7)     # 7-hole (150 mm) rail — both ends, 40 mm pitch
     slider_position    = 0.5    # slider centered along the rail
 
 

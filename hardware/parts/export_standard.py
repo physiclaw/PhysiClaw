@@ -3,6 +3,7 @@ hardware/output/step/. Run: `uv run python -m hardware.parts.export_standard`.""
 
 from build123d import MM
 
+from hardware.assembly.travel_ranges import X_RAIL_LENGTH, Y_RAIL_LENGTH
 from hardware.parts.base import export_all
 from hardware.parts.standard.bracket import CornerBracket, FlatBracket, MotorBracket
 from hardware.parts.standard.bumper import Bumper
@@ -32,7 +33,8 @@ ALL_PARTS = [
     Pulley2GT20T(kind="pulley", qty=2),
     Pulley2GT20T(kind="idler",  toothed=True,  qty=2),
     Pulley2GT20T(kind="idler",  toothed=False, qty=2),
-    MGN9H(rail_length=150 * MM, qty=2),
+    MGN9H(rail_length=X_RAIL_LENGTH * MM, qty=1),   # X rail
+    MGN9H(rail_length=Y_RAIL_LENGTH * MM, qty=2),   # Y rails
     MksBoard(qty=1),
     Tmc2209(qty=2),
     Screw("BHCS",     "M3", 8  * MM),

@@ -1,11 +1,11 @@
-"""Linear Y rail sub-assembly — one MGN9H 220 mm guideway with six
+"""Linear Y rail sub-assembly — one MGN9H 240 mm guideway with six
 M3 × 10 FHCS in the rail's mounting holes and six M3 hammer T-nuts
 ready to engage them.
 
-Hole layout (11 holes at 20 mm pitch on a 220 mm rail):
-  Screws at every odd 1-indexed hole position — 1, 3, 5, 7, 9, 11 —
-  i.e. one screw every other hole (40 mm pitch), with both ends
-  included.
+Hole layout (12 holes at 20 mm pitch on a 240 mm rail):
+  Screws at 1-indexed hole positions 1, 3, 5, 8, 10, 12 — both ends
+  included, symmetric about the centre (40 mm pitch with a 60 mm
+  central span). 6 screws total.
 
 Geometry in the rail's native frame (matches MGN9H — rail bottom
 face at native Z = 0, length axis along native X):
@@ -41,6 +41,7 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.projection import FRONT_LEFT_HIGH
+from hardware.assembly.travel_ranges import Y_RAIL_LENGTH
 from hardware.parts.standard.mgn9h import (
     MGN9H,
     rail_height,
@@ -54,7 +55,7 @@ from hardware.parts.standard.t_nut import (
     TNut,
 )
 
-RAIL_LENGTH           = 220    # mm — MGN9H rail length
+RAIL_LENGTH           = Y_RAIL_LENGTH   # mm — MGN9H rail length — see assembly/travel_ranges.py
 FHCS_LENGTH           = 10     # mm — M3 FHCS overall length
 TNUT_LOOSE_ENGAGEMENT = 1      # mm — assembled: shank depth inside the bore at
                                #      loose hang (a few threads — the bundle is
@@ -62,9 +63,9 @@ TNUT_LOOSE_ENGAGEMENT = 1      # mm — assembled: shank depth inside the bore a
 SCREW_EXPLODE         = 20     # mm — exploded: screws lifted above rail top
 TNUT_EXPLODE          = 15     # mm — exploded: t-nuts dropped below loose hang
 
-# 1-indexed rail-hole positions that receive a screw — every odd hole
-# (one every other hole, 40 mm pitch).
-SCREW_HOLE_INDICES = (1, 3, 5, 7, 9, 11)
+# 1-indexed rail-hole positions that receive a screw — both ends plus
+# interior, symmetric about the centre (12-hole / 240 mm rail).
+SCREW_HOLE_INDICES = (1, 3, 5, 8, 10, 12)
 
 
 class LI10Y(BaseAssembly):

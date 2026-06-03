@@ -30,6 +30,7 @@ from build123d import Compound, Location
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.projection import FRONT_LEFT_HIGH, Camera
+from hardware.assembly.travel_ranges import PHONE_BED_BEAM_LENGTH
 from hardware.parts.standard.extrusion import (
     Extrusion1020,
     end_hole_offset,
@@ -38,7 +39,7 @@ from hardware.parts.standard.extrusion import (
 from hardware.parts.standard.screw import Screw
 from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT, LENGTHS, TNut
 
-BEAM_LENGTH   = 210   # mm — Extrusion1020 length
+BEAM_LENGTH   = PHONE_BED_BEAM_LENGTH   # mm — Extrusion1020 length — see assembly/travel_ranges.py
 BHCS_LENGTH   = 16    # mm — BHCS M5 underhead length
 SCREW_EXPLODE = 55    # mm — exploded: screw drops below the beam
 NUT_EXPLODE   = 25    # mm — exploded: nut lifts above the beam
