@@ -30,6 +30,7 @@
 
   * { box-sizing: border-box; }
   html, body {
+    scroll-behavior: smooth;
     margin: 0; padding: 0;
     font-family: var(--font-sans);
     color: var(--ink);
@@ -292,6 +293,9 @@
     color: var(--ink-soft);
   }
   .toc-row .pg { color: var(--ink-soft); font-weight: 400; }
+  a.toc-row { text-decoration: none; color: var(--ink-soft); cursor: pointer; }
+  a.toc-row:hover, a.toc-row:hover .pg { color: var(--accent); }
+  a.toc-row:hover { border-bottom-color: var(--accent); }
 
   /* HARDWARE REFERENCE */
   .hw-grid {
@@ -326,6 +330,33 @@
     row-gap: 7mm;
     margin: 14mm 0;
     padding-left: 28mm;
+  }
+
+  /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet */
+  .print-page { padding-left: 28mm; padding-top: 4mm; }
+  .print-page .note { max-width: 165mm; }
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 22mm;
+    row-gap: 9mm;
+    margin: 13mm 0;
+    max-width: 165mm;
+  }
+  .spec-item .k {
+    color: var(--accent);
+    font-size: 11.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    margin: 0 0 1mm 0;
+  }
+  .spec-item .v {
+    color: var(--ink-soft);
+    font-size: 11pt;
+    line-height: 1.4;
+    margin: 0;
   }
 
   /* CHAPTER OPENER */
@@ -627,22 +658,23 @@
     </div>
 
     <div class="toc-grid">
-      <div class="toc-row"><span>Introduction</span><span class="pg">03</span></div>
-      <div class="toc-row"><span>03 — Motor</span><span class="pg">19</span></div>
+      <a class="toc-row" href="#introduction"><span>Introduction</span><span class="pg">03</span></a>
+      <a class="toc-row" href="#linear"><span>04 — Linear motion</span><span class="pg">26</span></a>
 
-      <div class="toc-row"><span>Hardware reference</span><span class="pg">04</span></div>
-      <div class="toc-row"><span>04 — Linear motion</span><span class="pg">25</span></div>
+      <a class="toc-row" href="#hardware-reference"><span>Hardware reference</span><span class="pg">04</span></a>
+      <a class="toc-row" href="#belt"><span>05 — Belt path</span><span class="pg">42</span></a>
 
-      <div class="toc-row"><span>01 — Frame</span><span class="pg">05</span></div>
-      <div class="toc-row"><span>05 — Belt path</span><span class="pg">41</span></div>
+      <a class="toc-row" href="#printed-parts"><span>3D printed parts</span><span class="pg">05</span></a>
+      <a class="toc-row" href="#stylus"><span>06 — Stylus carriage</span><span class="pg">47</span></a>
 
-      <div class="toc-row"><span>02 — Idler</span><span class="pg">10</span></div>
-      <div class="toc-row"><span>06 — Stylus carriage</span><span class="pg">45</span></div>
+      <a class="toc-row" href="#frame"><span>01 — Frame</span><span class="pg">06</span></a>
+      <a class="toc-row" href="#phone"><span>07 — Phone bed</span><span class="pg">51</span></a>
 
-      <div class="toc-row"><span>07 — Phone bed</span><span class="pg">49</span></div>
-      <div class="toc-row"><span>08 — PCB board</span><span class="pg">54</span></div>
+      <a class="toc-row" href="#idler"><span>02 — Idler</span><span class="pg">11</span></a>
+      <a class="toc-row" href="#pcb"><span>08 — PCB board</span><span class="pg">56</span></a>
 
-      <div class="toc-row"><span>09 — Camera</span><span class="pg">59</span></div>
+      <a class="toc-row" href="#motor"><span>03 — Motor</span><span class="pg">20</span></a>
+      <a class="toc-row" href="#camera"><span>09 — Camera</span><span class="pg">61</span></a>
     </div>
 
     <div class="foot">
@@ -657,7 +689,7 @@
 <!-- =========================================================
      INTRODUCTION
      ========================================================= -->
-<section class="page">
+<section class="page" id="introduction">
   <div class="page-inner">
     <div class="head">
       <span class="title">INTRODUCTION</span>
@@ -692,7 +724,7 @@
 <!-- =========================================================
      HARDWARE REFERENCE
      ========================================================= -->
-<section class="page">
+<section class="page" id="hardware-reference">
   <div class="page-inner">
     <div class="head">
       <span class="title">HARDWARE — REFERENCE</span>
@@ -792,9 +824,50 @@
 
 
 <!-- =========================================================
+     3D PRINTED PARTS (SLS) — printing settings & guidelines
+     ========================================================= -->
+<section class="page" id="printed-parts">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">3D PRINTED PARTS</span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+
+    <div class="print-page">
+      <div class="note">
+        <h3>Part printing settings and guidelines</h3>
+        <p>PhysiClaw's custom parts are produced by Selective Laser Sintering (SLS), not FDM. A laser fuses nylon powder layer by layer, so parts come out solid, isotropic and support-free — there is no infill, no perimeters and no print orientation for you to set. The settings below are what we print to; match them when sourcing your own parts.</p>
+      </div>
+
+      <div class="spec-grid">
+        <div class="spec-item"><p class="k">3D Printing Process</p><p class="v">Selective Laser Sintering (SLS)</p></div>
+        <div class="spec-item"><p class="k">Part Density</p><p class="v">Solid — no infill</p></div>
+
+        <div class="spec-item"><p class="k">Material</p><p class="v">Nylon PA12 (PA2200)</p></div>
+        <div class="spec-item"><p class="k">Dimensional Tolerance</p><p class="v">±0.3 mm (±0.3%)</p></div>
+
+        <div class="spec-item"><p class="k">Layer Height</p><p class="v">Recommended: 0.10 mm</p></div>
+        <div class="spec-item"><p class="k">Orientation</p><p class="v">Set by the print shop</p></div>
+
+        <div class="spec-item"><p class="k">Min Wall Thickness</p><p class="v">Recommended: ≥ 1.0 mm</p></div>
+        <div class="spec-item"><p class="k">Surface Finish</p><p class="v">Bead-blasted, natural grey</p></div>
+      </div>
+
+      <div class="note">
+        <h3>Ordering parts</h3>
+        <p>Most builders don't own an SLS machine. Export the custom parts from <span class="ref">hardware/parts/custom/</span> (run <em>export_custom.py</em>) and send them to any SLS bureau — JLC3DP, Shapeways, or a local service — specifying Nylon PA12. The full set is small and inexpensive to print. Pre-printed kits are also available at <a href="https://PhysiClaw.ai">PhysiClaw.ai</a>.</p>
+      </div>
+    </div>
+
+    <div class="foot"><span>5</span><span class="rule"></span><span>5</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
      SECTION 01 — FRAME (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="frame">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -811,9 +884,9 @@
     </div>
 
     <div class="foot">
-      <span>5</span>
+      <span>6</span>
       <span class="rule"></span>
-      <span>5</span>
+      <span>6</span>
     </div>
   </div>
 </section>
@@ -846,7 +919,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>6</span><span class="rule"></span><span>6</span></div>
+    <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
   </div>
 </section>
 
@@ -883,7 +956,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>7</span><span class="rule"></span><span>7</span></div>
+    <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
   </div>
 </section>
 
@@ -919,7 +992,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>8</span><span class="rule"></span><span>8</span></div>
+    <div class="foot"><span>9</span><span class="rule"></span><span>9</span></div>
   </div>
 </section>
 
@@ -959,7 +1032,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>9</span><span class="rule"></span><span>9</span></div>
+    <div class="foot"><span>10</span><span class="rule"></span><span>10</span></div>
   </div>
 </section>
 
@@ -967,7 +1040,7 @@
 <!-- =========================================================
      SECTION 02 — IDLER (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="idler">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -981,7 +1054,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>10</span><span class="rule"></span><span>10</span></div>
+    <div class="foot"><span>11</span><span class="rule"></span><span>11</span></div>
   </div>
 </section>
 
@@ -1030,11 +1103,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>11</span><span class="rule"></span><span>11</span></div>
+    <div class="foot"><span>12</span><span class="rule"></span><span>12</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_12 (page 11a, tall-left split) -->
+<!-- SECTION 02 — IDLER · idler_12 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1070,7 +1143,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>12</span><span class="rule"></span><span>12</span></div>
+    <div class="foot"><span>13</span><span class="rule"></span><span>13</span></div>
   </div>
 </section>
 
@@ -1115,11 +1188,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>13</span><span class="rule"></span><span>13</span></div>
+    <div class="foot"><span>14</span><span class="rule"></span><span>14</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_22 (tall-left split, same as page 11a) -->
+<!-- SECTION 02 — IDLER · idler_22 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1151,11 +1224,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>14</span><span class="rule"></span><span>14</span></div>
+    <div class="foot"><span>15</span><span class="rule"></span><span>15</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_30 (tall-left split, same as page 12) -->
+<!-- SECTION 02 — IDLER · idler_30 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1190,11 +1263,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>15</span><span class="rule"></span><span>15</span></div>
+    <div class="foot"><span>16</span><span class="rule"></span><span>16</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_31 (page 14a, tall-left split, same as page 13) -->
+<!-- SECTION 02 — IDLER · idler_31 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1213,11 +1286,11 @@
       <h3>2 mm gap to the corner plate</h3>
       <p>Set this block 2 mm clear of the frame-corner plate — the same gap used at every other idler station.</p>
     </div>
-    <div class="foot"><span>16</span><span class="rule"></span><span>16</span></div>
+    <div class="foot"><span>17</span><span class="rule"></span><span>17</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_40 (tall-left split, same as page 14) -->
+<!-- SECTION 02 — IDLER · idler_40 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1253,11 +1326,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>17</span><span class="rule"></span><span>17</span></div>
+    <div class="foot"><span>18</span><span class="rule"></span><span>18</span></div>
   </div>
 </section>
 
-<!-- SECTION 02 — IDLER · idler_41 (page 15a, tall-left split, same as page 14a) -->
+<!-- SECTION 02 — IDLER · idler_41 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1276,7 +1349,7 @@
       <h3>Match the left block's gap</h3>
       <p>Set the right block the same 2 mm clear of the frame-corner plate as the left block, so the lower idler stations stay symmetric.</p>
     </div>
-    <div class="foot"><span>18</span><span class="rule"></span><span>18</span></div>
+    <div class="foot"><span>19</span><span class="rule"></span><span>19</span></div>
   </div>
 </section>
 
@@ -1284,7 +1357,7 @@
 <!-- =========================================================
      SECTION 03 — MOTOR (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="motor">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -1298,11 +1371,11 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>19</span><span class="rule"></span><span>19</span></div>
+    <div class="foot"><span>20</span><span class="rule"></span><span>20</span></div>
   </div>
 </section>
 
-<!-- SECTION 03 — MOTOR · motor_10 (tall-left split, same as page 15) -->
+<!-- SECTION 03 — MOTOR · motor_10 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1344,11 +1417,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>20</span><span class="rule"></span><span>20</span></div>
+    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
   </div>
 </section>
 
-<!-- SECTION 03 — MOTOR · motor_11 (page 17a, tall-left split, same as page 15a) -->
+<!-- SECTION 03 — MOTOR · motor_11 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1375,11 +1448,11 @@
       <h3>Leave the bolts loose</h3>
       <p>Don't fully tighten the motor mount yet — you'll slide it later to tension the belt.</p>
     </div>
-    <div class="foot"><span>21</span><span class="rule"></span><span>21</span></div>
+    <div class="foot"><span>22</span><span class="rule"></span><span>22</span></div>
   </div>
 </section>
 
-<!-- SECTION 03 — MOTOR · motor_20 (tall-left split, same as page 17) -->
+<!-- SECTION 03 — MOTOR · motor_20 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1413,11 +1486,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>22</span><span class="rule"></span><span>22</span></div>
+    <div class="foot"><span>23</span><span class="rule"></span><span>23</span></div>
   </div>
 </section>
 
-<!-- SECTION 03 — MOTOR · motor_21 (page 18a, tall-left split, same as page 17a) -->
+<!-- SECTION 03 — MOTOR · motor_21 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1444,11 +1517,11 @@
       <h3>Leave the bolts loose</h3>
       <p>Snug only — final torque comes after belt tensioning.</p>
     </div>
-    <div class="foot"><span>23</span><span class="rule"></span><span>23</span></div>
+    <div class="foot"><span>24</span><span class="rule"></span><span>24</span></div>
   </div>
 </section>
 
-<!-- SECTION 03 — MOTOR · motor_30 (tall-left split, top-right sized to match page 18a) -->
+<!-- SECTION 03 — MOTOR · motor_30 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1483,7 +1556,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>24</span><span class="rule"></span><span>24</span></div>
+    <div class="foot"><span>25</span><span class="rule"></span><span>25</span></div>
   </div>
 </section>
 
@@ -1491,7 +1564,7 @@
 <!-- =========================================================
      SECTION 04 — LINEAR (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="linear">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -1505,7 +1578,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>25</span><span class="rule"></span><span>25</span></div>
+    <div class="foot"><span>26</span><span class="rule"></span><span>26</span></div>
   </div>
 </section>
 
@@ -1564,11 +1637,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>26</span><span class="rule"></span><span>26</span></div>
+    <div class="foot"><span>27</span><span class="rule"></span><span>27</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_11 (page 21a, full-page exploded view) -->
+<!-- SECTION 04 — LINEAR · linear_11 (full-page exploded view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1592,11 +1665,11 @@
         <p>When you do tighten, start at the center bolt and work outward so the rail beds down flush against the extrusion.</p>
       </div>
     </div>
-    <div class="foot"><span>27</span><span class="rule"></span><span>27</span></div>
+    <div class="foot"><span>28</span><span class="rule"></span><span>28</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_20 (tall-left split, same as page 19) -->
+<!-- SECTION 04 — LINEAR · linear_20 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1632,11 +1705,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>28</span><span class="rule"></span><span>28</span></div>
+    <div class="foot"><span>29</span><span class="rule"></span><span>29</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_30 (page 22a, wide-top split, same as page 21) -->
+<!-- SECTION 04 — LINEAR · linear_30 (wide-top split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1667,11 +1740,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>29</span><span class="rule"></span><span>29</span></div>
+    <div class="foot"><span>30</span><span class="rule"></span><span>30</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_31 (full-page exploded view, same as page 21a) -->
+<!-- SECTION 04 — LINEAR · linear_31 (full-page exploded view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1698,11 +1771,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>30</span><span class="rule"></span><span>30</span></div>
+    <div class="foot"><span>31</span><span class="rule"></span><span>31</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_32 (page 23a, wide-top split, same as page 22a) -->
+<!-- SECTION 04 — LINEAR · linear_32 (wide-top split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1734,11 +1807,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>31</span><span class="rule"></span><span>31</span></div>
+    <div class="foot"><span>32</span><span class="rule"></span><span>32</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_33 (full-page exploded view, same as page 23) -->
+<!-- SECTION 04 — LINEAR · linear_33 (full-page exploded view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1754,11 +1827,11 @@
       <h3>Check both axes move freely</h3>
       <p>The X rail is now mounted on the X beam. Confirm its carriage slides smoothly along the X rail, and that the whole beam still travels freely along the Y rails. If either binds, realign that rail and retighten from the center out.</p>
     </div>
-    <div class="foot"><span>32</span><span class="rule"></span><span>32</span></div>
+    <div class="foot"><span>33</span><span class="rule"></span><span>33</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_40 (page 24a, tall-left split, same as page 17) -->
+<!-- SECTION 04 — LINEAR · linear_40 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1791,11 +1864,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>33</span><span class="rule"></span><span>33</span></div>
+    <div class="foot"><span>34</span><span class="rule"></span><span>34</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_41 (tall-left split, same as page 22) -->
+<!-- SECTION 04 — LINEAR · linear_41 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1825,11 +1898,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>34</span><span class="rule"></span><span>34</span></div>
+    <div class="foot"><span>35</span><span class="rule"></span><span>35</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_42 (page 25a, tall-left split, same as page 24a) -->
+<!-- SECTION 04 — LINEAR · linear_42 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1862,11 +1935,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>35</span><span class="rule"></span><span>35</span></div>
+    <div class="foot"><span>36</span><span class="rule"></span><span>36</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_43 (tall-left split, same as page 22) -->
+<!-- SECTION 04 — LINEAR · linear_43 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1896,11 +1969,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>36</span><span class="rule"></span><span>36</span></div>
+    <div class="foot"><span>37</span><span class="rule"></span><span>37</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_44 (page 26a, tall-left split, same as page 24a) -->
+<!-- SECTION 04 — LINEAR · linear_44 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1932,11 +2005,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>37</span><span class="rule"></span><span>37</span></div>
+    <div class="foot"><span>38</span><span class="rule"></span><span>38</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_45 (tall-left split, same as page 22) -->
+<!-- SECTION 04 — LINEAR · linear_45 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -1966,11 +2039,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>38</span><span class="rule"></span><span>38</span></div>
+    <div class="foot"><span>39</span><span class="rule"></span><span>39</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_46 (page 27a, tall-left split, same as page 24a) -->
+<!-- SECTION 04 — LINEAR · linear_46 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2004,11 +2077,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>39</span><span class="rule"></span><span>39</span></div>
+    <div class="foot"><span>40</span><span class="rule"></span><span>40</span></div>
   </div>
 </section>
 
-<!-- SECTION 04 — LINEAR · linear_47 (tall-left split, same as page 27) -->
+<!-- SECTION 04 — LINEAR · linear_47 (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2038,7 +2111,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>40</span><span class="rule"></span><span>40</span></div>
+    <div class="foot"><span>41</span><span class="rule"></span><span>41</span></div>
   </div>
 </section>
 
@@ -2046,7 +2119,7 @@
 <!-- =========================================================
      SECTION 05 — BELT (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="belt">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -2060,11 +2133,11 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>41</span><span class="rule"></span><span>41</span></div>
+    <div class="foot"><span>42</span><span class="rule"></span><span>42</span></div>
   </div>
 </section>
 
-<!-- SECTION 05 — BELT · belt_10 + belt_11 clamp show (tall-left split, same as page 28) -->
+<!-- SECTION 05 — BELT · belt_10 + belt_11 clamp show (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2103,11 +2176,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>42</span><span class="rule"></span><span>42</span></div>
+    <div class="foot"><span>43</span><span class="rule"></span><span>43</span></div>
   </div>
 </section>
 
-<!-- SECTION 05 — BELT · belt_20 clamp (page 30a, tall-left split, same as page 30) -->
+<!-- SECTION 05 — BELT · belt_20 clamp (tall-left split) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2142,11 +2215,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>43</span><span class="rule"></span><span>43</span></div>
+    <div class="foot"><span>44</span><span class="rule"></span><span>44</span></div>
   </div>
 </section>
 
-<!-- SECTION 05 — BELT · belt_30 + belt_11 clamp show (tall-left split, same as page 30, no BOM) -->
+<!-- SECTION 05 — BELT · belt_30 + belt_11 clamp show (tall-left split, no BOM) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2165,12 +2238,12 @@
       <h3>Belt final check</h3>
       <p>With both belts installed, push the carriage by hand through its full travel in every direction. It should move smoothly with the same, even resistance throughout — that resistance is just the motors. Confirm there's no sticking, no interference, no twisted belts, and no odd noises, with the two belts on their separate planes.</p>
     </div>
-    <div class="foot"><span>44</span><span class="rule"></span><span>44</span></div>
+    <div class="foot"><span>45</span><span class="rule"></span><span>45</span></div>
   </div>
 </section>
 
 
-<!-- SECTION 05 — BELT · belt_30 motor_b assembled (page 44a) -->
+<!-- SECTION 05 — BELT · belt_30 motor_b assembled -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2195,7 +2268,7 @@
       <h3 style="text-transform:none;">75Hz AT 220mm</h3>
       <p>For a precise check, measure each belt with a tuning app on your phone while the gantry is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.</p>
     </div>
-    <div class="foot"><span>44a</span><span class="rule"></span><span>44a</span></div>
+    <div class="foot"><span>46</span><span class="rule"></span><span>46</span></div>
   </div>
 </section>
 
@@ -2203,7 +2276,7 @@
 <!-- =========================================================
      SECTION 06 — TAPZ (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="stylus">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -2217,7 +2290,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>45</span><span class="rule"></span><span>45</span></div>
+    <div class="foot"><span>47</span><span class="rule"></span><span>47</span></div>
   </div>
 </section>
 
@@ -2256,11 +2329,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>46</span><span class="rule"></span><span>46</span></div>
+    <div class="foot"><span>48</span><span class="rule"></span><span>48</span></div>
   </div>
 </section>
 
-<!-- SECTION 06 — TAPZ · tapz_11 (page 33a, tall-left split, exploded left / assembled TR / BOM BR) -->
+<!-- SECTION 06 — TAPZ · tapz_11 (tall-left split, exploded left / assembled TR / BOM BR) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2295,7 +2368,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>47</span><span class="rule"></span><span>47</span></div>
+    <div class="foot"><span>49</span><span class="rule"></span><span>49</span></div>
   </div>
 </section>
 
@@ -2331,7 +2404,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>48</span><span class="rule"></span><span>48</span></div>
+    <div class="foot"><span>50</span><span class="rule"></span><span>50</span></div>
   </div>
 </section>
 
@@ -2339,7 +2412,7 @@
 <!-- =========================================================
      SECTION 07 — PHONE (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="phone">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -2353,7 +2426,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>49</span><span class="rule"></span><span>49</span></div>
+    <div class="foot"><span>51</span><span class="rule"></span><span>51</span></div>
   </div>
 </section>
 
@@ -2389,7 +2462,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>50</span><span class="rule"></span><span>50</span></div>
+    <div class="foot"><span>52</span><span class="rule"></span><span>52</span></div>
   </div>
 </section>
 
@@ -2421,11 +2494,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>51</span><span class="rule"></span><span>51</span></div>
+    <div class="foot"><span>53</span><span class="rule"></span><span>53</span></div>
   </div>
 </section>
 
-<!-- SECTION 07 — PHONE · phone_30 (full-page assembled view, same as page 32) -->
+<!-- SECTION 07 — PHONE · phone_30 (full-page assembled view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2441,11 +2514,11 @@
       <h3>Seat the bed on the beams</h3>
       <p>Lay the two cross-beams parallel, slotted faces up.</p>
     </div>
-    <div class="foot"><span>52</span><span class="rule"></span><span>52</span></div>
+    <div class="foot"><span>54</span><span class="rule"></span><span>54</span></div>
   </div>
 </section>
 
-<!-- SECTION 07 — PHONE · phone_40 (full-page assembled view, same as page 52) -->
+<!-- SECTION 07 — PHONE · phone_40 (full-page assembled view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2480,7 +2553,7 @@
         <p>The rear camera bump lifts one corner, so the phone won't lie flat. Slip a thin shim or a few sheets of paper under the low edge until the screen is level and facing straight up. Make sure the phone can't rock or shift when the stylus taps — any tilt or wobble can make it miss.</p>
       </div>
     </div>
-    <div class="foot"><span>53</span><span class="rule"></span><span>53</span></div>
+    <div class="foot"><span>55</span><span class="rule"></span><span>55</span></div>
   </div>
 </section>
 
@@ -2488,7 +2561,7 @@
 <!-- =========================================================
      SECTION 08 — BOARD (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="pcb">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -2502,7 +2575,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>54</span><span class="rule"></span><span>54</span></div>
+    <div class="foot"><span>56</span><span class="rule"></span><span>56</span></div>
   </div>
 </section>
 
@@ -2538,7 +2611,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>55</span><span class="rule"></span><span>55</span></div>
+    <div class="foot"><span>57</span><span class="rule"></span><span>57</span></div>
   </div>
 </section>
 
@@ -2561,7 +2634,7 @@
       <h3>Mount the pcb holder</h3>
       <p>Mount it on the top extrusion's outer face.</p>
     </div>
-    <div class="foot"><span>56</span><span class="rule"></span><span>56</span></div>
+    <div class="foot"><span>58</span><span class="rule"></span><span>58</span></div>
   </div>
 </section>
 
@@ -2597,11 +2670,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>57</span><span class="rule"></span><span>57</span></div>
+    <div class="foot"><span>59</span><span class="rule"></span><span>59</span></div>
   </div>
 </section>
 
-<!-- SECTION 08 — BOARD · board_40 (full-page assembled view, same as page 53) -->
+<!-- SECTION 08 — BOARD · board_40 (full-page assembled view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2640,7 +2713,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>58</span><span class="rule"></span><span>58</span></div>
+    <div class="foot"><span>60</span><span class="rule"></span><span>60</span></div>
   </div>
 </section>
 
@@ -2648,7 +2721,7 @@
 <!-- =========================================================
      SECTION 09 — CAMERA (opener)
      ========================================================= -->
-<section class="page">
+<section class="page" id="camera">
   <div class="page-inner">
     <div class="head">
       <span class="title"></span>
@@ -2662,7 +2735,7 @@
       </p>
       <div class="bar"></div>
     </div>
-    <div class="foot"><span>59</span><span class="rule"></span><span>59</span></div>
+    <div class="foot"><span>61</span><span class="rule"></span><span>61</span></div>
   </div>
 </section>
 
@@ -2700,7 +2773,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>60</span><span class="rule"></span><span>60</span></div>
+    <div class="foot"><span>62</span><span class="rule"></span><span>62</span></div>
   </div>
 </section>
 
@@ -2734,7 +2807,7 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>61</span><span class="rule"></span><span>61</span></div>
+    <div class="foot"><span>63</span><span class="rule"></span><span>63</span></div>
   </div>
 </section>
 
@@ -2768,11 +2841,11 @@
         </tbody>
       </table>
     </div>
-    <div class="foot"><span>62</span><span class="rule"></span><span>62</span></div>
+    <div class="foot"><span>64</span><span class="rule"></span><span>64</span></div>
   </div>
 </section>
 
-<!-- SECTION 09 — CAMERA · camera_40 (full-page assembled view, same as page 53) -->
+<!-- SECTION 09 — CAMERA · camera_40 (full-page assembled view) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
@@ -2800,7 +2873,7 @@
       <h3>Route the USB cable</h3>
       <p>Secure the camera's USB cable along the gooseneck to keep it clear of the belt.</p>
     </div>
-    <div class="foot"><span>63</span><span class="rule"></span><span>63</span></div>
+    <div class="foot"><span>65</span><span class="rule"></span><span>65</span></div>
   </div>
 </section>
 
