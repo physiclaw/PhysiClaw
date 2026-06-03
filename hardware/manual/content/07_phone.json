@@ -1,0 +1,231 @@
+[
+  {
+    "type": "opener",
+    "page": "51",
+    "id": "phone",
+    "secnum": {
+      "en": "SECTION 07",
+      "zh": "第 07 节"
+    },
+    "h1": {
+      "en": "Phone bed",
+      "zh": "手机托架"
+    },
+    "lede": {
+      "en": "A printed bed cradles the target phone beneath the gantry. Two 1020 cross-beams carry the bed and hang it under the frame, screen facing up toward the stylus.",
+      "zh": "目标手机搁在龙门架下方一个打印件托架里。两根 1020 横梁托住托架，将其吊装在框架下方，屏幕朝上正对触控笔。"
+    }
+  },
+  {
+    "type": "wide-top",
+    "page": "52",
+    "head": {
+      "title": {
+        "en": "PHONE BED",
+        "zh": "手机托架"
+      },
+      "small": "phone_10"
+    },
+    "figures": [
+      {
+        "src": "phone_10_extrusion_exploded_cam1.svg"
+      },
+      {
+        "src": "phone_10_extrusion_assembled_cam1.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Make two",
+          "zh": "制作两件"
+        },
+        "body": {
+          "en": "You need two identical cross-beams for the bed.",
+          "zh": "托架需要两根完全相同的横梁。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:88mm; width:90mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Extrusion 1020",
+            "zh": "1020 铝型材"
+          },
+          "spec": "230 mm, end holes",
+          "qty": "2"
+        },
+        {
+          "component": {
+            "en": "BHCS",
+            "zh": "BHCS 内六角盘头螺钉"
+          },
+          "spec": "M5×16",
+          "qty": "4"
+        },
+        {
+          "component": {
+            "en": "Hammer T-nut",
+            "zh": "锤头 T 型螺母"
+          },
+          "spec": "M5",
+          "qty": "4"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "53",
+    "head": {
+      "title": {
+        "en": "PHONE BED",
+        "zh": "手机托架"
+      },
+      "small": "phone_20"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "phone_20_bed_tnut_exploded_cam1.svg"
+      },
+      {
+        "src": "phone_20_bed_tnut_assembled_cam0.svg",
+        "style": "width:70%; height:70%; margin:auto;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Phone bed",
+            "zh": "手机托架"
+          },
+          "spec": "SLS 3D Print",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "FHCS",
+            "zh": "FHCS 内六角沉头螺钉"
+          },
+          "spec": "M3×8",
+          "qty": "4"
+        },
+        {
+          "component": {
+            "en": "Hammer T-nut",
+            "zh": "锤头 T 型螺母"
+          },
+          "spec": "M3",
+          "qty": "4"
+        }
+      ]
+    }
+  },
+  {
+    "type": "main-inset-br",
+    "page": "54",
+    "head": {
+      "title": {
+        "en": "PHONE BED",
+        "zh": "手机托架"
+      },
+      "small": "phone_30"
+    },
+    "main": {
+      "src": "phone_30_bed_extrusion_assembled_cam0.svg"
+    },
+    "notes": [
+      {
+        "h3": {
+          "en": "Seat the bed on the beams",
+          "zh": "将托架放到横梁上"
+        },
+        "body": {
+          "en": "Lay the two cross-beams parallel, slotted faces up.",
+          "zh": "两根横梁平行摆放，开槽面朝上。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:140mm; width:60mm;"
+      }
+    ]
+  },
+  {
+    "type": "main-inset-br",
+    "page": "55",
+    "head": {
+      "title": {
+        "en": "PHONE BED",
+        "zh": "手机托架"
+      },
+      "small": "phone_40"
+    },
+    "main": {
+      "src": "phone_40_bed_frame_assembled_cam0.svg",
+      "style": "transform: translateX(-35mm);"
+    },
+    "notes": [
+      {
+        "h3": {
+          "en": "Install the phone bed",
+          "zh": "安装手机托架"
+        },
+        "body": {
+          "en": "Stand the frame on end first — it's far easier to work vertically. Then slide each beam's T-nuts into the slots on the frame's underside.",
+          "zh": "先把框架竖起来——立着操作要省事得多。再将每根横梁上的 T 型螺母滑入框架底面的型材槽。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:22mm; width:90mm;"
+      },
+      {
+        "h3": {
+          "en": "Position the phone",
+          "zh": "放置手机"
+        },
+        "body": {
+          "en": "Place a phone on the bed, pushed into the top-left corner. Jog the X carriage across its full travel and check the stylus tip can reach every part of the screen.",
+          "zh": "把手机放上托架，靠到左上角。点动 X 滑座跑完整个行程，确认触控笔尖能够到屏幕的每一处。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:50mm; width:90mm;"
+      },
+      {
+        "h3": {
+          "en": "Dial in the tap",
+          "zh": "调校点击力度"
+        },
+        "body": {
+          "en": "The tip must tap firmly enough to register, but no harder. Too hard can crack the screen; too far or too light and the tap misses. Adjust the solenoid mount height until taps land reliably.",
+          "zh": "笔尖点击的力度要刚好够屏幕识别，再大就不行了。力度过大会压裂屏幕；离得太远或太轻则点击落空。调整电磁阀支架的高度，直到每次都能稳稳点中。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:85mm; width:90mm;"
+      },
+      {
+        "h3": {
+          "en": "Keep the screen flat",
+          "zh": "保持屏幕水平"
+        },
+        "body": {
+          "en": "The rear camera bump lifts one corner, so the phone won't lie flat. Slip a thin shim or a few sheets of paper under the low edge until the screen is level and facing straight up. Make sure the phone can't rock or shift when the stylus taps — any tilt or wobble can make it miss.",
+          "zh": "后置摄像头的凸起会把一角顶高，手机就放不平了。在偏低的一侧下方塞一片薄垫片或几张纸，直到屏幕水平、正对上方。还要确保触控笔点击时手机不会晃动或移位——稍有倾斜或松动都可能让点击落空。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:124mm; width:90mm; display:flex; gap:4mm; align-items:flex-start;",
+        "icon": "info"
+      }
+    ]
+  }
+]

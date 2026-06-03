@@ -1,0 +1,118 @@
+[
+  {
+    "type": "opener",
+    "page": "56",
+    "id": "pcb",
+    "secnum": { "en": "SECTION 08", "zh": "第 08 节" },
+    "h1": { "en": "PCB board", "zh": "PCB 板" },
+    "lede": { "en": "The MKS DLC32 controller rides in a printed holder clamped to the top of the frame, with a Teflon tube routing the stylus wiring across to the carriage.", "zh": "MKS DLC32 控制器装在打印件支架内，支架夹紧在框架顶部，触控笔的线缆经特氟龙管引到滑座。" }
+  },
+  {
+    "type": "tall-left",
+    "page": "57",
+    "head": { "title": { "en": "PCB BOARD", "zh": "PCB 板" }, "small": "board_10" },
+    "variant": "hero",
+    "figures": [
+      { "src": "board_10_holder_tnut_exploded_cam1_bjiv.svg" },
+      { "src": "board_10_holder_tnut_assembled_cam0.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Fit the holder T-nuts", "zh": "装入支架 T 型螺母" },
+        "body": { "en": "Leave them loose for the next step.", "zh": "先不拧紧，留给下一步。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:110mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "PCB holder", "zh": "PCB 支架" }, "spec": "SLS 3D Print", "qty": "1" },
+        { "component": { "en": "FHCS", "zh": "FHCS 内六角沉头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "Hammer T-nut", "zh": "锤头 T 型螺母" }, "spec": "M5", "qty": "2" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "58",
+    "head": { "title": { "en": "PCB BOARD", "zh": "PCB 板" }, "small": "board_20" },
+    "variant": "hero",
+    "figures": [
+      { "src": "board_20_frame_assembled_cam1_yszm.svg", "alt": "board_20_frame exploded" },
+      { "src": "board_20_frame_assembled_cam0_zjie.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Mount the pcb holder", "zh": "安装 PCB 支架" },
+        "body": { "en": "Mount it on the top extrusion's outer face.", "zh": "装在顶部铝型材的外侧面上。" },
+        "classes": "note overlay sm",
+        "style": "left:180mm; top:130mm; width:80mm;"
+      }
+    ]
+  },
+  {
+    "type": "tall-left",
+    "page": "59",
+    "head": { "title": { "en": "PCB BOARD", "zh": "PCB 板" }, "small": "board_30" },
+    "variant": "hero",
+    "figures": [
+      { "src": "board_30_pcb_exploded_cam1_pyik.svg" },
+      { "src": "board_30_pcb_assembled_cam0_ejhe.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Fasten the PCB", "zh": "固定 PCB" },
+        "body": { "en": "Four screw–nut pairs. The lower two nuts are obscured and not drawn.", "zh": "共四组螺钉配螺母。下方两个螺母被挡住，图中未画。" },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:120mm; width:90mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "MKS DLC32", "zh": "MKS DLC32" }, "spec": "Controller PCB", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M3×12", "qty": "4" },
+        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M3", "qty": "4" }
+      ]
+    }
+  },
+  {
+    "type": "main-inset-br",
+    "page": "60",
+    "head": { "title": { "en": "PCB BOARD", "zh": "PCB 板" }, "small": "board_40" },
+    "main": { "src": "board_40_teflon_assembled_cam0_nrvk.svg", "style": "transform: translateX(-35mm);" },
+    "notes": [
+      {
+        "h3": { "en": "Teflon tube", "zh": "特氟龙管" },
+        "body": { "en": "Run the wires through the Teflon tube — it keeps them tidy and clear of the moving belts and motors.", "zh": "把导线穿进特氟龙管——既能理顺线缆，又能让它们避开运动中的同步带和电机。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:30mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "Rough length", "zh": "大致长度" },
+        "body": { "en": "Make the tube about 380 mm — long enough to reach from the PCB board to the X carriage at its farthest position.", "zh": "管子取约 380 mm 长——足够从 PCB 板一直够到 X 滑座的最远位置。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:50mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "Extend the solenoid leads", "zh": "加长电磁阀引线" },
+        "body": { "en": "The solenoid's stock leads are too short to reach the board — splice on extra wire to connect the solenoid to the PCB.", "zh": "电磁阀的原装引线太短，够不到板子——接上一段导线，把电磁阀连到 PCB。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:80mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "PTFE vs FEP", "zh": "PTFE 与 FEP" },
+        "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.", "zh": "两种管子都行——PTFE（乳白色）或 FEP（透明）。其韧性和刚性足以撑住导线。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:110mm; width:90mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Teflon tube", "zh": "特氟龙管" }, "spec": "Ø5/4, 350mm", "qty": "1" }
+      ]
+    }
+  }
+]

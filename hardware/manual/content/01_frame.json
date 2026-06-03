@@ -1,0 +1,124 @@
+[
+  {
+    "type": "opener",
+    "page": "6",
+    "id": "frame",
+    "secnum": { "en": "SECTION 01", "zh": "第 01 节" },
+    "h1": { "en": "Frame", "zh": "框架" },
+    "lede": { "en": "Aluminum extrusions, T-nuts, brackets, and bumpers form the mechanical chassis everything else bolts onto. Squareness built in here governs every motion downstream.", "zh": "铝型材、T 型螺母、角码和缓冲脚共同构成机械底盘，其余部件都装在它上面。这里打好的方正度，决定了之后所有运动的精度。" }
+  },
+  {
+    "type": "solo",
+    "page": "7",
+    "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_10" },
+    "figures": [
+      { "src": "frame_10_extrusion_tnut_exploded_cam0_rbun.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Preload the T-nuts", "zh": "预装 T 型螺母" },
+        "body": { "en": "Slide every T-nut into its slot before squaring the frame.", "zh": "校正框架方正度之前，先把每个 T 型螺母滑进对应的型材槽。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; bottom:70mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Extrusion 2040", "zh": "2040 铝型材" }, "spec": "355 mm · CB", "qty": "2" },
+        { "component": { "en": "Extrusion 2040", "zh": "2040 铝型材" }, "spec": "190 mm", "qty": "2" },
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Slide-In M5", "qty": "8" }
+      ]
+    }
+  },
+  {
+    "type": "solo",
+    "page": "8",
+    "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_20" },
+    "figures": [
+      { "src": "frame_20_SHCS_exploded_cam0_nllz.svg", "style": "object-position: 12% center;" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Square before final tightening", "zh": "终拧前先校正方正度" },
+        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺钉穿过长型材的沉孔，旋入短型材的端面孔。先把 8 颗全部拧上，在平整台面上校正框架方正度，再做终拧。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; bottom:60mm; width:80mm;"
+      },
+      {
+        "h3": { "en": "Direction Convention", "zh": "方向约定" },
+        "body": { "en": "Top, bottom, left, and right throughout this manual refer to this view.", "zh": "本手册中提到的上、下、左、右，都以此视图为准。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; bottom:140mm; width:80mm;"
+      },
+      {
+        "h3": { "en": "Counterbores face out", "zh": "沉孔朝外" },
+        "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材的端面孔。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; bottom:100mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "SHCS", "zh": "SHCS 内六角圆柱头螺钉" }, "spec": "M6×16", "qty": "8" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "9",
+    "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_30 · frame_31" },
+    "figures": [
+      { "src": "frame_31_bracket_assembled_cam0_cljs.svg" },
+      { "src": "frame_30_bracket_tnut_exploded_cam0_gslq.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Drop-in, not slide-in", "zh": "落入式，而非滑入式" },
+        "body": { "en": "One joining plate reinforces each corner. Its drop-in T-nuts seat into the closed frame and quarter-turn to lock, so you never have to take the frame apart.", "zh": "每个角用一块连接板加固。它的落入式 T 型螺母直接落进已封闭的框架，转四分之一圈即锁紧，全程无需拆开框架。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:100mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "bracket", "zh": "角码" }, "spec": "Joining Plate", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M5×10", "qty": "8" },
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "8" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "10",
+    "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_40 · frame_41" },
+    "figures": [
+      { "src": "frame_41_bumper_assembled_cam0_hovj.svg" },
+      { "src": "frame_40_bumper_tnut_exploded_cam0_jnva.svg", "style": "object-position: 64% center;" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Feet point down", "zh": "脚朝下" },
+        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个缓冲脚就是机器的支脚，装在框架底下。每颗螺钉自下往上穿过缓冲脚，旋入底部型材槽里的落入式 T 型螺母，钉头便藏在底面之下。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:100mm; width:78mm;"
+      },
+      {
+        "h3": { "en": "Use the screws that come with the bumpers", "zh": "使用缓冲脚自带的螺钉" },
+        "body": { "en": "Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.", "zh": "很多缓冲脚出厂就自带螺钉。如果你的带螺钉，就用自带的，尺寸正好与缓冲脚配套。" },
+        "classes": "note overlay sm",
+        "style": "left:135mm; top:30mm; width:70mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Bumper", "zh": "缓冲脚" }, "spec": "Ø20 × 22 mm", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M5×16", "qty": "4" },
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "4" }
+      ]
+    }
+  }
+]

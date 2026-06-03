@@ -1,0 +1,624 @@
+  /* ============================================================
+     PhysiClaw.ai Assembly Manual
+     One section per procedure family (frame, idler, motor,
+     linear, belt, tapz, phone, board, camera). Each section lists
+     every SVG render for that family in alphabetic filename order,
+     4 per page.
+     ============================================================ */
+
+  @page { size: A4 landscape; margin: 0; }
+
+  :root {
+    --accent:        #d4511a;
+    --ink:           #1f1f1f;
+    --ink-soft:      #6a6a6a;
+    --ink-faint:     #b8b8b8;
+    --rule:          #d8d8d8;
+    --page-bg:       #ffffff;
+    --link:          #4a8bc7;
+
+    --font-sans:     "Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    --font-mono:     "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    scroll-behavior: smooth;
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: #eaeaea;
+    font-size: 11pt;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 297mm;
+    height: 210mm;
+    margin: 0 auto 8mm auto;
+    padding: 0;
+    background: var(--page-bg);
+    page-break-after: always;
+    position: relative;
+    overflow: hidden;
+  }
+  .page-inner {
+    padding: 12mm 16mm 14mm 16mm;
+    height: 100%;
+    position: relative;
+  }
+  .page:last-child { page-break-after: auto; }
+  @media print {
+    body { background: #fff; }
+    .page { margin: 0; }
+    /* Force browsers to print CSS background-colors (back cover, accent
+       bars). Without this, "Background graphics" must be ticked in the
+       print dialog or the back cover renders as black text on white. */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  /* ---------- Header ---------- */
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6mm;
+    line-height: 1.2;
+  }
+  .head .title {
+    color: var(--accent);
+    font-weight: 500;
+    font-size: 13pt;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    max-width: 200mm;
+  }
+  .head .title small {
+    display: block;
+    font-size: 10pt;
+    margin-top: 0.5mm;
+    color: var(--ink-faint);
+    letter-spacing: 0.05em;
+  }
+  .head .url {
+    color: var(--ink-faint);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    font-size: 11pt;
+  }
+
+  /* ---------- Footer ---------- */
+  .foot {
+    position: absolute;
+    left: 16mm; right: 16mm; bottom: 7mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--ink-faint);
+    font-size: 11pt;
+    font-weight: 400;
+  }
+  .foot .rule {
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+    margin: 0 4mm;
+  }
+
+  /* ---------- Red-headed note ---------- */
+  .note { max-width: 90mm; }
+  .note h3 {
+    color: var(--accent);
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 0 0 2mm 0;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+  }
+  .note h3.normal-case { text-transform: none; }
+  .note p {
+    color: var(--ink-soft);
+    font-size: 11pt;
+    line-height: 1.5;
+    margin: 0 0 3mm 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note p a { color: var(--link); text-decoration: none; }
+  .note + .note { margin-top: 6mm; }
+  .note .ref {
+    color: var(--accent);
+    font-size: 11pt;
+    font-weight: 500;
+    margin-top: 1mm;
+  }
+  /* Reusable floating callout card — absolute, translucent white,
+     padded, above the figure. Per-page, set only the position offsets
+     (top/left/right/bottom) and width inline. Add class "overlay". */
+  .note.overlay {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.92);
+    padding: 3mm 4mm;
+    z-index: 2;
+  }
+  /* Smaller-text variant — compose with "overlay" or use alone.
+     Add class "sm" alongside "note". */
+  .note.sm h3   { font-size: 9.5pt; }
+  .note.sm p    { font-size: 9.5pt; }
+  .note.sm .ref { font-size: 9.5pt; }
+
+  /* Pages 3–5 (intro, hardware reference, printed parts) match page 7's
+     small note type — 9.5pt header and content, same as the .sm variant. */
+  .intro-body .note h3,  .hw-entry .note h3,  .print-page .note h3   { font-size: 9.5pt; }
+  .intro-body .note p,   .hw-entry .note p,   .print-page .note p    { font-size: 9.5pt; }
+  .intro-body .note .ref,.hw-entry .note .ref,.print-page .note .ref { font-size: 9.5pt; }
+
+  /* ---------- Figure ---------- */
+  /* Absolute-positioning the img inside a relative .fig is the only
+     reliable way to scale an SVG <img> to its container's *computed*
+     height. The naive `width:100%; height:100%; object-fit:contain`
+     fails when the .fig's height comes from flex (the img's intrinsic
+     SVG size leaks back into the flex track and lets near-square
+     drawings overflow). overflow:hidden is a safety belt for the
+     rare case where the image still exceeds bounds. */
+  .fig {
+    position: relative;
+    overflow: hidden;
+  }
+  .fig > img, .fig > svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .cover .render img, .cover .render svg,
+  .hw-entry .icon img, .hw-entry .icon svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* Placeholder helper (used when an SVG render is missing) */
+  .ph { width: 100%; height: 100%; }
+  .ph text { fill: #cfcfcf; font-family: var(--font-mono); font-size: 11px; }
+  .ph .frame { fill: none; stroke: #eee; stroke-dasharray: 4,4; }
+
+  /* ====== PAGE-SPECIFIC LAYOUTS ====== */
+
+  /* COVER */
+  .cover .page-inner { padding: 0; height: 100%; position: relative; }
+  .cover .stripes {
+    position: absolute;
+    left: -10mm;
+    bottom: 0;
+    width: 145mm;
+    height: 175mm;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .cover .stripes svg { width: 100%; height: 100%; }
+  .cover .brand {
+    position: absolute;
+    top: 14mm;
+    right: 18mm;
+    text-align: right;
+    z-index: 2;
+  }
+  .cover .brand .mark {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4mm;
+  }
+  .cover .brand .mark svg,
+  .cover .brand .mark img { width: 24mm; height: auto; }
+  .cover .brand .mark .word {
+    font-size: 30pt;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    line-height: 1;
+  }
+  .cover .brand .mark .word .tld {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .cover .render {
+    position: absolute;
+    top: 40mm;
+    right: 18mm;
+    width: 130mm;
+    height: 110mm;
+    z-index: 1;
+  }
+  .cover .render img, .cover .render svg {
+    display: block;
+    margin-left: auto;
+  }
+  .cover .title-block {
+    position: absolute;
+    right: 18mm;
+    bottom: 22mm;
+    text-align: right;
+    width: 200mm;
+    z-index: 2;
+  }
+  .cover .title-block h1 {
+    color: var(--accent);
+    font-size: 32pt;
+    font-weight: 500;
+    margin: 0 0 4mm 0;
+    letter-spacing: 0.005em;
+    text-transform: uppercase;
+  }
+  .cover .title-block .tag {
+    color: var(--ink);
+    font-size: 13pt;
+    margin: 0 0 4mm 0;
+    line-height: 1.5;
+  }
+  .cover .title-block .red-rule {
+    height: 1.2px;
+    background: var(--accent);
+    margin-left: auto;
+    width: 100%;
+  }
+  .cover .ver {
+    position: absolute;
+    right: 18mm;
+    bottom: 10mm;
+    color: var(--ink-soft);
+    font-size: 11pt;
+    letter-spacing: 0.15em;
+    z-index: 2;
+  }
+
+  /* TOC */
+  .toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 18mm;
+    row-gap: 0;
+    margin-top: 18mm;
+  }
+  .toc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5mm 0 2mm 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 9.5pt;
+    color: var(--ink-soft);
+  }
+  .toc-row .pg { color: var(--ink-soft); font-weight: 400; }
+  a.toc-row { text-decoration: none; color: var(--ink-soft); cursor: pointer; }
+  a.toc-row:hover, a.toc-row:hover .pg { color: var(--accent); }
+  a.toc-row:hover { border-bottom-color: var(--accent); }
+
+  /* HARDWARE REFERENCE */
+  .hw-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    column-gap: 14mm;
+    row-gap: 8mm;
+    margin-top: 4mm;
+    height: 155mm;
+  }
+  .hw-entry {
+    display: grid;
+    grid-template-columns: 50mm 1fr;
+    column-gap: 6mm;
+    align-items: center;
+  }
+  .hw-entry .icon {
+    height: 100%;
+    display: grid;
+    place-items: center;
+  }
+  .hw-entry .note { max-width: none; }
+
+  /* INTRODUCTION — two reference notes above GitHub / Docs links */
+  .intro-body { padding: 18mm 0 0 40mm; }
+  .intro-body .note { max-width: 172mm; }
+  .intro-body .note + .note { margin-top: 18mm; }
+  .intro-links {
+    display: grid;
+    grid-template-columns: 100mm 1fr;
+    align-items: center;
+    row-gap: 16mm;
+    margin-top: 30mm;
+  }
+  .intro-logo { display: flex; align-items: center; gap: 6mm; color: var(--ink); }
+  .intro-logo svg, .intro-logo img { height: 10mm; width: auto; }
+  .intro-logo .word { font-size: 27pt; font-weight: 800; letter-spacing: -0.03em; }
+  .intro-url { color: var(--accent); font-size: 9.5pt; text-decoration: none; letter-spacing: 0.01em; }
+
+  /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
+     Content (intro + grid) is vertically centred in the page body so the
+     sheet stays balanced now that there is no closing section below it. */
+  .print-page {
+    padding-left: 28mm;
+    min-height: 155mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .print-page .note { max-width: 165mm; }
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 22mm;
+    row-gap: 9mm;
+    margin: 13mm 0 0 0;
+    max-width: 165mm;
+  }
+  .spec-grid + .note { margin-top: 16mm; }
+  .spec-item .k {
+    color: var(--accent);
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    margin: 0 0 1mm 0;
+  }
+  .spec-item .v {
+    color: var(--ink-soft);
+    font-size: 9.5pt;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* CHAPTER OPENER */
+  .opener {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 8mm;
+  }
+  .opener .secnum {
+    color: var(--accent);
+    font-size: 14pt;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    margin-bottom: 8mm;
+  }
+  .opener h1 {
+    font-size: 58pt;
+    line-height: 1.05;
+    margin: 0 0 8mm 0;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    max-width: 220mm;
+  }
+  .opener .lede {
+    font-size: 13pt;
+    color: var(--ink-soft);
+    max-width: 200mm;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .opener .bar {
+    width: 60mm;
+    height: 2px;
+    background: var(--accent);
+    margin-top: 12mm;
+  }
+
+  /* SOLO (one figure filling the page body) */
+  .solo {
+    display: flex;
+    flex-direction: column;
+    height: 155mm;
+  }
+  .solo .fig { flex: 1; min-height: 0; }
+  .solo .caption {
+    font-family: var(--font-mono);
+    font-size: 10pt;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: 3mm;
+    letter-spacing: 0.02em;
+  }
+
+  /* BOM TABLE — always an overlay floating over the figure. Per-page
+     anchor (top / right / bottom / left) and width come from inline
+     style. */
+  .bom {
+    position: absolute;
+    right: 16mm;
+    bottom: 18mm;
+    width: 75mm;
+    z-index: 2;
+    font-size: 10pt;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 4mm 0 3mm 5mm;
+  }
+  .bom .label {
+    display: block;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 3mm;
+  }
+  .bom table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .bom thead th {
+    text-align: left;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--rule);
+    padding: 2mm 3mm 2mm 0;
+  }
+  .bom thead th:last-child { text-align: right; padding-right: 0; }
+  .bom tbody td {
+    padding: 1.5mm 3mm 1.5mm 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    vertical-align: top;
+  }
+  .bom tbody td.spec {
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 9.5pt;
+  }
+  .bom tbody td.qty {
+    text-align: right;
+    padding-right: 0;
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
+  /* TALL-LEFT (one figure on the left spanning full height, two cells
+     stacked on the right). */
+  .tall-left {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 6mm;
+    height: 155mm;
+  }
+  .tall-left > .tall { grid-row: span 2; }
+  /* Hero variant — taller top-left figure (top row 1.4×). */
+  .tall-left.hero { grid-template-rows: 1.4fr 1fr; }
+
+  /* WIDE-TOP (one figure on top spanning full width, two cells side-by-side
+     below). */
+  .wide-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 6mm;
+    height: 155mm;
+  }
+  .wide-top > .wide { grid-column: span 2; }
+
+  /* MAIN-INSET-BR — main figure fills the page; a smaller inset sits as an
+     opaque overlay anchored to the bottom-right corner. CSS Grid can't draw
+     an L-shape via grid-template-areas (must be rectangular), so the inset
+     uses absolute positioning over a relative container instead. */
+  .main-inset-br {
+    position: relative;
+    height: 155mm;
+  }
+  .main-inset-br > .main  { width: 100%; height: 100%; }
+  .main-inset-br > .inset {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 78mm;
+    height: 60mm;
+    background: var(--page);
+  }
+
+  /* GRID-4 (2 × 2 tiles per page, used by every section's body) */
+  .grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10mm;
+    row-gap: 8mm;
+    height: 155mm;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .tile .fig {
+    flex: 1;
+    min-height: 0;
+  }
+  .tile .caption {
+    font-family: var(--font-mono);
+    font-size: 9pt;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: 1.5mm;
+    letter-spacing: 0.02em;
+    word-break: break-all;
+  }
+
+  /* BACK COVER */
+  .back .page-inner {
+    padding: 0;
+    background: var(--page-bg);
+    color: var(--ink);
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  /* Corner wedge — mirrors the front cover's bottom-left motif. */
+  .back .corner {
+    position: absolute;
+    top: 0;
+    right: -10mm;
+    width: 120mm;
+    height: 145mm;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .back .corner svg { width: 100%; height: 100%; }
+  .back .top { padding: 28mm 18mm 12mm 18mm; flex: 1; position: relative; z-index: 1; }
+  .back .stamp {
+    font-family: var(--font-mono);
+    font-size: 11pt;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    margin-bottom: 8mm;
+  }
+  .back h2 {
+    font-size: 42pt;
+    line-height: 1.1;
+    margin: 0 0 8mm 0;
+    font-weight: 700;
+    color: var(--ink);
+    max-width: 200mm;
+    letter-spacing: -0.015em;
+  }
+  .back .quote {
+    font-family: var(--font-mono);
+    font-size: 13pt;
+    color: var(--ink-soft);
+    max-width: 190mm;
+    line-height: 1.55;
+    border-left: 3px solid var(--accent);
+    padding-left: 6mm;
+    margin: 10mm 0 0 0;
+  }
+  .back .bottom {
+    padding: 8mm 18mm 14mm 18mm;
+    border-top: 2px solid var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 10pt;
+    color: var(--ink-soft);
+    position: relative;
+    z-index: 1;
+  }
+  .back .bottom strong {
+    color: var(--ink);
+    font-size: 12pt;
+    letter-spacing: 0.01em;
+  }
+  .back .bottom .brand-line { display: flex; align-items: center; gap: 5mm; }
+  .back .bottom .footmark { width: 18mm; height: auto; flex: none; }
+  .back .bottom .right { text-align: right; font-family: var(--font-mono); line-height: 1.5; }

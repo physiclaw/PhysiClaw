@@ -1,0 +1,131 @@
+[
+  {
+    "type": "opener",
+    "page": "42",
+    "id": "belt",
+    "secnum": { "en": "SECTION 05", "zh": "第 05 节" },
+    "h1": { "en": "Belt path", "zh": "同步带路径" },
+    "lede": { "en": "The A and B GT2 belts form PhysiClaw's CoreXY belt path, stacked on separate planes to avoid the usual crossing. Route both from the moving stage around the idler stack to the motor pulleys, teeth in and at equal tension, for square, accurate motion.", "zh": "A、B 两条 GT2 同步带构成 PhysiClaw 的 CoreXY 同步带路径，分层布置在不同平面上，避开常见的交叉。两条同步带都从运动平台出发，绕过惰轮组接到电机同步带轮，齿面朝内、张力相等，从而实现方正、精确的运动。" }
+  },
+  {
+    "type": "tall-left",
+    "page": "43",
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带路径" }, "small": "belt_10 · belt_11" },
+    "variant": "hero",
+    "figures": [
+      { "src": "belt_10_motor_a_exploded_cam0_sstk.svg" },
+      { "src": "belt_11_clamp_show_assembled_cam0_zybo.svg", "style": "transform: translate(-26mm, 12mm) scale(0.8);" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "One belt, one plane", "zh": "一条同步带，一个平面" },
+        "body": { "en": "The Motor A belt is a single open length with both ends clamped to the X carriage. It must stay flat in one plane and never twist along the way. The teeth grip the toothed pulleys; the smooth back rides on the smooth idlers.", "zh": "电机 A 的同步带是一整段开口同步带，两端均夹紧在 X 滑座上，必须始终平整地处于同一平面内，全程不能扭转。齿面咬合带齿同步带轮，光滑背面贴着光面惰轮滑动。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:20mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "The clamp self-locks", "zh": "夹具自锁" },
+        "body": { "en": "Feed each belt end into the clamp's bottom slot, loop it around the post, and fold it back against itself so the teeth mesh. That teeth-on-teeth grip holds the belt with no extra fasteners.", "zh": "将同步带每一端穿入夹具底部的槽中，绕过立柱后向回折叠压住自身，让齿与齿咬合。这种齿对齿的咬合无需额外紧固件就能固定同步带。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:120mm; width:70mm;"
+      },
+      {
+        "h3": { "en": "Tension by sliding the motor", "zh": "通过滑动电机张紧" },
+        "body": { "en": "Leave Motor A's two M5 screws loose, clamp both belt ends into the clamp, then slide the motor to pull the belt tight.", "zh": "电机 A 的两颗 M5 螺钉暂不拧紧，将同步带两端都夹入夹具，再滑动电机把同步带拉紧。" },
+        "classes": "note overlay sm",
+        "style": "right:10mm; top:100mm; width:70mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "GT2 belt", "zh": "GT2 同步带" }, "spec": "Open loop, 6 mm", "qty": "1" },
+        { "component": { "en": "Belt clamp", "zh": "皮带夹具" }, "spec": "SLS 3D Print", "qty": "1" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "44",
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带路径" }, "small": "belt_20" },
+    "variant": "hero",
+    "figures": [
+      { "src": "belt_20_clamp_exploded_cam1_vbba.svg" },
+      { "src": "belt_20_clamp_assembled_cam0_odxc.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Clamp the belt before mounting", "zh": "先夹好同步带再安装" },
+        "body": { "en": "Make sure the Motor A belt is seated in the clamp's bottom slot before you fix the clamp to the X carriage.", "zh": "把夹具固定到 X 滑座之前，先确认电机 A 的同步带已嵌入夹具底部的槽中。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:120mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "Match the Motor B belt length", "zh": "电机 B 同步带长度要一致" },
+        "body": { "en": "Cut the Motor B belt to the same length before fitting it to its clamp.", "zh": "将电机 B 的同步带装入夹具前，先把它剪成相同的长度。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:60mm; width:50mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Belt clamp", "zh": "皮带夹具" }, "spec": "SLS 3D Print", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M3×8", "qty": "4" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "45",
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带路径" }, "small": "belt_30 · belt_11" },
+    "variant": "hero",
+    "figures": [
+      { "src": "belt_30_motor_b_exploded_cam0_uesm.svg" },
+      { "src": "belt_11_clamp_show_assembled_cam1_dhwk.svg", "style": "transform: translateY(6mm) scale(0.8);" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Belt final check", "zh": "同步带最终检查" },
+        "body": { "en": "With both belts installed, push the carriage by hand through its full travel in every direction. It should move smoothly with the same, even resistance throughout — that resistance is just the motors. Confirm there's no sticking, no interference, no twisted belts, and no odd noises, with the two belts on their separate planes.", "zh": "两条同步带都装好后，用手推动滑座沿各个方向走完整个行程。运动应顺畅，全程阻力均匀一致——这点阻力只是来自电机。确认没有卡滞、没有干涉、同步带没有扭转、没有异响，且两条同步带各自处在自己的平面上。" },
+        "classes": "note overlay sm",
+        "style": "right:60mm; top:130mm; width:100mm;"
+      }
+    ]
+  },
+  {
+    "type": "tall-left",
+    "page": "46",
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带路径" }, "small": "belt_30" },
+    "figures": [
+      { "src": "belt_30_motor_b_assembled_cam0_egkj.svg" }
+    ],
+    "labels": [
+      {
+        "style": "position:absolute; left:60; top:145mm; width:130mm; text-align:center; font-size:12pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": "75Hz"
+      }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Belt tension", "zh": "同步带张力" },
+        "body": { "en": "Equal tension on both belts is essential for a CoreXY motion system. Even a slight difference between the two will skew the gantry's motion. You can adjust a motor's position to fine-tune the tension of its belt.", "zh": "两条同步带张力相等对 CoreXY 运动系统至关重要，两者之间哪怕有细微差别都会让龙门架的运动产生偏斜。调整电机的位置即可微调对应同步带的张力。" },
+        "classes": "note overlay sm",
+        "style": "left:152mm; top:30mm; width:112mm;"
+      },
+      {
+        "h3": { "en": "Pluck the belts", "zh": "拨动同步带" },
+        "body": { "en": "For a quick check, move the X carriage fully to the motor side and pluck the indicated belts with a finger. The two should feel and sound about the same — matching pitch means roughly equal tension.", "zh": "想快速检查，可将 X 滑座完全移到电机一侧，用手指拨动图示的同步带。两条的手感和声音应大致相同——音高一致即说明张力大致相等。" },
+        "classes": "note overlay sm",
+        "style": "left:152mm; top:75mm; width:112mm;"
+      },
+      {
+        "h3": { "en": "75Hz AT 220mm", "zh": "220mm 处 75Hz" },
+        "h3Class": "normal-case",
+        "body": { "en": "For a precise check, measure each belt with a tuning app on your phone while the gantry is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.", "zh": "想精确检查，可在龙门架停在标记位置时，用手机上的调音 app 测量每条同步带。拨动同步带，使频率达到 75 Hz——两条读数相同即可确认张力正确。" },
+        "classes": "note overlay sm",
+        "style": "left:152mm; top:120mm; width:112mm;"
+      }
+    ]
+  }
+]

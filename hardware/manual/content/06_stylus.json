@@ -1,0 +1,107 @@
+[
+  {
+    "type": "opener",
+    "page": "47",
+    "id": "stylus",
+    "secnum": { "en": "SECTION 06", "zh": "第 06 节" },
+    "h1": { "en": "Stylus carriage", "zh": "触控笔滑座" },
+    "lede": { "en": "Solenoid, capacitive stylus tip, and carriage mount form the business end of the machine. Every tap, swipe, and hold originates here.", "zh": "电磁阀、电容式触控笔尖和滑座支架，共同构成整机的工作末端。每一次点按、滑动、长按，都从这里发出。" }
+  },
+  {
+    "type": "tall-left",
+    "page": "48",
+    "head": {
+      "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
+      "small": "tapz_10"
+    },
+    "variant": "hero",
+    "figures": [
+      { "src": "tapz_10_solenoid_tip_exploded_cam1_botx.svg" },
+      { "src": "tapz_10_solenoid_tip_assembled_cam1.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Fit the stylus tip", "zh": "安装触控笔尖" },
+        "body": { "en": "The solenoid ships with a nut on its bottom end. Remove that nut, then thread the stylus tip on in its place.", "zh": "电磁阀出厂时底端装有一颗螺母。取下螺母，把触控笔尖旋到原来的位置上。" },
+        "classes": "note overlay sm",
+        "style": "left:120mm; top:60mm; width:60mm;"
+      },
+      {
+        "h3": { "en": "Solenoid mount holes", "zh": "电磁阀安装孔" },
+        "body": { "en": "Two M3 holes, 15 mm apart.", "zh": "两个 M3 孔，间距 15 mm。" },
+        "classes": "note overlay sm",
+        "style": "left:120mm; top:105mm; width:60mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Solenoid", "zh": "电磁阀" }, "spec": "15 × 30 × 13 mm", "qty": "1" },
+        { "component": { "en": "Stylus tip", "zh": "触控笔尖" }, "spec": "Capacitive, M3", "qty": "1" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "49",
+    "head": {
+      "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
+      "small": "tapz_11"
+    },
+    "variant": "hero",
+    "figures": [
+      { "src": "tapz_11_solenoid_attach_exploded_cam1_cjmx.svg" },
+      { "src": "tapz_11_solenoid_attach_assembled_cam1.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "10 hole pairs for height tuning", "zh": "10 对孔用于高度调节" },
+        "body": { "en": "The mount has 10 pairs of holes, spaced 1 mm apart. Pick a pair now, and you can later raise or lower the stylus in 1 mm steps.", "zh": "支架上有 10 对孔，孔距 1 mm。现在先选定一对，以后还能以 1 mm 为一档升高或降低触控笔。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:60mm; width:60mm;"
+      },
+      {
+        "h3": { "en": "Route the wire", "zh": "布线" },
+        "body": { "en": "As indicated, feed the solenoid wire into the rectangular hole on the mount side, then run it up and out through the rectangular hole at the top.", "zh": "按图示，把电磁阀引线从支架侧面的矩形孔穿入，再向上从顶部的矩形孔引出。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:110mm; width:60mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Solenoid mount", "zh": "电磁阀支架" }, "spec": "SLS 3D Print", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M3×6", "qty": "2" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "50",
+    "head": {
+      "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
+      "small": "tapz_20"
+    },
+    "variant": "hero",
+    "figures": [
+      { "src": "tapz_20_solenoid_mount_exploded_cam1_hmwg.svg" },
+      { "src": "tapz_20_solenoid_mount_assembled_cam0_pydm.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Mount the solenoid to the clamp", "zh": "把电磁阀装到夹具上" },
+        "body": { "en": "Six screws hold the solenoid assembly to the clamp. To adjust the stylus height later, undo them and refit at a different hole pair.", "zh": "六颗螺钉把电磁阀总成固定在夹具上。日后要调整触控笔高度，松开这几颗螺钉，换到另一对孔上重新装好即可。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:120mm; width:60mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M3×8", "qty": "4" },
+        { "component": { "en": "FHCS", "zh": "FHCS 内六角沉头螺钉" }, "spec": "M3×10", "qty": "2" },
+        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M3", "qty": "6" }
+      ]
+    }
+  }
+]

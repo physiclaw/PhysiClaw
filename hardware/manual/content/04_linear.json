@@ -1,0 +1,924 @@
+[
+  {
+    "type": "opener",
+    "page": "26",
+    "id": "linear",
+    "secnum": {
+      "en": "SECTION 04",
+      "zh": "第 04 节"
+    },
+    "h1": {
+      "en": "Linear motion",
+      "zh": "直线运动"
+    },
+    "lede": {
+      "en": "MGN9H rails, joints, and idler tabs carry the Y carriage and X beam. These tie the X and Y axes into a CoreXY arrangement.",
+      "zh": "MGN9H 导轨、连接件和惰轮支座托起 Y 滑座和 X 横梁，把 X、Y 两轴组成 CoreXY 结构。"
+    }
+  },
+  {
+    "type": "wide-top",
+    "page": "27",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_10"
+    },
+    "figures": [
+      {
+        "src": "linear_10_y_exploded_cam0_jwgq.svg"
+      },
+      {
+        "src": "linear_10_y_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Build two Y rails",
+          "zh": "制作两条 Y 导轨"
+        },
+        "body": {
+          "en": "The Y axis uses two identical rails. Assemble both the same way.",
+          "zh": "Y 轴用两条相同的导轨，做法完全一样。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:30mm; width:74mm;"
+      },
+      {
+        "h3": {
+          "en": "Clean and grease the rails",
+          "zh": "清洁并润滑导轨"
+        },
+        "body": {
+          "en": "MGN9H rails arrive coated in shipping oil. Wipe it off and pack the carriage with fresh grease before mounting — that's what gives smooth, long-lasting motion. Prep every rail the same way.",
+          "zh": "MGN9H 导轨出厂时带有运输防锈油。安装前先擦净，再往滑块里补足新润滑脂——运动才会顺滑耐用。每条导轨都这样处理。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:120mm; bottom:25mm; width:80mm;"
+      },
+      {
+        "h3": {
+          "en": "Let the T-nuts hang",
+          "zh": "让 T 型螺母吊着"
+        },
+        "body": {
+          "en": "Thread an FHCS into every other hole and let its hammer T-nut dangle on the screw tip. Lower the whole rail onto the extrusion slot, then tighten to draw the nuts up snug.",
+          "zh": "每隔一个孔拧入一颗 FHCS，让锤头 T 型螺母吊在螺钉尖端。把整条导轨放进型材槽，再拧紧将螺母拉上来夹紧。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:80mm; width:74mm;"
+      },
+      {
+        "h3": {
+          "en": "Mind the carriage",
+          "zh": "小心滑块"
+        },
+        "body": {
+          "en": "The carriage slides off the rail end with little effort, and a dropped one spills its ball bearings — ruining it. Keep it on the rail, and never swap carriages between rails.",
+          "zh": "滑块稍一用力就会从导轨端头滑出，一旦掉落，滚珠散落即告报废。务必让它留在导轨上，且不同导轨的滑块切勿互换。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:90mm; width:60mm; display:flex; gap:4mm; align-items:flex-start;",
+        "icon": "info"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Linear rail",
+            "zh": "直线导轨"
+          },
+          "spec": "MGN9H, 240 mm",
+          "qty": "2"
+        },
+        {
+          "component": {
+            "en": "FHCS",
+            "zh": "FHCS（沉头内六角螺钉）"
+          },
+          "spec": "M3×10",
+          "qty": "12"
+        },
+        {
+          "component": {
+            "en": "T-nut",
+            "zh": "T 型螺母"
+          },
+          "spec": "M3 Drop-In",
+          "qty": "12"
+        }
+      ]
+    }
+  },
+  {
+    "type": "main-inset-br",
+    "page": "28",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_11"
+    },
+    "main": {
+      "src": "linear_11_y_exploded_cam1_xjoj.svg"
+    },
+    "notes": [
+      {
+        "h3": {
+          "en": "Snug the rails between the blocks",
+          "zh": "把导轨夹紧在安装块之间"
+        },
+        "body": {
+          "en": "Adjust the two bottom idlers so each Y rail is held tight between its mount blocks.",
+          "zh": "调整底部两个惰轮，让每条 Y 导轨都牢牢夹紧在两侧安装块之间。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:5mm; top:0mm; width:60mm;"
+      },
+      {
+        "h3": {
+          "en": "Fix the Y rails, but not tight",
+          "zh": "固定 Y 导轨，但不要拧死"
+        },
+        "body": {
+          "en": "Hold both Y rails in place with the bolts snug, not fully tightened. Only once the X axis is installed and travels smoothly should you torque them down.",
+          "zh": "用螺栓把两条 Y 导轨固定到位，拧到贴合即可，先别拧死。等 X 轴装好、移动顺滑后再拧紧到位。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:120mm; width:80mm;"
+      },
+      {
+        "h3": {
+          "en": "Tighten from the middle out",
+          "zh": "由中间向两端拧紧"
+        },
+        "body": {
+          "en": "When you do tighten, start at the center bolt and work outward so the rail beds down flush against the extrusion.",
+          "zh": "正式拧紧时从中间那颗螺栓起，依次向两端拧，让导轨平整地贴合在型材上。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:0mm; top:0mm; width:55mm;"
+      }
+    ],
+    "notesInside": true
+  },
+  {
+    "type": "tall-left",
+    "page": "29",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_20"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "linear_20_joint_exploded_cam1_mleb.svg"
+      },
+      {
+        "src": "linear_20_joint_assembled_cam0_oavm.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Straight side toward the motor",
+          "zh": "平直面朝向电机"
+        },
+        "body": {
+          "en": "The left and right joints are mirrored. Mount each one with its straight side facing the motor.",
+          "zh": "左右连接件互为镜像。安装时，各连接件的平直面都要朝向电机。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:120mm; width:80mm;"
+      },
+      {
+        "h3": {
+          "en": "Tighten in a cross pattern",
+          "zh": "按对角交叉顺序拧紧"
+        },
+        "body": {
+          "en": "Run all four screws in finger-tight first, then tighten opposite corners in pairs. This seats the joint flat on the slider instead of tilting it to one side.",
+          "zh": "先把四颗螺钉都用手拧到手紧，再成对拧紧对角。这样连接件才能平贴地坐在滑块上，不会偏向一侧。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:100mm; top:30mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "XY joint (left)",
+            "zh": "XY 连接件（左）"
+          },
+          "spec": "SLS 3D Print",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "XY joint (right)",
+            "zh": "XY 连接件（右）"
+          },
+          "spec": "SLS 3D Print",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "FHCS",
+            "zh": "FHCS（沉头内六角螺钉）"
+          },
+          "spec": "M3×10",
+          "qty": "8"
+        }
+      ]
+    }
+  },
+  {
+    "type": "wide-top",
+    "page": "30",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_30"
+    },
+    "figures": [
+      {
+        "src": "linear_30_x_exploded_cam1_qqbr.svg"
+      },
+      {
+        "src": "linear_30_x_assembled_cam1_ifxv.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Preload the X-beam T-nuts",
+          "zh": "预装 X 横梁的 T 型螺母"
+        },
+        "body": {
+          "en": "Slide both M5 T-nuts in from the open end now — they're captive once the ends are blocked.",
+          "zh": "现在就把两颗 M5 T 型螺母从开口端滑进去——端头一封堵，它们就困在槽里出不来了。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:90mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Extrusion 1020",
+            "zh": "1020 铝型材"
+          },
+          "spec": "185 mm",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "T-nut",
+            "zh": "T 型螺母"
+          },
+          "spec": "Slide-In M5",
+          "qty": "2"
+        }
+      ]
+    }
+  },
+  {
+    "type": "main-inset-br",
+    "page": "31",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_31"
+    },
+    "main": {
+      "src": "linear_31_x_exploded_cam1_opwr.svg",
+      "style": "transform: translateX(-20mm);"
+    },
+    "notes": [
+      {
+        "h3": {
+          "en": "Check the X beam slides smoothly",
+          "zh": "检查 X 横梁滑动是否顺畅"
+        },
+        "body": {
+          "en": "The X beam should glide freely along the Y rails. If it binds, realign the Y rails until it runs smoothly, then tighten them from the center bolt outward.",
+          "zh": "X 横梁应能沿 Y 导轨自由滑动。若发卡，先校正 Y 导轨直到滑动顺畅，再从中间那颗螺栓向两端拧紧。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:60mm; width:60mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "FHCS",
+            "zh": "FHCS（沉头内六角螺钉）"
+          },
+          "spec": "M5×12",
+          "qty": "2"
+        }
+      ]
+    }
+  },
+  {
+    "type": "wide-top",
+    "page": "32",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_32"
+    },
+    "figures": [
+      {
+        "src": "linear_32_x_exploded_cam0_lccr.svg"
+      },
+      {
+        "src": "linear_32_x_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "X rail — same as the Y rails",
+          "zh": "X 导轨——与 Y 导轨一样"
+        },
+        "body": {
+          "en": "Mount this rail just like the Y rails: let the T-nuts hang loose at first, then tighten to draw them up.",
+          "zh": "这条导轨的装法和 Y 导轨一样：先让 T 型螺母松松地吊着，再拧紧把它们拉上来。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:100mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Linear rail",
+            "zh": "直线导轨"
+          },
+          "spec": "MGN9H, 150 mm",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "FHCS",
+            "zh": "FHCS（沉头内六角螺钉）"
+          },
+          "spec": "M3×10",
+          "qty": "4"
+        },
+        {
+          "component": {
+            "en": "T-nut",
+            "zh": "T 型螺母"
+          },
+          "spec": "M3 Drop-In",
+          "qty": "4"
+        }
+      ]
+    }
+  },
+  {
+    "type": "main-inset-br",
+    "page": "33",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_33"
+    },
+    "main": {
+      "src": "linear_33_x_exploded_cam1_yxys.svg",
+      "style": "transform: translateX(-15mm);"
+    },
+    "notes": [
+      {
+        "h3": {
+          "en": "Check both axes move freely",
+          "zh": "检查两轴都能自由运动"
+        },
+        "body": {
+          "en": "The X rail is now mounted on the X beam. Confirm its carriage slides smoothly along the X rail, and that the whole beam still travels freely along the Y rails. If either binds, realign that rail and retighten from the center out.",
+          "zh": "X 导轨现已装到 X 横梁上。确认其滑块能沿 X 导轨顺畅滑动，整根横梁也仍能沿 Y 导轨自由移动。哪一处发卡，就校正那条导轨，再从中间向两端重新拧紧。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:60mm; width:60mm;"
+      }
+    ]
+  },
+  {
+    "type": "tall-left",
+    "page": "34",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_40"
+    },
+    "figures": [
+      {
+        "src": "linear_40_idler_lj1_exploded_cam0.svg"
+      },
+      {
+        "src": "linear_40_idler_lj1_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Motor B idler — sits higher",
+          "zh": "电机 B 惰轮——位置较高"
+        },
+        "body": {
+          "en": "This idler carries Motor B's belt on the left joint. The 9 mm spacer lifts it above the others, keeping its belt on the upper plane.",
+          "zh": "这个惰轮装在左连接件上，承载电机 B 的同步带。9 mm 隔套把它垫高，让同步带走上层平面。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:110mm; top:80mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Idler",
+            "zh": "惰轮"
+          },
+          "spec": "GT2 20T, smooth",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shoulder screw",
+            "zh": "轴肩螺钉"
+          },
+          "spec": "M4×20, Ø5",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Spacer",
+            "zh": "隔套"
+          },
+          "spec": "M5 (Ø10×9)",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shim",
+            "zh": "垫片"
+          },
+          "spec": "M5 (Ø8×0.5)",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "35",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_41"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "linear_41_idler_lj1_exploded_cam1_ekiq.svg"
+      },
+      {
+        "src": "linear_41_idler_lj1_assembled_cam0_prgl.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Use the correct hole",
+          "zh": "使用正确的孔位"
+        },
+        "body": {
+          "en": "The idler mounts in the top hole of the left joint — take care not to use the wrong one.",
+          "zh": "惰轮装在左连接件的上孔——注意别用错孔。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:120mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Square nut",
+            "zh": "方螺母"
+          },
+          "spec": "M4",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "36",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_42"
+    },
+    "figures": [
+      {
+        "src": "linear_42_idler_lj2_exploded_cam0.svg"
+      },
+      {
+        "src": "linear_42_idler_lj2_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Motor A idler — sits lower",
+          "zh": "电机 A 惰轮——位置较低"
+        },
+        "body": {
+          "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor A's belt and, with no spacer, rides on the lower belt plane.</p>",
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿惰轮，不是光面惰轮。</p><p>它承载电机 A 的同步带，因为不加隔套，走下层同步带平面。</p>"
+        },
+        "classes": "note overlay sm",
+        "style": "left:110mm; top:80mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Idler",
+            "zh": "惰轮"
+          },
+          "spec": "GT2 20T, toothed",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shoulder screw",
+            "zh": "轴肩螺钉"
+          },
+          "spec": "M4×10, Ø5",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shim",
+            "zh": "垫片"
+          },
+          "spec": "M5 (Ø8×0.5)",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "37",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_43"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "linear_43_idler_lj2_exploded_cam1_ojoy.svg"
+      },
+      {
+        "src": "linear_43_idler_lj2_assembled_cam0_zhsr.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Install in the right position",
+          "zh": "安装到正确位置"
+        },
+        "body": {
+          "en": "Before tightening, confirm the idler is seated in the correct position on the joint.",
+          "zh": "拧紧前，确认惰轮已落在连接件上的正确位置。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:120mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Square nut",
+            "zh": "方螺母"
+          },
+          "spec": "M4",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "38",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_44"
+    },
+    "figures": [
+      {
+        "src": "linear_44_idler_rj1_exploded_cam0.svg"
+      },
+      {
+        "src": "linear_44_idler_rj1_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Motor A idler — sits lower",
+          "zh": "电机 A 惰轮——位置较低"
+        },
+        "body": {
+          "en": "This idler carries Motor A's belt on the right joint, in the top hole. With no spacer, it rides on the lower belt plane.",
+          "zh": "这个惰轮装在右连接件的上孔，承载电机 A 的同步带。因为不加隔套，它走下层同步带平面。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:110mm; top:80mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Idler",
+            "zh": "惰轮"
+          },
+          "spec": "GT2 20T, smooth",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shoulder screw",
+            "zh": "轴肩螺钉"
+          },
+          "spec": "M4×10, Ø5",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shim",
+            "zh": "垫片"
+          },
+          "spec": "M5 (Ø8×0.5)",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "39",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_45"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "linear_45_idler_rj1_exploded_cam1_njol.svg"
+      },
+      {
+        "src": "linear_45_idler_rj1_assembled_cam0_xriv.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Install in the right position",
+          "zh": "安装到正确位置"
+        },
+        "body": {
+          "en": "Before tightening, confirm the idler is seated in the correct position on the joint.",
+          "zh": "拧紧前，确认惰轮已落在连接件上的正确位置。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:120mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Square nut",
+            "zh": "方螺母"
+          },
+          "spec": "M4",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "40",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_46"
+    },
+    "figures": [
+      {
+        "src": "linear_46_idler_rj2_exploded_cam0.svg"
+      },
+      {
+        "src": "linear_46_idler_rj2_assembled_cam0.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Motor B idler — sits higher",
+          "zh": "电机 B 惰轮——位置较高"
+        },
+        "body": {
+          "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor B's belt and, with the 9 mm spacer, rides on the upper belt plane.</p>",
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿惰轮，不是光面惰轮。</p><p>它承载电机 B 的同步带，因为加了 9 mm 隔套，走上层同步带平面。</p>"
+        },
+        "classes": "note overlay sm",
+        "style": "left:110mm; top:60mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Idler",
+            "zh": "惰轮"
+          },
+          "spec": "GT2 20T, toothed",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shoulder screw",
+            "zh": "轴肩螺钉"
+          },
+          "spec": "M4×20, Ø5",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Spacer",
+            "zh": "隔套"
+          },
+          "spec": "M5 (Ø10×9)",
+          "qty": "1"
+        },
+        {
+          "component": {
+            "en": "Shim",
+            "zh": "垫片"
+          },
+          "spec": "M5 (Ø8×0.5)",
+          "qty": "1"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "41",
+    "head": {
+      "title": {
+        "en": "LINEAR MOTION",
+        "zh": "直线运动"
+      },
+      "small": "linear_47"
+    },
+    "variant": "hero",
+    "figures": [
+      {
+        "src": "linear_47_idler_rj2_exploded_cam1_ahca.svg"
+      },
+      {
+        "src": "linear_47_idler_rj2_assembled_cam0_muvb.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "Check all four idlers",
+          "zh": "检查全部四个惰轮"
+        },
+        "body": {
+          "en": "All four idlers are now mounted on the XY joints. Recheck that each one sits in its correct location.",
+          "zh": "四个惰轮现已全部装到 XY 连接件上。再逐一确认每个惰轮都在正确位置。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:120mm; width:78mm;"
+      }
+    ],
+    "bom": {
+      "label": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "rows": [
+        {
+          "component": {
+            "en": "Square nut",
+            "zh": "方螺母"
+          },
+          "spec": "M4",
+          "qty": "1"
+        }
+      ]
+    }
+  }
+]
