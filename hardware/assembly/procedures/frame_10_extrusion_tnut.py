@@ -77,8 +77,19 @@ SHORT_TOP_POSITIONS = [
 # each other across LONG_LENGTH/2 and yield identical world Z's on
 # both sides (top tnut at world z = LONG_LENGTH - LONG_TOP_GAP,
 # bottom tnut at world z = LONG_BOT_GAP).
-LONG_TOP_GAP         = 43
-LONG_BOT_GAP         = 33
+#
+# These two gaps also fix the idler-mount blocks that bolt to the
+# nuts (LU/RU motor mount on the top nut, LD/RD front-idler mount on
+# the bottom nut — see idler_12_lu / idler_31_ld), and the Y rail is
+# centered in the free span between those blocks (linear_11_y). So the
+# gap sum is constrained by the rail: free span = LONG_LENGTH -
+# LONG_TOP_GAP - LONG_BOT_GAP - 37 must stay >= Y_RAIL_LENGTH (240) or
+# the rail penetrates the blocks. With LONG_LENGTH 355->345 the sum had
+# to drop 10 (76->67); split so neither the rail-end clearance nor
+# either block's clearance to its corner joining plate (frame_31) goes
+# to zero: span 241 (rail +0.5 mm/side), both brackets +2 mm.
+LONG_TOP_GAP         = 42
+LONG_BOT_GAP         = 25
 LONG_POSITIONS_LEFT  = [LONG_TOP_GAP, LONG_LENGTH - LONG_BOT_GAP]
 LONG_POSITIONS_RIGHT = [LONG_BOT_GAP, LONG_LENGTH - LONG_TOP_GAP]
 
