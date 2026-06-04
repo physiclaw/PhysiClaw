@@ -2984,21 +2984,32 @@
   </div>
 </section>
 
-<!-- SECTION 10 — WIRING · wiring_10 (placeholder — text + BOM, diagram TBD) -->
+<!-- SECTION 10 — WIRING · wire_10 (tall-left split, exploded left / assembled TR / BOM BR) -->
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">WIRING<small>wiring_10</small></span>
+      <span class="title">WIRING<small>wire_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
-    <div class="solo"></div>
-    <div class="note overlay sm" style="left:16mm; top:30mm; width:95mm;">
-      <h3>Wiring diagram goes here</h3>
-      <p>TODO: add the wiring diagram SVG under hardware/output/svg and reference it in this page's empty figures[] array.</p>
+    <div class="tall-left hero">
+      <div class="fig tall">
+        <img src="../output/svg/wire_10_tmc2209_exploded_cam1_oacw.svg" alt="wire_10_tmc2209 exploded" loading="lazy">
+      </div>
+      <div class="fig">
+        <img src="../output/svg/wire_10_tmc2209_assembled_cam0_ycix.svg" alt="wire_10_tmc2209 assembled" loading="lazy" style="transform: scale(0.85);">
+      </div>
     </div>
-    <div class="note overlay sm" style="left:16mm; top:90mm; width:95mm;">
-      <h3>TODO: connections</h3>
-      <p>TODO: describe each connection — stepper A, stepper B, solenoid output, camera USB, and power in.</p>
+    <div class="note overlay sm" style="left:60mm; top:30mm; width:90mm;">
+      <h3>Power off first</h3>
+      <p>Never plug in or remove a driver while the board is powered.</p>
+    </div>
+    <div class="note overlay sm" style="left:150mm; top:100mm; width:90mm;">
+      <h3>Mind the orientation</h3>
+      <p>Match each driver's pin labels to the board silkscreen before pressing it home — a reversed TMC2209 can burn out on power-up.</p>
+    </div>
+    <div class="note overlay sm" style="left:150mm; top:135mm; width:90mm;">
+      <h3>Rule of thumb</h3>
+      <p>Colored to colored, black to black.</p>
     </div>
     <div class="bom">
       <span class="label">Bill of materials</span>
@@ -3007,7 +3018,7 @@
           <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
         </thead>
         <tbody>
-          <tr><td>TODO</td><td class="spec">—</td><td class="qty">—</td></tr>
+          <tr><td>TMC2209</td><td class="spec">Stepper driver</td><td class="qty">2</td></tr>
         </tbody>
       </table>
     </div>
@@ -3095,6 +3106,7 @@
             <tr><td>Hex nut</td><td class="spec">1/4-20</td><td class="qty">1</td></tr>
             <tr><td>Gooseneck</td><td class="spec">Ø10×196, 1/4-20 M/F</td><td class="qty">1</td></tr>
             <tr><td>Camera</td><td class="spec">82 × 26 × 25 mm</td><td class="qty">1</td></tr>
+            <tr><td>TMC2209</td><td class="spec">Stepper driver</td><td class="qty">2</td></tr>
           </tbody>
         </table>
       </div>

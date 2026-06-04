@@ -8,28 +8,38 @@
     "lede": { "en": "TODO: intro to wiring — bring the two steppers, the tapping solenoid, the camera, and power together at the control board.", "zh": "TODO：接线部分引言——把两个步进电机、点击电磁铁、摄像头和电源都接到控制板上。" }
   },
   {
-    "type": "solo",
+    "type": "tall-left",
     "page": "67",
-    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wiring_10" },
-    "figures": [],
+    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_10" },
+    "variant": "hero",
+    "figures": [
+      { "src": "wire_10_tmc2209_exploded_cam1_oacw.svg" },
+      { "src": "wire_10_tmc2209_assembled_cam0_ycix.svg", "style": "transform: scale(0.85);" }
+    ],
     "notes": [
       {
-        "h3": { "en": "Wiring diagram goes here", "zh": "接线图放这里" },
-        "body": { "en": "TODO: add the wiring diagram SVG under hardware/output/svg and reference it in this page's empty figures[] array.", "zh": "TODO：把接线图 SVG 放到 hardware/output/svg 下，并在本页空的 figures[] 数组里引用它。" },
+        "h3": { "en": "Power off first", "zh": "先断电" },
+        "body": { "en": "Never plug in or remove a driver while the board is powered.", "zh": "板子通电时，切勿插拔驱动。" },
         "classes": "note overlay sm",
-        "style": "left:16mm; top:30mm; width:95mm;"
+        "style": "left:60mm; top:30mm; width:90mm;"
       },
       {
-        "h3": { "en": "TODO: connections", "zh": "TODO：各路连接" },
-        "body": { "en": "TODO: describe each connection — stepper A, stepper B, solenoid output, camera USB, and power in.", "zh": "TODO：逐项说明每条连接——A 步进电机、B 步进电机、电磁铁输出、摄像头 USB、以及电源输入。" },
+        "h3": { "en": "Mind the orientation", "zh": "注意方向" },
+        "body": { "en": "Match each driver's pin labels to the board silkscreen before pressing it home — a reversed TMC2209 can burn out on power-up.", "zh": "压到位之前，让每个驱动的引脚标识对准板上的丝印——TMC2209 装反，一上电就可能烧坏。" },
         "classes": "note overlay sm",
-        "style": "left:16mm; top:90mm; width:95mm;"
+        "style": "left:150mm; top:100mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "Rule of thumb", "zh": "经验法则" },
+        "body": { "en": "Colored to colored, black to black.", "zh": "彩色引脚对彩色引脚，黑色引脚对黑色引脚。" },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:135mm; width:90mm;"
       }
     ],
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "TODO", "zh": "TODO" }, "spec": "—", "qty": "—" }
+        { "component": { "en": "TMC2209", "zh": "TMC2209" }, "spec": "Stepper driver", "qty": "2" }
       ]
     }
   }
