@@ -36,9 +36,9 @@ X_BEAM_LENGTH      = X_RAIL_LENGTH + X_BEAM_END_ALLOWANCE   # = 185  1020 crossb
 X_EXTRUSION_LENGTH = X_BEAM_LENGTH + X_EXTRUSION_CLEARANCE  # = 190  short 2040 (frame width)
 
 # ── Y axis: travel → rail → long extrusion ───────────────────────────────────
-Y_EXTRUSION_END_ALLOWANCE = 115   # mm — frame past the rail (end pulley-mount / idler blocks)
+Y_EXTRUSION_END_ALLOWANCE = 105   # mm — frame past the rail (end pulley-mount / idler blocks)
 Y_RAIL_LENGTH      = Y_TRAVEL + CARRIAGE_LENGTH                 # = 240  MGN9H Y rail
-Y_EXTRUSION_LENGTH = Y_RAIL_LENGTH + Y_EXTRUSION_END_ALLOWANCE  # = 355  long 2040 (frame length)
+Y_EXTRUSION_LENGTH = Y_RAIL_LENGTH + Y_EXTRUSION_END_ALLOWANCE  # = 345  long 2040 (frame length)
 
 # ── Phone bed (tracks X) ─────────────────────────────────────────────────────
 # Cross-beam spans the frame width plus both long extrusions' widths.
