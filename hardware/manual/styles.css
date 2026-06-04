@@ -279,6 +279,8 @@
   .toc-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(7, auto);
+    grid-auto-flow: column;
     column-gap: 18mm;
     row-gap: 0;
     margin-top: 18mm;

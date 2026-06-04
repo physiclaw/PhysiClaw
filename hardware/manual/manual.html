@@ -285,6 +285,8 @@
   .toc-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(7, auto);
+    grid-auto-flow: column;
     column-gap: 18mm;
     row-gap: 0;
     margin-top: 18mm;
@@ -731,23 +733,18 @@
 
     <div class="toc-grid">
       <a class="toc-row" href="#introduction"><span>Introduction</span><span class="pg">03</span></a>
+      <a class="toc-row" href="#hardware-reference"><span>Hardware reference</span><span class="pg">04</span></a>
+      <a class="toc-row" href="#printed-parts"><span>3D printed parts</span><span class="pg">05</span></a>
+      <a class="toc-row" href="#frame"><span>01 — Frame</span><span class="pg">06</span></a>
+      <a class="toc-row" href="#idler"><span>02 — Idler</span><span class="pg">11</span></a>
+      <a class="toc-row" href="#motor"><span>03 — Motor</span><span class="pg">20</span></a>
       <a class="toc-row" href="#linear"><span>04 — Linear motion</span><span class="pg">26</span></a>
 
-      <a class="toc-row" href="#hardware-reference"><span>Hardware reference</span><span class="pg">04</span></a>
       <a class="toc-row" href="#belt"><span>05 — Belt path</span><span class="pg">42</span></a>
-
-      <a class="toc-row" href="#printed-parts"><span>3D printed parts</span><span class="pg">05</span></a>
       <a class="toc-row" href="#stylus"><span>06 — Stylus carriage</span><span class="pg">47</span></a>
-
-      <a class="toc-row" href="#frame"><span>01 — Frame</span><span class="pg">06</span></a>
       <a class="toc-row" href="#phone"><span>07 — Phone bed</span><span class="pg">51</span></a>
-
-      <a class="toc-row" href="#idler"><span>02 — Idler</span><span class="pg">11</span></a>
       <a class="toc-row" href="#pcb"><span>08 — Control board</span><span class="pg">56</span></a>
-
-      <a class="toc-row" href="#motor"><span>03 — Motor</span><span class="pg">20</span></a>
       <a class="toc-row" href="#camera"><span>09 — Camera</span><span class="pg">61</span></a>
-
       <a class="toc-row" href="#wiring"><span>10 — Wiring</span><span class="pg">66</span></a>
       <a class="toc-row" href="#bom"><span>11 — BOM</span><span class="pg">71</span></a>
     </div>

@@ -34,27 +34,11 @@
       },
       {
         "label": {
-          "en": "04 — Linear motion",
-          "zh": "04 — 线性运动"
-        },
-        "pg": "26",
-        "target": "linear"
-      },
-      {
-        "label": {
           "en": "Hardware reference",
           "zh": "五金件参考"
         },
         "pg": "04",
         "target": "hardware-reference"
-      },
-      {
-        "label": {
-          "en": "05 — Belt path",
-          "zh": "05 — 同步带绕法"
-        },
-        "pg": "42",
-        "target": "belt"
       },
       {
         "label": {
@@ -66,27 +50,11 @@
       },
       {
         "label": {
-          "en": "06 — Stylus carriage",
-          "zh": "06 — 触控笔滑座"
-        },
-        "pg": "47",
-        "target": "stylus"
-      },
-      {
-        "label": {
           "en": "01 — Frame",
           "zh": "01 — 框架"
         },
         "pg": "06",
         "target": "frame"
-      },
-      {
-        "label": {
-          "en": "07 — Phone bed",
-          "zh": "07 — 手机托架"
-        },
-        "pg": "51",
-        "target": "phone"
       },
       {
         "label": {
@@ -98,19 +66,51 @@
       },
       {
         "label": {
-          "en": "08 — Control board",
-          "zh": "08 — 控制板"
-        },
-        "pg": "56",
-        "target": "pcb"
-      },
-      {
-        "label": {
           "en": "03 — Motor",
           "zh": "03 — 电机"
         },
         "pg": "20",
         "target": "motor"
+      },
+      {
+        "label": {
+          "en": "04 — Linear motion",
+          "zh": "04 — 线性运动"
+        },
+        "pg": "26",
+        "target": "linear"
+      },
+      {
+        "label": {
+          "en": "05 — Belt path",
+          "zh": "05 — 同步带绕法"
+        },
+        "pg": "42",
+        "target": "belt"
+      },
+      {
+        "label": {
+          "en": "06 — Stylus carriage",
+          "zh": "06 — 触控笔滑座"
+        },
+        "pg": "47",
+        "target": "stylus"
+      },
+      {
+        "label": {
+          "en": "07 — Phone bed",
+          "zh": "07 — 手机托架"
+        },
+        "pg": "51",
+        "target": "phone"
+      },
+      {
+        "label": {
+          "en": "08 — Control board",
+          "zh": "08 — 控制板"
+        },
+        "pg": "56",
+        "target": "pcb"
       },
       {
         "label": {
