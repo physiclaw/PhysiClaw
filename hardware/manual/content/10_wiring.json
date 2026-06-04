@@ -144,25 +144,31 @@
         "h3": { "en": "Ground the stylus", "zh": "给触控笔接地" },
         "body": { "en": "The stylus rides on the solenoid's iron core, so grounding the core grounds the tip. Give it a real ground reference — do not use the control board's GND.", "zh": "触控笔装在电磁铁的铁芯上，给铁芯接地也就给了笔尖接地。要给它一个真正的接地参考——不要用控制板的 GND。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:30mm; width:150mm; max-width:150mm;"
+        "style": "left:130mm; top:22mm; width:150mm; max-width:150mm;"
       },
       {
         "h3": { "en": "Why it matters", "zh": "为什么要这样" },
         "body": { "en": "A capacitive screen senses a tap through your body's ground reference. A robot-held stylus floats electrically and lacks that reference, so taps register unreliably. Grounding the stylus stands in for the human hand and steadies the touch signal.", "zh": "电容屏靠人体的接地参考来感应触摸。机械臂握着的触控笔在电气上是浮空的，缺少这个参考，点击就不稳定。给触控笔接地相当于替代人手，让触摸信号稳定下来。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:55mm; width:150mm; max-width:150mm;"
+        "style": "left:130mm; top:45mm; width:150mm; max-width:150mm;"
       },
       {
         "h3": { "en": "How to ground it", "zh": "怎么接地" },
         "body": { "en": "Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.", "zh": "把铁芯接到电源的公共地。最简单的办法是：找一台通过三脚插座可靠接地的台式电脑，把线夹在机箱的裸露金属处——机箱经市电连到大地，能提供稳定的接地参考。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:90mm; width:150mm; max-width:150mm;"
+        "style": "left:130mm; top:78mm; width:150mm; max-width:150mm;"
+      },
+      {
+        "h3": { "en": "Three wires", "zh": "三根线" },
+        "body": { "en": "Three wires run from the solenoid — positive (+), negative (−), and ground. Route all three up through the Teflon tube. At the top, connect + and − to the control board's Spindle terminal, and the ground wire to the power supply's common ground.", "zh": "电磁铁引出三根线：正极（+）、负极（−）和接地线。把三根线一起从特氟龙管向上穿到顶端。到顶端后，正、负极接到控制板的主轴 (Spindle) 端子，接地线接到电源的公共地。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:112mm; width:150mm; max-width:150mm;"
       },
       {
         "h3": { "en": "Warning", "zh": "警告" },
         "body": { "en": "Never put the ground wire into a wall socket. Mains voltage (220 V/110 V) is lethal — touching the live terminal instead of earth can cause a fatal shock and instantly destroy your phone and equipment. Connect only to a verified ground point.", "zh": "切勿把接地线插入墙壁插座。市电电压（220V/110V）足以致命——接到火线而非地线，可能造成致命电击，并瞬间烧毁手机和设备。只能接到确认可靠的接地点。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:130mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;",
+        "style": "left:130mm; top:150mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;",
         "icon": "info"
       }
     ]

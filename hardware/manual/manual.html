@@ -3099,19 +3099,23 @@
         <img src="../output/svg/tapz_10_solenoid_tip_assembled_cam1_ohru.svg" alt="tapz_10_solenoid_tip assembled" loading="lazy">
       </div>
     </div>
-    <div class="note overlay sm" style="left:130mm; top:30mm; width:150mm; max-width:150mm;">
+    <div class="note overlay sm" style="left:130mm; top:22mm; width:150mm; max-width:150mm;">
       <h3>Ground the stylus</h3>
       <p>The stylus rides on the solenoid's iron core, so grounding the core grounds the tip. Give it a real ground reference — do not use the control board's GND.</p>
     </div>
-    <div class="note overlay sm" style="left:130mm; top:55mm; width:150mm; max-width:150mm;">
+    <div class="note overlay sm" style="left:130mm; top:45mm; width:150mm; max-width:150mm;">
       <h3>Why it matters</h3>
       <p>A capacitive screen senses a tap through your body's ground reference. A robot-held stylus floats electrically and lacks that reference, so taps register unreliably. Grounding the stylus stands in for the human hand and steadies the touch signal.</p>
     </div>
-    <div class="note overlay sm" style="left:130mm; top:90mm; width:150mm; max-width:150mm;">
+    <div class="note overlay sm" style="left:130mm; top:78mm; width:150mm; max-width:150mm;">
       <h3>How to ground it</h3>
       <p>Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.</p>
     </div>
-    <div class="note overlay sm" style="left:130mm; top:130mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;">
+    <div class="note overlay sm" style="left:130mm; top:112mm; width:150mm; max-width:150mm;">
+      <h3>Three wires</h3>
+      <p>Three wires run from the solenoid — positive (+), negative (−), and ground. Route all three up through the Teflon tube. At the top, connect + and − to the control board's Spindle terminal, and the ground wire to the power supply's common ground.</p>
+    </div>
+    <div class="note overlay sm" style="left:130mm; top:150mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;">
       <svg viewBox="0 0 24 24" style="flex:none; width:9mm; height:9mm; margin-top:1mm;" xmlns="http://www.w3.org/2000/svg">
         <circle cx="12" cy="12" r="11" fill="none" stroke="#4a8bc7" stroke-width="2"/>
         <line x1="12" y1="6" x2="12" y2="14" stroke="#4a8bc7" stroke-width="2.4" stroke-linecap="round"/>
