@@ -660,7 +660,7 @@
     <div class="title-block">
       <h1>PhysiClaw Assembly Manual</h1>
       <p class="tag">
-        We build agents that acts for you in the real world.
+        We build agents that interact with you in the real world.
       </p>
       <div class="red-rule"></div>
     </div>
@@ -695,7 +695,7 @@
       <a class="toc-row" href="#phone"><span>07 — Phone bed</span><span class="pg">51</span></a>
 
       <a class="toc-row" href="#idler"><span>02 — Idler</span><span class="pg">11</span></a>
-      <a class="toc-row" href="#pcb"><span>08 — PCB board</span><span class="pg">56</span></a>
+      <a class="toc-row" href="#pcb"><span>08 — Control board</span><span class="pg">56</span></a>
 
       <a class="toc-row" href="#motor"><span>03 — Motor</span><span class="pg">20</span></a>
       <a class="toc-row" href="#camera"><span>09 — Camera</span><span class="pg">61</span></a>
@@ -728,7 +728,7 @@
 
       <div class="note">
         <h3>This is just a reference</h3>
-        <p>This manual is designed to be a simple build reference. Assembling a PhysiClaw can be an involved endeavour, so for any section you need clarification on we recommend opening the <span class="ref">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.</p>
+        <p>This manual is designed to be a simple build reference. Assembling a PhysiClaw can take two to three hours, so for any section you need clarification on we recommend opening the <span class="ref">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.</p>
       </div>
 
       <div class="intro-links">
@@ -843,7 +843,7 @@
         </div>
         <div class="note">
           <h3>GT2 belt &amp; pulley</h3>
-          <p>2 mm-pitch open-loop belt, clamped at each end of the moving stage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.</p>
+          <p>2 mm-pitch open-loop belt, clamped at each end to the stylus carriage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.</p>
         </div>
       </div>
     </div>
@@ -870,7 +870,7 @@
     <div class="print-page">
       <div class="note">
         <h3>Part printing settings and guidelines</h3>
-        <p>PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. This matters here: the parts carry side holes and overhangs that FDM cannot print cleanly. Match the specifications below when sourcing parts.</p>
+        <p>PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not the common FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.</p>
       </div>
 
       <div class="spec-grid">
@@ -1401,7 +1401,7 @@
       <div class="secnum">SECTION 03</div>
       <h1>Motor</h1>
       <p class="lede">
-        Brackets, frame-side mounts, and pulleys carry the two NEMA-17 steppers. These drive the CoreXY belt path that moves the stage.
+        Brackets, frame-side mounts, and pulleys carry the two NEMA-17 steppers. These drive the CoreXY belt path that moves the stylus carriage.
       </p>
       <div class="bar"></div>
     </div>
@@ -2163,7 +2163,7 @@
       <div class="secnum">SECTION 05</div>
       <h1>Belt path</h1>
       <p class="lede">
-        The A and B GT2 belts form PhysiClaw's CoreXY belt path, stacked on separate planes to avoid the usual crossing. Route both from the moving stage around the idler stack to the motor pulleys, teeth in and at equal tension, for square, accurate motion.
+        The A and B GT2 belts form PhysiClaw's CoreXY belt path, stacked on separate planes to avoid the usual crossing. Route both from the stylus carriage around the idler stack to the motor pulleys, teeth in and at equal tension, for square, accurate motion.
       </p>
       <div class="bar"></div>
     </div>
@@ -2235,7 +2235,7 @@
     </div>
     <div class="note overlay sm" style="left:140mm; top:60mm; width:50mm;">
       <h3>Match the Motor B belt length</h3>
-      <p>Cut the Motor B belt to the same length before fitting it to its clamp.</p>
+      <p>Before fitting the Motor A belt into its clamp, cut the Motor B belt to match it — both must be the same length.</p>
     </div>
     <div class="bom">
       <span class="label">Bill of materials</span>
@@ -2300,7 +2300,7 @@
     </div>
     <div class="note overlay sm" style="left:152mm; top:120mm; width:112mm;">
       <h3 class="normal-case">75Hz AT 220mm</h3>
-      <p>For a precise check, measure each belt with a tuning app on your phone while the gantry is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.</p>
+      <p>For a precise check, measure each belt with a tuning app on your phone while the X carriage is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.</p>
     </div>
     <div class="foot"><span>46</span><span class="rule"></span><span>46</span></div>
   </div>
@@ -2456,7 +2456,7 @@
       <div class="secnum">SECTION 07</div>
       <h1>Phone bed</h1>
       <p class="lede">
-        A printed bed cradles the target phone beneath the gantry. Two 1020 cross-beams carry the bed and hang it under the frame, screen facing up toward the stylus.
+        A printed bed cradles the target phone beneath the machine. Two 1020 cross-beams carry the bed and hang it under the frame, screen facing up toward the stylus.
       </p>
       <div class="bar"></div>
     </div>
@@ -2492,7 +2492,7 @@
         <tbody>
           <tr><td>Extrusion 1020</td><td class="spec">230 mm, end holes</td><td class="qty">2</td></tr>
           <tr><td>BHCS</td><td class="spec">M5×16</td><td class="qty">4</td></tr>
-          <tr><td>Hammer T-nut</td><td class="spec">M5</td><td class="qty">4</td></tr>
+          <tr><td>T-nut</td><td class="spec">M5</td><td class="qty">4</td></tr>
         </tbody>
       </table>
     </div>
@@ -2524,7 +2524,7 @@
         <tbody>
           <tr><td>Phone bed</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
           <tr><td>FHCS</td><td class="spec">M3×8</td><td class="qty">4</td></tr>
-          <tr><td>Hammer T-nut</td><td class="spec">M3</td><td class="qty">4</td></tr>
+          <tr><td>T-nut</td><td class="spec">M3</td><td class="qty">4</td></tr>
         </tbody>
       </table>
     </div>
@@ -2603,7 +2603,7 @@
     </div>
     <div class="opener">
       <div class="secnum">SECTION 08</div>
-      <h1>PCB board</h1>
+      <h1>Control board</h1>
       <p class="lede">
         The MKS DLC32 controller rides in a printed holder clamped to the top of the frame, with a Teflon tube routing the stylus wiring across to the carriage.
       </p>
@@ -2617,7 +2617,7 @@
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">PCB BOARD<small>board_10</small></span>
+      <span class="title">CONTROL BOARD<small>board_10</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="tall-left hero">
@@ -2639,9 +2639,9 @@
           <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
         </thead>
         <tbody>
-          <tr><td>PCB holder</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+          <tr><td>Control board holder</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
           <tr><td>FHCS</td><td class="spec">M5×10</td><td class="qty">2</td></tr>
-          <tr><td>Hammer T-nut</td><td class="spec">M5</td><td class="qty">2</td></tr>
+          <tr><td>T-nut</td><td class="spec">M5</td><td class="qty">2</td></tr>
         </tbody>
       </table>
     </div>
@@ -2653,7 +2653,7 @@
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">PCB BOARD<small>board_20</small></span>
+      <span class="title">CONTROL BOARD<small>board_20</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="tall-left hero">
@@ -2665,7 +2665,7 @@
       </div>
     </div>
     <div class="note overlay sm" style="left:180mm; top:130mm; width:80mm;">
-      <h3>Mount the pcb holder</h3>
+      <h3>Mount the control board holder</h3>
       <p>Mount it on the top extrusion's outer face.</p>
     </div>
     <div class="foot"><span>58</span><span class="rule"></span><span>58</span></div>
@@ -2676,7 +2676,7 @@
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">PCB BOARD<small>board_30</small></span>
+      <span class="title">CONTROL BOARD<small>board_30</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="tall-left hero">
@@ -2688,7 +2688,7 @@
       </div>
     </div>
     <div class="note overlay sm" style="left:150mm; top:120mm; width:90mm;">
-      <h3>Fasten the PCB</h3>
+      <h3>Fasten the control board</h3>
       <p>Four screw–nut pairs. The lower two nuts are obscured and not drawn.</p>
     </div>
     <div class="bom">
@@ -2712,7 +2712,7 @@
 <section class="page">
   <div class="page-inner">
     <div class="head">
-      <span class="title">PCB BOARD<small>board_40</small></span>
+      <span class="title">CONTROL BOARD<small>board_40</small></span>
       <span class="url">PhysiClaw.ai</span>
     </div>
     <div class="main-inset-br">
@@ -2726,11 +2726,11 @@
     </div>
     <div class="note overlay sm" style="right:30mm; top:50mm; width:90mm;">
       <h3>Rough length</h3>
-      <p>Make the tube about 380 mm — long enough to reach from the PCB board to the X carriage at its farthest position.</p>
+      <p>Make the tube about 380 mm — long enough to reach from the control board to the X carriage at its farthest position.</p>
     </div>
     <div class="note overlay sm" style="right:30mm; top:80mm; width:90mm;">
       <h3>Extend the solenoid leads</h3>
-      <p>The solenoid's stock leads are too short to reach the board — splice on extra wire to connect the solenoid to the PCB.</p>
+      <p>The solenoid's stock leads are too short to reach the board — splice on extra wire to connect the solenoid to the control board.</p>
     </div>
     <div class="note overlay sm" style="right:30mm; top:110mm; width:90mm;">
       <h3>PTFE vs FEP</h3>
@@ -2801,7 +2801,7 @@
         <tbody>
           <tr><td>Corner bracket</td><td class="spec">56 mm bend, 4 mm</td><td class="qty">1</td></tr>
           <tr><td>BHCS</td><td class="spec">M5×10</td><td class="qty">2</td></tr>
-          <tr><td>Hammer T-nut</td><td class="spec">M5</td><td class="qty">2</td></tr>
+          <tr><td>T-nut</td><td class="spec">M5</td><td class="qty">2</td></tr>
           <tr><td>SHCS</td><td class="spec">1/4-20×16</td><td class="qty">1</td></tr>
           <tr><td>Hex nut</td><td class="spec">1/4-20</td><td class="qty">1</td></tr>
         </tbody>
