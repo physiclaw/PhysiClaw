@@ -42,5 +42,59 @@
         { "component": { "en": "TMC2209", "zh": "TMC2209" }, "spec": "Stepper driver", "qty": "2" }
       ]
     }
+  },
+  {
+    "type": "tall-left",
+    "page": "68",
+    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_10" },
+    "variant": "hero",
+    "figures": [
+      { "src": "wire_10_tmc2209_assembled_cam1_nqfd.svg", "style": "transform: translateX(6mm);" },
+      { "src": "camera_40_frame_assembled_cam0_ljek.svg", "style": "transform: scale(0.85);" }
+    ],
+    "labels": [
+      {
+        "style": "position:absolute; left:25mm; top:72mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Motor B (X)", "zh": "电机 B（X）" }
+      },
+      {
+        "style": "position:absolute; left:50mm; top:69mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Motor A (Y1)", "zh": "电机 A（Y1）" }
+      },
+      {
+        "style": "position:absolute; left:18mm; top:118mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Solenoid (spindle)", "zh": "电磁铁（主轴）" }
+      },
+      {
+        "style": "position:absolute; left:60mm; top:140mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Power (DC in)", "zh": "电源（直流输入）" }
+      },
+      {
+        "style": "position:absolute; left:85mm; top:138mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "USB Port", "zh": "USB 接口" }
+      },
+      {
+        "style": "position:absolute; right:90mm; top:30mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Motor A", "zh": "电机 A" }
+      },
+      {
+        "style": "position:absolute; right:60mm; top:30mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "Motor B", "zh": "电机 B" }
+      }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Connections", "zh": "接线对应" },
+        "body": { "en": "The board uses standard GRBL axis outputs, remapped as follows: the X-axis motor driver drives Motor B, the Y1-axis motor driver drives Motor A, and the Spindle output drives the solenoid (in place of a spindle).", "zh": "控制板使用标准 GRBL 轴输出，并按如下方式重新映射：X 轴电机驱动器驱动 电机 B，Y1 轴电机驱动器驱动 电机 A，主轴 (Spindle) 输出驱动电磁铁（代替主轴）。" },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:138mm; width:110mm;"
+      },
+      {
+        "h3": { "en": "Power supply", "zh": "电源" },
+        "body": { "en": "Use a 12 V 2 A DC adapter.", "zh": "使用 12V 2A 直流电源适配器。" },
+        "classes": "note overlay sm",
+        "style": "left:150mm; top:108mm; width:110mm;"
+      }
+    ]
   }
 ]
