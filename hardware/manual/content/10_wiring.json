@@ -1,0 +1,36 @@
+[
+  {
+    "type": "opener",
+    "page": "66",
+    "id": "wiring",
+    "secnum": { "en": "SECTION 10", "zh": "第 10 节" },
+    "h1": { "en": "Wiring", "zh": "接线" },
+    "lede": { "en": "TODO: intro to wiring — bring the two steppers, the tapping solenoid, the camera, and power together at the control board.", "zh": "TODO：接线部分引言——把两个步进电机、点击电磁铁、摄像头和电源都接到控制板上。" }
+  },
+  {
+    "type": "solo",
+    "page": "67",
+    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wiring_10" },
+    "figures": [],
+    "notes": [
+      {
+        "h3": { "en": "Wiring diagram goes here", "zh": "接线图放这里" },
+        "body": { "en": "TODO: add the wiring diagram SVG under hardware/output/svg and reference it in this page's empty figures[] array.", "zh": "TODO：把接线图 SVG 放到 hardware/output/svg 下，并在本页空的 figures[] 数组里引用它。" },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:30mm; width:95mm;"
+      },
+      {
+        "h3": { "en": "TODO: connections", "zh": "TODO：各路连接" },
+        "body": { "en": "TODO: describe each connection — stepper A, stepper B, solenoid output, camera USB, and power in.", "zh": "TODO：逐项说明每条连接——A 步进电机、B 步进电机、电磁铁输出、摄像头 USB、以及电源输入。" },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:90mm; width:95mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "TODO", "zh": "TODO" }, "spec": "—", "qty": "—" }
+      ]
+    }
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "type": "bom",
+    "page": "68",
+    "id": "bom",
+    "head": { "title": { "en": "Bill of materials", "zh": "物料清单" }, "small": "11 — BOM" },
+    "label": { "en": "Complete parts list — every section, summed", "zh": "完整物料清单——汇总各节全部零件" },
+    "rows": []
+  }
+]

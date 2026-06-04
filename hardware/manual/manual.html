@@ -487,6 +487,54 @@
     font-weight: 500;
   }
 
+  /* BOM PAGE — full-page consolidated parts list, two columns. */
+  .bom-page { margin-top: 8mm; }
+  .bom-page > .label {
+    display: block;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 5mm;
+  }
+  .bom-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 16mm;
+    align-items: start;
+  }
+  .bom-cols table { width: 100%; border-collapse: collapse; }
+  .bom-cols thead th {
+    text-align: left;
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--rule);
+    padding: 2mm 3mm 2mm 0;
+  }
+  .bom-cols thead th:last-child { text-align: right; padding-right: 0; }
+  .bom-cols tbody td {
+    padding: 1.2mm 3mm 1.2mm 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    vertical-align: top;
+    font-size: 9.5pt;
+  }
+  .bom-cols tbody td.spec {
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 9pt;
+  }
+  .bom-cols tbody td.qty {
+    text-align: right;
+    padding-right: 0;
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
   /* TALL-LEFT (one figure on the left spanning full height, two cells
      stacked on the right). */
   .tall-left {
@@ -699,6 +747,9 @@
 
       <a class="toc-row" href="#motor"><span>03 — Motor</span><span class="pg">20</span></a>
       <a class="toc-row" href="#camera"><span>09 — Camera</span><span class="pg">61</span></a>
+
+      <a class="toc-row" href="#wiring"><span>10 — Wiring</span><span class="pg">66</span></a>
+      <a class="toc-row" href="#bom"><span>11 — BOM</span><span class="pg">68</span></a>
     </div>
 
     <div class="foot">
@@ -2908,6 +2959,147 @@
       <p>Secure the camera's USB cable along the gooseneck to keep it clear of the belt.</p>
     </div>
     <div class="foot"><span>65</span><span class="rule"></span><span>65</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 10 — WIRING (opener)
+     ========================================================= -->
+<section class="page" id="wiring">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title"></span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+    <div class="opener">
+      <div class="secnum">SECTION 10</div>
+      <h1>Wiring</h1>
+      <p class="lede">
+        TODO: intro to wiring — bring the two steppers, the tapping solenoid, the camera, and power together at the control board.
+      </p>
+      <div class="bar"></div>
+    </div>
+    <div class="foot"><span>66</span><span class="rule"></span><span>66</span></div>
+  </div>
+</section>
+
+<!-- SECTION 10 — WIRING · wiring_10 (placeholder — text + BOM, diagram TBD) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">WIRING<small>wiring_10</small></span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+    <div class="solo"></div>
+    <div class="note overlay sm" style="left:16mm; top:30mm; width:95mm;">
+      <h3>Wiring diagram goes here</h3>
+      <p>TODO: add the wiring diagram SVG under hardware/output/svg and reference it in this page's empty figures[] array.</p>
+    </div>
+    <div class="note overlay sm" style="left:16mm; top:90mm; width:95mm;">
+      <h3>TODO: connections</h3>
+      <p>TODO: describe each connection — stepper A, stepper B, solenoid output, camera USB, and power in.</p>
+    </div>
+    <div class="bom">
+      <span class="label">Bill of materials</span>
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>TODO</td><td class="spec">—</td><td class="qty">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><span>67</span><span class="rule"></span><span>67</span></div>
+  </div>
+</section>
+
+
+<!-- =========================================================
+     SECTION 11 — BOM (consolidated parts list, two columns)
+     ========================================================= -->
+<section class="page" id="bom">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">Bill of materials<small>11 — BOM</small></span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+    <div class="bom-page">
+      <span class="label">Complete parts list — every section, summed</span>
+      <div class="bom-cols">
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Extrusion 2040</td><td class="spec">345 mm · CB</td><td class="qty">2</td></tr>
+            <tr><td>Extrusion 2040</td><td class="spec">190 mm</td><td class="qty">2</td></tr>
+            <tr><td>T-nut</td><td class="spec">Slide-In M5</td><td class="qty">10</td></tr>
+            <tr><td>SHCS</td><td class="spec">M6×16</td><td class="qty">8</td></tr>
+            <tr><td>bracket</td><td class="spec">Joining Plate</td><td class="qty">6</td></tr>
+            <tr><td>BHCS</td><td class="spec">M5×10</td><td class="qty">18</td></tr>
+            <tr><td>T-nut</td><td class="spec">Drop-In M5</td><td class="qty">14</td></tr>
+            <tr><td>Bumper</td><td class="spec">Ø20 × 22 mm</td><td class="qty">4</td></tr>
+            <tr><td>BHCS</td><td class="spec">M5×16</td><td class="qty">8</td></tr>
+            <tr><td>Idler mount</td><td class="spec">SLS 3D Print</td><td class="qty">4</td></tr>
+            <tr><td>Idler</td><td class="spec">M5×6 20T smooth</td><td class="qty">8</td></tr>
+            <tr><td>Shoulder screw</td><td class="spec">M4×10, Ø5</td><td class="qty">4</td></tr>
+            <tr><td>Shoulder screw</td><td class="spec">M4×20, Ø5</td><td class="qty">6</td></tr>
+            <tr><td>Square nut</td><td class="spec">M4</td><td class="qty">10</td></tr>
+            <tr><td>Square nut</td><td class="spec">M5</td><td class="qty">2</td></tr>
+            <tr><td>Shim</td><td class="spec">M5 (Ø8×0.5)</td><td class="qty">12</td></tr>
+            <tr><td>Spacer</td><td class="spec">M5 (Ø10×9)</td><td class="qty">4</td></tr>
+            <tr><td>Motor bracket</td><td class="spec">60×41×1.9</td><td class="qty">2</td></tr>
+            <tr><td>Stepper motor</td><td class="spec">NEMA 17, 34 mm</td><td class="qty">2</td></tr>
+            <tr><td>BHCS</td><td class="spec">M3×6</td><td class="qty">10</td></tr>
+            <tr><td>BHCS</td><td class="spec">M5×20</td><td class="qty">4</td></tr>
+            <tr><td>Spacer</td><td class="spec">M6 (Ø20×12)</td><td class="qty">4</td></tr>
+            <tr><td>Pulley</td><td class="spec">GT2 20T, toothed</td><td class="qty">2</td></tr>
+            <tr><td>Linear rail</td><td class="spec">MGN9H, 240 mm</td><td class="qty">2</td></tr>
+            <tr><td>FHCS</td><td class="spec">M3×10</td><td class="qty">26</td></tr>
+            <tr><td>T-nut</td><td class="spec">M3 Drop-In</td><td class="qty">16</td></tr>
+            <tr><td>XY joint (left)</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+            <tr><td>XY joint (right)</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+          </tbody>
+        </table>
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Spec</th><th>Qty</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Extrusion 1020</td><td class="spec">185 mm</td><td class="qty">1</td></tr>
+            <tr><td>FHCS</td><td class="spec">M5×12</td><td class="qty">2</td></tr>
+            <tr><td>Linear rail</td><td class="spec">MGN9H, 150 mm</td><td class="qty">1</td></tr>
+            <tr><td>Idler</td><td class="spec">GT2 20T, smooth</td><td class="qty">2</td></tr>
+            <tr><td>Idler</td><td class="spec">GT2 20T, toothed</td><td class="qty">2</td></tr>
+            <tr><td>GT2 belt</td><td class="spec">Open loop, 6 mm</td><td class="qty">1</td></tr>
+            <tr><td>Belt clamp</td><td class="spec">SLS 3D Print</td><td class="qty">2</td></tr>
+            <tr><td>BHCS</td><td class="spec">M3×8</td><td class="qty">8</td></tr>
+            <tr><td>Solenoid</td><td class="spec">15 × 30 × 13 mm</td><td class="qty">1</td></tr>
+            <tr><td>Stylus tip</td><td class="spec">Capacitive, M3</td><td class="qty">1</td></tr>
+            <tr><td>Solenoid mount</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+            <tr><td>Square nut</td><td class="spec">M3</td><td class="qty">10</td></tr>
+            <tr><td>Extrusion 1020</td><td class="spec">230 mm, end holes</td><td class="qty">2</td></tr>
+            <tr><td>T-nut</td><td class="spec">M5</td><td class="qty">8</td></tr>
+            <tr><td>Phone bed</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+            <tr><td>FHCS</td><td class="spec">M3×8</td><td class="qty">4</td></tr>
+            <tr><td>T-nut</td><td class="spec">M3</td><td class="qty">4</td></tr>
+            <tr><td>Control board holder</td><td class="spec">SLS 3D Print</td><td class="qty">1</td></tr>
+            <tr><td>FHCS</td><td class="spec">M5×10</td><td class="qty">2</td></tr>
+            <tr><td>MKS DLC32</td><td class="spec">Controller PCB</td><td class="qty">1</td></tr>
+            <tr><td>BHCS</td><td class="spec">M3×12</td><td class="qty">4</td></tr>
+            <tr><td>Teflon tube</td><td class="spec">Ø5/4, 350mm</td><td class="qty">1</td></tr>
+            <tr><td>Corner bracket</td><td class="spec">56 mm bend, 4 mm</td><td class="qty">1</td></tr>
+            <tr><td>SHCS</td><td class="spec">1/4-20×16</td><td class="qty">1</td></tr>
+            <tr><td>Hex nut</td><td class="spec">1/4-20</td><td class="qty">1</td></tr>
+            <tr><td>Gooseneck</td><td class="spec">Ø10×196, 1/4-20 M/F</td><td class="qty">1</td></tr>
+            <tr><td>Camera</td><td class="spec">82 × 26 × 25 mm</td><td class="qty">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="foot"><span>68</span><span class="rule"></span><span>68</span></div>
   </div>
 </section>
 

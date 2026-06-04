@@ -53,10 +53,17 @@ from icon_svg import (
     CRAB_SVG,
     GITHUB_OCTICON_SVG,
     INFO_ICON_SVG,
+    WIRE_SPLICE_SVG,
 )
 
 # Note "icon" keys -> inline SVG markup, for the leading icon of a flex callout.
 NOTE_ICONS = {"info": INFO_ICON_SVG}
+
+# Hand-authored figures kept as constants in icon_svg.py (so they are tracked,
+# unlike the generated output/svg renders). build() writes them into the SVG
+# pool before rendering, so the figure pipeline treats them like any render and
+# the file stays a single-source copy of the constant.
+HAND_FIGURES = {"wire_splice.svg": WIRE_SPLICE_SVG}
 
 # --------------------------------------------------------------------------- #
 # Paths — everything is resolved relative to this file so cwd does not matter.
@@ -471,6 +478,30 @@ def render_back(page: dict, ctx: Ctx) -> str:
     return page_shell(page, ctx, body, "back")
 
 
+def render_bom_page(page: dict, ctx: Ctx) -> str:
+    """Full-page consolidated bill of materials — one table split into two
+    columns to fit a single landscape page. Rows are filled at build time by
+    ``inject_consolidated_bom`` (every section's BOM, summed by part)."""
+    rows = page.get("rows", [])
+    half = (len(rows) + 1) // 2
+
+    def table(rs: list[dict]) -> str:
+        body = "".join(
+            f'<tr><td>{loc(r["component"], ctx.lang)}</td>'
+            f'<td class="spec">{r["spec"]}</td>'
+            f'<td class="qty">{r["qty"]}</td></tr>'
+            for r in rs
+        )
+        return ("<table><thead><tr><th>Component</th><th>Spec</th><th>Qty</th></tr>"
+                f"</thead><tbody>{body}</tbody></table>")
+
+    label = (f'<span class="label">{loc(page["label"], ctx.lang)}</span>'
+             if page.get("label") else "")
+    body = (f'<div class="bom-page">{label}'
+            f'<div class="bom-cols">{table(rows[:half])}{table(rows[half:])}</div></div>')
+    return page_shell(page, ctx, body)
+
+
 # Dispatch table: page "type" -> renderer.
 RENDERERS: dict[str, Callable[[dict, Ctx], str]] = {
     "cover": render_cover,
@@ -483,6 +514,7 @@ RENDERERS: dict[str, Callable[[dict, Ctx], str]] = {
     "tall-left": render_tall_left,
     "wide-top": render_wide_top,
     "main-inset-br": render_main_inset_br,
+    "bom": render_bom_page,
     "back": render_back,
 }
 
@@ -496,6 +528,34 @@ def load_pages() -> list[dict]:
     for path in sorted(CONTENT_DIR.glob("*.json")):
         pages.extend(json.loads(path.read_text(encoding="utf-8")))
     return pages
+
+
+def consolidated_bom_rows(pages: list[dict]) -> list[dict]:
+    """Sum every section's BOM overlay into one parts list, keyed by
+    (English component, spec). Rows with a non-numeric qty are skipped, so a
+    placeholder/TODO BOM never pollutes the totals. First-seen order wins."""
+    agg: dict[tuple[str, str], dict] = {}
+    for p in pages:
+        for r in p.get("bom", {}).get("rows", []):
+            try:
+                qty = int(r["qty"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            key = (r["component"].get("en", ""), r.get("spec", ""))
+            if key in agg:
+                agg[key]["qty"] += qty
+            else:
+                agg[key] = {"component": r["component"], "spec": r.get("spec", ""), "qty": qty}
+    return list(agg.values())
+
+
+def inject_consolidated_bom(pages: list[dict]) -> None:
+    """Fill each ``bom``-type page's rows with the consolidated parts list, so
+    the BOM section stays in sync with the per-section BOMs automatically."""
+    rows = consolidated_bom_rows(pages)
+    for p in pages:
+        if p["type"] == "bom":
+            p["rows"] = rows
 
 
 def cover_render_src(pages: list[dict], ctx: Ctx) -> str | None:
@@ -626,8 +686,12 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
     from the emitted ``assets/`` dir and embeds them into the PDF; in inline
     mode they are already data URIs."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    SVG_DIR.mkdir(parents=True, exist_ok=True)
+    for name, svg in HAND_FIGURES.items():  # regenerate tracked hand figures
+        (SVG_DIR / name).write_text(svg, encoding="utf-8")
     css = STYLES_CSS.read_text(encoding="utf-8")
     pages = load_pages()
+    inject_consolidated_bom(pages)  # fill the BOM section from every section's parts
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     chrome = find_chrome() if pdf else None

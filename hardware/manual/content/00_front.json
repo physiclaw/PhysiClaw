@@ -119,6 +119,22 @@
         },
         "pg": "61",
         "target": "camera"
+      },
+      {
+        "label": {
+          "en": "10 — Wiring",
+          "zh": "10 — 接线"
+        },
+        "pg": "66",
+        "target": "wiring"
+      },
+      {
+        "label": {
+          "en": "11 — BOM",
+          "zh": "11 — 物料清单"
+        },
+        "pg": "68",
+        "target": "bom"
       }
     ]
   },
