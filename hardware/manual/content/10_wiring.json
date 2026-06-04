@@ -94,6 +94,34 @@
         "body": { "en": "Use a 12 V 2 A DC adapter.", "zh": "使用 12V 2A 直流电源适配器。" },
         "classes": "note overlay sm",
         "style": "left:150mm; top:108mm; width:110mm;"
+      },
+      {
+        "h3": { "en": "No polarity", "zh": "无需分极性" },
+        "body": { "en": "The Spindle output (to the solenoid) is not polarity-sensitive — either lead can go to either terminal.", "zh": "主轴 (Spindle) 输出（接电磁铁）不分极性——两根线接哪个端子都行。" },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:30mm; width:100mm;"
+      }
+    ]
+  },
+  {
+    "type": "solo",
+    "page": "69",
+    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_splice" },
+    "figures": [
+      { "src": "wire_splice.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Extend the leads", "zh": "接长引线" },
+        "body": { "en": "The solenoid's stock leads don't reach the control board. Splice extra hookup wire onto both the 12 V and GND leads.", "zh": "电磁铁原装引线够不到控制板。给 12V 和 GND 两根引线各接长一段导线。" },
+        "classes": "note overlay sm",
+        "style": "left:16mm; top:30mm; width:100mm;"
+      },
+      {
+        "h3": { "en": "Stagger the splices", "zh": "错开接头" },
+        "body": { "en": "Solder each joint and cover it with heat-shrink. Offset the two splices about 20 mm so the insulated joints don't sit side by side.", "zh": "每个接头先焊接，再套热缩管。把两个接头错开约 20 mm，别让它们并排挤在一起。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; bottom:40mm; width:100mm;"
       }
     ]
   }
