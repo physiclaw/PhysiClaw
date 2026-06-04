@@ -5,7 +5,7 @@
     "id": "camera",
     "secnum": { "en": "SECTION 09", "zh": "第 09 节" },
     "h1": { "en": "Camera", "zh": "摄像头" },
-    "lede": { "en": "A corner bracket on the frame carries a flexible gooseneck arm; the camera clips onto its tip and looks down over the phone bed, watching the screen.", "zh": "框架上的角支架固定一根柔性鹅颈臂，摄像头卡在臂端，俯视手机托架，监看屏幕。" }
+    "lede": { "en": "A corner bracket on the frame carries a flexible gooseneck arm; the camera clips onto its tip and looks down over the phone bed, watching the screen.", "zh": "框架上的一个角支架装着一根能弯折的鹅颈臂，摄像头卡在臂的顶端，从上往下对着手机托架，盯着屏幕看。" }
   },
   {
     "type": "tall-left",
@@ -18,8 +18,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "1/4-20, not metric", "zh": "1/4-20，非公制" },
-        "body": { "en": "The socket screw and hex nut that the gooseneck mounts on are 1/4-20 — the imperial tripod thread (≈ 6.35 mm). Don't substitute an M6.", "zh": "固定鹅颈臂的内六角螺钉和六角螺母是 1/4-20 规格，即英制三脚架螺纹（约 6.35 mm），不要用 M6 代替。" },
+        "h3": { "en": "1/4-20, not metric", "zh": "1/4-20 英制，不是公制" },
+        "body": { "en": "The socket screw and hex nut that the gooseneck mounts on are 1/4-20 — the imperial tripod thread (≈ 6.35 mm). Don't substitute an M6.", "zh": "装鹅颈臂用的内六角螺钉和六角螺母是 1/4-20 规格，也就是英制三脚架螺纹（约 6.35 mm）。别用 M6 代替。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:120mm; width:70mm;"
       }
@@ -28,9 +28,9 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Corner bracket", "zh": "角支架" }, "spec": "56 mm bend, 4 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "BHCS 内六角盘头螺钉" }, "spec": "M5×10", "qty": "2" },
-        { "component": { "en": "Hammer T-nut", "zh": "锤头 T 型螺母" }, "spec": "M5", "qty": "2" },
-        { "component": { "en": "SHCS", "zh": "SHCS 内六角圆柱头螺钉" }, "spec": "1/4-20×16", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "M5", "qty": "2" },
+        { "component": { "en": "SHCS", "zh": "圆柱头螺钉" }, "spec": "1/4-20×16", "qty": "1" },
         { "component": { "en": "Hex nut", "zh": "六角螺母" }, "spec": "1/4-20", "qty": "1" }
       ]
     }
@@ -47,7 +47,7 @@
     "notes": [
       {
         "h3": { "en": "Thread on the gooseneck", "zh": "拧上鹅颈臂" },
-        "body": { "en": "Spin the gooseneck's female end onto the stud, snug against the hex nut. The free male end takes the camera next.", "zh": "把鹅颈臂的母头端拧到螺柱上，紧贴六角螺母。空出的公头端下一步装摄像头。" },
+        "body": { "en": "Spin the gooseneck's female end onto the stud, snug against the hex nut. The free male end takes the camera next.", "zh": "把鹅颈臂的内螺纹一端拧到螺柱上，紧贴住六角螺母。空着的外螺纹一端，下一步装摄像头。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
       }
@@ -71,7 +71,7 @@
     "notes": [
       {
         "h3": { "en": "Clip on the camera", "zh": "装上摄像头" },
-        "body": { "en": "Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 母头座旋到鹅颈臂的公头螺柱上，直到底面顶住螺柱台肩。这样摄像头就吊在了臂端。" },
+        "body": { "en": "Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧到鹅颈臂的外螺纹螺柱上，直到底面顶住螺柱的台肩。这样摄像头就挂在臂的顶端了。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
       }
@@ -90,26 +90,26 @@
     "main": { "src": "camera_40_frame_assembled_cam1_mxqc.svg", "style": "transform: translateX(-35mm);" },
     "notes": [
       {
-        "h3": { "en": "Use the lower slot", "zh": "用下方型材槽" },
-        "body": { "en": "Mount the corner bracket on the lower slot of the right extrusion's outer face.", "zh": "把角支架装在右侧型材外侧面的下方型材槽上。" },
+        "h3": { "en": "Use the lower slot", "zh": "用下面的型材槽" },
+        "body": { "en": "Mount the corner bracket on the lower slot of the right extrusion's outer face.", "zh": "把角支架装在右侧型材外侧面下方的型材槽上。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:30mm; width:60mm;"
       },
       {
-        "h3": { "en": "Orient the camera", "zh": "调整摄像头朝向" },
-        "body": { "en": "Bend the gooseneck to frame the screen, and mount the camera in landscape — sensor's long axis parallel to the phone's long edge.", "zh": "弯折鹅颈臂，让屏幕进入取景范围，并横向安装摄像头，使传感器长轴与手机长边平行。" },
+        "h3": { "en": "Orient the camera", "zh": "调摄像头的朝向" },
+        "body": { "en": "Bend the gooseneck to frame the screen, and mount the camera in landscape — sensor's long axis parallel to the phone's long edge.", "zh": "弯一弯鹅颈臂，让屏幕进到画面里，并把摄像头横着装——让传感器的长边和手机的长边平行。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:80mm; width:60mm;"
       },
       {
-        "h3": { "en": "Lock it down", "zh": "锁紧固定" },
-        "body": { "en": "Make sure the camera is held firm — it shouldn't drift or wobble.", "zh": "确认摄像头固定牢靠，不会移位或晃动。" },
+        "h3": { "en": "Lock it down", "zh": "固定牢" },
+        "body": { "en": "Make sure the camera is held firm — it shouldn't drift or wobble.", "zh": "确认摄像头固定得很牢，不会移位、也不会晃。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:140mm; width:60mm;"
       },
       {
-        "h3": { "en": "Route the USB cable", "zh": "布置 USB 线缆" },
-        "body": { "en": "Secure the camera's USB cable along the gooseneck to keep it clear of the belt.", "zh": "把摄像头的 USB 线缆沿鹅颈臂固定好，避开同步带。" },
+        "h3": { "en": "Route the USB cable", "zh": "整理 USB 线" },
+        "body": { "en": "Secure the camera's USB cable along the gooseneck to keep it clear of the belt.", "zh": "把摄像头的 USB 线沿着鹅颈臂固定好，别让它碰到同步带。" },
         "classes": "note overlay sm",
         "style": "left:16mm; top:30mm; width:72mm;"
       }

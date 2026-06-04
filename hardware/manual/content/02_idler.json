@@ -5,7 +5,7 @@
     "id": "idler",
     "secnum": { "en": "SECTION 02", "zh": "第 02 节" },
     "h1": { "en": "Idler", "zh": "惰轮" },
-    "lede": { "en": "Smooth pulleys route the GT2 belts around their corners. Four corner stations (LU, RU, LD, RD) carry the belt path, each built up in two or three steps.", "zh": "光面惰轮把 GT2 同步带导向各个转角。四个转角工位（LU、RU、LD、RD）共同构成同步带路径，每个工位分两到三步装好。" }
+    "lede": { "en": "Smooth pulleys route the GT2 belts around their corners. Four corner stations (LU, RU, LD, RD) carry the belt path, each built up in two or three steps.", "zh": "光面惰轮把 GT2 同步带导向各个转角。四个转角工位（左上、右上、左下、右下）一起构成同步带的走线路径，每个工位分两到三步装好。" }
   },
   {
     "type": "tall-left",
@@ -17,20 +17,20 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Center hardware first", "zh": "先装中间的紧固件" },
-        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 方螺母连同 M5×10 BHCS 放进中间的沉孔，后面叠装上去就够不到这里了。" },
+        "h3": { "en": "Center hardware first", "zh": "先装中间的螺钉螺母" },
+        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺钉放进中间的沉孔里——要是先装好两边的零件，中间的就不好塞进去了。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
       },
       {
-        "h3": { "en": "Confirm the idler spins freely", "zh": "确认惰轮转动顺畅" },
-        "body": { "en": "Once installed, check that each idler turns freely.", "zh": "装好后，逐个确认惰轮都能自由转动。" },
+        "h3": { "en": "Confirm the idler spins freely", "zh": "确认惰轮转得顺畅" },
+        "body": { "en": "Once installed, check that each idler turns freely.", "zh": "装好后，逐个转一下，确认每个惰轮都能自由转动。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:100mm; width:78mm;"
       },
       {
-        "h3": { "en": "Flat face toward the screw", "zh": "平面朝向螺钉" },
-        "body": { "en": "Seat each square nut with its flat face pointing toward its screw.", "zh": "放置每个方螺母时，让平面一侧朝向对应的螺钉。" },
+        "h3": { "en": "Flat face toward the screw", "zh": "平的一面朝着螺钉" },
+        "body": { "en": "Seat each square nut with its flat face pointing toward its screw.", "zh": "放四方螺母时，让平的一面朝向它对应的螺钉。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:140mm; width:78mm;"
       }
@@ -40,11 +40,11 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×10, Ø5", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "1" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M4", "qty": "2" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M5", "qty": "1" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "3" }
       ]
     }
@@ -60,14 +60,14 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Two ways to the frame", "zh": "两处锁紧到框架" },
-        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处锁紧在框架上：中间的 M5 螺钉咬住型材槽里的滑入式 T 型螺母，连接板再把支座和框架连在一起。" },
+        "h3": { "en": "Two ways to the frame", "zh": "两处固定到框架" },
+        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺钉咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连起来。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:30mm; width:80mm;"
       },
       {
-        "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角板留 2 mm 间隙" },
-        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.", "zh": "调整支座位置，使它离框架转角连接板留出 2 mm 间隙——这里指加固框架接头的那块连接板，不是此处安装的这块。" },
+        "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角连接板留 2 mm 间隙" },
+        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.", "zh": "摆放支座时，让它离框架转角的连接板留出 2 mm 间隙——这里指的是加固框架接头的那块连接板，不是这里要装的这块。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:72mm; width:80mm;"
       }
@@ -76,7 +76,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
       ]
     }
@@ -91,14 +91,14 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Shims set the play", "zh": "垫片决定间隙" },
-        "body": { "en": "The 0.5 mm shim sets how much axial play each idler has. Thickness varies between suppliers — measure yours and confirm 0.5 mm before stacking, or the idler will bind or run loose.", "zh": "0.5 mm 垫片决定每个惰轮的轴向间隙大小。各家供应商的厚度不一，叠装前先量一下、确认是 0.5 mm，否则惰轮要么发卡要么过松。" },
+        "h3": { "en": "Shims set the play", "zh": "垫片决定间隙大小" },
+        "body": { "en": "The 0.5 mm shim sets how much axial play each idler has. Thickness varies between suppliers — measure yours and confirm 0.5 mm before stacking, or the idler will bind or run loose.", "zh": "0.5 mm 的垫片决定每个惰轮在轴向上能动多少。不同供应商的厚度不一样，叠装前先量一下，确认是 0.5 mm，不然惰轮要么卡住、要么太松。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:40mm; width:80mm;"
       },
       {
-        "h3": { "en": "Spacer must total 9 mm", "zh": "隔套总高须达 9 mm" },
-        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "隔套高 9 mm。买不到正好这个高度的话，可以用几个矮一点的隔套叠起来凑足 9 mm。" },
+        "h3": { "en": "Spacer must total 9 mm", "zh": "隔套总高要够 9 mm" },
+        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "隔套高 9 mm。如果买不到正好这个高度的，就用几个矮一点的叠起来，凑够 9 mm。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:82mm; width:80mm;"
       }
@@ -108,10 +108,10 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "2" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M4", "qty": "2" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M5", "qty": "1" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "3" }
       ]
@@ -128,8 +128,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Match the left block's gap", "zh": "间隙与左侧支座保持一致" },
-        "body": { "en": "Set the right block the same 2 mm clear of the frame-corner plate as the left block — keep both gaps equal so the idler stations stay symmetric.", "zh": "右侧支座与左侧一样，离框架转角板留 2 mm 间隙——两侧间隙相等，惰轮工位才能左右对称。" },
+        "h3": { "en": "Match the left block's gap", "zh": "间隙和左边的支座保持一致" },
+        "body": { "en": "Set the right block the same 2 mm clear of the frame-corner plate as the left block — keep both gaps equal so the idler stations stay symmetric.", "zh": "右边的支座和左边一样，离框架转角连接板留 2 mm 间隙——两边间隙相等，惰轮工位才能左右对称。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:120mm; width:80mm;"
       }
@@ -138,7 +138,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
       ]
     }
@@ -153,8 +153,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Motor A idler — sits lower", "zh": "电机 A 惰轮——位置偏低" },
-        "body": { "en": "This idler carries Motor A's belt. With no spacer, it rides on the lower belt plane.", "zh": "这个惰轮走电机 A 的同步带。它不带隔套，因此落在下层同步带平面上。" },
+        "h3": { "en": "Motor A idler — sits lower", "zh": "电机 A 的惰轮——位置偏低" },
+        "body": { "en": "This idler carries Motor A's belt. With no spacer, it rides on the lower belt plane.", "zh": "这个惰轮走电机 A 的同步带。它不加隔套，所以落在下层那条带的平面上。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:90mm; width:80mm;"
       }
@@ -164,9 +164,9 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×10, Ø5", "qty": "1" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M4", "qty": "1" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }
       ]
     }
@@ -182,8 +182,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角板留 2 mm 间隙" },
-        "body": { "en": "Set this block 2 mm clear of the frame-corner plate — the same gap used at every other idler station.", "zh": "把这个支座离框架转角板留 2 mm 间隙——和其他所有惰轮工位的间隙一样。" },
+        "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角连接板留 2 mm 间隙" },
+        "body": { "en": "Set this block 2 mm clear of the frame-corner plate — the same gap used at every other idler station.", "zh": "把这个支座放到离框架转角连接板 2 mm 的位置——和其他每个惰轮工位的间隙一样。" },
         "classes": "note overlay sm",
         "style": "left:160mm; top:130mm; width:78mm;"
       }
@@ -199,8 +199,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Motor B idler — sits higher", "zh": "电机 B 惰轮——位置偏高" },
-        "body": { "en": "This idler carries Motor B's belt. The 9 mm spacer lifts it onto the upper belt plane.", "zh": "这个惰轮走电机 B 的同步带。9 mm 隔套把它垫高到上层同步带平面。" },
+        "h3": { "en": "Motor B idler — sits higher", "zh": "电机 B 的惰轮——位置偏高" },
+        "body": { "en": "This idler carries Motor B's belt. The 9 mm spacer lifts it onto the upper belt plane.", "zh": "这个惰轮走电机 B 的同步带。9 mm 的隔套把它垫高，落到上层那条带的平面上。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:100mm; width:80mm;"
       }
@@ -210,9 +210,9 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "BHCS" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "1" },
-        { "component": { "en": "Square nut", "zh": "方螺母" }, "spec": "M4", "qty": "1" },
+        { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }
       ]
@@ -229,8 +229,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Match the left block's gap", "zh": "间隙与左侧支座保持一致" },
-        "body": { "en": "Set the right block the same 2 mm clear of the frame-corner plate as the left block, so the lower idler stations stay symmetric.", "zh": "右侧支座与左侧一样，离框架转角板留 2 mm 间隙，让下方两个惰轮工位左右对称。" },
+        "h3": { "en": "Match the left block's gap", "zh": "间隙和左边的支座保持一致" },
+        "body": { "en": "Set the right block the same 2 mm clear of the frame-corner plate as the left block, so the lower idler stations stay symmetric.", "zh": "右边的支座和左边一样，离框架转角连接板留 2 mm 间隙，这样下方两个惰轮工位才能左右对称。" },
         "classes": "note overlay sm",
         "style": "left:150mm; top:140mm; width:78mm;"
       }

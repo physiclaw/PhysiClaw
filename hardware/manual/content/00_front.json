@@ -9,8 +9,8 @@
       "zh": "PhysiClaw 装配手册"
     },
     "tag": {
-      "en": "We build agents that acts for you in the real world.",
-      "zh": "我们打造能在现实世界中替你行动的智能体。"
+      "en": "We build agents that interact with you in the real world.",
+      "zh": "我们打造能在真实世界里与你互动的智能体。"
     },
     "version": "2026-06-18"
   },
@@ -35,7 +35,7 @@
       {
         "label": {
           "en": "04 — Linear motion",
-          "zh": "04 — 直线运动"
+          "zh": "04 — 线性运动"
         },
         "pg": "26",
         "target": "linear"
@@ -51,7 +51,7 @@
       {
         "label": {
           "en": "05 — Belt path",
-          "zh": "05 — 同步带路径"
+          "zh": "05 — 同步带绕法"
         },
         "pg": "42",
         "target": "belt"
@@ -98,8 +98,8 @@
       },
       {
         "label": {
-          "en": "08 — PCB board",
-          "zh": "08 — PCB 板"
+          "en": "08 — Control board",
+          "zh": "08 — 控制板"
         },
         "pg": "56",
         "target": "pcb"
@@ -140,7 +140,7 @@
         },
         "body": {
           "en": "Should you find an error in this manual or have a suggestion for an improvement, please consider opening an issue on GitHub (<a href=\"https://github.com/echosprint/PhysiClaw/issues\">github.com/echosprint/PhysiClaw/issues</a>). When raising an issue please include the relevant page numbers and a short description; annotated screenshots are also very welcome. We periodically update the manual based on the feedback we get.",
-          "zh": "若你发现本手册有误或想提改进建议，欢迎到 GitHub 提交 issue（<a href=\"https://github.com/echosprint/PhysiClaw/issues\">github.com/echosprint/PhysiClaw/issues</a>）。提交时请注明相关页码并简要说明问题，附上标注过的截图就更好了。我们会参考收到的反馈定期更新本手册。"
+          "zh": "如果你发现本手册有错，或者有改进建议，欢迎到 GitHub 提交 issue（<a href=\"https://github.com/echosprint/PhysiClaw/issues\">github.com/echosprint/PhysiClaw/issues</a>）。提交时请写明相关页码，简单说一下问题，最好再附上标注过的截图。我们会根据收到的反馈定期更新手册。"
         },
         "classes": "note"
       },
@@ -150,8 +150,8 @@
           "zh": "这只是一份参考"
         },
         "body": {
-          "en": "This manual is designed to be a simple build reference. Assembling a PhysiClaw can be an involved endeavour, so for any section you need clarification on we recommend opening the <span class=\"ref\">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.",
-          "zh": "本手册只是一份简明的装配参考。组装 PhysiClaw 是个不小的工程，因此哪一部分看不明白，建议在 FreeCAD 中打开 <span class=\"ref\">.step</span> 文件——对着完整装配体边看边装往往更省事。"
+          "en": "This manual is designed to be a simple build reference. Assembling a PhysiClaw can take two to three hours, so for any section you need clarification on we recommend opening the <span class=\"ref\">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.",
+          "zh": "本手册只是一份简明的装配参考。组装 PhysiClaw 可能需要两到三个小时，所以哪一步看不明白，建议在 FreeCAD 里打开 <span class=\"ref\">.step</span> 文件——对着完整的装配体边看边装，往往会容易得多。"
         },
         "classes": "note"
       }
@@ -194,7 +194,7 @@
         },
         "body": {
           "en": "Cylindrical head, hex drive. The default fastener for PhysiClaw.ai — used wherever the head can sit above the surface.",
-          "zh": "圆柱头，内六角驱动。PhysiClaw.ai 的默认紧固件——只要螺钉头允许凸出表面，都用它。"
+          "zh": "圆柱头，用内六角扳手拧。PhysiClaw.ai 最常用的螺钉——只要螺钉头可以露在表面外，就用它。"
         },
         "ref": {
           "en": "ISO 4762 / DIN 912",
@@ -209,7 +209,7 @@
         },
         "body": {
           "en": "Domed head, hex drive. Used on surfaces where a lower profile matters but a flush head isn't required.",
-          "zh": "圆顶头，内六角驱动。用在需要降低高度、但又无需沉头平齐的表面。"
+          "zh": "圆顶头，用内六角扳手拧。用在既想压低高度、又不必和表面齐平的地方。"
         },
         "ref": {
           "en": "ISO 7380-1",
@@ -224,7 +224,7 @@
         },
         "body": {
           "en": "Drops into a 2020 / 2040 aluminum extrusion channel and locks under a screw head. Every frame-attached part rides on these.",
-          "zh": "嵌入 2020 / 2040 铝型材槽，靠螺钉头压紧锁定。所有装到框架上的零件都靠它固定。"
+          "zh": "放进 2020 / 2040 铝型材的滑槽里，被螺钉头压住卡紧。凡是装到框架上的零件，都靠它固定。"
         }
       },
       {
@@ -235,7 +235,7 @@
         },
         "body": {
           "en": "Standard M3 hex nut, paired with a screw to clamp parts together where a T-nut won't fit.",
-          "zh": "标准 M3 六角螺母，在 T 型螺母装不下的地方与螺钉配合，把零件夹紧。"
+          "zh": "标准 M3 六角螺母。在装不下 T 型螺母的地方，用它配上螺钉把零件夹紧。"
         },
         "ref": {
           "en": "ISO 4032 / DIN 934",
@@ -250,18 +250,18 @@
         },
         "body": {
           "en": "9 mm-wide miniature linear guide. Two rails run the Y axis, two more carry the X beam. Mounting pitch is 16 × 15 mm — don't substitute.",
-          "zh": "9 mm 宽的微型直线导轨。两条走 Y 轴，另两条承载 X 横梁。安装孔距为 16 × 15 mm——不要用别的替代。"
+          "zh": "9 mm 宽的微型直线导轨。Y 轴用两条，另外两条托着 X 横梁。安装孔的间距是 16 × 15 mm——别拿别的型号替换。"
         }
       },
       {
         "iconLabel": "[ GT2 belt + pulley ]",
         "h3": {
           "en": "GT2 belt &amp; pulley",
-          "zh": "GT2 同步带与同步轮"
+          "zh": "GT2 同步带与同步带轮"
         },
         "body": {
-          "en": "2 mm-pitch open-loop belt, clamped at each end of the moving stage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.",
-          "zh": "2 mm 齿距的开口同步带，两端分别夹紧在运动平台上。同步轮为 20 齿，每个步进电机配一个，另加光面惰轮。"
+          "en": "2 mm-pitch open-loop belt, clamped at each end to the stylus carriage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.",
+          "zh": "齿距 2 mm 的开口同步带，两端分别夹在触控笔滑座上。同步带轮是 20 齿的，每个步进电机配一个，再加上几个光面惰轮。"
         }
       }
     ]
@@ -280,11 +280,11 @@
       {
         "h3": {
           "en": "Part printing settings and guidelines",
-          "zh": "零件打印设置与指南"
+          "zh": "零件打印设置与说明"
         },
         "body": {
-          "en": "PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. This matters here: the parts carry side holes and overhangs that FDM cannot print cleanly. Match the specifications below when sourcing parts.",
-          "zh": "PhysiClaw 的定制零件用选择性激光烧结（SLS）打印，而不是 FDM。激光在加热的粉末床里熔结尼龙粉末，打出来的零件完全实心、无需支撑，各个方向都很结实。这一点很关键：这些零件带有侧孔和悬伸，FDM 打不干净。采购零件时请按下面的规格来。"
+          "en": "PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not the common FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.",
+          "zh": "PhysiClaw 的定制零件用选择性激光烧结（SLS）打印，而不是常见的 FDM。激光在加热的粉末床里把尼龙粉末烧结成型，做出来的零件完全实心、不用支撑，各个方向都很结实。这些零件带有侧面的孔和悬空结构，用 FDM 打，侧孔会变形、悬空处会塌陷。采购零件时，请对照下面的规格。"
         },
         "classes": "note"
       }
@@ -347,7 +347,7 @@
         },
         "v": {
           "en": "Service default — no supports",
-          "zh": "服务商默认——无支撑"
+          "zh": "按打印厂的默认设置——不加支撑"
         }
       },
       {
@@ -367,7 +367,7 @@
         },
         "v": {
           "en": "Raw / as-printed",
-          "zh": "原始 / 打印态"
+          "zh": "打印原样，不做后处理"
         }
       }
     ],
@@ -379,7 +379,7 @@
         },
         "body": {
           "en": "Any file whose name ends in <span class=\"ref\">_x#</span> tells you the quantity of that part required to build the machine — for example a part named <span class=\"ref\">idler_mount_front_x2.step</span> is needed two times.",
-          "zh": "文件名以 <span class=\"ref\">_x#</span> 结尾的，结尾数字就是组装整机所需的该零件数量——比如 <span class=\"ref\">idler_mount_front_x2.step</span> 这个零件要用两个。"
+          "zh": "文件名以 <span class=\"ref\">_x#</span> 结尾时，末尾的数字就表示组装整机要用到几个这种零件——比如 <span class=\"ref\">idler_mount_front_x2.step</span>，就要两个。"
         },
         "classes": "note"
       }

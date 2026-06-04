@@ -12,8 +12,8 @@
       "zh": "手机托架"
     },
     "lede": {
-      "en": "A printed bed cradles the target phone beneath the gantry. Two 1020 cross-beams carry the bed and hang it under the frame, screen facing up toward the stylus.",
-      "zh": "目标手机搁在龙门架下方一个打印件托架里。两根 1020 横梁托住托架，将其吊装在框架下方，屏幕朝上正对触控笔。"
+      "en": "A printed bed cradles the target phone beneath the machine. Two 1020 cross-beams carry the bed and hang it under the frame, screen facing up toward the stylus.",
+      "zh": "一个打印件托架把目标手机托在机器下方。两根 1020 横梁撑住托架，把它吊在框架底下，屏幕朝上、正对着触控笔。"
     }
   },
   {
@@ -38,11 +38,11 @@
       {
         "h3": {
           "en": "Make two",
-          "zh": "制作两件"
+          "zh": "做两根"
         },
         "body": {
           "en": "You need two identical cross-beams for the bed.",
-          "zh": "托架需要两根完全相同的横梁。"
+          "zh": "托架需要两根一模一样的横梁。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:88mm; width:90mm;"
@@ -65,15 +65,15 @@
         {
           "component": {
             "en": "BHCS",
-            "zh": "BHCS 内六角盘头螺钉"
+            "zh": "半圆头螺钉"
           },
           "spec": "M5×16",
           "qty": "4"
         },
         {
           "component": {
-            "en": "Hammer T-nut",
-            "zh": "锤头 T 型螺母"
+            "en": "T-nut",
+            "zh": "T 型螺母"
           },
           "spec": "M5",
           "qty": "4"
@@ -118,15 +118,15 @@
         {
           "component": {
             "en": "FHCS",
-            "zh": "FHCS 内六角沉头螺钉"
+            "zh": "沉头螺钉"
           },
           "spec": "M3×8",
           "qty": "4"
         },
         {
           "component": {
-            "en": "Hammer T-nut",
-            "zh": "锤头 T 型螺母"
+            "en": "T-nut",
+            "zh": "T 型螺母"
           },
           "spec": "M3",
           "qty": "4"
@@ -151,11 +151,11 @@
       {
         "h3": {
           "en": "Seat the bed on the beams",
-          "zh": "将托架放到横梁上"
+          "zh": "把托架放到横梁上"
         },
         "body": {
           "en": "Lay the two cross-beams parallel, slotted faces up.",
-          "zh": "两根横梁平行摆放，开槽面朝上。"
+          "zh": "把两根横梁平行摆好，开槽的一面朝上。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:140mm; width:60mm;"
@@ -184,7 +184,7 @@
         },
         "body": {
           "en": "Stand the frame on end first — it's far easier to work vertically. Then slide each beam's T-nuts into the slots on the frame's underside.",
-          "zh": "先把框架竖起来——立着操作要省事得多。再将每根横梁上的 T 型螺母滑入框架底面的型材槽。"
+          "zh": "先把框架竖起来——立着干活要省事得多。再把每根横梁上的 T 型螺母滑进框架底面的型材槽里。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:22mm; width:90mm;"
@@ -192,11 +192,11 @@
       {
         "h3": {
           "en": "Position the phone",
-          "zh": "放置手机"
+          "zh": "放手机"
         },
         "body": {
           "en": "Place a phone on the bed, pushed into the top-left corner. Jog the X carriage across its full travel and check the stylus tip can reach every part of the screen.",
-          "zh": "把手机放上托架，靠到左上角。点动 X 滑座跑完整个行程，确认触控笔尖能够到屏幕的每一处。"
+          "zh": "把手机放到托架上，靠左上角放齐。让 X 滑座走完整个行程，确认触控笔尖能够到屏幕的每个位置。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:50mm; width:90mm;"
@@ -204,11 +204,11 @@
       {
         "h3": {
           "en": "Dial in the tap",
-          "zh": "调校点击力度"
+          "zh": "调好点击力度"
         },
         "body": {
           "en": "The tip must tap firmly enough to register, but no harder. Too hard can crack the screen; too far or too light and the tap misses. Adjust the solenoid mount height until taps land reliably.",
-          "zh": "笔尖点击的力度要刚好够屏幕识别，再大就不行了。力度过大会压裂屏幕；离得太远或太轻则点击落空。调整电磁阀支架的高度，直到每次都能稳稳点中。"
+          "zh": "笔尖点下去的力度，要刚好让屏幕能识别，再大就过了。太用力会把屏幕压裂；离太远或太轻又会点不到。调整电磁铁安装高度，直到每次都能稳稳点中。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:85mm; width:90mm;"
@@ -216,11 +216,11 @@
       {
         "h3": {
           "en": "Keep the screen flat",
-          "zh": "保持屏幕水平"
+          "zh": "让屏幕保持水平"
         },
         "body": {
           "en": "The rear camera bump lifts one corner, so the phone won't lie flat. Slip a thin shim or a few sheets of paper under the low edge until the screen is level and facing straight up. Make sure the phone can't rock or shift when the stylus taps — any tilt or wobble can make it miss.",
-          "zh": "后置摄像头的凸起会把一角顶高，手机就放不平了。在偏低的一侧下方塞一片薄垫片或几张纸，直到屏幕水平、正对上方。还要确保触控笔点击时手机不会晃动或移位——稍有倾斜或松动都可能让点击落空。"
+          "zh": "后置摄像头那块凸起会把一个角顶起来，手机就放不平。在偏低的那一边垫一片薄垫片或几张纸，直到屏幕水平、正对上方。还要确保点击时手机不会晃、不会移位——只要有一点歪或松，就可能点不准。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:124mm; width:90mm; display:flex; gap:4mm; align-items:flex-start;",
