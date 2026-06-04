@@ -34,6 +34,12 @@
         "body": { "en": "Colored to colored, black to black.", "zh": "彩色引脚对彩色引脚，黑色引脚对黑色引脚。" },
         "classes": "note overlay sm",
         "style": "left:150mm; top:135mm; width:90mm;"
+      },
+      {
+        "h3": { "en": "Heatsink", "zh": "散热片" },
+        "body": { "en": "TMC2209 driver modules typically include a heatsink that can be stuck onto the top of the driver chip.", "zh": "TMC2209 驱动模块通常自带散热片，可贴在驱动芯片顶部。" },
+        "classes": "note overlay sm",
+        "style": "left:60mm; bottom:32mm; width:90mm;"
       }
     ],
     "bom": {
@@ -70,8 +76,8 @@
         "text": { "en": "Power (DC in)", "zh": "电源（直流输入）" }
       },
       {
-        "style": "position:absolute; left:85mm; top:138mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
-        "text": { "en": "USB Port", "zh": "USB 接口" }
+        "style": "position:absolute; left:90mm; top:138mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "text": { "en": "USB Serial Port", "zh": "USB 串口" }
       },
       {
         "style": "position:absolute; right:90mm; top:30mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
@@ -122,6 +128,42 @@
         "body": { "en": "Solder each joint and cover it with heat-shrink. Offset the two splices about 20 mm so the insulated joints don't sit side by side.", "zh": "每个接头先焊接，再套热缩管。把两个接头错开约 20 mm，别让它们并排挤在一起。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:40mm; width:100mm;"
+      }
+    ]
+  },
+  {
+    "type": "tall-left",
+    "page": "70",
+    "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "tapz_10" },
+    "variant": "hero",
+    "figures": [
+      { "src": "tapz_10_solenoid_tip_assembled_cam1_ohru.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Ground the stylus", "zh": "给触控笔接地" },
+        "body": { "en": "The stylus rides on the solenoid's iron core, so grounding the core grounds the tip. Give it a real ground reference — do not use the control board's GND.", "zh": "触控笔装在电磁铁的铁芯上，给铁芯接地也就给了笔尖接地。要给它一个真正的接地参考——不要用控制板的 GND。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:30mm; width:150mm; max-width:150mm;"
+      },
+      {
+        "h3": { "en": "Why it matters", "zh": "为什么要这样" },
+        "body": { "en": "A capacitive screen senses a tap through your body's ground reference. A robot-held stylus floats electrically and lacks that reference, so taps register unreliably. Grounding the stylus stands in for the human hand and steadies the touch signal.", "zh": "电容屏靠人体的接地参考来感应触摸。机械臂握着的触控笔在电气上是浮空的，缺少这个参考，点击就不稳定。给触控笔接地相当于替代人手，让触摸信号稳定下来。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:55mm; width:150mm; max-width:150mm;"
+      },
+      {
+        "h3": { "en": "How to ground it", "zh": "怎么接地" },
+        "body": { "en": "Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.", "zh": "把铁芯接到电源的公共地。最简单的办法是：找一台通过三脚插座可靠接地的台式电脑，把线夹在机箱的裸露金属处——机箱经市电连到大地，能提供稳定的接地参考。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:90mm; width:150mm; max-width:150mm;"
+      },
+      {
+        "h3": { "en": "Warning", "zh": "警告" },
+        "body": { "en": "Never put the ground wire into a wall socket. Mains voltage (220 V/110 V) is lethal — touching the live terminal instead of earth can cause a fatal shock and instantly destroy your phone and equipment. Connect only to a verified ground point.", "zh": "切勿把接地线插入墙壁插座。市电电压（220V/110V）足以致命——接到火线而非地线，可能造成致命电击，并瞬间烧毁手机和设备。只能接到确认可靠的接地点。" },
+        "classes": "note overlay sm",
+        "style": "left:130mm; top:130mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;",
+        "icon": "info"
       }
     ]
   }

@@ -749,7 +749,7 @@
       <a class="toc-row" href="#camera"><span>09 — Camera</span><span class="pg">61</span></a>
 
       <a class="toc-row" href="#wiring"><span>10 — Wiring</span><span class="pg">66</span></a>
-      <a class="toc-row" href="#bom"><span>11 — BOM</span><span class="pg">70</span></a>
+      <a class="toc-row" href="#bom"><span>11 — BOM</span><span class="pg">71</span></a>
     </div>
 
     <div class="foot">
@@ -3011,6 +3011,10 @@
       <h3>Rule of thumb</h3>
       <p>Colored to colored, black to black.</p>
     </div>
+    <div class="note overlay sm" style="left:60mm; bottom:32mm; width:90mm;">
+      <h3>Heatsink</h3>
+      <p>TMC2209 driver modules typically include a heatsink that can be stuck onto the top of the driver chip.</p>
+    </div>
     <div class="bom">
       <span class="label">Bill of materials</span>
       <table>
@@ -3045,7 +3049,7 @@
     <div style="position:absolute; left:50mm; top:69mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">Motor A (Y1)</div>
     <div style="position:absolute; left:18mm; top:118mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">Solenoid (spindle)</div>
     <div style="position:absolute; left:60mm; top:140mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">Power (DC in)</div>
-    <div style="position:absolute; left:85mm; top:138mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">USB Port</div>
+    <div style="position:absolute; left:90mm; top:138mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">USB Serial Port</div>
     <div style="position:absolute; right:90mm; top:30mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">Motor A</div>
     <div style="position:absolute; right:60mm; top:30mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;">Motor B</div>
     <div class="note overlay sm" style="left:150mm; top:138mm; width:110mm;">
@@ -3083,6 +3087,45 @@
       <p>Solder each joint and cover it with heat-shrink. Offset the two splices about 20 mm so the insulated joints don't sit side by side.</p>
     </div>
     <div class="foot"><span>69</span><span class="rule"></span><span>69</span></div>
+  </div>
+</section>
+
+<!-- SECTION 10 — WIRING · tapz_10 (tall-left — ground the solenoid core) -->
+<section class="page">
+  <div class="page-inner">
+    <div class="head">
+      <span class="title">WIRING<small>tapz_10</small></span>
+      <span class="url">PhysiClaw.ai</span>
+    </div>
+    <div class="tall-left hero">
+      <div class="fig tall">
+        <img src="../output/svg/tapz_10_solenoid_tip_assembled_cam1_ohru.svg" alt="tapz_10_solenoid_tip assembled" loading="lazy">
+      </div>
+    </div>
+    <div class="note overlay sm" style="left:130mm; top:30mm; width:150mm; max-width:150mm;">
+      <h3>Ground the stylus</h3>
+      <p>The stylus rides on the solenoid's iron core, so grounding the core grounds the tip. Give it a real ground reference — do not use the control board's GND.</p>
+    </div>
+    <div class="note overlay sm" style="left:130mm; top:55mm; width:150mm; max-width:150mm;">
+      <h3>Why it matters</h3>
+      <p>A capacitive screen senses a tap through your body's ground reference. A robot-held stylus floats electrically and lacks that reference, so taps register unreliably. Grounding the stylus stands in for the human hand and steadies the touch signal.</p>
+    </div>
+    <div class="note overlay sm" style="left:130mm; top:90mm; width:150mm; max-width:150mm;">
+      <h3>How to ground it</h3>
+      <p>Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.</p>
+    </div>
+    <div class="note overlay sm" style="left:130mm; top:130mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;">
+      <svg viewBox="0 0 24 24" style="flex:none; width:9mm; height:9mm; margin-top:1mm;" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="11" fill="none" stroke="#4a8bc7" stroke-width="2"/>
+        <line x1="12" y1="6" x2="12" y2="14" stroke="#4a8bc7" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="12" cy="18" r="1.4" fill="#4a8bc7"/>
+      </svg>
+      <div>
+        <h3>Warning</h3>
+        <p>Never put the ground wire into a wall socket. Mains voltage (220 V/110 V) is lethal — touching the live terminal instead of earth can cause a fatal shock and instantly destroy your phone and equipment. Connect only to a verified ground point.</p>
+      </div>
+    </div>
+    <div class="foot"><span>70</span><span class="rule"></span><span>70</span></div>
   </div>
 </section>
 
@@ -3171,7 +3214,7 @@
         </table>
       </div>
     </div>
-    <div class="foot"><span>70</span><span class="rule"></span><span>70</span></div>
+    <div class="foot"><span>71</span><span class="rule"></span><span>71</span></div>
   </div>
 </section>
 
