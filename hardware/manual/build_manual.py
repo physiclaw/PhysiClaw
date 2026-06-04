@@ -19,19 +19,29 @@ strategies, chosen with ``--assets``:
 
 Run under ``uv`` (standard library only, Python 3.12+)::
 
-    uv run build_manual.py                    # en + zh, external assets
-    uv run build_manual.py --lang en          # English only -> manual.html
+    uv run build_manual.py                    # en + zh, external assets, + PDFs
+    uv run build_manual.py --lang en          # English only -> physiclaw_manual.html
     uv run build_manual.py --assets inline     # single self-contained file
     uv run build_manual.py --out /tmp/out      # custom output directory
+    uv run build_manual.py --no-pdf            # skip PDF rendering (HTML only)
+
+PDF output uses an already-installed Chromium-family browser (Chrome / Chromium
+/ Edge); if none is found the HTML still builds and PDF is skipped with a note.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import json
+import os
 import re
 import shutil
+import signal
+import subprocess
+import tempfile
+import time
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -59,7 +69,7 @@ OUTPUT_DIR = SCRIPT_DIR / ".." / "output" / "manual"
 ASSETS_SUBDIR = "assets"  # where external mode writes images, relative to the HTML.
 
 # Output filename per language, plus the <html lang> attribute value.
-LANG_FILENAME = {"en": "manual.html", "zh": "manual.zh.html"}
+LANG_FILENAME = {"en": "physiclaw_manual.html", "zh": "physiclaw装配手册.html"}
 HTML_LANG = {"en": "en", "zh": "zh-Hans"}
 
 # Inline-SVG chrome (cover stripes, GitHub octicon, back corner, crab logo)
@@ -509,19 +519,140 @@ def render_document(pages: list[dict], css: str, ctx: Ctx) -> str:
     )
 
 
-def build(langs: list[str], out_dir: Path, inline: bool) -> list[Path]:
-    """Render the requested languages into ``out_dir`` and return written files."""
+# --------------------------------------------------------------------------- #
+# PDF (headless Chrome) — the manual's CSS is print-ready (@page A4 landscape),
+# so we render it with the browser engine it's designed for rather than a
+# separate PDF library. Chrome is used only if already installed; absent it,
+# the HTML build still succeeds and PDF is skipped with a note.
+# --------------------------------------------------------------------------- #
+CHROME_APP_PATHS = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+)
+
+
+def find_chrome() -> str | None:
+    """Path to a Chromium-family browser, or None if none is installed."""
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        if found := shutil.which(name):
+            return found
+    return next((p for p in CHROME_APP_PATHS if Path(p).exists()), None)
+
+
+PDF_TIMEOUT = 90    # s per attempt — a clean print is ~40s; this is generous
+PDF_ATTEMPTS = 2    # a fresh process retry covers the rare launch that never
+                    # writes the file (cf. the OCCT crash-retry in dispatch.py).
+
+
+def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bool:
+    """One headless-Chrome print. Returns True once the PDF is written.
+
+    ``--headless=new --print-to-pdf`` reliably *writes* the PDF but then often
+    fails to *exit*, so we watch the output file rather than the process exit
+    code: once it appears and its size stops growing, the print is done and we
+    kill Chrome. Chrome runs in its own process group so a stuck launch (and
+    all its renderer/helper children) dies as a unit — a survivor would
+    contend with the next attempt."""
+    pdf_path.unlink(missing_ok=True)  # so a stale file isn't read as success
+
+    def written() -> bool:
+        return pdf_path.exists() and pdf_path.stat().st_size > 0
+
+    proc = subprocess.Popen(
+        [chrome, "--headless=new", "--disable-gpu", "--no-sandbox",
+         "--disable-dev-shm-usage", "--disable-background-networking",
+         f"--user-data-dir={profile}", "--no-pdf-header-footer",
+         "--virtual-time-budget=30000",
+         f"--print-to-pdf={pdf_path}", src_uri],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + PDF_TIMEOUT
+        last_size, stable = -1, 0
+        while time.monotonic() < deadline:
+            size = pdf_path.stat().st_size if pdf_path.exists() else 0
+            stable = stable + 1 if size > 0 and size == last_size else 0
+            if stable >= 3:  # size held ~2.4s → fully written
+                return True
+            last_size = size
+            if proc.poll() is not None:  # exited on its own
+                return written()
+            time.sleep(0.8)
+        return written()
+    finally:
+        if proc.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait()
+
+
+def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
+    """Render ``html`` to ``pdf_path`` via headless Chrome, retrying in a
+    fresh process if a launch hangs.
+
+    The HTML is written to a temp file beside the PDF (so its relative
+    ``assets/`` figure references resolve against the emitted asset dir) and
+    printed with the new headless mode, which honours the document's CSS
+    @page size/margins (A4 landscape, zero margin). ``loading="lazy"`` is
+    stripped so every figure is painted in the single print pass. Returns
+    True once a non-empty PDF is produced, else False."""
+    html = html.replace(' loading="lazy"', "")
+    for attempt in range(1, PDF_ATTEMPTS + 1):
+        with tempfile.TemporaryDirectory() as profile, \
+             tempfile.NamedTemporaryFile("w", suffix=".html", dir=pdf_path.parent,
+                                         encoding="utf-8", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(html)
+            tmp.flush()
+            try:
+                result = _chrome_print(chrome, tmp_path.as_uri(), profile, pdf_path)
+            finally:
+                tmp_path.unlink(missing_ok=True)
+        if result:  # _chrome_print returns True only after the PDF is written
+            return True
+        pdf_path.unlink(missing_ok=True)
+        tail = " — retrying" if attempt < PDF_ATTEMPTS else " — skipped"
+        print(f"warning: PDF render failed for {pdf_path.name} (attempt {attempt}){tail}")
+    return False
+
+
+def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> list[Path]:
+    """Render the requested languages into ``out_dir`` and return written files.
+
+    Always writes the HTML; also writes a PDF per language when ``pdf`` is set
+    and a Chromium-family browser is available. The PDF is printed from the
+    just-written HTML — in external mode (default) Chrome loads the figures
+    from the emitted ``assets/`` dir and embeds them into the PDF; in inline
+    mode they are already data URIs."""
     out_dir.mkdir(parents=True, exist_ok=True)
     css = STYLES_CSS.read_text(encoding="utf-8")
     pages = load_pages()
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
+    chrome = find_chrome() if pdf else None
+    if pdf and chrome is None:
+        print("note: no Chrome/Chromium found — skipping PDF output")
+
     written: list[Path] = []
+    docs: dict[str, tuple[Path, str]] = {}
     for lang in langs:
         path = out_dir / LANG_FILENAME[lang]
-        path.write_text(render_document(pages, css, Ctx(lang, assets)), encoding="utf-8")
+        html = render_document(pages, css, Ctx(lang, assets))
+        path.write_text(html, encoding="utf-8")
         written.append(path)
+        docs[lang] = (path, html)
     assets.emit(out_dir)  # external mode writes the shared assets/ dir once.
+
+    # PDFs print from the just-written HTML against the on-disk assets/, so
+    # Chrome parses a light ~100 KB document (not a multi-MB inline one) and
+    # loads each figure as its own file; the rendered PDF still embeds them.
+    if chrome is not None:
+        for lang in langs:
+            path, html = docs[lang]
+            pdf_path = path.with_suffix(".pdf")
+            if render_pdf(html, pdf_path, chrome):
+                written.append(pdf_path)
     return written
 
 
@@ -539,10 +670,14 @@ def main() -> None:
         "--out", type=Path, default=OUTPUT_DIR,
         help="output directory (default: ../output/manual)",
     )
+    parser.add_argument(
+        "--pdf", action=argparse.BooleanOptionalAction, default=True,
+        help="also render a PDF per language via headless Chrome (default: on)",
+    )
     args = parser.parse_args()
 
     langs = ["en", "zh"] if args.lang == "all" else [args.lang]
-    for path in build(langs, args.out.resolve(), inline=args.assets == "inline"):
+    for path in build(langs, args.out.resolve(), inline=args.assets == "inline", pdf=args.pdf):
         print(f"wrote {path}")
 
 
