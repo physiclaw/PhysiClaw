@@ -17,13 +17,14 @@ strategies, chosen with ``--assets``:
   base64 ``data:`` URI (no external requests, no lazy loading — best for
   offline use / emailing one file around, at the cost of a large document).
 
-Run under ``uv`` (standard library only, Python 3.12+)::
+Run under ``uv`` from the repo root (standard library only, Python 3.12+);
+all paths resolve relative to this file, so the cwd does not matter::
 
-    uv run build_manual.py                    # en + zh, external assets, + PDFs
-    uv run build_manual.py --lang en          # English only -> physiclaw_manual.html
-    uv run build_manual.py --assets inline     # single self-contained file
-    uv run build_manual.py --out /tmp/out      # custom output directory
-    uv run build_manual.py --no-pdf            # skip PDF rendering (HTML only)
+    uv run hardware/manual/build_manual.py                 # en + zh, external assets, + PDFs
+    uv run hardware/manual/build_manual.py --lang en        # English only -> physiclaw_manual.html
+    uv run hardware/manual/build_manual.py --assets inline  # single self-contained file
+    uv run hardware/manual/build_manual.py --out /tmp/out   # custom output directory
+    uv run hardware/manual/build_manual.py --no-pdf         # skip PDF rendering (HTML only)
 
 PDF output uses an already-installed Chromium-family browser (Chrome / Chromium
 / Edge); if none is found the HTML still builds and PDF is skipped with a note.
@@ -734,6 +735,23 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
     return False
 
 
+def _clear_output_dir(out_dir: Path) -> None:
+    """Wipe stale manual artifacts so each run starts clean — a figure no
+    longer referenced, the other language's HTML after a ``--lang`` build, or
+    the sidecar assets after switching to ``--assets inline``. Mirrors
+    ``build_procedures._clear_outputs``: only the extensions this script
+    generates are touched, so user-placed files are left alone."""
+    targets = [(out_dir, "*.html"), (out_dir, "*.pdf"), (out_dir / ASSETS_SUBDIR, "*.svg")]
+    cleared = 0
+    for d, pattern in targets:
+        if not d.exists():
+            continue
+        for f in d.glob(pattern):
+            f.unlink()
+            cleared += 1
+    print(f"cleared {cleared} stale manual file(s)")
+
+
 def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> list[Path]:
     """Render the requested languages into ``out_dir`` and return written files.
 
@@ -742,6 +760,7 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
     just-written HTML — in external mode (default) Chrome loads the figures
     from the emitted ``assets/`` dir and embeds them into the PDF; in inline
     mode they are already data URIs."""
+    _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
     out_dir.mkdir(parents=True, exist_ok=True)
     SVG_DIR.mkdir(parents=True, exist_ok=True)
     for name, svg in HAND_FIGURES.items():  # regenerate tracked hand figures
