@@ -41,6 +41,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Iterator
@@ -91,9 +92,41 @@ URL_MARK = "PhysiClaw.ai"  # masthead mark, never localized.
 # chosen strategy needs. Images stay <img> (not inline <svg>) so the figure
 # framing can rely on object-fit / object-position.
 # --------------------------------------------------------------------------- #
+class BuildError(Exception):
+    """A user-facing build failure: ``main()`` prints the message on its own,
+    without a Python traceback."""
+
+
+def _render_stem(basename: str) -> str:
+    """The procedure stem behind a render filename, e.g.
+    ``camera_40_frame_assembled_cam0_ljek.svg`` -> ``camera_40_frame``."""
+    return re.sub(r"_(?:exploded|assembled)_cam\d+(?:_[a-z0-9]+)?\.svg$", "", basename)
+
+
+def _require_renders(names) -> None:
+    """Raise a clear ``BuildError`` if any referenced SVG render is absent from
+    output/svg. Those files come from the assembly render pipeline (not this
+    script), so the message names exactly what's missing and the command that
+    regenerates precisely those stems."""
+    missing = sorted(n for n in names if not (SVG_DIR / n).exists())
+    if not missing:
+        return
+    stems = sorted({_render_stem(n) for n in missing})
+    listed = "\n".join(f"    {n}" for n in missing)
+    raise BuildError(
+        f"{len(missing)} referenced SVG render(s) missing from output/svg:\n"
+        f"{listed}\n\n"
+        "These are produced by the assembly render pipeline, not build_manual.\n"
+        "Regenerate them with:\n"
+        f"    uv run --group cad python -m hardware.assembly.build_procedures "
+        f"--stems {' '.join(stems)}"
+    )
+
+
 @cache
 def _read_svg(basename: str) -> str:
     """Read one SVG render from output/svg (cached — several are reused)."""
+    _require_renders([basename])
     return (SVG_DIR / basename).read_text(encoding="utf-8")
 
 
@@ -152,6 +185,7 @@ class ExternalAssets:
         assets_dir = out_dir / ASSETS_SUBDIR
         assets_dir.mkdir(parents=True, exist_ok=True)
         (assets_dir / "crab.svg").write_text(CRAB_SVG, encoding="utf-8")
+        _require_renders(self.referenced)  # all missing at once, with a fix hint
         for name in sorted(self.referenced):
             shutil.copyfile(SVG_DIR / name, assets_dir / name)
 
@@ -763,7 +797,11 @@ def _step(label: str) -> Iterator[None]:
     times read down a clean right-aligned column."""
     print(f"  {label:.<{_STEP_LABEL_W}} ", end="", flush=True)
     t0 = time.monotonic()
-    yield
+    try:
+        yield
+    except BaseException:
+        print("FAILED", flush=True)
+        raise
     print(f"{time.monotonic() - t0:>5.1f}s")
 
 
@@ -843,7 +881,11 @@ def main() -> None:
     # is usually too long to read at a glance.
     shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
     print(f"building manual [{', '.join(langs)}] -> {shown}")
-    written = build(langs, out, inline=args.assets == "inline", pdf=args.pdf)
+    try:
+        written = build(langs, out, inline=args.assets == "inline", pdf=args.pdf)
+    except BuildError as exc:
+        print(f"\nerror: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
     print(f"\ndone — wrote {len(written)} file(s):")
     for path in written:
         print(f"  {path.name}")
