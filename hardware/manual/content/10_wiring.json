@@ -4,7 +4,7 @@
     "page": "wiring",
     "secnum": { "en": "SECTION 10", "zh": "第 10 节" },
     "h1": { "en": "Wiring", "zh": "接线" },
-    "lede": { "en": "TODO: intro to wiring — bring the two steppers, the tapping solenoid, the camera, and power together at the control board.", "zh": "TODO：接线部分引言——把两个步进电机、点击电磁铁、摄像头和电源都接到控制板上。" }
+    "lede": { "en": "Connect the control board's stepper driver outputs to the motors. Wire the solenoid to the spindle output, and ground it.", "zh": "将控制板的步进驱动接口接到电机；电磁铁接到主轴（Spindle）接口，并接地。" }
   },
   {
     "type": "tall-left",
