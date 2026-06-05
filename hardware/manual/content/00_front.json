@@ -153,7 +153,7 @@
         },
         "body": {
           "en": "This manual is designed to be a simple build reference. Assembling a PhysiClaw can take two to three hours, so for any section you need clarification on we recommend opening the <span class=\"ref\">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.",
-          "zh": "本手册只是一份简明的装配参考。组装 PhysiClaw 可能需要两到三个小时，所以哪一步看不明白，建议在 FreeCAD 里打开 <span class=\"ref\">.step</span> 文件——对着完整的装配体边看边装，往往会容易得多。"
+          "zh": "本手册只是一份简明的装配参考。组装 PhysiClaw 可能需要两到三个小时，遇到哪一步看不明白，建议在 FreeCAD 里打开 <span class=\"ref\">.step</span> 文件——对着完整的装配体边看边装，往往会容易得多。"
         },
         "classes": "note"
       }
@@ -391,7 +391,7 @@
         },
         "body": {
           "en": "The 2 mm and 3 mm hex drivers see the most use in this build. A quality driver for each is strongly recommended. Refer to the sourcing guide for suggestions.",
-          "zh": "装配这台机器时，2 mm 和 3 mm 内六角扳手用得最多。强烈建议这两把都备质量好的。"
+          "zh": "装配这台机器时，2 mm 和 3 mm 内六角扳手用得最多。强烈建议这两把扳手都用质量好的。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:56mm; width:120mm;"
