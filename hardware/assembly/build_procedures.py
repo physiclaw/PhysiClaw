@@ -39,6 +39,7 @@ import subprocess
 import sys
 import time
 import traceback
+from functools import cache
 
 from hardware.assembly.base import SVG_DIR, BaseAssembly, svg_path_for
 from hardware.assembly.mark.patch import patch_path
@@ -50,7 +51,7 @@ from hardware.assembly.dispatch import (
     MAX_STEM_RETRIES,
     _batches,
     _family_of,
-    load_step,
+    load_class,
     retry_stems,
 )
 from hardware.bom.bom import BOM_DIR, write_bom  # only for the optional --bom feature
@@ -104,7 +105,7 @@ def _replay_patches_for(stem: str, exploded: bool) -> int:
 
 
 def _build_stems(stems: list[str], *, bom: bool = False, bom_delta: bool = False) -> int:
-    classes = [(stem, type(load_step(stem))) for stem in stems]
+    classes = [(stem, load_class(stem)) for stem in stems]
 
     name_w   = max(len(name) for name, _ in classes)
     runs     = len(classes) * 2
@@ -179,13 +180,27 @@ def _run_subprocess(stems: list[str], bom_flags: tuple[str, ...] = ()) -> int:
 _VARIANTS = (("exploded", True), ("assembled", False))
 
 
+@cache
+def _camera_count(stem: str, exploded: bool) -> int:
+    """How many cameras this stem renders for this variant — i.e. how many
+    SVGs (``_cam0`` … ``_camN-1``) the variant should produce. Counted per
+    variant because a procedure may set ``self.camera`` differently for
+    exploded vs assembled (e.g. frame_10_extrusion_tnut). Reads the same
+    ``BaseAssembly.cameras`` that ``render()`` iterates, so producer and
+    verifier stay in lockstep."""
+    return len(load_class(stem)(exploded=exploded).cameras)
+
+
 def _missing_variants(stem: str) -> list[str]:
-    """Variant names ("exploded" / "assembled") whose SVG isn't on disk
-    for this stem. ``_run_one`` writes STEP first then SVG, so SVG
-    presence implies the full build/export/render finished for that
-    variant."""
+    """Variant names ("exploded" / "assembled") with any SVG missing on disk
+    for this stem. ``_run_one`` writes STEP first then the SVGs, and a
+    multi-camera assembly emits one per camera (``_cam0`` … ``_camN``), so a
+    variant is complete only when ALL its cameras' SVGs exist. Checking just
+    ``_cam0`` would miss a crash *between* cameras — exactly the OCCT HLR
+    SIGSEGV that the retry exists to recover from."""
     return [name for name, exploded in _VARIANTS
-            if not svg_path_for(stem, exploded).exists()]
+            if any(not svg_path_for(stem, exploded, index=i).exists()
+                   for i in range(_camera_count(stem, exploded)))]
 
 
 def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = ()) -> int:

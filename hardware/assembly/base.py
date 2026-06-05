@@ -103,13 +103,19 @@ class BaseAssembly(BasePart):
     def _build(self) -> Compound:
         raise NotImplementedError
 
+    @property
+    def cameras(self) -> "list[Camera]":
+        """``camera`` normalized to a list — one rendered view (and so one
+        ``_cam<i>`` SVG) per entry. Single source of truth for the per-variant
+        camera count, shared by ``render()`` (producer) and the build
+        dispatcher's completeness check (verifier) so they cannot drift."""
+        return self.camera if isinstance(self.camera, list) else [self.camera]
+
     def render(self) -> None:
         assembly = self.build()
         solid, ghost = _split_solid_ghost(assembly)
 
-        cameras = self.camera if isinstance(self.camera, list) else [self.camera]
-
-        for i, cam in enumerate(cameras):
+        for i, cam in enumerate(self.cameras):
             # Camera + look_at derived from the FULL assembly bbox so
             # solid and ghost layers align pixel-for-pixel. Without a
             # shared look_at, project_to_viewport defaults to each

@@ -51,9 +51,9 @@ def list_procedures() -> list[str]:
     return [stem for _, _, stem in keyed]
 
 
-def load_step(module_name: str) -> BaseAssembly:
-    """Import a procedure module and instantiate its BaseAssembly
-    subclass. The procedure files each define exactly one such class."""
+def load_class(module_name: str) -> type[BaseAssembly]:
+    """Import a procedure module and return its BaseAssembly subclass.
+    The procedure files each define exactly one such class."""
     if "." not in module_name:
         module_name = f"hardware.assembly.procedures.{module_name}"
     mod = importlib.import_module(module_name)
@@ -64,8 +64,13 @@ def load_step(module_name: str) -> BaseAssembly:
             and obj is not BaseAssembly
             and obj.__module__ == mod.__name__
         ):
-            return obj(exploded=False)
+            return obj
     raise LookupError(f"No BaseAssembly subclass in {module_name}")
+
+
+def load_step(module_name: str) -> BaseAssembly:
+    """Instantiate a procedure's BaseAssembly subclass (assembled variant)."""
+    return load_class(module_name)(exploded=False)
 
 
 # ── Ordering & batching ───────────────────────────────────────────────────────
