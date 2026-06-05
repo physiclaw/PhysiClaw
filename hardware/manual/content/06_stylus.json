@@ -4,7 +4,7 @@
     "page": "stylus",
     "secnum": { "en": "SECTION 06", "zh": "第 06 节" },
     "h1": { "en": "Touch end", "zh": "触控机构" },
-    "lede": { "en": "Solenoid, capacitive stylus tip, and carriage mount form the business end of the machine. Every tap, swipe, and hold originates here.", "zh": "推拉式电磁铁、电容触控笔尖和滑座支架，组成整台机器执行操作的那一端。每一次点按、滑动、长按，都从这里发出。" }
+    "lede": { "en": "Mount the capacitive stylus tip onto the push-pull solenoid, then install the two together onto the X carriage.", "zh": "把电容触控笔尖装到推拉式电磁铁上，再一起装到 X 滑座上。" }
   },
   {
     "type": "tall-left",
