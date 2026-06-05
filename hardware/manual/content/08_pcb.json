@@ -110,7 +110,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Teflon tube", "zh": "特氟龙管" }, "spec": "Ø5/4, 350mm", "qty": "1" }
+        { "component": { "en": "Teflon tube", "zh": "特氟龙管" }, "spec": "Ø6/5, 380mm", "qty": "1" }
       ]
     }
   }

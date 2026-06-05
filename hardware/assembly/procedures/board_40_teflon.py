@@ -1,5 +1,5 @@
 """Teflon tube on the board sub-assembly — routes a PTFE tube from the PCB
-holder's left-face bore (the "upper tube" M5 hole) to the solenoid mount's
+holder's left-face bore (the "upper tube" Ø6 mm hole) to the solenoid mount's
 keyboard-face slot, draped over the board_30 assembly.
 
 Both port locations are read out of the built assembly so the routing stays
@@ -32,8 +32,8 @@ from hardware.parts.custom import pcb_holder as H
 from hardware.parts.custom import solenoid_mount as S
 from hardware.parts.standard.teflon import Teflon
 
-TUBE_OD        = 4      # mm — PTFE OD (fits the holder's 5 mm bore)
-TUBE_ID        = 2      # mm
+TUBE_OD        = 6      # mm — PTFE OD (fits the holder's 6 mm bore)
+TUBE_ID        = 5      # mm
 TANGENT_SCALAR = 2.0    # Bézier-handle length (tall legs; sweeps the tall apex)
 EXPLODE        = 40     # mm — exploded: tube lifted off along +Y
 
