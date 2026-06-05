@@ -292,23 +292,23 @@
       {
         "src": "fastener_22_tnut_standard_assembled_cam1.svg",
         "h3": {
-          "en": "Extrusion T-nut (slide-in)",
-          "zh": "型材 T 型螺母（端部滑入）"
+          "en": "Standard T-nut (slide-in)",
+          "zh": "滑块 T 型螺母（端部滑入）"
         },
         "body": {
-          "en": "Slides into a 2020 channel from the open end and locks under a screw head. Every frame-attached part rides on these.",
-          "zh": "从 2020 型材的开口端滑进滑槽，被螺钉头压住卡紧。凡是装到框架上的零件，都靠它固定。"
+          "en": "Slides into the slot from the open end of the extrusion. As you tighten the screw, the nut is pulled up and catches on the inner edges of the slot opening.",
+          "zh": "从型材的开口端滑进滑槽。拧紧螺钉时，螺母被往上拉，卡住滑槽开口的内侧边缘。"
         }
       },
       {
         "src": "fastener_23_tnut_hammer_assembled_cam1.svg",
         "h3": {
           "en": "Hammer T-nut (drop-in)",
-          "zh": "锤形 T 型螺母（任意位置放入）"
+          "zh": "船形 T 型螺母（任意位置放入）"
         },
         "body": {
-          "en": "Drops flat into a 2020 channel anywhere along its length, then a quarter turn locks it — no need to reach an open end.",
-          "zh": "可以从 2020 滑槽的任意位置平放进去，转 90° 就卡紧——不必从型材开口端穿进来。"
+          "en": "Drops flat into a slot anywhere along its length, then a quarter turn locks it — no need to reach an open end.",
+          "zh": "可以从滑槽的任意位置平放进去，转 90° 就卡紧，不必从型材开口端穿进来。"
         }
       },
       {
@@ -322,23 +322,23 @@
           "zh": "20 齿同步带轮。每个步进电机轴上装一个，用顶丝顶在电机的 D 形扁位上，由它带动 GT2 同步带。"
         },
         "ref": {
-          "en": "GT2 · 20T",
-          "zh": "GT2 · 20 齿"
+          "en": "GT2 · 20T · 5 mm bore · 6 mm belt",
+          "zh": "GT2 · 20 齿 · 孔径 5 mm · 带宽 6 mm"
         }
       },
       {
         "src": "fastener_31_idler_assembled_cam1.svg",
         "h3": {
-          "en": "GT2 idler",
-          "zh": "GT2 惰轮"
+          "en": "GT2 idler (toothed)",
+          "zh": "GT2 惰轮（带齿）"
         },
         "body": {
-          "en": "Free-spinning wheel that turns the belt around the frame corners. No hub or set screw — it just guides the belt.",
-          "zh": "自由转动的轮子，在框架拐角处给同步带转向。没有轮毂也没有顶丝，只负责导向。"
+          "en": "Free-spinning wheel that turns the belt around the frame corners.",
+          "zh": "自由转动的轮子，在框架拐角处给同步带转向。"
         },
         "ref": {
-          "en": "GT2",
-          "zh": "GT2"
+          "en": "GT2 · 20T · 5 mm bore · 6 mm belt",
+          "zh": "GT2 · 20 齿 · 孔径 5 mm · 带宽 6 mm"
         }
       },
       {
@@ -348,23 +348,23 @@
           "zh": "GT2 惰轮（光面）"
         },
         "body": {
-          "en": "Un-toothed turn wheel for the belt's flat back. Lower friction than the toothed idler where tracking isn't needed.",
-          "zh": "无齿的转向轮，贴着同步带的平背面转。在不需要齿对位的地方用它，摩擦比有齿惰轮更小。"
+          "en": "Un-toothed turn wheel for the belt's flat back.",
+          "zh": "无齿的转向轮，贴着同步带的平背面转。"
         },
         "ref": {
-          "en": "GT2",
-          "zh": "GT2"
+          "en": "5 mm bore · 6 mm belt",
+          "zh": "孔径 5 mm · 带宽 6 mm"
         }
       },
       {
         "src": "fastener_41_flat_bracket_assembled_cam1.svg",
         "h3": {
           "en": "Flat bracket",
-          "zh": "平板支架"
+          "zh": "一字连接板"
         },
         "body": {
-          "en": "Two-hole plate with M5 holes 20 mm apart. Bolts an idler stack to the frame and ties extrusions together at a joint.",
-          "zh": "两孔平板，M5 孔间距 20 mm。把惰轮组固定到框架上，也在接合处连接型材。"
+          "en": "Two-hole plate with M5 holes 20 mm apart.",
+          "zh": "两孔平板，M5 孔间距 20 mm。"
         }
       }
     ]
