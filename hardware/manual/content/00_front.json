@@ -137,6 +137,17 @@
     "notes": [
       {
         "h3": {
+          "en": "PhysiClaw",
+          "zh": "PhysiClaw"
+        },
+        "body": {
+          "en": "PhysiClaw is a physically-interactive agent: it operates a phone by tapping on its screen, so it needs hardware to carry out those actions. This manual covers the assembly of that hardware. It has three parts: a CoreXY stage that moves across the plane (X/Y positioning), a touch mechanism that presses the screen along the Z axis, and a camera that watches the screen.",
+          "zh": "PhysiClaw 是一个能进行物理交互的 Agent——它通过点触屏幕来操作手机，因此需要一套硬件来执行动作。本手册组装的就是这套硬件，它由三部分组成：在平面内移动的 CoreXY 结构（X/Y 定位）、沿 Z 轴按压屏幕的触控机构，以及观察屏幕的摄像头。"
+        },
+        "classes": "note"
+      },
+      {
+        "h3": {
           "en": "Reporting an issue",
           "zh": "反馈问题"
         },

@@ -329,17 +329,38 @@
   .intro-body { padding: 18mm 0 0 40mm; }
   .intro-body .note { max-width: 172mm; }
   .intro-body .note + .note { margin-top: 18mm; }
+  /* Two links (GitHub, Docs), each laid out as: icon on the left spanning two
+     rows, the word top-right, the URL bottom-right. `.intro-logo` is
+     display:contents so its icon + word become direct grid items alongside the
+     sibling `.intro-url`; the six items (icon/word/url × 2) are then placed
+     explicitly. Columns: icon1 | text1 | icon2 | text2. */
   .intro-links {
     display: grid;
-    grid-template-columns: 100mm 1fr;
-    align-items: center;
-    row-gap: 16mm;
+    grid-template-columns: auto auto auto auto;
+    grid-template-rows: auto auto;
+    column-gap: 6mm;
+    row-gap: 1mm;
+    justify-content: start;
     margin-top: 30mm;
   }
-  .intro-logo { display: flex; align-items: center; gap: 6mm; color: var(--ink); }
-  .intro-logo svg, .intro-logo img { height: 10mm; width: auto; }
-  .intro-logo .word { font-size: 27pt; font-weight: 800; letter-spacing: -0.03em; }
+  .intro-logo { display: contents; color: var(--ink); }
+  .intro-logo svg { height: 10mm; width: auto; }
+  .intro-logo img { height: 13mm; width: auto; }  /* crab reads small next to the octicon */
+  .intro-logo .word { font-size: 16pt; font-weight: 800; letter-spacing: -0.03em; }
   .intro-url { color: var(--accent); font-size: 9.5pt; text-decoration: none; letter-spacing: 0.01em; }
+  /* Place the six grid items. `.intro-logo` is display:contents, so its icon
+     and word are the real grid items (the wrapper div is not); the two logos
+     are div:nth-of-type 1 & 2, the two URLs are a:nth-of-type 1 & 2. */
+  /* link 1 — GitHub */
+  .intro-links > div:nth-of-type(1) svg,
+  .intro-links > div:nth-of-type(1) img  { grid-area: 1 / 1 / 3 / 2; align-self: center; }
+  .intro-links > div:nth-of-type(1) .word { grid-area: 1 / 2 / 2 / 3; align-self: end; }
+  .intro-links > a:nth-of-type(1)          { grid-area: 2 / 2 / 3 / 3; align-self: start; }
+  /* link 2 — Docs, offset from link 1 */
+  .intro-links > div:nth-of-type(2) svg,
+  .intro-links > div:nth-of-type(2) img  { grid-area: 1 / 3 / 3 / 4; align-self: center; margin-left: 34mm; }
+  .intro-links > div:nth-of-type(2) .word { grid-area: 1 / 4 / 2 / 5; align-self: end; }
+  .intro-links > a:nth-of-type(2)          { grid-area: 2 / 4 / 3 / 5; align-self: start; }
 
   /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
      Content (intro + grid) is vertically centred in the page body so the
