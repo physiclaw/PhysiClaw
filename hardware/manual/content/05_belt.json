@@ -4,7 +4,7 @@
     "page": "belt",
     "secnum": { "en": "SECTION 05", "zh": "第 05 节" },
     "h1": { "en": "Belt path", "zh": "同步带绕法" },
-    "lede": { "en": "The A and B GT2 belts form PhysiClaw's CoreXY belt path, stacked on separate planes to avoid the usual crossing. Route both from the stylus carriage around the idler stack to the motor pulleys, teeth in and at equal tension, for square, accurate motion.", "zh": "A、B 两条 GT2 同步带组成 PhysiClaw 的 CoreXY 传动，分开布置在上下两层平面上，避开常见的相互交叉。两条带都从触控笔滑座出发，绕过惰轮组接到电机的同步带轮，齿面朝内、张力一致，运动才方正、准确。" }
+    "lede": { "en": "PhysiClaw's CoreXY drive runs on two GT2 belts, A and B, set on two stacked planes so they never cross. The two belts must be tensioned equally to keep the motion accurate.", "zh": "PhysiClaw 的 CoreXY 传动靠 A、B 两条 GT2 同步带完成，分置在上下两层平面、互不交叉。两条带张力必须一致，才能确保运动准确。" }
   },
   {
     "type": "tall-left",
