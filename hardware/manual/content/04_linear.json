@@ -11,8 +11,8 @@
       "zh": "直线运动"
     },
     "lede": {
-      "en": "MGN9H rails, joints, and idler tabs carry the Y carriage and X beam. These tie the X and Y axes into a CoreXY arrangement.",
-      "zh": "MGN9H 导轨、连接件和惰轮支座托起 Y 滑座和 X 横梁，把 X、Y 两根轴组成 CoreXY 结构。"
+      "en": "PhysiClaw's X/Y motion uses a CoreXY arrangement, guided by three MGN9H linear rails: two run left and right as the Y axis, and one spans between them as the X axis. Each of the two points where the X axis meets the Y rails carries two idler assemblies.",
+      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 方案，导向由三根 MGN9H 导轨提供：左右两根作 Y 轴，横跨其间的一根作 X 轴。X 轴两端与 Y 轨相接的左右两处各装两个惰轮组。"
     }
   },
   {
