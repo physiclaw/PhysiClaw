@@ -303,7 +303,10 @@
   .hw-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
+    /* Auto rows each take an equal fraction of the fixed 155mm height, so a
+       3-entry page and a 7-entry page both fill the column evenly without the
+       renderer having to know the entry count. */
+    grid-auto-rows: 1fr;
     column-gap: 14mm;
     row-gap: 8mm;
     margin-top: 4mm;

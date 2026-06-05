@@ -203,7 +203,7 @@
     },
     "entries": [
       {
-        "iconLabel": "[ SHCS icon ]",
+        "src": "fastener_11_SHCS_assembled_cam1.svg",
         "h3": {
           "en": "Socket head cap screw (SHCS)",
           "zh": "内六角圆柱头螺钉（SHCS）"
@@ -218,7 +218,7 @@
         }
       },
       {
-        "iconLabel": "[ BHCS icon ]",
+        "src": "fastener_10_BHCS_assembled_cam1.svg",
         "h3": {
           "en": "Button head cap screw (BHCS)",
           "zh": "内六角盘头螺钉（BHCS）"
@@ -233,18 +233,37 @@
         }
       },
       {
-        "iconLabel": "[ T-nut icon ]",
+        "src": "fastener_12_FHCS_assembled_cam1.svg",
         "h3": {
-          "en": "Extrusion T-nut",
-          "zh": "型材 T 型螺母"
+          "en": "Flat head cap screw (FHCS)",
+          "zh": "内六角沉头螺钉（FHCS）"
         },
         "body": {
-          "en": "Drops into a 2020 / 2040 aluminum extrusion channel and locks under a screw head. Every frame-attached part rides on these.",
-          "zh": "放进 2020 / 2040 铝型材的滑槽里，被螺钉头压住卡紧。凡是装到框架上的零件，都靠它固定。"
+          "en": "90° countersunk head, hex drive. Sits flush with the surface — used where nothing can protrude above the part.",
+          "zh": "90° 沉头，用内六角扳手拧。和表面齐平——用在不能高出零件表面的地方。"
+        },
+        "ref": {
+          "en": "ISO 10642 / DIN 7991",
+          "zh": "ISO 10642 / DIN 7991"
         }
       },
       {
-        "iconLabel": "[ hex nut icon ]",
+        "src": "fastener_40_shim_assembled_cam1.svg",
+        "h3": {
+          "en": "Shim washer",
+          "zh": "垫片"
+        },
+        "body": {
+          "en": "M5 Ø8×0.5 washer. Stacked under each idler to set its axial play — measure yours, thickness varies by supplier.",
+          "zh": "M5 Ø8×0.5 垫片。叠在每个惰轮下面，决定它的轴向间隙——不同供应商厚度不同，记得先量一下。"
+        },
+        "ref": {
+          "en": "M5 · Ø8×0.5",
+          "zh": "M5 · Ø8×0.5"
+        }
+      },
+      {
+        "src": "fastener_21_hex_nut_assembled_cam1.svg",
         "h3": {
           "en": "Hex nut",
           "zh": "六角螺母"
@@ -259,26 +278,152 @@
         }
       },
       {
-        "iconLabel": "[ MGN9H icon ]",
+        "src": "fastener_20_square_nut_assembled_cam1.svg",
         "h3": {
-          "en": "MGN9H linear rail + slider",
-          "zh": "MGN9H 直线导轨 + 滑块"
+          "en": "Square nut",
+          "zh": "方螺母"
         },
         "body": {
-          "en": "9 mm-wide miniature linear guide. Two rails run the Y axis, two more carry the X beam. Mounting pitch is 16 × 15 mm — don't substitute.",
-          "zh": "9 mm 宽的微型直线导轨。Y 轴用两条，另外两条托着 X 横梁。安装孔的间距是 16 × 15 mm——别拿别的型号替换。"
+          "en": "M3 nut that sits captive in a printed pocket so it can't spin — the screw is then driven one-handed from the other side.",
+          "zh": "M3 螺母，嵌在打印件的方槽里不会转——这样从另一侧单手就能拧紧螺钉。"
+        },
+        "ref": {
+          "en": "DIN 557",
+          "zh": "DIN 557"
+        }
+      }
+    ]
+  },
+  {
+    "type": "hardware-ref",
+    "page": "4a",
+    "id": "hardware-reference-2",
+    "head": {
+      "title": {
+        "en": "HARDWARE — REFERENCE",
+        "zh": "五金件 — 参考"
+      }
+    },
+    "entries": [
+      {
+        "src": "fastener_22_tnut_standard_assembled_cam1.svg",
+        "h3": {
+          "en": "Extrusion T-nut (slide-in)",
+          "zh": "型材 T 型螺母（端部滑入）"
+        },
+        "body": {
+          "en": "Slides into a 2020 channel from the open end and locks under a screw head. Every frame-attached part rides on these.",
+          "zh": "从 2020 型材的开口端滑进滑槽，被螺钉头压住卡紧。凡是装到框架上的零件，都靠它固定。"
         }
       },
       {
-        "iconLabel": "[ GT2 belt + pulley ]",
+        "src": "fastener_23_tnut_hammer_assembled_cam1.svg",
         "h3": {
-          "en": "GT2 belt &amp; pulley",
-          "zh": "GT2 同步带与同步带轮"
+          "en": "Hammer T-nut (drop-in)",
+          "zh": "锤形 T 型螺母（任意位置放入）"
         },
         "body": {
-          "en": "2 mm-pitch open-loop belt, clamped at each end to the stylus carriage. The pulleys are 20-tooth; one per stepper, plus smooth idlers.",
-          "zh": "齿距 2 mm 的开口同步带，两端分别夹在触控笔滑座上。同步带轮是 20 齿的，每个步进电机配一个，再加上几个光面惰轮。"
+          "en": "Drops flat into a 2020 channel anywhere along its length, then a quarter turn locks it — no need to reach an open end.",
+          "zh": "可以从 2020 滑槽的任意位置平放进去，转 90° 就卡紧——不必从型材开口端穿进来。"
         }
+      },
+      {
+        "src": "fastener_30_pulley_assembled_cam1.svg",
+        "h3": {
+          "en": "GT2 drive pulley",
+          "zh": "GT2 同步带轮"
+        },
+        "body": {
+          "en": "20-tooth toothed pulley. One sits on each stepper shaft, locked to the motor's D-flat with a set screw; it drives the GT2 belt.",
+          "zh": "20 齿同步带轮。每个步进电机轴上装一个，用顶丝顶在电机的 D 形扁位上，由它带动 GT2 同步带。"
+        },
+        "ref": {
+          "en": "GT2 · 20T",
+          "zh": "GT2 · 20 齿"
+        }
+      },
+      {
+        "src": "fastener_31_idler_assembled_cam1.svg",
+        "h3": {
+          "en": "GT2 idler",
+          "zh": "GT2 惰轮"
+        },
+        "body": {
+          "en": "Free-spinning wheel that turns the belt around the frame corners. No hub or set screw — it just guides the belt.",
+          "zh": "自由转动的轮子，在框架拐角处给同步带转向。没有轮毂也没有顶丝，只负责导向。"
+        },
+        "ref": {
+          "en": "GT2",
+          "zh": "GT2"
+        }
+      },
+      {
+        "src": "fastener_32_idler_smooth_assembled_cam1.svg",
+        "h3": {
+          "en": "GT2 idler (smooth)",
+          "zh": "GT2 惰轮（光面）"
+        },
+        "body": {
+          "en": "Un-toothed turn wheel for the belt's flat back. Lower friction than the toothed idler where tracking isn't needed.",
+          "zh": "无齿的转向轮，贴着同步带的平背面转。在不需要齿对位的地方用它，摩擦比有齿惰轮更小。"
+        },
+        "ref": {
+          "en": "GT2",
+          "zh": "GT2"
+        }
+      },
+      {
+        "src": "fastener_41_flat_bracket_assembled_cam1.svg",
+        "h3": {
+          "en": "Flat bracket",
+          "zh": "平板支架"
+        },
+        "body": {
+          "en": "Two-hole plate with M5 holes 20 mm apart. Bolts an idler stack to the frame and ties extrusions together at a joint.",
+          "zh": "两孔平板，M5 孔间距 20 mm。把惰轮组固定到框架上，也在接合处连接型材。"
+        }
+      }
+    ]
+  },
+  {
+    "type": "tall-left",
+    "page": "4b",
+    "id": "hardware-reference-3",
+    "head": {
+      "title": {
+        "en": "HARDWARE — REFERENCE",
+        "zh": "五金件 — 参考"
+      }
+    },
+    "figures": [
+      {
+        "src": "fastener_50_hex_driver_assembled_cam1.svg"
+      }
+    ],
+    "notes": [
+      {
+        "h3": {
+          "en": "2 mm hex driver",
+          "zh": "2 mm 内六角扳手"
+        },
+        "body": {
+          "en": "The 2 mm hex driver will see a lot of use in this build. A quality driver is strongly recommended. Refer to the sourcing guide for suggestions.",
+          "zh": "装配这台机器时，2 mm 内六角扳手会频繁用到。强烈建议备一把好用的扳手。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:152mm; top:56mm; width:120mm;"
+      },
+      {
+        "h3": {
+          "en": "Driver sizes",
+          "zh": "扳手规格"
+        },
+        "body": {
+          "en": "These cover the socket screws used in this build — 5 mm for M6 socket head cap screws (SHCS), 3 mm for M5 button/flat head screws (BHCS/FHCS), and 2 mm for M3 button/flat head screws.",
+          "zh": "这几把扳手覆盖本次装配用到的内六角螺钉——5 mm 对应 M6 内六角圆柱头螺钉（SHCS），3 mm 对应 M5 盘头/沉头螺钉（BHCS/FHCS），2 mm 对应 M3 盘头/沉头螺钉。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:152mm; top:108mm; width:120mm;"
       }
     ]
   },

@@ -375,15 +375,28 @@ def render_hardware_ref(page: dict, ctx: Ctx) -> str:
     entries = []
     for e in page["entries"]:
         ref = f'<p class="ref">{loc(e["ref"], ctx.lang)}</p>' if e.get("ref") else ""
+        # A rendered SVG (``src``) replaces the dashed-frame placeholder once
+        # the part has an icon; entries still carrying only ``iconLabel`` fall
+        # back to the placeholder so a half-populated page still builds.
+        if e.get("src"):
+            icon = (
+                f'<img src="{ctx.assets.figure(e["src"])}" '
+                f'alt="{loc(e["h3"], ctx.lang)}" loading="lazy" decoding="async">'
+            )
+        else:
+            icon = (
+                '<svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">'
+                '<rect class="frame" x="20" y="20" width="160" height="100"/>'
+                f'<text x="100" y="75" text-anchor="middle">{e["iconLabel"]}</text></svg>'
+            )
         entries.append(
-            '<div class="hw-entry"><div class="icon">'
-            '<svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">'
-            '<rect class="frame" x="20" y="20" width="160" height="100"/>'
-            f'<text x="100" y="75" text-anchor="middle">{e["iconLabel"]}</text></svg>'
-            '</div><div class="note">'
+            f'<div class="hw-entry"><div class="icon">{icon}</div>'
+            '<div class="note">'
             f'<h3>{loc(e["h3"], ctx.lang)}</h3><p>{loc(e["body"], ctx.lang)}</p>{ref}'
             "</div></div>"
         )
+    # Row count is a pure layout concern — `.hw-grid` uses `grid-auto-rows`
+    # so the rows fill the fixed height evenly whatever the entry count is.
     return page_shell(page, ctx, f'<div class="hw-grid">{"".join(entries)}</div>')
 
 
