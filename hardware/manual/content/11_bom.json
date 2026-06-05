@@ -1,7 +1,14 @@
 [
   {
-    "type": "bom",
+    "type": "opener",
     "page": "bom",
+    "secnum": { "en": "SECTION 11", "zh": "第 11 节" },
+    "h1": { "en": "Bill of materials", "zh": "物料清单" },
+    "lede": { "en": "This is the complete parts list for the whole machine—use it to gather everything before you start assembling.", "zh": "这是整台机器的完整零件清单，动手组装前请备齐所有零件。" }
+  },
+  {
+    "type": "bom",
+    "page": "bom-list",
     "head": { "title": { "en": "Bill of materials", "zh": "物料清单" }, "small": "11 — BOM" },
     "label": { "en": "Complete parts list — every section, summed", "zh": "完整物料清单——汇总各节全部零件" },
     "rows": []
