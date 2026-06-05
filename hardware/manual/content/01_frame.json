@@ -4,7 +4,7 @@
     "page": "frame",
     "secnum": { "en": "SECTION 01", "zh": "第 01 节" },
     "h1": { "en": "Frame", "zh": "框架" },
-    "lede": { "en": "Aluminum extrusions, T-nuts, brackets, and bumpers form the mechanical chassis everything else bolts onto. Squareness built in here governs every motion downstream.", "zh": "铝型材、T 型螺母、角码和橡胶脚垫一起组成机械底座，后面所有零件都装在它上面。框架在这一步装得正不正，直接决定了之后所有运动准不准。" }
+    "lede": { "en": "Four 2040 aluminum extrusions form the base frame, and every other part mounts onto it. Make sure all four corners are square — this is the foundation for accurate motion later on.", "zh": "四根 2040 铝型材拼成机械底座，所有零件都装在上面。框架四角务必成直角，这是后续运动精度的基础。" }
   },
   {
     "type": "solo",
