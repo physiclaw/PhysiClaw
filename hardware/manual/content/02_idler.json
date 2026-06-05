@@ -4,7 +4,7 @@
     "page": "idler",
     "secnum": { "en": "SECTION 02", "zh": "第 02 节" },
     "h1": { "en": "Idler", "zh": "惰轮" },
-    "lede": { "en": "Smooth pulleys route the GT2 belts around their corners. Four corner stations (LU, RU, LD, RD) carry the belt path, each built up in two or three steps.", "zh": "光面惰轮把 GT2 同步带导向各个转角。四个转角工位（左上、右上、左下、右下）一起构成同步带的走线路径，每个工位分两到三步装好。" }
+    "lede": { "en": "Install one idler assembly at each of the four corners of the frame, all using smooth idlers. They roll against the flat back side of the GT2 belt, redirecting it around each corner.", "zh": "在框架四角各装一个惰轮组，均为光面惰轮，贴着 GT2 同步带的平背面滚动，在转角处引导其转向。" }
   },
   {
     "type": "tall-left",
