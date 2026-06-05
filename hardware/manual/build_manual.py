@@ -20,11 +20,11 @@ strategies, chosen with ``--assets``:
 Run under ``uv`` from the repo root (standard library only, Python 3.12+);
 all paths resolve relative to this file, so the cwd does not matter::
 
-    uv run hardware/manual/build_manual.py                 # en + zh, external assets, + PDFs
+    uv run hardware/manual/build_manual.py                 # en + zh, external assets, HTML only
+    uv run hardware/manual/build_manual.py --pdf            # also render a PDF per language
     uv run hardware/manual/build_manual.py --lang en        # English only -> physiclaw_manual.html
     uv run hardware/manual/build_manual.py --assets inline  # single self-contained file
     uv run hardware/manual/build_manual.py --out /tmp/out   # custom output directory
-    uv run hardware/manual/build_manual.py --no-pdf         # skip PDF rendering (HTML only)
 
 PDF output uses an already-installed Chromium-family browser (Chrome / Chromium
 / Edge); if none is found the HTML still builds and PDF is skipped with a note.
@@ -43,6 +43,7 @@ import signal
 import subprocess
 import tempfile
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -749,10 +750,24 @@ def _clear_output_dir(out_dir: Path) -> None:
         for f in d.glob(pattern):
             f.unlink()
             cleared += 1
-    print(f"cleared {cleared} stale manual file(s)")
+    print(f"  cleared {cleared} stale file(s)")
 
 
-def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> list[Path]:
+_STEP_LABEL_W = 22  # pad labels to a column so every duration lines up
+
+
+@contextlib.contextmanager
+def _step(label: str) -> Iterator[None]:
+    """Print a build step (padded with dot leaders to a fixed column) and, once
+    it finishes, how long it took — so a slow phase shows what's running and the
+    times read down a clean right-aligned column."""
+    print(f"  {label:.<{_STEP_LABEL_W}} ", end="", flush=True)
+    t0 = time.monotonic()
+    yield
+    print(f"{time.monotonic() - t0:>5.1f}s")
+
+
+def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = False) -> list[Path]:
     """Render the requested languages into ``out_dir`` and return written files.
 
     Always writes the HTML; also writes a PDF per language when ``pdf`` is set
@@ -765,10 +780,11 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
     SVG_DIR.mkdir(parents=True, exist_ok=True)
     for name, svg in HAND_FIGURES.items():  # regenerate tracked hand figures
         (SVG_DIR / name).write_text(svg, encoding="utf-8")
-    css = STYLES_CSS.read_text(encoding="utf-8")
-    pages = load_pages()
-    assign_page_numbers(pages)  # position-derived footer + TOC numbers
-    inject_consolidated_bom(pages)  # fill the BOM section from every section's parts
+    with _step("load + number pages"):
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        pages = load_pages()
+        assign_page_numbers(pages)  # position-derived footer + TOC numbers
+        inject_consolidated_bom(pages)  # fill the BOM section from every section's parts
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     chrome = find_chrome() if pdf else None
@@ -779,11 +795,13 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
     docs: dict[str, tuple[Path, str]] = {}
     for lang in langs:
         path = out_dir / LANG_FILENAME[lang]
-        html = render_document(pages, css, Ctx(lang, assets))
-        path.write_text(html, encoding="utf-8")
+        with _step(f"render html [{lang}]"):
+            html = render_document(pages, css, Ctx(lang, assets))
+            path.write_text(html, encoding="utf-8")
         written.append(path)
         docs[lang] = (path, html)
-    assets.emit(out_dir)  # external mode writes the shared assets/ dir once.
+    with _step("emit assets"):
+        assets.emit(out_dir)  # external mode writes the shared assets/ dir once.
 
     # PDFs print from the just-written HTML against the on-disk assets/, so
     # Chrome parses a light ~100 KB document (not a multi-MB inline one) and
@@ -792,7 +810,9 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
         for lang in langs:
             path, html = docs[lang]
             pdf_path = path.with_suffix(".pdf")
-            if render_pdf(html, pdf_path, chrome):
+            with _step(f"render pdf  [{lang}]"):
+                ok = render_pdf(html, pdf_path, chrome)
+            if ok:
                 written.append(pdf_path)
     return written
 
@@ -812,14 +832,21 @@ def main() -> None:
         help="output directory (default: ../output/manual)",
     )
     parser.add_argument(
-        "--pdf", action=argparse.BooleanOptionalAction, default=True,
-        help="also render a PDF per language via headless Chrome (default: on)",
+        "--pdf", action=argparse.BooleanOptionalAction, default=False,
+        help="also render a PDF per language via headless Chrome (default: off — HTML only)",
     )
     args = parser.parse_args()
 
     langs = ["en", "zh"] if args.lang == "all" else [args.lang]
-    for path in build(langs, args.out.resolve(), inline=args.assets == "inline", pdf=args.pdf):
-        print(f"wrote {path}")
+    out = args.out.resolve()
+    # Show the output dir relative to the cwd when possible — an absolute path
+    # is usually too long to read at a glance.
+    shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
+    print(f"building manual [{', '.join(langs)}] -> {shown}")
+    written = build(langs, out, inline=args.assets == "inline", pdf=args.pdf)
+    print(f"\ndone — wrote {len(written)} file(s):")
+    for path in written:
+        print(f"  {path.name}")
 
 
 if __name__ == "__main__":
