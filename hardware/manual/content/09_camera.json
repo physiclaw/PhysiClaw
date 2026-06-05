@@ -4,7 +4,7 @@
     "page": "camera",
     "secnum": { "en": "SECTION 09", "zh": "第 09 节" },
     "h1": { "en": "Camera", "zh": "摄像头" },
-    "lede": { "en": "A corner bracket on the frame carries a flexible gooseneck arm; the camera clips onto its tip and looks down over the phone bed, watching the screen.", "zh": "框架上的一个角支架装着一根能弯折的鹅颈臂，摄像头卡在臂的顶端，从上往下对着手机托架，盯着屏幕看。" }
+    "lede": { "en": "The camera is mounted on the right side of the frame, facing the phone screen.", "zh": "摄像头固定在框架右侧，正对着手机屏幕。" }
   },
   {
     "type": "tall-left",
