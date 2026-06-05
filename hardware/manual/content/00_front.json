@@ -386,12 +386,12 @@
     "notes": [
       {
         "h3": {
-          "en": "2 mm hex driver",
-          "zh": "2 mm 内六角扳手"
+          "en": "2 mm & 3 mm hex drivers",
+          "zh": "2 mm 和 3 mm 内六角扳手"
         },
         "body": {
-          "en": "The 2 mm hex driver will see a lot of use in this build. A quality driver is strongly recommended. Refer to the sourcing guide for suggestions.",
-          "zh": "装配这台机器时，2 mm 内六角扳手会频繁用到。强烈建议备一把好用的扳手。"
+          "en": "The 2 mm and 3 mm hex drivers see the most use in this build. A quality driver for each is strongly recommended. Refer to the sourcing guide for suggestions.",
+          "zh": "装配这台机器时，2 mm 和 3 mm 内六角扳手用得最多。强烈建议这两把都备质量好的。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:56mm; width:120mm;"
