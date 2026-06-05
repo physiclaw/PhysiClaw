@@ -1,6 +1,7 @@
 [
   {
     "type": "cover",
+    "page": "cover",
     "render": {
       "src": "camera_40_frame_assembled_cam0.svg"
     },
@@ -16,7 +17,7 @@
   },
   {
     "type": "toc",
-    "page": "2",
+    "page": "contents",
     "head": {
       "title": {
         "en": "TABLE OF CONTENTS",
@@ -29,119 +30,104 @@
           "en": "Introduction",
           "zh": "简介"
         },
-        "pg": "03",
-        "target": "introduction"
+        "page": "introduction"
       },
       {
         "label": {
           "en": "Hardware reference",
           "zh": "五金件参考"
         },
-        "pg": "04",
-        "target": "hardware-reference"
+        "page": "hardware-reference"
       },
       {
         "label": {
           "en": "3D printed parts",
           "zh": "3D 打印件"
         },
-        "pg": "05",
-        "target": "printed-parts"
+        "page": "printed-parts"
       },
       {
         "label": {
           "en": "01 — Frame",
           "zh": "01 — 框架"
         },
-        "pg": "06",
-        "target": "frame"
+        "page": "frame"
       },
       {
         "label": {
           "en": "02 — Idler",
           "zh": "02 — 惰轮"
         },
-        "pg": "11",
-        "target": "idler"
+        "page": "idler"
       },
       {
         "label": {
           "en": "03 — Motor",
           "zh": "03 — 电机"
         },
-        "pg": "20",
-        "target": "motor"
+        "page": "motor"
       },
       {
         "label": {
           "en": "04 — Linear motion",
           "zh": "04 — 线性运动"
         },
-        "pg": "26",
-        "target": "linear"
+        "page": "linear"
       },
       {
         "label": {
           "en": "05 — Belt path",
           "zh": "05 — 同步带绕法"
         },
-        "pg": "42",
-        "target": "belt"
+        "page": "belt"
       },
       {
         "label": {
           "en": "06 — Stylus carriage",
           "zh": "06 — 触控笔滑座"
         },
-        "pg": "47",
-        "target": "stylus"
+        "page": "stylus"
       },
       {
         "label": {
           "en": "07 — Phone bed",
           "zh": "07 — 手机托架"
         },
-        "pg": "51",
-        "target": "phone"
+        "page": "phone"
       },
       {
         "label": {
           "en": "08 — Control board",
           "zh": "08 — 控制板"
         },
-        "pg": "56",
-        "target": "pcb"
+        "page": "pcb"
       },
       {
         "label": {
           "en": "09 — Camera",
           "zh": "09 — 摄像头"
         },
-        "pg": "61",
-        "target": "camera"
+        "page": "camera"
       },
       {
         "label": {
           "en": "10 — Wiring",
           "zh": "10 — 接线"
         },
-        "pg": "66",
-        "target": "wiring"
+        "page": "wiring"
       },
       {
         "label": {
           "en": "11 — BOM",
           "zh": "11 — 物料清单"
         },
-        "pg": "71",
-        "target": "bom"
+        "page": "bom"
       }
     ]
   },
   {
     "type": "intro",
-    "page": "3",
-    "id": "introduction",
+    "page": "introduction",
     "head": {
       "title": {
         "en": "INTRODUCTION",
@@ -193,8 +179,7 @@
   },
   {
     "type": "hardware-ref",
-    "page": "4",
-    "id": "hardware-reference",
+    "page": "hardware-reference",
     "head": {
       "title": {
         "en": "HARDWARE — REFERENCE",
@@ -296,8 +281,7 @@
   },
   {
     "type": "hardware-ref",
-    "page": "4a",
-    "id": "hardware-reference-2",
+    "page": "hardware-reference-2",
     "head": {
       "title": {
         "en": "HARDWARE — REFERENCE",
@@ -387,8 +371,7 @@
   },
   {
     "type": "tall-left",
-    "page": "4b",
-    "id": "hardware-reference-3",
+    "page": "hardware-reference-3",
     "head": {
       "title": {
         "en": "HARDWARE — REFERENCE",
@@ -429,8 +412,7 @@
   },
   {
     "type": "printed-parts",
-    "page": "5",
-    "id": "printed-parts",
+    "page": "printed-parts",
     "head": {
       "title": {
         "en": "3D PRINTED PARTS",

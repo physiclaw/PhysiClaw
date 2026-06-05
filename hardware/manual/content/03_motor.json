@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "20",
-    "id": "motor",
+    "page": "motor",
     "secnum": { "en": "SECTION 03", "zh": "第 03 节" },
     "h1": { "en": "Motor", "zh": "电机" },
     "lede": { "en": "Brackets, frame-side mounts, and pulleys carry the two NEMA-17 steppers. These drive the CoreXY belt path that moves the stylus carriage.", "zh": "两台 NEMA-17 步进电机靠支架、框架侧的安装件和同步带轮固定。它们驱动 CoreXY 同步带，带动触控笔滑座移动。" }
   },
   {
     "type": "tall-left",
-    "page": "21",
+    "page": "motor_10",
     "head": { "title": { "en": "MOTOR", "zh": "电机" }, "small": "motor_10" },
     "figures": [
       { "src": "motor_10_bracket_exploded_cam1.svg" },
@@ -48,7 +47,7 @@
   },
   {
     "type": "tall-left",
-    "page": "22",
+    "page": "motor_11",
     "head": { "title": { "en": "MOTOR", "zh": "电机" }, "small": "motor_11" },
     "variant": "hero",
     "figures": [
@@ -78,7 +77,7 @@
   },
   {
     "type": "tall-left",
-    "page": "23",
+    "page": "motor_20",
     "head": { "title": { "en": "MOTOR", "zh": "电机" }, "small": "motor_20" },
     "figures": [
       { "src": "motor_20_bracket_exploded_cam1.svg" },
@@ -105,7 +104,7 @@
   },
   {
     "type": "tall-left",
-    "page": "24",
+    "page": "motor_21",
     "head": { "title": { "en": "MOTOR", "zh": "电机" }, "small": "motor_21" },
     "variant": "hero",
     "figures": [
@@ -135,7 +134,7 @@
   },
   {
     "type": "tall-left",
-    "page": "25",
+    "page": "motor_30",
     "head": { "title": { "en": "MOTOR", "zh": "电机" }, "small": "motor_30" },
     "variant": "hero",
     "figures": [

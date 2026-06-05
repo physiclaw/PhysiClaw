@@ -292,8 +292,11 @@ def render_head(head: dict | None, ctx: Ctx) -> str:
 
 
 def render_foot(page: dict) -> str:
-    """Render the footer: page number, a rule, then the page number again."""
-    num = page["page"]
+    """Render the footer: page number, a rule, then the page number again.
+
+    The number is assigned by position in ``assign_page_numbers`` — never
+    hardcoded in the content JSON."""
+    num = page["_pageno"]
     return f'<div class="foot"><span>{num}</span><span class="rule"></span><span>{num}</span></div>'
 
 
@@ -306,10 +309,14 @@ def page_shell(page: dict, ctx: Ctx, body: str, section_class: str = "") -> str:
     ``section_class``; those two also omit ``page`` and get no `.foot`.
     """
     cls = f"page {section_class}".strip()
-    anchor = f' id="{page["id"]}"' if page.get("id") else ""
+    # Each page's semantic ``page`` id doubles as its HTML anchor (so TOC and
+    # any cross-links can target it); the printed number comes from position.
+    # ``assign_page_numbers`` guarantees every page carries a ``page`` id.
+    anchor = f' id="{page["page"]}"'
     bespoke = section_class in ("cover", "back")
     head = "" if bespoke else render_head(page.get("head"), ctx)
-    foot = render_foot(page) if "page" in page else ""
+    # Every interior page carries a numbered footer; the cover and back don't.
+    foot = "" if bespoke else render_foot(page)
     return (
         f'<section class="{cls}"{anchor}>'
         f'<div class="page-inner">{head}{body}{foot}</div></section>'
@@ -341,10 +348,13 @@ def render_cover(page: dict, ctx: Ctx) -> str:
 
 
 def render_toc(page: dict, ctx: Ctx) -> str:
+    # Each row references a page by its semantic ``page`` id; the number is
+    # resolved from that page's position (see assign_page_numbers), so the TOC
+    # never hardcodes page numbers either.
     rows = "".join(
-        f'<a class="toc-row" href="#{r.get("target", "")}">'
+        f'<a class="toc-row" href="#{r.get("page", "")}">'
         f'<span>{loc(r["label"], ctx.lang)}</span>'
-        f'<span class="pg">{r["pg"]}</span></a>'
+        f'<span class="pg">{r["_pgno"]:02d}</span></a>'
         for r in page["rows"]
     )
     return page_shell(page, ctx, f'<div class="toc-grid">{rows}</div>')
@@ -543,6 +553,40 @@ def load_pages() -> list[dict]:
     return pages
 
 
+def assign_page_numbers(pages: list[dict]) -> None:
+    """Number pages by position so the content JSON never hardcodes a page
+    number — inserting or reordering a page needs no number edits anywhere.
+
+    Each page is identified by a unique semantic ``page`` id (e.g. "frame_20",
+    "hardware-reference"); the printed number is its 1-based position, stored
+    in ``_pageno`` (cover and back render no footer). A TOC row references a
+    page by that same ``page`` id, and the number it prints is resolved here
+    from the referenced page's position into ``_pgno``."""
+    # Build position map, validating the two invariants a new page can break:
+    # every page carries a ``page`` id and those ids are unique (they double as
+    # HTML anchors, so a collision would silently misroute links).
+    id_to_no: dict[str, int] = {}
+    toc_pages: list[dict] = []
+    for i, page in enumerate(pages, start=1):
+        page["_pageno"] = i
+        if page["type"] == "toc":
+            toc_pages.append(page)
+        pid = page.get("page")
+        if pid is None:
+            raise ValueError(f"page #{i} (type {page.get('type')!r}) is missing a 'page' id")
+        if pid in id_to_no:
+            raise ValueError(f"duplicate page id {pid!r} (pages #{id_to_no[pid]} and #{i})")
+        id_to_no[pid] = i
+    # Resolve each TOC row's printed number now that the full position map is
+    # built — a row may reference a page that follows the TOC itself.
+    for page in toc_pages:
+        for row in page.get("rows", []):
+            ref = row.get("page")
+            if ref not in id_to_no:
+                raise ValueError(f"TOC row references unknown page id {ref!r}")
+            row["_pgno"] = id_to_no[ref]
+
+
 def consolidated_bom_rows(pages: list[dict]) -> list[dict]:
     """Sum every section's BOM overlay into one parts list, keyed by
     (English component, spec). Rows with a non-numeric qty are skipped, so a
@@ -704,6 +748,7 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = True) -> li
         (SVG_DIR / name).write_text(svg, encoding="utf-8")
     css = STYLES_CSS.read_text(encoding="utf-8")
     pages = load_pages()
+    assign_page_numbers(pages)  # position-derived footer + TOC numbers
     inject_consolidated_bom(pages)  # fill the BOM section from every section's parts
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 

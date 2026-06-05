@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "56",
-    "id": "pcb",
+    "page": "pcb",
     "secnum": { "en": "SECTION 08", "zh": "第 08 节" },
     "h1": { "en": "Control board", "zh": "控制板" },
     "lede": { "en": "The MKS DLC32 controller rides in a printed holder clamped to the top of the frame, with a Teflon tube routing the stylus wiring across to the carriage.", "zh": "MKS DLC32 控制板装在一个打印件支架里，支架夹在框架顶部，触控笔的线缆通过一根特氟龙管引到滑座那边。" }
   },
   {
     "type": "tall-left",
-    "page": "57",
+    "page": "board_10",
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_10" },
     "variant": "hero",
     "figures": [
@@ -35,7 +34,7 @@
   },
   {
     "type": "tall-left",
-    "page": "58",
+    "page": "board_20",
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_20" },
     "variant": "hero",
     "figures": [
@@ -53,7 +52,7 @@
   },
   {
     "type": "tall-left",
-    "page": "59",
+    "page": "board_30",
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_30" },
     "variant": "hero",
     "figures": [
@@ -79,7 +78,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "60",
+    "page": "board_40",
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_40" },
     "main": { "src": "board_40_teflon_assembled_cam0_nrvk.svg", "style": "transform: translateX(-35mm);" },
     "notes": [

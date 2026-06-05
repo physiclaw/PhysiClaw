@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "61",
-    "id": "camera",
+    "page": "camera",
     "secnum": { "en": "SECTION 09", "zh": "第 09 节" },
     "h1": { "en": "Camera", "zh": "摄像头" },
     "lede": { "en": "A corner bracket on the frame carries a flexible gooseneck arm; the camera clips onto its tip and looks down over the phone bed, watching the screen.", "zh": "框架上的一个角支架装着一根能弯折的鹅颈臂，摄像头卡在臂的顶端，从上往下对着手机托架，盯着屏幕看。" }
   },
   {
     "type": "tall-left",
-    "page": "62",
+    "page": "camera_10",
     "head": { "title": { "en": "CAMERA", "zh": "摄像头" }, "small": "camera_10" },
     "variant": "hero",
     "figures": [
@@ -37,7 +36,7 @@
   },
   {
     "type": "tall-left",
-    "page": "63",
+    "page": "camera_20",
     "head": { "title": { "en": "CAMERA", "zh": "摄像头" }, "small": "camera_20" },
     "variant": "hero",
     "figures": [
@@ -61,7 +60,7 @@
   },
   {
     "type": "tall-left",
-    "page": "64",
+    "page": "camera_30",
     "head": { "title": { "en": "CAMERA", "zh": "摄像头" }, "small": "camera_30" },
     "variant": "hero",
     "figures": [
@@ -85,7 +84,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "65",
+    "page": "camera_40",
     "head": { "title": { "en": "CAMERA", "zh": "摄像头" }, "small": "camera_40" },
     "main": { "src": "camera_40_frame_assembled_cam1_mxqc.svg", "style": "transform: translateX(-35mm);" },
     "notes": [

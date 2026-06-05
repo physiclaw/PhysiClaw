@@ -1,8 +1,7 @@
 [
   {
     "type": "opener",
-    "page": "51",
-    "id": "phone",
+    "page": "phone",
     "secnum": {
       "en": "SECTION 07",
       "zh": "第 07 节"
@@ -18,7 +17,7 @@
   },
   {
     "type": "wide-top",
-    "page": "52",
+    "page": "phone_10",
     "head": {
       "title": {
         "en": "PHONE BED",
@@ -83,7 +82,7 @@
   },
   {
     "type": "tall-left",
-    "page": "53",
+    "page": "phone_20",
     "head": {
       "title": {
         "en": "PHONE BED",
@@ -136,7 +135,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "54",
+    "page": "phone_30",
     "head": {
       "title": {
         "en": "PHONE BED",
@@ -164,7 +163,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "55",
+    "page": "phone_40",
     "head": {
       "title": {
         "en": "PHONE BED",

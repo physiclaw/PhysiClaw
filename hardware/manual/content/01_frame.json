@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "6",
-    "id": "frame",
+    "page": "frame",
     "secnum": { "en": "SECTION 01", "zh": "第 01 节" },
     "h1": { "en": "Frame", "zh": "框架" },
     "lede": { "en": "Aluminum extrusions, T-nuts, brackets, and bumpers form the mechanical chassis everything else bolts onto. Squareness built in here governs every motion downstream.", "zh": "铝型材、T 型螺母、角码和橡胶脚垫一起组成机械底座，后面所有零件都装在它上面。框架在这一步装得正不正，直接决定了之后所有运动准不准。" }
   },
   {
     "type": "solo",
-    "page": "7",
+    "page": "frame_10",
     "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_10" },
     "figures": [
       { "src": "frame_10_extrusion_tnut_exploded_cam0_rbun.svg" }
@@ -33,7 +32,7 @@
   },
   {
     "type": "solo",
-    "page": "8",
+    "page": "frame_20",
     "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_20" },
     "figures": [
       { "src": "frame_20_SHCS_exploded_cam0_nllz.svg", "style": "object-position: 12% center;" }
@@ -67,7 +66,7 @@
   },
   {
     "type": "tall-left",
-    "page": "9",
+    "page": "frame_30",
     "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_30 · frame_31" },
     "figures": [
       { "src": "frame_31_bracket_assembled_cam0_cljs.svg" },
@@ -92,7 +91,7 @@
   },
   {
     "type": "tall-left",
-    "page": "10",
+    "page": "frame_40",
     "head": { "title": { "en": "FRAME", "zh": "框架" }, "small": "frame_40 · frame_41" },
     "figures": [
       { "src": "frame_41_bumper_assembled_cam0_hovj.svg" },

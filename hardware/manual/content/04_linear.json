@@ -1,8 +1,7 @@
 [
   {
     "type": "opener",
-    "page": "26",
-    "id": "linear",
+    "page": "linear",
     "secnum": {
       "en": "SECTION 04",
       "zh": "第 04 节"
@@ -18,7 +17,7 @@
   },
   {
     "type": "wide-top",
-    "page": "27",
+    "page": "linear_10",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -120,7 +119,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "28",
+    "page": "linear_11",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -173,7 +172,7 @@
   },
   {
     "type": "tall-left",
-    "page": "29",
+    "page": "linear_20",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -251,7 +250,7 @@
   },
   {
     "type": "wide-top",
-    "page": "30",
+    "page": "linear_30",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -308,7 +307,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "31",
+    "page": "linear_31",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -353,7 +352,7 @@
   },
   {
     "type": "wide-top",
-    "page": "32",
+    "page": "linear_32",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -418,7 +417,7 @@
   },
   {
     "type": "main-inset-br",
-    "page": "33",
+    "page": "linear_33",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -447,7 +446,7 @@
   },
   {
     "type": "tall-left",
-    "page": "34",
+    "page": "linear_40",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -520,7 +519,7 @@
   },
   {
     "type": "tall-left",
-    "page": "35",
+    "page": "linear_41",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -570,7 +569,7 @@
   },
   {
     "type": "tall-left",
-    "page": "36",
+    "page": "linear_42",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -635,7 +634,7 @@
   },
   {
     "type": "tall-left",
-    "page": "37",
+    "page": "linear_43",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -685,7 +684,7 @@
   },
   {
     "type": "tall-left",
-    "page": "38",
+    "page": "linear_44",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -750,7 +749,7 @@
   },
   {
     "type": "tall-left",
-    "page": "39",
+    "page": "linear_45",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -800,7 +799,7 @@
   },
   {
     "type": "tall-left",
-    "page": "40",
+    "page": "linear_46",
     "head": {
       "title": {
         "en": "LINEAR MOTION",
@@ -873,7 +872,7 @@
   },
   {
     "type": "tall-left",
-    "page": "41",
+    "page": "linear_47",
     "head": {
       "title": {
         "en": "LINEAR MOTION",

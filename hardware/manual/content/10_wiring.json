@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "66",
-    "id": "wiring",
+    "page": "wiring",
     "secnum": { "en": "SECTION 10", "zh": "第 10 节" },
     "h1": { "en": "Wiring", "zh": "接线" },
     "lede": { "en": "TODO: intro to wiring — bring the two steppers, the tapping solenoid, the camera, and power together at the control board.", "zh": "TODO：接线部分引言——把两个步进电机、点击电磁铁、摄像头和电源都接到控制板上。" }
   },
   {
     "type": "tall-left",
-    "page": "67",
+    "page": "wire_10",
     "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_10" },
     "variant": "hero",
     "figures": [
@@ -51,7 +50,7 @@
   },
   {
     "type": "tall-left",
-    "page": "68",
+    "page": "wire_10-2",
     "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_10" },
     "variant": "hero",
     "figures": [
@@ -111,7 +110,7 @@
   },
   {
     "type": "solo",
-    "page": "69",
+    "page": "wire_splice",
     "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "wire_splice" },
     "figures": [
       { "src": "wire_splice.svg" }
@@ -133,7 +132,7 @@
   },
   {
     "type": "tall-left",
-    "page": "70",
+    "page": "tapz_10-2",
     "head": { "title": { "en": "WIRING", "zh": "接线" }, "small": "tapz_10" },
     "variant": "hero",
     "figures": [

@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "47",
-    "id": "stylus",
+    "page": "stylus",
     "secnum": { "en": "SECTION 06", "zh": "第 06 节" },
     "h1": { "en": "Stylus carriage", "zh": "触控笔滑座" },
     "lede": { "en": "Solenoid, capacitive stylus tip, and carriage mount form the business end of the machine. Every tap, swipe, and hold originates here.", "zh": "推拉式电磁铁、电容触控笔尖和滑座支架，组成整台机器执行操作的那一端。每一次点按、滑动、长按，都从这里发出。" }
   },
   {
     "type": "tall-left",
-    "page": "48",
+    "page": "tapz_10",
     "head": {
       "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
       "small": "tapz_10"
@@ -43,7 +42,7 @@
   },
   {
     "type": "tall-left",
-    "page": "49",
+    "page": "tapz_11",
     "head": {
       "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
       "small": "tapz_11"
@@ -77,7 +76,7 @@
   },
   {
     "type": "tall-left",
-    "page": "50",
+    "page": "tapz_20",
     "head": {
       "title": { "en": "STYLUS CARRIAGE", "zh": "触控笔滑座" },
       "small": "tapz_20"

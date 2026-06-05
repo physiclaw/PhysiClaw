@@ -1,15 +1,14 @@
 [
   {
     "type": "opener",
-    "page": "11",
-    "id": "idler",
+    "page": "idler",
     "secnum": { "en": "SECTION 02", "zh": "第 02 节" },
     "h1": { "en": "Idler", "zh": "惰轮" },
     "lede": { "en": "Smooth pulleys route the GT2 belts around their corners. Four corner stations (LU, RU, LD, RD) carry the belt path, each built up in two or three steps.", "zh": "光面惰轮把 GT2 同步带导向各个转角。四个转角工位（左上、右上、左下、右下）一起构成同步带的走线路径，每个工位分两到三步装好。" }
   },
   {
     "type": "tall-left",
-    "page": "12",
+    "page": "idler_10",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_10" },
     "figures": [
       { "src": "idler_10_lu_exploded_cam0.svg" },
@@ -51,7 +50,7 @@
   },
   {
     "type": "tall-left",
-    "page": "13",
+    "page": "idler_12",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_12" },
     "variant": "hero",
     "figures": [
@@ -83,7 +82,7 @@
   },
   {
     "type": "tall-left",
-    "page": "14",
+    "page": "idler_20",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_20" },
     "figures": [
       { "src": "idler_20_ru_exploded_cam0.svg" },
@@ -119,7 +118,7 @@
   },
   {
     "type": "tall-left",
-    "page": "15",
+    "page": "idler_22",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_22" },
     "variant": "hero",
     "figures": [
@@ -145,7 +144,7 @@
   },
   {
     "type": "tall-left",
-    "page": "16",
+    "page": "idler_30",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_30" },
     "figures": [
       { "src": "idler_30_ld_exploded_cam0.svg" },
@@ -173,7 +172,7 @@
   },
   {
     "type": "tall-left",
-    "page": "17",
+    "page": "idler_31",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_31" },
     "variant": "hero",
     "figures": [
@@ -191,7 +190,7 @@
   },
   {
     "type": "tall-left",
-    "page": "18",
+    "page": "idler_40",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_40" },
     "figures": [
       { "src": "idler_40_rd_exploded_cam0.svg" },
@@ -220,7 +219,7 @@
   },
   {
     "type": "tall-left",
-    "page": "19",
+    "page": "idler_41",
     "head": { "title": { "en": "IDLER", "zh": "惰轮" }, "small": "idler_41" },
     "variant": "hero",
     "figures": [
