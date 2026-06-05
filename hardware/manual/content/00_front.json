@@ -402,8 +402,8 @@
           "zh": "扳手规格"
         },
         "body": {
-          "en": "These cover the socket screws used in this build — 5 mm for M6 socket head cap screws (SHCS), 3 mm for M5 button/flat head screws (BHCS/FHCS), and 2 mm for M3 button/flat head screws.",
-          "zh": "这几把扳手覆盖本次装配用到的内六角螺钉——5 mm 对应 M6 内六角圆柱头螺钉（SHCS），3 mm 对应 M5 半圆头/沉头螺钉（BHCS/FHCS），2 mm 对应 M3 半圆头/沉头螺钉。"
+          "en": "These cover the socket screws used in this build — 2 mm for M3 button/flat head screws, 3 mm for M5 button/flat head screws (BHCS/FHCS), and 5 mm for M6 socket head cap screws (SHCS).",
+          "zh": "这几把扳手覆盖本次装配用到的内六角螺钉——2 mm 对应 M3 半圆头/沉头螺钉，3 mm 对应 M5 半圆头/沉头螺钉，5 mm 对应 M6 内六角圆柱头螺钉。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:108mm; width:120mm;"
