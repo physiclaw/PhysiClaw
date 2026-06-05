@@ -194,8 +194,8 @@
           "zh": "内六角圆柱头螺钉（SHCS）"
         },
         "body": {
-          "en": "Cylindrical head, hex drive. The default fastener for PhysiClaw.ai — used wherever the head can sit above the surface.",
-          "zh": "圆柱头，用内六角扳手拧。PhysiClaw.ai 最常用的螺钉——只要螺钉头可以露在表面外，就用它。"
+          "en": "Cylindrical head, hex drive.",
+          "zh": "圆柱头，用内六角扳手拧。"
         },
         "ref": {
           "en": "ISO 4762 / DIN 912",
@@ -206,7 +206,7 @@
         "src": "fastener_10_BHCS_assembled_cam1.svg",
         "h3": {
           "en": "Button head cap screw (BHCS)",
-          "zh": "内六角盘头螺钉（BHCS）"
+          "zh": "内六角半圆头螺钉（BHCS）"
         },
         "body": {
           "en": "Domed head, hex drive. Used on surfaces where a lower profile matters but a flush head isn't required.",
@@ -225,7 +225,7 @@
         },
         "body": {
           "en": "90° countersunk head, hex drive. Sits flush with the surface — used where nothing can protrude above the part.",
-          "zh": "90° 沉头，用内六角扳手拧。和表面齐平——用在不能高出零件表面的地方。"
+          "zh": "90° 沉头，用内六角扳手拧。和表面齐平，用在不能高出零件表面的地方。"
         },
         "ref": {
           "en": "ISO 10642 / DIN 7991",
@@ -235,16 +235,16 @@
       {
         "src": "fastener_40_shim_assembled_cam1.svg",
         "h3": {
-          "en": "Shim washer",
+          "en": "Shim",
           "zh": "垫片"
         },
         "body": {
-          "en": "M5 Ø8×0.5 washer. Stacked under each idler to set its axial play — measure yours, thickness varies by supplier.",
-          "zh": "M5 Ø8×0.5 垫片。叠在每个惰轮下面，决定它的轴向间隙——不同供应商厚度不同，记得先量一下。"
+          "en": "5×8×0.5 shim. Stacked under each idler to set its axial play — measure yours, thickness varies by supplier.",
+          "zh": "5×8×0.5 垫片。叠在每个惰轮下面，决定它的轴向间隙——不同供应商厚度不同，记得先量一下。"
         },
         "ref": {
-          "en": "M5 · Ø8×0.5",
-          "zh": "M5 · Ø8×0.5"
+          "en": "5×8×0.5",
+          "zh": "5×8×0.5"
         }
       },
       {
@@ -254,8 +254,8 @@
           "zh": "六角螺母"
         },
         "body": {
-          "en": "Standard M3 hex nut, paired with a screw to clamp parts together where a T-nut won't fit.",
-          "zh": "标准 M3 六角螺母。在装不下 T 型螺母的地方，用它配上螺钉把零件夹紧。"
+          "en": "Pairs with a bolt to clamp parts firmly together.",
+          "zh": "和螺栓配合，把零件牢牢夹紧。"
         },
         "ref": {
           "en": "ISO 4032 / DIN 934",
@@ -266,11 +266,11 @@
         "src": "fastener_20_square_nut_assembled_cam1.svg",
         "h3": {
           "en": "Square nut",
-          "zh": "方螺母"
+          "zh": "四方螺母"
         },
         "body": {
-          "en": "M3 nut that sits captive in a printed pocket so it can't spin — the screw is then driven one-handed from the other side.",
-          "zh": "M3 螺母，嵌在打印件的方槽里不会转——这样从另一侧单手就能拧紧螺钉。"
+          "en": "A square nut sits in a pocket of the printed part so it can't spin, letting you tighten a bolt into it.",
+          "zh": "四方螺母嵌进打印件的方槽里不会转动，配上螺栓就能拧紧固定。"
         },
         "ref": {
           "en": "DIN 557",
