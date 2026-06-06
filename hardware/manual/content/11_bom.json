@@ -39,7 +39,10 @@
           "en": "Extrusion 2040",
           "zh": "2040 铝型材"
         },
-        "spec": "345 mm · CB",
+        "spec": {
+          "en": "345 mm · CB",
+          "zh": "345 mm · CB"
+        },
         "qty": "2",
         "desc": {
           "en": "Frame",
@@ -55,7 +58,10 @@
           "en": "Extrusion 2040",
           "zh": "2040 铝型材"
         },
-        "spec": "190 mm",
+        "spec": {
+          "en": "190 mm",
+          "zh": "190 mm"
+        },
         "qty": "2",
         "desc": {
           "en": "Frame",
@@ -71,7 +77,10 @@
           "en": "Extrusion 1020",
           "zh": "1020 铝型材"
         },
-        "spec": "185 mm",
+        "spec": {
+          "en": "185 mm",
+          "zh": "185 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Linear motion",
@@ -87,7 +96,10 @@
           "en": "Extrusion 1020",
           "zh": "1020 铝型材"
         },
-        "spec": "230 mm, end holes",
+        "spec": {
+          "en": "230 mm, end holes",
+          "zh": "230 mm，带端孔"
+        },
         "qty": "2",
         "desc": {
           "en": "Phone bed",
@@ -103,7 +115,10 @@
           "en": "Custom parts",
           "zh": "定制件"
         },
-        "spec": "SLS",
+        "spec": {
+          "en": "SLS",
+          "zh": "SLS"
+        },
         "qty": "10",
         "desc": {
           "en": "Idler mount, XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder",
@@ -119,7 +134,10 @@
           "en": "Pulley",
           "zh": "同步带轮"
         },
-        "spec": "GT2 20T, toothed",
+        "spec": {
+          "en": "GT2 20T, toothed",
+          "zh": "GT2 20T，有齿"
+        },
         "qty": "2",
         "desc": {
           "en": "Motor",
@@ -135,7 +153,10 @@
           "en": "Idler",
           "zh": "惰轮"
         },
-        "spec": "M5×6 20T smooth",
+        "spec": {
+          "en": "M5×6 20T smooth",
+          "zh": "M5×6 20T 无齿"
+        },
         "qty": "8",
         "desc": {
           "en": "Idler",
@@ -151,7 +172,10 @@
           "en": "Idler",
           "zh": "惰轮"
         },
-        "spec": "GT2 20T, smooth",
+        "spec": {
+          "en": "GT2 20T, smooth",
+          "zh": "GT2 20T，无齿"
+        },
         "qty": "2",
         "desc": {
           "en": "Linear motion",
@@ -167,7 +191,10 @@
           "en": "Idler",
           "zh": "惰轮"
         },
-        "spec": "GT2 20T, toothed",
+        "spec": {
+          "en": "GT2 20T, toothed",
+          "zh": "GT2 20T，有齿"
+        },
         "qty": "2",
         "desc": {
           "en": "Linear motion",
@@ -183,7 +210,10 @@
           "en": "Linear rail",
           "zh": "直线导轨"
         },
-        "spec": "MGN9H, 240 mm",
+        "spec": {
+          "en": "MGN9H, 240 mm",
+          "zh": "MGN9H, 240 mm"
+        },
         "qty": "2",
         "desc": {
           "en": "Linear motion",
@@ -199,7 +229,10 @@
           "en": "Linear rail",
           "zh": "直线导轨"
         },
-        "spec": "MGN9H, 150 mm",
+        "spec": {
+          "en": "MGN9H, 150 mm",
+          "zh": "MGN9H, 150 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Linear motion",
@@ -215,7 +248,10 @@
           "en": "GT2 belt",
           "zh": "GT2 同步带"
         },
-        "spec": "Open loop, 6 mm",
+        "spec": {
+          "en": "Open loop, 6 mm",
+          "zh": "开口，6 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Belt path",
@@ -231,7 +267,10 @@
           "en": "Control board",
           "zh": "控制板"
         },
-        "spec": "MKS DLC32 V2.1",
+        "spec": {
+          "en": "MKS DLC32 V2.1",
+          "zh": "MKS DLC32 V2.1"
+        },
         "qty": "1",
         "desc": {
           "en": "Control board",
@@ -247,7 +286,10 @@
           "en": "Camera",
           "zh": "摄像头"
         },
-        "spec": "82 × 26 × 25 mm",
+        "spec": {
+          "en": "82 × 26 × 25 mm",
+          "zh": "82 × 26 × 25 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Camera",
@@ -263,7 +305,10 @@
           "en": "Stepper driver",
           "zh": "步进电机驱动"
         },
-        "spec": "TMC2209",
+        "spec": {
+          "en": "TMC2209",
+          "zh": "TMC2209"
+        },
         "qty": "2",
         "desc": {
           "en": "Stepper driver",
@@ -279,7 +324,10 @@
           "en": "Motor cable",
           "zh": "电机连接线"
         },
-        "spec": "XH2.54, 4-pin",
+        "spec": {
+          "en": "XH2.54, 4-pin",
+          "zh": "XH2.54，4 针"
+        },
         "qty": "2",
         "desc": {
           "en": "Stepper motor → control board",
@@ -295,7 +343,10 @@
           "en": "Ground wire",
           "zh": "接地线"
         },
-        "spec": "Solenoid earth",
+        "spec": {
+          "en": "Solenoid earth",
+          "zh": "电磁铁接地"
+        },
         "qty": "1",
         "desc": {
           "en": "Solenoid → control board",
@@ -311,7 +362,10 @@
           "en": "Stepper motor",
           "zh": "步进电机"
         },
-        "spec": "NEMA 17, 34 mm",
+        "spec": {
+          "en": "NEMA 17, 34 mm",
+          "zh": "NEMA 17, 34 mm"
+        },
         "qty": "2",
         "desc": {
           "en": "Motor",
@@ -327,7 +381,10 @@
           "en": "Solenoid",
           "zh": "推拉式电磁铁"
         },
-        "spec": "15 × 30 × 13 mm",
+        "spec": {
+          "en": "15 × 30 × 13 mm",
+          "zh": "15 × 30 × 13 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Touch end",
@@ -343,7 +400,10 @@
           "en": "bracket",
           "zh": "一字连接板"
         },
-        "spec": "Joining Plate",
+        "spec": {
+          "en": "Joining Plate",
+          "zh": "连接板"
+        },
         "qty": "6",
         "desc": {
           "en": "Frame, Idler",
@@ -359,7 +419,10 @@
           "en": "Motor bracket",
           "zh": "电机支架"
         },
-        "spec": "60×41×1.9",
+        "spec": {
+          "en": "60×41×1.9",
+          "zh": "60×41×1.9"
+        },
         "qty": "2",
         "desc": {
           "en": "Motor",
@@ -375,7 +438,10 @@
           "en": "Corner bracket",
           "zh": "角码"
         },
-        "spec": "56 mm bend, 4 mm",
+        "spec": {
+          "en": "56 mm bend, 4 mm",
+          "zh": "56 mm 折弯，4 mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Camera",
@@ -391,7 +457,10 @@
           "en": "Bumper",
           "zh": "橡胶脚垫"
         },
-        "spec": "Ø20 × 22 mm",
+        "spec": {
+          "en": "Ø20 × 22 mm",
+          "zh": "Ø20 × 22 mm"
+        },
         "qty": "4",
         "desc": {
           "en": "Frame",
@@ -407,7 +476,10 @@
           "en": "Stylus tip",
           "zh": "触控笔尖"
         },
-        "spec": "Capacitive, M3",
+        "spec": {
+          "en": "Capacitive, M3",
+          "zh": "电容式，M3"
+        },
         "qty": "1",
         "desc": {
           "en": "Touch end",
@@ -423,7 +495,10 @@
           "en": "Teflon tube",
           "zh": "特氟龙管"
         },
-        "spec": "Ø6/5, 380mm",
+        "spec": {
+          "en": "Ø6/5, 380mm",
+          "zh": "Ø6/5, 380mm"
+        },
         "qty": "1",
         "desc": {
           "en": "Control board",
@@ -439,7 +514,10 @@
           "en": "Gooseneck",
           "zh": "鹅颈臂"
         },
-        "spec": "Ø10×196, 1/4-20 M/F",
+        "spec": {
+          "en": "Ø10×196, 1/4-20 M/F",
+          "zh": "Ø10×196，1/4-20 公/母"
+        },
         "qty": "1",
         "desc": {
           "en": "Camera",
@@ -455,7 +533,10 @@
           "en": "SHCS",
           "zh": "圆柱头螺钉"
         },
-        "spec": "M6×16",
+        "spec": {
+          "en": "M6×16",
+          "zh": "M6×16"
+        },
         "qty": "8",
         "desc": {
           "en": "Frame",
@@ -471,7 +552,10 @@
           "en": "SHCS",
           "zh": "圆柱头螺钉"
         },
-        "spec": "1/4-20×16",
+        "spec": {
+          "en": "1/4-20×16",
+          "zh": "1/4-20×16"
+        },
         "qty": "1",
         "desc": {
           "en": "Camera",
@@ -487,7 +571,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M3×6",
+        "spec": {
+          "en": "M3×6",
+          "zh": "M3×6"
+        },
         "qty": "10",
         "desc": {
           "en": "Motor, Touch end",
@@ -503,7 +590,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M3×8",
+        "spec": {
+          "en": "M3×8",
+          "zh": "M3×8"
+        },
         "qty": "8",
         "desc": {
           "en": "Belt path, Touch end",
@@ -519,7 +609,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M3×12",
+        "spec": {
+          "en": "M3×12",
+          "zh": "M3×12"
+        },
         "qty": "4",
         "desc": {
           "en": "Control board",
@@ -535,7 +628,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M5×10",
+        "spec": {
+          "en": "M5×10",
+          "zh": "M5×10"
+        },
         "qty": "18",
         "desc": {
           "en": "Frame, Idler, Camera",
@@ -551,7 +647,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M5×16",
+        "spec": {
+          "en": "M5×16",
+          "zh": "M5×16"
+        },
         "qty": "8",
         "desc": {
           "en": "Frame, Phone bed",
@@ -567,7 +666,10 @@
           "en": "BHCS",
           "zh": "半圆头螺钉"
         },
-        "spec": "M5×20",
+        "spec": {
+          "en": "M5×20",
+          "zh": "M5×20"
+        },
         "qty": "4",
         "desc": {
           "en": "Motor",
@@ -583,7 +685,10 @@
           "en": "Shoulder screw",
           "zh": "轴肩螺钉"
         },
-        "spec": "M4×10, Ø5",
+        "spec": {
+          "en": "M4×10, Ø5",
+          "zh": "M4×10, Ø5"
+        },
         "qty": "4",
         "desc": {
           "en": "Idler, Linear motion",
@@ -599,7 +704,10 @@
           "en": "Shoulder screw",
           "zh": "轴肩螺钉"
         },
-        "spec": "M4×20, Ø5",
+        "spec": {
+          "en": "M4×20, Ø5",
+          "zh": "M4×20, Ø5"
+        },
         "qty": "6",
         "desc": {
           "en": "Idler, Linear motion",
@@ -615,7 +723,10 @@
           "en": "FHCS",
           "zh": "沉头螺钉"
         },
-        "spec": "M3×8",
+        "spec": {
+          "en": "M3×8",
+          "zh": "M3×8"
+        },
         "qty": "4",
         "desc": {
           "en": "Phone bed",
@@ -631,7 +742,10 @@
           "en": "FHCS",
           "zh": "沉头螺钉"
         },
-        "spec": "M3×10",
+        "spec": {
+          "en": "M3×10",
+          "zh": "M3×10"
+        },
         "qty": "26",
         "desc": {
           "en": "Linear motion, Touch end",
@@ -647,7 +761,10 @@
           "en": "FHCS",
           "zh": "沉头螺钉"
         },
-        "spec": "M5×10",
+        "spec": {
+          "en": "M5×10",
+          "zh": "M5×10"
+        },
         "qty": "2",
         "desc": {
           "en": "Control board",
@@ -663,7 +780,10 @@
           "en": "FHCS",
           "zh": "沉头螺钉"
         },
-        "spec": "M5×12",
+        "spec": {
+          "en": "M5×12",
+          "zh": "M5×12"
+        },
         "qty": "2",
         "desc": {
           "en": "Linear motion",
@@ -679,7 +799,10 @@
           "en": "T-nut",
           "zh": "T 型螺母"
         },
-        "spec": "Drop-In M3",
+        "spec": {
+          "en": "Drop-In M3",
+          "zh": "落入式 M3"
+        },
         "qty": "20",
         "desc": {
           "en": "Linear motion, Phone bed",
@@ -695,7 +818,10 @@
           "en": "T-nut",
           "zh": "T 型螺母"
         },
-        "spec": "Slide-In M5",
+        "spec": {
+          "en": "Slide-In M5",
+          "zh": "滑入式 M5"
+        },
         "qty": "10",
         "desc": {
           "en": "Frame, Linear motion",
@@ -711,7 +837,10 @@
           "en": "T-nut",
           "zh": "T 型螺母"
         },
-        "spec": "Drop-In M5",
+        "spec": {
+          "en": "Drop-In M5",
+          "zh": "落入式 M5"
+        },
         "qty": "22",
         "desc": {
           "en": "Frame, Idler, Phone bed, Control board, Camera",
@@ -727,7 +856,10 @@
           "en": "Square nut",
           "zh": "四方螺母"
         },
-        "spec": "M3",
+        "spec": {
+          "en": "M3",
+          "zh": "M3"
+        },
         "qty": "10",
         "desc": {
           "en": "Touch end, Control board",
@@ -743,7 +875,10 @@
           "en": "Square nut",
           "zh": "四方螺母"
         },
-        "spec": "M4",
+        "spec": {
+          "en": "M4",
+          "zh": "M4"
+        },
         "qty": "10",
         "desc": {
           "en": "Idler, Linear motion",
@@ -759,7 +894,10 @@
           "en": "Square nut",
           "zh": "四方螺母"
         },
-        "spec": "M5",
+        "spec": {
+          "en": "M5",
+          "zh": "M5"
+        },
         "qty": "2",
         "desc": {
           "en": "Idler",
@@ -775,7 +913,10 @@
           "en": "Hex nut",
           "zh": "六角螺母"
         },
-        "spec": "1/4-20",
+        "spec": {
+          "en": "1/4-20",
+          "zh": "1/4-20"
+        },
         "qty": "1",
         "desc": {
           "en": "Camera",
@@ -791,7 +932,10 @@
           "en": "Shim",
           "zh": "垫片"
         },
-        "spec": "M5 (Ø8×0.5)",
+        "spec": {
+          "en": "M5 (Ø8×0.5)",
+          "zh": "M5 (Ø8×0.5)"
+        },
         "qty": "12",
         "desc": {
           "en": "Idler, Linear motion",
@@ -807,7 +951,10 @@
           "en": "Spacer",
           "zh": "隔套"
         },
-        "spec": "M5 (Ø10×9)",
+        "spec": {
+          "en": "M5 (Ø10×9)",
+          "zh": "M5 (Ø10×9)"
+        },
         "qty": "4",
         "desc": {
           "en": "Idler, Linear motion",
@@ -823,7 +970,10 @@
           "en": "Spacer",
           "zh": "隔套"
         },
-        "spec": "M6 (Ø20×12)",
+        "spec": {
+          "en": "M6 (Ø20×12)",
+          "zh": "M6 (Ø20×12)"
+        },
         "qty": "4",
         "desc": {
           "en": "Motor",

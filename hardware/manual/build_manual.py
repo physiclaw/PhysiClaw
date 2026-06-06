@@ -577,7 +577,7 @@ def render_bom_page(page: dict, ctx: Ctx) -> str:
         row_cls = f' class="{row_name}"' if row_name else ""
         body_parts.append(
             f"<tr{row_cls}>{cells}"
-            f'<td class="spec">{r["spec"]}</td>'
+            f'<td class="spec">{loc(r["spec"], ctx.lang)}</td>'
             f'<td class="qty">{r["qty"]}</td>'
             f'<td class="desc">{loc(r["desc"], ctx.lang)}</td></tr>'
         )
