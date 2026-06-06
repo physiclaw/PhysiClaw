@@ -210,25 +210,26 @@ class Belt(BaseStandardPart):
         )
 
     def _build(self):
+        # One rectangular section extruded per centerline segment, then
+        # unioned. Extruding each segment *inside a single BuildPart* booleans
+        # it into the running solid — ~120 sequential fuses, O(n²), ~19 s.
+        # Collecting the segment solids and doing ONE n-ary fuse at the end is
+        # geometrically identical (same faces / volume) but ~50× faster.
         expanded = _expand_wraps(self.path)
-        with BuildPart() as part:
-            for i in range(len(expanded) - 1):
-                p0 = expanded[i]
-                p1 = expanded[i + 1]
-                dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
-                length = math.sqrt(dx * dx + dy * dy + dz * dz)
-                if length < 1e-6:
-                    continue
-                z_dir = (dx / length, dy / length, dz / length)
-                section_plane = Plane(
-                    origin=p0,
-                    x_dir=_perp_y(z_dir),
-                    z_dir=z_dir,
-                )
-                with BuildSketch(section_plane):
-                    Rectangle(belt_width, belt_thickness)
-                extrude(amount=length)
-        return part.part
+        segments = []
+        for i in range(len(expanded) - 1):
+            p0 = expanded[i]
+            p1 = expanded[i + 1]
+            dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+            length = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if length < 1e-6:
+                continue
+            z_dir = (dx / length, dy / length, dz / length)
+            section_plane = Plane(origin=p0, x_dir=_perp_y(z_dir), z_dir=z_dir)
+            with BuildSketch(section_plane) as section:
+                Rectangle(belt_width, belt_thickness)
+            segments.append(extrude(section.sketch, amount=length))
+        return segments[0].fuse(*segments[1:]) if len(segments) > 1 else segments[0]
 
 
 # ── Motor A belt route — left motor, LOWER belt plane ─────────────────────────
