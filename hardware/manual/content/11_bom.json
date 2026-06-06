@@ -2,15 +2,834 @@
   {
     "type": "opener",
     "page": "bom",
-    "secnum": { "en": "SECTION 11", "zh": "第 11 节" },
-    "h1": { "en": "Bill of materials", "zh": "物料清单" },
-    "lede": { "en": "This is the complete parts list for the whole machine—use it to gather everything before you start assembling.", "zh": "这是整台机器的完整零件清单，动手组装前请备齐所有零件。" }
+    "secnum": {
+      "en": "SECTION 11",
+      "zh": "第 11 节"
+    },
+    "h1": {
+      "en": "Bill of materials",
+      "zh": "物料清单"
+    },
+    "lede": {
+      "en": "This is the complete parts list for the whole machine—use it to gather everything before you start assembling.",
+      "zh": "这是整台机器的完整零件清单，动手组装前请备齐所有零件。"
+    }
   },
   {
     "type": "bom",
     "page": "bom-list",
-    "head": { "title": { "en": "Bill of materials", "zh": "物料清单" }, "small": "11 — BOM" },
-    "label": { "en": "Complete parts list — every section, summed", "zh": "完整物料清单——汇总各节全部零件" },
-    "rows": []
+    "head": {
+      "title": {
+        "en": "Bill of materials",
+        "zh": "物料清单"
+      },
+      "small": "11 — BOM"
+    },
+    "label": {
+      "en": "Bill of materials",
+      "zh": "物料清单"
+    },
+    "rows": [
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Extrusion 2040",
+          "zh": "2040 铝型材"
+        },
+        "spec": "345 mm · CB",
+        "qty": "2",
+        "desc": {
+          "en": "Frame",
+          "zh": "框架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Extrusion 2040",
+          "zh": "2040 铝型材"
+        },
+        "spec": "190 mm",
+        "qty": "2",
+        "desc": {
+          "en": "Frame",
+          "zh": "框架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Extrusion 1020",
+          "zh": "1020 铝型材"
+        },
+        "spec": "185 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Extrusion 1020",
+          "zh": "1020 铝型材"
+        },
+        "spec": "230 mm, end holes",
+        "qty": "2",
+        "desc": {
+          "en": "Phone bed",
+          "zh": "手机托架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "bracket",
+          "zh": "角码"
+        },
+        "spec": "Joining Plate",
+        "qty": "6",
+        "desc": {
+          "en": "Frame, Idler",
+          "zh": "框架、惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Motor bracket",
+          "zh": "电机支架"
+        },
+        "spec": "60×41×1.9",
+        "qty": "2",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      },
+      {
+        "cls": {
+          "en": "Frame / Extrusions",
+          "zh": "框架 / 铝型材"
+        },
+        "component": {
+          "en": "Corner bracket",
+          "zh": "角支架"
+        },
+        "spec": "56 mm bend, 4 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Printed parts",
+          "zh": "打印件"
+        },
+        "component": {
+          "en": "Custom parts",
+          "zh": "定制件"
+        },
+        "spec": "SLS",
+        "qty": "10",
+        "desc": {
+          "en": "Idler mount, XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder",
+          "zh": "惰轮支座、XY 连接件（左）、XY 连接件（右）、同步带夹具、电磁铁支架、手机托架、控制板支架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Pulley",
+          "zh": "同步带轮"
+        },
+        "spec": "GT2 20T, toothed",
+        "qty": "2",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Idler",
+          "zh": "惰轮"
+        },
+        "spec": "M5×6 20T smooth",
+        "qty": "8",
+        "desc": {
+          "en": "Idler",
+          "zh": "惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Idler",
+          "zh": "惰轮"
+        },
+        "spec": "GT2 20T, smooth",
+        "qty": "2",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Idler",
+          "zh": "惰轮"
+        },
+        "spec": "GT2 20T, toothed",
+        "qty": "2",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Linear rail",
+          "zh": "直线导轨"
+        },
+        "spec": "MGN9H, 240 mm",
+        "qty": "2",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "Linear rail",
+          "zh": "直线导轨"
+        },
+        "spec": "MGN9H, 150 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Motion components",
+          "zh": "运动组件"
+        },
+        "component": {
+          "en": "GT2 belt",
+          "zh": "GT2 同步带"
+        },
+        "spec": "Open loop, 6 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Belt path",
+          "zh": "同步带绕法"
+        }
+      },
+      {
+        "cls": {
+          "en": "Electronics",
+          "zh": "电子元件"
+        },
+        "component": {
+          "en": "MKS DLC32",
+          "zh": "MKS DLC32"
+        },
+        "spec": "Controller PCB",
+        "qty": "1",
+        "desc": {
+          "en": "Control board",
+          "zh": "控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Electronics",
+          "zh": "电子元件"
+        },
+        "component": {
+          "en": "Camera",
+          "zh": "摄像头"
+        },
+        "spec": "82 × 26 × 25 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Electronics",
+          "zh": "电子元件"
+        },
+        "component": {
+          "en": "TMC2209",
+          "zh": "TMC2209"
+        },
+        "spec": "Stepper driver",
+        "qty": "2",
+        "desc": {
+          "en": "Wiring",
+          "zh": "接线"
+        }
+      },
+      {
+        "cls": {
+          "en": "Wiring / Cables",
+          "zh": "线材"
+        },
+        "component": {
+          "en": "Motor cable",
+          "zh": "电机连接线"
+        },
+        "spec": "XH2.54, 4-pin",
+        "qty": "2",
+        "desc": {
+          "en": "Stepper motor → control board",
+          "zh": "步进电机 → 控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Wiring / Cables",
+          "zh": "线材"
+        },
+        "component": {
+          "en": "Ground wire",
+          "zh": "接地线"
+        },
+        "spec": "Solenoid earth",
+        "qty": "1",
+        "desc": {
+          "en": "Solenoid → control board",
+          "zh": "电磁铁 → 控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Actuators",
+          "zh": "执行器"
+        },
+        "component": {
+          "en": "Stepper motor",
+          "zh": "步进电机"
+        },
+        "spec": "NEMA 17, 34 mm",
+        "qty": "2",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      },
+      {
+        "cls": {
+          "en": "Actuators",
+          "zh": "执行器"
+        },
+        "component": {
+          "en": "Solenoid",
+          "zh": "推拉式电磁铁"
+        },
+        "spec": "15 × 30 × 13 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Touch end",
+          "zh": "触控机构"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "通用五金"
+        },
+        "component": {
+          "en": "Bumper",
+          "zh": "橡胶脚垫"
+        },
+        "spec": "Ø20 × 22 mm",
+        "qty": "4",
+        "desc": {
+          "en": "Frame",
+          "zh": "框架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "通用五金"
+        },
+        "component": {
+          "en": "Stylus tip",
+          "zh": "触控笔尖"
+        },
+        "spec": "Capacitive, M3",
+        "qty": "1",
+        "desc": {
+          "en": "Touch end",
+          "zh": "触控机构"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "通用五金"
+        },
+        "component": {
+          "en": "Teflon tube",
+          "zh": "特氟龙管"
+        },
+        "spec": "Ø6/5, 380mm",
+        "qty": "1",
+        "desc": {
+          "en": "Control board",
+          "zh": "控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "通用五金"
+        },
+        "component": {
+          "en": "Gooseneck",
+          "zh": "鹅颈臂"
+        },
+        "spec": "Ø10×196, 1/4-20 M/F",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "SHCS",
+          "zh": "圆柱头螺钉"
+        },
+        "spec": "M6×16",
+        "qty": "8",
+        "desc": {
+          "en": "Frame",
+          "zh": "框架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "SHCS",
+          "zh": "圆柱头螺钉"
+        },
+        "spec": "1/4-20×16",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M3×6",
+        "qty": "10",
+        "desc": {
+          "en": "Motor, Touch end",
+          "zh": "电机、触控机构"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M3×8",
+        "qty": "8",
+        "desc": {
+          "en": "Belt path, Touch end",
+          "zh": "同步带绕法、触控机构"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M3×12",
+        "qty": "4",
+        "desc": {
+          "en": "Control board",
+          "zh": "控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M5×10",
+        "qty": "18",
+        "desc": {
+          "en": "Frame, Idler, Camera",
+          "zh": "框架、惰轮、摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M5×16",
+        "qty": "8",
+        "desc": {
+          "en": "Frame, Phone bed",
+          "zh": "框架、手机托架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "半圆头螺钉"
+        },
+        "spec": "M5×20",
+        "qty": "4",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Shoulder screw",
+          "zh": "轴肩螺钉"
+        },
+        "spec": "M4×10, Ø5",
+        "qty": "4",
+        "desc": {
+          "en": "Idler, Linear motion",
+          "zh": "惰轮、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Shoulder screw",
+          "zh": "轴肩螺钉"
+        },
+        "spec": "M4×20, Ø5",
+        "qty": "6",
+        "desc": {
+          "en": "Idler, Linear motion",
+          "zh": "惰轮、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "FHCS",
+          "zh": "沉头螺钉"
+        },
+        "spec": "M3×8",
+        "qty": "4",
+        "desc": {
+          "en": "Phone bed",
+          "zh": "手机托架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "FHCS",
+          "zh": "沉头螺钉"
+        },
+        "spec": "M3×10",
+        "qty": "26",
+        "desc": {
+          "en": "Linear motion, Touch end",
+          "zh": "直线运动、触控机构"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "FHCS",
+          "zh": "沉头螺钉"
+        },
+        "spec": "M5×10",
+        "qty": "2",
+        "desc": {
+          "en": "Control board",
+          "zh": "控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "FHCS",
+          "zh": "沉头螺钉"
+        },
+        "spec": "M5×12",
+        "qty": "2",
+        "desc": {
+          "en": "Linear motion",
+          "zh": "直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "T-nut",
+          "zh": "T 型螺母"
+        },
+        "spec": "Drop-In M3",
+        "qty": "20",
+        "desc": {
+          "en": "Linear motion, Phone bed",
+          "zh": "直线运动、手机托架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "T-nut",
+          "zh": "T 型螺母"
+        },
+        "spec": "Slide-In M5",
+        "qty": "10",
+        "desc": {
+          "en": "Frame, Linear motion",
+          "zh": "框架、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "T-nut",
+          "zh": "T 型螺母"
+        },
+        "spec": "Drop-In M5",
+        "qty": "22",
+        "desc": {
+          "en": "Frame, Idler, Phone bed, Control board, Camera",
+          "zh": "框架、惰轮、手机托架、控制板、摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Square nut",
+          "zh": "四方螺母"
+        },
+        "spec": "M3",
+        "qty": "10",
+        "desc": {
+          "en": "Touch end, Control board",
+          "zh": "触控机构、控制板"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Square nut",
+          "zh": "四方螺母"
+        },
+        "spec": "M4",
+        "qty": "10",
+        "desc": {
+          "en": "Idler, Linear motion",
+          "zh": "惰轮、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Square nut",
+          "zh": "四方螺母"
+        },
+        "spec": "M5",
+        "qty": "2",
+        "desc": {
+          "en": "Idler",
+          "zh": "惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Hex nut",
+          "zh": "六角螺母"
+        },
+        "spec": "1/4-20",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Shim",
+          "zh": "垫片"
+        },
+        "spec": "M5 (Ø8×0.5)",
+        "qty": "12",
+        "desc": {
+          "en": "Idler, Linear motion",
+          "zh": "惰轮、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Spacer",
+          "zh": "隔套"
+        },
+        "spec": "M5 (Ø10×9)",
+        "qty": "4",
+        "desc": {
+          "en": "Idler, Linear motion",
+          "zh": "惰轮、直线运动"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Spacer",
+          "zh": "隔套"
+        },
+        "spec": "M6 (Ø20×12)",
+        "qty": "4",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      }
+    ]
   }
 ]

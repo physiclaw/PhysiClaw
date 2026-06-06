@@ -508,7 +508,7 @@
   }
 
   /* BOM PAGE — full-page consolidated parts list, in normal flow (not the
-     absolutely-positioned per-step .bom overlay), split into two columns. */
+     absolutely-positioned per-step .bom overlay); one grouped table. */
   .bom-page { margin-top: 8mm; }
   .bom-page > .label {
     display: block;
@@ -519,14 +519,16 @@
     letter-spacing: 0.05em;
     margin-bottom: 5mm;
   }
-  .bom-cols {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 16mm;
-    align-items: start;
+  /* Consolidated parts list: one five-column table (Class / Component / Spec /
+     Qty / Where used). Two-level rowspan — the Class cell merges over all its
+     components, each Component cell merges over its specs. A heavier rule starts
+     each new class (full width); a lighter rule starts each new component. */
+  .bom-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
   }
-  .bom-cols table { width: 100%; border-collapse: collapse; }
-  .bom-cols thead th {
+  .bom-table thead th {
     text-align: left;
     font-size: 9pt;
     font-weight: 500;
@@ -534,26 +536,51 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-bottom: 1px solid var(--rule);
-    padding: 2mm 3mm 2mm 0;
+    padding: 2mm 4mm 2mm 0;
   }
-  .bom-cols thead th:last-child { text-align: right; padding-right: 0; }
-  .bom-cols tbody td {
-    padding: 1.2mm 3mm 1.2mm 0;
-    border-bottom: 1px solid var(--rule);
+  /* Column widths: Class | Component | Spec | Qty | Where used */
+  .bom-table th:nth-child(1), .bom-table td.cls  { width: 13%; }
+  .bom-table th:nth-child(2), .bom-table td.comp { width: 17%; }
+  .bom-table th:nth-child(3), .bom-table td.spec { width: 19%; }
+  .bom-table th:nth-child(4), .bom-table td.qty  { width: 7%; }
+  .bom-table th:nth-child(5), .bom-table td.desc { width: 44%; }
+  /* Right-align Qty, with a wide gutter before Where used. */
+  .bom-table th:nth-child(4) { text-align: right; padding-right: 15mm; }
+  .bom-table tbody td {
+    padding: 1.4mm 4mm 1.4mm 0;
     color: var(--ink);
     vertical-align: top;
     font-size: 9.5pt;
   }
-  .bom-cols tbody td.spec {
+  /* Component separator: light rule above each new component (its cells only,
+     so the spanned Class cell reads as continuous). Class separator: a stronger
+     rule above each new class, full width. */
+  .bom-table tbody tr.sub td { border-top: 1px solid var(--rule-faint, var(--rule)); }
+  .bom-table tbody tr.grp td { border-top: 1.5px solid var(--rule); }
+  .bom-table tbody tr:first-child td { border-top: none; }
+  .bom-table td.cls {
+    font-weight: 600;
+    color: var(--accent);
+    padding-top: 1.8mm;
+  }
+  .bom-table td.comp {
+    font-weight: 500;
+    padding-top: 1.6mm;
+  }
+  .bom-table td.spec {
     color: var(--ink-soft);
     font-family: var(--font-mono);
     font-size: 9pt;
   }
-  .bom-cols tbody td.qty {
+  .bom-table td.qty {
     text-align: right;
-    padding-right: 0;
+    padding-right: 15mm;
     font-family: var(--font-mono);
     font-weight: 500;
+  }
+  .bom-table td.desc {
+    color: var(--ink-soft);
+    font-size: 9pt;
   }
 
   /* TALL-LEFT (one figure on the left spanning full height, two cells

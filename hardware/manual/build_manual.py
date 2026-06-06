@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import copy
 import json
 import os
 import re
@@ -537,27 +538,58 @@ def render_back(page: dict, ctx: Ctx) -> str:
     return page_shell(page, ctx, body, "back")
 
 
+def _rowspans(rows: list[dict], key: Callable[[dict], Any]) -> list[int]:
+    """For consecutive rows sharing ``key``, return the group size at each
+    group's first row and 0 at the rest — i.e. the rowspan to emit (or skip)."""
+    spans = [0] * len(rows)
+    i = 0
+    while i < len(rows):
+        j = i + 1
+        while j < len(rows) and key(rows[j]) == key(rows[i]):
+            j += 1
+        spans[i] = j - i
+        i = j
+    return spans
+
+
 def render_bom_page(page: dict, ctx: Ctx) -> str:
-    """Full-page consolidated bill of materials — one table split into two
-    columns to fit a single landscape page. Rows are filled at build time by
-    ``inject_consolidated_bom`` (every section's BOM, summed by part)."""
+    """Full-page consolidated bill of materials — a five-column table
+    (Class / Component / Spec / Qty / Where used). Rows are grouped so the Class
+    cell merges over all its components and each Component cell merges over its
+    specs (two-level rowspan). Spans are computed per page, so a class split
+    across a page break simply repeats its label on the continuation page. Rows
+    are authored in ``content/11_bom.json``; ``paginate_bom_pages`` splits an
+    over-long list across continuation pages."""
     rows = page.get("rows", [])
-    half = (len(rows) + 1) // 2
+    cls_span = _rowspans(rows, lambda r: r["cls"]["en"])
+    comp_span = _rowspans(rows, lambda r: (r["cls"]["en"], r["component"]["en"]))
 
-    def table(rs: list[dict]) -> str:
-        body = "".join(
-            f'<tr><td>{loc(r["component"], ctx.lang)}</td>'
+    body_parts: list[str] = []
+    for idx, r in enumerate(rows):
+        cells = ""
+        if cls_span[idx]:
+            cells += f'<td class="cls" rowspan="{cls_span[idx]}">{loc(r["cls"], ctx.lang)}</td>'
+        if comp_span[idx]:
+            cells += (f'<td class="comp" rowspan="{comp_span[idx]}">'
+                      f'{loc(r["component"], ctx.lang)}</td>')
+        # Group separators: "grp" starts a new class, "sub" a new component.
+        row_name = "grp" if cls_span[idx] else "sub" if comp_span[idx] else ""
+        row_cls = f' class="{row_name}"' if row_name else ""
+        body_parts.append(
+            f"<tr{row_cls}>{cells}"
             f'<td class="spec">{r["spec"]}</td>'
-            f'<td class="qty">{r["qty"]}</td></tr>'
-            for r in rs
+            f'<td class="qty">{r["qty"]}</td>'
+            f'<td class="desc">{loc(r["desc"], ctx.lang)}</td></tr>'
         )
-        return ("<table><thead><tr><th>Component</th><th>Spec</th><th>Qty</th></tr>"
-                f"</thead><tbody>{body}</tbody></table>")
 
+    table = (
+        '<table class="bom-table"><thead><tr>'
+        "<th>Class</th><th>Component</th><th>Spec</th><th>Qty</th><th>Where used</th>"
+        f'</tr></thead><tbody>{"".join(body_parts)}</tbody></table>'
+    )
     label = (f'<span class="label">{loc(page["label"], ctx.lang)}</span>'
              if page.get("label") else "")
-    body = (f'<div class="bom-page">{label}'
-            f'<div class="bom-cols">{table(rows[:half])}{table(rows[half:])}</div></div>')
+    body = f'<div class="bom-page">{label}{table}</div>'
     return page_shell(page, ctx, body)
 
 
@@ -623,32 +655,74 @@ def assign_page_numbers(pages: list[dict]) -> None:
             row["_pgno"] = id_to_no[ref]
 
 
-def consolidated_bom_rows(pages: list[dict]) -> list[dict]:
-    """Sum every section's BOM overlay into one parts list, keyed by
-    (English component, spec). Rows with a non-numeric qty are skipped, so a
-    placeholder/TODO BOM never pollutes the totals. First-seen order wins."""
-    agg: dict[tuple[str, str], dict] = {}
-    for p in pages:
-        for r in p.get("bom", {}).get("rows", []):
-            try:
-                qty = int(r["qty"])
-            except (KeyError, ValueError, TypeError):
-                continue
-            key = (r["component"].get("en", ""), r.get("spec", ""))
-            if key in agg:
-                agg[key]["qty"] += qty
-            else:
-                agg[key] = {"component": r["component"], "spec": r.get("spec", ""), "qty": qty}
-    return list(agg.values())
+# Max table rows per BOM page. Tuned to the landscape page height for airy
+# spacing (leaving margin below the last row); if the parts list grows, more
+# pages are added automatically.
+BOM_ROWS_PER_PAGE = 16
+
+# Per-language "continued" marker appended to a BOM page's label on overflow
+# pages. Falls back to the English form for any unlisted language.
+BOM_CONT_SUFFIX = {"en": " (cont.)", "zh": "（续）"}
 
 
-def inject_consolidated_bom(pages: list[dict]) -> None:
-    """Fill each ``bom``-type page's rows with the consolidated parts list, so
-    the BOM section stays in sync with the per-section BOMs automatically."""
-    rows = consolidated_bom_rows(pages)
-    for p in pages:
-        if p["type"] == "bom":
-            p["rows"] = rows
+def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
+    """Partition the consolidated rows into balanced pages without splitting any
+    component's spec-rows (its rowspan must stay on one page). Uses
+    ``ceil(total/per_page)`` pages and places each evenly-spaced cut at the
+    component boundary nearest its ideal position, so pages come out balanced and
+    the last one is never left sparse. A class spanning a break repeats its label
+    (spans are recomputed per page)."""
+    if not rows:
+        return [[]]
+    total = len(rows)
+    n_pages = max(1, -(-total // per_page))   # ceil
+    # Component boundaries — the only row indices a page may break at.
+    free = [
+        i for i in range(1, total)
+        if (rows[i]["cls"]["en"], rows[i]["component"]["en"])
+        != (rows[i - 1]["cls"]["en"], rows[i - 1]["component"]["en"])
+    ]
+    # Snap each evenly-spaced cut to the nearest unused boundary (n_pages == 1
+    # makes this loop a no-op, leaving a single full-page chunk).
+    cuts: list[int] = []
+    for k in range(1, n_pages):
+        if not free:
+            break
+        ideal = k * total / n_pages
+        best = min(free, key=lambda s: abs(s - ideal))
+        free.remove(best)
+        cuts.append(best)
+    points = [0, *sorted(cuts), total]
+    return [rows[a:b] for a, b in zip(points, points[1:])]
+
+
+def paginate_bom_pages(pages: list[dict]) -> None:
+    """Split the ``bom`` page's authored rows (the hand-maintained parts list in
+    ``content/11_bom.json``) across as many pages as fit, cloning the page shell
+    for any overflow. This is layout only — it does NOT derive the list from the
+    per-section BOMs; the consolidated BOM is kept consistent by hand. Must run
+    BEFORE ``assign_page_numbers`` so any added pages get numbered."""
+    idx = next((i for i, p in enumerate(pages) if p["type"] == "bom"), None)
+    if idx is None:
+        return
+    template = pages[idx]
+    chunks = _paginate_bom(template.get("rows", []), BOM_ROWS_PER_PAGE)
+    template["rows"] = chunks[0]
+
+    # Build continuation pages for any overflow chunks and splice them in.
+    extras: list[dict] = []
+    for n, chunk in enumerate(chunks[1:], start=2):
+        cont = copy.deepcopy(template)
+        cont["page"] = f'{template["page"]}-{n}'
+        cont["rows"] = chunk
+        if cont.get("label"):  # tag each translation as a continuation
+            cont["label"] = {
+                lang: text + BOM_CONT_SUFFIX.get(lang, BOM_CONT_SUFFIX["en"])
+                for lang, text in cont["label"].items()
+            }
+        extras.append(cont)
+    if extras:
+        pages[idx + 1:idx + 1] = extras
 
 
 def cover_render_src(pages: list[dict], ctx: Ctx) -> str | None:
@@ -821,8 +895,8 @@ def build(langs: list[str], out_dir: Path, inline: bool, pdf: bool = False) -> l
     with _step("load + number pages"):
         css = STYLES_CSS.read_text(encoding="utf-8")
         pages = load_pages()
-        assign_page_numbers(pages)  # position-derived footer + TOC numbers
-        inject_consolidated_bom(pages)  # fill the BOM section from every section's parts
+        paginate_bom_pages(pages)  # split the authored BOM rows across pages (may add pages)
+        assign_page_numbers(pages)  # position-derived footer + TOC numbers (after BOM split)
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     chrome = find_chrome() if pdf else None
