@@ -32,8 +32,8 @@
     "rows": [
       {
         "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
+          "en": "Frame",
+          "zh": "框架"
         },
         "component": {
           "en": "Extrusion 2040",
@@ -48,8 +48,8 @@
       },
       {
         "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
+          "en": "Frame",
+          "zh": "框架"
         },
         "component": {
           "en": "Extrusion 2040",
@@ -64,8 +64,8 @@
       },
       {
         "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
+          "en": "Frame",
+          "zh": "框架"
         },
         "component": {
           "en": "Extrusion 1020",
@@ -80,8 +80,8 @@
       },
       {
         "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
+          "en": "Frame",
+          "zh": "框架"
         },
         "component": {
           "en": "Extrusion 1020",
@@ -92,54 +92,6 @@
         "desc": {
           "en": "Phone bed",
           "zh": "手机托架"
-        }
-      },
-      {
-        "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
-        },
-        "component": {
-          "en": "bracket",
-          "zh": "角码"
-        },
-        "spec": "Joining Plate",
-        "qty": "6",
-        "desc": {
-          "en": "Frame, Idler",
-          "zh": "框架、惰轮"
-        }
-      },
-      {
-        "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
-        },
-        "component": {
-          "en": "Motor bracket",
-          "zh": "电机支架"
-        },
-        "spec": "60×41×1.9",
-        "qty": "2",
-        "desc": {
-          "en": "Motor",
-          "zh": "电机"
-        }
-      },
-      {
-        "cls": {
-          "en": "Frame / Extrusions",
-          "zh": "框架 / 铝型材"
-        },
-        "component": {
-          "en": "Corner bracket",
-          "zh": "角支架"
-        },
-        "spec": "56 mm bend, 4 mm",
-        "qty": "1",
-        "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
         }
       },
       {
@@ -276,10 +228,10 @@
           "zh": "电子元件"
         },
         "component": {
-          "en": "MKS DLC32",
-          "zh": "MKS DLC32"
+          "en": "Control board",
+          "zh": "控制板"
         },
-        "spec": "Controller PCB",
+        "spec": "MKS DLC32 V2.1",
         "qty": "1",
         "desc": {
           "en": "Control board",
@@ -308,14 +260,14 @@
           "zh": "电子元件"
         },
         "component": {
-          "en": "TMC2209",
-          "zh": "TMC2209"
+          "en": "Stepper driver",
+          "zh": "步进电机驱动"
         },
-        "spec": "Stepper driver",
+        "spec": "TMC2209",
         "qty": "2",
         "desc": {
-          "en": "Wiring",
-          "zh": "接线"
+          "en": "Stepper driver",
+          "zh": "步进电机驱动"
         }
       },
       {
@@ -385,7 +337,55 @@
       {
         "cls": {
           "en": "Hardware",
-          "zh": "通用五金"
+          "zh": "五金件"
+        },
+        "component": {
+          "en": "bracket",
+          "zh": "一字连接板"
+        },
+        "spec": "Joining Plate",
+        "qty": "6",
+        "desc": {
+          "en": "Frame, Idler",
+          "zh": "框架、惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "五金件"
+        },
+        "component": {
+          "en": "Motor bracket",
+          "zh": "电机支架"
+        },
+        "spec": "60×41×1.9",
+        "qty": "2",
+        "desc": {
+          "en": "Motor",
+          "zh": "电机"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "五金件"
+        },
+        "component": {
+          "en": "Corner bracket",
+          "zh": "角码"
+        },
+        "spec": "56 mm bend, 4 mm",
+        "qty": "1",
+        "desc": {
+          "en": "Camera",
+          "zh": "摄像头"
+        }
+      },
+      {
+        "cls": {
+          "en": "Hardware",
+          "zh": "五金件"
         },
         "component": {
           "en": "Bumper",
@@ -401,7 +401,7 @@
       {
         "cls": {
           "en": "Hardware",
-          "zh": "通用五金"
+          "zh": "五金件"
         },
         "component": {
           "en": "Stylus tip",
@@ -417,7 +417,7 @@
       {
         "cls": {
           "en": "Hardware",
-          "zh": "通用五金"
+          "zh": "五金件"
         },
         "component": {
           "en": "Teflon tube",
@@ -433,7 +433,7 @@
       {
         "cls": {
           "en": "Hardware",
-          "zh": "通用五金"
+          "zh": "五金件"
         },
         "component": {
           "en": "Gooseneck",
