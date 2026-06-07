@@ -269,13 +269,13 @@
           "zh": "摄像头"
         },
         "spec": {
-          "en": "82 × 26 × 25 mm",
-          "zh": "82 × 26 × 25 mm"
+          "en": "4K HD USB webcam, autofocus",
+          "zh": "4K 高清 USB 电脑摄像头, 自动对焦"
         },
         "qty": "1",
         "desc": {
-          "en": "Overhead camera",
-          "zh": "俯拍摄像头"
+          "en": "Overhead phone-screen view",
+          "zh": "俯拍手机屏幕"
         }
       },
       {
@@ -300,15 +300,15 @@
       {
         "cls": {
           "en": "Wiring / Cables",
-          "zh": "线材"
+          "zh": "线缆"
         },
         "component": {
           "en": "Motor cable",
           "zh": "电机连接线"
         },
         "spec": {
-          "en": "XH2.54, 4-pin",
-          "zh": "XH2.54, 4 针"
+          "en": "XH2.54, 4-pin, 200 mm",
+          "zh": "XH2.54, 4 针, 200 mm"
         },
         "qty": "2",
         "desc": {
@@ -319,20 +319,20 @@
       {
         "cls": {
           "en": "Wiring / Cables",
-          "zh": "线材"
+          "zh": "线缆"
         },
         "component": {
-          "en": "Ground wire",
-          "zh": "接地线"
+          "en": "Lead wire",
+          "zh": "导线"
         },
         "spec": {
-          "en": "Solenoid earth",
-          "zh": "电磁铁接地"
+          "en": "0.3 mm² stranded flexible wire, pure copper core, 2 m",
+          "zh": "0.3 mm² 多股软线, 纯铜芯, 2 米"
         },
         "qty": "1",
         "desc": {
-          "en": "Solenoid → ground",
-          "zh": "电磁铁 → 接地"
+          "en": "Solenoid ground + lead extension",
+          "zh": "电磁铁接地、延长引线"
         }
       },
       {
@@ -345,8 +345,8 @@
           "zh": "步进电机"
         },
         "spec": {
-          "en": "NEMA 17, 34 mm",
-          "zh": "NEMA 17, 34 mm"
+          "en": "NEMA 17, 38 or 40 mm height",
+          "zh": "42 步进电机, 高度 38 或 40 mm"
         },
         "qty": "2",
         "desc": {
@@ -364,13 +364,13 @@
           "zh": "推拉式电磁铁"
         },
         "spec": {
-          "en": "15 × 30 × 13 mm",
-          "zh": "15 × 30 × 13 mm"
+          "en": "12 V, 0.8 A, 10 mm stroke, 0.2–6 N push-pull, 2×M3 mounts, 15 mm pitch",
+          "zh": "12 V, 0.8 A, 行程 10 mm, 推拉力 0.2–6 N, 安装孔 2×M3, 孔距 15 mm"
         },
         "qty": "1",
         "desc": {
-          "en": "Screen tapper",
-          "zh": "触屏执行器"
+          "en": "Drives the stylus tip to tap",
+          "zh": "驱动触控笔头点按屏幕"
         }
       },
       {
@@ -456,7 +456,7 @@
         },
         "component": {
           "en": "Stylus tip",
-          "zh": "触控笔尖"
+          "zh": "触控笔头"
         },
         "spec": {
           "en": "Capacitive, M3",
@@ -465,7 +465,7 @@
         "qty": "1",
         "desc": {
           "en": "Screen-tapping tip",
-          "zh": "触屏笔尖"
+          "zh": "触屏笔头"
         }
       },
       {
