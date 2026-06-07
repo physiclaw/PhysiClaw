@@ -673,13 +673,13 @@ BOM_ROWS_PER_PAGE = 16
 BOM_CONT_SUFFIX = {"en": " (cont.)", "zh": "（续）"}
 
 
-def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
-    """Partition the consolidated rows into balanced pages without splitting any
-    component's spec-rows (its rowspan must stay on one page). Uses
-    ``ceil(total/per_page)`` pages and places each evenly-spaced cut at the
-    component boundary nearest its ideal position, so pages come out balanced and
-    the last one is never left sparse. A class spanning a break repeats its label
-    (spans are recomputed per page)."""
+def _balanced_split(rows: list[dict], per_page: int) -> list[list[dict]]:
+    """Partition rows into balanced pages without splitting any component's
+    spec-rows (its rowspan must stay on one page). Uses ``ceil(total/per_page)``
+    pages and places each evenly-spaced cut at the component boundary nearest its
+    ideal position, so pages come out balanced and the last one is never left
+    sparse. A class spanning a break repeats its label (spans recomputed per
+    page)."""
     if not rows:
         return [[]]
     total = len(rows)
@@ -702,6 +702,19 @@ def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
         cuts.append(best)
     points = [0, *sorted(cuts), total]
     return [rows[a:b] for a, b in zip(points, points[1:])]
+
+
+def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
+    """Partition the consolidated rows into pages. A row carrying
+    ``"break_before": true`` forces a hard page break (it always starts a new
+    page); the spans between forced breaks are then balanced independently by
+    ``_balanced_split`` so each one still respects ``per_page``. Empty input
+    falls through as a single empty span to ``_balanced_split``'s own ``[[]]``."""
+    forced = [0, *(i for i in range(1, len(rows)) if rows[i].get("break_before")), len(rows)]
+    pages: list[list[dict]] = []
+    for a, b in zip(forced, forced[1:]):
+        pages.extend(_balanced_split(rows[a:b], per_page))
+    return pages
 
 
 def paginate_bom_pages(pages: list[dict]) -> None:

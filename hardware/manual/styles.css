@@ -527,6 +527,11 @@
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    /* Closing rule along the table's bottom edge (each BOM page is its own
+       table). Drawn on the table, not the last row, so it spans the full width
+       even when the last row is a rowspan continuation that has no Class /
+       Component cell — bookends the bottom the way thead does the top. */
+    border-bottom: 1px solid var(--rule);
   }
   .bom-table thead th {
     text-align: left;

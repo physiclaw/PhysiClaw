@@ -240,6 +240,7 @@
         }
       },
       {
+        "break_before": true,
         "cls": {
           "en": "Electronics",
           "zh": "电子元件"
@@ -506,6 +507,7 @@
         }
       },
       {
+        "break_before": true,
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
