@@ -135,8 +135,8 @@
           "zh": "同步轮"
         },
         "spec": {
-          "en": "GT2 20T, toothed",
-          "zh": "GT2 20T, 有齿"
+          "en": "GT2 20T, 5 mm bore, 6 mm width",
+          "zh": "GT2 20齿, 孔径 5 mm, 带宽 6 mm"
         },
         "qty": "2",
         "desc": {
@@ -154,13 +154,13 @@
           "zh": "惰轮"
         },
         "spec": {
-          "en": "M5×6 20T smooth",
-          "zh": "M5×6 20T 无齿"
+          "en": "GT2 20T smooth, 5 mm bore, 6 mm width",
+          "zh": "GT2 20齿 光面, 孔径 5 mm, 带宽 6 mm"
         },
-        "qty": "8",
+        "qty": "10",
         "desc": {
-          "en": "Belt corner idlers",
-          "zh": "同步带转角惰轮"
+          "en": "Redirect the CoreXY belt",
+          "zh": "引导 CoreXY 同步带转向"
         }
       },
       {
@@ -173,32 +173,13 @@
           "zh": "惰轮"
         },
         "spec": {
-          "en": "GT2 20T, smooth",
-          "zh": "GT2 20T, 无齿"
+          "en": "GT2 20T toothed, 5 mm bore, 6 mm width",
+          "zh": "GT2 20齿 有齿, 孔径 5 mm, 带宽 6 mm"
         },
         "qty": "2",
         "desc": {
-          "en": "Gantry belt idlers",
-          "zh": "龙门架同步带惰轮"
-        }
-      },
-      {
-        "cls": {
-          "en": "Motion components",
-          "zh": "运动组件"
-        },
-        "component": {
-          "en": "Idler",
-          "zh": "惰轮"
-        },
-        "spec": {
-          "en": "GT2 20T, toothed",
-          "zh": "GT2 20T, 有齿"
-        },
-        "qty": "2",
-        "desc": {
-          "en": "Gantry belt idlers",
-          "zh": "龙门架同步带惰轮"
+          "en": "Redirect the CoreXY belt",
+          "zh": "引导 CoreXY 同步带转向"
         }
       },
       {
@@ -211,13 +192,13 @@
           "zh": "直线导轨"
         },
         "spec": {
-          "en": "MGN9H, 240 mm",
-          "zh": "MGN9H, 240 mm"
+          "en": "MGN9H carriage, rail length 240 mm",
+          "zh": "MGN9H 滑块, 导轨长度 240 mm"
         },
         "qty": "2",
         "desc": {
-          "en": "Y-axis rails",
-          "zh": "Y 轴导轨"
+          "en": "Two Y-axis rails + carriage",
+          "zh": "两根 Y 轴导轨 + 滑块"
         }
       },
       {
@@ -230,13 +211,13 @@
           "zh": "直线导轨"
         },
         "spec": {
-          "en": "MGN9H, 150 mm",
-          "zh": "MGN9H, 150 mm"
+          "en": "MGN9H carriage, rail length 150 mm",
+          "zh": "MGN9H 滑块, 导轨长度 150 mm"
         },
         "qty": "1",
         "desc": {
-          "en": "X-axis rail",
-          "zh": "X 轴导轨"
+          "en": "X-axis rail + carriage",
+          "zh": "X 轴导轨 + 滑块"
         }
       },
       {
@@ -245,17 +226,17 @@
           "zh": "运动组件"
         },
         "component": {
-          "en": "GT2 belt",
-          "zh": "GT2 同步带"
+          "en": "Timing belt",
+          "zh": "同步带"
         },
         "spec": {
-          "en": "Open loop, 6 mm",
-          "zh": "开口, 6 mm"
+          "en": "GT2, 6 mm width, 5 m/roll",
+          "zh": "GT2, 带宽 6 mm, 5 米/卷"
         },
         "qty": "1",
         "desc": {
-          "en": "Drive belt",
-          "zh": "驱动同步带"
+          "en": "CoreXY belt",
+          "zh": "CoreXY 同步带"
         }
       },
       {
@@ -397,7 +378,7 @@
           "zh": "五金件"
         },
         "component": {
-          "en": "bracket",
+          "en": "Flat bracket",
           "zh": "一字连接板"
         },
         "spec": {
@@ -496,8 +477,8 @@
           "zh": "特氟龙管"
         },
         "spec": {
-          "en": "Ø6/5, 380mm",
-          "zh": "Ø6/5, 380mm"
+          "en": "Ø6/5, 380 mm",
+          "zh": "Ø6/5, 380 mm"
         },
         "qty": "1",
         "desc": {
