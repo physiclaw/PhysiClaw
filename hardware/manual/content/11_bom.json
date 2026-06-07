@@ -36,12 +36,12 @@
           "zh": "框架"
         },
         "component": {
-          "en": "Extrusion 2040",
-          "zh": "2040 铝型材"
+          "en": "European Standard Anodized Black Aluminum Profile Extrusion 2040",
+          "zh": "欧标 2040 铝型材黑色阳极氧化"
         },
         "spec": {
-          "en": "345 mm · CB",
-          "zh": "345 mm · CB"
+          "en": "Length 345 mm, counterbored 10 mm from each end for M6 SHCS",
+          "zh": "长度 345 mm, 距两端 10 mm 各开沉孔, 配 M6 圆柱头螺钉"
         },
         "qty": "2",
         "desc": {
@@ -55,12 +55,12 @@
           "zh": "框架"
         },
         "component": {
-          "en": "Extrusion 2040",
-          "zh": "2040 铝型材"
+          "en": "European Standard Anodized Black Aluminum Profile Extrusion 2040",
+          "zh": "欧标 2040 铝型材黑色阳极氧化"
         },
         "spec": {
-          "en": "190 mm",
-          "zh": "190 mm"
+          "en": "Length 190 mm, both ends tapped M6",
+          "zh": "长度 190 mm, 两端攻丝 M6"
         },
         "qty": "2",
         "desc": {
@@ -74,12 +74,12 @@
           "zh": "框架"
         },
         "component": {
-          "en": "Extrusion 1020",
-          "zh": "1020 铝型材"
+          "en": "European Standard Aluminum Profile Extrusion 1020",
+          "zh": "欧标 1020 铝型材"
         },
         "spec": {
-          "en": "185 mm",
-          "zh": "185 mm"
+          "en": "Length 185 mm",
+          "zh": "长度 185 mm"
         },
         "qty": "1",
         "desc": {
@@ -93,12 +93,12 @@
           "zh": "框架"
         },
         "component": {
-          "en": "Extrusion 1020",
-          "zh": "1020 铝型材"
+          "en": "European Standard Aluminum Profile Extrusion 1020",
+          "zh": "欧标 1020 铝型材"
         },
         "spec": {
-          "en": "230 mm, end holes",
-          "zh": "230 mm，带端孔"
+          "en": "Length 230 mm, M5 through-hole 10 mm from each end",
+          "zh": "长度 230 mm, 距两端 10 mm 开 M5 通孔"
         },
         "qty": "2",
         "desc": {
@@ -136,7 +136,7 @@
         },
         "spec": {
           "en": "GT2 20T, toothed",
-          "zh": "GT2 20T，有齿"
+          "zh": "GT2 20T, 有齿"
         },
         "qty": "2",
         "desc": {
@@ -174,7 +174,7 @@
         },
         "spec": {
           "en": "GT2 20T, smooth",
-          "zh": "GT2 20T，无齿"
+          "zh": "GT2 20T, 无齿"
         },
         "qty": "2",
         "desc": {
@@ -193,7 +193,7 @@
         },
         "spec": {
           "en": "GT2 20T, toothed",
-          "zh": "GT2 20T，有齿"
+          "zh": "GT2 20T, 有齿"
         },
         "qty": "2",
         "desc": {
@@ -250,7 +250,7 @@
         },
         "spec": {
           "en": "Open loop, 6 mm",
-          "zh": "开口，6 mm"
+          "zh": "开口, 6 mm"
         },
         "qty": "1",
         "desc": {
@@ -326,7 +326,7 @@
         },
         "spec": {
           "en": "XH2.54, 4-pin",
-          "zh": "XH2.54，4 针"
+          "zh": "XH2.54, 4 针"
         },
         "qty": "2",
         "desc": {
@@ -440,7 +440,7 @@
         },
         "spec": {
           "en": "56 mm bend, 4 mm",
-          "zh": "56 mm 折弯，4 mm"
+          "zh": "56 mm 折弯, 4 mm"
         },
         "qty": "1",
         "desc": {
@@ -478,7 +478,7 @@
         },
         "spec": {
           "en": "Capacitive, M3",
-          "zh": "电容式，M3"
+          "zh": "电容式, M3"
         },
         "qty": "1",
         "desc": {
@@ -516,7 +516,7 @@
         },
         "spec": {
           "en": "Ø10×196, 1/4-20 M/F",
-          "zh": "Ø10×196，1/4-20 公/母"
+          "zh": "Ø10×196, 1/4-20 公/母"
         },
         "qty": "1",
         "desc": {
