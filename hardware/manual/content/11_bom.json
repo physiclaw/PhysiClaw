@@ -108,21 +108,21 @@
       },
       {
         "cls": {
-          "en": "Printed parts",
-          "zh": "打印件"
-        },
-        "component": {
           "en": "Custom parts",
           "zh": "定制件"
         },
+        "component": {
+          "en": "3D printed parts",
+          "zh": "3D 打印件"
+        },
         "spec": {
-          "en": "SLS",
-          "zh": "SLS"
+          "en": "Selective Laser Sintering (SLS) PA12 nylon (or equivalent) black",
+          "zh": "选择性激光烧结（SLS）PA12 尼龙（或同等材料）黑色"
         },
         "qty": "10",
         "desc": {
-          "en": "Idler mount, XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder",
-          "zh": "惰轮支座、XY 连接件（左）、XY 连接件（右）、同步带夹具、电磁铁支架、手机托架、控制板支架"
+          "en": "Idler mount (4 pc), XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder",
+          "zh": "惰轮支座（4个）、XY 连接件（左）、XY 连接件（右）、同步带夹具、电磁铁支架、手机托架、控制板支架"
         }
       },
       {
