@@ -41,7 +41,7 @@
         },
         "spec": {
           "en": "Length 345 mm, counterbored 10 mm from each end for M6 SHCS",
-          "zh": "长度 345 mm, 距两端 10 mm 各开沉孔, 配 M6 圆柱头螺钉"
+          "zh": "长度 345 mm, 距两端 10 mm 各开沉孔, 配 M6 内六角圆柱头螺钉"
         },
         "qty": "2",
         "desc": {
@@ -250,32 +250,13 @@
           "zh": "控制板"
         },
         "spec": {
-          "en": "MKS DLC32 V2.1",
-          "zh": "MKS DLC32 V2.1"
+          "en": "MKS DLC32 V2.1 (incl. USB cable)",
+          "zh": "MKS DLC32 V2.1（含 USB 数据线）"
         },
         "qty": "1",
         "desc": {
           "en": "Main controller",
           "zh": "主控制器"
-        }
-      },
-      {
-        "cls": {
-          "en": "Electronics",
-          "zh": "电子元件"
-        },
-        "component": {
-          "en": "Camera",
-          "zh": "摄像头"
-        },
-        "spec": {
-          "en": "4K HD USB webcam, autofocus",
-          "zh": "4K 高清 USB 电脑摄像头, 自动对焦"
-        },
-        "qty": "1",
-        "desc": {
-          "en": "Overhead phone-screen view",
-          "zh": "俯拍手机屏幕"
         }
       },
       {
@@ -295,6 +276,44 @@
         "desc": {
           "en": "Motor drivers",
           "zh": "电机驱动模块"
+        }
+      },
+      {
+        "cls": {
+          "en": "Electronics",
+          "zh": "电子元件"
+        },
+        "component": {
+          "en": "Power supply",
+          "zh": "电源"
+        },
+        "spec": {
+          "en": "12 V 2 A adapter, 5.5×2.1 mm barrel plug",
+          "zh": "12 V 2 A 适配器, 5.5×2.1 mm 桶形插头"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "System power",
+          "zh": "整机供电"
+        }
+      },
+      {
+        "cls": {
+          "en": "Electronics",
+          "zh": "电子元件"
+        },
+        "component": {
+          "en": "Camera",
+          "zh": "摄像头"
+        },
+        "spec": {
+          "en": "4K HD USB webcam, autofocus",
+          "zh": "4K 高清 USB 电脑摄像头, 自动对焦"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "Overhead phone-screen view",
+          "zh": "俯拍手机屏幕"
         }
       },
       {
@@ -383,8 +402,8 @@
           "zh": "一字连接板"
         },
         "spec": {
-          "en": "Joining Plate",
-          "zh": "连接板"
+          "en": "40 × 18 × 4 mm (L×W×T), 20 mm hole pitch, M5 holes",
+          "zh": "40 × 18 × 4 mm（长×宽×厚）, 孔距 20 mm, M5 孔"
         },
         "qty": "6",
         "desc": {
@@ -402,13 +421,13 @@
           "zh": "电机支架"
         },
         "spec": {
-          "en": "60×41×1.9",
-          "zh": "60×41×1.9"
+          "en": "60 × 42 × 3 mm (L×W×T)",
+          "zh": "60 × 42 × 3 mm（长×宽×厚）"
         },
         "qty": "2",
         "desc": {
           "en": "Motor mounts",
-          "zh": "电机安装座"
+          "zh": "电机安装支架"
         }
       },
       {
@@ -514,7 +533,7 @@
         },
         "component": {
           "en": "SHCS",
-          "zh": "圆柱头螺钉"
+          "zh": "内六角圆柱头螺钉"
         },
         "spec": {
           "en": "M6×16",
@@ -533,7 +552,7 @@
         },
         "component": {
           "en": "SHCS",
-          "zh": "圆柱头螺钉"
+          "zh": "内六角圆柱头螺钉"
         },
         "spec": {
           "en": "1/4-20×16",
@@ -552,7 +571,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M3×6",
@@ -571,7 +590,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M3×8",
@@ -590,7 +609,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M3×12",
@@ -609,7 +628,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M5×10",
@@ -628,7 +647,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M5×16",
@@ -647,7 +666,7 @@
         },
         "component": {
           "en": "BHCS",
-          "zh": "半圆头螺钉"
+          "zh": "内六角半圆头螺钉"
         },
         "spec": {
           "en": "M5×20",
@@ -656,7 +675,7 @@
         "qty": "4",
         "desc": {
           "en": "Motor mounts",
-          "zh": "电机安装座"
+          "zh": "电机安装支架"
         }
       },
       {
@@ -666,7 +685,7 @@
         },
         "component": {
           "en": "Shoulder screw",
-          "zh": "轴肩螺钉"
+          "zh": "内六角轴肩螺钉"
         },
         "spec": {
           "en": "M4×10, Ø5",
@@ -685,7 +704,7 @@
         },
         "component": {
           "en": "Shoulder screw",
-          "zh": "轴肩螺钉"
+          "zh": "内六角轴肩螺钉"
         },
         "spec": {
           "en": "M4×20, Ø5",
@@ -704,7 +723,7 @@
         },
         "component": {
           "en": "FHCS",
-          "zh": "沉头螺钉"
+          "zh": "内六角沉头螺钉"
         },
         "spec": {
           "en": "M3×8",
@@ -723,7 +742,7 @@
         },
         "component": {
           "en": "FHCS",
-          "zh": "沉头螺钉"
+          "zh": "内六角沉头螺钉"
         },
         "spec": {
           "en": "M3×10",
@@ -742,7 +761,7 @@
         },
         "component": {
           "en": "FHCS",
-          "zh": "沉头螺钉"
+          "zh": "内六角沉头螺钉"
         },
         "spec": {
           "en": "M5×10",
@@ -761,7 +780,7 @@
         },
         "component": {
           "en": "FHCS",
-          "zh": "沉头螺钉"
+          "zh": "内六角沉头螺钉"
         },
         "spec": {
           "en": "M5×12",
@@ -961,6 +980,63 @@
         "desc": {
           "en": "Motor standoffs",
           "zh": "电机隔套"
+        }
+      },
+      {
+        "cls": {
+          "en": "Tools",
+          "zh": "工具"
+        },
+        "component": {
+          "en": "Hex key",
+          "zh": "内六角扳手"
+        },
+        "spec": {
+          "en": "2 mm",
+          "zh": "2 mm"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "M3 screws",
+          "zh": "M3 螺钉"
+        }
+      },
+      {
+        "cls": {
+          "en": "Tools",
+          "zh": "工具"
+        },
+        "component": {
+          "en": "Hex key",
+          "zh": "内六角扳手"
+        },
+        "spec": {
+          "en": "3 mm",
+          "zh": "3 mm"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "M5 screws",
+          "zh": "M5 螺钉"
+        }
+      },
+      {
+        "cls": {
+          "en": "Tools",
+          "zh": "工具"
+        },
+        "component": {
+          "en": "Hex key",
+          "zh": "内六角扳手"
+        },
+        "spec": {
+          "en": "5 mm",
+          "zh": "5 mm"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "M6 SHCS",
+          "zh": "M6 内六角圆柱头螺钉"
         }
       }
     ]

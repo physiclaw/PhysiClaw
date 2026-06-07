@@ -546,9 +546,9 @@
   /* Column widths: Class | Component | Spec | Qty | Application */
   .bom-table th:nth-child(1), .bom-table td.cls  { width: 13%; }
   .bom-table th:nth-child(2), .bom-table td.comp { width: 17%; }
-  .bom-table th:nth-child(3), .bom-table td.spec { width: 28%; }
+  .bom-table th:nth-child(3), .bom-table td.spec { width: 42%; }
   .bom-table th:nth-child(4), .bom-table td.qty  { width: 11%; }
-  .bom-table th:nth-child(5), .bom-table td.desc { width: 31%; }
+  .bom-table th:nth-child(5), .bom-table td.desc { width: 19%; }
   /* Right-align Qty, with a wide gutter before Application. */
   .bom-table th:nth-child(4) { text-align: right; padding-right: 15mm; }
   .bom-table tbody td {
