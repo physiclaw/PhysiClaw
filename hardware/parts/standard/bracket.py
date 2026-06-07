@@ -19,7 +19,7 @@ flat_hole_spacing  = 20  * MM   # center-to-center
 # pattern), centered on the shaft hole.
 motor_plate_length = 60   * MM    # along X
 motor_plate_width  = 42   * MM    # along Y
-motor_plate_thick  =  2 * MM    # along Z
+motor_plate_thick  =  3 * MM    # along Z
 
 motor_shaft_d        = 25 * MM    # shaft / pilot pass-through
 motor_shaft_x_offset = 20 * MM    # shaft hole center, from -X (left) edge
@@ -69,7 +69,7 @@ class FlatBracket(BaseStandardPart):
 
 
 class MotorBracket(BaseStandardPart):
-    """NEMA 17 motor mounting plate — 60 × 41 × 1.9 mm with a 25 mm
+    """NEMA 17 motor mounting plate — 60 × 42 × 3 mm with a 25 mm
     shaft pass-through and a 31 mm square pattern of 4 × Ø3.3 M3
     mounting holes around the shaft hole."""
 
