@@ -520,7 +520,7 @@
     margin-bottom: 5mm;
   }
   /* Consolidated parts list: one five-column table (Class / Component / Spec /
-     Qty / Where used). Two-level rowspan — the Class cell merges over all its
+     Qty / Application). Two-level rowspan — the Class cell merges over all its
      components, each Component cell merges over its specs. A heavier rule starts
      each new class (full width); a lighter rule starts each new component. */
   .bom-table {
@@ -538,13 +538,13 @@
     border-bottom: 1px solid var(--rule);
     padding: 2mm 4mm 2mm 0;
   }
-  /* Column widths: Class | Component | Spec | Qty | Where used */
+  /* Column widths: Class | Component | Spec | Qty | Application */
   .bom-table th:nth-child(1), .bom-table td.cls  { width: 13%; }
   .bom-table th:nth-child(2), .bom-table td.comp { width: 17%; }
   .bom-table th:nth-child(3), .bom-table td.spec { width: 19%; }
-  .bom-table th:nth-child(4), .bom-table td.qty  { width: 7%; }
-  .bom-table th:nth-child(5), .bom-table td.desc { width: 44%; }
-  /* Right-align Qty, with a wide gutter before Where used. */
+  .bom-table th:nth-child(4), .bom-table td.qty  { width: 11%; }
+  .bom-table th:nth-child(5), .bom-table td.desc { width: 40%; }
+  /* Right-align Qty, with a wide gutter before Application. */
   .bom-table th:nth-child(4) { text-align: right; padding-right: 15mm; }
   .bom-table tbody td {
     padding: 1.4mm 4mm 1.4mm 0;

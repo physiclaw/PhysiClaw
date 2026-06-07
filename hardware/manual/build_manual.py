@@ -554,7 +554,7 @@ def _rowspans(rows: list[dict], key: Callable[[dict], Any]) -> list[int]:
 
 def render_bom_page(page: dict, ctx: Ctx) -> str:
     """Full-page consolidated bill of materials — a five-column table
-    (Class / Component / Spec / Qty / Where used). Rows are grouped so the Class
+    (Class / Component / Spec / Qty / Application). Rows are grouped so the Class
     cell merges over all its components and each Component cell merges over its
     specs (two-level rowspan). Spans are computed per page, so a class split
     across a page break simply repeats its label on the continuation page. Rows
@@ -582,9 +582,17 @@ def render_bom_page(page: dict, ctx: Ctx) -> str:
             f'<td class="desc">{loc(r["desc"], ctx.lang)}</td></tr>'
         )
 
+    headers = [
+        {"en": "Class", "zh": "类别"},
+        {"en": "Component", "zh": "组件"},
+        {"en": "Spec", "zh": "规格"},
+        {"en": "Qty", "zh": "数量"},
+        {"en": "Application", "zh": "用途"},
+    ]
+    head_cells = "".join(f"<th>{loc(h, ctx.lang)}</th>" for h in headers)
     table = (
         '<table class="bom-table"><thead><tr>'
-        "<th>Class</th><th>Component</th><th>Spec</th><th>Qty</th><th>Where used</th>"
+        f"{head_cells}"
         f'</tr></thead><tbody>{"".join(body_parts)}</tbody></table>'
     )
     label = (f'<span class="label">{loc(page["label"], ctx.lang)}</span>'

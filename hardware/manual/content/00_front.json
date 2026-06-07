@@ -326,11 +326,11 @@
         "src": "fastener_30_pulley_assembled_cam1.svg",
         "h3": {
           "en": "GT2 drive pulley",
-          "zh": "GT2 同步带轮"
+          "zh": "GT2 同步轮"
         },
         "body": {
           "en": "20-tooth toothed pulley. One sits on each stepper shaft, locked to the motor's D-flat with a set screw; it drives the GT2 belt.",
-          "zh": "20 齿同步带轮。每个步进电机轴上装一个，用顶丝顶在电机的 D 形扁位上，由它带动 GT2 同步带。"
+          "zh": "20 齿同步轮。每个步进电机轴上装一个，用顶丝顶在电机的 D 形扁位上，由它带动 GT2 同步带。"
         },
         "ref": {
           "en": "GT2 · 20T · 5 mm bore · 6 mm belt",

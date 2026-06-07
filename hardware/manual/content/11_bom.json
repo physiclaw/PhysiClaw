@@ -45,8 +45,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Frame",
-          "zh": "框架"
+          "en": "Frame side rails",
+          "zh": "机身长边框"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Frame",
-          "zh": "框架"
+          "en": "Frame end rails",
+          "zh": "机身短边框"
         }
       },
       {
@@ -83,8 +83,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "Gantry X beam",
+          "zh": "龙门架横梁"
         }
       },
       {
@@ -102,8 +102,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Phone bed",
-          "zh": "手机托架"
+          "en": "Phone bed support",
+          "zh": "手机托架支撑"
         }
       },
       {
@@ -132,7 +132,7 @@
         },
         "component": {
           "en": "Pulley",
-          "zh": "同步带轮"
+          "zh": "同步轮"
         },
         "spec": {
           "en": "GT2 20T, toothed",
@@ -140,8 +140,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Motor",
-          "zh": "电机"
+          "en": "Motor drive pulleys",
+          "zh": "电机驱动轮"
         }
       },
       {
@@ -159,8 +159,8 @@
         },
         "qty": "8",
         "desc": {
-          "en": "Idler",
-          "zh": "惰轮"
+          "en": "Belt corner idlers",
+          "zh": "同步带转角惰轮"
         }
       },
       {
@@ -178,8 +178,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "Gantry belt idlers",
+          "zh": "龙门架同步带惰轮"
         }
       },
       {
@@ -197,8 +197,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "Gantry belt idlers",
+          "zh": "龙门架同步带惰轮"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "Y-axis rails",
+          "zh": "Y 轴导轨"
         }
       },
       {
@@ -235,8 +235,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "X-axis rail",
+          "zh": "X 轴导轨"
         }
       },
       {
@@ -254,8 +254,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Belt path",
-          "zh": "同步带绕法"
+          "en": "Drive belt",
+          "zh": "驱动同步带"
         }
       },
       {
@@ -273,8 +273,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Control board",
-          "zh": "控制板"
+          "en": "Main controller",
+          "zh": "主控制器"
         }
       },
       {
@@ -292,8 +292,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
+          "en": "Overhead camera",
+          "zh": "俯拍摄像头"
         }
       },
       {
@@ -311,8 +311,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Stepper driver",
-          "zh": "步进电机驱动"
+          "en": "Motor drivers",
+          "zh": "电机驱动模块"
         }
       },
       {
@@ -349,8 +349,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Solenoid → control board",
-          "zh": "电磁铁 → 控制板"
+          "en": "Solenoid → ground",
+          "zh": "电磁铁 → 接地"
         }
       },
       {
@@ -368,8 +368,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Motor",
-          "zh": "电机"
+          "en": "Drive motors",
+          "zh": "驱动电机"
         }
       },
       {
@@ -387,8 +387,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Touch end",
-          "zh": "触控机构"
+          "en": "Screen tapper",
+          "zh": "触屏执行器"
         }
       },
       {
@@ -406,8 +406,8 @@
         },
         "qty": "6",
         "desc": {
-          "en": "Frame, Idler",
-          "zh": "框架、惰轮"
+          "en": "Frame & idler joints",
+          "zh": "机身、惰轮连接"
         }
       },
       {
@@ -425,8 +425,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Motor",
-          "zh": "电机"
+          "en": "Motor mounts",
+          "zh": "电机安装座"
         }
       },
       {
@@ -444,8 +444,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
+          "en": "Camera arm mount",
+          "zh": "摄像头臂支座"
         }
       },
       {
@@ -463,8 +463,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Frame",
-          "zh": "框架"
+          "en": "Frame feet",
+          "zh": "机身脚垫"
         }
       },
       {
@@ -482,8 +482,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Touch end",
-          "zh": "触控机构"
+          "en": "Screen-tapping tip",
+          "zh": "触屏笔尖"
         }
       },
       {
@@ -501,8 +501,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Control board",
-          "zh": "控制板"
+          "en": "Wire routing",
+          "zh": "走线导管"
         }
       },
       {
@@ -520,8 +520,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
+          "en": "Camera arm",
+          "zh": "摄像头臂"
         }
       },
       {
@@ -539,8 +539,8 @@
         },
         "qty": "8",
         "desc": {
-          "en": "Frame",
-          "zh": "框架"
+          "en": "Frame joints",
+          "zh": "机身连接"
         }
       },
       {
@@ -558,8 +558,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
+          "en": "Camera arm",
+          "zh": "摄像头臂"
         }
       },
       {
@@ -577,8 +577,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Motor, Touch end",
-          "zh": "电机、触控机构"
+          "en": "Motors & stylus",
+          "zh": "电机、触控笔"
         }
       },
       {
@@ -596,8 +596,8 @@
         },
         "qty": "8",
         "desc": {
-          "en": "Belt path, Touch end",
-          "zh": "同步带绕法、触控机构"
+          "en": "Belt clamps & stylus",
+          "zh": "同步带夹具、触控笔"
         }
       },
       {
@@ -615,8 +615,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Control board",
-          "zh": "控制板"
+          "en": "Control board mount",
+          "zh": "控制板安装"
         }
       },
       {
@@ -634,8 +634,8 @@
         },
         "qty": "18",
         "desc": {
-          "en": "Frame, Idler, Camera",
-          "zh": "框架、惰轮、摄像头"
+          "en": "Frame, idlers, camera",
+          "zh": "机身、惰轮、摄像头"
         }
       },
       {
@@ -653,8 +653,8 @@
         },
         "qty": "8",
         "desc": {
-          "en": "Frame, Phone bed",
-          "zh": "框架、手机托架"
+          "en": "Frame & phone bed",
+          "zh": "机身、手机托架"
         }
       },
       {
@@ -672,8 +672,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Motor",
-          "zh": "电机"
+          "en": "Motor mounts",
+          "zh": "电机安装座"
         }
       },
       {
@@ -691,8 +691,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Idler, Linear motion",
-          "zh": "惰轮、直线运动"
+          "en": "Idler & gantry pulleys",
+          "zh": "惰轮、龙门架带轮"
         }
       },
       {
@@ -710,8 +710,8 @@
         },
         "qty": "6",
         "desc": {
-          "en": "Idler, Linear motion",
-          "zh": "惰轮、直线运动"
+          "en": "Idler & gantry pulleys",
+          "zh": "惰轮、龙门架带轮"
         }
       },
       {
@@ -748,8 +748,8 @@
         },
         "qty": "26",
         "desc": {
-          "en": "Linear motion, Touch end",
-          "zh": "直线运动、触控机构"
+          "en": "Gantry & stylus",
+          "zh": "龙门架、触控笔"
         }
       },
       {
@@ -767,8 +767,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Control board",
-          "zh": "控制板"
+          "en": "Control board mount",
+          "zh": "控制板安装"
         }
       },
       {
@@ -786,8 +786,8 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Linear motion",
-          "zh": "直线运动"
+          "en": "Gantry",
+          "zh": "龙门架"
         }
       },
       {
@@ -805,8 +805,8 @@
         },
         "qty": "20",
         "desc": {
-          "en": "Linear motion, Phone bed",
-          "zh": "直线运动、手机托架"
+          "en": "Gantry & phone bed",
+          "zh": "龙门架、手机托架"
         }
       },
       {
@@ -824,8 +824,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Frame, Linear motion",
-          "zh": "框架、直线运动"
+          "en": "Frame & gantry",
+          "zh": "机身、龙门架"
         }
       },
       {
@@ -843,8 +843,8 @@
         },
         "qty": "22",
         "desc": {
-          "en": "Frame, Idler, Phone bed, Control board, Camera",
-          "zh": "框架、惰轮、手机托架、控制板、摄像头"
+          "en": "Frame, idlers, phone bed, control board, camera",
+          "zh": "机身、惰轮、手机托架、控制板、摄像头"
         }
       },
       {
@@ -862,8 +862,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Touch end, Control board",
-          "zh": "触控机构、控制板"
+          "en": "Stylus & control board",
+          "zh": "触控笔、控制板"
         }
       },
       {
@@ -881,8 +881,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Idler, Linear motion",
-          "zh": "惰轮、直线运动"
+          "en": "Idlers & gantry",
+          "zh": "惰轮、龙门架"
         }
       },
       {
@@ -900,7 +900,7 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Idler",
+          "en": "Idlers",
           "zh": "惰轮"
         }
       },
@@ -919,8 +919,8 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Camera",
-          "zh": "摄像头"
+          "en": "Camera arm",
+          "zh": "摄像头臂"
         }
       },
       {
@@ -938,8 +938,8 @@
         },
         "qty": "12",
         "desc": {
-          "en": "Idler, Linear motion",
-          "zh": "惰轮、直线运动"
+          "en": "Idler & gantry pulleys",
+          "zh": "惰轮、龙门架带轮"
         }
       },
       {
@@ -957,8 +957,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Idler, Linear motion",
-          "zh": "惰轮、直线运动"
+          "en": "Idler & gantry pulleys",
+          "zh": "惰轮、龙门架带轮"
         }
       },
       {
@@ -976,8 +976,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Motor",
-          "zh": "电机"
+          "en": "Motor standoffs",
+          "zh": "电机隔套"
         }
       }
     ]

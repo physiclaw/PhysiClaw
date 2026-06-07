@@ -144,7 +144,7 @@
     "notes": [
       {
         "h3": { "en": "Two heights, on purpose", "zh": "故意分成两个高度" },
-        "body": { "en": "The A and B belts run on two stacked planes. Set Motor A's pulley (left) to the lower plane and Motor B's (right) to the upper — slide each along the shaft, then lock the set screw.", "zh": "A、B 两条同步带分别走上下两层平面。把电机 A 的同步带轮（左边）放在下层，电机 B 的（右边）放在上层——各自沿轴滑到位，再拧紧紧定螺钉锁住。" },
+        "body": { "en": "The A and B belts run on two stacked planes. Set Motor A's pulley (left) to the lower plane and Motor B's (right) to the upper — slide each along the shaft, then lock the set screw.", "zh": "A、B 两条同步带分别走上下两层平面。把电机 A 的同步轮（左边）放在下层，电机 B 的（右边）放在上层——各自沿轴滑到位，再拧紧紧定螺钉锁住。" },
         "classes": "note overlay sm",
         "style": "left:40mm; top:20mm; width:80mm;"
       },
@@ -158,7 +158,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Pulley", "zh": "同步带轮" }, "spec": "GT2 20T, toothed", "qty": "2" }
+        { "component": { "en": "Pulley", "zh": "同步轮" }, "spec": "GT2 20T, toothed", "qty": "2" }
       ]
     }
   }
