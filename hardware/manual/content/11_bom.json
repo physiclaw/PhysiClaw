@@ -127,6 +127,63 @@
       },
       {
         "cls": {
+          "en": "Linear guide",
+          "zh": "线轨"
+        },
+        "component": {
+          "en": "MGN9H rail",
+          "zh": "MGN9H 导轨"
+        },
+        "spec": {
+          "en": "rail length 240 mm",
+          "zh": "导轨长度 240 mm"
+        },
+        "qty": "2",
+        "desc": {
+          "en": "Y-axis rails",
+          "zh": "Y 轴导轨"
+        }
+      },
+      {
+        "cls": {
+          "en": "Linear guide",
+          "zh": "线轨"
+        },
+        "component": {
+          "en": "MGN9H rail",
+          "zh": "MGN9H 导轨"
+        },
+        "spec": {
+          "en": "rail length 150 mm",
+          "zh": "导轨长度 150 mm"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "X-axis rail",
+          "zh": "X 轴导轨"
+        }
+      },
+      {
+        "cls": {
+          "en": "Linear guide",
+          "zh": "线轨"
+        },
+        "component": {
+          "en": "MGN9H carriage",
+          "zh": "MGN9H 滑块"
+        },
+        "spec": {
+          "en": "H-type long carriage, 4×M3, 15 × 16 mm mounting hole pitch",
+          "zh": "H 型加长滑块, 4×M3, 安装孔距 15 × 16 mm"
+        },
+        "qty": "3",
+        "desc": {
+          "en": "One per rail",
+          "zh": "每根导轨一个"
+        }
+      },
+      {
+        "cls": {
           "en": "Motion components",
           "zh": "运动组件"
         },
@@ -180,44 +237,6 @@
         "desc": {
           "en": "Redirect the CoreXY belt",
           "zh": "引导 CoreXY 同步带转向"
-        }
-      },
-      {
-        "cls": {
-          "en": "Motion components",
-          "zh": "运动组件"
-        },
-        "component": {
-          "en": "Linear rail",
-          "zh": "直线导轨"
-        },
-        "spec": {
-          "en": "MGN9H carriage, rail length 240 mm",
-          "zh": "MGN9H 滑块, 导轨长度 240 mm"
-        },
-        "qty": "2",
-        "desc": {
-          "en": "Two Y-axis rails + carriage",
-          "zh": "两根 Y 轴导轨 + 滑块"
-        }
-      },
-      {
-        "cls": {
-          "en": "Motion components",
-          "zh": "运动组件"
-        },
-        "component": {
-          "en": "Linear rail",
-          "zh": "直线导轨"
-        },
-        "spec": {
-          "en": "MGN9H carriage, rail length 150 mm",
-          "zh": "MGN9H 滑块, 导轨长度 150 mm"
-        },
-        "qty": "1",
-        "desc": {
-          "en": "X-axis rail + carriage",
-          "zh": "X 轴导轨 + 滑块"
         }
       },
       {
