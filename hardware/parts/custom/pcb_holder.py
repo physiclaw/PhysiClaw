@@ -1,3 +1,5 @@
+import math
+
 from build123d import *
 
 from hardware.parts._fits import (
@@ -52,17 +54,27 @@ rib_cy    = 0  * MM                              # rib center in Y
 # cylinder side (top), threading into the extrusion T-slot below the rib.
 mount_hole_pitch = 20 * MM   # along X, centered on the rib
 
-# ── Lightening ────────────────────────────────────────────────────────────────
-# Capsule cut-outs through the plate only (never the rib) — the PCB is light, so
-# cut aggressively. A staggered grid, filtered against the standoffs, the rib
-# footprint and a plate-edge border.
-cap_len     = 18  * MM
-cap_wid     = 8   * MM
-cap_wall_x  = 4   * MM           # end-to-end gap along the capsule
-cap_wall_y  = 3.5 * MM           # gap between rows
+# ── Lightening: hexagonal honeycomb ───────────────────────────────────────────
+# The PCB rests on the four standoffs, not the plate, so the web between them
+# carries almost nothing — honeycomb it aggressively (matching the phone bed).
+# Pointy-top hex holes on an offset grid (uniform `hex_wall` between neighbours),
+# filtered against the standoff rings, the rib footprint, the left boss and a
+# plate-edge border, so those stay solid.
+hex_flat    = 9  * MM            # hole flat-to-flat (small cells — the plate is
+#                                  crowded with standoffs, so fine cells pack best)
+hex_wall    = 1  * MM            # wall between holes (thin PA12 rib)
 cap_margin  = 4   * MM           # plate-edge border
 cap_keepout = cyl_d / 2 + 2.5 * MM   # clearance ring around each standoff
 rib_keepout = 1.5 * MM           # clearance around the rib footprint (thin wall only)
+
+# Relief slots flanking the rib along X. The hex grid can't seat a cell in the
+# band just beside the rib (those rows overlap the rib/M5-countersink keep-out and
+# get dropped), leaving a solid strip. Two stadium slots — one each side, in the
+# plate beside the rib (clear of the rib's y∈[-tab_y/2, tab_y/2] and the y=0
+# countersinks) — open that strip up.
+rib_slot_len = 32 * MM
+rib_slot_wid = 5  * MM
+rib_slot_y   = tab_y / 2 + rib_slot_wid / 2 + 1 * MM   # ± offset (≈8.5): 1 mm wall to rib
 
 # Round the four plate corners (d = 4 mm → radius 2 mm).
 corner_d = 4 * MM
@@ -89,20 +101,27 @@ def standoff_locs(z):
 
 
 def _lightening_centers():
-    pitch_x, pitch_y = cap_len + cap_wall_x, cap_wid + cap_wall_y
-    hx, hy = cap_len / 2, cap_wid / 2
+    pitch = hex_flat + hex_wall          # nearest-neighbour centre distance
+    hx = hex_flat / 2                    # horizontal half-extent (apothem)
+    hy = hex_flat / math.sqrt(3)         # vertical half-extent (vertex, pointy-top)
+    dx, dy = pitch, pitch * math.sqrt(3) / 2
+    # Solid keep-outs (rects): standoff rings, the rib footprint, and the left
+    # boss/gusset/bore region on the -X edge.
     keepouts = [(sx - cap_keepout, sx + cap_keepout,
                  sy - cap_keepout, sy + cap_keepout) for sx, sy in standoff_xy]
     keepouts.append((rib_cx - tab_x / 2 - rib_keepout, rib_cx + tab_x / 2 + rib_keepout,
                      rib_cy - tab_y / 2 - rib_keepout, rib_cy + tab_y / 2 + rib_keepout))
-    nx = int(plate_half_x / pitch_x) + 2
-    ny = int(plate_half_y / pitch_y) + 2
+    boss_hy = left_cyl_d / 2 + gusset_flare + 1.5
+    boss_x_in = -plate_half_x + left_cyl_embed - left_cyl_len + left_cyl_bore_depth + 2
+    keepouts.append((-plate_half_x, boss_x_in, -boss_hy, boss_hy))
+    nx = int(plate_half_x / dx) + 2
+    ny = int(plate_half_y / dy) + 2
     centers = []
     for j in range(-ny, ny + 1):
-        cy = j * pitch_y
-        x_off = pitch_x / 2 if j % 2 else 0          # brick stagger
+        cy = j * dy
+        x_off = pitch / 2 if j % 2 else 0            # honeycomb row offset
         for i in range(-nx, nx + 1):
-            cx = i * pitch_x + x_off
+            cx = i * dx + x_off
             if (cx - hx < -plate_half_x + cap_margin or cx + hx > plate_half_x - cap_margin
                     or cy - hy < -plate_half_y + cap_margin or cy + hy > plate_half_y - cap_margin):
                 continue
@@ -152,10 +171,16 @@ class PcbHolder(BaseCustomPart):
                     counter_sink_angle=CSK_ANGLE,
                 )
 
-            # Capsule lightening through the plate (one sketch, one subtract).
+            # Honeycomb lightening through the plate (one sketch, one subtract).
+            # Pointy-top hexes: apothem = hex_flat/2, rotated 30° from the
+            # build123d default so flats face left/right.
             with BuildSketch(Plane.XY):
                 with Locations(*_lightening_centers()):
-                    SlotOverall(cap_len, cap_wid)
+                    RegularPolygon(radius=hex_flat / 2, side_count=6,
+                                   major_radius=False, rotation=30)
+                # Relief slots beside the rib (along X).
+                with Locations((rib_cx, rib_slot_y), (rib_cx, -rib_slot_y)):
+                    SlotOverall(rib_slot_len, rib_slot_wid)
             extrude(amount=thickness, mode=Mode.SUBTRACT)
 
             # Round the four plate corners.
