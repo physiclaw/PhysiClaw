@@ -4,7 +4,7 @@ from hardware.parts.base import BaseStandardPart
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 body_side        = 42 * MM
-default_height   = 34 * MM    # default body height (override per-instance)
+default_height   = 38 * MM    # default body height (override per-instance)
 
 # Mounting: 4× M3 threaded holes on a 31 × 31 square, on the top face.
 mount_spacing    = 31 * MM    # hole-center to hole-center along each axis

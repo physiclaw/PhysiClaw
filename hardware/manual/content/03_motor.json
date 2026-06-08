@@ -38,7 +38,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
-        { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 34 mm", "qty": "1" },
+        { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 38 mm", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×20", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "M6 (Ø20×12)", "qty": "2" }
@@ -95,7 +95,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
-        { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 34 mm", "qty": "1" },
+        { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 38 mm", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×20", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "M6 (Ø20×12)", "qty": "2" }
