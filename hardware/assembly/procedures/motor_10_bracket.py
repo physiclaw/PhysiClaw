@@ -28,7 +28,7 @@ the rings hang and the M5 screws drop through.
   * 1 x Nema17Motor
   * 1 x MotorBracket
   * 4 x BHCS M3 × 6 — into the motor's top-face M3 mounts
-  * 2 x BHCS M5 × 20 — through the bracket and ring spacer
+  * 2 x BHCS M5 × 16 — through the bracket and ring spacer
   * 2 x Ring M6 × 20 × 8 — spacer between bracket and frame
 
 Run from the repo root:
@@ -54,7 +54,6 @@ from hardware.parts.standard.ring import SPECS as RING_SPECS, Ring
 from hardware.parts.standard.screw import Screw
 
 BHCS_M3_LENGTH = 6           # mm — BHCS M3 underhead length (motor mount)
-BHCS_M5_LENGTH = 20          # mm — BHCS M5 underhead length (frame mount)
 BRACKET_GAP    = 30          # mm — exploded: motor top face → bracket bottom
 SCREW_GAP      = 15          # mm — exploded: bracket top → screw shank tip
 RING_GAP       = 12          # mm — exploded: bracket bottom → ring top (drop
@@ -71,10 +70,12 @@ class MO10Bracket(BaseAssembly):
     # derives the output filename from the subclass's own module, so
     # no other override is needed.
     compound_label: str = "motor_10_bracket"
-    # Frame-mount spacer spec. Motor A (this class) uses the 8 mm standoff so
-    # its pulley lands on the LOWER belt plane; Motor B (motor_20_bracket)
-    # overrides this to the 12 mm spacer for the UPPER plane.
+    # Frame-mount spacer spec + matching M5 screw length. Motor A (this class)
+    # uses the 8 mm standoff so its pulley lands on the LOWER belt plane;
+    # Motor B (motor_20_bracket) overrides both to the 12 mm spacer (UPPER
+    # plane) and the 4 mm longer M5×20 screw that spans it.
     RING_SPEC: str = "M6x20x8"      # 20 mm OD × 8 mm tall spacer (M6 bore)
+    BHCS_M5_LENGTH: int = 16        # mm — BHCS M5 underhead length (frame mount)
     motor_z_rotation: float = 180   # 180° puts the plug on native +Y → world
                                     # -X (LEFT side from top view) when
                                     # placed via motor_11_frame's mapping.
@@ -84,7 +85,7 @@ class MO10Bracket(BaseAssembly):
         motor = Nema17Motor().build().rotate(Axis.Z, self.motor_z_rotation)
         bracket = MotorBracketPart().build()
         screws_m3 = [Screw("BHCS", "M3", BHCS_M3_LENGTH).build() for _ in range(4)]
-        screws_m5 = [Screw("BHCS", "M5", BHCS_M5_LENGTH).build() for _ in range(2)]
+        screws_m5 = [Screw("BHCS", "M5", self.BHCS_M5_LENGTH).build() for _ in range(2)]
         rings = [Ring(self.RING_SPEC).build() for _ in range(2)]
         ring_height = RING_SPECS[self.RING_SPEC]["height"]
 
@@ -124,7 +125,7 @@ class MO10Bracket(BaseAssembly):
         if self.exploded:
             shank_tip_z = bracket_top_z + SCREW_GAP
             m3_under_z  = shank_tip_z + BHCS_M3_LENGTH
-            m5_under_z  = shank_tip_z + BHCS_M5_LENGTH
+            m5_under_z  = shank_tip_z + self.BHCS_M5_LENGTH
         else:
             m3_under_z = m5_under_z = bracket_top_z
         bracket.move(Location((bracket_dx, 0, (bracket_top_z + bracket_bottom_z) / 2)))
