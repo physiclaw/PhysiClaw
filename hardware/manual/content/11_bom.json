@@ -973,8 +973,8 @@
           "zh": "轴套"
         },
         "spec": {
-          "en": "5 mm ID, 10 mm OD, 9 mm height (stack multiple to reach)",
-          "zh": "内径 5 mm, 外径 10 mm, 高度 9 mm（可多个叠加至此高度）"
+          "en": "5 mm ID, 10 mm OD, 9 mm height",
+          "zh": "内径 5 mm, 外径 10 mm, 高度 9 mm"
         },
         "qty": "4",
         "desc": {
@@ -992,13 +992,32 @@
           "zh": "轴套"
         },
         "spec": {
-          "en": "6 mm ID, 12–20 mm OD, 12 mm height (stack multiple to reach)",
-          "zh": "内径 6 mm, 外径 12–20 mm, 高度 12 mm（可多个叠加至此高度）"
+          "en": "6 mm ID, 12–20 mm OD, 8 mm height",
+          "zh": "内径 6 mm, 外径 12–20 mm, 高度 8 mm"
         },
-        "qty": "4",
+        "qty": "2",
         "desc": {
-          "en": "Motor standoffs",
-          "zh": "电机轴套"
+          "en": "Motor A standoffs",
+          "zh": "电机 A 轴套"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Spacer",
+          "zh": "轴套"
+        },
+        "spec": {
+          "en": "6 mm ID, 12–20 mm OD, 12 mm height",
+          "zh": "内径 6 mm, 外径 12–20 mm, 高度 12 mm"
+        },
+        "qty": "2",
+        "desc": {
+          "en": "Motor B standoffs",
+          "zh": "电机 B 轴套"
         }
       },
       {
