@@ -27,7 +27,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Control board holder", "zh": "控制板支架" }, "spec": "SLS 3D Print", "qty": "1" },
-        { "component": { "en": "FHCS", "zh": "沉头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "M5", "qty": "2" }
       ]
     }
@@ -62,7 +62,7 @@
     "notes": [
       {
         "h3": { "en": "Fasten the control board", "zh": "固定控制板" },
-        "body": { "en": "Four screw–nut pairs. The lower two nuts are obscured and not drawn.", "zh": "一共四组螺钉配螺母。下面两颗螺母被挡住了，图里没画出来。" },
+        "body": { "en": "Four screw–nut pairs. The lower two nuts are obscured and not drawn.", "zh": "一共四组螺栓配螺母。下面两颗螺母被挡住了，图里没画出来。" },
         "classes": "note overlay sm",
         "style": "left:150mm; top:120mm; width:90mm;"
       }
@@ -71,7 +71,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "MKS DLC32", "zh": "MKS DLC32" }, "spec": "Controller PCB", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×12", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×12", "qty": "4" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M3", "qty": "4" }
       ]
     }

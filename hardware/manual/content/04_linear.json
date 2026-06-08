@@ -65,7 +65,7 @@
         },
         "body": {
           "en": "Thread an FHCS into every other hole and let its hammer T-nut dangle on the screw tip. Lower the whole rail onto the extrusion slot, then tighten to draw the nuts up snug.",
-          "zh": "每隔一个孔拧一颗沉头螺钉，让 T 型螺母吊在螺钉头上。把整条导轨放进型材槽，再拧紧，把螺母拉上来夹紧。"
+          "zh": "每隔一个孔拧一颗沉头螺栓，让 T 型螺母吊在螺栓头上。把整条导轨放进型材槽，再拧紧，把螺母拉上来夹紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:80mm; width:74mm;"
@@ -101,7 +101,7 @@
         {
           "component": {
             "en": "FHCS",
-            "zh": "沉头螺钉"
+            "zh": "沉头螺栓"
           },
           "spec": "M3×10",
           "qty": "12"
@@ -209,7 +209,7 @@
         },
         "body": {
           "en": "Run all four screws in finger-tight first, then tighten opposite corners in pairs. This seats the joint flat on the slider instead of tilting it to one side.",
-          "zh": "先把四颗螺钉都用手拧到位，再两两对角拧紧。这样连接件才能平贴在滑块上，不会歪向一边。"
+          "zh": "先把四颗螺栓都用手拧到位，再两两对角拧紧。这样连接件才能平贴在滑块上，不会歪向一边。"
         },
         "classes": "note overlay sm",
         "style": "left:100mm; top:30mm; width:80mm;"
@@ -240,7 +240,7 @@
         {
           "component": {
             "en": "FHCS",
-            "zh": "沉头螺钉"
+            "zh": "沉头螺栓"
           },
           "spec": "M3×10",
           "qty": "8"
@@ -342,7 +342,7 @@
         {
           "component": {
             "en": "FHCS",
-            "zh": "沉头螺钉"
+            "zh": "沉头螺栓"
           },
           "spec": "M5×12",
           "qty": "2"
@@ -399,7 +399,7 @@
         {
           "component": {
             "en": "FHCS",
-            "zh": "沉头螺钉"
+            "zh": "沉头螺栓"
           },
           "spec": "M3×10",
           "qty": "4"
@@ -493,7 +493,7 @@
         {
           "component": {
             "en": "Shoulder screw",
-            "zh": "轴肩螺钉"
+            "zh": "轴肩螺栓"
           },
           "spec": "M4×20, Ø5",
           "qty": "1"
@@ -616,7 +616,7 @@
         {
           "component": {
             "en": "Shoulder screw",
-            "zh": "轴肩螺钉"
+            "zh": "轴肩螺栓"
           },
           "spec": "M4×10, Ø5",
           "qty": "1"
@@ -731,7 +731,7 @@
         {
           "component": {
             "en": "Shoulder screw",
-            "zh": "轴肩螺钉"
+            "zh": "轴肩螺栓"
           },
           "spec": "M4×10, Ø5",
           "qty": "1"
@@ -846,7 +846,7 @@
         {
           "component": {
             "en": "Shoulder screw",
-            "zh": "轴肩螺钉"
+            "zh": "轴肩螺栓"
           },
           "spec": "M4×20, Ø5",
           "qty": "1"

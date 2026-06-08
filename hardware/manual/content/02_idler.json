@@ -16,8 +16,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Center hardware first", "zh": "先装中间的螺钉螺母" },
-        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺钉放进中间的沉孔里——要是先装好两边的零件，中间的就不好塞进去了。" },
+        "h3": { "en": "Center hardware first", "zh": "先装中间的螺栓螺母" },
+        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔里——要是先装好两边的零件，中间的就不好塞进去了。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
       },
@@ -28,8 +28,8 @@
         "style": "left:130mm; top:100mm; width:78mm;"
       },
       {
-        "h3": { "en": "Flat face toward the screw", "zh": "平的一面朝着螺钉" },
-        "body": { "en": "Seat each square nut with its flat face pointing toward its screw.", "zh": "放四方螺母时，让平的一面朝向它对应的螺钉。" },
+        "h3": { "en": "Flat face toward the screw", "zh": "平的一面朝着螺栓" },
+        "body": { "en": "Seat each square nut with its flat face pointing toward its screw.", "zh": "放四方螺母时，让平的一面朝向它对应的螺栓。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:140mm; width:78mm;"
       }
@@ -39,9 +39,9 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×10, Ø5", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×10, Ø5", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "3" }
@@ -60,7 +60,7 @@
     "notes": [
       {
         "h3": { "en": "Two ways to the frame", "zh": "两处固定到框架" },
-        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺钉咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连起来。" },
+        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺栓咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连起来。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:30mm; width:80mm;"
       },
@@ -75,7 +75,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
       ]
     }
@@ -107,8 +107,8 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
@@ -137,7 +137,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
       ]
     }
@@ -163,8 +163,8 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×10, Ø5", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×10, Ø5", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }
       ]
@@ -209,8 +209,8 @@
       "rows": [
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺钉" }, "spec": "M4×20, Ø5", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }

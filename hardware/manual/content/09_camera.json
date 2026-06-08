@@ -18,7 +18,7 @@
     "notes": [
       {
         "h3": { "en": "1/4-20, not metric", "zh": "1/4-20 英制，不是公制" },
-        "body": { "en": "The socket screw and hex nut that the gooseneck mounts on are 1/4-20 — the imperial tripod thread (≈ 6.35 mm). Don't substitute an M6.", "zh": "装鹅颈臂用的内六角螺钉和六角螺母是 1/4-20 规格，也就是英制三脚架螺纹（约 6.35 mm）。别用 M6 代替。" },
+        "body": { "en": "The socket screw and hex nut that the gooseneck mounts on are 1/4-20 — the imperial tripod thread (≈ 6.35 mm). Don't substitute an M6.", "zh": "装鹅颈臂用的内六角螺栓和六角螺母是 1/4-20 规格，也就是英制三脚架螺纹（约 6.35 mm）。别用 M6 代替。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:120mm; width:70mm;"
       }
@@ -27,9 +27,9 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Corner bracket", "zh": "角支架" }, "spec": "56 mm bend, 4 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "M5", "qty": "2" },
-        { "component": { "en": "SHCS", "zh": "圆柱头螺钉" }, "spec": "1/4-20×16", "qty": "1" },
+        { "component": { "en": "SHCS", "zh": "圆柱头螺栓" }, "spec": "1/4-20×16", "qty": "1" },
         { "component": { "en": "Hex nut", "zh": "六角螺母" }, "spec": "1/4-20", "qty": "1" }
       ]
     }

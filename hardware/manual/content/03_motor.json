@@ -23,13 +23,13 @@
       },
       {
         "h3": { "en": "Only the spacer height matters", "zh": "只有隔套高度有要求" },
-        "body": { "en": "The spacer must be 12 mm tall. Any bore over 5 mm (to clear the M5 screw) and outer diameter over 8 mm and up to 20 mm will do, or stack shorter spacers to total 12 mm.", "zh": "隔套高度必须是 12 mm。内孔大于 5 mm（能让 M5 螺钉穿过）、外径在 8 mm 到 20 mm 之间就行；也可以用几个矮的叠起来凑够 12 mm。" },
+        "body": { "en": "The spacer must be 12 mm tall. Any bore over 5 mm (to clear the M5 screw) and outer diameter over 8 mm and up to 20 mm will do, or stack shorter spacers to total 12 mm.", "zh": "隔套高度必须是 12 mm。内孔大于 5 mm（能让 M5 螺栓穿过）、外径在 8 mm 到 20 mm 之间就行；也可以用几个矮的叠起来凑够 12 mm。" },
         "classes": "note overlay sm",
         "style": "left:100mm; top:20mm; width:80mm;"
       },
       {
         "h3": { "en": "Tighten in a cross pattern", "zh": "按对角顺序拧紧" },
-        "body": { "en": "Run all four motor screws in finger-tight first, then tighten opposite corners in pairs. This pulls the motor flat against the bracket instead of tilting it to one side.", "zh": "先把四颗电机螺钉都用手拧到位，再两两对角拧紧。这样电机才能平贴在支架上，不会歪向一边。" },
+        "body": { "en": "Run all four motor screws in finger-tight first, then tighten opposite corners in pairs. This pulls the motor flat against the bracket instead of tilting it to one side.", "zh": "先把四颗电机螺栓都用手拧到位，再两两对角拧紧。这样电机才能平贴在支架上，不会歪向一边。" },
         "classes": "note overlay sm",
         "style": "left:125mm; top:75mm; width:70mm;"
       }
@@ -39,8 +39,8 @@
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
         { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 34 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×6", "qty": "4" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×20", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×20", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M6 (Ø20×12)", "qty": "2" }
       ]
     }
@@ -96,8 +96,8 @@
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
         { "component": { "en": "Stepper motor", "zh": "步进电机" }, "spec": "NEMA 17, 34 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×6", "qty": "4" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×20", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×20", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "隔套" }, "spec": "M6 (Ø20×12)", "qty": "2" }
       ]
     }

@@ -202,7 +202,7 @@
         "src": "fastener_11_SHCS_assembled_cam1.svg",
         "h3": {
           "en": "Socket head cap screw (SHCS)",
-          "zh": "内六角圆柱头螺钉（SHCS）"
+          "zh": "内六角圆柱头螺栓（SHCS）"
         },
         "body": {
           "en": "Cylindrical head, hex drive.",
@@ -217,7 +217,7 @@
         "src": "fastener_10_BHCS_assembled_cam1.svg",
         "h3": {
           "en": "Button head cap screw (BHCS)",
-          "zh": "内六角半圆头螺钉（BHCS）"
+          "zh": "内六角半圆头螺栓（BHCS）"
         },
         "body": {
           "en": "Domed head, hex drive. Used on surfaces where a lower profile matters but a flush head isn't required.",
@@ -232,7 +232,7 @@
         "src": "fastener_12_FHCS_assembled_cam1.svg",
         "h3": {
           "en": "Flat head cap screw (FHCS)",
-          "zh": "内六角沉头螺钉（FHCS）"
+          "zh": "内六角沉头螺栓（FHCS）"
         },
         "body": {
           "en": "90° countersunk head, hex drive. Sits flush with the surface — used where nothing can protrude above the part.",
@@ -308,7 +308,7 @@
         },
         "body": {
           "en": "Slides into the slot from the open end of the extrusion. As you tighten the screw, the nut is pulled up and catches on the inner edges of the slot opening.",
-          "zh": "从型材的开口端滑进滑槽。拧紧螺钉时，螺母被往上拉，卡住滑槽开口的内侧边缘。"
+          "zh": "从型材的开口端滑进滑槽。拧紧螺栓时，螺母被往上拉，卡住滑槽开口的内侧边缘。"
         }
       },
       {
@@ -414,7 +414,7 @@
         },
         "body": {
           "en": "These cover the socket screws used in this build — 2 mm for M3 button/flat head screws, 3 mm for M5 button/flat head screws (BHCS/FHCS), and 5 mm for M6 socket head cap screws (SHCS).",
-          "zh": "这几把扳手覆盖本次装配用到的内六角螺钉——2 mm 对应 M3 半圆头/沉头螺钉，3 mm 对应 M5 半圆头/沉头螺钉，5 mm 对应 M6 内六角圆柱头螺钉。"
+          "zh": "这几把扳手覆盖本次装配用到的内六角螺栓——2 mm 对应 M3 半圆头/沉头螺栓，3 mm 对应 M5 半圆头/沉头螺栓，5 mm 对应 M6 内六角圆柱头螺栓。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:108mm; width:120mm;"

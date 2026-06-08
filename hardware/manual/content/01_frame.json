@@ -40,7 +40,7 @@
     "notes": [
       {
         "h3": { "en": "Square before final tightening", "zh": "最后拧紧之前先校正方正" },
-        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺钉穿过长型材的沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正，再做最后拧紧。" },
+        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材的沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正，再做最后拧紧。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:60mm; width:80mm;"
       },
@@ -60,7 +60,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "SHCS", "zh": "圆柱头螺钉" }, "spec": "M6×16", "qty": "8" }
+        { "component": { "en": "SHCS", "zh": "圆柱头螺栓" }, "spec": "M6×16", "qty": "8" }
       ]
     }
   },
@@ -84,7 +84,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "bracket", "zh": "角码" }, "spec": "Joining Plate", "qty": "4" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×10", "qty": "8" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "8" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "8" }
       ]
     }
@@ -100,13 +100,13 @@
     "notes": [
       {
         "h3": { "en": "Feet point down", "zh": "支脚朝下" },
-        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底下。每颗螺钉从下往上穿过橡胶脚垫，拧进底部型材槽里的放入式 T 型螺母，这样螺钉头就藏在底面下边，看不见。" },
+        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底下。每颗螺栓从下往上穿过橡胶脚垫，拧进底部型材槽里的放入式 T 型螺母，这样螺栓头就藏在底面下边，看不见。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:78mm;"
       },
       {
-        "h3": { "en": "Use the screws that come with the bumpers", "zh": "用橡胶脚垫自带的螺钉" },
-        "body": { "en": "Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.", "zh": "很多橡胶脚垫出厂就自带螺钉。如果你买的也配了螺钉，就用自带的——尺寸和橡胶脚垫正好配套。" },
+        "h3": { "en": "Use the screws that come with the bumpers", "zh": "用橡胶脚垫自带的螺栓" },
+        "body": { "en": "Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.", "zh": "很多橡胶脚垫出厂就自带螺栓。如果你买的也配了螺栓，就用自带的——尺寸和橡胶脚垫正好配套。" },
         "classes": "note overlay sm",
         "style": "left:135mm; top:30mm; width:70mm;"
       }
@@ -115,7 +115,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Bumper", "zh": "橡胶脚垫" }, "spec": "Ø20 × 22 mm", "qty": "4" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M5×16", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×16", "qty": "4" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "4" }
       ]
     }

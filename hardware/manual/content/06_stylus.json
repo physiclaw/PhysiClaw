@@ -70,7 +70,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Solenoid mount", "zh": "电磁铁支架" }, "spec": "SLS 3D Print", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×6", "qty": "2" }
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "2" }
       ]
     }
   },
@@ -89,7 +89,7 @@
     "notes": [
       {
         "h3": { "en": "Mount the solenoid to the clamp", "zh": "把电磁铁装到夹具上" },
-        "body": { "en": "Six screws hold the solenoid assembly to the clamp. To adjust the stylus height later, undo them and refit at a different hole pair.", "zh": "六颗螺钉把电磁铁总成固定在夹具上。以后想调触控笔的高度，松开这几颗螺钉，换到另一对孔上重新装好就行。" },
+        "body": { "en": "Six screws hold the solenoid assembly to the clamp. To adjust the stylus height later, undo them and refit at a different hole pair.", "zh": "六颗螺栓把电磁铁总成固定在夹具上。以后想调触控笔的高度，松开这几颗螺栓，换到另一对孔上重新装好就行。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:120mm; width:60mm;"
       }
@@ -97,8 +97,8 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×8", "qty": "4" },
-        { "component": { "en": "FHCS", "zh": "沉头螺钉" }, "spec": "M3×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×8", "qty": "4" },
+        { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M3×10", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M3", "qty": "6" }
       ]
     }

@@ -30,7 +30,7 @@
       },
       {
         "h3": { "en": "Tension by sliding the motor", "zh": "靠滑动电机来张紧" },
-        "body": { "en": "Leave Motor A's two M5 screws loose, clamp both belt ends into the clamp, then slide the motor to pull the belt tight.", "zh": "电机 A 的两颗 M5 螺钉先别拧紧，把同步带两端都夹进夹具，再滑动电机，张紧同步带。" },
+        "body": { "en": "Leave Motor A's two M5 screws loose, clamp both belt ends into the clamp, then slide the motor to pull the belt tight.", "zh": "电机 A 的两颗 M5 螺栓先别拧紧，把同步带两端都夹进夹具，再滑动电机，张紧同步带。" },
         "classes": "note overlay sm",
         "style": "right:10mm; top:100mm; width:70mm;"
       }
@@ -70,7 +70,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Belt clamp", "zh": "同步带夹具" }, "spec": "SLS 3D Print", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺钉" }, "spec": "M3×8", "qty": "4" }
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×8", "qty": "4" }
       ]
     }
   },
