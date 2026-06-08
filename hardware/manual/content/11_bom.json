@@ -484,7 +484,7 @@
         "qty": "1",
         "desc": {
           "en": "Screen-tapping tip",
-          "zh": "触屏笔头"
+          "zh": "触控笔头"
         }
       },
       {
@@ -526,45 +526,6 @@
         }
       },
       {
-        "break_before": true,
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
-          "en": "SHCS",
-          "zh": "内六角圆柱头螺栓"
-        },
-        "spec": {
-          "en": "M6×16",
-          "zh": "M6×16"
-        },
-        "qty": "8",
-        "desc": {
-          "en": "Frame joints",
-          "zh": "机身连接"
-        }
-      },
-      {
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
-          "en": "SHCS",
-          "zh": "内六角圆柱头螺栓"
-        },
-        "spec": {
-          "en": "1/4-20×16",
-          "zh": "1/4-20×16"
-        },
-        "qty": "1",
-        "desc": {
-          "en": "Camera arm",
-          "zh": "摄像头臂"
-        }
-      },
-      {
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -574,14 +535,15 @@
           "zh": "内六角半圆头螺栓"
         },
         "spec": {
-          "en": "M3×6",
-          "zh": "M3×6"
+          "en": "M3×6 (thread dia × thread length)",
+          "zh": "M3×6（螺纹直径×螺纹长度）"
         },
         "qty": "10",
         "desc": {
           "en": "Motors & stylus",
-          "zh": "电机、触控笔"
-        }
+          "zh": "电机、触控笔架"
+        },
+        "break_before": true
       },
       {
         "cls": {
@@ -599,7 +561,7 @@
         "qty": "8",
         "desc": {
           "en": "Belt clamps & stylus",
-          "zh": "同步带夹具、触控笔"
+          "zh": "同步带夹具、触控笔架"
         }
       },
       {
@@ -636,8 +598,8 @@
         },
         "qty": "18",
         "desc": {
-          "en": "Frame, idlers, camera",
-          "zh": "机身、惰轮、摄像头"
+          "en": "Frame, idlers, camera base",
+          "zh": "机身、惰轮、摄像头支架"
         }
       },
       {
@@ -684,50 +646,12 @@
           "zh": "紧固件"
         },
         "component": {
-          "en": "Shoulder screw",
-          "zh": "内六角轴肩螺栓"
-        },
-        "spec": {
-          "en": "M4×10, Ø5",
-          "zh": "M4×10, Ø5"
-        },
-        "qty": "4",
-        "desc": {
-          "en": "Idler",
-          "zh": "惰轮"
-        }
-      },
-      {
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
-          "en": "Shoulder screw",
-          "zh": "内六角轴肩螺栓"
-        },
-        "spec": {
-          "en": "M4×20, Ø5",
-          "zh": "M4×20, Ø5"
-        },
-        "qty": "6",
-        "desc": {
-          "en": "Idler",
-          "zh": "惰轮"
-        }
-      },
-      {
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
           "en": "FHCS",
           "zh": "内六角沉头螺栓"
         },
         "spec": {
-          "en": "M3×8",
-          "zh": "M3×8"
+          "en": "M3×8, length = overall (incl. head), not thread length",
+          "zh": "M3×8, 长度为总长（含头部）, 非螺纹长度"
         },
         "qty": "4",
         "desc": {
@@ -770,7 +694,7 @@
         "qty": "2",
         "desc": {
           "en": "Control board mount",
-          "zh": "控制板安装"
+          "zh": "控制板安装支架"
         }
       },
       {
@@ -798,12 +722,88 @@
           "zh": "紧固件"
         },
         "component": {
+          "en": "SHCS",
+          "zh": "内六角圆柱头螺栓"
+        },
+        "spec": {
+          "en": "M6×16",
+          "zh": "M6×16"
+        },
+        "qty": "8",
+        "desc": {
+          "en": "Frame joints",
+          "zh": "机身连接"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "SHCS",
+          "zh": "内六角圆柱头螺栓"
+        },
+        "spec": {
+          "en": "1/4-20×16, imperial (≈ 6.35 mm), not interchangeable with M6",
+          "zh": "1/4-20×16, 英制（约 6.35 mm）, 不可与 M6 螺栓互换"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "Camera arm",
+          "zh": "摄像头臂"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Shoulder screw",
+          "zh": "内六角轴肩螺栓"
+        },
+        "spec": {
+          "en": "Ø5×10×M4 (shank dia × shank length × thread)",
+          "zh": "Ø5×10×M4（光杆直径×光杆长度×螺纹直径）"
+        },
+        "qty": "4",
+        "desc": {
+          "en": "Idler",
+          "zh": "惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Shoulder screw",
+          "zh": "内六角轴肩螺栓"
+        },
+        "spec": {
+          "en": "Ø5×20×M4",
+          "zh": "Ø5×20×M4"
+        },
+        "qty": "6",
+        "desc": {
+          "en": "Idler",
+          "zh": "惰轮"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
           "en": "T-nut",
           "zh": "T 型螺母"
         },
         "spec": {
           "en": "Drop-In M3",
-          "zh": "落入式 M3"
+          "zh": "船形螺母 M3"
         },
         "qty": "20",
         "desc": {
@@ -821,8 +821,27 @@
           "zh": "T 型螺母"
         },
         "spec": {
+          "en": "Drop-In M5",
+          "zh": "船形螺母 M5"
+        },
+        "qty": "22",
+        "desc": {
+          "en": "Frame, idlers, phone bed, control board holder, camera base",
+          "zh": "机身、惰轮、手机托架、控制板支架、摄像头支架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "T-nut",
+          "zh": "T 型螺母"
+        },
+        "spec": {
           "en": "Slide-In M5",
-          "zh": "滑入式 M5"
+          "zh": "滑块螺母 M5"
         },
         "qty": "10",
         "desc": {
@@ -836,31 +855,12 @@
           "zh": "紧固件"
         },
         "component": {
-          "en": "T-nut",
-          "zh": "T 型螺母"
-        },
-        "spec": {
-          "en": "Drop-In M5",
-          "zh": "落入式 M5"
-        },
-        "qty": "22",
-        "desc": {
-          "en": "Frame, idlers, phone bed, control board, camera",
-          "zh": "机身、惰轮、手机托架、控制板、摄像头"
-        }
-      },
-      {
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
           "en": "Square nut",
           "zh": "四方螺母"
         },
         "spec": {
-          "en": "M3",
-          "zh": "M3"
+          "en": "M3, 5.5 mm square, 2.4 mm thick",
+          "zh": "M3, 5.5 mm 见方, 厚 2.4 mm"
         },
         "qty": "10",
         "desc": {
@@ -878,8 +878,8 @@
           "zh": "四方螺母"
         },
         "spec": {
-          "en": "M4",
-          "zh": "M4"
+          "en": "M4, 7 mm square, 3.2 mm thick",
+          "zh": "M4, 7 mm 见方, 厚 3.2 mm"
         },
         "qty": "10",
         "desc": {
@@ -897,8 +897,8 @@
           "zh": "四方螺母"
         },
         "spec": {
-          "en": "M5",
-          "zh": "M5"
+          "en": "M5, 8 mm square, 4 mm thick",
+          "zh": "M5, 8 mm 见方, 厚 4 mm"
         },
         "qty": "2",
         "desc": {
