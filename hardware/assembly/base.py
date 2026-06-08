@@ -10,6 +10,7 @@ Default filenames:
   * ``hardware/output/svg/<module_name>_<variant>_cam<i>.svg`` (this class)
 """
 
+import warnings
 from pathlib import Path
 
 from build123d import MM, Compound, ExportSVG, LineType, ShapeList, Unit
@@ -115,33 +116,40 @@ class BaseAssembly(BasePart):
         assembly = self.build()
         solid, ghost = _split_solid_ghost(assembly)
 
-        for i, cam in enumerate(self.cameras):
-            # Camera + look_at derived from the FULL assembly bbox so
-            # solid and ghost layers align pixel-for-pixel. Without a
-            # shared look_at, project_to_viewport defaults to each
-            # subset's own center, which warps the projection direction
-            # per layer.
-            cam_pos, up, look_at = camera_view(assembly, cam)
+        with warnings.catch_warnings():
+            # OCCT's hidden-line removal can split a projected circular rim (every
+            # pulley/idler flange/bore) at its silhouette-tangent point and leave a
+            # sub-micron degenerate ellipse; ExportSVG then warns it is "too small
+            # to export safely". The skipped remnant is ~1e-6 mm — invisible — so
+            # the warning is pure noise. Silence just that one message.
+            warnings.filterwarnings("ignore", message="Skipping ellipse that is too small")
+            for i, cam in enumerate(self.cameras):
+                # Camera + look_at derived from the FULL assembly bbox so
+                # solid and ghost layers align pixel-for-pixel. Without a
+                # shared look_at, project_to_viewport defaults to each
+                # subset's own center, which warps the projection direction
+                # per layer.
+                cam_pos, up, look_at = camera_view(assembly, cam)
 
-            exporter = ExportSVG(unit=Unit.MM, margin=self.page_margin)
-            exporter.add_layer(SOLID_LABEL, line_weight=self.line_weight)
-            if ghost is not None:
-                exporter.add_layer(
-                    GHOST_LABEL,
-                    line_weight=self.ghost_line_weight,
-                    line_type=self.ghost_line_type,
-                )
+                exporter = ExportSVG(unit=Unit.MM, margin=self.page_margin)
+                exporter.add_layer(SOLID_LABEL, line_weight=self.line_weight)
+                if ghost is not None:
+                    exporter.add_layer(
+                        GHOST_LABEL,
+                        line_weight=self.ghost_line_weight,
+                        line_type=self.ghost_line_type,
+                    )
 
-            solid_visible, _ = solid.project_to_viewport(cam_pos, up, look_at=look_at)
-            exporter.add_shape(ShapeList(solid_visible), layer=SOLID_LABEL)
-            if ghost is not None:
-                ghost_visible, _ = ghost.project_to_viewport(cam_pos, up, look_at=look_at)
-                exporter.add_shape(ShapeList(ghost_visible), layer=GHOST_LABEL)
+                solid_visible, _ = solid.project_to_viewport(cam_pos, up, look_at=look_at)
+                exporter.add_shape(ShapeList(solid_visible), layer=SOLID_LABEL)
+                if ghost is not None:
+                    ghost_visible, _ = ghost.project_to_viewport(cam_pos, up, look_at=look_at)
+                    exporter.add_shape(ShapeList(ghost_visible), layer=GHOST_LABEL)
 
-            path = self.svg_path(index=i)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            exporter.write(str(path))
-            path.write_text(inject_non_scaling_strokes(strip_root_dims(path.read_text())))
+                path = self.svg_path(index=i)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                exporter.write(str(path))
+                path.write_text(inject_non_scaling_strokes(strip_root_dims(path.read_text())))
 
 
 def _split_solid_ghost(assembly):
