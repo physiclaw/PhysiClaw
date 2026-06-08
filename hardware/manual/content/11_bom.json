@@ -1011,51 +1011,51 @@
           "zh": "六角扳手"
         },
         "spec": {
-          "en": "2 mm",
-          "zh": "2 mm"
+          "en": "2, 3, 5 mm",
+          "zh": "2, 3, 5 mm"
         },
-        "qty": "1",
+        "qty": "3",
         "desc": {
-          "en": "M3 screws",
-          "zh": "M3 螺栓"
+          "en": "M3, M5, M6 screws",
+          "zh": "M3、M5、M6 螺栓"
         }
       },
       {
         "cls": {
-          "en": "Tools",
-          "zh": "工具"
+          "en": "Other",
+          "zh": "其他"
         },
         "component": {
-          "en": "Hex key",
-          "zh": "六角扳手"
+          "en": "Grease",
+          "zh": "润脂膏"
         },
         "spec": {
-          "en": "3 mm",
-          "zh": "3 mm"
+          "en": "Lithium grease, NLGI 2",
+          "zh": "锂基润脂膏, NLGI 2 级"
         },
         "qty": "1",
         "desc": {
-          "en": "M5 screws",
-          "zh": "M5 螺栓"
+          "en": "Rail lubrication",
+          "zh": "导轨润滑"
         }
       },
       {
         "cls": {
-          "en": "Tools",
-          "zh": "工具"
+          "en": "Other",
+          "zh": "其他"
         },
         "component": {
-          "en": "Hex key",
-          "zh": "六角扳手"
+          "en": "Thread locker",
+          "zh": "螺纹胶"
         },
         "spec": {
-          "en": "5 mm",
-          "zh": "5 mm"
+          "en": "Medium strength (blue)",
+          "zh": "中强度（蓝色）"
         },
         "qty": "1",
         "desc": {
-          "en": "M6 SHCS",
-          "zh": "M6 内六角圆柱头螺栓"
+          "en": "Lock pulley set screws",
+          "zh": "同步轮顶丝锁固"
         }
       }
     ]
