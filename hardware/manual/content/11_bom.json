@@ -634,10 +634,10 @@
           "en": "M5×16",
           "zh": "M5×16"
         },
-        "qty": "8",
+        "qty": "10",
         "desc": {
-          "en": "Frame & phone bed",
-          "zh": "机身、手机托架"
+          "en": "Frame, phone bed & Motor A mount",
+          "zh": "机身、手机托架、电机 A 安装支架"
         }
       },
       {
@@ -653,10 +653,10 @@
           "en": "M5×20",
           "zh": "M5×20"
         },
-        "qty": "4",
+        "qty": "2",
         "desc": {
-          "en": "Motor mounts",
-          "zh": "电机安装支架"
+          "en": "Motor B mount",
+          "zh": "电机 B 安装支架"
         }
       },
       {
