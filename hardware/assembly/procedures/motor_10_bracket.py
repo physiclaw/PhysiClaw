@@ -29,7 +29,7 @@ the rings hang and the M5 screws drop through.
   * 1 x MotorBracket
   * 4 x BHCS M3 × 6 — into the motor's top-face M3 mounts
   * 2 x BHCS M5 × 20 — through the bracket and ring spacer
-  * 2 x Ring M6 × 20 × 12 — spacer between bracket and frame
+  * 2 x Ring M6 × 20 × 8 — spacer between bracket and frame
 
 Run from the repo root:
 
@@ -55,7 +55,6 @@ from hardware.parts.standard.screw import Screw
 
 BHCS_M3_LENGTH = 6           # mm — BHCS M3 underhead length (motor mount)
 BHCS_M5_LENGTH = 20          # mm — BHCS M5 underhead length (frame mount)
-RING_SPEC      = "M6x20x12"  # 20 mm OD × 12 mm tall spacer (M6 bore)
 BRACKET_GAP    = 30          # mm — exploded: motor top face → bracket bottom
 SCREW_GAP      = 15          # mm — exploded: bracket top → screw shank tip
 RING_GAP       = 12          # mm — exploded: bracket bottom → ring top (drop
@@ -72,6 +71,10 @@ class MO10Bracket(BaseAssembly):
     # derives the output filename from the subclass's own module, so
     # no other override is needed.
     compound_label: str = "motor_10_bracket"
+    # Frame-mount spacer spec. Motor A (this class) uses the 8 mm standoff so
+    # its pulley lands on the LOWER belt plane; Motor B (motor_20_bracket)
+    # overrides this to the 12 mm spacer for the UPPER plane.
+    RING_SPEC: str = "M6x20x8"      # 20 mm OD × 8 mm tall spacer (M6 bore)
     motor_z_rotation: float = 180   # 180° puts the plug on native +Y → world
                                     # -X (LEFT side from top view) when
                                     # placed via motor_11_frame's mapping.
@@ -82,8 +85,8 @@ class MO10Bracket(BaseAssembly):
         bracket = MotorBracketPart().build()
         screws_m3 = [Screw("BHCS", "M3", BHCS_M3_LENGTH).build() for _ in range(4)]
         screws_m5 = [Screw("BHCS", "M5", BHCS_M5_LENGTH).build() for _ in range(2)]
-        rings = [Ring(RING_SPEC).build() for _ in range(2)]
-        ring_height = RING_SPECS[RING_SPEC]["height"]
+        rings = [Ring(self.RING_SPEC).build() for _ in range(2)]
+        ring_height = RING_SPECS[self.RING_SPEC]["height"]
 
         # Motor: centered at origin; body top face at z = +height/2.
         # M3 threaded mounts sit at world (±half_pitch, ±half_pitch,

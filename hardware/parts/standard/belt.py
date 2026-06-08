@@ -12,6 +12,7 @@ from hardware.assembly.procedures.frame_10_extrusion_tnut import (
     SHORT_TOP_INNER_GAP,
 )
 from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
+from hardware.assembly.procedures.motor_10_bracket import MO10Bracket
 from hardware.assembly.procedures.motor_30_pulley import LEFT_PULLEY_GAP
 from hardware.parts.base import BaseStandardPart
 from hardware.parts.custom.idler_mount_front import (
@@ -247,7 +248,7 @@ class Belt(BaseStandardPart):
 _half_w           = SHORT_LENGTH / 2 + EXT_THICKNESS / 2
 _pulley_flange_h  = (flange_belt_h - pulley_belt_width) / 2
 _lower_ring_h     = RING_SPECS["M5x8x0.5"]["height"]
-_motor_ring_h     = RING_SPECS["M6x20x12"]["height"]
+_motor_ring_h     = RING_SPECS[MO10Bracket.RING_SPEC]["height"]   # Motor A spacer
 
 # Idler belt-band center offset (along the shoulder bolt) from the block
 # top face. The corner-idler stack on each block is ring (M5×8×0.5) +
