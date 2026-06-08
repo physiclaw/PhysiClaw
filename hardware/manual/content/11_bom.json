@@ -459,8 +459,8 @@
           "zh": "橡胶脚垫"
         },
         "spec": {
-          "en": "Ø20 × 22 mm",
-          "zh": "Ø20 × 22 mm"
+          "en": "Cylindrical, 20 mm diameter, 22 mm height, incl. machine screw",
+          "zh": "圆柱形, 直径 20 mm, 高度 22 mm, 配机牙螺丝"
         },
         "qty": "4",
         "desc": {
@@ -478,8 +478,8 @@
           "zh": "触控笔头"
         },
         "spec": {
-          "en": "Capacitive, M3",
-          "zh": "电容式, M3"
+          "en": "M3 female thread, Ø7 mm fabric tip, Ø8.5 mm OD, 12.5 mm height",
+          "zh": "M3 内牙, 导电布头 Ø7 mm, 外径 Ø8.5 mm, 高度 12.5 mm"
         },
         "qty": "1",
         "desc": {
@@ -497,8 +497,8 @@
           "zh": "特氟龙管"
         },
         "spec": {
-          "en": "Ø6/5, 380 mm",
-          "zh": "Ø6/5, 380 mm"
+          "en": "5 mm ID, 6 mm OD, 1 m, PTFE or FEP",
+          "zh": "内径 5 mm, 外径 6 mm, 长度 1 米, PTFE 或 FEP 均可"
         },
         "qty": "1",
         "desc": {
@@ -513,11 +513,11 @@
         },
         "component": {
           "en": "Gooseneck",
-          "zh": "鹅颈臂"
+          "zh": "金属软管"
         },
         "spec": {
-          "en": "Ø10×196, 1/4-20 M/F",
-          "zh": "Ø10×196, 1/4-20 公/母"
+          "en": "360° adjustable, 1/4-20 M/F, 300 mm long, 10 mm OD",
+          "zh": "360° 万向可调, 1/4-20 公/母, 长度 300 mm, 外径 10 mm"
         },
         "qty": "1",
         "desc": {
@@ -693,8 +693,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Idler & gantry pulleys",
-          "zh": "惰轮、龙门架带轮"
+          "en": "Idler",
+          "zh": "惰轮"
         }
       },
       {
@@ -712,8 +712,8 @@
         },
         "qty": "6",
         "desc": {
-          "en": "Idler & gantry pulleys",
-          "zh": "惰轮、龙门架带轮"
+          "en": "Idler",
+          "zh": "惰轮"
         }
       },
       {
@@ -883,8 +883,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Idlers & gantry",
-          "zh": "惰轮、龙门架"
+          "en": "Idler",
+          "zh": "惰轮"
         }
       },
       {
@@ -902,7 +902,7 @@
         },
         "qty": "2",
         "desc": {
-          "en": "Idlers",
+          "en": "Idler",
           "zh": "惰轮"
         }
       },
@@ -940,8 +940,8 @@
         },
         "qty": "12",
         "desc": {
-          "en": "Idler & gantry pulleys",
-          "zh": "惰轮、龙门架带轮"
+          "en": "Idler",
+          "zh": "惰轮"
         }
       },
       {
@@ -959,8 +959,8 @@
         },
         "qty": "4",
         "desc": {
-          "en": "Idler & gantry pulleys",
-          "zh": "惰轮、龙门架带轮"
+          "en": "Idler",
+          "zh": "惰轮"
         }
       },
       {
