@@ -864,8 +864,8 @@
         },
         "qty": "10",
         "desc": {
-          "en": "Stylus & control board",
-          "zh": "触控笔、控制板"
+          "en": "Stylus holder & control board holder",
+          "zh": "触控笔座、控制板支架"
         }
       },
       {
@@ -916,8 +916,8 @@
           "zh": "六角螺母"
         },
         "spec": {
-          "en": "1/4-20",
-          "zh": "1/4-20"
+          "en": "1/4-20, imperial (≈ 6.35 mm), not interchangeable with M6",
+          "zh": "1/4-20, 英制（约 6.35 mm）, 不可与 M6 螺母混用"
         },
         "qty": "1",
         "desc": {
@@ -935,8 +935,8 @@
           "zh": "垫片"
         },
         "spec": {
-          "en": "M5 (Ø8×0.5)",
-          "zh": "M5 (Ø8×0.5)"
+          "en": "5 mm ID, 8 mm OD, 0.5 mm thick",
+          "zh": "内径 5 mm, 外径 8 mm, 厚度 0.5 mm"
         },
         "qty": "12",
         "desc": {
@@ -951,11 +951,11 @@
         },
         "component": {
           "en": "Spacer",
-          "zh": "隔套"
+          "zh": "轴套"
         },
         "spec": {
-          "en": "M5 (Ø10×9)",
-          "zh": "M5 (Ø10×9)"
+          "en": "5 mm ID, 10 mm OD, 9 mm height (stack multiple to reach)",
+          "zh": "内径 5 mm, 外径 10 mm, 高度 9 mm（可多个叠加至此高度）"
         },
         "qty": "4",
         "desc": {
@@ -970,16 +970,16 @@
         },
         "component": {
           "en": "Spacer",
-          "zh": "隔套"
+          "zh": "轴套"
         },
         "spec": {
-          "en": "M6 (Ø20×12)",
-          "zh": "M6 (Ø20×12)"
+          "en": "6 mm ID, 12–20 mm OD, 12 mm height (stack multiple to reach)",
+          "zh": "内径 6 mm, 外径 12–20 mm, 高度 12 mm（可多个叠加至此高度）"
         },
         "qty": "4",
         "desc": {
           "en": "Motor standoffs",
-          "zh": "电机隔套"
+          "zh": "电机轴套"
         }
       },
       {

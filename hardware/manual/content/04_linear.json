@@ -470,7 +470,7 @@
         },
         "body": {
           "en": "This idler carries Motor B's belt on the left joint. The 9 mm spacer lifts it above the others, keeping its belt on the upper plane.",
-          "zh": "这个惰轮装在左连接件上，走电机 B 的同步带。9 mm 的隔套把它垫得比其他惰轮高，让这条带保持在上层平面。"
+          "zh": "这个惰轮装在左连接件上，走电机 B 的同步带。9 mm 的轴套把它垫得比其他惰轮高，让这条带保持在上层平面。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -501,7 +501,7 @@
         {
           "component": {
             "en": "Spacer",
-            "zh": "隔套"
+            "zh": "轴套"
           },
           "spec": "M5 (Ø10×9)",
           "qty": "1"
@@ -593,7 +593,7 @@
         },
         "body": {
           "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor A's belt and, with no spacer, rides on the lower belt plane.</p>",
-          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 A 的同步带，因为不加隔套，走下层那条带的平面。</p>"
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 A 的同步带，因为不加轴套，走下层那条带的平面。</p>"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -708,7 +708,7 @@
         },
         "body": {
           "en": "This idler carries Motor A's belt on the right joint, in the top hole. With no spacer, it rides on the lower belt plane.",
-          "zh": "这个惰轮装在右连接件的上孔，走电机 A 的同步带。因为不加隔套，它走下层那条带的平面。"
+          "zh": "这个惰轮装在右连接件的上孔，走电机 A 的同步带。因为不加轴套，它走下层那条带的平面。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -823,7 +823,7 @@
         },
         "body": {
           "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor B's belt and, with the 9 mm spacer, rides on the upper belt plane.</p>",
-          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 B 的同步带，因为加了 9 mm 隔套，走上层那条带的平面。</p>"
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 B 的同步带，因为加了 9 mm 轴套，走上层那条带的平面。</p>"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:60mm; width:80mm;"
@@ -854,7 +854,7 @@
         {
           "component": {
             "en": "Spacer",
-            "zh": "隔套"
+            "zh": "轴套"
           },
           "spec": "M5 (Ø10×9)",
           "qty": "1"
