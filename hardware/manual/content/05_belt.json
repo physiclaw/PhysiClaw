@@ -3,13 +3,13 @@
     "type": "opener",
     "page": "belt",
     "secnum": { "en": "SECTION 05", "zh": "第 05 节" },
-    "h1": { "en": "Belt path", "zh": "同步带绕法" },
-    "lede": { "en": "PhysiClaw's CoreXY drive runs on two GT2 belts, A and B, set on two stacked planes so they never cross. The two belts must be tensioned equally to keep the motion accurate.", "zh": "PhysiClaw 的 CoreXY 传动靠 A、B 两条 GT2 同步带完成，两条分置在上下两层平面，互不交叉。两条带张力必须一致，运动才准确。" }
+    "h1": { "en": "Belt path", "zh": "同步带" },
+    "lede": { "en": "PhysiClaw's CoreXY drive runs on two GT2 belts, A and B, set on two stacked planes so they never cross. The two belts must be tensioned equally to keep the motion accurate.", "zh": "PhysiClaw 的 CoreXY 由 A、B 两条 GT2 同步带驱动，分走上下两层平面，互不交叉。两条带张力一致，运动才准确。" }
   },
   {
     "type": "tall-left",
     "page": "belt_10",
-    "head": { "title": { "en": "BELT PATH", "zh": "同步带绕法" }, "small": "belt_10 · belt_11" },
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带" }, "small": "belt_10 · belt_11" },
     "variant": "hero",
     "figures": [
       { "src": "belt_10_motor_a_exploded_cam0_sstk.svg" },
@@ -46,7 +46,7 @@
   {
     "type": "tall-left",
     "page": "belt_20",
-    "head": { "title": { "en": "BELT PATH", "zh": "同步带绕法" }, "small": "belt_20" },
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带" }, "small": "belt_20" },
     "variant": "hero",
     "figures": [
       { "src": "belt_20_clamp_exploded_cam1_vbba.svg" },
@@ -77,7 +77,7 @@
   {
     "type": "tall-left",
     "page": "belt_30",
-    "head": { "title": { "en": "BELT PATH", "zh": "同步带绕法" }, "small": "belt_30 · belt_11" },
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带" }, "small": "belt_30 · belt_11" },
     "variant": "hero",
     "figures": [
       { "src": "belt_30_motor_b_exploded_cam0_uesm.svg" },
@@ -95,7 +95,7 @@
   {
     "type": "tall-left",
     "page": "belt_30-2",
-    "head": { "title": { "en": "BELT PATH", "zh": "同步带绕法" }, "small": "belt_30" },
+    "head": { "title": { "en": "BELT PATH", "zh": "同步带" }, "small": "belt_30" },
     "figures": [
       { "src": "belt_30_motor_b_assembled_cam0_egkj.svg" }
     ],
@@ -108,7 +108,7 @@
     "notes": [
       {
         "h3": { "en": "Belt tension", "zh": "同步带张力" },
-        "body": { "en": "Equal tension on both belts is essential for a CoreXY motion system. Even a slight difference between the two will skew the gantry's motion. You can adjust a motor's position to fine-tune the tension of its belt.", "zh": "对 CoreXY 运动系统来说，两条带张力一致非常关键。哪怕略有差别，运动也会偏斜。要微调某条带的张力，调整对应电机的位置即可。" },
+        "body": { "en": "Equal tension on both belts is essential for a CoreXY motion system. Even a slight difference between the two will skew the gantry's motion. You can adjust a motor's position to fine-tune the tension of its belt.", "zh": "对 CoreXY 运动系统来说，两条同步带张力一致非常关键。哪怕略有差别，运动也会偏斜。要微调某条带的张力，调整对应电机的位置即可。" },
         "classes": "note overlay sm",
         "style": "left:152mm; top:30mm; width:112mm;"
       },
