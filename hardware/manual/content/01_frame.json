@@ -39,22 +39,28 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Square before final tightening", "zh": "最后拧紧之前先校正方正" },
-        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正度，再做最后拧紧。" },
-        "classes": "note overlay sm",
-        "style": "right:16mm; bottom:60mm; width:80mm;"
-      },
-      {
         "h3": { "en": "Direction Convention", "zh": "方向约定" },
         "body": { "en": "Top, bottom, left, and right throughout this manual refer to this view.", "zh": "本手册里说的上、下、左、右，都以这个视角为准。" },
         "classes": "note overlay sm",
-        "style": "right:16mm; bottom:140mm; width:80mm;"
+        "style": "right:16mm; top:40mm; width:80mm;"
+      },
+      {
+        "h3": { "en": "Mind the placement", "zh": "注意位置" },
+        "body": { "en": "The short extrusion carrying the four slide-in T-nuts goes on top.", "zh": "带四个滑块螺母的短型材放在最上面。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:60mm; width:80mm;"
+      },
+      {
+        "h3": { "en": "Square before final tightening", "zh": "最后拧紧之前先校正方正" },
+        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正度，再做最后拧紧。" },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:90mm; width:80mm;"
       },
       {
         "h3": { "en": "Counterbores face out", "zh": "沉孔朝外" },
         "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材端面的孔位。" },
         "classes": "note overlay sm",
-        "style": "right:16mm; bottom:100mm; width:80mm;"
+        "style": "right:16mm; top:130mm; width:80mm;"
       }
     ],
     "bom": {
