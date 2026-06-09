@@ -40,8 +40,8 @@
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×10, Ø5", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×10×M4", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×20×M4", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "3" }
@@ -108,7 +108,7 @@
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "3" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "2" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×20×M4", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "2" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M5", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
@@ -164,7 +164,7 @@
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×10, Ø5", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×10×M4", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }
       ]
@@ -210,7 +210,7 @@
         { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": "SLS 3D Print", "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": "M5×6 20T smooth", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
-        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "M4×20, Ø5", "qty": "1" },
+        { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×20×M4", "qty": "1" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M4", "qty": "1" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "M5 (Ø10×9)", "qty": "1" },
         { "component": { "en": "Shim", "zh": "垫片" }, "spec": "M5 (Ø8×0.5)", "qty": "1" }
