@@ -4,7 +4,7 @@
     "page": "idler",
     "secnum": { "en": "SECTION 02", "zh": "第 02 节" },
     "h1": { "en": "Idler", "zh": "惰轮" },
-    "lede": { "en": "Install one idler assembly at each of the four corners of the frame, all using smooth idlers. They roll against the flat back side of the GT2 belt, redirecting it around each corner.", "zh": "在框架四角各装一个惰轮组，均为光面惰轮，贴着 GT2 同步带的平背面滚动，在转角处引导其转向。" }
+    "lede": { "en": "Install one idler assembly at each of the four corners of the frame, all using smooth idlers. They roll against the flat back side of the GT2 belt, redirecting it around each corner.", "zh": "框架四角各装一个惰轮组，全用光面惰轮。惰轮贴着 GT2 同步带的平背面滚动，在转角处把同步带引导转向。" }
   },
   {
     "type": "tall-left",
@@ -17,13 +17,13 @@
     "notes": [
       {
         "h3": { "en": "Center hardware first", "zh": "先装中间的螺栓螺母" },
-        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔里——要是先装好两边的零件，中间的就不好塞进去了。" },
+        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔——两边的零件一旦装好，中间就塞不进去了。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
       },
       {
         "h3": { "en": "Confirm the idler spins freely", "zh": "确认惰轮转得顺畅" },
-        "body": { "en": "Once installed, check that each idler turns freely.", "zh": "装好后，逐个转一下，确认每个惰轮都能自由转动。" },
+        "body": { "en": "Once installed, check that each idler turns freely.", "zh": "装好后逐个转一下，确认每个惰轮都能自由转动。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:100mm; width:78mm;"
       },
@@ -60,13 +60,13 @@
     "notes": [
       {
         "h3": { "en": "Two ways to the frame", "zh": "两处固定到框架" },
-        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺栓咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连起来。" },
+        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺栓咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连到一起。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:30mm; width:80mm;"
       },
       {
         "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角连接板留 2 mm 间隙" },
-        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.", "zh": "摆放支座时，让它离框架转角的连接板留出 2 mm 间隙——这里指的是加固框架接头的那块连接板，不是这里要装的这块。" },
+        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.", "zh": "摆放支座时，让它离框架转角的连接板留出 2 mm 间隙——这块连接板加固框架接头，不是这一步要装的那块。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:72mm; width:80mm;"
       }
@@ -97,7 +97,7 @@
       },
       {
         "h3": { "en": "Spacer must total 9 mm", "zh": "轴套总高要够 9 mm" },
-        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "轴套高 9 mm。如果买不到正好这个高度的，就用几个矮一点的叠起来，凑够 9 mm。" },
+        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "轴套高 9 mm。买不到正好这个高度，就拿几个矮一点的叠起来凑够 9 mm。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:82mm; width:80mm;"
       }
@@ -153,7 +153,7 @@
     "notes": [
       {
         "h3": { "en": "Motor A idler — sits lower", "zh": "电机 A 的惰轮——位置偏低" },
-        "body": { "en": "This idler carries Motor A's belt. With no spacer, it rides on the lower belt plane.", "zh": "这个惰轮走电机 A 的同步带。它不加轴套，所以落在下层那条带的平面上。" },
+        "body": { "en": "This idler carries Motor A's belt. With no spacer, it rides on the lower belt plane.", "zh": "这个惰轮走电机 A 的同步带，不加轴套，落在下层那条带的平面上。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:90mm; width:80mm;"
       }
@@ -199,7 +199,7 @@
     "notes": [
       {
         "h3": { "en": "Motor B idler — sits higher", "zh": "电机 B 的惰轮——位置偏高" },
-        "body": { "en": "This idler carries Motor B's belt. The 9 mm spacer lifts it onto the upper belt plane.", "zh": "这个惰轮走电机 B 的同步带。9 mm 的轴套把它垫高，落到上层那条带的平面上。" },
+        "body": { "en": "This idler carries Motor B's belt. The 9 mm spacer lifts it onto the upper belt plane.", "zh": "这个惰轮走电机 B 的同步带。9 mm 轴套把它垫高，落到上层那条带的平面上。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:100mm; width:80mm;"
       }

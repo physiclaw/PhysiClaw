@@ -21,12 +21,12 @@
     "notes": [
       {
         "h3": { "en": "Fit the stylus tip", "zh": "装上触控笔尖" },
-        "body": { "en": "The solenoid ships with a nut on its bottom end. Remove that nut, then thread the stylus tip on in its place.", "zh": "电磁铁出厂时底端拧着一颗螺母。把它拧下来，换上触控笔尖拧到原来的位置。" },
+        "body": { "en": "The solenoid ships with a nut on its bottom end. Remove that nut, then thread the stylus tip on in its place.", "zh": "电磁铁出厂时底端拧着一颗螺母。拧下螺母，换上触控笔尖，拧到原来的位置。" },
         "classes": "note overlay sm",
         "style": "left:120mm; top:60mm; width:60mm;"
       },
       {
-        "h3": { "en": "Solenoid mount holes", "zh": "电磁铁的安装孔" },
+        "h3": { "en": "Solenoid mount holes", "zh": "电磁铁安装孔" },
         "body": { "en": "Two M3 holes, 15 mm apart.", "zh": "两个 M3 孔，间距 15 mm。" },
         "classes": "note overlay sm",
         "style": "left:120mm; top:105mm; width:60mm;"
@@ -55,7 +55,7 @@
     "notes": [
       {
         "h3": { "en": "10 hole pairs for height tuning", "zh": "10 对孔，用来调高度" },
-        "body": { "en": "The mount has 10 pairs of holes, spaced 1 mm apart. Pick a pair now, and you can later raise or lower the stylus in 1 mm steps.", "zh": "支架上有 10 对孔，每对之间相隔 1 mm。现在先选一对装上，以后还能以 1 mm 为一档把触控笔调高或调低。" },
+        "body": { "en": "The mount has 10 pairs of holes, spaced 1 mm apart. Pick a pair now, and you can later raise or lower the stylus in 1 mm steps.", "zh": "支架上有 10 对孔，相邻两对相隔 1 mm。现在先选一对装上，以后能以 1 mm 为一档把触控笔调高或调低。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:60mm; width:60mm;"
       },

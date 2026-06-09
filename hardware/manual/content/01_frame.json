@@ -4,7 +4,7 @@
     "page": "frame",
     "secnum": { "en": "SECTION 01", "zh": "第 01 节" },
     "h1": { "en": "Frame", "zh": "框架" },
-    "lede": { "en": "Four 2040 aluminum extrusions form the base frame, and every other part mounts onto it. Make sure all four corners are square — this is the foundation for accurate motion later on.", "zh": "四根 2040 铝型材拼成机械底座，所有零件都装在上面。框架四角务必成直角，这是后续运动精度的基础。" }
+    "lede": { "en": "Four 2040 aluminum extrusions form the base frame, and every other part mounts onto it. Make sure all four corners are square — this is the foundation for accurate motion later on.", "zh": "四根 2040 铝型材拼成底座，其余零件都装在上面。框架四角务必成直角，这是后续运动精度的基础。" }
   },
   {
     "type": "solo",
@@ -16,7 +16,7 @@
     "notes": [
       {
         "h3": { "en": "Preload the T-nuts", "zh": "先把 T 型螺母放进去" },
-        "body": { "en": "Slide every T-nut into its slot before squaring the frame.", "zh": "在校正框架方正之前，先把每个 T 型螺母滑进对应的型材槽里。" },
+        "body": { "en": "Slide every T-nut into its slot before squaring the frame.", "zh": "在校正框架方正度之前，先把每颗 T 型螺母滑进对应的型材槽。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:70mm; width:80mm;"
       }
@@ -40,7 +40,7 @@
     "notes": [
       {
         "h3": { "en": "Square before final tightening", "zh": "最后拧紧之前先校正方正" },
-        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材的沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正，再做最后拧紧。" },
+        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正度，再做最后拧紧。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:60mm; width:80mm;"
       },
@@ -52,7 +52,7 @@
       },
       {
         "h3": { "en": "Counterbores face out", "zh": "沉孔朝外" },
-        "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材端面的孔。" },
+        "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材端面的孔位。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:100mm; width:80mm;"
       }
@@ -75,7 +75,7 @@
     "notes": [
       {
         "h3": { "en": "Drop-in, not slide-in", "zh": "放进去，不是滑进去" },
-        "body": { "en": "One joining plate reinforces each corner. Its drop-in T-nuts seat into the closed frame and quarter-turn to lock, so you never have to take the frame apart.", "zh": "每个角用一块连接板加固。连接板用的是放入式 T 型螺母，直接放进装好的框架里，全程都不用把框架拆开。" },
+        "body": { "en": "One joining plate reinforces each corner. Its drop-in T-nuts seat into the closed frame and quarter-turn to lock, so you never have to take the frame apart.", "zh": "每个角用一块连接板加固。连接板配放入式 T 型螺母，直接放进装好的框架，转四分之一圈锁紧，全程都不用拆框架。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:80mm;"
       }
@@ -100,13 +100,13 @@
     "notes": [
       {
         "h3": { "en": "Feet point down", "zh": "支脚朝下" },
-        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底下。每颗螺栓从下往上穿过橡胶脚垫，拧进底部型材槽里的放入式 T 型螺母，这样螺栓头就藏在底面下边，看不见。" },
+        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底面。每颗螺栓自下而上穿过橡胶脚垫，拧进底部型材槽的放入式 T 型螺母，螺栓头便藏在底面之下，看不见。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:78mm;"
       },
       {
         "h3": { "en": "Use the screws that come with the bumpers", "zh": "用橡胶脚垫自带的螺栓" },
-        "body": { "en": "Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.", "zh": "很多橡胶脚垫出厂就自带螺栓。如果你买的也配了螺栓，就用自带的——尺寸和橡胶脚垫正好配套。" },
+        "body": { "en": "Many bumpers ship with their own screws. If yours do, fit those — they're sized to match the bumper.", "zh": "很多橡胶脚垫出厂就自带螺栓。你买的若也配了螺栓，就用自带的，尺寸和橡胶脚垫正好配套。" },
         "classes": "note overlay sm",
         "style": "left:135mm; top:30mm; width:70mm;"
       }

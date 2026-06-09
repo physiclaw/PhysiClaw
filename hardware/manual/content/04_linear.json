@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "PhysiClaw's X/Y motion uses a CoreXY arrangement, guided by three MGN9H linear rails: two run left and right as the Y axis, and one spans between them as the X axis. Each of the two points where the X axis meets the Y rails carries two idler assemblies.",
-      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 方案，导向由三根 MGN9H 导轨提供：左右两根作 Y 轴，横跨其间的一根作 X 轴。X 轴两端与 Y 轨相接的左右两处各装两个惰轮组。"
+      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 方案，靠三根 MGN9H 导轨导向：左右两根作 Y 轴，横跨其间的一根作 X 轴。X 轴两端与 Y 轨相接的左右两处，各装两个惰轮组。"
     }
   },
   {
@@ -138,7 +138,7 @@
         },
         "body": {
           "en": "Adjust the two bottom idlers so each Y rail is held tight between its mount blocks.",
-          "zh": "调整底部两个惰轮，让每条 Y 导轨都被牢牢夹在两侧的安装块之间。"
+          "zh": "调整底部两个惰轮，把每条 Y 导轨都牢牢夹在两侧安装块之间。"
         },
         "classes": "note overlay sm",
         "style": "right:5mm; top:0mm; width:60mm;"
@@ -197,7 +197,7 @@
         },
         "body": {
           "en": "The left and right joints are mirrored. Mount each one with its straight side facing the motor.",
-          "zh": "左右两个连接件左右对称。安装时，让每个连接件平直的一面都朝向电机。"
+          "zh": "左右两个连接件互为镜像。安装时让每个连接件平直的一面都朝向电机。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:120mm; width:80mm;"
@@ -274,7 +274,7 @@
         },
         "body": {
           "en": "Slide both M5 T-nuts in from the open end now — they're captive once the ends are blocked.",
-          "zh": "现在就把两颗 M5 T 型螺母从开口的一端滑进去——等两头一封住，就放不进去了。"
+          "zh": "现在就把两颗 M5 T 型螺母从开口那端滑进去——两头一封住，就放不进去了。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:90mm; width:80mm;"
@@ -327,7 +327,7 @@
         },
         "body": {
           "en": "The X beam should glide freely along the Y rails. If it binds, realign the Y rails until it runs smoothly, then tighten them from the center bolt outward.",
-          "zh": "X 横梁应该能沿着 Y 导轨自由滑动。如果不顺畅，就先把 Y 导轨重新校正到滑动顺畅，再从中间那颗螺栓往两边拧紧。"
+          "zh": "X 横梁应该能沿 Y 导轨自由滑动。若滑动发涩，先把 Y 导轨重新校正到顺畅，再从中间那颗螺栓往两边拧紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:60mm; width:60mm;"
@@ -470,7 +470,7 @@
         },
         "body": {
           "en": "This idler carries Motor B's belt on the left joint. The 9 mm spacer lifts it above the others, keeping its belt on the upper plane.",
-          "zh": "这个惰轮装在左连接件上，走电机 B 的同步带。9 mm 的轴套把它垫得比其他惰轮高，让这条带保持在上层平面。"
+          "zh": "这个惰轮装在左连接件上，走电机 B 的同步带。9 mm 轴套把它垫得比其他惰轮高，让这条带留在上层平面。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -593,7 +593,7 @@
         },
         "body": {
           "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor A's belt and, with no spacer, rides on the lower belt plane.</p>",
-          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 A 的同步带，因为不加轴套，走下层那条带的平面。</p>"
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 A 的同步带，不加轴套，走下层那条带的平面。</p>"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -708,7 +708,7 @@
         },
         "body": {
           "en": "This idler carries Motor A's belt on the right joint, in the top hole. With no spacer, it rides on the lower belt plane.",
-          "zh": "这个惰轮装在右连接件的上孔，走电机 A 的同步带。因为不加轴套，它走下层那条带的平面。"
+          "zh": "这个惰轮装在右连接件上孔，走电机 A 的同步带。不加轴套，它走下层那条带的平面。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"
@@ -823,7 +823,7 @@
         },
         "body": {
           "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">Use the toothed idler here, not the smooth one.</p><p>It carries Motor B's belt and, with the 9 mm spacer, rides on the upper belt plane.</p>",
-          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 B 的同步带，因为加了 9 mm 轴套，走上层那条带的平面。</p>"
+          "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿的惰轮，不是光面的。</p><p>它走电机 B 的同步带，加了 9 mm 轴套，走上层那条带的平面。</p>"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:60mm; width:80mm;"

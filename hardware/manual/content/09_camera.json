@@ -70,7 +70,7 @@
     "notes": [
       {
         "h3": { "en": "Clip on the camera", "zh": "装上摄像头" },
-        "body": { "en": "Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧到金属软管的外螺纹螺柱上，直到底面顶住螺柱的台肩。这样摄像头就挂在臂的顶端了。" },
+        "body": { "en": "Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧上金属软管的外螺纹螺柱，拧到底面顶住螺柱台肩。摄像头现在挂在软管顶端。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
       }
@@ -96,7 +96,7 @@
       },
       {
         "h3": { "en": "Orient the camera", "zh": "调摄像头的朝向" },
-        "body": { "en": "Bend the gooseneck to frame the screen, and mount the camera in landscape — sensor's long axis parallel to the phone's long edge.", "zh": "弯一弯金属软管，让屏幕进到画面里，并把摄像头横着装——让传感器的长边和手机的长边平行。" },
+        "body": { "en": "Bend the gooseneck to frame the screen, and mount the camera in landscape — sensor's long axis parallel to the phone's long edge.", "zh": "弯一弯金属软管，让屏幕进到画面里。摄像头横着装，传感器长边对齐手机长边。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:80mm; width:60mm;"
       },

@@ -195,7 +195,7 @@
         },
         "body": {
           "en": "Place a phone on the bed, pushed into the top-left corner. Jog the X carriage across its full travel and check the stylus tip can reach every part of the screen.",
-          "zh": "把手机放到托架上，靠左上角放齐。让 X 滑座走完整个行程，确认触控笔尖能够到屏幕的每个位置。"
+          "zh": "把手机放到托架上，左上角靠齐内角。让 X 滑座走完整个行程，确认触控笔尖能够到屏幕的每个位置。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:50mm; width:90mm;"

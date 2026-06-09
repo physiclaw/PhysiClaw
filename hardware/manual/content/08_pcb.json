@@ -4,7 +4,7 @@
     "page": "pcb",
     "secnum": { "en": "SECTION 08", "zh": "第 08 节" },
     "h1": { "en": "Control board", "zh": "控制板" },
-    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires run through a Teflon tube to keep them from tangling with the motor and belts.", "zh": "控制板固定在框架前方；通往电磁铁的导线穿过特氟龙管走线，避免缠到电机和皮带上。" }
+    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires run through a Teflon tube to keep them from tangling with the motor and belts.", "zh": "控制板固定在框架前方。电磁铁的导线穿过特氟龙管走线，避免缠到电机和皮带上。" }
   },
   {
     "type": "tall-left",
@@ -18,7 +18,7 @@
     "notes": [
       {
         "h3": { "en": "Fit the holder T-nuts", "zh": "装上支架的 T 型螺母" },
-        "body": { "en": "Leave them loose for the next step.", "zh": "先别拧紧，留给下一步。" },
+        "body": { "en": "Leave them loose for the next step.", "zh": "先别拧紧，下一步再拧。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }
@@ -44,7 +44,7 @@
     "notes": [
       {
         "h3": { "en": "Mount the control board holder", "zh": "安装控制板支架" },
-        "body": { "en": "Mount it on the top extrusion's outer face.", "zh": "把它装在顶部铝型材的外侧面上。" },
+        "body": { "en": "Mount it on the top extrusion's outer face.", "zh": "装在顶部型材的外侧面。" },
         "classes": "note overlay sm",
         "style": "left:180mm; top:130mm; width:80mm;"
       }
@@ -62,7 +62,7 @@
     "notes": [
       {
         "h3": { "en": "Fasten the control board", "zh": "固定控制板" },
-        "body": { "en": "Four screw–nut pairs. The lower two nuts are obscured and not drawn.", "zh": "一共四组螺栓配螺母。下面两颗螺母被挡住了，图里没画出来。" },
+        "body": { "en": "Four screw–nut pairs. The lower two nuts are obscured and not drawn.", "zh": "一共四组螺栓配螺母。下面两颗螺母被挡住，图里没画。" },
         "classes": "note overlay sm",
         "style": "left:150mm; top:120mm; width:90mm;"
       }
@@ -84,13 +84,13 @@
     "notes": [
       {
         "h3": { "en": "Teflon tube", "zh": "特氟龙管" },
-        "body": { "en": "Run the wires through the Teflon tube — it keeps them tidy and clear of the moving belts and motors.", "zh": "把导线穿进特氟龙管里——既能把线理顺，又能让它们躲开运动中的同步带和电机。" },
+        "body": { "en": "Run the wires through the Teflon tube — it keeps them tidy and clear of the moving belts and motors.", "zh": "把导线穿进特氟龙管——既能理顺导线，又能让它们躲开运动的同步带和电机。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:30mm; width:90mm;"
       },
       {
-        "h3": { "en": "Rough length", "zh": "大概的长度" },
-        "body": { "en": "Make the tube about 380 mm — long enough to reach from the control board to the X carriage at its farthest position.", "zh": "管子取大约 380 mm——足够从控制板一直够到 X 滑座最远的位置。" },
+        "h3": { "en": "Rough length", "zh": "大致长度" },
+        "body": { "en": "Make the tube about 380 mm — long enough to reach from the control board to the X carriage at its farthest position.", "zh": "管子取大约 380 mm——从控制板够到 X 滑座最远位置即可。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:50mm; width:90mm;"
       },
@@ -102,7 +102,7 @@
       },
       {
         "h3": { "en": "PTFE vs FEP", "zh": "PTFE 和 FEP" },
-        "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.", "zh": "两种管子都能用——PTFE（乳白色）或 FEP（透明）。它们的韧性和硬度足够把导线撑住。" },
+        "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.", "zh": "两种管子都能用——PTFE（乳白色）或 FEP（透明）。韧性和硬度足够撑住导线。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:110mm; width:90mm;"
       }
