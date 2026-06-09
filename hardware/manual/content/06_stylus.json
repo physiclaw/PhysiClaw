@@ -69,7 +69,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Solenoid mount", "zh": "电磁铁支架" }, "spec": "SLS 3D Print", "qty": "1" },
+        { "component": { "en": "Solenoid mount", "zh": "电磁铁支架" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "2" }
       ]
     }
