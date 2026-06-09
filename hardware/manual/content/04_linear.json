@@ -273,8 +273,8 @@
           "zh": "先装好 X 横梁的 T 型螺母"
         },
         "body": {
-          "en": "Slide both M5 T-nuts in from the open end now — they're captive once the ends are blocked.",
-          "zh": "现在就把两颗 M5 T 型螺母从开口那端滑进去——两头一封住，就放不进去了。"
+          "en": "Slide both M5 T-nuts in from the open end.",
+          "zh": "把两颗 M5 T 型螺母从开口那端滑进去。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:90mm; width:80mm;"
@@ -371,8 +371,8 @@
     "notes": [
       {
         "h3": {
-          "en": "X rail — same as the Y rails",
-          "zh": "X 导轨——和 Y 导轨一样"
+          "en": "X rail",
+          "zh": "X 导轨"
         },
         "body": {
           "en": "Mount this rail just like the Y rails: let the T-nuts hang loose at first, then tighten to draw them up.",
