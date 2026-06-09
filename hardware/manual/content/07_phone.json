@@ -58,7 +58,7 @@
             "en": "Extrusion 1020",
             "zh": "1020 铝型材"
           },
-          "spec": { "en": "230 mm, M5 end holes", "zh": "230 mm，端孔M5" },
+          "spec": { "en": "230 mm, M5 end holes", "zh": "230 mm，端孔 M5" },
           "qty": "2"
         },
         {
@@ -194,20 +194,20 @@
           "zh": "放手机"
         },
         "body": {
-          "en": "Place a phone on the bed, pushed into the top-left corner. Jog the X carriage across its full travel and check the stylus tip can reach every part of the screen.",
-          "zh": "把手机放到托架上，左上角靠齐内角。让 X 滑座走完整个行程，确认触控笔尖能够到屏幕的每个位置。"
+          "en": "Place a phone on the bed, pushed into the top-left corner. Move the X carriage around and check the stylus tip can reach every part of the screen.",
+          "zh": "把手机放到托架上，左上角靠齐内角。让 X 滑座四处移动，确认触控笔尖能够到屏幕的每个位置。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:50mm; width:90mm;"
       },
       {
         "h3": {
-          "en": "Dial in the tap",
-          "zh": "调好点击力度"
+          "en": "Set the solenoid height",
+          "zh": "调整电磁铁高度"
         },
         "body": {
-          "en": "The tip must tap firmly enough to register, but no harder. Too hard can crack the screen; too far or too light and the tap misses. Adjust the solenoid mount height until taps land reliably.",
-          "zh": "笔尖点下去的力度，要刚好让屏幕能识别，再大就过了。太用力会把屏幕压裂；离太远或太轻又会点不到。调整电磁铁安装高度，直到每次都能稳稳点中。"
+          "en": "The tip must press just deep enough for the screen to register. Too deep can crack the screen; too far back and the tap is too light to register. Adjust the solenoid mount height until every tap lands reliably.",
+          "zh": "触控笔尖点下去要刚好够屏幕识别。压得太深会把屏幕压裂；离太远、点得太轻又识别不了。调整电磁铁安装高度，直到每次都能稳稳点中。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:85mm; width:90mm;"

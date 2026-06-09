@@ -17,7 +17,7 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Fit the holder T-nuts", "zh": "装上支架的 T 型螺母" },
+        "h3": { "en": "Fit the T-nuts", "zh": "装上 T 型螺母" },
         "body": { "en": "Leave them loose for the next step.", "zh": "先别拧紧，下一步再拧。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
