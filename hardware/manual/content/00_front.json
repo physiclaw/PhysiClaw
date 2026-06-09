@@ -250,8 +250,8 @@
           "zh": "垫片"
         },
         "body": {
-          "en": "5×8×0.5 shim. Stacked under each idler to set its axial play — measure yours, thickness varies by supplier.",
-          "zh": "5×8×0.5 垫片。叠在每个惰轮下面，决定它的轴向间隙——不同供应商厚度不同，记得先量一下。"
+          "en": "5×8×0.5 shim. Stacked under each idler to adjust axial play.",
+          "zh": "5×8×0.5 垫片。叠在每个惰轮下面，调整轴向间隙。"
         },
         "ref": {
           "en": "5×8×0.5",
@@ -280,8 +280,8 @@
           "zh": "四方螺母"
         },
         "body": {
-          "en": "A square nut sits in a pocket of the printed part so it can't spin, letting you tighten a bolt into it.",
-          "zh": "把四方螺母嵌进打印件的方槽，它就转不动了，再配上螺栓即可拧紧固定。"
+          "en": "A square nut sits in a pocket of the printed part, letting you tighten a bolt into it.",
+          "zh": "把四方螺母嵌进打印件的方槽，配上螺栓即可拧紧固定。"
         },
         "ref": {
           "en": "DIN 557",
@@ -318,8 +318,8 @@
           "zh": "船形 T 型螺母（任意位置放入）"
         },
         "body": {
-          "en": "Drops flat into a slot anywhere along its length, then a quarter turn locks it — no need to reach an open end.",
-          "zh": "可以从滑槽的任意位置平放进去，转 90° 就卡紧，不必从型材开口端穿进来。"
+          "en": "Drops flat into a slot anywhere along its length, then a quarter turn locks it.",
+          "zh": "可以从滑槽的任意位置平放进去，转 90° 就卡紧。"
         }
       },
       {
@@ -344,8 +344,8 @@
           "zh": "GT2 惰轮（带齿）"
         },
         "body": {
-          "en": "Free-spinning wheel that turns the belt around the frame corners.",
-          "zh": "自由转动的轮子，在框架拐角处给同步带转向。"
+          "en": "Toothed turning wheel that meshes with the toothed side of the belt as it spins.",
+          "zh": "带齿转向轮，和同步带带齿一面贴合转动。"
         },
         "ref": {
           "en": "GT2 · 20T · 5 mm bore · 6 mm belt",
@@ -359,8 +359,8 @@
           "zh": "GT2 惰轮（光面）"
         },
         "body": {
-          "en": "Un-toothed turn wheel for the belt's flat back.",
-          "zh": "无齿的转向轮，贴着同步带的平背面转。"
+          "en": "Un-toothed turning wheel that rides on the belt's flat back as it spins.",
+          "zh": "无齿转向轮，贴着同步带的平背面转动。"
         },
         "ref": {
           "en": "5 mm bore · 6 mm belt",
