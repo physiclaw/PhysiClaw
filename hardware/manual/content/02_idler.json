@@ -90,8 +90,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Shims set the play", "zh": "垫片决定间隙大小" },
-        "body": { "en": "The 0.5 mm shim sets how much axial play each idler has. Thickness varies between suppliers — measure yours and confirm 0.5 mm before stacking, or the idler will bind or run loose.", "zh": "0.5 mm 的垫片决定每个惰轮在轴向上能动多少。不同供应商的厚度不一样，叠装前先量一下，确认是 0.5 mm，不然惰轮要么卡住、要么太松。" },
+        "h3": { "en": "Each idler stack is 18 mm", "zh": "惰轮组高度统一 18 mm" },
+        "body": { "en": "Idler 8.5 mm, spacer 9 mm, shim 0.5 mm — use shims and spacers to bring every idler stack to a uniform 18 mm.", "zh": "惰轮高 8.5 mm、轴套高 9 mm、垫片厚 0.5 mm。用垫片和轴套把每个惰轮组都调到 18 mm，保持高度一致。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:40mm; width:80mm;"
       },

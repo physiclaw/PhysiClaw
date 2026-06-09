@@ -59,13 +59,13 @@
         "h3": { "en": "Motor A", "zh": "电机 A" },
         "body": { "en": "We refer to the left motor as Motor A.", "zh": "左边这台电机记作电机 A。" },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:30mm; width:80mm;"
+        "style": "left:110mm; top:30mm; width:60mm;"
       },
       {
         "h3": { "en": "Note the wire direction", "zh": "注意引线朝向" },
         "body": { "en": "Confirm the motor's wires face the direction shown before fixing the bracket.", "zh": "固定支架前，先确认电机引线朝向与图一致。" },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:60mm; width:80mm;"
+        "style": "left:110mm; top:60mm; width:60mm;"
       },
       {
         "h3": { "en": "Leave the bolts loose", "zh": "螺栓先别拧紧" },
