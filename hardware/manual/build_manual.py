@@ -244,7 +244,7 @@ def render_bom(bom: dict, ctx: Ctx) -> str:
     """Render the bill-of-materials overlay table."""
     rows = "".join(
         f'<tr><td>{loc(r["component"], ctx.lang)}</td>'
-        f'<td class="spec">{r["spec"]}</td>'
+        f'<td class="spec">{loc(r["spec"], ctx.lang)}</td>'
         f'<td class="qty">{r["qty"]}</td></tr>'
         for r in bom["rows"]
     )

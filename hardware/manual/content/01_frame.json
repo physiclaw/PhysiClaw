@@ -24,9 +24,9 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Extrusion 2040", "zh": "2040 铝型材" }, "spec": "345 mm · CB", "qty": "2" },
+        { "component": { "en": "Extrusion 2040", "zh": "2040 铝型材" }, "spec": { "en": "345 mm · CB", "zh": "345 mm · 沉孔" }, "qty": "2" },
         { "component": { "en": "Extrusion 2040", "zh": "2040 铝型材" }, "spec": "190 mm", "qty": "2" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Slide-In M5", "qty": "8" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Slide-In M5", "zh": "滑块螺母 M5" }, "qty": "8" }
       ]
     }
   },
@@ -85,7 +85,7 @@
       "rows": [
         { "component": { "en": "bracket", "zh": "角码" }, "spec": "Joining Plate", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "8" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "8" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "8" }
       ]
     }
   },
@@ -116,7 +116,7 @@
       "rows": [
         { "component": { "en": "Bumper", "zh": "橡胶脚垫" }, "spec": "Ø20 × 22 mm", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×16", "qty": "4" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "4" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "4" }
       ]
     }
   }

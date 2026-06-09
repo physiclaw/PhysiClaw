@@ -76,7 +76,7 @@
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "1" }
       ]
     }
   },
@@ -138,7 +138,7 @@
       "rows": [
         { "component": { "en": "bracket", "zh": "连接板" }, "spec": "Joining Plate", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "Drop-In M5", "qty": "1" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "1" }
       ]
     }
   },

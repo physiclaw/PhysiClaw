@@ -111,7 +111,7 @@
             "en": "T-nut",
             "zh": "T 型螺母"
           },
-          "spec": "M3 Drop-In",
+          "spec": { "en": "Drop-In M3", "zh": "船形螺母 M3" },
           "qty": "12"
         }
       ]
@@ -299,7 +299,7 @@
             "en": "T-nut",
             "zh": "T 型螺母"
           },
-          "spec": "Slide-In M5",
+          "spec": { "en": "Slide-In M5", "zh": "滑块螺母 M5" },
           "qty": "2"
         }
       ]
@@ -409,7 +409,7 @@
             "en": "T-nut",
             "zh": "T 型螺母"
           },
-          "spec": "M3 Drop-In",
+          "spec": { "en": "Drop-In M3", "zh": "船形螺母 M3" },
           "qty": "4"
         }
       ]
