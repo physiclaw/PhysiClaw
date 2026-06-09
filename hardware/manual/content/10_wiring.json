@@ -92,13 +92,7 @@
         "h3": { "en": "Connections", "zh": "接线对应" },
         "body": { "en": "The board uses standard GRBL axis outputs, remapped as follows: the X-axis motor driver drives Motor B, the Y1-axis motor driver drives Motor A, and the Spindle output drives the solenoid (in place of a spindle).", "zh": "控制板用标准 GRBL 轴输出，按下面这样重新映射：X 轴驱动器接电机 B，Y1 轴驱动器接电机 A，主轴 (Spindle) 输出接电磁铁（代替主轴）。" },
         "classes": "note overlay sm",
-        "style": "left:150mm; top:138mm; width:110mm;"
-      },
-      {
-        "h3": { "en": "Power supply", "zh": "电源" },
-        "body": { "en": "Use a 12 V 2 A DC adapter.", "zh": "使用 12V 2A 直流电源适配器。" },
-        "classes": "note overlay sm",
-        "style": "left:150mm; top:108mm; width:110mm;"
+        "style": "left:150mm; top:110mm; width:110mm;"
       },
       {
         "h3": { "en": "No polarity", "zh": "无需分极性" },
@@ -106,7 +100,15 @@
         "classes": "note overlay sm",
         "style": "left:16mm; top:30mm; width:100mm;"
       }
-    ]
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Power adapter", "zh": "电源适配器" }, "spec": "12V 2A", "qty": "1" },
+        { "component": { "en": "Motor cable", "zh": "电机配线" }, "spec": "XH2.54", "qty": "2" },
+        { "component": { "en": "Data cable", "zh": "数据线" }, "spec": { "en": "USB serial", "zh": "USB 串口" }, "qty": "1" }
+      ]
+    }
   },
   {
     "type": "solo",
@@ -126,9 +128,15 @@
         "h3": { "en": "Stagger the splices", "zh": "错开接头" },
         "body": { "en": "Solder each joint and cover it with heat-shrink. Offset the two splices about 20 mm so the insulated joints don't sit side by side.", "zh": "每个接头先焊接，再套热缩管。把两个接头错开约 20 mm，别让它们并排挤在一起。" },
         "classes": "note overlay sm",
-        "style": "right:16mm; bottom:40mm; width:100mm;"
+        "style": "left:100mm; bottom:40mm; width:120mm;"
       }
-    ]
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Lead wire", "zh": "导线" }, "spec": "0.3mm²", "qty": "1" }
+      ]
+    }
   },
   {
     "type": "tall-left",
@@ -159,7 +167,7 @@
       },
       {
         "h3": { "en": "Three wires", "zh": "三根线" },
-        "body": { "en": "Three wires run from the solenoid — positive (+), negative (−), and ground. Route all three up through the Teflon tube. At the top, connect + and − to the control board's Spindle terminal, and the ground wire to the power supply's common ground.", "zh": "电磁铁引出三根线：正极（+）、负极（−）和接地线。把三根线一起从特氟龙管往上穿到顶端。到了顶端，正、负极接控制板的主轴 (Spindle) 端子，接地线接电源的公共地。" },
+        "body": { "en": "Three wires run from the solenoid — positive (+), negative (−), and ground. Route all three up along the Teflon tube to above the control board holder, then connect + and − to the control board's Spindle terminal and the ground wire to the power supply's common ground.", "zh": "电磁铁引出三根线：正极（+）、负极（−）和接地线。把三根线一起沿特氟龙管穿到控制板支架上方，再把正、负极接到控制板的主轴 (Spindle) 端子，接地线接到电源的公共地。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:112mm; width:150mm; max-width:150mm;"
       },
