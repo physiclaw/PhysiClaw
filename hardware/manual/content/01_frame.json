@@ -83,7 +83,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "bracket", "zh": "角码" }, "spec": "Joining Plate", "qty": "4" },
+        { "component": { "en": "Flat bracket", "zh": "一字连接板" }, "spec": "40 × 18 × 4 mm", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "8" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "8" }
       ]
