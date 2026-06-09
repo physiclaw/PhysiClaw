@@ -438,7 +438,7 @@
         },
         "body": {
           "en": "PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not the common FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.",
-          "zh": "PhysiClaw 的定制零件用选择性激光烧结（SLS）打印，而不是常见的 FDM。激光在加热的粉末床里把尼龙粉末烧结成型，零件完全实心、无需支撑，各个方向都很结实。这些零件带有侧孔和悬空结构，换成 FDM 打，侧孔会变形、悬空处会塌陷。采购时请对照下面的规格。"
+          "zh": "PhysiClaw 的定制零件采用选择性激光烧结（SLS）工艺打印，不用常见的 FDM。SLS 靠激光在加热的粉末床里把尼龙粉末烧结成型，零件实心、无需支撑、各方向强度均匀。PhysiClaw 的定制零件带侧孔和悬空结构，用 FDM 打印成品率较低，所以采购时请按以下规格："
         },
         "classes": "note"
       }
@@ -460,8 +460,8 @@
           "zh": "零件密度"
         },
         "v": {
-          "en": "Solid (no infill)",
-          "zh": "实心（无填充）"
+          "en": "Solid",
+          "zh": "实心"
         }
       },
       {
@@ -500,8 +500,8 @@
           "zh": "摆放方向"
         },
         "v": {
-          "en": "Service default — no supports",
-          "zh": "按打印厂的默认设置——不加支撑"
+          "en": "Service default",
+          "zh": "默认设置即可"
         }
       },
       {
@@ -521,7 +521,7 @@
         },
         "v": {
           "en": "Raw / as-printed",
-          "zh": "打印原样，不做后处理"
+          "zh": "无后处理"
         }
       }
     ],
@@ -533,7 +533,7 @@
         },
         "body": {
           "en": "Any file whose name ends in <span class=\"ref\">_x#</span> tells you the quantity of that part required to build the machine — for example a part named <span class=\"ref\">idler_mount_front_x2.step</span> is needed two times.",
-          "zh": "文件名以 <span class=\"ref\">_x#</span> 结尾时，末尾的数字表示组装整机要用到几个这种零件——比如 <span class=\"ref\">idler_mount_front_x2.step</span>，就要装两个。"
+          "zh": "文件名以 <span class=\"ref\">_x#</span> 结尾时，末尾的数字表示组装整机要用到几个这种零件——比如 <span class=\"ref\">idler_mount_front_x2.step</span>，就需要用到两个。"
         },
         "classes": "note"
       }
