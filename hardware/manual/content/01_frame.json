@@ -15,8 +15,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Preload the T-nuts", "zh": "先把 T 型螺母放进去" },
-        "body": { "en": "Slide every T-nut into its slot before squaring the frame.", "zh": "在校正框架方正度之前，先把每颗 T 型螺母滑进对应的型材槽。" },
+        "h3": { "en": "Preload the T-nuts", "zh": "先装 T 型螺母" },
+        "body": { "en": "Slide every T-nut into its slot before squaring the frame.", "zh": "校正框架方正之前，先把每颗 T 型螺母滑进对应的型材槽里。" },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:70mm; width:80mm;"
       }
