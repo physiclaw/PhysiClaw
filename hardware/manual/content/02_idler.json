@@ -4,7 +4,7 @@
     "page": "idler",
     "secnum": { "en": "SECTION 02", "zh": "第 02 节" },
     "h1": { "en": "Idler", "zh": "惰轮" },
-    "lede": { "en": "Install one idler assembly at each of the four corners of the frame, all using smooth idlers. They roll against the flat back side of the GT2 belt, redirecting it around each corner.", "zh": "框架四角各装一个惰轮组，全用光面惰轮。惰轮贴着 GT2 同步带的平背面滚动，在转角处把同步带引导转向。" }
+    "lede": { "en": "Install one idler assembly at each of the four corners of the frame, all using smooth idlers. They roll against the flat back side of the GT2 belt, redirecting it around each corner.", "zh": "框架四角各装一个惰轮组，全用光面惰轮。惰轮贴着 GT2 同步带的平背面滚动，在转角处引导同步带转向。" }
   },
   {
     "type": "tall-left",
@@ -17,7 +17,7 @@
     "notes": [
       {
         "h3": { "en": "Center hardware first", "zh": "先装中间的螺栓螺母" },
-        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔——两边的零件一旦装好，中间就塞不进去了。" },
+        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
       },
