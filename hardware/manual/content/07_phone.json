@@ -58,7 +58,7 @@
             "en": "Extrusion 1020",
             "zh": "1020 铝型材"
           },
-          "spec": "230 mm, end holes",
+          "spec": { "en": "230 mm, M5 end holes", "zh": "230 mm，端孔M5" },
           "qty": "2"
         },
         {
@@ -74,7 +74,7 @@
             "en": "T-nut",
             "zh": "T 型螺母"
           },
-          "spec": "M5",
+          "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" },
           "qty": "4"
         }
       ]
@@ -127,7 +127,7 @@
             "en": "T-nut",
             "zh": "T 型螺母"
           },
-          "spec": "M3",
+          "spec": { "en": "Drop-In M3", "zh": "船形螺母 M3" },
           "qty": "4"
         }
       ]

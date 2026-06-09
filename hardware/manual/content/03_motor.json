@@ -156,7 +156,7 @@
       },
       {
         "h3": { "en": "Grub screws", "zh": "紧定螺钉" },
-        "body": { "en": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">The root of all issues.</p><p>Apply threadlocker to every grub screw — no exceptions. Loose grub screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>", "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">万恶之源。</p><p>每颗紧定螺钉都要涂螺纹胶，一颗都不能漏。紧定螺钉松动是用户反馈最多的问题；现在滴上一滴，能省下日后好几个小时的排查。涂法照螺纹胶的说明来。</p>" },
+        "body": { "en": "<p>Apply threadlocker to every grub screw — no exceptions. Loose grub screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>", "zh": "<p>每颗紧定螺钉都要涂螺纹胶，一颗都不能漏。紧定螺钉松动是用户反馈最多的问题；现在滴上一滴，能省下日后好几个小时的排查。涂法照螺纹胶的说明来。</p>" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }

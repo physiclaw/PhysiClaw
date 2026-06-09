@@ -26,11 +26,11 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Corner bracket", "zh": "角支架" }, "spec": "56 mm bend, 4 mm", "qty": "1" },
+        { "component": { "en": "Corner bracket", "zh": "角码" }, "spec": "4×Ø6.5mm", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
-        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": "M5", "qty": "2" },
-        { "component": { "en": "SHCS", "zh": "圆柱头螺栓" }, "spec": "1/4-20×16", "qty": "1" },
-        { "component": { "en": "Hex nut", "zh": "六角螺母" }, "spec": "1/4-20", "qty": "1" }
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" },
+        { "component": { "en": "SHCS", "zh": "圆柱头螺栓" }, "spec": { "en": "1/4-20×16 (imperial)", "zh": "1/4-20×16（英制）" }, "qty": "1" },
+        { "component": { "en": "Hex nut", "zh": "六角螺母" }, "spec": { "en": "1/4-20 (imperial)", "zh": "1/4-20（英制）" }, "qty": "1" }
       ]
     }
   },
@@ -78,7 +78,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Camera", "zh": "摄像头" }, "spec": "82 × 26 × 25 mm", "qty": "1" }
+        { "component": { "en": "Camera", "zh": "摄像头" }, "spec": { "en": "4K HD, autofocus", "zh": "4K 高清，自动对焦" }, "qty": "1" }
       ]
     }
   },
