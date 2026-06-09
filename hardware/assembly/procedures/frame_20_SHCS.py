@@ -29,7 +29,7 @@ from hardware.parts.standard.screw import Screw
 
 FRAME_GAP     = 30      # mm — exploded: horizontal gap between long and short
 SCREW_EXPLODE = -35     # mm — exploded: negative LinearJoint position = outboard
-SHCS_LENGTH  = 16      # mm — SHCS M6 underhead length
+SHCS_LENGTH  = 20      # mm — SHCS M6 underhead length
 
 
 class FR20SHCS(BaseAssembly):
