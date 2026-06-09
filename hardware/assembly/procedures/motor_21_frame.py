@@ -80,7 +80,7 @@ class MO21Frame(BaseAssembly):
         motor_compound = bracket_asm.build()
 
         origin_x = (right_t1_world_x + right_t2_world_x) / 2
-        origin_y = (-EXT_THICKNESS - bracket_asm.ring_height
+        origin_y = (-EXT_THICKNESS - bracket_asm.stack_height
                     + bracket_asm.bracket_bottom_z)
         if self.exploded:
             origin_y -= MOTOR_EXPLODE

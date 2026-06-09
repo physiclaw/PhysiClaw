@@ -31,8 +31,8 @@ Placement:
     -SHORT_LENGTH/2 + SHORT_TOP_END_GAP and
     -SHORT_LENGTH/2 + SHORT_TOP_END_GAP + SHORT_TOP_INNER_GAP, both at
     world z = LONG_LENGTH - cb_end_offset). The bracket bottom sits
-    one ring-height in front of the slot face (world y =
-    -EXT_THICKNESS - ring_height); the rings span the gap to the
+    one spacer-stack height in front of the slot face (world y =
+    -EXT_THICKNESS - stack_height); the rings span the gap to the
     slot face at world y = -EXT_THICKNESS.
 
 Two variants:
@@ -83,21 +83,21 @@ class MO11Frame(BaseAssembly):
                            + SHORT_TOP_END_GAP + SHORT_TOP_INNER_GAP)
         short_top_world_z = LONG_LENGTH - cb_end_offset
 
-        # Bracket hooks (bracket_bottom_z, m5_native_x, ring_height)
+        # Bracket hooks (bracket_bottom_z, m5_native_x, stack_height)
         # let this composition flush-mount without re-deriving the
         # bracket's internal geometry. With our placement x_dir=
         # (0,0,+1) and z_dir=(0,-1,0): native X → world Z so
         # m5_native_x maps to world_z = origin_z + m5_native_x; and
         # native Z → world -Y so the bracket bottom sits at world_y =
-        # origin_y - bracket_bottom_z. The rings span ring_height in
+        # origin_y - bracket_bottom_z. The rings span stack_height in
         # +Y from the bracket bottom to the slot face.
         bracket_asm = MO10Bracket(exploded=False)
         motor_compound = bracket_asm.build()
 
         origin_x = (left_t1_world_x + left_t2_world_x) / 2
         # Bracket bottom touches the rings at world y = -EXT_THICKNESS
-        # - ring_height. Exploded pulls origin further in -Y.
-        origin_y = (-EXT_THICKNESS - bracket_asm.ring_height
+        # - stack_height. Exploded pulls origin further in -Y.
+        origin_y = (-EXT_THICKNESS - bracket_asm.stack_height
                     + bracket_asm.bracket_bottom_z)
         if self.exploded:
             origin_y -= MOTOR_EXPLODE

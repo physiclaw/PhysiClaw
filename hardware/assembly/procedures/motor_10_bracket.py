@@ -29,7 +29,7 @@ the rings hang and the M5 screws drop through.
   * 1 x MotorBracket
   * 4 x BHCS M3 × 6 — into the motor's top-face M3 mounts
   * 2 x BHCS M5 × 16 — through the bracket and ring spacer
-  * 2 x Ring M6 × 20 × 8 — spacer between bracket and frame
+  * 2 x Ring M6 × 12 × 8 — spacer between bracket and frame
 
 Run from the repo root:
 
@@ -59,22 +59,24 @@ SCREW_GAP      = 15          # mm — exploded: bracket top → screw shank tip
 RING_GAP       = 12          # mm — exploded: bracket bottom → ring top (drop
                              #      the rings clear of the bracket so the
                              #      spacer reads as a separate part)
+RING_STACK_GAP = 6           # mm — exploded: gap between stacked spacers on one
+                             #      M5 hole so each reads as a distinct part
 
 
 class MO10Bracket(BaseAssembly):
-    # Subclasses share this build logic and only override the two
-    # class attributes below — ``compound_label`` retargets the
-    # STEP / SVG filename, and ``motor_z_rotation`` flips the motor
-    # about Z to swap which side the cable connector ends up on once
-    # the bracket is composed onto a frame. ``_module_stem()`` already
-    # derives the output filename from the subclass's own module, so
-    # no other override is needed.
+    # Subclasses share this build logic and override the class attributes
+    # below — ``compound_label`` retargets the STEP / SVG filename,
+    # ``motor_z_rotation`` flips the motor about Z to swap which side the
+    # cable connector ends up on, and the spacer/screw attributes set the
+    # frame standoff. ``_module_stem()`` already derives the output filename
+    # from the subclass's own module.
     compound_label: str = "motor_10_bracket"
-    # Frame-mount spacer spec + matching M5 screw length. Motor A (this class)
-    # uses the 8 mm standoff so its pulley lands on the LOWER belt plane;
-    # Motor B (motor_20_bracket) overrides both to the 12 mm spacer (UPPER
-    # plane) and the 4 mm longer M5×20 screw that spans it.
-    RING_SPEC: str = "M6x20x8"      # 20 mm OD × 8 mm tall spacer (M6 bore)
+    # Frame-mount spacer stack + matching M5 screw length. Motor A (this
+    # class) stands off 1 × 8 mm so its pulley lands on the LOWER belt plane;
+    # Motor B (motor_20_bracket) stacks 2 × 8 mm (16 mm, UPPER plane) and uses
+    # the longer M5×25 screw that spans the taller stack.
+    RING_SPEC: str = "M6x12x8"      # 12 mm OD × 8 mm tall spacer (M6 bore)
+    RING_COUNT: int = 1             # spacers stacked per M5 hole (standoff = N × ring)
     BHCS_M5_LENGTH: int = 16        # mm — BHCS M5 underhead length (frame mount)
     motor_z_rotation: float = 180   # 180° puts the plug on native +Y → world
                                     # -X (LEFT side from top view) when
@@ -86,8 +88,8 @@ class MO10Bracket(BaseAssembly):
         bracket = MotorBracketPart().build()
         screws_m3 = [Screw("BHCS", "M3", BHCS_M3_LENGTH).build() for _ in range(4)]
         screws_m5 = [Screw("BHCS", "M5", self.BHCS_M5_LENGTH).build() for _ in range(2)]
-        rings = [Ring(self.RING_SPEC).build() for _ in range(2)]
-        ring_height = RING_SPECS[self.RING_SPEC]["height"]
+        ring_height  = RING_SPECS[self.RING_SPEC]["height"]
+        stack_height = ring_height * self.RING_COUNT
 
         # Motor: centered at origin; body top face at z = +height/2.
         # M3 threaded mounts sit at world (±half_pitch, ±half_pitch,
@@ -146,13 +148,19 @@ class MO10Bracket(BaseAssembly):
         for screw, (sx, sy) in zip(screws_m5, m5_positions):
             screw.move(Location((sx, sy, m5_under_z)))
 
-        # Rings: bore axis at each M5 hole's world XY. In assembled,
-        # top of ring sits on bracket bottom. In exploded, drop the
-        # ring by RING_GAP so the spacer reads as a distinct part
-        # rather than blending into the bracket bottom edge.
+        # Rings: a stack of RING_COUNT spacers per M5 hole, bores on the
+        # hole's world XY. Assembled: the stack hangs contiguously from the
+        # bracket bottom (standoff = stack_height). Exploded: the stack drops
+        # by RING_GAP and each spacer separates by RING_STACK_GAP so the count
+        # reads as distinct parts.
         ring_top_z = bracket_bottom_z - (RING_GAP if self.exploded else 0)
-        for ring, (rx, ry) in zip(rings, m5_positions):
-            ring.move(Location((rx, ry, ring_top_z - ring_height)))
+        ring_pitch = ring_height + (RING_STACK_GAP if self.exploded else 0)
+        rings = []
+        for (rx, ry) in m5_positions:
+            for k in range(self.RING_COUNT):
+                ring = Ring(self.RING_SPEC).build()
+                ring.move(Location((rx, ry, ring_top_z - ring_height - k * ring_pitch)))
+                rings.append(ring)
 
         # Hooks for a downstream frame composition to flush-mount this
         # sub-assembly without re-deriving internal bracket geometry:
@@ -161,13 +169,13 @@ class MO10Bracket(BaseAssembly):
         #     FR30BracketTnut.bracket_bottom_z). bracket_top_z is the
         #     seat where a pulley on the shaft would sit.
         #   * m5_native_x     — native X of the M5 hole pair.
-        #   * ring_height     — height of the ring spacer that the
-        #                       frame composition uses to gauge the
-        #                       bracket-to-slot-face offset.
+        #   * stack_height    — total spacer-stack height (RING_COUNT ×
+        #                       single ring): the bracket-to-slot-face offset
+        #                       the frame composition gauges the motor by.
         self.bracket_bottom_z = bracket_bottom_z
         self.bracket_top_z    = bracket_top_z
         self.m5_native_x      = m5_world_x
-        self.ring_height      = ring_height
+        self.stack_height     = stack_height
 
         return Compound(label=self.compound_label, children=[
             motor, bracket, *screws_m3, *screws_m5, *rings,
