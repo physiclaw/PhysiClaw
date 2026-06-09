@@ -650,8 +650,8 @@
           "zh": "内六角半圆头螺栓"
         },
         "spec": {
-          "en": "M5×20",
-          "zh": "M5×20"
+          "en": "M5×25",
+          "zh": "M5×25"
         },
         "qty": "2",
         "desc": {
@@ -995,29 +995,10 @@
           "en": "6 mm ID, 12–20 mm OD, 8 mm height",
           "zh": "内径 6 mm, 外径 12–20 mm, 高度 8 mm"
         },
-        "qty": "2",
+        "qty": "6",
         "desc": {
-          "en": "Motor A standoffs",
-          "zh": "电机 A 轴套"
-        }
-      },
-      {
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
-          "en": "Spacer",
-          "zh": "轴套"
-        },
-        "spec": {
-          "en": "6 mm ID, 12–20 mm OD, 12 mm height",
-          "zh": "内径 6 mm, 外径 12–20 mm, 高度 12 mm"
-        },
-        "qty": "2",
-        "desc": {
-          "en": "Motor B standoffs",
-          "zh": "电机 B 轴套"
+          "en": "Motor bracket standoffs (A ×2, B ×4)",
+          "zh": "电机支架轴套（A ×2、B ×4）"
         }
       },
       {
