@@ -461,13 +461,13 @@
     bottom: 18mm;
     width: 75mm;
     z-index: 2;
-    font-size: 10pt;
+    font-size: 9pt;
     background: rgba(255, 255, 255, 0.95);
     padding: 4mm 0 3mm 5mm;
   }
   .bom .label {
     display: block;
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 500;
     color: var(--accent);
     text-transform: uppercase;
@@ -480,7 +480,7 @@
   }
   .bom thead th {
     text-align: left;
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 500;
     color: var(--ink-faint);
     text-transform: uppercase;
@@ -498,7 +498,7 @@
   .bom tbody td.spec {
     color: var(--ink-soft);
     font-family: var(--font-mono);
-    font-size: 9.5pt;
+    font-size: 8.5pt;
   }
   .bom tbody td.qty {
     text-align: right;

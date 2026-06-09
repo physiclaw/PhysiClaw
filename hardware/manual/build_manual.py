@@ -248,11 +248,17 @@ def render_bom(bom: dict, ctx: Ctx) -> str:
         f'<td class="qty">{r["qty"]}</td></tr>'
         for r in bom["rows"]
     )
+    headers = [
+        {"en": "Component", "zh": "组件"},
+        {"en": "Spec", "zh": "规格"},
+        {"en": "Qty", "zh": "数量"},
+    ]
+    head_cells = "".join(f"<th>{loc(h, ctx.lang)}</th>" for h in headers)
     style = f' style="{bom["style"]}"' if bom.get("style") else ""
     return (
         f'<div class="bom"{style}>'
         f'<span class="label">{loc(bom["label"], ctx.lang)}</span>'
-        "<table><thead><tr><th>Component</th><th>Spec</th><th>Qty</th></tr></thead>"
+        f"<table><thead><tr>{head_cells}</tr></thead>"
         f"<tbody>{rows}</tbody></table></div>"
     )
 
