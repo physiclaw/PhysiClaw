@@ -74,8 +74,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Drop-in, not slide-in", "zh": "放进去，不是滑进去" },
-        "body": { "en": "One joining plate reinforces each corner. Its drop-in T-nuts seat into the closed frame and quarter-turn to lock, so you never have to take the frame apart.", "zh": "每个角用一块连接板加固。连接板配放入式 T 型螺母，直接放进装好的框架，转四分之一圈锁紧，全程都不用拆框架。" },
+        "h3": { "en": "Reinforce the frame", "zh": "框架加固" },
+        "body": { "en": "One joining plate reinforces each corner. Run a bolt through the plate, start a drop-in T-nut on it loosely, drop the assembly into the closed frame, then tighten.", "zh": "每个角用一块连接板加固。螺栓穿过连接板，松松拧上船形螺母，整组放进装好的框架，再拧紧。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:80mm;"
       }
@@ -100,7 +100,7 @@
     "notes": [
       {
         "h3": { "en": "Feet point down", "zh": "支脚朝下" },
-        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底面。每颗螺栓自下而上穿过橡胶脚垫，拧进底部型材槽的放入式 T 型螺母，螺栓头便藏在底面之下，看不见。" },
+        "body": { "en": "The four bumpers are the machine's feet, mounted under the frame. Each screw runs up from below — through the bumper and into a drop-in T-nut in the bottom slot — so the heads tuck out of sight underneath.", "zh": "四个橡胶脚垫就是机器的支脚，装在框架底面。每颗螺栓自下而上穿过橡胶脚垫，拧进底部型材槽的船形螺母，螺栓头便藏在底面之下，看不见。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:78mm;"
       },
