@@ -1,0 +1,154 @@
+/* PhysiClaw sourcing guide — web-first scrolling document (not paged print).
+   Styled to read as a sibling of the assembly manual (styles.css): the same
+   design tokens, a white sheet on the gray desk, the accent reserved for the
+   title and class labels, thin uppercase letterspaced table headers, and
+   mono for specs and figures. */
+:root {
+  --accent:     #d4511a;
+  --ink:        #1f1f1f;
+  --ink-soft:   #6a6a6a;
+  --ink-faint:  #b8b8b8;
+  --rule:       #d8d8d8;
+  --page-bg:    #ffffff;
+  --link:       #4a8bc7;
+  --ok:         #2e7d4f;
+  --font-sans:  "Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  --font-mono:  "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #eaeaea;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* The content sits on one white sheet, like a manual page on the gray desk. */
+.wrap {
+  max-width: 1560px;
+  margin: 28px auto;
+  padding: 44px 56px 64px;
+  background: var(--page-bg);
+}
+
+/* ---- masthead — mirrors the manual's .head ------------------------------ */
+.mast {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  line-height: 1.2;
+  margin-bottom: 18px;
+}
+.mast h1 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.mast .url {
+  color: var(--ink-faint);
+  font-weight: 400;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+.lede { max-width: 75ch; color: var(--ink-soft); margin: 0 0 6px; }
+
+/* ---- parts table -------------------------------------------------------- */
+.table-wrap { margin-top: 22px; overflow-x: auto; }
+table.sourcing { border-collapse: collapse; width: 100%; min-width: 1180px; }
+.sourcing th, .sourcing td {
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+.sourcing thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--page-bg);
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  border-bottom: 1.5px solid var(--ink-faint);
+}
+.sourcing tbody tr.grp td { border-top: 1.5px solid var(--ink-faint); }
+
+td.cls {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+td.comp { font-weight: 500; min-width: 130px; }
+td.spec {
+  min-width: 200px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+td.qty {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+td.desc { color: var(--ink-soft); font-size: 12.5px; min-width: 110px; }
+td.ref {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* inquiry message + copy button */
+td.inq { min-width: 200px; max-width: 260px; font-size: 12.5px; color: var(--ink-soft); }
+td.inq .msg { display: block; line-height: 1.4; white-space: pre-line; }
+button.copy {
+  margin-top: 6px;
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  background: var(--page-bg);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  cursor: pointer;
+}
+button.copy:hover { color: var(--ink); border-color: var(--ink-faint); }
+button.copy.ok { color: var(--ok); border-color: var(--ok); }
+button.copy.ok::after { content: " ✓"; }
+
+/* supplier cells */
+td.offer { min-width: 150px; font-size: 13px; }
+td.offer .v-vendor { font-weight: 500; }
+td.offer .v-prod {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+td.offer.pending { color: var(--ink-faint); font-style: italic; }
+
+/* ---- print -------------------------------------------------------------- */
+@media print {
+  body { background: #fff; }
+  .wrap { margin: 0; padding: 0; max-width: none; }
+  .table-wrap { overflow: visible; }
+  .sourcing thead th { position: static; }
+  button.copy { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

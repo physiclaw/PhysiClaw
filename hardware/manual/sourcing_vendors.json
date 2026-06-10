@@ -1,0 +1,428 @@
+[
+  {
+    "part_id": "ext-2040-y",
+    "ref": "¥50–90",
+    "inquiry": {
+      "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — counterbored 10 mm from each end for M6 SHCS\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\nPlease quote the whole order incl. shipping.",
+      "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，距两端 10mm 开 M6 沉孔\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n请整单报价（含运费）"
+    },
+    "suppliers": [
+      {
+        "name": {
+          "en": "Extrusion shop A",
+          "zh": "铝材定制店 A"
+        },
+        "product": {
+          "en": "2040 black + 1020 profile, cut/counterbore/tap/drill per drawings, 7 pcs",
+          "zh": "2040黑色+1020型材 按图切割/沉孔/攻丝/钻孔 7根套单"
+        }
+      },
+      {
+        "name": {
+          "en": "Extrusion shop B",
+          "zh": "铝材定制店 B"
+        },
+        "product": {
+          "en": "EU-standard profile machining package, 7 pcs per drawing set",
+          "zh": "欧标型材加工套餐 按图纸7根"
+        }
+      },
+      {
+        "name": {
+          "en": "Extrusion shop C",
+          "zh": "铝材定制店 C"
+        },
+        "product": {
+          "en": "Custom profile cutting service, drawing-set order",
+          "zh": "型材定制切割 图纸套单"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "ext-2040-x",
+    "ref": "Ditto",
+    "inquiry": "Ditto",
+    "suppliers": "Ditto"
+  },
+  {
+    "part_id": "ext-1020-x-beam",
+    "ref": "Ditto",
+    "inquiry": "Ditto",
+    "suppliers": "Ditto"
+  },
+  {
+    "part_id": "ext-1020-phone-support",
+    "ref": "Ditto",
+    "inquiry": "Ditto",
+    "suppliers": "Ditto"
+  },
+  {
+    "part_id": "printed-parts",
+    "ref": "¥200–350",
+    "inquiry": {
+      "en": "SLS 3D printing\nMaterial: PA12 nylon (or equivalent), dyed black\nQty: 10 parts (one set — STEP file package to follow)\nPlease quote the full set incl. shipping.",
+      "zh": "SLS 3D 打印\n材料：PA12 尼龙（或同等材料），染黑\n数量：共 10 件（整套，STEP 文件压缩包稍后发送）\n请按整套报价（含运费）"
+    },
+    "suppliers": [
+      {
+        "name": {
+          "en": "SLS service A",
+          "zh": "SLS 打印服务 A"
+        },
+        "product": {
+          "en": "SLS PA12 nylon, dyed black, 10-piece set",
+          "zh": "SLS尼龙PA12 染黑 全套10件"
+        }
+      },
+      {
+        "name": {
+          "en": "SLS service B",
+          "zh": "SLS 打印服务 B"
+        },
+        "product": {
+          "en": "SLS PA12 black, instant quote upload",
+          "zh": "SLS尼龙打印 黑色 在线报价"
+        }
+      },
+      {
+        "name": {
+          "en": "SLS service C",
+          "zh": "SLS 打印服务 C"
+        },
+        "product": {
+          "en": "MJF PA12 black (SLS-equivalent)",
+          "zh": "MJF尼龙PA12 黑色（同等强度）"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "rail-y",
+    "ref": "¥50–90",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Rail shop A",
+          "zh": "导轨店 A"
+        },
+        "product": {
+          "en": "MGN9 linear rail 250 mm, cut to 240 mm",
+          "zh": "MGN9直线导轨 250mm 定制切割240mm"
+        }
+      },
+      {
+        "name": {
+          "en": "Rail shop B",
+          "zh": "导轨店 B"
+        },
+        "product": {
+          "en": "MGN9H rail 240 mm, standard grade",
+          "zh": "MGN9H导轨 240mm 标准级"
+        }
+      },
+      {
+        "name": {
+          "en": "Rail shop C",
+          "zh": "导轨店 C"
+        },
+        "product": {
+          "en": "HIWIN-compatible MGN9 rail 240 mm",
+          "zh": "国产MGN9导轨 240mm"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "rail-x",
+    "ref": "¥20–35"
+  },
+  {
+    "part_id": "carriage",
+    "ref": "¥50–90",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Rail shop A",
+          "zh": "导轨店 A"
+        },
+        "product": {
+          "en": "MGN9H long carriage, standard preload",
+          "zh": "MGN9H加长滑块 标准预压"
+        }
+      },
+      {
+        "name": {
+          "en": "Rail shop B",
+          "zh": "导轨店 B"
+        },
+        "product": {
+          "en": "MGN9H carriage block",
+          "zh": "MGN9H滑块"
+        }
+      },
+      {
+        "name": {
+          "en": "Rail shop C",
+          "zh": "导轨店 C"
+        },
+        "product": {
+          "en": "MGN9H carriage, stainless",
+          "zh": "MGN9H滑块 不锈钢"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "pulley",
+    "ref": "¥5–10"
+  },
+  {
+    "part_id": "idler-smooth",
+    "ref": "¥20–40"
+  },
+  {
+    "part_id": "idler-toothed",
+    "ref": "¥5–10"
+  },
+  {
+    "part_id": "belt",
+    "ref": "¥10–20"
+  },
+  {
+    "part_id": "control-board",
+    "ref": "¥80–110",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Makerbase official store",
+          "zh": "Makerbase 官方店"
+        },
+        "product": {
+          "en": "MKS DLC32 V2.1 32-bit controller w/ USB cable",
+          "zh": "MKS DLC32 V2.1 主板 32位 含USB线"
+        }
+      },
+      {
+        "name": {
+          "en": "Electronics shop B",
+          "zh": "电子配件店 B"
+        },
+        "product": {
+          "en": "Makerbase MKS DLC32 V2.1",
+          "zh": "Makerbase MKS DLC32 V2.1 雕刻机主板"
+        }
+      },
+      {
+        "name": {
+          "en": "Electronics shop C",
+          "zh": "电子配件店 C"
+        },
+        "product": {
+          "en": "MKS DLC32 V2.1 + TMC2209 bundle",
+          "zh": "MKS DLC32 V2.1 套装"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "tmc2209",
+    "ref": "¥20–40"
+  },
+  {
+    "part_id": "psu",
+    "ref": "¥15–30"
+  },
+  {
+    "part_id": "camera",
+    "ref": "¥100–250"
+  },
+  {
+    "part_id": "motor-cable",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "lead-wire",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "stepper-motor",
+    "ref": "¥60–100"
+  },
+  {
+    "part_id": "solenoid",
+    "ref": "¥10–20"
+  },
+  {
+    "part_id": "flat-bracket",
+    "ref": "¥6–15"
+  },
+  {
+    "part_id": "motor-bracket",
+    "ref": "¥6–12"
+  },
+  {
+    "part_id": "corner-bracket",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "bumper",
+    "ref": "¥5–12"
+  },
+  {
+    "part_id": "stylus-tip",
+    "ref": "¥5–15"
+  },
+  {
+    "part_id": "teflon-tube",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "gooseneck",
+    "ref": "¥15–30"
+  },
+  {
+    "part_id": "bhcs-m3x6",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "bhcs-m3x8",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "bhcs-m3x12",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "bhcs-m5x10",
+    "ref": "¥4–10"
+  },
+  {
+    "part_id": "bhcs-m5x12",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "bhcs-m5x16",
+    "ref": "¥4–10"
+  },
+  {
+    "part_id": "bhcs-m5x25",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "fhcs-m3x8",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "fhcs-m3x10",
+    "ref": "¥4–10"
+  },
+  {
+    "part_id": "fhcs-m5x10",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "fhcs-m5x12",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "shcs-m6x20",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "shcs-unc14-16",
+    "ref": "¥2–6"
+  },
+  {
+    "part_id": "shoulder-5x10",
+    "ref": "¥8–20"
+  },
+  {
+    "part_id": "shoulder-5x20",
+    "ref": "¥10–25"
+  },
+  {
+    "part_id": "tnut-dropin-m3",
+    "ref": "¥5–12"
+  },
+  {
+    "part_id": "tnut-dropin-m5",
+    "ref": "¥5–15",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Fastener shop A",
+          "zh": "紧固件店 A"
+        },
+        "product": {
+          "en": "M5 drop-in T-nut for 2020, 50-pack",
+          "zh": "欧标2020船形螺母M5 50个装"
+        }
+      },
+      {
+        "name": {
+          "en": "Fastener shop B",
+          "zh": "紧固件店 B"
+        },
+        "product": {
+          "en": "M5 drop-in T-nut, 20-pack",
+          "zh": "船型螺母M5 20个装"
+        }
+      },
+      {
+        "name": {
+          "en": "Fastener shop C",
+          "zh": "紧固件店 C"
+        },
+        "product": {
+          "en": "M5 drop-in T-nut, 100-pack",
+          "zh": "M5船形螺母 100个装"
+        }
+      }
+    ]
+  },
+  {
+    "part_id": "tnut-slidein-m5",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "sqnut-m3",
+    "ref": "¥2–6"
+  },
+  {
+    "part_id": "sqnut-m4",
+    "ref": "¥2–6"
+  },
+  {
+    "part_id": "sqnut-m5",
+    "ref": "¥2–6"
+  },
+  {
+    "part_id": "hexnut-unc14",
+    "ref": "¥1–3"
+  },
+  {
+    "part_id": "shim-5x8x0_5",
+    "ref": "¥2–6"
+  },
+  {
+    "part_id": "spacer-5x10",
+    "ref": "¥3–8"
+  },
+  {
+    "part_id": "spacer-6x12",
+    "ref": "¥4–10"
+  },
+  {
+    "part_id": "hex-key",
+    "ref": "¥5–15"
+  },
+  {
+    "part_id": "grease",
+    "ref": "¥5–15"
+  },
+  {
+    "part_id": "threadlocker",
+    "ref": "¥3–10"
+  }
+]
