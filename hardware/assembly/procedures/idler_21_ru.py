@@ -1,6 +1,6 @@
 """Idler-mount bracket (right-up) — geometrically identical to
-idler_11_lu (1 flat bracket + 2 M5×10 BHCS + 1 hammer M5 T-nut on the
-LEFT hole). The two files exist as separate sub-assemblies so each can
+idler_11_lu (1 flat bracket + 1 M5×10 BHCS (frame side) + 1 M5×12 BHCS
+(block side) + 1 hammer M5 T-nut on the LEFT hole). The two files exist as separate sub-assemblies so each can
 be placed independently at its own corner of the frame; the build
 logic lives in idler_11_lu and is reused here via inheritance, with
 just the Compound label retargeted so the STEP / SVG outputs land at
