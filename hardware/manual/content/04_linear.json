@@ -64,8 +64,8 @@
           "zh": "让 T 型螺母先吊着"
         },
         "body": {
-          "en": "Thread an FHCS into every other hole and let its hammer T-nut dangle on the screw tip. Lower the whole rail onto the extrusion slot, then tighten to draw the nuts up snug.",
-          "zh": "每隔一个孔拧一颗沉头螺栓，让 T 型螺母吊在螺栓头上。把整条导轨放进型材槽，再拧紧，把螺母拉上来夹紧。"
+          "en": "Thread an M3×10 FHCS into every other hole and let its drop-in T-nut dangle on the screw tip. Lower the whole rail onto the extrusion slot, then tighten to draw the nuts up snug.",
+          "zh": "每隔一个孔拧一颗 M3×10 沉头螺栓，让船形螺母吊在螺栓末端。把整条导轨放进型材槽，再拧紧螺栓，把螺母拉上来夹紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:80mm; width:74mm;"
@@ -137,8 +137,8 @@
           "zh": "把导轨夹紧在两个安装块之间"
         },
         "body": {
-          "en": "Adjust the two bottom idlers so each Y rail is held tight between its mount blocks.",
-          "zh": "调整底部两个惰轮，把每条 Y 导轨都牢牢夹在两侧安装块之间。"
+          "en": "Adjust the two lower idler mounts so each Y rail is held tight between its mount blocks.",
+          "zh": "调整下方两个惰轮支座的位置，把每条 Y 导轨都牢牢夹在两侧支座之间。"
         },
         "classes": "note overlay sm",
         "style": "right:5mm; top:0mm; width:60mm;"
@@ -708,7 +708,7 @@
         },
         "body": {
           "en": "This idler carries Motor A's belt on the right joint, in the top hole. With no spacer, it rides on the lower belt plane.",
-          "zh": "这个惰轮装在右连接件上孔，走电机 A 的同步带。不加轴套，它走下层那条带的平面。"
+          "zh": "这个惰轮装在右连接件上面那个孔，走电机 A 的同步带。不加轴套，它落在下层那条带的平面上。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:80mm; width:80mm;"

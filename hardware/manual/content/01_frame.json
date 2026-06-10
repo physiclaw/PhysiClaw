@@ -51,16 +51,16 @@
         "style": "right:16mm; top:60mm; width:80mm;"
       },
       {
-        "h3": { "en": "Square before final tightening", "zh": "最后拧紧之前先校正方正" },
-        "body": { "en": "Each screw drops through the long's counterbore and threads into the short's end hole. Run all 8 in, then square the frame on a flat surface before final tightening.", "zh": "每颗螺栓穿过长型材沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧上，放到平整台面上校正框架方正度，再做最后拧紧。" },
+        "h3": { "en": "Counterbores face out", "zh": "沉孔朝外" },
+        "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材端面的孔位。" },
         "classes": "note overlay sm",
         "style": "right:16mm; top:90mm; width:80mm;"
       },
       {
-        "h3": { "en": "Counterbores face out", "zh": "沉孔朝外" },
-        "body": { "en": "The counterbored ends of the long extrusions face outboard, each counterbore aligned with the short extrusion's end bore.", "zh": "长型材带沉孔的一端朝外，每个沉孔对准短型材端面的孔位。" },
+        "h3": { "en": "Square before final tightening", "zh": "先校方正，再拧紧" },
+        "body": { "en": "Each M6×20 SHCS drops through the long's counterbore into the short's end hole. Run all 8 in snug, square the frame on a flat surface, then tighten.", "zh": "每颗 M6×20 圆柱头螺栓穿过长型材沉孔，拧进短型材端面的螺纹孔。先把 8 颗都拧到贴合，放到平整台面上校正框架方正，再逐颗拧紧。" },
         "classes": "note overlay sm",
-        "style": "right:16mm; top:130mm; width:80mm;"
+        "style": "right:16mm; top:120mm; width:80mm;"
       }
     ],
     "bom": {
@@ -81,7 +81,7 @@
     "notes": [
       {
         "h3": { "en": "Reinforce the frame", "zh": "框架加固" },
-        "body": { "en": "One joining plate reinforces each corner. Run a bolt through the plate, start a drop-in T-nut on it loosely, drop the assembly into the closed frame, then tighten.", "zh": "每个角用一块连接板加固。螺栓穿过连接板，松松拧上船形螺母，整组放进装好的框架，再拧紧。" },
+        "body": { "en": "One joining plate reinforces each corner. Run an M5×10 BHCS through the plate, start a drop-in T-nut on it loosely, drop the assembly into the closed frame, then tighten.", "zh": "每个角用一块连接板加固。将 M5×10 半圆头螺栓穿过连接板，松松拧上一颗船形螺母，整组放进装好的框架，再拧紧。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:100mm; width:80mm;"
       }

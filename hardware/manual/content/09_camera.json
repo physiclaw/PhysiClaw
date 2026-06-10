@@ -26,7 +26,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Corner bracket", "zh": "角码" }, "spec": "4×Ø6.5mm", "qty": "1" },
+        { "component": { "en": "Corner bracket", "zh": "角码" }, "spec": "4×Ø6.5 mm", "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" },
         { "component": { "en": "SHCS", "zh": "圆柱头螺栓" }, "spec": { "en": "1/4-20×16 (imperial)", "zh": "1/4-20×16（英制）" }, "qty": "1" },
@@ -69,8 +69,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Clip on the camera", "zh": "装上摄像头" },
-        "body": { "en": "Seat the camera's 1/4-20 female socket onto the gooseneck's male stud, until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧上金属软管的外螺纹螺柱，拧到底面顶住螺柱台肩。摄像头现在挂在软管顶端。" },
+        "h3": { "en": "Thread on the camera", "zh": "拧上摄像头" },
+        "body": { "en": "Thread the camera's 1/4-20 female socket onto the gooseneck's male stud until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧上金属软管的外螺纹螺柱，拧到底面顶住螺柱台肩。摄像头现在挂在软管顶端。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
       }
@@ -90,7 +90,7 @@
     "notes": [
       {
         "h3": { "en": "Use the lower slot", "zh": "用下面的型材槽" },
-        "body": { "en": "Mount the corner bracket on the lower slot of the right extrusion's outer face.", "zh": "把角支架装在右侧型材外侧面下方的型材槽上。" },
+        "body": { "en": "Mount the corner bracket on the lower slot of the right extrusion's outer face.", "zh": "把角码装在右侧型材外侧面下方的型材槽上。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:30mm; width:60mm;"
       },
@@ -102,7 +102,7 @@
       },
       {
         "h3": { "en": "Lock it down", "zh": "固定牢" },
-        "body": { "en": "Make sure the camera is held firm — it shouldn't drift or wobble.", "zh": "确认摄像头固定得很牢，不会移位、也不会晃。" },
+        "body": { "en": "Make sure the camera is held firm — it shouldn't drift or wobble.", "zh": "确认摄像头已固定牢靠，不会移位，也不会晃动。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:140mm; width:60mm;"
       },

@@ -37,11 +37,11 @@
         },
         "component": {
           "en": "European Standard Anodized Black Aluminum Profile Extrusion 2040",
-          "zh": "欧标 2040 铝型材黑色阳极氧化"
+          "zh": "欧标 2040 铝型材，黑色阳极氧化"
         },
         "spec": {
           "en": "Length 345 mm, counterbored 10 mm from each end for M6 SHCS",
-          "zh": "长度 345 mm, 距两端 10 mm 各开沉孔, 配 M6 内六角圆柱头螺栓"
+          "zh": "长度 345 mm，距两端 10 mm 各开沉孔，配 M6 内六角圆柱头螺栓"
         },
         "qty": "2",
         "desc": {
@@ -56,11 +56,11 @@
         },
         "component": {
           "en": "European Standard Anodized Black Aluminum Profile Extrusion 2040",
-          "zh": "欧标 2040 铝型材黑色阳极氧化"
+          "zh": "欧标 2040 铝型材，黑色阳极氧化"
         },
         "spec": {
           "en": "Length 190 mm, both ends tapped M6",
-          "zh": "长度 190 mm, 两端攻丝 M6"
+          "zh": "长度 190 mm，两端攻丝 M6"
         },
         "qty": "2",
         "desc": {
@@ -98,7 +98,7 @@
         },
         "spec": {
           "en": "Length 230 mm, M5 through-hole 10 mm from each end",
-          "zh": "长度 230 mm, 距两端 10 mm 开 M5 通孔"
+          "zh": "长度 230 mm，距两端 10 mm 开 M5 通孔"
         },
         "qty": "2",
         "desc": {
@@ -128,7 +128,7 @@
       {
         "cls": {
           "en": "Linear guide",
-          "zh": "线轨"
+          "zh": "直线导轨"
         },
         "component": {
           "en": "MGN9H rail",
@@ -147,7 +147,7 @@
       {
         "cls": {
           "en": "Linear guide",
-          "zh": "线轨"
+          "zh": "直线导轨"
         },
         "component": {
           "en": "MGN9H rail",
@@ -166,7 +166,7 @@
       {
         "cls": {
           "en": "Linear guide",
-          "zh": "线轨"
+          "zh": "直线导轨"
         },
         "component": {
           "en": "MGN9H carriage",
@@ -174,7 +174,7 @@
         },
         "spec": {
           "en": "H-type long carriage, 4×M3, 15 × 16 mm mounting hole pitch",
-          "zh": "H 型加长滑块, 4×M3, 安装孔距 15 × 16 mm"
+          "zh": "H 型加长滑块，4×M3，安装孔距 15 × 16 mm"
         },
         "qty": "3",
         "desc": {
@@ -193,7 +193,7 @@
         },
         "spec": {
           "en": "GT2 20T, 5 mm bore, 6 mm width",
-          "zh": "GT2 20齿, 孔径 5 mm, 带宽 6 mm"
+          "zh": "GT2 20齿，孔径 5 mm，带宽 6 mm"
         },
         "qty": "2",
         "desc": {
@@ -212,7 +212,7 @@
         },
         "spec": {
           "en": "GT2 20T smooth, 5 mm bore, 6 mm width",
-          "zh": "GT2 20齿 光面, 孔径 5 mm, 带宽 6 mm"
+          "zh": "GT2 20齿 光面，孔径 5 mm，带宽 6 mm"
         },
         "qty": "10",
         "desc": {
@@ -231,7 +231,7 @@
         },
         "spec": {
           "en": "GT2 20T toothed, 5 mm bore, 6 mm width",
-          "zh": "GT2 20齿 有齿, 孔径 5 mm, 带宽 6 mm"
+          "zh": "GT2 20齿 带齿，孔径 5 mm，带宽 6 mm"
         },
         "qty": "2",
         "desc": {
@@ -250,7 +250,7 @@
         },
         "spec": {
           "en": "GT2, 6 mm width, 5 m/roll",
-          "zh": "GT2, 带宽 6 mm, 5 米/卷"
+          "zh": "GT2，带宽 6 mm，5 米/卷"
         },
         "qty": "1",
         "desc": {
@@ -308,7 +308,7 @@
         },
         "spec": {
           "en": "12 V 2 A adapter, 5.5×2.1 mm barrel plug",
-          "zh": "12 V 2 A 适配器, 5.5×2.1 mm 桶形插头"
+          "zh": "12 V 2 A 适配器，5.5×2.1 mm 桶形插头"
         },
         "qty": "1",
         "desc": {
@@ -327,7 +327,7 @@
         },
         "spec": {
           "en": "4K HD USB webcam, autofocus",
-          "zh": "4K 高清 USB 电脑摄像头, 自动对焦"
+          "zh": "4K 高清 USB 电脑摄像头，自动对焦"
         },
         "qty": "1",
         "desc": {
@@ -346,7 +346,7 @@
         },
         "spec": {
           "en": "XH2.54, 4-pin, 200 mm",
-          "zh": "XH2.54, 4 针, 200 mm"
+          "zh": "XH2.54，4 针，200 mm"
         },
         "qty": "2",
         "desc": {
@@ -365,7 +365,7 @@
         },
         "spec": {
           "en": "0.3 mm² stranded flexible wire, pure copper core, 2 m",
-          "zh": "0.3 mm² 多股软线, 纯铜芯, 2 米"
+          "zh": "0.3 mm² 多股软线，纯铜芯，2 米"
         },
         "qty": "1",
         "desc": {
@@ -384,7 +384,7 @@
         },
         "spec": {
           "en": "NEMA 17, 38 or 40 mm height",
-          "zh": "42 步进电机, 高度 38 或 40 mm"
+          "zh": "42 步进电机，高度 38 或 40 mm"
         },
         "qty": "2",
         "desc": {
@@ -403,12 +403,12 @@
         },
         "spec": {
           "en": "12 V, 0.8 A, 10 mm stroke, 0.2–6 N push-pull, 2×M3 mounts, 15 mm pitch",
-          "zh": "12 V, 0.8 A, 行程 10 mm, 推拉力 0.2–6 N, 安装孔 2×M3, 孔距 15 mm"
+          "zh": "12 V，0.8 A，行程 10 mm，推拉力 0.2–6 N，安装孔 2×M3，孔距 15 mm"
         },
         "qty": "1",
         "desc": {
           "en": "Drives the stylus tip to tap",
-          "zh": "驱动触控笔头点按屏幕"
+          "zh": "驱动触控笔尖点按屏幕"
         }
       },
       {
@@ -422,7 +422,7 @@
         },
         "spec": {
           "en": "40 × 18 × 4 mm (L×W×T), 20 mm hole pitch, M5 holes",
-          "zh": "40 × 18 × 4 mm（长×宽×厚）, 孔距 20 mm, M5 孔"
+          "zh": "40 × 18 × 4 mm（长×宽×厚），孔距 20 mm，M5 孔"
         },
         "qty": "6",
         "desc": {
@@ -460,7 +460,7 @@
         },
         "spec": {
           "en": "4-hole double-slot right-angle bracket, 56 mm long, 30 mm leg, 4×Ø6.5 holes",
-          "zh": "四孔双槽垂直角码, 长度 56 mm, 折边 30 mm, 4×Ø6.5 孔"
+          "zh": "四孔双槽垂直角码，长度 56 mm，折边 30 mm，4×Ø6.5 孔"
         },
         "qty": "1",
         "desc": {
@@ -479,7 +479,7 @@
         },
         "spec": {
           "en": "Cylindrical, 20 mm diameter, 22 mm height, incl. machine screw",
-          "zh": "圆柱形, 直径 20 mm, 高度 22 mm, 配机牙螺丝"
+          "zh": "圆柱形，直径 20 mm，高度 22 mm，含机牙螺丝"
         },
         "qty": "4",
         "desc": {
@@ -494,16 +494,16 @@
         },
         "component": {
           "en": "Stylus tip",
-          "zh": "触控笔头"
+          "zh": "触控笔尖"
         },
         "spec": {
           "en": "M3 female thread, Ø7 mm fabric tip, Ø8.5 mm OD, 12.5 mm height",
-          "zh": "M3 内牙, 导电布头 Ø7 mm, 外径 Ø8.5 mm, 高度 12.5 mm"
+          "zh": "M3 内牙，导电布头 Ø7 mm，外径 Ø8.5 mm，高度 12.5 mm"
         },
         "qty": "1",
         "desc": {
           "en": "Screen-tapping tip",
-          "zh": "触控笔头"
+          "zh": "点按手机屏幕"
         }
       },
       {
@@ -517,7 +517,7 @@
         },
         "spec": {
           "en": "5 mm ID, 6 mm OD, 1 m, PTFE or FEP",
-          "zh": "内径 5 mm, 外径 6 mm, 长度 1 米, PTFE 或 FEP 均可"
+          "zh": "内径 5 mm，外径 6 mm，长度 1 米，PTFE 或 FEP 均可"
         },
         "qty": "1",
         "desc": {
@@ -536,7 +536,7 @@
         },
         "spec": {
           "en": "360° adjustable, 1/4-20 M/F, 300 mm long, 10 mm OD",
-          "zh": "360° 万向可调, 1/4-20 公/母, 长度 300 mm, 外径 10 mm"
+          "zh": "360° 万向可调，1/4-20 公/母，长度 300 mm，外径 10 mm"
         },
         "qty": "1",
         "desc": {
@@ -670,7 +670,7 @@
         },
         "spec": {
           "en": "M3×8, length = overall (incl. head), not thread length",
-          "zh": "M3×8, 长度为总长（含头部）, 非螺纹长度"
+          "zh": "M3×8，长度为总长（含头部），非螺纹长度"
         },
         "qty": "4",
         "desc": {
@@ -765,7 +765,7 @@
         },
         "spec": {
           "en": "1/4-20×16, imperial (≈ 6.35 mm), not interchangeable with M6",
-          "zh": "1/4-20×16, 英制（约 6.35 mm）, 不可与 M6 螺栓互换"
+          "zh": "1/4-20×16，英制（约 6.35 mm），不可与 M6 螺栓互换"
         },
         "qty": "1",
         "desc": {
@@ -879,7 +879,7 @@
         },
         "spec": {
           "en": "M3, 5.5 mm square, 2.4 mm thick",
-          "zh": "M3, 5.5 mm 见方, 厚 2.4 mm"
+          "zh": "M3，5.5 mm 见方，厚 2.4 mm"
         },
         "qty": "10",
         "desc": {
@@ -898,7 +898,7 @@
         },
         "spec": {
           "en": "M4, 7 mm square, 3.2 mm thick",
-          "zh": "M4, 7 mm 见方, 厚 3.2 mm"
+          "zh": "M4，7 mm 见方，厚 3.2 mm"
         },
         "qty": "10",
         "desc": {
@@ -917,7 +917,7 @@
         },
         "spec": {
           "en": "M5, 8 mm square, 4 mm thick",
-          "zh": "M5, 8 mm 见方, 厚 4 mm"
+          "zh": "M5，8 mm 见方，厚 4 mm"
         },
         "qty": "2",
         "desc": {
@@ -936,7 +936,7 @@
         },
         "spec": {
           "en": "1/4-20, imperial (≈ 6.35 mm), not interchangeable with M6",
-          "zh": "1/4-20, 英制（约 6.35 mm）, 不可与 M6 螺母混用"
+          "zh": "1/4-20，英制（约 6.35 mm），不可与 M6 螺母混用"
         },
         "qty": "1",
         "desc": {
@@ -955,7 +955,7 @@
         },
         "spec": {
           "en": "5 mm ID, 8 mm OD, 0.5 mm thick",
-          "zh": "内径 5 mm, 外径 8 mm, 厚度 0.5 mm"
+          "zh": "内径 5 mm，外径 8 mm，厚度 0.5 mm"
         },
         "qty": "12",
         "desc": {
@@ -974,7 +974,7 @@
         },
         "spec": {
           "en": "5 mm ID, 10 mm OD, 9 mm height",
-          "zh": "内径 5 mm, 外径 10 mm, 高度 9 mm"
+          "zh": "内径 5 mm，外径 10 mm，高度 9 mm"
         },
         "qty": "4",
         "desc": {
@@ -993,7 +993,7 @@
         },
         "spec": {
           "en": "6 mm ID, 12 mm OD, 8 mm height",
-          "zh": "内径 6 mm, 外径 12 mm, 高度 8 mm"
+          "zh": "内径 6 mm，外径 12 mm，高度 8 mm"
         },
         "qty": "6",
         "desc": {
@@ -1011,8 +1011,8 @@
           "zh": "六角扳手"
         },
         "spec": {
-          "en": "2, 3, 5 mm",
-          "zh": "2, 3, 5 mm"
+          "en": "2 / 3 / 5 mm",
+          "zh": "2、3、5 mm"
         },
         "qty": "3",
         "desc": {
@@ -1027,11 +1027,11 @@
         },
         "component": {
           "en": "Grease",
-          "zh": "润脂膏"
+          "zh": "润滑脂"
         },
         "spec": {
           "en": "Lithium grease, NLGI 2",
-          "zh": "锂基润脂膏, NLGI 2 级"
+          "zh": "锂基润滑脂，NLGI 2 级"
         },
         "qty": "1",
         "desc": {
@@ -1045,7 +1045,7 @@
           "zh": "其他"
         },
         "component": {
-          "en": "Thread locker",
+          "en": "Threadlocker",
           "zh": "螺纹胶"
         },
         "spec": {
@@ -1055,7 +1055,7 @@
         "qty": "1",
         "desc": {
           "en": "Lock pulley set screws",
-          "zh": "同步轮顶丝锁固"
+          "zh": "锁固同步轮紧定螺钉"
         }
       }
     ]

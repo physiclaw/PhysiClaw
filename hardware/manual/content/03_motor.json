@@ -38,7 +38,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
-        { "component": { "en": "Motor", "zh": "电机" }, "spec": { "en": "NEMA 17 stepper, 38 mm height", "zh": "42步进电机，高度38mm" }, "qty": "1" },
+        { "component": { "en": "Motor", "zh": "电机" }, "spec": { "en": "NEMA 17 stepper, 38 mm height", "zh": "42 步进电机，高度 38 mm" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×16", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "6×12×8", "qty": "2" }
@@ -101,7 +101,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
-        { "component": { "en": "Motor", "zh": "电机" }, "spec": { "en": "NEMA 17 stepper, 38 mm height", "zh": "42步进电机，高度38mm" }, "qty": "1" },
+        { "component": { "en": "Motor", "zh": "电机" }, "spec": { "en": "NEMA 17 stepper, 38 mm height", "zh": "42 步进电机，高度 38 mm" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×25", "qty": "2" },
         { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "6×12×8", "qty": "4" }
@@ -150,13 +150,13 @@
     "notes": [
       {
         "h3": { "en": "Two heights, on purpose", "zh": "故意分成两个高度" },
-        "body": { "en": "The A and B belts run on two stacked planes. Set Motor A's pulley (left) to the lower plane and Motor B's (right) to the upper — slide each along the shaft, then lock the set screw.", "zh": "A、B 两条同步带分别走上下两层。电机 A 的同步轮（左边）放下层，电机 B 的（右边）放上层——各自沿轴滑到位，再拧紧紧定螺钉锁住。" },
+        "body": { "en": "The A and B belts run on two stacked planes. Set Motor A's pulley (left) to the lower plane and Motor B's (right) to the upper — slide each along the shaft, then lock its set screw.", "zh": "A、B 两条同步带分别走上下两层。电机 A 的同步轮（左）放下层，电机 B 的同步轮（右）放上层——各自沿电机轴滑到位，再拧紧紧定螺钉锁住。" },
         "classes": "note overlay sm",
         "style": "left:40mm; top:20mm; width:80mm;"
       },
       {
-        "h3": { "en": "Grub screws", "zh": "紧定螺钉" },
-        "body": { "en": "<p>Apply threadlocker to every grub screw — no exceptions. Loose grub screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>", "zh": "<p>每颗紧定螺钉都要涂螺纹胶，一颗都不能漏。紧定螺钉松动是用户反馈最多的问题；现在滴上一滴，能省下日后好几个小时的排查。涂法照螺纹胶的说明来。</p>" },
+        "h3": { "en": "Set screws", "zh": "紧定螺钉" },
+        "body": { "en": "<p>Apply threadlocker to every set screw — no exceptions. Loose set screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>", "zh": "<p>每颗紧定螺钉都要涂螺纹胶，一颗都不能漏。紧定螺钉松动是用户反馈最多的问题；现在滴上一滴，能省下日后好几个小时的排查。涂法照螺纹胶的说明来。</p>" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }
@@ -164,7 +164,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Pulley", "zh": "同步轮" }, "spec": { "en": "GT2 20T, 6mm", "zh": "GT2 20T，6mm" }, "qty": "2" }
+        { "component": { "en": "Pulley", "zh": "同步轮" }, "spec": { "en": "GT2 20T, 6 mm", "zh": "GT2 20T，6 mm" }, "qty": "2" }
       ]
     }
   }

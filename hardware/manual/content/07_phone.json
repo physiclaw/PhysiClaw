@@ -11,8 +11,8 @@
       "zh": "手机托架"
     },
     "lede": {
-      "en": "Place the phone in the cradle screen-up, push its top-left corner into the bed's corner, and keep it level.",
-      "zh": "手机屏幕朝上放进托架，左上角顶住托架内角，保持水平。"
+      "en": "Two cross-beams mount under the frame and carry the printed phone bed. The phone lies in the bed screen-up, its top-left corner seated against the bed's corner, level under the stylus.",
+      "zh": "两根横梁装在框架底面，托起 3D 打印的手机托架。手机屏幕朝上放进托架，左上角顶住托架内角，水平正对触控笔。"
     }
   },
   {
@@ -153,8 +153,8 @@
           "zh": "把托架放到横梁上"
         },
         "body": {
-          "en": "Lay the two cross-beams parallel, slotted faces up.",
-          "zh": "把两根横梁平行摆好，开槽的一面朝上。"
+          "en": "Lay the two cross-beams parallel, slotted faces up, then lower the bed's hanging T-nuts into the slots and tighten.",
+          "zh": "把两根横梁平行摆好，开槽的一面朝上；让托架上吊着的 T 型螺母落进槽里，再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:140mm; width:60mm;"

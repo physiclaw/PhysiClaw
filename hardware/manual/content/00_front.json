@@ -70,7 +70,7 @@
       {
         "label": {
           "en": "04 — Linear motion",
-          "zh": "04 — 线性运动"
+          "zh": "04 — 直线运动"
         },
         "page": "linear"
       },
@@ -329,8 +329,8 @@
           "zh": "GT2 同步轮"
         },
         "body": {
-          "en": "20-tooth toothed pulley. One sits on each stepper shaft, locked to the motor's D-flat with a set screw; it drives the GT2 belt.",
-          "zh": "20 齿同步轮。每个步进电机轴上装一个，用顶丝顶在电机的 D 形扁位上，由它带动 GT2 同步带。"
+          "en": "20-tooth toothed pulley. One sits on each stepper shaft, locked to the shaft's D-flat with a set screw; it drives the GT2 belt.",
+          "zh": "20 齿同步轮。每个步进电机轴上装一个，用紧定螺钉顶在电机轴的 D 形切面上，由它带动 GT2 同步带。"
         },
         "ref": {
           "en": "GT2 · 20T · 5 mm bore · 6 mm belt",
@@ -401,8 +401,8 @@
           "zh": "2 mm 和 3 mm 内六角扳手"
         },
         "body": {
-          "en": "The 2 mm and 3 mm hex drivers see the most use in this build. A quality driver for each is strongly recommended. Refer to the sourcing guide for suggestions.",
-          "zh": "装配这台机器时，2 mm 和 3 mm 内六角扳手用得最多。强烈建议这两把扳手都用质量好的。"
+          "en": "The 2 mm and 3 mm hex drivers see the most use in this build. We recommend a quality driver in each size.",
+          "zh": "装配这台机器时，2 mm 和 3 mm 内六角扳手用得最多。建议准备两把质量好的扳手。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:56mm; width:120mm;"
@@ -438,7 +438,7 @@
         },
         "body": {
           "en": "PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not the common FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.",
-          "zh": "PhysiClaw 的定制零件采用选择性激光烧结（SLS）工艺打印，不用常见的 FDM。SLS 靠激光在加热的粉末床里把尼龙粉末烧结成型，零件实心、无需支撑、各方向强度均匀。PhysiClaw 的定制零件带侧孔和悬空结构，用 FDM 打印成品率较低，所以采购时请按以下规格："
+          "zh": "PhysiClaw 的定制零件采用选择性激光烧结（SLS）工艺打印，不用常见的 FDM。SLS 靠激光在加热的粉末床里把尼龙粉末烧结成型，零件实心、无需支撑、各方向强度均匀。这些零件带侧孔和悬空结构：FDM 打印时侧孔容易变形，悬空处会塌陷。采购时请参照以下规格。"
         },
         "classes": "note"
       }

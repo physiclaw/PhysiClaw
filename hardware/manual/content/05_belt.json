@@ -38,7 +38,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Timing belt", "zh": "同步带" }, "spec": { "en": "GT2-6mm, open loop", "zh": "GT2-6mm，开口" }, "qty": "1" },
+        { "component": { "en": "Timing belt", "zh": "同步带" }, "spec": { "en": "GT2-6 mm, open-ended", "zh": "GT2-6 mm，开口带" }, "qty": "1" },
         { "component": { "en": "Belt clamp", "zh": "同步带夹具" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" }
       ]
     }
@@ -102,7 +102,7 @@
     "labels": [
       {
         "style": "position:absolute; left:60; top:145mm; width:130mm; text-align:center; font-size:12pt; font-weight:400; color:var(--accent); z-index:2;",
-        "text": "75Hz"
+        "text": "75 Hz"
       }
     ],
     "notes": [
@@ -119,7 +119,7 @@
         "style": "left:152mm; top:75mm; width:112mm;"
       },
       {
-        "h3": { "en": "75Hz AT 220mm", "zh": "220mm 处 75Hz" },
+        "h3": { "en": "75 Hz at 220 mm", "zh": "220 mm 处 75 Hz" },
         "h3Class": "normal-case",
         "body": { "en": "For a precise check, measure each belt with a tuning app on your phone while the X carriage is parked at the marked position. Pluck the belts and aim for 75 Hz — both reading the same frequency confirms the tension is correct.", "zh": "想精确检查，把 X 滑座停在标记位置，用手机上的调音 app 分别测每条带。拨动带，把频率调到 75 Hz——两条读数一致，张力就对了。" },
         "classes": "note overlay sm",
