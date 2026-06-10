@@ -1131,6 +1131,26 @@
           "en": "Lock pulley set screws",
           "zh": "锁固同步轮紧定螺钉"
         }
+      },
+      {
+        "part_id": "heat-shrink",
+        "cls": {
+          "en": "Other",
+          "zh": "其他"
+        },
+        "component": {
+          "en": "Heat shrink tubing",
+          "zh": "热缩管"
+        },
+        "spec": {
+          "en": "Ø3 mm",
+          "zh": "Ø3 mm"
+        },
+        "qty": "2",
+        "desc": {
+          "en": "Insulate and protect wire splices",
+          "zh": "导线连接处绝缘保护"
+        }
       }
     ]
   }
