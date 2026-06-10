@@ -31,6 +31,7 @@
     },
     "rows": [
       {
+        "part_id": "ext-2040-y",
         "cls": {
           "en": "Frame",
           "zh": "框架"
@@ -50,6 +51,7 @@
         }
       },
       {
+        "part_id": "ext-2040-x",
         "cls": {
           "en": "Frame",
           "zh": "框架"
@@ -69,6 +71,7 @@
         }
       },
       {
+        "part_id": "ext-1020-x-beam",
         "cls": {
           "en": "Frame",
           "zh": "框架"
@@ -88,6 +91,7 @@
         }
       },
       {
+        "part_id": "ext-1020-phone-support",
         "cls": {
           "en": "Frame",
           "zh": "框架"
@@ -107,6 +111,7 @@
         }
       },
       {
+        "part_id": "printed-parts",
         "cls": {
           "en": "Custom parts",
           "zh": "定制件"
@@ -126,6 +131,7 @@
         }
       },
       {
+        "part_id": "rail-y",
         "cls": {
           "en": "Linear guide",
           "zh": "直线导轨"
@@ -145,6 +151,7 @@
         }
       },
       {
+        "part_id": "rail-x",
         "cls": {
           "en": "Linear guide",
           "zh": "直线导轨"
@@ -164,6 +171,7 @@
         }
       },
       {
+        "part_id": "carriage",
         "cls": {
           "en": "Linear guide",
           "zh": "直线导轨"
@@ -183,6 +191,7 @@
         }
       },
       {
+        "part_id": "pulley",
         "cls": {
           "en": "Motion components",
           "zh": "运动组件"
@@ -202,6 +211,7 @@
         }
       },
       {
+        "part_id": "idler-smooth",
         "cls": {
           "en": "Motion components",
           "zh": "运动组件"
@@ -221,6 +231,7 @@
         }
       },
       {
+        "part_id": "idler-toothed",
         "cls": {
           "en": "Motion components",
           "zh": "运动组件"
@@ -240,6 +251,7 @@
         }
       },
       {
+        "part_id": "belt",
         "cls": {
           "en": "Motion components",
           "zh": "运动组件"
@@ -259,6 +271,7 @@
         }
       },
       {
+        "part_id": "control-board",
         "break_before": true,
         "cls": {
           "en": "Electronics",
@@ -279,6 +292,7 @@
         }
       },
       {
+        "part_id": "tmc2209",
         "cls": {
           "en": "Electronics",
           "zh": "电子元件"
@@ -298,6 +312,7 @@
         }
       },
       {
+        "part_id": "psu",
         "cls": {
           "en": "Electronics",
           "zh": "电子元件"
@@ -317,6 +332,7 @@
         }
       },
       {
+        "part_id": "camera",
         "cls": {
           "en": "Electronics",
           "zh": "电子元件"
@@ -336,6 +352,7 @@
         }
       },
       {
+        "part_id": "motor-cable",
         "cls": {
           "en": "Wiring / Cables",
           "zh": "线缆"
@@ -355,6 +372,7 @@
         }
       },
       {
+        "part_id": "lead-wire",
         "cls": {
           "en": "Wiring / Cables",
           "zh": "线缆"
@@ -374,6 +392,7 @@
         }
       },
       {
+        "part_id": "stepper-motor",
         "cls": {
           "en": "Actuators",
           "zh": "执行器"
@@ -393,6 +412,7 @@
         }
       },
       {
+        "part_id": "solenoid",
         "cls": {
           "en": "Actuators",
           "zh": "执行器"
@@ -412,6 +432,7 @@
         }
       },
       {
+        "part_id": "flat-bracket",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -431,6 +452,7 @@
         }
       },
       {
+        "part_id": "motor-bracket",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -450,6 +472,7 @@
         }
       },
       {
+        "part_id": "corner-bracket",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -469,6 +492,7 @@
         }
       },
       {
+        "part_id": "bumper",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -488,6 +512,7 @@
         }
       },
       {
+        "part_id": "stylus-tip",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -507,6 +532,7 @@
         }
       },
       {
+        "part_id": "teflon-tube",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -526,6 +552,7 @@
         }
       },
       {
+        "part_id": "gooseneck",
         "cls": {
           "en": "Hardware",
           "zh": "五金件"
@@ -545,6 +572,7 @@
         }
       },
       {
+        "part_id": "bhcs-m3x6",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -565,6 +593,7 @@
         "break_before": true
       },
       {
+        "part_id": "bhcs-m3x8",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -584,6 +613,7 @@
         }
       },
       {
+        "part_id": "bhcs-m3x12",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -603,6 +633,7 @@
         }
       },
       {
+        "part_id": "bhcs-m5x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -622,6 +653,7 @@
         }
       },
       {
+        "part_id": "bhcs-m5x12",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -641,6 +673,7 @@
         }
       },
       {
+        "part_id": "bhcs-m5x16",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -660,6 +693,7 @@
         }
       },
       {
+        "part_id": "bhcs-m5x25",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -679,6 +713,7 @@
         }
       },
       {
+        "part_id": "fhcs-m3x8",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -698,6 +733,7 @@
         }
       },
       {
+        "part_id": "fhcs-m3x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -717,6 +753,7 @@
         }
       },
       {
+        "part_id": "fhcs-m5x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -736,6 +773,7 @@
         }
       },
       {
+        "part_id": "fhcs-m5x12",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -755,6 +793,7 @@
         }
       },
       {
+        "part_id": "shcs-m6x20",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -774,6 +813,7 @@
         }
       },
       {
+        "part_id": "shcs-unc14-16",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -793,6 +833,7 @@
         }
       },
       {
+        "part_id": "shoulder-5x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -812,6 +853,7 @@
         }
       },
       {
+        "part_id": "shoulder-5x20",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -831,6 +873,7 @@
         }
       },
       {
+        "part_id": "tnut-dropin-m3",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -850,6 +893,7 @@
         }
       },
       {
+        "part_id": "tnut-dropin-m5",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -869,6 +913,7 @@
         }
       },
       {
+        "part_id": "tnut-slidein-m5",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -888,6 +933,7 @@
         }
       },
       {
+        "part_id": "sqnut-m3",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -907,6 +953,7 @@
         }
       },
       {
+        "part_id": "sqnut-m4",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -926,6 +973,7 @@
         }
       },
       {
+        "part_id": "sqnut-m5",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -945,6 +993,7 @@
         }
       },
       {
+        "part_id": "hexnut-unc14",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -964,6 +1013,7 @@
         }
       },
       {
+        "part_id": "shim-5x8x0_5",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -983,6 +1033,7 @@
         }
       },
       {
+        "part_id": "spacer-5x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -1002,6 +1053,7 @@
         }
       },
       {
+        "part_id": "spacer-6x12",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -1021,6 +1073,7 @@
         }
       },
       {
+        "part_id": "hex-key",
         "cls": {
           "en": "Tools",
           "zh": "工具"
@@ -1040,6 +1093,7 @@
         }
       },
       {
+        "part_id": "grease",
         "cls": {
           "en": "Other",
           "zh": "其他"
@@ -1059,6 +1113,7 @@
         }
       },
       {
+        "part_id": "threadlocker",
         "cls": {
           "en": "Other",
           "zh": "其他"
