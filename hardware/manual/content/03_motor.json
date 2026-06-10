@@ -156,7 +156,7 @@
       },
       {
         "h3": { "en": "Set screws", "zh": "紧定螺钉" },
-        "body": { "en": "<p>Apply threadlocker to every set screw — no exceptions. Loose set screws are the most common problem users report; a drop now saves hours of troubleshooting later. Follow the directions on your threadlocker.</p>", "zh": "<p>每颗紧定螺钉都要涂螺纹胶，一颗都不能漏。紧定螺钉松动是用户反馈最多的问题；现在滴上一滴，能省下日后好几个小时的排查。涂法照螺纹胶的说明来。</p>" },
+        "body": { "en": "<p>Apply threadlocker to every set screw — a loose pulley throws off motion accuracy and is the single most common issue users report. Before you do, get the pulleys aligned: Motor A's pulley coplanar with all the lower idlers, Motor B's pulley coplanar with all the upper idlers. You can also hold off on the threadlocker until after the belts are installed.</p>", "zh": "<p>每颗紧定螺钉都要上螺纹胶——同步轮松动会导致运动失准，是用户反馈最多的问题。但上胶前务必先对齐：电机 A 同步轮与所有下层惰轮共面，电机 B 同步轮与所有上层惰轮共面。也可以暂不上胶，等装好同步带后再涂。</p>" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }
