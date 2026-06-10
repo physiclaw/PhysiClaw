@@ -273,8 +273,8 @@
           "zh": "先装好 X 横梁的 T 型螺母"
         },
         "body": {
-          "en": "Slide both M5 T-nuts in from the open end.",
-          "zh": "把两颗 M5 T 型螺母从开口那端滑进去。"
+          "en": "Slide the two M5 T-nuts in, one from each end.",
+          "zh": "把两颗 M5 T 型螺母从两端滑进去。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:90mm; width:80mm;"

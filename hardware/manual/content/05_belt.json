@@ -63,7 +63,7 @@
         "h3": { "en": "Match the Motor B belt length", "zh": "电机 B 的带长要一致" },
         "body": { "en": "Before fitting the Motor A belt into its clamp, cut the Motor B belt to match it — both must be the same length.", "zh": "把电机 A 的同步带装进夹具之前，先照它的长度再剪一条作电机 B 的同步带——两条要一样长。" },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:60mm; width:50mm;"
+        "style": "left:140mm; top:60mm; width:45mm;"
       }
     ],
     "bom": {
@@ -85,10 +85,16 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Belt final check", "zh": "同步带最后检查" },
+        "h3": { "en": "Check the belts", "zh": "检查同步带" },
         "body": { "en": "With both belts installed, push the carriage by hand through its full travel in every direction. It should move smoothly with the same, even resistance throughout — that resistance is just the motors. Confirm there's no sticking, no interference, no twisted belts, and no odd noises, with the two belts on their separate planes.", "zh": "两条带都装好后，用手推滑座，沿各方向走完整个行程。滑动应当全程顺畅、阻力均匀——这点阻力只来自电机。确认没有卡滞、没有蹭碰、带不拧劲、没有怪声，两条带各自待在自己的平面上。" },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:130mm; width:100mm;"
+        "style": "right:60mm; top:110mm; width:100mm;"
+      },
+      {
+        "h3": { "en": "Threadlocker", "zh": "螺纹胶加固" },
+        "body": { "en": "If the pulley set screws have no threadlocker yet, apply it now that the belts run smoothly.", "zh": "若同步轮的紧定螺钉还没涂螺纹胶，趁现在同步带运行良好，把胶涂上。" },
+        "classes": "note overlay sm",
+        "style": "right:60mm; top:150mm; width:100mm;"
       }
     ]
   },

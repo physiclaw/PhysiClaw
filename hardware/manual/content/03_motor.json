@@ -149,14 +149,20 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Two heights, on purpose", "zh": "故意分成两个高度" },
-        "body": { "en": "The A and B belts run on two stacked planes. Set Motor A's pulley (left) to the lower plane and Motor B's (right) to the upper — slide each along the shaft, then lock its set screw.", "zh": "A、B 两条同步带分别走上下两层。电机 A 的同步轮（左）放下层，电机 B 的同步轮（右）放上层——各自沿电机轴滑到位，再拧紧紧定螺钉锁住。" },
+        "h3": { "en": "Two heights", "zh": "不同高度" },
+        "body": { "en": "The A and B belts sit at different heights: Motor A's pulley (left) is coplanar with the lower idlers, Motor B's pulley (right) coplanar with the upper idlers. Slide each pulley along its motor shaft into position, then lock it down with the set screw.", "zh": "A、B 两条同步带处在不同高度，电机 A 的同步轮（左）与下层惰轮共面，电机 B 的同步轮（右）与上层惰轮共面。各自沿电机轴滑到位后，把紧定螺钉拧紧固定。" },
         "classes": "note overlay sm",
-        "style": "left:40mm; top:20mm; width:80mm;"
+        "style": "left:40mm; top:15mm; width:90mm;"
       },
       {
         "h3": { "en": "Set screws", "zh": "紧定螺钉" },
-        "body": { "en": "<p>Apply threadlocker to every set screw — a loose pulley throws off motion accuracy and is the single most common issue users report. Before you do, get the pulleys aligned: Motor A's pulley coplanar with all the lower idlers, Motor B's pulley coplanar with all the upper idlers. You can also hold off on the threadlocker until after the belts are installed.</p>", "zh": "<p>每颗紧定螺钉都要上螺纹胶——同步轮松动会导致运动失准，是用户反馈最多的问题。但上胶前务必先对齐：电机 A 同步轮与所有下层惰轮共面，电机 B 同步轮与所有上层惰轮共面。也可以暂不上胶，等装好同步带后再涂。</p>" },
+        "body": { "en": "Tighten one set screw onto the shaft's D-flat first, then tighten the other.", "zh": "先把一颗紧定螺钉对准 D 形切面拧紧，再拧另一颗。" },
+        "classes": "note overlay sm",
+        "style": "left:142mm; top:30mm; width:42mm;"
+      },
+      {
+        "h3": { "en": "Threadlocker", "zh": "螺纹胶加固" },
+        "body": { "en": "<p>Apply threadlocker to every set screw — a loose pulley throws off motion accuracy and is the single most common issue users report. Before you do, though, make sure the pulleys and idlers are aligned. You can also hold off on the threadlocker and apply it after the belts are installed.</p>", "zh": "<p>每颗紧定螺钉都要上螺纹胶——同步轮松动会导致运动失准，是用户反馈最多的问题，但上胶前务必先把同步轮和惰轮对齐。也可以暂不上胶，等装好同步带后再涂。</p>" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }
