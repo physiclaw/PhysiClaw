@@ -615,10 +615,29 @@
           "en": "M5×10",
           "zh": "M5×10"
         },
-        "qty": "18",
+        "qty": "16",
         "desc": {
           "en": "Frame, idlers, camera base",
           "zh": "机身、惰轮、摄像头支架"
+        }
+      },
+      {
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "BHCS",
+          "zh": "内六角半圆头螺栓"
+        },
+        "spec": {
+          "en": "M5×12",
+          "zh": "M5×12"
+        },
+        "qty": "2",
+        "desc": {
+          "en": "Idler-mount brackets",
+          "zh": "惰轮支座连接板"
         }
       },
       {

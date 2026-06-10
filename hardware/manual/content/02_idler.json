@@ -60,7 +60,7 @@
     "notes": [
       {
         "h3": { "en": "Two ways to the frame", "zh": "两处固定到框架" },
-        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame.", "zh": "支座靠两处固定在框架上：中间的 M5 螺栓咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连到一起。" },
+        "body": { "en": "The block locks to the frame in two places: the middle M5 screw catches a slide-in T-nut in the extrusion slot, and the bracket bridges block and frame. On the bracket, the longer M5×12 BHCS threads into the block's captive square nut; the M5×10 catches the T-nut in the frame slot.", "zh": "支座靠两处固定在框架上：中间的 M5 螺栓咬住型材槽里的滑块螺母，再用一块连接板把支座和框架连到一起。连接板上较长的 M5×12 半圆头螺栓拧进支座的预埋四方螺母，M5×10 拧进型材槽里的船形螺母。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:30mm; width:80mm;"
       },
@@ -75,7 +75,8 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Flat bracket", "zh": "一字连接板" }, "spec": "40 × 18 × 4 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×12", "qty": "1" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "1" }
       ]
     }
@@ -127,6 +128,12 @@
     ],
     "notes": [
       {
+        "h3": { "en": "Long screw into the block", "zh": "长螺栓拧进支座" },
+        "body": { "en": "Same screw split as the left bracket: the M5×12 BHCS threads into the block's captive square nut, the M5×10 into the frame-slot T-nut.", "zh": "螺栓分配和左边的连接板相同：M5×12 半圆头螺栓拧进支座的预埋四方螺母，M5×10 拧进型材槽里的船形螺母。" },
+        "classes": "note overlay sm",
+        "style": "left:139mm; top:40mm; width:45mm;"
+      },
+      {
         "h3": { "en": "Match the left block's gap", "zh": "间隙和左边的支座保持一致" },
         "body": { "en": "Set the right block the same 2 mm clear of the frame-corner plate as the left block — keep both gaps equal so the idler stations stay symmetric.", "zh": "右边的支座和左边一样，离框架转角连接板留 2 mm 间隙——两边间隙相等，惰轮工位才能左右对称。" },
         "classes": "note overlay sm",
@@ -137,7 +144,8 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Flat bracket", "zh": "一字连接板" }, "spec": "40 × 18 × 4 mm", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×12", "qty": "1" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "1" }
       ]
     }
