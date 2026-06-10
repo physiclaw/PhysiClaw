@@ -375,8 +375,8 @@
           "zh": "X 导轨"
         },
         "body": {
-          "en": "Mount this rail just like the Y rails: let the T-nuts hang loose at first, then tighten to draw them up.",
-          "zh": "这条导轨的装法和 Y 导轨一样：先让 T 型螺母松松地吊着，再拧紧把它们拉上来。"
+          "en": "Mount this rail just like the Y rails: let the T-nuts hang loose, lower the rail into the slot, then tighten.",
+          "zh": "这条导轨的装法和 Y 导轨一样：先让 T 型螺母松松地吊着，放进滑槽后，再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:100mm; width:80mm;"

@@ -96,7 +96,7 @@
       },
       {
         "h3": { "en": "Orient the camera", "zh": "调摄像头的朝向" },
-        "body": { "en": "Bend the gooseneck to frame the screen, and mount the camera in landscape — sensor's long axis parallel to the phone's long edge.", "zh": "弯一弯金属软管，让屏幕进到画面里。摄像头横着装，传感器长边对齐手机长边。" },
+        "body": { "en": "Bend the gooseneck so the camera points squarely at the phone screen, and align the sensor's long edge with the phone's long edge.", "zh": "弯一弯金属软管，让摄像头正对手机屏幕，摄像头传感器长边对齐手机长边。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:80mm; width:60mm;"
       },
