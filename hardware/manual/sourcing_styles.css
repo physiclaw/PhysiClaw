@@ -62,50 +62,85 @@ a:hover { text-decoration: underline; }
 }
 .lede { max-width: 75ch; color: var(--ink-soft); margin: 0 0 6px; }
 
-/* ---- parts table -------------------------------------------------------- */
-.table-wrap { margin-top: 22px; overflow-x: auto; }
-table.sourcing { border-collapse: collapse; width: 100%; min-width: 1180px; }
+/* ---- parts table --------------------------------------------------------
+   Border hierarchy: a containing frame (ink-faint), one strong rule under
+   the header (ink), a medium rule opening each class group (ink-faint), and
+   a light inner grid (rule). Numbers are tabular so columns of figures
+   align; the type hierarchy is component (semibold ink) > spec (mono soft)
+   > application/notes (small soft). */
+.table-wrap { margin-top: 24px; overflow-x: auto; }
+table.sourcing {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1180px;
+  border: 1px solid var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
 .sourcing th, .sourcing td {
   border: 1px solid var(--rule);
-  padding: 8px 10px;
+  padding: 9px 12px;
   text-align: left;
   vertical-align: middle;
+  line-height: 1.45;
 }
+
+/* Column widths (10 columns, sums to 100%):
+   Class | Component | Spec | Qty | Application | Ref | 3 × Supplier | Notes */
+.sourcing th:nth-child(1)  { width: 6%; }
+.sourcing th:nth-child(2)  { width: 11%; }
+.sourcing th:nth-child(3)  { width: 23%; }
+.sourcing th:nth-child(4)  { width: 4%; }
+.sourcing th:nth-child(5)  { width: 11%; }
+.sourcing th:nth-child(6)  { width: 6%; }
+.sourcing th:nth-child(7), .sourcing th:nth-child(8), .sourcing th:nth-child(9) { width: 9%; }
+.sourcing th:nth-child(10) { width: 12%; }
+
+/* Open header in the manual's table idiom — no vertical rules, thin uppercase
+   letterspaced labels, one strong closing rule above the ruled body. */
 .sourcing thead th {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--page-bg);
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   white-space: nowrap;
-  border-bottom: 1.5px solid var(--ink-faint);
+  padding: 11px 12px;
+  border: none;
+  border-bottom: 2px solid var(--ink);
 }
+/* Align the Qty header with its centered column. */
+.sourcing thead th:nth-child(4) { text-align: center; }
+
+/* A medium rule opens each class group, lifting it off the inner grid. */
 .sourcing tbody tr.grp td { border-top: 1.5px solid var(--ink-faint); }
 
 td.cls {
-  font-weight: 600;
-  font-size: 12.5px;
   color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   white-space: nowrap;
 }
-td.comp { font-weight: 500; min-width: 130px; }
+td.comp { font-weight: 600; font-size: 13px; }
 td.spec {
-  min-width: 200px;
   color: var(--ink-soft);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.55;
 }
 td.qty {
   font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 500;
   text-align: center;
   white-space: nowrap;
 }
-td.desc { color: var(--ink-soft); font-size: 12.5px; min-width: 110px; }
+td.desc { color: var(--ink-soft); font-size: 12.5px; }
 td.ref {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -113,27 +148,10 @@ td.ref {
   white-space: nowrap;
 }
 
-/* inquiry message + copy button */
-td.inq { min-width: 200px; max-width: 260px; font-size: 12.5px; color: var(--ink-soft); }
-td.inq .msg { display: block; line-height: 1.4; white-space: pre-line; }
-button.copy {
-  margin-top: 6px;
-  padding: 1px 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  color: var(--ink-soft);
-  background: var(--page-bg);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  cursor: pointer;
-}
-button.copy:hover { color: var(--ink); border-color: var(--ink-faint); }
-button.copy.ok { color: var(--ok); border-color: var(--ok); }
-button.copy.ok::after { content: " ✓"; }
-
-/* supplier cells */
-td.offer { min-width: 150px; font-size: 13px; }
+/* supplier cells; custom parts show a "询价说明" action line under the shop
+   name — hovering fades in a styled tooltip with the inquiry message,
+   clicking copies it (the copy icon morphs into a green check). */
+td.offer { font-size: 13px; }
 td.offer .v-vendor { font-weight: 500; }
 td.offer .v-prod {
   color: var(--ink-soft);
@@ -141,7 +159,94 @@ td.offer .v-prod {
   font-size: 11.5px;
   margin-top: 2px;
 }
-td.offer.pending { color: var(--ink-faint); font-style: italic; }
+td.offer.pending { color: var(--ink-faint); font-size: 12.5px; font-style: italic; }
+
+button.copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--link);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+button.copy:hover { color: var(--ink); }
+/* The two icons stack in place and cross-fade with a soft scale, so the
+   copy -> check swap reads as one mark transforming, not a content jump. */
+button.copy svg {
+  width: 12px;
+  height: 12px;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+button.copy .ic-check {
+  position: absolute;
+  left: 0;
+  color: var(--ok);
+  opacity: 0;
+  transform: scale(0.5);
+}
+button.copy.ok { color: var(--ok); }
+button.copy.ok .ic-copy { opacity: 0; transform: scale(0.5); }
+button.copy.ok .ic-check { opacity: 1; transform: scale(1); }
+/* Tooltip: the full inquiry message, fading and settling in below the line
+   after a short intent delay (so it doesn't flash on a passing cursor). */
+button.copy::after {
+  content: attr(data-q);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 3;
+  width: max-content;
+  max-width: 300px;
+  padding: 9px 12px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-line;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+button.copy::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 14px;
+  z-index: 3;
+  border: 5px solid transparent;
+  border-top: none;
+  border-bottom-color: var(--ink);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+button.copy:hover::after, button.copy:hover::before,
+button.copy:focus-visible::after, button.copy:focus-visible::before {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0.25s;
+}
+/* Buttons near the table's right edge flip their bubble to open leftward, so
+   it stays inside .table-wrap instead of being clipped at the edge. */
+button.copy.flip::after { left: auto; right: 0; }
+button.copy.flip::before { left: auto; right: 14px; }
+
+/* notes; an embedded 询价说明 control flows inline with the sentence. */
+td.note { color: var(--ink-soft); font-size: 12.5px; }
+td.note button.copy { margin-top: 0; vertical-align: -1px; }
 
 /* ---- print -------------------------------------------------------------- */
 @media print {
@@ -149,6 +254,8 @@ td.offer.pending { color: var(--ink-faint); font-style: italic; }
   .wrap { margin: 0; padding: 0; max-width: none; }
   .table-wrap { overflow: visible; }
   .sourcing thead th { position: static; }
-  button.copy { display: none; }
+  /* The standalone action lines print as noise; the note-embedded control
+     stays — hiding it would break its sentence. */
+  td.offer button.copy { display: none; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

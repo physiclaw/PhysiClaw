@@ -3,175 +3,128 @@
     "part_id": "ext-2040-y",
     "ref": "¥50–90",
     "inquiry": {
-      "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — counterbored 10 mm from each end for M6 SHCS\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\nPlease quote the whole order incl. shipping.",
-      "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，距两端 10mm 开 M6 沉孔\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n请整单报价（含运费）"
+      "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — counterbored 10 mm from each end for M6 SHCS\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\nPlease kindly quote.",
+      "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，距两端 10mm 开 M6 沉孔\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n请帮忙报价"
     },
     "suppliers": [
       {
         "name": {
           "en": "Extrusion shop A",
           "zh": "铝材定制店 A"
-        },
-        "product": {
-          "en": "2040 black + 1020 profile, cut/counterbore/tap/drill per drawings, 7 pcs",
-          "zh": "2040黑色+1020型材 按图切割/沉孔/攻丝/钻孔 7根套单"
         }
       },
       {
         "name": {
           "en": "Extrusion shop B",
           "zh": "铝材定制店 B"
-        },
-        "product": {
-          "en": "EU-standard profile machining package, 7 pcs per drawing set",
-          "zh": "欧标型材加工套餐 按图纸7根"
         }
       },
       {
         "name": {
           "en": "Extrusion shop C",
           "zh": "铝材定制店 C"
-        },
-        "product": {
-          "en": "Custom profile cutting service, drawing-set order",
-          "zh": "型材定制切割 图纸套单"
         }
       }
-    ]
+    ],
+    "note": {
+      "en": "Custom order — send the {inquiry} to the shop's customer service.",
+      "zh": "定制商品，请将{inquiry}发送给店铺客服"
+    }
   },
   {
     "part_id": "ext-2040-x",
     "ref": "Ditto",
     "inquiry": "Ditto",
-    "suppliers": "Ditto"
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "ext-1020-x-beam",
     "ref": "Ditto",
     "inquiry": "Ditto",
-    "suppliers": "Ditto"
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "ext-1020-phone-support",
     "ref": "Ditto",
     "inquiry": "Ditto",
-    "suppliers": "Ditto"
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "printed-parts",
     "ref": "¥200–350",
-    "inquiry": {
-      "en": "SLS 3D printing\nMaterial: PA12 nylon (or equivalent), dyed black\nQty: 10 parts (one set — STEP file package to follow)\nPlease quote the full set incl. shipping.",
-      "zh": "SLS 3D 打印\n材料：PA12 尼龙（或同等材料），染黑\n数量：共 10 件（整套，STEP 文件压缩包稍后发送）\n请按整套报价（含运费）"
-    },
     "suppliers": [
       {
         "name": {
           "en": "SLS service A",
           "zh": "SLS 打印服务 A"
-        },
-        "product": {
-          "en": "SLS PA12 nylon, dyed black, 10-piece set",
-          "zh": "SLS尼龙PA12 染黑 全套10件"
         }
       },
       {
         "name": {
           "en": "SLS service B",
           "zh": "SLS 打印服务 B"
-        },
-        "product": {
-          "en": "SLS PA12 black, instant quote upload",
-          "zh": "SLS尼龙打印 黑色 在线报价"
         }
       },
       {
         "name": {
           "en": "SLS service C",
           "zh": "SLS 打印服务 C"
-        },
-        "product": {
-          "en": "MJF PA12 black (SLS-equivalent)",
-          "zh": "MJF尼龙PA12 黑色（同等强度）"
         }
       }
-    ]
+    ],
+    "note": {
+      "en": "<a href=\"#\">Download the STEP files</a> and send them to the shop's customer service.",
+      "zh": "<a href=\"#\">下载 step 文件</a>，发送给店铺客服"
+    }
   },
   {
     "part_id": "rail-y",
-    "ref": "¥50–90",
+    "ref": "¥120–220",
+    "inquiry": {
+      "en": "MGN9H miniature linear guide set — 3 rails + 3 carriages:\nRail 240 mm ×2\nRail 150 mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
+      "zh": "MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 240 mm ×2\n导轨 150 mm ×1\nH 型加长滑块 ×3\n请帮忙报价"
+    },
     "suppliers": [
       {
         "name": {
           "en": "Rail shop A",
           "zh": "导轨店 A"
-        },
-        "product": {
-          "en": "MGN9 linear rail 250 mm, cut to 240 mm",
-          "zh": "MGN9直线导轨 250mm 定制切割240mm"
         }
       },
       {
         "name": {
           "en": "Rail shop B",
           "zh": "导轨店 B"
-        },
-        "product": {
-          "en": "MGN9H rail 240 mm, standard grade",
-          "zh": "MGN9H导轨 240mm 标准级"
         }
       },
       {
         "name": {
           "en": "Rail shop C",
           "zh": "导轨店 C"
-        },
-        "product": {
-          "en": "HIWIN-compatible MGN9 rail 240 mm",
-          "zh": "国产MGN9导轨 240mm"
         }
       }
-    ]
+    ],
+    "note": {
+      "en": "Custom order — send the {inquiry} to the shop's customer service.",
+      "zh": "定制商品，请将{inquiry}发送给店铺客服"
+    }
   },
   {
     "part_id": "rail-x",
-    "ref": "¥20–35"
+    "ref": "Ditto",
+    "inquiry": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "carriage",
-    "ref": "¥50–90",
-    "suppliers": [
-      {
-        "name": {
-          "en": "Rail shop A",
-          "zh": "导轨店 A"
-        },
-        "product": {
-          "en": "MGN9H long carriage, standard preload",
-          "zh": "MGN9H加长滑块 标准预压"
-        }
-      },
-      {
-        "name": {
-          "en": "Rail shop B",
-          "zh": "导轨店 B"
-        },
-        "product": {
-          "en": "MGN9H carriage block",
-          "zh": "MGN9H滑块"
-        }
-      },
-      {
-        "name": {
-          "en": "Rail shop C",
-          "zh": "导轨店 C"
-        },
-        "product": {
-          "en": "MGN9H carriage, stainless",
-          "zh": "MGN9H滑块 不锈钢"
-        }
-      }
-    ]
+    "ref": "Ditto",
+    "inquiry": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "pulley",

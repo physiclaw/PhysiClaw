@@ -13,21 +13,30 @@ table — all optional:
 
 - ``ref`` — 参考价: a rough expected cost for the needed quantity, so the
   buyer can judge whether a shop's price is reasonable (missing -> em dash);
-- ``inquiry`` — 询价说明: a ready-to-paste message for the shop (part /
-  spec / qty, one fact per line), copied via the cell's button; missing ->
-  generated from the BOM row, which is right for most parts;
+- ``inquiry`` — a ready-to-paste message for the shop (one fact per line).
+  It has no column of its own: each supplier cell of the part shows a
+  "询价说明" line under the shop name — hovering previews the message,
+  clicking copies it. Only custom / cut-to-order parts carry one (frame
+  extrusions, printed parts, linear-guide set); standard parts are bought
+  off the shelf by spec and show the shop's ``product`` line instead;
 - ``suppliers`` — 供应商 1..3: up to three shops, each ``{name, url?,
   product?}``: the name (linked to ``url``) over the shop's own ``product``
   spec. Missing slots render as pending. Localizable values take
-  ``{"en":…,"zh":…}``; plain strings show in both languages.
+  ``{"en":…,"zh":…}``; plain strings show in both languages;
+- ``note`` — 备注: a free remark column at the table's end (missing -> em
+  dash). Notes are prose and emitted as trusted HTML, the manual's
+  convention for content strings (inline ``<a>`` is fine); data fields
+  (names, products, refs) are escaped instead. The placeholder ``{inquiry}``
+  renders as the same click-to-copy 询价说明 control as in the supplier
+  cells.
 
 The special value ``"Ditto"`` makes a field merge with the row above — the
 table cell spans both rows, exactly like a ditto mark in a paper ledger. Use
 it when consecutive parts are sourced together: the frame extrusions carry
 one ref / inquiry / suppliers set on their first row and ``"Ditto"`` on the
 rest, so the cutting order reads as one spanned block. ``"Ditto"`` works per
-field (``ref`` / ``inquiry`` / ``suppliers``), or per supplier slot inside
-the ``suppliers`` array; on the first row it is an error.
+field (``ref`` / ``inquiry`` / ``suppliers`` / ``note``), or per supplier
+slot inside the ``suppliers`` array; on the first row it is an error.
 
 Run under ``uv`` from the repo root (standard library only, Python 3.12+);
 all paths resolve relative to this file, so the cwd does not matter::
@@ -81,7 +90,7 @@ UI = {
         "zh": "对应装配手册物料清单的全部零件，每项零件列出三家供应商。",
     },
     "pending": {"en": "to be found", "zh": "待补充"},
-    "copy": {"en": "copy", "zh": "复制"},
+    "inquiry_label": {"en": "Inquiry message", "zh": "询价说明"},
     "supplier_n": {"en": "Supplier", "zh": "供应商"},
     "th_cls": {"en": "Class", "zh": "类别"},
     "th_component": {"en": "Component", "zh": "组件"},
@@ -89,12 +98,27 @@ UI = {
     "th_qty": {"en": "Qty", "zh": "数量"},
     "th_desc": {"en": "Application", "zh": "用途"},
     "th_ref": {"en": "Ref. price", "zh": "参考价"},
-    "th_inquiry": {"en": "Inquiry message", "zh": "询价说明"},
+    "th_note": {"en": "Notes", "zh": "备注"},
 }
 
 
 def ui(key: str, lang: str) -> str:
     return loc(UI[key], lang)
+
+
+# Snippet-style copy button icons (Feather "copy" / "check"), swapped by CSS
+# when the button briefly carries the `ok` class after a successful copy.
+COPY_ICON_SVG = (
+    '<svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+)
+CHECK_ICON_SVG = (
+    '<svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M20 6 9 17l-5-5"/></svg>'
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -121,22 +145,6 @@ def load_bom_rows() -> list[dict]:
         raise BuildError("duplicate part_id(s) in the BOM:\n"
                          + "\n".join(f"    {i}" for i in dupes))
     return rows
-
-
-def default_inquiry(row: dict) -> dict:
-    """A ready-to-paste vendor inquiry built from the BOM row — one fact per
-    line (part / spec / qty / quote request), no greeting, so the shop can
-    read the requirement at a glance."""
-    return {
-        "en": (f"{row['component']['en']}\n"
-               f"Spec: {row['spec']['en']}\n"
-               f"Qty: {row['qty']}\n"
-               "Please quote incl. shipping."),
-        "zh": (f"{row['component']['zh']}\n"
-               f"规格：{row['spec']['zh']}\n"
-               f"数量：{row['qty']}\n"
-               "请报价（含运费）"),
-    }
 
 
 def load_sourcing_data() -> list[dict]:
@@ -183,11 +191,14 @@ def write_sourcing_file(entries: list[dict]) -> None:
 # --------------------------------------------------------------------------- #
 # Ditto resolution — per column, "Ditto" merges a cell with the row above.
 # --------------------------------------------------------------------------- #
-def ditto_spans(values: list, col: str, ids: list[str]) -> list[int]:
-    """Rowspan per row for one column: a non-Ditto value opens a cell of span
-    1; each following ``"Ditto"`` extends that cell and gets span 0 (no cell
-    emitted). ``"Ditto"`` on the first row has nothing to merge with."""
+def ditto_walk(values: list, col: str, ids: list[str]) -> tuple[list[int], list]:
+    """Resolve one column's ``"Ditto"`` marks in a single walk, returning
+    ``(spans, resolved)``: a non-Ditto value opens a cell of span 1; each
+    following ``"Ditto"`` extends that cell (span 0 — no cell emitted) and
+    inherits the anchor's value into ``resolved``. ``"Ditto"`` on the first
+    row has nothing to merge with."""
     spans = [0] * len(values)
+    resolved: list = []
     anchor = -1
     for i, value in enumerate(values):
         if value == DITTO:
@@ -195,10 +206,12 @@ def ditto_spans(values: list, col: str, ids: list[str]) -> list[int]:
                 raise BuildError(f'"{DITTO}" in {col!r} of entry {ids[i]!r} '
                                  "has no row above to merge with")
             spans[anchor] += 1
+            resolved.append(resolved[anchor])
         else:
             anchor = i
             spans[i] = 1
-    return spans
+            resolved.append(value)
+    return spans, resolved
 
 
 def supplier_columns(entries: list[dict]) -> list[list]:
@@ -227,9 +240,27 @@ def _span_attr(span: int) -> str:
     return f' rowspan="{span}"' if span > 1 else ""
 
 
-def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
-    """One supplier cell: the shop name (linked to its url) over the shop's
-    own product spec."""
+def _inquiry_button(message: str, lang: str, flip: bool = False) -> str:
+    """The click-to-copy 询价说明 control: copy icon + label; hovering shows
+    the message in a tooltip, clicking copies it (icon morphs to a check).
+    ``flip`` opens the tooltip leftward — for buttons near the table's right
+    edge, where it would otherwise be clipped."""
+    # &#10; keeps the message's line breaks intact inside the attribute;
+    # the CSS tooltip renders it via content:attr(data-q) + pre-line, so
+    # the hover preview and the copied text are the same string.
+    msg_attr = html.escape(message, quote=True).replace("\n", "&#10;")
+    cls = "copy flip" if flip else "copy"
+    return (f'<button class="{cls}" type="button" data-q="{msg_attr}">'
+            f"{COPY_ICON_SVG}{CHECK_ICON_SVG}"
+            f'<span>{ui("inquiry_label", lang)}</span></button>')
+
+
+def render_supplier_cell(supplier: dict | None, message: str,
+                         lang: str, span: int, flip: bool = False) -> str:
+    """One supplier cell: the shop name (linked to its url) over a second
+    line. For custom parts (an ``inquiry`` message is set) that line is a
+    "询价说明" action — hovering previews the message, clicking copies it;
+    for standard parts it is the shop's own ``product`` spec."""
     name = loc(supplier.get("name") or "", lang) if supplier else ""
     if not name:
         return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
@@ -237,36 +268,30 @@ def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
     if supplier.get("url"):
         href = html.escape(supplier["url"], quote=True)
         name = f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
-    product = loc(supplier.get("product") or "", lang)
-    product_html = f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
+    if message:
+        second = _inquiry_button(message, lang, flip)
+    else:
+        product = loc(supplier.get("product") or "", lang)
+        second = f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
     return (f'<td class="offer"{_span_attr(span)}><div class="v-vendor">{name}</div>'
-            f"{product_html}</td>")
-
-
-def _inquiry_cell(message: str, lang: str, span: int) -> str:
-    # &#10; keeps the message's line breaks intact inside the data attribute,
-    # so the copied text pastes as the same multi-line message shown.
-    msg_attr = html.escape(message, quote=True).replace("\n", "&#10;")
-    return (f'<td class="inq"{_span_attr(span)}><span class="msg">{html.escape(message)}</span>'
-            f'<button class="copy" type="button" data-q="{msg_attr}">'
-            f'{ui("copy", lang)}</button></td>')
+            f"{second}</td>")
 
 
 def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     """The grouped parts table: BOM columns rendered verbatim from the manual
-    content, then the sourcing columns (ref price / inquiry / one column per
-    supplier slot). ``"Ditto"`` fields merge their cell with the row above."""
+    content, then the sourcing columns (ref price / one column per supplier
+    slot / notes). ``"Ditto"`` fields merge their cell with the row above."""
     ids = [r["part_id"] for r in rows]
     cls_span = _rowspans(rows, lambda r: r["cls"]["en"])
     comp_span = _rowspans(rows, lambda r: (r["cls"]["en"], r["component"]["en"]))
 
-    refs = [e.get("ref") for e in entries]
-    inquiries = [e.get("inquiry") for e in entries]
-    sup_cols = supplier_columns(entries)
-    ref_spans = ditto_spans(refs, "ref", ids)
-    inq_spans = ditto_spans(inquiries, "inquiry", ids)
-    sup_spans = [ditto_spans(col, f"suppliers[{j}]", ids)
-                 for j, col in enumerate(sup_cols)]
+    ref_spans, refs = ditto_walk([e.get("ref") for e in entries], "ref", ids)
+    note_spans, notes = ditto_walk([e.get("note") for e in entries], "note", ids)
+    sup_walks = [ditto_walk(col, f"suppliers[{j}]", ids)
+                 for j, col in enumerate(supplier_columns(entries))]
+    # The inquiry has no column — it rides as a copy button inside the part's
+    # supplier cells and note, so only its resolved values are used.
+    _, inquiries = ditto_walk([e.get("inquiry") for e in entries], "inquiry", ids)
 
     body: list[str] = []
     for idx, row in enumerate(rows):
@@ -283,12 +308,22 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
         if ref_spans[idx]:
             ref = loc(refs[idx] or "", lang) or "—"
             cells += f'<td class="ref"{_span_attr(ref_spans[idx])}>{html.escape(ref)}</td>'
-        if inq_spans[idx]:
-            message = loc(inquiries[idx] or "", lang) or loc(default_inquiry(row), lang)
-            cells += _inquiry_cell(message, lang, inq_spans[idx])
-        for j in range(SUPPLIERS_PER_ROW):
-            if sup_spans[j][idx]:
-                cells += render_supplier_cell(sup_cols[j][idx], lang, sup_spans[j][idx])
+        message = loc(inquiries[idx] or "", lang)
+        for j, (spans, col) in enumerate(sup_walks):
+            if spans[idx]:
+                cells += render_supplier_cell(col[idx], message,
+                                              lang, spans[idx],
+                                              flip=j == SUPPLIERS_PER_ROW - 1)
+        if note_spans[idx]:
+            # Notes are prose — emitted as trusted HTML, like the manual's
+            # content strings.
+            note = loc(notes[idx] or "", lang)
+            if "{inquiry}" in note:
+                if not message:
+                    raise BuildError(f"note of entry {ids[idx]!r} uses "
+                                     "{inquiry} but the part has no inquiry message")
+                note = note.replace("{inquiry}", _inquiry_button(message, lang, flip=True))
+            cells += f'<td class="note"{_span_attr(note_spans[idx])}>{note or "—"}</td>'
 
         # Only class starts get a heavier separator; the full cell grid
         # already delineates components, so no `sub` class here.
@@ -300,7 +335,7 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     head = (f'<tr><th>{ui("th_cls", lang)}</th><th>{ui("th_component", lang)}</th>'
             f'<th>{ui("th_spec", lang)}</th><th>{ui("th_qty", lang)}</th>'
             f'<th>{ui("th_desc", lang)}</th><th>{ui("th_ref", lang)}</th>'
-            f'<th>{ui("th_inquiry", lang)}</th>{supplier_ths}</tr>')
+            f'{supplier_ths}<th>{ui("th_note", lang)}</th></tr>')
     return (f'<div class="table-wrap"><table class="sourcing">'
             f"<thead>{head}</thead><tbody>{''.join(body)}</tbody></table></div>")
 
