@@ -66,7 +66,7 @@
       },
       {
         "h3": { "en": "2 mm gap to the corner plate", "zh": "与转角连接板留 2 mm 间隙" },
-        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate — the bracket that reinforces the frame joint, not the one mounted here.", "zh": "摆放支座时，让它离框架转角的连接板留出 2 mm 间隙——这块连接板加固框架接头，不是这一步要装的那块。" },
+        "body": { "en": "Position the block so it sits 2 mm clear of the frame-corner joining plate.", "zh": "摆放支座时，让它离框架转角的连接板留出 2 mm 间隙。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:72mm; width:80mm;"
       }
