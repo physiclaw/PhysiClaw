@@ -152,8 +152,8 @@
           "zh": "反馈问题"
         },
         "body": {
-          "en": "Should you find an error in this manual or have a suggestion for an improvement, please consider opening an issue on GitHub (<a href=\"https://github.com/echosprint/PhysiClaw/issues\">github.com/echosprint/PhysiClaw/issues</a>). When raising an issue please include the relevant page numbers and a short description; annotated screenshots are also very welcome. We periodically update the manual based on the feedback we get.",
-          "zh": "如果你发现本手册有错，或者有改进建议，欢迎到 GitHub 提交 issue（<a href=\"https://github.com/echosprint/PhysiClaw/issues\">github.com/echosprint/PhysiClaw/issues</a>）。提交时请写明相关页码，简单说一下问题，最好再附上标注过的截图。我们会根据收到的反馈定期更新手册。"
+          "en": "Should you find an error in this manual or have a suggestion for an improvement, please consider opening an issue on GitHub (<a href=\"https://github.com/physiclaw/PhysiClaw/issues\">github.com/physiclaw/PhysiClaw/issues</a>). When raising an issue please include the relevant page numbers and a short description; annotated screenshots are also very welcome. We periodically update the manual based on the feedback we get.",
+          "zh": "如果你发现本手册有错，或者有改进建议，欢迎到 GitHub 提交 issue（<a href=\"https://github.com/physiclaw/PhysiClaw/issues\">github.com/physiclaw/PhysiClaw/issues</a>）。提交时请写明相关页码，简单说一下问题，最好再附上标注过的截图。我们会根据收到的反馈定期更新手册。"
         },
         "classes": "note"
       },
@@ -176,7 +176,7 @@
           "en": "GitHub",
           "zh": "GitHub"
         },
-        "url": "https://github.com/echosprint/PhysiClaw"
+        "url": "https://github.com/physiclaw/PhysiClaw"
       },
       {
         "logo": "crab",

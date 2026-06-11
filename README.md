@@ -17,7 +17,7 @@ macOS only for now. Hardware bill-of-materials [below](#bill-of-materials).
 
 ```bash
 # 1. Install the CLI (uv + Python 3.12 + physiclaw, all isolated under ~/.local/bin)
-curl -fsSL https://raw.githubusercontent.com/echosprint/PhysiClaw/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
 
 # 2. Check your environment
 physiclaw doctor

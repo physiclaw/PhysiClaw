@@ -34,9 +34,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/echosprint/PhysiClaw"
-Repository = "https://github.com/echosprint/PhysiClaw"
-Issues = "https://github.com/echosprint/PhysiClaw/issues"
+Homepage = "https://github.com/physiclaw/PhysiClaw"
+Repository = "https://github.com/physiclaw/PhysiClaw"
+Issues = "https://github.com/physiclaw/PhysiClaw/issues"
 
 [dependency-groups]
 stylus = ["manifold3d>=3.4.0", "trimesh>=4.11.4"]

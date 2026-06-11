@@ -33,7 +33,7 @@ from physiclaw.text import read_text, write_text
 
 skills_app = typer.Typer(
     help="Install, list, and remove skills from a git-repo source.",
-    epilog="Example: physiclaw skills install wechat --from echosprint/PhysiClaw",
+    epilog="Example: physiclaw skills install wechat --from physiclaw/PhysiClaw",
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True,
     add_completion=False,
@@ -242,7 +242,7 @@ def _atomic_replace(src: Path, dst: Path) -> None:
 @skills_app.command(
     "install",
     no_args_is_help=True,
-    epilog="Example: physiclaw skills install wechat --from echosprint/PhysiClaw",
+    epilog="Example: physiclaw skills install wechat --from physiclaw/PhysiClaw",
 )
 def _install(
     name: Annotated[

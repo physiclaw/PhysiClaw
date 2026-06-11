@@ -1,10 +1,10 @@
 # PhysiClaw installer (Windows 11).
 #
 # Usage (recommended — runs in a child shell so the installer can't crash yours):
-#   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/echosprint/PhysiClaw/main/install.ps1 | iex"
+#   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.ps1 | iex"
 #
 # Also works, but if the install fails the calling shell may exit:
-#   irm https://raw.githubusercontent.com/echosprint/PhysiClaw/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.ps1 | iex
 #
 # Optional (set before invoking):
 #   $env:PHYSICLAW_VERSION = '0.0.5'   # pin a version
