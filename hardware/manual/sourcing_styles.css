@@ -160,6 +160,7 @@ td.offer .v-prod {
   margin-top: 2px;
 }
 td.offer.pending { color: var(--ink-faint); font-size: 12.5px; font-style: italic; }
+td.offer.na { color: var(--ink-faint); }
 
 button.copy {
   position: relative;

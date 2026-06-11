@@ -20,7 +20,9 @@ table — all optional:
   standard parts are bought off the shelf by spec;
 - ``suppliers`` — 供应商 1..3: up to three shops, each ``{name, link?,
   product?}``: the name (linked to the shop's ``link`` URL when filled in)
-  over the shop's own ``product`` spec. Missing slots render as pending.
+  over the shop's own ``product`` spec. Missing slots render as pending;
+  a slot whose name is ``—`` renders as a muted dash (nothing to buy —
+  e.g. the part comes bundled with another purchase).
   Localizable values take ``{"en":…,"zh":…}``; plain strings show in both
   languages;
 - ``note`` — 备注: a free remark column at the table's end (missing -> em
@@ -293,6 +295,8 @@ def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
     name = loc(supplier.get("name") or "", lang) if supplier else ""
     if not name:
         return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
+    if name == "—":
+        return f'<td class="offer na"{_span_attr(span)}>—</td>'
     name = html.escape(name)
     if supplier.get("url"):
         href = html.escape(clean_taobao_url(supplier["url"]), quote=True)
