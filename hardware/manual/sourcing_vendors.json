@@ -137,7 +137,7 @@
   },
   {
     "part_id": "pulley",
-    "ref": "¥2.3",
+    "ref": "¥3",
     "suppliers": [
       {
         "name": {
@@ -180,7 +180,7 @@
   },
   {
     "part_id": "idler-smooth",
-    "ref": "¥11.5",
+    "ref": "¥12",
     "suppliers": [
       {
         "name": {
@@ -220,7 +220,7 @@
   },
   {
     "part_id": "idler-toothed",
-    "ref": "¥2.3",
+    "ref": "¥3",
     "suppliers": [
       {
         "name": {
@@ -343,7 +343,7 @@
   },
   {
     "part_id": "tmc2209",
-    "ref": "¥17–19",
+    "ref": "¥35–40",
     "suppliers": [
       {
         "name": {
@@ -500,11 +500,81 @@
   },
   {
     "part_id": "lead-wire",
-    "ref": "¥3–8"
+    "ref": "¥5–7",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Pengfei",
+          "zh": "杭州鹏菲"
+        },
+        "product": {
+          "en": "3 m, 0.3 mm², red — GB full-measure",
+          "zh": "3m 0.3平方毫米 红色 国标足米"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=679174967756&mi_id=0000DOjiLzQwfuxoJ_luQEpKC_Xmrg_iW3ukIZYvO2oA5XE&ns=1&priceTId=213e074217811692369947911e1191&skuId=6231636559122&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2261eb7688890514c627bccdcc93979ddb%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Aiweimei",
+          "zh": "艾唯美"
+        },
+        "product": {
+          "en": "5 m, 0.3 mm², red",
+          "zh": "5m 红色 0.3平方毫米"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=657813674873&mi_id=0000DNx_5_qCNO4SG3or8wLmHpTcKqoNEFkAB6hwVNVPAps&ns=1&priceTId=213e074217811692369947911e1191&spm=a21n57.1.hoverItem.27&utparam=%7B%22aplus_abtest%22%3A%2202e92a4a2dadd2104d7d3d66692218fc%22%7D&xxc=taobaoSearch&skuId=5652917324466"
+      },
+      {
+        "name": {
+          "en": "Hongmaisi",
+          "zh": "宏迈斯"
+        },
+        "product": {
+          "en": "5 m, 0.3 mm², red",
+          "zh": "5m 红色 0.3平方毫米"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=668641608310&mi_id=0000qc2CGwIr94aG6EhVE-b3t3avWKYWKYME7A66lKR4apM&ns=1&priceTId=213e074217811692369947911e1191&skuId=6196538982576&spm=a21n57.1.hoverItem.9&utparam=%7B%22aplus_abtest%22%3A%223b8708abb039797a6510840e72efb85b%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "stepper-motor",
-    "ref": "¥60–100"
+    "ref": "¥50–80",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "Black high-quality (XH cable)",
+          "zh": "黑色高品质(XH配线)"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=586441580168&mi_id=0000_By0AabFDkn_L10qEshhqZRXNFndL0IlquCiT0fHYes&ns=1&priceTId=213e054a17811708436381242e0ebb&skuId=4946625633271&spm=a21n57.1.hoverItem.24&utparam=%7B%22aplus_abtest%22%3A%228fa546b9bde781ffdc1878450718177e%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Dachuan",
+          "zh": "达川"
+        },
+        "product": {
+          "en": "NEMA17, 0.45 N·m, 40 mm body",
+          "zh": "42步进/0.45NM机身长40MM"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=674923594606&mi_id=0000JCVjp-zFMQu7R-4XrtRI2w2W1v7RvnDpPb3F4Ki_9xY&ns=1&priceTId=2150447e17811702862537551e0ed4&skuId=4995409077330&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2240bbeccd1c7c442057d47146c6cf7c70%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Gaoyang",
+          "zh": "高洋"
+        },
+        "product": {
+          "en": "NEMA17, 38 mm body, 1000 mm XH2.54 cable",
+          "zh": "42电机38高配1000mmXH2.54线"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=714153589005&mi_id=0000fIlS91HPX8ebIQIgasodqVhuAFhenSH3kWTXVYln4vc&ns=1&priceTId=2150447e17811702862537551e0ed4&skuId=4998215524564&spm=a21n57.1.hoverItem.47&utparam=%7B%22aplus_abtest%22%3A%22ec27c80b8ad5b6d7115fc48ff82fc86e%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "solenoid",
