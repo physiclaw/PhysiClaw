@@ -617,7 +617,42 @@
   },
   {
     "part_id": "flat-bracket",
-    "ref": "¥6–15"
+    "ref": "¥7–9",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bangzhai",
+          "zh": "邦寨五金"
+        },
+        "product": {
+          "en": "2020 series, 2-hole, black",
+          "zh": "黑色2020型-2孔 垂直连接板"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=712391133249&mi_id=0000Ww49mMnTE0ARdb-ImccLpvT8OPFcskq_OYdskxXiIg0&ns=1&priceTId=213e079417811848637343635e1044&skuId=5160114146517&spm=a21n57.1.hoverItem.16&utparam=%7B%22aplus_abtest%22%3A%22b7b3be36d01034f912d9492af975d52f%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Yuhaotong",
+          "zh": "宇昊通"
+        },
+        "product": {
+          "en": "2020, 2-hole, painted black",
+          "zh": "烤漆黑色2020-2孔"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=611152722401&mi_id=00002wxdG6zkL5P03GbDdg45QrC31YWDT1sQiemqCw6rgnU&ns=1&priceTId=213e079417811848637343635e1044&skuId=4298783200415&spm=a21n57.1.hoverItem.5&utparam=%7B%22aplus_abtest%22%3A%22b5432ca5e7b69e1ba933cc557a1ab900%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Xinxinghua",
+          "zh": "新兴华"
+        },
+        "product": {
+          "en": "2020, 2-hole, black (2-pack)",
+          "zh": "2020-2孔-黑色（2个）"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=746273984466&mi_id=0000WGN7uOMQiEgFygNM42NP6Mk4dgEy72eQDHO-fIeLCDs&ns=1&priceTId=2150430f17811869965924239e0fbb&skuId=5188576336708&spm=a21n57.1.hoverItem.18&utparam=%7B%22aplus_abtest%22%3A%22ed444f3760abb60b020f97841ace859b%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "motor-bracket",
