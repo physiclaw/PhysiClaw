@@ -254,8 +254,5 @@ td.note button.copy { margin-top: 0; vertical-align: -1px; }
   .wrap { margin: 0; padding: 0; max-width: none; }
   .table-wrap { overflow: visible; }
   .sourcing thead th { position: static; }
-  /* The standalone action lines print as noise; the note-embedded control
-     stays — hiding it would break its sentence. */
-  td.offer button.copy { display: none; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

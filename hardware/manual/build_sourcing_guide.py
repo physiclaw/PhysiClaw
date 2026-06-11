@@ -14,11 +14,10 @@ table — all optional:
 - ``ref`` — 参考价: a rough expected cost for the needed quantity, so the
   buyer can judge whether a shop's price is reasonable (missing -> em dash);
 - ``inquiry`` — a ready-to-paste message for the shop (one fact per line).
-  It has no column of its own: each supplier cell of the part shows a
-  "询价说明" line under the shop name — hovering previews the message,
-  clicking copies it. Only custom / cut-to-order parts carry one (frame
-  extrusions, printed parts, linear-guide set); standard parts are bought
-  off the shelf by spec and show the shop's ``product`` line instead;
+  It has no cell of its own: the part's ``note`` embeds it via the
+  ``{inquiry}`` placeholder as a click-to-copy "询价说明" control (hover
+  previews the message). Only custom / cut-to-order parts carry one;
+  standard parts are bought off the shelf by spec;
 - ``suppliers`` — 供应商 1..3: up to three shops, each ``{name, link?,
   product?}``: the name (linked to the shop's ``link`` URL when filled in)
   over the shop's own ``product`` spec. Missing slots render as pending.
@@ -288,12 +287,9 @@ def _inquiry_button(message: str, lang: str, flip: bool = False) -> str:
             f'<span>{ui("inquiry_label", lang)}</span></button>')
 
 
-def render_supplier_cell(supplier: dict | None, message: str,
-                         lang: str, span: int, flip: bool = False) -> str:
-    """One supplier cell: the shop name (linked to its url) over a second
-    line. For custom parts (an ``inquiry`` message is set) that line is a
-    "询价说明" action — hovering previews the message, clicking copies it;
-    for standard parts it is the shop's own ``product`` spec."""
+def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
+    """One supplier cell: the shop name (linked to its url) over the shop's
+    own ``product`` spec, when set."""
     name = loc(supplier.get("name") or "", lang) if supplier else ""
     if not name:
         return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
@@ -301,13 +297,10 @@ def render_supplier_cell(supplier: dict | None, message: str,
     if supplier.get("url"):
         href = html.escape(clean_taobao_url(supplier["url"]), quote=True)
         name = f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
-    if message:
-        second = _inquiry_button(message, lang, flip)
-    else:
-        product = loc(supplier.get("product") or "", lang)
-        second = f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
+    product = loc(supplier.get("product") or "", lang)
+    product_html = f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
     return (f'<td class="offer"{_span_attr(span)}><div class="v-vendor">{name}</div>'
-            f"{second}</td>")
+            f"{product_html}</td>")
 
 
 def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
@@ -322,8 +315,8 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     note_spans, notes = ditto_walk([e.get("note") for e in entries], "note", ids)
     sup_walks = [ditto_walk(col, f"suppliers[{j}]", ids)
                  for j, col in enumerate(supplier_columns(entries))]
-    # The inquiry has no column — it rides as a copy button inside the part's
-    # supplier cells and note, so only its resolved values are used.
+    # The inquiry has no cell of its own — it rides as a copy control inside
+    # the part's note ({inquiry}), so only its resolved values are used.
     _, inquiries = ditto_walk([e.get("inquiry") for e in entries], "inquiry", ids)
 
     body: list[str] = []
@@ -342,11 +335,9 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
             ref = loc(refs[idx] or "", lang) or "—"
             cells += f'<td class="ref"{_span_attr(ref_spans[idx])}>{html.escape(ref)}</td>'
         message = loc(inquiries[idx] or "", lang)
-        for j, (spans, col) in enumerate(sup_walks):
+        for spans, col in sup_walks:
             if spans[idx]:
-                cells += render_supplier_cell(col[idx], message,
-                                              lang, spans[idx],
-                                              flip=j == SUPPLIERS_PER_ROW - 1)
+                cells += render_supplier_cell(col[idx], lang, spans[idx])
         if note_spans[idx]:
             # Notes are prose — emitted as trusted HTML, like the manual's
             # content strings.

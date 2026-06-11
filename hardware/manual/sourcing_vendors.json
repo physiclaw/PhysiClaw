@@ -57,28 +57,28 @@
   },
   {
     "part_id": "printed-parts",
-    "ref": "¥200–350",
+    "ref": "¥180–190",
     "suppliers": [
       {
         "name": {
-          "en": "SLS service A",
-          "zh": "SLS 打印服务 A"
+          "en": "Wenext",
+          "zh": "未来工场"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?from=detail&id=611650162725&mi_id=00005_T4AYf3Aly4H_WC5RuCWcANsTJItKCgrxhgWJQDuY8&spm=tbpc.orderdetail.suborder_itempic.1.45926aa6FpQSGp"
       },
       {
         "name": {
-          "en": "SLS service B",
-          "zh": "SLS 打印服务 B"
+          "en": "MeiYiCheng 3D Print",
+          "zh": "美艺橙"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?id=586246509958&mi_id=00004F2Jln2LVf2a7zY2VJvxoJkVEkThEGBcz8caDq0oDFE&spm=a21xtw.29978516.0.0&xxc=shop"
       },
       {
         "name": {
-          "en": "SLS service C",
-          "zh": "SLS 打印服务 C"
+          "en": "YunDong 3D",
+          "zh": "云洞三维"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?ali_refid=a3_420434_1006%3A1197060137%3AH%3AkXAEd3JQRthRd8CCK3QZ%2FA%3D%3D%3Ab236759a6655a4e65400827904fa75b7&ali_trackid=294_b236759a6655a4e65400827904fa75b7&id=704944197031&mi_id=0000BGpMkFDtNMHXZ_oeUeZRwNKX-9EhYvhbAusS9wMaplY&mm_sceneid=2_0_121448145_0&priceTId=213e001617811451685348530e0f76&spm=a21n57.1.hoverItem.21&utparam=%7B%22aplus_abtest%22%3A%22b228b90383b413fa21928d71a319f67d%22%7D&xxc=ad_ztc"
       }
     ],
     "note": {
@@ -117,8 +117,8 @@
       }
     ],
     "note": {
-      "en": "Custom order — send the {inquiry} to the shop's customer service.",
-      "zh": "定制商品，请将{inquiry}发送给店铺客服"
+      "en": "Custom order — send the {inquiry} to the shop's customer service.<br>MGN9H rails and carriages are precision motion parts: workmanship and accuracy grades vary noticeably between makers, and prices span a wide range — choose with care.",
+      "zh": "定制商品，请将{inquiry}发送给店铺客服。<br>MGN9H 导轨滑块为精密运动件，各厂商做工与精度等级差异明显，价格区间较大，选购需注意区分。"
     }
   },
   {
