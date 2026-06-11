@@ -60,7 +60,23 @@ a:hover { text-decoration: underline; }
   font-size: 14px;
   letter-spacing: 0.12em;
 }
-.lede { max-width: 75ch; color: var(--ink-soft); margin: 0 0 6px; }
+.preamble {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 32px;
+  margin: 0 0 14px;
+}
+.lede { max-width: 60ch; color: var(--ink-soft); margin: 0; }
+.disclaimer {
+  max-width: 52ch;
+  color: var(--ink);
+  font-size: 13.5px;
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: #faf4f0;
+}
 
 /* ---- parts table --------------------------------------------------------
    Border hierarchy: a containing frame (ink-faint), one strong rule under

@@ -98,6 +98,24 @@ UI = {
               "——厂商可能随时调价，仅供了解大致价格区间。",
     },
     "pending": {"en": "to be found", "zh": "待补充"},
+    "disclaimer": {
+        "en": "<strong>Disclaimer:</strong> Supplier and product listings in "
+              "this guide are provided for reference only. We are not "
+              "affiliated with, and receive no compensation from, any of the "
+              "vendors listed, and we make no representation or warranty as "
+              "to the quality, pricing, or availability of their products. "
+              "Please verify the specifications and purchase from a vendor "
+              "of your choice. Should any listed product prove "
+              "unsatisfactory, or should you have a reliable vendor to "
+              "recommend, we welcome your feedback and will review and "
+              "update the listings accordingly.",
+        "zh": "<strong>免责声明：</strong>本指南所列供应商及商品链接仅供采购参考。"
+              "我们与所列商家不存在任何关联或利益关系，"
+              "对其商品的质量、价格及供货情况不作任何保证。"
+              "请按规格自行甄选，从您信任的商家购买。"
+              "如所列商品存在质量问题，或您有优质供应商推荐，"
+              "欢迎向我们反馈，我们将及时核实并更新相关条目。",
+    },
     "inquiry_label": {"en": "Inquiry message", "zh": "询价说明"},
     "supplier_n": {"en": "Supplier", "zh": "供应商"},
     "th_cls": {"en": "Class", "zh": "类别"},
@@ -392,7 +410,8 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         '<div class="wrap">'
         f'<header class="mast"><h1>{ui("h1", lang)}</h1>'
         f'<span class="url">{URL_MARK}</span></header>'
-        f'<p class="lede">{ui("lede", lang)}</p>'
+        f'<div class="preamble"><p class="lede">{ui("lede", lang)}</p>'
+        f'<p class="disclaimer">{ui("disclaimer", lang)}</p></div>'
         f"{render_table(rows, entries, lang)}</div>"
     )
     return (
