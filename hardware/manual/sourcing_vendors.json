@@ -1,29 +1,32 @@
 [
   {
     "part_id": "ext-2040-y",
-    "ref": "¥50–90",
+    "ref": "¥60–65",
     "inquiry": {
-      "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — counterbored 10 mm from each end for M6 SHCS\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\n5. SHCS M6×20 ×8\nPlease kindly quote.",
-      "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，距两端 10mm 开 M6 沉孔\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n5. 内六角圆柱头螺栓 M6×20 ×8\n请帮忙报价"
+      "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — M6 counterbores on the 40 mm-wide face, 10 mm from each end\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\n5. SHCS M6×20 ×8\nPlease kindly quote.",
+      "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，M6 沉孔开在 40mm 宽面，距两端面各 10mm\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n5. 内六角圆柱头螺栓 M6×20 ×8\n请帮忙报价"
     },
     "suppliers": [
       {
         "name": {
-          "en": "Extrusion shop A",
-          "zh": "铝材定制店 A"
-        }
+          "en": "TDT Aluminum profile",
+          "zh": "TDT 铝型材"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=610862084791&mi_id=0000H7EHph01arIrobfWRZ73DOYalz9ObxOlZImSKBn8F2k&ns=1&priceTId=215044c917811389967132940e0e9f&skuId=4475647915072&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%224d55392bdc28f0ef82714c0abab3fffc%22%7D&xxc=taobaoSearch"
       },
       {
         "name": {
-          "en": "Extrusion shop B",
-          "zh": "铝材定制店 B"
-        }
+          "en": "Zhongda Aluminum profile",
+          "zh": "众达铝业"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=569658195210&mi_id=0000N_V05_KndqKTpn-TVTzp01sTeXKej0L9AXBD6PvlNGA&ns=1&skuId=4518325341481&spm=a21n57.1.hoverItem.11&utparam=%7B%22aplus_abtest%22%3A%22a18383ada9911214409ab203d3fbc275%22%7D&xxc=taobaoSearch"
       },
       {
         "name": {
-          "en": "Extrusion shop C",
-          "zh": "铝材定制店 C"
-        }
+          "en": "Zhien Aluminum profile",
+          "zh": "智恩铝业"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=577553756280&mi_id=0000WMSIQN0ZkFlMaSoHVJeyYKQmdSU2d2NlpNMryuEJ-yQ&ns=1&skuId=5090964084362&spm=a21n57.1.hoverItem.37&utparam=%7B%22aplus_abtest%22%3A%22300663eefc84a0ef527db6415cbf315f%22%7D&xxc=taobaoSearch"
       }
     ],
     "note": {
@@ -60,24 +63,27 @@
         "name": {
           "en": "SLS service A",
           "zh": "SLS 打印服务 A"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
           "en": "SLS service B",
           "zh": "SLS 打印服务 B"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
           "en": "SLS service C",
           "zh": "SLS 打印服务 C"
-        }
+        },
+        "url": ""
       }
     ],
     "note": {
-      "en": "<a href=\"#\">Download the STEP files</a> and send them to the shop's customer service.",
-      "zh": "<a href=\"#\">下载 step 文件</a>，发送给店铺客服"
+      "en": "<a href=\"https://github.com/physiclaw/PhysiClaw/releases/download/physiclaw-hardware-v0.1/physiclaw_custom_parts.zip\">Download the STEP files</a> and send them to the shop's customer service.",
+      "zh": "<a href=\"https://github.com/physiclaw/PhysiClaw/releases/download/physiclaw-hardware-v0.1/physiclaw_custom_parts.zip\">下载 step 文件</a>，发送给店铺客服"
     }
   },
   {
@@ -92,19 +98,22 @@
         "name": {
           "en": "Rail shop A",
           "zh": "导轨店 A"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
           "en": "Rail shop B",
           "zh": "导轨店 B"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
           "en": "Rail shop C",
           "zh": "导轨店 C"
-        }
+        },
+        "url": ""
       }
     ],
     "note": {
@@ -154,7 +163,8 @@
         "product": {
           "en": "MKS DLC32 V2.1 32-bit controller w/ USB cable",
           "zh": "MKS DLC32 V2.1 主板 32位 含USB线"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
@@ -164,7 +174,8 @@
         "product": {
           "en": "Makerbase MKS DLC32 V2.1",
           "zh": "Makerbase MKS DLC32 V2.1 雕刻机主板"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
@@ -174,7 +185,8 @@
         "product": {
           "en": "MKS DLC32 V2.1 + TMC2209 bundle",
           "zh": "MKS DLC32 V2.1 套装"
-        }
+        },
+        "url": ""
       }
     ]
   },
@@ -310,7 +322,8 @@
         "product": {
           "en": "M5 drop-in T-nut for 2020, 50-pack",
           "zh": "欧标2020船形螺母M5 50个装"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
@@ -320,7 +333,8 @@
         "product": {
           "en": "M5 drop-in T-nut, 20-pack",
           "zh": "船型螺母M5 20个装"
-        }
+        },
+        "url": ""
       },
       {
         "name": {
@@ -330,7 +344,8 @@
         "product": {
           "en": "M5 drop-in T-nut, 100-pack",
           "zh": "M5船形螺母 100个装"
-        }
+        },
+        "url": ""
       }
     ]
   },

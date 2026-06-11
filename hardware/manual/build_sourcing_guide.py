@@ -19,10 +19,11 @@ table — all optional:
   clicking copies it. Only custom / cut-to-order parts carry one (frame
   extrusions, printed parts, linear-guide set); standard parts are bought
   off the shelf by spec and show the shop's ``product`` line instead;
-- ``suppliers`` — 供应商 1..3: up to three shops, each ``{name, url?,
-  product?}``: the name (linked to ``url``) over the shop's own ``product``
-  spec. Missing slots render as pending. Localizable values take
-  ``{"en":…,"zh":…}``; plain strings show in both languages;
+- ``suppliers`` — 供应商 1..3: up to three shops, each ``{name, link?,
+  product?}``: the name (linked to the shop's ``link`` URL when filled in)
+  over the shop's own ``product`` spec. Missing slots render as pending.
+  Localizable values take ``{"en":…,"zh":…}``; plain strings show in both
+  languages;
 - ``note`` — 备注: a free remark column at the table's end (missing -> em
   dash). Notes are prose and emitted as trusted HTML, the manual's
   convention for content strings (inline ``<a>`` is fine); data fields
@@ -57,6 +58,7 @@ import html
 import json
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 # Shared with the manual build: localization, BOM row grouping, step timing,
 # content loading and the html-lang / masthead-mark conventions.
@@ -119,6 +121,37 @@ CHECK_ICON_SVG = (
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
     '<path d="M20 6 9 17l-5-5"/></svg>'
 )
+
+
+def clean_taobao_url(url: str) -> str:
+    """Strip a Taobao/Tmall item URL down to only the identifying params.
+
+    Item links pasted from the browser carry a long tracking tail (spm,
+    utparam, xxc, mi_id, ...); only ``id`` — plus ``skuId`` when present —
+    identifies the listing. The query is rebuilt from that whitelist, the
+    scheme/host/path are preserved, and anything that isn't a Taobao-family
+    URL with an ``id`` passes through unchanged (e.g. shop homepages), so
+    this is safe to apply to every supplier ``url`` at render time.
+
+    >>> clean_taobao_url("https://item.taobao.com/item.htm?abbucket=14"
+    ...                  "&id=12345&mi_id=xyz&skuId=67890&spm=a21xtw.123&xxc=ad")
+    'https://item.taobao.com/item.htm?id=12345&skuId=67890'
+    >>> clean_taobao_url("https://item.taobao.com/item.htm?ns=1&id=98765")
+    'https://item.taobao.com/item.htm?id=98765'
+    >>> clean_taobao_url("https://shop123.taobao.com/")
+    'https://shop123.taobao.com/'
+    >>> clean_taobao_url("https://example.com/listing?id=1&color=red")
+    'https://example.com/listing?id=1&color=red'
+    """
+    parts = urlparse(url)
+    host = parts.netloc.lower()
+    if not host.endswith(("taobao.com", "tmall.com")):
+        return url
+    params = parse_qs(parts.query)
+    if "id" not in params:
+        return url
+    kept = {key: params[key] for key in ("id", "skuId") if key in params}
+    return urlunparse(parts._replace(query=urlencode(kept, doseq=True)))
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +299,7 @@ def render_supplier_cell(supplier: dict | None, message: str,
         return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
     name = html.escape(name)
     if supplier.get("url"):
-        href = html.escape(supplier["url"], quote=True)
+        href = html.escape(clean_taobao_url(supplier["url"]), quote=True)
         name = f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
     if message:
         second = _inquiry_button(message, lang, flip)
