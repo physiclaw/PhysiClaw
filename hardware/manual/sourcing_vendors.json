@@ -578,7 +578,42 @@
   },
   {
     "part_id": "solenoid",
-    "ref": "¥10–20"
+    "ref": "¥10–17",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Langshuo",
+          "zh": "朗硕电气"
+        },
+        "product": {
+          "en": "LSD-0530B-12V",
+          "zh": "LSD-0530B-12V"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=592528485538&mi_id=0000ShbUkeI9cBcS1mAippCAf-pw6Bs72vZBCzBtn6gDNi0&ns=1&priceTId=213e079417811850753555834e1044&skuId=5295181857221&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2284f5c3007506d26144b7e2fe5fb31d5e%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Elecall",
+          "zh": "伊莱科"
+        },
+        "product": {
+          "en": "EML-0530B: 12 V, 6 N, 10 mm stroke",
+          "zh": "EML-0530B: 12V 6N 行程10mm"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=571034504694&mi_id=0000WplrJWUgt9BKCOGsT_kJ8u3Zi77yKfArG2ba5XLPBnc&ns=1&priceTId=213e079417811850753555834e1044&skuId=4521602674575&spm=a21n57.1.hoverItem.5&utparam=%7B%22aplus_abtest%22%3A%22e5d16403c5e74a5e204234aff16e5f2f%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "MITG",
+          "zh": "铭霆"
+        },
+        "product": {
+          "en": "LS-0530B-12V: 0.2–6 N push-pull, 10 mm stroke",
+          "zh": "LS-0530B-12v【推拉力:0.2N-6N】行程10mm"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=972516011330&mi_id=0000YPMd3ABpkBNARvyx70VYJmmhnkvpUS9RhOem5AiRaMw&ns=1&priceTId=2150455c17811858636387534e0ffc&skuId=6091561787183&spm=a21n57.1.hoverItem.24&utparam=%7B%22aplus_abtest%22%3A%22e041a7c9b8b2ed7b6bd78c642fe3c32b%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "flat-bracket",
