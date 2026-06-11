@@ -388,7 +388,7 @@
       {
         "name": {
           "en": "UGREEN",
-          "zh": "绿联数码"
+          "zh": "绿联"
         },
         "product": {
           "en": "12 V 2 A adapter, 5.5×2.1 mm barrel plug",
@@ -426,11 +426,77 @@
   },
   {
     "part_id": "camera",
-    "ref": "¥100–250"
+    "ref": "¥170–350",
+    "suppliers": [
+      {
+        "name": {
+          "en": "UGREEN",
+          "zh": "绿联"
+        },
+        "product": {
+          "en": "4K 8 MP ultra-HD, autofocus",
+          "zh": "4K 800万超高清 自动对焦"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=737764280362&mi_id=0000fC5JEr6Le1BKYCsOc5KUgV2ZR2juW0Rizf65x6H58dY&ns=1&priceTId=2147843917811668820951337e10b2&skuId=6258489139501&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%22778f4163d229fc083cfd7509645503f8%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Hikvision",
+          "zh": "海康威视"
+        },
+        "product": {
+          "en": "8 MP, autofocus",
+          "zh": "自动聚焦 8MP"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=631167230453&pisk=ht2Knj47ItDdFYIGMcON3VDoaGb0F8mSVuryV2MQETQ8Dyp3xvqu60agyYDuVwz8eVaPYLjUKzh7xV4kEkfgYk5R27Qap266CloXAUicFUhKUY_cyCvSTtUK-BjCF0i1X0myd0aSOlZs2ViWOYaS5fijVpMSFzZ1X0mkO4gIOdMs00kWN2GICCijqpgSPDg1X0usPYM7PAst4VgSFY_zvXsHBnMLtpwDoBrIWKE4BNleTkIpeLwTJX3XoVQhFDdIwyhLI9Lqv5ZxVDUP3pkIwWNjd8QApAZ4syiTPZdJYDelfQ1z_yF4Wn10BJnzDS4XgOeRuo2QdfJFQWwU7bwLRh5RcOZYMANkOGbCD5PQGoxAWGF3FuVUPKIcgWyQDb4yIt_cT6iNAizE5A21cOitoMBJaQlNbLALnZRWNEoZXqjdoQRr_G5..&skuId=6226416526048&spm=a1z10.5-b-s.w15914280-25060147191.72.5da26570nYXaH9"
+      },
+      {
+        "name": {
+          "en": "Logitech",
+          "zh": "罗技"
+        },
+        "product": {
+          "en": "C925e HD webcam",
+          "zh": "c925e 高清摄像头"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=1&id=537650209055&pisk=hNsIbcxR_LyJZHxz7VUckq-ht3-Je_RyaTdJdCAp4HSUVLCVZ_8Ja9-7F1ANYBWevQt5ns1eTUuFfhpy343K2pBOBpANa0WU79XnzIxk6gTpXCpFB0pp90fxxQ-8gSrS7AL3T6W-zvk-WddMFDnpJ_d9XpR9p4dRwCL9HLnp23CRBR9HFp3pp0EtWKRtJDnpecB9FLHpwppLCOdMn3dRwee1BCvJ2QQuSGF06vuro1-TUm8BMOai21St0eIldCa84GZDRG7P-5Fv2wBF1E7QGD_CpZfkH6hLOdsChg_A6loBVOQAVhKUr0ud43PLdTWAHi30FlF1EO_cB4qcVwC60MfI_2zYcaBFUHgLl7UfCUQFem2GxWbh3TX7bq44UOtN6ThQboaHwOsdaxNGr44__XfSL6qA3epMdFy_CXQoi0nqmgysy4YpIp9QCRGdr&rn=8738ef82e1192d66ca28fb5d251c1818&skuId=6071259240979&spm=a1z10.5-b-s.w4011-14954930166.95.57c85d71R1x3rO"
+      }
+    ],
+    "note": {
+      "en": "Recommended: native 8 MP sensor with autofocus — around ¥200 is plenty.",
+      "zh": "建议原生800万像素 + 自动对焦，200元左右即可。"
+    }
   },
   {
     "part_id": "motor-cable",
-    "ref": "¥3–8"
+    "ref": "—",
+    "suppliers": [
+      {
+        "name": {
+          "en": "—",
+          "zh": "—"
+        },
+        "url": ""
+      },
+      {
+        "name": {
+          "en": "—",
+          "zh": "—"
+        },
+        "url": ""
+      },
+      {
+        "name": {
+          "en": "—",
+          "zh": "—"
+        },
+        "url": ""
+      }
+    ],
+    "note": {
+      "en": "No separate purchase — the cable comes with the stepper motor.",
+      "zh": "无需单独购买，随步进电机附带。"
+    }
   },
   {
     "part_id": "lead-wire",
