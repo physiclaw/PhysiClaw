@@ -734,11 +734,81 @@
   },
   {
     "part_id": "bumper",
-    "ref": "¥5–12"
+    "ref": "¥3–5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "Ø20 top/bottom × 22 mm (10-pack), w/ machine screws",
+          "zh": "大径20*小径20*高度22 (10个) 送机牙"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=850698518813&mi_id=0000afWUTt5dbjbRss8ZBcb__ATmqpPwoDLTsC48pNbBECs&ns=1&priceTId=213e01a717811884122237796e1004&skuId=5653203589906&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%221f158f98d0a314631fb2ecb24b84a705%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Dulei",
+          "zh": "杜蕾家居"
+        },
+        "product": {
+          "en": "20×20×22 mm, w/ machine screws",
+          "zh": "20*20*22（送机牙）"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=592188833539&mi_id=0000sm9E0p2xNs2XbrD32JVUw27GZZQUFUPQrH5YqZZOscM&ns=1&priceTId=213e01a717811884122237796e1004&skuId=4078088461124&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%227de410a61f398362e4442b9e475a2e94%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Jinfenghuang",
+          "zh": "金缝凰"
+        },
+        "product": {
+          "en": "20×20×22 mm (10-pack), w/ machine screws",
+          "zh": "20*20*22（10只）送机牙"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=657240920029&mi_id=00001medt9-8yu4FQVI8o6olkzFntzcM7fwfjBAoC6LWP1U&ns=1&priceTId=213e01a717811884122237796e1004&skuId=4743630412377&spm=a21n57.1.hoverItem.6&utparam=%7B%22aplus_abtest%22%3A%22d261f58d9a38d1df2f1761a63f1eec94%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "stylus-tip",
-    "ref": "¥5–15"
+    "ref": "¥14–15",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Wenku",
+          "zh": "Wenku"
+        },
+        "product": {
+          "en": "M3 female thread, Ø7.0 fabric head (5-pack)",
+          "zh": "M3内牙-7.0布头（5个装）"
+        },
+        "url": "https://item.taobao.com/item.htm?ali_refid=a3_430582_1006%3A1152145290%3AH%3A1SNyAM4EKVqTjn6aeyH93g%3D%3D%3A1edf96ed175ac08dae0a4900aeac2748&ali_trackid=318_1edf96ed175ac08dae0a4900aeac2748&id=580201450871&mi_id=00003ui-EZHRqjE3ra63V3k3_9JxS9XyaSBhG5If38Yaqr8&mm_sceneid=0_0_132073499_0&priceTId=215044ef17811889375175370e1197&skuId=4028694230736&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%2296881bee3cef3a6e1e9af60d27b370b5%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Yongxing",
+          "zh": "永兴"
+        },
+        "product": {
+          "en": "M3 female thread, Ø6.8 fabric head (5-pack)",
+          "zh": "M3内牙-6.8布头(5个装)"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=951707635228&mi_id=0000HhJ50vYwJcNml9DxZuujRyhCgxOxsPA18uHFviV8Vus&ns=1&priceTId=215044ef17811889375175370e1197&skuId=6037112926646&spm=a21n57.1.hoverItem.7&utparam=%7B%22aplus_abtest%22%3A%2286f499174528b7240eb8425e07869c26%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Pasenjie",
+          "zh": "帕森杰"
+        },
+        "product": {
+          "en": "M3 female thread, Ø7.0 fabric head (5-pack)",
+          "zh": "M3内牙-7.0布头（5个装）"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=652898030762&mi_id=0000qzXW5E3Xxxj4xm3ORb2rDfRl_Kxpmt-PWaKT1vgrDXk&ns=1&priceTId=215044ef17811889375175370e1197&skuId=5197108428102&spm=a21n57.1.hoverItem.15&utparam=%7B%22aplus_abtest%22%3A%2255355e6e173cb017973473b9160a2972%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "teflon-tube",
