@@ -55,6 +55,7 @@ _MANIFEST = {
         "process": "Process:  Selective Laser Sintering (SLS)",
         "material": "Material: PA12 nylon (or equivalent)",
         "color": "Color:    Black",
+        "units": "Units:    millimeters (mm)",
         "intro": "Print one STEP per row, in the quantity shown.",
         "qty_note": "The _xN suffix in each filename is how many to print (e.g. _x2 = print 2).",
         "cols": ("STEP file", "Qty", "Part"),
@@ -66,6 +67,7 @@ _MANIFEST = {
         "process": "打印工艺：选择性激光烧结（SLS）",
         "material": "材料：PA12 尼龙（或同等材料）",
         "color": "颜色：黑色",
+        "units": "尺寸单位：毫米（mm）",
         "intro": "每个 STEP 按所列数量打印。",
         "qty_note": "文件名中的 _xN 表示打印数量（例如 _x2 表示打印 2 个）。",
         "cols": ("STEP 文件", "数量", "零件"),
@@ -82,7 +84,7 @@ def _manifest(rows: list[tuple[str, int, str, str]], lang: str) -> str:
     c_file, c_qty, c_name = m["cols"]
     fw = max(len(c_file), *(len(f) for f, *_ in rows))
     head = f"{c_file:<{fw}}  {c_qty:>3}  {c_name}"
-    out = [m["title"], "", m["process"], m["material"], m["color"], "",
+    out = [m["title"], "", m["process"], m["material"], m["color"], m["units"], "",
            m["intro"], m["qty_note"], "", head, "-" * len(head)]
     total = 0
     for fname, qty, en, zh in rows:
