@@ -300,46 +300,86 @@
   },
   {
     "part_id": "control-board",
-    "ref": "¥80–110",
+    "ref": "¥90–100",
     "suppliers": [
       {
         "name": {
-          "en": "Makerbase official store",
-          "zh": "Makerbase 官方店"
+          "en": "Makerbase",
+          "zh": "创客基地"
         },
         "product": {
-          "en": "MKS DLC32 V2.1 32-bit controller w/ USB cable",
-          "zh": "MKS DLC32 V2.1 主板 32位 含USB线"
+          "en": "MKS DLC32",
+          "zh": "MKS DLC32"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=660133023604&mi_id=0000rCrF6cHr_lgpy5u6ACw2Mb1fYJVGgL_P19pOtTPkrP8&ns=1&priceTId=215040df17811612709147122e0f4f&skuId=4759861713260&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%22d9e46b42ec0bf926e357cdf7d2bc9ce6%22%7D&xxc=taobaoSearch"
       },
       {
         "name": {
-          "en": "Electronics shop B",
-          "zh": "电子配件店 B"
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
         },
         "product": {
-          "en": "Makerbase MKS DLC32 V2.1",
-          "zh": "Makerbase MKS DLC32 V2.1 雕刻机主板"
+          "en": "MKS DLC32 V2.1 board",
+          "zh": "主板MKS DLC32 V2.1"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=624116243332&mi_id=0000nrsI9uXRbqEn5Waic0WfvapUSxEz5_oTPfOQmI2yCGY&ns=1&priceTId=215041ea17811614529336282e1079&skuId=4759128976305&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%22a6992cf47a9cc1b52aed2c74f47e709a%22%7D&xxc=taobaoSearch"
       },
       {
         "name": {
-          "en": "Electronics shop C",
-          "zh": "电子配件店 C"
+          "en": "TwoTrees",
+          "zh": "俩棵树"
         },
         "product": {
-          "en": "MKS DLC32 V2.1 + TMC2209 bundle",
-          "zh": "MKS DLC32 V2.1 套装"
+          "en": "MKS DLC32 V2.1 board",
+          "zh": "MKS DLC32 V2.1主板"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=652783651566&mi_id=0000BDQAg3j-aJ1_hpgsgHGu8opjWWdniwPBDeP_qSo9Exk&ns=1&priceTId=213e02e117811615671237114e1262&skuId=4937682023482&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%2206c59418be6cc84943baadc7738e319c%22%7D&xxc=taobaoSearch"
       }
-    ]
+    ],
+    "note": {
+      "en": "Controller board and stepper drivers — same spec from every maker.",
+      "zh": "主板和电机驱动各家规格一致。"
+    }
   },
   {
     "part_id": "tmc2209",
-    "ref": "¥20–40"
+    "ref": "¥17–19",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Makerbase",
+          "zh": "创客基地"
+        },
+        "product": {
+          "en": "MKS TMC2209 stepper driver (with heatsink)",
+          "zh": "MKS TMC2209电机驱动（带散热片）"
+        },
+        "url": "https://item.taobao.com/item.htm?id=660133023604&skuId=5166488233343"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "TT TMC2209 driver",
+          "zh": "【驱动器】TT TMC2209"
+        },
+        "url": "https://item.taobao.com/item.htm?id=624116243332&skuId=5688178270462"
+      },
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "2209 V2.0 (with heatsink)",
+          "zh": "2209 V2.0【含散热片】"
+        },
+        "url": "https://item.taobao.com/item.htm?id=652783651566&skuId=6019775037611"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "psu",
