@@ -89,8 +89,13 @@ UI = {
     "h1": {"en": "Sourcing guide", "zh": "采购指南"},
     "lede": {
         "en": "Every part from the assembly manual's bill of materials, "
-              "with three suppliers per part.",
-        "zh": "对应装配手册物料清单的全部零件，每项零件列出三家供应商。",
+              "with three suppliers per part.<br>"
+              "Ref. prices are subtotals for the required quantity (not "
+              "unit prices, shipping excluded), not actual purchase prices "
+              "— shops adjust pricing over time; use them as a rough range.",
+        "zh": "对应装配手册物料清单的全部零件，每项零件列出三家供应商。<br>"
+              "参考价为所需数量的小计（非单价、不含运费），并非实际购买价格"
+              "——厂商可能随时调价，仅供了解大致价格区间。",
     },
     "pending": {"en": "to be found", "zh": "待补充"},
     "inquiry_label": {"en": "Inquiry message", "zh": "询价说明"},
