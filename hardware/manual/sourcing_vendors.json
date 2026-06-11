@@ -117,8 +117,8 @@
       }
     ],
     "note": {
-      "en": "Custom order — send the {inquiry} to the shop's customer service.<br>MGN9H rails and carriages are precision motion parts: workmanship and accuracy grades vary noticeably between makers, and prices span a wide range — choose with care.",
-      "zh": "定制商品，请将{inquiry}发送给店铺客服。<br>MGN9H 导轨滑块为精密运动件，各厂商做工与精度等级差异明显，价格区间较大，选购需注意区分。"
+      "en": "Custom order — send the {inquiry} to the shop's customer service.<br>MGN9H rails and carriages are precision motion parts: workmanship and accuracy grades vary noticeably between makers, and prices span a wide range — choose according to your needs.",
+      "zh": "定制商品，请将{inquiry}发送给店铺客服。<br>MGN9H 导轨滑块为精密运动件，各厂商做工与精度等级差异明显，价格区间较大，请根据需要进行选购。"
     }
   },
   {
@@ -137,19 +137,166 @@
   },
   {
     "part_id": "pulley",
-    "ref": "¥5–10"
+    "ref": "¥2.3",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "20T, 5 mm bore (6 mm belt)",
+          "zh": "20齿内孔5（带宽6）"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=571029008660&mi_id=0000th7_64wkUDGLMCiXOpGVqTyNhjxVSZI9aNJJwYRPzjs&ns=1&priceTId=213e07a217811562749391798e1046&skuId=3695816317651&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2285d121c5f3b0b972a049477f9e53b0dc%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "20T, 5 mm bore (6 mm belt)",
+          "zh": "20齿内孔5（带宽6）"
+        },
+        "url": "https://item.taobao.com/item.htm?id=545252492404&scene=taobao_shop&skuId=3691748481218&spm=a1z10.1-c-s.w5003-22539066433.1.66811b467MVHOR"
+      },
+      {
+        "name": {
+          "en": "Tongtuo Zhanzhi",
+          "zh": "同拓展志"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, 16 mm height (6 mm belt)",
+          "zh": "【20齿内孔5mm高16】带宽6"
+        },
+        "url": "https://item.taobao.com/item.htm?id=559194333476&pisk=hNttUBOXxcJtciHny9OMO_jc2vckCnXfhKJ4h1s1s-dv3tVb1N__OW6lFZZm7GbADB1Hj1vGfsIvUQdGsZ4MJ-py9vcoq6XR9II1Cl6_fx6CQOiDwkAHQdSVGJVjregxJFjq1r1XGM1CHtjfhlZspM6fCiZ1ll9CO6WfcsOf5WsCET21GO1bRvBleR6_5s1COt671rOfcvpCTtsfCIsjpp1FhaoR5AqpqJ5QRzb_705LcueFBy5r46yTCHdFW_Gl9fmfyy_v6NKnX7W9RLBfBIozbG_v5Us6DbnOAL8H19djwrKUNnDQlq8e6URLF4xpXtJJrQarvnhyEht18loxFfODtCJ4uqGBve9WapwSSjiDdEJhykDt7H-9o3_oo5-iWexH9aysLDGZ59ksUC5IK_dlq9CoBmU4uwkUmPKoaraba9WdZAhuur7EL&spm=a1z10.5-c-s.w4002-17331600348.14.7e4c21ea28u12M&skuId=4038283182661"
+      }
+    ],
+    "note": {
+      "en": "Standard parts — same spec from every maker; just buy the cheapest.",
+      "zh": "标准件，各家规格一致，选便宜的买即可。"
+    }
   },
   {
     "part_id": "idler-smooth",
-    "ref": "¥20–40"
+    "ref": "¥11.5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, smooth (6 mm belt)",
+          "zh": "20齿内孔5带宽6mm（不带齿）"
+        },
+        "url": "https://item.taobao.com/item.htm?ft=t&id=572126642416&scene=taobao_shop&skuId=3714008004304&spm=a1z10.1-c-s.w5003-25983841793.4.2d4761ccoSDMZD"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, smooth (6 mm belt)",
+          "zh": "20齿内孔5不带齿带宽6mm"
+        },
+        "url": "https://item.taobao.com/item.htm?id=544358606505&pisk=haLsDR_vL4XfnNbqYk3mLEQGsZ7YHKWV3IBA19XT7E7wM9ClgReABGCdv9O-sOomjKtBHpjNBAmGMr9JKsPw6GUdvs57klCOXWKBIQIZT4uz1TLZxdwOM1hAp_f2IYKcKCAGotEvxCnIcDtPyAEAHKQdps1VksIOHX_dG__YWiU999BhMZBvHiEdp_5V6oETk2hCa_UYW1UYvBC5NtE9HZhB99fAk1pAkXOdKsQPLeHopCdGPNXSgzS1eBi3kNTLzGnD19Uxbe1sETIbqpYkPQd9rsTmwo6fdhpNtKgSdwL6CFIClqah7QtpCMt6YMa4XE7qBfO2wQL8qjgKdIABqBEmrEt9da8MCVPH7hCkULLuZc8ozFRwrU2Zf2HpRn_O4oGE10pArITQ6VM-dFOJM3zUOnqmAvyMh-G92qjOt1sEOXw9m84YzzYqOoEcX6f11XGQBnf..&spm=a1z10.5-c-s.w4002-22539037258.11.6e54bcd88l22yn&skuId=3422244497830"
+      },
+      {
+        "name": {
+          "en": "Tongtuo Zhanzhi",
+          "zh": "同拓展志"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, smooth (6 mm belt)",
+          "zh": "20齿内孔5不带齿（带宽6）"
+        },
+        "url": "https://item.taobao.com/item.htm?id=559682437946&pisk=hBTreB6YBF3xFm_JAf94QqojhadREL4QRw6SmKWD9p65RMV0n61UE8flKn5HdKhKwaOhLpJfHztS2M6UTtJuRgij5QU4uB62LgbhnrAA_94h-X6uPwQnCv5niE7wUTN-N4fhij5C96fHKMf0otCFt_vhEi2c96QhKpbngtf11y2lKwVcm6W0quqltSjc66euZ9fngIXAtwXHKgc2itCh-9b-xy-YZh0EMDXCMyYVaim6ZdfAGQ5l4BOl3IOfBMLU8BvnLy_MXK8Fj_uUkaOwmZfy0XqcEG-kFspE7zXkuHkLByzBC7MDuxxe0hLnfoYmbB9wvBZKIFiWhIYwU5nHkFtcuILikjGsfCR2hKEj52MktHT2AqrZKbtvGMOQixTD-nKFzi1Vgh9QlQv3syF7vkIcWsWsN_Z3xJEbRu8BRkEdm9fVCb15.&spm=a1z10.3-c-s.w4002-17331600343.11.46133e69i33KC5&skuId=3872290557038"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "idler-toothed",
-    "ref": "¥5–10"
+    "ref": "¥2.3",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, toothed (6 mm belt)",
+          "zh": "20齿内孔5带宽6mm（带齿）"
+        },
+        "url": "https://item.taobao.com/item.htm?ft=t&id=572126642416&scene=taobao_shop&skuId=3714008004303&spm=a1z10.1-c-s.w5003-25983841793.4.2d4761ccoSDMZD"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, toothed (6 mm belt)",
+          "zh": "20齿内孔5带齿带宽6mm"
+        },
+        "url": "https://item.taobao.com/item.htm?id=544358606505&pisk=haLsDR_vL4XfnNbqYk3mLEQGsZ7YHKWV3IBA19XT7E7wM9ClgReABGCdv9O-sOomjKtBHpjNBAmGMr9JKsPw6GUdvs57klCOXWKBIQIZT4uz1TLZxdwOM1hAp_f2IYKcKCAGotEvxCnIcDtPyAEAHKQdps1VksIOHX_dG__YWiU999BhMZBvHiEdp_5V6oETk2hCa_UYW1UYvBC5NtE9HZhB99fAk1pAkXOdKsQPLeHopCdGPNXSgzS1eBi3kNTLzGnD19Uxbe1sETIbqpYkPQd9rsTmwo6fdhpNtKgSdwL6CFIClqah7QtpCMt6YMa4XE7qBfO2wQL8qjgKdIABqBEmrEt9da8MCVPH7hCkULLuZc8ozFRwrU2Zf2HpRn_O4oGE10pArITQ6VM-dFOJM3zUOnqmAvyMh-G92qjOt1sEOXw9m84YzzYqOoEcX6f11XGQBnf..&spm=a1z10.5-c-s.w4002-22539037258.11.6e54bcd88l22yn&skuId=3422244497837"
+      },
+      {
+        "name": {
+          "en": "Tongtuo Zhanzhi",
+          "zh": "同拓展志"
+        },
+        "product": {
+          "en": "20T, 5 mm bore, toothed (6 mm belt)",
+          "zh": "20齿内孔5带齿（带宽6）"
+        },
+        "url": "https://item.taobao.com/item.htm?id=559682437946&skuId=3872290557039"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "belt",
-    "ref": "¥10–20"
+    "ref": "¥15",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "GT2 6 mm rubber belt, 5 m roll",
+          "zh": "GT2-6MM（橡胶）【5米/卷】"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=572171792144&mi_id=0000p7xi5LL4Q4mPD63_0las6WQ-n3zrrjgmnjoqfHlnDwc&ns=1&priceTId=2147850d17811584104946672e0e4b&skuId=4454393450696&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%222f12a5d5b12c8bbf96a42890fc8eaa18%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "GT2 6 mm rubber timing belt, 5 m roll",
+          "zh": "GT2-6MM橡胶同步带（5米/卷）"
+        },
+        "url": "https://item.taobao.com/item.htm?id=544300031449&pisk=hncI3PV-bHWYqWVyQOK38gP3x7P890rz44E8RlqdTbPEylU0zMI8vJUTBlgv-kJkK0Ms2c2Uvk83N8n-v8nz42Pn-7fq0BksONeTyVCRJzBZbd78wn-2NzCm13oEy9vcyOUTjz1Ly8n8BPUzXyULp0ETBrUR97F-2VL_8rjR9zUL6VU4X9C82k3tWz4uJ_ERpFgTjzF820ep5VEgy7ERy1c9mh331YGnKU54do36I_dvzyE4c23Aw_QuR4BNnS1pGlHEeXPt9hLL6qDZvPNXNaashVFLR0ActW3xWYKEF_WKa7-pR4uxkjBDPCKsrVMmWTAmNvn_gXmvTakB-XniQV5wJ3Lmsmltb9-wwKriLV2PM3YxskHmfx_HaIdroxgZOMWZETv6bMm5VeHvZJUgRR865MHlm_CVib81eT2LSyaB5FsKE&spm=a1z10.3-c-s.w4002-22539037253.9.5eda1f847OmlsU&skuId=5019700795849"
+      },
+      {
+        "name": {
+          "en": "Tongtuo Zhanzhi",
+          "zh": "同拓展志"
+        },
+        "product": {
+          "en": "GT2 6 mm rubber timing belt, 5 m roll",
+          "zh": "GT2-6mm橡胶同步带（5米/卷）"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=558903222636&mi_id=0000e9fdR2fX_vTLdsuo46oXcE1uVUO2oFoGqiEayHRfCNs&ns=1&priceTId=2147823017811606688784237e0e42&skuId=3869974812267&spm=a21n57.1.hoverItem.12&utparam=%7B%22aplus_abtest%22%3A%22b62257c672974e09b38279fbb9bf6992%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "control-board",
