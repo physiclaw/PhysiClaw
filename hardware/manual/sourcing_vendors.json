@@ -383,7 +383,46 @@
   },
   {
     "part_id": "psu",
-    "ref": "¥15–30"
+    "ref": "¥35–50",
+    "suppliers": [
+      {
+        "name": {
+          "en": "UGREEN",
+          "zh": "绿联数码"
+        },
+        "product": {
+          "en": "12 V 2 A adapter, 5.5×2.1 mm barrel plug",
+          "zh": "12V2A/外径5.5*2.1mm-1.5米"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=731915982634&mi_id=0000JSCKO9kWUoAgX4OOaL2uo15jJ6d--HTQKEc-P1BqTl4&ns=1&priceTId=213e004317811652886426526e0fef&skuId=5937503277169&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%227dfeca06d7079a56c1008bf62de2c38c%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Samzhe",
+          "zh": "山泽"
+        },
+        "product": {
+          "en": "12 V 2 A, 5.5×2.1 mm plug, 1.5 m cable",
+          "zh": "12V2A/外径5.5*2.1mm-1.5米"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1105405623%3AH%3ANyZ3BU72UgQJgoGnGAyDVjphF87KGJtp%3A8ad5ff3a9213e331f202321a1beb7229&ali_trackid=318_8ad5ff3a9213e331f202321a1beb7229&fpChannel=101&fpChannelSig=e96f726e5eaa019606ae587ec1c79341f1f88f9d&id=861594569451&mi_id=0000N6zV48dnUwQKcofUYpccWnPtcsYSnIJBk38SGGXQUkg&mm_sceneid=0_0_40362847_0&priceTId=213e004317811652886426526e0fef&skuId=6078092673551&spm=a21n57.1.hoverItem.9&utparam=%7B%22aplus_abtest%22%3A%22eed8e20e711837a828579a3fa65cdf04%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Pisen",
+          "zh": "品胜"
+        },
+        "product": {
+          "en": "12 V 2 A adapter, 1.2 m cable",
+          "zh": "12V2A-1.2m电源适配器"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=926498939211&mi_id=0000XxWSTeXVyV8vxlNBSqhMLCW30zN-e3Z6WLQx0cRd7oE&ns=1&priceTId=2147838417811661605194817e1013&skuId=6116098339184&spm=a21n57.1.item.1&utparam=%7B%22aplus_abtest%22%3A%223759040b91cf0238b7550389ae66a7e6%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": {
+      "en": "Stick to reputable brands — suspiciously cheap adapters skimp on voltage regulation and safety protections.",
+      "zh": "请选择正规品牌电源，过于廉价的适配器稳压性能和安全保护往往不足。"
+    }
   },
   {
     "part_id": "camera",
