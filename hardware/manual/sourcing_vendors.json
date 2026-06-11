@@ -88,7 +88,7 @@
   },
   {
     "part_id": "rail-y",
-    "ref": "¥120–220",
+    "ref": "¥100–260",
     "inquiry": {
       "en": "MGN9H miniature linear guide set — 3 rails + 3 carriages:\nRail 240 mm ×2\nRail 150 mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
       "zh": "MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 240 mm ×2\n导轨 150 mm ×1\nH 型加长滑块 ×3\n请帮忙报价"
@@ -96,24 +96,24 @@
     "suppliers": [
       {
         "name": {
-          "en": "Rail shop A",
-          "zh": "导轨店 A"
+          "en": "HIWIN",
+          "zh": "HIWIN台湾上银"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?from=detail&id=668877121156&mi_id=0000OWuRwXyoZTQAkpAGCxDpNCn0-WjCuTBlMHChGDIScTg&spm=tbpc.orderdetail.suborder_itempic.1.3a966aa6t1arzl"
       },
       {
         "name": {
-          "en": "Rail shop B",
-          "zh": "导轨店 B"
+          "en": "LinDeng ",
+          "zh": "林邓机械"
         },
-        "url": ""
+        "url": "https://item.taobao.com/item.htm?from=detail&id=998753624442&mi_id=0000iKqrNFtRh-gPoi7zlcXQusdCygP8uy9PIRW_85sFF28&spm=tbpc.orderdetail.suborder_itempic.1.41426aa6Jedab7&sku_properties=122276018%3A20213"
       },
       {
         "name": {
-          "en": "Rail shop C",
-          "zh": "导轨店 C"
+          "en": "MUH",
+          "zh": "姆优"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1500790046%3AH%3AdOOyMu3xgRqAnaHZwxiJ5cPJQbxGDCLR8iN67yHvW8k%3D%3Af090ad814c0077691eacb0dbf2d1a232&ali_trackid=282_f090ad814c0077691eacb0dbf2d1a232&id=681898609711&mi_id=0000GnOoHcQvt_zlKxbDF6wFcqA1iY_xV1zhi-vhC61lhWA&mm_sceneid=1_0_1856790173_0&priceTId=213e021417811472165806927e10d2&skuId=5723622205969&spm=a21n57.1.hoverItem.20&utparam=%7B%22aplus_abtest%22%3A%2218edfc9bedb466bd13630e517478f1fa%22%7D&xxc=ad_ztc"
       }
     ],
     "note": {
