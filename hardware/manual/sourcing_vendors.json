@@ -656,11 +656,81 @@
   },
   {
     "part_id": "motor-bracket",
-    "ref": "¥6–12"
+    "ref": "¥5–7",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "NEMA17 motor bracket, black",
+          "zh": "42步进电机支架 黑色"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=594071400687&mi_id=00006QcljtL4F5-kH1a_Z-m9Xsdh-vuH0ocD8wZ3Z1IP7sA&ns=1&priceTId=2150456a17811874157028733e0ea0&skuId=4282774614351&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2284f33e2e2e14fc1a807c412646cbca12%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Yousheng Guangcai",
+          "zh": "优胜光彩"
+        },
+        "product": {
+          "en": "NEMA17 motor bracket, black",
+          "zh": "42步进电机支架 黑色"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=672120132474&mi_id=000029ge-qhWuuD2UwS69980ii1uavll_GOvd4s6ApLruwA&ns=1&priceTId=213e018b17811875705158900e0fa4&skuId=4840246572119&spm=a21n57.1.hoverItem.13&utparam=%7B%22aplus_abtest%22%3A%2277dd783fdc0b1ecc2d1ab5f41349e4f4%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Sanwei Cube",
+          "zh": "三维立方"
+        },
+        "product": {
+          "en": "NEMA17 motor bracket, black",
+          "zh": "42步进电机支架 黑色"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=592349548006&mi_id=0000uADw42HzccbwPpwCNcGb6hQUE9KS4BUzvurmnVuT3M0&ns=1&priceTId=213e018b17811875705158900e0fa4&skuId=4596541845952&spm=a21n57.1.hoverItem.14&utparam=%7B%22aplus_abtest%22%3A%22a7a4490e9e59470641e9a897f33b6be5%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "corner-bracket",
-    "ref": "¥3–8"
+    "ref": "¥2–3",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Shuangzi",
+          "zh": "双子五金"
+        },
+        "product": {
+          "en": "3060, 4-hole double-slot, 56 mm wide, black",
+          "zh": "3060垂直4孔双槽56mm宽黑色"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=860347001929&mi_id=0000ERr07PHE0OoCv2ZAn4328_ZFfE2yNs4-0-yZ0m55xoE&ns=1&priceTId=214780e317811878761052228e10f2&skuId=5771583005776&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2202de0cfd31845e608aa92d2dfb4157d9%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Maorong",
+          "zh": "茂荣铝业"
+        },
+        "product": {
+          "en": "3060 round-hole corner bracket, black (1 pc)",
+          "zh": "3060黑色圆孔垂直角码（1只）"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=1005971692015&mi_id=0000RHYD5-PcCYD4u09S7qa6xbZR4j44-htoqlqImaNqT-o&ns=1&priceTId=214780e317811878761052228e10f2&skuId=5997549096419&spm=a21n57.1.hoverItem.18&utparam=%7B%22aplus_abtest%22%3A%220f2ae347c22c8f777d579f30fe81f31d%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Dewang",
+          "zh": "德旺铝材"
+        },
+        "product": {
+          "en": "3060, round holes both sides, black",
+          "zh": "3060两边圆孔【黑色】"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=569803438727&mi_id=0000lRvRXE6d8bLBEfsYPOufaf8sYJs1PTtk_mTkT7OnYfA&ns=1&priceTId=214780e317811878761052228e10f2&skuId=6237059958493&spm=a21n57.1.hoverItem.26&utparam=%7B%22aplus_abtest%22%3A%228099f4399c9a814baa335904802ab351%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "bumper",
