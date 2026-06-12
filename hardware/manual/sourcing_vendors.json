@@ -1070,7 +1070,46 @@
   },
   {
     "part_id": "shcs-unc14-16",
-    "ref": "¥2"
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "1/4-20 × 5/8 (30-pack)",
+          "zh": "1/4-20*5/8(30个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1103788895%3AH%3AczRKOVVS%2BB0VDbbjzvJawax8KNSyVjGh%3Adf1d4e1ebcf7c7618e22b2164f0af852&ali_trackid=282_df1d4e1ebcf7c7618e22b2164f0af852&id=15831362641&mi_id=0000dZ1yzwoXZXOkI3iw7SxCibf5X8YSmCIjxrrH3yNAAuM&mm_sceneid=1_0_28965752_0&priceTId=2147801117812310932197357e111d&skuId=5056818688424&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%2283659955d1be510f58cabac8416309c2%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "1/4-20 × 5/8 (10-pack)",
+          "zh": "1/4-20*5/8(10个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=641602915619&mi_id=0000W49HIpt3xR03Q7gzUBnQTTS3Jrzbvv5T99FaGcuDIks&ns=1&priceTId=2147801117812310932197357e111d&skuId=5179374758354&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%22840c1e852bfee1b99c5853eaeac56046%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "1/4-20 × 5/8 (50-pack)",
+          "zh": "1/4-20*5/8（50只）"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=617126314161&mi_id=0000fA2Lu-sF3qXewIs-rX-tnZ6UwGJAdNOpHRIVqyOLbSk&ns=1&priceTId=2147843f17812316131894700e11ef&skuId=5917844858026&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%225e5e2fdea2379463f01bdac8fafda0b1%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": {
+      "en": "Imperial threads are the de facto standard in photographic equipment — camera mounting sockets are all 1/4-20.",
+      "zh": "摄影器材以英制螺纹为事实标准，摄像头安装接口均为 1/4-20 英制。"
+    }
   },
   {
     "part_id": "shoulder-5x10",
