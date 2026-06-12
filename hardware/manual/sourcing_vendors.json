@@ -890,31 +890,82 @@
   },
   {
     "part_id": "bhcs-m3x6",
-    "ref": "¥3"
+    "ref": "¥25",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "BHCS, M3–M5 per spec and quantity",
+          "zh": "内六角半圆头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1103788895%3AH%3ALoH3HpqwJuhYNvUUwd%2BbzhfErzwB78vK%3A62d93b560ade2f711dc64a7c3d0b91f2&ali_trackid=282_62d93b560ade2f711dc64a7c3d0b91f2&id=16979965616&mi_id=0000VhPRuYrArnBTc73b4SAHN4hnZuPusiQn5HFdOV-20Ko&mm_sceneid=1_0_28965752_0&priceTId=2147846317812284539337698e0e1b&skuId=5241613567720&spm=a21n57.1.hoverItem.11&utparam=%7B%22aplus_abtest%22%3A%222016c37f57d9fee861c7889d1d18bdde%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "BHCS, M3–M5 per spec and quantity",
+          "zh": "内六角半圆头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=1048175312634&mi_id=0000BJzNACgrRi6fC8XsKtYYdNtFjMPOalu8PJq6xODrUNI&ns=1&priceTId=2147846317812284539337698e0e1b&skuId=6073237337873&spm=a21n57.1.hoverItem.7&utparam=%7B%22aplus_abtest%22%3A%22987a7e538dc41b6510ee28481af33ccc%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "BHCS, M3–M5 per spec and quantity",
+          "zh": "内六角半圆头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=601878431269&mi_id=0000uptk3RXZ6og5NUTJWNcYPp62-JIL01S0RLLy7cU5yhA&ns=1&priceTId=2147846317812284539337698e0e1b&skuId=5751904261691&spm=a21n57.1.hoverItem.42&utparam=%7B%22aplus_abtest%22%3A%22590f62144db7fad5bcc049db6e3b8bfb%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": {
+      "en": "Screws are inexpensive, but each size is sold in packs of 20/50/100 — even if you need only a few, you buy the whole pack.",
+      "zh": "螺丝单价低廉，但每种规格按 20/50/100 个整包出售——即使只需几颗，也需整包购买。"
+    }
   },
   {
     "part_id": "bhcs-m3x8",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "bhcs-m3x12",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "bhcs-m5x10",
-    "ref": "¥4"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "bhcs-m5x12",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "bhcs-m5x16",
-    "ref": "¥4"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "bhcs-m5x25",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "fhcs-m3x8",
