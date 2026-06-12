@@ -88,7 +88,7 @@
   },
   {
     "part_id": "rail-y",
-    "ref": "¥100",
+    "ref": "¥120",
     "inquiry": {
       "en": "MGN9H miniature linear guide set — 3 rails + 3 carriages:\nRail 240 mm ×2\nRail 150 mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
       "zh": "MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 240 mm ×2\n导轨 150 mm ×1\nH 型加长滑块 ×3\n请帮忙报价"
@@ -343,7 +343,7 @@
   },
   {
     "part_id": "tmc2209",
-    "ref": "¥40",
+    "ref": "¥35",
     "suppliers": [
       {
         "name": {
@@ -463,8 +463,8 @@
       }
     ],
     "note": {
-      "en": "Recommended: native 8 MP sensor with autofocus — around ¥200 is plenty.",
-      "zh": "建议原生800万像素 + 自动对焦，200元左右即可。"
+      "en": "Recommended: native 8 MP sensor with autofocus.",
+      "zh": "建议原生800万像素 + 自动对焦。"
     }
   },
   {
@@ -500,7 +500,7 @@
   },
   {
     "part_id": "lead-wire",
-    "ref": "¥5",
+    "ref": "¥6",
     "suppliers": [
       {
         "name": {
@@ -812,7 +812,7 @@
   },
   {
     "part_id": "teflon-tube",
-    "ref": "¥1",
+    "ref": "¥2",
     "suppliers": [
       {
         "name": {
