@@ -25,13 +25,19 @@
         "h3": { "en": "Confirm the idler spins freely", "zh": "确认惰轮转得顺畅" },
         "body": { "en": "Once installed, check that each idler turns freely.", "zh": "装好后逐个转一下，确认每个惰轮都能自由转动。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:100mm; width:78mm;"
+        "style": "left:135mm; top:100mm; width:70mm;"
       },
       {
         "h3": { "en": "Flat face toward the screw", "zh": "平的一面朝着螺栓" },
         "body": { "en": "Seat each square nut with its flat face pointing toward its screw.", "zh": "放四方螺母时，让平的一面朝向它对应的螺栓。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:140mm; width:78mm;"
+        "style": "left:135mm; top:130mm; width:70mm;"
+      },
+      {
+        "h3": { "en": "Side pocket hard to seat?", "zh": "侧面槽位放不进？" },
+        "body": { "en": "If a side square nut won't drop into place, clear the pocket with a small screwdriver or a pin first — prints can leave residue in the slot.", "zh": "如侧面四方螺母难以放到位，先用小螺丝刀或细针清理槽孔——打印件槽内可能有残留。" },
+        "classes": "note overlay sm",
+        "style": "left:135mm; top:155mm; width:70mm;"
       }
     ],
     "bom": {
