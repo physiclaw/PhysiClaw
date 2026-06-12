@@ -92,10 +92,10 @@ UI = {
               "with three suppliers per part.<br>"
               "Ref. prices are subtotals for the required quantity (not "
               "unit prices, shipping excluded), not actual purchase prices "
-              "— shops adjust pricing over time; use them as a rough range.",
+              "— shops adjust pricing over time; use them as a rough guide.",
         "zh": "对应装配手册物料清单的全部零件，每项零件列出三家供应商。<br>"
               "参考价为所需数量的小计（非单价、不含运费），并非实际购买价格"
-              "——厂商可能随时调价，仅供了解大致价格区间。",
+              "——厂商可能随时调价，仅供了解大致价格水平。",
     },
     "pending": {"en": "to be found", "zh": "待补充"},
     "disclaimer": {

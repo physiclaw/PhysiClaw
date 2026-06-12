@@ -1,7 +1,7 @@
 [
   {
     "part_id": "ext-2040-y",
-    "ref": "¥60–65",
+    "ref": "¥60",
     "inquiry": {
       "en": "EU-standard aluminum extrusion, cut to size — 7 pcs, 4 specs:\n1. 2040 black anodized, 345 mm ×2 — M6 counterbores on the 40 mm-wide face, 10 mm from each end\n2. 2040 black anodized, 190 mm ×2 — both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2 — M5 through-hole 10 mm from each end\n5. SHCS M6×20 ×8\nPlease kindly quote.",
       "zh": "欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345mm ×2，M6 沉孔开在 40mm 宽面，距两端面各 10mm\n2. 2040 黑色阳极氧化 190mm ×2，两端攻丝 M6\n3. 1020 185mm ×1\n4. 1020 230mm ×2，距两端 10mm 开 M5 通孔\n5. 内六角圆柱头螺栓 M6×20 ×8\n请帮忙报价"
@@ -57,7 +57,7 @@
   },
   {
     "part_id": "printed-parts",
-    "ref": "¥180–190",
+    "ref": "¥180",
     "suppliers": [
       {
         "name": {
@@ -88,7 +88,7 @@
   },
   {
     "part_id": "rail-y",
-    "ref": "¥100–260",
+    "ref": "¥100",
     "inquiry": {
       "en": "MGN9H miniature linear guide set — 3 rails + 3 carriages:\nRail 240 mm ×2\nRail 150 mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
       "zh": "MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 240 mm ×2\n导轨 150 mm ×1\nH 型加长滑块 ×3\n请帮忙报价"
@@ -300,7 +300,7 @@
   },
   {
     "part_id": "control-board",
-    "ref": "¥90–100",
+    "ref": "¥100",
     "suppliers": [
       {
         "name": {
@@ -343,7 +343,7 @@
   },
   {
     "part_id": "tmc2209",
-    "ref": "¥35–40",
+    "ref": "¥40",
     "suppliers": [
       {
         "name": {
@@ -383,7 +383,7 @@
   },
   {
     "part_id": "psu",
-    "ref": "¥35–50",
+    "ref": "¥50",
     "suppliers": [
       {
         "name": {
@@ -426,7 +426,7 @@
   },
   {
     "part_id": "camera",
-    "ref": "¥170–350",
+    "ref": "¥200",
     "suppliers": [
       {
         "name": {
@@ -500,7 +500,7 @@
   },
   {
     "part_id": "lead-wire",
-    "ref": "¥5–7",
+    "ref": "¥5",
     "suppliers": [
       {
         "name": {
@@ -539,7 +539,7 @@
   },
   {
     "part_id": "stepper-motor",
-    "ref": "¥50–80",
+    "ref": "¥50",
     "suppliers": [
       {
         "name": {
@@ -578,7 +578,7 @@
   },
   {
     "part_id": "solenoid",
-    "ref": "¥10–17",
+    "ref": "¥15",
     "suppliers": [
       {
         "name": {
@@ -617,7 +617,7 @@
   },
   {
     "part_id": "flat-bracket",
-    "ref": "¥7–9",
+    "ref": "¥8",
     "suppliers": [
       {
         "name": {
@@ -656,7 +656,7 @@
   },
   {
     "part_id": "motor-bracket",
-    "ref": "¥5–7",
+    "ref": "¥5",
     "suppliers": [
       {
         "name": {
@@ -695,7 +695,7 @@
   },
   {
     "part_id": "corner-bracket",
-    "ref": "¥2–3",
+    "ref": "¥3",
     "suppliers": [
       {
         "name": {
@@ -734,7 +734,7 @@
   },
   {
     "part_id": "bumper",
-    "ref": "¥3–5",
+    "ref": "¥5",
     "suppliers": [
       {
         "name": {
@@ -773,7 +773,7 @@
   },
   {
     "part_id": "stylus-tip",
-    "ref": "¥14–15",
+    "ref": "¥15",
     "suppliers": [
       {
         "name": {
@@ -812,7 +812,7 @@
   },
   {
     "part_id": "teflon-tube",
-    "ref": "¥1–2",
+    "ref": "¥1",
     "suppliers": [
       {
         "name": {
@@ -851,7 +851,7 @@
   },
   {
     "part_id": "gooseneck",
-    "ref": "¥8–12",
+    "ref": "¥8",
     "suppliers": [
       {
         "name": {
@@ -890,71 +890,71 @@
   },
   {
     "part_id": "bhcs-m3x6",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "bhcs-m3x8",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "bhcs-m3x12",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "bhcs-m5x10",
-    "ref": "¥4–10"
+    "ref": "¥4"
   },
   {
     "part_id": "bhcs-m5x12",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "bhcs-m5x16",
-    "ref": "¥4–10"
+    "ref": "¥4"
   },
   {
     "part_id": "bhcs-m5x25",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "fhcs-m3x8",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "fhcs-m3x10",
-    "ref": "¥4–10"
+    "ref": "¥4"
   },
   {
     "part_id": "fhcs-m5x10",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "fhcs-m5x12",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "shcs-m6x20",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "shcs-unc14-16",
-    "ref": "¥2–6"
+    "ref": "¥2"
   },
   {
     "part_id": "shoulder-5x10",
-    "ref": "¥8–20"
+    "ref": "¥8"
   },
   {
     "part_id": "shoulder-5x20",
-    "ref": "¥10–25"
+    "ref": "¥10"
   },
   {
     "part_id": "tnut-dropin-m3",
-    "ref": "¥5–12"
+    "ref": "¥5"
   },
   {
     "part_id": "tnut-dropin-m5",
-    "ref": "¥5–15",
+    "ref": "¥5",
     "suppliers": [
       {
         "name": {
@@ -993,50 +993,50 @@
   },
   {
     "part_id": "tnut-slidein-m5",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "sqnut-m3",
-    "ref": "¥2–6"
+    "ref": "¥2"
   },
   {
     "part_id": "sqnut-m4",
-    "ref": "¥2–6"
+    "ref": "¥2"
   },
   {
     "part_id": "sqnut-m5",
-    "ref": "¥2–6"
+    "ref": "¥2"
   },
   {
     "part_id": "hexnut-unc14",
-    "ref": "¥1–3"
+    "ref": "¥1"
   },
   {
     "part_id": "shim-5x8x0_5",
-    "ref": "¥2–6"
+    "ref": "¥2"
   },
   {
     "part_id": "spacer-5x10",
-    "ref": "¥3–8"
+    "ref": "¥3"
   },
   {
     "part_id": "spacer-6x12",
-    "ref": "¥4–10"
+    "ref": "¥4"
   },
   {
     "part_id": "hex-key",
-    "ref": "¥5–15"
+    "ref": "¥5"
   },
   {
     "part_id": "grease",
-    "ref": "¥5–15"
+    "ref": "¥5"
   },
   {
     "part_id": "threadlocker",
-    "ref": "¥3–10"
+    "ref": "¥3"
   },
   {
     "part_id": "heat-shrink",
-    "ref": "¥2–5"
+    "ref": "¥2"
   }
 ]
