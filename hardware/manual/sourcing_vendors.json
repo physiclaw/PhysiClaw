@@ -1191,7 +1191,42 @@
   },
   {
     "part_id": "tnut-dropin-m3",
-    "ref": "¥5"
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "Nickel-plated, EU 2020, M3 (100-pack)",
+          "zh": "镀镍T型 欧标20型-M3【100个】"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1103788895%3AH%3AyZa9Ozo%2FTqk27rT2VnvXig%3D%3D%3A159dd0b7504373ba26605df6a5893da0&ali_trackid=318_159dd0b7504373ba26605df6a5893da0&id=602648155862&mi_id=00009SRM-OV2TCVhkcUhrPaSmZJ0u7CZkSsx-NsMdOIf5YA&mm_sceneid=0_0_28965752_0&priceTId=2150451417812332801537034e1029&skuId=6028240481084&spm=a21n57.1.hoverItem.7&utparam=%7B%22aplus_abtest%22%3A%22027bc294e2a931d32790291535bb07c8%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "304 stainless, EU 2020, M3 (10-pack)",
+          "zh": "304T型欧标20型-M3(10只)"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=839660050219&mi_id=0000pSGzjo4HXXE6_b13gIp6NQlf8Kc_KM8FUbiOp-Nz1Xk&ns=1&priceTId=2150451417812332801537034e1029&skuId=5771557042783&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%222ac4d771027cb18c037441061dd18ff6%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "EU 2020, M3, nickel-plated (50-pack)",
+          "zh": "20型-M3 (镀镍/50个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_430582_1006%3A1245290169%3AH%3AmHZl3H%2FZxIIgE7%2BU3NEYZg%3D%3D%3A7ad292e77d982f7e6d337b85b147b172&ali_trackid=282_7ad292e77d982f7e6d337b85b147b172&id=998391792202&mi_id=00005WTyGjUgB2MvdawjeNzw6_10wlry1jt_LpQl-xcB02k&mm_sceneid=1_0_515760111_0&priceTId=2150451417812332801537034e1029&skuId=6144993723885&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%22fb3170a8697030b700353e6fef79a1cf%22%7D&xxc=ad_ztc"
+      }
+    ]
   },
   {
     "part_id": "tnut-dropin-m5",
