@@ -1113,7 +1113,42 @@
   },
   {
     "part_id": "shoulder-5x10",
-    "ref": "¥8"
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "Ø5×10×M4 (20-pack)",
+          "zh": "Ø5*10*M4(20个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1103788895%3AH%3AGyULrGGi2MDR9FHY%2FgUHrg%3D%3D%3Afbce733214a3ca35e863a158868cb21e&ali_trackid=318_fbce733214a3ca35e863a158868cb21e&id=629302870354&mi_id=0000FV5PbYv0zONt_Tq-nx9dP94aiMX0KYq-zD9GKbNbvnw&mm_sceneid=0_0_28965752_0&priceTId=2147806217812321286983326e1195&skuId=5720274725623&spm=a21n57.1.hoverItem.12&utparam=%7B%22aplus_abtest%22%3A%22cc5c251d96164c7c5673c3737a4ac4cd%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "Ø5×10×M4, 304 stainless (10-pack)",
+          "zh": "5*M4*10[10只] 304"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=651089596067&mi_id=0000CJ1R1UzRtsvg760KL9kvvTWwYOskg5Lm-1GAeecxXUo&ns=1&priceTId=2147806217812321286983326e1195&skuId=5701335813692&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%222f4076e7c5cd60a44c94a504e6dcd99f%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "Ø5×10×M4 (50-pack)",
+          "zh": "5*10*M4-50个"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_430582_1006%3A1245290169%3AH%3AUWp6WkoFbWf7ak8BzQNRIQ%3D%3D%3Ace1cf02ee0eaf05b405bb5b819a593d2&ali_trackid=282_ce1cf02ee0eaf05b405bb5b819a593d2&id=989320776058&mi_id=0000OOFcdRW_ybp-WPwIPGR2O4Wut8eccihKyZ2uRFLEw1o&mm_sceneid=1_0_515760111_0&priceTId=2147806217812321286983326e1195&skuId=5953211896803&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%22e5389b8a0ee9957c71828da5170ee192%22%7D&xxc=ad_ztc"
+      }
+    ]
   },
   {
     "part_id": "shoulder-5x20",
