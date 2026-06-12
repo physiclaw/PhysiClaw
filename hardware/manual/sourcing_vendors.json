@@ -1589,7 +1589,46 @@
   },
   {
     "part_id": "hex-key",
-    "ref": "¥5"
+    "ref": "¥10",
+    "suppliers": [
+      {
+        "name": {
+          "en": "SATA",
+          "zh": "世达"
+        },
+        "product": {
+          "en": "Short flat-end, 2/3/5 mm",
+          "zh": "短款平头 2/3/5mm"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=718483830822&mi_id=0000atiMj0ha3zwqNWTket0z33JtTAaljva8gm_lPJRmehc&ns=1&priceTId=2147849a17812535491177868e113e&skuId=5976740613168&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%228aaa667f65a50b708248c0b7ce881de6%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Greener",
+          "zh": "绿林"
+        },
+        "product": {
+          "en": "T-handle flat-end, 2/3/5 mm",
+          "zh": "T型六角-平头 2/3/5mm"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=557514119321&mi_id=0000PzgNmDrEyTvattKWDcP_nPfwNXkJ6gyIFXJY0lKTQgA&ns=1&priceTId=2147849a17812535491177868e113e&skuId=4614839901621&spm=a21n57.1.hoverItem.19&utparam=%7B%22aplus_abtest%22%3A%22b73e0899088e686e52a33e32c07f2cc1%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "EIGHT",
+          "zh": "EIGHT"
+        },
+        "product": {
+          "en": "Standard length, 2/3/5 mm",
+          "zh": "标准长 2/3/5mm"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1157440002%3AH%3A39IUzyqjpPGTZojn4CiB7Xio2YjC4YgK%3Ae06efc679c7523bee2b9b74ed69fd2e1&ali_trackid=282_e06efc679c7523bee2b9b74ed69fd2e1&id=605719869164&mi_id=0000DPMq5iXFjnSbYNXvzqa1_ZwjhDjdhpg8cZHDO8OeaQ4&mm_sceneid=1_0_133863063_0&priceTId=2147800c17812545184435082e0e24&skuId=4417109167397&spm=a21n57.1.hoverItem.12&utparam=%7B%22aplus_abtest%22%3A%22764f36c6d0f4c2f26a6b3c6f34f54f6b%22%7D&xxc=ad_ztc"
+      }
+    ],
+    "note": {
+      "en": "An electric screwdriver with hex bits saves a lot of effort during assembly.",
+      "zh": "如有配六角批头的电动螺丝刀，装配会省力很多。"
+    }
   },
   {
     "part_id": "grease",
