@@ -1636,7 +1636,42 @@
   },
   {
     "part_id": "grease",
-    "ref": "¥5"
+    "ref": "¥10",
+    "suppliers": [
+      {
+        "name": {
+          "en": "BKD",
+          "zh": "BKD"
+        },
+        "product": {
+          "en": "White, 268 °C, 350 g (buy 3 get 1 free)",
+          "zh": "白色268°【拍3桶送1桶】350g"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_430582_1006%3A1123541291%3AH%3APP%2FQuET%2F6i2KFhcMGxHaOkugYyoqd6m%2B%3A4c25363011315303cabfdbcdaf1cdcd7&ali_trackid=282_4c25363011315303cabfdbcdaf1cdcd7&id=535528431778&mi_id=000045RT_pBDQwgwG9KbJcdwrF0GaLf00fbSGDiw504NUys&mm_sceneid=1_0_116656740_0&priceTId=213e030e17812555337032566e1034&skuId=3246189537196&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%22526b6bb73def80a995fc7f0b42268474%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Yijialin",
+          "zh": "屹嘉临"
+        },
+        "product": {
+          "en": "White high-temp grease, 100 g, 1 jar",
+          "zh": "白色高温脂100克 *1瓶"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=745296950254&mi_id=0000O2jRDdR2MDgQFi1GGpSnc3MckJxZrAxxIkZHp0fwcNs&ns=1&priceTId=213e030e17812555337032566e1034&skuId=6085234235052&spm=a21n57.1.hoverItem.21&utparam=%7B%22aplus_abtest%22%3A%22b848820bb974204a75b1f6d6dc38750d%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Chuangke",
+          "zh": "3D创客空间"
+        },
+        "product": {
+          "en": "Grease, 1 tube",
+          "zh": "润滑脂 1支"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=835124349906&mi_id=0000igp9WlqC44rCe9aVhTROJPhYQsDJM5R6oRPbRkdgcSs&ns=1&priceTId=2147838517812560458542430e0fac&skuId=5755178218291&spm=a21n57.1.hoverItem.7&utparam=%7B%22aplus_abtest%22%3A%225136e3863f1ceda54e1663d8f86e84a7%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "threadlocker",
