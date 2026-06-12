@@ -969,19 +969,61 @@
   },
   {
     "part_id": "fhcs-m3x8",
-    "ref": "¥3"
+    "ref": "¥10",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "FHCS, M3–M5 per spec and quantity",
+          "zh": "内六角沉头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1103788895%3AH%3AvT1NN0y%2FMOi5WMELvgqSI5BsJX3TahUm%3Ade105a31ec9040d57f1ee155b15ed46c&ali_trackid=282_de105a31ec9040d57f1ee155b15ed46c&id=17046691882&mi_id=0000xePosX4qqJPoh8YWjQ6ttkdX3bosF-Donl-MKRj523M&mm_sceneid=1_0_28965752_0&priceTId=213e01d417812301296535473e0e9e&skuId=5070760537532&spm=a21n57.1.hoverItem.5&utparam=%7B%22aplus_abtest%22%3A%22edb7e26a66e3c4d15ebd2dda9e23f5b5%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "FHCS, M3–M5 per spec and quantity",
+          "zh": "内六角沉头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=693377485791&mi_id=0000FchgM3OWVg4T8huPRdaqXkmUzE3Bp53KoXkk4yCeJuk&ns=1&priceTId=2150431f17812302252395978e1ad9&skuId=4920755308732&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%22671e338629c5b80dec0b033081865b4a%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "FHCS, M3–M5 per spec and quantity",
+          "zh": "内六角沉头螺栓 按规格和数量选购"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=601686390456&mi_id=0000uNAw3tO9Ko-d9-dIuRKahnRvzzJz5mHiLLTgwHHs9QA&ns=1&priceTId=2150431f17812302252395978e1ad9&skuId=5058384094300&spm=a21n57.1.hoverItem.11&utparam=%7B%22aplus_abtest%22%3A%2226a3a5dd66bf8e08b662957c239943a9%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "fhcs-m3x10",
-    "ref": "¥4"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "fhcs-m5x10",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "fhcs-m5x12",
-    "ref": "¥3"
+    "ref": "Ditto",
+    "suppliers": "Ditto",
+    "note": "Ditto"
   },
   {
     "part_id": "shcs-m6x20",
