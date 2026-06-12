@@ -1187,7 +1187,11 @@
         },
         "url": "https://detail.tmall.com/item.htm?ali_refid=a3_430582_1006%3A1245290169%3AH%3AUWp6WkoFbWf7ak8BzQNRIQ%3D%3D%3Ace1cf02ee0eaf05b405bb5b819a593d2&ali_trackid=282_ce1cf02ee0eaf05b405bb5b819a593d2&id=989320776058&mi_id=0000OOFcdRW_ybp-WPwIPGR2O4Wut8eccihKyZ2uRFLEw1o&mm_sceneid=1_0_515760111_0&priceTId=2147806217812321286983326e1195&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%22e5389b8a0ee9957c71828da5170ee192%22%7D&xxc=ad_ztc&skuId=5953211896810"
       }
-    ]
+    ],
+    "note": {
+      "en": "6 pcs needed — if sold in 5-packs, order two packs.",
+      "zh": "共需 6 个——如按 5 个一包出售，记得购买两包。"
+    }
   },
   {
     "part_id": "tnut-dropin-m3",
