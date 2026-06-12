@@ -1503,7 +1503,7 @@
   },
   {
     "part_id": "spacer-5x10",
-    "ref": "¥3",
+    "ref": "¥4",
     "suppliers": [
       {
         "name": {
@@ -1546,7 +1546,46 @@
   },
   {
     "part_id": "spacer-6x12",
-    "ref": "¥4"
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "OPPU",
+          "zh": "OPPU"
+        },
+        "product": {
+          "en": "6.2×12×8 mm (5-pack)",
+          "zh": "6.2*12*8(5个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=719279682169&mi_id=0000jQzWzAxfJOzeMvBFqcFInSnvKaRC849vuAYxmryTNp0&ns=1&priceTId=215043eb17812473365321913e10b1&skuId=5151398852266&spm=a21n57.1.hoverItem.30&utparam=%7B%22aplus_abtest%22%3A%220420ceb8665496c8ae6058430c965308%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "Ø6×12×8 mm (20-pack)",
+          "zh": "Φ6*12*8[20只]"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1123480325%3AH%3AIvBZUTJnLyZhqqKRdSOPtA%3D%3D%3Afdf1f3d5a1564056f787d85270edc033&ali_trackid=282_fdf1f3d5a1564056f787d85270edc033&id=914092442727&mi_id=0000NMHNpx0gKDHngh0ZYL0TX9eqFs4m9YfPsZcriTvfVXI&mm_sceneid=1_0_116096069_0&priceTId=213e07b017812524674188096e0e6a&skuId=5947803851139&spm=a21n57.1.hoverItem.6&utparam=%7B%22aplus_abtest%22%3A%22a5631a27890821988ba4fb3c28f313e2%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "Ø6×12×8 mm (5-pack)",
+          "zh": "Φ6*12*8【5个】"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=1&id=851546806052&pisk=h_1I3vORbWSJqBAzQqKauXdH8QRRyg-y4aKJRhxKa9yhF8IhlHoe8TP5Fh_vLyjP4Ot5XGtKTy2He3sHbglP8R7h-bgm9C1BJAKOSU0KpfGdXYRkworSQbp3GMt3kbVpyFU6zUcpJgLp6hKMzXHR2HptXUYkw3IJwP99oe3K2eLRWcLXX0HppeLtBeY-e3LpeP_9jUdJ2gpL5NKMyQKRymfTmuch7pJJRzl2dnQ_IbF4zepBcwCIabukRaAMQVhLGhBFe6RO9lUp6ZXNvFObN4T1hNdpRgVmtBQAWTKUobkdaQrLRa7AksH0P5E1rN6cWYVcN9I6g6jix5POCT_VOTlaNrzF-wsFt8o5TSYcvwWz3VELqNpJOThbv155vZ6OGcPFEY2_bDjSfgPXWpLMRdz_5DBombhqi_zseYvpSeTQ5PidE&rn=128398f4701ed74fb84b1ed6edcb2a52&skuId=5815653223616&spm=a1z10.3-b-s.w4011-22826275221.72.463c1595hBkvNm"
+      }
+    ],
+    "note": {
+      "en": "6 pcs needed — some shops sell 5-packs, so order two packs there.",
+      "zh": "共需 6 个——部分店铺按 5 个一包出售，记得购买两包。"
+    }
   },
   {
     "part_id": "hex-key",
