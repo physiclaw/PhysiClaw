@@ -778,13 +778,13 @@
       {
         "name": {
           "en": "Wenku",
-          "zh": "Wenku"
+          "zh": "温酷"
         },
         "product": {
-          "en": "M3 female thread, Ø7.0 fabric head (5-pack)",
-          "zh": "M3内牙-7.0布头（5个装）"
+          "en": "M3 female thread, Ø6.8 fabric head",
+          "zh": "M3内牙-6.8布头"
         },
-        "url": "https://item.taobao.com/item.htm?ali_refid=a3_430582_1006%3A1152145290%3AH%3A1SNyAM4EKVqTjn6aeyH93g%3D%3D%3A1edf96ed175ac08dae0a4900aeac2748&ali_trackid=318_1edf96ed175ac08dae0a4900aeac2748&id=580201450871&mi_id=00003ui-EZHRqjE3ra63V3k3_9JxS9XyaSBhG5If38Yaqr8&mm_sceneid=0_0_132073499_0&priceTId=215044ef17811889375175370e1197&skuId=4028694230736&spm=a21n57.1.hoverItem.1&utparam=%7B%22aplus_abtest%22%3A%2296881bee3cef3a6e1e9af60d27b370b5%22%7D&xxc=ad_ztc"
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=540696187134&mi_id=0000AyWj2Gxgnk9fdgdOLwKW251Dth0tnwLG3QoJZOc0dwY&ns=1&priceTId=2147801e17812251095496663e0e7d&skuId=3710468466331&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%221987c4f87118cc3278edbd02b5e5d3f6%22%7D&xxc=taobaoSearch"
       },
       {
         "name": {
@@ -812,11 +812,81 @@
   },
   {
     "part_id": "teflon-tube",
-    "ref": "¥3–8"
+    "ref": "¥1–2",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Chunshi",
+          "zh": "纯仕"
+        },
+        "product": {
+          "en": "5 mm ID × 6 mm OD (per metre)",
+          "zh": "内径5mm*外径6mm（1米价）"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=655172054388&mi_id=0000YK1zUSdanMjfGqlPutqug7oRNb4ts0i5tRO-bSTFRW4&ns=1&priceTId=213e059017812252678185847e1142&skuId=4728325585356&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%223ebc335e124d5c267f3c169559715383%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "OUPLI",
+          "zh": "OUPLI"
+        },
+        "product": {
+          "en": "5×6 mm (per metre)",
+          "zh": "5*6mm 1米价"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1122041824%3AN%3AXT2bjcjdSNsU5we8VNFzqw%3D%3D%3Ac8c6635573881ebf83e997b51ad1f0ab&ali_trackid=1_c8c6635573881ebf83e997b51ad1f0ab&id=569970454162&mi_id=0000yUS4hE5gyC5PzbsEZjxdrFsrNAMz5XGglTzk13s7JXM&mm_sceneid=1_0_109692157_0&priceTId=213e059017812252678185847e1142&skuId=3666664261344&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%228e5e0012077823db4749988cf66eed6e%22%7D&xxc=ad_ztc"
+      },
+      {
+        "name": {
+          "en": "Daoguan",
+          "zh": "道冠"
+        },
+        "product": {
+          "en": "5×6 mm, 1 m",
+          "zh": "5*6mm 1米"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=20845971530&mi_id=0000dgQFBBgq4lIeTMHwYBm3n7-1h19dKEYYueslX6ZJk0Y&ns=1&priceTId=213e059017812252678185847e1142&skuId=34129955295&spm=a21n57.1.hoverItem.9&utparam=%7B%22aplus_abtest%22%3A%22d5b9b409652b1cb412019c6cd51ca6bb%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "gooseneck",
-    "ref": "¥15–30"
+    "ref": "¥8–12",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Feiying",
+          "zh": "飞影"
+        },
+        "product": {
+          "en": "30 cm gooseneck, 1/4 male/female",
+          "zh": "30CM长内外丝1/4软管"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=856578400006&mi_id=0000_4qfqwopspMCil0-9bT8jUsVzETE1UfrM176b3NIFwU&ns=1&priceTId=214784bc17812257491367131e10f6&skuId=5663181169281&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%22062a33b91e31a50b47f561a05f385805%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Litu",
+          "zh": "丽途"
+        },
+        "product": {
+          "en": "30 cm gooseneck, 1/4 male/female, w/ 1 nut",
+          "zh": "30厘米长 内外牙1/4软管 配1个螺母"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=955656202854&mi_id=0000qvRsrl8nfLQQf5O5yBz4Ds3bKtWIHQxcY8vopJewMag&ns=1&priceTId=214784bc17812257491367131e10f6&skuId=6047477731494&spm=a21n57.1.hoverItem.9&utparam=%7B%22aplus_abtest%22%3A%229082bc1da65bd37a67e627d0dd5d56bf%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Oulin Bosi",
+          "zh": "欧林波思"
+        },
+        "product": {
+          "en": "30 cm gooseneck, 1/4 female + 1/4 male",
+          "zh": "30cm软管：1/4内牙+1/4外牙"
+        },
+        "url": "https://detail.tmall.com/item.htm?ali_refid=a3_420434_1006%3A1467740086%3AH%3AtLme3nLOvo2xDAdi47RGkA%3D%3D%3A3950f57d14c14a8069eaeec4df369bb3&ali_trackid=318_3950f57d14c14a8069eaeec4df369bb3&id=723765800541&mi_id=0000X94BA7nt9xsuSMNSUogeKzRSWYuWGw5TcgbfCn8wNuw&mm_sceneid=0_0_1818920087_0&priceTId=2150450317812260371347583e0e41&skuId=5200393014254&spm=a21n57.1.hoverItem.12&utparam=%7B%22aplus_abtest%22%3A%226147a741df6249b4206d3f60b9c9e953%22%7D&xxc=ad_ztc"
+      }
+    ]
   },
   {
     "part_id": "bhcs-m3x6",
