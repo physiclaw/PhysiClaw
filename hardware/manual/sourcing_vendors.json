@@ -1191,7 +1191,7 @@
   },
   {
     "part_id": "tnut-dropin-m3",
-    "ref": "¥5",
+    "ref": "¥3",
     "suppliers": [
       {
         "name": {
@@ -1230,40 +1230,40 @@
   },
   {
     "part_id": "tnut-dropin-m5",
-    "ref": "¥5",
+    "ref": "¥3",
     "suppliers": [
       {
         "name": {
-          "en": "Fastener shop A",
-          "zh": "紧固件店 A"
+          "en": "Bairuite",
+          "zh": "佰瑞特"
         },
         "product": {
-          "en": "M5 drop-in T-nut for 2020, 50-pack",
-          "zh": "欧标2020船形螺母M5 50个装"
+          "en": "Nickel-plated, EU 2020, M5 (100-pack)",
+          "zh": "镀镍T型 欧标20型-M5【100个】"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?id=602648155862&skuId=6028240481086"
       },
       {
         "name": {
-          "en": "Fastener shop B",
-          "zh": "紧固件店 B"
+          "en": "Guwanji",
+          "zh": "固万基"
         },
         "product": {
-          "en": "M5 drop-in T-nut, 20-pack",
-          "zh": "船型螺母M5 20个装"
+          "en": "304 stainless, EU 2020, M5 (10-pack)",
+          "zh": "304T型欧标20型-M5(10只)"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?id=839660050219&skuId=5771557042785"
       },
       {
         "name": {
-          "en": "Fastener shop C",
-          "zh": "紧固件店 C"
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
         },
         "product": {
-          "en": "M5 drop-in T-nut, 100-pack",
-          "zh": "M5船形螺母 100个装"
+          "en": "EU 2020, M5, nickel-plated (50-pack)",
+          "zh": "20型-M5 (镀镍/50个)"
         },
-        "url": ""
+        "url": "https://detail.tmall.com/item.htm?id=998391792202&skuId=6144993723887"
       }
     ]
   },
