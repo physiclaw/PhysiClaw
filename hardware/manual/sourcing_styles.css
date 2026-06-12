@@ -107,8 +107,8 @@ table.sourcing {
 .sourcing th:nth-child(3)  { width: 23%; }
 .sourcing th:nth-child(4)  { width: 4%; }
 .sourcing th:nth-child(5)  { width: 11%; }
-.sourcing th:nth-child(6)  { width: 6%; }
-.sourcing th:nth-child(7), .sourcing th:nth-child(8), .sourcing th:nth-child(9) { width: 9%; }
+.sourcing th:nth-child(6), .sourcing th:nth-child(7), .sourcing th:nth-child(8) { width: 9%; }
+.sourcing th:nth-child(9)  { width: 6%; }
 .sourcing th:nth-child(10) { width: 12%; }
 
 /* Open header in the manual's table idiom — no vertical rules, thin uppercase

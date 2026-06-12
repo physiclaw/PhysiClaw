@@ -88,14 +88,15 @@ UI = {
     "doc_title": {"en": "PhysiClaw.ai Sourcing Guide", "zh": "PhysiClaw.ai 采购指南"},
     "h1": {"en": "Sourcing guide", "zh": "采购指南"},
     "lede": {
-        "en": "Every part from the assembly manual's bill of materials, "
-              "with three suppliers per part.<br>"
-              "Ref. prices are subtotals for the required quantity (not "
-              "unit prices, shipping excluded), not actual purchase prices "
-              "— shops adjust pricing over time; use them as a rough guide.",
-        "zh": "对应装配手册物料清单的全部零件，每项零件列出三家供应商。<br>"
-              "参考价为所需数量的小计（非单价、不含运费），并非实际购买价格"
-              "——厂商可能随时调价，仅供了解大致价格水平。",
+        "en": "This guide covers every part in the assembly manual's bill "
+              "of materials, with three reference suppliers per part.<br>"
+              "Reference prices are subtotals for the required quantity "
+              "(not unit prices; shipping excluded) and do not represent "
+              "actual transaction prices — vendors may adjust pricing at "
+              "any time; use them only to gauge the general price level.",
+        "zh": "本指南涵盖装配手册物料清单的全部零件，每项零件列出三家参考供应商。<br>"
+              "参考价为所需数量的合计金额（非单价，不含运费），并非实际成交价格"
+              "——厂商可能随时调价，仅供衡量大致价格水平。",
     },
     "pending": {"en": "to be found", "zh": "待补充"},
     "disclaimer": {
@@ -358,13 +359,13 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
                   f'<td class="qty">{row["qty"]}</td>'
                   f'<td class="desc">{loc(row["desc"], lang)}</td>')
 
-        if ref_spans[idx]:
-            ref = loc(refs[idx] or "", lang) or "—"
-            cells += f'<td class="ref"{_span_attr(ref_spans[idx])}>{html.escape(ref)}</td>'
         message = loc(inquiries[idx] or "", lang)
         for spans, col in sup_walks:
             if spans[idx]:
                 cells += render_supplier_cell(col[idx], lang, spans[idx])
+        if ref_spans[idx]:
+            ref = loc(refs[idx] or "", lang) or "—"
+            cells += f'<td class="ref"{_span_attr(ref_spans[idx])}>{html.escape(ref)}</td>'
         if note_spans[idx]:
             # Notes are prose — emitted as trusted HTML, like the manual's
             # content strings.
@@ -385,8 +386,9 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
         f'<th>{ui("supplier_n", lang)} {j + 1}</th>' for j in range(SUPPLIERS_PER_ROW))
     head = (f'<tr><th>{ui("th_cls", lang)}</th><th>{ui("th_component", lang)}</th>'
             f'<th>{ui("th_spec", lang)}</th><th>{ui("th_qty", lang)}</th>'
-            f'<th>{ui("th_desc", lang)}</th><th>{ui("th_ref", lang)}</th>'
-            f'{supplier_ths}<th>{ui("th_note", lang)}</th></tr>')
+            f'<th>{ui("th_desc", lang)}</th>'
+            f'{supplier_ths}<th>{ui("th_ref", lang)}</th>'
+            f'<th>{ui("th_note", lang)}</th></tr>')
     return (f'<div class="table-wrap"><table class="sourcing">'
             f"<thead>{head}</thead><tbody>{''.join(body)}</tbody></table></div>")
 
