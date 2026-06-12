@@ -1503,7 +1503,46 @@
   },
   {
     "part_id": "spacer-5x10",
-    "ref": "¥3"
+    "ref": "¥3",
+    "suppliers": [
+      {
+        "name": {
+          "en": "TwoTrees",
+          "zh": "俩棵树"
+        },
+        "product": {
+          "en": "5 mm ID × 10 mm OD × 9 mm",
+          "zh": "内径5外径10厚9"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=608843333546&mi_id=0000Xp9r0rNk99PflGPVXWx6jGRAmkZqo6wzZdaEEb7osp4&ns=1&priceTId=2147820617812460048511841e0f6a&skuId=4447032678855&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%22d4d6ce3ac685d2f613f7648947df27f0%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Kufan",
+          "zh": "库梵三维"
+        },
+        "product": {
+          "en": "Spacer 5×10×9 mm (5-pack)",
+          "zh": "隔离柱5*10*9mm(5个装)"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=643586054546&mi_id=0000jh0uugezj58EDB-JyITZQeKfpjIKQfs9OaDNpUVxTwI&ns=1&priceTId=2147820617812460048511841e0f6a&skuId=4710482460571&spm=a21n57.1.hoverItem.5&utparam=%7B%22aplus_abtest%22%3A%22f2508bb18559e091f08c32f69d739fd1%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Qipang",
+          "zh": "启庞"
+        },
+        "product": {
+          "en": "Idler spacer 5×8×9 mm",
+          "zh": "滑轮隔离柱5*8*9mm"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=619911567339&mi_id=0000eRwjvAiF7bwwgXRGGRaVR-Y4gp5XGpMMGtcxAif4his&ns=1&priceTId=214783d017812476456802457e0f69&skuId=4545179374386&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%22309858c63b19e839943ede0beb76a27d%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": {
+      "en": "If the exact 9 mm height is unavailable, stack shorter spacers to reach 9 mm.",
+      "zh": "如买不到 9 mm 高的规格，可用较短的轴套叠加至 9 mm。"
+    }
   },
   {
     "part_id": "spacer-6x12",
