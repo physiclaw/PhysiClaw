@@ -1675,10 +1675,80 @@
   },
   {
     "part_id": "threadlocker",
-    "ref": "¥3"
+    "ref": "¥6",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "243 (blue, 50 ml)",
+          "zh": "243(蓝50ml)"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=815495429995&mi_id=0000hPLpNAx1mcCk6_P2lrR0NW41u8jPHqxNPP73X_e6q2Q&ns=1&priceTId=2150438a17812562618141376e0f4a&skuId=5920702171814&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%22b17faf6566594ed24a1ad3bd226408e7%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "Blue 243, 50 ml, 1 tube",
+          "zh": "蓝243（50ml)1支装"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=1053791122137&mi_id=000089JIiD8BnIVrJFliWQc2SSeaUNTap_wV6JY0yD_9YiE&ns=1&priceTId=2150438a17812562618141376e0f4a&skuId=6094068880617&spm=a21n57.1.hoverItem.3&utparam=%7B%22aplus_abtest%22%3A%22e4105a23b1f9e867ac75bc848708cbe5%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "LOCTITE",
+          "zh": "乐泰"
+        },
+        "product": {
+          "en": "LOCTITE 243 threadlocker, 10 ml",
+          "zh": "LOCTITE 乐泰243螺纹胶 10ml"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=652235448903&mi_id=0000Qv_5plKI4c0lvkm9fSCFJMdzkOlfkjROhlmcOoVve8w&ns=1&priceTId=2150438a17812562618141376e0f4a&skuId=5855300089874&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%224343abd76684796dacbeb81d85e85adc%22%7D&xxc=taobaoSearch"
+      }
+    ]
   },
   {
     "part_id": "heat-shrink",
-    "ref": "¥2"
+    "ref": "¥4",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Niuxiang",
+          "zh": "牛享"
+        },
+        "product": {
+          "en": "Assorted colors, 164 pcs (bag), 3:1 shrink",
+          "zh": "彩色164pcs【袋装】 3倍收缩"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=653659815504&mi_id=0000yiVKgorv511MKoZ5EsKmN1b2JqDf86QyvlU-6z7d0dk&ns=1&priceTId=215043ea17812571643128082e0f5b&skuId=4887481207761&spm=a21n57.1.hoverItem.17&utparam=%7B%22aplus_abtest%22%3A%2219ce184b5c4bdfb857f4fdc0d0eca646%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Xinjia",
+          "zh": "欣嘉"
+        },
+        "product": {
+          "en": "8 colors, 164 pcs",
+          "zh": "彩色8种164只"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=652182822333&mi_id=0000XTZ8NqqbfM4vOrkU0IN4xrUUxP0QjPpoS_x6VOu-OfI&ns=1&priceTId=215043ea17812571643128082e0f5b&skuId=4873785482841&spm=a21n57.1.hoverItem.13&utparam=%7B%22aplus_abtest%22%3A%2258872b6376a23400bcdd721ee098f4c0%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Xinxin",
+          "zh": "欣欣"
+        },
+        "product": {
+          "en": "5:1 shrink, 164 pcs (bag), flame-retardant",
+          "zh": "5倍热缩：袋装【164根】阻燃耐磨防腐"
+        },
+        "url": "https://item.taobao.com/item.htm?abbucket=6&id=904644065796&mi_id=00002SE5Os7MkEQxQNCpjXAxVV-rFjj4CM9LunCjOSlgWVQ&ns=1&priceTId=215043ea17812571643128082e0f5b&skuId=5931489415648&spm=a21n57.1.hoverItem.2&utparam=%7B%22aplus_abtest%22%3A%2237718672bbe0b6851f907e8ed0042d38%22%7D&xxc=taobaoSearch"
+      }
+    ]
   }
 ]
