@@ -1027,7 +1027,46 @@
   },
   {
     "part_id": "shcs-m6x20",
-    "ref": "¥3"
+    "ref": "¥3",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "SHCS, M6×20",
+          "zh": "内六角圆柱头螺栓 M6×20"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=22060492907&mi_id=0000DX6PSVjcEqq6SgBdsjtT2eNJtojvQYxA5ue24ccb3PQ&ns=1&priceTId=214782a117812307633698945e0dec&skuId=5256984043602&spm=a21n57.1.hoverItem.7&utparam=%7B%22aplus_abtest%22%3A%22ccaf069aa2d60469663fe01c1dba78a0%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "SHCS, M6×20",
+          "zh": "内六角圆柱头螺栓 M6×20"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=534600992151&mi_id=0000nB2_sxnWlEBq5lHVAzBFNujew6RLcFnV0Yp7pTss0zI&ns=1&priceTId=214782a117812307633698945e0dec&skuId=5044451193674&spm=a21n57.1.hoverItem.5&utparam=%7B%22aplus_abtest%22%3A%22c8f902b47ef898b0683179d9295adef8%22%7D&xxc=taobaoSearch"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "SHCS, M6×20",
+          "zh": "内六角圆柱头螺栓 M6×20"
+        },
+        "url": "https://detail.tmall.com/item.htm?abbucket=6&id=684328822068&mi_id=00006xgRA1Y3FCiUymiWfS0mH2eZblTpPb40WuOMqGAN4BM&ns=1&priceTId=214782a117812307633698945e0dec&skuId=5937566337891&spm=a21n57.1.hoverItem.4&utparam=%7B%22aplus_abtest%22%3A%2294e002cba374b9dd13a335a3add8b49f%22%7D&xxc=taobaoSearch"
+      }
+    ],
+    "note": {
+      "en": "If the custom extrusion order already includes these 8 bolts, no need to buy them again.",
+      "zh": "如定制铝型材已配齐这 8 颗螺栓，无需重复购买。"
+    }
   },
   {
     "part_id": "shcs-unc14-16",
