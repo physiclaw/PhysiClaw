@@ -82,7 +82,7 @@ edge_tol = 0.5 * MM   # fuzz for matching fillet edges by center
 
 # Cylinder boss on the plate's left (-X) face — centered (Y, mid-thickness),
 # axis along -X. 10 mm overall, 0.5 mm of it into the plate → 9.5 mm protrudes.
-left_cyl_d     = 7.5  * MM
+left_cyl_d     = 8  * MM   # → 1 mm wall around the 6 mm bore below
 left_cyl_len   = 10 * MM   # overall cylinder length
 left_cyl_embed = 0.5  * MM   # how far it sits into the plate (remainder protrudes)
 # Coaxial bore into that cylinder from its free (-X) tip.
