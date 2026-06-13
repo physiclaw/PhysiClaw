@@ -44,13 +44,13 @@ LEFT_PULLEY_GAP  =  0    # mm — LEFT pulley belt-band lands on the LOWER idler
                          #      spacer stands the motor off further and needs its
                          #      own gap (cf. RIGHT_PULLEY_GAP for the 12 mm side,
                          #      and the ring spec in motor_10_bracket).
-RIGHT_PULLEY_GAP =  1    # mm — RIGHT pulley belt-band lands on the UPPER idler
+RIGHT_PULLEY_GAP =  5    # mm — RIGHT pulley belt-band lands on the UPPER idler
                          #      plane (Y = -51.75) so motor B's pulley is coplanar
                          #      with the LU.top1 / RU.top1 idler belt-bands it
-                         #      drives. Tuned for motor B's 16 mm spacer stack
-                         #      (2 × M6x12x8). The two belt runs sit 9 mm apart
-                         #      (lower -42.75 / upper -51.75): 8 mm from the 8/16 mm
-                         #      standoff difference plus the 1 mm gap difference here.
+                         #      drives. Tuned for motor B's 12 mm spacer (M6x12x12).
+                         #      The two belt runs sit 9 mm apart (lower -42.75 /
+                         #      upper -51.75): 4 mm from the 8/12 mm spacer
+                         #      difference plus the 5 mm gap difference here.
 PULLEY_EXPLODE   = 30    # mm — exploded: pull each pulley outboard along world
                          #      -Y (the motor shaft direction) so they read as
                          #      separate pieces installed onto the motor shafts.

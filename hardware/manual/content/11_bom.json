@@ -693,7 +693,7 @@
         }
       },
       {
-        "part_id": "bhcs-m5x25",
+        "part_id": "bhcs-m5x20",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -703,8 +703,8 @@
           "zh": "内六角半圆头螺栓"
         },
         "spec": {
-          "en": "M5×25",
-          "zh": "M5×25"
+          "en": "M5×20",
+          "zh": "M5×20"
         },
         "qty": "2",
         "desc": {
@@ -1033,7 +1033,7 @@
         }
       },
       {
-        "part_id": "spacer-6x12",
+        "part_id": "spacer-6x12x8",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -1046,10 +1046,30 @@
           "en": "6 mm ID, 12 mm OD, 8 mm height",
           "zh": "内径 6 mm，外径 12 mm，高度 8 mm"
         },
-        "qty": "6",
+        "qty": "2",
         "desc": {
-          "en": "Motor bracket standoffs (A ×2, B ×4)",
-          "zh": "电机支架轴套（A ×2、B ×4）"
+          "en": "Motor A bracket standoff",
+          "zh": "电机 A 支架轴套"
+        }
+      },
+      {
+        "part_id": "spacer-6x12x12",
+        "cls": {
+          "en": "Fasteners",
+          "zh": "紧固件"
+        },
+        "component": {
+          "en": "Spacer",
+          "zh": "轴套"
+        },
+        "spec": {
+          "en": "6 mm ID, 12 mm OD, 12 mm height",
+          "zh": "内径 6 mm，外径 12 mm，高度 12 mm"
+        },
+        "qty": "2",
+        "desc": {
+          "en": "Motor B bracket standoff",
+          "zh": "电机 B 支架轴套"
         }
       },
       {

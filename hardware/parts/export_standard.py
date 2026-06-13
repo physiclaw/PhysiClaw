@@ -45,6 +45,7 @@ ALL_PARTS = [
     Ring("M5x8x0.5"),
     Ring("M5x15x12"),
     Ring("M6x12x8"),
+    Ring("M6x12x12"),
     Nut("hex", "M3"),
     Nut("hex", "M4"),
     Nut("hex", "M5"),

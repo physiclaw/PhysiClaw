@@ -85,8 +85,8 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Stack two spacers", "zh": "这里叠两个轴套" },
-        "body": { "en": "Motor B stacks two 8 mm spacers (16 mm total).", "zh": "电机 B 这里叠两个 8 mm 轴套（共 16 mm）。" },
+        "h3": { "en": "A taller spacer here", "zh": "这里用更高的轴套" },
+        "body": { "en": "Motor B's spacer must be 12 mm tall.", "zh": "电机 B 的轴套高度必须 12 mm。" },
         "classes": "note overlay sm",
         "style": "left:120mm; top:20mm; width:80mm;"
       },
@@ -103,8 +103,8 @@
         { "component": { "en": "Motor bracket", "zh": "电机支架" }, "spec": "60×42×3", "qty": "1" },
         { "component": { "en": "Motor", "zh": "电机" }, "spec": { "en": "NEMA 17 stepper, 38 mm height", "zh": "42 步进电机，高度 38 mm" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×6", "qty": "4" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×25", "qty": "2" },
-        { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "6×12×8", "qty": "4" }
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×20", "qty": "2" },
+        { "component": { "en": "Spacer", "zh": "轴套" }, "spec": "6×12×12", "qty": "2" }
       ]
     }
   },

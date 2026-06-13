@@ -962,7 +962,7 @@
     "note": "Ditto"
   },
   {
-    "part_id": "bhcs-m5x25",
+    "part_id": "bhcs-m5x20",
     "ref": "Ditto",
     "suppliers": "Ditto",
     "note": "Ditto"
@@ -1543,7 +1543,7 @@
     }
   },
   {
-    "part_id": "spacer-6x12",
+    "part_id": "spacer-6x12x8",
     "ref": "¥5",
     "suppliers": [
       {
@@ -1581,9 +1581,49 @@
       }
     ],
     "note": {
-      "en": "6 pcs needed — some shops sell 5-packs, so order two packs there.",
-      "zh": "共需 6 个——部分店铺按 5 个一包出售，记得购买两包。"
+      "en": "Height must match the listed spec; the ID and OD can vary — any ID > 5 mm and OD < 20 mm works.",
+      "zh": "高度必须与所列规格一致；内径、外径可不同——内径 >5 mm、外径 <20 mm 均可。"
     }
+  },
+  {
+    "part_id": "spacer-6x12x12",
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "OPPU",
+          "zh": "OPPU"
+        },
+        "product": {
+          "en": "6.2×12×12 mm (5-pack)",
+          "zh": "6.2*12*12(5个)"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=719279682169&skuId=5151398852268"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "Ø6×12×12 mm (10-pack)",
+          "zh": "Φ6*12*12[10只]"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=914092442727&skuId=5947803851143"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "Ø6×12×12 mm (2-pack)",
+          "zh": "Φ6*12*12【2个】"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=851546806052&skuId=5815653223620"
+      }
+    ],
+    "note": "Ditto"
   },
   {
     "part_id": "hex-key",

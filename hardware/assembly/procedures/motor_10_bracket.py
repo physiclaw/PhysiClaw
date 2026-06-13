@@ -71,10 +71,10 @@ class MO10Bracket(BaseAssembly):
     # frame standoff. ``_module_stem()`` already derives the output filename
     # from the subclass's own module.
     compound_label: str = "motor_10_bracket"
-    # Frame-mount spacer stack + matching M5 screw length. Motor A (this
-    # class) stands off 1 × 8 mm so its pulley lands on the LOWER belt plane;
-    # Motor B (motor_20_bracket) stacks 2 × 8 mm (16 mm, UPPER plane) and uses
-    # the longer M5×25 screw that spans the taller stack.
+    # Frame-mount spacer + matching M5 screw length. Motor A (this class)
+    # stands off an 8 mm spacer so its pulley lands on the LOWER belt plane;
+    # Motor B (motor_20_bracket) overrides to a 12 mm spacer (M6x12x12, UPPER
+    # plane) and the longer M5×20 screw that spans it.
     RING_SPEC: str = "M6x12x8"      # 12 mm OD × 8 mm tall spacer (M6 bore)
     RING_COUNT: int = 1             # spacers stacked per M5 hole (standoff = N × ring)
     BHCS_M5_LENGTH: int = 16        # mm — BHCS M5 underhead length (frame mount)
