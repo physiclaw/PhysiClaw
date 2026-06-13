@@ -65,7 +65,12 @@ from hardware.assembly.procedures.belt_20_clamp import (
     SLIDER_MOUNT_Z,
 )
 from hardware.assembly.procedures.belt_30_motor_b import BE30MotorB
-from hardware.assembly.procedures.tapz_11_solenoid_attach import TZ11SolenoidAttach
+from hardware.assembly.procedures.tapz_11_solenoid_attach import (
+    TZ11SolenoidAttach,
+    MOUNT_ORIGIN_X as _TZ11_MOUNT_X,
+    MOUNT_ORIGIN_Y as _TZ11_MOUNT_Y,
+    MOUNT_ORIGIN_Z as _TZ11_MOUNT_Z,
+)
 from hardware.assembly.projection import Camera, MAIN_FRAME_VIEW
 from hardware.parts._fits import M3_NUT_T
 from hardware.parts.custom.belt_clamp import (
@@ -168,27 +173,27 @@ MOUNT_ORIGIN_Y = CLAMP_TOP_Y - mount_plate_thickness / 2
 MOUNT_ORIGIN_Z = _clamp_origin_z + mount_keyboard_center_y
 
 # ── tapz_11-world → tapz_20-world transform ───────────────────────────────────
-# In tapz_11 the SolenoidMount sits at origin (-22, +6.5, +13.5) with
-# x_dir = (0, 1, 0), z_dir = (0, 0, -1) (so mount native +X → tapz_11 +Y,
-# +Y → tapz_11 +X, +Z → tapz_11 -Z). The transform below maps tapz_11 world
+# In tapz_11 the SolenoidMount native origin sits at (_TZ11_MOUNT_X,
+# _TZ11_MOUNT_Y, _TZ11_MOUNT_Z) with mount native +X → tapz_11 +Y, +Y →
+# tapz_11 +X, +Z → tapz_11 -Z. The transform below maps tapz_11 world
 # coordinates to the new placement so the entire TZ11SolenoidAttach compound
 # lands in tapz_20 world without rebuilding any of its parts.
 #
 # Rotation R takes mount-native axes as expressed in tapz_11 world to the
-# same axes as expressed in tapz_20 world. Composing the mount → tapz_11
-# placement with the mount → tapz_20 mapping above gives:
+# same axes as expressed in tapz_20 world:
 #   tapz_11 world +X (= mount +Y) → tapz_20 world -Z
 #   tapz_11 world +Y (= mount +X) → tapz_20 world +X
 #   tapz_11 world +Z (= mount -Z) → tapz_20 world -Y
-# which is expressed as Plane(x_dir=(0,0,-1), z_dir=(0,-1,0)). Translation
-# O = M_20_origin − R · M_11_origin so the tapz_11 mount origin
-# (-22, +6.5, +13.5) lands at (MOUNT_ORIGIN_X, MOUNT_ORIGIN_Y, MOUNT_ORIGIN_Z).
-# R · (-22, +6.5, +13.5) = (+6.5, -13.5, +22), so O = MOUNT_ORIGIN
-# + (-6.5, +13.5, -22).
+# i.e. R·(a, b, c) = (b, -c, -a), expressed as Plane(x_dir=(0,0,-1),
+# z_dir=(0,-1,0)). Translation O = M_20_origin − R · M_11_origin lands the
+# tapz_11 mount origin on (MOUNT_ORIGIN_X, MOUNT_ORIGIN_Y, MOUNT_ORIGIN_Z).
+# Derived from the imported tapz_11 origin (not hardcoded), so it tracks the
+# screen-pattern position automatically — e.g. shifting
+# screen_pattern_base_from_bottom moves _TZ11_MOUNT_Z and the placement follows.
 TAPZ11_TO_TAPZ20 = Location(Plane(
-    origin=(MOUNT_ORIGIN_X - 6.5,
-            MOUNT_ORIGIN_Y + 13.5,
-            MOUNT_ORIGIN_Z - 22),
+    origin=(MOUNT_ORIGIN_X - _TZ11_MOUNT_Y,
+            MOUNT_ORIGIN_Y + _TZ11_MOUNT_Z,
+            MOUNT_ORIGIN_Z + _TZ11_MOUNT_X),
     x_dir=(0, 0, -1),
     z_dir=(0, -1, 0),
 ))

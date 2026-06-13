@@ -10,7 +10,8 @@ thickness =  2 * MM
 
 # ── Back wall (the "screen"), extruded up from the +Y edge of the plate ───────
 wall_thickness = 4  * MM    # along Y
-wall_height    = 35 * MM    # extruded up (+Z)
+wall_height    = 45 * MM    # extruded up (+Z); tall enough for the +10 mm-shifted
+                            # pattern (top hole ≈ 37 mm) with the top slots above it
 wall_center_y  = width / 2 - wall_thickness / 2
 
 # ── Keyboard face: 4 corner through-holes ─────────────────────────────────────
@@ -30,7 +31,7 @@ keyboard_slot_h = 4 * MM   # along Y, from the connection edge toward -Y
 screen_pattern_hole_diameter    = M3_NORMAL
 screen_pattern_spacing          = 4  * MM   # face-local X between consecutive circles
 screen_pattern_base_from_left   = 12 * MM   # X of first circle (= base) from left edge of face
-screen_pattern_base_from_bottom = 3  * MM   # base-row Y from bottom edge of face
+screen_pattern_base_from_bottom = 13 * MM   # base-row Y from bottom edge of face (= keyboard join)
 screen_pattern_y_offsets        = (3, 0, 2, 4, 1)   # mm above base-row, one per circle (i=0 is first)
 screen_pattern_pair_offset      = 15 * MM   # paired hole sits this far above each circle
 screen_pattern_row_shift        = 5  * MM   # second 10-hole row sits this far above the first

@@ -20,14 +20,14 @@ Mount-hole alignment:
   * Screen-face middle column: i=2 of the 5-base pattern, face_X =
     screen_pattern_base_from_left + 2 × screen_pattern_spacing = 20 mm.
     Base-row pair (without screen_pattern_row_shift): face_Y =
-    base_from_bottom + y_offsets[2] = 5 mm  and  5 + pair_offset = 20 mm
-    → native (X=0, Z=6 / 21), 15 mm pitch matching the solenoid.
+    base_from_bottom + y_offsets[2] = 15 mm  and  15 + pair_offset = 30 mm
+    → native (X=0, Z=16 / 31), 15 mm pitch matching the solenoid.
   * Mount placed with native +Y → world +X, native +Z → world -Z;
     derived native +X → world +Y. The wall BACK face (native
     Y = mount_width/2) mates against the solenoid -X face at world
     X = -solenoid_outer_w/2; the SCREEN face (native Y = mount_width/2
     - wall_thickness) faces world -X, where the screw heads enter.
-    Pair midpoint at native Z = 13.5 maps to world Z = 0, centered on
+    Pair midpoint at native Z = 23.5 maps to world Z = 0, centered on
     the solenoid's mount holes.
 
 Two variants:
