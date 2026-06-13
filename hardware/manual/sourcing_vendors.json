@@ -938,7 +938,7 @@
     "note": "Ditto"
   },
   {
-    "part_id": "bhcs-m3x12",
+    "part_id": "bhcs-m3x10",
     "ref": "Ditto",
     "suppliers": "Ditto",
     "note": "Ditto"
@@ -1009,12 +1009,6 @@
   },
   {
     "part_id": "fhcs-m3x10",
-    "ref": "Ditto",
-    "suppliers": "Ditto",
-    "note": "Ditto"
-  },
-  {
-    "part_id": "fhcs-m5x10",
     "ref": "Ditto",
     "suppliers": "Ditto",
     "note": "Ditto"

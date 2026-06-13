@@ -613,7 +613,7 @@
         }
       },
       {
-        "part_id": "bhcs-m3x12",
+        "part_id": "bhcs-m3x10",
         "cls": {
           "en": "Fasteners",
           "zh": "紧固件"
@@ -623,8 +623,8 @@
           "zh": "内六角半圆头螺栓"
         },
         "spec": {
-          "en": "M3×12",
-          "zh": "M3×12"
+          "en": "M3×10",
+          "zh": "M3×10"
         },
         "qty": "4",
         "desc": {
@@ -753,26 +753,6 @@
         }
       },
       {
-        "part_id": "fhcs-m5x10",
-        "cls": {
-          "en": "Fasteners",
-          "zh": "紧固件"
-        },
-        "component": {
-          "en": "FHCS",
-          "zh": "内六角沉头螺栓"
-        },
-        "spec": {
-          "en": "M5×10",
-          "zh": "M5×10"
-        },
-        "qty": "2",
-        "desc": {
-          "en": "Control board mount",
-          "zh": "控制板安装支架"
-        }
-      },
-      {
         "part_id": "fhcs-m5x12",
         "cls": {
           "en": "Fasteners",
@@ -786,10 +766,10 @@
           "en": "M5×12",
           "zh": "M5×12"
         },
-        "qty": "2",
+        "qty": "4",
         "desc": {
-          "en": "Gantry",
-          "zh": "龙门架"
+          "en": "Gantry & control board mount",
+          "zh": "龙门架、控制板安装支架"
         }
       },
       {

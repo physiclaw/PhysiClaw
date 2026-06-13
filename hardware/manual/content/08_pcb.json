@@ -27,7 +27,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Control board holder", "zh": "控制板支架" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
-        { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×10", "qty": "2" },
+        { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×12", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" }
       ]
     }
@@ -71,7 +71,7 @@
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
         { "component": { "en": "Control board", "zh": "控制板" }, "spec": "MKS DLC32 V2.1", "qty": "1" },
-        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×12", "qty": "4" },
+        { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M3×10", "qty": "4" },
         { "component": { "en": "Square nut", "zh": "四方螺母" }, "spec": "M3", "qty": "4" }
       ]
     }

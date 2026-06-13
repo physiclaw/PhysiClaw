@@ -2,7 +2,7 @@
 fastens it through the four corners.
 
 The PCB drops onto the holder's four standoffs (bottom face at z = thickness +
-cyl_h, corner holes over the bores). Each corner is fastened with a BHCS M3 × 12
+cyl_h, corner holes over the bores). Each corner is fastened with a BHCS M3 × 10
 from the top — head on the PCB, shank down through the PCB + standoff + plate —
 into an M3 square nut on the holder underside (seated in its locating recess).
 Everything is built in the holder's native frame, then carried into the mounted
@@ -30,7 +30,7 @@ from hardware.parts.standard.screw import Screw
 
 STANDOFF_TOP = thickness + cyl_h        # holder standoff top (PCB bottom rests here)
 PCB_TOP      = STANDOFF_TOP + pcb_th    # PCB top face (BHCS head bears here)
-BHCS_LENGTH  = 12                       # mm — M3 BHCS underhead length
+BHCS_LENGTH  = 10                       # mm — M3 BHCS underhead length
 NUT_THICK    = NUT_SPECS["square"]["M3"]["thickness"]
 
 PCB_EXPLODE  = 35    # mm — exploded: PCB lifted off the standoffs

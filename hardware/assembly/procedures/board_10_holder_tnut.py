@@ -4,7 +4,7 @@ hammer T-nut at each of its two rib mount holes.
 The holder's underside rib carries two M5 countersink holes (20 mm apart),
 recessed on the top (standoff) face. At each hole:
 
-  * an FHCS M5 × 10 seats flush in the top recess and points DOWN — the conical
+  * an FHCS M5 × 12 seats flush in the top recess and points DOWN — the conical
     head sits in the countersink, the shank passes down through the plate + rib
     and protrudes below the rib.
   * a hammer M5 T-nut sits below the rib, MOUTH UP (boss toward the rib) to
@@ -39,7 +39,7 @@ from hardware.parts.custom.pcb_holder import (
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT, LENGTHS, TNut
 
-FHCS_LENGTH   = 10    # mm — FHCS M5 overall length
+FHCS_LENGTH   = 12    # mm — FHCS M5 overall length
 SCREW_EXPLODE = 25    # mm — exploded: screw lifts above the holder
 NUT_EXPLODE   = 30    # mm — exploded: nut drops below the rib
 
