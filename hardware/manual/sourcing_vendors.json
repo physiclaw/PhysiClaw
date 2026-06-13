@@ -180,7 +180,7 @@
   },
   {
     "part_id": "idler-smooth",
-    "ref": "¥12",
+    "ref": "¥25",
     "suppliers": [
       {
         "name": {
@@ -220,7 +220,7 @@
   },
   {
     "part_id": "idler-toothed",
-    "ref": "¥3",
+    "ref": "¥5",
     "suppliers": [
       {
         "name": {
