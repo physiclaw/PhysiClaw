@@ -362,7 +362,7 @@
   .intro-links > div:nth-of-type(2) .word { grid-area: 1 / 4 / 2 / 5; align-self: end; }
   .intro-links > a:nth-of-type(2)          { grid-area: 2 / 4 / 3 / 5; align-self: start; }
 
-  /* 3D PRINTED PARTS (SLS) — Voron-style two-column spec sheet.
+  /* 3D PRINTED PARTS (SLS/MJF) — Voron-style two-column spec sheet.
      Content (intro + grid) is vertically centred in the page body so the
      sheet stays balanced now that there is no closing section below it. */
   .print-page {

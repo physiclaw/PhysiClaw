@@ -226,7 +226,7 @@
             "en": "XY joint (left)",
             "zh": "XY 连接件（左）"
           },
-          "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" },
+          "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" },
           "qty": "1"
         },
         {
@@ -234,7 +234,7 @@
             "en": "XY joint (right)",
             "zh": "XY 连接件（右）"
           },
-          "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" },
+          "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" },
           "qty": "1"
         },
         {

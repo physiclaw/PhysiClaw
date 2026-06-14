@@ -437,8 +437,8 @@
           "zh": "零件打印设置与说明"
         },
         "body": {
-          "en": "PhysiClaw's custom parts are printed by Selective Laser Sintering (SLS), not the common FDM. A laser fuses nylon powder in a heated powder bed, so parts come out fully solid, support-free, and strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.",
-          "zh": "PhysiClaw 的定制零件采用选择性激光烧结（SLS）工艺打印，不用常见的 FDM。SLS 靠激光在加热的粉末床里把尼龙粉末烧结成型，零件实心、无需支撑、各方向强度均匀。这些零件带侧孔和悬空结构：FDM 打印时侧孔容易变形，悬空处会塌陷。采购时请参照以下规格。"
+          "en": "PhysiClaw's custom parts are printed by a nylon powder-bed process — Selective Laser Sintering (SLS) or Multi Jet Fusion (MJF), either works — not the common FDM. The powder bed fuses nylon into fully solid, support-free parts that are strong in every direction. These parts carry side holes and overhangs: with FDM the side holes deform and the overhangs sag. Match the specifications below when sourcing parts.",
+          "zh": "PhysiClaw 的定制零件采用尼龙粉末床工艺打印——选择性激光烧结（SLS）工艺或者多射流熔融（MJF）工艺都可以，不用常见的 FDM。粉末床把尼龙粉末熔结成型，零件实心、无需支撑、各方向强度均匀。这些零件带侧孔和悬空结构：FDM 打印时侧孔容易变形，悬空处会塌陷。采购时请参照以下规格。"
         },
         "classes": "note"
       }
@@ -450,8 +450,8 @@
           "zh": "3D 打印工艺"
         },
         "v": {
-          "en": "Selective Laser Sintering (SLS)",
-          "zh": "选择性激光烧结（SLS）"
+          "en": "Selective Laser Sintering (SLS) or Multi Jet Fusion (MJF)",
+          "zh": "选择性激光烧结（SLS）或多射流熔融（MJF）"
         }
       },
       {

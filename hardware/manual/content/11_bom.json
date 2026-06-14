@@ -121,8 +121,8 @@
           "zh": "3D 打印件"
         },
         "spec": {
-          "en": "Selective Laser Sintering (SLS) PA12 nylon (or equivalent) black",
-          "zh": "选择性激光烧结（SLS）PA12 尼龙（或同等材料）黑色"
+          "en": "Selective Laser Sintering (SLS) or Multi Jet Fusion (MJF), PA12 nylon (or equivalent), black",
+          "zh": "选择性激光烧结（SLS）或多射流熔融（MJF），PA12 尼龙（或同等材料），黑色"
         },
         "qty": "11",
         "desc": {

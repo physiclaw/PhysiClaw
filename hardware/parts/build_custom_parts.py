@@ -1,4 +1,4 @@
-"""Build the 3D-print package for the custom (SLS) parts.
+"""Build the 3D-print package for the custom (SLS/MJF) parts.
 
 Exports every custom part as a STEP file and bundles them with English and
 Chinese parts manifests into a single zip:
@@ -54,7 +54,7 @@ CUSTOM_PARTS: list[tuple[type, int, str, str]] = [
 _MANIFEST = {
     "en": {
         "title": "PhysiClaw — Custom 3D-printed parts",
-        "process": "Process:  Selective Laser Sintering (SLS)",
+        "process": "Process:  Selective Laser Sintering (SLS) or Multi Jet Fusion (MJF)",
         "material": "Material: PA12 nylon (or equivalent)",
         "color": "Color:    Black",
         "units": "Units:    millimeters (mm)",
@@ -66,7 +66,7 @@ _MANIFEST = {
     },
     "zh": {
         "title": "PhysiClaw — 定制 3D 打印件",
-        "process": "打印工艺：选择性激光烧结（SLS）",
+        "process": "打印工艺：选择性激光烧结（SLS）或多射流熔融（MJF）",
         "material": "材料：PA12 尼龙（或同等材料）",
         "color": "颜色：黑色",
         "units": "尺寸单位：毫米（mm）",

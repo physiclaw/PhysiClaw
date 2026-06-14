@@ -111,7 +111,7 @@
             "en": "Phone bed",
             "zh": "手机托架"
           },
-          "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" },
+          "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" },
           "qty": "1"
         },
         {

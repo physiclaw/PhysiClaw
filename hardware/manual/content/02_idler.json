@@ -43,7 +43,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": { "en": "GT2 20T, smooth", "zh": "GT2 20T，光面" }, "qty": "3" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×10×M4", "qty": "1" },
@@ -112,7 +112,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": { "en": "GT2 20T, smooth", "zh": "GT2 20T，光面" }, "qty": "3" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×20×M4", "qty": "2" },
@@ -175,7 +175,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": { "en": "GT2 20T, smooth", "zh": "GT2 20T，光面" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×10×M4", "qty": "1" },
@@ -221,7 +221,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Idler mount", "zh": "惰轮支座" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "Idler", "zh": "惰轮" }, "spec": { "en": "GT2 20T, smooth", "zh": "GT2 20T，光面" }, "qty": "1" },
         { "component": { "en": "BHCS", "zh": "半圆头螺栓" }, "spec": "M5×10", "qty": "1" },
         { "component": { "en": "Shoulder screw", "zh": "轴肩螺栓" }, "spec": "Ø5×20×M4", "qty": "1" },

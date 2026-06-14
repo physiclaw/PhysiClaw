@@ -26,7 +26,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Control board holder", "zh": "控制板支架" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Control board holder", "zh": "控制板支架" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×12", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" }
       ]
@@ -96,7 +96,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Tube holder", "zh": "导管支架" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "Tube holder", "zh": "导管支架" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" },
         { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×12", "qty": "2" },
         { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" }
       ]
