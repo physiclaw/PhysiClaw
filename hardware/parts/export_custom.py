@@ -8,6 +8,7 @@ from hardware.parts.custom.idler_mount_motor import IdlerMountMotor
 from hardware.parts.custom.pcb_holder import PcbHolder
 from hardware.parts.custom.phone_bed import PhoneBed
 from hardware.parts.custom.solenoid_mount import SolenoidMount
+from hardware.parts.custom.tube_holder import TubeHolder
 from hardware.parts.custom.xy_joint_left import XyJointLeft
 from hardware.parts.custom.xy_joint_right import XyJointRight
 
@@ -18,6 +19,7 @@ ALL_PARTS = [
     PcbHolder(qty=1),
     PhoneBed(qty=1),
     SolenoidMount(qty=1),
+    TubeHolder(qty=1),
     XyJointLeft(qty=1),
     XyJointRight(qty=1),
 ]
