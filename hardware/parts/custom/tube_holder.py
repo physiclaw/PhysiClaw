@@ -45,8 +45,9 @@ bore_d        = 4.3 * MM   # OD4 PTFE tube, slip fit
 bore_depth    = 28  * MM   # tube insertion depth from the tip; stops short of the M5 holes
 boss_tip_y    = plate_half_y - boss_embed + boss_len   # +Y end of the boss (= socket mouth)
 
-# Socket mouth (native point) + outward axis. board_32 installs the holder, and
-# its placement keeps this boss axis pointing WORLD +Y (spigot up) once mounted.
+# Socket mouth (native point) + outward axis (native +Y). board_32 installs the
+# holder with a 180° turn about Z, so this axis points WORLD -Y — physically up
+# (spigot stands up) in the machine's use orientation — once mounted.
 socket_mouth = (0, boss_tip_y, thickness / 2)
 socket_axis  = (0, 1, 0)
 
