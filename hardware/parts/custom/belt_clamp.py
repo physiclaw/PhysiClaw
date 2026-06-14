@@ -86,6 +86,16 @@ left_rect2_h                = M3_NUT_W   # height = nut width-across-flats
 left_rect2_right_from_front = 3   * MM
 left_rect2_depth            = 7.5 * MM
 
+# ── Top face: PTFE-tube blind hole (on the mirror centerline) ─────────────────
+# Receives the OD4 PTFE tube that passes through the SolenoidMount plate bolted
+# on top, anchoring the solenoid wire's stiffener. Sits on the mirror centerline
+# (x = length/2) in the solid band between the belt slots / belt pocket / center
+# cut, so it threads through without touching any of them. Aligned with the
+# mount's tube hole: mount native (0, 4) ↔ clamp native (length/2, -6). Blind.
+tube_hole_diameter = 4.3 * MM   # OD4 PTFE tube, slip fit
+tube_hole_y        = -6 * MM   # clear of slots, belt pocket, center cut
+tube_hole_depth    = 14 * MM   # blind (block is 16 mm thick → 2 mm floor)
+
 # ── Fillets (applied last, after mirror) ──────────────────────────────────────
 cube_corner_fillet_radius = 1   * MM   # 4 outer vertical corners of the mirrored body
 slot_cut_fillet_radius    = 1.5 * MM   # 4 slot2 +Y break-out vertical edges (incl. mirror)
@@ -210,6 +220,12 @@ class BeltClamp(BaseCustomPart):
 
             # Mirror the whole body across the right-face plane (x = +length/2)
             mirror(about=Plane.YZ.offset(length / 2))
+
+            # Top: PTFE-tube blind hole on the mirror centerline (single feature,
+            # so added after the mirror). Cut before the fillets so the fillet
+            # edge-selection runs on the final cut geometry.
+            with Locations((length / 2, tube_hole_y, thickness / 2)):
+                Hole(radius=tube_hole_diameter / 2, depth=tube_hole_depth)
 
             # Fillet: 4 outer vertical corners (longest Z-parallel edges = thickness)
             cube_corners = my_part.edges().filter_by(Axis.Z).group_by(Edge.length)[-1]
