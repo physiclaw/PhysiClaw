@@ -66,7 +66,7 @@ _MANIFEST = {
     },
     "zh": {
         "title": "PhysiClaw — 定制 3D 打印件",
-        "process": "打印工艺：选择性激光烧结（SLS）或多射流熔融（MJF）",
+        "process": "打印工艺：选择性激光烧结（SLS）或 多射流熔融（MJF）",
         "material": "材料：PA12 尼龙（或同等材料）",
         "color": "颜色：黑色",
         "units": "尺寸单位：毫米（mm）",
