@@ -27,6 +27,7 @@ from hardware.parts.custom.idler_mount_motor import IdlerMountMotor
 from hardware.parts.custom.pcb_holder import PcbHolder
 from hardware.parts.custom.phone_bed import PhoneBed
 from hardware.parts.custom.solenoid_mount import SolenoidMount
+from hardware.parts.custom.tube_holder import TubeHolder
 from hardware.parts.custom.xy_joint_left import XyJointLeft
 from hardware.parts.custom.xy_joint_right import XyJointRight
 
@@ -34,7 +35,7 @@ OUT_DIR = REPO_ROOT / "hardware" / "output" / "print_3d"
 ZIP_PATH = OUT_DIR / "physiclaw_custom_parts.zip"
 
 # (class, qty to print, English name, 中文名). Quantities match the consolidated
-# BOM's "Custom parts" line (10 pieces across 8 designs). The STEP filename comes
+# BOM's "Custom parts" line (11 pieces across 9 designs). The STEP filename comes
 # from the part itself (BasePart.output_path()), so it isn't restated here.
 CUSTOM_PARTS: list[tuple[type, int, str, str]] = [
     (BeltClamp,       1, "Belt clamp",           "同步带夹具"),
@@ -43,6 +44,7 @@ CUSTOM_PARTS: list[tuple[type, int, str, str]] = [
     (PcbHolder,       1, "Control board holder", "控制板支架"),
     (PhoneBed,        1, "Phone bed",            "手机托架"),
     (SolenoidMount,   1, "Solenoid mount",       "电磁铁支架"),
+    (TubeHolder,      1, "Tube holder",          "导管支架"),
     (XyJointLeft,     1, "XY joint (left)",      "XY 连接件（左）"),
     (XyJointRight,    1, "XY joint (right)",     "XY 连接件（右）"),
 ]
