@@ -167,7 +167,7 @@
       },
       {
         "h3": { "en": "Three wires", "zh": "三根线" },
-        "body": { "en": "Three wires run from the solenoid — positive (+), negative (−), and ground. Route all three up along the Teflon tube to above the control board holder, then connect + and − to the control board's Spindle terminal and the ground wire to the power supply's common ground.", "zh": "电磁铁引出三根线：正极（+）、负极（−）和接地线。把三根线一起沿特氟龙管穿到控制板支架上方，再把正、负极接到控制板的主轴（Spindle） 端子，接地线接到电源的公共地。" },
+        "body": { "en": "Three wires run from the solenoid — positive (+), negative (−), and ground. Use spiral wrap to bind all three wires together with the Teflon tube into one bundle, and run it up to the control board holder, then connect + and − to the control board's Spindle terminal and the ground wire to the power supply's common ground.", "zh": "电磁铁引出三根线：正极（+）、负极（−）和接地线。用螺旋缠绕带把三根线和特氟龙管缠成一束，沿管子走到控制板支架处，再把正、负极接到控制板的主轴（Spindle） 端子，接地线接到电源的公共地。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:112mm; width:150mm; max-width:150mm;"
       },

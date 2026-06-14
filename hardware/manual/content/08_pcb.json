@@ -4,7 +4,7 @@
     "page": "pcb",
     "secnum": { "en": "SECTION 08", "zh": "第 08 节" },
     "h1": { "en": "Control board", "zh": "控制板" },
-    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires run through a Teflon tube to keep them from tangling with the motors and belts.", "zh": "控制板固定在框架前方。电磁铁的导线穿过特氟龙管走线，避免缠到电机和同步带上。" }
+    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires are spiral-wrapped to a Teflon tube that stiffens the bundle so it holds its shape, clear of the motors and belts. The tube anchors to a frame-mounted holder and to the carriage — never to the board — so carriage motion can't bend the PCB.", "zh": "控制板固定在框架前方。电磁铁的导线与一根特氟龙管用螺旋缠绕带捆在一起，管子让线束变硬、能保持形状，躲开电机和同步带。管子两端分别固定在框架上的支架和滑座上——不接到控制板——这样滑座运动就不会把电路板掰弯。" }
   },
   {
     "type": "tall-left",
@@ -77,14 +77,58 @@
     }
   },
   {
+    "type": "tall-left",
+    "page": "board_31",
+    "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_31" },
+    "variant": "hero",
+    "figures": [
+      { "src": "board_31_tube_tnut_exploded_cam1.svg" },
+      { "src": "board_31_tube_tnut_assembled_cam0.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Fit the T-nuts", "zh": "装上 T 型螺母" },
+        "body": { "en": "Two M5 FHCS into hammer T-nuts — leave them loose for the next step.", "zh": "两颗 M5 沉头螺栓拧进T型螺母——先别拧紧，下一步再拧。" },
+        "classes": "note overlay sm",
+        "style": "left:140mm; top:110mm; width:80mm;"
+      }
+    ],
+    "bom": {
+      "label": { "en": "Bill of materials", "zh": "物料清单" },
+      "rows": [
+        { "component": { "en": "Tube holder", "zh": "导管支架" }, "spec": { "en": "SLS 3D Print", "zh": "SLS 3D 打印" }, "qty": "1" },
+        { "component": { "en": "FHCS", "zh": "沉头螺栓" }, "spec": "M5×12", "qty": "2" },
+        { "component": { "en": "T-nut", "zh": "T 型螺母" }, "spec": { "en": "Drop-In M5", "zh": "船形螺母 M5" }, "qty": "2" }
+      ]
+    }
+  },
+  {
+    "type": "tall-left",
+    "page": "board_32",
+    "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_32" },
+    "variant": "hero",
+    "figures": [
+      { "src": "board_32_tube_holder_assembled_cam1.svg", "alt": "board_32_tube_holder assembled" },
+      { "src": "board_32_tube_holder_assembled_cam0.svg" }
+    ],
+    "notes": [
+      {
+        "h3": { "en": "Mount the tube holder", "zh": "安装导管支架" },
+        "body": { "en": "Mount it on the top extrusion beside the control board. Its 4 mm socket anchors the fixed end of the Teflon tube.", "zh": "装在控制板旁边的顶部型材上。它的 4 mm 插孔固定特氟龙管的一端。" },
+        "classes": "note overlay sm",
+        "style": "left:180mm; top:130mm; width:80mm;"
+      }
+    ]
+  },
+  {
     "type": "main-inset-br",
     "page": "board_40",
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_40" },
     "main": { "src": "board_40_teflon_assembled_cam0_nrvk.svg", "style": "transform: translateX(-35mm);" },
     "notes": [
       {
-        "h3": { "en": "Teflon tube", "zh": "特氟龙管" },
-        "body": { "en": "Run the wires through the Teflon tube — it keeps them tidy and clear of the moving belts and motors.", "zh": "把导线穿进特氟龙管——既能理顺导线，又能让它们躲开运动的同步带和电机。" },
+        "h3": { "en": "Spiral-wrap the tube", "zh": "螺旋缠绕成束" },
+        "body": { "en": "Spiral-wrap the solenoid wires to the Teflon tube along its length. The wires don't go inside — the tube just stiffens the bundle so it holds a clear path past the belts and motors. Plug one end into the tube holder's 4 mm socket and the other through the solenoid mount into the belt-clamp hole.", "zh": "用螺旋缠绕带把电磁铁导线沿特氟龙管捆成一束。导线不穿进管子里——管子只是让线束变硬、能保持形状，避开同步带和电机。管子一端插进导管支架的 4 mm 插孔，另一端穿过电磁铁支架插入同步带夹具的孔里。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:30mm; width:90mm;"
       },
@@ -102,7 +146,7 @@
       },
       {
         "h3": { "en": "PTFE vs FEP", "zh": "PTFE 和 FEP" },
-        "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The toughness/stiffness is enough to support the wire.", "zh": "两种管子都能用——PTFE（乳白色）或 FEP（透明）。韧性和硬度足够撑住导线。" },
+        "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The Ø4 tube's stiffness is enough to hold the wire bundle's shape.", "zh": "两种管子都能用——PTFE（乳白色）或 FEP（透明）。Ø4 管的硬度足以撑住线束的形状。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:110mm; width:90mm;"
       }
@@ -110,7 +154,8 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Teflon tube", "zh": "特氟龙管" }, "spec": "Ø6/5, 380 mm", "qty": "1" }
+        { "component": { "en": "Teflon tube", "zh": "特氟龙管" }, "spec": "Ø4/2, 380 mm", "qty": "1" },
+        { "component": { "en": "Spiral wrap", "zh": "螺旋缠绕带" }, "spec": { "en": "Ø4, ~400 mm", "zh": "Ø4，约 400 mm" }, "qty": "1" }
       ]
     }
   }
