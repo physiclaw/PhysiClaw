@@ -88,7 +88,7 @@
     "notes": [
       {
         "h3": { "en": "Fit the T-nuts", "zh": "装上 T 型螺母" },
-        "body": { "en": "Two M5 FHCS into hammer T-nuts — leave them loose for the next step.", "zh": "两颗 M5 沉头螺栓拧进T型螺母——先别拧紧，下一步再拧。" },
+        "body": { "en": "Two M5 FHCS into hammer T-nuts — leave them loose for the next step.", "zh": "两颗 M5 沉头螺栓拧进 T 型螺母——先别拧紧，下一步再拧。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"
       }
