@@ -1,20 +1,22 @@
-"""Teflon tube on the board sub-assembly — routes a PTFE tube from the PCB
-holder's left-face bore (the "upper tube" Ø6 mm hole) to the solenoid mount's
-keyboard-face slot, draped over the board_30 assembly.
+"""Teflon-tube service route — anchors the OD4 PTFE stiffener tube from a frame-
+mounted TubeHolder (near the control board) to the BeltClamp on the moving
+carriage.
 
-Both port locations are read out of the built assembly so the routing stays
-correct if upstream placement changes:
-  * End A — the holder's left cylinder boss bore mouth, carried into world by
-    the holder's BOARD_PLACEMENT transform.
-  * End B — the solenoid mount's keyboard slot, carried by the SolenoidMount's
-    global location within the assembly.
-The tube routes as an inverted-U (∩): it leaves the holder bore heading +Y (up,
-the frame's up axis), arcs over an apex, and arrives at the slot heading -Y.
-Those opposing end tangents make Teflon thread the spine through an auto-computed
-apex (a single spline would self-intersect), keeping the route clear above.
+The solenoid wire is spiral-wrapped to the tube ALONGSIDE it (it does not pass
+through the bore); the tube only stiffens the bundle. The route is an inverted-U
+(∩): both sockets open upward, so the tube drops down into each (the TubeHolder
+socket on the frame and the BeltClamp blind hole on the carriage) and arcs up
+and over between them. Because the tube anchors to the frame and the carriage —
+never to the control board — carriage motion no longer bends the PCB.
+
+Both port poses are read out of the built assembly so the route stays correct if
+upstream placement changes:
+  * End A — the TubeHolder socket mouth (placed here on the top short 2040).
+  * End B — the BeltClamp blind-hole mouth, carried by the clamp's global
+    location within the assembly.
 
 Two variants:
-  * exploded — tube lifted off (+X) to show it separated from the ports.
+  * exploded — tube lifted off (+Z) to show it separated from the ports.
   * assembled — tube seated between the two ports.
 
 Run from the repo root:
@@ -25,67 +27,73 @@ Run from the repo root:
 from build123d import Compound, Location, Vector
 
 from hardware.assembly.base import BaseAssembly
-from hardware.assembly.procedures.board_20_frame import BOARD_PLACEMENT
-from hardware.assembly.procedures.board_30_pcb import BO30Pcb
+from hardware.assembly.procedures.board_32_tube_holder import (
+    BO32TubeHolder,
+    TUBE_HOLDER_PLACEMENT,
+)
 from hardware.assembly.projection import MAIN_FRAME_VIEW
-from hardware.parts.custom import pcb_holder as H
-from hardware.parts.custom import solenoid_mount as S
+from hardware.parts.custom import belt_clamp as BC
+from hardware.parts.custom import tube_holder as TH
 from hardware.parts.standard.teflon import Teflon
 
-TUBE_OD        = 6      # mm — PTFE OD (fits the holder's 6 mm bore)
-TUBE_ID        = 5      # mm
-TANGENT_SCALAR = 2.0    # Bézier-handle length (tall legs; sweeps the tall apex)
-EXPLODE        = 40     # mm — exploded: tube lifted off along +Y
+TUBE_OD        = 4      # mm — OD4 PTFE (plugs the 4 mm sockets)
+TUBE_ID        = 2      # mm
+TANGENT_SCALAR = 2.0    # Bézier-handle length — full enough for the ∩ apex to sweep
+EXPLODE        = 40     # mm — exploded: tube lifted off along +Z
 
-# Inverted-U (∩): frame up is +Y, so the tube leaves the holder bore heading +Y
-# (up toward the apex) and arrives at the slot heading -Y (down from the apex).
-# These oppose, so Teflon threads the spine through an auto-computed apex.
-DIR_UP   = (0, 1, 0)
-DIR_DOWN = (0, -1, 0)
+# Socket mouth + boss axis in the TubeHolder native frame (placed by board_32).
+_SOCKET_NATIVE = TH.socket_mouth
+_SOCKET_BACK   = tuple(m - a for m, a in zip(TH.socket_mouth, TH.socket_axis))
 
-def _global_location(node, label, acc=None):
+
+def _gloc(node, label, acc=None):
     """Composed world Location of the first leaf labeled ``label``."""
     acc = (acc or Location()) * node.location
     if getattr(node, "label", None) == label and not node.children:
         return acc
     for child in node.children:
-        found = _global_location(child, label, acc)
+        found = _gloc(child, label, acc)
         if found is not None:
             return found
     return None
 
 
-def _world_point(loc: Location, p) -> Vector:
-    """World position of native point ``p`` under Location ``loc``."""
+def _wpt(loc: Location, p) -> Vector:
     return (loc * Location(Vector(*p))).position
+
+
+def _wdir(loc: Location, p, q) -> Vector:
+    """World direction from native point ``p`` to native point ``q``."""
+    return (_wpt(loc, q) - _wpt(loc, p)).normalized()
 
 
 class BO40Teflon(BaseAssembly):
     camera = MAIN_FRAME_VIEW
 
     def _build(self) -> Compound:
-        base = BO30Pcb(exploded=False).build()
+        base = BO32TubeHolder(exploded=False).build()
 
-        # End A: holder left-cylinder bore mouth (native) → world.
-        bore = (-H.plate_half_x + H.left_cyl_embed - H.left_cyl_len, 0, H.thickness / 2)
-        p1 = _world_point(BOARD_PLACEMENT, bore)
+        # End A: socket mouth — tube leaves UP along the boss axis.
+        p1 = _wpt(TUBE_HOLDER_PLACEMENT, _SOCKET_NATIVE)
+        d1 = _wdir(TUBE_HOLDER_PLACEMENT, _SOCKET_BACK, _SOCKET_NATIVE)
 
-        # End B: solenoid keyboard-face slot (native) → world.
-        sol = _global_location(base, "SolenoidMount")
-        join_y = S.width / 2 - S.wall_thickness
-        slot = (0, join_y - S.keyboard_slot_h / 2, S.thickness / 2)
-        p2 = _world_point(sol, slot)
+        # End B: BeltClamp blind-hole mouth on the carriage (opens upward). The
+        # tube arcs over and drops DOWN into it, so it arrives heading into the
+        # clamp; the opposing end tangents make Teflon raise the ∩ apex between.
+        clamp = _gloc(base, "BeltClamp")
+        hole_mouth = (BC.length / 2, BC.tube_hole_y, BC.thickness / 2)
+        hole_in    = (BC.length / 2, BC.tube_hole_y, BC.thickness / 2 - 1)
+        p2 = _wpt(clamp, hole_mouth)
+        d2 = _wdir(clamp, hole_mouth, hole_in)     # down into the clamp
 
-        # Inverted-U: bore end +Y, slot end -Y so the auto-apex (bulging along
-        # d1-d2) sits ABOVE both ports (+Y). Teflon adds that apex.
         tube = Teflon(
-            point1=tuple(p1), direction1=DIR_DOWN,
-            point2=tuple(p2), direction2=DIR_UP,
+            point1=tuple(p1), direction1=tuple(d1),
+            point2=tuple(p2), direction2=tuple(d2),    # drop down into the clamp
             od=TUBE_OD, id=TUBE_ID,
             tangent_scalars=(TANGENT_SCALAR, TANGENT_SCALAR),
         ).build()
         if self.exploded:
-            tube.move(Location((0, EXPLODE, 0)))
+            tube.move(Location((0, 0, EXPLODE)))
 
         return Compound(label="board_40_teflon", children=[base, tube])
 
