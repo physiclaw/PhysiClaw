@@ -24,7 +24,14 @@ keyboard_rect_center_y      = -width / 2 + keyboard_rect_bottom_offset + keyboar
 # Keyboard face: rectangular through-slot at the screen base — its +Y edge sits
 # on the keyboard↔screen connection inner edge; cut clean through the plate.
 keyboard_slot_w = 8 * MM   # along X (centered)
-keyboard_slot_h = 4 * MM   # along Y, from the connection edge toward -Y
+keyboard_slot_h = 3 * MM   # along Y, from the connection edge toward -Y
+
+# Keyboard face: Ø4.3 through-hole for the PTFE tube (OD4), just below the wire
+# slot. The tube plugs through here and continues into the BeltClamp blind hole
+# beneath; the solenoid wire (spiral-wrapped to the tube) runs through the slot.
+tube_hole_diameter = 4.3 * MM   # OD4 PTFE tube, slip fit
+tube_hole_x        = 0 * MM   # centered, below the keyboard_slot
+tube_hole_y        = 4 * MM   # face-local Y (keyboard_slot bottom ≈ 6.5)
 
 # ── Screen face: paired hole pattern (N bases × 2 row-shifts × 2 paired rows) ─
 # Hole count = 4 × len(screen_pattern_y_offsets).
@@ -130,6 +137,12 @@ class SolenoidMount(BaseCustomPart):
             with BuildSketch(top_plane):
                 with Locations((0, join_y - keyboard_slot_h / 2)):
                     Rectangle(keyboard_slot_w, keyboard_slot_h)
+            extrude(amount=-thickness, mode=Mode.SUBTRACT)
+
+            # Keyboard-face Ø4.3 PTFE-tube through-hole, just below the wire slot.
+            with BuildSketch(top_plane):
+                with Locations((tube_hole_x, tube_hole_y)):
+                    Circle(radius=tube_hole_diameter / 2)
             extrude(amount=-thickness, mode=Mode.SUBTRACT)
 
             # Fillet last: break the long X-parallel body edges (0.5 mm). Keep
