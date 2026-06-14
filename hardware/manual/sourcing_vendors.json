@@ -820,10 +820,10 @@
           "zh": "纯仕"
         },
         "product": {
-          "en": "5 mm ID × 6 mm OD (per metre)",
-          "zh": "内径5mm*外径6mm（1米价）"
+          "en": "Black, 2 mm ID × 4 mm OD (per metre)",
+          "zh": "黑色内径2mm*外径4mm（1米价）"
         },
-        "url": "https://detail.tmall.com/item.htm?id=655172054388&skuId=4728325585356"
+        "url": "https://detail.tmall.com/item.htm?id=655172054388&skuId=5856340424371"
       },
       {
         "name": {
@@ -831,10 +831,10 @@
           "zh": "OUPLI"
         },
         "product": {
-          "en": "5×6 mm (per metre)",
-          "zh": "5*6mm 1米价"
+          "en": "2×4 mm (5 m)",
+          "zh": "2*4mm 5米价"
         },
-        "url": "https://detail.tmall.com/item.htm?id=569970454162&skuId=3666664261344"
+        "url": "https://detail.tmall.com/item.htm?id=569970454162&skuId=4508365327825"
       },
       {
         "name": {
@@ -842,10 +842,49 @@
           "zh": "道冠"
         },
         "product": {
-          "en": "5×6 mm, 1 m",
-          "zh": "5*6mm 1米"
+          "en": "2×4 mm, 1 m",
+          "zh": "2*4mm 1米"
         },
-        "url": "https://detail.tmall.com/item.htm?id=20845971530&skuId=34129955295"
+        "url": "https://detail.tmall.com/item.htm?id=20845971530&skuId=4499661631183"
+      }
+    ]
+  },
+  {
+    "part_id": "spiral-wrap",
+    "ref": "¥5",
+    "suppliers": [
+      {
+        "name": {
+          "en": "Bairuite",
+          "zh": "佰瑞特"
+        },
+        "product": {
+          "en": "Ø4 mm, black (20 m)",
+          "zh": "Φ4mm【20米】黑色"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=615427949338&skuId=4334995916672"
+      },
+      {
+        "name": {
+          "en": "Guwanji",
+          "zh": "固万基"
+        },
+        "product": {
+          "en": "Ø4 mm, black (20 m)",
+          "zh": "4MM（黑色）20米"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=668814695975&skuId=4986898195854"
+      },
+      {
+        "name": {
+          "en": "Tianzhuo",
+          "zh": "天卓五金"
+        },
+        "product": {
+          "en": "Ø4 mm, black (20 m)",
+          "zh": "Φ4mm(黑色) 20米"
+        },
+        "url": "https://detail.tmall.com/item.htm?id=854808621205&skuId=5656161788144"
       }
     ]
   },

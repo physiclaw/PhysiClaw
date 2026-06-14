@@ -124,10 +124,10 @@
           "en": "Selective Laser Sintering (SLS) PA12 nylon (or equivalent) black",
           "zh": "选择性激光烧结（SLS）PA12 尼龙（或同等材料）黑色"
         },
-        "qty": "10",
+        "qty": "11",
         "desc": {
-          "en": "Idler mount (4 pc), XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder",
-          "zh": "惰轮支座（4个）、XY 连接件（左）、XY 连接件（右）、同步带夹具、电磁铁支架、手机托架、控制板支架"
+          "en": "Idler mount (4 pc), XY joint (left), XY joint (right), Belt clamp, Solenoid mount, Phone bed, Control board holder, Tube holder",
+          "zh": "惰轮支座（4个）、XY 连接件（左）、XY 连接件（右）、同步带夹具、电磁铁支架、手机托架、控制板支架、导管支架"
         }
       },
       {
@@ -542,13 +542,33 @@
           "zh": "特氟龙管"
         },
         "spec": {
-          "en": "5 mm ID, 6 mm OD, 1 m, PTFE or FEP",
-          "zh": "内径 5 mm，外径 6 mm，长度 1 米，PTFE 或 FEP 均可"
+          "en": "2 mm ID, 4 mm OD, 1 m, PTFE or FEP",
+          "zh": "内径 2 mm，外径 4 mm，长度 1 米，PTFE 或 FEP 均可"
         },
         "qty": "1",
         "desc": {
-          "en": "Wire routing",
-          "zh": "走线导管"
+          "en": "Backbone for the solenoid wire so the run holds its shape",
+          "zh": "给电磁铁走线做骨架，让走线保持形状"
+        }
+      },
+      {
+        "part_id": "spiral-wrap",
+        "cls": {
+          "en": "Hardware",
+          "zh": "五金件"
+        },
+        "component": {
+          "en": "Spiral wrap",
+          "zh": "螺旋缠绕带"
+        },
+        "spec": {
+          "en": "Ø4 mm, ~0.5 m",
+          "zh": "Ø4 mm，约 0.5 米"
+        },
+        "qty": "1",
+        "desc": {
+          "en": "Binds the wire to the tube",
+          "zh": "把导线与管子捆成一束"
         }
       },
       {
@@ -766,10 +786,10 @@
           "en": "M5×12",
           "zh": "M5×12"
         },
-        "qty": "4",
+        "qty": "6",
         "desc": {
-          "en": "Gantry & control board mount",
-          "zh": "龙门架、控制板安装支架"
+          "en": "Gantry, control board & tube holder mount",
+          "zh": "龙门架、控制板、导管支架安装"
         }
       },
       {
@@ -886,10 +906,10 @@
           "en": "Drop-In M5",
           "zh": "船形螺母 M5"
         },
-        "qty": "22",
+        "qty": "24",
         "desc": {
-          "en": "Frame, idlers, phone bed, control board holder, camera base",
-          "zh": "机身、惰轮、手机托架、控制板支架、摄像头支架"
+          "en": "Frame, idlers, phone bed, control board holder, tube holder, camera base",
+          "zh": "机身、惰轮、手机托架、控制板支架、导管支架、摄像头支架"
         }
       },
       {
