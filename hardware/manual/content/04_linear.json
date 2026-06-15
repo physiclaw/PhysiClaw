@@ -77,7 +77,7 @@
         },
         "body": {
           "en": "The carriage slides off the rail end with little effort, and a dropped one spills its ball bearings — ruining it. Keep it on the rail, and never swap carriages between rails.",
-          "zh": "滑块稍一用力就会从导轨端头滑出来，一掉地上滚珠就散了，整个滑块就废了。务必让它一直留在导轨上，而且不同导轨的滑块绝对不要互换。"
+          "zh": "滑块稍一用力就会从导轨端头滑出，一旦掉到地上，滚珠就会散落，整个滑块也就报废了。务必让它始终留在导轨上，且不同导轨的滑块绝不要互换。"
         },
         "classes": "note overlay sm",
         "style": "left:16mm; top:90mm; width:60mm; display:flex; gap:4mm; align-items:flex-start;",
