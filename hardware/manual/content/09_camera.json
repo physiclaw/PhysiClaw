@@ -92,25 +92,25 @@
         "h3": { "en": "Use the lower slot", "zh": "用下面的型材槽" },
         "body": { "en": "Mount the corner bracket on the lower slot of the right extrusion's outer face.", "zh": "把角码装在右侧型材外侧面下方的型材槽上。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:30mm; width:60mm;"
+        "style": "right:10mm; top:30mm; width:80mm;"
       },
       {
         "h3": { "en": "Orient the camera", "zh": "调摄像头的朝向" },
         "body": { "en": "Bend the gooseneck so the camera points squarely at the phone screen, and align the sensor's long edge with the phone's long edge.", "zh": "弯一弯金属软管，让摄像头正对手机屏幕，摄像头传感器长边对齐手机长边。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:80mm; width:60mm;"
+        "style": "right:10mm; top:80mm; width:80mm;"
       },
       {
         "h3": { "en": "Lock it down", "zh": "固定牢" },
         "body": { "en": "Make sure the camera is held firm — it shouldn't drift or wobble.", "zh": "确认摄像头已固定牢靠，不会移位，也不会晃动。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:140mm; width:60mm;"
+        "style": "right:10mm; top:140mm; width:80mm;"
       },
       {
         "h3": { "en": "Route the USB cable", "zh": "整理 USB 线" },
         "body": { "en": "Secure the camera's USB cable along the gooseneck to keep it clear of the belt.", "zh": "把摄像头的 USB 线沿着金属软管固定好，别让它碰到同步带。" },
         "classes": "note overlay sm",
-        "style": "left:16mm; top:30mm; width:72mm;"
+        "style": "left:16mm; top:20mm; width:70mm;"
       }
     ]
   }

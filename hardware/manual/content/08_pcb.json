@@ -108,8 +108,8 @@
     "head": { "title": { "en": "CONTROL BOARD", "zh": "控制板" }, "small": "board_32" },
     "variant": "hero",
     "figures": [
-      { "src": "board_32_tube_holder_assembled_cam1.svg", "alt": "board_32_tube_holder assembled" },
-      { "src": "board_32_tube_holder_assembled_cam0.svg" }
+      { "src": "board_32_tube_holder_assembled_cam1_gors.svg", "alt": "board_32_tube_holder assembled" },
+      { "src": "board_32_tube_holder_assembled_cam0_xywn.svg" }
     ],
     "notes": [
       {
@@ -127,28 +127,28 @@
     "main": { "src": "board_40_teflon_assembled_cam0_nrvk.svg", "style": "transform: translateX(-35mm);" },
     "notes": [
       {
-        "h3": { "en": "Spiral-wrap the tube", "zh": "螺旋缠绕成束" },
-        "body": { "en": "Spiral-wrap the solenoid wires to the Teflon tube along its length. The wires don't go inside — the tube just stiffens the bundle so it holds a clear path past the belts and motors. Plug one end into the tube holder's 4 mm socket and the other through the solenoid mount into the belt-clamp hole.", "zh": "用螺旋缠绕带把电磁铁导线沿特氟龙管捆成一束。导线不穿进管子里——管子只是让线束变硬、能保持形状，避开同步带和电机。管子一端插进导管支架的 4 mm 插孔，另一端穿过电磁铁支架插入同步带夹具的孔里。" },
-        "classes": "note overlay sm",
-        "style": "right:30mm; top:30mm; width:90mm;"
-      },
-      {
         "h3": { "en": "Rough length", "zh": "大致长度" },
         "body": { "en": "Make the tube about 380 mm — long enough to reach from the control board to the X carriage at its farthest position.", "zh": "管子取大约 380 mm——从控制板够到 X 滑座最远位置即可。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:50mm; width:90mm;"
+        "style": "right:30mm; top:30mm; width:100mm; max-width:100mm;"
       },
       {
         "h3": { "en": "Extend the solenoid leads", "zh": "给电磁铁引线接长" },
         "body": { "en": "The solenoid's stock leads are too short to reach the board — splice on extra wire to connect the solenoid to the control board.", "zh": "电磁铁原装的引线太短，够不到板子——接一段导线，把电磁铁连到控制板上。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:80mm; width:90mm;"
+        "style": "right:30mm; top:50mm; width:100mm; max-width:100mm;"
       },
       {
         "h3": { "en": "PTFE vs FEP", "zh": "PTFE 和 FEP" },
         "body": { "en": "Either tube works here — PTFE (milky white) or FEP (clear). The Ø4 tube's stiffness is enough to hold the wire bundle's shape.", "zh": "两种管子都能用——PTFE（乳白色）或 FEP（透明）。Ø4 管的硬度足以撑住线束的形状。" },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:110mm; width:90mm;"
+        "style": "right:30mm; top:80mm; width:100mm; max-width:100mm;"
+      },
+      {
+        "h3": { "en": "Spiral-wrap the tube", "zh": "螺旋缠绕成束" },
+        "body": { "en": "Spiral-wrap the solenoid wires to the Teflon tube along its length. The wires don't go inside — the tube just stiffens the bundle so it holds a clear path past the belts and motors. Plug one end into the tube holder's socket and the other through the solenoid mount into the belt-clamp hole.", "zh": "用螺旋缠绕带把电磁铁导线沿特氟龙管捆成一束。导线不穿进管子里——管子只是让线束变硬、能保持形状，避开同步带和电机。管子一端插进导管支架的插孔，另一端穿过电磁铁支架插入同步带夹具的孔里。" },
+        "classes": "note overlay sm",
+        "style": "right:30mm; top:110mm; width:100mm; max-width:100mm;"
       }
     ],
     "bom": {

@@ -155,7 +155,7 @@
       },
       {
         "h3": { "en": "Why it matters", "zh": "为什么要这样" },
-        "body": { "en": "A capacitive screen senses a tap through your body's ground reference. A robot-held stylus floats electrically and lacks that reference, so taps register unreliably. Grounding the stylus stands in for the human hand and steadies the touch signal.", "zh": "电容屏靠人体的接地参考感应触摸。机械臂握着的触控笔电气上是浮空的，缺这个参考，点击就不稳。给触控笔接地，相当于替人手补上参考，触摸信号就稳了。" },
+        "body": { "en": "A capacitive screen senses a touch through capacitive coupling to ground. A finger works because the body is a large conductor tied to earth; the arm's stylus couples to earth too weakly, so a tap shifts the screen's charge distribution only slightly, and the phone registers the touch unreliably. Tie the stylus to a solid ground to restore that coupling and steady the touch.", "zh": "电容屏靠触摸物对地的电容耦合来感应。手指能点屏，是因为人体是一大块连着大地的导体；机械臂的笔对大地耦合太弱，点触屏幕引起屏幕电荷分布变化较小，手机对触摸的识别不稳定。把笔接到可靠的地，补上这层对地耦合，触摸信号就稳定许多。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:45mm; width:150mm; max-width:150mm;"
       },
