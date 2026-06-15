@@ -601,9 +601,10 @@ def render_bom_page(page: dict, ctx: Ctx) -> str:
         f"{head_cells}"
         f'</tr></thead><tbody>{"".join(body_parts)}</tbody></table>'
     )
-    label = (f'<span class="label">{loc(page["label"], ctx.lang)}</span>'
-             if page.get("label") else "")
-    body = f'<div class="bom-page">{label}{table}</div>'
+    # The masthead title already reads "Bill of materials" (with the "(cont.)"
+    # marker on overflow pages), so no small in-body label is rendered — the
+    # table gets that vertical room instead.
+    body = f'<div class="bom-page">{table}</div>'
     return page_shell(page, ctx, body)
 
 
@@ -742,10 +743,13 @@ def paginate_bom_pages(pages: list[dict]) -> None:
         cont = copy.deepcopy(template)
         cont["page"] = f'{template["page"]}-{n}'
         cont["rows"] = chunk
-        if cont.get("label"):  # tag each translation as a continuation
-            cont["label"] = {
+        # Tag the continuation in the masthead title (the in-body label was
+        # dropped to give the table more room), per translation.
+        title = cont.get("head", {}).get("title")
+        if title:
+            cont["head"]["title"] = {
                 lang: text + BOM_CONT_SUFFIX.get(lang, BOM_CONT_SUFFIX["en"])
-                for lang, text in cont["label"].items()
+                for lang, text in title.items()
             }
         extras.append(cont)
     if extras:
