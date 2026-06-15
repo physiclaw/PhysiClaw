@@ -50,7 +50,7 @@
     "variant": "hero",
     "figures": [
       { "src": "tapz_11_solenoid_attach_exploded_cam1_cjmx.svg" },
-      { "src": "tapz_11_solenoid_attach_assembled_cam1.svg" }
+      { "src": "tapz_11_solenoid_attach_assembled_cam0.svg" }
     ],
     "notes": [
       {
