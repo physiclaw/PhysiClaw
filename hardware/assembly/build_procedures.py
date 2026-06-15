@@ -232,10 +232,13 @@ def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = (), use_cache: bool 
     position = {s: i + 1 for i, s in enumerate(s for b in batches for s in b)}
     total = len(position)
 
+    # Classify each stem once (source_cached verifies the entry's hashes — not
+    # something to run twice); the loop below reuses this map.
+    cached: dict[str, bool] = {}
     if use_cache:
         pruned = stepcache.prune(position)
-        n_cached = sum(1 for s in position
-                       if stepcache.source_cached(s, want_bom=want_bom))
+        cached = {s: stepcache.source_cached(s, want_bom=want_bom) for s in position}
+        n_cached = sum(cached.values())
         print(f"cache: {stepcache.CACHE_DIR.relative_to(REPO_ROOT)} — "
               f"{n_cached}/{total} cached, {total - n_cached} to build"
               + (f"   (pruned {pruned} stale)" if pruned else ""))
@@ -251,7 +254,7 @@ def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = (), use_cache: bool 
     for batch in batches:
         misses = []
         for s in batch:
-            if not (use_cache and stepcache.source_cached(s, want_bom=want_bom)):
+            if not cached.get(s):
                 misses.append(s)
                 continue
             stepcache.restore_source(s, want_bom=want_bom)

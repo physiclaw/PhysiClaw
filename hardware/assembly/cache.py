@@ -15,13 +15,20 @@ Three output kinds, two invalidation layers (their "subtly different logic"):
     and raw ``.svg`` and just re-run the (cheap, build123d-free) replay,
     with no geometry rebuild.
 
-No stale cache, two ways:
+No stale cache, three ways:
   * stale HIT — the keys fold in every input file (import closure, kernel
     version, patch JSON, replay engine), so any change that could alter an
     output changes that output's key and forces a rebuild;
   * stale FILE — each stem keeps exactly one entry; ``store_source`` /
     ``store_snapshots`` replace their layer's files wholesale, and
-    ``prune()`` drops entries for stems that no longer exist.
+    ``prune()`` drops entries for stems that no longer exist;
+  * damaged ENTRY — each layer's key file is a manifest (key + each stored
+    file's sha256), written last; a hit requires the key to match AND every
+    listed file to be present with its recorded hash, so a partial entry
+    (store killed mid-copy), a deleted file, or a corrupted/edited one all
+    fall back to a rebuild instead of restoring a bad set. (Output files are
+    reconstructed from the entry on every hit, so tampering there self-heals
+    on the next build.)
 
 The cache lives at ``hardware/output/.cache`` (git-ignored with the rest of
 ``output/``) and needs no build123d import — only the stdlib — so the
@@ -32,6 +39,7 @@ from __future__ import annotations
 import ast
 import functools
 import hashlib
+import json
 import re
 import shutil
 from importlib.metadata import PackageNotFoundError, version
@@ -213,18 +221,63 @@ def _restore(files) -> None:
         shutil.copy2(f, dest / f.name)
 
 
+def _sha256_file(p: Path) -> str:
+    """sha256 of a file's bytes, streamed (the .step files run to ~18 MB)."""
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _store_layer(stem: str, *, key_file: str, key_value: str, belongs, outputs) -> None:
     """Replace one layer of ``stem``'s entry: drop its old files (the layer's
-    key + everything it ``belongs`` to), copy in the current ``outputs``, and
-    write the fresh key. The other layer's files are left untouched."""
+    key + everything it ``belongs`` to), copy in the current ``outputs``, then
+    write the key file LAST as a manifest ``{"key", "files": {name: sha256}}``.
+    The other layer is untouched.
+
+    Writing the manifest last makes the layer self-describing and crash-safe;
+    the per-file digests let a reader verify integrity. A hit demands the key
+    match AND every listed file be present with its recorded hash — so a partial
+    entry (store killed mid-copy), a deleted file, or a corrupted/edited one all
+    read as a miss, never a hit that restores a bad set."""
     entry = _entry(stem)
     entry.mkdir(parents=True, exist_ok=True)
     for f in entry.iterdir():
         if f.name == key_file or belongs(f.name):
             f.unlink()
+    files: dict[str, str] = {}
     for f in outputs:
-        shutil.copy2(f, entry / f.name)
-    (entry / key_file).write_text(key_value)
+        dest = entry / f.name
+        shutil.copy2(f, dest)
+        files[f.name] = _sha256_file(dest)
+    (entry / key_file).write_text(json.dumps({"key": key_value, "files": files}))
+
+
+def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
+    """``(stored key, {filename: sha256})`` for a layer, or ``(None, {})`` when
+    the key file is missing or unreadable — a pre-manifest entry, or one a
+    killed store left half-written. Both read as a miss."""
+    p = _entry(stem) / key_file
+    if not p.is_file():
+        return None, {}
+    try:
+        m = json.loads(p.read_text())
+        return m["key"], m["files"]
+    except (ValueError, KeyError, TypeError):
+        return None, {}
+
+
+def _entry_intact(stem: str, files: dict[str, str]) -> bool:
+    """Every manifested file is present in the entry with its recorded hash.
+    The expensive check (it reads each stored file), so callers run the cheap
+    key/manifest checks first and only reach here on a key match."""
+    entry = _entry(stem)
+    for name, sha in files.items():
+        p = entry / name
+        if not p.is_file() or _sha256_file(p) != sha:
+            return False
+    return True
 
 
 def store_source(stem: str) -> None:
@@ -240,25 +293,29 @@ def store_snapshots(stem: str) -> None:
 
 
 def source_cached(stem: str, *, want_bom: bool) -> bool:
-    """True if the source layer is present and its key matches."""
-    entry = _entry(stem)
-    keyf = entry / _SOURCE_KEY
-    if not keyf.is_file() or keyf.read_text() != source_key(stem):
+    """True only if the source key matches AND every recorded file is present
+    with its recorded hash — a changed, damaged, incomplete, or corrupted entry
+    all fall back to a rebuild. Cheap checks first; the integrity hash runs only
+    on a key match (a rebuild from a source edit pays no hashing)."""
+    key, files = _read_layer(stem, _SOURCE_KEY)
+    if key != source_key(stem):
         return False
-    names = [p.name for p in entry.iterdir()]
-    has_step = any(n.endswith(".step") for n in names)
-    has_raw = any(_raw_svg_re(stem).match(n) for n in names)
+    has_step = any(n.endswith(".step") for n in files)
+    has_raw = any(_raw_svg_re(stem).match(n) for n in files)
     if not (has_step and has_raw):
         return False
-    if want_bom and not any(n.endswith(".md") for n in names):
+    if want_bom and not any(n.endswith(".md") for n in files):
         return False
-    return True
+    return _entry_intact(stem, files)
 
 
 def snapshots_cached(stem: str) -> bool:
-    """True if the snapshot layer's patch key matches the current patches."""
-    keyf = _entry(stem) / _PATCH_KEY
-    return keyf.is_file() and keyf.read_text() == patch_key(stem)
+    """True only if the patch key matches AND every recorded snapshot is present
+    with its hash (a stem with no patches records an empty set — trivially true)."""
+    key, files = _read_layer(stem, _PATCH_KEY)
+    if key != patch_key(stem):
+        return False
+    return _entry_intact(stem, files)
 
 
 def restore_source(stem: str, *, want_bom: bool = True) -> None:
