@@ -1,6 +1,17 @@
-.PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish release
+.PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish release \
+        hw-help hw-parts hw-build hw-step hw-print hw-manual hw-sourcing hw-mark hw-replay hw-camera hw-rebuild
 
 PY ?= uv run
+
+# Hardware CAD pipeline (see hardware/README.md). Geometry stages need the
+# `cad` group; the manual / sourcing builders are standard-library only.
+# Pass flags through ARGS, e.g.  make hw-build ARGS="--bom --bom-delta"
+HW     = $(PY) --group cad python -m hardware
+HW_DOC = $(PY) python -m hardware
+
+# Guard for hw-* targets that need a positional: fail with a usage hint when
+# ARGS is empty. $(1) describes the expected value.
+need-args = @if [ -z "$(ARGS)" ]; then echo 'usage: make $@ ARGS=$(1)'; exit 2; fi
 
 # Version currently declared in pyproject.toml — used by `build` and `publish`
 # so the user only types it once (in `make bump`).
@@ -24,6 +35,20 @@ help:
 	@echo "                          Reads version from pyproject.toml. Needs UV_PUBLISH_TOKEN."
 	@echo "  release [VERSION=X.Y.Z]"
 	@echo "                        — full release: bump + build + publish in one shot."
+	@echo ""
+	@echo "Hardware (CAD-as-code) — pass flags via ARGS=\"...\":"
+	@echo "  hw-help                 — list the hardware CLI subcommands"
+	@echo "  hw-parts                — export part STEPs"
+	@echo "  hw-build [ARGS=--bom]   — build assembly steps (STEP + SVG)"
+	@echo "  hw-step ARGS=<stem>     — build one step (= build --bom --stems)"
+	@echo "  hw-print                — 3D-print package (zip)"
+	@echo "  hw-manual [ARGS=--pdf]  — bilingual build manual"
+	@echo "  hw-sourcing             — sourcing guide"
+	@echo "  hw-mark ARGS=<svg|json> — annotate a step drawing"
+	@echo "  hw-replay [ARGS=file]   — replay annotation patches"
+	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
+	@echo "                            (or pipe: pbpaste | make hw-camera)"
+	@echo "  hw-rebuild              — full rebuild: parts → build → print → manual → sourcing"
 
 test:
 	$(PY) pytest
@@ -141,3 +166,50 @@ publish:
 # publish pick up the freshly-bumped version that bump just wrote.
 release: bump build publish
 	@printf '\n\033[32m✓\033[0m Release flow complete for $(PKG_VERSION).\n'
+
+# --- Hardware CAD pipeline ----------------------------------------------------
+# Thin wrappers over `python -m hardware <subcommand>` (see `make hw-help` and
+# hardware/README.md). hw-prefixed so `build` stays the wheel build above.
+# Flags / positionals go through ARGS, e.g.  make hw-build ARGS="--bom".
+
+hw-help:
+	$(HW) --help
+
+hw-parts:
+	$(HW) parts $(ARGS)
+
+hw-build:
+	$(HW) build $(ARGS)
+
+hw-step:
+	$(call need-args,<procedure_stem>)
+	$(HW) step $(ARGS)
+
+hw-print:
+	$(HW) print $(ARGS)
+
+hw-manual:
+	$(HW_DOC) manual $(ARGS)
+
+hw-sourcing:
+	$(HW_DOC) sourcing $(ARGS)
+
+hw-mark:
+	$(call need-args,<svg|json>)
+	$(HW) mark $(ARGS)
+
+hw-replay:
+	$(HW) replay $(ARGS)
+
+# No need-args guard: `camera` also reads the view from stdin when ARGS is
+# empty (projection.py), so `pbpaste | make hw-camera` works too.
+hw-camera:
+	$(HW) camera $(ARGS)
+
+# Full rebuild — STEPs → steps+BOM → print package → manual → sourcing.
+hw-rebuild:
+	$(HW) parts --custom --standard
+	$(HW) build --bom
+	$(HW) print
+	$(HW_DOC) manual
+	$(HW_DOC) sourcing
