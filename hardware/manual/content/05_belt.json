@@ -17,7 +17,7 @@
     ],
     "notes": [
       {
-        "h3": { "en": "One belt, one plane", "zh": "一条带，一个平面" },
+        "h3": { "en": "Install belt A", "zh": "装电机 A 的同步带" },
         "body": { "en": "The Motor A belt is a single open length with both ends clamped to the X carriage. It must stay flat in one plane and never twist along the way. The teeth grip the toothed pulleys; the smooth back rides on the smooth idlers.", "zh": "电机 A 的同步带是一整根开口带，两端都夹在 X 滑座上。整条带要始终平整地落在同一平面，全程不能打绞。齿面咬住带齿的同步轮，光背贴着光面惰轮滑动。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:20mm; width:90mm;"
@@ -38,8 +38,7 @@
     "bom": {
       "label": { "en": "Bill of materials", "zh": "物料清单" },
       "rows": [
-        { "component": { "en": "Timing belt", "zh": "同步带" }, "spec": { "en": "GT2-6 mm, open-ended", "zh": "GT2-6 mm，开口带" }, "qty": "1" },
-        { "component": { "en": "Belt clamp", "zh": "同步带夹具" }, "spec": { "en": "SLS/MJF 3D Print", "zh": "SLS/MJF 3D 打印" }, "qty": "1" }
+        { "component": { "en": "Timing belt", "zh": "同步带" }, "spec": { "en": "GT2-6 mm, open-ended", "zh": "GT2-6 mm，开口带" }, "qty": "1" }
       ]
     }
   },
@@ -85,16 +84,22 @@
     ],
     "notes": [
       {
+        "h3": { "en": "Install belt B", "zh": "装电机 B 的同步带" },
+        "body": { "en": "Route the Motor B belt on the upper idler plane — it must not cross belt A — and clamp both ends to the X carriage, the same way as belt A.", "zh": "把电机 B 的同步带安装在上层惰轮平面上，不要与电机 A 的同步带交叉，两端同样夹到 X 滑座上，装法和电机 A 的同步带一致。" },
+        "classes": "note overlay sm",
+        "style": "right:60mm; top:20mm; width:100mm;"
+      },
+      {
         "h3": { "en": "Check the belts", "zh": "检查同步带" },
         "body": { "en": "With both belts installed, push the carriage by hand through its full travel in every direction. It should move smoothly with the same, even resistance throughout — that resistance is just the motors. Confirm there's no sticking, no interference, no twisted belts, and no odd noises, with the two belts on their separate planes.", "zh": "两条带都装好后，用手推动滑座，沿各个方向走完整个行程。推起来应当全程顺滑、阻力均匀——你感到的那点阻力，只应来自电机本身。一边推一边确认：没有卡滞、没有蹭碰、带不打绞、没有怪声，两条带也各自待在自己的平面上。" },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:110mm; width:100mm;"
+        "style": "right:60mm; top:105mm; width:100mm;"
       },
       {
         "h3": { "en": "Threadlocker", "zh": "螺纹胶加固" },
         "body": { "en": "If the pulley set screws have no threadlocker yet, apply it now that the belts run smoothly.", "zh": "若同步轮的紧定螺钉还没涂螺纹胶，趁现在同步带运行良好，把胶涂上。" },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:150mm; width:100mm;"
+        "style": "right:60mm; top:155mm; width:100mm;"
       }
     ]
   },
