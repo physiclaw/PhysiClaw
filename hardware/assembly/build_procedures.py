@@ -17,6 +17,12 @@ After each variant renders, any patch JSON in
 replayed against it, so marker-tool snapshots stay in sync with the
 underlying drawing.
 
+The dispatcher is incremental: each stem's outputs are cached under
+``output/.cache`` keyed by a content hash of its import closure (and its
+patch JSON for the snapshots), so an unchanged stem is restored instead of
+rebuilt+re-rendered and a patch-only edit just re-runs the replay. See
+``assembly/cache.py``; pass ``--no-cache`` to force a full rebuild.
+
 Pass ``--bom`` / ``--bom-delta`` to also emit each procedure's BOM to
 output/bom/ in the same pass — the build is already done, so collecting
 the BOM is cheap off the warm leaf cache (one run yields STEP + SVG + BOM).
@@ -55,7 +61,8 @@ from hardware.assembly.dispatch import (
     retry_stems,
 )
 from hardware.assembly.bom import BOM_DIR, write_bom  # only for the optional --bom feature
-from hardware.parts.base import STEP_DIR
+from hardware.assembly import cache as stepcache
+from hardware.parts.base import REPO_ROOT, STEP_DIR
 
 
 def _clear_outputs(clear_bom: bool = False) -> None:
@@ -203,15 +210,35 @@ def _missing_variants(stem: str) -> list[str]:
                    for i in range(_camera_count(stem, exploded)))]
 
 
-def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = ()) -> int:
-    """Run each batch in its own subprocess; on failure, solo-retry
-    only the stems missing outputs. ``bom_flags`` (--bom / --bom-delta)
-    are passed through so workers also emit BOMs."""
-    _clear_outputs(clear_bom=bool(bom_flags))
+def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = (), use_cache: bool = True) -> int:
+    """Build every batch, skipping steps the cache already covers.
+
+    Per stem (see ``assembly/cache.py``): if the *source* layer is fresh
+    (.step / raw .svg / BOM unchanged) restore it instead of rebuilding,
+    then either restore the patch snapshots (patch unchanged) or just
+    re-run the cheap annotation replay (patch edited — geometry stays
+    cached). Stems with no cache hit go to a worker subprocess in family
+    batches; crashed stems solo-retry. ``bom_flags`` (--bom / --bom-delta)
+    pass through so workers also emit BOMs."""
+    want_bom = bool(bom_flags)
+    # With the cache on, don't wipe everything up front (it would just be
+    # restored again) — the cache owns each stem's freshness, and only the
+    # miss stems are cleared, right before they rebuild. A --no-cache run
+    # still wipes all stale outputs so deleted/renamed steps don't survive.
+    if not use_cache:
+        _clear_outputs(clear_bom=want_bom)
 
     batches = _batches(batch_size)
     position = {s: i + 1 for i, s in enumerate(s for b in batches for s in b)}
     total = len(position)
+
+    if use_cache:
+        pruned = stepcache.prune(position)
+        n_cached = sum(1 for s in position
+                       if stepcache.source_cached(s, want_bom=want_bom))
+        print(f"cache: {stepcache.CACHE_DIR.relative_to(REPO_ROOT)} — "
+              f"{n_cached}/{total} cached, {total - n_cached} to build"
+              + (f"   (pruned {pruned} stale)" if pruned else ""))
     t_wall0 = time.monotonic()
 
     def header(stems: list[str]) -> str:
@@ -220,31 +247,62 @@ def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = ()) -> int:
         tail = stems[0] if start == end else f"{stems[0]} … {stems[-1]}"
         return f"\n=== [{progress}] {_family_of(stems[0])}: {tail} ==="
 
+    n_fresh = n_replay = 0
     for batch in batches:
-        print(header(batch))
-        rc = _run_subprocess(batch, bom_flags)
-        if rc == 0:
+        misses = []
+        for s in batch:
+            if not (use_cache and stepcache.source_cached(s, want_bom=want_bom)):
+                misses.append(s)
+                continue
+            stepcache.restore_source(s, want_bom=want_bom)
+            if stepcache.snapshots_cached(s):
+                stepcache.restore_snapshots(s)
+                n_fresh += 1
+            else:
+                # Patch edited but geometry/render unchanged: keep the cached
+                # .step + raw .svg, just re-apply the (build123d-free) replay.
+                print(f"  [patch] {s}: geometry cached, re-replaying annotations")
+                for exploded in (True, False):
+                    _replay_patches_for(s, exploded)
+                stepcache.store_snapshots(s)
+                n_replay += 1
+
+        if not misses:
             continue
-        # Nondeterministic HLR SIGSEGV: re-run each incomplete stem in a
-        # fresh process (new heap layout) until its outputs land or we
-        # exhaust the retries.
-        incomplete = [s for s in batch if _missing_variants(s)]
-        print(f"\n--- batch exit {rc}; retrying {len(incomplete)}/{len(batch)} incomplete stem(s) ---")
-        retry_stems(
-            incomplete,
-            run=lambda s: _run_subprocess([s], bom_flags),
-            done=lambda s: not _missing_variants(s),
-            log=lambda s, a: print(header([s]) + f"  (retry {a}/{MAX_STEM_RETRIES})"),
-        )
+        if use_cache:
+            # Clear each miss stem's own outputs so a rebuild that now renders
+            # fewer cameras/variants leaves no stale file behind.
+            for s in misses:
+                stepcache.clear_outputs(s)
+        print(header(misses))
+        rc = _run_subprocess(misses, bom_flags)
+        if rc != 0:
+            # Nondeterministic HLR SIGSEGV: re-run each incomplete stem in a
+            # fresh process (new heap layout) until its outputs land or we
+            # exhaust the retries.
+            incomplete = [s for s in misses if _missing_variants(s)]
+            print(f"\n--- batch exit {rc}; retrying {len(incomplete)}/{len(misses)} incomplete stem(s) ---")
+            retry_stems(
+                incomplete,
+                run=lambda s: _run_subprocess([s], bom_flags),
+                done=lambda s: not _missing_variants(s),
+                log=lambda s, a: print(header([s]) + f"  (retry {a}/{MAX_STEM_RETRIES})"),
+            )
+        if use_cache:
+            for s in misses:
+                if not _missing_variants(s):
+                    stepcache.store_source(s)
+                    stepcache.store_snapshots(s)
 
     wall = time.monotonic() - t_wall0
     failed_variants = [(s, v) for s in position for v in _missing_variants(s)]
     ok_assemblies = sum(1 for s in position if not _missing_variants(s))
     n_step = len(list(STEP_DIR.glob("*.step")))
     n_svg  = len(list(SVG_DIR.glob("*.svg")))
+    cache_note = f"   cache: {n_fresh} hit + {n_replay} patch-replay" if use_cache else ""
     tally  = (
         f"{ok_assemblies}/{total} assemblies   "
-        f"wrote {n_step} .step / {n_svg} .svg   "
+        f"wrote {n_step} .step / {n_svg} .svg{cache_note}   "
         f"total wall {wall:.1f}s"
     )
     if failed_variants:
@@ -253,7 +311,7 @@ def _dispatch(batch_size: int, bom_flags: tuple[str, ...] = ()) -> int:
             print(f"  {stem} {variant}")
         print(tally)
         return 1
-    print(f"\nAll {len(batches)} batches OK   {tally}")
+    print(f"\nAll OK   {tally}")
     return 0
 
 
@@ -280,6 +338,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also write each procedure's delta-vs-predecessor BOM to output/bom/",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="ignore the persistent step cache; rebuild & re-render every step",
+    )
     args = parser.parse_args(argv)
 
     if args.stems:
@@ -288,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     bom_flags = tuple(
         f for f, on in (("--bom", args.bom), ("--bom-delta", args.bom_delta)) if on
     )
-    return _dispatch(args.batch_size, bom_flags)
+    return _dispatch(args.batch_size, bom_flags, use_cache=not args.no_cache)
 
 
 if __name__ == "__main__":

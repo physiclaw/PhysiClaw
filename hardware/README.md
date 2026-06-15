@@ -143,6 +143,13 @@ Geometry subcommands need `--group cad`; `manual` and `sourcing` are
 standard-library only. Each stage module is also runnable on its own (e.g.
 `uv run --group cad python -m hardware.parts.custom.solenoid_mount`).
 
+`build` is incremental: each step's outputs are cached under
+`output/.cache/` keyed by a content hash of its import closure (source +
+parts + predecessors), the build123d version, and its patch JSON. Unchanged
+steps are restored instead of rebuilt+re-rendered — and a patch-only edit
+just re-runs the cheap annotation replay. Pass `--no-cache` to force a full
+rebuild. (`step` always rebuilds its one stem.)
+
 For shorter typing, the repo `Makefile` wraps each subcommand as a `hw-*`
 target (flags via `ARGS`):
 
