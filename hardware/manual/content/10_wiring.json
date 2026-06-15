@@ -163,7 +163,7 @@
         "h3": { "en": "How to ground it", "zh": "怎么接地" },
         "body": { "en": "Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.", "zh": "把铁芯接到电源的公共地。最简单的办法是找一台用三脚插座可靠接地的台式电脑，把线夹在机箱裸露的金属上。机箱经市电连到大地，能提供稳定的接地参考。" },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:78mm; width:150mm; max-width:150mm;"
+        "style": "left:130mm; top:82mm; width:150mm; max-width:150mm;"
       },
       {
         "h3": { "en": "Three wires", "zh": "三根线" },
