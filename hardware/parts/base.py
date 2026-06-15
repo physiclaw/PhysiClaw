@@ -67,7 +67,7 @@ class BasePart:
 
     def bom_display(self) -> str | None:
         """Optional human-readable label for the BOM table. Return None
-        to use the default algorithm in ``hardware.bom.bom.BomEntry``
+        to use the default algorithm in ``hardware.assembly.bom.BomEntry``
         (head + space-joined strings + ×-prefixed numbers). Override
         when that default doesn't read naturally for a specific part."""
         return None

@@ -44,8 +44,8 @@ from functools import cache
 from hardware.assembly.base import SVG_DIR, BaseAssembly, svg_path_for
 from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
-# Procedure ordering & batching live in bom.py (next to list_procedures) so the
-# BOM and render pipelines share one source of truth.
+# Procedure ordering & batching live in dispatch.py so the BOM and render
+# pipelines share one source of truth.
 from hardware.assembly.dispatch import (
     DEFAULT_BATCH_SIZE,
     MAX_STEM_RETRIES,
@@ -54,7 +54,7 @@ from hardware.assembly.dispatch import (
     load_class,
     retry_stems,
 )
-from hardware.bom.bom import BOM_DIR, write_bom  # only for the optional --bom feature
+from hardware.assembly.bom import BOM_DIR, write_bom  # only for the optional --bom feature
 from hardware.parts.base import STEP_DIR
 
 
