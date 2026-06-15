@@ -25,10 +25,6 @@
       },
       "small": "11 — BOM"
     },
-    "label": {
-      "en": "Bill of materials",
-      "zh": "物料清单"
-    },
     "rows": [
       {
         "part_id": "ext-2040-y",
@@ -41,8 +37,8 @@
           "zh": "欧标 2040 铝型材，黑色阳极氧化"
         },
         "spec": {
-          "en": "Length 345 mm, counterbored 10 mm from each end for M6 SHCS",
-          "zh": "长度 345 mm，距两端 10 mm 各开沉孔，配 M6 内六角圆柱头螺栓"
+          "en": "Length 345 mm, counterbored 10 mm from each end on the 40 mm-wide face for M6 SHCS",
+          "zh": "长度 345 mm，在 40 mm 宽面距两端 10 mm 各开沉孔，配 M6 内六角圆柱头螺栓"
         },
         "qty": "2",
         "desc": {
@@ -387,7 +383,7 @@
         },
         "qty": "1",
         "desc": {
-          "en": "Solenoid ground + lead extension",
+          "en": "Solenoid GND + lead ext.",
           "zh": "电磁铁接地、延长引线"
         }
       },
