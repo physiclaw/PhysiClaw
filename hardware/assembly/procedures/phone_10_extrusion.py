@@ -1,4 +1,4 @@
-"""Phone-bed cross-beam — sub-assembly of one 190 mm Extrusion1020 with the
+"""Phone-bed cross-beam — sub-assembly of one 230 mm Extrusion1020 with the
 hardware that fastens it under a frame Y extrusion.
 
 At each of the 1020's two vertical end holes (Extrusion1020(hole=True): an M5
