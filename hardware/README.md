@@ -1,12 +1,18 @@
 # PhysiClaw — Hardware
 
-CAD-as-code for the PhysiClaw machine. Every part, every assembly step, the
-bill of materials, and the printable build manual are **generated from Python**
-— there is no GUI CAD file to hand-edit. Re-running the scripts reproduces all
-artifacts from source.
+**The `hardware` module delivers two documents — all you need to make your own
+PhysiClaw hardware:** the **Assembly Manual** shows how to put the machine
+together, step by step, and the **Sourcing Guide** lists every part — its spec,
+where to buy it, and roughly what it costs. Everything else here — the parts,
+the assembly steps, the renderer, the build cache — exists only to generate
+those two.
+
+It's **CAD-as-code**: every part, every assembly step, and both documents are
+generated from Python — there is no GUI CAD file to hand-edit, and re-running
+the scripts reproduces every artifact from source.
 
 The geometry kernel is [build123d](https://build123d.readthedocs.io)
-(OpenCASCADE under the hood). The manual and sourcing guide are plain
+(OpenCASCADE under the hood); the manual and sourcing builders are plain
 standard-library Python.
 
 ---
@@ -14,19 +20,19 @@ standard-library Python.
 ## Pipeline at a glance
 
 ```text
-parts/            standard + custom parts          → STEP solids
+parts/      standard + custom parts        →  STEP solids
    │
    ▼
-assembly/         compose parts into ~70 steps     → STEP + SVG line-art
-   │  (each step derives its placement from the upstream chain)
+assembly/   compose parts into ~70 steps   →  STEP + SVG line-art  (+ per-step Markdown BOM)
+   │        each step's placement derives from the upstream chain
    ▼
-bom (library)     aggregate parts per step         → Markdown BOM
+mark/       annotate the step SVGs         →  snapshot SVGs (raw if unmarked)
    │
    ▼
-mark/             annotate the step SVGs           → patch JSON + snapshot SVG
-   │
-   ▼
-manual/           assemble JSON content + SVGs     → bilingual HTML / PDF
+manual/     content/*.json + step SVGs     →  bilingual HTML / PDF
+   └─ content/11_bom.json (the parts list) feeds Section 11 AND ─┐
+                                                                 ▼
+sourcing/   that same BOM + vendor data    →  bilingual HTML
 ```
 
 All generated files land under `output/` and are not committed.
@@ -58,7 +64,7 @@ hardware/
 │   ├── patch/             Saved annotation ops, one JSON per drawing
 │   └── mark/              Browser tool to annotate step SVGs
 │
-├── manual/                Bilingual (EN/ZH) build manual + sourcing guide
+├── manual/                Bilingual (EN/ZH) assembly manual + sourcing guide
 │   ├── build_manual.py        content/*.json + SVGs → HTML / PDF
 │   ├── build_sourcing_guide.py  manual BOM + vendor data → HTML
 │   ├── content/           13 ordered JSON sections (front + 11 chapters + back)
@@ -158,7 +164,8 @@ make hw-parts                     # export part STEPs
 make hw-build ARGS="--bom"        # build steps + cumulative BOM
 make hw-step ARGS=belt_20_clamp   # build one step (= build --bom --stems)
 make hw-print                     # 3D-print package (zip)
-make hw-manual ARGS="--pdf"       # build manual, also as PDF
+make hw-manual                    # build the assembly manual (HTML)
+make hw-manual-pdf                # build the assembly manual, also as PDF
 make hw-sourcing                  # build sourcing guide
 make hw-mark ARGS=<svg|json>      # annotate a step drawing
 pbpaste | make hw-camera          # FreeCAD view → Camera() literal
