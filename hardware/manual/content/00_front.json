@@ -159,12 +159,12 @@
       },
       {
         "h3": {
-          "en": "This is just a reference",
-          "zh": "这只是一份参考"
+          "en": "Before you begin",
+          "zh": "准备工作"
         },
         "body": {
-          "en": "This manual is designed to be a simple build reference. Assembling a PhysiClaw can take two to three hours, so for any section you need clarification on we recommend opening the <span class=\"ref\">.step</span> file in FreeCAD — it is often easier to follow along with the whole assembly in front of you.",
-          "zh": "本手册只是一份简明的装配参考。组装 PhysiClaw 可能需要两到三个小时，遇到哪一步看不明白，建议在 FreeCAD 里打开 <span class=\"ref\">.step</span> 文件——对着完整的装配体边看边装，往往会容易得多。"
+          "en": "Before you start, read this manual all the way through, and check the parts you've bought against the bill of materials to make sure nothing is missing. Assembling a PhysiClaw takes about two to three hours, so set aside enough time.",
+          "zh": "动手组装前，先把本手册从头到尾通读一遍，再对照物料清单核对买好的零件，确保一切齐备。组装一台 PhysiClaw 大约需要两到三个小时，请预留好时间。"
         },
         "classes": "note"
       }
