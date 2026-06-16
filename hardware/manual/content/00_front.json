@@ -48,78 +48,78 @@
       },
       {
         "label": {
-          "en": "01 — Frame",
-          "zh": "01 — 框架"
+          "en": "Frame",
+          "zh": "框架"
         },
         "page": "frame"
       },
       {
         "label": {
-          "en": "02 — Idler",
-          "zh": "02 — 惰轮"
+          "en": "Idler",
+          "zh": "惰轮"
         },
         "page": "idler"
       },
       {
         "label": {
-          "en": "03 — Motor",
-          "zh": "03 — 电机"
+          "en": "Motor",
+          "zh": "电机"
         },
         "page": "motor"
       },
       {
         "label": {
-          "en": "04 — Linear motion",
-          "zh": "04 — 直线运动"
+          "en": "Linear motion",
+          "zh": "直线运动"
         },
         "page": "linear"
       },
       {
         "label": {
-          "en": "05 — Belt path",
-          "zh": "05 — 同步带"
+          "en": "Belt path",
+          "zh": "同步带"
         },
         "page": "belt"
       },
       {
         "label": {
-          "en": "06 — Touch end",
-          "zh": "06 — 触控机构"
+          "en": "Touch end",
+          "zh": "触控机构"
         },
         "page": "stylus"
       },
       {
         "label": {
-          "en": "07 — Phone bed",
-          "zh": "07 — 手机托架"
+          "en": "Phone bed",
+          "zh": "手机托架"
         },
         "page": "phone"
       },
       {
         "label": {
-          "en": "08 — Control board",
-          "zh": "08 — 控制板"
+          "en": "Control board",
+          "zh": "控制板"
         },
         "page": "pcb"
       },
       {
         "label": {
-          "en": "09 — Camera",
-          "zh": "09 — 摄像头"
+          "en": "Camera",
+          "zh": "摄像头"
         },
         "page": "camera"
       },
       {
         "label": {
-          "en": "10 — Wiring",
-          "zh": "10 — 接线"
+          "en": "Wiring",
+          "zh": "接线"
         },
         "page": "wiring"
       },
       {
         "label": {
-          "en": "11 — Bill of materials",
-          "zh": "11 — 物料清单"
+          "en": "Bill of materials",
+          "zh": "物料清单"
         },
         "page": "bom"
       }
