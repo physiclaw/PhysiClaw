@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish release \
-        hw-help hw-parts hw-build hw-step hw-print hw-manual hw-sourcing hw-mark hw-replay hw-camera hw-rebuild
+        hw-help hw-parts hw-build hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-mark hw-replay hw-camera hw-rebuild
 
 PY ?= uv run
 
@@ -190,6 +190,11 @@ hw-print:
 
 hw-manual:
 	$(HW_DOC) manual $(ARGS)
+
+# Convenience alias for `make hw-manual ARGS="--pdf"`; extra flags still go
+# through ARGS, e.g.  make hw-manual-pdf ARGS="--lang en".
+hw-manual-pdf:
+	$(HW_DOC) manual --pdf $(ARGS)
 
 hw-sourcing:
 	$(HW_DOC) sourcing $(ARGS)
