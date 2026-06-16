@@ -762,6 +762,13 @@ def cover_render_src(pages: list[dict], ctx: Ctx) -> str | None:
     return ctx.assets.figure(cover["render"]["src"]) if cover else None
 
 
+def cover_title(pages: list[dict], ctx: Ctx) -> str:
+    """The cover's localized title, reused as the browser-tab <title> so the
+    two never drift (and the ZH manual gets a ZH tab title)."""
+    cover = next((p for p in pages if p["type"] == "cover"), None)
+    return loc(cover["title"], ctx.lang) if cover and "title" in cover else "PhysiClaw Assembly Manual"
+
+
 def render_document(pages: list[dict], css: str, ctx: Ctx) -> str:
     """Assemble the full HTML document for one language."""
     sections = "\n".join(RENDERERS[p["type"]](p, ctx) for p in pages)
@@ -771,7 +778,7 @@ def render_document(pages: list[dict], css: str, ctx: Ctx) -> str:
         f'<!DOCTYPE html>\n<html lang="{HTML_LANG[ctx.lang]}">\n<head>\n'
         '<meta charset="UTF-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        "<title>PhysiClaw.ai Assembly Manual</title>\n"
+        f"<title>{cover_title(pages, ctx)}</title>\n"
         f"{preload}\n<style>\n{css}</style>\n</head>\n<body>\n"
         f"{sections}\n</body>\n</html>\n"
     )
