@@ -4,7 +4,7 @@
     "page": "pcb",
     "secnum": { "en": "SECTION 08", "zh": "第 08 节" },
     "h1": { "en": "Control board", "zh": "控制板" },
-    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires are spiral-wrapped to a Teflon tube that stiffens the bundle so it holds its shape, clear of the motors and belts. The tube anchors to a frame-mounted holder and to the carriage — never to the board — so carriage motion can't bend the PCB.", "zh": "控制板固定在框架前方。电磁铁的导线与一根特氟龙管用螺旋缠绕带捆在一起，管子让线束变硬、能保持形状，躲开电机和同步带。管子两端分别固定在框架上的支架和滑座上——不接到控制板——这样滑座运动就不会把电路板掰弯。" }
+    "lede": { "en": "The control board mounts at the front of the frame. The solenoid's wires are spiral-wrapped to a Teflon tube that stiffens the bundle so it holds its shape, clear of the motors and belts. The tube anchors to a frame-mounted holder and to the carriage.", "zh": "控制板固定在框架前方。电磁铁的导线与一根特氟龙管用螺旋缠绕带捆在一起，管子让线束变硬、能保持形状，避开电机和同步带。管子两端分别固定在框架上的支架和滑座上。" }
   },
   {
     "type": "tall-left",
