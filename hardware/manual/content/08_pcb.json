@@ -128,7 +128,7 @@
     "notes": [
       {
         "h3": { "en": "Rough length", "zh": "大致长度" },
-        "body": { "en": "Make the tube about 380 mm — long enough to reach from the control board to the X carriage at its farthest position.", "zh": "管子取大约 380 mm——从控制板够到 X 滑座最远位置即可。" },
+        "body": { "en": "Make the tube about 380 mm — long enough to reach from the tube holder to the X carriage at its farthest position.", "zh": "管子取大约 380 mm——从导管支架够到 X 滑座最远位置即可。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:30mm; width:100mm; max-width:100mm;"
       },
@@ -146,7 +146,7 @@
       },
       {
         "h3": { "en": "Spiral-wrap the tube", "zh": "螺旋缠绕成束" },
-        "body": { "en": "Spiral-wrap the solenoid wires to the Teflon tube along its length. The wires don't go inside — the tube just stiffens the bundle so it holds a clear path past the belts and motors. Plug one end into the tube holder's socket and the other through the solenoid mount into the belt-clamp hole.", "zh": "用螺旋缠绕带把电磁铁导线沿特氟龙管捆成一束。导线不穿进管子里——管子只是让线束变硬、能保持形状，避开同步带和电机。管子一端插进导管支架的插孔，另一端穿过电磁铁支架插入同步带夹具的孔里。" },
+        "body": { "en": "Spiral-wrap the solenoid wires to the Teflon tube along its length. The wires don't go inside — the tube just stiffens the bundle so it holds a clear path past the belts and motors.", "zh": "用螺旋缠绕带把电磁铁导线沿特氟龙管捆成一束。导线不穿进管子里——管子只是让线束变硬、能保持形状，避开同步带和电机。" },
         "classes": "note overlay sm",
         "style": "right:30mm; top:110mm; width:100mm; max-width:100mm;"
       }
