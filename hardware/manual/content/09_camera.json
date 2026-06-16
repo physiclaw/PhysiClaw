@@ -69,7 +69,7 @@
     ],
     "notes": [
       {
-        "h3": { "en": "Thread on the camera", "zh": "拧上摄像头" },
+        "h3": { "en": "Thread on the camera", "zh": "装上摄像头" },
         "body": { "en": "Thread the camera's 1/4-20 female socket onto the gooseneck's male stud until it bottoms on the stud collar. The camera now hangs off the neck tip.", "zh": "把摄像头的 1/4-20 内螺纹接口拧上金属软管的外螺纹螺柱，拧到底面顶住螺柱台肩。摄像头现在挂在软管顶端。" },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
