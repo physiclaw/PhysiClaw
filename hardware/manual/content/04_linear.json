@@ -208,8 +208,8 @@
           "zh": "按对角顺序拧紧"
         },
         "body": {
-          "en": "Run all four screws in finger-tight first, then tighten opposite corners in pairs. This seats the joint flat on the slider instead of tilting it to one side.",
-          "zh": "先把四颗螺栓都用手拧到位，再两两对角拧紧。这样连接件才能平贴在滑块上，不会歪向一边。"
+          "en": "Thread all four screws in first, then tighten opposite corners in pairs. This seats the joint flat on the slider.",
+          "zh": "先将四颗螺栓全部旋入，再两两对角拧紧，这样连接件才能平贴滑块。"
         },
         "classes": "note overlay sm",
         "style": "left:100mm; top:30mm; width:80mm;"
