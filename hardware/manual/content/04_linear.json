@@ -133,12 +133,12 @@
     "notes": [
       {
         "h3": {
-          "en": "Snug the rails between the blocks",
-          "zh": "把导轨夹紧在两个安装块之间"
+          "en": "Install the rails",
+          "zh": "安装导轨"
         },
         "body": {
-          "en": "Adjust the two lower idler mounts so each Y rail is held tight between its mount blocks.",
-          "zh": "调整下方两个惰轮支座的位置，把每条 Y 导轨都牢牢夹在两侧支座之间。"
+          "en": "Adjust the idler mounts away from the motor so both ends of each Y rail sit snug against them.",
+          "zh": "调整远离电机一侧的惰轮支座位置，使导轨两端紧靠支座。"
         },
         "classes": "note overlay sm",
         "style": "right:5mm; top:0mm; width:60mm;"
