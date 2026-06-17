@@ -104,7 +104,7 @@
       },
       {
         "h3": { "en": "Spacer must total 9 mm", "zh": "轴套总高要够 9 mm" },
-        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "轴套高 9 mm。买不到正好这个高度，就拿几个矮一点的叠起来凑够 9 mm。" },
+        "body": { "en": "The spacer is 9 mm tall. If you can't buy that exact height, stack shorter spacers to total 9 mm.", "zh": "轴套高 9 mm。买不到这个高度的轴套，就拿几个短些的叠起来凑够 9 mm。" },
         "classes": "note overlay sm",
         "style": "left:110mm; top:82mm; width:80mm;"
       }
