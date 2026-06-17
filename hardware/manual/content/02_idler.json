@@ -17,7 +17,7 @@
     "notes": [
       {
         "h3": { "en": "Center hardware first", "zh": "先装中间的螺栓螺母" },
-        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔——两侧惰轮柱装上后，这里就伸不进去了。" },
+        "body": { "en": "Drop the center M5 square nut and its M5×10 BHCS into the middle counterbore hole first — the stacks block access later.", "zh": "先把中间的 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔——两侧惰轮柱装上后，中间沉孔就被挡住了。" },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
       },
