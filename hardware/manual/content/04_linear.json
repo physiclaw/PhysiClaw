@@ -330,7 +330,19 @@
           "zh": "X 横梁应该能沿 Y 导轨自由滑动。若滑动发涩，先把 Y 导轨重新校正到顺畅，再从中间那颗螺栓往两边拧紧。"
         },
         "classes": "note overlay sm",
-        "style": "right:16mm; top:60mm; width:60mm;"
+        "style": "right:16mm; top:50mm; width:60mm;"
+      },
+      {
+        "h3": {
+          "en": "Be patient",
+          "zh": "需要耐心"
+        },
+        "body": {
+          "en": "Don't expect to get it in one pass. Snug a few screws, slide the X beam to feel the resistance, then nudge the Y rails and try again. It can take a few minutes of back-and-forth before the beam glides smoothly.",
+          "zh": "调试往往无法一次到位。先拧紧部分螺栓，推动 X 横梁感受滑动阻力，再微调 Y 导轨，如此反复。可能要来回调整几分钟，横梁才能顺畅滑动。"
+        },
+        "classes": "note overlay sm",
+        "style": "right:16mm; top:100mm; width:60mm;"
       }
     ],
     "bom": {
