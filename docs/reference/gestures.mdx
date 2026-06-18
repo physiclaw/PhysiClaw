@@ -1,0 +1,71 @@
+---
+title: Gestures
+description: How taps, long-presses, swipes, and double-taps become GRBL G-code.
+---
+
+Every gesture is a short G-code sequence. The Z axis carries the stylus: `M3 S12` lowers it to
+touch the glass, `M3 S0` lifts it. `G4 P<seconds>` dwells; `G0`/`G1` move.
+
+## Single tap
+
+Move to the target, drop for 50–100 ms, lift.
+
+```text title="G-code"
+G0 X.. Y..      ; move to target
+M3 S12          ; stylus down
+G4 P0.05        ; dwell 50 ms
+M3 S0           ; stylus up
+```
+
+## Long press
+
+Identical to a tap, but the dwell is held ~800 ms.
+
+```text title="G-code"
+G0 X.. Y..
+M3 S12
+G4 P0.8         ; hold 800 ms
+M3 S0
+```
+
+## Swipe
+
+Touch down at the start, move under load, lift at the end.
+
+```text title="G-code"
+G0 X.. Y..      ; move to start
+M3 S12          ; stylus down
+G1 X.. Y.. F3000 ; drag to end at feed 3000
+M3 S0           ; stylus up
+```
+
+## Double tap
+
+Two taps with a short gap (&lt; 300 ms between touches).
+
+```text title="G-code"
+; tap
+M3 S12
+G4 P0.05
+M3 S0
+G4 P0.1         ; gap 100 ms
+; tap
+M3 S12
+G4 P0.05
+M3 S0
+```
+
+:::tip[Tuning touch]
+If taps don't register, increase the Z depth (`S` value) slightly or the dwell (`P`). If the
+screen scratches or double-fires, decrease them. Values are saved by
+[calibration](/en/start/quickstart/).
+:::
+
+## Summary
+
+| Gesture | Down | Dwell | Move | Up |
+| ------- | ---- | ----- | ---- | -- |
+| Tap | `M3 S12` | `P0.05` | — | `M3 S0` |
+| Long press | `M3 S12` | `P0.8` | — | `M3 S0` |
+| Swipe | `M3 S12` | — | `G1 F3000` | `M3 S0` |
+| Double tap | ×2 | `P0.05` | — | ×2 |

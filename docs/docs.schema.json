@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://docs.physiclaw.ai/docs.schema.json",
+  "title": "PhysiClaw docs configuration",
+  "description": "Doc-owned configuration for the PhysiClaw docs site. Lives with the content and is read by the renderer's astro.config at build time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sidebar"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path or URL to this schema, for editor validation."
+    },
+    "sidebar": {
+      "type": "array",
+      "description": "Top-level sidebar sections, in display order. Each section lists its pages explicitly, which also sets their order.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/section" }
+    }
+  },
+  "definitions": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "items"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Section label in the default locale (en)."
+        },
+        "translations": {
+          "type": "object",
+          "description": "Per-locale label overrides, keyed by BCP-47 tag (e.g. \"zh-CN\").",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "items": {
+          "type": "array",
+          "description": "Pages in this section, in order. Each entry is a page slug relative to the docs root — e.g. \"start/introduction\" — with no locale prefix and no file extension. The page's own title is used as its label.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+            "description": "A page slug: lowercase path segments separated by '/', no leading slash, no .md/.mdx extension."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "sidebar": [
+        {
+          "label": "Start",
+          "translations": { "zh-CN": "开始" },
+          "items": ["start/introduction", "start/installation", "start/quickstart"]
+        }
+      ]
+    }
+  ]
+}

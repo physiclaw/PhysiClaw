@@ -1,0 +1,69 @@
+---
+title: System architecture
+description: How the agent, the MCP server, the cameras, and the arm fit together end to end.
+---
+
+PhysiClaw has four layers: the **agent** (the brain), the **MCP server** (the translator),
+the **sensors and actuators** (cameras and the GRBL arm), and the **phone** (unchanged).
+
+```text
+┌───────────────────────────────────────┐
+│            AI Agent (brain)            │
+│   Claude Desktop / any MCP client      │
+│   sees screen → decides → calls tools  │
+└──────────────────┬────────────────────┘
+                   │ MCP protocol
+                   ▼
+┌───────────────────────────────────────┐
+│      PhysiClaw MCP server (Python)     │
+│   screenshot_top · screenshot_side     │
+│   move · tap · swipe · park            │
+└──────────┬──────────────────┬──────────┘
+           │                  │
+     USB cameras        USB serial (GRBL)
+           │                  │
+           ▼                  ▼
+   ┌──────────────┐   ┌────────────────┐
+   │ Top camera   │   │ GRBL board     │
+   │ Side camera  │   │ X/Y gantry · Z │
+   └──────────────┘   └──────┬─────────┘
+                             │ touch
+                             ▼
+                      ┌─────────────┐
+                      │   Phone     │
+                      │ (unlocked)  │
+                      └─────────────┘
+```
+
+## The layers
+
+### Agent
+Any Model Context Protocol client. It receives screenshots as images and chooses high-level
+actions — a direction and distance, a tap, a swipe — never raw pixel coordinates.
+
+### MCP server
+A small Python process that exposes hardware as [tools](/en/reference/mcp-tools/). It owns the
+calibration math (pixels → motor steps), camera capture, and serial communication with the board.
+
+### Sensors & actuators
+- **Top camera** looks straight down and reads the screen.
+- **Side camera** views from ~45° and checks the stylus tip before a touch.
+- **GRBL board** drives an X/Y gantry and a Z axis that lowers the stylus.
+
+### Phone
+Completely untouched — no app, no profile, no developer mode. It only ever sees a finger.
+
+:::tip
+Because the agent works in *directions and distances*, the same prompts transfer across phones
+and screen sizes after a quick re-calibration.
+:::
+
+## Communication
+
+| Hop | Transport | Payload |
+| --- | --------- | ------- |
+| Agent ↔ server | MCP (stdio) | tool calls + image results |
+| Server ↔ cameras | USB UVC | JPEG frames |
+| Server ↔ board | USB serial | G-code (GRBL dialect) |
+
+Continue to [The control loop](/en/concepts/the-loop/) to see how these hops cycle on every action.

@@ -1,0 +1,25 @@
+{
+  "$schema": "./docs.schema.json",
+  "sidebar": [
+    {
+      "label": "Start",
+      "translations": { "zh-CN": "开始" },
+      "items": ["start/introduction", "start/installation", "start/quickstart"]
+    },
+    {
+      "label": "Concepts",
+      "translations": { "zh-CN": "原理" },
+      "items": ["concepts/architecture", "concepts/the-loop"]
+    },
+    {
+      "label": "Hardware",
+      "translations": { "zh-CN": "硬件" },
+      "items": ["hardware/bill-of-materials"]
+    },
+    {
+      "label": "Reference",
+      "translations": { "zh-CN": "参考" },
+      "items": ["reference/mcp-tools", "reference/gestures"]
+    }
+  ]
+}

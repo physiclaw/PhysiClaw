@@ -1,0 +1,40 @@
+---
+title: Bill of materials
+description: Everything needed to build a PhysiClaw — about $127 in off-the-shelf parts.
+---
+
+A full build is about **$127** in commodity parts. Nothing here is bespoke — the arm is a
+consumer pen plotter and the cameras are ordinary USB webcams.
+
+| Component | Item | Approx. price |
+| --------- | ---- | ------------- |
+| GRBL arm | Paixi pen plotter P25 (X/Y gantry + Z servo) | ~$80 |
+| Top camera | UGREEN 1080P USB camera, fixed focus | ~$14 |
+| Side camera | UGREEN 1080P USB camera (same model) | ~$14 |
+| Stylus | Capacitive stylus, conductive fiber tip 8–10 mm | ~$1.50 |
+| Camera mounts | Gooseneck desk clamp, metal, 50 cm (×2) | ~$4 |
+| Phone mount | Anti-slip pad + L-shaped blocks | ~$1.20 |
+| USB hub | Powered USB 3.0 hub | ~$13 |
+
+## Notes on parts
+
+- **The arm** is the only component that matters for precision. Any GRBL-compatible X/Y/Z plotter
+  works; the P25 is cheap, rigid enough, and runs standard G-code.
+- **Both cameras are identical** on purpose — one firmware quirk to learn, one driver, interchangeable.
+- **The stylus tip** should be soft conductive fiber, 8–10 mm. Hard rubber tips register less
+  reliably and scratch screens.
+
+## Assembly at a glance
+
+1. Mount the phone in the cradle on the plotter bed, screen up, held by the anti-slip pad and blocks.
+2. Replace the plotter's pen with the capacitive stylus in the Z holder.
+3. Clamp the **top camera** on a gooseneck directly above, looking straight down at the screen.
+4. Clamp the **side camera** at ~45° so it sees the stylus tip and the glass surface.
+5. Wire everything to the powered USB hub.
+
+:::caution[Rigidity matters]
+Flex in the camera goosenecks is the most common cause of drift. Tighten the clamps, keep the
+arms short, and re-[calibrate](/en/start/quickstart/) if anything is bumped.
+:::
+
+Next: install the [server](/en/start/installation/) and run [calibration](/en/start/quickstart/).

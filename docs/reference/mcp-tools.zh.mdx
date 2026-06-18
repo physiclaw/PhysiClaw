@@ -1,0 +1,79 @@
+---
+title: MCP 工具
+description: PhysiClaw 向智能体暴露的完整工具集。
+---
+
+PhysiClaw 通过 Model Context Protocol 暴露六个工具。智能体始终以高层方式工作——
+方向、距离和手势——从不使用原始坐标。
+
+## `screenshot_top`
+
+将触控笔收出画面，并返回一张俯视屏幕照片。
+
+- **参数：** 无
+- **返回：** 图像（PNG）
+
+```text
+screenshot_top() → <图像 1920×1080>
+```
+
+## `screenshot_side`
+
+返回用于检查笔尖位置的约 45° 侧视图。
+
+- **参数：** 无
+- **返回：** 图像（PNG）
+
+## `move`
+
+按方向和粗略距离在 X/Y 平面移动触控笔。
+
+| 参数 | 类型 | 取值 |
+| ---- | ---- | ---- |
+| `direction` | string | `up`、`down`、`left`、`right`、`up-left`、`up-right`、`down-left`、`down-right` |
+| `distance` | string | `small`、`medium`、`large` |
+
+```text
+move("down-right", "large")
+```
+
+:::note
+以方向和距离（而非像素）工作，让提示词可跨手机和分辨率复用——
+改变的只是标定，而非智能体的推理。
+:::
+
+## `tap`
+
+在当前位置下探触控笔以触发触摸，随后收回。
+
+| 参数 | 类型 | 默认 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `kind` | string | `single` | `single`、`double`、`long` |
+
+```text
+tap()                 # 单击
+tap(kind="long")      # 长按
+```
+
+## `swipe`
+
+下探、沿方向拖动、抬起——用于滚动和快滑。
+
+| 参数 | 类型 | 取值 |
+| ---- | ---- | ---- |
+| `direction` | string | `up`、`down`、`left`、`right` |
+| `distance` | string | `small`、`medium`、`large` |
+
+```text
+swipe("up", "medium")
+```
+
+## `park`
+
+将触控笔完全收出顶部摄像头画面。每次 `screenshot_top` 前会自动调用，
+也可单独调用以清空视野。
+
+- **参数：** 无
+- **返回：** ok
+
+`tap` 与 `swipe` 如何映射到 GRBL G-code，见[手势](/zh/reference/gestures/)。

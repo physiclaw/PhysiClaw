@@ -1,0 +1,48 @@
+---
+title: Introduction
+description: What PhysiClaw is, the problem it solves, and how the pieces fit together.
+---
+
+**PhysiClaw** is a small desktop robot that gives an AI agent a *physical* body to operate a
+phone. It watches the screen through a camera and touches the glass with a capacitive stylus
+on a 3-axis arm. There is no app to install on the phone, no API to integrate, and no account
+to connect — to the phone, PhysiClaw is indistinguishable from a human finger.
+
+## The problem
+
+Software agents that "use your phone" usually depend on one of three things, and each is a wall:
+
+<CardGrid>
+  <Card title="APIs & OAuth" icon="setting">
+    Every service needs its own integration, keys, and consent screens. New app, new wall.
+  </Card>
+  <Card title="Accessibility hooks" icon="puzzle">
+    Screen readers and automation frameworks are blockable, detectable, and break on redesigns.
+  </Card>
+  <Card title="Jailbreaks" icon="warning">
+    Rooting a device to inject taps is fragile, unsafe, and off-limits for most people.
+  </Card>
+</CardGrid>
+
+## The PhysiClaw way
+
+Instead of a software bridge, give the agent **presence**. The loop is deliberately simple:
+
+1. A **top camera** photographs the screen.
+2. The **agent** decides the next action from the image.
+3. The **arm** moves the stylus and a **side camera** confirms the tip is on target.
+4. The stylus **touches**, then retracts — and the loop repeats.
+
+Because the only thing touching the phone is a stylus tip, *any* app works — iOS or Android,
+your bank, a delivery app, a chat thread — with zero per-app setup.
+
+:::tip[Who is this for?]
+Builders who want agents to act in the real world: automation tinkerers, robotics learners,
+and anyone tired of writing one more integration to do something a finger could do.
+:::
+
+## What's next
+
+- [Installation](/en/start/installation/) — get the server running and the hardware connected.
+- [Quickstart](/en/start/quickstart/) — calibrate and run a first task.
+- [System architecture](/en/concepts/architecture/) — the full picture, end to end.

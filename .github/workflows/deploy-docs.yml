@@ -1,0 +1,59 @@
+# When docs/ changes on main, mirror it into the docs-site renderer's tracked
+# ./docs directory and push. docs-site's Vercel Git integration then builds
+# (pnpm build → sync-docs + astro build) and deploys docs.physiclaw.ai.
+#
+# The renderer (physiclaw/docs-site) is a pure consumer — all content + docs.json
+# live here, under docs/. This workflow just keeps the mirror in sync.
+#
+# Required secret (Settings → Secrets and variables → Actions):
+#   DOCS_SITE_TOKEN – a PAT / fine-grained token with WRITE (contents) access to
+#                     physiclaw/docs-site, so the mirror commit can push.
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch: # allow manual re-sync
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PhysiClaw (docs source)
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Checkout docs-site (renderer)
+        uses: actions/checkout@v4
+        with:
+          repository: physiclaw/docs-site
+          ref: main
+          path: docs-site
+          token: ${{ secrets.DOCS_SITE_TOKEN }}
+
+      # Mirror authored docs into the renderer's tracked ./docs.
+      # --delete makes it a true mirror, so removed/renamed docs propagate.
+      - name: Mirror PhysiClaw/docs → docs-site/docs
+        run: |
+          rm -rf docs-site/docs
+          mkdir -p docs-site/docs
+          rsync -a --delete source/docs/ docs-site/docs/
+
+      - name: Commit & push the mirror (only if it changed)
+        working-directory: docs-site
+        run: |
+          git config user.name  "physiclaw-docs"
+          git config user.email "qiaoqianda@gmail.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "No docs changes to publish."
+          else
+            git commit -m "docs: sync from PhysiClaw@${GITHUB_SHA::7}"
+            git push
+          fi

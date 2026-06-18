@@ -1,0 +1,67 @@
+---
+title: Quickstart
+description: Calibrate the arm against your phone and run your first agent-driven task.
+---
+
+With the [server installed](/en/start/installation/) and the hardware connected, you're three
+steps from your first autonomous task.
+
+## 1. Calibrate
+
+Calibration teaches the arm how screen pixels map to motor coordinates, and how far the stylus
+must drop (Z) to register a touch.
+
+<Steps>
+
+1. Open the calibration target on the phone (a white screen with reference dots).
+
+2. Run the calibration routine:
+
+   ```sh
+   python -m physiclaw.calibrate
+   ```
+
+3. Follow the prompts — the arm taps each dot while the side camera measures the stylus tip.
+   Calibration is saved to `config.py`.
+
+</Steps>
+
+:::note
+Re-run calibration whenever you move a camera, swap the phone, or change the cradle position.
+:::
+
+## 2. Smoke-test the tools
+
+Confirm the agent-facing tools work before handing control to a model:
+
+```sh
+python -m physiclaw.physiclaw_server --selftest
+# ✓ screenshot_top   1920×1080
+# ✓ screenshot_side  1920×1080
+# ✓ move             reached (x=42, y=120)
+# ✓ tap              touch registered
+# ✓ park             stylus retracted
+```
+
+## 3. Run your first task
+
+In your MCP client, unlock the phone and give it a goal in plain language:
+
+> Open the Clock app and set a timer for 10 minutes.
+
+The agent will screenshot, decide a direction and distance, move, verify against the side
+camera, tap, and repeat until the timer is running — narrating each tool call as it goes.
+
+```text
+✓ screenshot_top()
+✓ move("down-right", "large")     → Clock icon
+✓ tap()
+✓ screenshot_top()
+… continuing to Timer tab
+```
+
+## Where to go next
+
+- [The control loop](/en/concepts/the-loop/) — what happens between screenshots.
+- [MCP tools](/en/reference/mcp-tools/) — the full tool surface and parameters.
+- [Gestures](/en/reference/gestures/) — how taps, long-presses, and swipes become G-code.
