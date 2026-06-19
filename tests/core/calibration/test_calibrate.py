@@ -5,8 +5,8 @@ The big top-level orchestrators (`calibrate_arm`, `compute_camera_mapping`,
 are integration-tier loops with hundreds of LOC each — too tightly
 coupled to live hardware to be tested unit-style. We cover the
 testable helpers (`grid_positions`, `_find_viewport_cache`, `_tap_once`,
-`_descend_to_contact`, `_pick_rotation_from_markers`, `_tap_and_read`,
-`_tilt_from_affine`, `calibrate_camera_frame`, `measure_viewport_shift`).
+`_pick_rotation_from_markers`, `_tap_and_read`, `_tilt_from_affine`,
+`calibrate_camera_frame`, `measure_viewport_shift`).
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ import pytest
 
 from physiclaw.core.calibration import calibrate as cal_mod
 from physiclaw.core.calibration.calibrate import (
-    _descend_to_contact,
     _find_viewport_cache,
     _pick_rotation_from_markers,
     _tap_and_read,
@@ -101,44 +100,13 @@ def test_find_viewport_cache_falls_back_to_jpg(
 # ---------- _tap_once ----------
 
 
-def test_tap_once_drives_pen_sequence() -> None:
+def test_tap_once_strikes_solenoid() -> None:
     arm = MagicMock()
 
-    _tap_once(arm, z=-2.5, z_speed=4000)
+    _tap_once(arm)
 
-    arm._pen_down.assert_called_once_with(z=-2.5, speed=4000)
-    arm._dwell.assert_called_once_with(0.15)
-    arm._pen_up.assert_called_once()
+    arm.solenoid.tap.assert_called_once_with(cal_mod.CAL_STRIKE_DURATION)
     arm.wait_idle.assert_called_once()
-
-
-# ---------- _descend_to_contact ----------
-
-
-def test_descend_to_contact_returns_first_contact_z(mocker) -> None:
-    mocker.patch.object(cal_mod.time, "sleep")
-    arm = MagicMock()
-    cal = MagicMock()
-    # Two empty flushes (initial + first probe) then a contact event.
-    cal.flush_touches.side_effect = [
-        [], [], [{"x": 0.5, "y": 0.5}],
-    ]
-
-    z = _descend_to_contact(arm, cal, z_start=0.5, step=0.3)
-
-    # First contact at z_start + step (after initial flush, first probe is z_start
-    # and finds none, then z += step before second probe).
-    assert z == 0.8
-
-
-def test_descend_to_contact_raises_when_max_reached(mocker) -> None:
-    mocker.patch.object(cal_mod.time, "sleep")
-    arm = MagicMock()
-    cal = MagicMock()
-    cal.flush_touches.return_value = []  # never contacts
-
-    with pytest.raises(RuntimeError, match="No touch detected"):
-        _descend_to_contact(arm, cal, z_start=0.5, z_max=1.0, step=0.3)
 
 
 # ---------- _pick_rotation_from_markers ----------
@@ -252,26 +220,25 @@ def test_tap_and_read_succeeds_first_attempt(mocker) -> None:
     cal = MagicMock()
     cal.flush_touches.side_effect = [[], [{"x": 0.5, "y": 0.5}]]
 
-    touch, z = _tap_and_read(arm, cal, gx=10, gy=10, z_tap=-2.0)
+    touch = _tap_and_read(arm, cal, gx=10, gy=10)
 
     assert touch == {"x": 0.5, "y": 0.5}
-    assert z == -2.0  # not bumped
+    arm.solenoid.tap.assert_called_once()  # fired once, no retry
 
 
-def test_tap_and_read_bumps_z_on_miss(mocker) -> None:
+def test_tap_and_read_refires_on_miss(mocker) -> None:
     mocker.patch.object(cal_mod.time, "sleep")
     arm = MagicMock()
     cal = MagicMock()
     cal.flush_touches.side_effect = [
         [], [],          # attempt 0: clear + miss
-        [], [{"x": 1}],  # attempt 1: clear + hit at bumped z
+        [], [{"x": 1}],  # attempt 1: clear + hit on re-fire
     ]
 
-    touch, z = _tap_and_read(arm, cal, gx=0, gy=0, z_tap=-2.0, max_retries=3)
+    touch = _tap_and_read(arm, cal, gx=0, gy=0, max_retries=3)
 
     assert touch == {"x": 1}
-    # z bumped once by 0.25.
-    assert z == round(-2.0 + 0.25, 2)
+    assert arm.solenoid.tap.call_count == 2  # re-fired once
 
 
 def test_tap_and_read_returns_none_after_max_retries(mocker) -> None:
@@ -280,11 +247,10 @@ def test_tap_and_read_returns_none_after_max_retries(mocker) -> None:
     cal = MagicMock()
     cal.flush_touches.return_value = []  # always miss
 
-    touch, z = _tap_and_read(arm, cal, gx=0, gy=0, z_tap=-2.0, max_retries=2)
+    touch = _tap_and_read(arm, cal, gx=0, gy=0, max_retries=2)
 
     assert touch is None
-    # Three attempts (initial + 2 retries) → z bumped twice.
-    assert z == round(-2.0 + 0.5, 2)
+    assert arm.solenoid.tap.call_count == 3  # initial + 2 retries
 
 
 # ---------- _tilt_from_affine ----------
@@ -550,7 +516,7 @@ def _scripted_touches(touches: list[dict]) -> "callable":
     return _flush
 
 
-def test_calibrate_arm_succeeds_with_z_hint(mocker) -> None:
+def test_calibrate_arm_succeeds(mocker) -> None:
     mocker.patch.object(cal_mod.time, "sleep")
     arm = MagicMock()
     cal = _make_cal()
@@ -570,62 +536,27 @@ def test_calibrate_arm_succeeds_with_z_hint(mocker) -> None:
     ]
 
     # Mock _tap_and_read directly to bypass the inner flush_touches loop.
-    tap_returns = iter([
-        (probe_touches[0], -2.0),
-        (probe_touches[1], -2.0),
-        (probe_touches[2], -2.0),
-    ] + [(t, -2.0) for t in grid_touches])
-    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=lambda *a, **kw: next(tap_returns))
-
-    z_tap, pct_to_grbl, tilt, gtouches = cal_mod.calibrate_arm(
-        arm, cal, z_tap_hint=-2.0,
+    tap_returns = iter(probe_touches + grid_touches)
+    mocker.patch.object(
+        cal_mod, "_tap_and_read", side_effect=lambda *a, **kw: next(tap_returns)
     )
 
-    assert z_tap == -2.0
+    pct_to_grbl, tilt, gtouches = cal_mod.calibrate_arm(arm, cal)
+
     assert pct_to_grbl.shape == (2, 3)
     assert isinstance(tilt, float)
     assert len(gtouches) == 15
     arm.set_origin.assert_called_once()
 
 
-def test_calibrate_arm_descends_when_no_hint(mocker) -> None:
-    mocker.patch.object(cal_mod.time, "sleep")
-    arm = MagicMock()
-    cal = _make_cal()
-
-    descend_spy = mocker.patch.object(
-        cal_mod, "_descend_to_contact", return_value=-2.0,
-    )
-    probe = [
-        {"x": 0.5, "y": 0.5},
-        {"x": 0.6, "y": 0.5},
-        {"x": 0.5, "y": 0.6},
-    ]
-    grid = [
-        {"x": col, "y": row}
-        for row in cal.GRID_ROWS_PCT
-        for col in cal.GRID_COLS_PCT
-    ]
-    tap_returns = iter([
-        (probe[0], -1.75), (probe[1], -1.75), (probe[2], -1.75),
-    ] + [(t, -1.75) for t in grid])
-    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=lambda *a, **kw: next(tap_returns))
-
-    cal_mod.calibrate_arm(arm, cal)
-
-    descend_spy.assert_called_once()
-
-
 def test_calibrate_arm_raises_on_probe_center_miss(mocker) -> None:
     mocker.patch.object(cal_mod.time, "sleep")
     arm = MagicMock()
     cal = _make_cal()
-    mocker.patch.object(
-        cal_mod, "_tap_and_read", side_effect=[(None, -2.0)],
-    )
+    mocker.patch.object(cal_mod, "_tap_and_read", side_effect=[None])
 
     with pytest.raises(RuntimeError, match="no touch at center"):
-        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+        cal_mod.calibrate_arm(arm, cal)
 
 
 def test_calibrate_arm_raises_on_probe_x_miss(mocker) -> None:
@@ -634,14 +565,11 @@ def test_calibrate_arm_raises_on_probe_x_miss(mocker) -> None:
     cal = _make_cal()
     mocker.patch.object(
         cal_mod, "_tap_and_read",
-        side_effect=[
-            ({"x": 0.5, "y": 0.5}, -2.0),
-            (None, -2.0),
-        ],
+        side_effect=[{"x": 0.5, "y": 0.5}, None],
     )
 
     with pytest.raises(RuntimeError, match="no touch at \\+10mm X"):
-        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+        cal_mod.calibrate_arm(arm, cal)
 
 
 def test_calibrate_arm_raises_on_probe_y_miss(mocker) -> None:
@@ -651,14 +579,14 @@ def test_calibrate_arm_raises_on_probe_y_miss(mocker) -> None:
     mocker.patch.object(
         cal_mod, "_tap_and_read",
         side_effect=[
-            ({"x": 0.5, "y": 0.5}, -2.0),
-            ({"x": 0.6, "y": 0.5}, -2.0),
-            (None, -2.0),
+            {"x": 0.5, "y": 0.5},
+            {"x": 0.6, "y": 0.5},
+            None,
         ],
     )
 
     with pytest.raises(RuntimeError, match="no touch at \\+10mm Y"):
-        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+        cal_mod.calibrate_arm(arm, cal)
 
 
 def test_calibrate_arm_raises_when_too_few_grid_hits(mocker) -> None:
@@ -667,17 +595,17 @@ def test_calibrate_arm_raises_when_too_few_grid_hits(mocker) -> None:
     cal = _make_cal()
     # 3 probes succeed, all 15 grid taps miss (None) — only 3 valid pairs.
     probe = [
-        ({"x": 0.5, "y": 0.5}, -2.0),
-        ({"x": 0.6, "y": 0.5}, -2.0),
-        ({"x": 0.5, "y": 0.6}, -2.0),
+        {"x": 0.5, "y": 0.5},
+        {"x": 0.6, "y": 0.5},
+        {"x": 0.5, "y": 0.6},
     ]
-    grid_misses = [(None, -2.0)] * 15
+    grid_misses = [None] * 15
     mocker.patch.object(
         cal_mod, "_tap_and_read", side_effect=probe + grid_misses,
     )
 
     with pytest.raises(RuntimeError, match="only 3 valid taps"):
-        cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+        cal_mod.calibrate_arm(arm, cal)
 
 
 def test_calibrate_arm_uses_viewport_pct_when_shift_set(mocker) -> None:
@@ -691,18 +619,18 @@ def test_calibrate_arm_uses_viewport_pct_when_shift_set(mocker) -> None:
     cal.viewport_pct_to_screenshot_pct.side_effect = lambda c, r: (c, r)
 
     probe = [
-        ({"x": 0.5, "y": 0.5}, -2.0),
-        ({"x": 0.6, "y": 0.5}, -2.0),
-        ({"x": 0.5, "y": 0.6}, -2.0),
+        {"x": 0.5, "y": 0.5},
+        {"x": 0.6, "y": 0.5},
+        {"x": 0.5, "y": 0.6},
     ]
     grid = [
-        ({"x": col, "y": row}, -2.0)
+        {"x": col, "y": row}
         for row in cal.GRID_ROWS_PCT
         for col in cal.GRID_COLS_PCT
     ]
     mocker.patch.object(cal_mod, "_tap_and_read", side_effect=probe + grid)
 
-    cal_mod.calibrate_arm(arm, cal, z_tap_hint=-2.0)
+    cal_mod.calibrate_arm(arm, cal)
 
     # viewport_pct_to_screenshot_pct was used for grid prediction.
     assert cal.viewport_pct_to_screenshot_pct.call_count == 15
@@ -823,7 +751,7 @@ def test_validate_calibration_records_passed_when_touches_match(mocker) -> None:
     )
 
     results = cal_mod.validate_calibration(
-        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        arm, cam, cal, rotation=-1,
         pct_to_grbl=_identity_pct_to_grbl(),
         pct_to_cam=_identity_pct_to_cam(),
         cam_size=(100, 100), num_tests=2,
@@ -846,7 +774,7 @@ def test_validate_calibration_falls_back_when_dot_undetected(mocker) -> None:
     )
 
     results = cal_mod.validate_calibration(
-        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        arm, cam, cal, rotation=-1,
         pct_to_grbl=_identity_pct_to_grbl(),
         pct_to_cam=_identity_pct_to_cam(),
         cam_size=(100, 100), num_tests=1,
@@ -871,7 +799,7 @@ def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
     cal.flush_touches.return_value = []
 
     results = cal_mod.validate_calibration(
-        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        arm, cam, cal, rotation=-1,
         pct_to_grbl=_identity_pct_to_grbl(),
         pct_to_cam=_identity_pct_to_cam(),
         cam_size=(100, 100), num_tests=1,
@@ -882,7 +810,7 @@ def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
     assert results[0]["error"] == 999.0
 
 
-def test_validate_calibration_retries_with_z_bump_on_miss(mocker) -> None:
+def test_validate_calibration_refires_on_miss(mocker) -> None:
     mocker.patch.object(cal_mod.time, "sleep")
     mocker.patch.object(cal_mod.random, "random", return_value=0.5)
     arm = MagicMock()
@@ -898,7 +826,7 @@ def test_validate_calibration_retries_with_z_bump_on_miss(mocker) -> None:
     ]
 
     results = cal_mod.validate_calibration(
-        arm, cam, cal, z_tap=-2.0, rotation=-1,
+        arm, cam, cal, rotation=-1,
         pct_to_grbl=_identity_pct_to_grbl(),
         pct_to_cam=_identity_pct_to_cam(),
         cam_size=(100, 100), num_tests=1,

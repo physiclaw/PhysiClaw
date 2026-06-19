@@ -57,7 +57,6 @@ def _wire_hardware(pc: PhysiClaw, *, transforms=None):
     pc.calibration.transforms.return_value = t
     pc.calibration.summary.return_value = {"step1": "OK"}
     pc.calibration.cam_rotation = None
-    pc.calibration.z_tap = None
     pc.calibration.pct_to_grbl = None
     pc.calibration.pct_to_grbl_mm.return_value = (5.0, 6.0)
 
@@ -251,16 +250,14 @@ def test_connect_arm_closes_existing(mocker, pc: PhysiClaw) -> None:
     assert pc._arm is new
 
 
-def test_connect_arm_applies_cached_z_and_mapping(mocker) -> None:
+def test_connect_arm_applies_cached_mapping(mocker) -> None:
     p = PhysiClaw()
-    p.calibration.z_tap = -2.5
     p.calibration.pct_to_grbl = _identity_pct_to_grbl()
     new = MagicMock()
     mocker.patch.object(orchestrator, "StylusArm", return_value=new)
 
     p.connect_arm()
 
-    assert new.Z_DOWN == -2.5
     new.set_direction_mapping.assert_called_once_with((10.0, 0.0), (0.0, 20.0))
 
 
@@ -600,9 +597,7 @@ def test_swipe_dispatches(pc: PhysiClaw) -> None:
     out = pc.swipe([0.1, 0.1, 0.2, 0.2], "up", "m", "fast")
 
     assert "Swiped up m" in out
-    pc._arm._pen_down.assert_called_once()
-    pc._arm._linear_move.assert_called_once()
-    pc._arm._pen_up.assert_called_once()
+    pc._arm.swipe_to.assert_called_once()
 
 
 # ---------- send_to_clipboard ----------
@@ -723,7 +718,7 @@ def test_home_screen_swipes_up(pc: PhysiClaw) -> None:
     out = pc.home_screen()
 
     assert "Went to home screen" in out
-    pc._arm._linear_move.assert_called_once()
+    pc._arm.swipe_to.assert_called_once()
 
 
 def test_go_back_swipes_right(pc: PhysiClaw) -> None:
@@ -741,7 +736,7 @@ def test_force_quit_runs_four_gestures(pc: PhysiClaw) -> None:
 
     assert "Force-quit" in out
     # Three swipes + one tap.
-    assert pc._arm._linear_move.call_count == 3
+    assert pc._arm.swipe_to.call_count == 3
     assert pc._arm.tap.call_count == 1
 
 
@@ -783,7 +778,7 @@ def test_shutdown_closes_arm_and_camera(pc: PhysiClaw) -> None:
 
     pc.shutdown()
 
-    pc._arm._pen_up.assert_called_once()
+    pc._arm.lift_stylus.assert_called_once()
     pc._arm.return_to_origin.assert_called_once()
     pc._arm.close.assert_called_once()
     pc._cam.close.assert_called_once()
@@ -793,3 +788,36 @@ def test_shutdown_handles_no_hardware() -> None:
     p = PhysiClaw()
 
     p.shutdown()  # no raise
+
+
+def test_shutdown_continues_when_coil_release_fails(pc: PhysiClaw) -> None:
+    # A failed stylus lift must not strand the serial/camera handles.
+    pc._arm = MagicMock()
+    pc._arm.lift_stylus.side_effect = RuntimeError("serial timeout")
+    pc._cam = MagicMock()
+
+    pc.shutdown()  # swallows the error
+
+    pc._arm.return_to_origin.assert_called_once()
+    pc._arm.close.assert_called_once()
+    pc._cam.close.assert_called_once()
+
+
+def test_shutdown_continues_when_arm_close_fails(pc: PhysiClaw) -> None:
+    # Camera must still close even if the arm teardown raises.
+    pc._arm = MagicMock()
+    pc._arm.return_to_origin.side_effect = RuntimeError("GRBL alarm")
+    pc._arm.close.side_effect = RuntimeError("port gone")
+    pc._cam = MagicMock()
+
+    pc.shutdown()
+
+    pc._arm.close.assert_called_once()  # attempted despite the prior failure
+    pc._cam.close.assert_called_once()
+
+
+def test_shutdown_swallows_camera_close_failure(pc: PhysiClaw) -> None:
+    pc._cam = MagicMock()
+    pc._cam.close.side_effect = RuntimeError("camera busy")
+
+    pc.shutdown()  # no raise

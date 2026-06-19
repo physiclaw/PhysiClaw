@@ -81,7 +81,6 @@ def _sanity(physiclaw, calib, phone) -> bool:
             physiclaw.arm,
             physiclaw.cam,
             calib,
-            cal.z_tap,
             cal.effective_rotation(),
             cal.pct_to_grbl,
             cal.pct_to_cam,
@@ -140,8 +139,8 @@ def try_resume(cam_index_override: int | None) -> bool:
         # without waiting for the phone's /bridge page to POST them again.
         _calib.screen_dimension = loaded.screen_dimension
     log.info(
-        f"--warm-start: loaded bundle (z_tap={loaded.z_tap}mm, "
-        f"rotation={loaded.cam_rotation}, complete={loaded.complete})"
+        f"--warm-start: loaded bundle (rotation={loaded.cam_rotation}, "
+        f"complete={loaded.complete})"
     )
 
     cal = physiclaw.calibration
@@ -199,6 +198,6 @@ def try_resume(cam_index_override: int | None) -> bool:
     physiclaw.mark_ready()
     log.info(
         f"--warm-start: resumed from bundle "
-        f"(z_tap={cal.z_tap}mm, cam={cam_index}) — MCP tools ready"
+        f"(cam={cam_index}) — MCP tools ready"
     )
     return True

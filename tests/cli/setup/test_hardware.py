@@ -375,8 +375,8 @@ def test_run_full_auto_path(mocker, tmp_path) -> None:
     def fake_calibrate(step, timeout=60, body=None):
         if step == "arm":
             return {
-                "status": "ok", "z_tap": -2.5, "pairs": 18,
-                "tilt_ratio": 0.001, "aligned": True, "z_cached": False,
+                "status": "ok", "pairs": 18,
+                "tilt_ratio": 0.001, "aligned": True,
             }
         if step == "camera":
             return {
@@ -413,8 +413,8 @@ def test_run_full_auto_with_warn_issues(mocker) -> None:
     def fake_calibrate(step, timeout=60, body=None):
         if step == "arm":
             return {
-                "status": "ok", "z_tap": -2.5, "pairs": 18,
-                "tilt_ratio": 0.5, "aligned": False, "z_cached": True,
+                "status": "ok", "pairs": 18,
+                "tilt_ratio": 0.5, "aligned": False,
             }
         if step == "camera":
             return {
@@ -482,8 +482,8 @@ def test_run_camera_auto_pick_falls_back_to_manual(mocker, tmp_path) -> None:
 
     def fake_calibrate(step, timeout=60, body=None):
         return {
-            "status": "ok", "z_tap": -2.5, "pairs": 18,
-            "tilt_ratio": 0.001, "aligned": True, "z_cached": False,
+            "status": "ok", "pairs": 18,
+            "tilt_ratio": 0.001, "aligned": True,
             "rotation_name": "0°", "coverage": 0.95, "issues": [],
             "calibrated": True, "passed": True,
             "clipboard": {"fetched": False},
@@ -515,8 +515,8 @@ def test_run_uses_cached_viewport_in_auto_mode(
 
     def fake_calibrate(step, timeout=60, body=None):
         return {
-            "status": "ok", "z_tap": -2.5, "pairs": 18,
-            "tilt_ratio": 0.001, "aligned": True, "z_cached": False,
+            "status": "ok", "pairs": 18,
+            "tilt_ratio": 0.001, "aligned": True,
             "rotation_name": "0°", "coverage": 0.95, "issues": [],
             "calibrated": True, "passed": True,
             "clipboard": {"fetched": False},

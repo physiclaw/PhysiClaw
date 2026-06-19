@@ -141,12 +141,15 @@ def test_init_uses_explicit_port_when_provided(mocker) -> None:
 # ---------- _send ----------
 
 
-def test_send_writes_command_with_crlf(mocker) -> None:
+def test_send_writes_command_with_lf_not_crlf(mocker) -> None:
+    # LF only: a trailing CR makes FluidNC ack an extra empty line, desyncing
+    # the reply stream. Lock in the single-LF terminator.
     arm, fake = _arm(mocker, responses=[b"ok\n"])
 
     arm._send("G0 X1 Y1")
 
-    assert fake.writes[-1] == b"G0 X1 Y1\r\n"
+    assert fake.writes[-1] == b"G0 X1 Y1\n"
+    assert b"\r" not in fake.writes[-1]
 
 
 def test_send_returns_immediately_when_wait_ok_false(mocker) -> None:
@@ -180,6 +183,20 @@ def test_send_raises_on_alarm_response(mocker) -> None:
 
     with pytest.raises(Exception, match="GRBL alarm"):
         arm._send("G0 X0 Y0")
+
+
+def test_send_optional_error_does_not_desync_next_command(mocker) -> None:
+    # FluidNC rejects a read-only setting with `error:162` then a trailing
+    # `[MSG:ERR: ...]` line (LF terminator → no extra ok). After swallowing the
+    # optional error, the stray `[MSG]` is a non-terminator the next command's
+    # read loop skips, so M5 still reads its OWN ok and never sees a stale one.
+    arm, _ = _arm(mocker, responses=[
+        b"error:162\n", b"[MSG:ERR: Read-only setting]\n",  # $32=0 reply (no ok)
+        b"ok\n",  # M5's own reply
+    ])
+
+    arm._send("$32=0", optional=True)
+    arm._send("M5")  # must not raise — skips the stray [MSG], reads its ok
 
 
 # ---------- _query_status ----------
@@ -284,12 +301,13 @@ def test_position_raises_when_unparseable(mocker) -> None:
 
 
 def test_setup_unlocks_when_alarm_present(mocker) -> None:
-    # Setup runs: VERSION → status → SET_ORIGIN → MM → ABS → F → IDLE → $10=0
-    # If alarm detected, also unlock between status and SET_ORIGIN.
+    # Setup runs: VERSION → status → SET_ORIGIN → MM → ABS → F → IDLE →
+    # $10=0 → $32 → $30 → M5. If alarm detected, also unlock between
+    # status and SET_ORIGIN.
     arm, fake = _arm(
         mocker,
-        # Responses: $I + $X (unlock) + 6 setup commands = 8 ok's
-        responses=[b"ok\n"] * 8,
+        # $I + $X (unlock) + 6 base + $32 + $30 + M5 = 11 ok's
+        responses=[b"ok\n"] * 11,
         status_replies=[b"<Alarm|WPos:0,0>\n"],
     )
 
@@ -302,16 +320,46 @@ def test_setup_unlocks_when_alarm_present(mocker) -> None:
     assert b"$10=0" in written
 
 
-def test_setup_skips_unlock_when_no_alarm(mocker) -> None:
+def test_setup_configures_solenoid_pwm(mocker) -> None:
     arm, fake = _arm(
         mocker,
-        responses=[b"ok\n"] * 7,  # no $X
+        responses=[b"ok\n"] * 10,
         status_replies=[b"<Idle|WPos:0,0>\n"],
     )
 
     arm.setup()
 
-    assert b"$X\r\n" not in fake.writes
+    written = b"".join(fake.writes)
+    assert b"$32=0" in written  # spindle mode
+    assert b"$30=1000" in written  # S-range ceiling
+    assert fake.writes[-1] == b"M5\n"  # failsafe coil-off last
+
+
+def test_setup_skips_unlock_when_no_alarm(mocker) -> None:
+    arm, fake = _arm(
+        mocker,
+        responses=[b"ok\n"] * 10,  # no $X
+        status_replies=[b"<Idle|WPos:0,0>\n"],
+    )
+
+    arm.setup()
+
+    assert b"$X\n" not in fake.writes
+
+
+def test_setup_swallows_optional_pwm_errors(mocker) -> None:
+    # FluidNC rejects live $32/$30 writes (error:162) — setup must not raise.
+    arm, fake = _arm(
+        mocker,
+        # $I, G92, G21, G90, F, $1, $10 ok (7) → $32 error:162 →
+        # $30 error:3 → M5 ok
+        responses=[b"ok\n"] * 7 + [b"error:162\n", b"error:3\n", b"ok\n"],
+        status_replies=[b"<Idle|WPos:0,0>\n"],
+    )
+
+    arm.setup()  # must not raise
+
+    assert fake.writes[-1] == b"M5\n"
 
 
 def test_unlock_sends_X(mocker) -> None:
@@ -358,39 +406,30 @@ def test_set_direction_mapping_builds_8_directions() -> None:
     assert arm.MOVE_DIRECTIONS["top"] == (-0.0, -1.0)
 
 
-# ---------- pen / motion primitives ----------
+# ---------- solenoid / motion primitives ----------
 
 
-def test_pen_down_raises_when_z_unset(mocker) -> None:
-    arm, _ = _arm(mocker, responses=[])
-
-    with pytest.raises(RuntimeError, match="Z_DOWN not set"):
-        arm._pen_down()
+# Solenoid contact mechanics (strike / hold / release) are unit-tested in
+# test_solenoid.py. Here we only verify the arm composes a Solenoid bound to
+# its own transport and that the gestures drive it onto the wire.
 
 
-def test_pen_down_uses_calibrated_z(mocker) -> None:
-    arm, fake = _arm(mocker, responses=[b"ok\n"])
-    arm.Z_DOWN = -2.5
+def test_arm_owns_a_solenoid_bound_to_its_transport(mocker) -> None:
+    arm, _ = _arm(mocker)
 
-    arm._pen_down()
-
-    assert any(b"Z-2.5" in w for w in fake.writes)
-
-
-def test_pen_down_accepts_override_z(mocker) -> None:
-    arm, fake = _arm(mocker, responses=[b"ok\n"])
-
-    arm._pen_down(z=-3.0, speed=4000)
-
-    assert any(b"Z-3.0" in w and b"F4000" in w for w in fake.writes)
+    assert isinstance(arm.solenoid, arm_mod.Solenoid)
+    # Bound to this arm's send/dwell so solenoid G-code flows over its serial.
+    assert arm.solenoid._send == arm._send
+    assert arm.solenoid._dwell == arm._dwell
 
 
-def test_pen_up_drives_z_to_zero(mocker) -> None:
-    arm, fake = _arm(mocker, responses=[b"ok\n"])
+def test_lift_stylus_releases_the_solenoid(mocker) -> None:
+    arm, _ = _arm(mocker)
+    arm.solenoid = mocker.MagicMock()
 
-    arm._pen_up()
+    arm.lift_stylus()
 
-    assert any(b"Z0.0" in w for w in fake.writes)
+    arm.solenoid.release.assert_called_once_with()
 
 
 def test_dwell_emits_G4(mocker) -> None:
@@ -420,125 +459,74 @@ def test_linear_move_emits_G1(mocker) -> None:
     assert any(b"G1 X0.000Y1.000" in w for w in fake.writes)
 
 
-# ---------- _hold_contact ----------
-
-
-def test_hold_contact_short_does_not_set_motors_always_on(mocker) -> None:
-    arm, fake = _arm(
-        mocker,
-        # _pen_down + _dwell + _pen_up = 3 ok's
-        responses=[b"ok\n"] * 3,
-        status_replies=[b"<Idle|WPos:0,0>\n"],
-    )
-    arm.Z_DOWN = -2.0
-
-    arm._hold_contact(0.05)  # under 0.2s threshold
-
-    assert b"$1=255\r\n" not in fake.writes
-
-
-def test_hold_contact_long_keeps_motors_on(mocker) -> None:
-    arm, fake = _arm(
-        mocker,
-        # $1=255 + pen_down + dwell + pen_up + $1=250 = 5 ok's
-        responses=[b"ok\n"] * 5,
-        status_replies=[b"<Idle|WPos:0,0>\n"],
-    )
-    arm.Z_DOWN = -2.0
-
-    arm._hold_contact(0.5)
-
-    written = b"".join(fake.writes)
-    assert b"$1=255" in written
-    assert b"$1=250" in written
-
-
-def test_hold_contact_restores_motors_even_on_failure(mocker) -> None:
-    arm, fake = _arm(
-        mocker,
-        # $1=255 ok, then pen_down raises (no further ok), $1=250 retry...
-        responses=[b"ok\n", b"error:1\n"] + [b"ok\n"] * 5,
-        status_replies=[],
-    )
-    arm.Z_DOWN = -2.0
-
-    with pytest.raises(Exception):
-        arm._hold_contact(0.5)
-
-    written = b"".join(fake.writes)
-    # Restore call still happened.
-    assert b"$1=250" in written
-
-
-# ---------- _set_motors_always_on ----------
-
-
-def test_set_motors_always_on_retries_via_unlock(mocker) -> None:
-    arm, fake = _arm(
-        mocker,
-        # First $1=255 errors → unlock + $1=255 retry succeeds.
-        responses=[b"error:1\n", b"ok\n", b"ok\n"],
-    )
-
-    arm._set_motors_always_on(True)
-
-    written = b"".join(fake.writes)
-    assert b"$X" in written
-    assert b"$1=255" in written
-
-
 # ---------- public gestures ----------
 
 
-def test_tap_dispatches_short_hold(mocker) -> None:
-    arm, _ = _arm(
+def test_tap_strikes_solenoid(mocker) -> None:
+    arm, fake = _arm(
         mocker,
-        responses=[b"ok\n"] * 3,
+        # _strike (M3 S1000, G4, M5, G4 rebound) = 4 ok's, then wait_idle.
+        responses=[b"ok\n"] * 4,
         status_replies=[b"<Idle|WPos:0,0>\n"],
     )
-    arm.Z_DOWN = -2.0
 
     arm.tap()
 
+    written = b"".join(fake.writes)
+    assert b"M3 S1000" in written
+    assert b"G4 P0.08" in written  # TAP_DURATION
+    assert b"M5" in written
+    assert b"G4 P0.2" in written  # spring-rebound dwell before any next move
 
-def test_double_tap_dispatches(mocker) -> None:
+
+def test_double_tap_fires_two_strikes(mocker) -> None:
     arm, fake = _arm(
         mocker,
-        # 6 commands: pen_down, dwell, pen_up, dwell, pen_down, dwell, pen_up,
-        # then status query for wait_idle.
-        responses=[b"ok\n"] * 7,
+        # strike(4) + strike(4) = 8 ok's, then status. No extra gap — the
+        # first strike's rebound dwell separates the two taps.
+        responses=[b"ok\n"] * 8,
         status_replies=[b"<Idle|WPos:0,0>\n"],
     )
-    arm.Z_DOWN = -2.0
 
     arm.double_tap()
 
-    # Two pen_down emits in the wire log.
-    z_down_count = sum(1 for w in fake.writes if b"Z-2.0F" in w)
-    assert z_down_count == 2
+    # Two strikes in the wire log, each followed by its rebound dwell.
+    strike_count = sum(1 for w in fake.writes if w == b"M3 S1000\n")
+    rebound_count = sum(1 for w in fake.writes if w == b"G4 P0.2\n")
+    assert strike_count == 2
+    assert rebound_count == 2  # tip lifts clear between and after the strikes
 
 
-def test_long_press_dispatches(mocker) -> None:
-    arm, _ = _arm(
+def test_long_press_strikes_and_holds(mocker) -> None:
+    arm, fake = _arm(
         mocker,
-        responses=[b"ok\n"] * 5,
+        responses=[b"ok\n"] * 6,
         status_replies=[b"<Idle|WPos:0,0>\n"],
     )
-    arm.Z_DOWN = -2.0
 
     arm.long_press()
 
+    written = b"".join(fake.writes)
+    assert b"M3 S1000" in written  # strike
+    assert b"M3 S500" in written  # hold current (HOLD_S)
+    assert b"G4 P1.2" in written  # LONG_PRESS_DURATION
+    assert b"G4 P0.2" in written  # spring-rebound dwell on release
 
-def test_swipe_emits_relative_linear_move(mocker) -> None:
-    arm, fake = _arm(mocker, responses=[b"ok\n"] * 4)
-    arm.Z_DOWN = -2.0
+
+def test_swipe_holds_solenoid_across_linear_move(mocker) -> None:
+    arm, fake = _arm(mocker, responses=[b"ok\n"] * 7)
     arm.set_direction_mapping(right_vec=(1.0, 0.0), down_vec=(0.0, 1.0))
 
     arm.swipe("right", speed="fast")
 
     written = b"".join(fake.writes)
+    # Swipe strikes then drops to the unified HOLD_S (S500) for the slide.
+    assert b"M3 S1000" in written  # strike to make contact
+    assert b"M3 S500" in written  # held at HOLD_S during the slide
     assert b"G91G1" in written
     assert b"F10000" in written  # fast speed
+    assert written.rfind(b"M5") > written.rfind(b"G91G1")  # release after slide
+    assert written.rfind(b"G4 P0.2") > written.rfind(b"M5")  # rebound before park
 
 
 def test_swipe_raises_when_directions_unset(mocker) -> None:
@@ -546,6 +534,24 @@ def test_swipe_raises_when_directions_unset(mocker) -> None:
 
     with pytest.raises(RuntimeError, match="MOVE_DIRECTIONS not set"):
         arm.swipe("right")
+
+
+def test_swipe_to_presses_slides_to_endpoint_releases(mocker) -> None:
+    # press(3) + G1 linear(1) + release(2) = 6 ok's, then wait_idle.
+    arm, fake = _arm(
+        mocker, responses=[b"ok\n"] * 6,
+        status_replies=[b"<Idle|WPos:0,0>\n"],
+    )
+
+    arm.swipe_to(12.5, -4.0, speed="slow")
+
+    written = b"".join(fake.writes)
+    assert b"M3 S1000" in written  # strike to make contact
+    assert b"M3 S500" in written  # held at HOLD_S during the slide
+    assert b"G1 X12.500Y-4.000" in written  # slide to the mm endpoint
+    assert b"F3000" in written  # slow speed
+    assert written.rfind(b"M5") > written.rfind(b"G1 X12.500")  # release after slide
+    assert written.rfind(b"G4 P0.2") > written.rfind(b"M5")  # rebound before park
 
 
 # ---------- move ----------
@@ -590,22 +596,22 @@ def test_move_raises_when_directions_unset(mocker) -> None:
 # ---------- close ----------
 
 
-def test_close_releases_motors_and_closes_serial(mocker) -> None:
-    arm, fake = _arm(mocker, responses=[b"ok\n"])
+def test_close_releases_coil_and_closes_serial(mocker) -> None:
+    arm, fake = _arm(mocker, responses=[b"ok\n"] * 2)
 
     arm.close()
 
+    assert any(w == b"M5\n" for w in fake.writes)  # coil released
     assert fake.closed is True
 
 
-def test_close_swallows_motor_release_failure(mocker) -> None:
+def test_close_swallows_coil_release_failure(mocker) -> None:
     arm, fake = _arm(
         mocker,
-        # $1=250 errors three times → outer try suppresses.
-        responses=[b"error:1\n", b"ok\n"] * 6,  # endless cycle
+        responses=[b"error:1\n"],  # M5 release errors
     )
 
-    # Even if motor restore retries, close() must not raise.
+    # Even if the release errors, close() must not raise.
     arm.close()
 
     assert fake.closed is True

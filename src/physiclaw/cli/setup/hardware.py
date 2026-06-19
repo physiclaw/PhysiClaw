@@ -206,7 +206,7 @@ def run(auto: bool = False, trace: bool = False) -> None:
     print("\n── 5. Viewport shift ──")
     # Cache policy: interactive setup always re-measures; --auto trusts
     # the cached screenshot at ~/.physiclaw/calibration/cache/viewport.png
-    # if it exists. Mirrors the z_tap `fresh` flag in step 7.
+    # if it exists.
     vp_cache = next(
         (p for p in _viewport_cache_candidates() if p.exists()), None
     )
@@ -236,7 +236,7 @@ def run(auto: bool = False, trace: bool = False) -> None:
     _done("Stylus positioned")
 
     print("\n── 7. Arm calibration ──")
-    print("  One pass: find Z depth, tap 18 points, fit screen→arm mapping.")
+    print("  One pass: tap 18 points with the solenoid, fit screen→arm mapping.")
     if ask("Don't touch anything. Ready?", auto):
         def _arm_fail(resp):
             return (
@@ -244,24 +244,14 @@ def run(auto: bool = False, trace: bool = False) -> None:
                 f"{(resp or {}).get('message', 'no response')}"
             )
 
-        # Interactive setup forces a fresh first-contact descent —
-        # the cached z_tap from `bundle.json` is only trusted in auto
-        # mode (e.g., warm-start re-calibration where speed matters).
-        r = calibrate_retry(
-            "arm", _arm_fail, "Retry?", auto, timeout=120,
-            body={"fresh": not auto},
-        )
-        z_note = " (cached)" if r.get("z_cached") else ""
+        r = calibrate_retry("arm", _arm_fail, "Retry?", auto, timeout=120)
         tilt = r.get("tilt_ratio", 0)
         if not r.get("aligned"):
             _fail(
                 f"Phone/arm axes skewed (tilt {tilt*100:.1f}%) — "
                 "straighten phone and rerun if this persists"
             )
-        _done(
-            f"Arm ready: z_tap={r.get('z_tap')}mm{z_note}, "
-            f"{r.get('pairs')} tap pairs, tilt={tilt:.3f}"
-        )
+        _done(f"Arm ready: {r.get('pairs')} tap pairs, tilt={tilt:.3f}")
 
     print("\n── 8. Camera calibration ──")
     print("  Adjust camera, then detect rotation + check phone fills the frame.")

@@ -109,7 +109,6 @@ def test_try_resume_returns_false_when_bundle_incomplete(
     fake_cal.complete = False
     fake_cal.viewport_shift = None
     fake_cal.screen_dimension = None
-    fake_cal.z_tap = -2.0
     fake_cal.cam_rotation = 0
     mocker.patch(
         "physiclaw.core.calibration.state.Calibration.load",
@@ -140,7 +139,6 @@ def test_try_resume_returns_false_when_hardware_connect_raises(
     fake_cal.viewport_shift = None
     fake_cal.screen_dimension = None
     fake_cal.cam_index = 0
-    fake_cal.z_tap = -2.0
     fake_cal.cam_rotation = 0
     mocker.patch(
         "physiclaw.core.calibration.state.Calibration.load",
@@ -175,7 +173,6 @@ def _ready_bundle() -> MagicMock:
     cal.viewport_shift = MagicMock()
     cal.screen_dimension = (390, 844)
     cal.cam_index = 1
-    cal.z_tap = -2.0
     cal.cam_rotation = 0
     cal.pct_to_grbl = MagicMock()
     cal.pct_to_cam = MagicMock()

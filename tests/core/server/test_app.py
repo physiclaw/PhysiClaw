@@ -58,8 +58,8 @@ def test_calibration_starts_empty_at_import() -> None:
     from physiclaw.core.server import app
 
     cal = app.physiclaw.calibration
-    assert cal.z_tap is None
     assert cal.pct_to_grbl is None
+    assert cal.cam_rotation is None
 
 
 # ---------- shutdown ----------

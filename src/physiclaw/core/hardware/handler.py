@@ -36,7 +36,7 @@ async def handle_status(request, physiclaw):
     """GET /api/status — current hardware + calibration status.
 
     Returns whether the arm and camera are connected, intermediate
-    calibration progress (z_tap, rotation, mappings, etc.), and whether
+    calibration progress (rotation, mappings, etc.), and whether
     the full chain is calibrated and ready for tap operations.
     """
     return JSONResponse(physiclaw.status())

@@ -1,18 +1,23 @@
 """
 GRBL stylus arm controller for phone touch automation.
 
+The arm owns the GRBL serial transport and the X/Y gantry, and exposes the
+high-level touch gestures (tap, double-tap, long-press, swipe, move). The
+touch (Z) itself is a solenoid driven through the spindle PWM pin — that
+actuator lives in :class:`physiclaw.core.hardware.solenoid.Solenoid`, which
+this class composes and drives. There is no stepper Z axis and no Z depth to
+calibrate — the solenoid stroke is mechanical.
+
 IMPORTANT: The arm must be calibrated before use (run calibrate.py).
-Calibration determines:
-  - Z depth: how far the stylus tip must descend to touch the screen
-    (too far will break the phone screen)
-  - X/Y mapping: which arm axis maps to which phone axis
-    (e.g. arm X+ = phone right, arm Y+ = phone down)
-    (place the phone aligned with the arm axes, no rotation — portrait or landscape both work)
+Calibration determines only the X/Y mapping: which arm axis maps to
+which phone axis (e.g. arm X+ = phone right, arm Y+ = phone down).
+Place the phone aligned with the arm axes, no rotation — portrait or
+landscape both work.
 
 During calibration, the user manually positions the stylus right above
 the center orange circle on the phone — this becomes arm position (0, 0).
 After calibration, phone directions (right/left/up/down) are mapped
-to arm axes automatically. Z = Z_DOWN touches screen, Z = 0 lifts off.
+to arm axes automatically.
 """
 
 import logging
@@ -20,12 +25,20 @@ import serial
 import time
 
 from physiclaw.core.hardware.grbl import detect_grbl
+from physiclaw.core.hardware.solenoid import Solenoid
 
 log = logging.getLogger(__name__)
 
 
+# Error codes that mean "this firmware doesn't take this setting at
+# runtime" — the value lives in YAML config (FluidNC) or isn't supported.
+# Swallowed only when a command is sent with optional=True. Matches
+# scripts/grbl_solenoid_test.py.
+_OPTIONAL_ERRORS = frozenset({"error:3", "error:162"})
+
+
 # ─── G-code templates ────────────────────────────────────────
-# All G-code strings in one place for easy audit and modification.
+# Transport + XY motion only. Solenoid (M3/M5) G-code lives in solenoid.py.
 
 GCODE_SET_ORIGIN = "G92 X0.0 Y0.0 Z0"
 GCODE_MM_UNITS = "G21"
@@ -34,8 +47,6 @@ GCODE_DEFAULT_F = "F8000"
 GCODE_IDLE_DELAY = "$1=250"
 GCODE_UNLOCK = "$X"
 GCODE_VERSION = "$I"
-GCODE_PEN_DOWN = "G1G90 Z{z}F{f}"  # absolute Z down
-GCODE_PEN_UP = "G1G90 Z{z}F{f}"  # absolute Z up
 GCODE_FAST_MOVE = "G0 X{x:.3f}Y{y:.3f}F{f}"  # rapid XY (G0)
 GCODE_LINEAR_MOVE = "G1 X{x:.3f}Y{y:.3f}F{f}"  # controlled XY (G1)
 GCODE_REL_FAST = "G91G0 X{x:.3f}Y{y:.3f}"  # relative rapid
@@ -46,18 +57,11 @@ GCODE_DWELL = "G4 P{s}"  # dwell for s seconds (planner-side)
 
 
 class StylusArm:
-    # Z-axis parameters
-    Z_DOWN = None  # pen down position — must be set by calibration (calibrate.py)
-    Z_UP = 0.0  # pen up position (spring rebound)
-    # Z-axis speed — matches human finger tap (~100 mm/s).
-    # F6000 is realistic and avoids slamming the screen.
-    Z_SPEED = 6000
-
-    # Gesture timing (seconds)
+    # Gesture timing (seconds) — how long the solenoid stays on the glass for
+    # each gesture. The solenoid's own electrical/mechanical constants (strike
+    # duty, hold duty, rebound) live in solenoid.Solenoid.
     TAP_DURATION = 0.08  # phone threshold ~50ms, 80ms has margin
-    DOUBLE_TAP_GAP = 0  # no dwell gap; pen travel alone provides ~70ms gap
     LONG_PRESS_DURATION = 1.2  # iOS/Android threshold ~500ms, 800~1000ms is safe
-    LONG_PRESS_ADVANCE = 0.25  # mm extra Z to travel during long press hold
     SWIPE_DISTANCE = 15  # mm, default swipe length
     MOVE_DIRECTIONS = (
         None  # set by set_direction_mapping() — maps phone directions to arm (x, y)
@@ -82,16 +86,28 @@ class StylusArm:
 
         self.ser = serial.Serial(port, baudrate, timeout=3)
         self.port = port
+        # The Z executor: a solenoid driven over this arm's GRBL channel.
+        self.solenoid = Solenoid(send=self._send, dwell=self._dwell)
         time.sleep(2)
         self.ser.reset_input_buffer()
         log.info(f"Arm connected: {port}")
 
     # ─── Low-level communication ─────────────────────────────
 
-    def _send(self, cmd, wait_ok=True):
-        """Send a single command."""
+    def _send(self, cmd, wait_ok=True, optional=False):
+        """Send a single command, block until 'ok'.
+
+        optional=True swallows the "setting not accepted at runtime" error
+        codes (error:3 / error:162) so PWM-config writes ($32/$30) work on
+        FluidNC (which takes them from YAML) and a bare GRBL board alike.
+        """
         log.debug(f">>> {cmd}")
-        self.ser.write((cmd + "\r\n").encode())
+        # LF only — NOT CRLF. FluidNC v4 treats the trailing `\r` + `\n` as two
+        # line endings (the command + an empty line) and acks BOTH with `ok`;
+        # that extra `ok` lags every reply by one and desyncs the stream (a
+        # later command then reads a stale error). `\n` is the canonical GRBL
+        # terminator and yields exactly one reply per command.
+        self.ser.write((cmd + "\n").encode())
 
         if not wait_ok:
             return
@@ -110,6 +126,13 @@ class StylusArm:
             if line == "ok":
                 break
             if line.startswith("error"):
+                if optional and line.replace(" ", "") in _OPTIONAL_ERRORS:
+                    # FluidNC follows a rejected setting with a trailing
+                    # `[MSG:ERR: ...]` line (no `ok`). It's a non-terminator,
+                    # so the next command's read loop skips it harmlessly — no
+                    # draining needed now that we send LF (single reply each).
+                    log.debug(f"{cmd}: {line} not supported at runtime — skipping")
+                    break
                 raise Exception(f"GRBL error: {line}  command: {cmd}")
             if line.startswith("ALARM"):
                 raise Exception(f"GRBL alarm: {line}, call unlock() first")
@@ -198,10 +221,14 @@ class StylusArm:
         self._send(GCODE_MM_UNITS)
         self._send(GCODE_ABSOLUTE)
         self._send(GCODE_DEFAULT_F)
-        self._send(GCODE_IDLE_DELAY)  # 250ms motor idle delay
-        self._send("$10=0")  # report WPos in status (not MPos)
-        # 80ms tap is well within range
-        # auto power-off after 250ms idle, safer than $1=255
+        # $-settings are firmware-owned: FluidNC takes them from YAML and
+        # rejects live writes (error:3 "Invalid $ statement" / error:162
+        # "Read-only"), while bare GRBL accepts them. Send best-effort so both
+        # work — same rationale as the solenoid's $32/$30 in configure().
+        self._send(GCODE_IDLE_DELAY, optional=True)  # $1=250 motor idle delay
+        self._send("$10=0", optional=True)  # report WPos in status (not MPos)
+
+        self.solenoid.configure()  # spindle PWM mode + range, coil off
 
         log.info("Arm setup complete")
 
@@ -241,31 +268,10 @@ class StylusArm:
 
     # ─── Basic motions ──
 
-    def _pen_down(self, z=None, speed=None):
-        """Lower stylus. G1G90: always reassert absolute mode to prevent
-        Z-axis crushing the screen due to mode errors.
-        Buffers the command only — caller must use _dwell() or wait_idle()
-        to ensure contact before proceeding.
-        z: override Z depth (used by calibration probing). Defaults to Z_DOWN.
-        speed: override Z speed. Defaults to Z_SPEED.
-        """
-        z = z if z is not None else self.Z_DOWN
-        if z is None:
-            raise RuntimeError("Z_DOWN not set — run calibration first")
-        f = speed or self.Z_SPEED
-        self._send(GCODE_PEN_DOWN.format(z=z, f=f))
-
-    def _pen_up(self):
-        """Raise stylus. Actively drive Z back to 0 instead of relying on spring,
-        keeps GRBL coordinate tracking in sync.
-        """
-        self._send(GCODE_PEN_UP.format(z=self.Z_UP, f=self.Z_SPEED))
-
     def _dwell(self, seconds):
         """Hold position for duration (GRBL-side timing, 50ms granularity).
         G4 is a sync barrier: drains the planner first, then dwells.
-        _send() blocks until the dwell completes. The $1 idle timer
-        runs during the dwell — caller must set $1=255 for long holds.
+        _send() blocks until the dwell completes.
         """
         self._send(GCODE_DWELL.format(s=seconds))
 
@@ -274,50 +280,9 @@ class StylusArm:
         self._send(GCODE_FAST_MOVE.format(x=x, y=y, f=speed))
 
     def _linear_move(self, x, y, speed=8000):
-        """
-        Linear move at controlled speed (G1) — used for swipe while pen is down.
-        Continuous XY motion keeps resetting $1 timer, Z motor stays powered,
-        spring cannot rebound.
-        """
+        """Linear move at controlled speed (G1) — used for a swipe slide while
+        the solenoid holds the tip down."""
         self._send(GCODE_LINEAR_MOVE.format(x=x, y=y, f=speed))
-
-    # ─── Tap mechanics ───────────────────────────────────────
-
-    def _hold_contact(self, duration):
-        """Hold stylus on screen for duration seconds (GRBL-timed via G4).
-
-        G4 is a sync barrier: it drains the planner, then dwells. During
-        the dwell, the $1 idle timer runs. For durations > $1 timeout
-        (250ms), set $1=255 to keep the Z motor powered and prevent
-        spring rebound.
-
-        G4 has 50ms granularity — actual dwell is rounded up to the
-        next multiple of 50ms (e.g. 80ms → 100ms). Acceptable for
-        phone touch thresholds.
-        """
-        needs_hold = duration > 0.2
-        if needs_hold:
-            self._set_motors_always_on(True)
-        try:
-            self._pen_down()
-            self._dwell(duration)
-            self._pen_up()
-            self.wait_idle()
-        finally:
-            if needs_hold:
-                self._set_motors_always_on(False)
-
-    def _set_motors_always_on(self, always_on):
-        """Keep stepper motors powered ($1=255) or restore normal idle timeout ($1=250).
-        Retries on failure to prevent stuck state.
-        """
-        ms = 255 if always_on else 250
-        for _ in range(3):
-            try:
-                self._send(f"$1={ms}")
-                return
-            except Exception:
-                self.unlock()
 
     # ─── Public API (for AI agent) ─────────────────────────
 
@@ -339,27 +304,26 @@ class StylusArm:
 
     def tap(self):
         """Single tap at current position."""
-        self._hold_contact(self.TAP_DURATION)
+        self.solenoid.tap(self.TAP_DURATION)
+        self.wait_idle()
 
     def double_tap(self):
         """Double tap at current position.
-        G4 P0 sync barrier forces pen_up to complete before pen_down,
-        preventing GRBL motion planner from blending the two moves.
-        Total gap = pen_up travel + pen_down travel ≈ 70ms
-        (well under 300ms iOS double-tap threshold).
+
+        Two strikes back-to-back. The spring-rebound dwell inside the first
+        strike lifts the tip clear before the second, so they register as two
+        distinct taps rather than one long press — no extra gap is needed.
+        Down-to-down ≈ TAP_DURATION + Solenoid.RELEASE_MS (~0.28s), under the
+        ~300ms iOS double-tap window.
         """
-        self._pen_down()
-        self._dwell(self.TAP_DURATION)
-        self._pen_up()
-        self._dwell(self.DOUBLE_TAP_GAP)  # sync barrier — ensure pen fully rises
-        self._pen_down()
-        self._dwell(self.TAP_DURATION)
-        self._pen_up()
+        self.solenoid.tap(self.TAP_DURATION)
+        self.solenoid.tap(self.TAP_DURATION)
         self.wait_idle()
 
     def long_press(self):
         """Long press at current position."""
-        self._hold_contact(self.LONG_PRESS_DURATION)
+        self.solenoid.press_and_hold(self.LONG_PRESS_DURATION)
+        self.wait_idle()
 
     def swipe(self, direction, speed="medium"):
         """Swipe from current position in a cardinal direction.
@@ -374,17 +338,33 @@ class StylusArm:
         dx = mx / mag * d
         dy = my / mag * d
         f = self.SWIPE_SPEEDS[speed]
-        self._pen_down()  # Z down (queued)
-        self._send(
-            GCODE_REL_LINEAR.format(x=dx, y=dy, f=f)
-        )  # XY slide (queued after Z)
-        self._send(GCODE_ABSOLUTE)  # restore absolute mode
-        self._pen_up()  # Z up (queued after slide)
+        # pressed() holds the tip down (at HOLD_S) for the slide and guarantees
+        # release even on error, so a failed slide can't leave the coil hot.
+        with self.solenoid.held():
+            self._send(GCODE_REL_LINEAR.format(x=dx, y=dy, f=f))  # XY slide
+            self._send(GCODE_ABSOLUTE)  # restore absolute mode
+
+    def swipe_to(self, x, y, speed="medium"):
+        """Swipe to an absolute work-coordinate (x, y) in mm: press, slide,
+        release. Unlike :meth:`swipe` (relative cardinal direction), this
+        slides to a caller-computed endpoint — used by the orchestrator with
+        calibrated screen→arm mm coordinates."""
+        with self.solenoid.held():
+            self._linear_move(x, y, speed=self.SWIPE_SPEEDS[speed])
+        self.wait_idle()
+
+    def lift_stylus(self):
+        """Lift the stylus tip off the screen (release the Z actuator).
+
+        The arm-level name for "release contact" — callers don't need to know
+        Z is a solenoid. Used by teardown to clear the glass before homing.
+        """
+        self.solenoid.release()
 
     def close(self):
-        """Restore safe defaults and close serial port."""
+        """Release the solenoid and close serial port."""
         try:
-            self._set_motors_always_on(False)
+            self.solenoid.release()
         except Exception:
             pass
         self.ser.close()

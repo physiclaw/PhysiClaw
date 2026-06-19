@@ -163,7 +163,7 @@ class PhysiClaw:
         """Connect to the GRBL stylus arm (auto-detect USB port).
 
         Closes any previously connected arm first. ``_apply_bundle_to_arm``
-        propagates cached `z_tap` + direction mapping into the freshly-
+        propagates the cached direction mapping into the freshly-
         constructed arm IF a bundle has been loaded into
         ``self.calibration`` — only true on ``--warm-start``. Plain
         ``physiclaw server`` boots with empty calibration, so the
@@ -216,8 +216,6 @@ class PhysiClaw:
         if self._arm is None:
             return
         cal = self.calibration
-        if cal.z_tap is not None:
-            self._arm.Z_DOWN = cal.z_tap
         if cal.pct_to_grbl is not None:
             p = cal.pct_to_grbl
             right_vec = (float(p[0, 0]), float(p[1, 0]))
@@ -444,11 +442,7 @@ class PhysiClaw:
         ex, ey = t.swipe_end_pct(bbox, direction, self._SWIPE_DISTANCES[size])
         ex_mm, ey_mm = t.pct_to_grbl_mm(ex, ey)
         self.move_to_bbox_center(bbox)
-        arm = self._arm
-        arm._pen_down()
-        arm._linear_move(ex_mm, ey_mm, speed=arm.SWIPE_SPEEDS[speed])
-        arm._pen_up()
-        arm.wait_idle()
+        self._arm.swipe_to(ex_mm, ey_mm, speed)
 
     # ─── Public gestures (with lock) ─────────────────────────
 
@@ -630,9 +624,26 @@ class PhysiClaw:
     # ─── Lifecycle ─────────────────────────────────────────────
 
     def shutdown(self):
+        """Release the coil, home the arm, and close every device handle.
+
+        Teardown is best-effort: each step is guarded so a failure in one (a
+        serial timeout, a GRBL alarm, an already-disconnected device) can't
+        skip the rest and leak the serial/camera handle or strand the coil.
+        Steps run in safety order — release the coil first; ``arm.close`` also
+        re-attempts the release as a backstop, and the firmware drops the PWM
+        on alarm. Failures are logged, never raised, so callers (atexit /
+        signal handlers) can rely on shutdown completing.
+        """
+
+        def _safe(action, desc):
+            try:
+                action()
+            except Exception:
+                log.exception("shutdown: %s failed", desc)
+
         if self._arm:
-            self._arm._pen_up()
-            self._arm.return_to_origin()
-            self._arm.close()
+            _safe(self._arm.lift_stylus, "lift stylus")
+            _safe(self._arm.return_to_origin, "return to origin")
+            _safe(self._arm.close, "arm close")
         if self._cam:
-            self._cam.close()
+            _safe(self._cam.close, "camera close")

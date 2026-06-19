@@ -3,9 +3,9 @@
 Pre-cal: viewport shift — map viewport CSS coords to screenshot 0-1
          using a detected orange square in a phone screenshot.
 
-Arm side (``calibrate_arm``): find Z depth, tap probe triangle + 15-point
-         grid, fit screen→arm affine, derive tilt diagnostic, re-origin
-         at screen center.
+Arm side (``calibrate_arm``): tap probe triangle + 15-point grid (each
+         tap fires the solenoid — no Z depth to find), fit screen→arm
+         affine, derive tilt diagnostic, re-origin at screen center.
 
 Camera side: camera-rotation check, software frame-rotation from UP/RIGHT
          markers, 15-red-dot grid → screen→camera affine (``compute_camera_mapping``).
@@ -41,8 +41,9 @@ from physiclaw.core.vision.util import check_phone_in_frame
 
 log = logging.getLogger(__name__)
 
-SLOW_Z_SPEED = 6000
-PROBE_Z_SPEED = 6000
+# Slightly longer than a normal tap so flaky first contacts still register
+# during calibration probing.
+CAL_STRIKE_DURATION = 0.15
 
 VIEWPORT_CACHE_STEM = paths.calibration_cache_dir() / "viewport"
 
@@ -65,11 +66,9 @@ def _find_viewport_cache() -> Path | None:
     return None
 
 
-def _tap_once(arm: StylusArm, z: float, z_speed: int = PROBE_Z_SPEED):
-    """Single tap: pen down, dwell 150ms, pen up."""
-    arm._pen_down(z=z, speed=z_speed)
-    arm._dwell(0.15)
-    arm._pen_up()
+def _tap_once(arm: StylusArm):
+    """Single calibration tap: fire the solenoid for CAL_STRIKE_DURATION."""
+    arm.solenoid.tap(CAL_STRIKE_DURATION)
     arm.wait_idle()
 
 
@@ -202,38 +201,6 @@ def measure_viewport_shift(
     return transform
 
 
-# ─── Arm-side unified calibration ────────────────────────────
-
-
-def _descend_to_contact(
-    arm: StylusArm,
-    cal: CalibrationState,
-    z_start: float = 0.5,
-    z_max: float = 9.8,
-    step: float = 0.3,
-) -> float:
-    """Descend Z at the arm's current XY until a touch event registers.
-
-    Returns the first-contact Z in mm. Raises if nothing contacts by z_max —
-    usually means the stylus is off-screen or the phone isn't responsive.
-    """
-    log.info("  Z descent — finding first contact")
-    cal.flush_touches()
-    z = z_start
-    while z <= z_max:
-        z_rounded = round(z, 2)
-        _tap_once(arm, z_rounded, z_speed=SLOW_Z_SPEED)
-        time.sleep(0.3)
-        if cal.flush_touches():
-            log.info(f"    first contact at Z={z_rounded:.2f}mm")
-            return z_rounded
-        log.debug(f"    Z={z_rounded:.2f}mm — no contact")
-        z += step
-    raise RuntimeError(
-        f"No touch detected up to {z_max}mm — check stylus and phone placement."
-    )
-
-
 # ─── Camera frame calibration ───────────────────────────────
 
 
@@ -318,39 +285,32 @@ def _tap_and_read(
     cal: CalibrationState,
     gx: float,
     gy: float,
-    z_tap: float,
     max_retries: int = 3,
-) -> tuple[dict | None, float]:
-    """Move to (gx, gy), tap, return (touch dict, z_tap used).
+) -> dict | None:
+    """Move to (gx, gy), tap, return the touch dict (or None on failure).
 
-    On miss, retries with z_tap += 0.25mm up to max_retries times.
-    Returns updated z_tap so caller can use the deeper value going forward.
+    On a miss (no touch registered) the solenoid is simply re-fired — the
+    stroke is fixed, so there's no depth to deepen; misses are just flaky
+    contact or a brief unresponsive screen.
     """
     arm._fast_move(gx, gy)
     arm.wait_idle()
-    z = z_tap
     for attempt in range(max_retries + 1):
         cal.flush_touches()
-        _tap_once(arm, z)
+        _tap_once(arm)
         time.sleep(0.3)
         got = cal.flush_touches()
         if got:
-            if z > z_tap:
-                log.info(
-                    f"    tap at arm ({gx:.1f}, {gy:.1f})mm: hit after Z bump "
-                    f"to {z:.2f}mm"
-                )
-            return got[-1], z
+            return got[-1]
         if attempt < max_retries:
-            z = round(z + 0.25, 2)
             log.warning(
                 f"    tap at arm ({gx:.1f}, {gy:.1f})mm: missed, "
-                f"retry {attempt + 1}/{max_retries} with Z={z:.2f}mm"
+                f"retry {attempt + 1}/{max_retries}"
             )
     log.warning(
         f"    tap at arm ({gx:.1f}, {gy:.1f})mm: FAILED after {max_retries} retries"
     )
-    return None, z
+    return None
 
 
 PROBE_D = 10.0  # mm offset for the probe triangle
@@ -382,45 +342,35 @@ def _tilt_from_affine(pct_to_grbl: np.ndarray) -> float:
 def calibrate_arm(
     arm: StylusArm,
     cal: CalibrationState,
-    z_tap_hint: float | None = None,
-) -> tuple[float, np.ndarray, float, list[dict]]:
-    """Arm calibration — Z depth, screen↔arm affine, tilt diagnostic.
+) -> tuple[np.ndarray, float, list[dict]]:
+    """Arm calibration — screen↔arm affine + tilt diagnostic.
 
-    1. Find first-contact Z (skipped if ``z_tap_hint`` is provided — e.g.
-       from the cached value on disk).
-    2. Probe triangle: 3 taps at arm (0,0), (+10,0), (0,+10) with
-       z-bump-on-miss. Yields a bootstrap screen→arm affine.
-    3. Grid: for each of the 15 viewport grid positions predicted via
-       the bootstrap affine, tap with z-bump-on-miss. ``z_tap`` grows
-       to whatever depth the farthest grid point needs.
-    4. Fit the final affine from all 18 (arm mm, screen 0-1) pairs,
-       derive the tilt ratio, re-origin the arm at screen center.
+    1. Probe triangle: 3 taps at arm (0,0), (+10,0), (0,+10), re-firing on
+       a miss. Yields a bootstrap screen→arm affine.
+    2. Grid: for each of the 15 viewport grid positions predicted via the
+       bootstrap affine, tap (re-fire on miss).
+    3. Fit the final affine from all 18 (arm mm, screen 0-1) pairs, derive
+       the tilt ratio, re-origin the arm at screen center.
 
-    Returns ``(z_tap, pct_to_grbl, tilt_ratio, grid_touches)``. Tilt
+    Each tap fires the solenoid — there is no Z depth to find or bump.
+
+    Returns ``(pct_to_grbl, tilt_ratio, grid_touches)``. Tilt
     ``< TILT_ALIGNED_THRESHOLD`` means arm and phone axes are aligned;
     higher means the phone is rotated relative to arm travel.
     """
-    log.info("═══ Arm calibration — Z depth + screen↔arm mapping ═══")
+    log.info("═══ Arm calibration — screen↔arm mapping ═══")
     cal.set_phase("center")
     time.sleep(0.5)
 
-    if z_tap_hint is not None:
-        z_tap = round(z_tap_hint, 2)
-        log.info(f"  Z depth: using cached {z_tap}mm — skipping descent")
-    else:
-        z_contact = _descend_to_contact(arm, cal)
-        z_tap = round(z_contact + 0.25, 2)
-        log.info(f"  Z depth: starting at {z_tap}mm (first contact + 0.25mm margin)")
-
     # Probe triangle — bootstrap the screen→arm mapping.
     log.info(f"  Probe triangle: 3 taps at (0,0), (+{PROBE_D:.0f},0), (0,+{PROBE_D:.0f})")
-    t_center, z_tap = _tap_and_read(arm, cal, 0, 0, z_tap)
+    t_center = _tap_and_read(arm, cal, 0, 0)
     if not t_center:
         raise RuntimeError("Arm calibration FAILED — no touch at center")
-    t_x, z_tap = _tap_and_read(arm, cal, PROBE_D, 0, z_tap)
+    t_x = _tap_and_read(arm, cal, PROBE_D, 0)
     if not t_x:
         raise RuntimeError(f"Arm calibration FAILED — no touch at +{PROBE_D:.0f}mm X")
-    t_y, z_tap = _tap_and_read(arm, cal, 0, PROBE_D, z_tap)
+    t_y = _tap_and_read(arm, cal, 0, PROBE_D)
     if not t_y:
         raise RuntimeError(f"Arm calibration FAILED — no touch at +{PROBE_D:.0f}mm Y")
 
@@ -460,7 +410,7 @@ def calibrate_arm(
             f"    Grid {idx}/{len(grid)}: viewport ({col:.2f}, {row:.2f}) → "
             f"arm ({gx:.1f}, {gy:.1f})mm"
         )
-        touch, z_tap = _tap_and_read(arm, cal, gx, gy, z_tap)
+        touch = _tap_and_read(arm, cal, gx, gy)
         if not touch:
             log.warning(f"    Grid {idx}/{len(grid)}: NO TOUCH — skipped")
             continue
@@ -516,10 +466,9 @@ def calibrate_arm(
     cal.set_phase("center")
 
     log.info(
-        f"  ✓ Arm calibration done: z_tap={z_tap}mm, "
-        f"{len(grbl_pts)} pairs, tilt={tilt:.4f}"
+        f"  ✓ Arm calibration done: {len(grbl_pts)} pairs, tilt={tilt:.4f}"
     )
-    return z_tap, pct_to_grbl, tilt, grid_touches
+    return pct_to_grbl, tilt, grid_touches
 
 
 # ─── Step 5: Camera ↔ Screen mapping (Mapping B) ────────────
@@ -634,7 +583,6 @@ def validate_calibration(
     arm: StylusArm,
     cam: Camera,
     cal: CalibrationState,
-    z_tap: float,
     rotation: int,
     pct_to_grbl: np.ndarray,
     pct_to_cam: np.ndarray,
@@ -738,26 +686,21 @@ def validate_calibration(
             f"arm ({gx:.1f}, {gy:.1f})mm"
         )
 
-        # 5. Arm taps (retry with deeper z on miss)
+        # 5. Arm taps (re-fire the solenoid on miss — no depth to bump)
         arm._fast_move(gx, gy)
         arm.wait_idle()
         touch = None
-        z = z_tap
         for attempt in range(4):
             cal.flush_touches()
-            _tap_once(arm, z)
+            _tap_once(arm)
             time.sleep(0.3)
             got = cal.flush_touches()
             if got:
                 touch = got[-1]
-                if z > z_tap:
-                    z_tap = z
-                    log.info(f"    5. Tap: hit after Z bump to {z:.2f}mm")
                 break
-            z = round(z + 0.25, 2)
             log.warning(
                 f"    5. Tap: missed at arm ({gx:.1f}, {gy:.1f})mm, "
-                f"retry {attempt + 1}/3 with Z={z:.2f}mm"
+                f"retry {attempt + 1}/3"
             )
 
         if touch is None:
@@ -854,7 +797,6 @@ def verify_assistive_touch(
     - Phase "assistive_touch" already set on phone with nonce bits
     - User has positioned AT at the orange circle
     - cal.viewport_shift is set (from pre-cal)
-    - arm.Z_DOWN is set (from step 0)
 
     Returns:
         {

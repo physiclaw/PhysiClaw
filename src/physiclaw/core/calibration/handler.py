@@ -89,36 +89,21 @@ async def handle_measure_viewport_shift(
 async def handle_calibrate_arm(
     request, physiclaw, calib: CalibrationState, phone: PageState
 ):
-    """POST /api/calibrate/arm — unified Z depth + screen↔arm mapping.
+    """POST /api/calibrate/arm — screen↔arm mapping.
 
-    By default uses ``physiclaw.calibration.z_tap`` as the Phase A
-    descent hint if already known (from a loaded bundle or an earlier
-    in-session run) — speeds up warm-start re-calibration. The body
-    flag ``{"fresh": true}`` forces a fresh first-contact descent and
-    ignores the cached value; interactive `physiclaw setup hardware`
-    sends this so the operator gets a real recalibration, not the
-    cached number from a possibly-stale bundle.
-
-    Then runs the probe triangle + 15-point grid taps with
-    z-bump-on-miss and fits the screen↔arm affine. Writes ``z_tap``,
-    ``pct_to_grbl``, and the arm direction mapping into the in-memory
-    bundle. Bundle is only persisted to disk on full setup success
-    (validate).
+    Runs the probe triangle + 15-point grid taps (each fires the solenoid;
+    re-fires on a miss) and fits the screen↔arm affine. Writes
+    ``pct_to_grbl`` and the arm direction mapping into the in-memory bundle.
+    Bundle is only persisted to disk on full setup success (validate).
     """
-    fresh = bool((await _read_body(request)).get("fresh"))
 
     def _do():
         if physiclaw._arm is None:
             raise RuntimeError("Arm not connected")
         phone.set_mode("calibrate", phase="center")
-        hint = None if fresh else physiclaw.calibration.z_tap
         physiclaw.acquire()
         try:
-            z_tap, pct_to_grbl, tilt, touches = calibrate_arm(
-                physiclaw._arm, calib, z_tap_hint=hint
-            )
-            physiclaw._arm.Z_DOWN = z_tap
-            physiclaw.calibration.z_tap = z_tap
+            pct_to_grbl, tilt, touches = calibrate_arm(physiclaw._arm, calib)
             physiclaw.calibration.pct_to_grbl = pct_to_grbl
             right_vec = (float(pct_to_grbl[0, 0]), float(pct_to_grbl[1, 0]))
             down_vec = (float(pct_to_grbl[0, 1]), float(pct_to_grbl[1, 1]))
@@ -130,11 +115,9 @@ async def handle_calibrate_arm(
             # soon as `pct_to_grbl` is set, which happens above.
             physiclaw.park()
             return {
-                "z_tap": z_tap,
                 "pairs": len(touches) + 3,
                 "tilt_ratio": round(tilt, 4),
                 "aligned": tilt < TILT_ALIGNED_THRESHOLD,
-                "z_cached": hint is not None,
             }
         finally:
             physiclaw.release()
@@ -224,9 +207,8 @@ async def handle_validate_calibration(
         if physiclaw._arm is None:
             raise RuntimeError("Arm not connected")
         cal_state = physiclaw.calibration
-        if not cal_state.transforms_ready or cal_state.z_tap is None:
+        if not cal_state.transforms_ready:
             raise RuntimeError("Run arm calibration and camera-mapping first")
-        z_tap = cal_state.z_tap
         pct_to_grbl = cal_state.pct_to_grbl
         pct_to_cam = cal_state.pct_to_cam
         cam_size = cal_state.cam_size
@@ -237,7 +219,6 @@ async def handle_validate_calibration(
                 physiclaw._arm,
                 physiclaw._cam,
                 calib,
-                z_tap,
                 rotation,
                 pct_to_grbl,
                 pct_to_cam,

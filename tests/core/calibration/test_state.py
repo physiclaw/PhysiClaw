@@ -67,7 +67,6 @@ def test_empty_calibration_has_all_fields_none() -> None:
     c = Calibration()
 
     assert c.viewport_shift is None
-    assert c.z_tap is None
     assert c.cam_rotation is None
     assert c.pct_to_grbl is None
     assert c.pct_to_cam is None
@@ -100,7 +99,7 @@ def test_complete_property_is_false_until_every_required_field_set() -> None:
         screenshot_width=100, screenshot_height=200,
     )
 
-    # transforms_ready alone isn't enough — need viewport_shift, z_tap,
+    # transforms_ready alone isn't enough — need viewport_shift,
     # cam_rotation, screen_dimension on top.
     c = Calibration(
         pct_to_grbl=affine, pct_to_cam=affine, cam_size=(1920, 1080),
@@ -108,7 +107,6 @@ def test_complete_property_is_false_until_every_required_field_set() -> None:
     assert c.complete is False
 
     c.viewport_shift = vs
-    c.z_tap = -2.5
     c.cam_rotation = cv2.ROTATE_90_CLOCKWISE
     assert c.complete is False  # still missing screen_dimension
 
@@ -170,7 +168,6 @@ def test_summary_includes_filled_fields_with_per_field_formatting() -> None:
         screenshot_width=200, screenshot_height=400,
     )
     c = Calibration(
-        z_tap=-2.5,
         viewport_shift=vs,
         cam_rotation=cv2.ROTATE_180,
         pct_to_grbl=np.eye(2, 3),
@@ -180,7 +177,6 @@ def test_summary_includes_filled_fields_with_per_field_formatting() -> None:
 
     summary = c.summary()
 
-    assert summary["z_tap"] == "-2.5mm"
     assert summary["viewport_shift"] == "dpr=2.0, offset=(10, 20)"
     assert summary["rotation"] == "180°"
     assert summary["mapping_a"] == "OK"
@@ -226,7 +222,6 @@ def test_to_dict_with_empty_calibration_yields_all_nones() -> None:
 
     assert payload == {
         "viewport_shift": None,
-        "z_tap": None,
         "cam_rotation": None,
         "pct_to_grbl": None,
         "pct_to_cam": None,
@@ -258,7 +253,6 @@ def test_from_dict_round_trips_a_full_bundle() -> None:
     )
     original = Calibration(
         viewport_shift=vs,
-        z_tap=-2.5,
         cam_rotation=cv2.ROTATE_90_CLOCKWISE,
         pct_to_grbl=pct_to_grbl,
         pct_to_cam=pct_to_cam,
@@ -270,7 +264,6 @@ def test_from_dict_round_trips_a_full_bundle() -> None:
     restored = Calibration.from_dict(original.to_dict())
 
     assert restored.viewport_shift == vs
-    assert restored.z_tap == -2.5
     assert restored.cam_rotation == cv2.ROTATE_90_CLOCKWISE
     assert np.array_equal(restored.pct_to_grbl, pct_to_grbl)
     assert np.array_equal(restored.pct_to_cam, pct_to_cam)
@@ -283,7 +276,6 @@ def test_from_dict_with_all_nones_returns_empty_calibration() -> None:
     restored = Calibration.from_dict(
         {
             "viewport_shift": None,
-            "z_tap": None,
             "cam_rotation": None,
             "pct_to_grbl": None,
             "pct_to_cam": None,
@@ -296,9 +288,18 @@ def test_from_dict_with_all_nones_returns_empty_calibration() -> None:
     assert restored == Calibration()
 
 
+def test_from_dict_ignores_unknown_keys() -> None:
+    # from_dict reads only known fields, so a bundle carrying extra keys (an
+    # older or newer format) loads without error and ignores them.
+    restored = Calibration.from_dict({"cam_index": 1, "some_future_field": 42})
+
+    assert restored.cam_index == 1
+    assert not hasattr(restored, "some_future_field")
+
+
 def test_from_dict_reconstructs_pct_to_grbl_as_float64_ndarray() -> None:
     payload = {
-        "viewport_shift": None, "z_tap": None, "cam_rotation": None,
+        "viewport_shift": None, "cam_rotation": None,
         "pct_to_grbl": [[1, 0, 0], [0, 1, 0]],
         "pct_to_cam": None, "cam_size": None, "cam_index": None,
         "screen_dimension": None,
@@ -315,7 +316,7 @@ def test_from_dict_reconstructs_pct_to_grbl_as_float64_ndarray() -> None:
 
 def test_save_writes_two_space_indented_json_to_disk(tmp_path: Path) -> None:
     bundle_path = tmp_path / "bundle.json"
-    c = Calibration(z_tap=-2.5, cam_size=(800, 600))
+    c = Calibration(cam_index=1, cam_size=(800, 600))
 
     c.save(bundle_path)
 
@@ -375,7 +376,6 @@ def test_save_then_load_round_trips_to_an_equal_bundle(tmp_path: Path) -> None:
     bundle_path = tmp_path / "bundle.json"
     pct_to_grbl = np.array([[100.0, 0.0, 5.0], [0.0, 200.0, 10.0]])
     original = Calibration(
-        z_tap=-2.5,
         cam_rotation=cv2.ROTATE_180,
         pct_to_grbl=pct_to_grbl,
         cam_size=(800, 600),
@@ -385,7 +385,6 @@ def test_save_then_load_round_trips_to_an_equal_bundle(tmp_path: Path) -> None:
     restored = Calibration.load(bundle_path)
 
     assert restored is not None
-    assert restored.z_tap == original.z_tap
     assert restored.cam_rotation == original.cam_rotation
     assert np.array_equal(restored.pct_to_grbl, pct_to_grbl)
     assert restored.cam_size == original.cam_size

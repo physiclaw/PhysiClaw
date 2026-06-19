@@ -175,52 +175,30 @@ def _identity_pct_to_grbl() -> np.ndarray:
 async def test_handle_calibrate_arm_happy_path(mocker) -> None:
     physiclaw = MagicMock()
     physiclaw._arm = MagicMock()
-    physiclaw.calibration = SimpleNamespace(z_tap=None)
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=None)
     calib = MagicMock()
     phone = MagicMock()
     pct_to_grbl = _identity_pct_to_grbl()
     mocker.patch.object(
         handler, "calibrate_arm",
-        return_value=(-2.5, pct_to_grbl, 0.01, [(0.1, 0.1, 0)]),
+        return_value=(pct_to_grbl, 0.01, [(0.1, 0.1, 0)]),
     )
     mocker.patch.object(handler, "TILT_ALIGNED_THRESHOLD", 0.05)
 
     resp = await handle_calibrate_arm(
-        _fake_request(json_obj={"fresh": True}), physiclaw, calib, phone,
+        _fake_request(json_obj={}), physiclaw, calib, phone,
     )
 
     body = _read_json(resp)
     assert body["status"] == "ok"
-    assert body["z_tap"] == -2.5
     assert body["pairs"] == 4  # 1 touch + 3 probe
     assert body["aligned"] is True
-    assert body["z_cached"] is False  # fresh=True → hint None
     physiclaw._arm.set_direction_mapping.assert_called_once_with(
         (10.0, 0.0), (0.0, 20.0),
     )
     physiclaw.park.assert_called_once()
-    assert physiclaw.calibration.z_tap == -2.5
     assert physiclaw.calibration.pct_to_grbl is pct_to_grbl
     physiclaw.release.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_handle_calibrate_arm_uses_cached_z_when_not_fresh(mocker) -> None:
-    physiclaw = MagicMock()
-    physiclaw._arm = MagicMock()
-    physiclaw.calibration = SimpleNamespace(z_tap=-3.0)
-    spy = mocker.patch.object(
-        handler, "calibrate_arm",
-        return_value=(-3.0, _identity_pct_to_grbl(), 0.001, []),
-    )
-
-    resp = await handle_calibrate_arm(
-        _fake_request(json_obj={"fresh": False}), physiclaw, MagicMock(), MagicMock(),
-    )
-
-    spy.assert_called_once()
-    assert spy.call_args.kwargs["z_tap_hint"] == -3.0
-    assert _read_json(resp)["z_cached"] is True
 
 
 @pytest.mark.asyncio
@@ -240,9 +218,9 @@ async def test_handle_calibrate_arm_arm_not_connected() -> None:
 async def test_handle_calibrate_arm_releases_on_failure(mocker) -> None:
     physiclaw = MagicMock()
     physiclaw._arm = MagicMock()
-    physiclaw.calibration = SimpleNamespace(z_tap=None)
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=None)
     mocker.patch.object(
-        handler, "calibrate_arm", side_effect=RuntimeError("z descent failed"),
+        handler, "calibrate_arm", side_effect=RuntimeError("probe failed"),
     )
 
     resp = await handle_calibrate_arm(
@@ -371,7 +349,6 @@ async def test_handle_validate_calibration_happy_path_and_persists(mocker) -> No
     physiclaw._arm = MagicMock()
     cal = MagicMock()
     cal.transforms_ready = True
-    cal.z_tap = -2.0
     cal.pct_to_grbl = _identity_pct_to_grbl()
     cal.pct_to_cam = np.eye(3)
     cal.cam_size = (1920, 1080)
@@ -405,7 +382,6 @@ async def test_handle_validate_calibration_does_not_save_when_not_calibrated(
     physiclaw._arm = MagicMock()
     cal = MagicMock()
     cal.transforms_ready = True
-    cal.z_tap = -2.0
     cal.pct_to_grbl = _identity_pct_to_grbl()
     cal.pct_to_cam = np.eye(3)
     cal.cam_size = (1920, 1080)
@@ -446,7 +422,6 @@ async def test_handle_validate_calibration_requires_transforms_ready() -> None:
     physiclaw._arm = MagicMock()
     cal = MagicMock()
     cal.transforms_ready = False
-    cal.z_tap = None
     physiclaw.calibration = cal
 
     resp = await handle_validate_calibration(
