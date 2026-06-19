@@ -149,7 +149,7 @@
     "notes": [
       {
         "h3": { "en": "Ground the stylus", "zh": "给触控笔接地" },
-        "body": { "en": "The stylus rides on the solenoid's iron core, so grounding the core grounds the tip. Give it a real ground reference — do not use the control board's GND.", "zh": "触控笔装在电磁铁铁芯上，铁芯接地，笔尖就跟着接地。要找一个真正的接地参考，别用控制板的 GND。" },
+        "body": { "en": "The stylus rides on the solenoid's iron core, and the core is tied to the housing through the metal return spring — so grounding the housing grounds the core, and the tip with it. Give it a real ground reference — do not use the control board's GND.", "zh": "触控笔装在电磁铁铁芯上，铁芯通过金属弹簧与外壳相连——把外壳接地，铁芯和笔尖就跟着接地。要找一个真正的接地参考，别用控制板的 GND。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:22mm; width:150mm; max-width:150mm;"
       },
@@ -161,7 +161,7 @@
       },
       {
         "h3": { "en": "How to ground it", "zh": "怎么接地" },
-        "body": { "en": "Connect the core to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.", "zh": "把铁芯接到电源的公共地。最简单的办法是找一台用三脚插座可靠接地的台式电脑，把线夹在机箱裸露的金属上。机箱经市电连到大地，能提供稳定的接地参考。" },
+        "body": { "en": "Connect the housing to the power supply's common ground. The simplest option is to clip the wire to bare metal on a desktop PC chassis that is grounded through a three-prong outlet — it reaches earth through the mains, giving a stable reference.", "zh": "把外壳接到电源的公共地。最简单的办法是找一台用三脚插座可靠接地的台式电脑，把线夹在机箱裸露的金属上。机箱经市电连到大地，能提供稳定的接地参考。" },
         "classes": "note overlay sm",
         "style": "left:130mm; top:82mm; width:150mm; max-width:150mm;"
       },
