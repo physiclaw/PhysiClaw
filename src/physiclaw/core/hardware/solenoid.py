@@ -66,6 +66,14 @@ class Solenoid:
     # (which would drag a line across the screen). Increase if you still see
     # dragging; decrease only if your spring snaps back faster.
     RELEASE_MS = 200
+    # Lift between the two strikes of a double-tap. Only long enough to break
+    # capacitive contact so the screen sees two distinct touches — NOT the full
+    # RELEASE_MS spring-clear dwell (that exists to stop the tip dragging during
+    # a following XY move, of which there is none mid-double-tap). Short keeps
+    # down-to-down (the tap duration + this) well under the iOS ~300ms double-tap
+    # window; chaining two full taps pushed it to ~280ms, so timing jitter
+    # intermittently split the gesture into two single taps.
+    DOUBLE_TAP_GAP_MS = 100
     SPINDLE_MODE = 0  # $32=0 — spindle mode; laser mode emits PWM only while moving
     PWM_MAX = 1000  # $30 — S-value range ceiling
 
@@ -180,6 +188,26 @@ class Solenoid:
         hot. :meth:`release` adds the spring-rebound dwell on the clean path.
         """
         with self._energized():
+            self._send(self.GCODE_ON.format(s=self.HIT_S))
+            self._dwell(duration)
+            self.release()
+
+    def double_tap(self, duration: float) -> None:
+        """Two momentary taps registered as a single double-tap.
+
+        Strike, hold ``duration``, lift briefly (``DOUBLE_TAP_GAP_MS`` — only
+        enough to break capacitive contact, not the full spring-clear), strike
+        again, then a normal :meth:`release` so a following XY move can't drag.
+        The whole pair runs in one ``_energized`` window, so a fault anywhere
+        forces the coil off. Keeping the inter-tap gap short (vs. chaining two
+        :meth:`tap` calls, each with its 200ms release) holds down-to-down
+        under the iOS double-tap window so the strikes don't read as two taps.
+        """
+        with self._energized():
+            self._send(self.GCODE_ON.format(s=self.HIT_S))
+            self._dwell(duration)
+            self._send(self.GCODE_OFF)
+            self._dwell(self.DOUBLE_TAP_GAP_MS / 1000.0)
             self._send(self.GCODE_ON.format(s=self.HIT_S))
             self._dwell(duration)
             self.release()

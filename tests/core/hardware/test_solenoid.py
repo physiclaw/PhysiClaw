@@ -108,6 +108,37 @@ def test_tap_fires_for_duration_then_releases(rec: Recorder, sol: Solenoid) -> N
     assert ("send", "M3 S500", False) not in rec.calls
 
 
+def test_double_tap_uses_short_gap_then_full_release(
+    rec: Recorder, sol: Solenoid
+) -> None:
+    sol.double_tap(0.08)
+
+    assert rec.calls == [
+        ("send", "M3 S1000", False),  # first strike
+        ("dwell", 0.08),  # contact duration
+        ("send", "M5", False),  # lift
+        ("dwell", Solenoid.DOUBLE_TAP_GAP_MS / 1000.0),  # brief gap — break contact only
+        ("send", "M3 S1000", False),  # second strike
+        ("dwell", 0.08),  # contact duration
+        ("send", "M5", False),  # release
+        ("dwell", Solenoid.RELEASE_MS / 1000.0),  # full spring-clear after the pair
+    ]
+    # The inter-tap gap must stay below a full release, or down-to-down drifts
+    # past the iOS double-tap window and the pair reads as two single taps.
+    assert Solenoid.DOUBLE_TAP_GAP_MS < Solenoid.RELEASE_MS
+
+
+def test_double_tap_forces_coil_off_when_a_strike_fails(rec: Recorder) -> None:
+    # A transport failure mid-double-tap must still force the coil off.
+    rec._fail_on = lambda op, p: op == "send" and p == "M3 S1000"
+    sol = Solenoid(send=rec.send, dwell=rec.dwell)
+
+    with pytest.raises(Boom, match="M3 S1000"):
+        sol.double_tap(0.08)
+
+    assert rec.sends[-1] == "M5"  # emergency release fired
+
+
 def test_press_and_hold_drops_to_hold_current_for_duration(
     rec: Recorder, sol: Solenoid
 ) -> None:

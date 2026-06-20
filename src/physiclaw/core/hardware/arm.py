@@ -321,14 +321,12 @@ class StylusArm:
     def double_tap(self):
         """Double tap at current position.
 
-        Two strikes back-to-back. The spring-rebound dwell inside the first
-        strike lifts the tip clear before the second, so they register as two
-        distinct taps rather than one long press — no extra gap is needed.
-        Down-to-down ≈ TAP_DURATION + Solenoid.RELEASE_MS (~0.28s), under the
-        ~300ms iOS double-tap window.
+        One solenoid double-tap: two strikes separated only by a brief
+        contact-breaking lift (not the full spring-clear release), so
+        down-to-down stays well under the iOS ~300ms double-tap window and the
+        pair registers as one double-tap instead of two single taps.
         """
-        self.solenoid.tap(self.TAP_DURATION)
-        self.solenoid.tap(self.TAP_DURATION)
+        self.solenoid.double_tap(self.TAP_DURATION)
         self.wait_idle()
 
     def long_press(self):

@@ -490,19 +490,21 @@ def test_tap_strikes_solenoid(mocker) -> None:
 def test_double_tap_fires_two_strikes(mocker) -> None:
     arm, fake = _arm(
         mocker,
-        # strike(4) + strike(4) = 8 ok's, then status. No extra gap — the
-        # first strike's rebound dwell separates the two taps.
+        # M3/dwell/M5/dwell × 2 = 8 ok's, then status.
         responses=[b"ok\n"] * 8,
         status_replies=[b"<Idle|WPos:0,0>\n"],
     )
 
     arm.double_tap()
 
-    # Two strikes in the wire log, each followed by its rebound dwell.
+    # Two strikes, a short contact-breaking gap between them, and one full
+    # spring-clear release at the end (so a following move can't drag).
     strike_count = sum(1 for w in fake.writes if w == b"M3 S1000\n")
-    rebound_count = sum(1 for w in fake.writes if w == b"G4 P0.2\n")
+    gap_count = sum(1 for w in fake.writes if w == b"G4 P0.1\n")
+    release_count = sum(1 for w in fake.writes if w == b"G4 P0.2\n")
     assert strike_count == 2
-    assert rebound_count == 2  # tip lifts clear between and after the strikes
+    assert gap_count == 1  # brief inter-tap lift (DOUBLE_TAP_GAP_MS), not a full release
+    assert release_count == 1  # full spring-clear only after the second strike
 
 
 def test_long_press_strikes_and_holds(mocker) -> None:
