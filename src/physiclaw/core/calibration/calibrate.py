@@ -28,7 +28,11 @@ import numpy as np
 from physiclaw import paths
 from physiclaw.core.bridge import BridgeState, CalibrationState
 from physiclaw.core.bridge.nonce import NONCE_COUNT, verify_nonce
-from physiclaw.core.calibration.transforms import ScreenTransforms, ViewportShift
+from physiclaw.core.calibration.transforms import (
+    PARK_PCT,
+    ScreenTransforms,
+    ViewportShift,
+)
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.iphone import AssistiveTouch
@@ -643,10 +647,8 @@ def validate_calibration(
         )
 
         # 2. Camera detects orange dot
-        # Park arm first so it doesn't occlude. Same screen pct
-        # (-0.1, -0.05) as `physiclaw.park()` — keep one canonical
-        # off-phone spot across the codebase.
-        park_gx, park_gy = pct_to_grbl @ np.array([-0.1, -0.05, 1.0])
+        # Park arm first so it doesn't occlude — the canonical off-phone spot.
+        park_gx, park_gy = pct_to_grbl @ np.array([*PARK_PCT, 1.0])
         arm._fast_move(float(park_gx), float(park_gy))
         arm.wait_idle()
         time.sleep(0.3)

@@ -41,6 +41,7 @@ _OPTIONAL_ERRORS = frozenset({"error:3", "error:162"})
 # Transport + XY motion only. Solenoid (M3/M5) G-code lives in solenoid.py.
 
 GCODE_SET_ORIGIN = "G92 X0.0 Y0.0 Z0"
+GCODE_SET_WORK_POS = "G92 X{x:.3f} Y{y:.3f} Z0"  # declare current pos = (x, y)
 GCODE_MM_UNITS = "G21"
 GCODE_ABSOLUTE = "G90"
 GCODE_DEFAULT_F = "F8000"
@@ -260,6 +261,16 @@ class StylusArm:
         """Set current position as coordinate origin (move stylus to target first)."""
         self._send(GCODE_SET_ORIGIN)
         log.debug("Origin set to current position")
+
+    def set_work_position(self, x, y):
+        """Declare the current physical position to be work coordinate (x, y).
+
+        G92 shifts the work coordinate system without moving the arm. Used on
+        warm-start reconnect to re-pin the calibrated frame from the known
+        park-spot resting position (see ``PhysiClaw.restore_park_origin``).
+        """
+        self._send(GCODE_SET_WORK_POS.format(x=x, y=y))
+        log.debug("Work position set to (%.3f, %.3f)", x, y)
 
     def return_to_origin(self):
         """Fast-move back to (0, 0) and wait for motion to settle."""

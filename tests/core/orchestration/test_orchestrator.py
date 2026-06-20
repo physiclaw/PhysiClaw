@@ -261,6 +261,30 @@ def test_connect_arm_applies_cached_mapping(mocker) -> None:
     new.set_direction_mapping.assert_called_once_with((10.0, 0.0), (0.0, 20.0))
 
 
+def test_restore_park_origin_repins_from_park_spot(pc: PhysiClaw) -> None:
+    # diag(10, 20) affine → park (-0.1, -0.05) maps to GRBL (-1.0, -1.0).
+    pc._arm = MagicMock()
+    pc.calibration.pct_to_grbl = _identity_pct_to_grbl()
+
+    assert pc.restore_park_origin() is True
+    pc._arm.set_work_position.assert_called_once_with(-1.0, -1.0)
+
+
+def test_restore_park_origin_noop_without_arm() -> None:
+    p = PhysiClaw()
+    p.calibration.pct_to_grbl = _identity_pct_to_grbl()
+
+    assert p.restore_park_origin() is False  # arm not connected
+
+
+def test_restore_park_origin_noop_without_calibration(pc: PhysiClaw) -> None:
+    pc._arm = MagicMock()
+    # pct_to_grbl is None on a fresh bundle → no target to re-pin.
+
+    assert pc.restore_park_origin() is False
+    pc._arm.set_work_position.assert_not_called()
+
+
 def test_connect_camera_closes_existing(mocker) -> None:
     p = PhysiClaw()
     old = MagicMock()
@@ -773,6 +797,8 @@ def test_unlock_phone_taps_six_times_when_keypad_found(mocker, pc: PhysiClaw) ->
 
 
 def test_shutdown_closes_arm_and_camera(pc: PhysiClaw) -> None:
+    # Uncalibrated fixture (pct_to_grbl is None) → park has no target, so
+    # teardown falls back to homing.
     pc._arm = MagicMock()
     pc._cam = MagicMock()
 
@@ -780,6 +806,24 @@ def test_shutdown_closes_arm_and_camera(pc: PhysiClaw) -> None:
 
     pc._arm.lift_stylus.assert_called_once()
     pc._arm.return_to_origin.assert_called_once()
+    pc._arm.close.assert_called_once()
+    pc._cam.close.assert_called_once()
+
+
+def test_shutdown_parks_off_screen_when_calibrated(pc: PhysiClaw) -> None:
+    # With calibration loaded, teardown rests the tip at the same off-screen
+    # park spot used between taps — not the machine origin — so the phone
+    # stays clear for placement / removal.
+    pc._arm = MagicMock()
+    pc._cam = MagicMock()
+    pc.calibration.pct_to_grbl = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+    pc.shutdown()
+
+    pc._arm.lift_stylus.assert_called_once()
+    pc._arm.return_to_origin.assert_not_called()
+    # park() drives a fast move to the calibrated park coordinate.
+    pc._arm._fast_move.assert_called_once_with(-0.1, -0.05)
     pc._arm.close.assert_called_once()
     pc._cam.close.assert_called_once()
 

@@ -163,7 +163,7 @@ def server(
         # KeyboardInterrupt in the main thread (via _thread.interrupt_main —
         # cross-platform; os.kill(SIGINT) on Windows would TerminateProcess
         # and skip atexit) so mcp.run exits and atexit handlers
-        # (shutdown, arm return-to-origin) still fire cleanly.
+        # (shutdown, arm park-off-screen) still fire cleanly.
         from physiclaw.core.server import warm_start as ws
 
         def _warm_start_thread() -> None:

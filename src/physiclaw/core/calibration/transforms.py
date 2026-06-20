@@ -20,6 +20,12 @@ import dataclasses
 
 import numpy as np
 
+# The canonical off-phone resting spot, in screen-pct (0-1; off-phone values
+# allowed): left of the screen, slightly above the top edge. The arm parks
+# here between every operation, on clean shutdown, and warm-start re-pins the
+# origin from it on reconnect. Single source of truth for every off-phone park.
+PARK_PCT = (-0.1, -0.05)
+
 
 @dataclasses.dataclass(frozen=True)
 class ViewportShift:

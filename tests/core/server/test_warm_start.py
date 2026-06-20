@@ -214,6 +214,8 @@ def test_try_resume_succeeds_on_clean_path(mocker) -> None:
     )
     app.connect_arm.assert_called_once()
     app.connect_camera.assert_called_once_with(1)
+    # Origin re-pinned from the park spot so the bundle's affine stays valid.
+    app.restore_park_origin.assert_called_once()
     app.home_screen.assert_called_once()
     app.mark_ready.assert_called_once()
 

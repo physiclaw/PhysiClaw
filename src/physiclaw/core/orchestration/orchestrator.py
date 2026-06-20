@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from typing import Any, Literal
 
 from physiclaw.core.bridge import BridgeState
-from physiclaw.core.calibration import Calibration, ScreenTransforms
+from physiclaw.core.calibration import PARK_PCT, Calibration, ScreenTransforms
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.hardware.iphone import AssistiveTouch
@@ -211,6 +211,30 @@ class PhysiClaw:
         log.info("Camera disconnected")
         return True
 
+    def restore_park_origin(self) -> bool:
+        """Re-pin the GRBL origin assuming the tip rests at the off-screen
+        park spot. Warm-start's counterpart to ``_park_for_teardown``.
+
+        ``arm.setup()`` on reconnect issues ``G92 X0 Y0``, declaring the
+        arm's *current* physical position to be GRBL ``(0, 0)``. That's only
+        the calibrated origin if the tip is sitting there — but clean
+        shutdown (and every inter-action ``locked()`` park) leaves it at the
+        park spot instead. So re-declare the current position as the park
+        coordinate from the loaded bundle, restoring the affine's frame;
+        otherwise every subsequent tap is offset by the park vector.
+
+        Returns False (no-op) if the arm or `pct_to_grbl` isn't ready — the
+        caller (warm-start) only invokes this with a complete bundle loaded.
+        """
+        if self._arm is None:
+            return False
+        park_xy = self.calibration.pct_to_grbl_mm(*PARK_PCT)
+        if park_xy is None:
+            return False
+        self._arm.set_work_position(*park_xy)
+        log.info("Re-pinned GRBL origin from park spot %s", PARK_PCT)
+        return True
+
     def _apply_bundle_to_arm(self):
         """Propagate cached calibration into the newly-connected arm."""
         if self._arm is None:
@@ -243,7 +267,7 @@ class PhysiClaw:
     # ─── Primitive movements ─────────────────────────────────
 
     def park(self):
-        """Move stylus off-screen to (-0.1, -0.05) — left of the screen,
+        """Move stylus off-screen to ``PARK_PCT`` — left of the screen,
         slightly above top edge.
 
         Defensive: no-ops if the arm isn't connected or `pct_to_grbl`
@@ -251,16 +275,10 @@ class PhysiClaw:
         steps (e.g. after step 7 when only the arm-side affine is
         ready, or before step 7 when nothing is). Caller must hold
         the hardware lock.
-
-        Same coordinate `(-0.1, -0.05)` is used inline by
-        `validate_calibration` in core/calibration/calibrate.py for
-        its per-test park (different call path because that function
-        takes raw `pct_to_grbl`, not the orchestrator). Keep the two
-        in sync.
         """
         if self._arm is None:
             return
-        park_xy = self.calibration.pct_to_grbl_mm(-0.1, -0.05)
+        park_xy = self.calibration.pct_to_grbl_mm(*PARK_PCT)
         if park_xy is None:
             return
         self._arm._fast_move(*park_xy)
@@ -623,8 +641,23 @@ class PhysiClaw:
 
     # ─── Lifecycle ─────────────────────────────────────────────
 
+    def _park_for_teardown(self):
+        """Rest the stylus at the same off-screen park spot used between
+        taps and swipes, so the user can place or lift the phone without
+        the tip sitting over the glass.
+
+        Falls back to homing (0, 0) only when calibration isn't loaded —
+        ``park()`` has no target to compute then, and leaving the tip
+        mid-travel would be worse than a known machine origin.
+        """
+        if self.calibration.pct_to_grbl is not None:
+            self.park()
+        else:
+            self._arm.return_to_origin()
+
     def shutdown(self):
-        """Release the coil, home the arm, and close every device handle.
+        """Release the coil, park the arm off-screen, and close every device
+        handle.
 
         Teardown is best-effort: each step is guarded so a failure in one (a
         serial timeout, a GRBL alarm, an already-disconnected device) can't
@@ -633,6 +666,10 @@ class PhysiClaw:
         re-attempts the release as a backstop, and the firmware drops the PWM
         on alarm. Failures are logged, never raised, so callers (atexit /
         signal handlers) can rely on shutdown completing.
+
+        The arm parks at the same off-screen spot used between taps (homing
+        only if uncalibrated) so the resting position is consistent and the
+        phone stays clear for placement / removal.
         """
 
         def _safe(action, desc):
@@ -643,7 +680,7 @@ class PhysiClaw:
 
         if self._arm:
             _safe(self._arm.lift_stylus, "lift stylus")
-            _safe(self._arm.return_to_origin, "return to origin")
+            _safe(self._park_for_teardown, "park")
             _safe(self._arm.close, "arm close")
         if self._cam:
             _safe(self._cam.close, "camera close")

@@ -6,13 +6,15 @@ reconnects hardware, runs an end-to-end sanity tap, and flips the ready
 flag only if every test passes. A plain ``physiclaw server`` boot
 ignores the bundle entirely — see ``core/server/app.py``.
 
-The clean-shutdown invariant is what makes warm-start work at all.
-``PhysiClaw.shutdown()`` fast-moves the stylus to ``(0, 0)`` (= screen
-center per the bundle's affine) before closing the serial port. On the
-next ``connect_arm`` the ``G92 X0 Y0`` in ``arm.setup()`` re-pins the
-origin at the same physical spot, keeping ``pct_to_grbl`` valid. The
-sanity tap is the only mechanism that catches violations of this
-invariant (crash, power cut, arm bumped).
+The resting-position invariant is what makes warm-start work at all. The
+arm parks at the off-screen spot (``PARK_PCT``) between every operation
+and on clean shutdown, so on reconnect the tip is sitting there — not at
+the calibrated origin. ``arm.setup()``'s ``G92 X0 Y0`` would wrongly
+declare the park spot to be ``(0, 0)`` and shift the whole frame, so
+``restore_park_origin`` re-pins the origin from the park coordinate to
+keep ``pct_to_grbl`` valid. The sanity tap is the only mechanism that
+catches violations of this invariant (crash mid-move, power cut, arm
+bumped — anything that leaves the tip somewhere other than the park spot).
 """
 
 import logging
@@ -157,16 +159,14 @@ def try_resume(cam_index_override: int | None) -> bool:
         log.error(f"--warm-start: hardware reconnect failed: {e}")
         return False
 
-    # Clean shutdown parks the stylus at (0, 0) = screen center, so the
-    # fresh setup() on reconnect re-origins there. Warm-start assumes
-    # that invariant held; the sanity tap catches cases where it didn't
-    # (killed without shutdown, power yank, arm bumped).
-    #
-    # Move off-phone NOW, before sanity, so the stylus body doesn't
-    # occlude the camera while it reads the sanity-tap dots — center
-    # is the worst possible park spot for a camera-driven validation.
-    # Hardware is fully calibrated post-load, so `locked()` works (it
-    # auto-parks on exit, same idiom used by `home_screen` / `go_back`).
+    # The tip rests at the park spot, not the calibrated origin that
+    # arm.setup() just assumed — re-pin the frame from it (see
+    # restore_park_origin). The sanity tap below catches the cases where the
+    # tip didn't hold that spot (killed mid-move, power yank, arm bumped).
+    physiclaw.restore_park_origin()
+
+    # Confirm `locked()` works and the tip is settled off-phone before sanity
+    # (already parked post-restore, so the auto-park on exit is a no-op move).
     with physiclaw.locked():
         pass
     if sys.stdin.isatty():

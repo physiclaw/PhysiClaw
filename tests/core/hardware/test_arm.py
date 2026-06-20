@@ -378,6 +378,14 @@ def test_set_origin_sends_G92(mocker) -> None:
     assert any(b"G92" in w for w in fake.writes)
 
 
+def test_set_work_position_sends_G92_with_coords(mocker) -> None:
+    arm, fake = _arm(mocker, responses=[b"ok\n"])
+
+    arm.set_work_position(-1.0, -1.0)
+
+    assert any(b"G92 X-1.000 Y-1.000 Z0" in w for w in fake.writes)
+
+
 def test_return_to_origin_fast_moves_and_waits(mocker) -> None:
     arm, fake = _arm(
         mocker, responses=[b"ok\n"], status_replies=[b"<Idle|WPos:0,0>\n"],
