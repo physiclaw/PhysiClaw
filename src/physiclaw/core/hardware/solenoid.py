@@ -54,11 +54,13 @@ class Solenoid:
     # Hold duty after the strike — the level the coil drops to once the core is
     # pulled in, for both a long-press and the slide of a swipe. Must stay below
     # HIT_S (validated in __init__) or a sustained hold overheats the coil.
-    # S500 (~50% duty) holds the tip down firmly, including through the gantry's
-    # acceleration during a swipe; the cooler S150/S300 held a *stationary* tip
-    # but bounced once the arm started moving. Lower it only if your coil holds
-    # through motion at less and you want it to run cooler.
-    HOLD_S = 500
+    # S750 (~75% duty) keeps the tip pressed firmly enough that a *stationary*
+    # long-press holds continuous capacitive contact. At the cooler S500 the tip
+    # eased off at the strike→hold transition and the panel read the touch as
+    # lifting, so a long-press registered as a single tap; S500 was fine for a
+    # swipe (the slide keeps re-establishing contact) but not for a still hold.
+    # Lower it only if your coil keeps a still touch registered at less.
+    HOLD_S = 750
     SETTLE_MS = 80  # dwell after the strike before dropping to the hold level
     # Spring rebound after M5: the coil de-energizes instantly but the spring
     # takes ~200ms to lift the tip clear of the glass. We dwell this long on

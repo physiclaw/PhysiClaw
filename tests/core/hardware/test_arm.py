@@ -518,7 +518,7 @@ def test_long_press_strikes_and_holds(mocker) -> None:
 
     written = b"".join(fake.writes)
     assert b"M3 S1000" in written  # strike
-    assert b"M3 S500" in written  # hold current (HOLD_S)
+    assert b"M3 S750" in written  # hold current (HOLD_S)
     assert b"G4 P1.2" in written  # LONG_PRESS_DURATION
     assert b"G4 P0.2" in written  # spring-rebound dwell on release
 
@@ -530,9 +530,9 @@ def test_swipe_holds_solenoid_across_linear_move(mocker) -> None:
     arm.swipe("right", speed="fast")
 
     written = b"".join(fake.writes)
-    # Swipe strikes then drops to the unified HOLD_S (S500) for the slide.
+    # Swipe strikes then drops to the unified HOLD_S (S750) for the slide.
     assert b"M3 S1000" in written  # strike to make contact
-    assert b"M3 S500" in written  # held at HOLD_S during the slide
+    assert b"M3 S750" in written  # held at HOLD_S during the slide
     assert b"G91G1" in written
     assert b"F10000" in written  # fast speed
     assert written.rfind(b"M5") > written.rfind(b"G91G1")  # release after slide
@@ -557,7 +557,7 @@ def test_swipe_to_presses_slides_to_endpoint_releases(mocker) -> None:
 
     written = b"".join(fake.writes)
     assert b"M3 S1000" in written  # strike to make contact
-    assert b"M3 S500" in written  # held at HOLD_S during the slide
+    assert b"M3 S750" in written  # held at HOLD_S during the slide
     assert b"G1 X12.500Y-4.000" in written  # slide to the mm endpoint
     assert b"F3000" in written  # slow speed
     assert written.rfind(b"M5") > written.rfind(b"G1 X12.500")  # release after slide

@@ -77,7 +77,7 @@ def test_press_strikes_settles_then_holds(rec: Recorder, sol: Solenoid) -> None:
     assert rec.calls == [
         ("send", "M3 S1000", False),  # strike at HIT_S
         ("dwell", Solenoid.SETTLE_MS / 1000.0),  # settle
-        ("send", "M3 S500", False),  # drop to HOLD_S, coil left energized
+        ("send", "M3 S750", False),  # drop to HOLD_S, coil left energized
     ]
 
 
@@ -105,7 +105,7 @@ def test_tap_fires_for_duration_then_releases(rec: Recorder, sol: Solenoid) -> N
         ("dwell", Solenoid.RELEASE_MS / 1000.0),  # spring rebound
     ]
     # No hold step for a momentary tap.
-    assert ("send", "M3 S500", False) not in rec.calls
+    assert ("send", "M3 S750", False) not in rec.calls
 
 
 def test_double_tap_uses_short_gap_then_full_release(
@@ -147,7 +147,7 @@ def test_press_and_hold_drops_to_hold_current_for_duration(
     assert rec.calls == [
         ("send", "M3 S1000", False),  # strike at HIT_S
         ("dwell", Solenoid.SETTLE_MS / 1000.0),  # settle
-        ("send", "M3 S500", False),  # hold current
+        ("send", "M3 S750", False),  # hold current
         ("dwell", 1.2),  # hold duration
         ("send", "M5", False),  # release
         ("dwell", Solenoid.RELEASE_MS / 1000.0),  # spring rebound
@@ -206,14 +206,14 @@ def test_tap_forces_coil_off_when_dwell_raises(rec: Recorder) -> None:
 
 def test_press_forces_coil_off_if_hold_send_raises(rec: Recorder) -> None:
     # Fail the drop-to-hold write, after the peak strike already turned the coil on.
-    rec._fail_on = lambda op, p: op == "send" and p == "M3 S500"
+    rec._fail_on = lambda op, p: op == "send" and p == "M3 S750"
     sol = Solenoid(send=rec.send, dwell=rec.dwell)
 
     with pytest.raises(Boom):
         sol.press()
 
     # Strike on, hold attempt failed, then forced off — never stuck at peak.
-    assert rec.sends == ["M3 S1000", "M3 S500", "M5"]
+    assert rec.sends == ["M3 S1000", "M3 S750", "M5"]
 
 
 def test_held_forces_coil_off_when_block_raises() -> None:
@@ -222,7 +222,7 @@ def test_held_forces_coil_off_when_block_raises() -> None:
 
     with pytest.raises(ValueError, match="slide failed"):
         with sol.held():
-            assert rec.sends[-1] == "M3 S500"  # held at hold current inside block
+            assert rec.sends[-1] == "M3 S750"  # held at hold current inside block
             raise ValueError("slide failed")
 
     assert rec.sends[-1] == "M5"  # released despite the error
