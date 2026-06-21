@@ -22,9 +22,11 @@ def test_hardware_register_wires_all_routes(fake_mcp) -> None:
 
     by_path = {(p, ms[0]) for p, ms, _ in fake_mcp.routes}
     assert by_path == {
+        ("/setup-hardware", "GET"),
         ("/api/status", "GET"),
         ("/api/connect-arm", "POST"),
         ("/api/connect-camera", "POST"),
+        ("/api/disconnect-camera", "POST"),
         ("/api/camera-preview/{index}", "GET"),
     }
 
@@ -34,6 +36,7 @@ async def test_hardware_routes_forward_to_handlers(
     fake_mcp, async_request, mocker,
 ) -> None:
     spies = {
+        "handle_setup_page": mocker.patch.object(hw_reg, "handle_setup_page"),
         "handle_status": mocker.patch.object(hw_reg, "handle_status"),
         "handle_connect_arm": mocker.patch.object(hw_reg, "handle_connect_arm"),
         "handle_connect_camera": mocker.patch.object(hw_reg, "handle_connect_camera"),
@@ -49,6 +52,9 @@ async def test_hardware_routes_forward_to_handlers(
     hw_reg.register(fake_mcp, pl, ph)
 
     req = async_request()
+    await fake_mcp.get("/setup-hardware")(req)
+    spies["handle_setup_page"].assert_called_once_with(req)
+
     await fake_mcp.get("/api/status")(req)
     spies["handle_status"].assert_called_once_with(req, pl)
 

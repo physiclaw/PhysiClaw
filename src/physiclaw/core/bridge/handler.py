@@ -21,6 +21,20 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
+def render_phone_page_html(filename: str, port: int) -> str:
+    """Read a static page and substitute the phone bridge URLs into it.
+
+    Shared by every page that embeds the bridge URL (the QR page and the
+    setup wizard) so the ``__PHONE_URL__`` placeholder convention lives in
+    one place. Callers wrap the result in their own ``HTMLResponse`` (so
+    each picks its own cache headers).
+    """
+    primary, fallback = bridge_base_urls(port)
+    return read_text(STATIC_DIR / filename).replace(
+        "__PHONE_URL__", f"{primary}/bridge"
+    ).replace("__PHONE_URL_FALLBACK__", f"{fallback}/bridge")
+
+
 async def serve_bridge_page(request):
     """Serve the bridge page for the phone browser.
 
@@ -126,12 +140,7 @@ async def handle_mode_switch(request, phone: PageState):
 
 async def serve_qr_page(request):
     """Serve a QR code page for the phone bridge URL."""
-    primary, fallback = bridge_base_urls(request.url.port or 8048)
-    html = read_text(STATIC_DIR / "qr.html")
-    html = html.replace("__PHONE_URL__", f"{primary}/bridge").replace(
-        "__PHONE_URL_FALLBACK__", f"{fallback}/bridge"
-    )
-    return HTMLResponse(html)
+    return HTMLResponse(render_phone_page_html("qr.html", request.url.port or 8048))
 
 
 async def handle_calib_touch(request, cal: CalibrationState):

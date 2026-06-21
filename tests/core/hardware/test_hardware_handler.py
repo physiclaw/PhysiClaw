@@ -20,8 +20,34 @@ from physiclaw.core.hardware.handler import (
     handle_connect_arm,
     handle_connect_camera,
     handle_disconnect_camera,
+    handle_setup_page,
     handle_status,
 )
+
+
+@pytest.mark.asyncio
+async def test_handle_setup_page_serves_wizard(mocker) -> None:
+    # Substitution lives in bridge.handler.render_phone_page_html now.
+    import physiclaw.core.bridge.handler as bridge_handler
+    mocker.patch.object(
+        bridge_handler, "bridge_base_urls",
+        return_value=("http://device.local:8048", "http://10.0.0.5:8048"),
+    )
+    req = _fake_request()
+    req.url = SimpleNamespace(port=8048)
+
+    resp = await handle_setup_page(req)
+
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-store"
+    body = bytes(resp.body)
+    assert b"Hardware Setup" in body
+    # drives the same API the CLI does
+    assert b"/api/calibrate/arm" in body
+    # phone bridge URLs are substituted in so the QR renders inline (no iframe)
+    assert b"__PHONE_URL__" not in body
+    assert b"http://device.local:8048/bridge" in body
+    assert b"<iframe" not in body
 
 
 def _async(value: Any):

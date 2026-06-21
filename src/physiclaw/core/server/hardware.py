@@ -8,6 +8,7 @@ from physiclaw.core.hardware.handler import (
     handle_connect_camera,
     handle_disconnect_camera,
     handle_camera_preview,
+    handle_setup_page,
 )
 
 log = logging.getLogger(__name__)
@@ -15,6 +16,10 @@ log = logging.getLogger(__name__)
 
 def register(mcp, physiclaw, phone):
     """Register hardware setup routes."""
+
+    @mcp.custom_route("/setup-hardware", methods=["GET"])
+    async def _setup_page(request):
+        return await handle_setup_page(request)
 
     @mcp.custom_route("/api/status", methods=["GET"])
     async def _status(request):

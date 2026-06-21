@@ -10,8 +10,9 @@ import base64
 import logging
 import time
 
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
+from physiclaw.core.bridge.handler import render_phone_page_html
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.render import watermark_index
 from physiclaw.core.vision.util import detect_bridge_corners, encode_jpeg
@@ -19,6 +20,24 @@ from physiclaw.core.vision.util import detect_bridge_corners, encode_jpeg
 from physiclaw.config import CONFIG
 
 log = logging.getLogger(__name__)
+
+
+# ─── Setup wizard page ──────────────────────────────────────
+
+
+async def handle_setup_page(request):
+    """GET /setup-hardware — serve the browser-based hardware-setup wizard.
+
+    A single-file app that drives the same ``/api/*`` endpoints as
+    ``physiclaw setup hardware``. Shares ``render_phone_page_html`` with the
+    QR page so the bridge-URL substitution lives in one place; the inline QR
+    renders from those URLs. ``Cache-Control: no-store`` so the browser
+    always pulls the latest build after an upgrade.
+    """
+    return HTMLResponse(
+        render_phone_page_html("setup-hardware.html", request.url.port or 8048),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # Timeouts for the auto-pick wait-for-bridge gate (mirrors the
