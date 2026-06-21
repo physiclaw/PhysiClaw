@@ -57,6 +57,11 @@ def ok(r):
     return r is not None and r.get("status") == "ok"
 
 
+def _msg(r, fallback="no response"):
+    """Server error string from a response, with a fallback when absent."""
+    return (r or {}).get("message", fallback)
+
+
 def lan_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -79,12 +84,12 @@ def _camera_aim_adjust(prompt: str) -> None:
     ``/api/connect-camera`` can reacquire. Platform-specific app
     choices live in ``physiclaw.core.platform``.
 
-    The leading disconnect is idempotent — at step 2 no camera is
-    connected yet and the server returns ``released=False``. From step
-    8 onward the server has been holding the device since step 4;
-    Windows Media Foundation enforces exclusive access, so without the
-    disconnect the OS Camera app shows "another app is using the
-    camera"."""
+    Used by the camera-calibration step to re-aim before reading the
+    frame. The leading disconnect releases the camera the server has
+    held since the connect-camera step — Windows Media Foundation
+    enforces exclusive access, so without it the OS Camera app shows
+    "another app is using the camera". It's idempotent if no camera is
+    connected (the server returns ``released=False``)."""
     api("POST", "/api/disconnect-camera")
     platform.open_camera_aim_app()
     wait(prompt)
@@ -127,54 +132,64 @@ def _warn(msg):
 
 
 def run(auto: bool = False, trace: bool = False) -> None:
+    # Step names + wording mirror the browser wizard
+    # (core/static/setup-hardware.html) so the two surfaces stay consistent.
     t0 = time.time()
 
     status = api("GET", "/api/status")
     if not status:
         sys.exit("Server not running. Start: physiclaw server")
     if status.get("ready"):
-        print("Already ready.")
+        print("PhysiClaw is already ready.")
         return
     if status.get("calibrated"):
         print("Already calibrated, finalizing...")
         api("POST", "/api/phone/home")
         time.sleep(3)
         api("POST", "/api/ready")
-        _done("Phone on Home Screen, PhysiClaw ready")
+        _done("PhysiClaw is ready")
         return
 
-    print("\n── 1. Scan QR code ──")
+    # ── 1. Connect phone ──
+    print("\n── 1. Connect phone ──")
     if status.get("bridge"):
-        _done("Phone page already connected")
+        _done("Phone connected")
     else:
         print(f"  Phone URL: http://{lan_ip()}:8048/bridge")
         if not auto:
             webbrowser.open(f"{BASE}/api/bridge/qr")
-            wait("Scan QR on phone, confirm page shows 'PhysiClaw'")
-        _done("Phone page ready")
+            wait("Scan the QR on your phone — the page should say 'PhysiClaw'")
+        _done("Phone connected")
 
-    print("\n── 2. Position phone ──")
+    # ── 2. Position the rig ──
+    print("\n── 2. Position the rig ──")
+    print("  1. Connect the control board — USB to the computer, plus 12 V power.")
+    print("  2. Connect the camera to the computer over USB.")
+    print("  3. Seat the phone in the holder, top-left corner against the holder's corner;")
+    print("     keep the screen level and facing straight up.")
+    print("  4. Keep the phone unlocked, with the bridge page in the foreground.")
     if not auto:
-        _camera_aim_adjust("Place phone under camera, adjust in the camera preview app")
-        _done("Phone positioned")
-    else:
-        _done("Skipped (auto)")
+        wait("Everything in place?")
+    _done("Rig in place")
 
-    print("\n── 3. Connect arm ──")
-    if ask("USB plugged, power ON, stylus on?", auto):
+    # ── 3. Connect the arm ──
+    print("\n── 3. Connect the arm ──")
+    print("  Control board connected over USB with its 12 V power on — PhysiClaw")
+    print("  scans the computer's serial ports to find it (FluidNC firmware).")
+    if ask("Ready?", auto):
         if not ok(api("POST", "/api/connect-arm")):
-            _fail("Arm connection failed")
+            _fail("Couldn't connect — check the USB cable and 12 V power")
             sys.exit(1)
     _done("Arm connected")
 
-    print("\n── 4. Connect camera ──")
-    print("  Auto-picking by the RGBY corner markers on /bridge.")
-    print("  Open or refresh /bridge on the phone (foreground, not locked).")
-    print("  Server waits up to 25s for steady polling.")
+    # ── 4. Connect the camera ──
+    print("\n── 4. Connect the camera ──")
+    print("  Camera directly above the phone. PhysiClaw auto-detects it by the")
+    print("  colored corner markers on the bridge page (keep /bridge open + awake).")
     r = api("POST", "/api/connect-camera", {"index": "auto"}, timeout=60)
     if ok(r):
         cam = r.get("index", 0)
-        _done(f"Camera {cam} auto-picked")
+        _done(f"Camera {cam} connected")
     else:
         tmp_dir = Path(tempfile.gettempdir())
         for stale in tmp_dir.glob("physiclaw_cam*.jpg"):
@@ -193,17 +208,19 @@ def run(auto: bool = False, trace: bool = False) -> None:
             try:
                 cam = int(
                     input(
-                        "  Auto-pick failed. Which camera? [0-3, default=0]: "
+                        "  Couldn't auto-detect. Which camera? [0-3, default=0]: "
                     ).strip()
                 )
             except ValueError:
                 cam = 0
         if not ok(api("POST", "/api/connect-camera", {"index": cam})):
-            _fail("Camera connection failed")
+            _fail("Couldn't find the camera — make sure /bridge is open and awake")
             sys.exit(1)
         _done(f"Camera {cam} connected")
 
-    print("\n── 5. Viewport shift ──")
+    # ── 5. Locate the screen ──
+    print("\n── 5. Locate the screen ──")
+    print("  Lines up where PhysiClaw draws with the real screen, so taps land right.")
     # Cache policy: interactive setup always re-measures; --auto trusts
     # the cached screenshot at ~/.physiclaw/calibration/cache/viewport.png
     # if it exists.
@@ -215,97 +232,106 @@ def run(auto: bool = False, trace: bool = False) -> None:
     else:
         if vp_cache is not None:
             print(f"  Cached screenshot at {vp_cache} ignored (interactive: fresh measurement).")
-        print("  Phone shows an orange square.")
-        print("  Tap AssistiveTouch once (screenshot), then double-tap (upload).")
+        print("  The phone shows an orange square. Tap AssistiveTouch once (screenshot),")
+        print("  then double-tap it (upload).")
     while True:
         if ok(calibrate("viewport-shift", 35, body={"fresh": not auto})):
             break
-        wait("Failed. Tap AT once, then double-tap. Ready to retry?")
-    _done("Viewport shift measured")
+        wait("Couldn't read the screenshot. Tap AT once, then double-tap. Retry?")
+    _done("Screen located")
 
-    print("\n── 6. Position stylus ──")
+    # ── 6. Calibrate the arm (position stylus, then tap 18 points) ──
+    print("\n── 6. Calibrate the arm ──")
     r = api("POST", "/api/bridge/switch", {"mode": "calibrate", "phase": "center"})
     if not r or not r.get("ok"):
-        _fail("Failed to show orange circle on phone — is the bridge page open?")
+        _fail("Couldn't show the center circle — is the bridge page open and awake?")
         sys.exit(1)
     time.sleep(0.5)
-    print("  Phone should show an orange circle at screen center.")
-    print("  If screen is off, wake the phone and reopen the bridge page.")
+    print("  The phone shows an orange circle at screen center.")
     if not auto:
-        wait("Position stylus tip above the orange circle (~3mm above screen)")
-    _done("Stylus positioned")
-
-    print("\n── 7. Arm calibration ──")
-    print("  One pass: tap 18 points with the solenoid, fit screen→arm mapping.")
-    if ask("Don't touch anything. Ready?", auto):
+        wait("Move the stylus tip over the orange circle, then continue")
+    print("  The arm taps 18 points to learn how its motion lines up with the screen.")
+    if ask("Don't touch the rig. Ready?", auto):
         def _arm_fail(resp):
             return (
-                "Arm calibration failed: "
-                f"{(resp or {}).get('message', 'no response')}"
+                "Couldn't calibrate: "
+                f"{_msg(resp)} — "
+                "make sure the stylus tip is over the center circle"
             )
 
-        r = calibrate_retry("arm", _arm_fail, "Retry?", auto, timeout=120)
+        # In auto mode the stylus is parked off-screen — tell the server to
+        # drive it onto the screen center first (mirrors the wizard's auto).
+        r = calibrate_retry(
+            "arm", _arm_fail, "Retry?", auto, timeout=120,
+            body={"from_park": True} if auto else None,
+        )
         tilt = r.get("tilt_ratio", 0)
         if not r.get("aligned"):
-            _fail(
-                f"Phone/arm axes skewed (tilt {tilt*100:.1f}%) — "
-                "straighten phone and rerun if this persists"
+            _warn(
+                f"Phone looks slightly rotated relative to the arm ({tilt*100:.1f}%) — "
+                "straighten it and rerun if validation fails later"
             )
-        _done(f"Arm ready: {r.get('pairs')} tap pairs, tilt={tilt:.3f}")
+        _done(f"Arm calibrated — mapped {r.get('pairs')} points")
 
-    print("\n── 8. Camera calibration ──")
-    print("  Adjust camera, then detect rotation + check phone fills the frame.")
+    # ── 7. Calibrate the camera (rotation/coverage check, then 15-dot mapping) ──
+    print("\n── 7. Calibrate the camera ──")
+    print("  Keep the whole screen in view, evenly lit and free of glare.")
     if not auto:
-        _camera_aim_adjust("Adjust camera angle/distance if needed")
+        _camera_aim_adjust("Adjust the camera angle/distance if needed")
     r_conn = api("POST", "/api/connect-camera", {"index": cam})
     if not ok(r_conn):
         _fail(
-            f"Reconnect camera failed: {(r_conn or {}).get('message', 'no response')}. "
-            "Another app (Photo Booth / Camera / Zoom / FaceTime) may still be holding the camera."
+            f"Couldn't reopen the camera: {_msg(r_conn)}. "
+            "Another app (Photo Booth / Camera / Zoom / FaceTime) may still be holding it."
         )
         sys.exit(1)
     r = calibrate("camera", 15)
     if not ok(r):
-        _fail(f"Camera calibration failed: {r}")
+        _fail(f"Couldn't read the camera: {_msg(r)}")
         sys.exit(1)
     for issue in r.get("issues") or []:
         _warn(issue)
-    _done(
-        f"Camera ready: {r.get('rotation_name')}, coverage {r.get('coverage'):.0%}"
+    print(f"  rotation {r.get('rotation_name')}, coverage {r.get('coverage'):.0%}")
+    m = calibrate_retry(
+        "camera-mapping",
+        lambda r: (
+            "Couldn't map the dots: "
+            f"{_msg(r)}"
+        ),
+        "Reduce glare / fix lighting. Retry?",
+        auto,
     )
+    _done(f"Camera calibrated — found all {m.get('dots', 15)} dots")
 
-    print("\n── 9. Camera mapping ──")
-    print("  Camera detects 15 red dots on phone screen.")
-    if ask("Ready?", auto):
-        calibrate_retry(
-            "camera-mapping",
-            lambda r: (
-                "Camera mapping failed: "
-                f"{(r or {}).get('message', 'no response')}"
-            ),
-            "Adjust lighting/glare. Retry?",
-            auto,
-        )
-    _done("Screen→camera mapping computed")
-
-    print("\n── 10. Validate ──")
-    print("  Arm taps random dots and compares touch vs expected position.")
+    # ── 8. Validate ──
+    print("\n── 8. Validate ──")
+    print("  For each dot: find it with the camera, tap it with the arm, and compare")
+    print("  the tap to where the dot was drawn. Passing saves the calibration.")
     if ask("Ready?", auto):
         r = calibrate("validate", 60)
         if not (r and r.get("calibrated")):
-            print(f"  {json.dumps(r, ensure_ascii=False) if r else 'no response'}")
-            _fail("Validation failed")
+            _fail(
+                "Validation failed — check the lighting, or redo the camera or arm "
+                "calibration"
+            )
             sys.exit(1)
-    _done("Calibration validated")
+        _done(
+            f"Validated — {r.get('passed')}/{r.get('total')} taps on target. "
+            "Calibration saved."
+        )
 
-    print("\n── 11. AssistiveTouch ──")
-    print("  Verifying screenshot + clipboard pipeline.")
+    # ── 9. Verify AssistiveTouch ──
+    print("\n── 9. Verify AssistiveTouch ──")
+    print("  Confirms the screenshot + clipboard pipeline works.")
     calibrate("assistive-touch/show")
     if not auto:
-        wait("Drag AssistiveTouch button to overlap the orange circle")
+        wait("Drag the AssistiveTouch button over the orange circle")
 
     def _at_fail(resp):
-        msg = "AT verification failed — check AT position and iOS Shortcuts"
+        msg = (
+            "Couldn't verify — re-position the AssistiveTouch button over the circle "
+            "and check the iOS Shortcuts"
+        )
         clip = (resp or {}).get("clipboard") or {}
         if clip.get("fetched"):
             msg += f" (clipboard fetched: {clip.get('text')!r})"
@@ -323,26 +349,27 @@ def run(auto: bool = False, trace: bool = False) -> None:
         print(f"  Clipboard text: {r['clipboard'].get('text')}")
         if not auto:
             wait("Paste in Notes to verify it matches")
-    _done("Screenshot + clipboard pipeline verified")
+    _done("Screenshot + clipboard verified")
 
     if trace:
-        print("\n── 12. Edge trace ──")
+        print("\n── Edge trace ──")
         print("  Arm traces phone screen border clockwise, pausing at 8 points.")
         if ask("Watch for accuracy. Ready?", auto):
             calibrate("trace-edge", 60)
         _done("Edge trace complete")
 
-    print("\n── Home Screen ──")
+    # ── 10. Finish ──
+    print("\n── 10. Finish ──")
     api("POST", "/api/phone/home")
     time.sleep(3)
     api("POST", "/api/ready")
-    _done("Phone on Home Screen, PhysiClaw ready")
 
     elapsed = time.time() - t0
     mins, secs = int(elapsed // 60), int(elapsed % 60)
     print(f"\n{'='*40}")
-    print(f"  Setup completed in {mins}m {secs}s")
-    _done("PhysiClaw is ready. All MCP tools available.")
+    _done(f"PhysiClaw is ready — set up in {mins}m {secs}s.")
+    print("  The arm, camera, and screen are calibrated and working together.")
+    print("  All MCP tools are now available.")
     print(f"{'='*40}")
 
 

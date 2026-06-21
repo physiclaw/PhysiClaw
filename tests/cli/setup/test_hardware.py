@@ -1,6 +1,6 @@
 """Tests for `physiclaw.cli.setup.hardware` — interactive setup helpers.
 
-The full `run()` flow is interactive and 12 steps deep; we cover the
+The full `run()` flow is interactive and 10 steps deep; we cover the
 testable helpers (api / ok / lan_ip / calibrate / calibrate_retry /
 ask / _done / _fail / _camera_aim_adjust) and the early-exit
 branches of `run` (server down, already ready, already calibrated)
@@ -296,7 +296,7 @@ def test_run_returns_when_already_ready(mocker, capsys: pytest.CaptureFixture) -
     hw_mod.run()
     out = capsys.readouterr().out
 
-    assert "Already ready" in out
+    assert "already ready" in out
 
 
 def test_run_finalizes_when_already_calibrated(
@@ -316,7 +316,7 @@ def test_run_finalizes_when_already_calibrated(
     out = capsys.readouterr().out
 
     assert "Already calibrated" in out
-    assert "Phone on Home Screen" in out
+    assert "PhysiClaw is ready" in out
 
 
 # ---------- hardware (typer entry) ----------
@@ -396,7 +396,7 @@ def test_run_full_auto_path(mocker, tmp_path) -> None:
 
 
 def test_run_full_auto_with_warn_issues(mocker) -> None:
-    """Step 8 surfaces issues from camera calibrate via _warn."""
+    """The camera-calibration step surfaces issues from calibrate via _warn."""
     mocker.patch.object(hw_mod.time, "sleep")
     mocker.patch.object(hw_mod, "_camera_aim_adjust")
     mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[])
