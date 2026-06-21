@@ -71,6 +71,13 @@ def server(
             "stored in the bundle, falling back to 0).",
         ),
     ] = None,
+    no_setup_hardware: Annotated[
+        bool,
+        typer.Option(
+            "--no-setup-hardware",
+            help="Don't auto-open the browser hardware-setup wizard on start.",
+        ),
+    ] = False,
     save_tool_calls: Annotated[
         bool,
         typer.Option(
@@ -182,11 +189,30 @@ def server(
                 _thread.interrupt_main()
 
         threading.Thread(target=_warm_start_thread, daemon=True).start()
-    else:
+    elif no_setup_hardware:
         log.info(
             "Run `physiclaw setup hardware` in another shell to connect "
             "hardware and calibrate — server is waiting."
         )
+    else:
+        # Open the browser hardware-setup wizard once the server is actually
+        # accepting connections (the page immediately calls /api/status).
+        # Runs in a daemon thread so mcp.run() below can start serving first.
+        from physiclaw.core.server.warm_start import wait_for_port
+
+        setup_url = f"http://localhost:{port}/setup-hardware"
+        log.info(f"Hardware-setup wizard: {setup_url}  (disable with --no-setup-hardware)")
+
+        def _open_setup() -> None:
+            import webbrowser
+
+            if wait_for_port(host, port):
+                try:
+                    webbrowser.open(setup_url)
+                except Exception:  # noqa: BLE001 — never let a headless box crash startup
+                    log.debug("could not open browser for setup wizard", exc_info=True)
+
+        threading.Thread(target=_open_setup, daemon=True).start()
 
     if no_runtime:
         log.info("Runtime loop disabled by --no-runtime.")

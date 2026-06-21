@@ -70,6 +70,11 @@ def _patch_server_runtime_deps(mocker, *, primary: str = "http://device.local:80
     """Stub out everything heavy `server()` touches once it starts up."""
     mocker.patch.object(server_mod, "_spawn_runtime", return_value=MagicMock())
     mocker.patch("physiclaw.core.logger.setup_logging")
+    # Never spawn real threads (warm-start / setup-wizard) or open a real
+    # browser during tests. Tests that need a thread body re-patch Thread to
+    # capture the target and invoke it manually.
+    mocker.patch.object(server_mod.threading, "Thread")
+    mocker.patch("webbrowser.open")
 
     fake_mcp = MagicMock()
     fake_shutdown = MagicMock()
@@ -106,6 +111,49 @@ def _patch_server_runtime_deps(mocker, *, primary: str = "http://device.local:80
         "state": fake_state, "launcher": fake_launcher,
         "bridge": fake_bridge, "warm_start": fake_warm,
     }
+
+
+def test_server_opens_setup_wizard_by_default(mocker) -> None:
+    deps = _patch_server_runtime_deps(mocker)
+    open_spy = mocker.patch("webbrowser.open")
+    captured = {}
+
+    def fake_thread(target, daemon=False):
+        captured["target"] = target
+        return MagicMock()
+
+    mocker.patch.object(server_mod.threading, "Thread", side_effect=fake_thread)
+
+    server_mod.server(
+        port=8048, host="127.0.0.1", verbose=False,
+        no_runtime=True, warm_start=False, cam_index=None,
+        save_tool_calls=False, save_snapshots=False, save_screenshots=False,
+    )
+
+    # The wizard opens only after the port is accepting connections.
+    captured["target"]()
+    deps["warm_start"].wait_for_port.assert_called_once()
+    open_spy.assert_called_once_with("http://localhost:8048/setup-hardware")
+
+
+def test_server_no_setup_hardware_skips_wizard(
+    mocker, caplog: pytest.LogCaptureFixture,
+) -> None:
+    _patch_server_runtime_deps(mocker)
+    open_spy = mocker.patch("webbrowser.open")
+    thread_spy = mocker.patch.object(server_mod.threading, "Thread")
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
+        server_mod.server(
+            port=8048, host="127.0.0.1", verbose=False,
+            no_runtime=True, warm_start=False, cam_index=None, no_setup_hardware=True,
+            save_tool_calls=False, save_snapshots=False, save_screenshots=False,
+        )
+
+    thread_spy.assert_not_called()  # no warm-start, no wizard → no threads
+    open_spy.assert_not_called()
+    msgs = " ".join(r.getMessage() for r in caplog.records)
+    assert "physiclaw setup hardware" in msgs
 
 
 def test_server_default_invocation_runs_mcp(mocker) -> None:
