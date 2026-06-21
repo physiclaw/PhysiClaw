@@ -475,18 +475,18 @@ def calibrate_arm(
     return pct_to_grbl, tilt, grid_touches
 
 
-# ─── Step 5: Camera ↔ Screen mapping (Mapping B) ────────────
+# ─── Camera ↔ Screen mapping (Mapping B) ────────────────────
 
 
 def compute_camera_mapping(
     cam: Camera, cal: CalibrationState, rotation: int
 ) -> tuple[np.ndarray, tuple[int, int]]:
-    """Detect 15 red dots, compute screen 0-1 → camera 0-1 affine. Plan Step 5.
+    """Detect 15 red dots, compute screen 0-1 → camera 0-1 affine.
 
     Returns (pct_to_cam affine (2,3), cam_size (w, h)).
     Both sides are 0-1 normalized.
     """
-    log.info("═══ Step 5: Camera ↔ Screen mapping (Mapping B) ═══")
+    log.info("═══ Camera ↔ Screen mapping (Mapping B) ═══")
     log.info("  Goal: compute affine transform from screen 0-1 → camera 0-1")
     cal.set_phase("grid")
     time.sleep(1.0)
@@ -497,7 +497,7 @@ def compute_camera_mapping(
 
     frame = cam._fresh_frame()
     if frame is None:
-        raise RuntimeError("Step 5 FAILED — camera read failed")
+        raise RuntimeError("Camera mapping FAILED — camera read failed")
     if rotation >= 0:
         frame = cv2.rotate(frame, rotation)
     frame_h, frame_w = frame.shape[:2]
@@ -529,7 +529,7 @@ def compute_camera_mapping(
 
     if len(dots) != expected:
         raise RuntimeError(
-            f"Step 5 FAILED — detected {len(dots)} dots, expected {expected}"
+            f"Camera mapping FAILED — detected {len(dots)} dots, expected {expected}"
         )
 
     camera_pixels = sort_dots_to_grid(
@@ -564,23 +564,23 @@ def compute_camera_mapping(
     # Homography for inlier check
     cam_to_pct, mask = cv2.findHomography(camera_01, screen_pcts, cv2.RANSAC, 0.01)
     if cam_to_pct is None:
-        raise RuntimeError("Step 5 FAILED — homography computation failed")
+        raise RuntimeError("Camera mapping FAILED — homography computation failed")
     inliers = int(mask.sum()) if mask is not None else 0
     log.info(f"  Homography (camera 0-1 → screen 0-1): {inliers}/{len(dots)} inliers")
 
     # Affine: screen 0-1 → camera 0-1
     pct_to_cam, _ = cv2.estimateAffine2D(screen_pcts, camera_01)
     if pct_to_cam is None:
-        raise RuntimeError("Step 5 FAILED — affine computation failed")
+        raise RuntimeError("Camera mapping FAILED — affine computation failed")
 
     log.info(
-        f"  ✓ Step 5 done: Mapping B ready (screen 0-1 → camera 0-1) "
+        f"  ✓ Camera mapping done: Mapping B ready (screen 0-1 → camera 0-1) "
         f"from {len(dots)} dot pairs, frame {frame_w}×{frame_h}px"
     )
     return pct_to_cam, cam_size
 
 
-# ─── Step 6: Full-chain validation ───────────────────────────
+# ─── Full-chain validation ───────────────────────────────────
 
 
 def validate_calibration(
@@ -596,7 +596,7 @@ def validate_calibration(
 ) -> list[dict]:
     """Full chain: dot → camera detect → Mapping B → Mapping A → tap → touch.
 
-    Plan Step 6. Tests BOTH mappings end-to-end:
+    Tests BOTH mappings end-to-end:
     1. Page shows orange dot at random position
     2. Camera detects orange dot in frame (camera pixels → normalize to 0-1)
     3. Mapping B⁻¹: camera 0-1 → screen 0-1 pct
@@ -607,7 +607,7 @@ def validate_calibration(
 
     max_error: threshold in 0-1 units (0.015 ≈ 5px on a 390px screen).
     """
-    log.info("═══ Step 6: Full-chain validation ═══")
+    log.info("═══ Full-chain validation ═══")
     log.info(f"  Goal: end-to-end test of both mappings — {num_tests} random positions")
     log.info(
         "  Chain: dot on screen → camera detect → Mapping B⁻¹ → Mapping A → arm tap → touch"
@@ -775,7 +775,7 @@ def trace_screen_edge(arm: StylusArm, cal: ScreenTransforms):
     log.info("Edge trace done")
 
 
-# ─── Step 7: AssistiveTouch screenshot verification ─────────
+# ─── AssistiveTouch screenshot verification ─────────────────
 
 
 def verify_assistive_touch(
@@ -785,7 +785,7 @@ def verify_assistive_touch(
     cal: CalibrationState,
     pct_to_grbl: np.ndarray,
 ) -> dict:
-    """Step 7: verify all three AT gestures end-to-end.
+    """Verify all three AT gestures end-to-end.
 
     1. Single-tap → "PhysiClaw Tap" Shortcut takes a screenshot (saved to Photos).
     2. Wait 5s for the screenshot animation to finish.
@@ -810,7 +810,7 @@ def verify_assistive_touch(
     if at.at_screen is None:
         raise RuntimeError("AT position not set — call compute_at_screen_pos first")
 
-    log.info("═══ Step 7: AssistiveTouch screenshot verification ═══")
+    log.info("═══ AssistiveTouch screenshot verification ═══")
     log.info(
         f"  AT position: screen 0-1 ({at.at_screen[0]:.3f}, {at.at_screen[1]:.3f})"
     )
@@ -892,9 +892,9 @@ def verify_assistive_touch(
 
     passed = shot_passed and clip_fetched
     if passed:
-        log.info("  ✓ Step 7 done: AT tap + double-tap + long-press all verified")
+        log.info("  ✓ AssistiveTouch done: tap + double-tap + long-press all verified")
     else:
-        log.warning("  ✗ Step 7 failed")
+        log.warning("  ✗ AssistiveTouch verification failed")
 
     return {
         "passed": passed,

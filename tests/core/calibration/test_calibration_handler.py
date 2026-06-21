@@ -202,6 +202,52 @@ async def test_handle_calibrate_arm_happy_path(mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_calibrate_arm_from_park_centers_stylus(mocker) -> None:
+    """Auto mode (from_park): with a prior mapping, drive the parked stylus to
+    center before calibrating."""
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(
+        pct_to_grbl=_identity_pct_to_grbl(),
+        pct_to_grbl_mm=lambda x, y: (5.0, 6.0),
+    )
+    mocker.patch.object(
+        handler, "calibrate_arm",
+        return_value=(_identity_pct_to_grbl(), 0.01, []),
+    )
+    mocker.patch.object(handler, "TILT_ALIGNED_THRESHOLD", 0.05)
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={"from_park": True}), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    assert _read_json(resp)["status"] == "ok"
+    physiclaw.restore_park_origin.assert_called_once()
+    physiclaw._arm._fast_move.assert_called_once_with(5.0, 6.0)  # screen center
+    physiclaw._arm.set_origin.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_calibrate_arm_from_park_without_bundle_errors(mocker) -> None:
+    """from_park with no in-memory mapping and no saved bundle → clear error."""
+    physiclaw = MagicMock()
+    physiclaw._arm = MagicMock()
+    physiclaw.calibration = SimpleNamespace(pct_to_grbl=None)
+    mocker.patch.object(handler.Calibration, "load", return_value=None)
+    cal_arm = mocker.patch.object(handler, "calibrate_arm")
+
+    resp = await handle_calibrate_arm(
+        _fake_request(json_obj={"from_park": True}), physiclaw, MagicMock(), MagicMock(),
+    )
+
+    body = _read_json(resp)
+    assert body["status"] == "error"
+    assert "previous calibration" in body["message"]
+    cal_arm.assert_not_called()  # never reached the probe
+    physiclaw.release.assert_called_once()  # lock still released
+
+
+@pytest.mark.asyncio
 async def test_handle_calibrate_arm_arm_not_connected() -> None:
     physiclaw = MagicMock()
     physiclaw._arm = None

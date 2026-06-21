@@ -25,6 +25,7 @@ from physiclaw.core.calibration.calibrate import (
     verify_assistive_touch,
     TILT_ALIGNED_THRESHOLD,
 )
+from physiclaw.core.calibration.state import Calibration
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,27 @@ async def handle_measure_viewport_shift(
 # ─── Arm-side unified calibration ───────────────────────────
 
 
+def _center_parked_stylus(physiclaw):
+    """Drive the parked stylus onto the screen center using the saved
+    calibration, so auto mode needs no hand-positioning. Assumes the tip
+    rests at ``PARK_PCT`` (the off-screen spot every run parks at). Requires
+    a prior bundle; raises a clear error if none exists. Caller holds the lock."""
+    cal = physiclaw.calibration
+    if cal.pct_to_grbl is None:  # plain server boot doesn't load the bundle
+        prior = Calibration.load()
+        if prior is None or prior.pct_to_grbl is None:
+            raise RuntimeError(
+                "Auto needs a previous calibration to place the stylus — "
+                "position the stylus over the circle and calibrate manually."
+            )
+        cal.pct_to_grbl = prior.pct_to_grbl
+    physiclaw.restore_park_origin()  # re-pin the frame: current pos = PARK_PCT
+    gx, gy = cal.pct_to_grbl_mm(0.5, 0.5)
+    physiclaw._arm._fast_move(gx, gy)
+    physiclaw._arm.wait_idle()
+    physiclaw._arm.set_origin()  # screen center is now arm (0, 0) for the probe
+
+
 async def handle_calibrate_arm(
     request, physiclaw, calib: CalibrationState, phone: PageState
 ):
@@ -95,7 +117,13 @@ async def handle_calibrate_arm(
     re-fires on a miss) and fits the screen↔arm affine. Writes
     ``pct_to_grbl`` and the arm direction mapping into the in-memory bundle.
     Bundle is only persisted to disk on full setup success (validate).
+
+    Body ``{"from_park": true}`` (sent by the wizard's auto mode) means the
+    stylus is resting at the off-screen park spot rather than hand-positioned
+    over the screen. We use the saved calibration to drive it onto the screen
+    center first, so the probe triangle lands on-screen — needs a prior bundle.
     """
+    from_park = bool((await _read_body(request)).get("from_park"))
 
     def _do():
         if physiclaw._arm is None:
@@ -103,6 +131,8 @@ async def handle_calibrate_arm(
         phone.set_mode("calibrate", phase="center")
         physiclaw.acquire()
         try:
+            if from_park:
+                _center_parked_stylus(physiclaw)
             pct_to_grbl, tilt, touches = calibrate_arm(physiclaw._arm, calib)
             physiclaw.calibration.pct_to_grbl = pct_to_grbl
             right_vec = (float(pct_to_grbl[0, 0]), float(pct_to_grbl[1, 0]))
@@ -166,7 +196,7 @@ async def handle_calibrate_camera_frame(
         return _err(str(e))
 
 
-# ─── Step 5: screen → camera affine (Mapping B) ─────────────
+# ─── Camera mapping: screen → camera affine (Mapping B) ─────
 
 
 async def handle_compute_camera_mapping(request, physiclaw, calib: CalibrationState):
@@ -195,7 +225,7 @@ async def handle_compute_camera_mapping(request, physiclaw, calib: CalibrationSt
         return _err(str(e))
 
 
-# ─── Step 6: full-chain validation ──────────────────────────
+# ─── Full-chain validation ──────────────────────────────────
 
 
 async def handle_validate_calibration(
@@ -278,7 +308,7 @@ async def handle_trace_edge(request, physiclaw, phone: PageState):
         return _err(str(e))
 
 
-# ─── Step 7: AssistiveTouch screenshot verification ─────────
+# ─── AssistiveTouch screenshot verification ─────────────────
 
 
 async def handle_show_assistive_touch(
