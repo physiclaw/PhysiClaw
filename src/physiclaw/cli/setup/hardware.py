@@ -184,8 +184,9 @@ def run(auto: bool = False, trace: bool = False) -> None:
 
     # ── 4. Connect the camera ──
     print("\n── 4. Connect the camera ──")
-    print("  Camera directly above the phone. PhysiClaw auto-detects it by the")
-    print("  colored corner markers on the bridge page (keep /bridge open + awake).")
+    print("  Camera directly above the phone. PhysiClaw draws colored corner markers")
+    print("  on the bridge page, then scans the cameras and picks the one that sees")
+    print("  them (keep /bridge open + awake).")
     r = api("POST", "/api/connect-camera", {"index": "auto"}, timeout=60)
     if ok(r):
         cam = r.get("index", 0)
