@@ -400,20 +400,20 @@ const STR = {
   s_viewport_warn: { en: "Couldn't show the square — is the bridge page open and awake on the phone?", zh: "显示不出方块——手机上的 bridge 页面还开着、亮着吗？" },
   s_armcal_title: { en: "Calibrate the arm", zh: "校准机械臂" },
   s_armcal_lede: {
-    en: "Now PhysiClaw learns how the arm's movement maps to the screen — it taps a grid of known dots and records the page coordinate each tap lands on.",
-    zh: "接下来 PhysiClaw 要弄清楚机械臂的动作如何对应到屏幕——它会点击一组已知的圆点，记下每次点击对应的页面坐标。",
+    en: "Now PhysiClaw learns how the arm's movement maps to the screen — it taps a grid of known points and records the page coordinate each tap lands on.",
+    zh: "接下来 PhysiClaw 要弄清楚机械臂的动作如何对应到屏幕——它会点击一组已知的位置，记下每次点击对应的页面坐标。",
   },
   s_armcal_li1: {
     en: `<b>Move the stylus tip over the orange circle</b> at screen center.<small>This gives the arm a starting point right over the screen.</small>`,
     zh: `<b>把触控笔尖移到屏幕正中那个橙色圆圈的上方。</b><small>以此作为机械臂的起始位置。</small>`,
   },
   s_armcal_li2: {
-    en: `<b>Press Start, then don't touch the rig.</b> The arm taps 18 dots (~30–60&nbsp;s) to map its movement to the screen's coordinates.`,
-    zh: `<b>点击开始，然后别碰设备。</b> 机械臂会点击 18 个圆点（约 30–60 秒），建立机械臂位移到屏幕坐标的映射。`,
+    en: `<b>Press Start, then don't touch the rig.</b> The arm taps 18 points (~30&nbsp;s) to map its movement to the screen's coordinates.`,
+    zh: `<b>点击开始，然后别碰设备。</b> 机械臂会点击 18 个位置（约 30 秒），建立机械臂位移到屏幕坐标的映射。`,
   },
   s_armcal_btn: { en: "Start", zh: "开始" },
-  s_armcal_busy: { en: "Tapping 18 dots…", zh: "正在点击 18 个圆点…" },
-  s_armcal_ok: { en: (r) => `Arm calibrated — mapped ${r.body.pairs} dots.`, zh: (r) => `机械臂校准完成——映射了 ${r.body.pairs} 个圆点。` },
+  s_armcal_busy: { en: "Tapping 18 points…", zh: "正在点击 18 个位置…" },
+  s_armcal_ok: { en: (r) => `Arm calibrated — mapped ${r.body.pairs} points.`, zh: (r) => `机械臂校准完成——映射了 ${r.body.pairs} 个位置。` },
   s_armcal_warnSkew: {
     en: (pct) => `The phone looks slightly rotated relative to the arm (${pct}%). If validation fails later, straighten the phone and run this step again.`,
     zh: (pct) => `手机相对机械臂好像有点歪（${pct}%）。要是后面验证没过，就把手机摆正，再跑一遍这一步。`,
