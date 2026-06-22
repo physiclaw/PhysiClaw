@@ -9,11 +9,11 @@ Order food delivery. Check your email. Shop for groceries. Book a hotel. Any app
 No OAuth tokens. No ADB cables. No APIs. No app to install. No developer setup.
 Just unlock your phone, put it on the desk, and let the agent work.
 
-The tradeoff? PhysiClaw needs hardware: an embedded system running GRBL/grblHAL firmware to control a gantry (X/Y) and stylus (Z), plus a USB camera. A compact desktop rig that gives your AI agent physical presence.
+The tradeoff? PhysiClaw needs hardware: a GRBL-compatible control board (FluidNC) driving an X/Y gantry and a solenoid that taps the stylus, plus one overhead USB camera. A compact desktop rig that gives your AI agent physical presence.
 
 ## Quickstart
 
-macOS only for now. Hardware bill-of-materials [below](#bill-of-materials).
+macOS only for now. Full docs: **[docs.physiclaw.ai](https://docs.physiclaw.ai)**. Hardware bill-of-materials [below](#bill-of-materials).
 
 ```bash
 # 1. Install the CLI (uv + Python 3.12 + physiclaw, all isolated under ~/.local/bin)
@@ -67,6 +67,15 @@ PhysiClaw takes a different approach: **let the AI agent physically use your pho
 
 One setup. Every app. Just put an unlocked phone on the desk.
 
+## Two Ways to Drive It
+
+PhysiClaw is both an MCP server and a complete agent — you choose who's in charge:
+
+- **Bring your own agent (MCP).** Point any MCP client (Claude Desktop, an IDE, your own) at `http://localhost:8048/mcp`. The client's model does the deciding; PhysiClaw just gives it hands.
+- **Built-in agent.** PhysiClaw ships its own agent runtime — a native tool-call loop with memory and skills that runs on Anthropic, OpenAI, Google, Moonshot, or Qwen. It can wake on a schedule or a screen change and operate the phone unattended, with no external client connected.
+
+Same robot, same tools — the difference is whose mind is in the loop.
+
 ## System Architecture
 
 ```text
@@ -80,11 +89,10 @@ One setup. Every app. Just put an unlocked phone on the desk.
 ┌───────────────────────────────────────┐
 │     PhysiClaw MCP Server (Python)     │
 │                                       │
-│  Tools:                               │
-│   · screenshot       (camera)         │
-│   · park             (retract)        │
-│   · move             (X/Y plane)      │
-│   · tap / swipe      (Z down + move)  │
+│  Tools (MCP):                         │
+│   · peek / screenshot    (see)        │
+│   · tap / swipe / etc.   (act)        │
+│   · home / back / unlock (navigate)   │
 └──────────┬────────────────┬───────────┘
            │                │
        USB Camera     USB Serial (GRBL)
@@ -110,7 +118,7 @@ One setup. Every app. Just put an unlocked phone on the desk.
 
 | Component | Item | Qty | Est. Price |
 | --------- | ---- | --- | ---------- |
-| **GRBL Arm** | [Paixi Kuaichaobao pen plotter P25](https://e.tb.cn/h.ifgckUqg9Zmph9n?tk=cxpFUxr6Z5C) (X/Y gantry + Z servo) | 1 | ~$80 |
+| **GRBL Arm** | [Paixi Kuaichaobao pen plotter P25](https://e.tb.cn/h.ifgckUqg9Zmph9n?tk=cxpFUxr6Z5C) (X/Y gantry; the tip is driven by a solenoid) | 1 | ~$80 |
 | **Camera** | UGREEN 1080P USB camera, fixed focus | 1 | ~$14 |
 | **Stylus** | Capacitive stylus, conductive fiber tip 8-10mm | 1 | ~$1.5 |
 | Camera mount | Gooseneck desk clamp, metal, 50cm | 1 | ~$2 |
@@ -129,24 +137,25 @@ One setup. Every app. Just put an unlocked phone on the desk.
 
 ## Communication Protocol (PhysiClaw ↔ GRBL Arm)
 
-### GRBL G-code (USB → GRBL Arm)
+### GRBL G-code (USB → control board)
 
-All commands used in this project:
+The X/Y gantry moves with standard GRBL motion; the stylus tip is a **solenoid** fired through the spindle-PWM pin (not a Z servo). All commands used:
 
 ```gcode
-G91                    # Relative coordinate mode (default)
+G90                    # Absolute coordinate mode
+G91                    # Relative coordinate mode
 G0 Xxx Yyy Fxxx        # Rapid move on X/Y plane (position stylus)
-G1 Xxx Yyy Fxxx        # Linear move at constant speed (swipe gesture)
-M3 S12                 # Stylus down (touch screen)
-M3 S0                  # Stylus up (release screen)
-M5                     # Servo off
-G90                    # Absolute coordinate mode (for park)
-G0 X0 Y0 F5000         # Return to home position
-$$                     # Query all GRBL parameters
+G1 Xxx Yyy Fxxx        # Linear move at constant speed (swipe slide)
+M3 S1000               # Solenoid strike — pull the tip onto the glass
+M3 S750                # Drop to hold duty — keep it seated (long-press / swipe)
+M5                     # Coil off — the return spring lifts the tip
+G4 P0.08               # Dwell (gesture timing, in seconds)
 ?                      # Query real-time position
 ```
 
-Protocol: USB serial (CH340, 115200 baud). Send one line at a time, wait for `ok` before next.
+The solenoid uses a hit-and-hold profile: strike at `S1000` to pull the core in, settle ~80 ms, then drop to `S750` to hold without cooking the coil; `M5` releases. A tap is strike → ~80 ms → release; a long-press holds ~1.2 s.
+
+Protocol: USB serial (115200 baud). Send one line at a time (LF, not CRLF), wait for `ok` before the next.
 
 ### Key GRBL Parameters
 
@@ -155,11 +164,15 @@ Protocol: USB serial (CH340, 115200 baud). Send one line at a time, wait for `ok
 | `$100` / `$101` | Steps per mm (X/Y) | 80 |
 | `$110` / `$111` | Max speed mm/min (X/Y) | 5000 |
 | `$120` / `$121` | Acceleration mm/sec² (X/Y) | 200 |
-| `$22` | Enable Homing | 1 |
+| `$22` | Homing — this plotter has no limit switches; alarms are cleared with `$X` | 0 |
+| `$32` | Spindle (not laser) PWM mode — required to drive the solenoid | 0 |
+| `$30` | PWM `S`-value range ceiling | 1000 |
+
+On FluidNC these live in [`firmware/fluidnc_config.yml`](firmware/fluidnc_config.yml), not live `$` writes — the firmware rejects runtime writes to config-owned settings.
 
 ### MCP Protocol (MCP Client → PhysiClaw)
 
-Tools communicate via stdio or SSE with JSON messages. MCP is a standard, language-agnostic protocol.
+The server speaks MCP over streamable HTTP at `http://localhost:8048/mcp`. MCP is a standard, language-agnostic protocol, so any compliant client works.
 
 ## Tech Stack
 
@@ -171,13 +184,14 @@ Python 3.12+
 
 (All installed automatically by `install.sh` — listed here for reference.)
 
-- `pyserial` — send G-code to the GRBL board over USB serial
-- `opencv-python` — USB camera capture
+- `pyserial` — send G-code to the control board over USB serial
+- `opencv-python` + `numpy` — USB camera capture and image handling
 - `mcp` — MCP server framework
 - `rapidocr` + `onnxruntime` — on-device OCR + icon detection
-- `httpx`, `typer`, `croniter` — runtime, CLI, scheduling
+- `anthropic` — the built-in agent's Anthropic provider (other providers are reached over plain HTTP)
+- `typer`, `croniter`, `tomlkit` — CLI, scheduling, config
 
-No Anthropic SDK needed — Claude (or any other LLM) runs on the MCP client side.
+Driven from an external MCP client, the LLM runs on the client side. With the **built-in agent**, PhysiClaw talks to the model provider itself — which is why the Anthropic SDK ships in the box.
 
 ### Platform Compatibility
 
@@ -186,55 +200,57 @@ Mac / Windows / Linux (Raspberry Pi) all supported. The only platform difference
 ## Code Structure
 
 ```text
-physiclaw/
-├── server.py         # MCP Server entry point, exposes tools
-├── core.py           # Central orchestrator (arm + camera + calibration)
-├── arm.py            # GRBL G-code controller (tap, swipe, move)
-├── camera.py         # USB camera capture and green flash detection
-├── vision.py         # YOLOX phone detection and camera discovery
-├── calibrate.py      # 5-phase calibration workflow
-└── grbl.py           # Auto-detect GRBL serial port
+src/physiclaw/
+├── cli/               # `physiclaw` CLI — doctor, server, setup, models, …
+├── core/              # The robot
+│   ├── hardware/      #   arm (GRBL), camera, solenoid, serial-port autodetect
+│   ├── vision/        #   OCR + icon detection → annotated element listing
+│   ├── calibration/   #   screen ↔ camera ↔ arm affine transforms
+│   ├── bridge/        #   iOS bridge — screenshots & clipboard via Shortcuts
+│   ├── orchestration/ #   the PhysiClaw orchestrator (lifecycle + gestures)
+│   └── server/        #   MCP server: tool definitions and HTTP routes
+└── agent/             # The built-in brain (optional)
+    ├── engine/        #   native tool-call loop, memory, skills
+    ├── provider/      #   Anthropic, OpenAI, DeepSeek, Google, Moonshot, Qwen
+    └── runtime/       #   cron + poll triggers, autonomous sessions
 ```
 
 ## Operation
 
-The AI agent does not output coordinates — only direction and distance level. Each step is verified by photo.
+The AI agent doesn't output coordinates. Each camera frame is run through on-device OCR and icon detection, which boxes and labels every element on screen and returns a listing:
 
-**Directions:** up / down / left / right / up-left / up-right / down-left / down-right
+```text
+id  kind   label        bbox [left,top,right,bottom]   conf
+12  icon   "Clock"      [0.41, 0.55, 0.49, 0.63]       0.97
+```
 
-**Distance Levels:**
-
-| Level | Think of it as... | Physical Displacement |
-| ----- | ----------------- | --------------------- |
-| large | half the screen away | 20mm |
-| medium | a few icons away | 8mm |
-| small | one icon away | 3mm |
-| nudge | almost there, fine-tune | 1mm |
+A **bbox** is a rectangle around one element, given as `[left, top, right, bottom]` in `0–1` screen fractions. The agent picks a bbox and a gesture; PhysiClaw turns the bbox center into arm coordinates (via calibration) and drives the stylus there. Every step is verified by looking again.
 
 **Full Operation Cycle:**
 
 ```text
-1. park()              → Retract stylus out of frame
-2. screenshot()        → Clean screenshot, AI sees screen content
-3. AI decides          → e.g. "move down-right, large"
-4. move(dir, dist)     → Stylus moves toward target
-5. screenshot()        → AI checks stylus position (stylus visible)
-6. Aligned?
-   → No:  back to step 3 (AI re-evaluates and adjusts)
-   → Yes: tap()  → Stylus touches screen
-7. park()              → Retract stylus out of frame
-8. screenshot()        → Verify result, continue next action
+1. peek()              → Camera frame + annotated element listing
+2. AI decides          → pick a target bbox + a gesture
+3. tap(bbox)           → Arm moves to the bbox center; solenoid taps
+4. peek()              → Look again: did the screen change as expected?
+5. Aligned / done?
+   → No:  re-peek and pick a different bbox
+   → Yes: continue to the next action
 ```
+
+`peek` uses the overhead camera (~4s). `screenshot` triggers the phone's own pixel-perfect capture (~12s) when a target is too small for the camera to resolve.
 
 ### Gesture Implementation
 
-**Single Tap:** G0 to target → stylus down → hold 50-100ms → stylus up
+The X/Y gantry positions the stylus over the bbox center, then the solenoid acts:
 
-**Long Press:** G0 to target → stylus down → hold 800ms → stylus up
+**Single tap:** strike (`M3 S1000`) → hold ~80 ms → release (`M5`)
 
-**Swipe:** G0 to start → stylus down → G4 P0.03 → G1 to end F3000 → G4 P0.03 → stylus up
+**Long press:** strike → settle → drop to `S750` and hold ~1.2 s → release
 
-**Double Tap:** stylus down 50ms → up → wait 100ms → stylus down 50ms → up (interval < 300ms)
+**Double tap:** two strikes ~100 ms apart (a brief contact-breaking lift between), kept under the iOS ~300 ms double-tap window
+
+**Swipe:** press and hold at `S750` → `G1` slide to the end point at the chosen feed (`F3000`–`F10000`) → release
 
 ## Use Cases
 
