@@ -129,17 +129,13 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .detail > .actions{margin-top:30px;padding-top:24px;border-top:1px solid var(--line)}
 /* Primary action always sits at the far right; Back stays at the far left. */
 .detail > .actions .btn.primary{margin-left:auto}
-/* Material-style "Auto mode" checkbox — sits at the far left of the action bar. */
-.auto-toggle{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;font-size:14px;font-weight:600;color:var(--muted);transition:color .15s}
-.auto-toggle:has(input:disabled){opacity:.4;cursor:not-allowed}
-.auto-toggle input{position:absolute;width:1px;height:1px;opacity:0;margin:0}
-.auto-toggle .cbx{width:20px;height:20px;border-radius:6px;border:2px solid var(--line2);background:transparent;display:grid;place-items:center;transition:background .18s,border-color .18s,box-shadow .18s}
-.auto-toggle .cbx svg{width:13px;height:13px;fill:none;stroke:var(--accent-ink);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .2s ease .04s}
-.auto-toggle:hover .cbx{border-color:var(--accent)}
-.auto-toggle input:checked + .cbx{background:var(--accent);border-color:var(--accent)}
-.auto-toggle input:checked + .cbx svg{stroke-dashoffset:0}
-.auto-toggle input:checked ~ .auto-lbl{color:var(--strong)}
-.auto-toggle input:focus-visible + .cbx{box-shadow:0 0 0 3px rgba(212,81,26,.28)}
+/* "Auto mode" toggle-button — looks like a button; a check badge pops into the
+   top-right corner when it's armed. */
+.auto-btn{position:relative;overflow:visible}
+.auto-btn.on{border-color:var(--accent);color:var(--strong);background:rgba(212,81,26,.1)}
+.auto-check{position:absolute;top:-8px;right:-8px;width:21px;height:21px;border-radius:50%;background:var(--accent);display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.22);transform:scale(0);transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.auto-btn.on .auto-check{transform:scale(1)}
+.auto-check svg{width:12px;height:12px;fill:none;stroke:var(--accent-ink);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
 .btn{padding:12px 22px;border-radius:11px;font-weight:650;font-size:14.5px;
   background:var(--card2);border:1px solid var(--line2);transition:.15s;display:inline-flex;align-items:center;gap:9px}
 .btn:hover{border-color:var(--faint);transform:translateY(-1px)}
@@ -318,8 +314,8 @@ const STR = {
   working: { en: "Working…", zh: "处理中…" },
   autoBtn: { en: "Auto mode", zh: "自动模式" },
   autoHint: {
-    en: "Already set up before? Tick this, then press Continue — PhysiClaw runs every step for you and pauses wherever it needs you.",
-    zh: "之前已经校准过了？勾选它，再点「继续」——PhysiClaw 会替你跑完每一步，需要你操作时会自动停下来。",
+    en: "Already set up before? Click it, then press Continue — PhysiClaw runs every step for you and pauses wherever it needs you.",
+    zh: "之前已经校准过了？点一下它，再点「继续」——PhysiClaw 会替你跑完每一步，需要你操作时会自动停下来。",
   },
   stepOf: { en: (n) => `Step ${n} of ${STEPS.length}`, zh: (n) => `第 ${n} / ${STEPS.length} 步` },
   finalStep: { en: "Final step", zh: "最后一步" },
@@ -654,7 +650,7 @@ async function go(i) {
    action (take the AT screenshot, position the stylus, place the AT button) —
    leaving the user on that step to finish it, then press Continue to resume. */
 let AUTO = false;       // the autoRun loop is currently driving
-let AUTO_ARMED = false; // "Auto mode" checkbox is ticked — Continue starts the run
+let AUTO_ARMED = false; // "Auto mode" button is on — Continue starts the run
 async function autoRun() {
   if (AUTO) return;
   AUTO = true;
@@ -765,20 +761,20 @@ function connectPhone(ctx) {
       </div>
     </div>`);
   const wrap = shell({ n: 1, title: t("s_phone_title"), lede: t("s_phone_lede"), cards: [body] });
-  // Continue advances one step. If "Auto mode" is ticked, that same press then
+  // Continue advances one step. If "Auto mode" is on, that same press then
   // drives the rest of the wizard hands-off (mirrors the CLI `--auto`).
   const actions = footer(ctx, { primary: { id: "nextBtn", label: t("cont"), disabled: true, onClick: () => { ctx.next(); if (AUTO_ARMED) autoRun(); } } });
-  // "Auto mode" toggle: tick it, then press Continue to run every step
-  // automatically (pausing on any step that needs you). Disabled until the
-  // phone connects.
-  const autoToggle = $(`<label class="auto-toggle" title="${t("autoHint")}">
-      <input type="checkbox" id="autoChk" disabled>
-      <span class="cbx"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
-      <span class="auto-lbl">${t("autoBtn")}</span></label>`);
-  const autoChk = autoToggle.querySelector("input");
-  autoChk.checked = AUTO_ARMED;
-  autoChk.onchange = (e) => { AUTO_ARMED = e.target.checked; if (!AUTO_ARMED) AUTO = false; };
-  actions.insertBefore(autoToggle, actions.firstChild);
+  // "Auto mode" toggle-button: click to arm (a check badge appears in the
+  // top-right corner), then press Continue to run every step automatically
+  // (pausing on any step that needs you). Disabled until the phone connects.
+  const autoBtn = $(`<button type="button" class="btn auto-btn" id="autoBtn" disabled title="${t("autoHint")}"><span class="auto-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>${t("autoBtn")}</button>`);
+  autoBtn.classList.toggle("on", AUTO_ARMED);
+  autoBtn.onclick = () => {
+    AUTO_ARMED = !AUTO_ARMED;
+    autoBtn.classList.toggle("on", AUTO_ARMED);
+    if (!AUTO_ARMED) AUTO = false;
+  };
+  actions.insertBefore(autoBtn, actions.firstChild);
   wrap.appendChild(actions);
 
   const qrCanvas = body.querySelector("#qr");
@@ -796,7 +792,7 @@ function connectPhone(ctx) {
         body.querySelector("#qrDone").classList.add("show");
         stateEl.innerHTML = ""; stateEl.appendChild(note("ok", t("s_phone_ok")));
         nextBtn.disabled = false;
-        autoChk.disabled = false;
+        autoBtn.disabled = false;
         return;
       }
       stateEl.innerHTML = ""; stateEl.appendChild($(`<span class="pill wait"><span class="led"></span>${t("s_phone_waiting")}</span>`));
