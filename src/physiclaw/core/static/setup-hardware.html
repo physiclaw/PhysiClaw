@@ -160,6 +160,7 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .note.ok{background:rgba(76,201,138,.10);border-color:rgba(76,201,138,.32);color:#bdecd1}
 .note.warn{background:rgba(224,169,63,.10);border-color:rgba(224,169,63,.32);color:#f0ddb2}
 .note.err{background:rgba(224,104,95,.10);border-color:rgba(224,104,95,.32);color:#f3cbc7}
+.note.center{display:block;text-align:center}
 
 .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
   padding:5px 11px;border-radius:99px;background:var(--card2);border:1px solid var(--line2);color:var(--muted)}
@@ -996,7 +997,7 @@ function finish(ctx) {
     hero.innerHTML = `<div class="big">✓</div>
       <h1 style="margin:0">${t("s_finish_readyTitle")}</h1>
       <p class="lede" style="margin:10px auto 0;max-width:42ch">${t("s_finish_readyLede", when)}</p>`;
-    hero.appendChild(note("info", t("s_finish_close")));
+    hero.appendChild($(`<div class="note info center">${t("s_finish_close")}</div>`));
   }
 
   if (alreadyReady) { showReady(""); return wrap; }
