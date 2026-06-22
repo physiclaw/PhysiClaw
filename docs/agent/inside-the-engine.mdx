@@ -91,7 +91,3 @@ Beyond a threshold of turns, the engine folds the oldest ones into a few compact
 Notes are summarized; memory and skill loads are *not*, because those are durable reference material the agent deliberately loaded — a one-line summary can't stand in for the workflow it's following. By default the first fold happens around **turn 30**, always keeping the **10 most recent** turns intact, and re-folding every **20** turns after. The exact numbers are tuned per provider so the fold lands where it costs the least against each vendor's prompt cache.
 
 The combined effect: a session can run long enough to finish a real, multi-step task, and the model still sees a coherent story — recent turns in full, older turns boiled down to the one line that mattered, and durable loads carried through whole.
-
-## Next
-
-- [System architecture](/en/concepts/architecture/) — where this engine sits in the full picture, from bridge to AssistiveTouch to arm.

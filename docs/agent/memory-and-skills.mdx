@@ -112,7 +112,3 @@ Skills are how the autonomous side of the agent works too — the `jobs` skill i
 :::note[Skills are snapshotted at wake]
 The agent captures each `SKILL.md` body when the session starts; editing a skill mid-session won't change behavior until the next wake. This is deliberate — it keeps the cached part of the prompt byte-stable so the model isn't re-charged for an unchanged prefix on every turn.
 :::
-
-## Next
-
-- [Inside the engine](/en/agent/inside-the-engine/) — the native tool-call loop, the per-turn shape, and how it keeps a long session in context.

@@ -105,8 +105,3 @@ physiclaw doctor
 | --- | --- | --- |
 | `<provider> api key: (unset) — required for the active model.` | 当前激活的服务商没有 API key。 | 用 `physiclaw models key <provider>` 或对应的环境变量来设置。 |
 | `<provider>/<model>: vision check failed — expected 'PhysiClaw' in reply …`（`doctor --deep`） | 当前模型其实看不到图片（它会悄悄把图片丢掉）。 | 换成一个**支持视觉**的模型——PhysiClaw 每一次 `peek` 都需要视觉能力。参见[模型](/zh/agent/models/)。 |
-
-## 下一步
-
-- [校准](/zh/set-up/calibrate/) —— 完整的 10 步向导，以及每一步各自证明了什么。
-- [CLI 参考](/zh/reference/cli/) —— `doctor`、`server`、`setup` 及其余命令。
