@@ -1,0 +1,73 @@
+---
+title: 固件
+description: 给控制板刷上 FluidNC，再载入 PhysiClaw 的配置——就这一步，教会臂走 CoreXY 运动、以及怎么驱动 solenoid。
+---
+
+控制板出厂是空白的，刷写之后它才变成一条 PhysiClaw 臂。你在浏览器里装上 **FluidNC**（一个开源的 G-code 运动控制器），再把 PhysiClaw 的 [`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml) 粘进去，告诉它这台机器是 **CoreXY**、以及 Z「刀具」是一个 **solenoid**。不用工具链，不用编译器——就是在 Chrome 里点几下走完。
+
+这一页是仓库里那份手把手的 [`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md) 的概念版搭档：要逐个按钮的精确流程，看那份；要弄清 *每一部分在做什么、为什么*，看这页。
+
+## 你刷的是什么
+
+参考用的板子是 **MKS DLC32 v2.1**。要往上装两样东西：
+
+<CardGrid>
+  <Card title="FluidNC 固件" icon="rocket">
+    运动控制器。它通过 USB 串口接收 G-code，驱动步进电机和 solenoid。你刷的是 **`noradio`** 变体——没有 Wi-Fi、没有蓝牙，只有 PhysiClaw 服务端用到的那条 USB 串口连接。
+  </Card>
+  <Card title="config.yaml" icon="document">
+    一个纯文本文件，把 *你这台* 机器描述给固件：引脚、它是 CoreXY、每毫米步数、以及 solenoid 怎么接。固件是通用的；是这份配置把它变成了 PhysiClaw。
+  </Card>
+</CardGrid>
+
+:::note[为什么是 CoreXY，为什么用 solenoid]
+CoreXY 是一种皮带布局，两个电机共同分担两个轴的负载——P25 写字机器人正是这么走的，所以配置里声明 `kinematics: corexy`。而 Z 轴 **不是舵机**：PhysiClaw 通过板子的主轴（spindle）输出来驱动一个 solenoid，于是一次点击是一记干脆的电磁铁脉冲，而不是舵机慢慢扫过去。这两点配置都帮你设好了；你不用接任何线。
+:::
+
+## 开刷
+
+你需要：板子、一根 USB Type-B 线（那种方方的打印机式接头）、它的 12 V 电源、Chrome，以及 PhysiClaw 的 `config.yaml`。
+
+<Steps>
+
+1. **先上电，再连接。**
+   先插 12 V（LED 亮起），再插 USB。在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)，在 **FluidNC** 下点 **Continue**。
+
+2. **安装固件。**
+   **Connect** → 选 **USB Serial** 端口。然后 **Install** → 最新版本 → **`noradio`** 变体 → **fresh-install**，波特率 **115200**。等进度条走完，再点 **Continue**。
+
+3. **载入配置。**
+   出现红色的 "invalid configuration"（配置无效）警告是正常的——板子还没有配置。打开 **File browser** → **Create config**（它会预填 `config.yaml`）→ **OK**。在编辑器里打开 **Source** 标签页，全选、删掉，把 PhysiClaw 的 [`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml) 内容粘进去。**Save**。
+
+4. **重启并验证。**
+   打开 **Terminal**，点红色的 **Restart**。启动日志应当全绿，并以类似 `<Idle|...>` 的一行结尾。那行 `Idle` 说明板子活着，正等着 G-code。
+
+</Steps>
+
+## 你可能需要微调的几处
+
+配置自带的默认值都挺合理，但有两个数字是和机器相关的。它们在 [`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml) 里就有注释点明：
+
+- **`steps_per_mm`**（X 和 Y，默认 **80**）——决定每命令一毫米，臂实际走多远。对于 20 齿的 GT2 同步轮、16 细分，算法是 `200 × 16 / 40 mm = 80`。如果一条移动命令走出来的尺寸不对，就是调这个旋钮。
+- **`max_travel_mm`**（默认 **200**）——你这台臂 X 和 Y 的真实行程。只有你之后启用软限位时它才有意义。
+
+:::tip[如果某个轴反着走]
+配置里 X 和 Y 的方向引脚上有被注释掉的 `:low` 后缀。如果某个轴在 [标定](/zh/set-up/calibrate/) 时朝反方向走，就把那一个引脚的后缀切换一下、重新保存——不用重新接线。
+:::
+
+## 一次点击到底是怎么发出去的
+
+这些你不会手敲——是服务端在发——但值得看看配置启用了什么。solenoid 挂在主轴 PWM 输出（`gpio.32`）上，以 **hit-and-hold**（先打后保持）方式驱动：先来一记满功率敲击把它按下去，短暂等待，再降到一个较低的保持电流以免过热，最后释放。
+
+```gcode
+M3 S1000    ; full strike power — stylus snaps down
+G4 P0.05    ; wait 50 ms
+M3 S750     ; drop to hold current (safe-to-sustain hold duty)
+M5          ; release — stylus lifts
+```
+
+正是这个先打后保持的波形，让长按和点击读出不同的效果，完整说明见 [手势](/zh/reference/gestures/) 页。
+
+## 下一步
+
+- [安装软件](/zh/set-up/install/)——一条命令就装好 `physiclaw` CLI 和那个与这块板子通信的服务端。

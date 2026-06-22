@@ -1,0 +1,87 @@
+---
+title: Assembly
+description: Build the rig — seat the phone, fit the stylus, hang the camera overhead, and wire it all up. About an hour, no soldering.
+---
+
+Assembly is mechanical: you seat the phone in its corner, swap the plotter's pen for the stylus,
+clamp the camera straight overhead, and run everything to a powered USB hub. No soldering, no
+custom boards — about an hour, mostly fiddling with the camera angle.
+
+```text
+        camera (gooseneck, ~25 cm up, looking straight down)
+            │
+            ▼
+   ┌─────────────────────────┐
+   │  pen-plotter arm        │
+   │  X/Y gantry             │
+   │  Z = solenoid + stylus  │
+   │                         │
+   │   ┌───┐                 │   ◄── phone seated in the corner,
+   │   │ ▓ │  phone          │       TOP-LEFT registered to the
+   │   └───┘                 │       holder corner
+   └─────────────────────────┘
+        │            │
+     USB serial   12 V power      camera ─USB─┐
+        │            │                        │
+        └──── powered USB hub ── USB ──────────┘──→ your Mac
+```
+
+The order matters a little: seat the phone first so the camera has something real to aim at, and
+wire last so nothing tugs as you position parts.
+
+<Steps>
+
+1. **Seat the phone — corner first.**
+   Lay the anti-slip pad on the plotter bed and set the two L-shaped blocks to form a corner.
+   Place the phone face-up and push it firmly into that corner so its **top-left corner registers
+   against the holder's corner**. This one detail is what makes calibration reusable: the phone
+   returns to the exact same spot every session, so the arm's learned screen position stays valid.
+
+   <!-- PHOTO: phone seated face-up in the L-block corner holder, top-left corner of the phone
+        flush against the inside corner of the blocks; anti-slip pad visible underneath. -->
+
+2. **Fit the stylus in the Z holder.**
+   Remove the plotter's pen and slide the capacitive stylus into the Z carriage holder. Set its
+   height so the soft tip sits just *above* the glass when the solenoid is released, and presses
+   the glass when it fires. The tip should touch flat, not at an angle.
+
+   <!-- PHOTO: capacitive stylus clamped in the Z carriage holder, fiber tip pointing down at
+        the phone screen, with a small gap to the glass in the parked (up) position. -->
+
+3. **Hang the camera straight overhead.**
+   Clamp the gooseneck to the desk and bend it so the camera looks **straight down at the screen
+   center, about 25 cm up**. Frame the whole screen with a little margin. Straight-down matters:
+   the agent reads on-screen positions from this image, so a tilted view skews where it thinks
+   things are.
+
+   <!-- PHOTO: gooseneck-mounted USB camera positioned directly above the phone, lens pointing
+        straight down, roughly 25 cm of clearance, the full phone screen within frame. -->
+
+4. **Wire everything to the powered USB hub.**
+   Plug the camera and the control board into the **powered USB 3.0 hub**, and the hub into your
+   Mac. A powered hub keeps the board and camera from browning out a laptop port. Run the phone's
+   screenshot bridge over the same hub if you use a wired connection.
+
+   <!-- PHOTO: powered USB hub with the camera USB and the control-board USB-B cable plugged in,
+        and the single uplink cable running to the Mac. -->
+
+5. **Power the control board.**
+   Give the control board its **two connections**: USB to the hub (data, G-code) and the **12 V**
+   barrel jack (motor and solenoid power). The board's LED should light on 12 V. Power 12 V first,
+   then USB, matching the [firmware](/en/hardware/firmware/) flashing order.
+
+   <!-- PHOTO: control board showing both cables connected — USB-B to the hub and the 12 V barrel
+        jack — with its power LED lit. -->
+
+</Steps>
+
+:::caution[Rigidity is everything — a bumped gooseneck means re-calibration]
+The single most common cause of misaimed taps is camera drift. Flex in the gooseneck, a nudged
+clamp, or a phone reseated even slightly off-corner all move the screen out from under the
+positions the arm learned. Tighten every clamp, keep the gooseneck short, and treat any bump as
+a reason to re-[calibrate](/en/set-up/calibrate/).
+:::
+
+## Next
+
+- [Firmware](/en/hardware/firmware/) — flash the control board so it can drive the gantry and solenoid.

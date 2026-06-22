@@ -9,7 +9,7 @@
     {
       "label": "Build the hardware",
       "translations": { "zh-CN": "搭建硬件" },
-      "items": ["build/bill-of-materials", "build/assembly", "build/firmware"]
+      "items": ["hardware/bill-of-materials", "hardware/assembly", "hardware/firmware"]
     },
     {
       "label": "Set up",

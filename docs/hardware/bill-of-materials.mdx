@@ -1,0 +1,81 @@
+---
+title: Bill of materials
+description: The full PhysiClaw parts list — about $112 of off-the-shelf parts, and which one actually matters.
+---
+
+A full build is about **$112** in commodity parts, and only one of them needs to be any good:
+the arm. Everything else — the camera, the stylus, the mounts — is cheap, interchangeable, and
+forgiving. Buy the list below, or substitute freely as long as you respect the three "what
+matters" notes that follow.
+
+| Part | What to get | Qty | Approx. |
+| --- | --- | --- | --- |
+| **Arm** | [Paixi Kuaichaobao P25 pen plotter](https://e.tb.cn/h.ifgckUqg9Zmph9n?tk=cxpFUxr6Z5C) — X/Y gantry, Z carriage | 1 | ~$80 |
+| **Camera** | UGREEN 1080p USB webcam, fixed focus | 1 | ~$14 |
+| **Stylus** | Capacitive stylus, conductive fiber tip 8–10 mm | 1 | ~$1.50 |
+| Camera arm | Gooseneck desk clamp, metal, ~50 cm | 1 | ~$2 |
+| Phone holder | Anti-slip pad + L-shaped corner blocks | 1 set | ~$1.20 |
+| USB hub | Powered USB 3.0 hub | 1 | ~$13 |
+| **Total** (excluding your computer) | | | **~$112** |
+
+## Why this part, and what matters
+
+The table hides the one thing worth knowing: the parts are not equally important. Here is what
+each one is doing, and where you can — and can't — cut corners.
+
+<CardGrid>
+  <Card title="The arm — the only precision part" icon="rocket">
+    Everything PhysiClaw does well or badly traces back to the arm. It carries the stylus across
+    the screen on X/Y and drops it on Z. A tap that lands a few millimeters off is the arm, not
+    the agent. The P25 is cheap, rigid enough for a phone-sized work area, and speaks standard
+    G-code — but **any GRBL- or FluidNC-compatible X/Y plotter works**. Spend your attention here.
+  </Card>
+  <Card title="The Z axis is a solenoid" icon="warning">
+    The stock P25 ships with a small servo to lift its pen. PhysiClaw replaces that with a
+    **solenoid** — an electromagnet that snaps the stylus down to tap and releases to lift. A
+    solenoid gives a crisp, repeatable strike a slow servo can't, which is why a long-press reads
+    differently from a tap. The [firmware](/en/hardware/firmware/) drives it over the board's spindle
+    output, not a servo channel.
+  </Card>
+  <Card title="The stylus must be soft conductive fiber" icon="pencil">
+    To the phone the stylus *is* a fingertip, so it has to fool a capacitive touchscreen. Use a
+    soft **conductive-fiber** tip, 8–10 mm across. Hard rubber or plastic tips register
+    unreliably and can scratch the glass. This is a $1.50 part; don't overthink it, but don't
+    swap in a "precision" hard nib.
+  </Card>
+  <Card title="One camera, overhead" icon="laptop">
+    A single fixed-focus USB webcam looks straight down at the screen — there is **no second
+    camera**. It serves two jobs: a clean overhead read of the screen with the stylus parked
+    away, and a check of where the stylus is sitting before a tap. 1080p is plenty; fixed focus
+    is preferred so the image doesn't hunt.
+  </Card>
+</CardGrid>
+
+:::tip[Substitutions are fine]
+None of these are special-order. Swap the plotter for any GRBL/FluidNC X/Y machine, the webcam
+for any 1080p fixed-focus USB camera, the hub for any *powered* USB 3.0 hub. The only hard
+requirements are a rigid X/Y arm, a solenoid (not a servo) on Z, and a soft conductive-fiber tip.
+:::
+
+## The supporting cast
+
+The rest of the list just holds the three important parts in place:
+
+- **Gooseneck camera arm** — clamps to the desk and holds the camera ~25 cm above the screen.
+  Metal, not plastic: flex in the gooseneck shows up as drift in every tap. (More on this in
+  [assembly](/en/hardware/assembly/).)
+- **Phone holder** — an anti-slip pad plus two L-shaped blocks form a corner. The phone seats
+  into that corner the same way every time, which is what lets [calibration](/en/set-up/calibrate/)
+  stay valid between sessions.
+- **Powered USB hub** — the arm, camera, and your phone's screenshot bridge all hang off it. Use
+  a *powered* hub so the board and camera don't brown out a laptop port.
+
+:::note[No soldering, no custom boards]
+Every part is bought assembled. The build is mechanical — clamp, seat, and plug in. The only
+"flashing" is loading [firmware](/en/hardware/firmware/) onto the control board over USB, which is a
+browser click-through, not a wiring job.
+:::
+
+## Next
+
+- [Assembly](/en/hardware/assembly/) — mount the phone, stylus, and camera, and wire it all to the hub.

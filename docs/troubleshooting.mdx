@@ -27,7 +27,7 @@ the failures you hit there.
 | --- | --- | --- |
 | `Couldn't connect — check the USB cable and 12 V power` | Step 3 can't find the control board on any serial port. | Reseat the USB cable to the computer, and confirm the board's **12 V power** is plugged in and on. The board needs *both*. PhysiClaw scans for it by its FluidNC firmware. |
 | `no serial ports detected — connect the arm and re-run.` (`doctor`) | No serial device at all is present. | The arm isn't enumerating — bad cable, dead hub port, or no driver. Try a direct USB port instead of a hub. |
-| `no GRBL detected (saw N candidate port(s): …)` (`doctor`) | Serial ports exist, but none answered the GRBL probe. | The board is plugged in but not responding — usually no 12 V power, or the firmware isn't flashed. See [Firmware](/en/build/firmware/). |
+| `no GRBL detected (saw N candidate port(s): …)` (`doctor`) | Serial ports exist, but none answered the GRBL probe. | The board is plugged in but not responding — usually no 12 V power, or the firmware isn't flashed. See [Firmware](/en/hardware/firmware/). |
 | `Server not running. Start: physiclaw server` | `setup hardware` can't reach the server. | The server holds the arm and camera. Start it in another shell with `physiclaw server` and leave it running. |
 
 :::tip[The arm and the doctor can't share the port]

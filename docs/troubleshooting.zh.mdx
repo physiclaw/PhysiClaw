@@ -24,7 +24,7 @@ physiclaw doctor
 | --- | --- | --- |
 | `Couldn't connect — check the USB cable and 12 V power` | 第 3 步在任何串口上都找不到控制板。 | 重新插好接到电脑的 USB 线，并确认控制板的 **12 V 电源**已插上并开启。这块板子*两者都*需要。PhysiClaw 是通过它的 FluidNC 固件来扫描识别它的。 |
 | `no serial ports detected — connect the arm and re-run.`（`doctor`） | 根本没有任何串口设备存在。 | 机械臂没有被枚举出来——可能是线坏了、集线器端口失效，或者缺驱动。试试直接插电脑的 USB 口，而不是经过集线器。 |
-| `no GRBL detected (saw N candidate port(s): …)`（`doctor`） | 串口存在，但没有一个回应 GRBL 探测。 | 板子插上了却没有响应——通常是没有 12 V 供电，或者固件没刷。参见[固件](/zh/build/firmware/)。 |
+| `no GRBL detected (saw N candidate port(s): …)`（`doctor`） | 串口存在，但没有一个回应 GRBL 探测。 | 板子插上了却没有响应——通常是没有 12 V 供电，或者固件没刷。参见[固件](/zh/hardware/firmware/)。 |
 | `Server not running. Start: physiclaw server` | `setup hardware` 连不上服务器。 | 服务器持有机械臂和相机。在另一个终端里用 `physiclaw server` 启动它，并让它一直运行。 |
 
 :::tip[机械臂和 doctor 不能共用同一个端口]

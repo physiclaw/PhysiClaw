@@ -1,0 +1,106 @@
+---
+title: Firmware
+description: Flash FluidNC onto the control board and load the PhysiClaw config — the one step that teaches the arm CoreXY motion and how to drive the solenoid.
+---
+
+The control board ships blank; flashing turns it into a PhysiClaw arm. You install **FluidNC**
+(an open-source G-code motion controller) from a browser, then paste in the PhysiClaw
+[`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml) that
+tells it the machine is **CoreXY** and that the Z "tool" is a **solenoid**. No toolchain, no
+compiler — it's a Chrome click-through.
+
+This page is the conceptual companion to the repo's step-by-step
+[`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md);
+read that for the exact button-by-button flow, and this for *what each part is doing and why*.
+
+## What you're flashing
+
+The reference board is the **MKS DLC32 v2.1**. Two pieces go onto it:
+
+<CardGrid>
+  <Card title="FluidNC firmware" icon="rocket">
+    The motion controller. It listens for G-code over USB serial and drives the stepper motors and
+    the solenoid. You flash the **`noradio`** variant — no Wi-Fi, no Bluetooth, just the USB serial
+    link the PhysiClaw server uses.
+  </Card>
+  <Card title="config.yaml" icon="document">
+    A plain-text file that describes *your* machine to the firmware: the pins, that it's CoreXY,
+    the steps-per-mm, and how the solenoid is wired. The firmware is generic; the config makes it a
+    PhysiClaw.
+  </Card>
+</CardGrid>
+
+:::note[Why CoreXY, and why a solenoid]
+CoreXY is a belt layout where two motors share the load of both axes — it's what the P25 plotter
+uses, so the config declares `kinematics: corexy`. And the Z axis is **not a servo**: PhysiClaw
+drives a solenoid through the board's spindle output, so a tap is a sharp electromagnet pulse
+rather than a slow servo sweep. The config sets both of these; you don't wire anything.
+:::
+
+## Flash it
+
+You'll need the board, a USB Type-B cable (the square printer-style connector), its 12 V supply,
+Chrome, and the PhysiClaw `config.yaml`.
+
+<Steps>
+
+1. **Power, then connect.**
+   Plug in 12 V first (the LED lights), then USB. Open the
+   [FluidNC web installer](https://installer.fluidnc.com) in Chrome and click **Continue** under
+   **FluidNC**.
+
+2. **Install the firmware.**
+   **Connect** → pick the **USB Serial** port. Then **Install** → newest version → the
+   **`noradio`** variant → **fresh-install**, at **115200 baud**. Wait for the progress bar, then
+   **Continue**.
+
+3. **Load the config.**
+   A red "invalid configuration" warning is expected — the board has no config yet. Open
+   **File browser** → **Create config** (it pre-fills `config.yaml`) → **OK**. In the editor, open
+   the **Source** tab, select-all, delete, and paste the contents of the PhysiClaw
+   [`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml).
+   **Save**.
+
+4. **Restart and verify.**
+   Open **Terminal**, click the red **Restart**. The startup log should be all green and end with
+   a line like `<Idle|...>`. That `Idle` line means the board is alive and waiting for G-code.
+
+</Steps>
+
+## The bits you may need to tune
+
+The config ships with sane defaults, but two numbers are machine-specific. They're called out in
+comments right in [`config.yaml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml):
+
+- **`steps_per_mm`** (X and Y, default **80**) — sets how far the arm actually moves per
+  millimeter commanded. For a 20-tooth GT2 pulley with 16 microsteps the math is
+  `200 × 16 / 40 mm = 80`. If a commanded move comes out the wrong size, this is the knob.
+- **`max_travel_mm`** (default **200**) — your arm's real X and Y travel. It only matters if you
+  later enable soft limits.
+
+:::tip[If an axis runs backwards]
+The config has commented `:low` suffixes on the X and Y direction pins. If an axis drives the
+wrong way during [calibration](/en/set-up/calibrate/), flip that one pin's suffix and re-save —
+no rewiring.
+:::
+
+## How a tap actually fires
+
+You don't send these by hand — the server does — but it's worth seeing what the config enables.
+The solenoid lives on the spindle PWM output (`gpio.32`), driven **hit-and-hold**: a full-power
+strike to snap down, a brief wait, then a lower hold current so it doesn't overheat, then release.
+
+```gcode
+M3 S1000    ; full strike power — stylus snaps down
+G4 P0.05    ; wait 50 ms
+M3 S750     ; drop to hold current (safe-to-sustain hold duty)
+M5          ; release — stylus lifts
+```
+
+That hit-and-hold shape is exactly why a long-press reads differently from a tap, and it's
+described in full on the [gestures](/en/reference/gestures/) page.
+
+## Next
+
+- [Install the software](/en/set-up/install/) — one command sets up the `physiclaw` CLI and the
+  server that talks to this board.
