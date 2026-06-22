@@ -1,0 +1,149 @@
+---
+title: Your first task
+description: Point an MCP client at PhysiClaw, give it a plain-language goal, and watch the arm tap through it — peek, decide, tap, peek again.
+---
+
+The hardware is built and calibrated; now you hand the arm a goal in plain English and watch it work. This page connects an external agent — Claude Desktop — to the running server, gives it a one-line task, and shows the real tool trace that follows: the agent looks, picks a box, taps, and looks again.
+
+:::caution[Use a dedicated phone]
+The agent can see and tap anything on the unlocked phone — there's no app sandbox between it and what's on screen. Run PhysiClaw on a throwaway tool-phone, not your daily driver. Read [Safety](/en/safety/) before your first task.
+:::
+
+:::note[Before you start]
+Three things must be true: `physiclaw server` is running and printed
+`MCP server on http://localhost:8048/mcp`; the arm and camera are
+[calibrated](/en/set-up/calibrate/); and the phone is **unlocked** with the
+[bridge page](/en/set-up/prepare-the-phone/) open in the browser. The agent
+can't tap a locked screen, and the bridge page is what carries screenshots
+and clipboard between phone and server.
+:::
+
+## Connect an MCP client
+
+PhysiClaw speaks **MCP** (Model Context Protocol) — the standard way an AI client
+discovers and calls external tools. Any MCP client works; here we use Claude
+Desktop as the brain.
+
+<Steps>
+
+1. Make sure the server is up. In the shell where you ran `physiclaw server`,
+   you should see the endpoint line:
+
+   ```text
+   PhysiClaw MCP server on http://localhost:8048/mcp
+   ```
+
+2. Add PhysiClaw to Claude Desktop's config. Open `claude_desktop_config.json`
+   (Settings → Developer → Edit Config) and add the `physiclaw` server:
+
+   ```json
+   {
+     "mcpServers": {
+       "physiclaw": {
+         "type": "http",
+         "url": "http://localhost:8048/mcp"
+       }
+     }
+   }
+   ```
+
+   This is a **streamable-HTTP** server — the URL points straight at the running
+   process, so there's no command to launch and nothing to install client-side.
+
+3. Restart Claude Desktop. PhysiClaw's twelve tools — `peek`, `tap`, `swipe`,
+   `unlock_phone`, and the rest — now show up in the client's tool list. (Full
+   list: [MCP tools](/en/reference/mcp-tools/).)
+
+</Steps>
+
+:::tip[Not using Claude Desktop?]
+Anything that speaks MCP can be the brain — OpenClaw, a custom client, your own
+script. The only thing PhysiClaw cares about is the endpoint:
+`http://localhost:8048/mcp`. The config field names differ per client, but the
+URL is always the same.
+:::
+
+## Give it a goal
+
+Talk to the agent the way you'd ask a person — a plain sentence, not coordinates:
+
+```text
+Set a 10-minute timer on the phone.
+```
+
+That's the whole instruction. You don't tell it *where* the Clock app is or
+*how* to reach the timer tab — the agent figures that out by looking at the
+screen and deciding, one step at a time.
+
+## What actually happens
+
+Behind that one sentence, the agent runs the same **see → act** loop on every
+move. It never sends pixels or motor coordinates; it `peek`s to get a listing of
+on-screen elements, each with a **bbox** — a `[left, top, right, bottom]`
+rectangle in `0`–`1` screen fractions — then `tap`s the box it wants and
+`peek`s again to confirm. Here's a real trace:
+
+```text
+▸ peek()
+  ← [home screen]
+    id  kind   label              bbox                          conf
+    07  icon   "Clock"            [0.41, 0.55, 0.49, 0.63]      0.97
+    08  icon   "Settings"         [0.51, 0.55, 0.59, 0.63]      0.96
+    09  icon   "Photos"           [0.61, 0.55, 0.69, 0.63]      0.95
+
+▸ tap([0.41, 0.55, 0.49, 0.63])          # the "Clock" box
+  ← tapped — `peek` to verify and plan the next move
+
+▸ peek()
+  ← [Clock app, World Clock tab]
+    id  kind   label              bbox                          conf
+    11  text   "World Clock"      [0.05, 0.92, 0.25, 0.98]      0.98
+    12  text   "Timer"            [0.74, 0.92, 0.95, 0.98]      0.97
+
+▸ tap([0.74, 0.92, 0.95, 0.98])          # the "Timer" tab
+  ← tapped — `peek` to verify and plan the next move
+
+▸ peek()
+  ← [Timer tab — hour / min / sec wheels, "10" already centered on minutes]
+    id  kind   label              bbox                          conf
+    21  text   "10"               [0.40, 0.40, 0.50, 0.50]      0.95
+    22  text   "Start"            [0.55, 0.78, 0.85, 0.88]      0.98
+
+▸ tap([0.55, 0.78, 0.85, 0.88])          # the green "Start" button
+  ← tapped — `peek` to verify and plan the next move
+
+▸ peek()
+  ← [Timer running — "09:58" counting down, "Cancel" / "Pause" shown]
+  ✓ goal reached: a 10-minute timer is running.
+```
+
+Read it top to bottom and the rhythm is clear: **look, pick a box, tap, look
+again.** Every `tap` is grounded in a bbox the previous `peek` actually
+returned, and every `tap` is followed by a fresh `peek` to check the result —
+that re-looking is what lets the agent notice if a tap missed and try again,
+instead of barreling ahead on a wrong assumption.
+
+:::note[Why the agent keeps peeking]
+Each tool's reply ends with a hint — `tap` returns
+*"— `peek` to verify and plan the next move."* Those nudges are baked into the
+tools, so the loop stays honest no matter which model is driving. The full
+mental model is in [How it works](/en/start/how-it-works/).
+:::
+
+## If it stalls
+
+- **Two identical `peek` listings in a row** → the tap landed on empty space or
+  the box was slightly off. The agent re-aims from the new listing; if you're
+  watching, that's normal recovery, not a crash.
+- **"phone unlock failed"** → the phone re-locked. Set the passcode to `111111`
+  (the throwaway code `unlock_phone` uses) or disable auto-lock, then ask again.
+- **No tools in the client** → the server wasn't running when the client
+  started, or the URL is wrong. Confirm the endpoint line, fix the config,
+  restart the client.
+
+More failure modes and fixes live in [Troubleshooting](/en/troubleshooting/).
+
+## Next
+
+- [Operating modes](/en/run/operating-modes/) — you just drove PhysiClaw with an
+  external brain; it can also run its own. See both side by side.

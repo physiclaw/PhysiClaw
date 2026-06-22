@@ -1,0 +1,92 @@
+---
+title: 自主任务
+description: 内置 agent 如何无人值守地运行 —— trigger 唤醒一个会话，jobs.md 排定周期性工作，WAIT 让任务自己接着干下去。
+---
+
+内置 agent 不等你来提示它 —— **一个 trigger 把它唤醒，它操作手机，然后睡去。**
+
+server 运行时，一个运行时循环大约每秒滴答一次，挨个问每个 *hook*：有事发生吗？没事？它就睡去，下一次再滴答。
+当某个 hook 报告了一个 trigger，循环就唤醒一个全新的**会话**去处理它。trigger 有两种：
+
+<CardGrid>
+  <Card title="Cron —— 按计划" icon="seti:clock">
+    `jobs.md` 里某个作业的计划匹配上了当前这一分钟，就触发。这是你排定周期性工作的方式：
+    "早上 8 点查天气"、"每周五下生鲜单"。
+  </Card>
+  <Card title="Poll —— 屏幕变化时" icon="seti:image">
+    一个手机屏幕观察者会在画面变化时触发 —— 来了新消息、来了通知、等的那个画面出现了。这是 agent
+    对事情做出反应、而不只是按表运行的方式。
+  </Card>
+</CardGrid>
+
+循环绝不同时跑两个会话：它会等一次唤醒结束 —— 外加一小段冷却，让屏幕动画安定下来 ——
+才去检查下一个 trigger。
+
+## 什么是一个"会话"
+
+一个会话，是 agent 的看 → 决策 → 动作循环一次自成一体的运行，为处理刚刚触发的那些 trigger 而启动。
+每个会话都从头开始 —— 全新的对话、自己的轨迹 —— 但它并不健忘：它在醒来时加载
+[持久记忆](/zh/agent/memory-and-skills/)，而且被告知当前日期、以及究竟是哪些 trigger 唤醒了它。
+
+一个会话一直运行，直到 agent 用一个单词**裁决**关闭它：
+
+- **`DONE`** —— 任务完成了。
+- **`WAIT`** —— 工作还没做完；稍后回来看（下文详述）。
+- **`FAIL`** —— 它没法完成，也不会再去做了。
+- **`IDLE`** —— 没什么可做的；这个 trigger 不需要动作。
+- **`STUCK`** —— 循环耗尽了回合数，或 provider 撑不住了。PhysiClaw 会重试一个 STUCK 会话几次，才接受它。
+
+## 排定一个周期性任务
+
+排定的工作住在一个人类可读的文件 `jobs.md` 里。每个 `## <id>` 小节就是一个作业；运行时每分钟检查一次该文件，
+触发任何计划匹配当下、且状态为 `pend` 的作业。你不用手动编辑触发时刻 —— 加作业最简单的办法是叫 agent 来做，
+它会用内置的 `cron` 技能写一个格式正确的条目，并验证文件依然能被解析。
+
+一个作业长这样：
+
+```markdown
+## morning-weather
+
+Tell me the day's forecast every morning.
+
+- Type: periodic
+- Schedule: `0 8 * * *`
+- Create time: 2026-06-22T21:40
+- Next fire time: 2026-06-23T08:00
+- Last fire time: (never)
+- Execution time: (never)
+- Execution result: (never)
+- Status: pend
+- Context: Open the weather app, read today's high/low and conditions, and message them to me on WeChat.
+```
+
+有两个字段承载着含义：
+
+- **`Schedule`** 是标准的 5 字段 cron —— `min hour day-of-month month day-of-week` ——
+  支持 `*`、`N`、`N,M`、`*/N` 和 `A-B`（day-of-week 中 `0`=周日…`6`=周六）。`0 8 * * *`
+  是"每天 08:00"；`*/30 * * * *` 是"每 30 分钟"。
+- **`Context`** 是这次运行交给 agent 的任务说明 —— 开哪个 app、要做什么、有哪些边界情况。（标题下那一行描述是给
+  *你*翻文件时看的；Context 才是给干活的 agent 看的。）
+
+**`Type`** 取 `periodic`（每次计划匹配就触发）或 `one-time`（触发一次，然后彻底关闭）。
+
+:::note[作业从不被删除]
+作业是在状态间流转，而不是凭空消失：`pend` → `fired`（hook 触发了它）→ 对周期作业回到 `pend`，
+或对一次性作业变为 `done` / `fail`。你把作业的状态设为 `cancel` 来取消它。终结状态的作业会在 7 天后自动清除。
+:::
+
+## "稍后回来看" —— WAIT 裁决
+
+有些任务没法一遍走完：你下了一单，得等一个确认；或者你在等一个还没来的回复。这正是 `WAIT`
+的用处 —— agent 在结束会话时已决定稍后接着干。
+
+通常 agent 会在关闭前自己排好后续（它写一个一次性作业，定在它想醒来的那一刻）。要是它带着 `WAIT`
+关闭却*忘了*排一个，PhysiClaw 会兜住它：默认自动创建一个单独的后续作业，**15 分钟**后触发、重新检查状态、接着干。
+同一个规范作业 id 会在多次 WAIT 间复用，所以这个文件不会每暂停一次就多长出一条新条目。
+
+结果就是：一桩长跑的差事能跨过多次睡眠存活下来。agent 当下能做的就做，把一次唤醒停在稍后，下一个会话再把这根线头接回来
+—— 且记忆完好无损。
+
+## 接下来
+
+- [记忆与技能](/zh/agent/memory-and-skills/) —— 什么会跨过醒来被带走，以及 agent 如何复用针对具体 app 的套路。

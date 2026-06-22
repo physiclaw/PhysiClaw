@@ -1,0 +1,110 @@
+---
+title: 模型
+description: PhysiClaw 内置 agent 可以跑在哪些 LLM provider 上，以及如何用 physiclaw models CLI 设置或切换当前模型。
+---
+
+内置 agent 不绑定任何一家厂商 —— **由你来选谁驱动它**，切换只需一条命令。
+
+一个模型用 `provider/model` 这样的 **ref** 来命名：斜杠前那段挑选 provider（以及由哪个引擎来跑它），
+斜杠后那段是模型 id，原封不动地传给该 provider 的 API。例如 `anthropic/claude-sonnet-4-6`、
+`openai/gpt-5.4`，或 `qwen/qwen3.6-plus`。这一个 ref —— 存在
+`~/.physiclaw/config.toml` 的 `[agent] model` 里，或存在 `PHYSICLAW_MODEL` 环境变量里 ——
+就选定了整条技术栈。
+
+## 支持的 provider
+
+PhysiClaw 自带的进程内引擎透过五家厂商各自的 chat API 与它们对话，还有第六个 ref 会调起
+Anthropic 的 `claude` CLI：
+
+| Provider id | 厂商 / 模型 | API key |
+| --- | --- | --- |
+| `anthropic` | Claude，透过官方 Anthropic SDK | `ANTHROPIC_API_KEY` |
+| `openai` | GPT / 推理模型（`gpt-5`、`o4-mini`） | `OPENAI_API_KEY` |
+| `google` | Gemini，透过 Google 的 OpenAI 兼容端点 | `GOOGLE_API_KEY` |
+| `moonshot` | Kimi（K2） | `MOONSHOT_API_KEY` |
+| `qwen` | Qwen，透过阿里 DashScope | `QWEN_API_KEY` / `DASHSCOPE_API_KEY` |
+| `claude-code` | 以子进程方式运行 `claude` CLI（共用 anthropic 的目录 + key） | `ANTHROPIC_API_KEY` |
+
+每个 key 都可以来自环境变量（如上），或来自配置文件里的 `[provider] <id>_api_key`；两者都设了时，环境变量胜出。
+
+:::note[为什么没有 DeepSeek]
+`deepseek` 出现在 provider 列表里，但它是一个有意为之的占位 —— 它的 chat 端点只支持纯文本，而
+PhysiClaw **每次 `peek` 都需要视觉**才能读懂屏幕。选它会在启动时高声报错，而不是悄悄地盲开。
+还有几个 Gemini 变体出于相关原因被排除在外：PhysiClaw 要求一个推理模型，任何把思考预算默认关掉的
+Gemini，在这一点接通之前都被排除。
+:::
+
+## 两个引擎，一个 ref
+
+provider id 同时也决定了模型*怎么*跑：
+
+- **`claude-code/...`** 以子进程方式运行 Anthropic 的 `claude` CLI。它的模型 id 和
+  API key 都是 Anthropic 的 —— CLI 对的是同一个 API —— 所以 `claude-code` 复用
+  `anthropic` 的目录和 key。
+- **其余所有** 都跑在 PhysiClaw 自带的进程内引擎里（那个原生工具调用循环），瞄准对应厂商的 API。
+
+你不必直接管理引擎；挑了 ref，就挑了引擎。
+
+## 设置与切换模型
+
+`physiclaw models` 这组命令是入口。PhysiClaw **不内置任何经过挑选的模型列表** ——
+它去拉取每家厂商实时的 `/v1/models` 并缓存下来，所以发现到的结果就是事实来源。
+
+<Steps>
+
+1. **设置某个 provider 的 API key。** 省略值就会有提示输入（让密钥不进 shell 历史）。写入 key
+   会立刻拉取该厂商的实时模型列表，于是你马上就能挑一个。
+
+   ```bash
+   physiclaw models key anthropic
+   ```
+
+2. **看看有哪些可用。** 列出某个 provider 发现到的模型（不带参数则列出全部）。
+
+   ```bash
+   physiclaw models list anthropic
+   ```
+
+3. **挑选当前模型**，用一个精确的 `provider/model` ref。它会对着发现缓存做校验，所以打错字会立刻失败。
+
+   ```bash
+   physiclaw models use anthropic/claude-sonnet-4-6
+   ```
+
+4. **重启 server** 以生效 —— 运行中的 agent 在启动时读取 `[agent] model`。
+
+   ```bash
+   physiclaw server
+   ```
+
+</Steps>
+
+裸跑 `physiclaw models` 会打印当前状态 —— 当前 ref、它来自哪里（环境变量还是配置文件），以及该
+provider 的 key 是否已设置：
+
+```text
+Active model
+✓ anthropic/claude-sonnet-4-6  (from config.toml [agent] model)
+  anthropic/claude-sonnet-4-6
+  anthropic api key: ********  [ANTHROPIC_API_KEY env]
+```
+
+### 其余命令
+
+| 命令 | 作用 |
+| --- | --- |
+| `physiclaw models` | 显示当前 ref、它的来源，以及当前 provider 的 key 状态 |
+| `physiclaw models list [provider]` | 按 provider 列出发现到的模型 |
+| `physiclaw models use <provider/model>` | 切换当前模型（别名：`set`） |
+| `physiclaw models key <provider> [value]` | 设置某个 provider 的 API key（省略值则提示输入） |
+| `physiclaw models keys` | 显示每个 provider 的 key 状态，已脱敏，并附来源 |
+| `physiclaw models discover <provider>` | 重新拉取某厂商的实时模型列表 |
+
+:::tip[有新版发布了？]
+`models key` 会自动发现，所以你很少需要手动调 `discover`。当某厂商发布了一个新模型，而你想让它在你能
+`models use` 之前就先出现在 `models list` 里时，再用它。
+:::
+
+## 接下来
+
+- [自主任务](/zh/agent/autonomous-tasks/) —— 让选定的模型按计划开干。

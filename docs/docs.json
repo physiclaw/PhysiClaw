@@ -4,22 +4,53 @@
     {
       "label": "Start",
       "translations": { "zh-CN": "开始" },
-      "items": ["start/introduction", "start/installation", "start/quickstart"]
+      "items": ["start/introduction", "start/how-it-works", "start/what-youll-build"]
+    },
+    {
+      "label": "Build the hardware",
+      "translations": { "zh-CN": "搭建硬件" },
+      "items": ["build/bill-of-materials", "build/assembly", "build/firmware"]
+    },
+    {
+      "label": "Set up",
+      "translations": { "zh-CN": "设置" },
+      "items": ["set-up/install", "set-up/prepare-the-phone", "set-up/calibrate"]
+    },
+    {
+      "label": "Run it",
+      "translations": { "zh-CN": "运行" },
+      "items": ["run/first-task", "run/operating-modes"]
+    },
+    {
+      "label": "Safety",
+      "translations": { "zh-CN": "安全" },
+      "items": ["safety"]
+    },
+    {
+      "label": "The agent",
+      "translations": { "zh-CN": "智能体" },
+      "items": [
+        "agent/overview",
+        "agent/models",
+        "agent/autonomous-tasks",
+        "agent/memory-and-skills",
+        "agent/inside-the-engine"
+      ]
     },
     {
       "label": "Concepts",
       "translations": { "zh-CN": "原理" },
-      "items": ["concepts/architecture", "concepts/the-loop"]
-    },
-    {
-      "label": "Hardware",
-      "translations": { "zh-CN": "硬件" },
-      "items": ["hardware/bill-of-materials"]
+      "items": ["concepts/architecture", "concepts/how-it-sees", "concepts/calibration-math"]
     },
     {
       "label": "Reference",
       "translations": { "zh-CN": "参考" },
-      "items": ["reference/mcp-tools", "reference/gestures"]
+      "items": ["reference/mcp-tools", "reference/gestures", "reference/cli", "reference/configuration"]
+    },
+    {
+      "label": "Troubleshooting",
+      "translations": { "zh-CN": "故障排查" },
+      "items": ["troubleshooting"]
     }
   ]
 }

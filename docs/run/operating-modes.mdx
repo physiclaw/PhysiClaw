@@ -1,0 +1,119 @@
+---
+title: Operating modes
+description: Two ways to drive PhysiClaw — bring your own agent over MCP, or let PhysiClaw's built-in agent be the brain. Same hardware, your choice.
+---
+
+PhysiClaw can be driven two ways, and they share every bit of the same arm, camera, and tool set — only the *brain* differs. Either an external MCP client does the thinking and PhysiClaw is just the hands, or PhysiClaw runs its own built-in agent and needs no external client at all.
+
+You already used the first mode in [your first task](/en/run/first-task/), where
+Claude Desktop did the deciding. Here's how that compares to letting PhysiClaw
+think for itself.
+
+## Two brains, one body
+
+<CardGrid>
+  <Card title="Bring your own agent (MCP)" icon="external">
+    An external client — Claude Desktop, OpenClaw, your own script — connects to
+    `http://localhost:8048/mcp` and calls the tools. **That client is the
+    brain.** PhysiClaw is a pure MCP server: it exposes `peek`, `tap`, `swipe`
+    and the rest, and does exactly what it's told. You drive the conversation.
+  </Card>
+  <Card title="Built-in agent runtime" icon="rocket">
+    PhysiClaw ships its **own** agent engine. Start the server and a runtime loop
+    spawns alongside it, ready to wake on a trigger, plan, call the same tools,
+    and act — no external client in the loop. The brain lives inside PhysiClaw.
+  </Card>
+</CardGrid>
+
+The crucial thing: **the tools are identical either way.** The exact `peek` →
+`tap(bbox)` → `peek` loop from the trace you watched runs the same whether an
+outside client or the in-tree engine is choosing the boxes. In fact, the
+instructions PhysiClaw hands an external client at connect time and the doctrine
+its own engine loads come from the *same file* — so both brains reason about the
+phone the same way.
+
+## How they compare
+
+| | Bring your own agent | Built-in runtime |
+| --- | --- | --- |
+| Who decides | external MCP client | PhysiClaw's own engine |
+| You need | an MCP client (Claude Desktop, etc.) | just `physiclaw server` |
+| Starts on | you sending a message | a **trigger** firing (cron schedule, a poll) |
+| Models | whatever the client runs | 6 providers, you pick the active one |
+| Memory & skills | the client's, if any | built in — persistent memory + a skill system |
+| Best for | hands-on, interactive tasks | unattended, scheduled, recurring tasks |
+
+Neither is "the real" mode — they're two front ends on the same hardware. Use the
+external client when you want to sit and steer; use the built-in runtime when you
+want the phone to do something on its own at 8am.
+
+## Mode A — bring your own agent
+
+This is the MCP-server face of PhysiClaw. The server exposes its tools over a
+streamable-HTTP endpoint, and any MCP client connects and drives:
+
+```text
+  Claude Desktop / OpenClaw / your script   ← the brain
+            │  MCP  (http://localhost:8048/mcp)
+            ▼
+        PhysiClaw  ← just the tools (peek, tap, swipe, …)
+            │
+            ▼
+          phone
+```
+
+Setup is exactly what you did on the previous page: point the client's config at
+the endpoint and talk to it. The agent's quality, memory, and personality are
+all the client's; PhysiClaw contributes only the eyes and the finger. This is the
+mode to start with — nothing extra to configure beyond the client itself.
+
+## Mode B — built-in agent runtime
+
+PhysiClaw is also a *complete agent* on its own. When you run `physiclaw server`,
+it spawns a **runtime loop** as a sibling process. That loop polls a set of
+**hooks** on a timer; when a hook fires a **trigger** — a cron schedule coming
+due, or a poll noticing something changed — the engine wakes, plans, and calls
+the same MCP tools to get the task done. No external client is connected; the
+brain is inside.
+
+```text
+        cron / poll trigger fires
+                  │
+                  ▼
+   PhysiClaw runtime  ← the brain (its own engine, picks a provider)
+                  │  calls the same tools
+                  ▼
+              phone
+```
+
+The runtime adds the pieces a bare MCP server doesn't have:
+
+- **Multi-provider engine** — the same agent loop runs on any of six model
+  providers (Anthropic, OpenAI, Google, Moonshot, Qwen), and you pick
+  the active one. See [Models](/en/agent/models/).
+- **Trigger-driven wake** — it runs unattended, waking on schedules or polls
+  instead of on your messages. See [Autonomous tasks](/en/agent/autonomous-tasks/).
+- **Memory & skills** — persistent memory across sessions and a skill system it
+  can draw on. See [Memory and skills](/en/agent/memory-and-skills/).
+
+:::note[The runtime waits for a model and a ready rig]
+The loop stays idle until calibration reports `ready: true`, so it never taps a
+phone it can't see. And if no model is configured, the server still runs for
+hardware setup and external-client use — the runtime just doesn't spawn until you
+set one. Run `physiclaw server --no-runtime` to keep PhysiClaw a pure MCP server.
+:::
+
+## Closing the OpenClaw loop
+
+The [introduction](/en/start/introduction/) framed PhysiClaw as OpenClaw's idea —
+let the agent use the interface a human uses — pushed onto real glass. These two
+modes are where that lands: PhysiClaw is **both an MCP server and a complete
+agent**, and which one you reach for is your call. Bring a brain, or use the one
+in the box.
+
+## Next
+
+- [Safety](/en/safety/) — before you let an agent operate your phone — let alone an
+  unattended one — know exactly what it can reach.
+- [The agent: overview](/en/agent/overview/) — what PhysiClaw's built-in brain
+  adds over a plain MCP server, and where it comes from.

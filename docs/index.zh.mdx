@@ -1,34 +1,31 @@
 ---
 title: 文档
-description: 构建、运行并理解 PhysiClaw——这只机械臂让 AI 智能体亲手操作任意手机。
+description: 构建、运行并理解 PhysiClaw —— 让 AI agent 操作任意手机的机械臂。
 ---
 
-PhysiClaw 为 AI 智能体提供一个物理身体来操作手机：摄像头读取屏幕，三轴机械臂上的触控笔点按——
-无需 API，手机上也无需安装任何东西。本文档从物料清单一直讲到运行起来的智能体，
-以及它所使用的工具和手势。
+PhysiClaw 给 AI agent 一副操作手机的「身体」：一台俯拍相机读屏幕，一支装在三轴机械臂上的触控笔点屏幕 —— 不用 API，手机上也不装任何 app。这套文档从一份零件清单一路讲到一个能跑起来的 agent，外加驱动它的工具、手势和内置 agent。
 
-第一次来？先读[简介](/zh/start/introduction/)，然后[动手搭建](/zh/hardware/bill-of-materials/)
-并[运行起来](/zh/start/quickstart/)。
+第一次来？先读[简介](/zh/start/introduction/)，看看[它如何工作](/zh/start/how-it-works/)，然后[动手造一台](/zh/start/what-youll-build/)。
 
-## 开始
+## 开始上手
 
 <CardGrid>
   <LinkCard title="简介" description="PhysiClaw 是什么，解决了什么问题。" href="/zh/start/introduction/" />
-  <LinkCard title="安装" description="安装服务器并连接硬件。" href="/zh/start/installation/" />
-  <LinkCard title="快速上手" description="完成标定，运行第一个智能体任务。" href="/zh/start/quickstart/" />
+  <LinkCard title="它如何工作" description="完整的一次「看 → 决策 → 移动 → 检查」循环。" href="/zh/start/how-it-works/" />
+  <LinkCard title="你将造出什么" description="这套装置、成本，以及接下来的路。" href="/zh/start/what-youll-build/" />
 </CardGrid>
 
-## 原理
+## 概念
 
 <CardGrid>
-  <LinkCard title="系统架构" description="智能体 → MCP 服务器 → 摄像头 + 机械臂 → 手机。" href="/zh/concepts/architecture/" />
-  <LinkCard title="控制循环" description="感知 → 决策 → 移动 → 校验 → 触碰。" href="/zh/concepts/the-loop/" />
+  <LinkCard title="系统架构" description="agent → MCP server → 相机 + 机械臂 → 手机。" href="/zh/concepts/architecture/" />
+  <LinkCard title="它如何看见" description="peek 与 screenshot、OCR + 图标检测、bbox。" href="/zh/concepts/how-it-sees/" />
 </CardGrid>
 
-## 搭建与参考
+## 构建与参考
 
 <CardGrid>
-  <LinkCard title="物料清单" description="约 $127 的全部零件。" href="/zh/hardware/bill-of-materials/" />
-  <LinkCard title="MCP 工具" description="智能体调用的六个工具。" href="/zh/reference/mcp-tools/" />
-  <LinkCard title="手势" description="点按与滑动如何转化为 G-code。" href="/zh/reference/gestures/" />
+  <LinkCard title="物料清单" description="一套约 $112 的构建所需的每个零件。" href="/zh/build/bill-of-materials/" />
+  <LinkCard title="MCP 工具" description="agent 用来驱动手机的那些工具。" href="/zh/reference/mcp-tools/" />
+  <LinkCard title="手势" description="tap、长按和 swipe 是如何抵达屏幕的。" href="/zh/reference/gestures/" />
 </CardGrid>

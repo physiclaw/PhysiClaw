@@ -1,0 +1,134 @@
+---
+title: Install the software
+description: One install script, an environment check, the on-device vision model, and the server — then point your MCP client at it.
+---
+
+PhysiClaw's software is one CLI called `physiclaw`, and getting it running is four
+commands: install it, check the environment, fetch the on-device vision model, and start the
+server. macOS is the supported platform today; the only real difference on other OSes is the
+serial-port name, which the wizard finds for you anyway.
+
+:::note[Hardware can come later]
+You can install and run `physiclaw doctor` with nothing plugged in — it just reports what's
+missing. The arm and camera only matter once you reach [Calibrate](/en/set-up/calibrate/).
+:::
+
+## 1. Install the CLI
+
+One script installs everything — `uv`, Python 3.12, and the `physiclaw` CLI — isolated under
+`~/.local/bin` so it never touches your system Python:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
+```
+
+When it finishes, `physiclaw` is on your `PATH`. Confirm it's there:
+
+```bash
+physiclaw --version
+```
+
+If the shell can't find the command, open a new terminal (so the updated `PATH` loads) and try
+again.
+
+## 2. Check the environment
+
+`physiclaw doctor` is a read-only health check — it never changes anything. It prints the
+Python version, your config path, whether the vision model is present, what hardware it can
+see, and a numbered list of what to do next.
+
+```bash
+physiclaw doctor
+```
+
+On a fresh install it will flag two things as missing — the vision model and a running server.
+That's expected; the next two steps fix both. Run `doctor` again any time something feels off;
+it's the fastest way to see the whole system's state at a glance.
+
+:::tip[Go deeper]
+`physiclaw doctor --deep` runs active probes — it loads the vision model, grabs a real camera
+frame, and (if you've set an agent model) makes one live API call. It takes a few seconds but
+catches problems a passive check can't, like a camera that opens but returns no frames because
+macOS hasn't been granted Camera permission.
+:::
+
+## 3. Download the on-device vision model
+
+PhysiClaw reads the screen with a small icon-detection model that runs **on your machine**.
+Fetch it once:
+
+```bash
+physiclaw setup local-vision-model
+```
+
+This downloads about 100 MB and converts it to a fast inference format. The conversion borrows
+some heavy dependencies in a throwaway environment and deletes them on success, so your install
+stays lean — only the finished model stays behind.
+
+Why local, and not a cloud API?
+
+<CardGrid>
+  <Card title="Privacy" icon="approve-check">
+    Every frame of your phone's screen is processed on your own machine. Screenshots of your
+    messages, banking, and accounts never leave the desk.
+  </Card>
+  <Card title="Offline & fast" icon="rocket">
+    No network round-trip per look. The detector runs locally, so a `peek` stays in the
+    ~4-second range even on a flaky connection.
+  </Card>
+</CardGrid>
+
+## 4. Start the server
+
+```bash
+physiclaw server
+```
+
+This starts the MCP server on port **8048** and opens the setup wizard in your browser. Leave
+this shell running — it's the process that holds the serial port and the camera and talks to
+your phone. On first start it prints, among other things:
+
+```text
+PhysiClaw MCP server on http://localhost:8048/mcp
+QR code (scan with phone): http://localhost:8048/api/bridge/qr
+```
+
+The browser window it opens is the hardware-setup wizard. You can drive setup there or from a
+second terminal — both do the same thing, and [Calibrate](/en/set-up/calibrate/) walks through
+it.
+
+## 5. Point your MCP client at it
+
+PhysiClaw speaks **MCP** (Model Context Protocol) — the standard way an AI agent calls external
+tools. Any MCP client (Claude Desktop, an IDE, your own script) connects to the same endpoint:
+
+```text
+http://localhost:8048/mcp
+```
+
+Once calibrated, the client will see PhysiClaw's tools — `peek`, `tap`, `swipe`, and the rest —
+and can start operating the phone. [First task](/en/run/first-task/) wires up a client and runs
+one end to end.
+
+## A note on serial ports
+
+PhysiClaw auto-detects the arm's USB serial port, so you rarely need its name. When a
+troubleshooting step does ask for it, the format differs by OS:
+
+<Tabs>
+  <TabItem label="macOS">
+    `/dev/tty.usbserial-XXXX` (or `/dev/tty.usbmodemXXXX`). List candidates with
+    `ls /dev/tty.usb*`.
+  </TabItem>
+  <TabItem label="Linux">
+    `/dev/ttyUSB0` (CH340 adapters) or `/dev/ttyACM0`. List with `ls /dev/ttyUSB* /dev/ttyACM*`.
+  </TabItem>
+  <TabItem label="Windows">
+    `COM3`, `COM4`, … Check Device Manager → Ports (COM & LPT) for the active number.
+  </TabItem>
+</Tabs>
+
+## Next
+
+- [Prepare the phone](/en/set-up/prepare-the-phone/) — the once-per-phone AssistiveTouch,
+  Shortcuts, and bridge setup.

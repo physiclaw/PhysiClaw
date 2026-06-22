@@ -1,0 +1,106 @@
+---
+title: Autonomous tasks
+description: How the built-in agent runs unattended — triggers wake a session, jobs.md schedules recurring work, and WAIT lets a task pick itself back up.
+---
+
+The built-in agent doesn't wait for you to prompt it — **a trigger wakes it, it operates
+the phone, then it sleeps.**
+
+While the server is up, a runtime loop ticks roughly once a second, asking each *hook*
+whether something happened. Nothing fires? It sleeps and ticks again. When a hook reports a
+trigger, the loop wakes a fresh **session** to handle it. There are two kinds of trigger:
+
+<CardGrid>
+  <Card title="Cron — on a schedule" icon="seti:clock">
+    A job in `jobs.md` whose schedule matches the current minute fires. This is how you set
+    up recurring work: "check the weather at 8am," "place the grocery order every Friday."
+  </Card>
+  <Card title="Poll — on a screen change" icon="seti:image">
+    A phone-screen watcher fires when the display changes — a new message, a notification,
+    a screen you were waiting on. This is how the agent reacts to things instead of just
+    running on the clock.
+  </Card>
+</CardGrid>
+
+The loop never runs two sessions at once: it waits for a wake to finish — plus a short
+cooldown so screen animations settle — before it checks for the next trigger.
+
+## What a "session" is
+
+A session is one self-contained run of the agent's look → decide → act loop, spun up to
+handle the triggers that just fired. Each session starts fresh — new conversation, its own
+trace — but it isn't amnesiac: it loads the [persistent memory](/en/agent/memory-and-skills/)
+at wake, and it's told the current date and exactly which triggers woke it.
+
+A session runs until the agent closes it with a one-word **verdict**:
+
+- **`DONE`** — the task finished.
+- **`WAIT`** — work isn't done; check back later (covered below).
+- **`FAIL`** — it couldn't complete and isn't going to.
+- **`IDLE`** — nothing to do; the trigger needed no action.
+- **`STUCK`** — the loop ran out of turns or the provider gave out. PhysiClaw retries a
+  STUCK session a couple of times before accepting it.
+
+## Scheduling a recurring task
+
+Scheduled work lives in one human-readable file, `jobs.md`. Each `## <id>` section is a
+job; the runtime checks the file every minute and fires any job whose schedule matches now
+and whose status is `pend`. You don't hand-edit fire times — the easiest way to add a job
+is to ask the agent, which uses the bundled `cron` skill to write a correctly-formed entry
+and verify the file still parses.
+
+A job looks like this:
+
+```markdown
+## morning-weather
+
+Tell me the day's forecast every morning.
+
+- Type: periodic
+- Schedule: `0 8 * * *`
+- Create time: 2026-06-22T21:40
+- Next fire time: 2026-06-23T08:00
+- Last fire time: (never)
+- Execution time: (never)
+- Execution result: (never)
+- Status: pend
+- Context: Open the weather app, read today's high/low and conditions, and message them to me on WeChat.
+```
+
+Two fields carry the meaning:
+
+- **`Schedule`** is standard 5-field cron — `min hour day-of-month month day-of-week` —
+  supporting `*`, `N`, `N,M`, `*/N`, and `A-B` (day-of-week `0`=Sun…`6`=Sat). `0 8 * * *`
+  is "08:00 every day"; `*/30 * * * *` is "every 30 minutes."
+- **`Context`** is the agent's brief for the run — which app to open, what to do, edge
+  cases. (The one-line description under the heading is for *you* skimming the file;
+  Context is for the agent doing the work.)
+
+**`Type`** is `periodic` (fires every time its schedule matches) or `one-time` (fires once,
+then closes for good).
+
+:::note[Jobs are never deleted]
+A job moves through statuses instead of vanishing: `pend` → `fired` (the hook fired it) →
+back to `pend` for a periodic job, or `done` / `fail` for a one-time one. You cancel a job
+by setting its status to `cancel`. Terminal jobs auto-purge after 7 days.
+:::
+
+## "Check back later" — the WAIT verdict
+
+Some tasks can't finish in one pass: you place an order and have to wait for a confirmation,
+or you're watching for a reply that hasn't arrived. That's what `WAIT` is for — the agent
+ends the session having decided to resume later.
+
+Usually the agent schedules its own follow-up before closing (it writes a one-time job for
+the moment it wants to wake). If it closes with `WAIT` but *forgets* to schedule one,
+PhysiClaw catches it: it auto-creates a single follow-up job that fires in **15 minutes** by
+default, re-checks the state, and continues. The same canonical job id is reused across
+WAITs, so the file never grows a new entry every time a task pauses.
+
+The upshot: a long-running errand survives across sleeps. The agent does what it can now,
+parks a wake for later, and the next session picks the thread back up — with memory intact.
+
+## Next
+
+- [Memory & skills](/en/agent/memory-and-skills/) — what carries across wakes, and how the
+  agent reuses app-specific routines.

@@ -1,0 +1,157 @@
+---
+title: Calibration math
+description: How a 0–1 bbox becomes a stylus that lands on the right pixel — the screen-fraction → millimetre chain, the two affine maps learned during setup, and why taps drift.
+---
+
+A tap lands where it should because PhysiClaw learns, once, how three coordinate systems line up:
+the brain's **screen fractions**, the camera's **pixels**, and the arm's **millimetres**.
+Calibration is the half-hour where the rig measures those relationships and bakes them into two
+small matrices; every tap afterward is just multiplying a bbox center through them. This page is
+the intuition and a little of the math — for the reader who wants to *understand* it, not
+re-implement it.
+
+## Three coordinate systems
+
+Everything a tap touches lives in one of three spaces, and the whole job of calibration is
+translating between them:
+
+```text
+  screen 0–1            camera pixels          arm millimetres
+ (what the brain        (what the lens         (what the gantry
+  reasons in)            actually sees)         actually moves in)
+
+ [0.55, 0.59]  ──A──►  ───────────────  ──?──►  (gx, gy) mm
+       ▲                                            │
+       └───────────────  B  ◄──────────  pixel  ────┘
+        listing comes back in 0–1, from camera pixels
+```
+
+- **Screen 0–1** — the portable fractions the [bbox listing](/en/concepts/how-it-sees/) uses.
+  `(0,0)` is top-left of the phone screen, `(1,1)` is bottom-right. The brain only ever speaks
+  this.
+- **Camera pixels** — where a thing appears in the overhead frame. Depends entirely on where you
+  mounted the camera, so it's meaningless until measured.
+- **Arm millimetres** — GRBL coordinates the gantry actually drives to. Also meaningless until
+  measured, because it depends on where the phone sits under the arm.
+
+PhysiClaw learns two maps to bridge them: **A** (screen → arm) so it can *act*, and **B** (screen →
+camera) so it can *read* the camera frame back into screen fractions.
+
+## The chain a single tap follows
+
+When the brain says `tap [0.51, 0.55, 0.59, 0.63]`, here's the actual arithmetic:
+
+<Steps>
+
+1. **Bbox → center.** Average the corners: `cx = (0.51 + 0.59) / 2 = 0.55`,
+   `cy = (0.55 + 0.63) / 2 = 0.59`. You're aiming at the middle of the box.
+
+2. **Screen → millimetres (Map A).** Multiply that `(0.55, 0.59)` through the screen→arm matrix
+   to get GRBL coordinates `(gx, gy)` in mm.
+
+3. **Move and strike.** The gantry fast-moves to `(gx, gy)`; the solenoid fires; the tip lands.
+
+</Steps>
+
+The `screenshot` path runs partly in reverse: the camera sees the screen in *pixels*, and
+**Map B** (inverted) turns those pixels back into `0–1` screen fractions so the listing the brain
+reads is in the same space as the bbox it'll tap. A is for acting, B is for seeing.
+
+## What an affine map actually is
+
+Both maps are **affine transforms** — the simplest mapping that can stretch, rotate, skew, and
+shift a plane while keeping straight lines straight. Each is stored as a 2×3 matrix and applied
+like this (Map A shown):
+
+```text
+┌ gx ┐   ┌ a  b  c ┐   ┌ screen_x ┐
+│    │ = │         │ · │ screen_y │
+└ gy ┘   └ d  e  f ┘   └    1     │
+```
+
+That's six numbers. The `a b / d e` block handles scale, rotation, and skew — how much arm-X
+travel one unit of screen-X costs, and how tilted the phone is relative to the gantry. The `c f`
+column is just the offset — where screen `(0,0)` sits in arm space. Six numbers are enough because
+a phone lying flat under an overhead camera is, to a very good approximation, a flat plane viewed
+flat: no perspective warp to model, just a tilt-and-stretch. That's why a handful of measured
+points can pin the whole screen.
+
+## Learning Map A — 18 taps the arm makes itself
+
+The arm can't see the screen, so it finds the screen→arm map by **tapping and listening**: the
+phone reports back exactly where each touch landed (in screen `0–1`), the arm knows where it was
+in millimetres, and enough such pairs fix the affine.
+
+<Steps>
+
+1. **Probe triangle (3 taps).** Tap at arm origin `(0,0)`, then `+10 mm` along X, then `+10 mm`
+   along Y. Three points are the minimum to bootstrap a rough affine — just enough to *predict*
+   where the rest of the screen is.
+
+2. **Grid (15 taps).** Using that rough map, the arm visits a 3-column × 5-row grid spread across
+   the screen and taps each cell. Every tap gives another exact (millimetre, screen-fraction)
+   pair.
+
+3. **Fit + re-origin.** All **18** pairs are least-squares fit into the final, accurate Map A.
+   The arm then re-declares screen-center as its `(0,0)`, so the whole coordinate frame is
+   anchored to the phone, not to wherever the gantry happened to home.
+
+</Steps>
+
+Because the tip is a fixed-stroke solenoid, there's no touch depth to find — a missed tap just
+means flaky contact, so the rig simply re-fires. The fit also yields a free diagnostic: a **tilt
+ratio** measuring how skewed the phone is relative to arm travel. Near `0` means the phone is
+square to the gantry; a high value warns you to straighten it.
+
+## Learning Map B — 15 dots the camera reads
+
+Map B (screen → camera) is learned the opposite way: the phone *displays* a known pattern and the
+camera *looks*. The bridge page lights up the same **15-dot grid** — bright red dots at known
+screen fractions — and the overhead camera detects each one's pixel position. Fifteen
+(screen-fraction, camera-pixel) pairs least-squares fit into Map B. Now the server can turn any
+camera pixel back into a screen fraction, which is exactly what `peek` needs to report a listing.
+
+:::note[Why a phone screenshot still needs calibration]
+Before any of this, a quick pre-step measures the **viewport shift** — it flashes one orange
+square at a known spot and reads the phone's screenshot back to learn the device's pixel ratio and
+the status-bar / safe-area offset. That's what reconciles "where the web page thinks a point is"
+with "where it lands in the phone's own screenshot," so taps stay accurate on the `screenshot`
+path too.
+:::
+
+## Parking off-screen
+
+Between every action the arm retreats to a fixed spot just **off** the phone — screen-fraction
+`(-0.1, -0.05)`, i.e. a little left of and above the top-left corner. Off-screen coordinates are
+perfectly legal here: the same Map A that turns `(0.55, 0.59)` into millimetres turns `(-0.1,
+-0.05)` into millimetres too — the affine doesn't care that the point is past the screen edge. The
+park spot matters for two reasons: it keeps the stylus out of the camera's view so the next `peek`
+is unobstructed, and it's a known, repeatable resting position the rig can re-anchor to after a
+restart.
+
+## Why taps drift — and when to recalibrate
+
+Both maps assume the camera, the arm, and the phone all stay exactly where they were when the
+points were measured. Calibration validates itself by tapping a few random spots and checking the
+error stays under `0.015` of screen width — about **5 pixels on a 390-px-wide screen**. Anything
+that moves a piece of the rig invalidates that, and taps start landing off:
+
+<CardGrid>
+  <Card title="The rig got bumped" icon="warning">
+    Knocked the arm or shifted the phone in its holder, and Map A is now wrong — the millimetres
+    no longer correspond to the same screen fractions. Taps land consistently *offset*.
+  </Card>
+  <Card title="The camera moved" icon="warning">
+    Nudged or refocused the overhead camera, and Map B is now wrong — pixels map to the wrong
+    fractions, so the brain aims at a slightly wrong target even before the arm moves.
+  </Card>
+</CardGrid>
+
+The tell is a *systematic* miss: taps land a consistent distance off in the same direction, rather
+than randomly. That's a stale transform, not a flaky one, and the fix is to
+[recalibrate](/en/set-up/calibrate/) — re-measure the points so the matrices match the rig's new
+reality. Mount everything rigidly and you'll rarely need to.
+
+## Next
+
+- [MCP tools](/en/reference/mcp-tools/) — the 12 tools the brain calls on top of all this math.

@@ -1,0 +1,112 @@
+---
+title: 故障排查
+description: PhysiClaw 整套设备的真实故障模式——机械臂、相机、校准和运行时——附上实际的错误字符串及其修复方法。
+---
+
+PhysiClaw 的大多数问题都会以一行特定的文字宣告自己，而且几乎都能追溯到这五件事之一：USB 线松了、
+缺少 12 V 供电、手机睡着了、屏幕上有眩光，或者校准之后整套设备被碰动过。本页按故障出现的阶段
+对这些真实错误进行分组，方便你迅速把症状对应到修复方法。
+
+在做其他任何事之前，先运行这个只读的健康检查：
+
+```bash
+physiclaw doctor
+```
+
+它会一次性报告服务器、机械臂、相机、校准包和当前激活的模型。加上 `--deep` 还会真正打开一帧相机
+画面、加载视觉模型，并向你的服务商发送一次测试调用。[CLI 参考](/zh/reference/cli/)涵盖了每一个参数。
+
+## 搭建与连接
+
+机械臂和相机是在 `physiclaw setup hardware` 过程中一步步连接起来的。下面是你在这个阶段会遇到的故障。
+
+| 症状 | 原因 | 修复 |
+| --- | --- | --- |
+| `Couldn't connect — check the USB cable and 12 V power` | 第 3 步在任何串口上都找不到控制板。 | 重新插好接到电脑的 USB 线，并确认控制板的 **12 V 电源**已插上并开启。这块板子*两者都*需要。PhysiClaw 是通过它的 FluidNC 固件来扫描识别它的。 |
+| `no serial ports detected — connect the arm and re-run.`（`doctor`） | 根本没有任何串口设备存在。 | 机械臂没有被枚举出来——可能是线坏了、集线器端口失效，或者缺驱动。试试直接插电脑的 USB 口，而不是经过集线器。 |
+| `no GRBL detected (saw N candidate port(s): …)`（`doctor`） | 串口存在，但没有一个回应 GRBL 探测。 | 板子插上了却没有响应——通常是没有 12 V 供电，或者固件没刷。参见[固件](/zh/build/firmware/)。 |
+| `Server not running. Start: physiclaw server` | `setup hardware` 连不上服务器。 | 服务器持有机械臂和相机。在另一个终端里用 `physiclaw server` 启动它，并让它一直运行。 |
+
+:::tip[机械臂和 doctor 不能共用同一个端口]
+一个串口只有一个占有者。当 `physiclaw server` 在运行时，它*持有*着机械臂，所以另开一个
+`physiclaw doctor` 不会再去探测它——而是直接读取服务器的实时状态。这是预期行为，不是 bug。
+:::
+
+## 相机
+
+相机是靠桥接页面上绘制的彩色角标自动检测的。当检测失败时，几乎总是手机或别的应用的问题——
+而不是相机本身的问题。
+
+| 症状 | 原因 | 修复 |
+| --- | --- | --- |
+| `Couldn't find the camera — make sure /bridge is open and awake` | 自动检测看不到角标。 | 桥接页面睡着了或被切到了后台。唤醒手机，把 **/bridge** 切到前台，并保持屏幕常亮。然后从 `setup` 打开的预览里选择相机序号（默认 `0`）。 |
+| `Couldn't reopen the camera: … Another app (Photo Booth / Camera / Zoom / FaceTime) may still be holding it.` | 另一个应用对相机持有独占锁。 | 退出 **Photo Booth、Camera、Zoom、FaceTime**，或任何正在使用视频的浏览器标签页。相机一次只能被一个应用持有。 |
+| `camera N: opens but no frame (likely denied Camera permission …)`（`doctor --deep`） | macOS 拒绝了你的终端应用的相机访问。 | 在**系统设置 → 隐私与安全性 → 相机**里授予权限，然后重新运行。 |
+| `cameras: none detected. On first use, macOS shows a Camera-permission prompt …`（`doctor`） | 没有枚举到相机，或者首次运行的授权弹窗没有被接受。 | 为这个终端应用接受 macOS 的相机弹窗，检查 USB 连接，然后重新运行。 |
+| 选错了相机（比如选成了 Mac 的内置摄像头） | 自动检测挑了另一个序号。 | 当提示 `Which camera? [0-3, default=0]` 时，选择预览里从上方拍到手机屏幕的那个序号。 |
+
+## 校准
+
+校准把机械臂下笔的位置、相机看到的位置和手机实际所在的位置三者对齐。它会依次跑屏幕、机械臂和相机，
+然后做验证。
+
+| 症状 | 原因 | 修复 |
+| --- | --- | --- |
+| `Couldn't read the screenshot. Tap AT once, then double-tap.` | 屏幕定位这一步始终没拿到手机的截图。 | 在手机上：**单击 AssistiveTouch**（截图），然后**双击它**（上传）。确认两个 iOS 快捷指令都已安装——参见[准备手机](/zh/set-up/prepare-the-phone/)。 |
+| `Couldn't show the center circle — is the bridge page open and awake?` | 桥接页面切换不到校准视图。 | 唤醒手机并把 **/bridge** 切到前台；它不能睡着，也不能被划走。 |
+| `Couldn't calibrate: … — make sure the stylus tip is over the center circle` | 机械臂校准没对准。 | 在继续之前，把**触控笔笔尖直接移到橙色中心圆圈上方**，并且在它敲击那 18 个点时不要碰整套设备。 |
+| `Phone looks slightly rotated relative to the arm (N%) …` | 手机相对机械臂的坐标轴有轻微的倾斜。 | 这是个警告，不是中止。把手机在固定座里**摆正**（左上角顶住固定座的角），如果之后验证失败再重跑。 |
+| `Couldn't map the dots: …` / `Reduce glare / fix lighting.` | 相机找不齐全部 15 个校准点。 | 把光线调匀，并**消除屏幕上的眩光**。整块屏幕必须都在视野内且清晰可读。 |
+| `Validation failed — check the lighting, or redo the camera or arm calibration` | 最后的"点上落点"检查没通过。 | 重新检查光线，然后重做**相机**或**机械臂**校准。罪魁祸首通常是被碰动的设备或被挪过的相机。 |
+| `Couldn't verify — re-position the AssistiveTouch button over the circle and check the iOS Shortcuts` | 截图 + 剪贴板流水线的检查失败了。 | 把 **AssistiveTouch 按钮拖到橙色圆圈上方**，并确认三个 iOS 快捷指令都已安装且工作正常。 |
+
+:::caution[任何碰动之后都要重新校准]
+校准的前提是手机、机械臂和相机彼此之间没有移动过。如果有人碰了整套设备、相机臂移位了，或者手机被
+重新摆放过，敲击就会开始**漂移**——落在目标旁边而不是目标上。修复办法不是微调，而是重新跑一遍
+`physiclaw setup hardware`。参见[校准](/zh/set-up/calibrate/)。
+:::
+
+## 运行时
+
+一旦你开始运行任务，故障会显示在智能体的工具输出里。下面是常见的几种。
+
+**敲击没中或漂移。** `tap` 返回了，但 `peek` 显示屏幕没变，或者触点落在了目标旁边。先让智能体
+**重试一次**——偶尔一次没中是正常的。如果它一直没中，说明整套设备的校准已经丢失：停下来，重新跑
+`physiclaw setup hardware`。
+
+**`screenshot` 超时。** `screenshot` 工具会触发 iOS 的截图手势，然后等待手机上传图片（约 12 秒）。
+如果它卡住了，要么是**"截图" iOS 快捷指令**没触发，要么是上传快捷指令坏了。两个都到[准备手机](/zh/set-up/prepare-the-phone/)
+里重新检查一遍。对大多数目标而言，`peek`（约 4 秒的相机视图）本来就是更合适的工具——`screenshot`
+只用于相机分辨不出的细小文字。
+
+**`unlock_phone` 失败。** 这一个是刻意不重试的——其他每个工具都需要手机处于解锁状态，所以智能体
+会以 `STUCK` 结束会话，而不是重试。这个工具的密码硬编码为 **`111111`**。修复要在手机上做：
+
+- 把设备密码设为 **`111111`**，**或者**
+- 关闭自动锁定：**设置 → 显示与亮度 → 自动锁定 → 永不**
+  （代价：屏幕老化更快）。
+
+为什么 `111111` 是硬编码的——以及为什么这才是安全的选择——在[安全](/zh/safety/)页面有详细说明。
+
+**智能体卡在了错误的页面上。** 这不是硬件故障——智能体有专门应对这种情况的导航工具。`go_back`
+退回上一屏，`force_quit` 硬重置回主屏幕，好让它重新干净地打开应用。如果它在打转，那条就是恢复路径，
+而不是崩溃。
+
+:::note[`peek` 是你的调试窗口]
+连续两次完全相同的 `peek` 列表，意味着**屏幕没有变化**——上一个动作没起作用。当某处不对劲时，
+这是最有用的一个信号：在你开始怪罪校准之前，它先告诉你那一下敲击究竟有没有落下去。
+:::
+
+## 服务商与模型
+
+如果智能体没法"思考"，那整套设备本身是好的——问题出在它背后的模型上。
+
+| 症状 | 原因 | 修复 |
+| --- | --- | --- |
+| `<provider> api key: (unset) — required for the active model.` | 当前激活的服务商没有 API key。 | 用 `physiclaw models key <provider>` 或对应的环境变量来设置。 |
+| `<provider>/<model>: vision check failed — expected 'PhysiClaw' in reply …`（`doctor --deep`） | 当前模型其实看不到图片（它会悄悄把图片丢掉）。 | 换成一个**支持视觉**的模型——PhysiClaw 每一次 `peek` 都需要视觉能力。参见[模型](/zh/agent/models/)。 |
+
+## 下一步
+
+- [校准](/zh/set-up/calibrate/) —— 完整的 10 步向导，以及每一步各自证明了什么。
+- [CLI 参考](/zh/reference/cli/) —— `doctor`、`server`、`setup` 及其余命令。

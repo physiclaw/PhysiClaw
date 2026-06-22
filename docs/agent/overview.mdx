@@ -1,0 +1,93 @@
+---
+title: The built-in agent
+description: PhysiClaw ships its own AI agent — a brain that sees, decides, and taps in a loop, runs unattended, and remembers.
+---
+
+PhysiClaw isn't only a set of tools an outside model calls — **it ships its own
+agent**, a brain that can drive the phone on its own.
+
+You can run PhysiClaw two ways. As a plain **MCP server**, it hands the twelve
+[tap/swipe/peek tools](/en/reference/mcp-tools/) to whatever agent you already use —
+Claude Desktop, an IDE, your own client — and that external model does the deciding.
+As a **built-in agent**, PhysiClaw *is* the model: it runs its own look → decide → act
+loop, in its own process, with no external client attached. Same robot, same tools — the
+difference is whose mind is in charge.
+
+:::tip[Coming from OpenClaw?]
+OpenClaw is an agent that drives software through the screen it lives on. PhysiClaw's
+built-in engine follows the same principles — a native tool-call loop, normalized at the
+provider boundary — but points them at a *physical* phone. It's OpenClaw's playbook with a
+body: the agent that used to click pixels now reaches out and taps glass.
+:::
+
+## What the agent adds over a plain MCP server
+
+A plain MCP server is reactive: it sits still until some external client sends a tool
+call. The built-in agent closes that gap — it can be the initiator.
+
+<CardGrid>
+  <Card title="It owns the loop" icon="seti:default">
+    The agent runs the full look → decide → act cycle itself: `peek` to see, choose a
+    bbox and a gesture, tap, then `peek` again to check. No external model in the loop.
+  </Card>
+  <Card title="It runs unattended" icon="moon">
+    It wakes on its own — on a schedule or when the phone screen changes — operates the
+    phone, and goes back to sleep. Nobody has to be sitting at a client.
+  </Card>
+  <Card title="It remembers" icon="open-book">
+    A persistent memory carries facts across wakes, so the agent isn't starting cold every
+    time. (See [Memory & skills](/en/agent/memory-and-skills/).)
+  </Card>
+  <Card title="It learns routines" icon="puzzle">
+    **Skills** are reusable, app-specific playbooks the agent discovers and follows —
+    "how to send a WeChat message," "how to place a grocery order" — instead of
+    re-figuring-out each app every time.
+  </Card>
+</CardGrid>
+
+## How the agent thinks
+
+Every wake runs the same loop you already met in [How it works](/en/start/how-it-works/) —
+the agent just drives it instead of an external client:
+
+```text
+ wake ──► LOOK ──► DECIDE ──► ACT ──► LOOK ──► … ──► close
+ trigger  peek     pick a      tap /   peek      (DONE / WAIT /
+ fires    (camera) bbox +      swipe  again,      FAIL / IDLE)
+                   gesture            re-decide
+```
+
+A few rules keep the loop honest. Each turn is shaped as exactly **`[note, one-other]`** —
+one running-summary note plus one real action — so the agent takes one step, records why,
+and never fires a burst of taps blind. Every turn ends by *looking at the result*, so a
+popup or a slow load is just the next state to react to, not a script to fall out of. And
+each session ends with a one-word verdict — `DONE`, `WAIT`, `FAIL`, or `IDLE` — that says
+what happened and whether to follow up.
+
+:::note[One brain, many models]
+The built-in agent isn't tied to one vendor. It runs on Anthropic, OpenAI, Google,
+Moonshot, or Qwen through its own engine, or shells out to Anthropic's `claude` CLI as a
+subprocess. You pick the model with one config line. [Models](/en/agent/models/) covers
+the full list and how to switch.
+:::
+
+## When to use which
+
+You don't have to choose once and for all — the same install does both.
+
+| | Plain MCP server | Built-in agent |
+| --- | --- | --- |
+| Who decides | your external client (Claude Desktop, an IDE) | PhysiClaw itself |
+| Starts a task | you, by prompting the client | a trigger: a schedule or a screen change |
+| Runs unattended | no — needs a client connected | **yes** — wakes, acts, sleeps |
+| Memory & skills | up to your client | built in |
+
+Reach for the **plain server** when you want to keep an existing agent in the loop and
+just give it hands. Reach for the **built-in agent** when you want PhysiClaw to run on its
+own — a recurring chore, a watch-and-react task, a phone that does things while you're
+away.
+
+## Next
+
+- [Models](/en/agent/models/) — the providers the agent runs on, and how to pick one.
+- [Autonomous tasks](/en/agent/autonomous-tasks/) — schedule a recurring job and let it run.

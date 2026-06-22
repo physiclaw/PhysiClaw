@@ -1,0 +1,158 @@
+---
+title: Configuration
+description: The `~/.physiclaw/config.toml` file — choosing a model, setting provider keys, and the knobs worth touching.
+---
+
+PhysiClaw reads its settings from one file, **`~/.physiclaw/config.toml`**, and almost
+everything has a sane built-in default — the only thing you *must* set is which model to run.
+Edit the file with `physiclaw config edit` (it's created from a commented template the first
+time), or change one key at a time with `physiclaw config set`. Changes apply on the next
+`physiclaw server` start.
+
+Settings layer in a fixed order, **first match wins**:
+
+```text
+CLI flag  >  env var  >  config.toml  >  built-in default
+```
+
+So a `--port` flag beats `PHYSICLAW_MODEL` in the environment, which beats the file, which
+beats the shipped default. Delete a key from the file to fall back to the default; an unknown
+section or key fails loudly on load (the CLI points you at `physiclaw config edit` to fix it).
+
+## The one you must set: `[agent]`
+
+```toml
+[agent]
+model = "anthropic/claude-sonnet-4-6"
+```
+
+`model` is a **`provider/model` ref**: the first segment picks the engine + provider, the
+second is the model id passed to that provider verbatim. There is no universal default — an
+empty `model` means "use the `PHYSICLAW_MODEL` env var, then fail loudly." The easiest way to
+set it is `physiclaw models use <provider/model>`, which validates the ref first.
+
+## Provider keys: `[provider]`
+
+One API key per provider, by id:
+
+```toml
+[provider]
+anthropic_api_key = "sk-ant-…"
+openai_api_key    = ""
+qwen_api_key      = ""
+moonshot_api_key  = ""
+google_api_key    = ""
+deepseek_api_key  = ""
+```
+
+An empty string means "fall back to the matching env var" — `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `QWEN_API_KEY`, and so on. The env var always wins over the file.
+
+:::caution[Treat these like SSH keys]
+Prefer `physiclaw models key <provider>` (hidden prompt) or `physiclaw config edit` over
+`physiclaw config set`, which would leave the key in your shell history. `physiclaw config
+show` masks every `*_api_key` value.
+:::
+
+### Pointing a provider at a proxy: `[providers.<id>]`
+
+To send a built-in provider through a proxy or alternate endpoint (e.g. Moonshot's `.ai` vs
+`.cn`), set a `base_url` override:
+
+```toml
+[providers.moonshot]
+base_url = "https://api.moonshot.ai/v1"
+```
+
+## Server: `[server]`
+
+```toml
+[server]
+port = 8048
+host = "0.0.0.0"
+save_tool_calls  = false   # dump every peek/screenshot output
+save_snapshots   = false   # dump every raw camera frame
+save_screenshots = false   # dump every raw phone-own screenshot
+```
+
+`port` and `host` are also exposed as `physiclaw server --port` / `--host`, and the three
+`save_*` flags as `--save-tool-calls` and friends — the flag overrides the file for that run.
+The `save_*` options are debugging aids; leave them off in normal use.
+
+:::note[`host = "0.0.0.0"` exposes the server on your LAN]
+That's intentional — the phone bridge needs to reach the server over the network. `doctor`
+flags it so you know. Bind to `127.0.0.1` if you only ever drive PhysiClaw from the same
+machine.
+:::
+
+## Camera: `[camera]`
+
+```toml
+[camera]
+width  = 1920
+height = 1080
+fourcc = "MJPG"
+```
+
+The resolution and pixel format PhysiClaw requests from the camera. `MJPG` matters on Windows:
+the default uncompressed mode snaps to 640×480 over USB, and switching to MJPG-compressed is
+what lets a single USB cable carry 1080p. Drivers round to their nearest supported mode, so the
+actual size is whatever the camera reports on the first frame.
+
+## Agent knobs
+
+These tune the built-in agent. The defaults are tuned for real-world use — touch them only if
+you know why.
+
+```toml
+[engine]
+max_turns = 300            # runaway safeguard for one session
+max_attempts = 3           # retries on a provider error
+wait_default_minutes = 15  # default WAIT-then-recheck interval
+
+[memory]
+default_log_entries  = 20  # on-demand read_logs default size (max 200)
+bootstrap_log_entries = 10 # daily-log lines preloaded at every wake
+
+[retention]
+trace_days = 7             # purge window for trace logs + cron job history
+```
+
+`[engine]` is the agent's runaway-safeguard, retry, and pacing budget for its tool-call loop.
+`[memory]` controls how much of the daily log the agent preloads and reads on demand.
+`[retention]` sets how long on-disk trace logs and cron history are kept.
+
+### When the model is a `claude-code/…` ref
+
+If `[agent] model` starts with `claude-code/`, PhysiClaw drives the external `claude` CLI as a
+subprocess, and `[claude]` applies to it:
+
+```toml
+[claude]
+timeout_seconds = 180
+max_attempts = 3
+```
+
+## Skills: `[skills]`
+
+```toml
+[skills]
+default_source = ""        # e.g. "physiclaw/PhysiClaw"
+```
+
+The default git source for `physiclaw skills install`. Empty means you must pass `--from` each
+time. Accepts `owner/repo` shorthand or a full git URL.
+
+## Inspecting the effective config
+
+```bash
+physiclaw config show          # merged config as TOML, keys masked
+physiclaw config get engine.max_turns
+```
+
+`show` reflects everything after layering — defaults plus your overrides — so it's the source
+of truth for what the server will actually use.
+
+## Next
+
+- [Troubleshooting](/en/troubleshooting/) — when the arm, camera, or a tool misbehaves, and how to fix it.

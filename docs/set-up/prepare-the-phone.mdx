@@ -1,0 +1,128 @@
+---
+title: Prepare the phone
+description: The once-per-phone setup — AssistiveTouch, three iOS Shortcuts, the bridge page, and a throwaway passcode.
+---
+
+The phone needs a five-minute, once-per-phone setup before PhysiClaw can drive it: turn on
+**AssistiveTouch**, add **three iOS Shortcuts**, and open the **bridge page** in the browser.
+None of this installs an app or a developer profile — it's all built into iOS — but it's the
+difference between "a stylus on glass" and a phone PhysiClaw can fully see and operate.
+
+:::caution[Use a throwaway phone]
+PhysiClaw gets the same access a person holding your unlocked phone would. Set this up on a
+dedicated tool phone, not your daily driver — [Safety](/en/safety/) explains exactly why and
+how.
+:::
+
+These steps describe iOS. The flow assumes the [server is running](/en/set-up/install/), since
+the Shortcuts and bridge page talk to it over your local network.
+
+## Why each piece exists
+
+Three problems need solving, and each maps to one piece of the setup:
+
+| Piece | Solves |
+| --- | --- |
+| **AssistiveTouch** | Gives the stylus one on-screen button it can tap to trigger Shortcuts — the stylus has no other way to "press a key." |
+| **3 iOS Shortcuts** | The screenshot pipeline (pixel-perfect capture) and clipboard paste — things a stylus tap alone can't do. |
+| **Bridge page** | A web page the phone keeps open; it shows the camera's alignment markers and relays text to the clipboard. |
+
+## 1. The bridge page
+
+The bridge is a single web page the phone holds open during a session. It does two jobs:
+
+- It draws **colored corner markers** on screen — small red/green/blue/yellow clusters in each
+  corner — that the overhead camera uses to auto-detect the screen and find its edges during
+  [calibration](/en/set-up/calibrate/).
+- It receives text from the server and copies it to the clipboard, so the agent can *paste* a
+  message instead of tapping it out letter by letter.
+
+Open it once to pair the phone. On the Mac, the server printed a QR URL; scanning it points the
+phone's browser at the bridge page on your LAN:
+
+```text
+http://<lan-ip>:8048/bridge
+```
+
+<Steps>
+
+1. On the Mac, open the QR page the server printed: `http://localhost:8048/api/bridge/qr`.
+
+2. Scan it with the phone's Camera app and open the link in Safari.
+
+3. The page should load and say **PhysiClaw**. Leave it in the foreground and keep the phone
+   awake — the camera can't find the markers if the screen sleeps.
+
+</Steps>
+
+:::tip[Keep the page reachable]
+The Shortcuts you'll create below point at this same server. A `<name>.local` address survives
+your router handing out a new IP; a raw `<lan-ip>` will break the next time the IP changes. If
+the server printed a `.local` URL, prefer it.
+:::
+
+## 2. Three iOS Shortcuts
+
+Each Shortcut is short — one or two actions. Build them in the Shortcuts app (tap **+** for a
+new one), then rename each as shown. Replace `HOST` with your server's address (the host part
+of the bridge URL above).
+
+<Steps>
+
+1. **PhysiClaw Tap** — *take a screenshot.*
+   Add the **Take Screenshot** action. Rename the Shortcut to `PhysiClaw Tap`. This is the
+   capture half of the screenshot pipeline; it puts a fresh screenshot in Photos.
+
+2. **PhysiClaw Screenshot** — *upload the latest screenshot.*
+   Add **Get Latest Screenshots**, then **Get Contents of URL**. Set the URL to
+   `http://HOST/api/bridge/screenshot`, method **POST**, request body **File**, and the file to
+   the **Screenshots** variable. Rename to `PhysiClaw Screenshot`. This sends the pixel-perfect
+   capture up to the server — the `screenshot` half of [how PhysiClaw
+   looks](/en/start/how-it-works/).
+
+3. **PhysiClaw Clipboard** — *sync the clipboard.*
+   Add **Get Contents of URL** with URL `http://HOST/api/bridge/clipboard` (method GET), then
+   **Copy to Clipboard** with its input set to **Contents of URL**. Rename to
+   `PhysiClaw Clipboard`. This pulls text the server queued and drops it on the clipboard, ready
+   to paste.
+
+</Steps>
+
+## 3. Wire the Shortcuts to AssistiveTouch
+
+AssistiveTouch is iOS's floating on-screen button — the stylus taps *it* to fire a Shortcut.
+Turn it on and bind the three gestures:
+
+<Steps>
+
+1. **Settings → Accessibility → Touch → AssistiveTouch** → turn it **on**.
+
+2. Under **Custom Actions**, set:
+   - **Single-Tap** → Shortcut → **PhysiClaw Tap**
+   - **Double-Tap** → Shortcut → **PhysiClaw Screenshot**
+   - **Long Press** → Shortcut → **PhysiClaw Clipboard**
+
+</Steps>
+
+Now one tap on the AssistiveTouch button captures a screenshot, two taps upload it, and a long
+press syncs the clipboard — exactly the gestures the [calibration
+wizard](/en/set-up/calibrate/) exercises to confirm the pipeline works.
+
+## 4. Set the passcode to `111111`
+
+PhysiClaw can unlock the phone itself, but it only knows one code: `111111`. It's **hardcoded**
+on purpose. If the real passcode lived in a config file or got typed into the keypad logic, it
+could leak through logs or git history — so PhysiClaw never stores a real one. Set the tool
+phone's passcode to `111111` (Settings → Face ID & Passcode), and keep nothing on the phone you
+wouldn't hand to a stranger.
+
+:::note[Or skip the lock entirely]
+If you'd rather not have PhysiClaw unlock the phone at all, disable auto-lock
+(Settings → Display & Brightness → Auto-Lock → Never) and leave it unlocked. The trade-off is
+faster screen wear from an always-on display.
+:::
+
+## Next
+
+- [Calibrate](/en/set-up/calibrate/) — the 10-step wizard that ties the arm, camera, and screen
+  together.

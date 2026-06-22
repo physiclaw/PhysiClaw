@@ -1,0 +1,118 @@
+---
+title: Memory & skills
+description: How the built-in agent remembers things across sessions and gains new app-specific abilities — persistent memory plus a folder-based skill system.
+---
+
+The built-in agent starts every session fresh, so its continuity comes from two files it reads on wake — a **memory** of durable facts and a **skill** that teaches it how to drive a specific app. Memory is what it knows; skills are what it can do. Both live as plain Markdown on disk, so you can read, edit, or seed them by hand.
+
+## Memory: what carries across sessions
+
+A session is one wake — the agent comes alive on a trigger, works the task, and exits. Nothing in its head survives to the next wake. What survives is three files under `~/.physiclaw/memory/`:
+
+<FileTree>
+- ~/.physiclaw/memory/
+  - USER.md          your profile — curated by you, read-only to the agent
+  - memory.md        durable facts, one per line
+  - 2026-06-22.md    that day's activity log, `[HH:MM] …` per line
+  - 2026-06-21.md
+  - …
+</FileTree>
+
+Each file has one job:
+
+| File | Holds | Who writes it |
+| --- | --- | --- |
+| `USER.md` | who you are, your preferences, your defaults | you |
+| `memory.md` | facts the agent learned and should keep | the agent (append / edit) |
+| `YYYY-MM-DD.md` | a timestamped log of what it did that day | the agent (append) |
+
+On every wake, the agent's system prompt already contains `memory.md` and your `USER.md` — they're small and grounding, so they're loaded automatically. The daily logs are bigger, so only the **most recent ~10 entries** ride along by default; the agent pulls a deeper window on demand with `read_logs` when a task needs older history.
+
+:::note[Why split "facts" from "logs"?]
+`memory.md` answers *"what's true?"* — your address, that you prefer oat milk, the size you buy. The daily log answers *"what happened?"* — `[14:02] jd: cart → checkout — added 2× oat milk ¥39`. Facts are timeless and few; logs are a running tape and many. Keeping them apart means the always-loaded part (facts) stays tiny while the recall-on-demand part (logs) can grow without bloating every prompt.
+:::
+
+### How the agent writes memory
+
+You don't have to manage any of this — the agent maintains its own memory as it works:
+
+- **You say "remember X"** → it appends a line to `memory.md`.
+- **You change a preference** → it edits the matching line in place.
+- **It finishes a meaningful step** → it appends one line to today's log, like
+  `[HH:MM] app: page → page — what it did`. These per-step logs are what let a
+  *future* wake recover from a half-finished task: it can read the log, see the
+  cart already has two items, and pick up from there.
+
+`USER.md` is the exception — the agent only ever **reads** it. That file is yours to curate, and it's the right place to put standing preferences you want respected from the very first session.
+
+:::tip[Seed it before your first real task]
+Put your essentials in `USER.md` up front — name, address, which apps you use, hard rules ("never order from X"). The agent reads it on every wake, so a good profile saves it from re-asking and from guessing wrong.
+:::
+
+## Skills: teaching the agent new abilities
+
+Memory is what the agent *knows*. A **skill** is what it *can do* — a self-contained folder that teaches it the exact workflow for one app or one kind of task. Out of the box it can tap a screen; a skill turns "tap a screen" into "place a grocery order on this specific app, the right way."
+
+A skill is just a directory with a `SKILL.md` at its root:
+
+<FileTree>
+- ~/.physiclaw/skills/
+  - jobs/
+    - SKILL.md        frontmatter (name + description) + the workflow
+  - jd/
+    - SKILL.md
+    - references/     deep detail, loaded only when needed
+    - assets/         freeform files a reference can point at
+</FileTree>
+
+Two locations are scanned: `~/.physiclaw/skills/` (the primary home, so an installed agent finds its skills with no repo checkout) and `./skills/` relative to where it runs (handy while you're iterating). If both define a skill with the same name, the home copy wins.
+
+### How a skill gets discovered and loaded — three tiers
+
+Skills load **progressively**, so a phone full of skills doesn't flood the prompt. The agent only pays for the detail it actually opens:
+
+<Steps>
+
+1. **Metadata** — On wake, every skill's `name` and one-line `description`
+   are injected into the system prompt. That description is the *only* signal
+   the agent has to decide a skill is relevant, which is why descriptions are
+   written as concrete triggers — *"use when …; NOT for …"* — not vague blurbs.
+
+2. **The workflow** — When a task matches, the agent calls `Skill(name="jd")`
+   and gets back the full `SKILL.md` body: the step-by-step procedure to follow.
+   This is the doctrine for that app — its search box, its checkout flow, its
+   gotchas.
+
+3. **References** — For rare detail, the body points at a reference file, and
+   the agent calls `Skill(name="jd", reference="checkout.md")` to pull it in
+   on demand. Most tasks never reach tier 3.
+
+</Steps>
+
+This tiering is the whole reason a builder can keep adding skills without slowing the agent down. Ten installed skills cost ten one-line descriptions in the prompt — not ten full workflows.
+
+:::caution[The description is load-bearing]
+A skill with a weak description sits idle even when it's exactly the right tool, because the agent never sees a reason to open it. When you write or install a skill, spend the effort on the description: name the apps, the verbs, the phrasings that should fire it — and the cases that should *not*.
+:::
+
+### Example: the `jobs` skill
+
+The built-in `jobs` skill is a good model for what a skill looks like. Its job is scheduling future work, and its description names exactly when to reach for it:
+
+```text
+Use when the task involves scheduling future work — any "remind me at …",
+"every weekday …", "check again in 30 min", or closing a fired cron job.
+… NOT for one-off in-session waits. NEVER edit jobs.md by hand.
+```
+
+The body then teaches the workflow: scheduled work lives in a strict, machine-parsed `jobs.md`, so the skill forbids editing that file directly and routes every change through one CLI with four subcommands — `create`, `list`, `get`, `finish`. The agent reads this, learns the safe way to schedule a reminder, and never has to reverse-engineer the file format. That's the pattern for every skill: encode the right way to do a thing once, and every future session inherits it.
+
+Skills are how the autonomous side of the agent works too — the `jobs` skill is what lets it set the cron and poll triggers covered in [Autonomous tasks](/en/agent/autonomous-tasks/).
+
+:::note[Skills are snapshotted at wake]
+The agent captures each `SKILL.md` body when the session starts; editing a skill mid-session won't change behavior until the next wake. This is deliberate — it keeps the cached part of the prompt byte-stable so the model isn't re-charged for an unchanged prefix on every turn.
+:::
+
+## Next
+
+- [Inside the engine](/en/agent/inside-the-engine/) — the native tool-call loop, the per-turn shape, and how it keeps a long session in context.

@@ -1,0 +1,151 @@
+---
+title: 配置
+description: `~/.physiclaw/config.toml` 文件——选择模型、设置 provider 密钥，以及值得调整的旋钮。
+---
+
+PhysiClaw 从一个文件读取设置，即 **`~/.physiclaw/config.toml`**，几乎一切都有合理的内置默认值——
+你 *必须* 设置的唯一一项是要运行哪个模型。用 `physiclaw config edit` 编辑该文件
+（第一次会从带注释的模板创建），或用 `physiclaw config set` 一次改一个键。更改会在下一次
+`physiclaw server` 启动时生效。
+
+设置按固定顺序分层，**首个匹配胜出**：
+
+```text
+CLI flag  >  env var  >  config.toml  >  built-in default
+```
+
+所以一个 `--port` 标志胜过环境中的 `PHYSICLAW_MODEL`，后者胜过文件，文件又胜过出厂默认值。
+从文件中删除一个键即可回退到默认值；加载时遇到未知的 section 或键会显式报错失败
+（CLI 会指引你用 `physiclaw config edit` 修复）。
+
+## 你必须设置的那一项：`[agent]`
+
+```toml
+[agent]
+model = "anthropic/claude-sonnet-4-6"
+```
+
+`model` 是一个 **`provider/model` 引用**：第一段挑选引擎 + provider，第二段是原样传给该 provider 的
+模型 id。不存在通用默认值——空的 `model` 意味着"使用 `PHYSICLAW_MODEL` 环境变量，否则显式报错失败"。
+设置它最简单的方式是 `physiclaw models use <provider/model>`，它会先校验该引用。
+
+## Provider 密钥：`[provider]`
+
+每个 provider 一个 API 密钥，按 id 区分：
+
+```toml
+[provider]
+anthropic_api_key = "sk-ant-…"
+openai_api_key    = ""
+qwen_api_key      = ""
+moonshot_api_key  = ""
+google_api_key    = ""
+deepseek_api_key  = ""
+```
+
+空字符串意味着"回退到对应的环境变量"——`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`QWEN_API_KEY` 等。
+环境变量始终胜过文件。
+
+:::caution[把它们当成 SSH 密钥]
+优先用 `physiclaw models key <provider>`（隐藏提示）或 `physiclaw config edit`，而不是
+`physiclaw config set`，后者会把密钥留在你的 shell 历史里。`physiclaw config show` 会遮蔽每一个
+`*_api_key` 值。
+:::
+
+### 让 provider 指向代理：`[providers.<id>]`
+
+要把一个内置 provider 经由代理或备用端点发送（例如 Moonshot 的 `.ai` 与 `.cn`），
+设置一个 `base_url` 覆盖：
+
+```toml
+[providers.moonshot]
+base_url = "https://api.moonshot.ai/v1"
+```
+
+## 服务器：`[server]`
+
+```toml
+[server]
+port = 8048
+host = "0.0.0.0"
+save_tool_calls  = false   # dump every peek/screenshot output
+save_snapshots   = false   # dump every raw camera frame
+save_screenshots = false   # dump every raw phone-own screenshot
+```
+
+`port` 和 `host` 也以 `physiclaw server --port` / `--host` 暴露，三个 `save_*` 标志以
+`--save-tool-calls` 等暴露——标志会在那次运行中覆盖文件。`save_*` 选项是调试辅助；
+正常使用时把它们关掉。
+
+:::note[`host = "0.0.0.0"` 会把服务器暴露到你的局域网]
+这是有意为之的——手机桥接需要通过网络访问到服务器。`doctor` 会标记它以便你知情。
+如果你只在同一台机器上驱动 PhysiClaw，就绑定到 `127.0.0.1`。
+:::
+
+## 相机：`[camera]`
+
+```toml
+[camera]
+width  = 1920
+height = 1080
+fourcc = "MJPG"
+```
+
+PhysiClaw 向相机请求的分辨率和像素格式。`MJPG` 在 Windows 上很关键：默认的未压缩模式在 USB 上会
+跳到 640×480，而切换到 MJPG 压缩模式才让单根 USB 线缆能承载 1080p。驱动会就近取最接近的受支持模式，
+所以实际尺寸取决于相机在第一帧报告的值。
+
+## Agent 旋钮
+
+这些用于调校内置 agent。默认值已为真实场景调好——只在你清楚原因时才去动它们。
+
+```toml
+[engine]
+max_turns = 300            # runaway safeguard for one session
+max_attempts = 3           # retries on a provider error
+wait_default_minutes = 15  # default WAIT-then-recheck interval
+
+[memory]
+default_log_entries  = 20  # on-demand read_logs default size (max 200)
+bootstrap_log_entries = 10 # daily-log lines preloaded at every wake
+
+[retention]
+trace_days = 7             # purge window for trace logs + cron job history
+```
+
+`[engine]` 是 agent 工具调用循环的失控保护、重试和节奏预算。`[memory]` 控制 agent 在每日日志中
+预加载多少行、以及按需读取多少行。`[retention]` 设定磁盘上的 trace 日志和 cron 历史保留多久。
+
+### 当模型是 `claude-code/…` 引用时
+
+如果 `[agent] model` 以 `claude-code/` 开头，PhysiClaw 会把外部的 `claude` CLI 作为子进程驱动，
+此时 `[claude]` 对它生效：
+
+```toml
+[claude]
+timeout_seconds = 180
+max_attempts = 3
+```
+
+## 技能：`[skills]`
+
+```toml
+[skills]
+default_source = ""        # e.g. "physiclaw/PhysiClaw"
+```
+
+`physiclaw skills install` 的默认 git 源。为空意味着你每次都得传 `--from`。
+接受 `owner/repo` 简写或完整 git URL。
+
+## 查看生效后的配置
+
+```bash
+physiclaw config show          # merged config as TOML, keys masked
+physiclaw config get engine.max_turns
+```
+
+`show` 反映分层之后的一切——默认值加上你的覆盖——所以它是服务器实际会用到什么的真实来源。
+
+## 下一步
+
+- [故障排查](/zh/troubleshooting/) ——当机械臂、相机或某个工具出问题时，该如何修复。

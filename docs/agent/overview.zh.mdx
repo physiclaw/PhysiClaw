@@ -1,0 +1,84 @@
+---
+title: 内置 agent
+description: PhysiClaw 自带 AI agent —— 一个会看、会决策、会循环点按的大脑，能无人值守地运行，还会记事。
+---
+
+PhysiClaw 不只是一套供外部模型调用的工具 —— **它自带一个 agent**，一个能独立操作手机的大脑。
+
+PhysiClaw 有两种用法。作为一台纯粹的 **MCP server**，它把那十二个
+[点按 / 滑动 / 查看的工具](/zh/reference/mcp-tools/)交给你手边已有的任何 agent ——
+Claude Desktop、某个 IDE、你自己写的客户端 —— 由那个外部模型来做决策。
+而作为**内置 agent**，PhysiClaw *本身就是*那个模型：它在自己的进程里跑自己的
+看 → 决策 → 动作循环，不需要外接任何客户端。同样的机器人、同样的工具 —— 区别只在于，是谁的脑子在掌舵。
+
+:::tip[从 OpenClaw 过来的？]
+OpenClaw 是一个透过它所栖身的屏幕来驱动软件的 agent。PhysiClaw 的内置引擎遵循同一套原则
+—— 原生工具调用循环，在 provider 边界处归一化 —— 只不过它瞄准的是一台*实体*手机。这就是
+OpenClaw 的打法装上了身体：那个曾经点击像素的 agent，如今伸出手，敲在玻璃上。
+:::
+
+## 相比纯 MCP server，agent 多了什么
+
+纯 MCP server 是被动的：它一动不动地等着某个外部客户端发来工具调用。内置 agent 补上了这道缺口
+—— 它可以是发起者。
+
+<CardGrid>
+  <Card title="它掌控循环" icon="seti:default">
+    agent 自己跑完整个看 → 决策 → 动作的循环：`peek` 看一眼，挑一个 bbox 和一个手势，点下去，再
+    `peek` 检查结果。循环里没有外部模型。
+  </Card>
+  <Card title="它无人值守运行" icon="moon">
+    它自己醒来 —— 按计划，或当手机屏幕发生变化时 —— 操作手机，然后重新睡去。没人需要守在客户端前。
+  </Card>
+  <Card title="它会记事" icon="open-book">
+    一份持久的记忆把事实带过每一次醒来，所以 agent 不必每回都从零开始。（见
+    [记忆与技能](/zh/agent/memory-and-skills/)。）
+  </Card>
+  <Card title="它学会套路" icon="puzzle">
+    **技能**是 agent 发现并遵循的、可复用的、针对具体 app 的操作手册 ——
+    "怎么发一条微信消息"、"怎么下一单生鲜" —— 而不必每次都把一个 app 重新摸索一遍。
+  </Card>
+</CardGrid>
+
+## agent 怎么思考
+
+每次醒来都跑你在[工作原理](/zh/start/how-it-works/)里已经见过的那个循环 ——
+只不过这回是 agent 在驱动它，而非外部客户端：
+
+```text
+ wake ──► LOOK ──► DECIDE ──► ACT ──► LOOK ──► … ──► close
+ trigger  peek     pick a      tap /   peek      (DONE / WAIT /
+ fires    (camera) bbox +      swipe  again,      FAIL / IDLE)
+                   gesture            re-decide
+```
+
+几条规则让循环保持诚实。每一回合都被严格塑造成 **`[note, one-other]`** ——
+一条滚动记录的 note 加一个真实动作 —— 于是 agent 每次只走一步、记下原因，绝不盲目地连点一通。
+每个回合都以*查看结果*收尾，所以一个弹窗、一次缓慢加载，不过是下一个要去应对的状态，而不会让脚本脱轨。
+而每个会话都以一个单词裁决收尾 —— `DONE`、`WAIT`、`FAIL` 或 `IDLE` ——
+讲清发生了什么、要不要跟进。
+
+:::note[一个大脑，多种模型]
+内置 agent 不绑定任何一家厂商。它能透过自己的引擎跑在 Anthropic、OpenAI、Google、Moonshot
+或 Qwen 上，也能以子进程的方式调起 Anthropic 的 `claude` CLI。你用一行配置就能选定模型。
+[模型](/zh/agent/models/)讲了完整列表和切换方法。
+:::
+
+## 何时用哪种
+
+你不必一次性地做出永久选择 —— 同一套安装两种都支持。
+
+| | 纯 MCP server | 内置 agent |
+| --- | --- | --- |
+| 谁来决策 | 你的外部客户端（Claude Desktop、某个 IDE） | PhysiClaw 自己 |
+| 谁来发起任务 | 你，靠对客户端发提示 | 一个 trigger：一份计划，或一次屏幕变化 |
+| 无人值守运行 | 否 —— 需要接着一个客户端 | **是** —— 醒来、动作、睡去 |
+| 记忆与技能 | 取决于你的客户端 | 内置 |
+
+想让一个现有的 agent 继续掌舵、只给它装上手，就用**纯 server**。想让 PhysiClaw 自己跑起来 ——
+一桩周期性的杂务、一个守着等着就动手的任务、一台在你不在时也照样做事的手机 —— 就用**内置 agent**。
+
+## 接下来
+
+- [模型](/zh/agent/models/) —— agent 能跑在哪些 provider 上，以及怎么挑一个。
+- [自主任务](/zh/agent/autonomous-tasks/) —— 排一个周期性作业，让它自己跑。

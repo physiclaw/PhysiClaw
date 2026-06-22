@@ -1,48 +1,86 @@
 ---
 title: Introduction
-description: What PhysiClaw is, the problem it solves, and how the pieces fit together.
+description: What PhysiClaw is — an AI agent that physically operates a real phone with a robotic stylus and one camera.
 ---
 
-**PhysiClaw** is a small desktop robot that gives an AI agent a *physical* body to operate a
-phone. It watches the screen through a camera and touches the glass with a capacitive stylus
-on a 3-axis arm. There is no app to install on the phone, no API to integrate, and no account
-to connect — to the phone, PhysiClaw is indistinguishable from a human finger.
+You've seen an AI agent click around a screen. **PhysiClaw lets it touch a real one.**
 
-## The problem
+PhysiClaw is a small desktop robot that gives an AI agent a *physical* body to operate a
+phone. A single camera looks down at the screen; a capacitive stylus on a 3-axis arm reaches
+out and taps the glass. The agent reads what's on screen, decides what to do, and the arm does
+it — the same loop a person runs, just with a camera for an eye and a stylus for a finger.
 
-Software agents that "use your phone" usually depend on one of three things, and each is a wall:
+There's no app to install on the phone, no API to integrate, and no account to connect. To the
+phone, the stylus is indistinguishable from a fingertip — so *any* app works, iOS or Android,
+with zero per-app setup.
+
+:::tip[Coming from OpenClaw?]
+OpenClaw gave an agent hands *inside software* — it drives apps through the screen it already
+lives on. PhysiClaw gives it hands *in the physical world*: a real stylus on a real phone it
+was never logged into. Same idea — let the agent use the interface a human uses — pushed off
+the desktop and onto the glass.
+:::
+
+## The problem it solves
+
+Software agents that "use your phone" lean on one of three things. Each is a wall.
 
 <CardGrid>
   <Card title="APIs & OAuth" icon="setting">
-    Every service needs its own integration, keys, and consent screens. New app, new wall.
+    Every service needs its own integration, keys, and consent screens. New app, new wall —
+    and the apps you most want (your bank, a delivery app) often have no public API at all.
   </Card>
   <Card title="Accessibility hooks" icon="puzzle">
-    Screen readers and automation frameworks are blockable, detectable, and break on redesigns.
+    Automation frameworks and screen-reader bridges are detectable, blockable, and break the
+    moment an app redesigns.
   </Card>
   <Card title="Jailbreaks" icon="warning">
     Rooting a device to inject taps is fragile, unsafe, and off-limits for most people.
   </Card>
 </CardGrid>
 
-## The PhysiClaw way
+PhysiClaw sidesteps all three by not touching the software stack at all. The only thing
+reaching the phone is a stylus tip — so there is nothing to integrate, nothing to detect, and
+nothing to jailbreak.
 
-Instead of a software bridge, give the agent **presence**. The loop is deliberately simple:
+## How it works, in four moves
 
-1. A **top camera** photographs the screen.
-2. The **agent** decides the next action from the image.
-3. The **arm** moves the stylus and a **side camera** confirms the tip is on target.
-4. The stylus **touches**, then retracts — and the loop repeats.
+The loop is deliberately simple, and it's the same every time:
 
-Because the only thing touching the phone is a stylus tip, *any* app works — iOS or Android,
-your bank, a delivery app, a chat thread — with zero per-app setup.
+1. **Look.** The overhead camera photographs the screen. On-device vision boxes and labels
+   every button, icon, and line of text it finds.
+2. **Decide.** The agent reads that annotated view and picks a target — *this* box — and an
+   action: tap, swipe, long-press.
+3. **Move & touch.** The arm drives the stylus to the target and the tip drops to register the
+   touch, then lifts away.
+4. **Check.** The camera looks again. Did the screen change the way it should? If yes, on to
+   the next action; if not, try again.
 
-:::tip[Who is this for?]
-Builders who want agents to act in the real world: automation tinkerers, robotics learners,
-and anyone tired of writing one more integration to do something a finger could do.
+Because every step ends by *looking at the result*, a surprise — a popup, an ad, a slow load —
+is just the new state to react to, not a script to fall out of.
+[How it works](/en/start/how-it-works/) walks through one full loop in detail.
+
+## What's actually on the phone?
+
+The "nothing installed" line is *almost* true, and the difference matters — so here it is
+straight:
+
+:::note[The honest version]
+There's no App-Store app and no developer mode. But you do prepare the phone once: turn on
+**AssistiveTouch**, add three short **iOS Shortcuts** (used for pixel-perfect screenshots and
+the clipboard), and keep a small **bridge page** open in the browser during a session. It's a
+normal phone you've spent five minutes setting up — nothing that changes what the phone *is*.
+[Prepare the phone](/en/set-up/prepare-the-phone/) covers exactly what and why.
 :::
 
-## What's next
+## Who it's for
 
-- [Installation](/en/start/installation/) — get the server running and the hardware connected.
-- [Quickstart](/en/start/quickstart/) — calibrate and run a first task.
-- [System architecture](/en/concepts/architecture/) — the full picture, end to end.
+Builders who want agents to act in the real world: automation tinkerers, robotics learners,
+and anyone tired of writing one more integration to do something a finger could do. A full
+build is about **$112** in off-the-shelf parts and an afternoon of assembly and calibration —
+no soldering, no custom boards.
+
+## Next
+
+- [How it works](/en/start/how-it-works/) — one full look → decide → move → check loop, in detail.
+- [What you'll build](/en/start/what-youll-build/) — the rig, the cost, and the road ahead.

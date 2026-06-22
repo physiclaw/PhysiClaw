@@ -1,0 +1,122 @@
+---
+title: Troubleshooting
+description: Real failure modes for the PhysiClaw rig — arm, camera, calibration, and runtime — with the actual error strings and their fixes.
+---
+
+Most PhysiClaw problems announce themselves with a specific line of text, and almost all of
+them trace back to one of five things: a loose USB cable, missing 12 V power, a phone that
+went to sleep, glare on the screen, or a rig that got bumped after calibration. This page
+groups the real errors by the phase they show up in, so you can match a symptom to a fix fast.
+
+Before anything else, run the read-only health check:
+
+```bash
+physiclaw doctor
+```
+
+It reports the server, arm, camera, calibration bundle, and active model in one pass. Add
+`--deep` to actually open a camera frame, load the vision model, and send a test call to your
+provider. The [CLI reference](/en/reference/cli/) covers every flag.
+
+## Build & connection
+
+The arm and camera are connected during `physiclaw setup hardware`, step by step. These are
+the failures you hit there.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Couldn't connect — check the USB cable and 12 V power` | Step 3 can't find the control board on any serial port. | Reseat the USB cable to the computer, and confirm the board's **12 V power** is plugged in and on. The board needs *both*. PhysiClaw scans for it by its FluidNC firmware. |
+| `no serial ports detected — connect the arm and re-run.` (`doctor`) | No serial device at all is present. | The arm isn't enumerating — bad cable, dead hub port, or no driver. Try a direct USB port instead of a hub. |
+| `no GRBL detected (saw N candidate port(s): …)` (`doctor`) | Serial ports exist, but none answered the GRBL probe. | The board is plugged in but not responding — usually no 12 V power, or the firmware isn't flashed. See [Firmware](/en/build/firmware/). |
+| `Server not running. Start: physiclaw server` | `setup hardware` can't reach the server. | The server holds the arm and camera. Start it in another shell with `physiclaw server` and leave it running. |
+
+:::tip[The arm and the doctor can't share the port]
+A serial port has one owner. While `physiclaw server` is running it *holds* the arm, so a
+separate `physiclaw doctor` won't re-probe it — it reads the server's live status instead.
+That's expected, not a bug.
+:::
+
+## Camera
+
+The camera is auto-detected by the colored corner markers drawn on the bridge page. When that
+fails, it's almost always the phone or another app — not the camera itself.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Couldn't find the camera — make sure /bridge is open and awake` | Auto-detect couldn't see the corner markers. | The bridge page is asleep or backgrounded. Wake the phone, bring **/bridge** to the foreground, and keep the screen on. Then pick the camera index from the previews `setup` opens (default `0`). |
+| `Couldn't reopen the camera: … Another app (Photo Booth / Camera / Zoom / FaceTime) may still be holding it.` | Another app has an exclusive lock on the camera. | Quit **Photo Booth, Camera, Zoom, FaceTime**, or any browser tab using video. The camera can only be held by one app at a time. |
+| `camera N: opens but no frame (likely denied Camera permission …)` (`doctor --deep`) | macOS denied camera access to your terminal app. | Grant it in **System Settings → Privacy & Security → Camera**, then re-run. |
+| `cameras: none detected. On first use, macOS shows a Camera-permission prompt …` (`doctor`) | No camera enumerated, or the first-run prompt wasn't accepted. | Accept the macOS Camera prompt for this terminal app, check the USB connection, then re-run. |
+| Picks the wrong camera (e.g. the Mac's built-in webcam) | Auto-detect chose a different index. | When prompted `Which camera? [0-3, default=0]`, choose the index whose preview shows the phone screen from above. |
+
+## Calibration
+
+Calibration lines up where the arm draws with where the camera looks and where the phone
+actually is. It runs the screen, arm, and camera in sequence, then validates.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Couldn't read the screenshot. Tap AT once, then double-tap.` | The screen-locate step never got the phone's screenshot. | On the phone: **tap AssistiveTouch once** (take screenshot), then **double-tap it** (upload). Confirm the two iOS Shortcuts are installed — see [Prepare the phone](/en/set-up/prepare-the-phone/). |
+| `Couldn't show the center circle — is the bridge page open and awake?` | The bridge can't switch to the calibration view. | Wake the phone and bring **/bridge** to the foreground; it can't have slept or been swiped away. |
+| `Couldn't calibrate: … — make sure the stylus tip is over the center circle` | The arm calibration didn't land. | Move the **stylus tip directly over the orange center circle** before continuing, and don't touch the rig while it taps its 18 points. |
+| `Phone looks slightly rotated relative to the arm (N%) …` | The phone is seated at a slight angle to the arm's axes. | A warning, not a stop. **Straighten the phone** in the holder (top-left corner against the holder's corner) and rerun if validation later fails. |
+| `Couldn't map the dots: …` / `Reduce glare / fix lighting.` | The camera couldn't find all 15 calibration dots. | Even out the lighting and **kill glare** on the screen. The whole screen must be in view and readable. |
+| `Validation failed — check the lighting, or redo the camera or arm calibration` | The final tap-on-dot check didn't pass. | Re-check lighting, then redo the **camera** or **arm** calibration. A bumped rig or a moved camera is the usual culprit. |
+| `Couldn't verify — re-position the AssistiveTouch button over the circle and check the iOS Shortcuts` | The screenshot + clipboard pipeline check failed. | Drag the **AssistiveTouch button over the orange circle**, and verify all three iOS Shortcuts are installed and working. |
+
+:::caution[Re-calibrate after any bump]
+Calibration assumes the phone, arm, and camera haven't moved relative to each other. If
+someone nudges the rig, the camera arm shifts, or the phone is reseated, taps will start to
+**drift** — landing next to targets instead of on them. The fix isn't a tweak; it's a fresh
+`physiclaw setup hardware`. See [Calibrate](/en/set-up/calibrate/).
+:::
+
+## Runtime
+
+Once you're running tasks, failures show up in the agent's tool output. These are the common
+ones.
+
+**Taps miss or drift.** A `tap` returns, but `peek` shows the screen unchanged, or the touch
+lands beside the target. First, let the agent **retry once** — a single missed tap is normal.
+If it keeps missing, the rig has lost calibration: stop and re-run `physiclaw setup hardware`.
+
+**`screenshot` times out.** The `screenshot` tool fires the iOS screenshot gesture and waits
+for the phone to upload the image (~12s). If it hangs, the **"take screenshot" iOS Shortcut**
+isn't firing or the upload Shortcut is broken. Re-check both in [Prepare the phone](/en/set-up/prepare-the-phone/).
+For most targets `peek` (the ~4s camera view) is the better tool anyway — `screenshot` is only
+for fine print the camera can't resolve.
+
+**`unlock_phone` fails.** This one is deliberately not retried — every other tool needs the
+phone unlocked, so the agent ends the session with `STUCK` instead. The tool is hardcoded to
+passcode **`111111`**. The fix is on the phone:
+
+- Set the device passcode to **`111111`**, **or**
+- Disable auto-lock: **Settings → Display & Brightness → Auto-Lock → Never**
+  (trade-off: faster display wear).
+
+Why `111111` is hardcoded — and why that's the safe choice — is covered on the
+[Safety](/en/safety/) page.
+
+**The agent gets stuck on the wrong page.** Not a hardware fault — the agent has navigation
+tools for this. `go_back` pops one screen, and `force_quit` hard-resets to the home screen so
+it can reopen the app fresh. If it loops, that's the recovery path, not a crash.
+
+:::note[`peek` is your debugging window]
+Two identical `peek` listings back-to-back mean **the screen didn't change** — the last action
+had no effect. That's the single most useful signal when something isn't working: it tells you
+whether the tap landed at all before you start blaming calibration.
+:::
+
+## Provider & model
+
+If the agent can't think, the rig is fine — the issue is the model behind it.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `<provider> api key: (unset) — required for the active model.` | No API key for the active provider. | Set it with `physiclaw models key <provider>` or the matching env var. |
+| `<provider>/<model>: vision check failed — expected 'PhysiClaw' in reply …` (`doctor --deep`) | The active model can't actually see images (it silently drops them). | Switch to a **vision-capable** model — PhysiClaw needs vision on every `peek`. See [Models](/en/agent/models/). |
+
+## Next
+
+- [Calibrate](/en/set-up/calibrate/) — the full 10-step wizard and what each step proves.
+- [CLI reference](/en/reference/cli/) — `doctor`, `server`, `setup`, and the rest.

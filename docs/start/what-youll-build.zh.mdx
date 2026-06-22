@@ -1,0 +1,73 @@
+---
+title: 你将造出什么
+description: 一眼看懂 PhysiClaw 这套装置 —— 它花多少钱、要多久，以及从零件到一个跑起来的 agent 的全程。
+---
+
+在你下单买任何东西之前，先看看全貌：造好的装置长什么样、花多少钱，以及从一箱零件到一个能点你手机的 agent，中间那寥寥几步。
+
+<!-- PHOTO: 组装好的装置，带标注 —— 鹅颈支架上的俯拍相机、写字机械臂、Z 轴笔夹上的触控笔、卡在角落支架里的手机、控制板 + USB hub。一张清晰的主图；正是这一页让人觉得「这东西我也造得出来」。 -->
+
+```text
+            ┌─ overhead camera (on a gooseneck, ~25 cm up)
+            │        looks straight down at the screen
+            ▼
+        ┌────────┐
+        │ camera │
+        └────────┘
+            ╎  sees
+            ▼
+   ┌───────────────────────┐        ┌──────────────┐
+   │  pen-plotter arm      │◄──USB──│  your Mac    │
+   │  X/Y gantry           │  12 V  │  physiclaw   │
+   │  Z = solenoid + stylus│◄──pwr──│  server      │
+   └─────────┬─────────────┘        └──────────────┘
+             │ taps
+             ▼
+      ┌──────────────┐
+      │  the phone   │  seated face-up in a corner holder
+      │  (unlocked)  │
+      └──────────────┘
+```
+
+## 预期一览
+
+<CardGrid>
+  <Card title="≈ $112" icon="seti:shell">
+    全是现成零件。机械臂是一台消费级写字机；相机是一个普通的 USB 摄像头。
+  </Card>
+  <Card title="≈ 一个下午" icon="seti:clock">
+    组装纯属机械活 —— 不用焊接，不用定制电路板。校准有向导一步步带着走。
+  </Card>
+  <Card title="不需要特殊技能" icon="approve">
+    只要你会照着接线图接线、会夹紧一根鹅颈管，就能造一台出来。
+  </Card>
+  <Card title="目前支持 macOS" icon="apple">
+    macOS 是受支持的平台；整个流程的大部分在 Windows 上也能跑。（串口不一样。）
+  </Card>
+</CardGrid>
+
+## 接下来的路
+
+文档余下的部分，就是这套构建，按顺序来。每一步都干净利落地交接给下一步：
+
+<Steps>
+
+1. **[构建硬件](/zh/build/bill-of-materials/)** —— 下单买齐零件，然后把机械臂、触控笔、相机和手机支架组装起来。
+
+2. **[安装软件](/zh/set-up/install/)** —— 一条命令装好 `physiclaw` CLI；`physiclaw doctor` 检查你的机器。
+
+3. **[准备手机](/zh/set-up/prepare-the-phone/)** —— 打开 AssistiveTouch，添加那三个 iOS Shortcuts。五分钟，一次搞定。
+
+4. **[校准](/zh/set-up/calibrate/)** —— 一个向导教机械臂和相机屏幕到底在哪儿，好让 tap 落在 agent 瞄的地方。
+
+5. **[跑你的第一个任务](/zh/run/first-task/)** —— 接上你的 agent，用大白话给它一个目标。看着它看、决策、tap。
+
+</Steps>
+
+:::tip[想先搞懂概念？]
+如果你来这儿是想搞懂 PhysiClaw、而不是造一台，那就读[它如何工作](/zh/start/how-it-works/) —— 整套构建服务的，就是那个心智模型。
+:::
+
+## 接下来
+
+- [物料清单](/zh/build/bill-of-materials/) —— 零件清单，附上哪些要紧、为什么。

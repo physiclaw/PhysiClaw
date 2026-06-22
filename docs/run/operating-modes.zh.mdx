@@ -1,0 +1,93 @@
+---
+title: 操作模式
+description: 驱动 PhysiClaw 有两种方式——通过 MCP 接入你自己的 agent，或让 PhysiClaw 内置的 agent 来当大脑。同一套硬件，由你选择。
+---
+
+PhysiClaw 可以用两种方式驱动，二者共用同一套机械臂、摄像头和工具集——只有*大脑*不同。要么由一个外部 MCP 客户端负责思考、PhysiClaw 只当一双手；要么 PhysiClaw 跑自己内置的 agent，完全不需要外部客户端。
+
+你在[第一个任务](/zh/run/first-task/)里已经用过第一种模式了，那次是 Claude Desktop 在做决定。下面就来看看它和让 PhysiClaw 自己思考相比是什么样。
+
+## 两个大脑，一具身体
+
+<CardGrid>
+  <Card title="接入你自己的 agent（MCP）" icon="external">
+    一个外部客户端——Claude Desktop、OpenClaw、你自己写的脚本——连到
+    `http://localhost:8048/mcp` 并调用这些工具。**那个客户端就是大脑。**
+    PhysiClaw 是一个纯粹的 MCP 服务器：它暴露 `peek`、`tap`、`swipe`
+    等工具，并照吩咐做事。对话由你主导。
+  </Card>
+  <Card title="内置 agent 运行时" icon="rocket">
+    PhysiClaw 自带**自己的** agent 引擎。启动服务器，一个运行时循环就会随之拉起，
+    随时准备在某个触发器下被唤醒、规划、调用同一套工具、然后行动——回路里没有外部客户端。
+    大脑就住在 PhysiClaw 里面。
+  </Card>
+</CardGrid>
+
+关键之处在于：**两种方式下工具完全相同。** 你刚才看到的那段 `peek` →
+`tap(bbox)` → `peek` 循环，无论是由外部客户端还是由内置引擎来挑选框，跑的都是同一套。事实上，PhysiClaw 在连接时交给外部客户端的指令，和它自己引擎加载的行事准则，来自*同一个文件*——所以两个大脑对手机的推理方式是一样的。
+
+## 它们的对比
+
+| | 接入你自己的 agent | 内置运行时 |
+| --- | --- | --- |
+| 谁来决策 | 外部 MCP 客户端 | PhysiClaw 自己的引擎 |
+| 你需要 | 一个 MCP 客户端（Claude Desktop 等） | 只要 `physiclaw server` |
+| 启动时机 | 你发一条消息 | 一个**触发器**触发（cron 计划、轮询） |
+| 模型 | 客户端跑什么就是什么 | 6 家提供商，由你选当前用哪个 |
+| 记忆与技能 | 客户端自带的（如果有） | 内置——持久记忆 + 技能系统 |
+| 适合 | 上手即用的交互式任务 | 无人值守、定时、周期性的任务 |
+
+没有哪个才是“真正的”模式——它们是同一套硬件的两个前端。想坐下来亲自操控时，用外部客户端；想让手机在早上 8 点自己做点什么时，用内置运行时。
+
+## 模式 A——接入你自己的 agent
+
+这是 PhysiClaw 作为 MCP 服务器的那一面。服务器通过一个 streamable-HTTP 端点暴露它的工具，任何 MCP 客户端连上来就能驱动：
+
+```text
+  Claude Desktop / OpenClaw / your script   ← the brain
+            │  MCP  (http://localhost:8048/mcp)
+            ▼
+        PhysiClaw  ← just the tools (peek, tap, swipe, …)
+            │
+            ▼
+          phone
+```
+
+配置方式就是你在上一页做过的那套：把客户端的配置指向这个端点，然后跟它说话。agent 的质量、记忆和性格全都来自客户端；PhysiClaw 只贡献眼睛和手指。这是入门该用的模式——除了客户端本身，没别的要配的。
+
+## 模式 B——内置 agent 运行时
+
+PhysiClaw 自身也是一个*完整的 agent*。当你运行 `physiclaw server` 时，它会拉起一个 **运行时循环** 作为兄弟进程。这个循环按定时器轮询一组 **hook**；当某个 hook 触发一个 **触发器**——一个到期的 cron 计划，或一次轮询发现有东西变了——引擎就会唤醒、规划，并调用同一套 MCP 工具把任务做完。没有外部客户端连入；大脑在内部。
+
+```text
+        cron / poll trigger fires
+                  │
+                  ▼
+   PhysiClaw runtime  ← the brain (its own engine, picks a provider)
+                  │  calls the same tools
+                  ▼
+              phone
+```
+
+运行时补上了一个光秃秃的 MCP 服务器所没有的部分：
+
+- **多提供商引擎** ——同一个 agent 循环可以跑在六家模型提供商中的任意一家上
+  （Anthropic、OpenAI、Google、Moonshot、Qwen），由你选当前用哪个。见
+  [模型](/zh/agent/models/)。
+- **触发器驱动的唤醒** ——它无人值守地运行，靠计划或轮询唤醒，而不是靠你的消息。见
+  [自主任务](/zh/agent/autonomous-tasks/)。
+- **记忆与技能** ——跨会话的持久记忆，以及一个它可以调用的技能系统。见
+  [记忆与技能](/zh/agent/memory-and-skills/)。
+
+:::note[运行时会等模型就位、设备就绪]
+这个循环会一直空闲，直到校准报告 `ready: true`，所以它绝不会去点一部它看不见的手机。而如果没有配置任何模型，服务器仍会照常运行，供硬件设置和外部客户端使用——只是运行时不会拉起，直到你配好一个模型为止。运行 `physiclaw server --no-runtime` 可以让 PhysiClaw 保持为一个纯粹的 MCP 服务器。
+:::
+
+## 收束 OpenClaw 的闭环
+
+[引言](/zh/start/introduction/)把 PhysiClaw 描述为 OpenClaw 这一理念——让 agent 使用人类所用的界面——被推到真实玻璃屏上的产物。这两种模式正是这一理念的落脚点：PhysiClaw **既是一个 MCP 服务器，也是一个完整的 agent**，至于伸手去拿哪一个，由你决定。自带一个大脑，或者用盒子里现成的那个。
+
+## 下一步
+
+- [安全](/zh/safety/) ——在让 agent 操作你的手机之前——更别说让它无人值守地运行——先弄清楚它能触及什么。
+- [agent：概览](/zh/agent/overview/) ——相比一个朴素的 MCP 服务器，PhysiClaw 内置的大脑多了些什么，又是从何而来。

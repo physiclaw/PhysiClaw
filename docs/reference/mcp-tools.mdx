@@ -1,79 +1,205 @@
 ---
 title: MCP tools
-description: The complete tool surface PhysiClaw exposes to an agent.
+description: The 12 tools PhysiClaw exposes to an agent — see the screen, act on a bbox, navigate, enter text, and batch.
 ---
 
-PhysiClaw exposes six tools over the Model Context Protocol. The agent only ever works in
-high-level terms — directions, distances, and gestures — never raw coordinates.
+PhysiClaw exposes **12 tools** over the Model Context Protocol, and the agent works the same
+way through every one: take a photo, pick a **bbox** (a rectangle `[left, top, right, bottom]`
+in `0`–`1` screen fractions), and do something there. It never deals in pixels or motor
+coordinates — it names a box and an action, and PhysiClaw turns that into arm motion.
 
-## `screenshot_top`
+The tools are grouped here in **wire order** — the order the agent sees them — because the
+most-reached-for tools (`peek`, `tap`) sit first on purpose. Each tool's first line is its
+one-job summary; the rest is parameters, timing, and the "what to do next" hint PhysiClaw
+appends to every result to keep the loop moving.
 
-Parks the stylus out of frame and returns a top-down photo of the screen.
+## See
 
-- **Parameters:** none
-- **Returns:** image (PNG)
-
-```text
-screenshot_top() → <image 1920×1080>
-```
-
-## `screenshot_side`
-
-Returns the ~45° side view used to check the stylus tip position.
-
-- **Parameters:** none
-- **Returns:** image (PNG)
-
-## `move`
-
-Moves the stylus across the X/Y plane by a direction and a coarse distance.
-
-| Parameter | Type | Values |
-| --------- | ---- | ------ |
-| `direction` | string | `up`, `down`, `left`, `right`, `up-left`, `up-right`, `down-left`, `down-right` |
-| `distance` | string | `small`, `medium`, `large` |
+The agent calls one of these *before* an action to ground a target's bbox, and *again after*
+to check the screen changed. Both return the same shape: `[Image, listing]` — a JPEG with
+icon boxes drawn, plus a plain-text listing, one row per element:
 
 ```text
-move("down-right", "large")
+id [kind] "label" [left,top,right,bottom] conf
 ```
 
-:::note
-Working in directions and distances (not pixels) keeps prompts portable across phones and
-resolutions — only calibration changes, not the agent's reasoning.
+### `peek()`
+
+The default view — a frame from the **overhead camera**, ~4s, **non-mutating**.
+
+- **Parameters:** none.
+- **When:** before any tap/swipe to find the target; after, to verify. An *identical* listing
+  across two peeks means the screen didn't change.
+
+:::tip[Reading the result]
+`peek` draws the detected boxes onto the JPEG, so the agent can cross-check a bbox visually
+against the listing before acting.
 :::
 
-## `tap`
+### `screenshot()`
 
-Lowers the stylus to register a touch at the current position, then retracts.
+The phone's own **pixel-perfect capture**, ~12s, **mutating** — the escalation tool.
 
-| Parameter | Type | Default | Notes |
-| --------- | ---- | ------- | ----- |
-| `kind` | string | `single` | `single`, `double`, `long` |
+- **Parameters:** none.
+- **Why mutating:** it fires the iOS screenshot gesture, which apps can *observe and react to*
+  (share sheets, "similar items" panels, watermarked frames). **Always `peek` after a
+  `screenshot` before tapping** — the screen state may have shifted.
+- **Use only when** `peek` can't do the job: the target is too small for the camera to
+  resolve, glare or motion blur makes the frame unreadable, or there's fine print to read.
 
-```text
-tap()                 # single
-tap(kind="long")      # long press
-```
+`peek` is three times faster and leaves no trace, so it's the default; `screenshot` is the
+fallback. Why the split exists is covered in [How it sees](/en/concepts/how-it-sees/).
 
-## `swipe`
+## Act
 
-Touches down, drags in a direction, and lifts — for scrolling and flicks.
+Every action tool takes a `bbox` and operates at its **center**. The arm drives the stylus
+there; the [solenoid](/en/reference/gestures/) drops the tip, and the gesture's duration
+decides whether it reads as a tap, a double-tap, or a hold.
 
-| Parameter | Type | Values |
-| --------- | ---- | ------ |
-| `direction` | string | `up`, `down`, `left`, `right` |
-| `distance` | string | `small`, `medium`, `large` |
+### `tap(bbox)`
 
-```text
-swipe("up", "medium")
-```
+Tap once at the bbox center — buttons, links, list items, dismissing dialogs.
 
-## `park`
+- **Next:** `peek` to verify and ground the next target. An identical listing means the tap
+  missed (retry once) or the bbox was wrong (pick a different element from the new peek).
 
-Retracts the stylus fully out of the top camera's frame. Called automatically before every
-`screenshot_top`, and available on its own to clear the view.
+### `double_tap(bbox)`
 
-- **Parameters:** none
-- **Returns:** ok
+Two quick taps ~150ms apart at the bbox center — for zooming or selecting a word.
 
-See [Gestures](/en/reference/gestures/) for how `tap` and `swipe` map down to GRBL G-code.
+- **Use for** zooming maps / photos / web pages, or selecting a word in editable text.
+- For buttons, use `tap`.
+
+### `long_press(bbox)`
+
+Press and hold ~1.2s at the bbox center — context menus, edit mode, the paste popover.
+
+- **Use for** opening context menus, entering icon-rearrange edit mode, or triggering the
+  paste popover after `send_to_clipboard`.
+- **Next:** always `peek` — you'll need a fresh bbox from the popover that just appeared (Paste
+  / Copy / etc.) before you can tap it.
+
+### `swipe(bbox, direction, size="m", speed="medium")`
+
+Slide the stylus across `bbox` in `direction` — for scrolling, paging, dismissing cards, and
+opening Control / Notification Center.
+
+| Parameter | Values | Notes |
+| --- | --- | --- |
+| `bbox` | `[l,t,r,b]` in 0–1 | the gesture origin |
+| `direction` | `up` `down` `left` `right` | the **stylus** motion, not the page motion |
+| `size` | `s` `m` `l` `xl` `xxl` | stroke length, default `m` |
+| `speed` | `slow` `medium` `fast` | stylus velocity, default `medium` |
+
+The `size` scale maps to a real stroke length:
+
+| `size` | Length | Use |
+| --- | --- | --- |
+| `s` | ≈ 1cm | small nudge |
+| `m` | ≈ 2cm | most scrolls |
+| `l` | ≈ 4cm | long scroll |
+| `xl` | ≈ 6cm | page-sized scroll |
+| `xxl` | ≈ 8cm | full-screen (Control / Notification Center) |
+
+:::caution[Direction is the stylus, not the page]
+Swiping **up** scrolls the page **down** (reveals content below). Swiping **down** scrolls
+**up** (opens Notification Center). Swiping **left** moves to the next photo / page. Faster
+strokes also coast further on iOS scroll lists.
+:::
+
+- **Next:** `peek` to verify the page scrolled and plan the next move.
+
+## Navigate
+
+These take no bbox — they issue a fixed iPhone system gesture.
+
+### `home_screen()`
+
+Return to the home screen via the swipe-up-from-bottom gesture — a known launch pad.
+
+- **Use to** start a fresh task or recover from getting lost in app navigation.
+- **Next:** `peek` to plan your next tap on the home-screen icons.
+
+### `go_back()`
+
+Pop back one screen via the iPhone **left-edge** swipe.
+
+- Works in apps with a navigation stack (most do). The same screen after `peek` means either
+  the gesture didn't register (retry once) or this screen has no back action (modals, root
+  tabs, lock screen) — try `home_screen` and re-enter, or tap an in-screen `<` / Back button.
+- **Trap:** full-screen image viewers (product images, Messages / WeChat photos) reclaim
+  left/right swipes for image navigation, so the edge-swipe won't pop. Close via the in-viewer
+  `X` / `Done` button instead.
+
+### `force_quit()`
+
+Force-quit the current app via the app-switcher gesture, ~7s — a hard reset.
+
+- **Use after** `go_back` hasn't reached the right entry point: popups won't dismiss, the back
+  stack loops, or the wrong page keeps returning.
+- Lands on the home screen. **Next:** reopen the app fresh from there.
+
+### `unlock_phone()`
+
+Unlock the phone with passcode **`111111`**, ~12s.
+
+It wakes the screen, swipes up, waits for Face ID to fail, OCRs the keypad, and taps each
+digit. The passcode is **hardcoded to `111111`** — a throwaway tool-phone code, so a real
+password never leaks through git or logs.
+
+:::danger[On failure, don't retry]
+Every other tool needs the phone unlocked, so a failed unlock is terminal for the session.
+The fix is on the user's side: set the passcode to `111111`, or disable auto-lock
+(Settings → Display & Brightness → Auto-Lock → Never — trade-off: faster display wear).
+:::
+
+- **Next:** `peek` to confirm you're on the home screen and plan the next tap.
+
+## Text
+
+### `send_to_clipboard(text)`
+
+Copy `text` to the phone's clipboard — pasting is far faster than tapping out each key.
+
+The standard flow:
+
+<Steps>
+
+1. `send_to_clipboard(text)`
+
+2. `long_press(field_bbox)` — opens the paste popover.
+
+3. `tap` the `Paste` (or `粘贴`) button that appears.
+
+</Steps>
+
+Fall back to the on-screen keyboard only if the field rejects paste (passcode fields, some
+search bars).
+
+## Sequence
+
+### `sequence(step1, step2?, step3?, step4?, step5?)`
+
+Run up to **5 actions in one call** — saves turns on deterministic flows where intermediate
+observations would add nothing (opening an app via tap → tap → tap, or paste + send a
+message).
+
+Each step is a dict with two fields:
+
+- `tool_name` — one of `tap` / `double_tap` / `long_press` / `swipe` / `send_to_clipboard`.
+- `arg` — that tool's argument: a `bbox` for tap/double_tap/long_press, `{bbox, direction,
+  size?, speed?}` for swipe, a string for send_to_clipboard.
+
+:::caution[Stops at the first failure — no rollback]
+Earlier steps are **not** undone. `peek` after a failure to see where it landed before
+retrying. Don't batch a flow when a dialog *may or may not* appear between steps, or when a
+target's bbox is uncertain — verify with `peek` first.
+:::
+
+- **Next:** `peek` to verify the final state and plan the next move.
+
+## Next
+
+- [Gestures](/en/reference/gestures/) — how a tap or swipe becomes solenoid duty pulses and
+  GRBL G-code.
+- [How it sees](/en/concepts/how-it-sees/) — the vision pipeline behind `peek` and the listing.

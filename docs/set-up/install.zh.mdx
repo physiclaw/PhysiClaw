@@ -1,0 +1,123 @@
+---
+title: 安装软件
+description: 一条安装脚本、一次环境检查、本地视觉模型，再启动服务——然后把 MCP 客户端指向它。
+---
+
+PhysiClaw 的软件就是一个叫 `physiclaw` 的命令行工具，跑起来只需四条命令：安装、检查环境、
+拉取本地视觉模型、启动服务。目前官方支持的平台是 macOS；其他系统真正的区别只有串口名称，而那个
+名字向导会替你找出来。
+
+:::note[硬件可以稍后再接]
+什么都不插也能安装并运行 `physiclaw doctor`——它只会报告缺了什么。只有到了
+[校准](/zh/set-up/calibrate/) 这一步，机械臂和摄像头才真正派上用场。
+:::
+
+## 1. 安装 CLI
+
+一条脚本装好一切——`uv`、Python 3.12 和 `physiclaw` CLI——全部隔离在 `~/.local/bin` 下，
+绝不碰你系统里的 Python：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
+```
+
+装完后，`physiclaw` 就在你的 `PATH` 里了。确认一下：
+
+```bash
+physiclaw --version
+```
+
+如果 shell 找不到这条命令，开一个新的终端（让更新后的 `PATH` 生效）再试一次。
+
+## 2. 检查环境
+
+`physiclaw doctor` 是一次只读的健康检查——它绝不改动任何东西。它会打印 Python 版本、你的配置
+路径、视觉模型是否就位、它能看到哪些硬件，以及一份编号的「接下来该做什么」清单。
+
+```bash
+physiclaw doctor
+```
+
+刚装好时，它会标出两样缺失的东西——视觉模型，以及一个正在运行的服务。这很正常；接下来两步会把这两样
+都补齐。任何时候觉得哪里不对劲，都可以再跑一次 `doctor`；它是一眼看清整套系统状态最快的方式。
+
+:::tip[深入一点]
+`physiclaw doctor --deep` 会做主动探测——它会加载视觉模型、抓一帧真实画面，并且（如果你设置了
+agent 模型）发起一次真实的 API 调用。它要花几秒钟，但能逮住被动检查发现不了的问题，比如摄像头能打开
+却抓不到画面——因为 macOS 还没授予摄像头权限。
+:::
+
+## 3. 下载本地视觉模型
+
+PhysiClaw 用一个小巧的图标检测模型来读屏，这个模型跑在**你自己的机器上**。只需拉取一次：
+
+```bash
+physiclaw setup local-vision-model
+```
+
+这会下载约 100 MB 并把它转换成快速推理格式。转换过程会在一个用完即弃的环境里临时借用一些大块头依赖，
+成功后立刻删掉，所以你的安装始终保持精简——只有转好的成品模型会留下来。
+
+为什么用本地模型，而不是云端 API？
+
+<CardGrid>
+  <Card title="隐私" icon="approve-check">
+    你手机屏幕的每一帧都在你自己的机器上处理。消息、银行、账户的截图，永远不会离开你的桌面。
+  </Card>
+  <Card title="离线又快" icon="rocket">
+    每次「看」都不必走一趟网络。检测器在本地运行，所以即便网络时好时坏，一次 `peek` 仍能稳定在
+    ~4 秒上下。
+  </Card>
+</CardGrid>
+
+## 4. 启动服务
+
+```bash
+physiclaw server
+```
+
+这会在端口 **8048** 上启动 MCP 服务，并在浏览器里打开设置向导。让这个 shell 一直开着——正是这个
+进程占着串口和摄像头，并和你的手机通信。首次启动时，它会打印出（除别的之外）：
+
+```text
+PhysiClaw MCP server on http://localhost:8048/mcp
+QR code (scan with phone): http://localhost:8048/api/bridge/qr
+```
+
+它打开的那个浏览器窗口，就是硬件设置向导。你可以在那里完成设置，也可以在第二个终端里做——两者效果完全
+一样，[校准](/zh/set-up/calibrate/) 会带你一步步走完。
+
+## 5. 把 MCP 客户端指向它
+
+PhysiClaw 说的是 **MCP**（Model Context Protocol）——AI agent 调用外部工具的标准方式。任何
+MCP 客户端（Claude Desktop、IDE，或你自己的脚本）都连到同一个端点：
+
+```text
+http://localhost:8048/mcp
+```
+
+校准完成后，客户端就能看到 PhysiClaw 的各种工具——`peek`、`tap`、`swipe` 等等——并开始操作手机。
+[第一个任务](/zh/run/first-task/) 会接好一个客户端，从头到尾跑通一遍。
+
+## 关于串口的说明
+
+PhysiClaw 会自动检测机械臂的 USB 串口，所以你很少需要知道它的名字。当某个排障步骤确实要你提供时，
+不同系统格式各异：
+
+<Tabs>
+  <TabItem label="macOS">
+    `/dev/tty.usbserial-XXXX`（或 `/dev/tty.usbmodemXXXX`）。用
+    `ls /dev/tty.usb*` 列出候选项。
+  </TabItem>
+  <TabItem label="Linux">
+    `/dev/ttyUSB0`（CH340 转接芯片）或 `/dev/ttyACM0`。用 `ls /dev/ttyUSB* /dev/ttyACM*` 列出。
+  </TabItem>
+  <TabItem label="Windows">
+    `COM3`、`COM4`……在设备管理器 → 端口（COM 和 LPT）里查当前的编号。
+  </TabItem>
+</Tabs>
+
+## 下一步
+
+- [准备手机](/zh/set-up/prepare-the-phone/) ——每部手机只需做一次的 AssistiveTouch、
+  快捷指令和桥接页面（bridge page）设置。

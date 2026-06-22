@@ -1,0 +1,110 @@
+---
+title: Calibrate
+description: The 10-step wizard that teaches the arm, the camera, and the screen to agree — what each step does and what "good" looks like.
+---
+
+Calibration is what turns three separate devices — an arm, a camera, and a phone — into one
+system that agrees on where things are. The wizard walks 10 steps, each of which *proves*
+something before moving on, so by the end a tap the agent aims at a button actually lands on it.
+
+Run it from a second terminal (the [server](/en/set-up/install/) must already be running in the
+first):
+
+```bash
+physiclaw setup hardware
+```
+
+The browser wizard that opened when the server started does the exact same steps in the same
+order — pick whichever you prefer. Either way, this page explains each step conceptually: what
+it's doing, and what a good result looks like.
+
+:::note[It only runs forward]
+Each step gates the next. If a step can't get a clean result it stops and tells you what to fix
+(reduce glare, straighten the phone, reopen the bridge page) rather than saving bad numbers.
+:::
+
+## The 10 steps
+
+<Steps>
+
+1. **Connect the phone.**
+   The wizard confirms the phone is paired to the bridge. If you haven't yet, it shows the QR
+   to scan. **Good:** the phone's bridge page says *PhysiClaw* and the wizard reports the phone
+   connected.
+
+2. **Position the rig.**
+   Plug the control board into USB and its **12 V** power, connect the camera over USB, and seat
+   the phone in the holder with its **top-left corner registered** against the holder's corner —
+   screen level and facing straight up. Keep the phone unlocked with the bridge page in front.
+   **Good:** nothing wobbles, the screen is flat, and the bridge page is visible.
+
+3. **Connect the arm.**
+   With the board powered, PhysiClaw scans the computer's serial ports and connects to the arm
+   (it runs **FluidNC**, the motion firmware). **Good:** "Arm connected." If it can't, the
+   usual cause is the USB cable or the 12 V supply being off.
+
+4. **Connect the camera.**
+   The camera should sit directly above the phone. PhysiClaw auto-detects which camera is the
+   right one by spotting the **colored corner markers** the bridge page draws — so the page must
+   be open and the screen awake. **Good:** "Camera N connected." If auto-detect misses, it shows
+   you previews and asks which one.
+
+5. **Locate the screen.**
+   The phone shows a full-screen **orange square**; you tap AssistiveTouch once (screenshot) then
+   double-tap (upload). PhysiClaw uses that screenshot to line up where it *draws* with the real
+   pixels, so later taps land where intended. **Good:** "Screen located" — meaning the
+   screenshot pipeline worked *and* the viewport was measured.
+
+6. **Calibrate the arm.**
+   The phone shows an **orange circle at screen center**; you move the stylus tip over it, then
+   the arm **taps 18 points** to learn how its own motion maps to the screen. **Good:** "Arm
+   calibrated — mapped 18 points." A warning that the phone looks *rotated* relative to the arm
+   means straighten the phone before trusting the result.
+
+7. **Calibrate the camera.**
+   First a **rotation and coverage check** (keep the whole screen in view, evenly lit, no glare),
+   then the camera maps **15 dots** drawn across the screen. **Good:** rotation reads as expected,
+   coverage is high, and "found all 15 dots." Glare or a partial view is the common failure here.
+
+8. **Validate.**
+   The real test: for **each dot**, PhysiClaw finds it with the camera, taps it with the arm,
+   and compares where the tap landed to where the dot was drawn. **Passing this step is what
+   saves the calibration.** **Good:** most or all taps on target, "Calibration saved." If it
+   fails, redo the camera or arm step — don't ignore it.
+
+9. **Verify AssistiveTouch.**
+   A final check of the **screenshot + clipboard pipeline**: drag the AssistiveTouch button over
+   an orange circle, and PhysiClaw confirms it can capture a screenshot and read back clipboard
+   text. **Good:** "Screenshot + clipboard verified" — paste in Notes to see the synced text if
+   you want to watch it work.
+
+10. **Finish.**
+    PhysiClaw sends the phone **home** and marks itself **ready**. **Good:** "PhysiClaw is
+    ready" — the arm, camera, and screen are calibrated together, and every MCP tool is now
+    available to your agent.
+
+</Steps>
+
+## What "good" feels like overall
+
+The two steps to actually watch are **6** and **8**. Step 6 mapping a full 18 points means the
+arm sees a clean, unobstructed screen. Step 8 passing means the camera's view and the arm's
+motion genuinely agree — that's the whole point of calibration, and it's the number that gets
+saved. If validation passes, taps will land; if it's marginal, fix the lighting or rig first
+rather than pushing through.
+
+## Re-calibrate when…
+
+Calibration captures the exact geometry of *this* rig in *this* spot. Run `physiclaw setup
+hardware` again whenever that geometry changes:
+
+:::caution[Anything physical moved]
+- **You moved or re-aimed the camera** — even a small nudge shifts every mapping.
+- **You swapped the phone** (or its case), changing the screen size or seating.
+- **You bumped the rig** or re-seated the phone off its corner registration.
+- **Taps start landing slightly off** — a sign drift has crept in. Re-validate.
+:::
+
+## Next
+
+- [First task](/en/run/first-task/) — connect an agent and watch it operate the phone end to end.

@@ -1,0 +1,110 @@
+---
+title: Safety
+description: PhysiClaw has full physical control of an unlocked phone — treat it like handing your phone to a stranger, and run it on a burner.
+---
+
+PhysiClaw can touch anything a finger can — which means it can do anything *you* could do
+on an unlocked phone. That power is the whole point of the project, and it's also the one
+thing you have to take seriously before you run a single task.
+
+The agent sees the screen and taps the glass. To the phone, that stylus is a fingertip with
+no boundaries: no app sandbox, no permission prompt, no "are you sure?" stands between the
+agent and whatever is already on the device. If a human holding your unlocked phone could
+do it, so can PhysiClaw.
+
+:::danger[The core risk, stated plainly]
+PhysiClaw has **full physical control** of an unlocked phone. Even with none of your
+passwords, it could:
+
+- open your **password manager** and read saved credentials,
+- receive an **OTP code** by text and use it to reset a password,
+- spend money in any app that's **already logged in**,
+- read your **messages, email, and photos**, or send messages as you.
+
+If a malicious actor compromises your agent — a poisoned web page, a prompt injection, a
+bad model decision — they inherit that same access. There is no software boundary to fall
+back on, because by design there is no software in the loop.
+:::
+
+## The mental model: an unlocked phone in a stranger's hands
+
+Every other access path an agent might use comes with a fence. An API gives out scoped
+tokens. An accessibility hook can be revoked. A jailbreak at least announces itself. PhysiClaw
+deliberately removes all of those fences — that's why [it works on any app](/en/start/introduction/)
+with no integration — so the fence has to be the phone itself.
+
+The right way to think about a PhysiClaw session is simple: **you are handing your unlocked
+phone to a stranger and walking away.** Not a malicious stranger, necessarily — but one who
+follows instructions literally and can be tricked. You wouldn't hand that phone to a stranger
+if it held your bank app, your primary number, and your password vault. So don't.
+
+## Use a burner
+
+The mitigation is not a setting you toggle; it's a device you choose. Run PhysiClaw on a
+**dedicated tool-phone** — a cheap spare, fully wiped — and give it only what a task needs.
+Nothing on it should be something you'd mind a stranger seeing or using.
+
+<CardGrid>
+  <Card title="Dedicated phone" icon="phone">
+    A backup device, factory-reset. Never your primary phone, and never one that has ever
+    been logged into your real accounts.
+  </Card>
+  <Card title="Separate number" icon="comment">
+    A second SIM or eSIM that isn't tied to your main identity — so an OTP that arrives here
+    can't unlock your real accounts.
+  </Card>
+  <Card title="Fresh accounts" icon="add-document">
+    New logins created for this phone. Don't sign into your real email, bank, or social
+    accounts on it.
+  </Card>
+  <Card title="Different passwords" icon="warning">
+    Never reuse a credential from your primary phone. If this device leaks one, it should buy
+    an attacker nothing else.
+  </Card>
+  <Card title="Limited funds" icon="seti:money">
+    Load only what a task needs. A small balance caps the worst-case spend if a session goes
+    wrong.
+  </Card>
+  <Card title="No password manager" icon="seti:lock">
+    Don't install one. The agent can open whatever it sees — so the fewer secrets stored on
+    the phone, the less there is to leak.
+  </Card>
+</CardGrid>
+
+## Why the passcode is `111111`
+
+PhysiClaw's `unlock_phone` tool is hardcoded to the passcode **`111111`** — not as a
+suggestion, but as a deliberate choice. A throwaway code that lives in the source means a real
+password never has to be typed by the agent, stored in config, or leaked through logs or git
+history. It only makes sense on a tool-phone you've already decided to treat as disposable.
+
+:::caution[Don't put a real secret where the agent can reach it]
+The same logic extends past the passcode. Anything the agent might need to *type* — a card
+number, a login — is something it can also *read* and exfiltrate. Keep secrets off the phone
+unless a specific task requires them, and remove them when it's done.
+:::
+
+## Network exposure
+
+The PhysiClaw server binds to `0.0.0.0` so the phone's bridge page can reach it over your LAN.
+That's intended, but it means the MCP endpoint is reachable by anything on the same network.
+`physiclaw doctor` surfaces this as:
+
+```text
+bind: 0.0.0.0 (LAN-reachable; intended for the phone bridge)
+```
+
+Run the rig on a network you trust, and don't expose port `8048` to the public internet.
+
+## Safety is the mature default, not fear
+
+None of this is a reason to avoid the project. A system with real physical reach *should*
+come with a clear, honest threat model — and naming the worst case is what lets you set up
+the rig so the worst case is boring: a wiped spare phone, a few dollars of credit, and
+accounts you'd be fine losing. Done that way, you get the full power of an agent that can use
+any app, with a blast radius you chose on purpose.
+
+## Next
+
+- [The agent: overview](/en/agent/overview/) — with the risks understood, meet the built-in brain that can run all this unattended.
+- [Prepare the phone](/en/set-up/prepare-the-phone/) — set up the tool-phone the right way from the start.

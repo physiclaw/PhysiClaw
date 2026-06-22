@@ -1,0 +1,82 @@
+---
+title: What you'll build
+description: The PhysiClaw rig at a glance — what it costs, how long it takes, and the road from parts to a running agent.
+---
+
+Before you buy anything, here's the whole picture: what the finished rig looks like, what it
+costs, and the handful of steps between a box of parts and an agent tapping your phone.
+
+<!-- PHOTO: the assembled rig, annotated — overhead camera on its gooseneck, the pen-plotter
+     arm, the stylus in the Z holder, the phone seated in its corner, the control board + USB
+     hub. One clear hero shot; this is the page that makes the build feel achievable. -->
+
+```text
+            ┌─ overhead camera (on a gooseneck, ~25 cm up)
+            │        looks straight down at the screen
+            ▼
+        ┌────────┐
+        │ camera │
+        └────────┘
+            ╎  sees
+            ▼
+   ┌───────────────────────┐        ┌──────────────┐
+   │  pen-plotter arm      │◄──USB──│  your Mac    │
+   │  X/Y gantry           │  12 V  │  physiclaw   │
+   │  Z = solenoid + stylus│◄──pwr──│  server      │
+   └─────────┬─────────────┘        └──────────────┘
+             │ taps
+             ▼
+      ┌──────────────┐
+      │  the phone   │  seated face-up in a corner holder
+      │  (unlocked)  │
+      └──────────────┘
+```
+
+## What to expect
+
+<CardGrid>
+  <Card title="≈ $112" icon="seti:shell">
+    Off-the-shelf parts. The arm is a consumer pen plotter; the camera is an ordinary USB webcam.
+  </Card>
+  <Card title="≈ an afternoon" icon="seti:clock">
+    Assembly is mechanical — no soldering, no custom boards. Calibration is a guided wizard.
+  </Card>
+  <Card title="No special skills" icon="approve">
+    If you can follow a wiring diagram and clamp a gooseneck, you can build one.
+  </Card>
+  <Card title="macOS today" icon="apple">
+    macOS is the supported platform; Windows works for most of the flow. (Serial ports differ.)
+  </Card>
+</CardGrid>
+
+## The road ahead
+
+The rest of the docs are this build, in order. Each step hands off cleanly to the next:
+
+<Steps>
+
+1. **[Build the hardware](/en/build/bill-of-materials/)** — order the parts, then assemble the
+   arm, stylus, camera, and phone holder.
+
+2. **[Install the software](/en/set-up/install/)** — one command installs the `physiclaw` CLI;
+   `physiclaw doctor` checks your machine.
+
+3. **[Prepare the phone](/en/set-up/prepare-the-phone/)** — turn on AssistiveTouch and add the
+   three iOS Shortcuts. Five minutes, once.
+
+4. **[Calibrate](/en/set-up/calibrate/)** — a guided wizard teaches the arm and camera exactly
+   where the screen is, so taps land where the agent aims.
+
+5. **[Run your first task](/en/run/first-task/)** — connect your agent and give it a goal in
+   plain language. Watch it look, decide, and tap.
+
+</Steps>
+
+:::tip[Want the concept first?]
+If you landed here to understand PhysiClaw rather than build one, read
+[How it works](/en/start/how-it-works/) — it's the mental model the whole build serves.
+:::
+
+## Next
+
+- [Bill of materials](/en/build/bill-of-materials/) — the parts list, with what matters and why.
