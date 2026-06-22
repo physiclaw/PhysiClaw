@@ -187,8 +187,8 @@ message).
 Each step is a dict with two fields:
 
 - `tool_name` — one of `tap` / `double_tap` / `long_press` / `swipe` / `send_to_clipboard`.
-- `arg` — that tool's argument: a `bbox` for tap/double_tap/long_press, `{bbox, direction,
-  size?, speed?}` for swipe, a string for send_to_clipboard.
+- `arg` — that tool's argument: a `bbox` for tap/double_tap/long_press,
+  `{bbox, direction, size?, speed?}` for swipe, a string for send_to_clipboard.
 
 :::caution[Stops at the first failure — no rollback]
 Earlier steps are **not** undone. `peek` after a failure to see where it landed before
