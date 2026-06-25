@@ -2,33 +2,66 @@
   "$schema": "./docs.schema.json",
   "sidebar": [
     {
-      "label": "Start",
-      "translations": { "zh-CN": "开始" },
-      "items": ["start/introduction", "start/how-it-works", "start/what-youll-build", "start/vision"]
-    },
-    {
-      "label": "Build the hardware",
-      "translations": { "zh-CN": "搭建硬件" },
-      "items": ["hardware/why-a-body", "hardware/bill-of-materials", "hardware/assembly", "hardware/firmware"]
-    },
-    {
-      "label": "Set up",
-      "translations": { "zh-CN": "设置" },
-      "items": ["set-up/install", "set-up/prepare-the-phone", "set-up/calibrate"]
-    },
-    {
-      "label": "Run it",
-      "translations": { "zh-CN": "运行" },
-      "items": ["run/first-task", "run/operating-modes"]
+      "label": "Start here",
+      "translations": {
+        "zh-CN": "从这里开始"
+      },
+      "items": [
+        "start/introduction",
+        "start/how-it-works",
+        "start/what-youll-build"
+      ]
     },
     {
       "label": "Safety",
-      "translations": { "zh-CN": "安全" },
-      "items": ["safety"]
+      "translations": {
+        "zh-CN": "安全须知"
+      },
+      "items": [
+        "safety"
+      ]
     },
     {
-      "label": "The agent",
-      "translations": { "zh-CN": "智能体" },
+      "label": "Build the hardware",
+      "translations": {
+        "zh-CN": "搭建硬件"
+      },
+      "items": [
+        "hardware/bill-of-materials",
+        "hardware/sourcing",
+        "hardware/printed-parts",
+        "hardware/assembly",
+        "hardware/firmware",
+        "hardware/tuning",
+        "hardware/why-a-body"
+      ]
+    },
+    {
+      "label": "Set up the software",
+      "translations": {
+        "zh-CN": "配置软件"
+      },
+      "items": [
+        "set-up/install",
+        "set-up/prepare-the-phone",
+        "set-up/calibrate"
+      ]
+    },
+    {
+      "label": "Run it",
+      "translations": {
+        "zh-CN": "运行起来"
+      },
+      "items": [
+        "run/first-task",
+        "run/operating-modes"
+      ]
+    },
+    {
+      "label": "The built-in agent",
+      "translations": {
+        "zh-CN": "内置助理"
+      },
       "items": [
         "agent/overview",
         "agent/models",
@@ -38,19 +71,36 @@
       ]
     },
     {
-      "label": "Concepts",
-      "translations": { "zh-CN": "原理" },
-      "items": ["concepts/architecture", "concepts/how-it-sees", "concepts/calibration-math"]
+      "label": "How it works inside",
+      "translations": {
+        "zh-CN": "工作原理"
+      },
+      "items": [
+        "concepts/architecture",
+        "concepts/how-it-sees",
+        "concepts/calibration-math"
+      ]
     },
     {
       "label": "Reference",
-      "translations": { "zh-CN": "参考" },
-      "items": ["reference/mcp-tools", "reference/gestures", "reference/cli", "reference/configuration"]
+      "translations": {
+        "zh-CN": "参考"
+      },
+      "items": [
+        "reference/mcp-tools",
+        "reference/gestures",
+        "reference/cli",
+        "reference/configuration"
+      ]
     },
     {
       "label": "Troubleshooting",
-      "translations": { "zh-CN": "故障排查" },
-      "items": ["troubleshooting"]
+      "translations": {
+        "zh-CN": "故障排查"
+      },
+      "items": [
+        "troubleshooting"
+      ]
     }
   ]
 }

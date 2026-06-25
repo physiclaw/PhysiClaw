@@ -1,36 +1,46 @@
 ---
 title: Documentation
-description: Build, run, and understand PhysiClaw — the robotic arm that lets an AI agent operate any phone.
+description: Build, run, and understand PhysiClaw — give an AI agent a physical stylus and one camera to operate a real phone, no APIs.
 ---
 
-PhysiClaw gives an AI agent a physical body to operate a phone: one overhead camera reads the
-screen and a stylus on a 3-axis arm taps it — no APIs, and no app on the phone. These docs go
+PhysiClaw gives an AI agent a physical finger: one overhead camera reads the screen and a
+capacitive stylus on a CoreXY gantry taps it — no APIs, and no app on the phone. These docs go
 from a parts list to a running agent, plus the tools, gestures, and built-in agent that drive it.
 
-New here? Read the [Introduction](/en/start/introduction/), see [how it works](/en/start/how-it-works/),
-then [build one](/en/start/what-youll-build/). For the bigger picture — why PhysiClaw exists — read
-the [Vision](/en/start/vision/).
+Be honest with yourself before you start: this is a hand-built machine. You source the parts,
+3D-print the custom pieces, assemble a CoreXY gantry, flash firmware, then calibrate — a
+multi-day project of roughly **$145+ in parts**, not an afternoon kit.
+
+## Start by goal
+
+<CardGrid>
+  <LinkCard title="New here?" description="Start with the Introduction — what PhysiClaw is and how it works." href="/en/start/introduction/" />
+  <LinkCard title="Coming from OpenClaw?" description="You know the brain. Read Safety, then go straight to building the body." href="/en/safety/" />
+</CardGrid>
 
 ## Get started
 
 <CardGrid>
-  <LinkCard title="Introduction" description="What PhysiClaw is and the problem it solves." href="/en/start/introduction/" />
-  <LinkCard title="How it works" description="One full look → decide → move → check loop." href="/en/start/how-it-works/" />
-  <LinkCard title="What you'll build" description="The rig, the cost, and the road ahead." href="/en/start/what-youll-build/" />
-  <LinkCard title="Vision" description="Why PhysiClaw exists — a personal assistant you truly own." href="/en/start/vision/" />
+  <LinkCard title="Introduction" description="An AI agent with a physical finger — what it is and the problem it solves." href="/en/start/introduction/" />
+  <LinkCard title="How it works" description="One full look → think → move → confirm loop." href="/en/start/how-it-works/" />
+  <LinkCard title="What you'll build" description="The rig, the real cost, the time, and the road ahead." href="/en/start/what-youll-build/" />
+  <LinkCard title="Safety" description="Use a burner phone — read this before you buy anything." href="/en/safety/" />
 </CardGrid>
 
-## Concepts
+## Build & run
+
+<CardGrid>
+  <LinkCard title="Bill of materials" description="Every part for a from-scratch CoreXY build (~$145+)." href="/en/hardware/bill-of-materials/" />
+  <LinkCard title="Assembly" description="Build the gantry, fit the solenoid + stylus, wire it up." href="/en/hardware/assembly/" />
+  <LinkCard title="Install the software" description="One command — the CLI, vision model, and server." href="/en/set-up/install/" />
+  <LinkCard title="Run your first task" description="Connect an agent and watch it operate the phone." href="/en/run/first-task/" />
+</CardGrid>
+
+## Understand & reference
 
 <CardGrid>
   <LinkCard title="System architecture" description="Agent → MCP server → camera + arm → phone." href="/en/concepts/architecture/" />
   <LinkCard title="How it sees" description="peek vs screenshot, OCR + icon detection, bboxes." href="/en/concepts/how-it-sees/" />
-</CardGrid>
-
-## Build & reference
-
-<CardGrid>
-  <LinkCard title="Bill of materials" description="Every part for a ~$112 build." href="/en/hardware/bill-of-materials/" />
   <LinkCard title="MCP tools" description="The tools an agent calls to drive the phone." href="/en/reference/mcp-tools/" />
-  <LinkCard title="Gestures" description="How taps, long-presses, and swipes reach the screen." href="/en/reference/gestures/" />
+  <LinkCard title="Troubleshooting" description="Symptom-first fixes when something won't work." href="/en/troubleshooting/" />
 </CardGrid>
