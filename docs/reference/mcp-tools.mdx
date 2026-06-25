@@ -3,86 +3,105 @@ title: MCP tools
 description: The 12 tools PhysiClaw exposes to an agent — see the screen, act on a bbox, navigate, enter text, and batch.
 ---
 
-PhysiClaw exposes **12 tools** over the Model Context Protocol, and the agent works the same
-way through every one: take a photo, pick a **bbox** (a rectangle `[left, top, right, bottom]`
-in `0`–`1` screen fractions), and do something there. It never deals in pixels or motor
-coordinates — it names a box and an action, and PhysiClaw turns that into arm motion.
+PhysiClaw exposes **12 tools** over the Model Context Protocol (FastMCP, streamable-HTTP).
+The MCP part is the familiar half: a server names tools, an agent calls them in a loop. The
+unfamiliar half is that **every tool here drives a real stylus on a real screen** — there are
+no OS touch events, no app APIs. The agent never deals in pixels or motor coordinates. It
+names a **bbox** (a rectangle `[left, top, right, bottom]` in `0`–`1` screen fractions) plus an
+action; the orchestrator converts the bbox **center** (still `0`–`1`) into GRBL millimetres
+through the calibrated affine (`pct_to_grbl`), then drives the arm — `arm.tap` /
+`double_tap` / `long_press` / `swipe_to`. So the surprises on this page are *physical*: a
+"screenshot" is a gesture apps can see, "swipe up" moves the *stylus* up, and there is genuinely
+a hardcoded passcode because the tool phone is a burner.
 
-The tools are grouped here in **wire order** — the order the agent sees them — because the
-most-reached-for tools (`peek`, `tap`) sit first on purpose. Each tool's first line is its
-one-job summary; the rest is parameters, timing, and the "what to do next" hint PhysiClaw
-appends to every result to keep the loop moving.
+The tools are grouped by job — **See / Act / Navigate / Text / Sequence** — but listed in
+**wire order** (the numbered order the agent receives them) because the most-reached-for tools
+(`peek`, `tap`) sit first on purpose. Each tool leads with its one-line job (the first docstring
+sentence the agent reads), then parameters, then timing and the safe-to-repeat flag, then the
+"what to do next" hint PhysiClaw appends to every result, then any trap.
+
+:::note[Locking and auto-park (true of every action tool)]
+Every gesture holds a **busy lock** and rejects calls that overlap a running gesture or that
+would cross the AssistiveTouch button. After each gesture the arm **auto-parks off-screen** so
+the stylus never blocks the camera. That is why a `peek` right after any action is always a
+clean view — and why every action result ends with a hint to do exactly that.
+:::
 
 ## See
 
 The agent calls one of these *before* an action to ground a target's bbox, and *again after*
-to check the screen changed. Both return the same shape: `[Image, listing]` — a JPEG with
-icon boxes drawn, plus a plain-text listing, one row per element:
+to check the screen changed. Both return the same shape — `[Image, listing]` — a JPEG with
+icon boxes drawn, plus a plain-text listing, one row per element. **All bboxes everywhere are
+`0`–`1` screen fractions, never pixels.**
 
 ```text
 id [kind] "label" [left,top,right,bottom] conf
 ```
 
-### `peek()`
+### 1. `peek()`
 
-The default view — a frame from the **overhead camera**, ~4s, **non-mutating**.
+> Default view tool — overhead camera (~4s, non-mutating).
 
 - **Parameters:** none.
+- **Timing / safety:** ~4s, **non-mutating** — safe to call as often as you like.
 - **When:** before any tap/swipe to find the target; after, to verify. An *identical* listing
   across two peeks means the screen didn't change.
 
 :::tip[Reading the result]
 `peek` draws the detected boxes onto the JPEG, so the agent can cross-check a bbox visually
-against the listing before acting.
+against the listing before acting. How the listing is produced is covered in
+[How it sees](/en/concepts/how-it-sees/).
 :::
 
-### `screenshot()`
+### 2. `screenshot()`
 
-The phone's own **pixel-perfect capture**, ~12s, **mutating** — the escalation tool.
+> Phone's pixel-perfect capture (~12s, MUTATING) — escalate when peek misses the target.
 
 - **Parameters:** none.
-- **Why mutating:** it fires the iOS screenshot gesture, which apps can *observe and react to*
-  (share sheets, "similar items" panels, watermarked frames). **Always `peek` after a
+- **Timing / safety:** ~12s, **mutating**.
+- **Why mutating:** it fires the **iOS screenshot gesture**, which apps can *observe and react
+  to* (share sheets, "similar items" panels, watermarked frames). **Always `peek` after a
   `screenshot` before tapping** — the screen state may have shifted.
-- **Use only when** `peek` can't do the job: the target is too small for the camera to
-  resolve, glare or motion blur makes the frame unreadable, or there's fine print to read.
+- **Use only when** `peek` can't do the job: the target is too small for the camera to resolve,
+  glare or motion blur makes the frame unreadable, or there's fine print to read.
 
-`peek` is three times faster and leaves no trace, so it's the default; `screenshot` is the
-fallback. Why the split exists is covered in [How it sees](/en/concepts/how-it-sees/).
+`peek` is roughly three times faster and leaves no trace, so it's the default; `screenshot` is
+the escalation. The reason for the split is in [How it sees](/en/concepts/how-it-sees/).
 
 ## Act
 
 Every action tool takes a `bbox` and operates at its **center**. The arm drives the stylus
-there; the [solenoid](/en/reference/gestures/) drops the tip, and the gesture's duration
-decides whether it reads as a tap, a double-tap, or a hold.
+there; the [solenoid](/en/reference/gestures/) drops the tip, and the gesture's **duration**
+decides whether it reads as a tap, a double-tap, or a hold (the canonical solenoid timing lives
+in [Gestures](/en/reference/gestures/)).
 
-### `tap(bbox)`
+### 3. `tap(bbox)`
 
-Tap once at the bbox center — buttons, links, list items, dismissing dialogs.
+> Tap once at the bbox center — buttons, links, list items, dismissing dialogs.
 
 - **Next:** `peek` to verify and ground the next target. An identical listing means the tap
   missed (retry once) or the bbox was wrong (pick a different element from the new peek).
 
-### `double_tap(bbox)`
+### 4. `double_tap(bbox)`
 
-Two quick taps ~150ms apart at the bbox center — for zooming or selecting a word.
+> Two quick taps (~150ms apart) at the bbox center — for zoom or word-select.
 
 - **Use for** zooming maps / photos / web pages, or selecting a word in editable text.
 - For buttons, use `tap`.
 
-### `long_press(bbox)`
+### 5. `long_press(bbox)`
 
-Press and hold ~1.2s at the bbox center — context menus, edit mode, the paste popover.
+> Press and hold ~1.2s at the bbox center — context menus, edit mode, paste popover.
 
 - **Use for** opening context menus, entering icon-rearrange edit mode, or triggering the
   paste popover after `send_to_clipboard`.
 - **Next:** always `peek` — you'll need a fresh bbox from the popover that just appeared (Paste
   / Copy / etc.) before you can tap it.
 
-### `swipe(bbox, direction, size="m", speed="medium")`
+### 6. `swipe(bbox, direction, size="m", speed="medium")`
 
-Slide the stylus across `bbox` in `direction` — for scrolling, paging, dismissing cards, and
-opening Control / Notification Center.
+> Slide the stylus across `bbox` in `direction` (1–8cm) — for scrolling, paging, dismissing
+> cards, opening Control / Notification Center.
 
 | Parameter | Values | Notes |
 | --- | --- | --- |
@@ -91,15 +110,15 @@ opening Control / Notification Center.
 | `size` | `s` `m` `l` `xl` `xxl` | stroke length, default `m` |
 | `speed` | `slow` `medium` `fast` | stylus velocity, default `medium` |
 
-The `size` scale maps to a real stroke length:
+The `size` scale maps to a real stroke length (a fraction of the screen):
 
-| `size` | Length | Use |
-| --- | --- | --- |
-| `s` | ≈ 1cm | small nudge |
-| `m` | ≈ 2cm | most scrolls |
-| `l` | ≈ 4cm | long scroll |
-| `xl` | ≈ 6cm | page-sized scroll |
-| `xxl` | ≈ 8cm | full-screen (Control / Notification Center) |
+| `size` | Screen fraction | Length | Use |
+| --- | --- | --- | --- |
+| `s` | 0.10 | ≈ 1cm | small nudge |
+| `m` | 0.30 | ≈ 2cm | most scrolls (default) |
+| `l` | 0.50 | ≈ 4cm | long scroll |
+| `xl` | 0.75 | ≈ 6cm | page-sized scroll |
+| `xxl` | 0.90 | ≈ 8cm | full-screen (Control / Notification Center) |
 
 :::caution[Direction is the stylus, not the page]
 Swiping **up** scrolls the page **down** (reveals content below). Swiping **down** scrolls
@@ -111,55 +130,61 @@ strokes also coast further on iOS scroll lists.
 
 ## Navigate
 
-These take no bbox — they issue a fixed iPhone system gesture.
+These take **no bbox** — each issues a fixed iPhone system gesture.
 
-### `home_screen()`
+### 7. `home_screen()`
 
-Return to the home screen via the swipe-up-from-bottom gesture — a known launch pad.
+> Return to the iPhone home screen — exit any app to a known launch pad.
 
+- Issues the swipe-up-from-bottom gesture.
 - **Use to** start a fresh task or recover from getting lost in app navigation.
 - **Next:** `peek` to plan your next tap on the home-screen icons.
 
-### `go_back()`
+### 8. `go_back()`
 
-Pop back one screen via the iPhone **left-edge** swipe.
+> Pop back one screen via the iPhone left-edge swipe gesture.
 
 - Works in apps with a navigation stack (most do). The same screen after `peek` means either
   the gesture didn't register (retry once) or this screen has no back action (modals, root
   tabs, lock screen) — try `home_screen` and re-enter, or tap an in-screen `<` / Back button.
-- **Trap:** full-screen image viewers (product images, Messages / WeChat photos) reclaim
-  left/right swipes for image navigation, so the edge-swipe won't pop. Close via the in-viewer
-  `X` / `Done` button instead.
 
-### `force_quit()`
+:::caution[Image viewers eat the edge swipe]
+Full-screen image viewers (product images, Messages / WeChat photos) reclaim left/right swipes
+for image navigation, so the edge-swipe won't pop. Close via the in-viewer `X` / `Done` button
+instead.
+:::
 
-Force-quit the current app via the app-switcher gesture, ~7s — a hard reset.
+### 9. `force_quit()`
 
+> Force-quit the current app via the iOS app-switcher gesture (~7s) — hard reset when you're
+> stuck on the wrong app page and can't find the entry you need from here.
+
+- **Timing:** ~7s; lands on the home screen.
 - **Use after** `go_back` hasn't reached the right entry point: popups won't dismiss, the back
   stack loops, or the wrong page keeps returning.
-- Lands on the home screen. **Next:** reopen the app fresh from there.
+- **Next:** reopen the app fresh from the home screen.
 
-### `unlock_phone()`
+### 10. `unlock_phone()`
 
-Unlock the phone with passcode **`111111`**, ~12s.
+> Unlock the phone with passcode `111111` (~12s).
 
-It wakes the screen, swipes up, waits for Face ID to fail, OCRs the keypad, and taps each
-digit. The passcode is **hardcoded to `111111`** — a throwaway tool-phone code, so a real
+It wakes the screen, swipes up, waits for Face ID to fail, OCRs the keypad, and taps each digit.
+The passcode is **hardcoded to `111111`** — a throwaway/burner tool-phone code, so a real
 password never leaks through git or logs.
 
-:::danger[On failure, don't retry]
-Every other tool needs the phone unlocked, so a failed unlock is terminal for the session.
-The fix is on the user's side: set the passcode to `111111`, or disable auto-lock
-(Settings → Display & Brightness → Auto-Lock → Never — trade-off: faster display wear).
+:::caution[On failure, don't retry — the fix is on the user's side]
+Every other tool needs the phone unlocked, so a **failed unlock is terminal for the session**.
+The user must set the tool phone's code to `111111`, or disable auto-lock
+(Settings → Display & Brightness → Auto-Lock → Never), otherwise taps and unlock fail.
 :::
 
 - **Next:** `peek` to confirm you're on the home screen and plan the next tap.
 
 ## Text
 
-### `send_to_clipboard(text)`
+### 11. `send_to_clipboard(text)`
 
-Copy `text` to the phone's clipboard — pasting is far faster than tapping out each key.
+> Copy `text` to the phone's clipboard — paste is far faster than typing.
 
 The standard flow:
 
@@ -178,11 +203,12 @@ search bars).
 
 ## Sequence
 
-### `sequence(step1, step2?, step3?, step4?, step5?)`
+### 12. `sequence(step1, step2?, step3?, step4?, step5?)`
 
-Run up to **5 actions in one call** — saves turns on deterministic flows where intermediate
-observations would add nothing (opening an app via tap → tap → tap, or paste + send a
-message).
+> Run up to 5 actions in one call — saves turns on deterministic flows.
+
+Batch up to **5 actions under a single busy lock** when intermediate observations would add
+nothing — opening an app via `tap → tap → tap`, or paste + send a message.
 
 Each step is a dict with two fields:
 
@@ -197,3 +223,12 @@ target's bbox is uncertain — verify with `peek` first.
 :::
 
 - **Next:** `peek` to verify the final state and plan the next move.
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Gestures" description="The solenoid hit-and-hold timing behind tap, double-tap, and long-press." href="/en/reference/gestures/" />
+  <LinkCard title="How it sees" description="Why peek and screenshot differ, and how the element listing is built." href="/en/concepts/how-it-sees/" />
+  <LinkCard title="Architecture" description="Where the MCP server, runtime, and arm sit in the system." href="/en/concepts/architecture/" />
+  <LinkCard title="The agent" description="How the built-in agent runs the look → think → move → confirm loop." href="/en/agent/overview/" />
+</CardGrid>

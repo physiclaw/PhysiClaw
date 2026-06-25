@@ -20,16 +20,19 @@ separate, purpose-built model for each, then merges the results.
     real **label** — `"Settings"`, `"$29.9"` — so the brain can target by name.
   </Card>
   <Card title="Icons → ONNX detector" icon="puzzle">
-    **OmniParser V2** icon detection (a YOLO11m model finetuned by Microsoft, exported to ONNX
-    and run through OpenCV's DNN module — again no PyTorch). It finds interactable graphics —
-    app icons, image buttons, toggles — that carry no text for OCR to read.
+    **OmniParser V2** icon detection — a YOLO11m model finetuned by Microsoft, exported to ONNX
+    (again no PyTorch at runtime). It finds interactable graphics — app icons, image buttons,
+    toggles — that carry no text for OCR to read.
   </Card>
 </CardGrid>
 
 Both run fully **on-device**. No frame ever leaves your machine to be analysed, which is why
-[install](/en/set-up/install/) downloads the model locally. The two outputs are merged, cleaned
-(tiny boxes and low-confidence hits dropped, near-duplicates removed by overlap), sorted
-top-to-bottom then left-to-right, and renumbered `0, 1, 2, …`.
+[install](/en/set-up/install/) fetches the model up front: it downloads
+`microsoft/OmniParser-v2.0`'s `icon_detect/model.pt`, converts it to ONNX at `imgsz=1280`, and
+leaves it at `~/.physiclaw/models/omniparser_icon_detect/model.onnx`. The two outputs are then
+merged, cleaned (tiny boxes and low-confidence hits dropped, near-duplicates removed by overlap),
+sorted top-to-bottom then left-to-right, and renumbered `0, 1, 2, …` — fresh every frame, so an
+`id` is only a handle for *this* listing, never stable across looks.
 
 ## The element listing
 
@@ -46,7 +49,7 @@ Five fields, and that's all the brain gets:
 
 | Field | What it is |
 | --- | --- |
-| `id` | a stable handle for that element *in this listing* (renumbered every frame). |
+| `id` | a handle for that element *in this listing only* — renumbered every frame, never stable across looks. |
 | `kind` | `text` or `icon` — which detector found it. |
 | `label` | the OCR string for text; **empty** (`""`) for an icon — its picture isn't named. |
 | `bbox` | the rectangle, four fractions of the screen `[left, top, right, bottom]`. |
@@ -77,9 +80,10 @@ Using fractions instead of pixels is what makes the listing portable. The same `
 reasons in one clean `0`–`1` space; the server handles every conversion to and from pixels and
 millimetres (that's [calibration](/en/concepts/calibration-math/)'s job).
 
-When the brain wants to act, it names a bbox and a gesture — `tap [0.51, 0.55, 0.59, 0.63]`. The
-server takes the **center** of that box, `((left+right)/2, (top+bottom)/2)`, and aims there. So a
-loose box is fine as long as its middle sits on the target; you're pointing, not tracing.
+When the brain wants to act, it names a bbox and a [gesture](/en/reference/gestures/) —
+`tap [0.51, 0.55, 0.59, 0.63]`. The server takes the **center** of that box,
+`((left+right)/2, (top+bottom)/2)`, and aims there. So a loose box is fine as long as its middle
+sits on the target; you're pointing, not tracing.
 
 :::tip[The bbox is validated before any move]
 Every coordinate must be in `[0, 1]`, with `left < right` and `top < bottom`. A malformed bbox is
@@ -115,7 +119,8 @@ iOS event some apps react to. So the brain only reaches for it when:
 - glare or motion blur makes the camera frame unreadable, or
 - it needs to read fine print the camera can't make out.
 
-Because a screenshot can shift app state, the rule is always to `peek` again after a `screenshot`
+Because a screenshot can shift app state, the rule (echoed in the
+[MCP tools reference](/en/reference/mcp-tools/)) is always to `peek` again after a `screenshot`
 before tapping — read the live screen, *then* act.
 
 ## Why a listing and not pixels

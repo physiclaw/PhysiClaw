@@ -3,11 +3,13 @@ title: Memory & skills
 description: How the built-in agent remembers things across sessions and gains new app-specific abilities — persistent memory plus a folder-based skill system.
 ---
 
-The built-in agent starts every session fresh, so its continuity comes from two files it reads on wake — a **memory** of durable facts and a **skill** that teaches it how to drive a specific app. Memory is what it knows; skills are what it can do. Both live as plain Markdown on disk, so you can read, edit, or seed them by hand.
+The built-in agent forgets everything between wakes — and memory and skills are how it pretends it didn't.
+
+Each session is one trigger → work → exit (see [Autonomous tasks](/en/agent/autonomous-tasks/)). Nothing in the model's head survives to the next wake. Continuity is rebuilt entirely from plain-Markdown files under `~/.physiclaw`. **Memory is what the agent knows; skills are what it can do.** Both are files you can read, edit, and seed by hand.
 
 ## Memory: what carries across sessions
 
-A session is one wake — the agent comes alive on a trigger, works the task, and exits. Nothing in its head survives to the next wake. What survives is three files under `~/.physiclaw/memory/`:
+A session is one wake — the agent comes alive on a trigger, works the task, and exits. What survives is three files under `~/.physiclaw/memory/`:
 
 <FileTree>
 - ~/.physiclaw/memory/
@@ -18,54 +20,68 @@ A session is one wake — the agent comes alive on a trigger, works the task, an
   - …
 </FileTree>
 
-Each file has one job:
+Each file has one job, and one rule for who writes it:
 
 | File | Holds | Who writes it |
 | --- | --- | --- |
-| `USER.md` | who you are, your preferences, your defaults | you |
-| `memory.md` | facts the agent learned and should keep | the agent (append / edit) |
-| `YYYY-MM-DD.md` | a timestamped log of what it did that day | the agent (append) |
+| `USER.md` | who you are, your preferences, your hard rules | **you only** — the agent reads it, never writes it |
+| `memory.md` | durable facts, one per line | the agent (appends with `save_memory`, edits in place) |
+| `YYYY-MM-DD.md` | one append-only file per day, `[HH:MM] app: page → page — what it did` | the agent (appends with `append_log`) |
 
-On every wake, the agent's system prompt already contains `memory.md` and your `USER.md` — they're small and grounding, so they're loaded automatically. The daily logs are bigger, so only the **most recent ~10 entries** ride along by default; the agent pulls a deeper window on demand with `read_logs` when a task needs older history.
+### What's always loaded vs. fetched on demand
+
+On every wake, `memory.md` and your `USER.md` are **small and grounding, so they're auto-injected into the system prompt** (`memory.md` arrives under a `## memory.md` heading). The daily logs can grow large, so only the most-recent entries ride along: `bootstrap_log_entries` defaults to **10**, injected as a synthetic `read_logs` result.
+
+When a task needs older history, the agent pulls a deeper window on demand:
+
+```text
+read_logs(entries=N)   # default 20 (default_log_entries), max 200
+```
+
+All three numbers — the bootstrap preload, the on-demand default, and the cap — are tunable under `[memory]` in `config.toml`.
 
 :::note[Why split "facts" from "logs"?]
-`memory.md` answers *"what's true?"* — your address, that you prefer oat milk, the size you buy. The daily log answers *"what happened?"* — `[14:02] jd: cart → checkout — added 2× oat milk ¥39`. Facts are timeless and few; logs are a running tape and many. Keeping them apart means the always-loaded part (facts) stays tiny while the recall-on-demand part (logs) can grow without bloating every prompt.
+`memory.md` answers *"what's true?"* — your address, that you prefer oat milk, the size you buy. The daily log answers *"what happened?"* — `[14:02] jd: cart → checkout — added 2× oat milk ¥39`. Facts are timeless and few, so they're always loaded; logs are a running tape and many, so they're recalled on demand. Keeping them apart keeps the always-loaded part tiny while logs grow without bloating every prompt.
+
+The per-step log is precisely what lets a **future** wake resume a half-finished physical task: it reads the log, sees the cart already has two items, and continues from there — exactly the per-wake, stateless model from [Autonomous tasks](/en/agent/autonomous-tasks/).
 :::
 
-### How the agent writes memory
+### How the agent maintains memory in practice
 
-You don't have to manage any of this — the agent maintains its own memory as it works:
+You don't have to manage any of this — the agent keeps its own memory as it works:
 
-- **You say "remember X"** → it appends a line to `memory.md`.
-- **You change a preference** → it edits the matching line in place.
-- **It finishes a meaningful step** → it appends one line to today's log, like
-  `[HH:MM] app: page → page — what it did`. These per-step logs are what let a
-  *future* wake recover from a half-finished task: it can read the log, see the
-  cart already has two items, and pick up from there.
+- **You say "remember X"** → it appends a line to `memory.md` via `save_memory`.
+- **You change a preference** → it edits the matching line in place. The edit raises if the old text isn't found or matches more than one place, so facts stay one-per-line and uniquely phrased.
+- **It finishes a meaningful step** → it appends one log line via `append_log`, like
+  `[HH:MM] app: page → page — what it did`.
 
-`USER.md` is the exception — the agent only ever **reads** it. That file is yours to curate, and it's the right place to put standing preferences you want respected from the very first session.
+`USER.md` is the exception — the agent only ever **reads** it. That file is yours to curate.
 
-:::tip[Seed it before your first real task]
-Put your essentials in `USER.md` up front — name, address, which apps you use, hard rules ("never order from X"). The agent reads it on every wake, so a good profile saves it from re-asking and from guessing wrong.
+:::note[Both engines see the same files]
+Whichever drive mode is active reads the same memory dir. The in-process engine reaches it through `memory.py`; the `claude-code` subprocess reaches it through its `CLAUDE.md`, which points at **relative** paths like `memory/memory.md` (not absolute ones). See [Agent overview](/en/agent/overview/) for the two engines.
+:::
+
+:::tip[Seed `USER.md` before your first real task]
+Put your essentials in `USER.md` up front — name, address, which apps you use, hard rules ("never order from X"). It's read on every wake, so a good profile stops the agent re-asking or guessing wrong. You can pre-seed `memory.md` too, but keep it small and curated.
 :::
 
 ## Skills: teaching the agent new abilities
 
-Memory is what the agent *knows*. A **skill** is what it *can do* — a self-contained folder that teaches it the exact workflow for one app or one kind of task. Out of the box it can tap a screen; a skill turns "tap a screen" into "place a grocery order on this specific app, the right way."
+Memory is what the agent *knows*. A **skill** is what it *can do* — a self-contained folder that teaches the exact workflow for one app or one kind of task. Out of the box the agent can tap a screen; a skill turns "tap a screen" into "place an order on **this** app the right way."
 
 A skill is just a directory with a `SKILL.md` at its root:
 
 <FileTree>
 - ~/.physiclaw/skills/
   - jobs/
-    - SKILL.md        frontmatter (name + description) + the workflow
+    - SKILL.md        frontmatter (name + description) + the workflow body
   - jd/
     - SKILL.md
     - references/     deep detail, loaded only when needed
     - assets/         freeform files a reference can point at
 </FileTree>
 
-Two locations are scanned: `~/.physiclaw/skills/` (the primary home, so an installed agent finds its skills with no repo checkout) and `./skills/` relative to where it runs (handy while you're iterating). If both define a skill with the same name, the home copy wins.
+Two locations are scanned: `~/.physiclaw/skills/` (the primary home, so an installed agent finds its skills with no repo checkout) and `./skills/` relative to where it runs (handy while you iterate). If both define a skill with the same name, the **home copy wins**.
 
 ### How a skill gets discovered and loaded — three tiers
 
@@ -79,9 +95,8 @@ Skills load **progressively**, so a phone full of skills doesn't flood the promp
    written as concrete triggers — *"use when …; NOT for …"* — not vague blurbs.
 
 2. **The workflow** — When a task matches, the agent calls `Skill(name="jd")`
-   and gets back the full `SKILL.md` body: the step-by-step procedure to follow.
-   This is the doctrine for that app — its search box, its checkout flow, its
-   gotchas.
+   and gets back the full `SKILL.md` body: the doctrine for that app — its
+   search box, its checkout flow, its gotchas.
 
 3. **References** — For rare detail, the body points at a reference file, and
    the agent calls `Skill(name="jd", reference="checkout.md")` to pull it in
@@ -92,12 +107,12 @@ Skills load **progressively**, so a phone full of skills doesn't flood the promp
 This tiering is the whole reason a builder can keep adding skills without slowing the agent down. Ten installed skills cost ten one-line descriptions in the prompt — not ten full workflows.
 
 :::caution[The description is load-bearing]
-A skill with a weak description sits idle even when it's exactly the right tool, because the agent never sees a reason to open it. When you write or install a skill, spend the effort on the description: name the apps, the verbs, the phrasings that should fire it — and the cases that should *not*.
+A skill with a weak description sits idle even when it's exactly the right tool, because the agent never sees a reason to open it. When you write or install a skill, spend the effort on the description: name the apps, the verbs, the phrasings that should fire it — **and** the cases that should *not*.
 :::
 
 ### Example: the `jobs` skill
 
-The built-in `jobs` skill is a good model for what a skill looks like. Its job is scheduling future work, and its description names exactly when to reach for it:
+The built-in `jobs` skill is a good model. Its job is scheduling future work, and its description names exactly when to reach for it:
 
 ```text
 Use when the task involves scheduling future work — any "remind me at …",
@@ -105,10 +120,35 @@ Use when the task involves scheduling future work — any "remind me at …",
 … NOT for one-off in-session waits. NEVER edit jobs.md by hand.
 ```
 
-The body then teaches the workflow: scheduled work lives in a strict, machine-parsed `jobs.md`, so the skill forbids editing that file directly and routes every change through one CLI with four subcommands — `create`, `list`, `get`, `finish`. The agent reads this, learns the safe way to schedule a reminder, and never has to reverse-engineer the file format. That's the pattern for every skill: encode the right way to do a thing once, and every future session inherits it.
+The body then teaches the workflow: scheduled work lives in a strict, machine-parsed `jobs.md`, so the skill forbids editing that file directly and routes every change through one CLI. The agent reads this, learns the safe way to schedule a reminder, and never has to reverse-engineer the file format. That's the pattern for every skill: encode the right way to do a thing once, and every future session inherits it.
 
-Skills are how the autonomous side of the agent works too — the `jobs` skill is what lets it set the cron and poll triggers covered in [Autonomous tasks](/en/agent/autonomous-tasks/).
+This is the same skill that powers the cron and poll triggers in [Autonomous tasks](/en/agent/autonomous-tasks/).
+
+### Installing, listing, and removing skills
+
+Skills come from an external git repo (a repo with a top-level `skills/<name>/SKILL.md`). The CLI clones the source and copies the skill tree into `~/.physiclaw/skills/<name>/`:
+
+```bash
+physiclaw skills install <name> [--from owner/repo|url|path] [--ref <ref>] [--force]
+physiclaw skills list
+physiclaw skills uninstall <name>
+```
+
+A few rules worth knowing:
+
+- **`--from` resolution:** a per-call `--from` flag beats the configured `default_source`. Sources that resolve **inside** `~/.physiclaw` are rejected — skills must come from an external repo, not your own data dir.
+- **Provenance:** each CLI-installed directory carries a `.installed-from` marker. `list` uses it to show where a skill came from, and `uninstall` uses it to tell CLI-managed skills apart from ones you authored by hand — removing a **user-authored** skill needs `--force`.
+- **`git` is a prerequisite.** The installer (`install.sh`) warns and continues if git is missing, but skill installs won't work until it's present.
 
 :::note[Skills are snapshotted at wake]
-The agent captures each `SKILL.md` body when the session starts; editing a skill mid-session won't change behavior until the next wake. This is deliberate — it keeps the cached part of the prompt byte-stable so the model isn't re-charged for an unchanged prefix on every turn.
+The agent captures each `SKILL.md` body when the session starts; editing a skill mid-session won't change behavior until the **next** wake. This is deliberate — it keeps the cached prompt prefix byte-stable so the model isn't re-charged for an unchanged prefix on every turn (the same reasoning behind the auto-loaded memory slot).
 :::
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Inside the engine" description="How sessions, context, and tool calls are assembled turn by turn." href="/en/agent/inside-the-engine/" />
+  <LinkCard title="Autonomous tasks" description="The cron and poll triggers that wake a session — powered by the jobs skill." href="/en/agent/autonomous-tasks/" />
+  <LinkCard title="CLI reference" description="Full syntax for physiclaw skills, config, models, and more." href="/en/reference/cli/" />
+  <LinkCard title="Configuration" description="The [memory] keys and everything else in config.toml." href="/en/reference/configuration/" />
+</CardGrid>

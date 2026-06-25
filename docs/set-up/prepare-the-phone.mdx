@@ -1,97 +1,124 @@
 ---
 title: Prepare the phone
-description: The once-per-phone setup — AssistiveTouch, three iOS Shortcuts, the bridge page, and a throwaway passcode.
+description: The once-per-phone setup — AssistiveTouch, three iOS Shortcuts, the bridge page, and a throwaway passcode — that turns "a stylus on glass" into a phone PhysiClaw can fully see and operate.
 ---
 
-The phone needs a five-minute, once-per-phone setup before PhysiClaw can drive it: turn on
-**AssistiveTouch**, add **three iOS Shortcuts**, and open the **bridge page** in the browser.
-None of this installs an app or a developer profile — it's all built into iOS — but it's the
-difference between "a stylus on glass" and a phone PhysiClaw can fully see and operate.
+{/* MAINTAINERS: keep this page in sync with the canonical action list in
+    .claude/skills/phone-setup/SKILL.md — the URLs, Shortcut actions, and ordering live there. */}
+
+The phone needs a roughly five-minute, once-per-phone setup before PhysiClaw can drive it: turn on
+**AssistiveTouch**, add **three iOS Shortcuts**, and open the **bridge page** in Safari. None of
+this installs an app, a developer profile, or anything jailbroken — it's all native iOS. But it's
+the difference between "a stylus on glass" and a phone PhysiClaw can fully *see* (pixel-perfect
+screenshots) and *operate* (paste text).
+
+These steps are for iOS. The flow assumes the [server is running](/en/set-up/install/), since the
+Shortcuts and the bridge page talk to it over your local network.
 
 :::caution[Use a throwaway phone]
 PhysiClaw gets the same access a person holding your unlocked phone would. Set this up on a
-dedicated tool phone, not your daily driver — [Safety](/en/safety/) explains exactly why and
-how.
+dedicated tool phone — not your daily driver. You'll give it a throwaway `111111` passcode and an
+earth-grounded stylus taps its screen all day. [Safety](/en/safety/) explains the full posture and
+why it matters.
 :::
-
-These steps describe iOS. The flow assumes the [server is running](/en/set-up/install/), since
-the Shortcuts and bridge page talk to it over your local network.
 
 ## Why each piece exists
 
-Three problems need solving, and each maps to one piece of the setup:
+The intuition that makes the rest obvious: **the stylus can only tap glass.** It has no way to
+"press a key," fire an OS action, or read the clipboard. So three problems need solving, and each
+maps to one piece of this setup.
 
-| Piece | Solves |
+| Piece | Why it exists |
 | --- | --- |
-| **AssistiveTouch** | Gives the stylus one on-screen button it can tap to trigger Shortcuts — the stylus has no other way to "press a key." |
-| **3 iOS Shortcuts** | The screenshot pipeline (pixel-perfect capture) and clipboard paste — things a stylus tap alone can't do. |
-| **Bridge page** | A web page the phone keeps open; it shows the camera's alignment markers and relays text to the clipboard. |
+| **AssistiveTouch** | The one on-screen floating button the stylus can physically tap to fire a Shortcut. Without it, a stylus has no way to invoke an OS action at all. |
+| **3 iOS Shortcuts** | Capabilities a raw tap can't do: capture a pixel-perfect screenshot and upload it, and pull queued text onto the clipboard for pasting. |
+| **Bridge page** | A Safari page kept open the whole session. It draws the colored corner markers the overhead camera auto-detects, and it relays text to and from the clipboard. |
 
-## 1. The bridge page
+Build them in dependency order: **bridge page → three Shortcuts → bind to AssistiveTouch →
+passcode → verify.**
 
-The bridge is a single web page the phone holds open during a session. It does two jobs:
+## 1. Open the bridge page
 
-- It draws **colored corner markers** on screen — small red/green/blue/yellow clusters in each
-  corner — that the overhead camera uses to auto-detect the screen and find its edges during
-  [calibration](/en/set-up/calibrate/).
-- It receives text from the server and copies it to the clipboard, so the agent can *paste* a
+The bridge is a single Safari page the phone holds open for the entire session. It does two jobs:
+
+- It draws **colored corner markers** — small red/green/blue/yellow (RGBY) clusters in each
+  corner — that the overhead camera auto-detects. [Calibration](/en/set-up/calibrate/) uses them in
+  the connect-camera step to pick out the overhead camera and locate the screen, and the blue/red
+  markers also fix the camera's rotation in the camera-calibration step.
+- It receives text the server queues and relays it to the clipboard, so the agent can *paste* a
   message instead of tapping it out letter by letter.
 
-Open it once to pair the phone. On the Mac, the server printed a QR URL; scanning it points the
-phone's browser at the bridge page on your LAN:
+The bridge URL has this shape, where `8048` is the default server port:
 
 ```text
-http://<lan-ip>:8048/bridge
+http://<host>:8048/bridge
 ```
+
+Pair the phone by scanning the QR code the server printed:
 
 <Steps>
 
 1. On the Mac, open the QR page the server printed: `http://localhost:8048/api/bridge/qr`.
 
-2. Scan it with the phone's Camera app and open the link in Safari.
+2. Scan it with the phone's **Camera** app and open the link in **Safari**.
 
-3. The page should load and say **PhysiClaw**. Leave it in the foreground and keep the phone
-   awake — the camera can't find the markers if the screen sleeps.
+3. The page should load and say **PhysiClaw**. Leave it in the **foreground** and keep the screen
+   **awake** — the camera can't find the markers if the screen sleeps.
 
 </Steps>
 
-:::tip[Keep the page reachable]
-The Shortcuts you'll create below point at this same server. A `<name>.local` address survives
-your router handing out a new IP; a raw `<lan-ip>` will break the next time the IP changes. If
-the server printed a `.local` URL, prefer it.
+:::note[Offline? Type the URL]
+The QR image is rendered with a library loaded from the jsDelivr CDN. If the Mac is offline, the
+QR page can't draw the code and instead shows a **type-the-URL fallback** — open Safari on the
+phone and enter the bridge URL by hand.
 :::
 
-## 2. Three iOS Shortcuts
+### Which address: prefer `<name>.local`
 
-Each Shortcut is short — one or two actions. Build them in the Shortcuts app (tap **+** for a
-new one), then rename each as shown. Replace `HOST` with your server's address (the host part
-of the bridge URL above).
+The Shortcuts you build next point at this same server. **Strongly prefer a `<name>.local` mDNS
+address over a raw `<lan-ip>`:** a raw IP breaks the next time your router (DHCP) hands out a new
+one, while `<name>.local` survives IP changes on the same Wi-Fi.
+
+To get the right address:
+
+- Run the **phone-setup skill**, which prints the recommended `<name>.local` URL (and the IP
+  fallback), or
+- Read it off the server's printed QR URL.
+
+The `.local` name is whatever your Mac is currently called — this page won't rename your host for
+you. If you want a more stable or unique name, change it yourself (e.g.
+`sudo scutil --set LocalHostName "new-name"`), then use the new `<name>.local`.
+
+## 2. Build three iOS Shortcuts
+
+Each Shortcut is one or two actions. Build them in the **Shortcuts** app: tap **+** for a new one,
+add the actions, then rename it. Replace `HOST` with your bridge host — the `host:port` part, e.g.
+`name.local:8048`.
 
 <Steps>
 
 1. **PhysiClaw Tap** — *take a screenshot.*
-   Add the **Take Screenshot** action. Rename the Shortcut to `PhysiClaw Tap`. This is the
-   capture half of the screenshot pipeline; it puts a fresh screenshot in Photos.
+   Add the **Take Screenshot** action. Rename the Shortcut to `PhysiClaw Tap`. This is the capture
+   half of the pipeline; it puts a fresh screenshot in **Photos**.
 
 2. **PhysiClaw Screenshot** — *upload the latest screenshot.*
-   Add **Get Latest Screenshots**, then **Get Contents of URL**. Set the URL to
-   `http://HOST/api/bridge/screenshot`, method **POST**, request body **File**, and the file to
-   the **Screenshots** variable. Rename to `PhysiClaw Screenshot`. This sends the pixel-perfect
-   capture up to the server — the `screenshot` half of [how PhysiClaw
-   looks](/en/start/how-it-works/).
+   Add **Get Latest Screenshots**, then **Get Contents of URL**. Set:
+   - URL: `http://HOST/api/bridge/screenshot`
+   - **Show More** → Method **POST**, Request Body **File**, File → the **Screenshots** variable
+
+   Rename to `PhysiClaw Screenshot`. This uploads the pixel-perfect capture to the server.
 
 3. **PhysiClaw Clipboard** — *sync the clipboard.*
-   Add **Get Contents of URL** with URL `http://HOST/api/bridge/clipboard` (method GET), then
-   **Copy to Clipboard** with its input set to **Contents of URL**. Rename to
-   `PhysiClaw Clipboard`. This pulls text the server queued and drops it on the clipboard, ready
-   to paste.
+   Add **Get Contents of URL** with URL `http://HOST/api/bridge/clipboard` (method **GET**), then
+   **Copy to Clipboard** with its input set to **Contents of URL**. Rename to `PhysiClaw Clipboard`.
+   This pulls text the server queued and drops it on the clipboard, ready to paste.
 
 </Steps>
 
 ## 3. Wire the Shortcuts to AssistiveTouch
 
-AssistiveTouch is iOS's floating on-screen button — the stylus taps *it* to fire a Shortcut.
-Turn it on and bind the three gestures:
+AssistiveTouch is iOS's floating on-screen button — the stylus taps *it* to fire a Shortcut. Turn
+it on and bind the three gestures.
 
 <Steps>
 
@@ -104,20 +131,67 @@ Turn it on and bind the three gestures:
 
 </Steps>
 
-Now one tap on the AssistiveTouch button captures a screenshot, two taps upload it, and a long
-press syncs the clipboard — exactly the gestures the [calibration
-wizard](/en/set-up/calibrate/) exercises to confirm the pipeline works.
+This gesture-to-Shortcut mapping is exactly what the runtime relies on. The
+[`screenshot` tool](/en/reference/mcp-tools/) drives a **single-then-double-tap** on the
+AssistiveTouch button to capture and upload, and `send_to_clipboard` plus paste flows use the
+**long-press** clipboard fetch.
+
+:::tip[Placement matters]
+Every gesture holds a lock and **rejects motions that cross the AssistiveTouch button**, and the
+stylus auto-parks off-screen between actions. Put the AssistiveTouch button somewhere the stylus
+won't have to swipe across it — a corner of the screen works well. See
+[Gestures](/en/reference/gestures/) for how physical stylus motion maps to taps and swipes.
+:::
 
 ## 4. Set the passcode to `111111`
 
-PhysiClaw can unlock the phone itself, but it only knows one code: `111111`. It's **hardcoded**
-on purpose. If the real passcode lived in a config file or got typed into the keypad logic, it
-could leak through logs or git history — so PhysiClaw never stores a real one. Set the tool
-phone's passcode to `111111` (Settings → Face ID & Passcode), and keep nothing on the phone you
-wouldn't hand to a stranger.
+PhysiClaw can unlock the phone itself, but it only knows one code: `111111`. The runtime's
+[`unlock_phone` tool](/en/reference/mcp-tools/) wakes the phone, swipes up, OCRs the keypad, and
+enters that single **hardcoded** code. A real passcode is deliberately never stored — if it lived
+in a config file or in the keypad logic, it could leak through logs or git history.
 
-:::note[Or skip the lock entirely]
-If you'd rather not have PhysiClaw unlock the phone at all, disable auto-lock
-(Settings → Display & Brightness → Auto-Lock → Never) and leave it unlocked. The trade-off is
-faster screen wear from an always-on display.
+Set the tool phone's passcode to `111111` (**Settings → Face ID & Passcode**), and keep nothing on
+the phone you wouldn't hand to a stranger. `111111` is a throwaway code for a throwaway phone.
+
+:::note[This is a runtime requirement, not a calibration step]
+The passcode only matters when the runtime needs to unlock the phone — it is **not** part of the
+[calibration wizard](/en/set-up/calibrate/). If you'd rather PhysiClaw never unlock the phone,
+disable auto-lock instead: **Settings → Display & Brightness → Auto-Lock → Never** and leave the
+phone unlocked. The trade-off is faster screen wear from an always-on display.
 :::
+
+## 5. Verify it works
+
+Before moving on, confirm the capture-and-upload path actually reaches the server.
+
+<Steps>
+
+1. Tap the AssistiveTouch button **once** — this takes a screenshot.
+
+2. Tap it **twice** (double-tap) — this uploads the latest screenshot.
+
+3. A new file should land server-side within about **25 seconds**.
+
+</Steps>
+
+If nothing arrives:
+
+- **Run the Shortcut manually** in the Shortcuts app (tap **▶**) to surface any error it hits.
+- From the Mac, `ping <name>.local`. If it fails, mDNS is blocked on your network — swap **both**
+  Shortcut URLs (`PhysiClaw Screenshot` and `PhysiClaw Clipboard`) to the **raw IP** fallback.
+- Make sure at least **one screenshot already exists in Photos**, so *Get Latest Screenshots* has
+  something to upload.
+
+## Next: calibrate
+
+With AssistiveTouch on, the three Shortcuts built, and the bridge page open, the phone is ready.
+Hand off to the [calibration wizard](/en/set-up/calibrate/) — its **Verify AssistiveTouch** step
+re-runs single, double, and long-press to confirm all three Shortcuts end to end before the rig
+starts driving.
+
+<CardGrid>
+  <LinkCard title="Calibrate" description="Run the hardware wizard with the arm and camera connected." href="/en/set-up/calibrate/" />
+  <LinkCard title="How it works" description="The look → think → move → confirm loop the Shortcuts feed." href="/en/start/how-it-works/" />
+  <LinkCard title="MCP tools" description="screenshot, unlock_phone, and send_to_clipboard in detail." href="/en/reference/mcp-tools/" />
+  <LinkCard title="Safety" description="Why a burner phone, a throwaway passcode, and an earth-grounded stylus." href="/en/safety/" />
+</CardGrid>

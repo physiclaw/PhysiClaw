@@ -1,83 +1,219 @@
 ---
 title: Assembly
-description: Build the rig — seat the phone, fit the stylus, hang the camera overhead, and wire it all up. About an hour, no soldering.
+description: A map of the from-scratch CoreXY build — the stage order, the few steps that silently brick the rig, and what to do after the last bolt.
 ---
 
-Assembly is mechanical: you seat the phone in its corner, swap the plotter's pen for the stylus,
-clamp the camera straight overhead, and run everything to a powered USB hub. No soldering, no
-custom boards — about an hour, mostly fiddling with the camera angle.
+This page is a **map, not the territory**. The authoritative, bolt-by-bolt instructions live in
+the build manual; this page exists to put the manual in order in your head, warn you about the
+four or five steps that silently break everything if you get them wrong, and tell you what to do
+after the last bolt is in.
 
-```text
-        camera (gooseneck, ~25 cm up, looking straight down)
-            │
-            ▼
-   ┌─────────────────────────┐
-   │  pen-plotter arm        │
-   │  X/Y gantry             │
-   │  Z = solenoid + stylus  │
-   │                         │
-   │   ┌───┐                 │   ◄── phone seated in the corner,
-   │   │ ▓ │  phone          │       TOP-LEFT registered to the
-   │   └───┘                 │       holder corner
-   └─────────────────────────┘
-        │            │
-     USB serial   12 V power      camera ─USB─┐
-        │            │                        │
-        └──── powered USB hub ── USB ──────────┘──→ your Mac
-```
+Before you turn a single bolt: read the whole manual end to end, and re-check the complete
+[bill of materials](/en/hardware/bill-of-materials/). This is a from-scratch, hand-built **CoreXY
+gantry** — extrusion, rails, belts, and printed joints — not a ready-made plotter with a pen to
+swap. Budget **about two to three hours** for assembly itself (the manual's own figure), sitting
+inside a multi-day project: source/print/cut, then assemble, then flash firmware, then calibrate
+and tune.
 
-The order matters a little: seat the phone first so the camera has something real to aim at, and
-wire last so nothing tugs as you position parts.
+:::note[The manual is the real instructions]
+The authoritative build manual is **13 JSON sections**, in this order:
+`00_front`, `01_frame`, `02_idler`, `03_motor`, `04_linear`, `05_belt`, `06_stylus`, `07_phone`,
+`08_pcb`, `09_camera`, `10_wiring`, `11_bom`, `99_back`. It is backed by **~71 build123d procedure
+modules** under `hardware/assembly/procedures/`. Follow that manual bolt-by-bolt. This page only
+orients and warns.
+:::
+
+## The machine
+
+Three subsystems, the same three you met in [how it works](/en/start/how-it-works/):
+
+<CardGrid>
+  <Card title="CoreXY stage (X/Y)" icon="rocket">
+    Two fixed NEMA 17 steppers drive one belt path through 12 idlers to move a carriage in X and Y
+    across the phone screen. The carriage rides on MGN9H linear rails. This is the precision heart
+    of the build.
+  </Card>
+  <Card title="Touch mechanism (Z)" icon="pencil">
+    A 12 V push-pull **solenoid** snaps a capacitive stylus down to tap and releases to lift. Not a
+    servo, not a plotter pen.
+  </Card>
+  <Card title="Overhead camera" icon="laptop">
+    A single 4K autofocus USB webcam on a printed mount looks straight down at the screen to read
+    it and check where the stylus is sitting.
+  </Card>
+</CardGrid>
+
+{/* PHOTO: the finished rig, three-quarter view — the 2040 extrusion box with the CoreXY gantry,
+     the solenoid+stylus on the X carriage, the phone seated in its bed, and the webcam on its
+     printed mount looking straight down. */}
+
+## The stage order, and why each comes first
+
+Assembly is a dependency chain. Each stage builds on the one before it, so the order is not
+optional — doing the belt before the rails, or the camera before the frame is square, forces you
+to take work apart.
 
 <Steps>
 
-1. **Seat the phone — corner first.**
-   Lay the anti-slip pad on the plotter bed and set the two L-shaped blocks to form a corner.
-   Place the phone face-up and push it firmly into that corner so its **top-left corner registers
-   against the holder's corner**. This one detail is what makes calibration reusable: the phone
-   returns to the exact same spot every session, so the arm's learned screen position stays valid.
+1. **Fastener (reference only).** Not a build stage — the `00_front` section is your key to the
+   fastener types and T-nuts used throughout (drop-in vs slide-in T-nuts, BHCS/FHCS/SHCS sizes).
+   Read it so the later sections make sense.
 
-   {/* PHOTO: phone seated face-up in the L-block corner holder, top-left corner of the phone
-        flush against the inside corner of the blocks; anti-slip pad visible underneath. */}
+2. **Frame (`01_frame`).** Build the box: 4x 2040 black-anodized extrusion — 2x **345 mm** side
+   rails (counterbored M6) and 2x **190 mm** end rails (tapped M6) — plus 1x 1020 **185 mm**
+   gantry X-beam and 2x 1020 **230 mm** phone-bed supports. **Square the box against a known-flat
+   surface before anything else hangs off it.** Out-of-square here propagates into every later
+   stage — the rails will bind, the belt tension will never equalize, the screen will not sit flat
+   under the camera.
 
-2. **Fit the stylus in the Z holder.**
-   Remove the plotter's pen and slide the capacitive stylus into the Z carriage holder. Set its
-   height so the soft tip sits just *above* the glass when the solenoid is released, and presses
-   the glass when it fires. The tip should touch flat, not at an angle.
+3. **Idler (`02_idler`).** Mount the idler stacks to their printed idler mounts. These define the
+   belt path, so they go on before the belt.
 
-   {/* PHOTO: capacitive stylus clamped in the Z carriage holder, fiber tip pointing down at
-        the phone screen, with a small gap to the glass in the parked (up) position. */}
+4. **Motor (`03_motor`).** Bolt the 2x NEMA 17 steppers to their motor brackets. They stay fixed —
+   in CoreXY the motors do not move with the carriage.
 
-3. **Hang the camera straight overhead.**
-   Clamp the gooseneck to the desk and bend it so the camera looks **straight down at the screen
-   center, about 25 cm up**. Frame the whole screen with a little margin. Straight-down matters:
-   the agent reads on-screen positions from this image, so a tilted view skews where it thinks
-   things are.
+5. **Linear (`04_linear`).** Mount the 3x MGN9H rails (2x **240 mm** Y, 1x **150 mm** X) and their
+   3x H-type carriages (4x M3 each, **16x15 mm** mounting pitch), then the printed XY joints (left
+   and right). Take your time aligning the rails — the manual says "be patient" here for a reason.
 
-   {/* PHOTO: gooseneck-mounted USB camera positioned directly above the phone, lens pointing
-        straight down, roughly 25 cm of clearance, the full phone screen within frame. */}
+6. **Belt (`05_belt`).** Cut the GT2 6 mm belt from the 5 m roll into equal A and B lengths, fit
+   the 2x GT2 20T drive pulleys on the stepper shafts, and route through all 12 idlers (10 smooth
+   + 2 toothed). The CoreXY routing must be correct and A/B must end up at **equal tension**.
 
-4. **Wire everything to the powered USB hub.**
-   Plug the camera and the control board into the **powered USB 3.0 hub**, and the hub into your
-   Mac. A powered hub keeps the board and camera from browning out a laptop port. Run the phone's
-   screenshot bridge over the same hub if you use a wired connection.
+7. **Stylus / solenoid — "tapz" (`06_stylus`).** Mount the solenoid, do the Z-conversion, and set
+   the stylus tip geometry. This is the stage the old docs omitted entirely — see the dedicated
+   section below.
 
-   {/* PHOTO: powered USB hub with the camera USB and the control-board USB-B cable plugged in,
-        and the single uplink cable running to the Mac. */}
+8. **Phone bed (`07_phone`).** Seat the phone in its printed bed with its **top-left corner
+   registered to a fixed corner** of the bed.
 
-5. **Power the control board.**
-   Give the control board its **two connections**: USB to the hub (data, G-code) and the **12 V**
-   barrel jack (motor and solenoid power). The board's LED should light on 12 V. Power 12 V first,
-   then USB, matching the [firmware](/en/hardware/firmware/) flashing order.
+9. **Board / PCB (`08_pcb`).** Seat the MKS DLC32 V2.1 board in its printed control-board holder.
 
-   {/* PHOTO: control board showing both cables connected — USB-B to the hub and the 12 V barrel
-        jack — with its power LED lit. */}
+10. **Camera (`09_camera`).** Mount the 4K/8MP autofocus USB webcam on its printed mount, looking
+    straight down at the screen.
+
+11. **Wiring (`10_wiring`).** Wire it all up — last, so nothing tugs while you position parts. Yes,
+    there is soldering.
 
 </Steps>
 
-:::caution[Rigidity is everything — a bumped gooseneck means re-calibration]
-The single most common cause of misaimed taps is camera drift. Flex in the gooseneck, a nudged
-clamp, or a phone reseated even slightly off-corner all move the screen out from under the
-positions the arm learned. Tighten every clamp, keep the gooseneck short, and treat any bump as
-a reason to re-[calibrate](/en/set-up/calibrate/).
+## The steps that silently brick the rig
+
+A perfectly-built frame can still do nothing if one of these is wrong. None of them throw an
+error — they just fail quietly. Front-load your attention here.
+
+### Square the frame first
+
+Covered above, but it bears repeating as a gotcha: an out-of-square box is the root cause of
+binding rails and uneven belt tension downstream. Square it on a flat reference surface in stage 2,
+and verify it before moving on.
+
+### Re-grease the carriages — do not run them dry
+
+The MGN9H carriages **ship coated in factory shipping oil**, which is a preservative, not a
+lubricant. Wipe it off and re-grease with **lithium grease (NLGI 2)** before mounting. Running them
+dry wears the balls and adds friction the steppers have to fight.
+
+### Loctite the set screws — the #1 reported failure
+
+:::caution[Loose drive-pulley set screws are the single most common failure]
+Apply **Loctite 243** to set screws — especially the drive-pulley set screws on the stepper shafts
+— and generally to any fastener the manual flags. A loose drive-pulley set screw lets the pulley
+slip on the shaft: the arm thinks it moved, the carriage didn't, and every position drifts.
+Thread-lock is not optional here.
 :::
+
+CoreXY also depends on **equal A/B belt tension**, with a tension target measured on the next page.
+Getting the routing and tension right is a distinct phase — see [tuning](/en/hardware/tuning/) for
+the belt-tension target (measured with a phone tuning app) and the rail-alignment routine. Don't
+restate the number here; tune it there.
+
+### Stylus earth-grounding — the silent "do-nothing" failure
+
+:::caution[The capacitive tip MUST be tied to a verified earth ground]
+The capacitive stylus only registers as a finger if it is connected to a **verified earth ground**
+— for example, a grounded PC chassis. **Never** the wall socket directly, and **never** the
+control-board GND. Without earth grounding, the taps will not register on the phone **at all**: you
+get a flawlessly-built rig that touches the glass and the phone ignores it. This is also a safety
+item — see [safety](/en/safety/).
+:::
+
+### Camera and phone-corner rigidity — silent re-calibration
+
+The camera reads on-screen positions from its image, and calibration learns the mapping from screen
+to arm. **Both depend on nothing moving after you calibrate.** Mount the webcam rigidly on its
+printed mount so it cannot flex or get bumped, frame the whole screen with margin, and seat the
+phone so its top-left corner returns to the exact same spot every session. A bumped camera or a
+reseated-slightly-off phone moves the screen out from under the positions the arm learned and forces
+a re-[calibration](/en/set-up/calibrate/).
+
+## The Z stage in detail: solenoid + stylus (tapz)
+
+This is the stage most likely to be new to you, because there is no pen and no servo. The Z/touch
+actuator is a **12 V 0.8 A push-pull solenoid** (10 mm stroke, 0.2–6 N force, 2x M3 mounts at
+**15 mm** pitch). The **capacitive stylus tip** (M3 female thread, ~Ø7 mm conductive head) threads
+onto the solenoid **core** — in place of the nut the solenoid ships with.
+
+<Steps>
+
+1. **Mount the solenoid** to its printed solenoid mount (2x M3 at 15 mm pitch), on the X carriage.
+
+2. **Do the Z-conversion.** Remove the nut shipped on the solenoid core and thread the capacitive
+   stylus tip on in its place. The stylus is now the moving Z end.
+
+3. **Set the tip geometry** so the tip touches the glass **flat**, not at an angle, when the
+   solenoid fires — and clears the glass when released.
+
+4. **Earth-ground the tip** (see the caution above — this is what makes the taps register).
+
+</Steps>
+
+{/* PHOTO: close-up of the solenoid on its printed mount on the X carriage, the capacitive stylus
+     tip threaded onto the core where the nut used to be, and the earth-ground wire running off the
+     tip to a grounded chassis. */}
+
+The solenoid's strike/hold timing (a hit-and-hold sequence over the control board's spindle PWM
+output) is a firmware and tuning concern, not a mechanical one — see [firmware](/en/hardware/firmware/)
+and [tuning](/en/hardware/tuning/).
+
+## Wiring (last)
+
+Wiring comes last so nothing tugs while you position parts.
+
+- **Components:** 1x MKS DLC32 V2.1 board (in its printed control-board holder) + 2x TMC2209
+  drivers + 12 V 2 A barrel PSU + the 4K/8MP autofocus USB webcam.
+- **There is soldering.** Splices are soldered: have a **soldering iron and a heat gun** (for
+  heat-shrink) ready. Use **0.3 mm² lead wire** and spiral wrap for the looms.
+- **Moving harness:** a ~400 mm length of PTFE/FEP tube routes the moving cable bundle — but the
+  **wire runs outside the tube**, the tube only guides it.
+- **Driver remap is a firmware matter.** The X driver maps to **Motor B**, the Y1 driver to
+  **Motor A**, and the spindle output drives the **solenoid** — but you set this in firmware, not
+  by rewiring. See [firmware](/en/hardware/firmware/).
+
+{/* PHOTO: the MKS DLC32 in its printed holder with TMC2209 drivers seated, the 12 V barrel jack
+     and USB plugged in, and the moving harness running through the PTFE tube to the gantry. */}
+
+## After the last bolt
+
+Assembly does not make the rig usable on its own. The next steps are a gate, in order:
+
+<Steps>
+
+1. **Flash the firmware first.** Load **FluidNC** onto the MKS DLC32 over USB (a browser flash).
+   This is a **prerequisite gate** — `physiclaw setup hardware` will not work until the firmware is
+   on. See [firmware](/en/hardware/firmware/).
+
+2. **Tune the CoreXY.** Set belt tension to the target, finish re-greasing and aligning the rails,
+   and tune the solenoid timing. Iterative and finicky — plan for it. See [tuning](/en/hardware/tuning/).
+
+3. **Install the software and calibrate.** Then run the calibration wizard so the agent learns
+   where the screen is. See [calibrate](/en/set-up/calibrate/).
+
+</Steps>
+
+<CardGrid>
+  <LinkCard title="Firmware" description="Flash FluidNC onto the MKS DLC32 — the prerequisite gate before setup." href="/en/hardware/firmware/" />
+  <LinkCard title="Tuning" description="Belt tension, rail alignment, and solenoid timing for the CoreXY." href="/en/hardware/tuning/" />
+  <LinkCard title="Calibrate" description="Teach the agent where the screen is after the rig is built and flashed." href="/en/set-up/calibrate/" />
+  <LinkCard title="Why a body" description="Why PhysiClaw needs a real machine at all." href="/en/hardware/why-a-body/" />
+</CardGrid>

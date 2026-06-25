@@ -1,23 +1,60 @@
 ---
 title: Configuration
-description: The `~/.physiclaw/config.toml` file — choosing a model, setting provider keys, and the knobs worth touching.
+description: The ~/.physiclaw/config.toml file — where it lives, how to edit it safely, the one key you must set, and every knob with its default.
 ---
 
-PhysiClaw reads its settings from one file, **`~/.physiclaw/config.toml`**, and almost
-everything has a sane built-in default — the only thing you *must* set is which model to run.
-Edit the file with `physiclaw config edit` (it's created from a commented template the first
-time), or change one key at a time with `physiclaw config set`. Changes apply on the next
-`physiclaw server` start.
+PhysiClaw reads its settings from one file, **`~/.physiclaw/config.toml`**. Almost every key
+has a sane built-in default, so the **only thing you *must* set is which model to run**.
+Everything else you can leave alone until you have a reason not to.
 
-Settings layer in a fixed order, **first match wins**:
+The file lives inside the PhysiClaw data root, `~/.physiclaw`. That root holds all on-disk
+state — config, calibration, memory, models, logs — and you can move the whole thing by
+setting `PHYSICLAW_HOME` before launching the CLI.
+
+```bash
+physiclaw config path     # print the exact location
+```
+
+This is a **reference** page: it lists every section and key with its default and units. If you
+just want to get a model running, do that on the [Models](/en/agent/models/) page first, then
+come back here to understand what `physiclaw config edit` dropped you into.
+
+## Editing the file
+
+You never have to hand-write the file from scratch — the first `physiclaw config edit` creates
+it from a commented template.
+
+| Command | Does |
+| --- | --- |
+| `physiclaw config edit` | open the file in `$EDITOR` (creates it from a template the first time) |
+| `physiclaw config set <section.key> <value>` | set one key (the value is type-coerced) |
+| `physiclaw config unset <section.key>` | revert one key to its built-in default |
+| `physiclaw config path` | print the config file path |
+| `physiclaw config show` | dump the *effective* merged config as TOML (keys masked) |
+| `physiclaw config get <section.key>` | read one key, e.g. `engine.max_turns` |
+
+:::caution[Changes apply on the next restart, not live]
+Most writes print **`Restart `physiclaw server` to apply.`** The running server reads its config
+once at start, so edits take effect the next time you launch `physiclaw server` — not while it
+is running.
+:::
+
+## How settings layer
+
+Settings come from four places. They merge in a fixed order, **first match wins**:
 
 ```text
 CLI flag  >  env var  >  config.toml  >  built-in default
 ```
 
-So a `--port` flag beats `PHYSICLAW_MODEL` in the environment, which beats the file, which
-beats the shipped default. Delete a key from the file to fall back to the default; an unknown
-section or key fails loudly on load (the CLI points you at `physiclaw config edit` to fix it).
+A `--port` flag beats `PHYSICLAW_MODEL` in the environment, which beats the file, which beats
+the shipped default. `unset` a key (or delete its line) and it falls back to the default.
+
+:::caution[Unknown keys fail loudly]
+The schema is strict. An unknown section or an unknown key **aborts the load** — it is not
+silently ignored. The CLI points you at `physiclaw config edit` to fix the typo. That is the
+trade for never having a setting quietly do nothing.
+:::
 
 ## The one you must set: `[agent]`
 
@@ -26,14 +63,38 @@ section or key fails loudly on load (the CLI points you at `physiclaw config edi
 model = "anthropic/claude-sonnet-4-6"
 ```
 
-`model` is a **`provider/model` ref**: the first segment picks the engine + provider, the
-second is the model id passed to that provider verbatim. There is no universal default — an
-empty `model` means "use the `PHYSICLAW_MODEL` env var, then fail loudly." The easiest way to
-set it is `physiclaw models use <provider/model>`, which validates the ref first.
+`model` is a **`provider/model` ref**: the first segment picks the engine + provider, the second
+is the model id passed to that provider verbatim. There is no universal default — an empty
+`model` means "use the `PHYSICLAW_MODEL` env var, then fail loudly."
+
+The easiest way to set it is `physiclaw models use <provider/model>`, which validates the ref
+before writing it.
+
+:::note[The agent stays dark until a model is set]
+Both drive modes refuse to wake without a model. A plain `physiclaw server` with **no** model
+still runs — useful for hardware setup and manual MCP tool calls — but the built-in agent
+will not start. See [Operating modes](/en/run/operating-modes/).
+:::
+
+### The ref shape picks the engine
+
+The first segment of the ref decides *how* PhysiClaw runs the model:
+
+- **`claude-code/<model>`** shells out to Anthropic's external `claude` CLI as a subprocess. It
+  reuses the `anthropic` provider's key and model catalog, but it is **not** in the in-process
+  registry.
+- **Any other provider id** (e.g. `anthropic/…`, `openai/…`) uses the **in-process** engine.
+
+:::note[`anthropic` and `claude-code` are not the same thing]
+`anthropic/…` talks directly to the `/v1/messages` API inside the PhysiClaw process, using
+`anthropic_api_key`. `claude-code/…` launches a separate `claude` CLI program. They happen to
+share a key and catalog, but they are different engines — pick deliberately.
+:::
 
 ## Provider keys: `[provider]`
 
-One API key per provider, by id:
+One API key per provider, keyed by provider id (note: this is the **singular** `[provider]`
+table):
 
 ```toml
 [provider]
@@ -45,23 +106,33 @@ google_api_key    = ""
 deepseek_api_key  = ""
 ```
 
-An empty string means "fall back to the matching env var" — `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`, `QWEN_API_KEY`, and so on. The env var always wins over the file.
+An empty string means "fall back to the matching env var." The env var **always wins** over the
+file:
+
+| Provider id | Config key | Env var | Talks to |
+| --- | --- | --- | --- |
+| `anthropic` | `anthropic_api_key` | `ANTHROPIC_API_KEY` | Anthropic `/v1/messages` |
+| `openai` | `openai_api_key` | `OPENAI_API_KEY` | OpenAI |
+| `qwen` | `qwen_api_key` | `QWEN_API_KEY` | DashScope (Qwen) |
+| `moonshot` | `moonshot_api_key` | `MOONSHOT_API_KEY` | Kimi (Moonshot) |
+| `google` | `google_api_key` | `GOOGLE_API_KEY` | Gemini (OpenAI-compatible) |
+| `deepseek` | `deepseek_api_key` | `DEEPSEEK_API_KEY` | DeepSeek (stub) |
 
 :::caution[Treat these like SSH keys]
-Prefer `physiclaw models key <provider>` (hidden prompt) or `physiclaw config edit` over
-`physiclaw config set`, which would leave the key in your shell history. `physiclaw config
-show` masks every `*_api_key` value.
+Prefer `physiclaw models key <provider>` (a hidden prompt) or `physiclaw config edit` over
+`physiclaw config set provider.<id>_api_key …`, which leaves the key in your shell history.
+`physiclaw config show` masks every `*_api_key` value.
 :::
 
 ### Pointing a provider at a proxy: `[providers.<id>]`
 
-To send a built-in provider through a proxy or alternate endpoint (e.g. Moonshot's `.ai` vs
-`.cn`), set a `base_url` override:
+To route a built-in provider through a proxy or alternate endpoint, set a `base_url` override.
+Note this is the **plural** `[providers.<id>]` table — distinct from the singular `[provider]`
+table that holds keys.
 
 ```toml
 [providers.moonshot]
-base_url = "https://api.moonshot.ai/v1"
+base_url = "https://api.moonshot.ai/v1"   # the .ai endpoint instead of .cn
 ```
 
 ## Server: `[server]`
@@ -76,13 +147,14 @@ save_screenshots = false   # dump every raw phone-own screenshot
 ```
 
 `port` and `host` are also exposed as `physiclaw server --port` / `--host`, and the three
-`save_*` flags as `--save-tool-calls` and friends — the flag overrides the file for that run.
-The `save_*` options are debugging aids; leave them off in normal use.
+`save_*` keys as `--save-tool-calls` / `--save-snapshots` / `--save-screenshots` — a flag
+overrides the file for that run. The `save_*` options write their dumps under the data dir and
+are debugging aids; leave them off in normal use.
 
-:::note[`host = "0.0.0.0"` exposes the server on your LAN]
-That's intentional — the phone bridge needs to reach the server over the network. `doctor`
-flags it so you know. Bind to `127.0.0.1` if you only ever drive PhysiClaw from the same
-machine.
+:::note[`host = "0.0.0.0"` exposes the server on your LAN — on purpose]
+The phone bridge connects over the network, so the server binds LAN-reachable by default.
+`doctor` surfaces this as info, not an error. Bind to `127.0.0.1` only if you drive PhysiClaw
+entirely from the same machine — the phone bridge then can't reach it.
 :::
 
 ## Camera: `[camera]`
@@ -94,42 +166,43 @@ height = 1080
 fourcc = "MJPG"
 ```
 
-The resolution and pixel format PhysiClaw requests from the camera. `MJPG` matters on Windows:
-the default uncompressed mode snaps to 640×480 over USB, and switching to MJPG-compressed is
-what lets a single USB cable carry 1080p. Drivers round to their nearest supported mode, so the
-actual size is whatever the camera reports on the first frame.
+The resolution and pixel format PhysiClaw **requests** from the USB webcam. `MJPG` matters on
+Windows: the default uncompressed mode snaps to 640×480 over USB, and switching to
+MJPG-compressed is what lets a single USB cable carry 1080p. Drivers round to their nearest
+supported mode, so the actual size is whatever the camera reports on its first frame.
 
-## Agent knobs
+## Agent pacing and budget knobs
 
-These tune the built-in agent. The defaults are tuned for real-world use — touch them only if
-you know why.
+These tune the built-in agent's loop. The defaults are set for real-world use — **touch them
+only if you know why.**
 
 ```toml
 [engine]
-max_turns = 300            # runaway safeguard for one session
+max_turns = 300            # runaway safeguard per session
 max_attempts = 3           # retries on a provider error
-wait_default_minutes = 15  # default WAIT-then-recheck interval
+wait_default_minutes = 15  # default WAIT-then-recheck interval (minutes)
 
 [memory]
-default_log_entries  = 20  # on-demand read_logs default size (max 200)
-bootstrap_log_entries = 10 # daily-log lines preloaded at every wake
+default_log_entries   = 20 # on-demand read_logs default size (entries, max 200)
+bootstrap_log_entries = 10 # daily-log lines preloaded at every wake (entries)
 
 [retention]
-trace_days = 7             # purge window for trace logs + cron job history
+trace_days = 7             # purge window for trace logs + cron job history (days)
 ```
 
-`[engine]` is the agent's runaway-safeguard, retry, and pacing budget for its tool-call loop.
+`[engine]` is the runaway-safeguard, retry, and pacing budget for the tool-call loop.
 `[memory]` controls how much of the daily log the agent preloads and reads on demand.
-`[retention]` sets how long on-disk trace logs and cron history are kept.
+`[retention]` sets how long on-disk trace logs and cron job history are kept. See
+[Autonomous tasks](/en/agent/autonomous-tasks/) for the cron side.
 
-### When the model is a `claude-code/…` ref
+### When the model is a `claude-code/…` ref: `[claude]`
 
-If `[agent] model` starts with `claude-code/`, PhysiClaw drives the external `claude` CLI as a
-subprocess, and `[claude]` applies to it:
+`[claude]` applies **only** when `[agent] model` is a `claude-code/…` ref (the external `claude`
+CLI subprocess). It is ignored by the in-process engine.
 
 ```toml
 [claude]
-timeout_seconds = 180
+timeout_seconds = 180      # seconds
 max_attempts = 3
 ```
 
@@ -146,9 +219,30 @@ time. Accepts `owner/repo` shorthand or a full git URL.
 ## Inspecting the effective config
 
 ```bash
-physiclaw config show          # merged config as TOML, keys masked
-physiclaw config get engine.max_turns
+physiclaw config show                  # merged config as TOML, keys masked
+physiclaw config get engine.max_turns  # read a single key
 ```
 
-`show` reflects everything after layering — defaults plus your overrides — so it's the source
-of truth for what the server will actually use.
+`config show` reflects everything **after** layering — the built-in defaults plus your
+overrides — so it is the source of truth for what the server will actually use. `config get`
+reads one resolved key.
+
+## What is *not* in this file
+
+Two kinds of settings live elsewhere and should not be hand-edited here:
+
+- **Hardware calibration** — the calibration bundle, `cam_index`, and the affine maps are
+  produced by the setup wizard and stored under `~/.physiclaw/calibration/`, not in
+  `config.toml`. Re-run the wizard to change them; see [Install](/en/set-up/install/).
+- **Solenoid and firmware timings** — the hit-and-hold gesture values and motion parameters
+  live in the FluidNC YAML on the control board, not here. See
+  [Gestures](/en/reference/gestures/).
+
+## Next
+
+<CardGrid>
+  <LinkCard title="CLI reference" description="Full syntax for physiclaw config, models, server, and every other command." href="/en/reference/cli/" />
+  <LinkCard title="Choosing a model" description="Provider/model refs, key setup, and which engine each ref selects." href="/en/agent/models/" />
+  <LinkCard title="Operating modes" description="Bring-your-own MCP client vs. the built-in agent runtime." href="/en/run/operating-modes/" />
+  <LinkCard title="Gestures" description="Where the solenoid hit-and-hold timings actually live." href="/en/reference/gestures/" />
+</CardGrid>

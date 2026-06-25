@@ -1,36 +1,50 @@
 ---
 title: Gestures
-description: How a tap, double-tap, long-press, or swipe becomes solenoid duty pulses and GRBL G-code.
+description: How a tap, double-tap, long-press, or swipe becomes solenoid duty pulses and GRBL G-code — the canonical timing profile.
 ---
 
+You already know the brain: an LLM calls an [MCP tool](/en/reference/mcp-tools/) like `tap` or
+`swipe` with a **bbox** in `0`–`1` screen fractions. This page is the body — what those tool
+calls actually do to the rig. It is the **source of truth for solenoid timing**: every
+constant below is taken straight from `solenoid.py` and `arm.py`, and where older pages
+disagree, this page wins (see the [stale-snippet warning](#a-note-on-stale-snippets)).
+
 Every gesture is the same two-machine dance: the **X/Y arm** drives the stylus to the bbox
-center, then a **solenoid** drops the tip onto the glass and lifts it. The Z axis is *not* a
-servo and there's no depth to calibrate — the tip sits at a fixed height, and the only thing
-that varies is *timing*. What makes a tap a tap and a long-press a hold is how long the coil
-stays energized.
+center — via the calibrated `pct_to_grbl` affine that turns a percent coordinate into GRBL
+millimetres — then a **solenoid** drops the tip onto the glass and lifts it. The Z axis is
+*not* a servo, and there's no depth to calibrate: the tip sits at a fixed mechanical height.
+The only thing that varies between gestures is **timing** (and strike-vs-hold current). What
+makes a tap a tap and a long-press a hold is how long the coil stays energized — not how hard
+or how deep it presses.
 
 ## The solenoid, in one paragraph
 
-The stylus tip is pushed down by a solenoid wired to the GRBL **spindle PWM** pin, so it's
-driven with spindle G-code: `M3 S<duty>` energizes the coil at a PWM duty on a `0`–`1000`
-scale, and `M5` releases it. A return spring lifts the tip when the coil cuts. A solenoid
-burns its coil out if held at full current, so PhysiClaw uses a **hit-and-keep** profile:
-strike hard to pull the iron core in, then drop to a lower hold current to keep it seated.
+The stylus tip is pushed down by a **12V 0.8A push-pull solenoid** wired to the GRBL/FluidNC
+**spindle PWM** pin (`gpio.32`), so it's driven with spindle G-code: `M3 S<duty>` energizes
+the coil at a PWM duty on a `0`–`1000` scale, and `M5` releases it. A return spring lifts the
+tip when the coil cuts. A solenoid burns its coil out if held at full current, so PhysiClaw
+uses a **hit-and-hold** profile: strike hard to pull the iron core in, then drop to a lower
+hold current to keep it seated.
+
+## Canonical timing
 
 | Constant | Value | What it is |
 | --- | --- | --- |
-| `HIT_S` | `1000` | strike duty — pulls the core in (brief only) |
-| `HOLD_S` | `750` | hold duty — safe to *sustain* (long-press, swipe slide) |
+| `HIT_S` | `1000` | strike duty — pulls the core in (brief pull-in only) |
+| `HOLD_S` | `750` | hold duty — the only level safe to *sustain* (long-press, swipe slide) |
 | `SETTLE_MS` | `80ms` | dwell after the strike before dropping to the hold level |
 | `RELEASE_MS` | `200ms` | spring-rebound dwell after `M5`, before any XY move |
 | `DOUBLE_TAP_GAP_MS` | `100ms` | brief lift between the two strikes of a double-tap |
+| `TAP_DURATION` | `0.08s` | how long a tap stays on the glass |
+| `LONG_PRESS_DURATION` | `1.2s` | how long a long-press stays seated |
 
 :::caution[Why `HOLD_S` is below `HIT_S`]
 The strike duty (`S1000`) is for the ~80ms pull-in only; sustaining it would cook the coil.
 `HOLD_S` (`S750`) is the only level safe to hold continuously — and it's deliberately *high*:
 at a cooler `S500` the tip eased off at the strike→hold transition and the panel read a
-long-press as a single tap. The driver refuses to start if `HOLD_S` isn't strictly below
-`HIT_S`.
+long-press as a single tap. `S500` is fine for a *moving* swipe (the slide re-establishes
+contact) but not for a still hold. The driver **refuses to construct** if `HOLD_S` isn't
+strictly below `HIT_S` — its `__init__` raises `ValueError`.
 :::
 
 After every `M5`, PhysiClaw dwells `RELEASE_MS` so the spring can lift the tip clear before
@@ -42,7 +56,7 @@ A momentary press: strike at `HIT_S`, hold for the **tap duration (80ms)**, rele
 is short enough that the reduced hold current isn't needed — `S1000` for 80ms gives a crisp
 contact without cooking the coil.
 
-```text title="G-code"
+```text title="Tap — G-code"
 G0 X.. Y..        ; arm moves to the bbox center
 M3 S1000          ; strike (stylus down)
 G4 P0.08          ; hold 80 ms
@@ -52,12 +66,13 @@ G4 P0.2           ; spring-rebound dwell (tip clears the glass)
 
 ## Double-tap
 
-Two strikes separated only by a brief contact-breaking lift — **not** the full spring-clear
-dwell. The whole pair runs as one gesture so down-to-down stays well under the iOS ~300ms
-double-tap window; chaining two independent taps (each with its 200ms release) pushed it to
-~280ms, and timing jitter then split the gesture into two single taps.
+Two strikes separated only by a brief contact-breaking lift (`DOUBLE_TAP_GAP_MS = 100ms`) —
+**not** the full 200ms spring-clear dwell. The whole pair runs as **one gesture** (a single
+energized window) so down-to-down stays well under the iOS ~300ms double-tap window. Chaining
+two independent taps (each with its own 200ms release) pushed it to ~280ms, and timing jitter
+then split the gesture into two single taps.
 
-```text title="G-code"
+```text title="Double-tap — G-code"
 M3 S1000          ; strike 1
 G4 P0.08          ; hold 80 ms
 M5                ; lift briefly…
@@ -70,11 +85,11 @@ G4 P0.2           ; spring-rebound dwell
 
 ## Long-press
 
-Here the hit-and-keep profile earns its name: strike, settle, drop to the hold current, and
-keep the tip seated for the full **long-press duration (1.2s)** before lifting. iOS/Android
-register a long-press at ~500ms; 1.2s leaves comfortable margin.
+Here the hit-and-hold profile earns its name: strike at `S1000`, settle 80ms, drop to the
+`S750` hold current, and keep the tip seated for the full **long-press duration (1.2s)** before
+lifting. iOS/Android register a long-press at ~500ms; 1.2s leaves comfortable margin.
 
-```text title="G-code"
+```text title="Long-press — G-code"
 G0 X.. Y..        ; arm moves to the bbox center
 M3 S1000          ; strike
 G4 P0.08          ; settle 80 ms
@@ -86,10 +101,23 @@ G4 P0.2           ; spring-rebound dwell
 
 ## Swipe
 
-A swipe presses, then *moves under load*. The tip is held down at `HOLD_S` for the whole slide
-while the arm runs a controlled `G1` move (not a rapid `G0`) from the origin to the endpoint,
-then lifts. Stroke length comes from the `size` argument; the `speed` argument sets the `G1`
-feed rate:
+A swipe presses, then *moves under load*. The tip is held down at `HOLD_S` (`S750`) for the
+whole slide while the arm runs a controlled `G1` **linear** move (not a rapid `G0`) from the
+start to the endpoint, then lifts.
+
+The `direction` is the **stylus** motion, not the page motion — a swipe *up* scrolls the page
+*down*. Stroke length comes from the `size` argument (`_SWIPE_DISTANCES`), which maps to a
+fraction of the screen; the low-level arm default (`SWIPE_DISTANCE`) is 15mm.
+
+| `size` | Screen fraction | Use |
+| --- | --- | --- |
+| `s` | `0.10` | small nudge |
+| `m` | `0.30` | most scrolls |
+| `l` | `0.50` | long scroll |
+| `xl` | `0.75` | page-sized scroll |
+| `xxl` | `0.90` | full-screen (Control / Notification Center) |
+
+The `speed` argument sets the `G1` feed rate (`SWIPE_SPEEDS`):
 
 | `speed` | Feed | Feel |
 | --- | --- | --- |
@@ -97,7 +125,7 @@ feed rate:
 | `medium` | `F6000` | normal swipe (~100 mm/s) |
 | `fast` | `F10000` | fling, page switch |
 
-```text title="G-code"
+```text title="Swipe — G-code"
 G0 X.. Y..        ; arm moves to the start
 M3 S1000          ; strike
 G4 P0.08          ; settle 80 ms
@@ -109,8 +137,8 @@ G4 P0.2           ; spring-rebound dwell
 
 :::note[Why the hold current, not the strike, drives the slide]
 A stationary hold needs `S750` to stay registered, but a *moving* tip re-establishes contact
-as it slides — `S500` is fine for a swipe yet not for a still hold. PhysiClaw uses the one
-safe-to-sustain level (`S750`) for both so there's a single hold path to reason about.
+as it slides — `S500` would be fine for a swipe yet not for a still hold. PhysiClaw uses the
+one safe-to-sustain level (`S750`) for both, so there's a single hold path to reason about.
 :::
 
 ## Summary
@@ -123,7 +151,38 @@ safe-to-sustain level (`S750`) for both so there's a single hold path to reason 
 | Swipe | `S1000` → `S750` | for the slide | `G1` at `F3000/6000/10000` | `M5` + 200ms dwell |
 
 :::tip[Safety nets]
-Every gesture de-energizes the coil before returning — even on an exception or Ctrl-C — so a
-fault mid-tap can never leave the coil hot. As a hardware backstop, the FluidNC firmware
-(`off_on_alarm: true`) drops the spindle PWM whenever the board enters an alarm state.
+Every gesture de-energizes the coil before returning — even on an exception or Ctrl-C
+(`try/finally` plus a `_force_off` / `_energized` context manager) — so a fault mid-tap can
+never leave the coil hot. As a hardware backstop, the FluidNC firmware (`off_on_alarm: true`)
+drops the spindle PWM whenever the board enters an alarm state.
 :::
+
+## Tuning prerequisite
+
+For any of this to work, the board must be in **spindle mode** (`$32=0`). In laser mode the
+firmware emits spindle PWM only *while moving*, so a stationary `M3` strike produces nothing —
+the tap never lands. A buzzing coil at hold means the PWM is audible: fit a 470µF cap across
+the coil or raise the PWM to 25kHz. The FluidNC config owns `$32`/`$30` from YAML and rejects
+live `$`-writes (`error:162`), so the driver sends them with `optional=True` — a bare GRBL
+board (which *does* accept the writes) still works. Full procedure on the
+[tuning page](/en/hardware/tuning/).
+
+## A note on stale snippets
+
+This page supersedes the timing values in older docs. In particular, do **not** trust:
+
+- the old `hardware/firmware` snippet `M3 S1000 / G4 P0.05 (50ms) / M3 S750` — the settle is
+  **`SETTLE_MS = 80ms`**, not 50ms.
+- the YAML comment "S300, tune from S150 up" — the hold is **`HOLD_S = S750`**. Those low
+  values let the tip ease off and read a long-press as a single tap.
+
+When in doubt, the constants here (and in `solenoid.py` / `arm.py`) are authoritative.
+
+## Next
+
+<CardGrid>
+  <LinkCard title="MCP tools" description="The 12 tools an agent calls — tap, swipe, peek, and the rest." href="/en/reference/mcp-tools/" />
+  <LinkCard title="Tuning the rig" description="The $32=0 spindle mode and anti-buzz fix these gestures depend on." href="/en/hardware/tuning/" />
+  <LinkCard title="Firmware" description="Flash FluidNC and wire the solenoid to the spindle pin." href="/en/hardware/firmware/" />
+  <LinkCard title="Architecture" description="How a bbox becomes arm motion across the whole stack." href="/en/concepts/architecture/" />
+</CardGrid>

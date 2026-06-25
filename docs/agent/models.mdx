@@ -4,56 +4,92 @@ description: The LLM providers PhysiClaw's built-in agent runs on, and how to se
 ---
 
 The built-in agent isn't bound to one vendor — **you choose which model drives it**, and
-switching is one command.
+switching is one command. If you came from [the overview](/en/agent/overview/), you already
+know the agent **won't wake until a model is set**. This page is the how: the ref format,
+which providers are wired up, why some are excluded, the two engines, and the exact
+commands.
 
-A model is named by a `provider/model` **ref**: the part before the slash picks the
-provider (and which engine runs it); the part after is the model id, passed to that
-provider's API verbatim. For example `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`, or
-`qwen/qwen3.6-plus`. That single ref — stored as `[agent] model` in
-`~/.physiclaw/config.toml`, or the `PHYSICLAW_MODEL` env var — selects the whole stack.
+## The ref
+
+A model is named by a `provider/model` **ref**. The part before the slash picks the
+**provider** (and which engine runs it); the part after is the **model id**, passed to that
+vendor's API verbatim — so a model works the day it ships, no PhysiClaw update needed. For
+example:
+
+```text
+anthropic/claude-sonnet-4-6
+openai/gpt-5
+qwen/qwen3-max
+```
+
+That single ref selects the whole stack. It's stored as `[agent] model` in
+`~/.physiclaw/config.toml`, or set with the `PHYSICLAW_MODEL` environment variable. The env
+var wins if both are set. (See [Configuration](/en/reference/configuration/) for the full
+precedence rules.)
+
+:::note[No default model]
+There is no built-in default. The built-in agent runtime stays asleep until a ref is set —
+**both** drive modes fail loudly until you `physiclaw models key <provider>` then
+`physiclaw models use <provider/model>` (or export `PHYSICLAW_MODEL`). A plain
+`physiclaw server` with no model still runs fine for hardware setup and manual MCP tool
+calls; only the agent stays down.
+:::
 
 ## Supported providers
 
-PhysiClaw's own in-process engine talks to five vendors over their chat APIs, and a sixth
-ref shells out to Anthropic's `claude` CLI:
+PhysiClaw's own in-process engine talks to five vendors over their chat APIs, plus a stub
+that's listed but refuses to run — six provider ids in the registry — plus a seventh ref
+that shells out to Anthropic's `claude` CLI:
 
 | Provider id | Vendor / models | API key |
 | --- | --- | --- |
-| `anthropic` | Claude, via the official Anthropic SDK | `ANTHROPIC_API_KEY` |
-| `openai` | GPT / reasoning models (`gpt-5`, `o4-mini`) | `OPENAI_API_KEY` |
+| `anthropic` | Claude, via the direct Anthropic API (`/v1/messages`) | `ANTHROPIC_API_KEY` |
+| `openai` | GPT / reasoning models (e.g. `gpt-5`, `o4-mini`) | `OPENAI_API_KEY` |
 | `google` | Gemini, via Google's OpenAI-compatible endpoint | `GOOGLE_API_KEY` |
 | `moonshot` | Kimi (K2) | `MOONSHOT_API_KEY` |
 | `qwen` | Qwen, via Alibaba DashScope | `QWEN_API_KEY` / `DASHSCOPE_API_KEY` |
-| `claude-code` | the `claude` CLI as a subprocess (shares anthropic's catalog + key) | `ANTHROPIC_API_KEY` |
+| `deepseek` | listed but a deliberate stub — see below | `DEEPSEEK_API_KEY` |
+| `claude-code` | the `claude` CLI run as a subprocess (reuses `anthropic`'s catalog + key) | `ANTHROPIC_API_KEY` |
 
-Every key can come from an environment variable (above) or from
-`[provider] <id>_api_key` in the config file; the env var wins if both are set.
+Every key resolves from an environment variable — by default `<PROVIDER>_API_KEY` in
+upper case — **or** from `[provider] <id>_api_key` in `config.toml`. The env var wins if
+both are set. Note that `anthropic` and `claude-code` both read `ANTHROPIC_API_KEY`.
 
-:::note[Why no DeepSeek]
-`deepseek` appears in the provider list but is a deliberate stub — its chat endpoint is
-text-only, and PhysiClaw needs **vision on every `peek`** to read the screen. Selecting it
-fails loudly at startup rather than silently driving blind. A couple of Gemini variants are
-left out for a related reason: PhysiClaw requires a reasoning model, and any Gemini that
-defaults its thinking budget off is excluded until that's wired.
+:::caution[Why DeepSeek is a stub]
+`deepseek` is in the registry but raises a clear error at startup instead of silently
+driving blind. Its chat endpoint is **text-only**, and PhysiClaw needs **vision on every
+`peek`** to read the screen. The general rule: PhysiClaw requires a model that can both
+**see** and **reason**, and a model that can't see fails loudly rather than guessing. (For
+the same reasoning requirement, Gemini variants that default their thinking budget off are
+excluded until that's wired — a softer, secondary case.)
 :::
 
 ## Two engines, one ref
 
-The provider id also decides *how* the model runs:
+The provider id also decides *how* the model runs. You don't manage engines directly —
+picking the ref picks the engine:
 
-- **`claude-code/...`** runs Anthropic's `claude` CLI as a subprocess. Its model ids and
-  API key are Anthropic's — the CLI talks to the same API — so `claude-code` reuses the
-  `anthropic` catalog and key.
-- **Everything else** runs inside PhysiClaw's own in-process engine (the native tool-call
-  loop), pointed at that vendor's API.
+- **`anthropic/...`** runs Claude through the **direct Anthropic API** (`/v1/messages`),
+  inside PhysiClaw's own in-process engine — the native tool-call loop.
+- **`claude-code/...`** runs Anthropic's **`claude` CLI as a subprocess**. Its model ids
+  and API key are Anthropic's — the CLI talks to the same API — so `claude-code` reuses the
+  `anthropic` catalog and `ANTHROPIC_API_KEY`. It is *not* in the in-process registry.
+- **Everything else** (`openai`, `google`, `moonshot`, `qwen`) runs inside the in-process
+  engine, pointed at that vendor's API.
 
-You don't manage engines directly; picking the ref picks the engine.
+The single confusing point on this page: `anthropic/...` is the direct API via the
+in-process engine; `claude-code/...` is the separate `claude` CLI subprocess. Same vendor,
+two different ways to run it.
+
+For what the in-process loop actually does turn by turn, see
+[Inside the engine](/en/agent/inside-the-engine/).
 
 ## Set and switch the model
 
 The `physiclaw models` command group is the front door. PhysiClaw ships **no curated model
 list** — it fetches each vendor's live `/v1/models` and caches it, so discovery is the
-source of truth.
+source of truth. `models use` validates your ref against that cache (a typo fails fast), and
+`models key` triggers a discovery automatically when you set the key.
 
 <Steps>
 
@@ -73,13 +109,14 @@ source of truth.
    ```
 
 3. **Pick the active model** with an exact `provider/model` ref. It's validated against the
-   discovery cache, so a typo fails fast.
+   discovery cache, so a typo fails fast. (`set` is an alias for `use`.)
 
    ```bash
    physiclaw models use anthropic/claude-sonnet-4-6
    ```
 
-4. **Restart the server** to apply — the running agent reads `[agent] model` at startup.
+4. **Restart the server** to apply — the running agent reads `[agent] model` at startup, and
+   config writes print a *Restart `physiclaw server` to apply* reminder.
 
    ```bash
    physiclaw server
@@ -88,12 +125,11 @@ source of truth.
 </Steps>
 
 The bare `physiclaw models` prints the current state — the active ref, where it came from
-(env var or config file), and whether that provider's key is set:
+(env var or config file), and whether that provider's key is set (masked):
 
 ```text
 Active model
 ✓ anthropic/claude-sonnet-4-6  (from config.toml [agent] model)
-  anthropic/claude-sonnet-4-6
   anthropic api key: ********  [ANTHROPIC_API_KEY env]
 ```
 
@@ -102,9 +138,9 @@ Active model
 | Command | Does |
 | --- | --- |
 | `physiclaw models` | show the active ref, its source, and the active provider's key status |
-| `physiclaw models list [provider]` | list discovered models, per provider |
+| `physiclaw models list [provider]` | list discovered models (no arg lists every provider) |
 | `physiclaw models use <provider/model>` | switch the active model (alias: `set`) |
-| `physiclaw models key <provider> [value]` | set a provider's API key (prompts if value omitted) |
+| `physiclaw models key <provider> [value]` | set a provider's API key (prompts if value omitted; auto-discovers) |
 | `physiclaw models keys` | show every provider's key status, masked, with source |
 | `physiclaw models discover <provider>` | re-fetch a vendor's live model list |
 
@@ -113,3 +149,6 @@ Active model
 when a vendor ships a new model and you want it to appear in `models list` before you can
 `models use` it.
 :::
+
+Haven't installed yet? Start at [Install](/en/set-up/install/). The full command surface
+lives in the [CLI reference](/en/reference/cli/).

@@ -5,6 +5,10 @@ description: The native tool-call loop that drives the built-in agent — how a 
 
 The built-in agent runs on a small, strict loop: the model picks tool calls, the engine runs them, feeds the results back, and asks again — over and over until the session closes itself. Everything else on this page is a rule that makes that loop survive a *long* run on a *real* phone. It's the most internal page in these docs; you don't need any of it to use PhysiClaw, but if you're the kind of builder who wants to know why the agent behaves the way it does, here it is.
 
+:::note[Scope: the in-process engine only]
+This page describes the **in-process built-in engine** — the loop you get when the `[agent] model` ref is any plain `provider/model` (`qwen`, `moonshot`, `openai`, `anthropic`, `google`, `deepseek`). A ref of `claude-code/<model>` is different: it shells out to Anthropic's `claude` CLI as a subprocess and delegates its loop to *that* CLI, so none of the rules below govern it. See [Models](/en/agent/models/) for the two paths.
+:::
+
 ## The loop
 
 One session is one wake. The engine builds a system prompt and an opening message (the trigger that woke it), then spins this loop:
@@ -23,7 +27,9 @@ One session is one wake. The engine builds a system prompt and an opening messag
 
 There is no hidden orchestration script. The model decides what to do; the engine's job is to run those decisions safely and hand back honest results. A tool that fails comes back as an error result the model can read and react to — never a crash. The transcript is always kept legal for the provider's API: every tool call gets exactly one matching result, in the very next message.
 
-This is a **native** tool-call loop — the structure rides on the provider's real `tools=[…]` API and the model's real `tool_calls`, not on the model hand-writing JSON into prose for the engine to parse. That distinction is the spine of the whole design.
+This is a **native** tool-call loop — the structure rides on the provider's real `tools=[…]` API and the model's real `tool_calls`, not on the model hand-writing JSON into prose for the engine to parse. That distinction is the spine of the whole design. If you know OpenClaw, this is the familiar half: *a native tool-call loop, normalized at the provider boundary*, exactly OpenClaw's playbook — just pointed at a physical phone instead of a screen it lives on.
+
+"Normalized at the provider boundary" is doing real work here. The six in-process vendors each return a slightly different reply envelope; the engine maps every one of them to a single internal shape the moment it comes in, so the loop logic above never has to know which provider it's talking to. It's provider-agnostic by the time it sees the model's choices.
 
 :::note[The "7 principles," in one breath]
 The loop follows seven internal rules that all serve one goal — keep the conversation with the model *honest and legal*: use the provider's native tool API; normalize every provider's reply to one shape; preserve and act on the real finish reason; validate arguments before running anything; mark failures as errors instead of hiding them; pair every tool call with exactly one result; and let the loop — not a script — be the driver. You'll see each of these show up below as a concrete behavior.
@@ -67,6 +73,8 @@ Two separate constraints are bundled in that rule, and each earns its keep:
 </CardGrid>
 
 So a healthy turn looks like `[note("opening the cart to check the total"), peek()]` or `[note("tapping checkout"), tap([0.41,0.88,0.59,0.94])]`. The note narrates; the single action does the one thing.
+
+The "one other tool" doesn't have to touch hardware. The agent has two kinds of tools: the [twelve MCP tools](/en/reference/mcp-tools/) (`peek`, `tap`, `swipe`, …) that get dispatched out to the rig, and a set of **local engine tools** — `note`, plan and scratchpad edits, memory and skill loads, `create_job`, `end_session` — that only do bookkeeping and never move the stylus. The note is always a local tool; the "other" slot can be a phone gesture *or* a local tool. That's why turns like `[note("scheduling a re-check in 30 min"), create_job(…)]` and `[note("verified, closing out"), end_session("DONE", …)]` are perfectly legal — the agent is taking one bookkeeping action that turn instead of one physical one.
 
 :::tip[Where the plan and scratchpad live]
 Two more pieces of working memory ride *alongside* the loop without spending turn slots. The **plan** (an ordered checklist with exactly one step `in_progress`) and the **scratchpad** (free-form notes) are pinned to the tail of each request and re-rendered every turn — so the model always sees them fresh — but they never become permanent transcript. The scratchpad even piggybacks on `note`, which every turn calls anyway, so updating it costs nothing extra.

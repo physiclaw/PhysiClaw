@@ -1,26 +1,125 @@
 ---
-title: Why PhysiClaw Needs a Body
-description: The data wall is real, and no software trick gets past it. So we go around — through the one door big tech cannot lock.
+title: Why a body?
+description: You just built a desktop robot to tap a phone. Here is why that was the right call — and why no amount of software could have done it instead.
 ---
 
-Why would a personal assistant need a robot at all? If it already lives on your phone, can't it just talk to the apps directly?
+You just spent days on this. You cut and squared extrusion, threaded a stylus onto a
+solenoid core, grounded the tip, flashed firmware, and fit a calibration. It is slow. It was
+finicky. And somewhere along the way you may have wondered: *I built an entire machine just to
+tap a phone — was that really necessary?*
 
-It can't. And the reason it can't is the whole problem.
+It was. This page is the argument for the body you just assembled — not how to build it, but
+why it has to exist at all.
 
-Every service you depend on — Amazon, Taobao, Uber Eats, Meituan — sits behind a wall. The data inside is their most valuable asset, and the one they guard most fiercely. They have no reason to open a door for your assistant, and every reason to keep it shut. An open API that lets your assistant roam freely across their service is the last thing they will ever ship.
+## Why software can't just do this
 
-So no clever software trick will save you. Any agent that tries to reach in through the front door hits the same wall as everyone else. For the foreseeable future, no one is going to hand you free, open access to the services that run your daily life.
+Coming from OpenClaw, you already gave an agent hands *inside* software: it drives apps through
+a screen it lives on and is already logged into. So the natural instinct is that this whole
+problem is a software problem. Reach into the apps, call their services, get the data.
+
+You can't. And the reason you can't is the whole point.
+
+Every service worth automating — Amazon, Taobao, Uber Eats, Meituan, your bank, your delivery
+apps — sits behind a wall. The data inside is their most valuable asset, and the one they guard
+most fiercely. They have no reason to open a door for your agent and every reason to keep it
+shut. An open API that lets an outside agent roam freely across their service is the last thing
+they will ever ship — and many of the apps you most want have no public API at all.
+
+So no clever software trick gets past it. Any agent reaching in through the front door hits the
+same wall as everyone else.
+
+[Start → Introduction](/en/start/introduction/) framed this as three walls, and every
+software-only route runs into one of them:
+
+- **APIs and OAuth** need a per-app integration and the company's consent — and the
+  highest-value apps grant neither.
+- **Accessibility and automation hooks** are detectable, blockable, and break on the next app
+  redesign.
+- **Jailbreaking or rooting** is fragile, unsafe, and a moving target with every OS update.
+
+For the foreseeable future, no one is going to hand your agent free, open access to the services
+that run your daily life.
+
+## The one door they can't lock
 
 If you can't go through the wall, you go around it — through the one door they cannot lock.
 
-That door is the screen. The same interface a human taps with a finger. They can shut their APIs, but they cannot shut the app to their own customers. The buttons, the menus, the screens you touch every day have to stay open — close those, and they have no business left.
+That door is the screen. The same interface a human taps with a finger. They can shut their
+APIs, but they cannot shut the app to their own customers. The buttons, the menus, the screens
+you touch every day have to stay open — close those, and they have no business left.
 
-So PhysiClaw uses that door. It works your phone the way you do. A camera for eyes. A stylus for a finger. The screen itself as its API. Whatever you can do by hand, it does by hand — through the exact same interface, in the exact same way.
+So PhysiClaw uses that door. It works the phone the way you do. A camera for eyes. A
+solenoid-driven stylus for a finger. The screen itself as its API. Whatever a person can do by
+hand, it does by hand — through the exact same interface, in the exact same way.
 
-This comes at a cost, and we won't pretend otherwise. A task that takes software a few milliseconds takes PhysiClaw minutes — it has to look, move, tap, and look again. It is slower. Much slower.
+A stylus tip touching glass is none of the three walls. There is nothing to integrate, nothing
+to detect, nothing to jailbreak. To the phone, the tip is indistinguishable from a fingertip —
+which is exactly why earth-grounding it mattered so much during assembly. Because it looks like
+a finger, **any** app works: iOS or Android, with zero per-app setup and nothing installed on
+the phone.
 
-But it buys something no API ever will: access that no one can revoke. PhysiClaw goes slow, and in return it goes anywhere. It trades speed for freedom.
+## This is OpenClaw, pushed onto the glass
 
-That is the deal at the heart of PhysiClaw. The wall is built of software — permissions, tokens, terms of service. A hand is not. You cannot block a hand from touching a screen.
+If you've used OpenClaw, you already believe the core idea: let the agent use the human
+interface instead of a special back door. PhysiClaw is that same idea, moved one step further
+out.
 
-The data wall can be broken. Not with code — with hardware.
+- **OpenClaw** gave an agent hands inside software — a screen it already lives on and is logged
+  into.
+- **PhysiClaw** gives it hands in the *physical* world — a real stylus on a real phone it was
+  never logged into, never installed anything on, and never had an account for.
+
+The body is what frees the agent from needing to live inside the target device at all. It no
+longer has to *be* on the phone to use the phone.
+
+## The honest trade
+
+We won't pretend this is free.
+
+A task that takes software a few milliseconds takes PhysiClaw minutes. Every single action is a
+full look → decide → move → check loop (see
+[Start → How it works](/en/start/how-it-works/)): look at the screen, drive the stylus, tap,
+then look again to confirm it worked. There is no shortcut — the slowness is structural.
+
+And the build was real. Not an afternoon and not a kit that arrives assembled. It was a
+multi-day, hand-built CoreXY project: real money (~$145 in parts), real hours of cutting,
+threading, and wiring, and real tuning of belts, rails, and the solenoid. You felt all of it.
+
+That is the price. Here is what it buys.
+
+## What the trade buys
+
+Access no one can revoke.
+
+The wall is built entirely of software — permissions, tokens, terms of service. All of it can
+be changed, throttled, or shut off at any moment. A hand cannot. **You cannot block a hand from
+touching a screen.**
+
+So PhysiClaw goes slow, and in return it goes anywhere. It trades speed for durability and
+reach. The machine you just built is the physical embodiment of that trade — that is what the
+hours, the grounded stylus, and the calibrated arm were *for*.
+
+## Why your rig is shaped the way it is
+
+Look at what you built, and every piece is on the human side of the wall on purpose:
+
+- The **overhead camera** is the eye — it reads the screen with no software access of any kind.
+- The **solenoid + capacitive stylus** is the finger the phone cannot tell apart from a human's
+  (earth-grounded, so the touch actually registers).
+- The **CoreXY arm + calibrated `pct_to_grbl` affine** is what turns "tap this box" into a real
+  touch landing in the right millimetre on real glass.
+
+Nothing here reaches through the wall. Every part exists to keep the whole operation on the
+outside, where the door stays open.
+
+## Next: bring the body to life
+
+The body is done. Everything from here is the *brain* half — the part you already know from
+OpenClaw. You'll install the software, prepare the phone, calibrate the rig to your build, and
+then run your first task.
+
+<CardGrid>
+  <LinkCard title="Install the software" description="Put PhysiClaw on your machine and pull down the vision model." href="/en/set-up/install/" />
+  <LinkCard title="Calibrate the rig" description="Teach the arm and camera where your screen is, so taps land in millimetres." href="/en/set-up/calibrate/" />
+  <LinkCard title="Run your first task" description="Hand the agent a goal and watch the body do it — one verified loop at a time." href="/en/run/first-task/" />
+</CardGrid>

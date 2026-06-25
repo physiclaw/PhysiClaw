@@ -1,9 +1,9 @@
 ---
 title: System architecture
-description: Every piece, end to end — the brain, the MCP server, one camera and the stylus arm, and the phone-side bridge that closes the loop.
+description: Every piece, end to end — the brain, the MCP server, one overhead camera and the stylus arm, and the phone-side bridge that closes the loop.
 ---
 
-PhysiClaw is one Python server with hardware on one side and a brain on the other: the **brain** decides, the **MCP server** turns those decisions into camera frames and arm moves, and a small **phone-side bridge** lets the server reach into iOS for the few things a stylus can't do. Everything below is what sits between "tap that button" and a stylus actually touching glass.
+PhysiClaw is one Python server with hardware on one side and a brain on the other: the **brain** decides (it picks a bounding box and a gesture), the **MCP server** turns those decisions into camera frames and arm moves, and a small **phone-side bridge** lets the server reach into iOS for the few things a stylus can't do — a pixel-perfect screenshot and the system clipboard. Everything below is what sits between "tap that button" and a stylus actually touching glass.
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
@@ -19,10 +19,10 @@ PhysiClaw is one Python server with hardware on one side and a brain on the othe
         │ USB-UVC               │ USB-serial         │ HTTP over Wi-Fi (LAN)
         ▼                       ▼                    ▼
  ┌─────────────┐        ┌────────────────┐   ┌──────────────────────┐
- │ ONE overhead│        │ GRBL / FluidNC │   │  PHONE-SIDE BRIDGE   │
+ │ ONE overhead│        │ FluidNC / GRBL │   │  PHONE-SIDE BRIDGE   │
  │   camera    │        │  controller    │   │  • bridge web page   │
- └──────┬──────┘        │  X·Y gantry +  │   │    (Safari, /bridge) │
-        │ looks down    │  Z SOLENOID    │   │  • AssistiveTouch    │
+ └──────┬──────┘        │  CoreXY gantry │   │    (Safari, /bridge) │
+        │ looks down    │  + Z SOLENOID  │   │  • AssistiveTouch    │
         │               └───────┬────────┘   │  • 3 iOS Shortcuts   │
         │                       │ stylus tip  └──────────┬───────────┘
         │                       ▼                        │ runs on
@@ -32,42 +32,63 @@ PhysiClaw is one Python server with hardware on one side and a brain on the othe
                          └──────────────┘
 ```
 
-The rest of this page walks each box, then the wires between them.
+The rest of this page walks each box, then the wires between them, then one full action end to end.
+
+If you've used OpenClaw, the top half of that diagram is familiar territory — an LLM, MCP, a bring-your-own-model agent loop, self-hosting. The new half is the **body**: a hand-built CoreXY gantry, FluidNC/GRBL motion firmware, a solenoid standing in for a Z motor, an affine-calibrated coordinate hop, and a phone bridge that talks over your LAN. This page spends most of its detail budget there.
 
 ## The brain: two ways to drive it
 
-PhysiClaw exposes its hardware as a set of [MCP tools](/en/reference/mcp-tools/) — the
+PhysiClaw exposes its hardware as a set of [12 MCP tools](/en/reference/mcp-tools/) — the
 **Model Context Protocol**, the same standard Claude Desktop and other clients already speak.
 Anything that talks MCP can drive the arm. There are two supported brains, and they use the
 *identical* tool surface:
 
 <CardGrid>
-  <Card title="External MCP client" icon="external">
-    Point Claude Desktop (or any MCP client) at the server, give it a goal, and it calls
-    `peek` / `tap` / `swipe` directly. You bring your own model and your own chat loop.
+  <Card title="Bring your own MCP client" icon="external">
+    An external client (Claude Desktop, an OpenClaw setup, anything that speaks MCP) connects
+    directly to the server's `/mcp` endpoint and receives PhysiClaw's FastMCP instructions
+    (from `agent/context/PHYSICLAW.md`). It calls `peek` / `tap` / `swipe` itself. You bring your
+    own model and your own chat loop.
   </Card>
-  <Card title="Built-in agent" icon="rocket">
-    PhysiClaw ships its own brain under `agent/` — a native tool loop with memory, skills,
-    and cron/poll triggers, descended from OpenClaw. It calls the same 12 tools, just without
-    a desktop app in the loop.
+  <Card title="Built-in agent runtime" icon="rocket">
+    PhysiClaw ships its own brain under `agent/` — a native tool loop with memory, skills, and
+    cron/poll triggers, descended from OpenClaw. You select it by setting an `[agent] model` ref
+    of the shape `provider/model`. It calls the same 12 tools, just without a desktop app in the
+    loop.
   </Card>
 </CardGrid>
 
-Either way the brain's whole job is the same: read an annotated screen, pick **one bounding box**
-and **one gesture**, and let the server do the rest. It never sees motor coordinates or pixels.
+The built-in runtime has one nuance worth knowing up front. The `provider/model` ref decides
+*which engine runs the loop*:
+
+- `claude-code/<model>` shells out to Anthropic's `claude` CLI as a **subprocess** — the agent
+  runs inside the same CLI you may already use.
+- **Any other** provider id runs an **in-process** engine. Six providers are built in:
+  `qwen`, `moonshot`, `openai`, `anthropic`, `google`, and a `deepseek` stub. (Note that the
+  in-process `anthropic` provider hits the direct `/v1/messages` API and is *distinct* from the
+  `claude-code` CLI subprocess.)
+
+Neither mode wakes until you've set a model — there is no default. Until then a plain
+`physiclaw server` still serves hardware setup and manual MCP calls, but the agent stays asleep.
+The full model/gating story lives in [The built-in agent](/en/agent/overview/).
+
+Either way, the brain's whole job is the same: read an **annotated element listing**, pick **one
+bounding box** and **one gesture**, and let the server do the rest. It never sees motor
+coordinates and never reasons over raw pixels.
 
 :::note[Where the agent lives]
 The built-in agent is a separate package, not part of the server. The server (`core/`) is just
-hardware-as-tools; the agent (`agent/`) is one *client* of those tools. That split is what lets a
-plain MCP client substitute for the built-in brain with no code changes.
+hardware-as-tools; the agent (`agent/`) is **one client** of those tools among many. That split
+is exactly what lets a plain MCP client substitute for the built-in brain with no code changes.
 :::
 
 ## The server: `core/`
 
-A single Python process, structured as a few focused modules. The orchestrator
+A single Python process (a FastMCP server), structured as a few focused modules. The orchestrator
 (`core/orchestration/orchestrator.py`) is the spine — it owns the arm, the camera, the
-calibration, and one busy-lock so two tool calls can never move the arm at once. Every tool
-acquires that lock, does its work, and parks the stylus off-screen on the way out.
+calibration, and one **busy-lock** so two tool calls can never move the arm at once. Every gesture
+acquires that lock, does its work, refuses to overlap or cross the AssistiveTouch button, and
+auto-parks the stylus off-screen on the way out.
 
 <FileTree>
 - src/physiclaw/
@@ -76,99 +97,129 @@ acquires that lock, does its work, and parks the stylus off-screen on the way ou
     - orchestration/      the orchestrator: lifecycle, lock, gestures
     - vision/             OCR + ONNX icon detection → element listing
     - calibration/        the affine transforms learned during setup
-    - hardware/           arm, camera, GRBL/FluidNC, **solenoid**
+    - hardware/           arm, camera, FluidNC/GRBL, **solenoid**
     - bridge/             LAN bridge: phone page, screenshot upload, clipboard
   - agent/                the built-in brain (one MCP client among many)
 </FileTree>
 
-The pieces you'll meet most often:
+The submodules you'll meet most often:
 
 - **vision** — turns a camera frame (or a phone screenshot) into a tidy *element listing*:
-  every button, icon, and line of text as `id · kind · label · bbox · conf`. Covered in
-  [How it sees](/en/concepts/how-it-sees/).
-- **calibration** — holds the two affine maps that connect the three coordinate systems
-  (screen fractions, camera pixels, arm millimetres). Covered in
+  every button, icon, and line of text as `id · kind · label · bbox · conf`, with each bbox in
+  0–1 screen fractions. It runs **RapidOCR** for text and **OmniParser V2** (a YOLO11m model
+  exported to ONNX) for icons. Covered in [How it sees](/en/concepts/how-it-sees/).
+- **calibration** — holds the affine maps that connect the three coordinate systems (screen
+  fractions, camera pixels, arm millimetres) learned during setup. Covered in
   [Calibration math](/en/concepts/calibration-math/).
-- **hardware** — wraps the [GRBL/FluidNC](/en/hardware/firmware/) controller. GRBL is the
-  open-source G-code firmware that runs the X/Y gantry; FluidNC is the ESP32 variant
-  PhysiClaw flashes. Z isn't a motor — it's a **solenoid**, a fast electromagnet that snaps
-  the stylus tip down and lets it spring back up.
+- **hardware** — wraps the [FluidNC/GRBL](/en/hardware/firmware/) controller. GRBL is the
+  open-source G-code firmware that runs the gantry; FluidNC is the ESP32 build PhysiClaw flashes
+  onto the MKS DLC32 board. Z isn't a motor — it's a **solenoid** (more below).
 
 ## The sensors and actuators
 
 ```text
                  overhead camera (ONE)
-                        │  looks straight down, ~25 cm up
+                        │  looks straight down at the screen
                         ▼
                   ┌───────────┐
-   stylus tip ───►│   PHONE   │   X·Y gantry slides the tip across the glass;
+   stylus tip ───►│   PHONE   │   CoreXY gantry slides the tip across the glass;
    on a solenoid  │  screen   │   the solenoid drops it to register a touch
                   └───────────┘
 ```
 
-There is **one** camera, mounted overhead looking straight down at the screen — no second
-camera, no depth sensor. Reliability comes from *re-looking after every move*, not from more
-hardware. The arm is an X/Y gantry that positions the stylus over any point on the screen; the
-**solenoid** on the tip is the Z axis. A tap is a crisp down-and-up pulse
-(the firmware hits the coil hard, then holds at a lower duty so a long-press doesn't drop);
-a long-press just holds the tip down longer. To the phone, that tip is indistinguishable from a
-fingertip, so any app works with no per-app setup.
+**One camera.** A 4K / 8MP autofocus USB webcam, mounted overhead and looking straight down at
+the screen. There is no second camera and no depth sensor. Reliability comes from *re-looking
+after every move*, not from more hardware.
+
+**X / Y: a CoreXY gantry.** The motion system is a from-scratch **CoreXY** desktop gantry — not a
+ready-made pen plotter. Two NEMA 17 steppers and a GT2 belt drive the stylus to any point over
+the screen.
+
+**Z: a solenoid, not a motor.** The Z axis is a 12 V 0.8 A push-pull **solenoid** (an
+electromagnet, 10 mm stroke) — not a servo and not a plotter pen. The capacitive stylus tip
+threads directly onto the solenoid core. A tap is a *hit-and-hold* pulse: the firmware strikes the
+coil hard, then holds it at a lower duty so a long-press doesn't drop the tip, then lets the
+spring release it. Exact strike/hold values are tuning details — see
+[Gestures](/en/reference/gestures/) for the canonical timing.
+
+To the phone, that tip is indistinguishable from a fingertip, so **any app works with zero
+per-app setup**.
 
 ## The phone-side bridge
 
-A stylus can do almost everything a finger can — but not *quite* everything. It can't ask iOS
-for a pixel-perfect screenshot, and it can't type into the system clipboard. The **bridge**
-fills exactly those gaps, and nothing more. It has three parts, all set up once during
+A stylus can do almost everything a finger can — but not *quite* everything. It can't ask iOS for
+a pixel-perfect screenshot, and it can't type into the system clipboard. The **bridge** fills
+exactly those two gaps, and nothing more. It has three parts, all set up once during
 [Prepare the phone](/en/set-up/prepare-the-phone/):
 
 <Steps>
 
-1. **A bridge web page.** The phone opens `http://<server-ip>:8048/bridge` in Safari (you scan
-   a QR code to pair — both devices just have to be on the same Wi-Fi). The page polls the
-   server four times a second and renders whatever the server tells it to: calibration targets
+1. **A bridge web page.** The phone opens `http://<server-ip>:8048/bridge` in Safari (you scan a
+   QR code to pair — both devices just have to be on the same Wi-Fi). The page polls the server
+   about four times a second and renders whatever the server tells it to: calibration targets
    during setup, or queued clipboard text during a run.
 
 2. **AssistiveTouch.** iOS's floating accessibility button. The arm physically *taps the
-   AssistiveTouch button* to fire system actions a stylus otherwise couldn't reach — a single
-   tap takes a screenshot, a double-tap and long-press run Shortcuts.
+   AssistiveTouch button* to fire system actions a stylus otherwise couldn't reach — a single tap
+   takes a screenshot; a double-tap and a long-press run Shortcuts.
 
-3. **Three iOS Shortcuts.** Bound to those AssistiveTouch gestures:
-   *take a screenshot*, *upload the latest screenshot* to the server, and *fetch queued text*
-   into the clipboard.
+3. **Three iOS Shortcuts.** Bound to those AssistiveTouch gestures: **PhysiClaw Tap** takes a
+   screenshot, **PhysiClaw Screenshot** uploads the latest screenshot to the server, and
+   **PhysiClaw Clipboard** fetches queued text into the clipboard.
 
 </Steps>
 
-So when the brain calls `screenshot`, the server doesn't capture pixels itself — it drives the
-arm to tap AssistiveTouch, the iOS Shortcut grabs the phone's own screenshot and POSTs the
-bytes back over Wi-Fi, and the server runs vision on *those* pixels. The clipboard works the same
-way: the server queues text, the arm long-presses AssistiveTouch, and the Shortcut pulls the text
-in. The bridge is the only thing on the phone, and it only exists for screenshots, the clipboard,
-and showing calibration markers.
+So when the brain calls `screenshot`, the server doesn't capture pixels itself. It drives the arm
+to tap AssistiveTouch, the iOS Shortcut grabs the phone's *own* screenshot and POSTs the bytes to
+`/api/bridge/screenshot` over Wi-Fi, and the server runs vision on **those** pixels. The clipboard
+mirrors this: the server queues text, the arm long-presses AssistiveTouch, and the Shortcut pulls
+the text in via `/api/bridge/clipboard`.
 
-:::caution[The honest "nothing on the phone"]
-The stylus needs nothing installed, but the bridge does: AssistiveTouch on, three Shortcuts
-added, and the bridge page open during a session. It's a normal phone you've spent five minutes
-preparing — see [Prepare the phone](/en/set-up/prepare-the-phone/) for exactly what and why.
+:::caution[What the phone actually needs]
+The stylus needs nothing installed — but the bridge does: AssistiveTouch on, three Shortcuts
+added, and the bridge page open during a session. It's a normal phone you've spent about five
+minutes preparing — see [Prepare the phone](/en/set-up/prepare-the-phone/) for exactly what and
+why.
 :::
 
 ## The wires between them
 
 | Hop | Transport | Payload |
 | --- | --- | --- |
-| Brain ↔ server | MCP | tool calls + image / listing results |
+| Brain ↔ server | MCP | tool calls + image / element-listing results |
 | Server ↔ camera | USB (UVC) | JPEG frames |
-| Server ↔ controller | USB serial | G-code (GRBL dialect) |
+| Server ↔ controller | USB serial | G-code (GRBL dialect, 115200 baud) |
 | Server ↔ phone bridge | HTTP over Wi-Fi (LAN) | poll state, screenshot upload, clipboard text |
 
 Three of these are obvious cables; the fourth is the one the old "untouched phone" story missed.
-The phone never connects to the server by USB — it reaches it over your local network, which is
-why both have to share a Wi-Fi. With all four wired, one full action looks like:
+**The phone never connects to the server by USB** — it reaches the server over your local network.
+That's why both devices have to share a Wi-Fi, and why the server binds `0.0.0.0:8048` instead of
+localhost: the bridge has to be able to reach it from across the LAN.
+
+:::note[Starting the server]
+`physiclaw server` runs the FastMCP server over streamable-HTTP at `http://<host>:<port>/mcp`
+(default `0.0.0.0:8048`). It spawns the agent runtime subprocess only when an `[agent]` model is
+configured; with no model it still serves hardware setup and manual MCP calls, but the agent won't
+wake. Full CLI and gating detail is in [The built-in agent](/en/agent/overview/).
+:::
+
+## One action, end to end
+
+With all four wires in place, a single decision flows through every layer like this:
 
 ```text
-brain: peek          → server crops camera frame, runs OCR+icons, returns listing
-brain: tap [bbox]    → server maps bbox → arm mm, moves, fires solenoid, parks off-screen
-brain: peek          → server re-photographs, returns a fresh listing to compare
+brain: peek          → server uses the camera frame, runs OCR + icons,
+                       returns a 0–1 pct element listing
+brain: tap [bbox]    → orchestrator converts the bbox center (pct) → GRBL mm
+                       via the calibrated affine (pct_to_grbl), moves the
+                       gantry, fires the solenoid, parks off-screen
+brain: peek          → server re-photographs and returns a fresh listing
+                       to compare against
 ```
 
-That look → decide → move → check rhythm is the whole control loop — and because every step ends
-by looking, a surprise is just the next thing to react to.
+That **look → decide → move → check** rhythm is the whole control loop. Because every step ends by
+looking again, this is a *verified loop* — not blind teleoperation. A surprise on the screen is
+just the next thing the brain reacts to.
+
+For the bigger picture of why a body at all, start with
+[How it works](/en/start/how-it-works/).

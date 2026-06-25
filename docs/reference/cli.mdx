@@ -5,22 +5,36 @@ description: Every `physiclaw` command — doctor, server, status, setup, config
 
 The `physiclaw` CLI is the single entry point for the whole system: it checks your machine,
 runs the MCP server, walks you through one-time setup, and manages models, skills, and config.
-Run any command with `-h` / `--help` for its full options, and `physiclaw --version` to print
-the version. The top-level commands are `doctor`, `server`, `status`, and `uninstall`; the
-grouped sub-apps are `setup`, `config`, `models`, and `skills`.
+The entry point is `physiclaw = physiclaw.cli:app`. Run any command with `-h` / `--help` for
+its full options, and `physiclaw --version` to print the version:
+
+```bash
+physiclaw --version
+# physiclaw, version 0.0.20
+```
+
+The top-level commands are `doctor`, `server`, `status`, and `uninstall`. The grouped sub-apps
+are `setup`, `config`, `models`, and `skills`.
 
 ## `doctor`
 
-A **read-only** health check — it never changes anything.
+A **read-only** health check — it never changes anything. Reach for it first whenever something
+isn't working.
 
 ```bash
 physiclaw doctor
+physiclaw doctor --deep   # more thorough checks
 ```
 
 It's server-aware: if a PhysiClaw server is running, doctor trusts that server's live
 `/api/status` (the server already holds the serial port and camera, so re-probing would either
 report "busy" or break it). When no server is running, doctor actively probes the GRBL arm and
-enumerates cameras. Use it first whenever something isn't working.
+enumerates cameras. It also surfaces the `0.0.0.0:8048` LAN bind as informational output, so you
+can see the server is reachable on your network — expected, not a warning.
+
+| Option | Effect |
+| --- | --- |
+| `--deep` | run the more thorough set of checks |
 
 ## `server`
 
@@ -30,32 +44,50 @@ Run the MCP server — and, unless told not to, the built-in agent runtime along
 physiclaw server
 ```
 
-On start it prints the MCP endpoint (`http://localhost:8048/mcp`), the phone bridge URL, and a
-QR code link, then opens the browser hardware-setup wizard.
+The server is [FastMCP](https://gofastmcp.com) over streamable-HTTP. On start it prints the MCP
+endpoint, the phone bridge URL, and a QR-code link, then opens the browser hardware-setup
+wizard. The default bind is `host 0.0.0.0`, `port 8048`, so the endpoint is
+`http://<host>:8048/mcp` — deliberately LAN-reachable so the phone bridge can connect to it.
+
+By default the server also spawns the **agent runtime subprocess** next to the MCP server — the
+loop that lets the built-in agent wake on its own. It skips that subprocess if you pass
+`--no-runtime` or if no model is configured (see below).
 
 | Option | Default | Effect |
 | --- | --- | --- |
 | `--port` | `8048` | MCP server port |
-| `--host` | `0.0.0.0` | bind address |
+| `--host` | `0.0.0.0` | bind address (LAN-reachable for the phone bridge) |
 | `-v`, `--verbose` | off | detailed debug output |
-| `--no-runtime` | off | don't spawn the agent runtime loop (MCP server only) |
-| `--warm-start` | off | auto-connect hardware from the saved calibration bundle and skip `setup hardware`; falls through if the bundle is incomplete |
-| `--cam-index` | bundle value | camera index override for `--warm-start` |
+| `--no-runtime` | off | run the MCP server only — don't spawn the agent runtime loop |
+| `--warm-start` | off | auto-connect hardware from the saved calibration bundle and skip the wizard |
+| `--cam-index` | bundle value | camera index override, for `--warm-start` |
 | `--no-setup-hardware` | off | don't auto-open the browser setup wizard on start |
 | `--save-tool-calls` | off | dump every `peek` / `screenshot` output under the data dir |
-| `--save-snapshots` | off | dump every raw camera frame |
-| `--save-screenshots` | off | dump every raw phone-own screenshot |
+| `--save-snapshots` | off | dump every raw camera frame under the data dir |
+| `--save-screenshots` | off | dump every raw phone-own screenshot under the data dir |
 
-:::note[No model? Server still runs]
-If no model is configured, the runtime loop is skipped (the agent can't wake) but the MCP
-server still runs — useful for hardware setup and manual tool calls. Set a model with
-`physiclaw models`, then restart.
+The saved calibration bundle is resumed **only** with `--warm-start`; if the bundle is
+incomplete, `--warm-start` falls through and the wizard opens as usual.
+
+:::note[No model? Server still runs, but the agent stays asleep]
+With **no model configured**, the runtime loop is skipped — the agent can't wake — but the MCP
+server itself still runs. That's useful for hardware setup and for manual or external MCP tool
+calls. To wake the agent, set a model and restart the server:
+
+```bash
+physiclaw models key anthropic                   # paste the key at the hidden prompt
+physiclaw models use anthropic/claude-sonnet-4-6
+physiclaw server
+```
+
+(Or set `PHYSICLAW_MODEL` in the environment.) Both drive modes fail loudly until a model is
+set. See [Models](/en/agent/models/).
 :::
 
 ## `status`
 
-A quick at-a-glance snapshot — vision model, calibration state, and the jobs file. Unlike
-`doctor`, it does **not** probe hardware, so it's safe to pipe to `grep` / `jq`.
+A quick at-a-glance snapshot — vision-model presence, calibration state, and the jobs file.
+Unlike `doctor`, it does **not** probe hardware, so it's safe to pipe to `grep` / `jq`.
 
 ```bash
 physiclaw status
@@ -63,7 +95,7 @@ physiclaw status
 
 ## `setup`
 
-One-time configuration, via these subcommands.
+One-time configuration, via three subcommands.
 
 ### `setup local-vision-model`
 
@@ -73,27 +105,62 @@ Download and convert the OmniParser icon-detection model that powers `peek` and 
 physiclaw setup local-vision-model
 ```
 
-The conversion's heavy dependencies (~500 MB of `ultralytics` + `onnx`) run in a throwaway
-`uv` environment so they never enter the PhysiClaw install — `uv` must be on your PATH. Pass
-`--force` to re-download even if the model already exists.
+It downloads `microsoft/OmniParser-v2.0` (`icon_detect/model.pt`) and converts it to ONNX
+(`imgsz=1280`), landing at `~/.physiclaw/models/omniparser_icon_detect/model.onnx`. The heavy
+dependencies (~500 MB of `ultralytics` + `onnx`) run in a throwaway `uv run --with` environment,
+so they never enter the PhysiClaw install — `uv` must be on your PATH. Pass `--force` to
+re-download even if the model already exists.
+
+| Option | Effect |
+| --- | --- |
+| `--force` | re-download and re-convert even if the model is already present |
 
 ### `setup hardware`
 
-The interactive arm + camera calibration wizard. The server must already be running.
+The interactive arm + camera calibration wizard. The server must already be running. It mirrors
+the browser `/setup-hardware` wizard step-for-step (same `/api/*` endpoints).
 
 ```bash
 physiclaw setup hardware
 ```
 
-It walks the same numbered steps as the browser wizard — connect the phone bridge, position
-the rig, connect the arm and camera, locate the screen, calibrate the arm (18 tap points) and
-camera (15 dots), validate, and verify AssistiveTouch.
+It walks the ten ordered steps: connect the phone bridge, position the rig, connect the arm,
+connect the camera, viewport shift, calibrate the arm (**18 points**), calibrate the camera
+(**15 dots**), validate, verify AssistiveTouch, and finish.
 
 | Option | Effect |
 | --- | --- |
-| `-a`, `--auto` | auto mode — skip the interactive prompts |
-| `--trace` | run the optional edge-trace accuracy step |
+| `-a`, `--auto` | auto mode — arm after the phone connects, then drive every step, pausing only on errors or physical-action steps |
+| `--trace` | add the optional edge-trace accuracy step (8 edge points) |
 | `--server-url` | running server URL (default `$PHYSICLAW_SERVER` or `http://localhost:8048`) |
+
+:::note[Flash the firmware first]
+Flashing FluidNC to the control board is a prerequisite gate before `setup hardware` — the arm
+can't be connected until then. See [Calibrate](/en/set-up/calibrate/) for the full wizard
+walkthrough.
+:::
+
+### `setup phone`
+
+Teach the agent the on-screen keyboard so it can type. Pass one or more phone screenshots that
+show the keyboard — capture both the alphabetic and the numeric layouts.
+
+```bash
+physiclaw setup phone alpha.png numeric.png
+```
+
+It detects the key boxes, writes bbox preview PNGs (so you can eyeball the detection), and
+generates a UI-preset markdown file that the agent reads when typing. A few key slots come out
+marked `???` and must be filled in by hand from the bbox previews.
+
+| Argument / Option | Default | Effect |
+| --- | --- | --- |
+| `<images...>` | — | one or more phone screenshots with the keyboard visible |
+| `--bbox-dir DIR` | `./keyboard-bbox` | where to write the bbox preview PNGs |
+| `--preset FILE` | `~/.physiclaw/ui-presets/system-keyboard.md` | where to write the generated UI-preset markdown |
+
+This is the same flow as the `calibrate-keyboard` concept. See
+[Prepare the phone](/en/set-up/prepare-the-phone/).
 
 ## `config`
 
@@ -109,10 +176,12 @@ preserve your comments and ordering.
 | `physiclaw config unset <section.key>` | revert one key to its built-in default |
 | `physiclaw config edit` | open the file in `$EDITOR` (creates it from a template) |
 
+Settings layer in this order: **CLI flag > env var > `config.toml` > built-in default**.
+Unknown keys fail loudly on load. Most writes print ``Restart `physiclaw server` to apply.``
+
 :::caution[Keep secrets out of shell history]
-`config set provider.openai_api_key …` lands the key in your shell history. For API keys,
-prefer `physiclaw config edit` or `physiclaw models key`. Changes apply on the next
-`physiclaw server` start.
+`physiclaw config set provider.openai_api_key …` lands the key in your shell history. For API
+keys, prefer `physiclaw config edit` or `physiclaw models key` instead.
 :::
 
 What each section means is covered in [Configuration](/en/reference/configuration/).
@@ -120,8 +189,8 @@ What each section means is covered in [Configuration](/en/reference/configuratio
 ## `models`
 
 List, inspect, and switch the active model. The model is a `provider/model` ref (e.g.
-`anthropic/claude-sonnet-4-6` or `qwen/qwen3.6-plus`); PhysiClaw discovers each provider's
-model list live from its API rather than shipping a curated one.
+`anthropic/claude-sonnet-4-6`); PhysiClaw discovers each provider's catalog **live** from its
+`/v1/models` endpoint rather than shipping a curated list.
 
 | Command | Does |
 | --- | --- |
@@ -139,6 +208,12 @@ physiclaw models key anthropic          # paste the key at the hidden prompt
 physiclaw models use anthropic/claude-sonnet-4-6
 ```
 
+There are six in-process providers — `qwen`, `moonshot`, `openai`, `anthropic`, `google`, and a
+`deepseek` stub — plus the `claude-code/<model>` subprocess engine, which shells out to
+Anthropic's `claude` CLI. `claude-code` reuses `anthropic`'s key and catalog and is **not** a
+separate entry in the in-process registry. (The direct `anthropic` API provider and the
+`claude-code` CLI subprocess are distinct.) See [Models](/en/agent/models/).
+
 ## `skills`
 
 Install, list, and remove skills from a git-repo source. A skill source is a repo with a
@@ -153,18 +228,40 @@ top-level `skills/<name>/SKILL.md`; installing copies that tree into
 
 `--from` accepts `owner/repo` shorthand, a full git URL, or a local path. Set a default source
 with `physiclaw config set skills.default_source <repo>` to drop the `--from` flag. Restart the
-server to pick up newly installed skills.
+server to pick up newly installed skills. See
+[Memory and skills](/en/agent/memory-and-skills/).
 
 ## `uninstall`
 
-Remove PhysiClaw's user data. With no flags it prompts before deleting anything.
+Remove PhysiClaw's user **data**. With no flags it prompts before deleting anything.
+
+```bash
+physiclaw uninstall            # prompts
+physiclaw uninstall --dry-run  # show what would be removed
+```
 
 | Option | Effect |
 | --- | --- |
-| `--data` / `--all` | remove the entire `~/.physiclaw` data directory |
-| `--config` | remove only the config file (keep calibration, memory, models) |
+| `--data` / `--all` | remove the entire `~/.physiclaw` directory (`--all` is an alias for `--data`; `--data` wins if both are passed) |
+| `--config` | remove only the config file (keeps calibration, memory, models) |
 | `-y`, `--yes` | skip confirmation prompts |
-| `--dry-run` | print what would be removed without deleting |
+| `--dry-run` | print what would be removed, without deleting |
 
-The CLI binary itself is removed by the tool that installed it — `uv tool uninstall
-physiclaw` — which `uninstall` prints as a final reminder.
+:::caution[This removes data only — not the binary]
+`uninstall` deletes files under `~/.physiclaw`. It does **not** remove the `physiclaw` command
+itself. The CLI is removed by the tool that installed it:
+
+```bash
+uv tool uninstall physiclaw
+```
+
+`uninstall` prints this as a final reminder so you don't think you're done.
+:::
+
+## See also
+
+- [Install](/en/set-up/install/) — get the `physiclaw` binary on your PATH.
+- [Models](/en/agent/models/) — bring-your-own-model and the wake gate.
+- [Configuration](/en/reference/configuration/) — what each config key means.
+- [Calibrate](/en/set-up/calibrate/) — the full hardware-setup wizard.
+- [MCP tools](/en/reference/mcp-tools/) — what the agent can do once it's running.

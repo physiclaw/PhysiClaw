@@ -1,22 +1,25 @@
 ---
 title: Introduction
-description: What PhysiClaw is — an AI agent that physically operates a real phone with a robotic stylus and one camera.
+description: What PhysiClaw is — an AI agent that physically operates a real, unmodified phone with a robotic stylus and one overhead camera.
 ---
 
 You've seen an AI agent click around a screen. **PhysiClaw lets it touch a real one.**
 
 PhysiClaw is a small desktop robot that gives an AI agent a *physical* body to operate a
-phone. A single camera looks down at the screen; a capacitive stylus on a 3-axis arm reaches
+phone. A single camera looks down at the screen; a capacitive stylus on a moving arm reaches
 out and taps the glass. The agent reads what's on screen, decides what to do, and the arm does
-it — the same loop a person runs, just with a camera for an eye and a stylus for a finger.
+it — the same loop a person runs, just with a camera for an eye and a stylus for a finger. In
+one line: **an AI agent with a finger.**
 
-There's no app to install on the phone, no API to integrate, and no account to connect. To the
-phone, the stylus is indistinguishable from a fingertip — so *any* app works, iOS or Android,
-with zero per-app setup.
+The software ships as the `physiclaw` package (Python 3.12+, macOS-focused, MIT). To the phone,
+the stylus is indistinguishable from a fingertip — so *any* app works, iOS or Android, with no
+per-app setup.
 
 :::tip[Coming from OpenClaw?]
-OpenClaw gave an agent hands *inside software* — it drives apps through the screen it already
-lives on. PhysiClaw gives it hands *in the physical world*: a real stylus on a real phone it
+OpenClaw gave an agent hands *inside software* — an LLM brain that drives apps through the
+screen it already lives on. PhysiClaw keeps that **brain** half familiar: an LLM/MCP agent,
+bring-your-own-model, self-hosting, the same safety posture. What's **new** is the **body** —
+a real rig with motion control, calibration, camera vision, and stylus gestures on a phone it
 was never logged into. Same idea — let the agent use the interface a human uses — pushed off
 the desktop and onto the glass.
 :::
@@ -45,20 +48,31 @@ nothing to jailbreak.
 
 ## How it works, in four moves
 
-The loop is deliberately simple, and it's the same every time:
+This is a *verified* loop, not magic teleoperation. It runs the same way every time:
 
-1. **Look.** The overhead camera photographs the screen. On-device vision boxes and labels
-   every button, icon, and line of text it finds.
-2. **Decide.** The agent reads that annotated view and picks a target — *this* box — and an
-   action: tap, swipe, long-press.
-3. **Move & touch.** The arm drives the stylus to the target and the tip drops to register the
-   touch, then lifts away.
+1. **Look.** The overhead camera photographs the screen. On-device vision (RapidOCR for text,
+   OmniParser for icons) boxes and labels every element it finds, each with a *bbox* — a
+   rectangle given in 0–1 fractions of the screen.
+2. **Decide.** The agent reads that annotated listing and picks a target box plus a gesture:
+   tap, swipe, long-press.
+3. **Move & touch.** The arm drives the stylus to the bbox center; the tip drops to register a
+   real capacitive touch, then lifts and parks off-screen.
 4. **Check.** The camera looks again. Did the screen change the way it should? If yes, on to
-   the next action; if not, try again.
+   the next action; if not, retry.
 
 Because every step ends by *looking at the result*, a surprise — a popup, an ad, a slow load —
-is just the new state to react to, not a script to fall out of.
+is just the new state to react to, not a script that's fallen apart.
 [How it works](/en/start/how-it-works/) walks through one full loop in detail.
+
+## Two ways an agent drives it
+
+There are two ways to put a brain behind the rig, covered fully in
+[the built-in agent overview](/en/agent/overview/):
+
+- **Bring your own MCP client.** An external client like OpenClaw or Claude Desktop connects to
+  the server's `/mcp` endpoint and drives the rig directly.
+- **The built-in agent runtime.** PhysiClaw's own engine runs the look→decide→move→check loop
+  for you.
 
 ## What's actually on the phone?
 
@@ -66,16 +80,47 @@ The "nothing installed" line is *almost* true, and the difference matters — so
 straight:
 
 :::note[The honest version]
-There's no App-Store app and no developer mode. But you do prepare the phone once: turn on
-**AssistiveTouch**, add three short **iOS Shortcuts** (used for pixel-perfect screenshots and
-the clipboard), and keep a small **bridge page** open in the browser during a session. It's a
-normal phone you've spent five minutes setting up — nothing that changes what the phone *is*.
+There's **no App-Store app, no developer mode, and no jailbreak.** But you do prepare the phone
+once: turn on **AssistiveTouch**, add three short **iOS Shortcuts** (a tap, a pixel-perfect
+screenshot, and clipboard sync), and keep a small **bridge page** open in the browser during a
+session. It stays a normal phone you've spent five minutes setting up.
 [Prepare the phone](/en/set-up/prepare-the-phone/) covers exactly what and why.
 :::
 
-## Who it's for
+Use a throwaway / burner phone — the runtime's `unlock_phone` enters a hardcoded passcode
+(`111111`), so the tool phone should be one you don't mind exposing. See [Safety](/en/safety/)
+for the full posture.
 
-Builders who want agents to act in the real world: automation tinkerers, robotics learners,
-and anyone tired of writing one more integration to do something a finger could do. A full
-build is about **$112** in off-the-shelf parts and an afternoon of assembly and calibration —
-no soldering, no custom boards.
+## Who it's for, and what you're signing up for
+
+PhysiClaw is for builders and tinkerers — robotics learners and anyone comfortable assembling a
+machine and following a wiring diagram. It is a **from-scratch build**, not a ready-made plotter
+you bolt a pen onto:
+
+- The X/Y motion is a hand-built **CoreXY** gantry (a two-motor X/Y stage). The stylus is dropped
+  onto the screen by a **solenoid** — a push-rod actuator on the Z axis, not a servo or a pen.
+- Parts run roughly **$145 USD** (about ¥1046 in China; higher in USD/EU markets).
+- Expect **some soldering** for wire splices and a one-time **firmware flash** (FluidNC).
+- It's a **multi-day project**: source, cut, and 3D-print parts (vendor lead times run several
+  days), then roughly **2–3 hours of assembly**, then flash firmware, then an iterative
+  **calibrate-and-tune** phase to get taps landing dead-on.
+
+None of this is exotic — it's a real but achievable weekend-plus build for someone who likes
+building things. The full cost, parts list, and step-by-step road are in
+[What you'll build](/en/start/what-youll-build/).
+
+:::note[Platform]
+macOS is the supported install today; Windows works for most of the flow.
+:::
+
+## Where to go next
+
+<Steps>
+
+1. **[How it works](/en/start/how-it-works/)** — the look→decide→move→check loop, one full pass
+   in detail.
+
+2. **[What you'll build](/en/start/what-youll-build/)** — the rig's anatomy, real cost and time,
+   and the road from a box of parts to a running agent.
+
+</Steps>

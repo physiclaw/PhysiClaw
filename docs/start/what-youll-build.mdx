@@ -1,78 +1,207 @@
 ---
 title: What you'll build
-description: The PhysiClaw rig at a glance — what it costs, how long it takes, and the road from parts to a running agent.
+description: An honest preview of the PhysiClaw rig — what it is, what it really costs, how long it takes, and the ordered road from a box of parts to an agent that taps your phone.
 ---
 
-Before you buy anything, here's the whole picture: what the finished rig looks like, what it
-costs, and the handful of steps between a box of parts and an agent tapping your phone.
+You already know the brain: an AI agent driving a real phone through the look → think → move →
+confirm loop, with no APIs. This page is about the **body** — the machine that gives that agent a
+finger. Before you spend any money, here is the honest picture: what the rig actually is, what it
+costs, what it demands of you, and the order of work from parts to a running agent.
 
-{/* PHOTO: the assembled rig, annotated — overhead camera on its gooseneck, the pen-plotter
-     arm, the stylus in the Z holder, the phone seated in its corner, the control board + USB
-     hub. One clear hero shot; this is the page that makes the build feel achievable. */}
+The short version: this is a **from-scratch, hand-built machine**, not a kit and not a ready-made
+plotter. You will source parts, send custom-cut metal and 3D-print orders to vendors, assemble a
+CoreXY gantry, do a little soldering, flash firmware, and calibrate. Plan for a **multi-day**
+project. It's very doable — but go in clear-eyed.
+
+## What the finished rig is
+
+PhysiClaw is a small desktop gantry built around **2040 and 1020 aluminium extrusion**. Two
+**NEMA 17 steppers** drive a **CoreXY** belt arrangement that moves a **capacitive stylus** in X
+and Y across a phone lying face-up in a corner holder. The down-press — the Z axis, the actual
+"touch" — is a **12V push-pull solenoid**: a coil that shoves a rod down to press the stylus, then
+a spring lifts it. An **overhead 4K/8MP autofocus USB webcam** looks straight down at the screen.
+An **MKS DLC32 V2.1** controller runs the motors and solenoid; it connects over **USB** to your
+Mac running the `physiclaw` server, with **12V** from a barrel power supply.
+
+{/* PHOTO: hero shot of the assembled rig, annotated. Overhead USB webcam ~25cm above on its
+     mount looking straight down; the CoreXY X/Y gantry carrying the stylus; the solenoid as the
+     Z/touch actuator; the MKS DLC32 board with USB-to-Mac and 12V barrel jack; the phone seated
+     face-up in the corner bed holder. Label the THREE subsystems. Do NOT label anything a
+     "pen plotter" — this is a hand-built CoreXY gantry. */}
 
 ```text
-            ┌─ overhead camera (on a gooseneck, ~25 cm up)
-            │        looks straight down at the screen
-            ▼
-        ┌────────┐
-        │ camera │
-        └────────┘
-            ╎  sees
-            ▼
-   ┌───────────────────────┐        ┌──────────────┐
-   │  pen-plotter arm      │◄──USB──│  your Mac    │
-   │  X/Y gantry           │  12 V  │  physiclaw   │
-   │  Z = solenoid + stylus│◄──pwr──│  server      │
-   └─────────┬─────────────┘        └──────────────┘
-             │ taps
-             ▼
-      ┌──────────────┐
-      │  the phone   │  seated face-up in a corner holder
-      │  (unlocked)  │
-      └──────────────┘
+        overhead USB camera (~25 cm up, looking straight down)
+                    │ sees
+                    ▼
+   ┌───────────────────────────────┐        ┌──────────────────┐
+   │  CoreXY X/Y gantry             │◄──USB──│  your Mac        │
+   │  GT2 belts · MGN9H rails       │        │  physiclaw       │
+   │  Z = solenoid presses stylus   │        │  server          │
+   └───────────────┬───────────────┘        └──────────────────┘
+                   │                  ┌──────────────────┐
+        MKS DLC32 V2.1 board ◄──12V───│  barrel PSU      │
+                   │ taps             └──────────────────┘
+                   ▼
+            ┌──────────────────────┐
+            │  phone, face-up      │  in a corner holder
+            └──────────────────────┘
 ```
 
-## What to expect
+### The three subsystems
 
 <CardGrid>
-  <Card title="≈ $112" icon="seti:shell">
-    Off-the-shelf parts. The arm is a consumer pen plotter; the camera is an ordinary USB webcam.
+  <Card title="CoreXY stage (X/Y)" icon="seti:default">
+    A hand-built gantry: GT2 6mm belts, 3 MGN9H linear rails + carriages, and 2 NEMA 17 steppers
+    in a CoreXY layout where the two motors share the X and Y work. This is the part most people
+    underestimate — it is not an off-the-shelf plotter.
   </Card>
-  <Card title="≈ an afternoon" icon="seti:clock">
-    Assembly is mechanical — no soldering, no custom boards. Calibration is a guided wizard.
+  <Card title="Touch mechanism (Z)" icon="seti:lock">
+    A 12V push-pull solenoid presses the capacitive stylus straight down to register a tap, then
+    a spring lifts it. Not a Z servo, not a plotter pen — a coil and a rod.
   </Card>
-  <Card title="No special skills" icon="approve">
-    If you can follow a wiring diagram and clamp a gooseneck, you can build one.
-  </Card>
-  <Card title="macOS today" icon="apple">
-    macOS is the supported platform; Windows works for most of the flow. (Serial ports differ.)
+  <Card title="Overhead camera" icon="seti:image">
+    One 4K/8MP autofocus USB webcam, mounted ~25cm up looking straight down. It is how the agent
+    sees the screen during `peek`.
   </Card>
 </CardGrid>
 
-## The road ahead
+## What it really costs
 
-The rest of the docs are this build, in order. Each step hands off cleanly to the next:
+Roughly **$145 in parts** — about **¥1046 in China** (at ~7.2 CNY/USD), and **higher in the US/EU**
+where the supply chain is less convenient. Treat this as a parts figure *before shipping and lead
+times*, not a precise all-in number.
+
+The notable line items (China pricing, for reference):
+
+| Part | Approx. |
+| --- | --- |
+| Camera (4K/8MP autofocus USB) | ¥200 |
+| 3D-printed parts (SLS/MJF nylon) | ¥190 |
+| Rails + carriages (MGN9H) | ¥120 |
+| Control board (MKS DLC32 V2.1) | ¥100 |
+| Extrusions (2040 + 1020) | ¥60 |
+| Power supply (12V barrel) | ¥50 |
+| Steppers (2× NEMA 17) | ¥50 |
+| TMC2209 drivers (×2) | ¥35 |
+
+The full, exact list — including ~250+ fasteners — is the [Bill of materials](/en/hardware/bill-of-materials/).
+
+## What it really demands of you
+
+This is a **multi-day** project, in four phases:
 
 <Steps>
 
-1. **[Build the hardware](/en/hardware/bill-of-materials/)** — order the parts, then assemble the
-   arm, stylus, camera, and phone holder.
+1. **Source, print, and cut.** The supply chain is China-centric. You'll message vendors to get
+   extrusions custom **cut, tapped, and drilled**, and upload the STEP files to a 3D-print service.
+   Expect **multi-day lead times** before you have everything in hand.
 
-2. **[Install the software](/en/set-up/install/)** — one command installs the `physiclaw` CLI;
-   `physiclaw doctor` checks your machine.
+2. **Assemble.** The manual's own estimate is **about two to three hours** of mechanical assembly
+   once all parts have arrived.
 
-3. **[Prepare the phone](/en/set-up/prepare-the-phone/)** — turn on AssistiveTouch and add the
-   three iOS Shortcuts. Five minutes, once.
+3. **Flash firmware.** Flash **FluidNC** to the control board through a browser. This is a hard
+   prerequisite before hardware setup.
 
-4. **[Calibrate](/en/set-up/calibrate/)** — a guided wizard teaches the arm and camera exactly
-   where the screen is, so taps land where the agent aims.
-
-5. **[Run your first task](/en/run/first-task/)** — connect your agent and give it a goal in
-   plain language. Watch it look, decide, and tap.
+4. **Calibrate and tune.** A guided wizard teaches the rig where the screen is; tuning belt
+   tension and the solenoid is iterative and a little finicky.
 
 </Steps>
 
-:::tip[Want the concept first?]
-If you landed here to understand PhysiClaw rather than build one, read
-[How it works](/en/start/how-it-works/) — it's the mental model the whole build serves.
+:::caution[Read first, buy second]
+Read the whole manual and check the **full** [Bill of materials](/en/hardware/bill-of-materials/)
+before ordering anything. Some parts need custom fabrication and have lead times, and the BOM has
+fastener counts and pack sizes you'll want to batch into one order.
+:::
+
+### Real fabrication is involved
+
+Don't expect everything to arrive ready to bolt together:
+
+- **Cut metal.** 4× 2040 extrusions + 1× 1020 X-beam + 2× 1020 bed supports, each cut to length,
+  some tapped or counterbored for M6. See [Sourcing](/en/hardware/sourcing/).
+- **3D prints.** **9 unique designs / 11 pieces**, ordered from an **SLS or MJF** service in
+  **black PA12 nylon**. FDM is rejected — the side holes deform and overhangs sag. See
+  [Printed parts](/en/hardware/printed-parts/).
+- **Fasteners.** ~250+ screws, T-nuts, shoulder screws, shims, and brackets.
+- **Yes, light soldering.** You'll need a **soldering iron and a heat gun** for wire splices and
+  heat-shrink. This is not a no-solder build.
+
+### What you need on hand
+
+<CardGrid>
+  <Card title="A Mac" icon="apple">
+    macOS is the supported platform. Windows works for most of the flow, but serial handling
+    differs — the camera and arm setup assume macOS.
+  </Card>
+  <Card title="Hand tools" icon="seti:config">
+    2/3/5mm hex keys, an electric driver (recommended), a soldering iron + heat gun, and a flat
+    surface to square the frame.
+  </Card>
+  <Card title="Consumables" icon="seti:plan">
+    Lithium grease (for the rails) and Loctite 243 — set screws backing out is the #1
+    user-reported failure, so thread-lock matters.
+  </Card>
+  <Card title="A burner iPhone" icon="apple">
+    Use a throwaway/spare iPhone as the tool phone. The runtime uses a hardcoded passcode and the
+    server is LAN-reachable — this is not for your daily-driver phone. See [Safety](/en/safety/).
+  </Card>
+</CardGrid>
+
+You'll also want a **phone tuning app** later — belt tension is set by plucking the belt and
+matching a target frequency, like tuning a string.
+
+## Two build steps that are easy to miss
+
+These aren't optional polish — get them wrong and the rig won't work. Both are documented in
+detail later; just know they exist before you start.
+
+:::caution[The Z-conversion]
+The solenoid ships with a nut on its core. You **remove that nut and thread the capacitive stylus
+tip** (M3 female thread, ~Ø7mm conductive head) directly onto the solenoid core in its place. The
+stylus *is* the Z mechanism — covered in [Assembly](/en/hardware/assembly/).
+:::
+
+:::caution[Earth-ground the stylus]
+The capacitive tip must be tied to a **verified earth** — for example, a grounded PC chassis.
+**Never** a wall socket, and **never** the control board's GND. Without a real earth path, the
+screen won't register the taps at all. This is both a safety and a reliability requirement.
+:::
+
+## The road from parts to a running agent
+
+The rest of the docs are this build, in order. Hardware first (each stage depends on the one
+before it), then software.
+
+<Steps>
+
+1. **[Bill of materials](/en/hardware/bill-of-materials/)** → **[Sourcing](/en/hardware/sourcing/)**
+   → **[Printed parts](/en/hardware/printed-parts/)** — order parts, get metal cut, send prints.
+
+2. **[Assemble](/en/hardware/assembly/)** in dependency order: frame → idlers → motors → linear
+   rails → belts → stylus/solenoid (mount + Z-conversion) → phone bed → control board → camera →
+   wiring.
+
+3. **[Flash firmware](/en/hardware/firmware/)** — a browser flow puts FluidNC on the MKS DLC32.
+   Do this **before** hardware setup.
+
+4. **[Tune](/en/hardware/tuning/)** — belt tension and the CoreXY motion; the iterative part.
+
+5. **[Install the software](/en/set-up/install/)** — one command installs the `physiclaw` CLI.
+
+6. **[Prepare the phone](/en/set-up/prepare-the-phone/)** — turn on AssistiveTouch and add three
+   iOS Shortcuts.
+
+7. **[Calibrate](/en/set-up/calibrate/)** — a guided **10-step wizard** (18 points for the arm,
+   15 dots for the camera) teaches the rig where the screen is, so taps land where the agent aims.
+
+8. **[Run your first task](/en/run/first-task/)** — point your model at PhysiClaw and give it a
+   goal in plain language.
+
+</Steps>
+
+:::tip[Here for the concept, not the build?]
+If you just want to understand PhysiClaw rather than build one, go back to
+[How it works](/en/start/how-it-works/) — it's the mental model the whole machine serves. If
+you're committing to the build, the next stop is [Safety](/en/safety/), then
+[Build the hardware](/en/hardware/bill-of-materials/).
 :::

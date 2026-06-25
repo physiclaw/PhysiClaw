@@ -4,8 +4,10 @@ description: PhysiClaw has full physical control of an unlocked phone — treat 
 ---
 
 PhysiClaw can touch anything a finger can — which means it can do anything *you* could do
-on an unlocked phone. That power is the whole point of the project, and it's also the one
-thing you have to take seriously before you run a single task.
+on an unlocked phone. That reach is the whole point of the project, and it's also the one
+thing you have to plan for before you buy a single part. This page comes before the build
+sections on purpose: the worst case here shapes which phone, which accounts, and which
+network you choose, not just how you behave at runtime.
 
 The agent sees the screen and taps the glass. To the phone, that stylus is a fingertip with
 no boundaries: no app sandbox, no permission prompt, no "are you sure?" stands between the
@@ -16,33 +18,44 @@ do it, so can PhysiClaw.
 PhysiClaw has **full physical control** of an unlocked phone. Even with none of your
 passwords, it could:
 
-- open your **password manager** and read saved credentials,
-- receive an **OTP code** by text and use it to reset a password,
+- open your **password manager** and read saved logins,
+- receive a **2FA code** by text (the one-time code an app texts you to log in) and use it to reset a password,
 - spend money in any app that's **already logged in**,
 - read your **messages, email, and photos**, or send messages as you.
 
-If a malicious actor compromises your agent — a poisoned web page, a prompt injection, a
-bad model decision — they inherit that same access. There is no software boundary to fall
-back on, because by design there is no software in the loop.
+There is no software boundary to fall back on, because by design there is no software in
+the loop. The arm is a finger; a finger has no API to lock down.
 :::
+
+## You already know this risk — now it has a finger
+
+Coming from OpenClaw, you already know an autonomous agent can be steered the wrong way: a
+poisoned web page, a prompt injection buried in some content it reads, or just a bad model
+decision. With a normal agent that failure is bounded by whatever access you handed it.
+
+With PhysiClaw, the **same** failure now has a physical finger on an unlocked phone. A
+compromised agent inherits the full unlocked-phone access — everything in the box above.
+This is the cost of the no-API design: the thing that lets it
+[work on any app](/en/start/introduction/) with zero integration is exactly the thing that
+removes the usual fences.
 
 ## The mental model: an unlocked phone in a stranger's hands
 
 Every other access path an agent might use comes with a fence. An API gives out scoped
-tokens. An accessibility hook can be revoked. A jailbreak at least announces itself. PhysiClaw
-deliberately removes all of those fences — that's why [it works on any app](/en/start/introduction/)
-with no integration — so the fence has to be the phone itself.
+tokens. An accessibility hook can be revoked. A jailbreak at least announces itself.
+PhysiClaw deliberately removes all of those fences — so the fence has to be **the phone
+itself**.
 
-The right way to think about a PhysiClaw session is simple: **you are handing your unlocked
-phone to a stranger and walking away.** Not a malicious stranger, necessarily — but one who
-follows instructions literally and can be tricked. You wouldn't hand that phone to a stranger
-if it held your bank app, your primary number, and your password vault. So don't.
+The right way to think about a PhysiClaw session: **you are handing your unlocked phone to
+a stranger and walking away.** Not necessarily a malicious stranger — but one who follows
+instructions literally and can be tricked. You wouldn't hand that phone to a stranger if it
+held your bank app, your primary number, and your password vault. So don't.
 
-## Use a burner
+## Use a burner — this is a device choice, not a setting
 
-The mitigation is not a setting you toggle; it's a device you choose. Run PhysiClaw on a
-**dedicated tool-phone** — a cheap spare, fully wiped — and give it only what a task needs.
-Nothing on it should be something you'd mind a stranger seeing or using.
+The mitigation isn't a toggle you flip later; it's a phone you pick up front. Run PhysiClaw
+on a **dedicated tool-phone** — a cheap spare, fully wiped — and give it only what a task
+needs. Nothing on it should be something you'd mind a stranger seeing or using.
 
 <CardGrid>
   <Card title="Dedicated phone" icon="phone">
@@ -50,16 +63,16 @@ Nothing on it should be something you'd mind a stranger seeing or using.
     been logged into your real accounts.
   </Card>
   <Card title="Separate number" icon="comment">
-    A second SIM or eSIM that isn't tied to your main identity — so an OTP that arrives here
-    can't unlock your real accounts.
+    A second SIM or eSIM that isn't tied to your main identity — so a 2FA code that arrives
+    here can't unlock your real accounts.
   </Card>
   <Card title="Fresh accounts" icon="add-document">
     New logins created for this phone. Don't sign into your real email, bank, or social
     accounts on it.
   </Card>
   <Card title="Different passwords" icon="warning">
-    Never reuse a credential from your primary phone. If this device leaks one, it should buy
-    an attacker nothing else.
+    Never reuse a credential from your primary phone. If this device leaks one, it should
+    buy an attacker nothing else.
   </Card>
   <Card title="Limited funds" icon="seti:money">
     Load only what a task needs. A small balance caps the worst-case spend if a session goes
@@ -71,35 +84,66 @@ Nothing on it should be something you'd mind a stranger seeing or using.
   </Card>
 </CardGrid>
 
-## Why the passcode is `111111`
+The two design choices below aren't extra chores. They're evidence the project made the
+burner decision seriously — they only make sense on a phone you've already decided to treat
+as disposable. The phone-prep steps are covered in
+[Prepare the phone](/en/set-up/prepare-the-phone/).
 
-PhysiClaw's `unlock_phone` tool is hardcoded to the passcode **`111111`** — not as a
-suggestion, but as a deliberate choice. A throwaway code that lives in the source means a real
-password never has to be typed by the agent, stored in config, or leaked through logs or git
-history. It only makes sense on a tool-phone you've already decided to treat as disposable.
+### Why the passcode is `111111`
 
-:::caution[Don't put a real secret where the agent can reach it]
+PhysiClaw's `unlock_phone` tool is hardcoded to the passcode **`111111`** — deliberately, not
+as a placeholder. A throwaway code that lives in the source means a real passcode is never
+typed by the agent, stored in config, or leaked through logs or git history. At runtime you
+set the tool-phone's code to `111111` (or disable auto-lock entirely) — only sane on a phone
+you already treat as disposable.
+
+:::caution[Anything the agent can type, it can also read]
 The same logic extends past the passcode. Anything the agent might need to *type* — a card
 number, a login — is something it can also *read* and exfiltrate. Keep secrets off the phone
-unless a specific task requires them, and remove them when it's done.
+unless a specific task needs them, and remove them when it's done.
 :::
 
-## Network exposure
+### Why the server binds `0.0.0.0:8048`
 
-The PhysiClaw server binds to `0.0.0.0` so the phone's bridge page can reach it over your LAN.
-That's intended, but it means the MCP endpoint is reachable by anything on the same network.
-`physiclaw doctor` surfaces this as:
+The PhysiClaw server binds to `0.0.0.0:8048` so the phone's bridge page can reach it over
+your LAN — that's intended. The trade-off is that the MCP endpoint at
+`http://<host>:8048/mcp` is reachable by anything on the same network. `physiclaw doctor`
+surfaces this as **info, not an error**:
 
 ```text
 bind: 0.0.0.0 (LAN-reachable; intended for the phone bridge)
 ```
 
-Run the rig on a network you trust, and don't expose port `8048` to the public internet.
+Run the rig on a network you trust, and **do not expose port `8048` to the public
+internet**.
+
+## One physical-safety item: ground the stylus
+
+The risks above are about what the agent can *reach*. There's one item about the *build*
+itself that's easy to miss: the capacitive stylus tip **must be earth-grounded**.
+
+:::caution[Tie the stylus to a verified earth — never a wall socket or the board GND]
+Connect the stylus tip to a known-good earth, such as the chassis of a grounded PC. **Never**
+wire it to a wall socket, and **never** to the control-board GND. Without proper grounding,
+taps simply won't register — so this is both a reliability and a safety item.
+:::
+
+This page only flags it. The actual wiring step lives in
+[Assembly](/en/hardware/assembly/), do it there.
 
 ## Safety is the mature default, not fear
 
 None of this is a reason to avoid the project. A system with real physical reach *should*
-come with a clear, honest threat model — and naming the worst case is what lets you set up
-the rig so the worst case is boring: a wiped spare phone, a few dollars of credit, and
+ship a clear, honest threat model — and naming the worst case is exactly what lets you set
+up the rig so the worst case is boring: a wiped spare phone, a few dollars of credit, and
 accounts you'd be fine losing. Done that way, you get the full power of an agent that can use
 any app, with a blast radius you chose on purpose.
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Prepare the phone" description="AssistiveTouch, the three Shortcuts, and the 111111 passcode." href="/en/set-up/prepare-the-phone/" />
+  <LinkCard title="Operating modes" description="Bring your own client or use the built-in agent runtime." href="/en/run/operating-modes/" />
+  <LinkCard title="MCP tools" description="The 12 tools an agent calls to drive the phone." href="/en/reference/mcp-tools/" />
+  <LinkCard title="Assembly" description="Build the rig — including stylus earth-grounding." href="/en/hardware/assembly/" />
+</CardGrid>
