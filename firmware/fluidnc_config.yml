@@ -60,9 +60,10 @@ axes:
 # Solenoid via Spindle interface (gpio.32)
 # Hit-and-hold usage:
 #   M3 S1000   full strike power
-#   G4 P0.05   wait 50ms
-#   M3 S300    hold current (tune from S150 up)
+#   G4 P0.08   settle 80ms
+#   M3 S750    hold current (< strike, so the coil doesn't overheat)
 #   M5         release
+#   G4 P0.2    200ms spring-clear dwell
 PWM:
   pwm_hz: 1000
   output_pin: gpio.32

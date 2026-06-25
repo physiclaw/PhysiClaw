@@ -1,6 +1,6 @@
 ---
 title: Firmware
-description: Flash FluidNC onto the assembled control board and load the PhysiClaw config — the step that turns a wired-but-blank board into a working PhysiClaw arm.
+description: Flash FluidNC onto the assembled control board and paste in the PhysiClaw config — the full 17-step browser flow, plus the config file to copy.
 ---
 
 Your board is wired but blank. It has never been programmed, so right now it does nothing —
@@ -53,47 +53,159 @@ them.
 - The **12 V 2 A barrel supply**.
 - **Google Chrome** (or Edge). The flow uses Web Serial, which Safari and Firefox do **not**
   support.
-- The PhysiClaw config file:
-  [`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml).
-  Open it in a tab; you will copy its full contents in Group 3.
+- The **PhysiClaw config** — reproduced in full in [The config file](#the-config-file) below; you
+  copy it in step 13.
 
-## Flash it
+## Flash it — the 17 steps
 
-These four groups mirror the repo's 17-step
-[`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md) —
-follow that for the exact button-by-button clicks; follow this for what each part is doing.
+This is the complete browser flow. It mirrors the repo's
+[`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md);
+the conceptual notes below say *why* each part matters.
 
 <Steps>
 
-1. **Power, then connect.**
-   Plug in **12 V first** — the board's LED should light. Then plug in **USB**. Open the
-   [FluidNC web installer](https://installer.fluidnc.com) in Chrome and click **Continue** under
-   **FluidNC**.
+1. **Power up the board.** Connect **12 V** power — the LED lights up. Then plug in **USB**.
 
-2. **Install the firmware.**
-   **Connect** → pick the **USB Serial** port for the board → **Install** → newest version → the
-   **`noradio`** variant → **fresh install** → confirm **115200 baud**. Wait for the progress bar
-   to finish, then **Continue**.
+2. **Open the installer.** Open the [FluidNC web installer](https://installer.fluidnc.com) in
+   Chrome. The page shows two products — click **Continue** under **FluidNC**.
 
-3. **Load the config.**
-   A red **"invalid configuration"** warning is **expected** here — the board has firmware but no
-   config yet. Open **File browser** → **Create config** (it pre-fills `config.yaml`) → **OK**.
-   Open the **Source** tab, select all, delete, then paste the **full contents** of
-   [`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml).
-   **Save**.
+3. **Connect to the board.** Click **Connect**. A dialog lists available serial ports. Select
+   **USB Serial** and click **Connect**.
 
-4. **Restart and verify.**
-   Open **Terminal** and click the red **Restart**. The startup log should print **all green** and
-   end with a line like:
+4. **Go to Install.** The Home page appears. Click **Install** in the left sidebar.
 
-   ```text
-   <Idle|MPos:0.000,0.000,0.000|...>
-   ```
+5. **Select the firmware variant.** Pick the latest version from the dropdown. Three variants
+   appear — click **`noradio`**.
 
-   That `Idle` line is your **"it's alive"** signal: the board is running, the config loaded
-   cleanly, and it is waiting for G-code. If you see it, the flash worked — stop here and move on.
+6. **Select the installation type.** Click **fresh-install**.
+
+7. **Confirm.** A confirmation dialog appears. Make sure **Installation speed** is **115200 baud**,
+   then click **Install**.
+
+8. **Wait.** A progress bar appears — wait until it completes.
+
+9. **Installation complete.** A "Done" dialog confirms it. Click **Continue**.
+
+10. **Open the File browser.** The Home page shows a red **"invalid configuration"** warning — this
+    is **expected**, the board has firmware but no config yet. Click **File browser** in the left
+    sidebar.
+
+11. **Create the config file.** The File browser prompts you to create one. Click **Create config**;
+    a dialog appears with `config.yaml` pre-filled as the filename. Click **OK**.
+
+12. **Open the Source tab.** The editor opens on the **General** tab. Click the **Source** tab
+    (rightmost).
+
+13. **Paste the config.** Select all the existing text, delete it, and paste the **full contents**
+    of [The config file](#the-config-file) below.
+
+14. **Save.** Click **Save**.
+
+15. **Go to Terminal.** Click **Terminal** in the left sidebar.
+
+16. **Restart the board.** Click the red **Restart** button. The board reboots and prints the
+    startup log.
+
+17. **Verify.** Every message should be **green**, and the last line should read:
+
+    ```text
+    <Idle|MPos:0.000,0.000,0.000|...>
+    ```
+
+    That `Idle` line is your **"it's alive"** signal — the board is running, the config loaded
+    cleanly, and it is waiting for G-code. If you see it, the flash worked.
 
 </Steps>
+
+## The config file
+
+Paste this into the editor's **Source** tab at step 13. It is the same
+[`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)
+that ships in the repo — copy it whole:
+
+```yaml
+# FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
+# Comments ONLY on their own lines (FluidNC YAML subset rule)
+# Tune: steps_per_mm, max_travel_mm, acceleration, direction pins
+
+board: MKS-DLC32 V2.1
+name: PhysiClaw
+
+# I2S bus — hardwired on DLC32 v2.1, do not change
+i2so:
+  bck_pin: gpio.16
+  data_pin: gpio.21
+  ws_pin: gpio.17
+
+# I2S_STATIC only — I2S_STREAM causes drift on this board
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 250
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+
+kinematics:
+  corexy:
+
+axes:
+  shared_stepper_disable_pin: I2SO.0
+
+  x:
+    # Tune: (motor_steps x microsteps) / mm_per_rev
+    # e.g. 200 x 16 / 40mm (20T GT2) = 80
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
+    # Set max_travel_mm to your actual X travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    motor0:
+      hard_limits: false
+      stepstick:
+        step_pin: I2SO.1
+        # Add :low after I2SO.2 if X runs backwards
+        direction_pin: I2SO.2:low
+
+  y:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
+    # Set max_travel_mm to your actual Y travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    motor0:
+      hard_limits: false
+      stepstick:
+        step_pin: I2SO.5
+        # Add :low after I2SO.6 if Y runs backwards
+        direction_pin: I2SO.6:low
+
+# Solenoid via Spindle interface (gpio.32)
+# Hit-and-hold usage:
+#   M3 S1000   full strike power
+#   G4 P0.08   settle 80ms
+#   M3 S750    hold current (< strike, so the coil doesn't overheat)
+#   M5         release
+#   G4 P0.2    200ms spring-clear dwell
+PWM:
+  pwm_hz: 1000
+  output_pin: gpio.32
+  enable_pin: NO_PIN
+  direction_pin: NO_PIN
+  disable_with_s0: false
+  s0_with_disable: true
+  spinup_ms: 0
+  spindown_ms: 0
+  tool_num: 0
+  speed_map: 0=0% 1000=100%
+  off_on_alarm: true
+
+start:
+  must_home: false
+```
 
 ## What the config actually declares
 
@@ -159,16 +271,15 @@ For the solenoid to respond to `S`-values at all, the board must be in spindle/l
 **`$32=0`**.
 
 :::note[Config owns this — don't fight the firmware]
-`$32` looks like a runtime `$`-setting, but on PhysiClaw it's governed by the FluidNC config
-([`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)),
-not by hand-written `$`-commands — the firmware **rejects** `$`-writes for settings the config owns.
-If `$32` isn't `0`, fix it in the YAML and **Restart**, not at the console.
+`$32` looks like a runtime `$`-setting, but on PhysiClaw it's governed by the config above, not by
+hand-written `$`-commands — the firmware **rejects** `$`-writes for settings the config owns. If
+`$32` isn't `0`, fix it in the YAML and **Restart**, not at the console.
 :::
 
 ### Canonical hit-and-hold timing
 
-These numbers are the source of truth. The [gestures reference](/en/reference/gestures/) is the
-cross-reference for the same timing; quote them exactly.
+These numbers match the comment block in the config above; the canonical source is the
+[gestures reference](/en/reference/gestures/), taken straight from `solenoid.py` and `arm.py`.
 
 | Parameter | Value | What it is |
 | --- | --- | --- |
@@ -189,13 +300,6 @@ G4 P0.2     ; 200 ms spring-clear dwell (RELEASE_MS)
 ```
 
 That hit-and-hold shape is exactly why a long-press reads differently from a tap.
-
-:::caution[Use the canonical timing, not the stale comments]
-The comment block inside `fluidnc_config.yml` still shows an older sequence
-(`G4 P0.05` = 50 ms and `M3 S300`, "tune from S150 up") — that text is **stale**. The authoritative
-timing is **80 ms settle** and **S750 hold**, as shown above. Treat this page and
-[reference/gestures](/en/reference/gestures/) as the source of truth.
-:::
 
 ### If the coil buzzes
 

@@ -1,6 +1,6 @@
 ---
 title: 固件
-description: 给装好线的控制板刷上 FluidNC，再载入 PhysiClaw 配置——就这一步，把一块接好线却空白的板子变成一条能用的 PhysiClaw 臂。
+description: 给装好线的控制板刷上 FluidNC，再粘进 PhysiClaw 配置——完整的 17 步浏览器流程，外加可直接复制的配置文件。
 ---
 
 你的板子线接好了，但还是空白的。它从没被烧录过，所以此刻什么都做不了——电机和 solenoid 接在一颗没有任何指令的芯片上。这一页就来解决它。你会刷一份固件、再粘进一个配置文件，全程在一个 Chrome 标签页里完成。
@@ -34,33 +34,143 @@ description: 给装好线的控制板刷上 FluidNC，再载入 PhysiClaw 配置
 - 板子的 **USB 线**——目前是一个 USB Type-B 打印机式接头；买替换线之前先看看你自己板上的接头。
 - **12 V 2 A 圆头电源**。
 - **Google Chrome**（或 Edge）。整个流程用到 Web Serial，而 Safari 和 Firefox **不**支持它。
-- PhysiClaw 配置文件：[`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)。在一个标签页里打开它，第 3 组步骤里你要复制它的全部内容。
+- **PhysiClaw 配置**——下面的[配置文件](#配置文件)一节里给出了完整内容，第 13 步要复制它。
 
-## 开刷
+## 开刷——17 步
 
-下面这四组步骤对应仓库里那份 17 步的 [`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md)——要逐个按钮的精确点击流程，照那份做；要弄清每一部分在做什么，看这页。
+这是完整的浏览器流程，对应仓库里那份 [`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md)；下面的说明讲清每一部分为什么重要。
 
 <Steps>
 
-1. **先上电，再连接。**
-   先插 **12 V**——板子的 LED 应当亮起。然后插 **USB**。在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)，在 **FluidNC** 下点 **Continue**。
+1. **给板子上电。** 接 **12 V** 电源——LED 会亮起。然后插 **USB**。
 
-2. **安装固件。**
-   **Connect** → 选板子对应的 **USB Serial** 端口 → **Install** → 最新版本 → **`noradio`** 变体 → **fresh install** → 确认 **115200 baud**。等进度条走完，再点 **Continue**。
+2. **打开安装器。** 在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)。页面会显示两个产品——在 **FluidNC** 下点 **Continue**。
 
-3. **载入配置。**
-   这里出现红色的 **"invalid configuration"**（配置无效）警告是**正常的**——板子有固件了，但还没有配置。打开 **File browser** → **Create config**（它会预填 `config.yaml`）→ **OK**。打开 **Source** 标签页，全选、删掉，再把 [`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml) 的**全部内容**粘进去。**Save**。
+3. **连接板子。** 点 **Connect**。弹出的对话框会列出可用串口。选 **USB Serial**，点 **Connect**。
 
-4. **重启并验证。**
-   打开 **Terminal**，点红色的 **Restart**。启动日志应当打印出**全绿**，并以类似下面这样的一行结尾：
+4. **进入 Install。** 出现 Home 页。点左侧栏的 **Install**。
 
-   ```text
-   <Idle|MPos:0.000,0.000,0.000|...>
-   ```
+5. **选择固件变体。** 从下拉里选最新版本。会出现三个变体——点 **`noradio`**。
 
-   那行 `Idle` 就是你的「它活了」信号：板子在运行，配置干净地载入了，正等着 G-code。看到它，就说明刷写成功——到此为止，继续往下走。
+6. **选择安装类型。** 点 **fresh-install**。
+
+7. **确认。** 弹出确认框。确保 **Installation speed** 是 **115200 baud**，然后点 **Install**。
+
+8. **等待。** 出现进度条——等它走完。
+
+9. **安装完成。** 一个 "Done" 对话框确认完成。点 **Continue**。
+
+10. **打开 File browser。** Home 页会显示红色的 **"invalid configuration"**（配置无效）警告——这是**正常的**，板子有固件了，但还没有配置。点左侧栏的 **File browser**。
+
+11. **创建配置文件。** File browser 会提示你创建一个。点 **Create config**；弹出的对话框里 `config.yaml` 已预填为文件名。点 **OK**。
+
+12. **打开 Source 标签页。** 编辑器停在 **General** 标签。点最右侧的 **Source** 标签。
+
+13. **粘贴配置。** 全选已有文本，删掉，再把下面[配置文件](#配置文件)一节的**全部内容**粘进去。
+
+14. **保存。** 点 **Save**。
+
+15. **进入 Terminal。** 点左侧栏的 **Terminal**。
+
+16. **重启板子。** 点红色的 **Restart** 按钮。板子重启并打印启动日志。
+
+17. **验证。** 每条消息都应当是**绿色**的，最后一行应当是：
+
+    ```text
+    <Idle|MPos:0.000,0.000,0.000|...>
+    ```
+
+    那行 `Idle` 就是你的「它活了」信号——板子在运行，配置干净地载入了，正等着 G-code。看到它，就说明刷写成功。
 
 </Steps>
+
+## 配置文件
+
+第 13 步把它粘进编辑器的 **Source** 标签。它就是仓库里随附的那份 [`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)——整段复制：
+
+```yaml
+# FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
+# Comments ONLY on their own lines (FluidNC YAML subset rule)
+# Tune: steps_per_mm, max_travel_mm, acceleration, direction pins
+
+board: MKS-DLC32 V2.1
+name: PhysiClaw
+
+# I2S bus — hardwired on DLC32 v2.1, do not change
+i2so:
+  bck_pin: gpio.16
+  data_pin: gpio.21
+  ws_pin: gpio.17
+
+# I2S_STATIC only — I2S_STREAM causes drift on this board
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 250
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+
+kinematics:
+  corexy:
+
+axes:
+  shared_stepper_disable_pin: I2SO.0
+
+  x:
+    # Tune: (motor_steps x microsteps) / mm_per_rev
+    # e.g. 200 x 16 / 40mm (20T GT2) = 80
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
+    # Set max_travel_mm to your actual X travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    motor0:
+      hard_limits: false
+      stepstick:
+        step_pin: I2SO.1
+        # Add :low after I2SO.2 if X runs backwards
+        direction_pin: I2SO.2:low
+
+  y:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 10000.000
+    acceleration_mm_per_sec2: 1000.000
+    # Set max_travel_mm to your actual Y travel
+    max_travel_mm: 200.000
+    soft_limits: false
+
+    motor0:
+      hard_limits: false
+      stepstick:
+        step_pin: I2SO.5
+        # Add :low after I2SO.6 if Y runs backwards
+        direction_pin: I2SO.6:low
+
+# Solenoid via Spindle interface (gpio.32)
+# Hit-and-hold usage:
+#   M3 S1000   full strike power
+#   G4 P0.08   settle 80ms
+#   M3 S750    hold current (< strike, so the coil doesn't overheat)
+#   M5         release
+#   G4 P0.2    200ms spring-clear dwell
+PWM:
+  pwm_hz: 1000
+  output_pin: gpio.32
+  enable_pin: NO_PIN
+  direction_pin: NO_PIN
+  disable_with_s0: false
+  s0_with_disable: true
+  spinup_ms: 0
+  spindown_ms: 0
+  tool_num: 0
+  speed_map: 0=0% 1000=100%
+  off_on_alarm: true
+
+start:
+  must_home: false
+```
 
 ## 这份配置到底声明了什么
 
@@ -108,12 +218,12 @@ Z/触点执行器是一个 **12 V 0.8 A 推拉式 solenoid**，通过主轴 PWM 
 要让 solenoid 能响应 `S` 值，板子必须处于主轴/激光模式：**`$32=0`**。
 
 :::note[这由配置管，别跟固件硬碰]
-`$32` 看着像一个运行时的 `$` 设置，但在 PhysiClaw 上它由 FluidNC 配置（[`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)）管辖，而非手敲的 `$` 命令——对于配置所管的设置，固件会**拒绝** `$` 写入。如果 `$32` 不是 `0`，就在 YAML 里改好并 **Restart**，而不是在控制台改。
+`$32` 看着像一个运行时的 `$` 设置，但在 PhysiClaw 上它由上面那份配置管辖，而非手敲的 `$` 命令——对于配置所管的设置，固件会**拒绝** `$` 写入。如果 `$32` 不是 `0`，就在 YAML 里改好并 **Restart**，而不是在控制台改。
 :::
 
 ### 标准的击打并保持时序
 
-这些数字是权威依据。[手势参考](/zh/reference/gestures/)是同一套时序的交叉引用；请原样引用。
+这些数字与上面配置里的注释块一致；权威来源是[手势参考](/zh/reference/gestures/)，直接取自 `solenoid.py` 和 `arm.py`。
 
 | 参数 | 值 | 含义 |
 | --- | --- | --- |
@@ -134,10 +244,6 @@ G4 P0.2     ; 200 ms 等弹簧复位（RELEASE_MS）
 ```
 
 正是这个先打后保持的波形，让长按和点击读出不同的效果。
-
-:::caution[用权威的时序，别用过时的注释]
-`fluidnc_config.yml` 里的注释块还写着一套更老的序列（`G4 P0.05` = 50 ms 和 `M3 S300`，「从 S150 往上调」）——那段文字是**过时的**。权威的时序是 **80 ms 稳定**和 **S750 保持**，如上所示。以本页和 [reference/gestures](/zh/reference/gestures/) 为准。
-:::
 
 ### 如果线圈嗡嗡作响
 

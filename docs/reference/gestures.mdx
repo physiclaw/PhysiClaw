@@ -7,7 +7,7 @@ You already know the brain: an LLM calls an [MCP tool](/en/reference/mcp-tools/)
 `swipe` with a **bbox** in `0`–`1` screen fractions. This page is the body — what those tool
 calls actually do to the rig. It is the **source of truth for solenoid timing**: every
 constant below is taken straight from `solenoid.py` and `arm.py`, and where older pages
-disagree, this page wins (see the [stale-snippet warning](#a-note-on-stale-snippets)).
+disagree, this page wins.
 
 Every gesture is the same two-machine dance: the **X/Y arm** drives the stylus to the bbox
 center — via the calibrated `pct_to_grbl` affine that turns a percent coordinate into GRBL
@@ -166,17 +166,6 @@ the coil or raise the PWM to 25kHz. The FluidNC config owns `$32`/`$30` from YAM
 live `$`-writes (`error:162`), so the driver sends them with `optional=True` — a bare GRBL
 board (which *does* accept the writes) still works. Full procedure on the
 [firmware page](/en/hardware/firmware/).
-
-## A note on stale snippets
-
-This page supersedes the timing values in older docs. In particular, do **not** trust:
-
-- the old `hardware/firmware` snippet `M3 S1000 / G4 P0.05 (50ms) / M3 S750` — the settle is
-  **`SETTLE_MS = 80ms`**, not 50ms.
-- the YAML comment "S300, tune from S150 up" — the hold is **`HOLD_S = S750`**. Those low
-  values let the tip ease off and read a long-press as a single tap.
-
-When in doubt, the constants here (and in `solenoid.py` / `arm.py`) are authoritative.
 
 ## Next
 
