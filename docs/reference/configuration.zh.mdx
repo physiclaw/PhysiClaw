@@ -1,22 +1,54 @@
 ---
 title: 配置
-description: PhysiClaw 的配置文件 `~/.physiclaw/config.toml`——选择模型、设置 provider 密钥，以及值得调整的旋钮。
+description: `~/.physiclaw/config.toml` 文件——它在哪里、如何安全地编辑、唯一必须设置的那个键，以及每个旋钮及其默认值。
 ---
 
-PhysiClaw 从一个文件读取设置，即 **`~/.physiclaw/config.toml`**，几乎一切都有合理的内置默认值——
-你 *必须* 设置的唯一一项是要运行哪个模型。用 `physiclaw config edit` 编辑该文件
-（第一次会从带注释的模板创建），或用 `physiclaw config set` 一次改一个键。更改会在下一次
-`physiclaw server` 启动时生效。
+PhysiClaw 从一个文件读取设置，即 **`~/.physiclaw/config.toml`**。几乎每个键都有合理的内置默认值，
+所以你 *必须* 设置的**唯一一项就是要运行哪个模型**。其余的在没有理由之前都可以不管。
 
-设置按固定顺序分层，**首个匹配胜出**：
+该文件位于 PhysiClaw 数据根目录 `~/.physiclaw` 之中。这个根目录存放全部磁盘状态——配置、标定、
+记忆、模型、日志——你可以在启动 CLI 之前设置 `PHYSICLAW_HOME` 来整体迁移它。
+
+```bash
+physiclaw config path     # print the exact location
+```
+
+这是一个**参考**页面：它列出每个 section 和键及其默认值与单位。如果你只是想先把一个模型跑起来，
+请先到 [模型](/zh/agent/models/) 页面操作，再回到这里理解 `physiclaw config edit` 把你带进的是什么。
+
+## 编辑文件
+
+你从不需要从零手写这个文件——第一次执行 `physiclaw config edit` 会从带注释的模板创建它。
+
+| 命令 | 作用 |
+| --- | --- |
+| `physiclaw config edit` | 在 `$EDITOR` 中打开文件（第一次会从模板创建） |
+| `physiclaw config set <section.key> <value>` | 设置一个键（值会按类型强制转换） |
+| `physiclaw config unset <section.key>` | 把一个键还原为内置默认值 |
+| `physiclaw config path` | 打印配置文件路径 |
+| `physiclaw config show` | 以 TOML 转储*生效后*的合并配置（密钥已遮蔽） |
+| `physiclaw config get <section.key>` | 读取一个键，例如 `engine.max_turns` |
+
+:::caution[更改在下次重启时生效，而非实时生效]
+大多数写入会打印 **`Restart `physiclaw server` to apply.`**。运行中的服务器只在启动时读取一次配置，
+所以编辑会在你下次启动 `physiclaw server` 时生效——而不是在它运行期间。
+:::
+
+## 设置如何分层
+
+设置来自四个地方。它们按固定顺序合并，**首个匹配胜出**：
 
 ```text
 CLI flag  >  env var  >  config.toml  >  built-in default
 ```
 
-所以一个 `--port` 标志胜过环境中的 `PHYSICLAW_MODEL`，后者胜过文件，文件又胜过出厂默认值。
-从文件中删除一个键即可回退到默认值；加载时遇到未知的 section 或键会显式报错失败
-（CLI 会指引你用 `physiclaw config edit` 修复）。
+一个 `--port` 标志胜过环境中的 `PHYSICLAW_MODEL`，后者胜过文件，文件又胜过出厂默认值。
+对一个键执行 `unset`（或删除它那一行），它就回退到默认值。
+
+:::caution[未知的键会显式报错]
+schema 是严格的。未知的 section 或未知的键会**中止加载**——它不会被悄悄忽略。CLI 会指引你用
+`physiclaw config edit` 修复这个拼写错误。这是为了换取「绝不会有某个设置悄无声息地什么都不做」。
+:::
 
 ## 你必须设置的那一项：`[agent]`
 
@@ -26,12 +58,32 @@ model = "anthropic/claude-sonnet-4-6"
 ```
 
 `model` 是一个 **`provider/model` 引用**：第一段挑选引擎 + provider，第二段是原样传给该 provider 的
-模型 id。不存在通用默认值——空的 `model` 意味着"使用 `PHYSICLAW_MODEL` 环境变量，否则显式报错失败"。
-设置它最简单的方式是 `physiclaw models use <provider/model>`，它会先校验该引用。
+模型 id。不存在通用默认值——空的 `model` 意味着「改用 `PHYSICLAW_MODEL` 环境变量，再不行就显式报错」。
+
+设置它最简单的方式是 `physiclaw models use <provider/model>`，它会在写入前先校验该引用。
+
+:::note[在设置模型前，助理始终处于沉睡状态]
+两种驱动模式在没有模型时都拒绝唤醒。不带模型的纯 `physiclaw server` 仍然会运行——这对硬件设置和手动
+MCP 工具调用很有用——但内置助理不会启动。参见 [运行模式](/zh/run/operating-modes/)。
+:::
+
+### 引用的形态决定了引擎
+
+引用的第一段决定 PhysiClaw *如何*运行模型：
+
+- **`claude-code/<model>`** 会把 Anthropic 的外部 `claude` CLI 作为子进程调起。它复用 `anthropic`
+  provider 的密钥和模型目录，但它**不在**进程内注册表里。
+- **任何其他 provider id**（例如 `anthropic/…`、`openai/…`）使用**进程内**引擎。
+
+:::note[`anthropic` 和 `claude-code` 不是一回事]
+`anthropic/…` 在 PhysiClaw 进程内直接对接 `/v1/messages` API，使用 `anthropic_api_key`。
+`claude-code/…` 则启动一个独立的 `claude` CLI 程序。它们恰好共享一个密钥和目录，但它们是不同的引擎——
+请有意识地选择。
+:::
 
 ## Provider 密钥：`[provider]`
 
-每个 provider 一个 API 密钥，按 id 区分：
+每个 provider 一个 API 密钥，按 provider id 区分（注意：这是**单数**的 `[provider]` 表）：
 
 ```toml
 [provider]
@@ -43,23 +95,31 @@ google_api_key    = ""
 deepseek_api_key  = ""
 ```
 
-空字符串意味着"回退到对应的环境变量"——`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`QWEN_API_KEY` 等。
-环境变量始终胜过文件。
+空字符串意味着「回退到对应的环境变量」。环境变量**始终胜过**文件：
+
+| Provider id | 配置键 | 环境变量 | 对接 |
+| --- | --- | --- | --- |
+| `anthropic` | `anthropic_api_key` | `ANTHROPIC_API_KEY` | Anthropic `/v1/messages` |
+| `openai` | `openai_api_key` | `OPENAI_API_KEY` | OpenAI |
+| `qwen` | `qwen_api_key` | `QWEN_API_KEY` | DashScope (Qwen) |
+| `moonshot` | `moonshot_api_key` | `MOONSHOT_API_KEY` | Kimi (Moonshot) |
+| `google` | `google_api_key` | `GOOGLE_API_KEY` | Gemini（OpenAI 兼容） |
+| `deepseek` | `deepseek_api_key` | `DEEPSEEK_API_KEY` | DeepSeek（占位） |
 
 :::caution[把它们当成 SSH 密钥]
 优先用 `physiclaw models key <provider>`（隐藏提示）或 `physiclaw config edit`，而不是
-`physiclaw config set`，后者会把密钥留在你的 shell 历史里。`physiclaw config show` 会遮蔽每一个
-`*_api_key` 值。
+`physiclaw config set provider.<id>_api_key …`，后者会把密钥留在你的 shell 历史里。
+`physiclaw config show` 会遮蔽每一个 `*_api_key` 值。
 :::
 
 ### 让 provider 指向代理：`[providers.<id>]`
 
-要把一个内置 provider 经由代理或备用端点发送（例如 Moonshot 的 `.ai` 与 `.cn`），
-设置一个 `base_url` 覆盖：
+要把一个内置 provider 经由代理或备用端点路由，设置一个 `base_url` 覆盖。注意这是**复数**的
+`[providers.<id>]` 表——与存放密钥的单数 `[provider]` 表不同。
 
 ```toml
 [providers.moonshot]
-base_url = "https://api.moonshot.ai/v1"
+base_url = "https://api.moonshot.ai/v1"   # the .ai endpoint instead of .cn
 ```
 
 ## 服务器：`[server]`
@@ -73,13 +133,13 @@ save_snapshots   = false   # dump every raw camera frame
 save_screenshots = false   # dump every raw phone-own screenshot
 ```
 
-`port` 和 `host` 也以 `physiclaw server --port` / `--host` 暴露，三个 `save_*` 标志以
-`--save-tool-calls` 等暴露——标志会在那次运行中覆盖文件。`save_*` 选项是调试辅助；
-正常使用时把它们关掉。
+`port` 和 `host` 也以 `physiclaw server --port` / `--host` 暴露，三个 `save_*` 键则以
+`--save-tool-calls` / `--save-snapshots` / `--save-screenshots` 暴露——标志会在那次运行中覆盖文件。
+`save_*` 选项会把转储写到数据目录下，它们是调试辅助；正常使用时把它们关掉。
 
-:::note[`host = "0.0.0.0"` 会把服务器暴露到你的局域网]
-这是有意为之的——手机桥接需要通过网络访问到服务器。`doctor` 会标记它以便你知情。
-如果你只在同一台机器上驱动 PhysiClaw，就绑定到 `127.0.0.1`。
+:::note[`host = "0.0.0.0"` 会把服务器暴露到你的局域网——这是有意为之]
+手机桥接通过网络连接，所以服务器默认绑定为局域网可达。`doctor` 会把这一点标为提示信息，而非错误。
+只有当你完全在同一台机器上驱动 PhysiClaw 时才绑定到 `127.0.0.1`——那样手机桥接就无法连到它了。
 :::
 
 ## 相机：`[camera]`
@@ -91,39 +151,40 @@ height = 1080
 fourcc = "MJPG"
 ```
 
-PhysiClaw 向相机请求的分辨率和像素格式。`MJPG` 在 Windows 上很关键：默认的未压缩模式在 USB 上会
-跳到 640×480，而切换到 MJPG 压缩模式才让单根 USB 线缆能承载 1080p。驱动会就近取最接近的受支持模式，
+PhysiClaw 向 USB 摄像头**请求**的分辨率和像素格式。`MJPG` 在 Windows 上很关键：默认的未压缩模式在 USB
+上会跳到 640×480，而切换到 MJPG 压缩模式才让单根 USB 线缆能承载 1080p。驱动会就近取它支持的最接近模式，
 所以实际尺寸取决于相机在第一帧报告的值。
 
-## Agent 旋钮
+## 助理节奏与预算旋钮
 
-这些用于调校内置 agent。默认值已为真实场景调好——只在你清楚原因时才去动它们。
+这些用于调校内置助理的循环。默认值已为真实场景调好——**只在你清楚原因时才去动它们。**
 
 ```toml
 [engine]
-max_turns = 300            # runaway safeguard for one session
+max_turns = 300            # runaway safeguard per session
 max_attempts = 3           # retries on a provider error
-wait_default_minutes = 15  # default WAIT-then-recheck interval
+wait_default_minutes = 15  # default WAIT-then-recheck interval (minutes)
 
 [memory]
-default_log_entries  = 20  # on-demand read_logs default size (max 200)
-bootstrap_log_entries = 10 # daily-log lines preloaded at every wake
+default_log_entries   = 20 # on-demand read_logs default size (entries, max 200)
+bootstrap_log_entries = 10 # daily-log lines preloaded at every wake (entries)
 
 [retention]
-trace_days = 7             # purge window for trace logs + cron job history
+trace_days = 7             # purge window for trace logs + cron job history (days)
 ```
 
-`[engine]` 是 agent 工具调用循环的失控保护、重试和节奏预算。`[memory]` 控制 agent 在每日日志中
-预加载多少行、以及按需读取多少行。`[retention]` 设定磁盘上的 trace 日志和 cron 历史保留多久。
+`[engine]` 是工具调用循环的失控保护、重试和节奏预算。`[memory]` 控制助理在每次唤醒时预加载多少每日日志、
+以及按需读取多少。`[retention]` 设定磁盘上的 trace 日志和 cron 任务历史保留多久。cron 那一侧参见
+[自主任务](/zh/agent/autonomous-tasks/)。
 
-### 当模型是 `claude-code/…` 引用时
+### 当模型是 `claude-code/…` 引用时：`[claude]`
 
-如果 `[agent] model` 以 `claude-code/` 开头，PhysiClaw 会把外部的 `claude` CLI 作为子进程驱动，
-此时 `[claude]` 对它生效：
+`[claude]` **仅**在 `[agent] model` 是 `claude-code/…` 引用（即外部 `claude` CLI 子进程）时生效。
+进程内引擎会忽略它。
 
 ```toml
 [claude]
-timeout_seconds = 180
+timeout_seconds = 180      # seconds
 max_attempts = 3
 ```
 
@@ -134,14 +195,34 @@ max_attempts = 3
 default_source = ""        # e.g. "physiclaw/PhysiClaw"
 ```
 
-`physiclaw skills install` 的默认 git 源。为空意味着你每次都得传 `--from`。
-接受 `owner/repo` 简写或完整 git URL。
+`physiclaw skills install` 的默认 git 源。为空意味着你每次都得传 `--from`。接受 `owner/repo` 简写
+或完整 git URL。
 
 ## 查看生效后的配置
 
 ```bash
-physiclaw config show          # merged config as TOML, keys masked
-physiclaw config get engine.max_turns
+physiclaw config show                  # merged config as TOML, keys masked
+physiclaw config get engine.max_turns  # read a single key
 ```
 
-`show` 反映分层之后的一切——默认值加上你的覆盖——所以它是服务器实际会用到什么的真实来源。
+`config show` 反映分层**之后**的一切——内置默认值加上你的覆盖——所以它是服务器实际会用到什么的真实来源。
+`config get` 读取一个已解析的键。
+
+## 哪些**不**在这个文件里
+
+有两类设置位于别处，不应在这里手动编辑：
+
+- **硬件标定**——标定包、`cam_index` 以及仿射映射由设置向导生成并存放在
+  `~/.physiclaw/calibration/` 下，而非 `config.toml` 里。要修改它们请重新运行向导；参见
+  [安装](/zh/set-up/install/)。
+- **电磁铁与固件时序**——hit-and-hold 手势的取值和运动参数位于控制板上的 FluidNC YAML 里，
+  而非这里。参见 [手势](/zh/reference/gestures/)。
+
+## 下一步
+
+<CardGrid>
+  <LinkCard title="CLI 参考" description="physiclaw config、models、server 以及其余每条命令的完整语法。" href="/zh/reference/cli/" />
+  <LinkCard title="选择模型" description="provider/model 引用、密钥设置，以及每个引用会选中哪个引擎。" href="/zh/agent/models/" />
+  <LinkCard title="运行模式" description="自带 MCP 客户端 vs. 内置助理运行时。" href="/zh/run/operating-modes/" />
+  <LinkCard title="手势" description="电磁铁 hit-and-hold 时序到底存放在哪里。" href="/zh/reference/gestures/" />
+</CardGrid>

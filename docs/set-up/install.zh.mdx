@@ -1,118 +1,197 @@
 ---
 title: 安装软件
-description: 一条安装脚本、一次环境检查、本地视觉模型，再启动服务——然后把 MCP 客户端指向它。
+description: 一条安装脚本就能把 physiclaw CLI、Python 3.12 和本地视觉模型装进你的 Mac——再用 doctor 检查环境，并启动局域网服务。
 ---
 
-PhysiClaw 的软件就是一个叫 `physiclaw` 的命令行工具，跑起来只需四条命令：安装、检查环境、
-拉取本地视觉模型、启动服务。目前官方支持的平台是 macOS；其他系统真正的区别只有串口名称，而那个
-名字向导会替你找出来。
+硬件已经装好，FluidNC 也刷进去了。软件这一半就是一个叫 `physiclaw` 的本地 CLI：一条安装命令、
+一次只读的健康检查，外加一个你让它一直跑着的服务。默认不接任何模型，你现在也用不着——硬件设置阶段
+服务不接模型照样能跑。本页带你把安装弄到健康状态、把服务跑起来；后面两页负责准备手机和校准。
 
-:::note[硬件可以稍后再接]
-什么都不插也能安装并运行 `physiclaw doctor`——它只会报告缺了什么。只有到了
-[校准](/zh/set-up/calibrate/) 这一步，机械臂和摄像头才真正派上用场。
+:::caution[先刷固件]
+本页假设你已经把 FluidNC 刷进了 MKS DLC32 V2.1 主板。CLI 的硬件向导通过串口和主板对话，没刷固件
+之前它根本没有可连接的对象。如果还没刷，请先做 [固件](/zh/hardware/firmware/)。
 :::
 
-## 1. 安装 CLI
+:::note[硬件可以稍后再接——但校准时不行]
+什么都不插也能安装并运行 `physiclaw doctor`；它只会报告缺了什么。只有到了
+[校准](/zh/set-up/calibrate/) 这一步、要跑硬件向导时，机械臂和摄像头才需要接上。
+:::
 
-一条脚本装好一切——`uv`、Python 3.12 和 `physiclaw` CLI——全部隔离在 `~/.local/bin` 下，
-绝不碰你系统里的 Python：
+## 1. 运行安装脚本
+
+macOS 是我们重点支持的平台。一条命令装好一切：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
 ```
 
-装完后，`physiclaw` 就在你的 `PATH` 里了。确认一下：
+`install.sh` 按顺序做的事：
+
+<Steps>
+
+1. **确认是 macOS（Darwin）。** 在其他平台上它会拒绝运行。
+
+2. **确保 `git` 存在。** 如果缺失，它会警告并继续——`git` 只在后面安装
+   [技能](/zh/agent/memory-and-skills/) 时才用得到。
+
+3. **安装 `uv`**（其余一切都依赖的 Python 包/运行时管理器）。
+
+4. **通过 `uv python install 3.12` 安装 Python 3.12。**
+
+5. **安装 CLI**：`uv tool install physiclaw --python 3.12 --force --refresh`。这是一次隔离的
+   工具安装——绝不碰你系统里的 Python。
+
+6. **拉取本地视觉模型**，作为最后一步运行 `physiclaw setup local-vision-model`。所以正常装完后
+   模型就已经到位（见下面第 4 节）。
+
+</Steps>
+
+包是 `physiclaw` v0.0.20（Python ≥3.12，MIT）。
+
+:::tip[两个环境变量旋钮]
+`PHYSICLAW_VERSION=<x.y.z>` 可以钉死某个版本，而不是装最新版。`NO_COLOR=1` 会给出朴素、无样式的
+输出（管道写日志时很有用）。
+:::
+
+:::note[Windows]
+有一个 `install.ps1`，可以用 `irm <url>/install.ps1 | iex` 运行，但本文档其余部分都默认 macOS。
+:::
+
+## 2. 确认可执行文件在 PATH 里
 
 ```bash
 physiclaw --version
 ```
 
-如果 shell 找不到这条命令，开一个新的终端（让更新后的 `PATH` 生效）再试一次。
+如果 shell 找不到这条命令，开一个**新终端**（让更新后的 `PATH` 生效），再试一次。
 
-## 2. 检查环境
+## 3. 运行健康检查
 
-`physiclaw doctor` 是一次只读的健康检查——它绝不改动任何东西。它会打印 Python 版本、你的配置
-路径、视觉模型是否就位、它能看到哪些硬件，以及一份编号的「接下来该做什么」清单。
+`physiclaw doctor` 是一次只读的检查——它绝不改动任何东西。它会打印 Python 版本、你的配置路径、
+视觉模型是否就位、它能看到哪些硬件、服务能否绑定 `0.0.0.0:8048`，以及一份编号的「接下来该做什么」
+清单。
 
 ```bash
 physiclaw doctor
 ```
 
-刚装好时，它会标出两样缺失的东西——视觉模型，以及一个正在运行的服务。这很正常；接下来两步会把这两样
-都补齐。任何时候觉得哪里不对劲，都可以再跑一次 `doctor`；它是一眼看清整套系统状态最快的方式。
+那行 `0.0.0.0:8048` 显示为**提示信息，而非错误**——绑定到所有网络接口是有意为之，这样你的手机才能
+通过局域网连到服务（详见第 6 节）。
 
 :::tip[深入一点]
-`physiclaw doctor --deep` 会做主动探测——它会加载视觉模型、抓一帧真实画面，并且（如果你设置了
-agent 模型）发起一次真实的 API 调用。它要花几秒钟，但能逮住被动检查发现不了的问题，比如摄像头能打开
-却抓不到画面——因为 macOS 还没授予摄像头权限。
+`physiclaw doctor --deep` 会做主动探测：它会加载视觉模型、抓一帧真实画面，并且——如果你设置了
+助理模型——发起一次真实的 API 调用。它要花几秒钟，但能逮住被动检查发现不了的问题，比如摄像头能
+打开却抓不到画面——因为 macOS 还没授予摄像头权限。
 :::
 
-## 3. 下载本地视觉模型
+## 4. 关于视觉模型（已经拉取好了）
 
-PhysiClaw 用一个小巧的图标检测模型来读屏，这个模型跑在**你自己的机器上**。只需拉取一次：
+PhysiClaw 用一个小巧的图标检测模型来读屏，这个模型跑在**你自己的机器上**。安装脚本在第 1 步里已经
+把它拉好了，所以正常安装在这里什么都不用做。
+
+如果它被跳过了（比如安装时 `uv` 不可用），或者你想刷新它，运行：
 
 ```bash
-physiclaw setup local-vision-model
+physiclaw setup local-vision-model        # 加 --force 可重新下载/重新转换
 ```
 
-这会下载约 100 MB 并把它转换成快速推理格式。转换过程会在一个用完即弃的环境里临时借用一些大块头依赖，
-成功后立刻删掉，所以你的安装始终保持精简——只有转好的成品模型会留下来。
+它做的事：下载 `microsoft/OmniParser-v2.0` 的 `icon_detect/model.pt`（约 100 MB），在一个用完
+即弃的 `uv run --with` 环境里把它转换成 ONNX（`imgsz=1280`），转完就把这个临时环境丢掉，并把成品
+文件留在 `~/.physiclaw/models/omniparser_icon_detect/model.onnx`。`uv` 是转换的运行时前提；如果
+缺失，`install.sh` 会警告并继续，但不带模型。
 
-为什么用本地模型，而不是云端 API？
+为什么用本地模型：
 
 <CardGrid>
   <Card title="隐私" icon="approve-check">
-    你手机屏幕的每一帧都在你自己的机器上处理。消息、银行、账户的截图，永远不会离开你的桌面。
+    你手机屏幕的每一帧都在本地处理。消息、银行、账户的截图，永远不会离开你的桌面。
   </Card>
-  <Card title="离线又快" icon="rocket">
-    每次「看」都不必走一趟网络。检测器在本地运行，所以即便网络时好时坏，一次 `peek` 仍能稳定在
-    ~4 秒上下。
+  <Card title="无需逐次往返" icon="rocket">
+    检测器在本地运行，所以「看一眼屏幕」不依赖对云端 API 的网络调用。
   </Card>
 </CardGrid>
 
-## 4. 启动服务
+完整的视觉流水线（RapidOCR + OmniParser V2 / YOLO11m）在 [它如何看](/zh/concepts/how-it-sees/)
+里详述。
+
+## 5. 你现在还不需要模型
+
+**没有内置模型。** 现在这样没关系：一个普通的 `physiclaw server` 照样能跑起来，供硬件设置和手动
+MCP 调用使用。唯一在你设置模型之前不会启动的，是**内置助理**——在那之前它一直沉睡。如果你从
+OpenClaw 过来，会认出驱动 PhysiClaw 的两种方式：
+
+- **(A) 自带 MCP 客户端。** 把 Claude Desktop、OpenClaw 或任意 MCP 客户端直接指向 `/mcp`；它会
+  收到 FastMCP 的指令并驱动手机。服务端不需要助理模型。
+- **(B) 内置运行时。** 把 `[agent] model` 设成一个 `provider/model` 引用，PhysiClaw 自己运行
+  助理。
+
+挑选并配置模型密钥是另一个话题——等你真正想让助理来驱动时再做。见 [模型](/zh/agent/models/)。
+
+## 6. 启动服务
 
 ```bash
 physiclaw server
 ```
 
-这会在端口 **8048** 上启动 MCP 服务，并在浏览器里打开设置向导。让这个 shell 一直开着——正是这个
-进程占着串口和摄像头，并和你的手机通信。首次启动时，它会打印出（除别的之外）：
+这会在 `http://<host>:<port>/mcp` 上以 **streamable-HTTP 提供 FastMCP** 服务。默认 host 是
+`0.0.0.0`，端口是 **8048**。绑定到 `0.0.0.0` 是有意为之：服务必须能从局域网访问，手机桥才能连到它。
+启动时它会打印出你将要用到的两个 URL：
 
 ```text
-PhysiClaw MCP server on http://localhost:8048/mcp
-QR code (scan with phone): http://localhost:8048/api/bridge/qr
+MCP endpoint (for clients):  http://localhost:8048/mcp
+Phone QR (scan on phone):    http://localhost:8048/api/bridge/qr
 ```
 
-它打开的那个浏览器窗口，就是硬件设置向导。你可以在那里完成设置，也可以在第二个终端里做——两者效果完全
-一样，[校准](/zh/set-up/calibrate/) 会带你一步步走完。
+**让这个 shell 一直开着。** 它占着串口和摄像头，并和你的手机通信。助理运行时会自动以子进程形式启动
+——除非你传了 `--no-runtime`，或者没有设置模型。
 
-## 5. 把 MCP 客户端指向它
+实用参数（只在需要时才用）：
 
-PhysiClaw 说的是 **MCP**（Model Context Protocol）——AI agent 调用外部工具的标准方式。任何
-MCP 客户端（Claude Desktop、IDE，或你自己的脚本）都连到同一个端点：
+| 参数 | 用途 |
+| --- | --- |
+| `--port` / `--host` | 覆盖默认的 `8048` / `0.0.0.0`。 |
+| `--warm-start` | 恢复此前保存的校准包。要跳过重新校准就得用它。 |
+| `--cam-index` | 钉死某个摄像头索引，而不是自动检测。 |
+| `--no-runtime` | 不启动助理运行时子进程。 |
 
-```text
-http://localhost:8048/mcp
-```
+## 满足以下条件就算完成……
 
-校准完成后，客户端就能看到 PhysiClaw 的各种工具——`peek`、`tap`、`swipe` 等等——并开始操作手机。
-[第一个任务](/zh/run/first-task/) 会接好一个客户端，从头到尾跑通一遍。
+- `physiclaw --version` 打印出版本号，
+- `physiclaw doctor` 显示**视觉模型已就位**且**没有阻塞性错误**（那行 `0.0.0.0:8048` 是提示
+  信息，不是问题），并且
+- `physiclaw server` 能启动，并打印出 **MCP endpoint** 和 **phone QR** 两个 URL。
 
-## 关于串口的说明
+接下来：[准备手机](/zh/set-up/prepare-the-phone/)（AssistiveTouch + 三个 iOS 快捷指令），然后
+[校准](/zh/set-up/calibrate/)。之后 [第一个任务](/zh/run/first-task/) 会从头到尾驱动它跑通一遍。
 
-PhysiClaw 会自动检测机械臂的 USB 串口，所以你很少需要知道它的名字。当某个排障步骤确实要你提供时，
-不同系统格式各异：
+<CardGrid>
+  <LinkCard title="准备手机" description="AssistiveTouch 以及手机桥需要的三个快捷指令。" href="/zh/set-up/prepare-the-phone/" />
+  <LinkCard title="校准" description="接上机械臂和摄像头，运行硬件向导。" href="/zh/set-up/calibrate/" />
+</CardGrid>
+
+## 参考：串口（很少用到）
+
+机械臂的 USB 串口会以 **115200** 波特率自动检测，所以你几乎从不需要手动输入它。当某个排障步骤确实
+要你提供时，不同系统格式各异：
 
 <Tabs>
   <TabItem label="macOS">
-    `/dev/tty.usbserial-XXXX`（或 `/dev/tty.usbmodemXXXX`）。用
-    `ls /dev/tty.usb*` 列出候选项。
+    `/dev/tty.usbserial-XXXX` 或 `/dev/tty.usbmodemXXXX`。用 `ls /dev/tty.usb*` 列出候选项。
   </TabItem>
   <TabItem label="Linux">
-    `/dev/ttyUSB0`（CH340 转接芯片）或 `/dev/ttyACM0`。用 `ls /dev/ttyUSB* /dev/ttyACM*` 列出。
+    `/dev/ttyUSB0`（CH340 转接芯片）或 `/dev/ttyACM0`。
   </TabItem>
   <TabItem label="Windows">
-    `COM3`、`COM4`……在设备管理器 → 端口（COM 和 LPT）里查当前的编号。
+    `COM3`、`COM4`……在设备管理器 → 端口（COM 和 LPT）里查。
   </TabItem>
 </Tabs>
+
+## 参考：东西都放在哪
+
+所有东西都落在 `~/.physiclaw` 下（可用 `PHYSICLAW_HOME` 覆盖）：
+
+- `config.toml` — 配置文件。
+- `models/omniparser_icon_detect/model.onnx` — 视觉模型。
+- `calibration/` — 保存的校准包。
+
+完整细节见 [配置](/zh/reference/configuration/) 和 [CLI 参考](/zh/reference/cli/)。

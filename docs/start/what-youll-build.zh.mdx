@@ -1,69 +1,174 @@
 ---
 title: 你将造出什么
-description: 一眼看懂 PhysiClaw 这套装置 —— 它花多少钱、要多久，以及从零件到一个跑起来的 agent 的全程。
+description: 关于 PhysiClaw 装置的一份实在的预览 —— 它到底是什么、真实花费多少、要花多久，以及从一箱零件到一个会点你手机的助理，这一路的先后顺序。
 ---
 
-在你下单买任何东西之前，先看看全貌：造好的装置长什么样、花多少钱，以及从一箱零件到一个能点你手机的 agent，中间那寥寥几步。
+你已经了解了它的大脑：一个 AI 助理通过「看 → 想 → 动 → 确认」的循环驱动一台真实的手机，全程不走任何 API。这一页讲的是**身体** —— 那台给这个助理一根手指的机器。在你花钱之前，先把实情看清楚：这套装置究竟是什么、要花多少钱、对你有什么要求，以及从零件到一个跑起来的助理，工作的先后顺序。
 
-{/* PHOTO: 组装好的装置，带标注 —— 鹅颈支架上的俯拍相机、写字机械臂、Z 轴笔夹上的触控笔、卡在角落支架里的手机、控制板 + USB hub。一张清晰的主图；正是这一页让人觉得「这东西我也造得出来」。 */}
+简短地说：这是一台**从零开始、纯手工搭建的机器**，既不是套件，也不是现成的绘图机。你要采购零件，把定制切割的金属件和 3D 打印订单发给供应商，组装一套 CoreXY 龙门，做一点焊接，刷固件，再做校准。请按**好几天**的工程量来安排。它完全可行 —— 但要心里有数地上手。
+
+## 造好的装置是什么
+
+PhysiClaw 是一台小型桌面龙门机，主体由 **2040 与 1020 铝型材**搭成。两台 **NEMA 17 步进电机**驱动一套 **CoreXY** 同步带结构，带着一支**电容触控笔**在 X、Y 方向上移动，扫过一部正面朝上、卡在角落支架里的手机。下压动作 —— 也就是 Z 轴、真正的那一「触」—— 由一个 **12V 推拉式电磁铁**完成：线圈把一根杆子顶下去压住触控笔，再靠弹簧把它抬起来。一台**俯拍的 4K/8MP 自动对焦 USB 摄像头**笔直地朝下看着屏幕。一块 **MKS DLC32 V2.1** 控制器驱动电机和电磁铁；它通过 **USB** 连到你那台跑 `physiclaw` 服务的 Mac，并由一个圆口电源供给 **12V**。
+
+{/* PHOTO: hero shot of the assembled rig, annotated. Overhead USB webcam ~25cm above on its
+     mount looking straight down; the CoreXY X/Y gantry carrying the stylus; the solenoid as the
+     Z/touch actuator; the MKS DLC32 board with USB-to-Mac and 12V barrel jack; the phone seated
+     face-up in the corner bed holder. Label the THREE subsystems. Do NOT label anything a
+     "pen plotter" — this is a hand-built CoreXY gantry. */}
 
 ```text
-            ┌─ overhead camera (on a gooseneck, ~25 cm up)
-            │        looks straight down at the screen
-            ▼
-        ┌────────┐
-        │ camera │
-        └────────┘
-            ╎  sees
-            ▼
-   ┌───────────────────────┐        ┌──────────────┐
-   │  pen-plotter arm      │◄──USB──│  your Mac    │
-   │  X/Y gantry           │  12 V  │  physiclaw   │
-   │  Z = solenoid + stylus│◄──pwr──│  server      │
-   └─────────┬─────────────┘        └──────────────┘
-             │ taps
-             ▼
-      ┌──────────────┐
-      │  the phone   │  seated face-up in a corner holder
-      │  (unlocked)  │
-      └──────────────┘
+        overhead USB camera (~25 cm up, looking straight down)
+                    │ sees
+                    ▼
+   ┌───────────────────────────────┐        ┌──────────────────┐
+   │  CoreXY X/Y gantry             │◄──USB──│  your Mac        │
+   │  GT2 belts · MGN9H rails       │        │  physiclaw       │
+   │  Z = solenoid presses stylus   │        │  server          │
+   └───────────────┬───────────────┘        └──────────────────┘
+                   │                  ┌──────────────────┐
+        MKS DLC32 V2.1 board ◄──12V───│  barrel PSU      │
+                   │ taps             └──────────────────┘
+                   ▼
+            ┌──────────────────────┐
+            │  phone, face-up      │  in a corner holder
+            └──────────────────────┘
 ```
 
-## 预期一览
+### 三个子系统
 
 <CardGrid>
-  <Card title="≈ $112" icon="seti:shell">
-    全是现成零件。机械臂是一台消费级写字机；相机是一个普通的 USB 摄像头。
+  <Card title="CoreXY 运动台（X/Y）" icon="seti:default">
+    一套手工搭建的龙门：GT2 6mm 同步带、3 条 MGN9H 直线导轨 + 滑块，以及 2 台 NEMA 17 步进电机，
+    采用 CoreXY 布局，两台电机共同分担 X 和 Y 的运动。这是大多数人最容易低估的部分 —— 它可不是现成的绘图机。
   </Card>
-  <Card title="≈ 一个下午" icon="seti:clock">
-    组装纯属机械活 —— 不用焊接，不用定制电路板。校准有向导一步步带着走。
+  <Card title="触控机构（Z）" icon="seti:lock">
+    一个 12V 推拉式电磁铁把电容触控笔笔直地压下去，完成一次 tap，再靠弹簧把它抬起来。这既不是 Z 轴舵机，
+    也不是绘图笔 —— 就是一个线圈加一根杆子。
   </Card>
-  <Card title="不需要特殊技能" icon="approve">
-    只要你会照着接线图接线、会夹紧一根鹅颈管，就能造一台出来。
-  </Card>
-  <Card title="目前支持 macOS" icon="apple">
-    macOS 是受支持的平台；整个流程的大部分在 Windows 上也能跑。（串口不一样。）
+  <Card title="俯拍相机" icon="seti:image">
+    一台 4K/8MP 自动对焦 USB 摄像头，装在约 25cm 高处笔直朝下看。助理在 `peek` 时就是靠它看屏幕的。
   </Card>
 </CardGrid>
 
-## 接下来的路
+## 它真实花多少钱
 
-文档余下的部分，就是这套构建，按顺序来。每一步都干净利落地交接给下一步：
+零件大约 **$145** —— 在**中国约 ¥1046**（按 ~7.2 人民币/美元算），在**欧美会更高**，那里的供应链没那么方便。把这当成一个*不含运费和备货周期*的零件价，而不是一个精确的总账数字。
+
+值得一提的几项（以中国售价为参考）：
+
+| 部件 | 约价 |
+| --- | --- |
+| 相机（4K/8MP 自动对焦 USB） | ¥200 |
+| 3D 打印件（SLS/MJF 尼龙） | ¥190 |
+| 导轨 + 滑块（MGN9H） | ¥120 |
+| 控制板（MKS DLC32 V2.1） | ¥100 |
+| 铝型材（2040 + 1020） | ¥60 |
+| 电源（12V 圆口） | ¥50 |
+| 步进电机（2× NEMA 17） | ¥50 |
+| TMC2209 驱动（×2） | ¥35 |
+
+完整、确切的清单 —— 包括 250+ 个紧固件 —— 见[物料清单](/zh/hardware/bill-of-materials/)。
+
+## 它对你真实的要求
+
+这是一个**好几天**的工程，分四个阶段：
 
 <Steps>
 
-1. **[构建硬件](/zh/hardware/bill-of-materials/)** —— 下单买齐零件，然后把机械臂、触控笔、相机和手机支架组装起来。
+1. **采购、打印、切割。** 供应链以中国为中心。你要跟供应商沟通，把型材按需**切割、攻丝、钻孔**，
+   再把 STEP 文件上传给一家 3D 打印服务。在所有东西到手之前，预计会有**好几天的备货周期**。
 
-2. **[安装软件](/zh/set-up/install/)** —— 一条命令装好 `physiclaw` CLI；`physiclaw doctor` 检查你的机器。
+2. **组装。** 在所有零件到齐后，手册自己给出的估计是**大约两到三小时**的机械组装。
 
-3. **[准备手机](/zh/set-up/prepare-the-phone/)** —— 打开 AssistiveTouch，添加那三个 iOS Shortcuts。五分钟，一次搞定。
+3. **刷固件。** 通过浏览器把 **FluidNC** 刷进控制板。这是硬件设置前一个硬性的前置条件。
 
-4. **[校准](/zh/set-up/calibrate/)** —— 一个向导教机械臂和相机屏幕到底在哪儿，好让 tap 落在 agent 瞄的地方。
-
-5. **[跑你的第一个任务](/zh/run/first-task/)** —— 接上你的 agent，用大白话给它一个目标。看着它看、决策、tap。
+4. **校准与调试。** 一个引导式向导会教会这台装置屏幕在哪儿；调同步带张力和电磁铁是个反复迭代、
+   有点磨人的活儿。
 
 </Steps>
 
-:::tip[想先搞懂概念？]
-如果你来这儿是想搞懂 PhysiClaw、而不是造一台，那就读[它如何工作](/zh/start/how-it-works/) —— 整套构建服务的，就是那个心智模型。
+:::caution[先读，后买]
+在下任何单之前，先把整本手册读一遍，并核对**完整的**[物料清单](/zh/hardware/bill-of-materials/)。
+有些零件需要定制加工、有备货周期，而 BOM 里有紧固件的数量和包装规格，你会想把它们凑成一单一起买。
+:::
+
+### 确实有真正的加工活
+
+别指望所有东西到货就能直接拧上去：
+
+- **金属切割。** 4 根 2040 型材 + 1 根 1020 X 梁 + 2 根 1020 床身支撑，每根都要切到指定长度，
+  有些要攻丝或为 M6 沉孔。见[采购](/zh/hardware/sourcing/)。
+- **3D 打印件。** **9 种独立设计 / 11 个零件**，向一家 **SLS 或 MJF** 服务下单，用**黑色 PA12 尼龙**。
+  FDM 不行 —— 侧孔会变形、悬垂会塌。见[打印件](/zh/hardware/printed-parts/)。
+- **紧固件。** 约 250+ 个螺丝、T 型螺母、轴肩螺丝、垫片和支架。
+- **是的，有少量焊接。** 你需要一把**电烙铁和一把热风枪**来做线缆接驳和热缩。这不是一台免焊的机器。
+
+### 你手头要备的东西
+
+<CardGrid>
+  <Card title="一台 Mac" icon="apple">
+    macOS 是受支持的平台。整个流程的大部分在 Windows 上也能跑，但串口处理不一样 ——
+    相机和机械臂的设置都是按 macOS 来的。
+  </Card>
+  <Card title="手动工具" icon="seti:config">
+    2/3/5mm 内六角扳手、一把电动起子（推荐）、一把电烙铁 + 热风枪，以及一个能把机架找平的平整台面。
+  </Card>
+  <Card title="耗材" icon="seti:plan">
+    锂基润滑脂（用于导轨）和乐泰 243 —— 顶丝松脱是用户反馈的头号故障，所以螺纹胶很重要。
+  </Card>
+  <Card title="一部备用 iPhone" icon="apple">
+    用一部一次性/闲置的 iPhone 当工具机。运行时用的是写死的锁屏密码，而且服务在局域网内可达 ——
+    这不适合你日常用的手机。见[安全](/zh/safety/)。
+  </Card>
+</CardGrid>
+
+之后你还会想要一个**手机调音 app** —— 同步带张力是靠拨动皮带、对准一个目标频率来设定的，就像给琴弦调音一样。
+
+## 两个容易漏掉的组装步骤
+
+这俩不是可有可无的精修 —— 做错了机器就不工作。两者后面都有详细文档；只是在你开始前，先知道它们存在。
+
+:::caution[Z 轴改装]
+电磁铁出厂时铁芯上带着一颗螺母。你要**把那颗螺母卸掉，把电容触控笔头**（M3 内螺纹，约 Ø7mm 的导电头）
+直接拧到电磁铁铁芯上、顶替它的位置。触控笔**本身就是** Z 轴机构 —— 详见[组装](/zh/hardware/assembly/)。
+:::
+
+:::caution[给触控笔接大地]
+电容笔头必须接到一个**经过验证的大地** —— 例如一台已接地的 PC 机箱。**绝不**接墙上插座，
+也**绝不**接控制板的 GND。没有一条真正的接地通路，屏幕根本不会识别这些 tap。这既是安全要求，也是可靠性要求。
+:::
+
+## 从零件到一个跑起来的助理的路
+
+文档余下的部分，就是这套构建，按顺序来。先硬件（每一阶段都依赖前一阶段），再软件。
+
+<Steps>
+
+1. **[物料清单](/zh/hardware/bill-of-materials/)** → **[采购](/zh/hardware/sourcing/)**
+   → **[打印件](/zh/hardware/printed-parts/)** —— 下单买零件、把金属件切好、把打印件发出去。
+
+2. 按依赖顺序**[组装](/zh/hardware/assembly/)**：机架 → 惰轮 → 电机 → 直线导轨 →
+   同步带 → 触控笔/电磁铁（安装 + Z 轴改装）→ 手机床身 → 控制板 → 相机 → 接线。
+
+3. **[刷固件](/zh/hardware/firmware/)** —— 一个浏览器流程把 FluidNC 装到 MKS DLC32 上。
+   这要在硬件设置**之前**做。
+
+4. **[调试](/zh/hardware/tuning/)** —— 同步带张力和 CoreXY 运动；这是反复迭代的那部分。
+
+5. **[安装软件](/zh/set-up/install/)** —— 一条命令装好 `physiclaw` CLI。
+
+6. **[准备手机](/zh/set-up/prepare-the-phone/)** —— 打开 AssistiveTouch，添加那三个 iOS Shortcuts。
+
+7. **[校准](/zh/set-up/calibrate/)** —— 一个引导式的 **10 步向导**（机械臂用 18 个点，相机用 15 个点）
+   教这台装置屏幕到底在哪儿，好让 tap 落在助理瞄的地方。
+
+8. **[跑你的第一个任务](/zh/run/first-task/)** —— 把你的模型对准 PhysiClaw，用大白话给它一个目标。
+
+</Steps>
+
+:::tip[只为概念而来，不打算造？]
+如果你只是想搞懂 PhysiClaw、而不是造一台，那就回到
+[它如何工作](/zh/start/how-it-works/) —— 那是整套机器服务的心智模型。如果你已决定动手造，
+下一站是[安全](/zh/safety/)，然后是[构建硬件](/zh/hardware/bill-of-materials/)。
 :::
