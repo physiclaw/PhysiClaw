@@ -8,8 +8,8 @@
       },
       "items": [
         "start/introduction",
-        "start/how-it-works",
-        "start/what-youll-build"
+        "start/why-a-body",
+        "start/how-it-works"
       ]
     },
     {
@@ -18,7 +18,6 @@
         "zh-CN": "搭建硬件"
       },
       "items": [
-        "hardware/why-a-body",
         "hardware/assembly",
         "hardware/sourcing",
         "hardware/firmware"
