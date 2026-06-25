@@ -13,15 +13,6 @@
       ]
     },
     {
-      "label": "Safety",
-      "translations": {
-        "zh-CN": "安全须知"
-      },
-      "items": [
-        "safety"
-      ]
-    },
-    {
       "label": "Build the hardware",
       "translations": {
         "zh-CN": "搭建硬件"
@@ -55,6 +46,15 @@
       "items": [
         "run/first-task",
         "run/operating-modes"
+      ]
+    },
+    {
+      "label": "Safety",
+      "translations": {
+        "zh-CN": "安全须知"
+      },
+      "items": [
+        "safety"
       ]
     },
     {
