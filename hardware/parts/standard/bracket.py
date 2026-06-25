@@ -37,7 +37,8 @@ motor_corner_fillet = 3 * MM      # the four Z-parallel outer corners
 
 
 # ── CornerBracket parameters ──────────────────────────────────────────────────
-# L-shaped angle bracket: two faces meeting at a 90° inner corner at the origin.
+# L-shaped angle bracket: two faces meeting at 90°, their outer corner at the
+# origin (the inner concave corner is one thickness in, at x=t, z=t).
 # The bend (connection) edge runs along Y for corner_bend_length; each face
 # extends corner_face_depth out from the bend — the horizontal face in +X
 # (z 0..thickness), the vertical face in +Z (x 0..thickness). Each face carries
@@ -46,8 +47,9 @@ corner_bend_length = 26  * MM    # the connection edge, along Y
 corner_face_depth  = 30  * MM    # how far each face reaches out from the bend
 corner_thickness   =  4  * MM    # plate thickness
 corner_hole_d      = 6.5 * MM    # one through-hole per face, centered
-corner_end_fillet  =  4  * MM    # rounds the two corners at each face's free end
-corner_edge_tol    = 1e-3        # fuzz for matching free-end edges by center
+corner_bend_fillet =  4  * MM    # inner bend radius on the concave corner (x=t, z=t)
+corner_end_fillet  =  2  * MM    # round on the two inner free-end edges (x=d, z=t) and (x=t, z=d)
+corner_edge_tol    = 1e-3        # fuzz for matching the inner edges by center
 
 
 # ── Geometry ──────────────────────────────────────────────────────────────────
@@ -104,7 +106,8 @@ class MotorBracket(BaseStandardPart):
 class CornerBracket(BaseStandardPart):
     """L-shaped angle bracket — a 26 mm bend edge with two 30 mm-deep faces
     at 90°, 4 mm thick. Each face carries one Ø6.5 mm through-hole centered on
-    the face. Each face's free end has rounded corners."""
+    the face. The inner-face edges are filleted — the concave bend plus the
+    two free-end edges."""
 
     def name_suffix(self) -> str:
         return f"_corner_x{self.qty}"
@@ -134,18 +137,21 @@ class CornerBracket(BaseStandardPart):
                 with Locations((0, d / 2)):
                     Hole(radius=corner_hole_d / 2)
 
-            # Round the two free-end corners of each face: Z-parallel edges at
-            # the horizontal face's tip (x≈d) and X-parallel edges at the
-            # vertical face's tip (z≈d). Holes are circular, so the axis filters
-            # pick only the straight corner edges.
-            end_edges = [
-                e for e in p.edges().filter_by(Axis.Z)
-                if abs(e.center().X - d) < corner_edge_tol
-            ] + [
-                e for e in p.edges().filter_by(Axis.X)
-                if abs(e.center().Z - d) < corner_edge_tol
-            ]
-            fillet(end_edges, radius=corner_end_fillet)
+            # Fillet the inner face's three Y-parallel edges (holes are circular,
+            # so the Axis.Y filter picks only straight edges; match each by its
+            # center). The concave bend where the two faces meet takes the larger
+            # radius; the two free-end edges far from it take a smaller round —
+            # they sit on the 4 mm arms and can't carry the full bend radius.
+            def y_edges_at(*centers):
+                return [
+                    e for e in p.edges().filter_by(Axis.Y)
+                    if any(abs(e.center().X - cx) < corner_edge_tol
+                           and abs(e.center().Z - cz) < corner_edge_tol
+                           for cx, cz in centers)
+                ]
+            fillet(y_edges_at((t, t)), radius=corner_bend_fillet)
+            # re-query: the bend fillet rebuilt the solid
+            fillet(y_edges_at((d, t), (t, d)), radius=corner_end_fillet)
         return p.part
 
 
