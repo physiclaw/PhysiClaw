@@ -478,8 +478,8 @@
           "zh": "角码"
         },
         "spec": {
-          "en": "4-hole double-slot right-angle bracket, 56 mm long, 30 mm leg, 4×Ø6.5 holes",
-          "zh": "四孔双槽垂直角码，长度 56 mm，折边 30 mm，4×Ø6.5 孔"
+          "en": "2-hole right-angle bracket, 26 mm long, 30 mm leg, 2×Ø6.5 holes",
+          "zh": "两孔垂直角码，长度 26 mm，折边 30 mm，2×Ø6.5 孔"
         },
         "qty": "1",
         "desc": {
@@ -662,7 +662,7 @@
           "en": "M5×10",
           "zh": "M5×10"
         },
-        "qty": "16",
+        "qty": "15",
         "desc": {
           "en": "Frame, idlers, camera base",
           "zh": "机身、惰轮、摄像头支架"
@@ -902,7 +902,7 @@
           "en": "Drop-In M5",
           "zh": "船形螺母 M5"
         },
-        "qty": "24",
+        "qty": "23",
         "desc": {
           "en": "Frame, idlers, phone bed, control board holder, tube holder, camera base",
           "zh": "机身、惰轮、手机托架、控制板支架、导管支架、摄像头支架"
