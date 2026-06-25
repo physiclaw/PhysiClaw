@@ -165,7 +165,7 @@ the tap never lands. A buzzing coil at hold means the PWM is audible: fit a 470�
 the coil or raise the PWM to 25kHz. The FluidNC config owns `$32`/`$30` from YAML and rejects
 live `$`-writes (`error:162`), so the driver sends them with `optional=True` — a bare GRBL
 board (which *does* accept the writes) still works. Full procedure on the
-[tuning page](/en/hardware/tuning/).
+[firmware page](/en/hardware/firmware/).
 
 ## A note on stale snippets
 
@@ -182,7 +182,6 @@ When in doubt, the constants here (and in `solenoid.py` / `arm.py`) are authorit
 
 <CardGrid>
   <LinkCard title="MCP tools" description="The 12 tools an agent calls — tap, swipe, peek, and the rest." href="/en/reference/mcp-tools/" />
-  <LinkCard title="Tuning the rig" description="The $32=0 spindle mode and anti-buzz fix these gestures depend on." href="/en/hardware/tuning/" />
-  <LinkCard title="Firmware" description="Flash FluidNC and wire the solenoid to the spindle pin." href="/en/hardware/firmware/" />
+  <LinkCard title="Firmware & solenoid" description="Flash FluidNC, wire the solenoid, and set the $32=0 spindle mode + anti-buzz fix these gestures depend on." href="/en/hardware/firmware/" />
   <LinkCard title="Architecture" description="How a bbox becomes arm motion across the whole stack." href="/en/concepts/architecture/" />
 </CardGrid>

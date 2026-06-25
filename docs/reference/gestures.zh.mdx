@@ -156,7 +156,7 @@ G4 P0.2           ; spring-rebound dwell
 发出蜂鸣意味着 PWM 是可听见的：在线圈两端并联一个 470µF 电容，或把 PWM 提高到 25kHz。
 FluidNC 配置从 YAML 接管 `$32`/`$30`，并拒绝实时的 `$` 写入（`error:162`），所以驱动以
 `optional=True` 发送它们——一块裸 GRBL 板（它 *确实* 接受这些写入）仍然能正常工作。完整步骤见
-[调试页面](/zh/hardware/tuning/)。
+[固件页面](/zh/hardware/firmware/)。
 
 ## 关于过时片段的提醒
 
@@ -173,7 +173,6 @@ FluidNC 配置从 YAML 接管 `$32`/`$30`，并拒绝实时的 `$` 写入（`err
 
 <CardGrid>
   <LinkCard title="MCP 工具" description="助理会调用的 12 个工具——tap、swipe、peek 等等。" href="/zh/reference/mcp-tools/" />
-  <LinkCard title="调试装置" description="这些手势所依赖的 $32=0 主轴模式和防蜂鸣修复。" href="/zh/hardware/tuning/" />
-  <LinkCard title="固件" description="刷写 FluidNC 并把电磁铁接到主轴引脚。" href="/zh/hardware/firmware/" />
+  <LinkCard title="固件与电磁铁" description="刷写 FluidNC、接好电磁铁，以及这些手势所依赖的 $32=0 主轴模式和防蜂鸣修复。" href="/zh/hardware/firmware/" />
   <LinkCard title="架构" description="一个 bbox 如何贯穿整个技术栈变成机械臂运动。" href="/zh/concepts/architecture/" />
 </CardGrid>

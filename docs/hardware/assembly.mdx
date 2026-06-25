@@ -9,7 +9,7 @@ four or five steps that silently break everything if you get them wrong, and tel
 after the last bolt is in.
 
 Before you turn a single bolt: read the whole manual end to end, and re-check the complete
-[bill of materials](/en/hardware/bill-of-materials/). This is a from-scratch, hand-built **CoreXY
+[bill of materials](/en/hardware/sourcing/). This is a from-scratch, hand-built **CoreXY
 gantry** — extrusion, rails, belts, and printed joints — not a ready-made plotter with a pen to
 swap. Budget **about two to three hours** for assembly itself (the manual's own figure), sitting
 inside a multi-day project: source/print/cut, then assemble, then flash firmware, then calibrate
@@ -123,10 +123,10 @@ slip on the shaft: the arm thinks it moved, the carriage didn't, and every posit
 Thread-lock is not optional here.
 :::
 
-CoreXY also depends on **equal A/B belt tension**, with a tension target measured on the next page.
-Getting the routing and tension right is a distinct phase — see [tuning](/en/hardware/tuning/) for
-the belt-tension target (measured with a phone tuning app) and the rail-alignment routine. Don't
-restate the number here; tune it there.
+CoreXY also depends on **equal A/B belt tension**, with a tension target you dial in by ear with a
+phone tuning app. Getting the routing and tension right is a distinct phase — see
+[Tuning the motion](#tuning-the-motion) below for the belt-tension target and the rail-alignment
+routine.
 
 ### Stylus earth-grounding — the silent "do-nothing" failure
 
@@ -173,8 +173,7 @@ onto the solenoid **core** — in place of the nut the solenoid ships with.
      tip to a grounded chassis. */}
 
 The solenoid's strike/hold timing (a hit-and-hold sequence over the control board's spindle PWM
-output) is a firmware and tuning concern, not a mechanical one — see [firmware](/en/hardware/firmware/)
-and [tuning](/en/hardware/tuning/).
+output) is a firmware concern, not a mechanical one — see [firmware](/en/hardware/firmware/).
 
 ## Wiring (last)
 
@@ -193,6 +192,102 @@ Wiring comes last so nothing tugs while you position parts.
 {/* PHOTO: the MKS DLC32 in its printed holder with TMC2209 drivers seated, the 12 V barrel jack
      and USB plugged in, and the moving harness running through the PTFE tube to the gantry. */}
 
+## Tuning the motion
+
+The last bolt does not make the gantry move-ready. A from-scratch CoreXY machine is only as good as
+the mechanics you tune by hand, and this is the finicky part: you tension the belts to a target
+pitch, lock down the one screw that silently ruins everything, and free up the rails. Expect to
+repeat steps — and expect to come back here.
+
+:::note[This phase is iterative — and it loops back]
+Tuning and calibration inform each other. If, after [calibration](/en/set-up/calibrate/), commanded
+moves come out the wrong size or taps miss their target, the fix is usually back here (belt tension
+or set screws). Don't expect to nail it in one pass.
+:::
+
+### Belt tension — equal A/B matters most
+
+CoreXY uses two belts (A and B) that share both axes. **Equal tension matters more than the exact
+number** — if A and B differ, diagonal moves skew and your taps land off. Get both belts to the
+same pitch, then get that pitch right. Measure with a phone **tuning app** (any guitar/string
+tuner): pluck a belt span like a guitar string and read the frequency.
+
+<Steps>
+
+1. **Park the carriage at the 220 mm position.** Belt pitch depends on the free span length, so
+   measure consistently from the same carriage position every time.
+
+2. **Pluck and read.** Pluck the long belt span and read the frequency in the tuner app. Target is
+   **75 Hz**.
+
+3. **Adjust and re-pluck.** Tighten or loosen at the belt clamp, then pluck again. Repeat until the
+   span reads ~75 Hz.
+
+4. **Do the second belt — then re-check both.** Tension both A and B to ~75 Hz and confirm they
+   match. Adjusting one can shift the other, so loop until both read the same.
+
+</Steps>
+
+:::caution[Equal A/B is the point]
+A belt that's 75 Hz and a belt that's 90 Hz will move the carriage fine in straight lines but skew
+on diagonals — and you won't notice until calibration looks crooked. Match them.
+:::
+
+{/* PHOTO: phone tuning app held next to a plucked belt span, carriage parked at the 220mm mark, reading ~75 Hz */}
+
+### Drive-pulley set screws — the silent killer
+
+This is **the single most important fix in tuning.** Each NEMA 17 turns the belt through a **GT2 20T
+drive pulley** clamped onto the **5 mm motor shaft** by a tiny set screw. If that set screw is even
+slightly loose, the pulley spins on the shaft under load and **the arm silently loses position** —
+no error, no alarm, just taps drifting off target. It is the **#1 user-reported failure.**
+
+Fix it permanently:
+
+<Steps>
+
+1. **Seat the set screw on the shaft flat.** The motor shaft has a machined flat. Rotate the pulley
+   so the set screw bears directly on that flat, not on the round surface.
+
+2. **Torque it down.** Snug and firm with the hex key — this screw carries every move.
+
+3. **Lock it with Loctite 243.** A drop of **Loctite 243** on the threads stops it backing out from
+   vibration. Apply it here and to any other set screw that works loose.
+
+</Steps>
+
+:::tip[If position drifts later, suspect this first]
+A pulley that slips looks exactly like a calibration error — moves come out short or shifted. Before
+you re-calibrate, re-check these two set screws.
+:::
+
+### Rails — smooth, even travel
+
+The motion runs on **3x MGN9H linear rails** (2x 240 mm Y, 1x 150 mm X) with H-type carriages. They
+**ship coated in shipping oil**, which collects grit and isn't the right lubricant.
+
+<Steps>
+
+1. **Wipe off the shipping oil.** Clean every rail and carriage.
+
+2. **Re-grease with lithium grease (NLGI 2).** A thin, even film on the rail.
+
+3. **Align the rails, then feel the travel.** Push each carriage by hand, end to end. You're feeling
+   for **smooth, even, low-friction travel with no tight spots.** A tight spot means the rail is
+   misaligned or over-constrained — loosen its mounts, nudge it, re-snug, and feel again.
+
+</Steps>
+
+:::tip[Be patient with alignment]
+Rail alignment is iterative. Loosen, nudge, re-snug, push, repeat until the carriage glides freely
+the whole length. This is normal — don't force a rail that fights you.
+:::
+
+{/* PHOTO: hand pushing a carriage along an MGN9H rail to feel for smooth travel */}
+
+The solenoid's strike/hold timing — `$32=0`, the hit-and-hold sequence, and the anti-buzz fix — is
+electrical, not mechanical, and is tuned on the [firmware](/en/hardware/firmware/) page.
+
 ## After the last bolt
 
 Assembly does not make the rig usable on its own. The next steps are a gate, in order:
@@ -203,8 +298,9 @@ Assembly does not make the rig usable on its own. The next steps are a gate, in 
    This is a **prerequisite gate** — `physiclaw setup hardware` will not work until the firmware is
    on. See [firmware](/en/hardware/firmware/).
 
-2. **Tune the CoreXY.** Set belt tension to the target, finish re-greasing and aligning the rails,
-   and tune the solenoid timing. Iterative and finicky — plan for it. See [tuning](/en/hardware/tuning/).
+2. **Tune the motion.** Set belt tension to the target, finish re-greasing and aligning the rails,
+   and lock the drive-pulley set screws. Iterative and finicky — plan for it. See
+   [Tuning the motion](#tuning-the-motion) above.
 
 3. **Install the software and calibrate.** Then run the calibration wizard so the agent learns
    where the screen is. See [calibrate](/en/set-up/calibrate/).
@@ -212,8 +308,7 @@ Assembly does not make the rig usable on its own. The next steps are a gate, in 
 </Steps>
 
 <CardGrid>
-  <LinkCard title="Firmware" description="Flash FluidNC onto the MKS DLC32 — the prerequisite gate before setup." href="/en/hardware/firmware/" />
-  <LinkCard title="Tuning" description="Belt tension, rail alignment, and solenoid timing for the CoreXY." href="/en/hardware/tuning/" />
+  <LinkCard title="Firmware" description="Flash FluidNC onto the MKS DLC32 — the prerequisite gate before setup, and where the solenoid timing lives." href="/en/hardware/firmware/" />
   <LinkCard title="Calibrate" description="Teach the agent where the screen is after the rig is built and flashed." href="/en/set-up/calibrate/" />
   <LinkCard title="Why a body" description="Why PhysiClaw needs a real machine at all." href="/en/hardware/why-a-body/" />
 </CardGrid>

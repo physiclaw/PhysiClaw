@@ -18,13 +18,10 @@
         "zh-CN": "搭建硬件"
       },
       "items": [
-        "hardware/bill-of-materials",
-        "hardware/sourcing",
-        "hardware/printed-parts",
+        "hardware/why-a-body",
         "hardware/assembly",
-        "hardware/firmware",
-        "hardware/tuning",
-        "hardware/why-a-body"
+        "hardware/sourcing",
+        "hardware/firmware"
       ]
     },
     {

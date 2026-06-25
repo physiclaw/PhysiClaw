@@ -68,7 +68,7 @@ PhysiClaw 是一台小型桌面龙门机，主体由 **2040 与 1020 铝型材**
 | 步进电机（2× NEMA 17） | ¥50 |
 | TMC2209 驱动（×2） | ¥35 |
 
-完整、确切的清单 —— 包括 250+ 个紧固件 —— 见[物料清单](/zh/hardware/bill-of-materials/)。
+完整、确切的清单 —— 包括 250+ 个紧固件 —— 见[采购](/zh/hardware/sourcing/)。
 
 ## 它对你真实的要求
 
@@ -89,7 +89,7 @@ PhysiClaw 是一台小型桌面龙门机，主体由 **2040 与 1020 铝型材**
 </Steps>
 
 :::caution[先读，后买]
-在下任何单之前，先把整本手册读一遍，并核对**完整的**[物料清单](/zh/hardware/bill-of-materials/)。
+在下任何单之前，先把整本手册读一遍，并核对[采购](/zh/hardware/sourcing/)页上**完整的** BOM。
 有些零件需要定制加工、有备货周期，而 BOM 里有紧固件的数量和包装规格，你会想把它们凑成一单一起买。
 :::
 
@@ -100,7 +100,7 @@ PhysiClaw 是一台小型桌面龙门机，主体由 **2040 与 1020 铝型材**
 - **金属切割。** 4 根 2040 型材 + 1 根 1020 X 梁 + 2 根 1020 床身支撑，每根都要切到指定长度，
   有些要攻丝或为 M6 沉孔。见[采购](/zh/hardware/sourcing/)。
 - **3D 打印件。** **9 种独立设计 / 11 个零件**，向一家 **SLS 或 MJF** 服务下单，用**黑色 PA12 尼龙**。
-  FDM 不行 —— 侧孔会变形、悬垂会塌。见[打印件](/zh/hardware/printed-parts/)。
+  FDM 不行 —— 侧孔会变形、悬垂会塌。见[采购](/zh/hardware/sourcing/)。
 - **紧固件。** 约 250+ 个螺丝、T 型螺母、轴肩螺丝、垫片和支架。
 - **是的，有少量焊接。** 你需要一把**电烙铁和一把热风枪**来做线缆接驳和热缩。这不是一台免焊的机器。
 
@@ -145,30 +145,29 @@ PhysiClaw 是一台小型桌面龙门机，主体由 **2040 与 1020 铝型材**
 
 <Steps>
 
-1. **[物料清单](/zh/hardware/bill-of-materials/)** → **[采购](/zh/hardware/sourcing/)**
-   → **[打印件](/zh/hardware/printed-parts/)** —— 下单买零件、把金属件切好、把打印件发出去。
+1. **[采购](/zh/hardware/sourcing/)** —— 下单买零件、把型材切好、把打印件发出去。这一页带着
+   完整的 BOM（250+ 个紧固件）和 PA12 打印规格。
 
 2. 按依赖顺序**[组装](/zh/hardware/assembly/)**：机架 → 惰轮 → 电机 → 直线导轨 →
-   同步带 → 触控笔/电磁铁（安装 + Z 轴改装）→ 手机床身 → 控制板 → 相机 → 接线。
+   同步带 → 触控笔/电磁铁（安装 + Z 轴改装）→ 手机床身 → 控制板 → 相机 → 接线。机械调试 ——
+   同步带张力、导轨找正、顶丝 —— 都并入这一步。
 
-3. **[刷固件](/zh/hardware/firmware/)** —— 一个浏览器流程把 FluidNC 装到 MKS DLC32 上。
-   这要在硬件设置**之前**做。
+3. **[刷固件](/zh/hardware/firmware/)** —— 一个浏览器流程把 FluidNC 装到 MKS DLC32 上，
+   然后设置电磁铁。这要在硬件设置**之前**做。
 
-4. **[调试](/zh/hardware/tuning/)** —— 同步带张力和 CoreXY 运动；这是反复迭代的那部分。
+4. **[安装软件](/zh/set-up/install/)** —— 一条命令装好 `physiclaw` CLI。
 
-5. **[安装软件](/zh/set-up/install/)** —— 一条命令装好 `physiclaw` CLI。
+5. **[准备手机](/zh/set-up/prepare-the-phone/)** —— 打开 AssistiveTouch，添加那三个 iOS Shortcuts。
 
-6. **[准备手机](/zh/set-up/prepare-the-phone/)** —— 打开 AssistiveTouch，添加那三个 iOS Shortcuts。
-
-7. **[校准](/zh/set-up/calibrate/)** —— 一个引导式的 **10 步向导**（机械臂用 18 个点，相机用 15 个点）
+6. **[校准](/zh/set-up/calibrate/)** —— 一个引导式的 **10 步向导**（机械臂用 18 个点，相机用 15 个点）
    教这台装置屏幕到底在哪儿，好让 tap 落在助理瞄的地方。
 
-8. **[跑你的第一个任务](/zh/run/first-task/)** —— 把你的模型对准 PhysiClaw，用大白话给它一个目标。
+7. **[跑你的第一个任务](/zh/run/first-task/)** —— 把你的模型对准 PhysiClaw，用大白话给它一个目标。
 
 </Steps>
 
 :::tip[只为概念而来，不打算造？]
 如果你只是想搞懂 PhysiClaw、而不是造一台，那就回到
 [它如何工作](/zh/start/how-it-works/) —— 那是整套机器服务的心智模型。如果你已决定动手造，
-下一站是[安全](/zh/safety/)，然后是[构建硬件](/zh/hardware/bill-of-materials/)。
+下一站是[安全](/zh/safety/)，然后是[构建硬件](/zh/hardware/sourcing/)。
 :::

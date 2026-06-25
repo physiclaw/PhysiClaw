@@ -145,44 +145,85 @@ setting the config owns, so don't try to set `steps_per_mm` or `kinematics` with
 the terminal. Change the YAML, **Save**, and **Restart** instead.
 :::
 
-## How a tap fires (preview)
+## Solenoid (the Z tap)
 
-You never send these commands by hand — the PhysiClaw server does — but it is worth seeing what the
-config enables. The solenoid is driven **hit-and-hold** off `gpio.32`: a full-power **strike** to
-snap the stylus down, a brief **settle** dwell, then a lower **hold** current so the coil doesn't
-overheat, then **release** plus a short wait for the spring to clear.
+The Z/touch actuator is a **12 V 0.8 A push-pull solenoid** driven through the spindle PWM output —
+not a servo. A tap is a **hit-and-hold** electromagnet pulse: a full-power **strike** to snap the
+stylus down, a brief **settle** dwell, then a lower **hold** current so the coil doesn't overheat,
+then **release** plus a short wait for the spring to clear. You never send these commands by hand —
+the PhysiClaw server does — but this is the canonical record of the electrical setup and timing.
 
-```gcode
-M3 S1000    ; strike — full power, stylus snaps down
-G4 P0.08    ; settle — 80 ms dwell
-M3 S750     ; hold — sustained, lower current (must be < strike)
-M5          ; release — stylus lifts
-G4 P0.2     ; ~200 ms spring-clear before the next move
+### Prerequisite: spindle mode (`$32=0`)
+
+For the solenoid to respond to `S`-values at all, the board must be in spindle/laser mode:
+**`$32=0`**.
+
+:::note[Config owns this — don't fight the firmware]
+`$32` looks like a runtime `$`-setting, but on PhysiClaw it's governed by the FluidNC config
+([`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)),
+not by hand-written `$`-commands — the firmware **rejects** `$`-writes for settings the config owns.
+If `$32` isn't `0`, fix it in the YAML and **Restart**, not at the console.
+:::
+
+### Canonical hit-and-hold timing
+
+These numbers are the source of truth. The [gestures reference](/en/reference/gestures/) is the
+cross-reference for the same timing; quote them exactly.
+
+| Parameter | Value | What it is |
+| --- | --- | --- |
+| `HIT_S` | **1000** | Peak strike power |
+| `SETTLE_MS` | **80** | Dwell after the strike |
+| `HOLD_S` | **750** | Sustained hold (must be **< `HIT_S`**) |
+| `RELEASE_MS` | **200** | Spring-clear dwell after release |
+| `DOUBLE_TAP_GAP_MS` | **100** | Gap between taps of a double-tap |
+
+The fire sequence:
+
+```text
+M3 S1000    ; strike — full power, stylus snaps down (HIT_S)
+G4 P0.08    ; settle — 80 ms dwell (SETTLE_MS)
+M3 S750     ; hold — sustained, lower current (HOLD_S, < HIT_S so it doesn't overheat)
+M5          ; release — spring lifts the stylus
+G4 P0.2     ; 200 ms spring-clear dwell (RELEASE_MS)
 ```
 
 That hit-and-hold shape is exactly why a long-press reads differently from a tap.
 
 :::caution[Use the canonical timing, not the stale comments]
 The comment block inside `fluidnc_config.yml` still shows an older sequence
-(`G4 P0.05` and `M3 S300`, "tune from S150 up") — that text is **stale**. The authoritative timing
-is **80 ms settle** and **S750 hold**, as shown above. The
-[gestures reference](/en/reference/gestures/) and [Tuning](/en/hardware/tuning/) pages carry the
-canonical numbers; treat those as the source of truth.
+(`G4 P0.05` = 50 ms and `M3 S300`, "tune from S150 up") — that text is **stale**. The authoritative
+timing is **80 ms settle** and **S750 hold**, as shown above. Treat this page and
+[reference/gestures](/en/reference/gestures/) as the source of truth.
 :::
+
+### If the coil buzzes
+
+An audible buzz means the PWM ripple is making the coil vibrate. Fix it either way:
+
+- **Add a 470 µF capacitor across the coil**, or
+- **Raise the PWM frequency to 25 kHz** (above hearing).
+
+### If a tap doesn't register
+
+The tap can fire mechanically and still not register on the screen. The capacitive stylus tip must
+be tied to a **verified earth ground** — for example a grounded PC chassis. **Never a wall socket,
+never the control-board GND.** This was set during [assembly](/en/hardware/assembly/), but it's the
+first thing to re-confirm when a clean strike produces no touch.
 
 ## Next: make it move well
 
 Flashing makes the board **respond** — but responding is not the same as calibrated, smooth motion.
-Before you calibrate, the rig needs a tuning pass:
+Before you calibrate, the rig still needs a mechanical tuning pass:
 
 <LinkCard
-  title="Tune the rig"
-  description="Belt tension (75 Hz at the 220 mm carriage), rail grease, and solenoid anti-buzz (470 µF cap or 25 kHz PWM, $32=0 required)."
-  href="/en/hardware/tuning/"
+  title="Mechanical tuning"
+  description="Belt tension (75 Hz at the 220 mm carriage), drive-pulley set screws, and rail grease — the hand-work that makes moves come out the right size."
+  href="/en/hardware/assembly/"
 />
 
 <LinkCard
   title="Set up the software"
   description="Install PhysiClaw, prepare the phone, then run the calibration wizard that connects to the board you just flashed."
-  href="/en/set-up/install/"
+  href="/en/set-up/calibrate/"
 />

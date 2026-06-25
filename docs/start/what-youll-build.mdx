@@ -84,7 +84,7 @@ The notable line items (China pricing, for reference):
 | Steppers (2× NEMA 17) | ¥50 |
 | TMC2209 drivers (×2) | ¥35 |
 
-The full, exact list — including ~250+ fasteners — is the [Bill of materials](/en/hardware/bill-of-materials/).
+The full, exact list — including ~250+ fasteners — lives on [Sourcing](/en/hardware/sourcing/).
 
 ## What it really demands of you
 
@@ -108,7 +108,7 @@ This is a **multi-day** project, in four phases:
 </Steps>
 
 :::caution[Read first, buy second]
-Read the whole manual and check the **full** [Bill of materials](/en/hardware/bill-of-materials/)
+Read the whole manual and check the **full** BOM on [Sourcing](/en/hardware/sourcing/)
 before ordering anything. Some parts need custom fabrication and have lead times, and the BOM has
 fastener counts and pack sizes you'll want to batch into one order.
 :::
@@ -121,7 +121,7 @@ Don't expect everything to arrive ready to bolt together:
   some tapped or counterbored for M6. See [Sourcing](/en/hardware/sourcing/).
 - **3D prints.** **9 unique designs / 11 pieces**, ordered from an **SLS or MJF** service in
   **black PA12 nylon**. FDM is rejected — the side holes deform and overhangs sag. See
-  [Printed parts](/en/hardware/printed-parts/).
+  [Sourcing](/en/hardware/sourcing/).
 - **Fasteners.** ~250+ screws, T-nuts, shoulder screws, shims, and brackets.
 - **Yes, light soldering.** You'll need a **soldering iron and a heat gun** for wire splices and
   heat-shrink. This is not a no-solder build.
@@ -174,27 +174,25 @@ before it), then software.
 
 <Steps>
 
-1. **[Bill of materials](/en/hardware/bill-of-materials/)** → **[Sourcing](/en/hardware/sourcing/)**
-   → **[Printed parts](/en/hardware/printed-parts/)** — order parts, get metal cut, send prints.
+1. **[Sourcing](/en/hardware/sourcing/)** — order parts, get the extrusion cut, and send the
+   prints. This page carries the full BOM (~250+ fasteners) and the PA12 print spec.
 
 2. **[Assemble](/en/hardware/assembly/)** in dependency order: frame → idlers → motors → linear
    rails → belts → stylus/solenoid (mount + Z-conversion) → phone bed → control board → camera →
-   wiring.
+   wiring. Mechanical tuning — belt tension, rail alignment, and set screws — is folded in here.
 
-3. **[Flash firmware](/en/hardware/firmware/)** — a browser flow puts FluidNC on the MKS DLC32.
-   Do this **before** hardware setup.
+3. **[Flash firmware](/en/hardware/firmware/)** — a browser flow puts FluidNC on the MKS DLC32,
+   then you set up the solenoid. Do this **before** hardware setup.
 
-4. **[Tune](/en/hardware/tuning/)** — belt tension and the CoreXY motion; the iterative part.
+4. **[Install the software](/en/set-up/install/)** — one command installs the `physiclaw` CLI.
 
-5. **[Install the software](/en/set-up/install/)** — one command installs the `physiclaw` CLI.
-
-6. **[Prepare the phone](/en/set-up/prepare-the-phone/)** — turn on AssistiveTouch and add three
+5. **[Prepare the phone](/en/set-up/prepare-the-phone/)** — turn on AssistiveTouch and add three
    iOS Shortcuts.
 
-7. **[Calibrate](/en/set-up/calibrate/)** — a guided **10-step wizard** (18 points for the arm,
+6. **[Calibrate](/en/set-up/calibrate/)** — a guided **10-step wizard** (18 points for the arm,
    15 dots for the camera) teaches the rig where the screen is, so taps land where the agent aims.
 
-8. **[Run your first task](/en/run/first-task/)** — point your model at PhysiClaw and give it a
+7. **[Run your first task](/en/run/first-task/)** — point your model at PhysiClaw and give it a
    goal in plain language.
 
 </Steps>
@@ -203,5 +201,5 @@ before it), then software.
 If you just want to understand PhysiClaw rather than build one, go back to
 [How it works](/en/start/how-it-works/) — it's the mental model the whole machine serves. If
 you're committing to the build, the next stop is [Safety](/en/safety/), then
-[Build the hardware](/en/hardware/bill-of-materials/).
+[Build the hardware](/en/hardware/sourcing/).
 :::
