@@ -26,8 +26,8 @@ Two gates keep the agent asleep until the rig is actually ready:
   true by the final step of [calibration](/en/set-up/calibrate/). Before that, the server
   can be up and you can still drive it by hand, but the agent stays asleep.
 - **A model must be configured.** Even at `ready=true`, the agent will not wake without
-  one — set it with `physiclaw models key <provider>` then `physiclaw models use
-  <provider/model>` (or `PHYSICLAW_MODEL`). A model-less server still runs for hardware
+  one — set it with `physiclaw models key <provider>` then
+  `physiclaw models use <provider/model>` (or `PHYSICLAW_MODEL`). A model-less server still runs for hardware
   setup and manual MCP calls, it just never reacts. See [Models](/en/agent/models/).
 
 ## Two kinds of trigger
