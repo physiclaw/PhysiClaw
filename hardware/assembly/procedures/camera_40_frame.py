@@ -4,16 +4,15 @@ long extrusion, on its outward (+X) side face.
 In phone_40 / board_40 world the two long 2040s run along Z at X = ±105; the
 right long's outward side face is its +X face (at X = 115). That 40 mm face
 carries two T-slots at world Y = ±10 (running along Z). The corner bracket is
-installed HORIZONTALLY — its two hammer T-nuts (30 mm apart) drop into the same
-slot, spaced along Z — so the gooseneck arm reaches out over the phone bed and
-the camera looks down at it.
+installed HORIZONTALLY — its single hammer T-nut drops into one slot — so the
+gooseneck arm reaches out over the phone bed and the camera looks down at it.
 
 Placement (CAMERA_PLACEMENT) maps the bracket's local frame onto the face:
   bracket +Z (deck outward normal) → world +X   (deck seats on the +X face)
-  bracket +Y (the two-hole line)   → world +Z   (the two T-nuts run along the slot)
+  bracket +Y (the bend line)       → world +Z   (the T-nut sits in the slot)
   bracket +X (deck depth)          → world +Y
-The deck hole at bracket x = 15 lands on the chosen slot (world Y = SLOT_Y); the
-two holes straddle MOUNT_Z, 30 mm apart along Z.
+The deck hole at bracket x = 15, y = 0 lands on the chosen slot (world Y =
+SLOT_Y) at MOUNT_Z along Z.
 
 Two variants:
   * exploded — the camera arm pulled out along +X off the side face.
@@ -44,12 +43,12 @@ LONG_CENTER_X = X_EXTRUSION_LENGTH / 2 + leg   # = 105 (inner face at 95, +leg)
 FACE_X        = LONG_CENTER_X + leg            # = 115, outward +X side face
 SLOT_Y        = 10                     # the second (lower, +Y / bed-side) slot
 MOUNT_Z       = 147.5                  # along the long, at the bed's mid-length
-DECK_HOLE_X   = 15                     # bracket-local X of the two deck holes
+DECK_HOLE_X   = 15                     # bracket-local X of the deck hole
 EXPLODE       = 70                     # mm — exploded: arm pulled out +X off the face
 
 # Bracket frame → extrusion face. x_dir = image of bracket +X, z_dir = image of
 # bracket +Z; the origin offsets bracket x=DECK_HOLE_X onto the slot (Y=SLOT_Y)
-# and the two holes (bracket y=±15) onto MOUNT_Z ± 15 along Z.
+# and the single hole (bracket y=0) onto MOUNT_Z along Z.
 #
 # The bracket's deck is lifted HAMMER_TOTAL_HEIGHT off its own z=0 (it sits on
 # the T-nut bosses in camera_10), so the deck-bottom — the L-face that must seat

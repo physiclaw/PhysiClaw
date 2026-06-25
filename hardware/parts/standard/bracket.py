@@ -41,12 +41,11 @@ motor_corner_fillet = 3 * MM      # the four Z-parallel outer corners
 # The bend (connection) edge runs along Y for corner_bend_length; each face
 # extends corner_face_depth out from the bend — the horizontal face in +X
 # (z 0..thickness), the vertical face in +Z (x 0..thickness). Each face carries
-# two through-holes spaced corner_hole_pitch along the bend, centered in depth.
-corner_bend_length = 56  * MM    # the connection edge, along Y
+# one through-hole centered on the face (mid-bend, mid-depth).
+corner_bend_length = 26  * MM    # the connection edge, along Y
 corner_face_depth  = 30  * MM    # how far each face reaches out from the bend
 corner_thickness   =  4  * MM    # plate thickness
-corner_hole_d      = 6.5 * MM    # two through-holes per face
-corner_hole_pitch  = 30  * MM    # center-to-center along the bend (Y)
+corner_hole_d      = 6.5 * MM    # one through-hole per face, centered
 corner_end_fillet  =  4  * MM    # rounds the two corners at each face's free end
 corner_edge_tol    = 1e-3        # fuzz for matching free-end edges by center
 
@@ -103,9 +102,9 @@ class MotorBracket(BaseStandardPart):
 
 
 class CornerBracket(BaseStandardPart):
-    """L-shaped angle bracket — a 56 mm bend edge with two 30 mm-deep faces
-    at 90°, 4 mm thick. Each face carries two Ø6.5 mm through-holes at 30 mm
-    pitch along the bend. Each face's free end has rounded corners."""
+    """L-shaped angle bracket — a 26 mm bend edge with two 30 mm-deep faces
+    at 90°, 4 mm thick. Each face carries one Ø6.5 mm through-hole centered on
+    the face. Each face's free end has rounded corners."""
 
     def name_suffix(self) -> str:
         return f"_corner_x{self.qty}"
@@ -121,21 +120,19 @@ class CornerBracket(BaseStandardPart):
             Box(d, b, t, align=(Align.MIN, Align.CENTER, Align.MIN))
             Box(t, b, d, align=(Align.MIN, Align.CENTER, Align.MIN))
 
-            # Holes through the horizontal face (drill -Z from the top face),
-            # centered in depth, the pair spaced along the bend (Y).
+            # Hole through the horizontal face (drill -Z from the top face),
+            # centered on the face: mid-depth (x = d/2) and mid-bend (y = 0).
             with Locations(Plane.XY.offset(t)):
                 with Locations((d / 2, 0)):
-                    with GridLocations(0, corner_hole_pitch, 1, 2):
-                        Hole(radius=corner_hole_d / 2)
+                    Hole(radius=corner_hole_d / 2)
 
-            # Holes through the vertical face (drill -X from its +X face).
+            # Hole through the vertical face (drill -X from its +X face).
             # Local +Z = world +X; local +X maps to world +Y (the bend), local
-            # +Y to world +Z (the face depth).
+            # +Y to world +Z (the face depth). Centered: mid-bend, mid-depth.
             vface = Plane(origin=(t, 0, 0), x_dir=(0, 1, 0), z_dir=(1, 0, 0))
             with Locations(vface):
                 with Locations((0, d / 2)):
-                    with GridLocations(corner_hole_pitch, 0, 2, 1):
-                        Hole(radius=corner_hole_d / 2)
+                    Hole(radius=corner_hole_d / 2)
 
             # Round the two free-end corners of each face: Z-parallel edges at
             # the horizontal face's tip (x≈d) and X-parallel edges at the
