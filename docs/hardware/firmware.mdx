@@ -211,19 +211,25 @@ be tied to a **verified earth ground** — for example a grounded PC chassis. **
 never the control-board GND.** This was set during [assembly](/en/hardware/assembly/), but it's the
 first thing to re-confirm when a clean strike produces no touch.
 
-## Next: make it move well
+## Next: set up the software
 
-Flashing makes the board **respond** — but responding is not the same as calibrated, smooth motion.
-Before you calibrate, the rig still needs a mechanical tuning pass:
+The hardware is built and flashed. The board now **responds** to G-code — so it's time to move off
+the workbench and bring up the software that drives it.
 
 <LinkCard
-  title="Mechanical tuning"
-  description="Belt tension (75 Hz at the 220 mm carriage), drive-pulley set screws, and rail grease — the hand-work that makes moves come out the right size."
-  href="/en/hardware/assembly/"
+  title="Install the software"
+  description="Install PhysiClaw and prepare the phone — the first step of software setup, before you connect to the board you just flashed."
+  href="/en/set-up/install/"
 />
 
 <LinkCard
-  title="Set up the software"
-  description="Install PhysiClaw, prepare the phone, then run the calibration wizard that connects to the board you just flashed."
+  title="Calibrate"
+  description="Run the calibration wizard that connects to the flashed board over serial and maps the arm to the screen."
   href="/en/set-up/calibrate/"
+/>
+
+<LinkCard
+  title="Mechanical tuning (back in Assembly)"
+  description="Belt tension (75 Hz at the 220 mm carriage), drive-pulley set screws, and rail grease — if moves come out the wrong size, the hand-work that fixes it lives here."
+  href="/en/hardware/assembly/"
 />
