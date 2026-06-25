@@ -1,0 +1,212 @@
+---
+title: Sourcing the parts
+description: How to actually buy, cut, and print everything on the PhysiClaw BOM — realistic cost, the three sourcing buckets, and the order to place things in so nothing blocks the build.
+---
+
+You have the [bill of materials](/en/hardware/bill-of-materials/) — you know *what* the parts
+are. This page is the bridge to having them on your desk: what it really costs, what you buy
+off the shelf versus what a vendor has to cut or print for you, and the order to place things in
+so the slow stuff arrives in parallel.
+
+One thing to be straight about first: there is **no ready-made arm**. PhysiClaw's X/Y motion is
+a hand-built **CoreXY gantry** you source as raw parts — extrusion, rails, belt, steppers, a
+control board — and assemble yourself. Nothing arrives pre-built as "the arm," and the Z axis is
+a **solenoid** you wire in, not a plotter pen. That means real sourcing work: messaging a vendor
+to cut aluminium, uploading files to a 3D-print service, and yes, a little soldering for wire
+splices. Budget a few days for parts to arrive, not an afternoon.
+
+## What it costs
+
+Plan on roughly **$145 USD** in parts (about **¥1046** in China at ~7.2 CNY/USD). The headline
+is lowest if you source from the China-centric supply chain these parts come from; the same build
+runs **higher in USD/EU markets**, mostly on the rails, steppers, and machined extrusion.
+
+Use these per-item references to sanity-check any quote you get (China pricing, ¥):
+
+| Item | Approx. |
+| --- | --- |
+| Camera (4K/8MP autofocus USB) | ¥200 |
+| 3D prints (9 designs / 11 pieces) | ¥190 |
+| MGN9H rails + carriages | ¥120 |
+| MKS DLC32 V2.1 control board | ¥100 |
+| Aluminium extrusion (cut/tapped) | ¥60 |
+| 2x NEMA 17 steppers | ¥50 |
+| 12V 2A PSU | ¥50 |
+| 2x TMC2209 drivers | ¥35 |
+
+Fasteners, belt, idlers, solenoid, and consumables make up the rest. None of it is special-order
+or expensive on its own — the cost is spread across a long list, which is exactly why the
+ordering *workflow* matters more than hunting for a deal on any single line.
+
+## Three sourcing buckets
+
+The full BOM is 250+ pieces, which sounds intimidating until you sort it into three actions. Every
+item falls into exactly one of these:
+
+<CardGrid>
+  <Card title="A — Buy as-is" icon="rocket">
+    Off-the-shelf, no modification. The bulk of the list: MGN9H rails + carriages, GT2 belt /
+    pulleys / 12 idlers, 2x NEMA 17 steppers, the solenoid, the MKS DLC32 V2.1 board, 2x TMC2209
+    drivers, the 12V 2A barrel PSU, the 4K/8MP autofocus USB webcam, all fasteners, and consumables.
+  </Card>
+  <Card title="B — Buy + get it cut" icon="setting">
+    The aluminium extrusion. You don't buy stock lengths and machine them by hand — you send a
+    vendor the exact cut, tap, and counterbore spec and they do it for you.
+  </Card>
+  <Card title="C — Send out to print" icon="document">
+    The 9 custom designs (11 pieces). These go to a 3D-print service as STEP files. They must be
+    printed in PA12 nylon by powder-bed fusion — FDM will not work.
+  </Card>
+</CardGrid>
+
+Buckets **B** and **C** have the longest lead times, so they get ordered first. The rest is the
+do-this-in-this-order workflow below.
+
+## Bucket B — order the cut extrusion
+
+You need seven cut pieces from raw aluminium profile. These are **custom cut, tapped, and
+drilled** — message the supplier the spec and ask them to do the machining. China-centric
+extrusion vendors do this routinely and it costs little extra.
+
+Here's the spec to paste into a vendor message:
+
+- **2x 2040 black-anodized EU profile, 345mm** — side rails, **counterbored for M6**
+- **2x 2040 black-anodized EU profile, 190mm** — end rails, **tapped M6**
+- **1x 1020 profile, 185mm** — gantry X-beam
+- **2x 1020 profile, 230mm** — phone-bed supports
+
+:::caution[Get the callouts right the first time]
+The counterbore-vs-tap distinction and the exact lengths are load-bearing — the frame won't
+square up if they're off, and a re-cut means another multi-day wait. Re-check these against the
+[bill of materials](/en/hardware/bill-of-materials/) before you send the message.
+:::
+
+## Bucket C — order the 3D prints
+
+This is the part most software people have never done, so here's how to think about it: you're
+handing a print service a set of geometry files and a material spec, and they ship you finished
+parts. Drafting that order correctly is the whole job.
+
+### What to send
+
+Export the parts as **STEP files** from the build123d sources and deliver them as a single
+downloadable zip to the print shop. There are **9 unique designs / 11 pieces total**:
+
+- **Idler mount ×4** (2 front + 2 motor variants)
+- XY joint (left)
+- XY joint (right)
+- Belt clamp
+- Solenoid mount
+- Phone bed
+- Control-board holder
+- Tube holder
+
+:::caution[Ignore the legacy FCStd files]
+`hardware/custom/` contains five `.FCStd` files. They are **not** the authoritative geometry —
+do not send these to the shop. The build123d parts exported to STEP are the source of truth.
+:::
+
+### Material and process — non-negotiable
+
+Specify this exactly, and don't let a shop talk you into FDM because it's cheaper:
+
+| Spec | Value |
+| --- | --- |
+| Material | **Black PA12 nylon** |
+| Process | **Powder-bed fusion (SLS or MJF) only** |
+| Density | Solid |
+| Layer height | 100 µm |
+| Minimum wall | 1.0 mm |
+| Finish | Raw |
+
+:::caution[FDM is rejected]
+These parts have side-facing holes and overhangs. On FDM printers the **side holes deform** and
+the **overhangs sag**, and the carriages and solenoid won't seat. SLS/MJF builds the part in a
+powder bed with no supports, so the geometry comes out true. PA12 nylon via SLS or MJF, full stop.
+:::
+
+## Bucket A — order the off-the-shelf parts
+
+Once B and C are placed, order everything in bucket A to arrive in parallel. A few things that are
+easy to under-buy:
+
+**Fasteners — buy by the pack, over-order.** The build uses 250+ pieces: BHCS / FHCS / SHCS in
+M3 / M5 / M6 plus 1/4-20, drop-in and slide-in T-nuts, square nuts, 10x shoulder screws, 12x
+shims, 8x spacers, 6 flat brackets, 2 motor brackets, 1 corner bracket, and 4 bumper feet. Screws
+are sold in 20 / 50 / 100 packs — buy by the pack and keep spares rather than counting exact
+units. Running one M3 short shouldn't stall a multi-day build.
+
+:::tip[Loose set screws are the #1 reported failure]
+Buy **Loctite 243** and apply it to the drive-pulley set screws. It's a cheap insurance against
+the single most common problem people hit after the build is done.
+:::
+
+**Consumables — order them in the same batch.** These ship separately from the structural parts,
+so it's easy to forget them and then be blocked:
+
+- Lithium grease (**NLGI 2**) — the rails ship oiled; you wipe and re-grease
+- Loctite 243
+- Heat-shrink tubing
+- PTFE/FEP tube, **~400mm** — note the wire runs **outside** it, not through it
+- Spiral wrap
+- 0.3mm² lead wire
+
+**Tools you need on hand.** If you don't already own these, add them to the order:
+
+- 2 / 3 / 5mm hex keys
+- An electric driver (recommended — there are a *lot* of screws)
+- A **soldering iron + heat gun** — you splice wires; this is not a solder-free build
+- A flat surface to square the frame against
+- A phone tuning app, for setting belt tension later
+
+## The recommended order sequence
+
+Lead time is the long pole, so parallelize it:
+
+<Steps>
+
+1. **Re-read the manual and re-check the full BOM.** Cut lengths and counterbore/tap callouts must
+   be right the first time — a wrong cut or a missed tap means another multi-day wait.
+
+2. **Place the 3D-print order (bucket C).** Export STEP → zip → upload to a print service with the
+   PA12 / SLS-or-MJF spec. This is usually the longest lead time.
+
+3. **Place the extrusion cut order (bucket B).** Message the vendor the cut/tap/counterbore spec.
+
+4. **Order the off-the-shelf parts (bucket A).** Steppers, board, drivers, rails, belt, idlers,
+   solenoid, camera, PSU, fasteners, consumables, and any tools you're missing — all in one batch
+   so they arrive while the prints and extrusion are being made.
+
+</Steps>
+
+## When everything arrives
+
+Parts on the desk is the start of the build, not the end of it. From here the path is:
+
+<CardGrid>
+  <LinkCard
+    title="Printed parts"
+    description="Inspect the SLS/MJF parts and check fit before assembly."
+    href="/en/hardware/printed-parts/"
+  />
+  <LinkCard
+    title="Assembly"
+    description="Frame to wiring, roughly 2-3 hours once parts are in hand."
+    href="/en/hardware/assembly/"
+  />
+  <LinkCard
+    title="Firmware"
+    description="Flash FluidNC and load the PhysiClaw config over USB."
+    href="/en/hardware/firmware/"
+  />
+  <LinkCard
+    title="Tuning"
+    description="Square the frame, set belt tension, and dial in the solenoid."
+    href="/en/hardware/tuning/"
+  />
+</CardGrid>
+
+Sourcing is the long pole; assembly itself is about **two to three hours**, then a firmware flash,
+then calibration and tuning. Plan the build as a multi-day project, and you won't be caught short.
+
+{/* PHOTO: a flat-lay of the arrived parts grouped by bucket — off-the-shelf modules, the cut extrusion pieces, and the SLS-printed black PA12 parts — with the consumables and hex keys alongside. */}

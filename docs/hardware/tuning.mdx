@@ -1,0 +1,199 @@
+---
+title: Tuning
+description: The hand-work between firmware and software calibration — get the belts equal and tight, lock the drive pulleys, free the rails, and tune the solenoid so a tap actually registers.
+---
+
+Your gantry is built and the board boots to `<Idle|...>`, so why isn't it move-ready?
+Because a from-scratch CoreXY machine is only as good as the mechanics you tune by hand.
+**Tuning is the bridge between [firmware](/en/hardware/firmware/) and
+[software calibration](/en/set-up/calibrate/)** — and it is not plug-and-play.
+
+This is the finicky part. You'll tension belts to a target pitch, lock down the one screw that
+silently ruins everything, free up the rails, and dial in the solenoid so it strikes crisply
+without buzzing. Expect to repeat steps. Work the rig in the order below — it follows the motion
+path from structure to touch.
+
+:::note[This phase is iterative — and it loops back]
+Tuning and calibration inform each other. If, after calibration, commanded moves come out the
+wrong size or taps miss their target, the fix is usually back here (belt tension, set screws, or
+solenoid timing). Don't expect to nail it in one pass.
+:::
+
+## 1. Belt tension
+
+CoreXY uses two belts (A and B) that share both axes. **Equal tension matters more than the exact
+number** — if A and B differ, diagonal moves skew and your taps land off. Get both belts to the
+same pitch, then get that pitch right.
+
+Measure with a phone **tuning app** (any guitar/string tuner). Pluck a belt span like a guitar
+string and read the frequency.
+
+<Steps>
+
+1. **Park the carriage at the 220 mm position.** Belt pitch depends on the free span length, so
+   measure consistently from the same carriage position every time.
+
+2. **Pluck and read.** Pluck the long belt span and read the frequency in the tuner app. Target
+   is **75 Hz**.
+
+3. **Adjust and re-pluck.** Tighten or loosen at the belt clamp, then pluck again. Repeat until
+   the span reads ~75 Hz.
+
+4. **Do the second belt — then re-check both.** Tension both A and B to ~75 Hz and confirm they
+   match. Adjusting one can shift the other, so loop until both read the same.
+
+</Steps>
+
+:::caution[Equal A/B is the point]
+A belt that's 75 Hz and a belt that's 90 Hz will move the carriage fine in straight lines but skew
+on diagonals — and you won't notice until calibration looks crooked. Match them.
+:::
+
+{/* PHOTO: phone tuning app held next to a plucked belt span, carriage parked at the 220mm mark, reading ~75 Hz */}
+
+## 2. Drive-pulley set screws — the silent killer
+
+This is **the single most important fix on this page.** Each NEMA 17 turns the belt through a
+**GT2 20T drive pulley** clamped onto the **5 mm motor shaft** by a tiny set screw. If that set
+screw is even slightly loose, the pulley spins on the shaft under load and **the arm silently
+loses position** — no error, no alarm, just taps drifting off target. It is the
+**#1 user-reported failure.**
+
+Fix it permanently:
+
+<Steps>
+
+1. **Seat the set screw on the shaft flat.** The motor shaft has a machined flat. Rotate the
+   pulley so the set screw bears directly on that flat, not on the round surface.
+
+2. **Torque it down.** Snug and firm with the hex key — this screw carries every move.
+
+3. **Lock it with Loctite 243.** A drop of **Loctite 243** on the threads stops it backing out
+   from vibration. This is the documented fix for set screws on this build — apply it here and to
+   any other set screw that works loose.
+
+</Steps>
+
+:::tip[If position drifts later, suspect this first]
+A pulley that slips looks exactly like a calibration error — moves come out short or shifted.
+Before you re-calibrate, re-check these two set screws.
+:::
+
+## 3. Rails — smooth, even travel
+
+The motion runs on **3× MGN9H linear rails** (2× 240 mm Y, 1× 150 mm X) with H-type carriages.
+They **ship coated in shipping oil**, which collects grit and isn't the right lubricant.
+
+<Steps>
+
+1. **Wipe off the shipping oil.** Clean every rail and carriage.
+
+2. **Re-grease with lithium grease (NLGI 2).** A thin, even film on the rail.
+
+3. **Align the rails, then feel the travel.** Push each carriage by hand, end to end. You're
+   feeling for **smooth, even, low-friction travel with no tight spots.** A tight spot means the
+   rail is misaligned or over-constrained — loosen its mounts, nudge it, re-snug, and feel again.
+
+</Steps>
+
+:::tip[Be patient with alignment]
+Rail alignment is iterative. Loosen, nudge, re-snug, push, repeat until the carriage glides freely
+the whole length. This is normal — don't force a rail that fights you.
+:::
+
+{/* PHOTO: hand pushing a carriage along an MGN9H rail to feel for smooth travel */}
+
+## 4. Solenoid — making a tap register
+
+The Z/touch actuator is a **12 V 0.8 A push-pull solenoid** driven through the spindle PWM output,
+not a servo. A tap is a **hit-and-hold** electromagnet pulse: a full-power strike to snap the
+stylus down, a short settle, then a lower hold so the coil doesn't overheat, then release.
+
+### Prerequisite: spindle mode
+
+For the solenoid to respond to S-values at all, the board must be in spindle/laser mode:
+**`$32=0`**.
+
+:::note[Config owns this — don't fight the firmware]
+This is a runtime `$`-setting, but on PhysiClaw it's governed by the FluidNC config
+([`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)),
+not by hand-written `$`-commands — the firmware **rejects** `$`-writes for settings the config
+owns. If `$32` isn't `0`, fix it in the YAML and re-save, not at the console. See
+[firmware](/en/hardware/firmware/).
+:::
+
+### Canonical hit-and-hold timing
+
+These numbers are the source of truth. The [gestures reference](/en/reference/gestures/) defines
+them; quote them exactly.
+
+| Parameter | Value | What it is |
+| --- | --- | --- |
+| `HIT_S` | **1000** | Peak strike power |
+| `SETTLE_MS` | **80** | Dwell after the strike |
+| `HOLD_S` | **750** | Sustained hold (must be **< `HIT_S`**) |
+| `RELEASE_MS` | **200** | Spring-clear dwell after release |
+| `DOUBLE_TAP_GAP_MS` | **100** | Gap between taps of a double-tap |
+
+The fire sequence:
+
+```gcode
+M3 S1000    ; strike — stylus snaps down (HIT_S)
+G4 P0.08    ; settle 80 ms (SETTLE_MS)
+M3 S750     ; drop to hold current (HOLD_S, < HIT_S so it doesn't overheat)
+M5          ; release — spring lifts the stylus
+G4 P0.2     ; 200 ms spring-clear dwell (RELEASE_MS)
+```
+
+:::caution[Two stale numbers will give you a weak or buzzing tap]
+Older copy contradicts the values above. **Trust this page and
+[reference/gestures](/en/reference/gestures/) over both:**
+
+- The [firmware](/en/hardware/firmware/) page's old snippet uses `G4 P0.05` (**50 ms** settle).
+  That is **stale — use 80 ms.**
+- The YAML comment "S300, tune from S150 up" is **stale — the hold is S750.**
+
+A builder who copies the old snippet gets a strike that doesn't seat or a coil that buzzes.
+:::
+
+### If the coil buzzes
+
+An audible buzz means the PWM ripple is making the coil vibrate. Fix it either way:
+
+- **Add a 470 µF capacitor across the coil**, or
+- **Raise the PWM frequency to 25 kHz** (above hearing).
+
+### If a tap still doesn't register
+
+The tap can fire mechanically and still not register on the screen. The capacitive stylus tip must
+be tied to a **verified earth ground** — for example a grounded PC chassis. **Never a wall socket,
+never the control-board GND.** This was set during [assembly](/en/hardware/assembly/), but it's the
+first thing to re-confirm when a clean strike produces no touch.
+
+## Done? The tuned-rig checklist
+
+You're ready for software calibration when:
+
+<CardGrid>
+  <Card title="Belts equal and tight" icon="approve-check">
+    Both A and B pluck to ~**75 Hz** at the 220 mm position and match each other.
+  </Card>
+  <Card title="Set screws locked" icon="approve-check">
+    Both drive-pulley set screws seated on the shaft flat, torqued, and **Loctite 243**'d.
+  </Card>
+  <Card title="Rails glide" icon="approve-check">
+    Every carriage pushes smoothly by hand end-to-end, no tight spots.
+  </Card>
+  <Card title="Solenoid clean" icon="approve-check">
+    Strikes crisply with **S1000/80 ms/S750/200 ms**, holds without buzzing or overheating, and
+    the stylus tip is earth-grounded.
+  </Card>
+</CardGrid>
+
+When all four hold, move on.
+
+<LinkCard
+  title="Software calibration"
+  description="Run physiclaw setup hardware to teach the software where the screen is and how your taps map to it."
+  href="/en/set-up/calibrate/"
+/>
