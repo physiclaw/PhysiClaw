@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint help bump build publish release \
-        hw-help hw-parts hw-build hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-mark hw-replay hw-camera hw-rebuild
+        hw-help hw-parts hw-build hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-mark hw-replay hw-camera hw-rebuild hw-release
 
 PY ?= uv run
 
@@ -8,6 +8,13 @@ PY ?= uv run
 # Pass flags through ARGS, e.g.  make hw-build ARGS="--bom --bom-delta"
 HW     = $(PY) --group cad python -m hardware
 HW_DOC = $(PY) python -m hardware
+
+# Hardware GitHub release — assets are packaged from hardware/output/ (build
+# them first, e.g. `make hw-rebuild`). Versioned separately from the PyPI
+# package: set HW_VERSION per release, e.g.  make hw-release HW_VERSION=0.3
+HW_OUT     = hardware/output
+HW_REL_DIR = $(HW_OUT)/release
+HW_REL_TAG = physiclaw-hardware-v$(HW_VERSION)
 
 # Guard for hw-* targets that need a positional: fail with a usage hint when
 # ARGS is empty. $(1) describes the expected value.
@@ -49,6 +56,8 @@ help:
 	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
 	@echo "                            (or pipe: pbpaste | make hw-camera)"
 	@echo "  hw-rebuild              — full rebuild: parts → build → print → manual → sourcing"
+	@echo "  hw-release HW_VERSION=X.Y"
+	@echo "                          — package hardware/output into the 4 zips & publish a GitHub release (gh)"
 
 test:
 	$(PY) pytest
@@ -218,3 +227,32 @@ hw-rebuild:
 	$(HW) print
 	$(HW_DOC) manual
 	$(HW_DOC) sourcing
+
+# Package the built hardware/output artifacts into the four release zips and
+# publish them as a GitHub release (needs `gh`). Build first (e.g. hw-rebuild) —
+# this only packages + uploads what's in hardware/output, mirroring the v0.2/v0.3
+# asset set. Tag is physiclaw-hardware-v$(HW_VERSION), cut from main. A missing
+# build aborts (set -e) before the release is cut, so no half-published release.
+#   make hw-release HW_VERSION=0.3
+hw-release:
+	@if [ -z "$(HW_VERSION)" ]; then echo 'usage: make hw-release HW_VERSION=X.Y'; exit 2; fi
+	@command -v gh >/dev/null 2>&1 || { echo "✗ gh (GitHub CLI) not found — https://cli.github.com/"; exit 1; }
+	@if gh release view "$(HW_REL_TAG)" >/dev/null 2>&1; then echo "✗ release $(HW_REL_TAG) already exists"; exit 1; fi
+	@set -e; \
+	rm -rf "$(HW_REL_DIR)"; mkdir -p "$(HW_REL_DIR)"; \
+	REL="$$(cd "$(HW_REL_DIR)" && pwd)"; cd "$(HW_OUT)"; \
+	cp print_3d/physiclaw_custom_parts.zip "$$REL"/; \
+	zip -jq "$$REL/physiclaw_camera_frame_assembled.zip" step/camera_40_frame_assembled.step; \
+	zip -rq "$$REL/physiclaw-assembly-manual.zip" manual   -x '*.DS_Store'; \
+	zip -rq "$$REL/physiclaw-sourcing-guide.zip"  sourcing -x '*.DS_Store'; \
+	printf '%s\n' \
+		'Build artifacts for assembling a PhysiClaw rig (English + 中文).' '' \
+		'- **physiclaw-assembly-manual.zip** — full assembly manual: HTML + PDF in English and 中文, with all exploded/step SVG figures.' \
+		'- **physiclaw-sourcing-guide.zip** — sourcing guide: HTML in English and 中文.' \
+		'- **physiclaw_custom_parts.zip** — the 9 custom 3D-printed parts as STEP files (print in black PA12 via SLS/MJF) plus a bilingual print guide.' \
+		> "$$REL/notes.md"; \
+	gh release create "$(HW_REL_TAG)" "$$REL"/*.zip \
+		--target main --latest \
+		--title "PhysiClaw hardware v$(HW_VERSION) — assembly manual, sourcing guide & printed parts (STEP)" \
+		--notes-file "$$REL/notes.md"; \
+	printf '\n\033[32m✓\033[0m Released $(HW_REL_TAG).\n'
