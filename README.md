@@ -168,7 +168,7 @@ Protocol: USB serial (115200 baud). Send one line at a time (LF, not CRLF), wait
 | `$32` | Spindle (not laser) PWM mode — required to drive the solenoid | 0 |
 | `$30` | PWM `S`-value range ceiling | 1000 |
 
-On FluidNC these live in [`firmware/fluidnc_config.yml`](firmware/fluidnc_config.yml), not live `$` writes — the firmware rejects runtime writes to config-owned settings.
+On FluidNC these live in the `fluidnc_config.yml` you flash during setup (see the [Firmware guide](https://docs.physiclaw.ai/en/hardware/firmware/)), not live `$` writes — the firmware rejects runtime writes to config-owned settings.
 
 ### MCP Protocol (MCP Client → PhysiClaw)
 
