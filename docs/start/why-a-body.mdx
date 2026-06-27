@@ -1,121 +1,30 @@
 ---
-title: Why a body?
-description: Why PhysiClaw has to be a physical machine at all — the case for a real hand on a real screen, made before you build it.
+title: Why Does It Need a Body?
+description: Why PhysiClaw has to be a physical machine—before you start building, here's the case for why "a real touch on a real screen" is essential.
 ---
 
-PhysiClaw is a desktop robot that taps a phone with a stylus. Before you build one, it's worth
-asking the obvious question: *why a machine at all?* A camera, a CoreXY arm, a grounded stylus —
-that's a lot of hardware just to press buttons. Couldn't software do this instead?
+PhysiClaw is an agent that operates a phone—it watches the screen with a camera and taps and swipes with a stylus. Why a phone? And why such a "clumsy" physical approach? Here's the case, in three parts.
 
-It can't. This page is the argument for why PhysiClaw has to be a physical thing — not how to
-build it, but why a body has to exist at all.
+## Most everyday apps have no API
 
-## Why software can't just do this
+The obvious approach is to let the agent call an app's public API. But the services that actually matter are closed off. Amazon, Instacart, DoorDash, Uber, WhatsApp—what they want is for you to stay inside their interface: spend more time, spend more money, see more ads, and keep a direct relationship with you. An open API runs against all of that—the agent does everything in your place, the interface gets skipped, ads never get shown, and the platform is reduced to a backend supplier that can be swapped out at any time, losing both the engagement and ad revenue and its direct line to the user. So they have no incentive to open up to a third-party agent, and every reason to keep outside access locked out; many of the apps you'd most want to use simply have no public API at all.
 
-If you're coming from OpenClaw, you already gave an agent hands *inside* software: it drives apps
-through a screen it lives on and is already logged into. So the natural instinct is that this
-whole problem is a software problem. Reach into the apps, call their services, get the data.
+For the foreseeable future, no one is going to hand the services that run your daily life over to your agent, free and open. That route is closed from the start.
 
-You can't. And the reason you can't is the whole point.
+## Simulated input doesn't work either
 
-Every service worth automating — Amazon, Taobao, Uber Eats, Meituan, your bank, your delivery
-apps — sits behind a wall. The data inside is their most valuable asset, and the one they guard
-most fiercely. They have no reason to open a door for your agent and every reason to keep it
-shut. An open API that lets an outside agent roam freely across their service is the last thing
-they will ever ship — and many of the apps you most want have no public API at all.
+If the API is out, the next thought is to simulate human input—mouse clicks, keystrokes, or touch gestures.
 
-So no clever software trick gets past it. Any agent reaching in through the front door hits the
-same wall as everyone else — and that wall is built of three layers, each of which a
-software-only route eventually runs into:
+On the desktop, a program can simulate a mouse and keyboard, but web anti-scraping and anti-bot detection keeps getting stricter; automated access is easily flagged and blocked, and can't reach services reliably.
 
-- **APIs and OAuth** need a per-app integration and the company's consent — and the
-  highest-value apps grant neither.
-- **Accessibility and automation hooks** are detectable, blockable, and break on the next app
-  redesign.
-- **Jailbreaking or rooting** is fragile, unsafe, and a moving target with every OS update.
+On the phone, Android's ADB can inject taps and gestures, but those calls are just as detectable—they carry the fingerprints of software-driven actions, which trip risk controls more easily, getting you anything from a blocked session to an outright ban.
 
-For the foreseeable future, no one is going to hand your agent free, open access to the services
-that run your daily life.
+The bottom line: anything issued from the software layer can be identified. The moment it's recognized as "not a real person," it gets limited or banned.
 
-## The one door they can't lock
+## A physical approach gets around the limits
 
-If you can't go through the wall, you go around it — through the one door they cannot lock.
+With both the API and simulated input ruled out, only the most basic path is left: do it like a person—touch the screen with a hand.
 
-That door is the screen. The same interface a human taps with a finger. They can shut their
-APIs, but they cannot shut the app to their own customers. The buttons, the menus, the screens
-people touch every day have to stay open — close those, and they have no business left.
+That's exactly what PhysiClaw does—it treats the phone screen itself as the API: a camera reads the screen, a stylus performs the gestures, interacting with apps directly. No ADB, nothing installed, zero footprint. To the phone, this is indistinguishable from a real person's finger, so there's nothing to detect—and it can reach virtually any app reliably.
 
-So PhysiClaw uses that door. It works the phone the way a person does. A camera for eyes. A
-solenoid-driven stylus for a finger. The screen itself as its API. Whatever a person can do by
-hand, it does by hand — through the exact same interface, in the exact same way.
-
-A stylus tip touching glass is none of the three walls. There is nothing to integrate, nothing
-to detect, nothing to jailbreak. To the phone, the tip is indistinguishable from a fingertip —
-which is exactly why the stylus is earth-grounded, so the touch actually registers. Because it
-looks like a finger, **any** app works: iOS or Android, with zero per-app setup and nothing
-installed on the phone.
-
-## This is OpenClaw, pushed onto the glass
-
-If you've used OpenClaw, you already believe the core idea: let the agent use the human
-interface instead of a special back door. PhysiClaw is that same idea, moved one step further
-out.
-
-- **OpenClaw** gave an agent hands inside software — a screen it already lives on and is logged
-  into.
-- **PhysiClaw** gives it hands in the *physical* world — a real stylus on a real phone it was
-  never logged into, never installed anything on, and never had an account for.
-
-The body is what frees the agent from needing to live inside the target device at all. It no
-longer has to *be* on the phone to use the phone.
-
-## The honest trade
-
-We won't pretend this is free.
-
-A task that takes software a few milliseconds takes PhysiClaw minutes. Every single action is a
-full look → decide → move → check loop (see
-[How it works](/en/start/how-it-works/)): look at the screen, drive the stylus, tap, then look
-again to confirm it worked. There is no shortcut — the slowness is structural.
-
-And the build is real. Not an afternoon and not a kit that arrives assembled. It's a multi-day,
-hand-built CoreXY project: real money (~$145 in parts), real hours of cutting, threading, and
-wiring, and real tuning of belts, rails, and the solenoid. You will feel all of it.
-
-That is the price. Here is what it buys.
-
-## What the trade buys
-
-Access no one can revoke.
-
-The wall is built entirely of software — permissions, tokens, terms of service. All of it can
-be changed, throttled, or shut off at any moment. A hand cannot. **You cannot block a hand from
-touching a screen.**
-
-So PhysiClaw goes slow, and in return it goes anywhere. It trades speed for durability and
-reach. The machine is the physical embodiment of that trade — that is what the hours, the
-grounded stylus, and the calibrated arm are *for*.
-
-## Why the rig is shaped this way
-
-This is why PhysiClaw looks the way it does — every piece sits on the human side of the wall by
-design:
-
-- The **overhead camera** is the eye — it reads the screen with no software access of any kind.
-- The **solenoid + capacitive stylus** is the finger the phone cannot tell apart from a human's
-  (earth-grounded, so the touch actually registers).
-- The **CoreXY arm + calibrated `pct_to_grbl` affine** is what turns "tap this box" into a real
-  touch landing in the right millimetre on real glass.
-
-Nothing here reaches through the wall. Every part exists to keep the whole operation on the
-outside, where the door stays open.
-
-## Next: how it works
-
-Now that you know why the body has to exist, the next page shows how it actually drives the
-phone: the look → decide → move → check loop that turns a goal into real taps on glass.
-
-<CardGrid>
-  <LinkCard title="How it works" description="The look → decide → move → check loop — how PhysiClaw reads the screen, decides, taps, and checks the result." href="/en/start/how-it-works/" />
-  <LinkCard title="Assembly" description="When you're ready to build the body: the frame, CoreXY motion, and the earth-grounded stylus." href="/en/hardware/assembly/" />
-</CardGrid>
+The cost is speed. A tap or a swipe takes a few seconds, nowhere near the milliseconds of a software call. It's a deliberate trade-off: giving up speed for universality and reliability. For an agent handling your everyday errands, a little slowness doesn't matter—what matters is getting the job done, dependably.
