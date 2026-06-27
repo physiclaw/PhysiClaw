@@ -3,125 +3,58 @@ title: Firmware
 description: Flash FluidNC onto the assembled control board and paste in the PhysiClaw config — the full 17-step browser flow, plus the config file to copy.
 ---
 
-Your board is wired but blank. It has never been programmed, so right now it does nothing —
-the motors and the solenoid are connected to a chip with no instructions. This page fixes that.
-You will flash one piece of firmware and paste in one config file, all from a Chrome tab.
+PhysiClaw's hardware talks to the computer through the [FluidNC](https://github.com/bdring/FluidNC) firmware: the computer sends [G-code](https://en.wikipedia.org/wiki/G-code) (the GRBL protocol) to drive the motors and switch the solenoid, performing taps, swipes, and other gestures.
 
-No toolchain, no compiler, no command line. If you are coming from OpenClaw, the mental model
-is familiar: **FluidNC is to the arm what a device driver is to hardware — generic firmware plus
-a per-machine config.** The firmware is the same one any FluidNC machine runs; the config is the
-small text file that tells it *this* machine is a PhysiClaw.
+## Prerequisites
 
-:::caution[Do this BEFORE the software setup]
-Flashing is a prerequisite gate. The calibration wizard you run later
-([`physiclaw setup hardware`](/en/set-up/calibrate/)) opens with a **Connect arm** step that
-autodetects a FluidNC/GRBL board over serial at 115200 baud and checks its `$I` response against a
-`grbl`/`VER` string. A blank board will not answer, and the wizard will stall there. Finish this
-page first, then move on to [Set up the software](/en/set-up/install/).
-:::
+- MKS DLC32 V2.1 control board.
+- USB-B to USB-A data cable.
+- 12 V 2 A power supply.
+- Google Chrome (recommended).
 
-## What goes on the board, and why
-
-The reference board is the **MKS DLC32 v2.1**. Two things go onto it:
-
-<CardGrid>
-  <Card title="FluidNC firmware" icon="rocket">
-    A generic, open-source G-code motion controller. It listens for G-code over USB serial and
-    drives the stepper motors and the solenoid. You flash the **`noradio`** variant — no Wi-Fi,
-    no Bluetooth, just the plain USB serial link the PhysiClaw server talks to.
-  </Card>
-  <Card title="fluidnc_config.yml" icon="document">
-    A plain-text file describing *this* machine to the generic firmware: the pins, that the motion
-    is CoreXY, the steps-per-mm, and that the "tool" on the spindle output is a solenoid. The
-    firmware is generic; the config is what makes it a PhysiClaw.
-  </Card>
-</CardGrid>
-
-:::note[Why CoreXY, and why a solenoid]
-**CoreXY** is a belt layout where two motors share the load of both axes at once, so the config
-declares `kinematics: corexy`. And the Z "tool" is **not a servo and not a plotter pen** — it is a
-12 V push-pull solenoid wired to the board's spindle output. A tap is a sharp electromagnet pulse,
-not a slow servo sweep. The config sets both of these for you; you do not wire anything to change
-them.
-:::
-
-## What you need
-
-- The assembled, wired control board (this comes after [Assembly](/en/hardware/assembly/)).
-- The board's **USB cable** — currently a USB Type-B printer-style connector; check the connector
-  on your own board before buying a replacement.
-- The **12 V 2 A barrel supply**.
-- **Google Chrome** (or Edge). The flow uses Web Serial, which Safari and Firefox do **not**
-  support.
-- The **PhysiClaw config** — reproduced in full in [The config file](#the-config-file) below; you
-  copy it in step 13.
-
-## Flash it — the 17 steps
-
-This is the complete browser flow. It mirrors the repo's
-[`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md);
-the conceptual notes below say *why* each part matters.
+## Flash the firmware
 
 <Steps>
 
-1. **Power up the board.** Connect **12 V** power — the LED lights up. Then plug in **USB**.
+1. **Power up the board.** Connect **12 V** power, then connect **USB** to the computer.
 
-2. **Open the installer.** Open the [FluidNC web installer](https://installer.fluidnc.com) in
-   Chrome. The page shows two products — click **Continue** under **FluidNC**.
+2. **Open the installer.** Open the [FluidNC web installer](https://installer.fluidnc.com) in Chrome. The page shows two products — click **Continue** under **FluidNC**.
 
-3. **Connect to the board.** Click **Connect**. A dialog lists available serial ports. Select
-   **USB Serial** and click **Connect**.
+3. **Connect to the board.** Click **Connect**. A dialog lists available serial ports. Select **USB Serial** and click **Connect**.
 
 4. **Go to Install.** The Home page appears. Click **Install** in the left sidebar.
 
-5. **Select the firmware variant.** Pick the latest version from the dropdown. Three variants
-   appear — click **`noradio`**.
+5. **Select the firmware variant.** Pick the latest version from the dropdown. Three variants appear — select **`noradio`**.
 
-6. **Select the installation type.** Click **fresh-install**.
+6. **Select the installation type.** Select **fresh-install**.
 
-7. **Confirm.** A confirmation dialog appears. Make sure **Installation speed** is **115200 baud**,
-   then click **Install**.
+7. **Confirm.** A confirmation dialog appears. Make sure **Installation speed** is **115200 baud**, then click **Install**.
 
 8. **Wait.** A progress bar appears — wait until it completes.
 
 9. **Installation complete.** A "Done" dialog confirms it. Click **Continue**.
 
-10. **Open the File browser.** The Home page shows a red **"invalid configuration"** warning — this
-    is **expected**, the board has firmware but no config yet. Click **File browser** in the left
-    sidebar.
+10. **Open the File browser.** The Home page shows a red **"invalid configuration"** warning — this is **expected**, the board has firmware but no config yet. Click **File browser** in the left sidebar.
 
-11. **Create the config file.** The File browser prompts you to create one. Click **Create config**;
-    a dialog appears with `config.yaml` pre-filled as the filename. Click **OK**.
+11. **Create the config file.** The File browser prompts you to create one. Click **Create config**; a dialog appears with `config.yaml` pre-filled as the filename. Click **OK**.
 
-12. **Open the Source tab.** The editor opens on the **General** tab. Click the **Source** tab
-    (rightmost).
+12. **Open the Source tab.** The editor opens on the **General** tab. Click the **Source** tab (rightmost).
 
-13. **Paste the config.** Select all the existing text, delete it, and paste the **full contents**
-    of [The config file](#the-config-file) below.
+13. **Paste the config.** Select all the existing text, delete it, and paste the **full contents** of [The config file](#the-config-file) below.
 
 14. **Save.** Click **Save**.
 
 15. **Go to Terminal.** Click **Terminal** in the left sidebar.
 
-16. **Restart the board.** Click the red **Restart** button. The board reboots and prints the
-    startup log.
+16. **Restart the board.** Click the red **Restart** button. The board reboots and prints the startup log.
 
-17. **Verify.** Every message should be **green**, and the last line should read:
-
-    ```text
-    <Idle|MPos:0.000,0.000,0.000|...>
-    ```
-
-    That `Idle` line is your **"it's alive"** signal — the board is running, the config loaded
-    cleanly, and it is waiting for G-code. If you see it, the flash worked.
+17. **Verify.** Every message should be **green**, and the last line should read `<Idle|...>` — the firmware flashed and the config loaded successfully.
 
 </Steps>
 
 ## The config file
 
-Paste this into the editor's **Source** tab at step 13. It is the same
-[`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)
-that ships in the repo — copy it whole:
+The FluidNC config:
 
 ```yaml
 # FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
@@ -183,13 +116,6 @@ axes:
         # Add :low after I2SO.6 if Y runs backwards
         direction_pin: I2SO.6:low
 
-# Solenoid via Spindle interface (gpio.32)
-# Hit-and-hold usage:
-#   M3 S1000   full strike power
-#   G4 P0.08   settle 80ms
-#   M3 S750    hold current (< strike, so the coil doesn't overheat)
-#   M5         release
-#   G4 P0.2    200ms spring-clear dwell
 PWM:
   pwm_hz: 1000
   output_pin: gpio.32
@@ -206,134 +132,3 @@ PWM:
 start:
   must_home: false
 ```
-
-## What the config actually declares
-
-You do not need to read the whole file, but it helps to know what it says about your machine. In
-plain language:
-
-| Setting | Value | What it means |
-| --- | --- | --- |
-| `board` | `MKS-DLC32 V2.1` | The control board this config targets. |
-| `kinematics` | `corexy` | Two motors share both X and Y. |
-| `stepping.engine` | `I2S_STATIC` | The stepping mode for this board. **Leave it** — `I2S_STREAM` causes drift here. |
-| `steps_per_mm` (X, Y) | `80` | How far the arm moves per commanded millimetre. |
-| `max_travel_mm` (X, Y) | `200` | The arm's real X/Y travel. |
-| `PWM.output_pin` | `gpio.32` | The solenoid runs off the **spindle PWM** output. |
-| `PWM.pwm_hz` | `1000` | Solenoid drive frequency. |
-| `PWM.speed_map` | `0=0% 1000=100%` | Maps the `S` value to drive strength (so `S1000` = full power). |
-| `PWM.off_on_alarm` | `true` | The solenoid drops on any alarm — it never stays energised by accident. |
-| `start.must_home` | `false` | No homing on startup; this build has **no endstops**. |
-| `soft_limits` / `hard_limits` | `false` | Limits are off, again because there are no endstops. |
-
-:::note[The wiring remap is intentional — don't "fix" it]
-If you wired the board by the [Assembly](/en/hardware/assembly/) page, the driver-to-motor mapping
-is deliberate: **X driver → Motor B**, **Y1 driver → Motor A**, and the **spindle output → the
-solenoid** (the solenoid is non-polarity-sensitive, so its two leads can go either way). The config
-encodes this mapping. Leave it as is.
-:::
-
-## The two numbers you may tune
-
-The defaults work for the reference build. Two values are machine-specific, and both are flagged in
-comments inside the YAML:
-
-- **`steps_per_mm`** (X and Y, default **80**) — how far the arm actually moves per millimetre
-  commanded. For a 20-tooth GT2 pulley at 16 microsteps the maths is `200 × 16 / 40 mm = 80`. If a
-  commanded move comes out the wrong physical size, this is the knob to turn.
-- **`max_travel_mm`** (default **200**) — your arm's real X and Y travel. It only matters if you
-  later turn on soft limits.
-
-:::tip[If an axis runs backwards]
-The X and Y direction pins carry a `:low` suffix, e.g. `direction_pin: I2SO.2:low` (X) and
-`direction_pin: I2SO.6:low` (Y). If an axis drives the **wrong way** during
-[calibration](/en/set-up/calibrate/), flip that one pin's suffix — add or remove `:low` — then
-**Save** and **Restart**. No rewiring needed.
-:::
-
-:::caution[Edit the YAML, not the console]
-These parameters live in `fluidnc_config.yml`. FluidNC **rejects** runtime `$`-writes for any
-setting the config owns, so don't try to set `steps_per_mm` or `kinematics` with `$` commands in
-the terminal. Change the YAML, **Save**, and **Restart** instead.
-:::
-
-## Solenoid (the Z tap)
-
-The Z/touch actuator is a **12 V 0.8 A push-pull solenoid** driven through the spindle PWM output —
-not a servo. A tap is a **hit-and-hold** electromagnet pulse: a full-power **strike** to snap the
-stylus down, a brief **settle** dwell, then a lower **hold** current so the coil doesn't overheat,
-then **release** plus a short wait for the spring to clear. You never send these commands by hand —
-the PhysiClaw server does — but this is the canonical record of the electrical setup and timing.
-
-### Prerequisite: spindle mode (`$32=0`)
-
-For the solenoid to respond to `S`-values at all, the board must be in spindle/laser mode:
-**`$32=0`**.
-
-:::note[Config owns this — don't fight the firmware]
-`$32` looks like a runtime `$`-setting, but on PhysiClaw it's governed by the config above, not by
-hand-written `$`-commands — the firmware **rejects** `$`-writes for settings the config owns. If
-`$32` isn't `0`, fix it in the YAML and **Restart**, not at the console.
-:::
-
-### Canonical hit-and-hold timing
-
-These numbers match the comment block in the config above; the canonical source is the
-[gestures reference](/en/reference/gestures/), taken straight from `solenoid.py` and `arm.py`.
-
-| Parameter | Value | What it is |
-| --- | --- | --- |
-| `HIT_S` | **1000** | Peak strike power |
-| `SETTLE_MS` | **80** | Dwell after the strike |
-| `HOLD_S` | **750** | Sustained hold (must be **< `HIT_S`**) |
-| `RELEASE_MS` | **200** | Spring-clear dwell after release |
-| `DOUBLE_TAP_GAP_MS` | **100** | Gap between taps of a double-tap |
-
-The fire sequence:
-
-```text
-M3 S1000    ; strike — full power, stylus snaps down (HIT_S)
-G4 P0.08    ; settle — 80 ms dwell (SETTLE_MS)
-M3 S750     ; hold — sustained, lower current (HOLD_S, < HIT_S so it doesn't overheat)
-M5          ; release — spring lifts the stylus
-G4 P0.2     ; 200 ms spring-clear dwell (RELEASE_MS)
-```
-
-That hit-and-hold shape is exactly why a long-press reads differently from a tap.
-
-### If the coil buzzes
-
-An audible buzz means the PWM ripple is making the coil vibrate. Fix it either way:
-
-- **Add a 470 µF capacitor across the coil**, or
-- **Raise the PWM frequency to 25 kHz** (above hearing).
-
-### If a tap doesn't register
-
-The tap can fire mechanically and still not register on the screen. The capacitive stylus tip must
-be tied to a **verified earth ground** — for example a grounded PC chassis. **Never a wall socket,
-never the control-board GND.** This was set during [assembly](/en/hardware/assembly/), but it's the
-first thing to re-confirm when a clean strike produces no touch.
-
-## Next: set up the software
-
-The hardware is built and flashed. The board now **responds** to G-code — so it's time to move off
-the workbench and bring up the software that drives it.
-
-<LinkCard
-  title="Install the software"
-  description="Install PhysiClaw and prepare the phone — the first step of software setup, before you connect to the board you just flashed."
-  href="/en/set-up/install/"
-/>
-
-<LinkCard
-  title="Calibrate"
-  description="Run the calibration wizard that connects to the flashed board over serial and maps the arm to the screen."
-  href="/en/set-up/calibrate/"
-/>
-
-<LinkCard
-  title="The brick-the-rig steps (in Assembly)"
-  description="Stylus earth-grounding, drive-pulley set screws, and equal belt tension — if taps don't register or moves come out wrong, re-check these."
-  href="/en/hardware/assembly/"
-/>

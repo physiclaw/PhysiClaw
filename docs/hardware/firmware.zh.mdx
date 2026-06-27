@@ -3,90 +3,58 @@ title: 固件
 description: 给装好线的控制板刷上 FluidNC，再粘进 PhysiClaw 配置——完整的 17 步浏览器流程，外加可直接复制的配置文件。
 ---
 
-你的板子线接好了，但还是空白的。它从没被烧录过，所以此刻什么都做不了——电机和 solenoid 接在一颗没有任何指令的芯片上。这一页就来解决它。你会刷一份固件、再粘进一个配置文件，全程在一个 Chrome 标签页里完成。
+PhysiClaw 硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与电脑通信：电脑用 [G-code](https://en.wikipedia.org/wiki/G-code)（GRBL 协议）发送指令，控制电机转动和电磁铁开关，完成点击和滑动等手势。
 
-不用工具链，不用编译器，不用命令行。如果你是从 OpenClaw 过来的，这个心智模型会很熟悉：**FluidNC 之于这条臂，就像设备驱动之于硬件——通用固件加上一份逐机配置。** 固件和任何 FluidNC 机器跑的是同一份；配置则是那个小小的文本文件，告诉它*这一台*机器是 PhysiClaw。
+## 准备工作
 
-:::caution[这一步要在软件安装之前做]
-刷写是一道前置门槛。你之后要跑的标定向导（[`physiclaw setup hardware`](/zh/set-up/calibrate/)）一开始就有一步 **Connect arm**，它会以 115200 波特率通过串口自动探测一块 FluidNC/GRBL 板，并检查它的 `$I` 响应里是否含有 `grbl`/`VER` 字样。空白的板子不会应答，向导会卡在那里。先把这一页做完，再去[安装软件](/zh/set-up/install/)。
-:::
+- MKS DLC32 V2.1 控制板。
+- USB-B 转 USB-A 数据线。
+- 12 V 2 A 电源。
+- Chrome 浏览器（建议）。
 
-## 板上装的是什么，以及为什么
-
-参考用的板子是 **MKS DLC32 v2.1**。要往上装两样东西：
-
-<CardGrid>
-  <Card title="FluidNC 固件" icon="rocket">
-    一个通用的开源 G-code 运动控制器。它通过 USB 串口接收 G-code，驱动步进电机和 solenoid。你刷的是 **`noradio`** 变体——没有 Wi-Fi、没有蓝牙，只有 PhysiClaw 服务端用到的那条普通 USB 串口连接。
-  </Card>
-  <Card title="fluidnc_config.yml" icon="document">
-    一个纯文本文件，把*这一台*机器描述给通用固件：引脚分配、运动方式是 CoreXY、每毫米步数、以及主轴输出上的「刀具」其实是一个 solenoid。固件是通用的；是这份配置把它变成了 PhysiClaw。
-  </Card>
-</CardGrid>
-
-:::note[为什么是 CoreXY，为什么用 solenoid]
-**CoreXY** 是一种皮带布局，两个电机同时分担两个轴的负载，所以配置里声明 `kinematics: corexy`。而 Z 轴的「刀具」**既不是舵机，也不是绘图笔**——它是一个 12 V 推拉式 solenoid，接在板子的主轴（spindle）输出上。一次点击是一记干脆的电磁铁脉冲，而不是舵机慢慢扫过去。这两点配置都帮你设好了；你不用接任何线去改它们。
-:::
-
-## 你需要准备什么
-
-- 装好、接好线的控制板（这是在[组装](/zh/hardware/assembly/)之后才有的）。
-- 板子的 **USB 线**——目前是一个 USB Type-B 打印机式接头；买替换线之前先看看你自己板上的接头。
-- **12 V 2 A 圆头电源**。
-- **Google Chrome**（或 Edge）。整个流程用到 Web Serial，而 Safari 和 Firefox **不**支持它。
-- **PhysiClaw 配置**——下面的[配置文件](#配置文件)一节里给出了完整内容，第 13 步要复制它。
-
-## 开刷——17 步
-
-这是完整的浏览器流程，对应仓库里那份 [`installation_guide.md`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/installation_guide.md)；下面的说明讲清每一部分为什么重要。
+## 刷入固件
 
 <Steps>
 
-1. **给板子上电。** 接 **12 V** 电源——LED 会亮起。然后插 **USB**。
+1. **给控制板上电。** 接 **12 V** 电源，用 **USB** 串口线连接到电脑。
 
-2. **打开安装器。** 在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)。页面会显示两个产品——在 **FluidNC** 下点 **Continue**。
+2. **打开安装器。** 在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)。页面会显示两个产品——在 **FluidNC** 下点击 **Continue**。
 
-3. **连接板子。** 点 **Connect**。弹出的对话框会列出可用串口。选 **USB Serial**，点 **Connect**。
+3. **连接控制板。** 点击 **Connect**。弹出的对话框会列出可用串口。选 **USB Serial**，点击 **Connect**。
 
-4. **进入 Install。** 出现 Home 页。点左侧栏的 **Install**。
+4. **进入 Install。** 出现 Home 页。点击左侧栏的 **Install**。
 
-5. **选择固件变体。** 从下拉里选最新版本。会出现三个变体——点 **`noradio`**。
+5. **选择固件变体。** 从下拉里选最新版本。会出现三个变体，选择 **`noradio`**。
 
-6. **选择安装类型。** 点 **fresh-install**。
+6. **选择安装类型。** 选择 **fresh-install**。
 
-7. **确认。** 弹出确认框。确保 **Installation speed** 是 **115200 baud**，然后点 **Install**。
+7. **确认。** 弹出确认框。确保 **Installation speed** 是 **115200 baud**，然后点击 **Install**。
 
-8. **等待。** 出现进度条——等它走完。
+8. **等待。** 出现进度条，等待完成。
 
-9. **安装完成。** 一个 "Done" 对话框确认完成。点 **Continue**。
+9. **安装完成。** 一个 "Done" 对话框确认完成。点击 **Continue**。
 
-10. **打开 File browser。** Home 页会显示红色的 **"invalid configuration"**（配置无效）警告——这是**正常的**，板子有固件了，但还没有配置。点左侧栏的 **File browser**。
+10. **打开 File browser。** Home 页会显示红色的 **"invalid configuration"**（配置无效）警告——这是**正常的**，控制板已经刷入固件，但还没有配置。点击左侧栏的 **File browser**。
 
-11. **创建配置文件。** File browser 会提示你创建一个。点 **Create config**；弹出的对话框里 `config.yaml` 已预填为文件名。点 **OK**。
+11. **创建配置文件。** File browser 会提示你创建一个。点击 **Create config**；弹出的对话框里 `config.yaml` 已预填为文件名。点击 **OK**。
 
-12. **打开 Source 标签页。** 编辑器停在 **General** 标签。点最右侧的 **Source** 标签。
+12. **打开 Source 标签页。** 编辑器停在 **General** 标签。点击最右侧的 **Source** 标签。
 
 13. **粘贴配置。** 全选已有文本，删掉，再把下面[配置文件](#配置文件)一节的**全部内容**粘进去。
 
-14. **保存。** 点 **Save**。
+14. **保存。** 点击 **Save**。
 
-15. **进入 Terminal。** 点左侧栏的 **Terminal**。
+15. **进入 Terminal。** 点击左侧栏的 **Terminal**。
 
-16. **重启板子。** 点红色的 **Restart** 按钮。板子重启并打印启动日志。
+16. **重启控制板。** 点击红色的 **Restart** 按钮。控制板重启并打印启动日志。
 
-17. **验证。** 每条消息都应当是**绿色**的，最后一行应当是：
-
-    ```text
-    <Idle|MPos:0.000,0.000,0.000|...>
-    ```
-
-    那行 `Idle` 就是你的「它活了」信号——板子在运行，配置干净地载入了，正等着 G-code。看到它，就说明刷写成功。
+17. **验证。** 每条消息都应当是**绿色**的，最后一行应为 `<Idle|...>`——说明刷入固件并配置成功。
 
 </Steps>
 
 ## 配置文件
 
-第 13 步把它粘进编辑器的 **Source** 标签。它就是仓库里随附的那份 [`fluidnc_config.yml`](https://github.com/physiclaw/PhysiClaw/blob/main/firmware/fluidnc_config.yml)——整段复制：
+FluidNC 配置：
 
 ```yaml
 # FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
@@ -148,13 +116,6 @@ axes:
         # Add :low after I2SO.6 if Y runs backwards
         direction_pin: I2SO.6:low
 
-# Solenoid via Spindle interface (gpio.32)
-# Hit-and-hold usage:
-#   M3 S1000   full strike power
-#   G4 P0.08   settle 80ms
-#   M3 S750    hold current (< strike, so the coil doesn't overheat)
-#   M5         release
-#   G4 P0.2    200ms spring-clear dwell
 PWM:
   pwm_hz: 1000
   output_pin: gpio.32
@@ -171,109 +132,3 @@ PWM:
 start:
   must_home: false
 ```
-
-## 这份配置到底声明了什么
-
-你不需要把整个文件读一遍，但了解一下它对你这台机器说了些什么会有帮助。说白了：
-
-| 设置项 | 取值 | 含义 |
-| --- | --- | --- |
-| `board` | `MKS-DLC32 V2.1` | 这份配置针对的控制板。 |
-| `kinematics` | `corexy` | 两个电机共同分担 X 和 Y。 |
-| `stepping.engine` | `I2S_STATIC` | 这块板子的步进模式。**别动它**——`I2S_STREAM` 在这里会导致漂移。 |
-| `steps_per_mm`（X、Y） | `80` | 每命令一毫米，臂实际走多远。 |
-| `max_travel_mm`（X、Y） | `200` | 臂在 X/Y 上的真实行程。 |
-| `PWM.output_pin` | `gpio.32` | solenoid 挂在**主轴 PWM** 输出上。 |
-| `PWM.pwm_hz` | `1000` | solenoid 的驱动频率。 |
-| `PWM.speed_map` | `0=0% 1000=100%` | 把 `S` 值映射到驱动强度（所以 `S1000` = 满功率）。 |
-| `PWM.off_on_alarm` | `true` | 一旦出现任何 alarm，solenoid 立刻断电——绝不会意外保持通电。 |
-| `start.must_home` | `false` | 启动时不回零；这套搭配**没有限位开关**。 |
-| `soft_limits` / `hard_limits` | `false` | 关闭限位，同样是因为没有限位开关。 |
-
-:::note[这处接线重映射是有意为之——别去「修正」它]
-如果你是按[组装](/zh/hardware/assembly/)那页接的线，驱动到电机的映射是刻意安排的：**X 驱动 → 电机 B**、**Y1 驱动 → 电机 A**、以及**主轴输出 → solenoid**（solenoid 不分极性，两根引线随便接）。配置里把这个映射写死了。保持原样。
-:::
-
-## 你可能要调的两个数字
-
-默认值在参考搭配上是好用的。有两个值是和机器相关的，两者都在 YAML 的注释里点明了：
-
-- **`steps_per_mm`**（X 和 Y，默认 **80**）——决定每命令一毫米，臂实际走多远。对于 20 齿的 GT2 同步轮、16 细分，算法是 `200 × 16 / 40 mm = 80`。如果一条移动命令走出来的物理尺寸不对，就是调这个旋钮。
-- **`max_travel_mm`**（默认 **200**）——你这台臂 X 和 Y 的真实行程。只有你之后启用软限位时它才有意义。
-
-:::tip[如果某个轴反着走]
-X 和 Y 的方向引脚带有 `:low` 后缀，比如 `direction_pin: I2SO.2:low`（X）和 `direction_pin: I2SO.6:low`（Y）。如果某个轴在[标定](/zh/set-up/calibrate/)时朝**反方向**走，就把那一个引脚的后缀切换一下——加上或去掉 `:low`——然后 **Save** 并 **Restart**。不用重新接线。
-:::
-
-:::caution[改 YAML，别改控制台]
-这些参数住在 `fluidnc_config.yml` 里。对于任何由配置掌管的设置，FluidNC 会**拒绝**运行时的 `$` 写入，所以别想在终端里用 `$` 命令去设 `steps_per_mm` 或 `kinematics`。改 YAML、**Save**、再 **Restart** 才对。
-:::
-
-## solenoid（Z 轴点击）
-
-Z/触点执行器是一个 **12 V 0.8 A 推拉式 solenoid**，通过主轴 PWM 输出来驱动，而不是舵机。一次点击是一记 **hit-and-hold**（先打后保持）的电磁铁脉冲：先来一记满功率的**敲击**把触控笔按下去，短暂的**稳定**停顿，再降到较低的**保持**电流以免线圈过热，然后**释放**，再加一小段等待让弹簧复位。这些命令你永远不会手敲——是 PhysiClaw 服务端在发——但这里是 solenoid 电气设置与时序的权威记录。
-
-### 前提：主轴模式（`$32=0`）
-
-要让 solenoid 能响应 `S` 值，板子必须处于主轴/激光模式：**`$32=0`**。
-
-:::note[这由配置管，别跟固件硬碰]
-`$32` 看着像一个运行时的 `$` 设置，但在 PhysiClaw 上它由上面那份配置管辖，而非手敲的 `$` 命令——对于配置所管的设置，固件会**拒绝** `$` 写入。如果 `$32` 不是 `0`，就在 YAML 里改好并 **Restart**，而不是在控制台改。
-:::
-
-### 标准的击打并保持时序
-
-这些数字与上面配置里的注释块一致；权威来源是[手势参考](/zh/reference/gestures/)，直接取自 `solenoid.py` 和 `arm.py`。
-
-| 参数 | 值 | 含义 |
-| --- | --- | --- |
-| `HIT_S` | **1000** | 峰值击打功率 |
-| `SETTLE_MS` | **80** | 击打后的停留时间 |
-| `HOLD_S` | **750** | 持续保持（必须 **< `HIT_S`**） |
-| `RELEASE_MS` | **200** | 释放后让弹簧复位的停留时间 |
-| `DOUBLE_TAP_GAP_MS` | **100** | 双击两次之间的间隔 |
-
-发射序列：
-
-```text
-M3 S1000    ; 敲击 — 满功率，触控笔按下去（HIT_S）
-G4 P0.08    ; 稳定 — 停顿 80 ms（SETTLE_MS）
-M3 S750     ; 保持 — 持续的较低电流（HOLD_S，< HIT_S 以免过热）
-M5          ; 释放 — 弹簧把触控笔抬起
-G4 P0.2     ; 200 ms 等弹簧复位（RELEASE_MS）
-```
-
-正是这个先打后保持的波形，让长按和点击读出不同的效果。
-
-### 如果线圈嗡嗡作响
-
-听得见的嗡声说明 PWM 纹波让线圈在振动。两种办法任选其一：
-
-- **在线圈两端并联一个 470 µF 电容**，或者
-- **把 PWM 频率提高到 25 kHz**（高过人耳可闻范围）。
-
-### 如果点击不被识别
-
-点击可能在机械上确实发出了，却依然不在屏幕上被识别。电容触控笔的笔尖必须接到一个**已验证的大地接地**——比如一台已接地的 PC 机箱。**绝不能接墙插，绝不能接控制板的 GND。** 这一步在[组装](/zh/hardware/assembly/)时就设好了，但当一记干净的击打却没有产生触摸时，它是第一件要重新确认的事。
-
-## 下一步：安装软件
-
-硬件已经搭好、刷好了。板子现在能**响应** G-code 了——是时候离开工作台，把驱动它的软件装起来。
-
-<LinkCard
-  title="安装软件"
-  description="安装 PhysiClaw、准备手机——这是软件设置的第一步，之后再去连接你刚刷好的这块板子。"
-  href="/zh/set-up/install/"
-/>
-
-<LinkCard
-  title="标定"
-  description="跑标定向导，它会通过串口连上刚刷好的板子，把臂映射到屏幕上。"
-  href="/zh/set-up/calibrate/"
-/>
-
-<LinkCard
-  title="会让装置「变砖」的步骤（在组装页）"
-  description="触控笔接地、驱动同步轮紧定螺丝、以及 A/B 同步带张力相等——如果点击识别不到或移动尺寸不对，先回去复核这几步。"
-  href="/zh/hardware/assembly/"
-/>
