@@ -1,32 +1,29 @@
 ---
 title: 组装
-description: 搭建这台从零开始的 CoreXY 装置 —— 含每一张爆炸图的完整逐步手册、可打印的 PDF，以及可下载的 3D 模型。
+description: 搭建这台从零开始的 CoreXY 运动装置 —— 完整的装配手册（可在线查看或下载 PDF），以及可下载的 3D 模型。
 ---
 
-PhysiClaw 的机械臂是一台从零、纯手工搭建的 **CoreXY 龙门**——铝型材、直线导轨、GT2 同步带、打印的连接件，
-以及 Z 轴上由电磁铁驱动的触控笔。组装本身大约要留 **两到三个小时**，它只是一个跨好几天的项目里的一环：
-采购并打印零件、组装、刷固件，然后标定。
+PhysiClaw 硬件采用 [CoreXY](https://corexy.com/) 运动结构——两个电机协同驱动的龙门架，Z 轴用电磁铁驱动触控笔尖完成点击。整个组装大约需要 **两到三个小时**。
 
-完整的、逐颗螺丝的说明 —— 每个阶段、每一张爆炸图 —— 都在**装配手册**里。在下面打开它、下载可打印的 PDF，或下载 3D 模型来查看整机装配。
+装配手册有完整清晰的步骤，可在线查看，也可下载 PDF；想了解整机装配可下载 3D 模型。动手前不妨先浏览硬件图集，对整机有个直观印象。
 
 <CardGrid>
-  <LinkCard title="打开装配手册" description="完整的逐步装配手册，含每一张爆炸视图。" href="/zh/hardware/manual/" />
-  <LinkCard title="下载 PDF" description="同一份手册的可打印 PDF。" href="/downloads/physiclaw装配手册.pdf" />
-  <LinkCard title="3D 装配模型（STEP）" description="下载整机装配的 STEP 文件，在 3D 里查看整个搭建。" href="/downloads/physiclaw_assembly_3d.zip" />
+  <LinkCard title="打开装配手册" description="网页版装配手册。" href="/zh/hardware/manual/" />
+  <LinkCard title="下载 PDF" description="可打印 PDF 版装配手册。" href="/downloads/physiclaw装配手册.pdf" />
+  <LinkCard title="3D 装配模型（STEP）" description="整机装配 STEP 文件，在 3D 软件里查看。" href="/downloads/physiclaw_assembly_3d.zip" />
   <LinkCard title="硬件图集" description="组装完成的 PhysiClaw 硬件实物照片。" href="/zh/hardware-gallery/" />
 </CardGrid>
 
 :::tip[没有 CAD 软件？]
-下载的是一个 `.step` 文件。想打开它、把装配体转着看，用 [FreeCAD](https://www.freecad.org/) —— 免费、开源、跨平台。
+3D 装配模型是 `.step` 文件，需要 3D 软件打开。推荐 [FreeCAD](https://www.freecad.org/)——免费、开源、跨平台。
 :::
 
-:::caution[三个一弄错就让装置「变砖」的步骤]
-手册里都讲了，但这几步必须做对，否则点击永远落不准：
+:::caution[装配注意事项]
+以下几点装配手册里都讲过，但值得再强调一遍：
 
-- **把触控笔尖接到可靠的大地**（比如已接地的 PC 机箱）—— 不要接墙上插座，也不要接控制板 GND，
-  否则屏幕识别不到触碰。
-- **用 Loctite 243 锁住驱动带轮的顶丝**，并让顶丝压在轴的平面上 —— 顶丝松动是位置悄悄漂移的头号原因。
-- **A/B 两侧同步带张力相等**（滑块在 220 mm 处约 75 Hz）—— 张力不一致会让对角移动跑偏。
+- **触控笔尖务必可靠接地**：可以接到已接地电脑机箱后侧的裸露金属处，不要接墙上插座，也不要接控制板的 GND。
+- **调好摄像头位置**：打开系统自带的摄像头预览，确认手机屏幕在画面中平整、尽量占满，无倾斜或畸变。
+- **A/B 电机同步带张力保持一致**：张力不一致会导致机械臂运动失准。
+- **锁紧电机同步轮**：紧固螺钉上螺纹胶（蓝色可拆型）。电机不断正反转，反复换向易使螺钉松动，同步轮一旦打滑，运动就会出现漂移。
 :::
 
-先在 [采购](/zh/hardware/sourcing/) 备齐零件；装置搭好后再去刷 [固件](/zh/hardware/firmware/)。
