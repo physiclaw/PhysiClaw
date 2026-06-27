@@ -1,23 +1,18 @@
 ---
 title: 采购零件
-description: PhysiClaw 该买什么、切什么、打印什么 —— 完整物料清单与下单流程，以及定制 STEP 件。
+description: PhysiClaw 该买什么、打印什么 —— 完整物料清单、采购提示，以及定制 STEP 件。
 ---
 
-PhysiClaw 的 X/Y 运动是一台手工搭建的 **CoreXY 龙门**，要按原始零件来采购 —— 没有现成的机械臂。
-零件成本大约 **$145 美元**（在中国约 ¥1046；美元/欧元市场更高），分摊在一长串清单上，
-所以下单的*流程*比单件砍价更重要。
+PhysiClaw 硬件优先采用标准零件——易于采购、成本低、可靠；定制零件采用 3D 打印。
 
-完整的逐项 **BOM**、买 / 切 / 打印三类采购方式、实际花销，以及让慢件并行赶制的下单顺序，
-都在**采购指南**里。9 个定制件以 STEP 文件交给 3D 打印服务。
+整套零件成本约需 **¥1,000**（不含运费）。下单前请通读装配手册，充分了解硬件结构；采购时逐项核对物料清单，确保无遗漏、数量准确——任何缺漏都需补单，物流将耗费更多时间。供应商均为淘宝店铺，需登录淘宝账号查看商品详情。
 
 <CardGrid>
-  <LinkCard title="打开采购指南" description="完整的逐项 BOM、三类采购方式，以及下单流程。" href="/zh/hardware/sourcing-guide/" />
-  <LinkCard title="定制件（STEP）" description="9 个定制 3D 打印件 —— 交给打印服务。" href="/downloads/physiclaw_custom_parts.zip" />
+  <LinkCard title="采购指南" description="完整的物料清单，每个零件附三家供应商。" href="/zh/hardware/sourcing-guide/" />
+  <LinkCard title="3D 打印定制件" description="STEP 文件，发给 3D 打印服务商。" href="/downloads/physiclaw_custom_parts.zip" />
 </CardGrid>
 
-:::caution[用 PA12 + SLS/MJF 打印，不要用 FDM]
-这些定制件是承重的配合件。请用**黑色 PA12 尼龙、粉末床熔融（SLS 或 MJF）**打印。
-FDM 不行 —— 侧孔会变形、悬垂会塌。
+:::caution[3D 打印工艺]
+PhysiClaw 定制零件请用黑色 **[PA12 尼龙材料](https://en.wikipedia.org/wiki/Nylon_12)**，以粉末床熔融工艺（**[SLS](https://en.wikipedia.org/wiki/Selective_laser_sintering)** 或 **[MJF](https://en.wikipedia.org/wiki/Multi_Jet_Fusion)**）打印。
+常见的 **[FDM](https://en.wikipedia.org/wiki/Fused_filament_fabrication)** 工艺会导致孔位失圆、变形，影响装配。
 :::
-
-零件到手后，[组装](/zh/hardware/assembly/) 把它们组装起来；然后刷 [固件](/zh/hardware/firmware/)。

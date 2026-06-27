@@ -1,25 +1,26 @@
 ---
 title: Sourcing the parts
-description: What to buy, cut, and 3D-print for a PhysiClaw rig — the full itemized BOM and ordering workflow, plus the custom STEP parts.
+description: What to buy and 3D-print for a PhysiClaw rig — the full BOM, sourcing tips, and the custom STEP parts.
 ---
 
-PhysiClaw's X/Y motion is a hand-built **CoreXY gantry** you source as raw parts — there is no
-ready-made arm. Parts run roughly **$145 USD** (about ¥1046 in China; higher in USD/EU markets),
-spread across a long list, so the ordering *workflow* matters more than any single deal.
+PhysiClaw's hardware favors standard, off-the-shelf parts — easy to source, low-cost, and reliable;
+the custom parts are 3D-printed.
 
-The full itemized **BOM**, the three buy / cut / print buckets, realistic cost, and the order to
-place things in so the slow parts arrive in parallel all live in the **sourcing guide**. The 9
-custom parts go to a 3D-print service as STEP files.
+A full set of parts costs around **¥1,000** (RMB), excluding shipping. Before ordering, read through
+the assembly manual to fully understand the hardware; when purchasing, check each item against the
+bill of materials to make sure nothing is missing and quantities are correct — any omission means
+another order and more time lost to shipping.
+
+All suppliers listed are [Taobao](https://www.taobao.com) stores based in mainland China and require a Taobao account to view
+product details. If you're outside mainland China, these stores may not ship to your region, and
+prices may vary. Contributions of suppliers for other regions are welcome.
 
 <CardGrid>
-  <LinkCard title="Open the sourcing guide" description="The full itemized BOM, the three sourcing buckets, and the ordering workflow." href="/en/hardware/sourcing-guide/" />
-  <LinkCard title="Custom parts (STEP)" description="The 9 custom 3D-printed parts — send these to a print service." href="/downloads/physiclaw_custom_parts.zip" />
+  <LinkCard title="Sourcing guide" description="The full BOM, with three suppliers listed for each part." href="/en/hardware/sourcing-guide/" />
+  <LinkCard title="Custom parts (STEP)" description="STEP files — send them to a 3D-print service." href="/downloads/physiclaw_custom_parts.zip" />
 </CardGrid>
 
-:::caution[Print in PA12 by SLS/MJF — not FDM]
-The custom parts are load-bearing fit parts. Print them in **black PA12 nylon via powder-bed
-fusion (SLS or MJF)**. FDM is rejected — the side holes deform and the overhangs sag.
+:::caution[3D printing process]
+Print PhysiClaw's custom parts in black **[PA12 nylon](https://en.wikipedia.org/wiki/Nylon_12)** using powder bed fusion (**[SLS](https://en.wikipedia.org/wiki/Selective_laser_sintering)** or **[MJF](https://en.wikipedia.org/wiki/Multi_Jet_Fusion)**).
+Common **[FDM](https://en.wikipedia.org/wiki/Fused_filament_fabrication)** printing tends to leave holes out-of-round and distorted, which throws off the fit.
 :::
-
-Once the parts are in hand, [Assembly](/en/hardware/assembly/) puts them together; then flash the
-[Firmware](/en/hardware/firmware/).
