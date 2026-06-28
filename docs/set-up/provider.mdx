@@ -1,29 +1,29 @@
 ---
 title: Get an API key
-description: Pick a model provider, grab an API key, and add it to PhysiClaw — OpenAI, Anthropic, Google, Qwen, or Kimi.
+description: Pick a model provider, grab an API key, and add it to PhysiClaw — OpenAI, Anthropic, Google, Qwen, or Moonshot.
 ---
 
-Calibration needs no model, but to let the agent actually drive the phone you need one model from one provider. Create an account, generate an API key, then add it to PhysiClaw.
+PhysiClaw works with many LLM providers. Pick one, create an account, and generate an API key. Then add the key to PhysiClaw and choose a `provider/model`.
 
-| Provider | Where to get the key | Provider id |
-| --- | --- | --- |
-| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `openai` |
-| **Anthropic** (Claude) | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | `anthropic` |
-| **Google** (Gemini) | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `google` |
-| **Qwen** (通义千问) | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) | `qwen` |
-| **Kimi** (Moonshot) | [platform.moonshot.cn](https://platform.moonshot.cn/console/api-keys) | `moonshot` |
+| Provider | Where to get the key |
+| --- | --- |
+| openai | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| anthropic | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) |
+| google | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| qwen | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) |
+| moonshot | [platform.moonshot.cn](https://platform.moonshot.cn/console/api-keys) |
 
 :::tip[Copy the key right away]
-Most consoles show the full key only once. Copy it immediately and keep it somewhere safe.
+Most consoles show the full key only once. Copy it immediately and store it somewhere safe.
 :::
 
-Then add the key and pick a model:
+Once you have a key, add it and pick a model:
 
 ```bash
 physiclaw models key <provider>      # paste the key when prompted
 physiclaw models use <provider/model>
 ```
 
-For example: `physiclaw models key anthropic`, then `physiclaw models use anthropic/claude-sonnet-4-6`.
+For example, run `physiclaw models key anthropic`, then `physiclaw models use anthropic/claude-sonnet-4-6`.
 
-See [Models](/en/agent/models/) for the full list and how model selection works.
+For the full list of models and how selection works, see [Models](/en/agent/models/).
