@@ -49,8 +49,7 @@ id [kind] "label" [left,top,right,bottom] conf
 
 :::tip[Reading the result]
 `peek` draws the detected boxes onto the JPEG, so the agent can cross-check a bbox visually
-against the listing before acting. How the listing is produced is covered in
-[How it sees](/en/concepts/how-it-sees/).
+against the listing before acting.
 :::
 
 ### 2. `screenshot()`
@@ -66,14 +65,13 @@ against the listing before acting. How the listing is produced is covered in
   glare or motion blur makes the frame unreadable, or there's fine print to read.
 
 `peek` is roughly three times faster and leaves no trace, so it's the default; `screenshot` is
-the escalation. The reason for the split is in [How it sees](/en/concepts/how-it-sees/).
+the escalation.
 
 ## Act
 
 Every action tool takes a `bbox` and operates at its **center**. The arm drives the stylus
-there; the [solenoid](/en/reference/gestures/) drops the tip, and the gesture's **duration**
-decides whether it reads as a tap, a double-tap, or a hold (the canonical solenoid timing lives
-in [Gestures](/en/reference/gestures/)).
+there; the solenoid drops the tip, and the gesture's **duration**
+decides whether it reads as a tap, a double-tap, or a hold.
 
 ### 3. `tap(bbox)`
 
@@ -224,11 +222,3 @@ target's bbox is uncertain — verify with `peek` first.
 
 - **Next:** `peek` to verify the final state and plan the next move.
 
-## Next
-
-<CardGrid>
-  <LinkCard title="Gestures" description="The solenoid hit-and-hold timing behind tap, double-tap, and long-press." href="/en/reference/gestures/" />
-  <LinkCard title="How it sees" description="Why peek and screenshot differ, and how the element listing is built." href="/en/concepts/how-it-sees/" />
-  <LinkCard title="Architecture" description="Where the MCP server, runtime, and arm sit in the system." href="/en/concepts/architecture/" />
-  <LinkCard title="The agent" description="How the built-in agent runs the look → think → move → confirm loop." href="/en/agent/overview/" />
-</CardGrid>

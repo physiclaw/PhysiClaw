@@ -1,0 +1,43 @@
+---
+title: 技能
+description: PhysiClaw 如何学会针对具体 App 的操作流程——基于文件夹的技能，按需渐进加载，保持提示精简。
+---
+
+记忆是 PhysiClaw *知道*什么；**技能**是它*会做*什么——一个自包含的文件夹，教它某个 App 或某类任务的确切流程。开箱即用它只会点屏幕；一个技能能把「点屏幕」变成「在**这个** App 上正确地下单」。
+
+技能就是一个根部带 `SKILL.md` 的目录：
+
+<FileTree>
+- ~/.physiclaw/skills/
+  - jd/
+    - SKILL.md        frontmatter（name + description）+ 流程正文
+    - references/     更深的细节，需要时才加载
+</FileTree>
+
+会扫描两个位置：`~/.physiclaw/skills/`（主目录）和运行目录下的 `./skills/`。若两处同名，主目录的优先。
+
+技能**渐进式**加载，分三层，这样一部装满技能的手机也不会塞爆提示：
+
+<Steps>
+
+1. **元数据**——每次唤醒，每个技能的 `name` 和一行 `description` 都会注入。这个描述是智能体判断是否相关的唯一信号，所以要写成具体触发条件——*「在……时使用；不要用于……」*。
+
+2. **流程**——任务匹配时，智能体调用 `Skill(name="jd")`，拿到完整的 `SKILL.md` 正文。
+
+3. **引用**——少见的细节由正文指向某个引用文件，按需拉取。
+
+</Steps>
+
+装了十个技能，只在提示里占十行描述，而不是十份完整流程。
+
+技能来自外部 git 仓库，用 CLI 安装、列出、删除：
+
+```bash
+physiclaw skills install <name> [--from owner/repo|url|path]
+physiclaw skills list
+physiclaw skills uninstall <name>
+```
+
+:::caution[描述至关重要]
+描述写得不好的技能，即使正是该用的工具也会闲置，因为智能体看不到打开它的理由。写描述时，点明该触发它的 App、动作、说法——以及**不**该触发的情形。
+:::

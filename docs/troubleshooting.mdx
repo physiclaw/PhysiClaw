@@ -125,8 +125,7 @@ is hardcoded to passcode **`111111`**. The fix is on the phone:
 - Set the device passcode to **`111111`**, **or**
 - Disable auto-lock: **Settings → Display & Brightness → Auto-Lock → Never**.
 
-Use a **burner / throwaway code only**. Why `111111` is the safe choice is covered on the
-[Safety](/en/safety/) page.
+Use a **burner / throwaway code only** — see [Prepare the phone](/en/set-up/prepare-the-phone/) for why `111111` is the safe choice.
 
 **The agent gets stuck on the wrong page.** Not a hardware fault — the agent has navigation
 tools for this. `go_back` pops one screen, and `force_quit` (a ~7s app-switcher gesture)
@@ -146,7 +145,7 @@ user, this part will feel familiar.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `<provider> api key: (unset) — required for the active model.` | No API key for the active provider. | Set it with `physiclaw models key <provider>`, or the matching env var (default `<PROVIDER>_API_KEY`, e.g. `OPENAI_API_KEY`). See [Models](/en/agent/models/). |
+| `<provider> api key: (unset) — required for the active model.` | No API key for the active provider. | Set it with `physiclaw models key <provider>`, or the matching env var (default `<PROVIDER>_API_KEY`, e.g. `OPENAI_API_KEY`). See [Get an API key](/en/set-up/provider/). |
 | `<provider>/<model>: vision check failed — expected 'PhysiClaw' in reply …` (`doctor --deep`) | The active model silently drops images. | Switch to a **vision-capable** model — every `peek` needs vision. |
 
 :::note[No default model — by design]

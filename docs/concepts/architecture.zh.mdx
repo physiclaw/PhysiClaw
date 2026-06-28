@@ -66,8 +66,7 @@ PhysiClaw 把它的硬件暴露成一组 [12 个 MCP 工具](/zh/reference/mcp-t
   子进程是*两回事*。）
 
 两种模式在你设好模型之前都不会醒——没有默认值。在那之前，一个朴素的
-`physiclaw server` 仍然提供硬件配置和手动 MCP 调用，但助理保持沉睡。完整的模型/门控
-机制见[内置助理](/zh/agent/overview/)。
+`physiclaw server` 仍然提供硬件配置和手动 MCP 调用，但助理保持沉睡。设置模型见[获取 API Key](/zh/set-up/provider/)。
 
 无论哪种方式，大脑要干的活都一样：读一份**带标注的元素清单**，挑出**一个边界框**和
 **一个手势**，剩下的交给服务器。它从不会看到电机坐标，也不会对原始像素做推理。
@@ -102,9 +101,9 @@ PhysiClaw 把它的硬件暴露成一组 [12 个 MCP 工具](/zh/reference/mcp-t
 - **vision** —— 把一帧相机画面（或一张手机截图）变成一份整洁的*元素清单*：
   每个按钮、图标和文字行，都列成 `id · kind · label · bbox · conf`，每个 bbox 都是
   0–1 的屏幕分数。它用 **RapidOCR** 处理文字，用 **OmniParser V2**（一个导出成 ONNX 的
-  YOLO11m 模型）处理图标。详见[它如何看见](/zh/concepts/how-it-sees/)。
+  YOLO11m 模型）处理图标。
 - **calibration** —— 持有那些把三个坐标系（屏幕分数、相机像素、机械臂毫米）连接起来的
-  仿射映射，都是配置阶段学到的。详见[标定数学](/zh/concepts/calibration-math/)。
+  仿射映射，都是配置阶段学到的。
 - **hardware** —— 封装了 [FluidNC/GRBL](/zh/hardware/firmware/) 控制器。GRBL 是驱动
   龙门架的开源 G-code 固件；FluidNC 是 PhysiClaw 烧录到 MKS DLC32 板上的 ESP32 变体。
   Z 轴不是电机——它是一个**电磁铁/螺线管**（下文细说）。
@@ -130,8 +129,7 @@ PhysiClaw 把它的硬件暴露成一组 [12 个 MCP 工具](/zh/reference/mcp-t
 **Z：一个电磁铁，不是电机。** Z 轴是一个 12 V 0.8 A 的推拉式**电磁铁/螺线管**
 （一块电磁铁，行程 10 mm）——不是舵机，也不是绘图机的笔。电容触控笔尖直接旋接在电磁铁
 铁芯上。一次点击就是一记*猛击再保持*的脉冲：固件先狠狠击打线圈，再以较低占空比保持，
-这样长按时笔尖不会掉下来，最后由弹簧把它释放。确切的击打/保持数值是调校细节——
-权威时序参数见[手势](/zh/reference/gestures/)。
+这样长按时笔尖不会掉下来，最后由弹簧把它释放。确切的击打/保持数值是调校细节。
 
 对手机而言，这个笔尖和指尖毫无分别，所以**任何 App 都能用，无需逐个 App 配置**。
 
@@ -184,8 +182,7 @@ AssistiveTouch，Shortcut 通过 `/api/bridge/clipboard` 把文本拉进来。
 :::note[启动服务器]
 `physiclaw server` 以可流式 HTTP 在 `http://<host>:<port>/mcp` 上运行 FastMCP 服务器
 （默认 `0.0.0.0:8048`）。只有在配置了 `[agent]` 模型时，它才会派生助理运行时子进程；
-没有模型时它仍然提供硬件配置和手动 MCP 调用，但助理不会醒。完整的 CLI 和门控细节见
-[内置助理](/zh/agent/overview/)。
+没有模型时它仍然提供硬件配置和手动 MCP 调用，但助理不会醒。完整的 CLI 细节见 [CLI 参考](/zh/reference/cli/)。
 :::
 
 ## 一个动作，全程
@@ -205,5 +202,3 @@ brain: peek          → server re-photographs and returns a fresh listing
 这个「看 → 决定 → 动 → 再查」的节奏，就是整个控制回路。因为每一步的结尾都是再看一眼，
 所以这是一个*经过校验的回路*——而不是盲目的遥操作。屏幕上的意外，不过是大脑要应对的
 下一件事而已。
-
-至于「为什么要有身体」的更大图景，可以从[它如何工作](/zh/start/how-it-works/)看起。

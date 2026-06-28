@@ -81,7 +81,7 @@ physiclaw server
 ```
 
 (Or set `PHYSICLAW_MODEL` in the environment.) Both drive modes fail loudly until a model is
-set. See [Models](/en/agent/models/).
+set. See [Get an API key](/en/set-up/provider/).
 :::
 
 ## `status`
@@ -183,9 +183,6 @@ Unknown keys fail loudly on load. Most writes print ``Restart `physiclaw server`
 `physiclaw config set provider.openai_api_key …` lands the key in your shell history. For API
 keys, prefer `physiclaw config edit` or `physiclaw models key` instead.
 :::
-
-What each section means is covered in [Configuration](/en/reference/configuration/).
-
 ## `models`
 
 List, inspect, and switch the active model. The model is a `provider/model` ref (e.g.
@@ -212,7 +209,7 @@ There are six in-process providers — `qwen`, `moonshot`, `openai`, `anthropic`
 `deepseek` stub — plus the `claude-code/<model>` subprocess engine, which shells out to
 Anthropic's `claude` CLI. `claude-code` reuses `anthropic`'s key and catalog and is **not** a
 separate entry in the in-process registry. (The direct `anthropic` API provider and the
-`claude-code` CLI subprocess are distinct.) See [Models](/en/agent/models/).
+`claude-code` CLI subprocess are distinct.) See [Get an API key](/en/set-up/provider/).
 
 ## `skills`
 
@@ -228,8 +225,7 @@ top-level `skills/<name>/SKILL.md`; installing copies that tree into
 
 `--from` accepts `owner/repo` shorthand, a full git URL, or a local path. Set a default source
 with `physiclaw config set skills.default_source <repo>` to drop the `--from` flag. Restart the
-server to pick up newly installed skills. See
-[Memory and skills](/en/agent/memory-and-skills/).
+server to pick up newly installed skills. See [Skills](/en/concepts/skills/).
 
 ## `uninstall`
 
@@ -258,10 +254,3 @@ uv tool uninstall physiclaw
 `uninstall` prints this as a final reminder so you don't think you're done.
 :::
 
-## See also
-
-- [Install](/en/set-up/install/) — get the `physiclaw` binary on your PATH.
-- [Models](/en/agent/models/) — bring-your-own-model and the wake gate.
-- [Configuration](/en/reference/configuration/) — what each config key means.
-- [Calibrate](/en/set-up/calibrate/) — the full hardware-setup wizard.
-- [MCP tools](/en/reference/mcp-tools/) — what the agent can do once it's running.

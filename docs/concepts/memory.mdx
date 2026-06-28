@@ -1,0 +1,28 @@
+---
+title: Memory
+description: How PhysiClaw remembers across sessions — a small set of plain-Markdown files under ~/.physiclaw/memory.
+---
+
+Each session is one wake — PhysiClaw comes alive on a trigger, does the task, and exits. Nothing in the model's head survives to the next wake; continuity is rebuilt from plain-Markdown files under `~/.physiclaw/memory/`.
+
+<FileTree>
+- ~/.physiclaw/memory/
+  - USER.md          your profile — you curate it, the agent only reads it
+  - memory.md        durable facts, one per line
+  - 2026-06-22.md    that day's activity log
+  - …
+</FileTree>
+
+| File | Holds | Who writes it |
+| --- | --- | --- |
+| `USER.md` | who you are, your preferences, hard rules | **you only** |
+| `memory.md` | durable facts, one per line | the agent (`save_memory`) |
+| `YYYY-MM-DD.md` | one append-only log per day | the agent (`append_log`) |
+
+On every wake, `USER.md` and `memory.md` are small, so they're injected into the system prompt. The daily logs can grow large, so only the most recent entries ride along and the agent pulls a deeper window on demand (`read_logs`). The preload count, default window, and cap are tunable under `[memory]` in `config.toml`.
+
+`memory.md` answers *"what's true?"* (your address, that you prefer oat milk); the daily log answers *"what happened?"* (`[14:02] added 2× oat milk`). Splitting them keeps the always-loaded part tiny while the logs grow.
+
+:::tip[Seed USER.md first]
+Put your essentials in `USER.md` up front — name, address, the apps you use, hard rules ("never order from X"). It's read on every wake, so a good profile stops the agent re-asking or guessing.
+:::

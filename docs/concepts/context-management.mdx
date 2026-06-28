@@ -1,0 +1,22 @@
+---
+title: Context management
+description: How PhysiClaw keeps a long, multi-screen task inside the model's context window — dropping stale screens and folding old turns.
+---
+
+A long task — a multi-screen grocery run — can take dozens of turns, and each look carries a full screen image. Left alone, the transcript would blow past the model's context window. PhysiClaw keeps it bounded with two tricks, both designed to drop bulk while preserving the decision trail.
+
+## Drop stale screens
+
+Only the **latest** screen image is live. When a newer screenshot arrives, the older ones have their image stripped and replaced with a small stub plus the *text* rows (labels like "Checkout" or "$39" that stay useful as targets). The agent's decisions — every note and tool call — stay intact, but it isn't carrying ten redundant photos of screens it already moved past.
+
+## Collapse old turns
+
+Beyond a threshold, the oldest turns are folded into a few compact slots near the top:
+
+- **summaries** — each aged-out turn's one-line note, concatenated;
+- **memory loads** — anything pulled from `memory.md` or the logs, kept verbatim;
+- **skill loads** — any `SKILL.md` workflow opened, kept verbatim.
+
+Notes are summarized; memory and skill loads are not, because those are durable reference material a one-line summary can't replace. The first fold happens around turn 30, always keeping the 10 most recent turns intact, and re-folds periodically after.
+
+The effect: a session can run long enough to finish a real multi-step task, and the model still sees a coherent story — recent turns in full, older ones boiled down to the line that mattered.

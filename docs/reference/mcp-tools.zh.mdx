@@ -45,7 +45,6 @@ id [kind] "label" [left,top,right,bottom] conf
 
 :::tip[读取结果]
 `peek` 会把检测到的框直接画到 JPEG 上，这样助理在操作前可以把 bbox 与清单做可视化交叉核对。
-清单是如何生成的，参见 [它如何看见](/zh/concepts/how-it-sees/)。
 :::
 
 ### 2. `screenshot()`
@@ -61,13 +60,12 @@ id [kind] "label" [left,top,right,bottom] conf
   或者有需要阅读的小字。
 
 `peek` 速度大约快三倍且不留痕迹，所以它是默认选择；`screenshot` 是升级方案。
-为什么要这样划分，详见 [它如何看见](/zh/concepts/how-it-sees/)。
 
 ## 操作（Act）
 
 每个动作工具都接收一个 `bbox`，并在其 **中心** 处操作。机械臂把触控笔驱动到那里；
-[电磁铁（solenoid）](/zh/reference/gestures/) 让笔尖落下，而手势的 **持续时长** 决定它被识别为
-单击、双击还是长按（电磁铁的标准时序见 [手势](/zh/reference/gestures/)）。
+电磁铁（solenoid）让笔尖落下，而手势的 **持续时长** 决定它被识别为
+单击、双击还是长按。
 
 ### 3. `tap(bbox)`
 
@@ -208,11 +206,3 @@ id [kind] "label" [left,top,right,bottom] conf
 
 - **下一步：** `peek` 验证最终状态并规划下一步。
 
-## 下一步
-
-<CardGrid>
-  <LinkCard title="手势" description="tap、双击和长按背后的电磁铁击打与保持时序。" href="/zh/reference/gestures/" />
-  <LinkCard title="它如何看见" description="peek 与 screenshot 为何不同，以及元素清单是如何构建的。" href="/zh/concepts/how-it-sees/" />
-  <LinkCard title="架构" description="MCP 服务端、运行时与机械臂在系统中各处的位置。" href="/zh/concepts/architecture/" />
-  <LinkCard title="助理" description="内置助理如何运行 看 → 想 → 动 → 确认 的循环。" href="/zh/agent/overview/" />
-</CardGrid>

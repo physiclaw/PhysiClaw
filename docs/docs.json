@@ -45,36 +45,16 @@
       ]
     },
     {
-      "label": "Safety",
-      "translations": {
-        "zh-CN": "安全须知"
-      },
-      "items": [
-        "safety"
-      ]
-    },
-    {
-      "label": "The built-in agent",
-      "translations": {
-        "zh-CN": "内置助理"
-      },
-      "items": [
-        "agent/overview",
-        "agent/models",
-        "agent/autonomous-tasks",
-        "agent/memory-and-skills",
-        "agent/inside-the-engine"
-      ]
-    },
-    {
       "label": "How it works inside",
       "translations": {
         "zh-CN": "工作原理"
       },
       "items": [
         "concepts/architecture",
-        "concepts/how-it-sees",
-        "concepts/calibration-math"
+        "reference/mcp-tools",
+        "concepts/memory",
+        "concepts/skills",
+        "concepts/context-management"
       ]
     },
     {
@@ -83,10 +63,7 @@
         "zh-CN": "参考"
       },
       "items": [
-        "reference/mcp-tools",
-        "reference/gestures",
-        "reference/cli",
-        "reference/configuration"
+        "reference/cli"
       ]
     },
     {

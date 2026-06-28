@@ -1,0 +1,43 @@
+---
+title: Skills
+description: How PhysiClaw learns app-specific workflows — folder-based skills loaded progressively so the prompt stays small.
+---
+
+Memory is what PhysiClaw *knows*; a **skill** is what it *can do* — a self-contained folder that teaches the exact workflow for one app or task. Out of the box it can tap a screen; a skill turns that into "place an order on **this** app the right way."
+
+A skill is a directory with a `SKILL.md` at its root:
+
+<FileTree>
+- ~/.physiclaw/skills/
+  - jd/
+    - SKILL.md        frontmatter (name + description) + the workflow
+    - references/     deep detail, loaded only when needed
+</FileTree>
+
+Two locations are scanned: `~/.physiclaw/skills/` (the primary home) and `./skills/` relative to where it runs. If both define the same name, the home copy wins.
+
+Skills load **progressively**, in three tiers, so a phone full of skills doesn't flood the prompt:
+
+<Steps>
+
+1. **Metadata** — on wake, every skill's `name` and one-line `description` is injected. That description is the only signal the agent has, so write it as concrete triggers — *"use when …; NOT for …"*.
+
+2. **Workflow** — when a task matches, the agent calls `Skill(name="jd")` and gets the full `SKILL.md` body.
+
+3. **References** — for rare detail, the body points at a reference file pulled in on demand.
+
+</Steps>
+
+Ten installed skills cost ten one-line descriptions in the prompt — not ten full workflows.
+
+Skills come from an external git repo; install, list, and remove them with the CLI:
+
+```bash
+physiclaw skills install <name> [--from owner/repo|url|path]
+physiclaw skills list
+physiclaw skills uninstall <name>
+```
+
+:::caution[The description is load-bearing]
+A skill with a weak description sits idle even when it's the right tool, because the agent never sees a reason to open it. Name the apps, the verbs, and the phrasings that should fire it — and the cases that should not.
+:::

@@ -70,7 +70,7 @@ The built-in runtime has one nuance worth knowing up front. The `provider/model`
 
 Neither mode wakes until you've set a model — there is no default. Until then a plain
 `physiclaw server` still serves hardware setup and manual MCP calls, but the agent stays asleep.
-The full model/gating story lives in [The built-in agent](/en/agent/overview/).
+Setting a model is covered in [Get an API key](/en/set-up/provider/).
 
 Either way, the brain's whole job is the same: read an **annotated element listing**, pick **one
 bounding box** and **one gesture**, and let the server do the rest. It never sees motor
@@ -107,10 +107,9 @@ The submodules you'll meet most often:
 - **vision** — turns a camera frame (or a phone screenshot) into a tidy *element listing*:
   every button, icon, and line of text as `id · kind · label · bbox · conf`, with each bbox in
   0–1 screen fractions. It runs **RapidOCR** for text and **OmniParser V2** (a YOLO11m model
-  exported to ONNX) for icons. Covered in [How it sees](/en/concepts/how-it-sees/).
+  exported to ONNX) for icons.
 - **calibration** — holds the affine maps that connect the three coordinate systems (screen
-  fractions, camera pixels, arm millimetres) learned during setup. Covered in
-  [Calibration math](/en/concepts/calibration-math/).
+  fractions, camera pixels, arm millimetres) learned during setup.
 - **hardware** — wraps the [FluidNC/GRBL](/en/hardware/firmware/) controller. GRBL is the
   open-source G-code firmware that runs the gantry; FluidNC is the ESP32 build PhysiClaw flashes
   onto the MKS DLC32 board. Z isn't a motor — it's a **solenoid** (more below).
@@ -139,8 +138,7 @@ the screen.
 electromagnet, 10 mm stroke) — not a servo and not a plotter pen. The capacitive stylus tip
 threads directly onto the solenoid core. A tap is a *hit-and-hold* pulse: the firmware strikes the
 coil hard, then holds it at a lower duty so a long-press doesn't drop the tip, then lets the
-spring release it. Exact strike/hold values are tuning details — see
-[Gestures](/en/reference/gestures/) for the canonical timing.
+spring release it. Exact strike/hold values are tuning details.
 
 To the phone, that tip is indistinguishable from a fingertip, so **any app works with zero
 per-app setup**.
@@ -200,7 +198,7 @@ localhost: the bridge has to be able to reach it from across the LAN.
 `physiclaw server` runs the FastMCP server over streamable-HTTP at `http://<host>:<port>/mcp`
 (default `0.0.0.0:8048`). It spawns the agent runtime subprocess only when an `[agent]` model is
 configured; with no model it still serves hardware setup and manual MCP calls, but the agent won't
-wake. Full CLI and gating detail is in [The built-in agent](/en/agent/overview/).
+wake. Full CLI detail is in the [CLI reference](/en/reference/cli/).
 :::
 
 ## One action, end to end
@@ -220,6 +218,3 @@ brain: peek          → server re-photographs and returns a fresh listing
 That **look → decide → move → check** rhythm is the whole control loop. Because every step ends by
 looking again, this is a *verified loop* — not blind teleoperation. A surprise on the screen is
 just the next thing the brain reacts to.
-
-For the bigger picture of why a body at all, start with
-[How it works](/en/start/how-it-works/).
