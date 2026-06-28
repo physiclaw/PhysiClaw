@@ -8,6 +8,25 @@ acts. PhysiClaw runs the same idea, but the action is a *physical* tap on a *rea
 page walks one full tap end to end so you can see how a camera frame becomes arm motion — and
 why it's built as a closed, verified loop rather than blind teleoperation.
 
+<svg viewBox="0 0 700 290" role="img" aria-label="A user and PhysiClaw communicate through the phone" style="max-width:560px;width:100%;height:auto;margin:1.5rem auto;display:block" xmlns="http://www.w3.org/2000/svg" font-family="'Inter','Segoe UI',system-ui,sans-serif">
+  <defs>
+    <g id="iphone">
+      <rect x="0" y="0" width="90" height="190" rx="22"/>
+      <rect x="31" y="14" width="28" height="9" rx="4.5"/>
+      <path d="M27 176 L63 176" stroke-width="2.4"/>
+    </g>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#iphone" x="125" y="70"/>
+    <use href="#iphone" x="485" y="70"/>
+    <path d="M240 165 L460 165" stroke-dasharray="7 7"/>
+  </g>
+  <g fill="currentColor" text-anchor="middle">
+    <text x="170" y="52" font-size="18" font-weight="600">User</text>
+    <text x="530" y="52" font-size="18" font-weight="600">PhysiClaw</text>
+  </g>
+</svg>
+
 Every action PhysiClaw takes is one turn of the same four-phase loop. Keeping the loop fixed is
 what makes the system reliable: each phase has one job, and each ends by **looking at the
 result**. There is no open-loop "drive the arm and hope" — the system never trusts a move until
