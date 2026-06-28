@@ -31,6 +31,7 @@
       "items": [
         "set-up/install",
         "set-up/prepare-the-phone",
+        "set-up/provider",
         "set-up/calibrate"
       ]
     },

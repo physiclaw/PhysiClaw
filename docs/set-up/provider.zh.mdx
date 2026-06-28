@@ -1,0 +1,29 @@
+---
+title: 获取 API Key
+description: 选一个模型提供商，拿到 API Key，再加到 PhysiClaw——OpenAI、Anthropic、Google、通义千问或 Kimi。
+---
+
+校准不需要模型，但要让助理真正操作手机，你需要从某个提供商拿到一个模型。注册账号、生成 API Key，然后加到 PhysiClaw。
+
+| 提供商 | 获取 API Key | 提供商 id |
+| --- | --- | --- |
+| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `openai` |
+| **Anthropic**（Claude） | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | `anthropic` |
+| **Google**（Gemini） | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `google` |
+| **通义千问**（Qwen） | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) | `qwen` |
+| **Kimi**（Moonshot） | [platform.moonshot.cn](https://platform.moonshot.cn/console/api-keys) | `moonshot` |
+
+:::tip[立即复制 Key]
+多数控制台只在创建时完整显示一次 API Key，请立即复制并妥善保存。
+:::
+
+然后添加 Key 并选择模型：
+
+```bash
+physiclaw models key <provider>      # 按提示粘贴 Key
+physiclaw models use <provider/model>
+```
+
+例如：`physiclaw models key anthropic`，再 `physiclaw models use anthropic/claude-sonnet-4-6`。
+
+完整模型列表与选择方式见[模型](/zh/agent/models/)。
