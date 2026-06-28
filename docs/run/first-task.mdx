@@ -1,181 +1,33 @@
 ---
 title: Your first task
-description: Point an MCP client at PhysiClaw, give it a plain-language goal, and watch the arm tap through it — peek, decide, tap, peek again.
+description: Once everything's set up, message PhysiClaw on WhatsApp and tell it what to do.
 ---
 
-The hardware is built and calibrated; now you hand the arm a goal in plain English and watch it work. This page connects an external agent — Claude Desktop — to the running server, gives it a one-line task, and shows the real tool trace that follows: the agent looks, picks a box, taps, and looks again.
+Everything's set up.
 
-:::caution[Use a dedicated phone]
-The agent can see and tap anything on the unlocked phone — there's no app sandbox between it and what's on screen. Run PhysiClaw on a throwaway tool-phone, not your daily driver. Read [Safety](/en/safety/) before your first task.
-:::
+Start the server:
 
-:::note[Before you start — three things must be true]
-1. **`physiclaw server` is running** and printed its endpoint line:
-   `PhysiClaw MCP server on http://localhost:8048/mcp`. The server binds host
-   `0.0.0.0` / port `8048` by default, so it's LAN-reachable for the phone
-   bridge; `localhost` works from the same machine.
-2. **The rig is calibrated.** The wizard's **Validate** step (step 8 of 10) is
-   the only step that *saves* the calibration bundle to disk and returns the
-   phone to bridge mode, so calibration must have reached and passed Validate
-   (≥2/5 dots, threshold `0.015` ≈ 5px @ 390). See
-   [Calibrate](/en/set-up/calibrate/).
-3. **The phone is unlocked** with the [bridge page](/en/set-up/prepare-the-phone/)
-   open in the browser. The bridge carries screenshots and clipboard between
-   phone and server, and the agent can't tap a locked screen.
-:::
-
-:::tip[You don't need to configure a model first]
-This page uses **Mode A** — bring your own MCP client — where the external
-client is the brain. The "no default model" gate (`physiclaw models key` then
-`physiclaw models use`) applies only to the *built-in* agent runtime, not to
-Mode A. A plain `physiclaw server` with no model configured runs fine for
-hardware setup and for manual or external MCP calls, so you can give your first
-interactive task without setting any model on the PhysiClaw side.
-:::
-
-## Connect an MCP client
-
-PhysiClaw is a FastMCP server speaking **streamable-HTTP** at
-`http://localhost:8048/mcp`. Because it's already a running HTTP endpoint,
-there's nothing to install or launch client-side — the client config just points
-at the URL. Here we use Claude Desktop as the brain.
-
-<Steps>
-
-1. Make sure the server is up. In the shell where you ran `physiclaw server`,
-   you should see the endpoint line:
-
-   ```text
-   PhysiClaw MCP server on http://localhost:8048/mcp
-   ```
-
-2. Add PhysiClaw to Claude Desktop's config. Open `claude_desktop_config.json`
-   (Settings → Developer → Edit Config) and add the `physiclaw` server:
-
-   ```json
-   {
-     "mcpServers": {
-       "physiclaw": {
-         "type": "http",
-         "url": "http://localhost:8048/mcp"
-       }
-     }
-   }
-   ```
-
-3. Restart Claude Desktop. PhysiClaw's twelve tools — `peek`, `tap`, `swipe`,
-   `unlock_phone`, and the rest — now show up in the client's tool list. (Full
-   list: [MCP tools](/en/reference/mcp-tools/).)
-
-</Steps>
-
-:::tip[Not using Claude Desktop?]
-Anything that speaks MCP can be the brain — OpenClaw, a custom client, your own
-script. The only thing PhysiClaw cares about is the endpoint:
-`http://localhost:8048/mcp`. The config field names differ per client, but the
-URL is always the same.
-:::
-
-## Give it a goal
-
-Talk to the agent the way you'd ask a person — a plain sentence, not coordinates:
-
-```text
-Set a 10-minute timer on the phone.
+```bash
+physiclaw server
 ```
 
-That's the whole instruction. You don't tell it *where* the Clock app is or
-*how* to reach the timer tab — the agent figures that out by looking at the
-screen and deciding, one step at a time.
+It opens the **Hardware setup** page automatically — check **Auto mode** and click **Continue**, and it finishes hardware setup on its own.
 
-## What actually happens
 
-Behind that one sentence, the agent runs the same **see → act** loop on every
-move — this is not magic teleoperation. It never sends pixels or motor
-coordinates; it `peek`s (overhead-camera view, ~4s, non-mutating, returns an
-annotated JPEG plus an element listing) to get the on-screen elements, each with
-a **bbox** — a `[left, top, right, bottom]` rectangle in `0`–`1` screen
-fractions — then `tap`s the box it wants and `peek`s again to confirm. Here's a
-real trace:
+## Example tasks
+
+Make sure the PhysiClaw phone is signed in to **WhatsApp**, and that the apps you'll use are logged in too — DoorDash, Amazon, Instacart — with a default delivery address and payment method set.
+
+From your own WhatsApp, add the PhysiClaw phone as a contact, then message it like a normal chat to tell it what to do:
 
 ```text
-▸ peek()
-  ← [home screen]
-    id  kind   label              bbox                          conf
-    07  icon   "Clock"            [0.41, 0.55, 0.49, 0.63]      0.97
-    08  icon   "Settings"         [0.51, 0.55, 0.59, 0.63]      0.96
-    09  icon   "Photos"           [0.61, 0.55, 0.69, 0.63]      0.95
-
-▸ tap([0.41, 0.55, 0.49, 0.63])          # the "Clock" box
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Clock app, World Clock tab]
-    id  kind   label              bbox                          conf
-    11  text   "World Clock"      [0.05, 0.92, 0.25, 0.98]      0.98
-    12  text   "Timer"            [0.74, 0.92, 0.95, 0.98]      0.97
-
-▸ tap([0.74, 0.92, 0.95, 0.98])          # the "Timer" tab
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Timer tab — hour / min / sec wheels, "10" already centered on minutes]
-    id  kind   label              bbox                          conf
-    21  text   "10"               [0.40, 0.40, 0.50, 0.50]      0.95
-    22  text   "Start"            [0.55, 0.78, 0.85, 0.88]      0.98
-
-▸ tap([0.55, 0.78, 0.85, 0.88])          # the green "Start" button
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Timer running — "09:58" counting down, "Cancel" / "Pause" shown]
-  ✓ goal reached: a 10-minute timer is running.
+Order a latte on DoorDash.
+What's the weather tomorrow?
+Text me the top news at 7 a.m. tomorrow.
+Buy milk and eggs on Instacart.
+Look up "<your question>" on ChatGPT.
 ```
 
-Read it top to bottom and the rhythm is clear: **look, pick a box, tap, look
-again.** Every `tap` is grounded in a bbox the previous `peek` actually
-returned, and every `tap` is followed by a fresh `peek` to check the result —
-that re-looking is what lets the agent notice if a tap missed and re-aim,
-instead of barreling ahead on a wrong assumption.
-
-Under the hood, each gesture is a **physical stylus motion**, not an OS touch
-API: the orchestrator converts the bbox center (0–1 fractions) to GRBL mm
-through the calibrated affine and the arm physically taps. Every gesture holds a
-busy lock and auto-parks the stylus off-screen when it's done. Depth on this
-lives in [How it sees](/en/concepts/how-it-sees/) and
-[MCP tools](/en/reference/mcp-tools/).
-
-:::note[Why the agent keeps peeking]
-Each tool's reply ends with a hint — `tap` returns
-*"— `peek` to verify and plan the next move."* Those nudges are baked into the
-tool replies, so the verified loop stays honest no matter which model is driving.
-The full mental model is in [How it works](/en/start/how-it-works/).
+:::tip[No model set?]
+The agent needs a model provider. If you haven't set one up, see [Get an API key](/en/set-up/provider/).
 :::
-
-## If it stalls
-
-- **Two identical `peek` listings in a row** → the tap landed on empty space or
-  the box was slightly off. The agent re-aims from the new listing; if you're
-  watching, that's normal recovery, not a crash.
-- **"phone unlock failed" / locked screen** → the phone re-locked. Set the
-  passcode to `111111` (the throwaway code `unlock_phone` uses) or disable
-  auto-lock, then ask again. Note `111111` is the runtime `unlock_phone`
-  requirement only.
-- **No tools in the client** → the server wasn't running when the client
-  started, or the URL is wrong. Confirm the endpoint line, fix the config,
-  restart the client.
-
-More failure modes and fixes live in [Troubleshooting](/en/troubleshooting/).
-
-## What's next
-
-That was PhysiClaw's interactive, bring-your-own-client mode. PhysiClaw can
-*also* be its own brain — a built-in runtime that wakes on triggers and drives
-the arm without an external client. For the side-by-side comparison of the two,
-see [Operating modes](/en/run/operating-modes/).
-
-<LinkCard
-  title="Operating modes"
-  description="Mode A (bring your own MCP client) vs. Mode B (the built-in agent runtime) — when to use each."
-  href="/en/run/operating-modes/"
-/>

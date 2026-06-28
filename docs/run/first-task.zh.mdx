@@ -1,163 +1,33 @@
 ---
 title: 你的第一个任务
-description: 把一个 MCP 客户端接到 PhysiClaw 上，给它一句大白话的目标，看着机械臂一步步点下去——看一眼、做决定、点击、再看一眼。
+description: 一切就绪后，在微信上给 PhysiClaw 发消息，告诉它做什么就行。
 ---
 
-硬件已经搭好、校准完毕；现在你只需用一句平实的英文给机械臂一个目标，看它干活。本页会把一个外部助理——Claude Desktop——接到正在运行的服务器上，给它一行任务，并展示随之而来的真实工具调用轨迹：助理看一眼屏幕、挑中一个框、点下去，然后再看一眼。
+一切都已就绪。
 
-:::caution[请用一台专用手机]
-助理能看到并点击这台已解锁手机上的任何东西——它与屏幕内容之间没有任何应用沙箱。请在一台随用随弃的工具机上运行 PhysiClaw，而不是你的日常主力机。开始第一个任务前，先读一读[安全](/zh/safety/)。
-:::
+启动服务：
 
-:::note[开始之前——三个前提必须成立]
-1. **`physiclaw server` 正在运行**，并已打印出端点这一行：
-   `PhysiClaw MCP server on http://localhost:8048/mcp`。服务器默认绑定主机
-   `0.0.0.0` / 端口 `8048`，因此在局域网内可被手机桥接访问；从同一台机器上访问
-   用 `localhost` 即可。
-2. **机械臂已校准。** 向导里的 **Validate** 步骤（10 步中的第 8 步）是唯一会把校准
-   数据包*写入磁盘*并让手机回到桥接模式的步骤，所以校准必须走到并通过 Validate
-   （≥2/5 个点，阈值 `0.015` ≈ 5px @ 390）。参见
-   [校准](/zh/set-up/calibrate/)。
-3. **手机处于解锁状态**，且浏览器里已打开[桥接页面](/zh/set-up/prepare-the-phone/)。
-   桥接在手机与服务器之间传递截图和剪贴板内容，而助理没法点击锁着的屏幕。
-:::
-
-:::tip[你不需要先配置模型]
-本页用的是 **模式 A**——自带 MCP 客户端——由外部客户端充当大脑。那道“没有默认模型”的关卡
-（先 `physiclaw models key`，再 `physiclaw models use`）只针对*内置*助理运行时，不适用于
-模式 A。一个没有配置任何模型的纯 `physiclaw server` 也能正常用于硬件设置，以及手动或外部
-MCP 调用，所以你无需在 PhysiClaw 这一侧设置任何模型，就能下达第一个交互式任务。
-:::
-
-## 接入一个 MCP 客户端
-
-PhysiClaw 是一个讲 **streamable-HTTP** 的 FastMCP 服务器，端点在
-`http://localhost:8048/mcp`。因为它本就是一个正在运行的 HTTP 端点，客户端这边没什么要
-安装或启动的——客户端配置只需指向这个 URL。这里我们用 Claude Desktop 来当大脑。
-
-<Steps>
-
-1. 确认服务器已启动。在你运行 `physiclaw server` 的那个终端里，应当能看到端点这一行：
-
-   ```text
-   PhysiClaw MCP server on http://localhost:8048/mcp
-   ```
-
-2. 把 PhysiClaw 加到 Claude Desktop 的配置里。打开 `claude_desktop_config.json`
-   （Settings → Developer → Edit Config），加入 `physiclaw` 服务器：
-
-   ```json
-   {
-     "mcpServers": {
-       "physiclaw": {
-         "type": "http",
-         "url": "http://localhost:8048/mcp"
-       }
-     }
-   }
-   ```
-
-3. 重启 Claude Desktop。PhysiClaw 的十二个工具——`peek`、`tap`、`swipe`、
-   `unlock_phone` 等等——现在会出现在客户端的工具列表里。（完整清单见
-   [MCP 工具](/zh/reference/mcp-tools/)。）
-
-</Steps>
-
-:::tip[没用 Claude Desktop？]
-任何会讲 MCP 的东西都能当大脑——OpenClaw、自定义客户端、你自己写的脚本。PhysiClaw 唯一
-在意的就是这个端点：`http://localhost:8048/mcp`。各客户端的配置字段名各不相同，但 URL
-始终一样。
-:::
-
-## 给它一个目标
-
-像跟人交代事情那样跟助理说话——一句平实的话，而不是坐标：
-
-```text
-Set a 10-minute timer on the phone.
+```bash
+physiclaw server
 ```
 
-这就是全部指令。你不用告诉它时钟 App *在哪*，也不用说怎么*进到*计时器标签页——助理会
-自己看屏幕、做决定，一步一步地搞定。
+它会自动打开`硬件设置`页面，勾选 `自动模式`，点击`继续`，可自动完成硬件设置。
 
-## 实际发生了什么
 
-在这一句话背后，助理每走一步都在跑同一个**看 → 做**的循环——这并不是什么魔法般的遥控
-操作。它从不发送像素或电机坐标；它先 `peek`（俯拍摄像头视角，约 4 秒，不改变任何东西，返回
-一张带标注的 JPEG 加一份元素列表）拿到屏幕上的元素，每个元素都带一个 **bbox**——一个
-`[left, top, right, bottom]` 的矩形，用 `0`–`1` 的屏幕比例表示——然后 `tap` 它想点的那个
-框，再 `peek` 一次来确认。下面是一段真实轨迹：
+## 任务示例
+
+确认 PhysiClaw 手机已经登录**微信**，并把常用应用都登录好——比如美团、京东、淘宝——同时设置好默认收货地址和支付方式。
+
+用你自己的微信，和 PhysiClaw 手机上的微信互加好友，然后像聊天一样发消息告诉它做什么：
 
 ```text
-▸ peek()
-  ← [home screen]
-    id  kind   label              bbox                          conf
-    07  icon   "Clock"            [0.41, 0.55, 0.49, 0.63]      0.97
-    08  icon   "Settings"         [0.51, 0.55, 0.59, 0.63]      0.96
-    09  icon   "Photos"           [0.61, 0.55, 0.69, 0.63]      0.95
-
-▸ tap([0.41, 0.55, 0.49, 0.63])          # the "Clock" box
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Clock app, World Clock tab]
-    id  kind   label              bbox                          conf
-    11  text   "World Clock"      [0.05, 0.92, 0.25, 0.98]      0.98
-    12  text   "Timer"            [0.74, 0.92, 0.95, 0.98]      0.97
-
-▸ tap([0.74, 0.92, 0.95, 0.98])          # the "Timer" tab
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Timer tab — hour / min / sec wheels, "10" already centered on minutes]
-    id  kind   label              bbox                          conf
-    21  text   "10"               [0.40, 0.40, 0.50, 0.50]      0.95
-    22  text   "Start"            [0.55, 0.78, 0.85, 0.88]      0.98
-
-▸ tap([0.55, 0.78, 0.85, 0.88])          # the green "Start" button
-  ← tapped — `peek` to verify and plan the next move
-
-▸ peek()
-  ← [Timer running — "09:58" counting down, "Cancel" / "Pause" shown]
-  ✓ goal reached: a 10-minute timer is running.
+帮我在美团上点一杯瑞幸美式。
+明天天气怎么样？
+明早 7 点把最新新闻发给我。
+在京东七鲜买牛奶和鸡蛋。
+帮我在 DeepSeek 上搜一下「xx 问题」。
 ```
 
-从头读到尾，节奏一目了然：**看一眼、挑一个框、点下去、再看一眼。** 每次 `tap` 都落在上一次
-`peek` 真正返回的某个 bbox 上，每次 `tap` 之后又紧跟一次全新的 `peek` 去检查结果——正是这种
-“再看一眼”，让助理能察觉到点偏了并重新瞄准，而不是抱着一个错误的假设一路猛冲。
-
-在底层，每一次手势都是一段**真实的触控笔运动**，而不是某个操作系统的触摸 API：编排器通过校准
-好的仿射变换，把 bbox 中心（0–1 比例）换算成 GRBL 毫米坐标，再由机械臂实际点下去。每一次手势
-都持有一把忙碌锁，完成后会把触控笔自动停泊到屏幕外。这部分的深入内容见
-[它如何看](/zh/concepts/how-it-sees/)和[MCP 工具](/zh/reference/mcp-tools/)。
-
-:::note[助理为什么一直在 peek]
-每个工具的返回都以一句提示结尾——`tap` 会返回
-*"— `peek` to verify and plan the next move."*。这些轻推被写进了工具的返回里，所以无论由
-哪个模型驱动，这个带验证的循环都不会偷懒。完整的心智模型见
-[工作原理](/zh/start/how-it-works/)。
+:::tip[还没配置模型？]
+智能体需要一个大模型提供商。如果还没配置，请见[获取 API Key](/zh/set-up/provider/)。
 :::
-
-## 如果它卡住了
-
-- **连续两次完全相同的 `peek` 列表** → 点击落到了空白处，或者框的位置略有偏差。助理会
-  根据新的列表重新瞄准；如果你正盯着看，这是正常的自我纠错，不是崩溃。
-- **"phone unlock failed" / 锁屏** → 手机又锁上了。把锁屏密码设成 `111111`（`unlock_phone`
-  用的那个一次性密码），或关掉自动锁定，然后再让它试一次。注意 `111111` 只是运行时
-  `unlock_phone` 的要求。
-- **客户端里没有工具** → 客户端启动时服务器没在跑，或者 URL 写错了。确认端点那一行、修正
-  配置、重启客户端。
-
-更多故障形态及解决办法见[排障](/zh/troubleshooting/)。
-
-## 接下来
-
-以上就是 PhysiClaw 的交互式、自带客户端模式。PhysiClaw *也*可以自己当大脑——一个内置运行时，
-由触发器唤醒，无需外部客户端就能驱动机械臂。两种模式的并排对比见
-[运行模式](/zh/run/operating-modes/)。
-
-<LinkCard
-  title="运行模式"
-  description="模式 A（自带 MCP 客户端）对比模式 B（内置助理运行时）——各自适合在什么时候用。"
-  href="/zh/run/operating-modes/"
-/>
