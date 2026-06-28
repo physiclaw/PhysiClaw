@@ -7,19 +7,22 @@ The software half is a single CLI, `physiclaw`. Install it, check the version, t
 
 ## 1. Run the install script
 
-Pick the command for your OS:
-
-**macOS**
+<Tabs syncKey="os">
+<TabItem label="macOS / Linux">
 
 ```bash
 curl -fsSL https://physiclaw.ai/install.sh | bash
 ```
 
-**Windows (PowerShell)**
+</TabItem>
+<TabItem label="Windows">
 
 ```powershell
 irm https://physiclaw.ai/install.ps1 | iex
 ```
+
+</TabItem>
+</Tabs>
 
 This installs [`uv`](https://docs.astral.sh/uv/), Python 3.12, and the `physiclaw` CLI.
 
