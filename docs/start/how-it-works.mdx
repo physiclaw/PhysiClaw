@@ -1,12 +1,9 @@
 ---
 title: How it works
-description: One full LOOK → DECIDE → MOVE & TOUCH → CHECK loop — how PhysiClaw turns a camera frame into a real tap.
+description: How PhysiClaw's agent handles a request end to end — wake, read the message, execute the task, respond, and exit.
 ---
 
-You already know the brain half from OpenClaw: an agent reads a screen, decides what to do, and
-acts. PhysiClaw runs the same idea, but the action is a *physical* tap on a *real* phone. This
-page walks one full tap end to end so you can see how a camera frame becomes arm motion — and
-why it's built as a closed, verified loop rather than blind teleoperation.
+Interacting with PhysiClaw is remarkably intuitive: it has its own dedicated phone running its own WhatsApp account. Just add it as a contact, and you can chat with it exactly like you would with a real person.
 
 <svg viewBox="0 0 700 290" role="img" aria-label="A user and PhysiClaw communicate through the phone" style="max-width:560px;width:100%;height:auto;margin:1.5rem auto;display:block" xmlns="http://www.w3.org/2000/svg" font-family="'Inter','Segoe UI',system-ui,sans-serif">
   <defs>
@@ -27,138 +24,22 @@ why it's built as a closed, verified loop rather than blind teleoperation.
   </g>
 </svg>
 
-Every action PhysiClaw takes is one turn of the same four-phase loop. Keeping the loop fixed is
-what makes the system reliable: each phase has one job, and each ends by **looking at the
-result**. There is no open-loop "drive the arm and hope" — the system never trusts a move until
-it has seen the screen change.
+## Wake
 
-```text
-   ┌──────────────────────────────────────────────────────────┐
-   │                                                          │
-   ▼                                                          │
- LOOK ─────────────► DECIDE ─────────► MOVE & TOUCH ──────► CHECK
- overhead camera     agent picks a     arm drives stylus    look again:
- + on-device vision  box + a gesture   to the box, taps     did it change?
- boxes every         (tap / swipe /    then lifts away       │      │
- element             long-press)                          yes│    no│
-                                                             │      │
-                                              next action ◄──┘      │
-                                              retry / re-aim ◄──────┘
-```
+PhysiClaw's runtime continuously runs a loop, checking for two things: whether any scheduled task is due to run, and whether the phone screen has lit up with a new message. As soon as either condition is met, it wakes the agent.
 
-The whole system is just **one camera and one arm**. There is no second camera and no depth
-sensor — reliability comes from *re-looking after every move*, not from fancier hardware.
+## Read Messages
 
-## 1. Look
+Once awakened, the agent unlocks the phone with a passcode, opens WhatsApp, reads the user's latest message, and interprets their intent.
 
-PhysiClaw takes a photo of the screen with the overhead USB camera and runs it through
-on-device vision: **RapidOCR** for text and **OmniParser V2** (a YOLO11m ONNX icon detector) for
-buttons, icons, and images. The output isn't raw pixels; it's a tidy **listing** where every
-element already has a label and a box:
+## Execute Task
 
-```text
-id  kind   label              bbox [left,top,right,bottom]   conf
-12  icon   "Clock"            [0.41, 0.55, 0.49, 0.63]       0.97
-13  icon   "Settings"         [0.51, 0.55, 0.59, 0.63]       0.96
-14  text   "Wednesday 14"     [0.30, 0.08, 0.70, 0.13]       0.99
-```
+Based on the user's intent, the agent picks the right app to carry out the task. If the task requires user confirmation, it waits for the user to confirm before proceeding.
 
-A **bbox** ("bounding box") is just a rectangle around one element, given as four numbers from
-`0` to `1` — fractions of the screen's width and height, as `[left, top, right, bottom]`.
-`[0.41, 0.55, 0.49, 0.63]` means "start 41% across and 55% down, end 49% across and 63% down."
-Using fractions instead of pixels is what keeps everything portable: the same listing makes
-sense on any phone size. That `0`–`1` fraction convention is load-bearing — the MOVE phase turns
-it straight into millimetres.
+## Respond
 
-The full vision pipeline is covered in [How it sees](/en/concepts/how-it-sees/).
+Once the task is complete, the agent sends a response message to the user; if there are no new messages, it closes WhatsApp and returns to the home screen.
 
-## 2. Decide
+## Exit
 
-The agent — Claude, or any model you point PhysiClaw at (bring-your-own-model) — reads that
-listing and chooses **one box** plus **one gesture**. To open the clock, it picks element `12`
-and calls `tap`. It never deals in motor coordinates or pixels; its entire vocabulary is *name a
-box, name an action*.
-
-The real gesture set is small and physical: `tap`, `double_tap`, `long_press`, `swipe`, plus
-navigation moves like `home_screen`, `go_back`, and `force_quit`. There are 12 tools in all —
-see the [MCP tools reference](/en/reference/mcp-tools/) for the complete list.
-
-:::note[Two ways to drive it]
-The agent that does the deciding can be an **external MCP client** (Claude Desktop, OpenClaw,
-etc.) connected to PhysiClaw, or PhysiClaw's **built-in agent runtime**. Either way, the
-look→decide→move→check loop is identical; the drive modes are covered in
-[Operating modes](/en/run/operating-modes/).
-:::
-
-## 3. Move & touch
-
-This is the half with no software analogue, so here's the honest mechanical picture.
-
-The orchestrator takes the **center** of the chosen bbox (still in `0`–`1` fractions) and
-converts it to real arm coordinates in millimetres using a calibrated **affine map** — a
-straight-line scale-plus-shift formula called `pct_to_grbl`. That map is exactly what
-[calibration](/en/set-up/calibrate/) fits, by tapping a known grid and learning how screen
-fractions correspond to arm positions.
-
-The arm itself is two motions:
-
-- **X/Y is a hand-built CoreXY gantry** — a from-scratch frame where two **NEMA 17** stepper
-  motors share the load to move the stylus across the screen plane. (CoreXY just means both
-  motors pull on belts together to produce X and Y.) This is *not* a ready-made consumer pen
-  plotter; it's a gantry you build.
-- **Z (the touch) is a 12V push-pull solenoid** — a fast electromagnet with a ~10mm stroke, not
-  a Z servo and not a plotter pen. The capacitive stylus tip threads onto the solenoid core. A
-  `tap` is a crisp solenoid down-and-up; a `long_press` just holds the tip down longer (~1.2s).
-
-The solenoid uses a **hit-and-hold** scheme: it strikes hard to make firm contact, then drops
-to a softer current to hold the tip in place without buzzing. The exact strike/hold values live
-in [Gestures](/en/reference/gestures/).
-
-Two reliability behaviours are worth calling out:
-
-1. **A busy lock.** Every gesture holds a lock, so actions never overlap — the arm finishes one
-   move before another can start.
-2. **Auto-park.** After each move the arm parks the stylus off-screen, so the next photo is
-   unobstructed and the LOOK phase sees a clean frame.
-
-:::caution[The stylus must be earth-grounded]
-For taps to register capacitively, the stylus tip has to be tied to a verified **earth ground**.
-This is a real, reliability-critical requirement, not optional polish — the wiring details are
-in the [hardware build](/en/hardware/assembly/).
-:::
-
-## 4. Check
-
-PhysiClaw looks **again** and produces a fresh listing. The agent compares it to what it
-expected. There are three outcomes:
-
-- **It changed as planned** → move on to the next action.
-- **Nothing changed** → the tap missed or the box was wrong; re-aim and try again.
-- **Something unexpected appeared** (a popup, an ad, a permission prompt) → that's simply the
-  new state. The agent reads it and decides again — no brittle script to fall out of.
-
-This *observe the result, then decide again* design is the whole reliability story. PhysiClaw
-recovers from surprises the same way a person would: by looking and trying once more. It's the
-reason one camera and one arm are enough — the verification comes from re-looking, not from more
-sensors.
-
-## Two ways to look: `peek` vs `screenshot`
-
-LOOK actually has two settings, and the agent picks based on what it needs:
-
-| | `peek` | `screenshot` |
-| --- | --- | --- |
-| Source | the overhead **camera** | the phone's **own** capture |
-| Speed | ~4s | ~12s |
-| Sharpness | good enough for most targets | pixel-perfect |
-| Side effects | none (non-mutating) | **mutating** — triggers the phone's screenshot gesture, which apps can notice |
-
-`peek` is the default — fast and invisible. The agent only escalates to `screenshot` when a
-target is too small for the camera to resolve, or glare makes the frame unreadable.
-
-## Next
-
-<CardGrid>
-  <LinkCard title="Build the hardware" description="When you're ready to commit: assemble the rig, source the parts, and flash the firmware." href="/en/hardware/assembly/" />
-  <LinkCard title="How it works inside" description="How the camera, arm, server, and agent fit together as a system." href="/en/concepts/architecture/" />
-</CardGrid>
+The agent records its memory and, if there are any new scheduled tasks, adds them to the task list. It then ends the session and waits to be woken again.
