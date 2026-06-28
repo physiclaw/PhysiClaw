@@ -3,43 +3,11 @@ title: Documentation
 description: Build, run, and understand PhysiClaw — give an AI agent a physical stylus and one camera to operate a real phone, no APIs.
 ---
 
-PhysiClaw gives an AI agent a physical finger: one overhead camera reads the screen and a
-capacitive stylus on a CoreXY gantry taps it — no APIs, and no app on the phone. These docs go
-from a parts list to a running agent, plus the tools, gestures, and built-in agent that drive it.
-
-Be honest with yourself before you start: this is a hand-built machine. You source the parts,
-3D-print the custom pieces, assemble a CoreXY gantry, flash firmware, then calibrate — a
-multi-day project of roughly **$145+ in parts**, not an afternoon kit.
-
-## Start by goal
+This guide walks you from scratch through building your own personal assistant.
 
 <CardGrid>
-  <LinkCard title="New here?" description="Start with the Introduction — what PhysiClaw is and how it works." href="/en/start/introduction/" />
-  <LinkCard title="Coming from OpenClaw?" description="You know the brain — see why PhysiClaw adds a body." href="/en/start/why-a-body/" />
-</CardGrid>
-
-## Get started
-
-<CardGrid>
-  <LinkCard title="Introduction" description="An AI agent with a physical finger — what it is and the problem it solves." href="/en/start/introduction/" />
-  <LinkCard title="How it works" description="One full look → think → move → confirm loop." href="/en/start/how-it-works/" />
-  <LinkCard title="Prepare the phone" description="Use a burner phone — set it up before your first task." href="/en/set-up/prepare-the-phone/" />
-</CardGrid>
-
-## Build & run
-
-<CardGrid>
-  <LinkCard title="Sourcing the parts" description="The full parts list and how to buy, cut, and print everything (~$145+)." href="/en/hardware/sourcing/" />
-  <LinkCard title="Assembly" description="Build the gantry, fit the solenoid + stylus, wire it up." href="/en/hardware/assembly/" />
-  <LinkCard title="Install the software" description="One command — the CLI, vision model, and server." href="/en/set-up/install/" />
-  <LinkCard title="Run your first task" description="Connect an agent and watch it operate the phone." href="/en/run/first-task/" />
-</CardGrid>
-
-## Understand & reference
-
-<CardGrid>
-  <LinkCard title="System architecture" description="Agent → MCP server → camera + arm → phone." href="/en/concepts/architecture/" />
-  <LinkCard title="Memory & skills" description="How PhysiClaw remembers and learns app workflows." href="/en/concepts/memory/" />
-  <LinkCard title="MCP tools" description="The tools an agent calls to drive the phone." href="/en/reference/mcp-tools/" />
-  <LinkCard title="Troubleshooting" description="Symptom-first fixes when something won't work." href="/en/troubleshooting/" />
+  <LinkCard title="Introduction" description="What PhysiClaw is and what it can do." href="/en/start/introduction/" />
+  <LinkCard title="Build the hardware" description="Source the parts, assemble the hardware, and flash the control board." href="/en/hardware/assembly/" />
+  <LinkCard title="Set up" description="Install the CLI, prepare the phone, add a model API key, then calibrate." href="/en/set-up/install/" />
+  <LinkCard title="Run your first task" description="Message PhysiClaw and give it a task." href="/en/run/first-task/" />
 </CardGrid>

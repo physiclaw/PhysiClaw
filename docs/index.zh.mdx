@@ -3,39 +3,11 @@ title: 文档
 description: 构建、运行并理解 PhysiClaw —— 给 AI 助理一支实体触控笔和一台相机，操作一部真实手机，不依赖任何 API。
 ---
 
-PhysiClaw 给 AI 助理一根实体手指：一台俯拍相机读屏幕，一支装在 CoreXY 龙门上的电容触控笔点屏幕 —— 不用 API，手机上也不装任何 app。这套文档从一份零件清单一路讲到一个能跑起来的助理，外加驱动它的工具、手势和内置助理。
-
-动手之前先对自己坦白：这是一台手工搭的机器。你得自己采购零件、3D 打印定制件、装好一套 CoreXY 龙门、刷固件，然后做标定 —— 这是一个为期数天、零件成本约 **$145 起**的项目，而不是一个下午就能搞定的套件。
-
-## 按目标开始
+本文档将带你从零开始，一步步搭建属于你自己的个人助理。
 
 <CardGrid>
-  <LinkCard title="第一次来？" description="从简介开始 —— PhysiClaw 是什么，以及它如何工作。" href="/zh/start/introduction/" />
-  <LinkCard title="从 OpenClaw 过来？" description="你已经懂那个「大脑」——看看为什么还要给它一个「身体」。" href="/zh/start/why-a-body/" />
-</CardGrid>
-
-## 开始上手
-
-<CardGrid>
-  <LinkCard title="简介" description="一个长着实体手指的 AI 助理 —— 它是什么，又解决了什么问题。" href="/zh/start/introduction/" />
-  <LinkCard title="它如何工作" description="完整的一次「看 → 思考 → 移动 → 检查」循环。" href="/zh/start/how-it-works/" />
-  <LinkCard title="准备手机" description="用一部备用手机 —— 第一个任务之前先设置好。" href="/zh/set-up/prepare-the-phone/" />
-</CardGrid>
-
-## 构建与运行
-
-<CardGrid>
-  <LinkCard title="采购零件" description="完整零件清单，以及如何采购、切割与打印（约 $145 起）。" href="/zh/hardware/sourcing/" />
-  <LinkCard title="组装" description="搭好龙门，装上电磁铁 + 触控笔，接好线。" href="/zh/hardware/assembly/" />
-  <LinkCard title="安装软件" description="一条命令搞定 —— CLI、视觉模型和 server。" href="/zh/set-up/install/" />
-  <LinkCard title="跑你的第一个任务" description="接入一个助理，看它操作手机。" href="/zh/run/first-task/" />
-</CardGrid>
-
-## 理解与参考
-
-<CardGrid>
-  <LinkCard title="系统架构" description="助理 → MCP server → 相机 + 机械臂 → 手机。" href="/zh/concepts/architecture/" />
-  <LinkCard title="记忆与技能" description="PhysiClaw 如何记忆、又如何学会 App 操作流程。" href="/zh/concepts/memory/" />
-  <LinkCard title="MCP 工具" description="助理用来驱动手机的那些工具。" href="/zh/reference/mcp-tools/" />
-  <LinkCard title="疑难排查" description="出问题时，从症状出发的排查办法。" href="/zh/troubleshooting/" />
+  <LinkCard title="简介" description="PhysiClaw 是什么，能做什么事情。" href="/zh/start/introduction/" />
+  <LinkCard title="搭建硬件" description="采购零件、组装硬件并给控制板刷入固件。" href="/zh/hardware/assembly/" />
+  <LinkCard title="配置" description="安装 CLI、准备手机、添加模型 API Key，然后校准。" href="/zh/set-up/install/" />
+  <LinkCard title="运行第一个任务" description="给 PhysiClaw 发消息，给它一个任务。" href="/zh/run/first-task/" />
 </CardGrid>
