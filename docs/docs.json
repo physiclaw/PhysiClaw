@@ -24,9 +24,9 @@
       ]
     },
     {
-      "label": "Set up the software",
+      "label": "Set up",
       "translations": {
-        "zh-CN": "配置软件"
+        "zh-CN": "配置"
       },
       "items": [
         "set-up/install",
