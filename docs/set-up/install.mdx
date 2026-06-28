@@ -1,213 +1,40 @@
 ---
 title: Install the software
-description: One install script puts the physiclaw CLI, Python 3.12, and the on-device vision model on your Mac — then verify with doctor and start the LAN server.
+description: Install the physiclaw CLI with one script, then verify it with --version and doctor.
 ---
 
-The hardware is built and FluidNC is flashed. The software half is a single local CLI called
-`physiclaw`: one install command, a read-only health check, and a server you leave running. No
-model is wired up by default, and you don't need one yet — the server runs without it for
-hardware setup. This page gets you to a healthy install and a running server; the next two pages
-prepare the phone and calibrate.
-
-:::caution[Flash the firmware first]
-This page assumes FluidNC is already flashed to your MKS DLC32 V2.1 board. The CLI's hardware
-wizard talks to the board over serial and will have nothing to connect to until then. If you
-haven't flashed yet, do [Firmware](/en/hardware/firmware/) first.
-:::
-
-:::note[Hardware can come later — but not for calibration]
-You can install and run `physiclaw doctor` with nothing plugged in; it just reports what's
-missing. The arm and camera only need to be connected once you reach
-[Calibrate](/en/set-up/calibrate/) and run the hardware wizard.
-:::
+The software half is a single CLI, `physiclaw`. Install it, check the version, then run the health check.
 
 ## 1. Run the install script
 
-macOS is the focused, supported platform. One command installs everything:
+Pick the command for your OS:
+
+**macOS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
+curl -fsSL https://physiclaw.ai/install.sh | bash
 ```
 
-What `install.sh` does, in order:
+**Windows (PowerShell)**
 
-<Steps>
+```powershell
+irm https://physiclaw.ai/install.ps1 | iex
+```
 
-1. **Asserts macOS (Darwin).** It refuses to run on other platforms.
+This installs [`uv`](https://docs.astral.sh/uv/), Python 3.12, and the `physiclaw` CLI.
 
-2. **Ensures `git` is present.** If missing, it warns and continues — `git` is only needed later,
-   for installing [skills](/en/agent/memory-and-skills/).
-
-3. **Installs `uv`** (the Python package/runtime manager everything else rides on).
-
-4. **Installs Python 3.12** via `uv python install 3.12`.
-
-5. **Installs the CLI**: `uv tool install physiclaw --python 3.12 --force --refresh`. This is an
-   isolated tool install — it never touches your system Python.
-
-6. **Fetches the on-device vision model** by running `physiclaw setup local-vision-model` as its
-   last step. So a normal install already has the model when it finishes (see step 4 below).
-
-</Steps>
-
-The package is `physiclaw` v0.0.20 (Python ≥3.12, MIT).
-
-:::tip[Two environment knobs]
-`PHYSICLAW_VERSION=<x.y.z>` pins a specific version instead of latest. `NO_COLOR=1` gives plain,
-un-styled output (useful when piping logs).
-:::
-
-:::note[Windows]
-There is an `install.ps1` you can run with `irm <url>/install.ps1 | iex`, but the rest of these
-docs assume macOS.
-:::
-
-## 2. Verify the binary is on PATH
+## 2. Check it installed
 
 ```bash
 physiclaw --version
 ```
 
-If the shell can't find the command, open a **new terminal** so the updated `PATH` loads, then
-try again.
+If the shell can't find the command, open a **new terminal** so the updated `PATH` loads, then try again.
 
 ## 3. Run the health check
-
-`physiclaw doctor` is a read-only check — it never changes anything. It prints the Python
-version, your config path, whether the vision model is present, what hardware it can see, whether
-the server can bind `0.0.0.0:8048`, and a numbered next-steps list.
 
 ```bash
 physiclaw doctor
 ```
 
-The `0.0.0.0:8048` line is shown as **info, not an error** — binding to all interfaces is
-intentional so your phone can reach the server over the LAN (more on this in step 6).
-
-:::tip[Go deeper]
-`physiclaw doctor --deep` runs active probes: it loads the vision model, grabs a real camera
-frame, and — if you've set an agent model — makes one live API call. It takes a few seconds but
-catches problems a passive check can't, like a camera that opens but returns no frames because
-macOS hasn't been granted Camera permission.
-:::
-
-## 4. About the vision model (already fetched)
-
-PhysiClaw reads the screen with a small icon-detection model that runs **on your machine**. The
-install script already fetched it in step 1, so a normal install needs nothing here.
-
-If it was skipped (e.g. `uv` wasn't available during install) or you want to refresh it, run:
-
-```bash
-physiclaw setup local-vision-model        # add --force to re-download/re-convert
-```
-
-What this does: downloads `microsoft/OmniParser-v2.0` `icon_detect/model.pt` (~100 MB), converts
-it to ONNX (`imgsz=1280`) inside an ephemeral `uv run --with` environment that is thrown away
-afterward, and leaves the finished file at
-`~/.physiclaw/models/omniparser_icon_detect/model.onnx`. `uv` is the runtime prerequisite for the
-conversion; if it's missing, `install.sh` warns and continues without the model.
-
-Why on-device:
-
-<CardGrid>
-  <Card title="Privacy" icon="approve-check">
-    Every frame of the phone's screen is processed locally. Screenshots of messages, banking, and
-    accounts never leave the desk.
-  </Card>
-  <Card title="No per-look round-trip" icon="rocket">
-    The detector runs locally, so looking at the screen doesn't depend on a network call to a
-    cloud API.
-  </Card>
-</CardGrid>
-
-The full vision pipeline (RapidOCR + OmniParser V2 / YOLO11m) is covered in
-[How it sees](/en/concepts/how-it-sees/).
-
-## 5. You don't need a model yet
-
-There is **no built-in model**. This is fine for now: a plain `physiclaw server` still runs for
-hardware setup and manual MCP calls. The only thing that won't start until you set a model is the
-**built-in agent** — it stays asleep until then. Coming from OpenClaw, you'll recognize the two
-ways to drive PhysiClaw:
-
-- **(A) Bring your own MCP client.** Point Claude Desktop, OpenClaw, or any MCP client straight at
-  `/mcp`; it receives the FastMCP instructions and drives the phone. No agent model needed on the
-  server side.
-- **(B) Built-in runtime.** Set `[agent] model` to a `provider/model` ref and PhysiClaw runs the
-  agent itself.
-
-Choosing and keying a model is its own topic — do it when you actually want the agent to drive.
-See [Models](/en/agent/models/).
-
-## 6. Start the server
-
-```bash
-physiclaw server
-```
-
-This serves **FastMCP over streamable-HTTP** at `http://<host>:<port>/mcp`. The defaults are host
-`0.0.0.0` and port **8048**. Binding to `0.0.0.0` is deliberate: the server must be LAN-reachable
-so the phone bridge can reach it. On start it prints the two URLs you'll use:
-
-```text
-MCP endpoint (for clients):  http://localhost:8048/mcp
-Phone QR (scan on phone):    http://localhost:8048/api/bridge/qr
-```
-
-**Leave this shell running.** It holds the serial port and the camera and talks to your phone.
-The agent runtime spawns as a subprocess automatically — unless you pass `--no-runtime` or no
-model is set.
-
-Useful flags (reach for these only when needed):
-
-| Flag | Purpose |
-| --- | --- |
-| `--port` / `--host` | Override the default `8048` / `0.0.0.0`. |
-| `--warm-start` | Resume a previously saved calibration bundle. Required to skip re-calibrating. |
-| `--cam-index` | Pin a specific camera index instead of auto-detect. |
-| `--no-runtime` | Don't spawn the agent runtime subprocess. |
-
-## You're done when…
-
-- `physiclaw --version` prints a version,
-- `physiclaw doctor` shows the **vision model present** and **no blocking errors** (the
-  `0.0.0.0:8048` line is info, not a problem), and
-- `physiclaw server` starts and prints the **MCP endpoint** and **phone QR** URLs.
-
-Next: [Prepare the phone](/en/set-up/prepare-the-phone/) (AssistiveTouch + three iOS Shortcuts),
-then [Calibrate](/en/set-up/calibrate/). After that, [First task](/en/run/first-task/) drives it
-end to end.
-
-<CardGrid>
-  <LinkCard title="Prepare the phone" description="AssistiveTouch and the three Shortcuts the bridge needs." href="/en/set-up/prepare-the-phone/" />
-  <LinkCard title="Calibrate" description="Run the hardware wizard with the arm and camera connected." href="/en/set-up/calibrate/" />
-</CardGrid>
-
-## Reference: serial port (rarely needed)
-
-The arm's USB serial port is auto-detected at **115200** baud, so you almost never type it by
-hand. When a troubleshooting step asks for it, the format differs by OS:
-
-<Tabs>
-  <TabItem label="macOS">
-    `/dev/tty.usbserial-XXXX` or `/dev/tty.usbmodemXXXX`. List candidates with `ls /dev/tty.usb*`.
-  </TabItem>
-  <TabItem label="Linux">
-    `/dev/ttyUSB0` (CH340 adapters) or `/dev/ttyACM0`.
-  </TabItem>
-  <TabItem label="Windows">
-    `COM3`, `COM4`, … Check Device Manager → Ports (COM & LPT).
-  </TabItem>
-</Tabs>
-
-## Reference: where things live
-
-Everything lands under `~/.physiclaw` (override with `PHYSICLAW_HOME`):
-
-- `config.toml` — configuration.
-- `models/omniparser_icon_detect/model.onnx` — the vision model.
-- `calibration/` — the saved calibration bundle.
-
-Full detail is in [Configuration](/en/reference/configuration/) and the
-[CLI reference](/en/reference/cli/).
+`doctor` reports your Python version, config path, the on-device vision model, and detected hardware.
