@@ -64,7 +64,7 @@ model = "anthropic/claude-sonnet-4-6"
 
 :::note[在设置模型前，助理始终处于沉睡状态]
 两种驱动模式在没有模型时都拒绝唤醒。不带模型的纯 `physiclaw server` 仍然会运行——这对硬件设置和手动
-MCP 工具调用很有用——但内置助理不会启动。参见 [运行模式](/zh/run/operating-modes/)。
+MCP 工具调用很有用——但内置助理不会启动。参见[内置助理](/zh/agent/overview/)。
 :::
 
 ### 引用的形态决定了引擎
@@ -223,6 +223,6 @@ physiclaw config get engine.max_turns  # read a single key
 <CardGrid>
   <LinkCard title="CLI 参考" description="physiclaw config、models、server 以及其余每条命令的完整语法。" href="/zh/reference/cli/" />
   <LinkCard title="选择模型" description="provider/model 引用、密钥设置，以及每个引用会选中哪个引擎。" href="/zh/agent/models/" />
-  <LinkCard title="运行模式" description="自带 MCP 客户端 vs. 内置助理运行时。" href="/zh/run/operating-modes/" />
+  <LinkCard title="内置助理" description="运行 PhysiClaw 自带的助理运行时，无需外部客户端。" href="/zh/agent/overview/" />
   <LinkCard title="手势" description="电磁铁 hit-and-hold 时序到底存放在哪里。" href="/zh/reference/gestures/" />
 </CardGrid>
