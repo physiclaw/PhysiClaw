@@ -17,7 +17,7 @@ from physiclaw.cli.uninstall import uninstall
 app = typer.Typer(
     help=f"PhysiClaw {_pkg_version} — let AI agents physically operate a phone.",
     context_settings={"help_option_names": ["-h", "--help"]},
-    no_args_is_help=True,
+    no_args_is_help=False,
     add_completion=False,
 )
 
@@ -54,8 +54,9 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def _root(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -66,7 +67,9 @@ def _root(
         ),
     ] = False,
 ) -> None:
-    pass
+    # Bare `physiclaw` (no subcommand) defaults to `physiclaw server`.
+    if ctx.invoked_subcommand is None:
+        server()
 
 
 __all__ = ["app"]
