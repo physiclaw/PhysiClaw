@@ -3,7 +3,7 @@
 # PhysiClaw installer (macOS only for now).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
+#   curl -fsSL https://physiclaw.ai/install.sh | bash
 #
 # Optional:
 #   PHYSICLAW_VERSION=0.0.3 curl -fsSL ... | bash   # pin a version

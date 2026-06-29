@@ -17,7 +17,7 @@ macOS only for now. Full docs: **[docs.physiclaw.ai](https://docs.physiclaw.ai)*
 
 ```bash
 # 1. Install the CLI (uv + Python 3.12 + physiclaw, all isolated under ~/.local/bin)
-curl -fsSL https://raw.githubusercontent.com/physiclaw/PhysiClaw/main/install.sh | bash
+curl -fsSL https://physiclaw.ai/install.sh | bash
 
 # 2. Check your environment
 physiclaw doctor
