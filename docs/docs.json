@@ -64,15 +64,6 @@
       ]
     },
     {
-      "label": "Reference",
-      "translations": {
-        "zh-CN": "参考"
-      },
-      "items": [
-        "reference/cli"
-      ]
-    },
-    {
       "label": "Troubleshooting",
       "translations": {
         "zh-CN": "故障排查"
