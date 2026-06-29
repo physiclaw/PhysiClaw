@@ -1,0 +1,57 @@
+# When install.sh / install.ps1 change on main, copy them into the
+# PhysiClaw-site repo's ./install directory and push. The site then serves
+# them at physiclaw.ai/install.sh and physiclaw.ai/install.ps1 (the one-liners
+# in the README + docs install guide point there).
+#
+# PhysiClaw is the source of truth for the scripts; this workflow just keeps the
+# site's copy in sync.
+#
+# Required secret (Settings → Secrets and variables → Actions):
+#   SITE_TOKEN – a PAT / fine-grained token with WRITE (contents) access to
+#                physiclaw/PhysiClaw-site, so the sync commit can push.
+name: Sync install scripts
+
+on:
+  push:
+    branches: [main]
+    paths: ['install.sh', 'install.ps1']
+  workflow_dispatch: # allow manual re-sync
+
+concurrency:
+  group: sync-install-scripts
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PhysiClaw (scripts source)
+        uses: actions/checkout@v5
+        with:
+          path: source
+
+      - name: Checkout PhysiClaw-site (consumer)
+        uses: actions/checkout@v5
+        with:
+          repository: physiclaw/PhysiClaw-site
+          ref: main
+          path: site
+          token: ${{ secrets.SITE_TOKEN }}
+
+      - name: Copy install scripts → PhysiClaw-site/install
+        run: |
+          mkdir -p site/install
+          cp source/install.sh source/install.ps1 site/install/
+
+      - name: Commit & push (only if changed)
+        working-directory: site
+        run: |
+          git config user.name  "physiclaw-site"
+          git config user.email "qiaoqianda@gmail.com"
+          git add install
+          if git diff --cached --quiet; then
+            echo "No install-script changes to publish."
+          else
+            git commit -m "chore: sync install scripts from PhysiClaw@${GITHUB_SHA::7}"
+            git push
+          fi
