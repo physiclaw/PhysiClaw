@@ -7,6 +7,7 @@ import typer
 from physiclaw import __version__ as _pkg_version
 from physiclaw.cli.config import config_app
 from physiclaw.cli.doctor import doctor
+from physiclaw.cli.flash import flash
 from physiclaw.cli.models import models_app
 from physiclaw.cli.server import server
 from physiclaw.cli.setup import setup_app
@@ -24,6 +25,7 @@ app = typer.Typer(
 app.command()(doctor)
 app.command()(server)
 app.command()(status)
+app.command()(flash)
 app.command()(uninstall)
 
 app.add_typer(
