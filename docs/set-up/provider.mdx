@@ -13,15 +13,15 @@ PhysiClaw works with many LLM providers. Pick one, create an account, and genera
 | qwen | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) |
 | moonshot | [platform.moonshot.cn](https://platform.moonshot.cn/console/api-keys) |
 
-:::tip[Copy the key right away]
-Most consoles show the full key only once. Copy it immediately and store it somewhere safe.
-:::
-
-Once you have a key, add it and pick a model:
+Once you have an API key, add it and pick a model:
 
 ```bash
 physiclaw models key <provider>      # paste the key when prompted
 physiclaw models use <provider/model>
 ```
 
-For example, run `physiclaw models key anthropic`, then `physiclaw models use anthropic/claude-sonnet-4-6`.
+:::tip[Pick a multimodal model]
+PhysiClaw looks at the phone screen on every step, so it needs a **multimodal model that takes both images and text** — a text-only model won't work.
+:::
+
+For example, run `physiclaw models key anthropic`, paste your API key, then run `physiclaw models use anthropic/claude-sonnet-4-6` to start using Claude.
