@@ -45,14 +45,22 @@
       ]
     },
     {
+      "label": "Custom",
+      "translations": {
+        "zh-CN": "定制"
+      },
+      "items": [
+        "custom/memory",
+        "custom/skills"
+      ]
+    },
+    {
       "label": "How it works inside",
       "translations": {
         "zh-CN": "工作原理"
       },
       "items": [
-        "concepts/architecture",
-        "concepts/memory",
-        "concepts/skills"
+        "concepts/architecture"
       ]
     },
     {
