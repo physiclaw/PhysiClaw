@@ -3,41 +3,60 @@ title: Skills
 description: How PhysiClaw learns app-specific workflows — folder-based skills loaded progressively so the prompt stays small.
 ---
 
-Memory is what PhysiClaw *knows*; a **skill** is what it *can do* — a self-contained folder that teaches the exact workflow for one app or task. Out of the box it can tap a screen; a skill turns that into "place an order on **this** app the right way."
+PhysiClaw can operate most apps with no special skill. But sometimes the agent repeats the same mistake, or takes many tries to finish a task — wasting tokens and time. When that happens, create a skill to guide it through a specific task efficiently.
 
-A skill is a directory with a `SKILL.md` at its root:
+## Create a skill
+
+Make a new folder under `~/.physiclaw/skills/` (name it in English — e.g. an Instacart shopping skill is `instacart`), and create a file named `SKILL.md` (all caps) inside it.
 
 <FileTree>
 - ~/.physiclaw/skills/
-  - jd/
-    - SKILL.md        frontmatter (name + description) + the workflow
-    - references/     deep detail, loaded only when needed
+  - instacart/
+    - SKILL.md
 </FileTree>
 
-Two locations are scanned: `~/.physiclaw/skills/` (the primary home) and `./skills/` relative to where it runs. If both define the same name, the home copy wins.
+### SKILL.md example
 
-Skills load **progressively**, in three tiers, so a phone full of skills doesn't flood the prompt:
+```markdown
+---
+name: instacart
+description: Use when buying groceries — produce, snacks, or household items — on Instacart.
+---
 
-<Steps>
+# Instacart — grocery shopping
 
-1. **Metadata** — on wake, every skill's `name` and one-line `description` is injected. That description is the only signal the agent has, so write it as concrete triggers — *"use when …; NOT for …"*.
+Use Instacart for groceries. Read the screen with the MCP tools — `peek` by default, avoid `screenshot` unless needed.
 
-2. **Workflow** — when a task matches, the agent calls `Skill(name="jd")` and gets the full `SKILL.md` body.
+## Flow
 
-3. **References** — for rare detail, the body points at a reference file pulled in on demand.
+1. Open Instacart and tap a store on the home screen. (For delivery, Instacart picks the actual store location — you only choose the retailer.)
+2. Tap the search box, type the item, open its product page.
+3. Tap "Add to cart". A replacement-preference sheet may slide up — pick "Best match", a specific item, or "Refund", or dismiss it (your choice is saved for next time).
+   - **Don't tap "Add to cart" twice on the same product page** — it adds the item twice.
+4. Tap the cart icon, review the items and quantities, tap "Go to checkout".
+5. **Turn OFF the Instacart+ free-trial toggle** unless the user asked for it — it's pre-checked and will start a paid membership. Once off, it stays off.
+6. Send the user the items, quantities, price, delivery address, fees, tip, and ETA, and wait for confirmation.
+7. After the user confirms, tap "Place order".
 
-</Steps>
+## Gotcha: the Instacart+ upsell
 
-Ten installed skills cost ten one-line descriptions in the prompt — not ten full workflows.
-
-Skills come from an external git repo; install, list, and remove them with the CLI:
-
-```bash
-physiclaw skills install <name> [--from owner/repo|url|path]
-physiclaw skills list
-physiclaw skills uninstall <name>
+Instacart pushes its paid membership hard — a dialog after login, a banner on every page, and a pre-checked free-trial toggle at checkout. Dismiss them, and never start the trial without the user's OK. And the **service fee is not the tip** — they're separate line items, so surface both.
 ```
 
-:::caution[The description is load-bearing]
-A skill with a weak description sits idle even when it's the right tool, because the agent never sees a reason to open it. Name the apps, the verbs, and the phrasings that should fire it — and the cases that should not.
+## Best practices
+
+**The description decides whether a skill fires.** It's always loaded into context, while the body loads only after the skill is triggered — so the description should spell out when and in which app to use it, not vaguely describe what it does.
+
+**Only write down the non-obvious.** The agent can already operate most apps; a skill's value is filling in what it doesn't know yet, or keeps getting wrong.
+
+**Use imperatives, and say why.** Giving the reason makes the agent more willing to follow it, and helps it generalize to similar cases.
+
+**Keep it short.** The shorter the SKILL.md, the fewer tokens it costs.
+
+## Trigger a skill
+
+When you message PhysiClaw over WhatsApp, say which app to use — it makes the matching skill easier to trigger.
+
+:::tip[Message]
+Buy me a half-gallon of milk on Instacart
 :::
