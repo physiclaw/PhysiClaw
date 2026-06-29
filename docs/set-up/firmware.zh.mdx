@@ -1,6 +1,6 @@
 ---
 title: 固件
-description: 给装好线的控制板刷上 FluidNC，再粘进 PhysiClaw 配置——完整的 17 步浏览器流程，外加可直接复制的配置文件。
+description: 给控制板刷上 FluidNC——一条命令（`physiclaw flash`）或手动浏览器流程——以及它会加载的配置文件。
 ---
 
 PhysiClaw 硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与电脑通信：电脑用 [G-code](https://en.wikipedia.org/wiki/G-code)（GRBL 协议）发送指令，控制电机转动和电磁铁开关，完成点击和滑动等手势。
@@ -10,9 +10,23 @@ PhysiClaw 硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与电
 - [MKS DLC32 V2.1](https://github.com/makerbase-mks/mks-dlc32) 控制板。
 - USB-B 转 USB-A 数据线。
 - 12 V 2 A 电源。
-- Chrome 浏览器（建议）。
+- Chrome 浏览器（仅下面的手动方式需要）。
 
-## 刷入固件
+你可以用一条命令烧录 FluidNC，也可以通过 FluidNC 网页安装器手动烧录。
+
+## 命令行烧录（推荐）
+
+通过 USB 连接控制板（接通 12 V 电源、**断开步进电机**），然后运行：
+
+```bash
+physiclaw flash
+```
+
+:::tip
+若 `physiclaw flash` 执行成功，即可跳过下面的步骤。
+:::
+
+## 手动烧录
 
 <Steps>
 
@@ -54,7 +68,7 @@ PhysiClaw 硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与电
 
 ## 配置文件
 
-FluidNC 配置：
+命令行烧录会自动帮你刷入；手动烧录则需在第 13 步粘贴。FluidNC 配置：
 
 ```yaml
 # FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid

@@ -1,6 +1,6 @@
 ---
 title: Firmware
-description: Flash FluidNC onto the assembled control board and paste in the PhysiClaw config — the full 17-step browser flow, plus the config file to copy.
+description: Flash FluidNC onto the control board — one command (`physiclaw flash`) or the manual browser flow — plus the config it loads.
 ---
 
 PhysiClaw's hardware talks to the computer through the [FluidNC](https://github.com/bdring/FluidNC) firmware: the computer sends [G-code](https://en.wikipedia.org/wiki/G-code) (the GRBL protocol) to drive the motors and switch the solenoid, performing taps, swipes, and other gestures.
@@ -10,9 +10,23 @@ PhysiClaw's hardware talks to the computer through the [FluidNC](https://github.
 - [MKS DLC32 V2.1](https://github.com/makerbase-mks/mks-dlc32) control board.
 - USB-B to USB-A data cable.
 - 12 V 2 A power supply.
-- Google Chrome (recommended).
+- Google Chrome (only for the manual option below).
 
-## Flash the firmware
+You can flash FluidNC with a single command, or manually with FluidNC's web installer.
+
+## Command-line flash (recommended)
+
+Connect the board over USB (12 V power on, **stepper motors disconnected**), then run:
+
+```bash
+physiclaw flash
+```
+
+:::tip
+If `physiclaw flash` succeeds, you can skip the steps below.
+:::
+
+## Manual flash
 
 <Steps>
 
@@ -54,7 +68,7 @@ PhysiClaw's hardware talks to the computer through the [FluidNC](https://github.
 
 ## The config file
 
-The FluidNC config:
+The command-line flash installs this for you; for the manual flash, paste it in step 13. The FluidNC config:
 
 ```yaml
 # FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid

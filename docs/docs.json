@@ -19,8 +19,7 @@
       },
       "items": [
         "hardware/assembly",
-        "hardware/sourcing",
-        "hardware/firmware"
+        "hardware/sourcing"
       ]
     },
     {
@@ -30,6 +29,7 @@
       },
       "items": [
         "set-up/install",
+        "set-up/firmware",
         "set-up/prepare-the-phone",
         "set-up/provider",
         "set-up/calibrate"
