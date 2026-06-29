@@ -51,10 +51,8 @@
       },
       "items": [
         "concepts/architecture",
-        "reference/mcp-tools",
         "concepts/memory",
-        "concepts/skills",
-        "concepts/context-management"
+        "concepts/skills"
       ]
     },
     {

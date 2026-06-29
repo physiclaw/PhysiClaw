@@ -104,8 +104,8 @@ landing next to targets instead of on them. The fix isn't a tweak; it's a fresh
 ## Runtime
 
 Once you're running tasks, failures surface in the agent's tool output. These are behavioral,
-not single error strings — read the [MCP tools reference](/en/reference/mcp-tools/) for what
-each tool does.
+not single error strings — read the [MCP tools](/en/concepts/architecture/#mcp-tools) section of
+the architecture page for what each tool does.
 
 **Taps miss or drift.** A `tap` returns, but `peek` shows the screen unchanged, or the touch
 lands beside the target. First, let the agent **retry once** — a single missed tap is normal.
