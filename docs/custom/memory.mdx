@@ -3,26 +3,40 @@ title: Memory
 description: How PhysiClaw remembers across sessions — a small set of plain-Markdown files under ~/.physiclaw/memory.
 ---
 
-Each session is one wake — PhysiClaw comes alive on a trigger, does the task, and exits. Nothing in the model's head survives to the next wake; continuity is rebuilt from plain-Markdown files under `~/.physiclaw/memory/`.
+When the agent wakes, it loads the Markdown files under `~/.physiclaw/memory/` to keep its memory continuous across sessions.
 
 <FileTree>
 - ~/.physiclaw/memory/
-  - USER.md          your profile — you curate it, the agent only reads it
-  - memory.md        durable facts, one per line
-  - 2026-06-22.md    that day's activity log
+  - USER.md
+  - memory.md
+  - 2026-06-22.md
   - …
 </FileTree>
 
 | File | Holds | Who writes it |
 | --- | --- | --- |
-| `USER.md` | who you are, your preferences, hard rules | **you only** |
-| `memory.md` | durable facts, one per line | the agent (`save_memory`) |
-| `YYYY-MM-DD.md` | one append-only log per day | the agent (`append_log`) |
+| `USER.md` | who you are, your preferences, the messaging apps you use | you |
+| `memory.md` | things you've asked the agent to remember | the agent |
+| `YYYY-MM-DD.md` | that day's activity log, append-only | the agent |
 
-On every wake, `USER.md` and `memory.md` are small, so they're injected into the system prompt. The daily logs can grow large, so only the most recent entries ride along and the agent pulls a deeper window on demand (`read_logs`). The preload count, default window, and cap are tunable under `[memory]` in `config.toml`.
+## Example
 
-`memory.md` answers *"what's true?"* (your address, that you prefer oat milk); the daily log answers *"what happened?"* (`[14:02] added 2× oat milk`). Splitting them keeps the always-loaded part tiny while the logs grow.
+`USER.md` is optional — it holds info about you, so you don't have to tell the agent the same things every time.
 
-:::tip[Seed USER.md first]
-Put your essentials in `USER.md` up front — name, address, the apps you use, hard rules ("never order from X"). It's read on every wake, so a good profile stops the agent re-asking or guessing.
-:::
+```markdown
+## Name
+Mike
+
+## Messaging
+WhatsApp (handle: mike_g)
+
+## Communication
+- Always reply to the message first, then act
+- Confirm with me before any payment
+
+## Useful info
+Shipping address: 123 Main St, Austin, TX 78701
+
+## Taste
+No spicy food; coffee black, no sugar
+```
