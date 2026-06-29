@@ -177,4 +177,4 @@ def flash(
 
     typer.echo("")
     typer.echo(ok("Done — the board now runs as a PhysiClaw machine."))
-    typer.echo("  Firmware and the CoreXY + config.yml are both on the board.\n")
+    typer.echo("  FluidNC firmware and the config.yml are both on the board.\n")
