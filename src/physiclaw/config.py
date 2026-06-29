@@ -34,6 +34,7 @@ class ServerConfig:
     save_tool_calls: bool = False
     save_snapshots: bool = False
     save_screenshots: bool = False
+    save_raw_camera: bool = False
 
 
 @dataclass
@@ -226,8 +227,9 @@ _SECTION_COMMENTS: dict[str, str] = {
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("server", "save_tool_calls"): "dump every peek/screenshot output",
-    ("server", "save_snapshots"): "dump every raw camera frame",
+    ("server", "save_snapshots"): "dump each snapshot frame (rotated, with bbox overlay)",
     ("server", "save_screenshots"): "dump every raw phone-own screenshot",
+    ("server", "save_raw_camera"): "dump every raw camera frame at capture",
     ("memory", "default_log_entries"): "on-demand `read_logs` default size (max 200)",
     ("memory", "bootstrap_log_entries"): "auto-preloaded into the memory slot at every wake",
 }

@@ -89,7 +89,8 @@ def server(
         bool,
         typer.Option(
             "--save-snapshots",
-            help="Write every raw camera frame under the user data dir.",
+            help="Write each snapshot frame (rotated, with the bbox overlay) "
+                 "under the user data dir.",
         ),
     ] = CONFIG.server.save_snapshots,
     save_screenshots: Annotated[
@@ -99,6 +100,15 @@ def server(
             help="Write every raw phone-own screenshot under the user data dir.",
         ),
     ] = CONFIG.server.save_screenshots,
+    save_raw_camera: Annotated[
+        bool,
+        typer.Option(
+            "--save-raw-camera",
+            help="Write every raw camera frame as it's captured under the user "
+                 "data dir (calibration, peek, snapshot). Clear with "
+                 "`physiclaw clear`.",
+        ),
+    ] = CONFIG.server.save_raw_camera,
 ) -> None:
     """Run the PhysiClaw MCP server."""
     from physiclaw.core.logger import setup_logging
@@ -107,6 +117,7 @@ def server(
         (save_tool_calls, "PHYSICLAW_SAVE_TOOL_CALLS"),
         (save_snapshots, "PHYSICLAW_SAVE_SNAPSHOTS"),
         (save_screenshots, "PHYSICLAW_SAVE_SCREENSHOTS"),
+        (save_raw_camera, "PHYSICLAW_SAVE_RAW_CAMERA"),
     ):
         if enabled:
             os.environ[env] = "1"

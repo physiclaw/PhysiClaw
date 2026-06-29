@@ -8,6 +8,7 @@ flag on ``physiclaw server``):
 | PHYSICLAW_SAVE_TOOL_CALLS  | --save-tool-calls   | tool_calls/    |
 | PHYSICLAW_SAVE_SNAPSHOTS   | --save-snapshots    | snapshots/     |
 | PHYSICLAW_SAVE_SCREENSHOTS | --save-screenshots  | screenshots/   |
+| PHYSICLAW_SAVE_RAW_CAMERA  | --save-raw-camera   | raw_camera/    |
 
 Filenames are millisecond-precision timestamps so rapid-fire calls
 don't collide.
@@ -62,3 +63,10 @@ def save_screenshot(data: bytes) -> None:
         return
     d = _mkdir(paths.screenshots_dir())
     (d / f"{_stamp()}.jpg").write_bytes(data)
+
+
+def save_raw_camera(frame) -> None:
+    if not os.environ.get("PHYSICLAW_SAVE_RAW_CAMERA"):
+        return
+    d = _mkdir(paths.raw_camera_dir())
+    cv2.imwrite(str(d / f"{_stamp()}.jpg"), frame)

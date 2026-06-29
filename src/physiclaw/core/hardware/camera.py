@@ -29,7 +29,7 @@ import cv2
 
 from physiclaw.config import CONFIG
 from physiclaw.core import platform
-from physiclaw.core.logger import save_snapshot
+from physiclaw.core.logger import save_raw_camera, save_snapshot
 
 log = logging.getLogger(__name__)
 
@@ -250,7 +250,11 @@ class Camera:
             frame = self._frame
         # Copy outside the lock — a 1080p numpy copy is ~1 ms and would
         # otherwise stall the reader's next publish for that long.
-        return frame.copy() if frame is not None else None
+        if frame is None:
+            return None
+        out = frame.copy()
+        save_raw_camera(out)  # no-op unless --save-raw-camera
+        return out
 
     def raw_frame(self):
         """Return a fresh BGR frame without applying calibration rotation.

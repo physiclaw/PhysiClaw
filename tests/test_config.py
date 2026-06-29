@@ -59,6 +59,7 @@ def test_config_error_is_value_error_subclass() -> None:
         ("server", "save_tool_calls", False),
         ("server", "save_snapshots", False),
         ("server", "save_screenshots", False),
+        ("server", "save_raw_camera", False),
         # WarmStartConfig
         ("warm_start", "bridge_wait_timeout_seconds", 120),
         ("warm_start", "bridge_settle_seconds", 2.0),
@@ -307,8 +308,9 @@ def test_skills_section_comment_pinned() -> None:
     "section, field, expected_inline",
     [
         ("server", "save_tool_calls", "dump every peek/screenshot output"),
-        ("server", "save_snapshots", "dump every raw camera frame"),
+        ("server", "save_snapshots", "dump each snapshot frame (rotated, with bbox overlay)"),
         ("server", "save_screenshots", "dump every raw phone-own screenshot"),
+        ("server", "save_raw_camera", "dump every raw camera frame at capture"),
         ("memory", "default_log_entries", "on-demand `read_logs` default size (max 200)"),
         ("memory", "bootstrap_log_entries", "auto-preloaded into the memory slot at every wake"),
     ],

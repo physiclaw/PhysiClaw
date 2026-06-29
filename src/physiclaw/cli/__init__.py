@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import __version__ as _pkg_version
+from physiclaw.cli.clear import clear
 from physiclaw.cli.config import config_app
 from physiclaw.cli.doctor import doctor
 from physiclaw.cli.flash import flash
@@ -26,6 +27,7 @@ app.command()(doctor)
 app.command()(server)
 app.command()(status)
 app.command()(flash)
+app.command()(clear)
 app.command()(uninstall)
 
 app.add_typer(
