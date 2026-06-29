@@ -26,7 +26,7 @@ physiclaw doctor
 physiclaw setup local-vision-model
 
 # 4. Plug in the GRBL arm + USB camera, then start the server
-physiclaw server                 # leave running in one shell
+physiclaw                        # leave running in one shell (same as `physiclaw server`)
 
 # 5. In another shell — interactive arm/camera calibration
 physiclaw setup hardware
