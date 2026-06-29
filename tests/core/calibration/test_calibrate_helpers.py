@@ -193,25 +193,23 @@ def test_pick_rotation_raises_when_red_right_marker_missing() -> None:
         _pick_rotation_from_markers(img)
 
 
-def test_pick_rotation_prefers_wrapped_red_hue_when_larger(mocker) -> None:
-    # The wrapped-red branch is only taken when its blob is found. We
-    # mock the helper so the third call (high-hue red) returns a centroid
-    # that overrides the second call's (low-hue red) centroid, thereby
-    # changing the resulting rotation code.
-    img = _frame_with_up_and_right((400, 100), (500, 300))
-
-    fake = mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
-        side_effect=[
-            (400.0, 100.0),   # blue UP
-            (500.0, 300.0),   # red RIGHT (low hue)
-            (100.0, 300.0),   # wrapped red — overrides the above
-        ],
+def test_pick_rotation_detects_red_at_high_hue_end() -> None:
+    # Regression: the camera commonly renders the on-screen red near the
+    # high hue end (H≈175), which wraps past 180 — almost nothing lands in
+    # the low [0,10] range. Detection must check BOTH ends; the old code
+    # checked the low range first and raised before the high-range fallback,
+    # reporting a clearly-visible red marker as "not found".
+    red_hi = tuple(
+        int(c)
+        for c in cv2.cvtColor(np.uint8([[[175, 200, 200]]]), cv2.COLOR_HSV2BGR)[0, 0]
     )
+    img = np.zeros((600, 800, 3), dtype=np.uint8)
+    _draw_marker(img, 400, 100, (255, 100, 0))  # blue UP
+    _draw_marker(img, 500, 300, red_hi)         # red RIGHT, high-hue end
 
-    code, _ = _pick_rotation_from_markers(img)
+    code, label = _pick_rotation_from_markers(img)
 
-    # With wrapped right_x=100, original up_x=400 → up is RIGHT of right
-    # marker → falls through to 90° CCW.
-    assert code == cv2.ROTATE_90_COUNTERCLOCKWISE
-    assert fake.call_count == 3
+    # up above right, |Δx| < |Δy| → no rotation (same geometry as the
+    # low-hue no-rotation case, proving the high-hue red was detected).
+    assert code == -1
+    assert label == "0° — no rotation needed"

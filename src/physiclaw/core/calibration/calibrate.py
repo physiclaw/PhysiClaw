@@ -217,25 +217,32 @@ def _pick_rotation_from_markers(frame: np.ndarray) -> tuple[int, str]:
     """
     from physiclaw.core.vision.util import find_largest_hsv_blob
 
-    def _find_marker(lower, upper, label):
-        c = find_largest_hsv_blob(
-            frame, lower, upper, min_area=500,
-            morph_op=cv2.MORPH_CLOSE, morph_kernel=(15, 15),
-        )
-        if c is None:
-            raise RuntimeError(f"{label} marker not found")
-        return c
+    def _blob(*ranges):
+        """Centroid of the largest blob across one or more HSV ranges, or None.
 
-    # UP = blue (#2563eb → HSV H≈110), RIGHT = red (#ef4444 → HSV H≈0/180).
-    up_x, up_y = _find_marker([100, 80, 80], [130, 255, 255], "UP (blue)")
-    right_x, right_y = _find_marker([0, 80, 80], [10, 255, 255], "RIGHT (red)")
-    # Red hue wraps past 180 too; if a larger match exists at the high end, prefer it.
-    wrapped = find_largest_hsv_blob(
-        frame, [170, 80, 80], [180, 255, 255], min_area=500,
-        morph_op=cv2.MORPH_CLOSE, morph_kernel=(15, 15),
-    )
-    if wrapped is not None:
-        right_x, right_y = wrapped
+        Red straddles the 0/180 hue seam, so it's passed BOTH ends — and the
+        camera commonly renders the on-screen red near the high end (H≈175),
+        not near 0. Checking only the low range and raising first (the old
+        bug) reported a clearly-visible red marker as "not found".
+        """
+        for lo, hi in ranges:
+            c = find_largest_hsv_blob(
+                frame, lo, hi, min_area=500,
+                morph_op=cv2.MORPH_CLOSE, morph_kernel=(15, 15),
+            )
+            if c is not None:
+                return c
+        return None
+
+    # UP = blue (#2563eb → HSV H≈110), RIGHT = red (#ef4444 → HSV H≈0 or ≈180).
+    up = _blob(([100, 80, 80], [130, 255, 255]))
+    if up is None:
+        raise RuntimeError("UP (blue) marker not found")
+    right = _blob(([0, 80, 80], [10, 255, 255]), ([170, 80, 80], [180, 255, 255]))
+    if right is None:
+        raise RuntimeError("RIGHT (red) marker not found")
+    up_x, up_y = up
+    right_x, right_y = right
 
     log.info(f"  Blue UP at ({up_x:.0f}, {up_y:.0f}), red RIGHT at ({right_x:.0f}, {right_y:.0f})")
 
