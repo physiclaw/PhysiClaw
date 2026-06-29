@@ -1,220 +1,59 @@
 ---
 title: System architecture
-description: Every piece, end to end — the brain, the MCP server, one overhead camera and the stylus arm, and the phone-side bridge that closes the loop.
+description: How a "tap that button" decision becomes a stylus on glass — bottom-up, from the FluidNC board to the runtime loop and how it keeps its context as cheap as possible.
 ---
 
-PhysiClaw is one Python server with hardware on one side and a brain on the other: the **brain** decides (it picks a bounding box and a gesture), the **MCP server** turns those decisions into camera frames and arm moves, and a small **phone-side bridge** lets the server reach into iOS for the few things a stylus can't do — a pixel-perfect screenshot and the system clipboard. Everything below is what sits between "tap that button" and a stylus actually touching glass.
+## Hardware
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  BRAIN  — sees a screen, picks a bbox + a gesture             │
-│  external MCP client (Claude Desktop, …)  OR  built-in agent  │
-└───────────────────────────────┬──────────────────────────────┘
-                                │  MCP (12 tools: peek, tap, swipe, …)
-                                ▼
-┌──────────────────────────────────────────────────────────────┐
-│  PhysiClaw MCP SERVER  (Python · core/)                       │
-│  orchestrator · vision (OCR + icon detect) · calibration math │
-└───────┬───────────────────────┬───────────────────┬──────────┘
-        │ USB-UVC               │ USB-serial         │ HTTP over Wi-Fi (LAN)
-        ▼                       ▼                    ▼
- ┌─────────────┐        ┌────────────────┐   ┌──────────────────────┐
- │ ONE overhead│        │ FluidNC / GRBL │   │  PHONE-SIDE BRIDGE   │
- │   camera    │        │  controller    │   │  • bridge web page   │
- └──────┬──────┘        │  CoreXY gantry │   │    (Safari, /bridge) │
-        │ looks down    │  + Z SOLENOID  │   │  • AssistiveTouch    │
-        │               └───────┬────────┘   │  • 3 iOS Shortcuts   │
-        │                       │ stylus tip  └──────────┬───────────┘
-        │                       ▼                        │ runs on
-        └─────────────►  ┌──────────────┐ ◄──────────────┘
-                         │    PHONE     │
-                         │  (unlocked)  │
-                         └──────────────┘
-```
+PhysiClaw's hardware uses a [CoreXY](https://corexy.com/) motion system: two stepper motors drive the stylus across the X/Y plane, while the Z axis (the tap) is driven by a solenoid. The controller board runs [FluidNC](https://github.com/bdring/FluidNC) firmware, which receives [G-code](https://en.wikipedia.org/wiki/G-code) commands over USB serial from the Python server on your computer, and turns them into stylus moves and taps.
 
-The rest of this page walks each box, then the wires between them, then one full action end to end.
+## MCP tools
 
-If you've used OpenClaw, the top half of that diagram is familiar territory — an LLM, MCP, a bring-your-own-model agent loop, self-hosting. The new half is the **body**: a hand-built CoreXY gantry, FluidNC/GRBL motion firmware, a solenoid standing in for a Z motor, an affine-calibrated coordinate hop, and a phone bridge that talks over your LAN. This page spends most of its detail budget there.
+The MCP tools abstract over the low-level hardware, giving the agent a set of ready-to-call tools: look at the phone screen through the camera, grab a screenshot, run common gestures, copy text to the phone's clipboard, and so on.
 
-## The brain: two ways to drive it
+| Group | Tools |
+| --- | --- |
+| Observe | `peek`, `screenshot` |
+| Gestures | `tap`, `double_tap`, `long_press`, `swipe` |
+| Navigate | `home_screen`, `go_back`, `force_quit` |
+| Unlock | `unlock_phone` |
+| Text | `send_to_clipboard` |
+| Sequence | `sequence` |
 
-PhysiClaw exposes its hardware as a set of [12 MCP tools](/en/reference/mcp-tools/) — the
-**Model Context Protocol**, the same standard Claude Desktop and other clients already speak.
-Anything that talks MCP can drive the arm. There are two supported brains, and they use the
-*identical* tool surface:
+### OCR and icon detection
 
-<CardGrid>
-  <Card title="Bring your own MCP client" icon="external">
-    An external client (Claude Desktop, an OpenClaw setup, anything that speaks MCP) connects
-    directly to the server's `/mcp` endpoint and receives PhysiClaw's FastMCP instructions
-    (from `agent/context/PHYSICLAW.md`). It calls `peek` / `tap` / `swipe` itself. You bring your
-    own model and your own chat loop.
-  </Card>
-  <Card title="Built-in agent runtime" icon="rocket">
-    PhysiClaw ships its own brain under `agent/` — a native tool loop with memory, skills, and
-    cron/poll triggers, descended from OpenClaw. You select it by setting an `[agent] model` ref
-    of the shape `provider/model`. It calls the same 12 tools, just without a desktop app in the
-    loop.
-  </Card>
-</CardGrid>
+PhysiClaw runs OCR and icon detection on the camera frame and screenshots, then hands the results — along with a compressed image — to the agent.
 
-The built-in runtime has one nuance worth knowing up front. The `provider/model` ref decides
-*which engine runs the loop*:
+### Coordinate mapping
 
-- `claude-code/<model>` shells out to Anthropic's `claude` CLI as a **subprocess** — the agent
-  runs inside the same CLI you may already use.
-- **Any other** provider id runs an **in-process** engine. Six providers are built in:
-  `qwen`, `moonshot`, `openai`, `anthropic`, `google`, and a `deepseek` stub. (Note that the
-  in-process `anthropic` provider hits the direct `/v1/messages` API and is *distinct* from the
-  `claude-code` CLI subprocess.)
+Image pixel coordinates → phone screen coordinates → physical-plane coordinates: the full chain needs two transform matrices to convert between coordinate systems.
 
-Neither mode wakes until you've set a model — there is no default. Until then a plain
-`physiclaw server` still serves hardware setup and manual MCP calls, but the agent stays asleep.
-Setting a model is covered in [Get an API key](/en/set-up/provider/).
+The arm has to be recalibrated before every run to compute accurate transform matrices.
 
-Either way, the brain's whole job is the same: read an **annotated element listing**, pick **one
-bounding box** and **one gesture**, and let the server do the rest. It never sees motor
-coordinates and never reasons over raw pixels.
+### Screenshot
 
-:::note[Where the agent lives]
-The built-in agent is a separate package, not part of the server. The server (`core/`) is just
-hardware-as-tools; the agent (`agent/`) is **one client** of those tools among many. That split
-is exactly what lets a plain MCP client substitute for the built-in brain with no code changes.
-:::
+The camera view is sometimes out of focus. When that happens, the arm taps AssistiveTouch to run a Shortcut that uploads the phone's current screen directly — no page switching, and more efficient.
 
-## The server: `core/`
+### Typing text
 
-A single Python process (a FastMCP server), structured as a few focused modules. The orchestrator
-(`core/orchestration/orchestrator.py`) is the spine — it owns the arm, the camera, the
-calibration, and one **busy-lock** so two tool calls can never move the arm at once. Every gesture
-acquires that lock, does its work, refuses to overlap or cross the AssistiveTouch button, and
-auto-parks the stylus off-screen on the way out.
+Typing on the phone keyboard is natural for humans but unfriendly to the agent: the keys are small and densely packed, hard to target and tap precisely, and every keystroke needs a separate model call — slow, error-prone, and a waste of tokens.
 
-<FileTree>
-- src/physiclaw/
-  - core/                 the robot — hardware as MCP tools
-    - server/             FastMCP instance + the 12 tool definitions
-    - orchestration/      the orchestrator: lifecycle, lock, gestures
-    - vision/             OCR + ONNX icon detection → element listing
-    - calibration/        the affine transforms learned during setup
-    - hardware/           arm, camera, FluidNC/GRBL, **solenoid**
-    - bridge/             LAN bridge: phone page, screenshot upload, clipboard
-  - agent/                the built-in brain (one MCP client among many)
-</FileTree>
+A better approach is to fetch the text from the computer via a Shortcut, write it to the clipboard, and paste it directly — fast and accurate.
 
-The submodules you'll meet most often:
+Shortcuts are iOS-only — Android has no native equivalent, which is why we currently use the iPhone.
 
-- **vision** — turns a camera frame (or a phone screenshot) into a tidy *element listing*:
-  every button, icon, and line of text as `id · kind · label · bbox · conf`, with each bbox in
-  0–1 screen fractions. It runs **RapidOCR** for text and **OmniParser V2** (a YOLO11m model
-  exported to ONNX) for icons.
-- **calibration** — holds the affine maps that connect the three coordinate systems (screen
-  fractions, camera pixels, arm millimetres) learned during setup.
-- **hardware** — wraps the [FluidNC/GRBL](/en/hardware/firmware/) controller. GRBL is the
-  open-source G-code firmware that runs the gantry; FluidNC is the ESP32 build PhysiClaw flashes
-  onto the MKS DLC32 board. Z isn't a motor — it's a **solenoid** (more below).
+## The runtime loop
 
-## The sensors and actuators
+The runtime keeps running a loop, constantly checking whether a scheduled job is due or the screen has lit up from a new notification; when either is true, it wakes the agent.
 
-```text
-                 overhead camera (ONE)
-                        │  looks straight down at the screen
-                        ▼
-                  ┌───────────┐
-   stylus tip ───►│   PHONE   │   CoreXY gantry slides the tip across the glass;
-   on a solenoid  │  screen   │   the solenoid drops it to register a touch
-                  └───────────┘
-```
+Once awake, the agent unlocks the phone, reads the messages, opens the relevant app to do the task, reports the result back to the user, and finally saves a log and ends the conversation.
 
-**One camera.** A 4K / 8MP autofocus USB webcam, mounted overhead and looking straight down at
-the screen. There is no second camera and no depth sensor. Reliability comes from *re-looking
-after every move*, not from more hardware.
+## Context management
 
-**X / Y: a CoreXY gantry.** The motion system is a from-scratch **CoreXY** desktop gantry — not a
-ready-made pen plotter. Two NEMA 17 steppers and a GT2 belt drive the stylus to any point over
-the screen.
+An agent usually needs many model calls to finish a single task, and every call attaches an image of the phone screen for it to look at. Without good context management, you'd quickly hit the context-window limit.
 
-**Z: a solenoid, not a motor.** The Z axis is a 12 V 0.8 A push-pull **solenoid** (an
-electromagnet, 10 mm stroke) — not a servo and not a plotter pen. The capacitive stylus tip
-threads directly onto the solenoid core. A tap is a *hit-and-hold* pulse: the firmware strikes the
-coil hard, then holds it at a lower duty so a long-press doesn't drop the tip, then lets the
-spring release it. Exact strike/hold values are tuning details.
+**Shrink the context.** On every model call, besides the action to run, the model also returns a short description. Only the most recent turn keeps its original image; earlier turns are replaced with their OCR text, and as the turns pile up, that OCR text is further compressed into a one-line description of each step.
 
-To the phone, that tip is indistinguishable from a fingertip, so **any app works with zero
-per-app setup**.
+**Update progress.** The model is prompted to update its task progress at key steps, so it doesn't lose its way after the context is compressed. The progress sits at the end of the message list, guiding the model.
 
-## The phone-side bridge
-
-A stylus can do almost everything a finger can — but not *quite* everything. It can't ask iOS for
-a pixel-perfect screenshot, and it can't type into the system clipboard. The **bridge** fills
-exactly those two gaps, and nothing more. It has three parts, all set up once during
-[Prepare the phone](/en/set-up/prepare-the-phone/):
-
-<Steps>
-
-1. **A bridge web page.** The phone opens `http://<server-ip>:8048/bridge` in Safari (you scan a
-   QR code to pair — both devices just have to be on the same Wi-Fi). The page polls the server
-   about four times a second and renders whatever the server tells it to: calibration targets
-   during setup, or queued clipboard text during a run.
-
-2. **AssistiveTouch.** iOS's floating accessibility button. The arm physically *taps the
-   AssistiveTouch button* to fire system actions a stylus otherwise couldn't reach — a single tap
-   takes a screenshot; a double-tap and a long-press run Shortcuts.
-
-3. **Three iOS Shortcuts.** Bound to those AssistiveTouch gestures: **PhysiClaw Tap** takes a
-   screenshot, **PhysiClaw Screenshot** uploads the latest screenshot to the server, and
-   **PhysiClaw Clipboard** fetches queued text into the clipboard.
-
-</Steps>
-
-So when the brain calls `screenshot`, the server doesn't capture pixels itself. It drives the arm
-to tap AssistiveTouch, the iOS Shortcut grabs the phone's *own* screenshot and POSTs the bytes to
-`/api/bridge/screenshot` over Wi-Fi, and the server runs vision on **those** pixels. The clipboard
-mirrors this: the server queues text, the arm long-presses AssistiveTouch, and the Shortcut pulls
-the text in via `/api/bridge/clipboard`.
-
-:::caution[What the phone actually needs]
-The stylus needs nothing installed — but the bridge does: AssistiveTouch on, three Shortcuts
-added, and the bridge page open during a session. It's a normal phone you've spent about five
-minutes preparing — see [Prepare the phone](/en/set-up/prepare-the-phone/) for exactly what and
-why.
-:::
-
-## The wires between them
-
-| Hop | Transport | Payload |
-| --- | --- | --- |
-| Brain ↔ server | MCP | tool calls + image / element-listing results |
-| Server ↔ camera | USB (UVC) | JPEG frames |
-| Server ↔ controller | USB serial | G-code (GRBL dialect, 115200 baud) |
-| Server ↔ phone bridge | HTTP over Wi-Fi (LAN) | poll state, screenshot upload, clipboard text |
-
-Three of these are obvious cables; the fourth is the one the old "untouched phone" story missed.
-**The phone never connects to the server by USB** — it reaches the server over your local network.
-That's why both devices have to share a Wi-Fi, and why the server binds `0.0.0.0:8048` instead of
-localhost: the bridge has to be able to reach it from across the LAN.
-
-:::note[Starting the server]
-`physiclaw server` runs the FastMCP server over streamable-HTTP at `http://<host>:<port>/mcp`
-(default `0.0.0.0:8048`). It spawns the agent runtime subprocess only when an `[agent]` model is
-configured; with no model it still serves hardware setup and manual MCP calls, but the agent won't
-wake. Full CLI detail is in the [CLI reference](/en/reference/cli/).
-:::
-
-## One action, end to end
-
-With all four wires in place, a single decision flows through every layer like this:
-
-```text
-brain: peek          → server uses the camera frame, runs OCR + icons,
-                       returns a 0–1 pct element listing
-brain: tap [bbox]    → orchestrator converts the bbox center (pct) → GRBL mm
-                       via the calibrated affine (pct_to_grbl), moves the
-                       gantry, fires the solenoid, parks off-screen
-brain: peek          → server re-photographs and returns a fresh listing
-                       to compare against
-```
-
-That **look → decide → move → check** rhythm is the whole control loop. Because every step ends by
-looking again, this is a *verified loop* — not blind teleoperation. A surprise on the screen is
-just the next thing the brain reacts to.
+**Keep cache hits stable.** Put the stable content — system prompt, tool descriptions, memory — at the very front and keep it byte-for-byte identical; and when compressing the context, change as little of the earlier content as possible, to minimize cache invalidation and raise the hit rate.

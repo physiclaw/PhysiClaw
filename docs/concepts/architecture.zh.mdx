@@ -1,204 +1,59 @@
 ---
 title: 系统架构
-description: 从头到尾的每一个部件——大脑、MCP 服务器、一台头顶相机和触控笔机械臂，以及把整个回路闭合起来的手机端桥接。
+description: 一个「点那个按钮」的决策，是怎样一步步变成触控笔落在玻璃上的——自底向上，从 FluidNC 主板讲到运行时循环，以及它如何把上下文压到最省。
 ---
 
-PhysiClaw 就是一个 Python 服务器：一头连着硬件，另一头连着大脑。**大脑**负责决策（它挑出一个边界框和一个手势），**MCP 服务器**把这些决策变成相机画面和机械臂动作，而一个小巧的**手机端桥接**则让服务器能伸进 iOS，去做那几件触控笔做不到的事——一张像素级精确的截图，以及系统剪贴板。下面要讲的，正是夹在「点那个按钮」和触控笔真正触到玻璃之间的全部环节。
+## 硬件
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  BRAIN  — sees a screen, picks a bbox + a gesture             │
-│  external MCP client (Claude Desktop, …)  OR  built-in agent  │
-└───────────────────────────────┬──────────────────────────────┘
-                                │  MCP (12 tools: peek, tap, swipe, …)
-                                ▼
-┌──────────────────────────────────────────────────────────────┐
-│  PhysiClaw MCP SERVER  (Python · core/)                       │
-│  orchestrator · vision (OCR + icon detect) · calibration math │
-└───────┬───────────────────────┬───────────────────┬──────────┘
-        │ USB-UVC               │ USB-serial         │ HTTP over Wi-Fi (LAN)
-        ▼                       ▼                    ▼
- ┌─────────────┐        ┌────────────────┐   ┌──────────────────────┐
- │ ONE overhead│        │ FluidNC / GRBL │   │  PHONE-SIDE BRIDGE   │
- │   camera    │        │  controller    │   │  • bridge web page   │
- └──────┬──────┘        │  CoreXY gantry │   │    (Safari, /bridge) │
-        │ looks down    │  + Z SOLENOID  │   │  • AssistiveTouch    │
-        │               └───────┬────────┘   │  • 3 iOS Shortcuts   │
-        │                       │ stylus tip  └──────────┬───────────┘
-        │                       ▼                        │ runs on
-        └─────────────►  ┌──────────────┐ ◄──────────────┘
-                         │    PHONE     │
-                         │  (unlocked)  │
-                         └──────────────┘
-```
+PhysiClaw 硬件采用 [CoreXY](https://corexy.com/) 传动方式，由两个步进电机驱动 X/Y 平面运动，Z 轴方向则由电磁铁驱动。控制板运行 [FluidNC](https://github.com/bdring/FluidNC) 固件，通过 USB 串口接收电脑端 Python 服务器发来的 [G-code](https://zh.wikipedia.org/wiki/G代码) 指令，进而控制触控笔的移动与点击。
 
-本页接下来会逐一拆解每个方框，再讲它们之间的连线，最后走一遍一个完整动作的全程。
+## MCP 工具
 
-如果你用过 OpenClaw，那张图的上半部分对你来说是熟悉的领域——一个 LLM、MCP、一套自带模型的助理循环、自托管。新出现的是下半部分，也就是**身体**：一套手工搭建的 CoreXY 龙门架、FluidNC/GRBL 运动固件、一个顶替 Z 电机的电磁铁、一次经仿射标定的坐标跳转，还有一个走局域网通信的手机桥接。本页把大部分篇幅都花在这里。
+MCP 工具对底层硬件进行抽象，向智能体提供一组可直接调用的工具：通过摄像头观察手机屏幕、获取截屏、执行常用操作手势、将文本复制到手机剪贴板等。
 
-## 大脑：两种驱动方式
+| 分组 | 工具 |
+| --- | --- |
+| 观察 | `peek`、`screenshot` |
+| 手势 | `tap`、`double_tap`、`long_press`、`swipe` |
+| 导航 | `home_screen`、`go_back`、`force_quit` |
+| 解锁 | `unlock_phone` |
+| 文本 | `send_to_clipboard` |
+| 连续动作 | `sequence` |
 
-PhysiClaw 把它的硬件暴露成一组 [12 个 MCP 工具](/zh/reference/mcp-tools/)——也就是
-**Model Context Protocol**，Claude Desktop 和其他客户端早已通用的那套标准。
-任何能讲 MCP 的东西都能驱动机械臂。这里支持两种大脑，而它们用的是*完全相同*的工具接口：
+### OCR 与图标检测
 
-<CardGrid>
-  <Card title="自带 MCP 客户端" icon="external">
-    一个外部客户端（Claude Desktop、一套 OpenClaw 配置，任何能讲 MCP 的东西）直接连上
-    服务器的 `/mcp` 端点，接收 PhysiClaw 的 FastMCP 指令（来自
-    `agent/context/PHYSICLAW.md`），自己去调用 `peek` / `tap` / `swipe`。模型和对话循环
-    都由你自己带来。
-  </Card>
-  <Card title="内置助理运行时" icon="rocket">
-    PhysiClaw 在 `agent/` 下自带了一个大脑——一套原生的工具循环，带记忆、技能和
-    cron/轮询触发器，传承自 OpenClaw。你通过设置一个形如 `provider/model` 的
-    `[agent] model` 引用来选用它。它调用的是同样的 12 个工具，只是回路里少了一个桌面应用。
-  </Card>
-</CardGrid>
+对摄像头画面和截屏进行 OCR 与图标检测，再将检测结果连同压缩后的图片一并提供给智能体。
 
-内置运行时有一个值得先弄清楚的细节。`provider/model` 引用决定了*由哪个引擎来跑这个循环*：
+### 坐标映射
 
-- `claude-code/<model>` 会以**子进程**方式调出 Anthropic 的 `claude` CLI——助理就跑在你
-  可能早已在用的那同一个 CLI 里。
-- **任何其他** provider id 都会跑一个**进程内**引擎。内置了六个 provider：
-  `qwen`、`moonshot`、`openai`、`anthropic`、`google`，以及一个 `deepseek` 桩。（注意，
-  进程内的 `anthropic` provider 直接打 `/v1/messages` API，和 `claude-code` 那个 CLI
-  子进程是*两回事*。）
+图像像素坐标 → 手机屏幕坐标 → 物理平面坐标，整条链路需要两个变换矩阵来完成坐标转换。
 
-两种模式在你设好模型之前都不会醒——没有默认值。在那之前，一个朴素的
-`physiclaw server` 仍然提供硬件配置和手动 MCP 调用，但助理保持沉睡。设置模型见[获取 API Key](/zh/set-up/provider/)。
+每次运行前都需要重新校准，以计算出准确的变换矩阵。
 
-无论哪种方式，大脑要干的活都一样：读一份**带标注的元素清单**，挑出**一个边界框**和
-**一个手势**，剩下的交给服务器。它从不会看到电机坐标，也不会对原始像素做推理。
+### 截图
 
-:::note[助理住在哪里]
-内置助理是一个独立的包，并不是服务器的一部分。服务器（`core/`）只是「硬件即工具」；
-助理（`agent/`）只是这些工具的众多客户端之一。正是这种拆分，让一个普通 MCP 客户端可以
-零改代码地替换掉内置大脑。
-:::
+摄像头画面有时会对焦模糊。这时可通过辅助触控调用快捷指令完成截图，直接上传手机当前的屏幕画面——全程无需切换页面，效率更高。
 
-## 服务器：`core/`
+### 输入文字
 
-一个单独的 Python 进程（一个 FastMCP 服务器），拆成几个职责明确的模块。编排器
-（`core/orchestration/orchestrator.py`）是脊梁——它掌管机械臂、相机、标定，
-以及一把**忙碌锁**，确保两次工具调用永远不会同时让机械臂动起来。每个手势都会拿到这把锁，
-干完自己的活，拒绝重叠或越过 AssistiveTouch 按钮，并在退出时把触控笔自动停到屏幕外。
+用手机键盘打字对人类而言十分自然，但对智能体并不友好：键盘按键小而密集，难以精确定位和点击，且每点击一个按键都需要调用一次大模型，导致效率低下、错误率高，并造成 token 的浪费。
 
-<FileTree>
-- src/physiclaw/
-  - core/                 the robot — hardware as MCP tools
-    - server/             FastMCP instance + the 12 tool definitions
-    - orchestration/      the orchestrator: lifecycle, lock, gestures
-    - vision/             OCR + ONNX icon detection → element listing
-    - calibration/        the affine transforms learned during setup
-    - hardware/           arm, camera, FluidNC/GRBL, **solenoid**
-    - bridge/             LAN bridge: phone page, screenshot upload, clipboard
-  - agent/                the built-in brain (one MCP client among many)
-</FileTree>
+更好的做法是通过快捷指令从电脑端获取文本，写入剪贴板后直接粘贴，既快速又准确。
 
-你最常打交道的几块：
+快捷指令是 iOS 独有的——安卓系统没有原生支持，这也是目前我们选择 iPhone 的原因。
 
-- **vision** —— 把一帧相机画面（或一张手机截图）变成一份整洁的*元素清单*：
-  每个按钮、图标和文字行，都列成 `id · kind · label · bbox · conf`，每个 bbox 都是
-  0–1 的屏幕分数。它用 **RapidOCR** 处理文字，用 **OmniParser V2**（一个导出成 ONNX 的
-  YOLO11m 模型）处理图标。
-- **calibration** —— 持有那些把三个坐标系（屏幕分数、相机像素、机械臂毫米）连接起来的
-  仿射映射，都是配置阶段学到的。
-- **hardware** —— 封装了 [FluidNC/GRBL](/zh/hardware/firmware/) 控制器。GRBL 是驱动
-  龙门架的开源 G-code 固件；FluidNC 是 PhysiClaw 烧录到 MKS DLC32 板上的 ESP32 变体。
-  Z 轴不是电机——它是一个**电磁铁/螺线管**（下文细说）。
+## 运行时循环
 
-## 传感器与执行器
+运行时持续执行一个循环，不断检查是否有定时任务到期、或屏幕是否因新消息而点亮，一旦满足条件就唤醒智能体。
 
-```text
-                 overhead camera (ONE)
-                        │  looks straight down at the screen
-                        ▼
-                  ┌───────────┐
-   stylus tip ───►│   PHONE   │   CoreXY gantry slides the tip across the glass;
-   on a solenoid  │  screen   │   the solenoid drops it to register a touch
-                  └───────────┘
-```
+唤醒后，智能体解锁手机、读取微信消息，打开对应 App 执行任务，再将结果反馈给用户，最后保存日志并结束对话。
 
-**只有一台相机。** 一颗 4K / 8MP 的自动对焦 USB 摄像头，架在头顶，笔直朝下俯视屏幕。
-没有第二台相机，也没有深度传感器。可靠性来自*每动一次就重新看一眼*，而不是堆更多硬件。
+## 上下文管理
 
-**X / Y：一套 CoreXY 龙门架。** 运动系统是一套从零搭起的 **CoreXY** 桌面龙门架——而不是
-现成的笔式绘图机。两个 NEMA 17 步进电机和一条 GT2 同步带，把触控笔驱动到屏幕上方任意一点。
+智能体往往需要多轮大模型调用才能完成一项任务，而每一轮都要附上一张手机屏幕的图片供其查看。若没有合适的上下文管理，很快就会触及上下文窗口上限。
 
-**Z：一个电磁铁，不是电机。** Z 轴是一个 12 V 0.8 A 的推拉式**电磁铁/螺线管**
-（一块电磁铁，行程 10 mm）——不是舵机，也不是绘图机的笔。电容触控笔尖直接旋接在电磁铁
-铁芯上。一次点击就是一记*猛击再保持*的脉冲：固件先狠狠击打线圈，再以较低占空比保持，
-这样长按时笔尖不会掉下来，最后由弹簧把它释放。确切的击打/保持数值是调校细节。
+**压缩上下文。** 每次调用大模型时，除了返回要执行的操作，还要附带一段简要描述。只有最近一轮对话保留原始图片，更早的对话则用 OCR 文本替代；随着对话轮次增多，OCR 文本会进一步压缩为每一步的简要描述。
 
-对手机而言，这个笔尖和指尖毫无分别，所以**任何 App 都能用，无需逐个 App 配置**。
+**更新进度。** 提示大模型在关键步骤更新任务执行进度，避免在上下文压缩后迷失方向。进度信息附在对话列表末尾，为大模型提供引导。
 
-## 手机端桥接
-
-触控笔几乎能做手指能做的一切——但*不完全*是一切。它没法向 iOS 索要一张像素级精确的截图，
-也没法把内容打进系统剪贴板。**桥接**填的正是这两道缝，多一点都没有。它有三个部分，
-都在[准备手机](/zh/set-up/prepare-the-phone/)时一次性配好：
-
-<Steps>
-
-1. **一张桥接网页。** 手机在 Safari 里打开 `http://<server-ip>:8048/bridge`（你扫一个
-   二维码来配对——两台设备只要在同一个 Wi-Fi 下即可）。这个页面每秒轮询服务器约四次，
-   并把服务器要它显示的东西渲染出来：配置阶段的标定靶点，或运行时排队的剪贴板文本。
-
-2. **AssistiveTouch。** iOS 那个悬浮的辅助功能按钮。机械臂会物理地*点击 AssistiveTouch
-   按钮*，去触发触控笔本来够不着的系统动作——单击截图，双击和长按则运行 Shortcuts。
-
-3. **三个 iOS Shortcuts。** 绑定到那些 AssistiveTouch 手势上：**PhysiClaw Tap** 截一张图，
-   **PhysiClaw Screenshot** 把最新的截图上传到服务器，**PhysiClaw Clipboard** 把排队的
-   文本取进剪贴板。
-
-</Steps>
-
-所以当大脑调用 `screenshot` 时，服务器并不自己抓像素。它驱动机械臂去点 AssistiveTouch，
-iOS Shortcut 抓下手机*自己的*截图，把字节通过 Wi-Fi POST 到 `/api/bridge/screenshot`，
-服务器再对*那些*像素跑 vision。剪贴板也是同样的路子：服务器把文本排进队列，机械臂长按
-AssistiveTouch，Shortcut 通过 `/api/bridge/clipboard` 把文本拉进来。
-
-:::caution[手机到底需要装什么]
-触控笔什么都不用装——但桥接需要：开启 AssistiveTouch、添加三个 Shortcuts，
-并在会话期间打开桥接页面。它就是一台你花了大约五分钟准备的普通手机——具体装什么、为什么，
-见[准备手机](/zh/set-up/prepare-the-phone/)。
-:::
-
-## 它们之间的连线
-
-| 跳点 | 传输 | 载荷 |
-| --- | --- | --- |
-| 大脑 ↔ 服务器 | MCP | 工具调用 + 图像／元素清单结果 |
-| 服务器 ↔ 相机 | USB (UVC) | JPEG 帧 |
-| 服务器 ↔ 控制器 | USB 串口 | G-code（GRBL 方言，115200 波特） |
-| 服务器 ↔ 手机桥接 | HTTP over Wi-Fi (LAN) | 轮询状态、截图上传、剪贴板文本 |
-
-其中三条是显而易见的线缆；第四条才是当年那套「手机原封不动」说法漏掉的那根。
-**手机从不通过 USB 连服务器**——它是通过你的局域网够到服务器的。这就是为什么两台设备
-必须共享一个 Wi-Fi，也是为什么服务器绑定的是 `0.0.0.0:8048` 而不是 localhost：桥接得能
-从局域网另一头够到它。
-
-:::note[启动服务器]
-`physiclaw server` 以可流式 HTTP 在 `http://<host>:<port>/mcp` 上运行 FastMCP 服务器
-（默认 `0.0.0.0:8048`）。只有在配置了 `[agent]` 模型时，它才会派生助理运行时子进程；
-没有模型时它仍然提供硬件配置和手动 MCP 调用，但助理不会醒。完整的 CLI 细节见 [CLI 参考](/zh/reference/cli/)。
-:::
-
-## 一个动作，全程
-
-四条线都接好后，一个单独的决策会像这样流经每一层：
-
-```text
-brain: peek          → server uses the camera frame, runs OCR + icons,
-                       returns a 0–1 pct element listing
-brain: tap [bbox]    → orchestrator converts the bbox center (pct) → GRBL mm
-                       via the calibrated affine (pct_to_grbl), moves the
-                       gantry, fires the solenoid, parks off-screen
-brain: peek          → server re-photographs and returns a fresh listing
-                       to compare against
-```
-
-这个「看 → 决定 → 动 → 再查」的节奏，就是整个控制回路。因为每一步的结尾都是再看一眼，
-所以这是一个*经过校验的回路*——而不是盲目的遥操作。屏幕上的意外，不过是大脑要应对的
-下一件事而已。
+**让缓存稳定命中。** 把系统提示词、工具描述、记忆等固定内容放在最前面，并保持逐字节一致；每次压缩上下文时也尽量少改动前面的内容，以减少对缓存的破坏、提高缓存命中率。
