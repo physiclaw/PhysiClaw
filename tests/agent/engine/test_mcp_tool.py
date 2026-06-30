@@ -80,10 +80,13 @@ def fake_session(mocker):
 @pytest.fixture
 def patched_transport(mocker, fake_session):
     """Patch streamable_http_client + ClientSession so __aenter__ wires
-    a synthetic read/write triple and our fake session."""
+    a synthetic read/write triple and our fake session. Records the
+    httpx client handed to the transport on ``fake_session.captured``."""
+    captured: dict = {}
 
     @asynccontextmanager
-    async def fake_http(url: str):
+    async def fake_http(url: str, *, http_client=None):
+        captured["http_client"] = http_client
         yield ("read", "write", "extra")
 
     mocker.patch.object(mcp_tool, "streamable_http_client", fake_http)
@@ -95,7 +98,23 @@ def patched_transport(mocker, fake_session):
     mocker.patch.object(
         mcp_tool, "ClientSession", side_effect=fake_session_ctx
     )
+    fake_session.captured = captured
     return fake_session
+
+
+@pytest.mark.asyncio
+async def test_async_enter_hands_transport_a_trust_env_aware_client(
+    patched_transport,
+) -> None:
+    # The transport must get our own httpx client whose trust_env follows the
+    # per-platform proxy policy — otherwise httpx routes the localhost MCP
+    # request through a configured system proxy (Windows) and initialize hangs.
+    async with mcp_tool.McpClient():
+        pass
+
+    client = patched_transport.captured["http_client"]
+    assert client is not None
+    assert client.trust_env is mcp_tool.platform.TRUST_PROXY_ENV
 
 
 @pytest.mark.asyncio
@@ -304,7 +323,7 @@ async def test_get_mcp_creates_singleton_on_first_call(
 @pytest.mark.asyncio
 async def test_get_mcp_cleans_up_stack_on_aenter_failure(mocker) -> None:
     @asynccontextmanager
-    async def boom_http(url: str):
+    async def boom_http(url: str, *, http_client=None):
         raise RuntimeError("transport failed")
         yield None  # pragma: no cover
 

@@ -232,6 +232,15 @@ def test_build_client_returns_httpx_async_client() -> None:
     assert isinstance(p._client, httpx.AsyncClient)
 
 
+def test_build_client_honours_system_proxy() -> None:
+    # The provider is an external endpoint, so its client must trust the proxy
+    # env (HTTP(S)_PROXY) — the inverse of the localhost clients that bypass it.
+    # Guards against a future "unify proxy handling" change breaking LLM access.
+    p = _TestProvider()
+
+    assert p._client.trust_env is True
+
+
 # ---------- _resolved_base_url ----------
 
 

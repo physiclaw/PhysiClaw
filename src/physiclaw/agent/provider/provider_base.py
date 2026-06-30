@@ -165,6 +165,13 @@ class BaseProvider:
             base_url=base_url or self._resolved_base_url(),
             timeout=timeout,
             headers={"Content-Type": "application/json", **self._auth_headers(key)},
+            # The provider is an external endpoint, so honour the system proxy
+            # (HTTP(S)_PROXY) — behind a corporate/VPN/region proxy the runtime
+            # may only reach the LLM API through it. This is the deliberate
+            # inverse of the localhost clients (MCP transport, status poll,
+            # phone-watch hook), which pass trust_env=platform.TRUST_PROXY_ENV
+            # to BYPASS the proxy for 127.0.0.1. Don't unify the two.
+            trust_env=True,
         )
 
     @classmethod

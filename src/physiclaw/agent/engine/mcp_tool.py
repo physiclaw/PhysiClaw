@@ -11,8 +11,11 @@ import os
 from contextlib import AsyncExitStack
 from typing import Any
 
+import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
+from physiclaw.core import platform
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +40,24 @@ class McpClient:
         self.server_instructions: str = ""
 
     async def __aenter__(self) -> "McpClient":
+        # Hand the transport our own httpx client so `trust_env` follows the
+        # same per-platform proxy policy as every other localhost client (the
+        # status poll, phone-watch hook, doctor). The MCP server is this
+        # runtime's parent on 127.0.0.1; with httpx's default trust_env=True a
+        # configured system proxy (common on Windows) hijacks that localhost
+        # request and the initialize() handshake hangs forever. We own the
+        # client, so our stack closes it — entered first so it outlives the
+        # transport's terminate-on-close DELETE. Other kwargs match mcp's
+        # create_mcp_http_client defaults.
+        http_client = await self._stack.enter_async_context(
+            httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=httpx.Timeout(30.0, read=300.0),
+                trust_env=platform.TRUST_PROXY_ENV,
+            )
+        )
         read, write, _ = await self._stack.enter_async_context(
-            streamable_http_client(self._url)
+            streamable_http_client(self._url, http_client=http_client)
         )
         self._session = await self._stack.enter_async_context(
             ClientSession(read, write)

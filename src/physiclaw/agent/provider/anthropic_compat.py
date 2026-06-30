@@ -75,7 +75,13 @@ class AnthropicCompatibleProvider(BaseProvider):
     def _build_client(self, key: str, *, timeout: float, base_url: str | None):
         """Override: use Anthropic's official async SDK instead of httpx
         directly. Lazy-imported so non-anthropic sessions don't pay the
-        SDK load cost."""
+        SDK load cost.
+
+        The SDK's internal httpx client defaults to ``trust_env=True``, so it
+        honours ``HTTP(S)_PROXY`` for this external endpoint — consistent with
+        the base ``_build_client`` and the deliberate inverse of the localhost
+        clients that bypass the proxy. Don't pass a bespoke ``http_client`` just
+        to set that: it would drop the SDK's tuned connection defaults."""
         from anthropic import AsyncAnthropic
         return AsyncAnthropic(api_key=key, base_url=base_url, timeout=timeout)
 
