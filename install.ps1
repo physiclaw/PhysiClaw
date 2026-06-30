@@ -1,14 +1,19 @@
 # PhysiClaw installer (Windows 11).
 #
 # Usage (recommended — runs in a child shell so the installer can't crash yours):
-#   powershell -ExecutionPolicy Bypass -c "irm https://physiclaw.ai/install.ps1 | iex"
+#   powershell -ExecutionPolicy Bypass -c "iwr -useb https://physiclaw.ai/install.ps1 | iex"
 #
 # Also works, but if the install fails the calling shell may exit:
-#   irm https://physiclaw.ai/install.ps1 | iex
+#   iwr -useb https://physiclaw.ai/install.ps1 | iex
 #
 # Optional (set before invoking):
 #   $env:PHYSICLAW_VERSION = '0.0.5'   # pin a version
+#   $env:PHYSICLAW_DRY_RUN = '1'       # same as -DryRun
 #   $env:NO_COLOR = '1'                # plain output
+#
+# To pass options through ``iwr | iex``, wrap the script in a scriptblock.
+# Use .Content here — iwr returns a response object, not a string:
+#   & ([scriptblock]::Create((iwr -useb https://physiclaw.ai/install.ps1).Content)) -Version 0.0.5 -DryRun
 #
 # What it does (hardware setup is still a separate step at the end):
 #   1. Checks you're on Windows.
@@ -30,9 +35,24 @@
 #       Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 [CmdletBinding()]
-param()
+param(
+    [string]$Version,
+    [switch]$DryRun
+)
 
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell 5.1 can default to TLS 1.0, which astral.sh and PyPI
+# refuse — force TLS 1.2+ before any web request. No-op on PowerShell 7+,
+# which already negotiates TLS 1.2/1.3 from the OS.
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {}
+
+# Env var mirrors the -DryRun flag (handy when invoking via ``iwr | iex``,
+# where passing a switch needs the scriptblock wrapper).
+if (-not $DryRun -and $env:PHYSICLAW_DRY_RUN -eq '1') { $DryRun = $true }
 
 # --- Colors: respect NO_COLOR and whether the host is interactive. ---------
 $useColor = -not $env:NO_COLOR -and $Host.UI.RawUI -ne $null
@@ -64,6 +84,21 @@ try {
         Warn "    winget install --id Git.Git -e             # winget (built into Windows 11)"
         Warn "    https://git-scm.com/download/win           # official installer"
         Warn "Continuing — ``physiclaw skills install`` stays unavailable until git is on PATH."
+    }
+
+    # -Version flag wins over the env var, which wins over "latest".
+    $version = if ($Version) { $Version } else { $env:PHYSICLAW_VERSION }
+    $specPlain = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
+
+    if ($DryRun) {
+        Info "Dry run — would:"
+        Write-Host "    install uv (if missing) from https://astral.sh/uv/install.ps1"
+        Write-Host "    uv python install 3.12 (if not cached)"
+        Write-Host "    uv tool install $specPlain --python 3.12 --force --refresh"
+        Write-Host "    physiclaw setup local-vision-model"
+        if ($useColor) { Write-Host "✓ Dry run complete. No changes made." -ForegroundColor Green }
+        else           { Write-Host "✓ Dry run complete. No changes made." }
+        return
     }
 
     $freshUv = $false
@@ -146,13 +181,6 @@ uv caches per-version, so re-running this script when the connection is
 stable will resume where it stopped.
 "@
         }
-    }
-
-    $version = $env:PHYSICLAW_VERSION
-    if ([string]::IsNullOrEmpty($version)) {
-        $specPlain = 'physiclaw'
-    } else {
-        $specPlain = "physiclaw==$version"
     }
 
     Info "Installing $specPlain…"
