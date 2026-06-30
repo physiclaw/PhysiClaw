@@ -19,6 +19,8 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.core.vision.util import hsv_mask, red_ranges
+
 # --- Detection thresholds ---
 STD_INCREASE = 5.0
 MEAN_INCREASE = 5.0
@@ -59,9 +61,7 @@ def _check_badge(slow: np.ndarray, fast: np.ndarray) -> dict:
     """Detect new red badge via HSV red pixel increase."""
     def red(f):
         hsv = cv2.cvtColor(f, cv2.COLOR_BGR2HSV)
-        m1 = cv2.inRange(hsv, (0, 100, 100), (10, 255, 255))
-        m2 = cv2.inRange(hsv, (170, 100, 100), (180, 255, 255))
-        return int(np.count_nonzero(m1 | m2))
+        return int(np.count_nonzero(hsv_mask(hsv, red_ranges())))
     delta = red(fast) - red(slow)
     return {"red_delta": delta, "wake": delta > BADGE_MIN_AREA}
 

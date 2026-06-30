@@ -13,28 +13,45 @@ import logging
 import cv2
 import numpy as np
 
+from physiclaw.core.vision.util import (
+    contour_centroid,
+    find_largest_hsv_blob,
+    redness,
+)
+
 log = logging.getLogger(__name__)
+
+# R - max(G, B) floor for a calibration dot. Dots are small and render on a
+# bright white screen, so the camera desaturates them to a dim pink that an
+# HSV saturation floor misses entirely — but their red channel still leads.
+# Kept generous (catch faint dots even in a dim room); the median-area trim
+# in detect_red_dots then drops the extra glare/noise blobs it lets through.
+RED_DOT_MIN_REDNESS = 30
+
+# Contour filters for a calibration dot (small, round).
+DOT_MIN_AREA = 50
+DOT_MAX_AREA = 10000
+DOT_MIN_CIRCULARITY = 0.5
 
 
 # ─── Red dot detection ────────────────────────────────────────
 
 
-def detect_red_dots(frame: np.ndarray) -> list[tuple[float, float]]:
-    """Detect red dots in a camera frame.
+def detect_red_dots(
+    frame: np.ndarray, expected: int | None = None
+) -> list[tuple[float, float]]:
+    """Detect red calibration dots; return (cx, cy) pixel centers.
 
-    Returns list of (cx, cy) pixel coordinates of detected dot centers.
+    Dots are isolated by a redness floor (``R - max(G, B)``) rather than HSV
+    saturation, because small dots on a bright screen desaturate to dim pink
+    that a saturation floor would miss.
+
+    When ``expected`` is given and more blobs pass the filters than expected,
+    the ``expected`` whose area is closest to the median are kept. The grid
+    dots are uniform in size, so glare / merged / noise blobs (area outliers)
+    fall away — far more robust than betting on one exact threshold.
     """
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # Red wraps around in HSV — need two ranges
-    lower_red1 = np.array([0, 100, 100])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([160, 100, 100])
-    upper_red2 = np.array([180, 255, 255])
-
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    mask = mask1 | mask2
+    mask = (redness(frame) >= RED_DOT_MIN_REDNESS).astype(np.uint8) * 255
 
     # Clean up noise
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -43,27 +60,27 @@ def detect_red_dots(frame: np.ndarray) -> list[tuple[float, float]]:
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    dots = []
+    cands: list[tuple[float, float, float]] = []  # (cx, cy, area)
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < 50 or area > 10000:
+        if area < DOT_MIN_AREA or area > DOT_MAX_AREA:
             continue
-        # Circularity check
         perimeter = cv2.arcLength(cnt, True)
         if perimeter == 0:
             continue
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.5:
+        if 4 * np.pi * area / (perimeter * perimeter) < DOT_MIN_CIRCULARITY:
             continue
-        m = cv2.moments(cnt)
-        if m["m00"] == 0:
+        c = contour_centroid(cnt)
+        if c is None:
             continue
-        cx = m["m10"] / m["m00"]
-        cy = m["m01"] / m["m00"]
-        dots.append((cx, cy))
+        cands.append((c[0], c[1], area))
 
-    log.debug(f"Detected {len(dots)} red dots")
-    return dots
+    if expected is not None and len(cands) > expected:
+        med = float(np.median([a for *_, a in cands]))
+        cands = sorted(cands, key=lambda c: abs(c[2] - med))[:expected]
+
+    log.debug(f"Detected {len(cands)} red dots")
+    return [(cx, cy) for cx, cy, _ in cands]
 
 
 def sort_dots_to_grid(
@@ -133,8 +150,6 @@ def detect_orange_dot(frame: np.ndarray) -> tuple[float, float] | None:
     Returns (cx, cy) in camera pixels, or None if not found.
     Orange #f97316 ≈ HSV H=20°, S=90%, V=97% → OpenCV H=10, S=230, V=247.
     """
-    from physiclaw.core.vision.util import find_largest_hsv_blob
-
     return find_largest_hsv_blob(
         frame, [5, 100, 100], [25, 255, 255], min_area=50
     )

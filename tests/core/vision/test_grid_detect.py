@@ -164,7 +164,7 @@ def test_compute_affine_transforms_raises_on_too_few_points() -> None:
 
 def test_detect_orange_dot_returns_center(mocker) -> None:
     spy = mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.vision.grid_detect.find_largest_hsv_blob",
         return_value=(123.4, 56.7),
     )
     frame = _frame()
@@ -179,7 +179,7 @@ def test_detect_orange_dot_returns_center(mocker) -> None:
 
 def test_detect_orange_dot_returns_none_when_no_blob(mocker) -> None:
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.vision.grid_detect.find_largest_hsv_blob",
         return_value=None,
     )
 

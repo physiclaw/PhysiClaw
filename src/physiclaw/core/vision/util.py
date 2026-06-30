@@ -81,10 +81,69 @@ def decode_image(data: bytes) -> np.ndarray:
     return frame
 
 
+def hsv_mask(hsv: np.ndarray, ranges) -> np.ndarray:
+    """OR of ``cv2.inRange`` over one or more ``(lower, upper)`` HSV ranges.
+
+    Lets one call cover a hue that wraps the 0/180 seam — red is passed both
+    ``[0..10]`` and ``[170..180]``. The leaf primitive every colour detector
+    builds on (blob centroids here, the dock badge's pixel count in the
+    watchdog), so "red needs two ranges" lives in exactly one place.
+    """
+    mask = None
+    for lo, hi in ranges:
+        m = cv2.inRange(hsv, np.array(lo), np.array(hi))
+        mask = m if mask is None else (mask | m)
+    return mask
+
+
+def redness(frame: np.ndarray) -> np.ndarray:
+    """Per-pixel "how red" map: ``R - max(G, B)``, clipped to 0–255 (uint8).
+
+    Robust where an HSV saturation floor isn't: small red marks on a bright
+    screen desaturate to pink under a camera (low S, dim V), but their red
+    channel still sits clearly above green/blue. Redness isolates them when
+    ``red_ranges`` + an S/V threshold would wipe them out. Use this for faint
+    targets (calibration dots); use :func:`red_ranges` for bold solid red
+    (orientation markers, dock badges, corner squares).
+    """
+    bgr = frame.astype(np.int16)
+    r = bgr[:, :, 2] - np.maximum(bgr[:, :, 0], bgr[:, :, 1])
+    return np.clip(r, 0, 255).astype(np.uint8)
+
+
+def red_ranges(s_min: int = 100, v_min: int = 100):
+    """The two HSV ranges covering red across the 0/180 hue seam.
+
+    Callers pick the S/V floor that suits them: the orientation marker and the
+    camera-pick corner blocks pass 80 (both wash out under a camera on a bright
+    screen), while the dock badge keeps the default 100. Hue bounds are fixed.
+    Faint targets like the calibration dots use :func:`redness` instead.
+    """
+    return [
+        ([0, s_min, v_min], [10, 255, 255]),
+        ([170, s_min, v_min], [180, 255, 255]),
+    ]
+
+
+def _as_ranges(lower, upper):
+    """Normalise a colour spec to a list of ``(lower, upper)`` pairs:
+    ``(lower, upper)`` → one range; ``upper=None`` → ``lower`` is already a
+    list of ranges (e.g. ``red_ranges()``)."""
+    return [(lower, upper)] if upper is not None else list(lower)
+
+
+def contour_centroid(cnt) -> tuple[float, float] | None:
+    """Area-weighted centroid ``(cx, cy)`` of a contour, or ``None`` if it's
+    degenerate (zero area)."""
+    m = cv2.moments(cnt)
+    if m["m00"] == 0:
+        return None
+    return (m["m10"] / m["m00"], m["m01"] / m["m00"])
+
+
 def _hsv_blob_centroids(
     hsv: np.ndarray,
-    lower,
-    upper,
+    ranges,
     *,
     min_area: int,
     morph_op: int,
@@ -93,7 +152,7 @@ def _hsv_blob_centroids(
     """Core of the HSV-blob pipeline, reusable when the caller already
     has an HSV frame. Returns every centroid with area ≥ ``min_area``.
     """
-    mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+    mask = hsv_mask(hsv, ranges)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
     mask = cv2.morphologyEx(mask, morph_op, kernel)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -101,17 +160,16 @@ def _hsv_blob_centroids(
     for cnt in contours:
         if cv2.contourArea(cnt) < min_area:
             continue
-        m = cv2.moments(cnt)
-        if m["m00"] == 0:
-            continue
-        out.append((m["m10"] / m["m00"], m["m01"] / m["m00"]))
+        c = contour_centroid(cnt)
+        if c is not None:
+            out.append(c)
     return out
 
 
 def find_all_hsv_blobs(
     frame: np.ndarray,
     lower,
-    upper,
+    upper=None,
     *,
     min_area: int = 50,
     morph_op: int = cv2.MORPH_OPEN,
@@ -119,14 +177,15 @@ def find_all_hsv_blobs(
 ) -> list[tuple[float, float]]:
     """Return centroids of every HSV-matched blob above ``min_area``.
 
-    Same pipeline as :func:`find_largest_hsv_blob` but keeps every
-    qualifying contour. Order is undefined; callers cluster by position.
+    One range as ``lower``/``upper``, or a list of ranges as ``lower``
+    (``upper`` omitted) for a wrapping hue — see :func:`red_ranges`. Same
+    pipeline as :func:`find_largest_hsv_blob` but keeps every qualifying
+    contour; order is undefined, so callers cluster by position.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     return _hsv_blob_centroids(
         hsv,
-        lower,
-        upper,
+        _as_ranges(lower, upper),
         min_area=min_area,
         morph_op=morph_op,
         morph_kernel=morph_kernel,
@@ -136,7 +195,7 @@ def find_all_hsv_blobs(
 def find_largest_hsv_blob(
     frame: np.ndarray,
     lower,
-    upper,
+    upper=None,
     *,
     min_area: int = 50,
     morph_op: int = cv2.MORPH_OPEN,
@@ -144,14 +203,14 @@ def find_largest_hsv_blob(
 ) -> tuple[float, float] | None:
     """Centroid (cx, cy) of the largest HSV-matched blob, or None.
 
-    Converts to HSV, thresholds by the given range, applies one
-    morphology pass (``open`` by default to kill salt-and-pepper, or
-    ``close`` to seal gaps), and returns the centroid of the biggest
-    contour whose area is at least ``min_area``. Returns ``None`` when
-    no blob passes the filter.
+    One range as ``lower``/``upper``, or a list of ranges as ``lower``
+    (``upper`` omitted) to cover a hue that wraps the 0/180 seam — see
+    :func:`red_ranges`. Applies one morphology pass (``open`` kills
+    salt-and-pepper, ``close`` seals gaps) and returns the biggest contour's
+    centroid, or ``None`` when none reaches ``min_area``.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+    mask = hsv_mask(hsv, _as_ranges(lower, upper))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
     mask = cv2.morphologyEx(mask, morph_op, kernel)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -160,17 +219,20 @@ def find_largest_hsv_blob(
     largest = max(contours, key=cv2.contourArea)
     if cv2.contourArea(largest) < min_area:
         return None
-    m = cv2.moments(largest)
-    if m["m00"] == 0:
-        return None
-    return (m["m10"] / m["m00"], m["m01"] / m["m00"])
+    return contour_centroid(largest)
 
 
+# S/V floor for the corner blocks. On a dim rig the captured blocks sit at
+# ~S/V 100-120, so the old floor of 100 was right at the edge — a slightly
+# dimmer setup would miss them. 80 adds margin. Don't drop below ~60: there
+# the search starts matching colourful home-screen app icons and the cluster
+# check mis-reads them as a corner cluster.
+_CORNER_SV_MIN = 80
 CORNER_HSV_RANGES = {
-    "R": [([0, 100, 100], [10, 255, 255]), ([170, 100, 100], [180, 255, 255])],
-    "G": [([40, 100, 100], [80, 255, 255])],
-    "B": [([100, 100, 100], [130, 255, 255])],
-    "Y": [([20, 100, 100], [35, 255, 255])],
+    "R": red_ranges(_CORNER_SV_MIN, _CORNER_SV_MIN),
+    "G": [([40, _CORNER_SV_MIN, _CORNER_SV_MIN], [80, 255, 255])],
+    "B": [([100, _CORNER_SV_MIN, _CORNER_SV_MIN], [130, 255, 255])],
+    "Y": [([20, _CORNER_SV_MIN, _CORNER_SV_MIN], [35, 255, 255])],
 }
 
 
@@ -218,17 +280,10 @@ def detect_bridge_corners(
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     blobs: dict[str, list[tuple[float, float]]] = {k: [] for k in "RGBY"}
     for name, hsv_ranges in CORNER_HSV_RANGES.items():
-        for lo, hi in hsv_ranges:
-            blobs[name].extend(
-                _hsv_blob_centroids(
-                    hsv,
-                    lo,
-                    hi,
-                    min_area=50,
-                    morph_op=cv2.MORPH_OPEN,
-                    morph_kernel=(5, 5),
-                )
-            )
+        blobs[name] = _hsv_blob_centroids(
+            hsv, hsv_ranges, min_area=50,
+            morph_op=cv2.MORPH_OPEN, morph_kernel=(5, 5),
+        )
 
     if not all(blobs[k] for k in "RGBY"):
         return None

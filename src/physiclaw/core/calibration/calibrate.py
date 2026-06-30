@@ -41,7 +41,11 @@ from physiclaw.core.vision.grid_detect import (
     sort_dots_to_grid,
     detect_orange_dot as _detect_orange_dot,
 )
-from physiclaw.core.vision.util import check_phone_in_frame
+from physiclaw.core.vision.util import (
+    check_phone_in_frame,
+    find_largest_hsv_blob,
+    red_ranges,
+)
 
 log = logging.getLogger(__name__)
 
@@ -215,30 +219,19 @@ def _pick_rotation_from_markers(frame: np.ndarray) -> tuple[int, str]:
     cv2.ROTATE_{90_CLOCKWISE, 180, 90_COUNTERCLOCKWISE}. Raises if either
     marker is missing.
     """
-    from physiclaw.core.vision.util import find_largest_hsv_blob
+    def _blob(lower, upper=None):
+        return find_largest_hsv_blob(
+            frame, lower, upper, min_area=500,
+            morph_op=cv2.MORPH_CLOSE, morph_kernel=(15, 15),
+        )
 
-    def _blob(*ranges):
-        """Centroid of the largest blob across one or more HSV ranges, or None.
-
-        Red straddles the 0/180 hue seam, so it's passed BOTH ends — and the
-        camera commonly renders the on-screen red near the high end (H≈175),
-        not near 0. Checking only the low range and raising first (the old
-        bug) reported a clearly-visible red marker as "not found".
-        """
-        for lo, hi in ranges:
-            c = find_largest_hsv_blob(
-                frame, lo, hi, min_area=500,
-                morph_op=cv2.MORPH_CLOSE, morph_kernel=(15, 15),
-            )
-            if c is not None:
-                return c
-        return None
-
-    # UP = blue (#2563eb → HSV H≈110), RIGHT = red (#ef4444 → HSV H≈0 or ≈180).
-    up = _blob(([100, 80, 80], [130, 255, 255]))
+    # UP = blue (#2563eb → H≈110). RIGHT = red (#ef4444), which straddles the
+    # 0/180 hue seam — red_ranges covers both ends, since the camera commonly
+    # renders the on-screen red near the high end (H≈175), not near 0.
+    up = _blob([100, 80, 80], [130, 255, 255])
     if up is None:
         raise RuntimeError("UP (blue) marker not found")
-    right = _blob(([0, 80, 80], [10, 255, 255]), ([170, 80, 80], [180, 255, 255]))
+    right = _blob(red_ranges(80, 80))
     if right is None:
         raise RuntimeError("RIGHT (red) marker not found")
     up_x, up_y = up
@@ -502,37 +495,38 @@ def compute_camera_mapping(
         f"  Phase: grid — phone shows {expected} red dots at known viewport positions"
     )
 
-    frame = cam._fresh_frame()
-    if frame is None:
-        raise RuntimeError("Camera mapping FAILED — camera read failed")
-    if rotation >= 0:
-        frame = cv2.rotate(frame, rotation)
-    frame_h, frame_w = frame.shape[:2]
-    cam_size = (frame_w, frame_h)
     rot_names = {
         -1: "none",
         cv2.ROTATE_90_CLOCKWISE: "90° CW",
         cv2.ROTATE_180: "180°",
         cv2.ROTATE_90_COUNTERCLOCKWISE: "90° CCW",
     }
+
+    # A single snapshot can catch a mid-render or transiently-occluded frame,
+    # so grab a few fresh frames and use the first that yields the full grid.
+    dots: list[tuple[float, float]] = []
+    frame = None
+    for attempt in range(4):
+        f = cam._fresh_frame()
+        if f is not None:
+            frame = cv2.rotate(f, rotation) if rotation >= 0 else f
+            dots = detect_red_dots(frame, expected=expected)
+            log.info(
+                f"  Red dot detection (try {attempt + 1}): "
+                f"found {len(dots)}/{expected} dots"
+            )
+            if len(dots) == expected:
+                break
+        time.sleep(0.7)
+
+    if frame is None:
+        raise RuntimeError("Camera mapping FAILED — camera read failed")
+    frame_h, frame_w = frame.shape[:2]
+    cam_size = (frame_w, frame_h)
     log.info(
-        f"  Camera frame captured: {frame_w}×{frame_h}px "
+        f"  Camera frame: {frame_w}×{frame_h}px "
         f"(rotation={rot_names.get(rotation, str(rotation))})"
     )
-
-    dots = detect_red_dots(frame)
-    log.info(f"  Red dot detection: found {len(dots)}/{expected} dots")
-
-    # Retry once if detection fails
-    if len(dots) != expected:
-        log.info("  Retrying dot detection after 1s...")
-        time.sleep(1.0)
-        frame = cam._fresh_frame()
-        if frame is not None:
-            if rotation >= 0:
-                frame = cv2.rotate(frame, rotation)
-            dots = detect_red_dots(frame)
-            log.info(f"  Retry: found {len(dots)}/{expected} dots")
 
     if len(dots) != expected:
         raise RuntimeError(

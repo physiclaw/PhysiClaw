@@ -120,7 +120,7 @@ def test_pick_rotation_from_markers_no_rotation(mocker) -> None:
         None,            # no wrapped red
     ])
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         side_effect=lambda *a, **kw: next(blob_calls),
     )
 
@@ -138,7 +138,7 @@ def test_pick_rotation_from_markers_90_clockwise(mocker) -> None:
         None,
     ])
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         side_effect=lambda *a, **kw: next(blob_calls),
     )
 
@@ -155,7 +155,7 @@ def test_pick_rotation_from_markers_180(mocker) -> None:
         None,
     ])
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         side_effect=lambda *a, **kw: next(blob_calls),
     )
 
@@ -172,7 +172,7 @@ def test_pick_rotation_from_markers_90_counterclockwise(mocker) -> None:
         None,
     ])
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         side_effect=lambda *a, **kw: next(blob_calls),
     )
 
@@ -181,29 +181,26 @@ def test_pick_rotation_from_markers_90_counterclockwise(mocker) -> None:
     assert code == cv2.ROTATE_90_COUNTERCLOCKWISE
 
 
-def test_pick_rotation_from_markers_uses_wrapped_red(mocker) -> None:
-    """Second red search at the wrap range (170-180) is preferred when
-    larger than the low-end red."""
+def test_pick_rotation_from_markers_raises_when_red_missing(mocker) -> None:
+    """Red is one search over both hue ends (via red_ranges); if it finds
+    nothing, the step fails with a clear message."""
     blob_calls = iter([
-        (50.0, 100.0),    # blue UP
-        (50.0, 200.0),    # low-end red (small)
-        (60.0, 250.0),    # wrapped red — preferred
+        (50.0, 100.0),  # blue UP
+        None,            # red: nothing at either hue end
     ])
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         side_effect=lambda *a, **kw: next(blob_calls),
     )
 
-    code, _ = _pick_rotation_from_markers(np.zeros((400, 400, 3), np.uint8))
-
-    # red position now (60, 250) → still below blue (100) so 0° / no rotation.
-    assert code == -1
+    with pytest.raises(RuntimeError, match=r"^RIGHT \(red\) marker not found$"):
+        _pick_rotation_from_markers(np.zeros((400, 400, 3), np.uint8))
 
 
 def test_pick_rotation_from_markers_raises_when_marker_missing(mocker) -> None:
     """First _find_marker call returns None → RuntimeError."""
     mocker.patch(
-        "physiclaw.core.vision.util.find_largest_hsv_blob",
+        "physiclaw.core.calibration.calibrate.find_largest_hsv_blob",
         return_value=None,
     )
 
