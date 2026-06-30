@@ -60,7 +60,7 @@ function Info($msg) { if ($useColor) { Write-Host "→ $msg" -ForegroundColor Gr
 function Warn($msg) { if ($useColor) { Write-Host "! $msg" -ForegroundColor Yellow } else { Write-Host "! $msg" } }
 function Die($msg)  {
     # `throw` so this script terminates without killing the user's shell
-    # when invoked via ``irm | iex``. `exit 1` would tear down the host
+    # when invoked via ``iwr | iex``. `exit 1` would tear down the host
     # PowerShell process — `iex` runs in the caller's scope.
     throw $msg
 }
@@ -108,7 +108,7 @@ try {
         # Run uv's installer in a CHILD PowerShell process. Its top-level
         # ``catch { exit 1 }`` (line ~653 of astral.sh's install.ps1) would
         # otherwise tear down our host — and the user's shell, if our script
-        # was loaded via ``irm | iex``. Download to a temp file, run with
+        # was loaded via ``iwr | iex``. Download to a temp file, run with
         # `-File`, capture the child's exit code.
         $uvScript = Join-Path $env:TEMP "physiclaw-uv-install.ps1"
         try {

@@ -103,8 +103,8 @@ def vision(
             "The conversion runs the heavy deps (ultralytics + onnx + onnxslim, "
             "~500 MB) in an ephemeral uv environment so they never enter the "
             "physiclaw install. Install uv first, then re-run:\n\n"
-            "    curl -fsSL https://astral.sh/uv/install.sh | sh   # macOS / Linux\n"
-            "    irm https://astral.sh/uv/install.ps1 | iex        # Windows\n"
+            "    curl -fsSL https://astral.sh/uv/install.sh | sh    # macOS / Linux\n"
+            "    iwr -useb https://astral.sh/uv/install.ps1 | iex   # Windows\n"
             "    physiclaw setup local-vision-model\n"
         )
         raise typer.Abort()
