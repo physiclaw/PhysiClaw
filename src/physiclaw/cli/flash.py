@@ -142,12 +142,7 @@ def flash(
     ] = False,
 ) -> None:
     """Flash FluidNC firmware onto the MKS DLC32 control board."""
-    typer.secho("Flash FluidNC firmware to the MKS DLC32\n", bold=True)
-    typer.secho(
-        "⚠  Disconnect the stepper motors first — the board can back-feed odd\n"
-        "   voltages during the reset. (Keep the USB cable plugged in.)\n",
-        fg="yellow",
-    )
+    typer.secho("Flash FluidNC firmware to the MKS DLC32 V2.1 control board\n", bold=True)
 
     with tempfile.TemporaryDirectory(prefix="physiclaw-fw-") as td:
         typer.echo("→ Downloading firmware …")
@@ -156,8 +151,8 @@ def flash(
         dev = port or _detect_port() or ("auto-detect" if dry_run else None)
         if not dev:
             typer.secho(
-                "\n✗ No board found. Connect the MKS DLC32 over USB "
-                "(install the CH340 driver if needed), or pass --port.",
+                "\n✗ No board found. Switch on the 12 V power adaptor and connect "
+                "the MKS DLC32 over USB — install the CH340 driver if needed, or pass --port.",
                 fg="red",
             )
             raise typer.Exit(1)
