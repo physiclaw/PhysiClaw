@@ -1357,7 +1357,7 @@ wheels = [
 
 [[package]]
 name = "physiclaw"
-version = "0.0.25"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
