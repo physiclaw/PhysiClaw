@@ -1,7 +1,7 @@
 # PhysiClaw installer (Windows 11).
 #
 # Usage (recommended — runs in a child shell so the installer can't crash yours):
-#   powershell -ExecutionPolicy Bypass -c "iwr -useb https://physiclaw.ai/install.ps1 | iex"
+#   powershell -ExecutionPolicy ByPass -c "iwr -useb https://physiclaw.ai/install.ps1 | iex"
 #
 # Also works, but if the install fails the calling shell may exit:
 #   iwr -useb https://physiclaw.ai/install.ps1 | iex
@@ -130,7 +130,7 @@ Fix the connection and retry, or install uv manually first:
 
         # Use the same PowerShell host that's running this script.
         $psHost = (Get-Process -Id $PID).Path
-        & $psHost -NoProfile -ExecutionPolicy Bypass -File $uvScript
+        & $psHost -NoProfile -ExecutionPolicy ByPass -File $uvScript
         $uvExit = $LASTEXITCODE
         Remove-Item $uvScript -ErrorAction SilentlyContinue
 
