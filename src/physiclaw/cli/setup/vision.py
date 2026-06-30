@@ -1,29 +1,50 @@
-"""``physiclaw setup local-vision-model`` — fetch the OmniParser icon detector.
+"""``physiclaw setup local-vision-model`` — install the OmniParser icon detector.
 
-Upstream ships PyTorch weights; we convert to ONNX once and cache under
-the user's data dir. Conversion needs ``ultralytics`` + ``onnx`` + ``onnxslim``
-(~500 MB), which we deliberately keep OUT of physiclaw's own dependencies.
-Instead, the conversion runs in a throwaway scratch directory under
-``uv run --with``: uv resolves the heavy deps into its own cache, runs the
-export once, and we ``rmtree`` the scratch dir on success. The physiclaw
-install never sees ultralytics — runtime inference only needs ``onnxruntime``,
-which is already a core dep.
+By default we fetch a pre-converted ONNX from the PhysiClaw release mirror —
+no Hugging Face download, no conversion deps, no uv. If every mirror is
+unreachable (or fails its checksum), fall back to converting from upstream:
+download the PyTorch weights and export to ONNX in a throwaway ``uv run
+--with`` env (ultralytics + onnx + onnxslim, ~500 MB) so those heavy deps
+never enter the physiclaw install — runtime inference only needs
+``onnxruntime``, already a core dep. ``--build`` forces the from-source path.
+
+Model: ``microsoft/OmniParser-v2.0`` ``icon_detect`` (AGPL-3.0; a finetuned
+YOLOv8). See THIRD_PARTY_NOTICES.md.
 """
 
+import hashlib
 import shutil
 import subprocess
+import tempfile
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from physiclaw import paths
-from physiclaw.cli._format import next_hint, ok
+from physiclaw.cli._format import ok
 
 _PT_URL = (
     "https://huggingface.co/microsoft/OmniParser-v2.0/"
     "resolve/main/icon_detect/model.pt"
+)
+
+# Pre-converted ONNX, served from the PhysiClaw release mirror — the fast,
+# network-friendly default. Tried in order: the GitHub release is the source
+# of truth, physiclaw.ai/downloads is the CDN alias.
+_PREBUILT_URLS = (
+    "https://physiclaw.ai/downloads/local_vision_model.zip",
+    "https://github.com/physiclaw/PhysiClaw/releases/download/"
+    "local-vision-model/local_vision_model.zip",
+)
+
+# sha256 of the extracted model.onnx — pinned so a corrupted or tampered
+# download is rejected. We hash the model, not the archive, so it stays valid
+# across zip recompression. Bump when the model is re-released.
+_PREBUILT_ONNX_SHA256 = (
+    "a0f977a4674d11074341895331ac523ce1372ee0a4ae97001219e50876cd1b7c"
 )
 
 # Bumping these is a deliberate decision — the ONNX export contract has
@@ -56,6 +77,56 @@ def _abort_kept_scratch(convert_dir: Path, reason: str) -> None:
     raise typer.Abort()
 
 
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _try_prebuilt(onnx: Path) -> bool:
+    """Fetch the pre-converted ONNX from the release mirror, verify its
+    sha256, and install it at ``onnx``.
+
+    Returns True on success, False (quietly) on any network / archive /
+    integrity failure so the caller can fall back to converting from source.
+    Needs no uv and no conversion deps.
+    """
+    for url in _PREBUILT_URLS:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            try:
+                typer.echo(f"Fetching prebuilt model: {url} …")
+                urllib.request.urlretrieve(url, tmp / "model.zip")
+                with zipfile.ZipFile(tmp / "model.zip") as z:
+                    z.extract(_ONNX_NAME, tmp)
+            except (OSError, zipfile.BadZipFile, KeyError) as e:
+                typer.echo(typer.style(
+                    f"  unavailable ({e}) — trying next source.",
+                    fg=typer.colors.YELLOW,
+                ))
+                continue
+            extracted = tmp / _ONNX_NAME
+            digest = _sha256(extracted)
+            if digest != _PREBUILT_ONNX_SHA256:
+                typer.echo(typer.style(
+                    f"  checksum mismatch ({digest[:12]}…) — skipping.",
+                    fg=typer.colors.YELLOW,
+                ))
+                continue
+            onnx.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(extracted), onnx)
+            return True
+    return False
+
+
+def _report_ready(onnx: Path, label: str) -> None:
+    """Shared success trailer for both the prebuilt and from-source paths."""
+    typer.echo(f"  {onnx.stat().st_size / 1024 / 1024:.1f} MB at {onnx}")
+    typer.echo(ok(label))
+
+
 def _abort_download(exc: OSError) -> None:
     """Friendly message for a failed weights download — no raw traceback.
 
@@ -84,15 +155,32 @@ def vision(
     force: Annotated[
         bool,
         typer.Option(
-            "--force", help="Re-download even if the ONNX already exists."
+            "--force", help="Re-install even if the ONNX already exists."
+        ),
+    ] = False,
+    build: Annotated[
+        bool,
+        typer.Option(
+            "--build",
+            help="Convert from upstream (PyTorch→ONNX) instead of fetching "
+            "the prebuilt model.",
         ),
     ] = False,
 ) -> None:
-    """Download and convert the local vision model."""
+    """Install the local vision model (prebuilt by default; --build to convert)."""
     onnx = paths.omniparser_onnx()
     if onnx.exists() and not force:
         typer.echo(f"Already present: {onnx}")
         return
+
+    # Fast path: a pre-converted ONNX from the release mirror — no Hugging
+    # Face download, no ultralytics conversion, no uv. Falls through to the
+    # from-source build when every mirror is unreachable or fails its checksum.
+    if not build:
+        if _try_prebuilt(onnx):
+            _report_ready(onnx, "vision model ready (prebuilt)")
+            return
+        typer.echo("Prebuilt model unavailable — converting from source …")
 
     if shutil.which("uv") is None:
         typer.echo(typer.style(
@@ -153,9 +241,4 @@ def vision(
     shutil.move(onnx_in_scratch, onnx)
     shutil.rmtree(convert_dir)
 
-    typer.echo(f"  {onnx.stat().st_size / 1024 / 1024:.1f} MB at {onnx}")
-    typer.echo(ok("vision model ready"))
-    typer.echo()
-    typer.echo(next_hint(
-        "physiclaw setup hardware  (plug in the arm + USB camera first)"
-    ))
+    _report_ready(onnx, "vision model ready")

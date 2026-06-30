@@ -21,13 +21,11 @@
 #      so its `exit 1` on failure never reaches your session).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
 #   4. Installs `physiclaw` (small — no heavy ML deps in the package).
-#   5. Runs `physiclaw setup local-vision-model` to convert the upstream
-#      PyTorch icon-detector weights to ONNX. The conversion runs inside
-#      an ephemeral `uv run --with` env in a scratch dir under
-#      %USERPROFILE%\.physiclaw\models\, which is rm -rf'd on success.
-#      The heavy conversion deps never enter the physiclaw install.
-#      Idempotent; re-running this script no-ops conversion if the ONNX
-#      is already cached.
+#   5. Runs `physiclaw setup local-vision-model` to install the icon-detector
+#      model. By default it fetches a prebuilt ONNX (fast, no extra deps); if
+#      that's unreachable it falls back to downloading the upstream PyTorch
+#      weights and converting them in an ephemeral `uv run --with` env.
+#      Idempotent; no-ops if the ONNX is already cached.
 #
 # Prerequisites:
 #   - PowerShell 5.1+ (ships with Windows 11) or PowerShell 7+.
@@ -251,12 +249,9 @@ To debug, run manually with verbose output:
     }
     Info "Installed: $verifiedVersion"
 
-    # Step 5: convert the upstream PyTorch weights to ONNX in an ephemeral
-    # uv env (no-op if already cached on disk). The setup command creates
-    # a scratch dir under %USERPROFILE%\.physiclaw\models\, runs the
-    # conversion via `uv run --with`, moves the ONNX into place, and
-    # rm -rf's the scratch dir.
-    Info "Converting vision model to ONNX (one-time, ~30 s)…"
+    # Step 5: install the icon-detector model — fetch the prebuilt ONNX, or
+    # fall back to download + convert. No-op if already cached.
+    Info "Installing the vision model (one-time)…"
     & physiclaw setup local-vision-model
     if ($LASTEXITCODE -ne 0) {
         # Non-fatal: physiclaw itself is installed by now. The model download

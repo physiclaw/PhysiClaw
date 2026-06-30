@@ -20,13 +20,11 @@
 #   2. Installs `uv` if missing (hardened fetch of https://astral.sh/uv/install.sh).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
 #   4. Installs `physiclaw` (small — no heavy ML deps in the package).
-#   5. Runs `physiclaw setup local-vision-model` to convert the upstream
-#      PyTorch icon-detector weights to ONNX. The conversion runs inside
-#      an ephemeral `uv run --with` env in a scratch dir under
-#      ~/.physiclaw/models/, which is rm -rf'd on success. The heavy
-#      conversion deps never enter the physiclaw install.
-#      Idempotent; re-running this script no-ops conversion if the ONNX
-#      is already cached.
+#   5. Runs `physiclaw setup local-vision-model` to install the icon-detector
+#      model. By default it fetches a prebuilt ONNX (fast, no extra deps); if
+#      that's unreachable it falls back to downloading the upstream PyTorch
+#      weights and converting them in an ephemeral `uv run --with` env.
+#      Idempotent; no-ops if the ONNX is already cached.
 
 set -euo pipefail
 
@@ -211,11 +209,9 @@ if [[ "$PLATFORM" == linux ]] && ! ldconfig -p 2>/dev/null | grep -q 'libGL\.so\
   warn "    $(pkg_install_hint 'libgl1 libglib2.0-0' 'mesa-libGL glib2' 'libglvnd glib2')"
 fi
 
-# Step 5: convert PyTorch weights to ONNX in an ephemeral uv env (no-op
-# if already cached). The setup command creates a scratch dir under
-# ~/.physiclaw/models/, runs the conversion via `uv run --with`, moves
-# the ONNX into place, and rm -rf's the scratch dir.
-info "Converting vision model to ONNX (one-time, ~30 s)…"
+# Step 5: install the icon-detector model — fetch the prebuilt ONNX, or
+# fall back to download + convert. No-op if already cached.
+info "Installing the vision model (one-time)…"
 if [[ $DRY_RUN == 1 ]]; then
   would "physiclaw setup local-vision-model"
   printf '\n%s%s✓ Dry run complete.%s No changes made.\n' "$B" "$G" "$N"

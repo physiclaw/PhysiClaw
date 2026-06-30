@@ -38,6 +38,65 @@ def _stub_uv_run(mocker, *, onnx_bytes: bytes = b"ONNX") -> object:
     return mocker.patch.object(vision_mod.subprocess, "run", side_effect=_fake_run)
 
 
+def _stub_prebuilt(mocker, onnx_bytes: bytes) -> None:
+    """Make the prebuilt fetch return a zip containing model.onnx=onnx_bytes,
+    and pin the expected sha256 to match it."""
+    import hashlib
+    import zipfile
+
+    def _fake_urlretrieve(_url, dest):
+        with zipfile.ZipFile(dest, "w") as z:
+            z.writestr(vision_mod._ONNX_NAME, onnx_bytes)
+
+    mocker.patch.object(
+        vision_mod.urllib.request, "urlretrieve", side_effect=_fake_urlretrieve
+    )
+    mocker.patch.object(
+        vision_mod, "_PREBUILT_ONNX_SHA256", hashlib.sha256(onnx_bytes).hexdigest()
+    )
+
+
+def test_vision_prebuilt_installs_without_uv(tmp_path: Path, mocker) -> None:
+    # The default path fetches the prebuilt ONNX — no uv, no conversion.
+    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
+    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
+    _stub_prebuilt(mocker, onnx_bytes=b"PREBUILT-ONNX")
+    uv_run = mocker.patch.object(vision_mod.subprocess, "run")
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert onnx.read_bytes() == b"PREBUILT-ONNX"
+    assert "prebuilt" in result.output
+    uv_run.assert_not_called()
+
+
+def test_vision_prebuilt_checksum_mismatch_falls_back_to_build(
+    tmp_path: Path, mocker,
+) -> None:
+    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
+    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
+    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
+
+    # Prebuilt zip downloads fine but its onnx hash won't match the pinned one.
+    def _fake_urlretrieve(_url, dest):
+        import zipfile
+        with zipfile.ZipFile(dest, "w") as z:
+            z.writestr(vision_mod._ONNX_NAME, b"TAMPERED")
+
+    mocker.patch.object(
+        vision_mod.urllib.request, "urlretrieve", side_effect=_fake_urlretrieve
+    )
+    _stub_uv_run(mocker)
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert "checksum mismatch" in result.output
+    assert "converting from source" in result.output
+    assert onnx.read_bytes() == b"ONNX"  # came from the convert fallback
+
+
 def test_vision_already_present_no_op(tmp_path: Path, mocker) -> None:
     onnx = tmp_path / "model.onnx"
     onnx.write_bytes(b"x")
@@ -49,12 +108,13 @@ def test_vision_already_present_no_op(tmp_path: Path, mocker) -> None:
     assert "Already present" in result.output
 
 
-def test_vision_aborts_when_uv_missing(tmp_path: Path, mocker) -> None:
+def test_vision_build_aborts_when_uv_missing(tmp_path: Path, mocker) -> None:
+    # --build forces the from-source path, which needs uv.
     onnx = tmp_path / "missing.onnx"
     mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
     mocker.patch.object(vision_mod.shutil, "which", return_value=None)
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 1
     assert "uv" in result.output
@@ -71,7 +131,7 @@ def test_vision_downloads_converts_and_cleans_up(
     _stub_download(mocker, payload=b"PT-WEIGHTS")
     spy = _stub_uv_run(mocker)
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 0, result.output
     assert onnx.exists()
@@ -100,7 +160,7 @@ def test_vision_force_redownloads(tmp_path: Path, mocker) -> None:
     _stub_download(mocker)
     _stub_uv_run(mocker, onnx_bytes=b"newly converted")
 
-    result = runner.invoke(app, ["--force"])
+    result = runner.invoke(app, ["--force", "--build"])
 
     assert result.exit_code == 0, result.output
     assert onnx.read_bytes() == b"newly converted"
@@ -124,7 +184,7 @@ def test_vision_force_purges_stale_scratch(tmp_path: Path, mocker) -> None:
     )
     _stub_uv_run(mocker)
 
-    result = runner.invoke(app, ["--force"])
+    result = runner.invoke(app, ["--force", "--build"])
 
     assert result.exit_code == 0, result.output
     download_spy.assert_called_once()
@@ -146,7 +206,7 @@ def test_vision_skips_download_when_pt_already_exists(
     )
     _stub_uv_run(mocker)
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 0, result.output
     download_spy.assert_not_called()
@@ -163,7 +223,7 @@ def test_vision_keeps_scratch_on_uv_failure(tmp_path: Path, mocker) -> None:
         return_value=subprocess.CompletedProcess([], returncode=2),
     )
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 1
     assert "Conversion failed" in result.output
@@ -184,7 +244,7 @@ def test_vision_keeps_scratch_when_onnx_not_produced(
         return_value=subprocess.CompletedProcess([], returncode=0),
     )
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 1
     assert "not found" in result.output
