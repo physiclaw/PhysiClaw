@@ -17,7 +17,6 @@ import hashlib
 import shutil
 import subprocess
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Annotated
@@ -25,6 +24,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import paths
+from physiclaw.cli._download import http_get, stream
 from physiclaw.cli._format import ok
 
 _PT_URL = (
@@ -52,18 +52,6 @@ _PREBUILT_ZIP_URL = (
 _PREBUILT_ONNX_SHA256 = (
     "a0f977a4674d11074341895331ac523ce1372ee0a4ae97001219e50876cd1b7c"
 )
-
-# Cloudflare's WAF 403s the default Python-urllib User-Agent, so every request
-# to the physiclaw.ai mirror must set one (matches flash.py).
-_USER_AGENT = "physiclaw"
-
-
-def _http_get(url: str, timeout: int = 120):
-    """urlopen with a User-Agent set — the CDN's WAF blocks the default one."""
-    return urllib.request.urlopen(
-        urllib.request.Request(url, headers={"User-Agent": _USER_AGENT}),
-        timeout=timeout,
-    )
 
 # Bumping these is a deliberate decision — the ONNX export contract has
 # shifted between ultralytics minor versions before.
@@ -113,10 +101,8 @@ def _download_prebuilt_zip(dest: Path) -> bool:
     try:
         b64 = bytearray()
         for i in range(_PREBUILT_PARTS):
-            url = _PREBUILT_PARTS_URL.format(i=i)
-            typer.echo(f"Fetching prebuilt model: part {i + 1}/{_PREBUILT_PARTS} …")
-            with _http_get(url) as r:
-                b64 += r.read()
+            with http_get(_PREBUILT_PARTS_URL.format(i=i)) as r:
+                stream(r, b64.extend, f"  vision model part {i + 1}/{_PREBUILT_PARTS}")
         dest.write_bytes(base64.b64decode(b64))
         return True
     except OSError as e:
@@ -125,9 +111,8 @@ def _download_prebuilt_zip(dest: Path) -> bool:
             fg=typer.colors.YELLOW,
         ))
     try:
-        typer.echo(f"Fetching prebuilt model: {_PREBUILT_ZIP_URL} …")
-        with _http_get(_PREBUILT_ZIP_URL) as r, open(dest, "wb") as f:
-            shutil.copyfileobj(r, f)
+        with http_get(_PREBUILT_ZIP_URL) as r, open(dest, "wb") as f:
+            stream(r, f.write, "  vision model")
         return True
     except OSError as e:
         typer.echo(typer.style(f"  release unavailable ({e}).", fg=typer.colors.YELLOW))
@@ -177,7 +162,7 @@ def _report_ready(onnx: Path, label: str) -> None:
 def _abort_download(exc: OSError) -> None:
     """Friendly message for a failed weights download — no raw traceback.
 
-    ``_http_get`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
+    ``http_get`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
     ``OSError`` subclasses) on a 403/blocked-host/offline fetch; surface the
     reason plus the likely fix instead of a stack trace.
     """
@@ -255,16 +240,14 @@ def vision(
     onnx_in_scratch = convert_dir / _ONNX_NAME
 
     if not pt_path.exists():
-        typer.echo(f"Downloading {_PT_URL} …")
         try:
-            with _http_get(_PT_URL) as r, open(pt_path, "wb") as f:
-                shutil.copyfileobj(r, f)
+            with http_get(_PT_URL) as r, open(pt_path, "wb") as f:
+                stream(r, f.write, "  OmniParser weights")
         except OSError as e:
             # A failed fetch can leave a partial file behind; drop it so a retry
             # re-fetches from scratch instead of skipping the download.
             pt_path.unlink(missing_ok=True)
             _abort_download(e)
-        typer.echo(f"  {pt_path.stat().st_size / 1024 / 1024:.1f} MB saved.")
 
     script_path.write_text(_CONVERT_SCRIPT)
 

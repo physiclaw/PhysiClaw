@@ -11,15 +11,17 @@ import typer
 from typer.testing import CliRunner
 
 vision_mod = importlib.import_module("physiclaw.cli.setup.vision")
+download_mod = importlib.import_module("physiclaw.cli._download")
 
 
 class _BytesCtx:
     """Stand-in for an ``urlopen`` response: a context manager backed by a
-    BytesIO, so it supports both ``.read()`` (parts) and ``shutil.copyfileobj``
-    (whole-zip fallback)."""
+    BytesIO, supporting ``.read(n)`` and ``.getheader("Content-Length")`` so it
+    works with the chunked ``stream`` reader."""
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, *, content_length: str | None = None) -> None:
         self._buf = io.BytesIO(data)
+        self._len = content_length
 
     def __enter__(self) -> _BytesCtx:
         return self
@@ -30,15 +32,20 @@ class _BytesCtx:
     def read(self, *args: object) -> bytes:
         return self._buf.read(*args)
 
+    def getheader(self, name: str, default: object = None) -> object:
+        if name.lower() == "content-length":
+            return self._len if self._len is not None else default
+        return default
+
 runner = CliRunner()
 app = typer.Typer()
 app.command()(vision_mod.vision)
 
 
 def _stub_download(mocker, payload: bytes = b"PT") -> None:
-    """Replace the HF fetch (_http_get -> urlopen) with one returning payload."""
+    """Replace the HF fetch (http_get -> urlopen) with one returning payload."""
     mocker.patch.object(
-        vision_mod.urllib.request, "urlopen",
+        download_mod.urllib.request, "urlopen",
         side_effect=lambda *_a, **_k: _BytesCtx(payload),
     )
 
@@ -131,7 +138,7 @@ def test_download_prebuilt_zip_reassembles_base64_parts(
         return _BytesCtx(cuts[len(seen) - 1])
 
     mocker.patch.object(
-        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+        download_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
     )
 
     dest = tmp_path / "out.zip"
@@ -140,17 +147,33 @@ def test_download_prebuilt_zip_reassembles_base64_parts(
     assert len(seen) == vision_mod._PREBUILT_PARTS
 
 
+def test_stream_writes_all_bytes_with_known_length() -> None:
+    data = b"x" * 5000
+    out = bytearray()
+    download_mod.stream(
+        _BytesCtx(data, content_length=str(len(data))), out.extend, "test"
+    )
+    assert bytes(out) == data
+
+
+def test_stream_writes_all_bytes_with_unknown_length() -> None:
+    data = b"y" * 5000
+    out = bytearray()
+    download_mod.stream(_BytesCtx(data), out.extend, "test")  # no Content-Length
+    assert bytes(out) == data
+
+
 def test_download_prebuilt_zip_falls_back_to_release(
     tmp_path: Path, mocker,
 ) -> None:
-    # CDN parts fail; the whole-zip release (also fetched via _http_get) wins.
+    # CDN parts fail; the whole-zip release (also fetched via http_get) wins.
     def _fake_urlopen(req, **_kw):
         if "b64" in req.full_url:
             raise OSError("CDN down")
         return _BytesCtx(b"WHOLE-ZIP")
 
     mocker.patch.object(
-        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+        download_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
     )
 
     dest = tmp_path / "out.zip"
@@ -167,10 +190,10 @@ def test_download_prebuilt_zip_sets_user_agent(tmp_path: Path, mocker) -> None:
         return _BytesCtx(b"")  # body irrelevant — we only assert the header
 
     mocker.patch.object(
-        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+        download_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
     )
     vision_mod._download_prebuilt_zip(tmp_path / "out.zip")
-    assert seen_ua and all(ua == vision_mod._USER_AGENT for ua in seen_ua)
+    assert seen_ua and all(ua == download_mod.USER_AGENT for ua in seen_ua)
 
 
 def test_vision_already_present_no_op(tmp_path: Path, mocker) -> None:
@@ -255,7 +278,7 @@ def test_vision_force_purges_stale_scratch(tmp_path: Path, mocker) -> None:
     (convert_dir / vision_mod._PT_NAME).write_bytes(b"stale PT")
 
     download_spy = mocker.patch.object(
-        vision_mod.urllib.request, "urlopen",
+        download_mod.urllib.request, "urlopen",
         side_effect=lambda *_a, **_k: _BytesCtx(b"FRESH PT"),
     )
     _stub_uv_run(mocker)
@@ -277,7 +300,7 @@ def test_vision_skips_download_when_pt_already_exists(
     convert_dir.mkdir(parents=True)
     (convert_dir / vision_mod._PT_NAME).write_bytes(b"existing PT")
 
-    download_spy = mocker.patch.object(vision_mod.urllib.request, "urlopen")
+    download_spy = mocker.patch.object(download_mod.urllib.request, "urlopen")
     _stub_uv_run(mocker)
 
     result = runner.invoke(app, ["--build"])

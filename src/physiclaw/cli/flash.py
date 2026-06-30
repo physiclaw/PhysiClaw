@@ -38,10 +38,10 @@ import zipfile
 from pathlib import Path
 from typing import Annotated, Optional
 from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 import typer
 
+from physiclaw.cli._download import http_get, stream
 from physiclaw.cli._format import ok
 
 FIRMWARE_URL = "https://physiclaw.ai/downloads/firmware/fluidnc_4_0_3.zip"
@@ -63,14 +63,15 @@ _ESPTOOL_RUN = "import esptool, sys; esptool.main(sys.argv[1:])"
 
 def _fetch_bundle(into: Path) -> list[tuple[str, Path]]:
     """Download + unzip the firmware bundle. Returns [(offset, path), ...]."""
+    buf = io.BytesIO()
     try:
-        with urlopen(Request(FIRMWARE_URL, headers={"User-Agent": "physiclaw"}), timeout=120) as r:
-            blob = r.read()
+        with http_get(FIRMWARE_URL) as r:
+            stream(r, buf.write, "  firmware")
     except URLError as e:
         typer.secho(f"Download failed: {e}\n  {FIRMWARE_URL}", fg="red")
         raise typer.Exit(1)
 
-    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+    with zipfile.ZipFile(buf) as zf:
         zf.extractall(into)
 
     files = []
