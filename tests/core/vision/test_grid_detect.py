@@ -9,6 +9,9 @@ from physiclaw.core.vision.grid_detect import (
     compute_affine_transforms,
     detect_orange_dot,
     detect_red_dots,
+    detect_screen_corners,
+    point_in_polygon,
+    screen_polygon,
     sort_dots_to_grid,
 )
 
@@ -184,3 +187,104 @@ def test_detect_orange_dot_returns_none_when_no_blob(mocker) -> None:
     )
 
     assert detect_orange_dot(_frame()) is None
+
+
+_ORANGE_BGR = (22, 115, 249)  # #f97316
+
+
+def test_detect_orange_dot_with_expected_picks_nearest_not_largest() -> None:
+    # A big orange reflection far away and the small real dot near the prediction.
+    frame = _frame(400, 400)
+    _draw_dot(frame, 300, 300, _ORANGE_BGR, radius=22)  # largest
+    _draw_dot(frame, 60, 60, _ORANGE_BGR, radius=8)     # nearest to expected
+
+    # No hint → largest blob (the reflection).
+    cx, _ = detect_orange_dot(frame)
+    assert cx > 200
+
+    # With the predicted location → the small real dot, not the big reflection.
+    cx, cy = detect_orange_dot(frame, near=(60, 60))
+    assert 50 < cx < 70 and 50 < cy < 70
+
+
+def test_detect_orange_dot_max_dist_rejects_far_match() -> None:
+    frame = _frame(400, 400)
+    _draw_dot(frame, 300, 300, _ORANGE_BGR, radius=12)
+
+    # Nearest blob is far from the prediction → rejected so the caller can
+    # fall back to the known position instead of chasing a reflection.
+    assert detect_orange_dot(frame, near=(60, 60), max_dist=50) is None
+    # Same blob, generous cap → accepted.
+    assert detect_orange_dot(frame, near=(60, 60), max_dist=500) is not None
+
+
+# ---------- detect_screen_corners / screen_polygon / point_in_polygon ----------
+
+
+def _draw_corner(frame: np.ndarray, cx: int, cy: int, d: int = 20) -> None:
+    """Draw a 2×2 RGBY corner cluster centered at (cx, cy)."""
+    _draw_dot(frame, cx - d, cy - d, (0, 0, 255))    # R
+    _draw_dot(frame, cx + d, cy - d, (0, 255, 0))    # G
+    _draw_dot(frame, cx + d, cy + d, (255, 0, 0))    # B
+    _draw_dot(frame, cx - d, cy + d, (0, 255, 255))  # Y
+
+
+def test_detect_screen_corners_finds_four() -> None:
+    frame = _frame(400, 600)
+    for cx, cy in [(80, 80), (520, 80), (520, 320), (80, 320)]:
+        _draw_corner(frame, cx, cy)
+
+    corners = detect_screen_corners(frame)
+
+    assert len(corners) == 4
+
+
+def test_detect_screen_corners_two_diagonal() -> None:
+    frame = _frame(400, 600)
+    _draw_corner(frame, 80, 80)
+    _draw_corner(frame, 520, 320)
+
+    corners = detect_screen_corners(frame)
+
+    assert len(corners) == 2
+
+
+def test_detect_screen_corners_ignores_single_colour_cluster() -> None:
+    # Red dots alone (e.g. the grid) are not corner clusters — need ≥2 colours.
+    frame = _frame(400, 600)
+    _draw_dot(frame, 80, 80, (0, 0, 255))
+    _draw_dot(frame, 520, 320, (0, 0, 255))
+
+    assert detect_screen_corners(frame) == []
+
+
+def test_screen_polygon_four_corners_is_quad() -> None:
+    corners = [(80, 80), (520, 80), (520, 320), (80, 320)]
+    poly = screen_polygon(corners)
+    assert poly is not None and len(poly) == 4
+
+
+def test_screen_polygon_two_corners_is_bbox() -> None:
+    poly = screen_polygon([(80, 80), (520, 320)])
+    assert poly is not None and len(poly) == 4
+    assert poly[:, 0].min() == 80 and poly[:, 0].max() == 520
+
+
+def test_screen_polygon_needs_two_corners() -> None:
+    assert screen_polygon([]) is None
+    assert screen_polygon([(80, 80)]) is None
+
+
+def test_screen_polygon_margin_grows_outward() -> None:
+    corners = [(100, 100), (500, 100), (500, 300), (100, 300)]
+    tight = screen_polygon(corners, margin=0)
+    grown = screen_polygon(corners, margin=30)
+    assert grown[:, 0].max() > tight[:, 0].max()
+    assert grown[:, 0].min() < tight[:, 0].min()
+
+
+def test_point_in_polygon_inside_outside_and_none() -> None:
+    poly = screen_polygon([(100, 100), (500, 300)])
+    assert point_in_polygon(poly, 300, 200) is True
+    assert point_in_polygon(poly, 5, 5) is False
+    assert point_in_polygon(None, 0, 0) is True  # no gate

@@ -677,23 +677,84 @@ def test_compute_camera_mapping_retries_then_fails(mocker) -> None:
     cam._fresh_frame.return_value = blank
     cal = _make_cal()
 
-    with pytest.raises(RuntimeError, match=r"detected 0 dots, expected 15"):
+    with pytest.raises(RuntimeError, match=r"last saw 0 dots inside the screen"):
         cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
 
 
 def test_compute_camera_mapping_applies_rotation(mocker) -> None:
     mocker.patch.object(cal_mod.time, "sleep")
     cam = MagicMock()
-    # Pre-rotated dot image; camera returns the source orientation.
-    img = _grid_dot_image()
-    cam._fresh_frame.return_value = img
+    # The camera returns a frame that is canonical only AFTER the configured
+    # rotation is applied — so pre-rotate the canonical grid the opposite way.
+    # This is the real scenario: rotation is picked to upright the grid, and
+    # only then does sort_dots_to_grid (and the fit gate) line up.
+    canonical = _grid_dot_image()
+    cam._fresh_frame.return_value = cv2.rotate(
+        canonical, cv2.ROTATE_90_COUNTERCLOCKWISE
+    )
     cal = _make_cal()
 
     rotate_spy = mocker.spy(cal_mod.cv2, "rotate")
 
-    cal_mod.compute_camera_mapping(cam, cal, rotation=cv2.ROTATE_90_CLOCKWISE)
+    pct_to_cam, _ = cal_mod.compute_camera_mapping(
+        cam, cal, rotation=cv2.ROTATE_90_CLOCKWISE
+    )
 
     assert rotate_spy.called
+    assert pct_to_cam.shape == (2, 3)
+
+
+def _draw_corner_cluster(frame: np.ndarray, cx: int, cy: int, d: int = 20) -> None:
+    """Draw a 2×2 RGBY corner cluster centered at (cx, cy)."""
+    cv2.circle(frame, (cx - d, cy - d), 8, (0, 0, 255), -1)    # R
+    cv2.circle(frame, (cx + d, cy - d), 8, (0, 255, 0), -1)    # G
+    cv2.circle(frame, (cx + d, cy + d), 8, (255, 0, 0), -1)    # B
+    cv2.circle(frame, (cx - d, cy + d), 8, (0, 255, 255), -1)  # Y
+
+
+def test_compute_camera_mapping_masks_off_screen_reflection(mocker) -> None:
+    # The corner frame bounds the screen; the grid frame carries the 15 dots
+    # plus a stray red reflection outside that boundary. The mask drops the
+    # reflection so the fit still sees a clean grid and succeeds.
+    mocker.patch.object(cal_mod.time, "sleep")
+    w, h = 600, 900
+    corners_frame = np.zeros((h, w, 3), dtype=np.uint8)
+    for cx, cy in [(60, 90), (540, 90), (540, 810), (60, 810)]:
+        _draw_corner_cluster(corners_frame, cx, cy)
+    grid_frame = _grid_dot_image()
+    cv2.circle(grid_frame, (10, 450), 10, (0, 0, 255), -1)  # off-screen stray
+
+    cam = MagicMock()
+    cam._fresh_frame.side_effect = [corners_frame] + [grid_frame] * 5
+    cal = _make_cal()
+
+    pct_to_cam, cam_size = cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
+
+    assert pct_to_cam.shape == (2, 3)
+    assert cam_size == (600, 900)
+
+
+def test_compute_camera_mapping_rejects_mis_corresponded_grid(mocker) -> None:
+    # 15 dots are present but one is displaced into another row, so the fit can
+    # never line up. The quality gate must reject it rather than return a
+    # silently-wrong mapping.
+    mocker.patch.object(cal_mod.time, "sleep")
+    w, h = 600, 900
+    frame = np.zeros((h, w, 3), dtype=np.uint8)
+    positions = [
+        (int(col * w), int(row * h))
+        for row in CalibrationState.GRID_ROWS_PCT
+        for col in CalibrationState.GRID_COLS_PCT
+    ]
+    positions[0] = (300, 850)  # displaced far from its grid slot
+    for x, y in positions:
+        cv2.circle(frame, (x, y), 10, (0, 0, 255), -1)
+    cam = MagicMock()
+    cam._fresh_frame.return_value = frame
+    cal = _make_cal()
+
+    with pytest.raises(RuntimeError, match=r"clean 15-dot grid passing the fit gate"):
+        cal_mod.compute_camera_mapping(cam, cal, rotation=-1)
 
 
 def test_compute_camera_mapping_uses_viewport_shift(mocker) -> None:
@@ -740,7 +801,7 @@ def test_validate_calibration_records_passed_when_touches_match(mocker) -> None:
     # detect_orange_dot returns the dot at the same pct (camera 0-1 = screen 0-1).
     mocker.patch.object(
         cal_mod, "_detect_orange_dot",
-        side_effect=lambda f: (50, 50),  # at center of 100×100 → 0.5 pct
+        side_effect=lambda f, **kw: (50, 50),  # at center of 100×100 → 0.5 pct
     )
     # Touches always come back at the expected position.
     cal.flush_touches.side_effect = (
@@ -830,6 +891,33 @@ def test_validate_calibration_refires_on_miss(mocker) -> None:
     )
 
     assert results[0]["passed"] is True
+
+
+def test_validate_calibration_rejects_off_screen_backprojection(
+    mocker, caplog
+) -> None:
+    # A detected blob that back-projects past the panel edge must not steer the
+    # arm off-screen — the guard falls back to the known position instead.
+    mocker.patch.object(cal_mod.time, "sleep")
+    mocker.patch.object(cal_mod.random, "random", return_value=0.5)
+    arm = MagicMock()
+    cam = MagicMock()
+    cam._fresh_frame.return_value = np.zeros((100, 100, 3), np.uint8)
+    cal = _make_cal()
+    # (200, 200) on a 100×100 frame → camera 0-1 (2, 2) → back-projects off-screen.
+    mocker.patch.object(cal_mod, "_detect_orange_dot", return_value=(200, 200))
+    cal.flush_touches.side_effect = [[], [{"x": 0.5, "y": 0.5}]]
+
+    with caplog.at_level("WARNING"):
+        results = cal_mod.validate_calibration(
+            arm, cam, cal, rotation=-1,
+            pct_to_grbl=_identity_pct_to_grbl(),
+            pct_to_cam=_identity_pct_to_cam(),
+            cam_size=(100, 100), num_tests=1,
+        )
+
+    assert results[0]["passed"] is True  # fell back to the known position
+    assert any("off-screen" in r.message for r in caplog.records)
 
 
 # ---------- trace_screen_edge ----------

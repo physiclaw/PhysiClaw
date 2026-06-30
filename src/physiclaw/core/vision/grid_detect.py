@@ -14,7 +14,9 @@ import cv2
 import numpy as np
 
 from physiclaw.core.vision.util import (
+    CORNER_HSV_RANGES,
     contour_centroid,
+    find_all_hsv_blobs,
     find_largest_hsv_blob,
     redness,
 )
@@ -141,15 +143,138 @@ def compute_affine_transforms(
     return pct_to_grbl, pct_to_pixel
 
 
+# ─── Screen region from the corner blocks ─────────────────────
+
+# A corner cluster (bridge.html `corners` phase) is a 2×2 RGBY block ~20% of
+# the phone's shorter side; the four sit at the screen corners, which are far
+# apart in frame. 25% of the frame's shorter side groups one cluster's blobs
+# without ever merging two corners. Matches detect_bridge_corners' span.
+_CORNER_CLUSTER_SPAN_FRAC = 0.25
+
+
+def detect_screen_corners(
+    frame: np.ndarray, max_cluster_span: float | None = None
+) -> list[tuple[float, float]]:
+    """Locate the screen-corner RGBY blocks from bridge.html's ``corners``
+    phase; return one center per detected corner (camera px), unordered.
+
+    Each corner is a tight 2×2 RGBY cluster. Blobs of every corner colour are
+    pooled and grouped by proximity; a group spanning ≥2 of the four colours is
+    accepted as a corner and reduced to its centroid. Up to four are returned —
+    two diagonal corners already bound the screen, four give the full quad.
+    Used to fence dot detection to the screen so off-screen reflections are
+    excluded (the cause of a validation dot back-projecting off the panel).
+    """
+    if max_cluster_span is None:
+        max_cluster_span = min(frame.shape[:2]) * _CORNER_CLUSTER_SPAN_FRAC
+
+    pts: list[tuple[float, float, str]] = []
+    for name, ranges in CORNER_HSV_RANGES.items():
+        for cx, cy in find_all_hsv_blobs(frame, ranges, min_area=50):
+            pts.append((cx, cy, name))
+
+    used = [False] * len(pts)
+    corners: list[tuple[float, float]] = []
+    for i, (sx, sy, _) in enumerate(pts):
+        if used[i]:
+            continue
+        group = [i]
+        used[i] = True
+        for j in range(i + 1, len(pts)):
+            if used[j]:
+                continue
+            if abs(pts[j][0] - sx) <= max_cluster_span and abs(pts[j][1] - sy) <= max_cluster_span:
+                group.append(j)
+                used[j] = True
+        if len({pts[k][2] for k in group}) >= 2:
+            mx = sum(pts[k][0] for k in group) / len(group)
+            my = sum(pts[k][1] for k in group) / len(group)
+            corners.append((mx, my))
+    log.debug(f"Detected {len(corners)} screen corners")
+    return corners
+
+
+def screen_polygon(
+    corners: list[tuple[float, float]], margin: float = 0.0
+) -> np.ndarray | None:
+    """Build a closed polygon (Nx2 float32) bounding the screen from detected
+    corner centers, grown outward by ``margin`` px about the centroid.
+
+    ≥3 corners → their convex hull (the true quad when all four are found).
+    2 corners → the axis-aligned box of that diagonal. <2 → ``None`` (can't
+    bound; caller should skip the spatial gate and warn). The outward margin
+    keeps a real grid dot near the cluster from being clipped while still
+    excluding anything beyond the panel edge.
+    """
+    if len(corners) < 2:
+        return None
+    if len(corners) == 2:
+        (x0, y0), (x1, y1) = corners
+        lo_x, hi_x = min(x0, x1), max(x0, x1)
+        lo_y, hi_y = min(y0, y1), max(y0, y1)
+        poly = np.array(
+            [[lo_x, lo_y], [hi_x, lo_y], [hi_x, hi_y], [lo_x, hi_y]],
+            dtype=np.float32,
+        )
+    else:
+        poly = cv2.convexHull(np.array(corners, dtype=np.float32)).reshape(-1, 2)
+
+    if margin:
+        c = poly.mean(axis=0)
+        v = poly - c
+        norms = np.linalg.norm(v, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        poly = c + v * (1.0 + margin / norms)
+    return poly.astype(np.float32)
+
+
+def point_in_polygon(poly: np.ndarray | None, x: float, y: float) -> bool:
+    """True if (x, y) is inside ``poly`` (or if ``poly`` is None — no gate)."""
+    if poly is None:
+        return True
+    return cv2.pointPolygonTest(poly, (float(x), float(y)), False) >= 0
+
+
 # ─── Orange dot detection (for validation) ───────────────────
 
+# Orange validation dot #f97316 ≈ HSV H=20°, S=90%, V=97% → OpenCV H≈10. One
+# range, shared by the largest- and nearest-blob paths so they can't drift.
+_ORANGE_HSV_LOWER = [5, 100, 100]
+_ORANGE_HSV_UPPER = [25, 255, 255]
+_ORANGE_MIN_AREA = 50
 
-def detect_orange_dot(frame: np.ndarray) -> tuple[float, float] | None:
-    """Detect a single orange dot in a camera frame.
 
-    Returns (cx, cy) in camera pixels, or None if not found.
-    Orange #f97316 ≈ HSV H=20°, S=90%, V=97% → OpenCV H=10, S=230, V=247.
+def detect_orange_dot(
+    frame: np.ndarray,
+    near: tuple[float, float] | None = None,
+    *,
+    max_dist: float | None = None,
+) -> tuple[float, float] | None:
+    """Detect the orange validation dot; return (cx, cy) in camera px, or None.
+
+    Without ``near``, returns the *largest* orange blob — fine when the dot is
+    the only orange thing in view. (Note ``near`` is a pixel position, unlike
+    :func:`detect_red_dots`' ``expected``, which is a dot count.)
+
+    With ``near`` (the dot's predicted camera pixel, e.g. from Mapping B),
+    returns the orange blob *nearest* that point instead. This is far more
+    robust: a stray orange reflection elsewhere in the frame — even a much
+    larger one — can't out-vote the small on-screen dot, which is exactly what
+    a largest-blob search wrongly picks. With ``max_dist`` (px), a nearest blob
+    farther than that is rejected (returns None), so the caller can fall back to
+    the known position rather than steer the arm to a bogus, off-panel target.
     """
-    return find_largest_hsv_blob(
-        frame, [5, 100, 100], [25, 255, 255], min_area=50
+    if near is None:
+        return find_largest_hsv_blob(
+            frame, _ORANGE_HSV_LOWER, _ORANGE_HSV_UPPER, min_area=_ORANGE_MIN_AREA
+        )
+    blobs = find_all_hsv_blobs(
+        frame, _ORANGE_HSV_LOWER, _ORANGE_HSV_UPPER, min_area=_ORANGE_MIN_AREA
     )
+    if not blobs:
+        return None
+    ex, ey = near
+    cx, cy = min(blobs, key=lambda b: (b[0] - ex) ** 2 + (b[1] - ey) ** 2)
+    if max_dist is not None and (cx - ex) ** 2 + (cy - ey) ** 2 > max_dist * max_dist:
+        return None
+    return (cx, cy)
