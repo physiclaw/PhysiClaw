@@ -145,7 +145,7 @@ def compute_affine_transforms(
 
 # ─── Screen region from the corner blocks ─────────────────────
 
-# A corner cluster (bridge.html `corners` phase) is a 2×2 RGBY block ~20% of
+# A corner cluster (bridge.html `corners` phase) is a 2×2 RGBM block ~20% of
 # the phone's shorter side; the four sit at the screen corners, which are far
 # apart in frame. 25% of the frame's shorter side groups one cluster's blobs
 # without ever merging two corners. Matches detect_bridge_corners' span.
@@ -155,10 +155,10 @@ _CORNER_CLUSTER_SPAN_FRAC = 0.25
 def detect_screen_corners(
     frame: np.ndarray, max_cluster_span: float | None = None
 ) -> list[tuple[float, float]]:
-    """Locate the screen-corner RGBY blocks from bridge.html's ``corners``
+    """Locate the screen-corner RGBM blocks from bridge.html's ``corners``
     phase; return one center per detected corner (camera px), unordered.
 
-    Each corner is a tight 2×2 RGBY cluster. Blobs of every corner colour are
+    Each corner is a tight 2×2 RGBM cluster. Blobs of every corner colour are
     pooled and grouped by proximity; a group spanning ≥2 of the four colours is
     accepted as a corner and reduced to its centroid. Up to four are returned —
     two diagonal corners already bound the screen, four give the full quad.

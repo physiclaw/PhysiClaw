@@ -87,7 +87,7 @@ class BridgeState:
         repainting; `connected` alone could be a tab that briefly opened
         and got backgrounded. Any dropout resets the clock. Used before
         operations that require active canvas rendering on the phone
-        (auto-pick RGBY corners, warm-start sanity tap).
+        (auto-pick RGBM corners, warm-start sanity tap).
         """
         deadline = time.monotonic() + timeout
         stable_since: float | None = None

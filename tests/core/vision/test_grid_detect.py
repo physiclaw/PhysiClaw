@@ -222,11 +222,11 @@ def test_detect_orange_dot_max_dist_rejects_far_match() -> None:
 
 
 def _draw_corner(frame: np.ndarray, cx: int, cy: int, d: int = 20) -> None:
-    """Draw a 2×2 RGBY corner cluster centered at (cx, cy)."""
+    """Draw a 2×2 RGBM corner cluster centered at (cx, cy)."""
     _draw_dot(frame, cx - d, cy - d, (0, 0, 255))    # R
     _draw_dot(frame, cx + d, cy - d, (0, 255, 0))    # G
     _draw_dot(frame, cx + d, cy + d, (255, 0, 0))    # B
-    _draw_dot(frame, cx - d, cy + d, (0, 255, 255))  # Y
+    _draw_dot(frame, cx - d, cy + d, (255, 0, 255))  # M (magenta)
 
 
 def test_detect_screen_corners_finds_four() -> None:

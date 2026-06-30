@@ -705,11 +705,11 @@ def test_compute_camera_mapping_applies_rotation(mocker) -> None:
 
 
 def _draw_corner_cluster(frame: np.ndarray, cx: int, cy: int, d: int = 20) -> None:
-    """Draw a 2×2 RGBY corner cluster centered at (cx, cy)."""
+    """Draw a 2×2 RGBM corner cluster centered at (cx, cy)."""
     cv2.circle(frame, (cx - d, cy - d), 8, (0, 0, 255), -1)    # R
     cv2.circle(frame, (cx + d, cy - d), 8, (0, 255, 0), -1)    # G
     cv2.circle(frame, (cx + d, cy + d), 8, (255, 0, 0), -1)    # B
-    cv2.circle(frame, (cx - d, cy + d), 8, (0, 255, 255), -1)  # Y
+    cv2.circle(frame, (cx - d, cy + d), 8, (255, 0, 255), -1)  # M (magenta)
 
 
 def test_compute_camera_mapping_masks_off_screen_reflection(mocker) -> None:

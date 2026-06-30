@@ -494,7 +494,7 @@ SCREEN_POLY_MARGIN_FRAC = 0.05
 
 def _detect_screen_region(cam: Camera, rotation: int) -> np.ndarray | None:
     """Grab a frame in the ``corners`` phase and return the screen-bounding
-    polygon (camera px, rotated frame) from the RGBY corner blocks — or None if
+    polygon (camera px, rotated frame) from the RGBM corner blocks — or None if
     fewer than two corners are found (caller then proceeds ungated)."""
     f = cam._fresh_frame()
     if f is None:
@@ -549,7 +549,7 @@ def compute_camera_mapping(
     Returns (pct_to_cam affine (2,3), cam_size (w, h)).
     Both sides are 0-1 normalized.
 
-    Robustness: the screen is first fenced off via the RGBY corner blocks so an
+    Robustness: the screen is first fenced off via the RGBM corner blocks so an
     off-screen reflection can't masquerade as a dot, and every candidate fit is
     gated on homography inliers + reprojection residual — a mis-corresponded
     grid is retried, then fails loudly, never returned as a silently-wrong map.

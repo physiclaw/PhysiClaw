@@ -228,24 +228,29 @@ body.mode-bridge #bridge-layer{
         text(W*0.82, H*0.5, 'RIGHT', mSize*0.8, '#ffffff');
         break;
       case 'corners':
-        // 2×2 RGBY cluster at every screen corner. Any single cluster
+        // 2×2 RGBM cluster at every screen corner. Any single cluster
         // is enough to identify the camera and orientation, so a stylus
         // or arm occluding 1–3 corners still leaves auto-pick working.
-        // Each cluster is clockwise R→G→B→Y from its own top-left:
+        // Each cluster is clockwise R→G→M→B from its own top-left:
         //   R G
-        //   Y B
+        //   B M
+        // Magenta (not yellow): the camera renders the screen's yellow as a
+        // yellow-green that collides with the Green block — magenta sits alone
+        // in the empty 130–170 hue band (vision/util.py:CORNER_HSV_RANGES).
+        // M sits diagonal to R (R+B = magenta) so it never borders the red
+        // block — its only same-channel neighbour is blue.
         (function drawCornerClusters(){
           // 10% of phone's shorter side per quadrant → 2×2 cluster ≈ 20%
           // of phone's shorter side. Camera-side `max_cluster_span` is 25%
           // of frame's shorter side (vision/util.py:detect_bridge_corners),
           // so even with the phone filling most of the frame the cluster
           // stays well under the cross-cluster cutoff.
-          var bs = Math.min(W, H) * 0.10;  // block size (one RGBY quadrant)
+          var bs = Math.min(W, H) * 0.10;  // block size (one RGBM quadrant)
           function cluster(x, y){
             rect(x,      y,      bs, bs, '#ff0000', 0);  // R
             rect(x+bs,   y,      bs, bs, '#00ff00', 0);  // G
-            rect(x+bs,   y+bs,   bs, bs, '#0000ff', 0);  // B
-            rect(x,      y+bs,   bs, bs, '#ffff00', 0);  // Y
+            rect(x+bs,   y+bs,   bs, bs, '#ff00ff', 0);  // M (magenta)
+            rect(x,      y+bs,   bs, bs, '#0000ff', 0);  // B
           }
           cluster(0,        0);          // top-left corner
           cluster(W-2*bs,   0);          // top-right

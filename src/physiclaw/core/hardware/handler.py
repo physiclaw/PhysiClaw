@@ -121,7 +121,7 @@ def _capture_raw(idx: int):
 
 
 def _auto_pick_camera_index() -> int | None:
-    """Identify the overhead camera by the RGBY corner markers on /bridge.
+    """Identify the overhead camera by the RGBM corner markers on /bridge.
 
     Caller must first put the phone page into the ``corners`` phase so
     bridge.html draws the four colored squares. We then iterate USB
@@ -141,7 +141,7 @@ def _auto_pick_camera_index() -> int | None:
         if corners is None:
             log.info(f"  cam {idx}: corners not detected")
             continue
-        log.info(f"Auto-picked camera {idx} — all four RGBY corners detected")
+        log.info(f"Auto-picked camera {idx} — all four RGBM corners detected")
         return idx
     return None
 
@@ -152,7 +152,7 @@ async def handle_connect_camera(request, physiclaw, phone):
     Body: ``{"index": int}`` — connect that camera directly.
     Body: ``{"index": "auto"}`` (or body omitted) — set the phone page
     to the ``corners`` phase and iterate 0..3 to find the camera that
-    sees all four RGBY corner markers. The phone is restored to bridge
+    sees all four RGBM corner markers. The phone is restored to bridge
     mode before returning.
     """
     try:
@@ -167,7 +167,7 @@ async def handle_connect_camera(request, physiclaw, phone):
             # Wait for the phone /bridge tab to be actively polling
             # before flipping to the corners phase. If the screen is
             # asleep or the tab is backgrounded, set_mode would update
-            # server state but the canvas would never paint the RGBY
+            # server state but the canvas would never paint the RGBM
             # markers — and auto-pick would always fail. (warm-start
             # uses the same gate.)
             if not physiclaw._bridge.wait_for_connection(
@@ -186,7 +186,7 @@ async def handle_connect_camera(request, physiclaw, phone):
                 phone.set_mode("bridge")
             if picked is None:
                 raise RuntimeError(
-                    "auto-pick found no camera with all four RGBY corners; "
+                    "auto-pick found no camera with all four RGBM corners; "
                     "is /bridge open on the phone? Pass an explicit index to fall back."
                 )
             index = picked

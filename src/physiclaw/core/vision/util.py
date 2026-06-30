@@ -228,18 +228,23 @@ def find_largest_hsv_blob(
 # the search starts matching colourful home-screen app icons and the cluster
 # check mis-reads them as a corner cluster.
 _CORNER_SV_MIN = 80
+# Magenta, not yellow, is the 4th corner colour: a camera renders the screen's
+# yellow as a yellow-green (H≈44) that drifts out of the Yellow band and into
+# Green, so the yellow blocks vanish and the all-four-colours check fails.
+# Magenta (#ff00ff = red+blue, no green) sits alone in the otherwise-empty
+# 130–170 hue channel — far from R/G/B and from anything in a typical workshop.
 CORNER_HSV_RANGES = {
     "R": red_ranges(_CORNER_SV_MIN, _CORNER_SV_MIN),
     "G": [([40, _CORNER_SV_MIN, _CORNER_SV_MIN], [80, 255, 255])],
     "B": [([100, _CORNER_SV_MIN, _CORNER_SV_MIN], [130, 255, 255])],
-    "Y": [([20, _CORNER_SV_MIN, _CORNER_SV_MIN], [35, 255, 255])],
+    "M": [([134, _CORNER_SV_MIN, _CORNER_SV_MIN], [169, 255, 255])],
 }
 
 
-def _is_clockwise_rgby_cluster(
+def _is_clockwise_rgbm_cluster(
     cluster: dict[str, tuple[float, float]], max_span: float
 ) -> bool:
-    """Four RGBY centroids must be tightly grouped and traverse R→G→B→Y
+    """Four RGBM centroids must be tightly grouped and traverse R→G→M→B
     clockwise around their centroid (any cyclic rotation, so any of the
     four camera rotations passes)."""
     from math import atan2
@@ -253,20 +258,20 @@ def _is_clockwise_rgby_cluster(
     ordered = sorted(
         cluster.items(), key=lambda kv: atan2(kv[1][1] - cy, kv[1][0] - cx)
     )
-    return "".join(name for name, _ in ordered) in "RGBYRGBY"
+    return "".join(name for name, _ in ordered) in "RGMBRGMB"
 
 
 def detect_bridge_corners(
     frame: np.ndarray, max_cluster_span: float | None = None
 ) -> dict | None:
-    """Find one intact RGBY cluster rendered by bridge.html's ``corners``
-    phase. bridge.html draws the same 2×2 RGBY cluster at all four
+    """Find one intact RGBM cluster rendered by bridge.html's ``corners``
+    phase. bridge.html draws the same 2×2 RGBM cluster at all four
     screen corners, so a stylus occluding up to three of them still
     leaves enough to identify the camera.
 
     Returns the four centroids of the first intact cluster, or ``None``
     if no combination of detected blobs forms a tight-enough group
-    whose clockwise order is a cyclic rotation of RGBY.
+    whose clockwise order is a cyclic rotation of RGBM.
 
     ``max_cluster_span`` defaults to 25% of the frame's shorter side —
     each on-phone cluster is ~20% of the phone's shorter side (`bs` =
@@ -278,14 +283,14 @@ def detect_bridge_corners(
         max_cluster_span = min(frame.shape[:2]) * 0.25
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    blobs: dict[str, list[tuple[float, float]]] = {k: [] for k in "RGBY"}
+    blobs: dict[str, list[tuple[float, float]]] = {k: [] for k in "RGBM"}
     for name, hsv_ranges in CORNER_HSV_RANGES.items():
         blobs[name] = _hsv_blob_centroids(
             hsv, hsv_ranges, min_area=50,
             morph_op=cv2.MORPH_OPEN, morph_kernel=(5, 5),
         )
 
-    if not all(blobs[k] for k in "RGBY"):
+    if not all(blobs[k] for k in "RGBM"):
         return None
 
     # Brute force — at most 4 clusters × 1 blob per color per cluster =
@@ -294,9 +299,9 @@ def detect_bridge_corners(
     for r in blobs["R"]:
         for g in blobs["G"]:
             for b in blobs["B"]:
-                for y in blobs["Y"]:
-                    candidate = {"R": r, "G": g, "B": b, "Y": y}
-                    if _is_clockwise_rgby_cluster(candidate, max_cluster_span):
+                for m in blobs["M"]:
+                    candidate = {"R": r, "G": g, "B": b, "M": m}
+                    if _is_clockwise_rgbm_cluster(candidate, max_cluster_span):
                         return candidate
     return None
 

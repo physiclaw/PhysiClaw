@@ -5,10 +5,10 @@ required — colored squares, gradients, and white-on-black masks
 exercise the HSV pipeline, blur metrics, and contour analysis.
 
 For HSV color tests we draw saturated pixels into a BGR canvas:
-  - Red:    [0, 0, 255]
-  - Green:  [0, 255, 0]
-  - Blue:   [255, 0, 0]
-  - Yellow: [0, 255, 255]
+  - Red:     [0, 0, 255]
+  - Green:   [0, 255, 0]
+  - Blue:    [255, 0, 0]
+  - Magenta: [255, 0, 255]
 
 `check_phone_in_frame` writes a debug JPEG under `tempfile.gettempdir()`
 as a side effect; tests mock `cv2.imwrite` to keep the host clean.
@@ -411,15 +411,16 @@ def test_find_all_hsv_blobs_returns_centroid_per_qualifying_contour() -> None:
 # ---------- detect_bridge_corners ----------
 
 
-def _draw_rgby_cluster(
+def _draw_rgbm_cluster(
     img: np.ndarray,
     cx: int,
     cy: int,
     spacing: int = 10,
     swatch: int = 12,
 ) -> None:
-    """Draw an R-G-B-Y 2×2 cluster around (cx, cy) in clockwise order:
-    R at NW, G at NE, B at SE, Y at SW. Cluster span ≈ 2*spacing+swatch.
+    """Draw an R-G-M-B 2×2 cluster around (cx, cy) in clockwise order:
+    R at NW, G at NE, M (magenta) at SE, B at SW. M sits diagonal to R.
+    Cluster span ≈ 2*spacing+swatch.
     """
     s = swatch // 2
     # NW: R
@@ -428,16 +429,16 @@ def _draw_rgby_cluster(
     # NE: G
     _draw_rect(img, cx + spacing - s, cy - spacing - s,
                cx + spacing + s, cy - spacing + s, (0, 255, 0))
-    # SE: B
+    # SE: M (magenta)
     _draw_rect(img, cx + spacing - s, cy + spacing - s,
-               cx + spacing + s, cy + spacing + s, (255, 0, 0))
-    # SW: Y
+               cx + spacing + s, cy + spacing + s, (255, 0, 255))
+    # SW: B
     _draw_rect(img, cx - spacing - s, cy + spacing - s,
-               cx - spacing + s, cy + spacing + s, (0, 255, 255))
+               cx - spacing + s, cy + spacing + s, (255, 0, 0))
 
 
 def test_detect_bridge_corners_returns_none_when_a_color_is_absent() -> None:
-    # Only R, G, B — Y missing entirely.
+    # Only R, G, B — M missing entirely.
     img = np.zeros((400, 400, 3), dtype=np.uint8)
     _draw_rect(img, 50, 50, 80, 80, (0, 0, 255))
     _draw_rect(img, 100, 50, 130, 80, (0, 255, 0))
@@ -448,12 +449,12 @@ def test_detect_bridge_corners_returns_none_when_a_color_is_absent() -> None:
 
 def test_detect_bridge_corners_returns_dict_with_four_centroids() -> None:
     img = np.zeros((400, 400, 3), dtype=np.uint8)
-    _draw_rgby_cluster(img, 200, 200, spacing=10, swatch=12)
+    _draw_rgbm_cluster(img, 200, 200, spacing=10, swatch=12)
 
     result = detect_bridge_corners(img)
 
     assert result is not None
-    assert set(result.keys()) == {"R", "G", "B", "Y"}
+    assert set(result.keys()) == {"R", "G", "B", "M"}
     # Centroids land near the drawn positions.
     rx, ry = result["R"]
     assert 180 < rx < 200 and 180 < ry < 200
@@ -463,7 +464,7 @@ def test_detect_bridge_corners_uses_explicit_max_cluster_span_when_supplied() ->
     # Caller can override the default-derived span. With a generous
     # explicit span the spread-out cluster IS accepted.
     img = np.zeros((400, 400, 3), dtype=np.uint8)
-    _draw_rgby_cluster(img, 200, 200, spacing=10, swatch=12)
+    _draw_rgbm_cluster(img, 200, 200, spacing=10, swatch=12)
 
     result = detect_bridge_corners(img, max_cluster_span=80)
 
@@ -476,7 +477,7 @@ def test_detect_bridge_corners_rejects_clusters_exceeding_max_span() -> None:
     _draw_rect(img, 0, 0, 30, 30, (0, 0, 255))      # R top-left
     _draw_rect(img, 370, 0, 400, 30, (0, 255, 0))   # G top-right
     _draw_rect(img, 370, 370, 400, 400, (255, 0, 0))  # B bottom-right
-    _draw_rect(img, 0, 370, 30, 400, (0, 255, 255))   # Y bottom-left
+    _draw_rect(img, 0, 370, 30, 400, (255, 0, 255))   # M bottom-left
 
     # Default max_span = 25% of min(side) = 100 — these are 400 apart.
     assert detect_bridge_corners(img) is None

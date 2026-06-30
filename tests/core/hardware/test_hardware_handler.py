@@ -349,7 +349,7 @@ async def test_handle_connect_camera_auto_pick_no_match(mocker) -> None:
 
     assert resp.status_code == 500
     body = _read_json(resp)
-    assert "no camera with all four RGBY corners" in body["message"]
+    assert "no camera with all four RGBM corners" in body["message"]
     # Phone restored to bridge mode even on failure.
     assert phone.set_mode.call_args_list[-1].args == ("bridge",)
 
