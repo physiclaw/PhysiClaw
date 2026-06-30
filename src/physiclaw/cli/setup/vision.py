@@ -56,6 +56,30 @@ def _abort_kept_scratch(convert_dir: Path, reason: str) -> None:
     raise typer.Abort()
 
 
+def _abort_download(exc: OSError) -> None:
+    """Friendly message for a failed weights download — no raw traceback.
+
+    ``urlretrieve`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
+    ``OSError`` subclasses) on a 403/blocked-host/offline fetch; surface the
+    reason plus the likely fix instead of a stack trace.
+    """
+    typer.echo(typer.style(
+        "Couldn't download the OmniParser vision model.",
+        fg=typer.colors.RED, bold=True,
+    ))
+    typer.echo(f"  Reason: {exc}")
+    typer.echo(
+        f"\n  The weights are hosted on Hugging Face:\n    {_PT_URL}\n"
+        "\n  Likely causes:\n"
+        "    - No internet connection\n"
+        "    - A proxy, VPN, or firewall is blocking huggingface.co\n"
+        "    - Hugging Face is temporarily unavailable\n"
+        "\n  Fix the connection, then re-run:\n"
+        "    physiclaw setup local-vision-model\n"
+    )
+    raise typer.Abort()
+
+
 def vision(
     force: Annotated[
         bool,
@@ -97,7 +121,13 @@ def vision(
 
     if not pt_path.exists():
         typer.echo(f"Downloading {_PT_URL} …")
-        urllib.request.urlretrieve(_PT_URL, pt_path)
+        try:
+            urllib.request.urlretrieve(_PT_URL, pt_path)
+        except OSError as e:
+            # urlretrieve can leave a partial file behind; drop it so a retry
+            # re-fetches from scratch instead of skipping the download.
+            pt_path.unlink(missing_ok=True)
+            _abort_download(e)
         typer.echo(f"  {pt_path.stat().st_size / 1024 / 1024:.1f} MB saved.")
 
     script_path.write_text(_CONVERT_SCRIPT)

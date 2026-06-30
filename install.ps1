@@ -259,14 +259,13 @@ To debug, run manually with verbose output:
     Info "Converting vision model to ONNX (one-time, ~30 s)…"
     & physiclaw setup local-vision-model
     if ($LASTEXITCODE -ne 0) {
-        Die @"
-``physiclaw setup local-vision-model`` failed (exit $LASTEXITCODE).
-
-The conversion download or convert step errored out. Re-running this
-script will resume — uv caches the wheels and the ONNX is only built
-once. The scratch dir is kept on failure for debugging:
-  %USERPROFILE%\.physiclaw\models\omniparser_icon_detect\convert\
-"@
+        # Non-fatal: physiclaw itself is installed by now. The model download
+        # needs huggingface.co, which a locked-down network may block — warn
+        # and point to the re-run rather than aborting a complete install.
+        Warn "Vision model not set up — the download or convert step failed (see above)."
+        Warn "physiclaw itself is installed. Re-run this once your machine can reach"
+        Warn "huggingface.co:"
+        Warn "    physiclaw setup local-vision-model"
     }
 
     Write-Host ""

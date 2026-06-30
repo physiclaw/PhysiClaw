@@ -221,7 +221,15 @@ if [[ $DRY_RUN == 1 ]]; then
   printf '\n%s%s✓ Dry run complete.%s No changes made.\n' "$B" "$G" "$N"
   exit 0
 fi
-physiclaw setup local-vision-model
+# Non-fatal: physiclaw itself is installed by now. The model download needs
+# huggingface.co, which a locked-down network may block — warn and point to
+# the re-run rather than aborting an otherwise-complete install.
+if ! physiclaw setup local-vision-model; then
+  warn "Vision model not set up — the download or convert step failed (see above)."
+  warn "physiclaw itself is installed. Re-run this once your machine can reach"
+  warn "huggingface.co:"
+  warn "    physiclaw setup local-vision-model"
+fi
 
 printf '\n%s%s✓ Done.%s Next steps:\n' "$B" "$G" "$N"
 printf '    %sphysiclaw doctor%s            check your environment\n' "$B" "$N"
