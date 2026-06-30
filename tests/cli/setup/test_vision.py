@@ -114,6 +114,7 @@ def test_vision_prebuilt_checksum_mismatch_falls_back_to_build(
 
     # Prebuilt zip downloads fine but its onnx hash won't match the pinned one.
     _stub_prebuilt(mocker, onnx_bytes=b"TAMPERED", pin_hash=False)
+    _stub_download(mocker)  # mock the HF fetch the convert fallback uses
     _stub_uv_run(mocker)
 
     result = runner.invoke(app, [])
