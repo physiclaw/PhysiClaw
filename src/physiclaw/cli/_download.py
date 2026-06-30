@@ -30,8 +30,13 @@ def stream(resp, write, label: str) -> None:
         for chunk in iter(lambda: resp.read(1 << 16), b""):
             write(chunk)
         return
+    # width=0 auto-fits the bar to the terminal. The default fixed width (36)
+    # plus the label and percent renders an ~80-column line, which wraps on a
+    # default-width window (iTerm2, Terminal); once wrapped, the redraw's \r
+    # only returns to the start of the wrapped row, so every update spills onto
+    # a new line instead of overwriting in place.
     with typer.progressbar(
-        length=total, label=f"{label} ({total / 1048576:.1f} MiB)"
+        length=total, label=f"{label} ({total / 1048576:.1f} MiB)", width=0
     ) as bar:
         for chunk in iter(lambda: resp.read(1 << 16), b""):
             write(chunk)
