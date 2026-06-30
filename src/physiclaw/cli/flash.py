@@ -57,8 +57,19 @@ FLASH_LAYOUT = [
     ("0x3d0000", "littlefs.bin"),  # filesystem — carries config.yaml
 ]
 
-# Run esptool without making it a permanent dependency.
-_ESPTOOL_RUN = "import esptool, sys; esptool.main(sys.argv[1:])"
+# Run esptool without making it a permanent dependency. Catch its errors in
+# the child so a FatalError (e.g. "No serial data received") exits cleanly with
+# a one-line reason instead of dumping a Python traceback to the terminal —
+# the parent then prints the friendly checklist. SystemExit (esptool's own
+# clean exits) is a BaseException, so it passes straight through.
+_ESPTOOL_RUN = (
+    "import esptool, sys\n"
+    "try:\n"
+    "    esptool.main(sys.argv[1:])\n"
+    "except Exception as e:\n"
+    "    print(f'esptool: {e}', file=sys.stderr)\n"
+    "    sys.exit(1)\n"
+)
 
 
 def _fetch_bundle(into: Path) -> list[tuple[str, Path]]:
@@ -109,8 +120,10 @@ def _uv_esptool(args: list[str]) -> None:
         typer.secho("`uv` not found on PATH — esptool runs inside uv.", fg="red")
         raise typer.Exit(1)
     except subprocess.CalledProcessError as e:
-        typer.secho("esptool failed. Try --erase, a different cable/port, or "
-                    "hold the board's BOOT button while it connects.", fg="red")
+        typer.secho(
+            "\n✗ Couldn't reach the board. The 12 V power adaptor MUST be switched on.",
+            fg="red",
+        )
         raise typer.Exit(e.returncode or 1)
 
 
@@ -143,8 +156,8 @@ def flash(
         dev = port or _detect_port() or ("auto-detect" if dry_run else None)
         if not dev:
             typer.secho(
-                "\n✗ No board found. Plug the MKS DLC32 in over USB (install the\n"
-                "  CH340 driver if needed), or pass --port.",
+                "\n✗ No board found. Connect the MKS DLC32 over USB "
+                "(install the CH340 driver if needed), or pass --port.",
                 fg="red",
             )
             raise typer.Exit(1)
