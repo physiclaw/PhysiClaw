@@ -53,7 +53,7 @@ The `physiclaw` CLI runs on macOS, Windows, and Linux:
 ```bash
 # Install the CLI (uv + Python 3.12 + physiclaw)
 curl -fsSL https://physiclaw.ai/install.sh | bash
-# Windows: irm https://physiclaw.ai/install.ps1 | iex
+# Windows: iwr -useb https://physiclaw.ai/install.ps1 | iex
 
 physiclaw doctor    # check your environment
 physiclaw           # start the server + built-in agent
