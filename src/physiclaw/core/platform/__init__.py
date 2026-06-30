@@ -13,10 +13,12 @@ if sys.platform == "darwin":
     from . import darwin as _impl
 elif sys.platform == "win32":
     from . import windows as _impl
+elif sys.platform.startswith("linux"):
+    from . import linux as _impl
 else:
     raise RuntimeError(
         f"PhysiClaw does not support sys.platform={sys.platform!r}. "
-        "Supported: 'darwin', 'win32'."
+        "Supported: 'darwin', 'win32', 'linux'."
     )
 
 ensure_camera_permission = _impl.ensure_camera_permission
@@ -24,6 +26,10 @@ local_hostname = _impl.local_hostname
 open_camera_aim_app = _impl.open_camera_aim_app
 quit_camera_aim_app = _impl.quit_camera_aim_app
 open_image_files = _impl.open_image_files
+camera_denied_hint = _impl.camera_denied_hint
+camera_aim_hint = _impl.camera_aim_hint
+opencv_import_hint = _impl.opencv_import_hint
+hardware_permission_hints = _impl.hardware_permission_hints
 TRUST_PROXY_ENV = _impl.TRUST_PROXY_ENV
 
 __all__ = [
@@ -32,5 +38,9 @@ __all__ = [
     "open_camera_aim_app",
     "quit_camera_aim_app",
     "open_image_files",
+    "camera_denied_hint",
+    "camera_aim_hint",
+    "opencv_import_hint",
+    "hardware_permission_hints",
     "TRUST_PROXY_ENV",
 ]

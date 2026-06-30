@@ -84,3 +84,31 @@ def open_image_files(paths: list[str]) -> None:
     if not paths:
         return
     subprocess.run(["open", *paths])
+
+
+# ─── doctor diagnostics ─────────────────────────────────────
+
+
+def camera_denied_hint() -> str:
+    """Guidance when a camera opens but yields no frame, or none are detected."""
+    return (
+        "likely denied Camera permission — System Settings → "
+        "Privacy & Security → Camera"
+    )
+
+
+def camera_aim_hint() -> str | None:
+    """No extra instruction needed — ``open_camera_aim_app`` reliably launches
+    Photo Booth on macOS."""
+    return None
+
+
+def opencv_import_hint(_exc: ImportError) -> str | None:
+    """The macOS OpenCV wheel is self-contained — no system-lib remediation."""
+    return None
+
+
+def hardware_permission_hints() -> list[str]:
+    """macOS gates camera access via TCC prompts, not Unix groups — nothing to
+    advise here (``ensure_camera_permission`` triggers the prompt)."""
+    return []

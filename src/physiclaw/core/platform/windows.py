@@ -63,3 +63,30 @@ def open_image_files(paths: list[str]) -> None:
             os.startfile(p)  # type: ignore[attr-defined]
         except OSError:
             pass
+
+
+# ─── doctor diagnostics ─────────────────────────────────────
+
+
+def camera_denied_hint() -> str:
+    """Guidance when a camera opens but yields no frame, or none are detected."""
+    return (
+        "camera access may be off — Settings → Privacy & security → Camera, "
+        "and allow desktop apps to access the camera"
+    )
+
+
+def camera_aim_hint() -> str | None:
+    """No extra instruction needed — ``open_camera_aim_app`` launches the
+    built-in Camera app on Windows."""
+    return None
+
+
+def opencv_import_hint(_exc: ImportError) -> str | None:
+    """The Windows OpenCV wheel is self-contained — no system-lib remediation."""
+    return None
+
+
+def hardware_permission_hints() -> list[str]:
+    """Windows surfaces device-access prompts itself — no group advice."""
+    return []

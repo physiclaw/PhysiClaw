@@ -92,6 +92,11 @@ def _camera_aim_adjust(prompt: str) -> None:
     connected (the server returns ``released=False``)."""
     api("POST", "/api/disconnect-camera")
     platform.open_camera_aim_app()
+    # The aim-app launch is best-effort on some platforms (e.g. Linux); the
+    # backend supplies a fallback instruction when one is warranted.
+    aim_hint = platform.camera_aim_hint()
+    if aim_hint:
+        print(f"  {aim_hint}")
     wait(prompt)
     platform.quit_camera_aim_app()
 

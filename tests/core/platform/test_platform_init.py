@@ -16,6 +16,8 @@ def test_dispatch_binds_correct_backend_for_this_os() -> None:
         from physiclaw.core.platform import darwin as expected
     elif sys.platform == "win32":
         from physiclaw.core.platform import windows as expected
+    elif sys.platform.startswith("linux"):
+        from physiclaw.core.platform import linux as expected
     else:  # pragma: no cover — package import would already have raised
         return
     assert platform.ensure_camera_permission is expected.ensure_camera_permission
@@ -32,9 +34,9 @@ def test_public_api_surface_is_exhaustive() -> None:
         assert hasattr(platform, name), name
 
 
-def test_darwin_and_windows_export_the_same_api() -> None:
-    from physiclaw.core.platform import darwin, windows
+def test_all_backends_export_the_same_api() -> None:
+    from physiclaw.core.platform import darwin, linux, windows
     public = set(platform.__all__)
-    for module in (darwin, windows):
+    for module in (darwin, linux, windows):
         missing = [n for n in public if not hasattr(module, n)]
         assert not missing, f"{module.__name__} missing {missing}"

@@ -23,6 +23,25 @@ from physiclaw.cli._format import warn as _fmt_warn
 from physiclaw.cli._update_check import maybe_print_update_banner
 
 
+def _opencv_import_error() -> str | None:
+    """Return a formatted hint if ``import cv2`` fails, else None.
+
+    The platform backend augments with OS-specific remediation (e.g. the
+    libGL/glib system libs the manylinux wheel needs on minimal Linux).
+    """
+    try:
+        import cv2  # noqa: F401
+    except ImportError as e:
+        from physiclaw.core import platform as os_platform
+
+        line = f"OpenCV (cv2) import failed — {e}"
+        extra = os_platform.opencv_import_hint(e)
+        if extra:
+            line += extra
+        return _fmt_warn(line)
+    return None
+
+
 def _list_cameras(max_index: int = 4) -> list[int]:
     # Each failed index on macOS can block 1–3s in AVFoundation, so stop
     # after a couple of consecutive misses.
@@ -116,9 +135,11 @@ def _probe_camera_frame(index: int) -> str:
                 if ok and frame is not None:
                     h, w = frame.shape[:2]
                     return _fmt_ok(f"camera {index}: frame OK ({w}x{h})")
+            from physiclaw.core import platform as os_platform
+
             return _fmt_warn(
-                f"camera {index}: opens but no frame (likely denied Camera "
-                "permission — System Settings → Privacy & Security)"
+                f"camera {index}: opens but no frame "
+                f"({os_platform.camera_denied_hint()})"
             )
         finally:
             cap.release()
@@ -410,17 +431,24 @@ def doctor(
                 typer.echo(_fmt_warn(
                     "no serial ports detected — connect the arm and re-run."
                 ))
-        cams = _list_cameras()
-        if cams:
-            typer.echo(_fmt_ok(f"cameras: {len(cams)} detected"))
-            if deep:
-                for idx in cams:
-                    typer.echo(_probe_camera_frame(idx))
+        from physiclaw.core import platform as os_platform
+
+        cv2_err = _opencv_import_error()
+        if cv2_err is not None:
+            typer.echo(cv2_err)
         else:
-            typer.echo(_fmt_warn(
-                "cameras: none detected. On first use, macOS shows a "
-                "Camera-permission prompt — accept it for this terminal app."
-            ))
+            cams = _list_cameras()
+            if cams:
+                typer.echo(_fmt_ok(f"cameras: {len(cams)} detected"))
+                if deep:
+                    for idx in cams:
+                        typer.echo(_probe_camera_frame(idx))
+            else:
+                typer.echo(_fmt_warn(
+                    f"cameras: none detected ({os_platform.camera_denied_hint()})"
+                ))
+        for hint in os_platform.hardware_permission_hints():
+            typer.echo(_fmt_warn(hint))
 
     typer.echo()
     typer.echo(_fmt_section("Calibration"))
