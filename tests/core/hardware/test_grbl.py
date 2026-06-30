@@ -17,8 +17,14 @@ from physiclaw.core.hardware.grbl import (
 )
 
 
-def _port_info(device: str, description: str = "") -> SimpleNamespace:
-    return SimpleNamespace(device=device, description=description)
+def _port_info(
+    device: str, description: str = "", vid: int | None = 0x9999
+) -> SimpleNamespace:
+    # vid defaults to a generic USB vid (NOT a known serial-bridge VID), so
+    # priority is driven by the name keyword unless a test sets vid explicitly.
+    # Use vid=None for a built-in/virtual UART (e.g. /dev/ttyS0), or 0x1A86
+    # (CH340) to model a real GRBL board's bridge chip by VID alone.
+    return SimpleNamespace(device=device, description=description, vid=vid)
 
 
 # ---------- constants ----------
@@ -44,6 +50,38 @@ def test_candidate_ports_filters_out_skip_keywords(mocker) -> None:
     assert "/dev/cu.usbserial-CH340" in out
     assert "/dev/cu.Bluetooth-Incoming" not in out
     assert "/dev/cu.AirPods-WirelessiAP" not in out
+
+
+def test_candidate_ports_prioritizes_known_usb_serial_vid(mocker) -> None:
+    # A CH340 (VID 0x1A86) is "likely" even when its name carries no keyword —
+    # names vary by OS/driver, the VID is the same everywhere.
+    fake_ports = [
+        _port_info("/dev/cu.someUSBthing", "", vid=0x9999),  # generic USB device
+        _port_info("/dev/cu.blankname", "", vid=0x1A86),     # CH340, by VID only
+    ]
+    mocker.patch.object(grbl.serial.tools.list_ports, "comports", return_value=fake_ports)
+
+    assert candidate_ports()[0] == "/dev/cu.blankname"
+
+
+def test_candidate_ports_excludes_builtin_uart_without_vid(mocker) -> None:
+    # Linux's built-in /dev/ttyS0 (no USB vid) is never the GRBL board.
+    fake_ports = [
+        _port_info("/dev/ttyS0", "", vid=None),
+        _port_info("/dev/ttyUSB0", "USB Serial"),
+    ]
+    mocker.patch.object(grbl.serial.tools.list_ports, "comports", return_value=fake_ports)
+
+    assert candidate_ports() == ["/dev/ttyUSB0"]
+
+
+def test_candidate_ports_empty_when_only_builtin_uart(mocker) -> None:
+    # Board not connected → only /dev/ttyS0 present → report nothing, so flash
+    # says "No board found" instead of auto-picking the phantom port.
+    fake_ports = [_port_info("/dev/ttyS0", "", vid=None)]
+    mocker.patch.object(grbl.serial.tools.list_ports, "comports", return_value=fake_ports)
+
+    assert candidate_ports() == []
 
 
 def test_candidate_ports_sorts_likely_first(mocker) -> None:
