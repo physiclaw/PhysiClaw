@@ -1,6 +1,6 @@
 # PhysiClaw installer (Windows 11).
 #
-# Usage (recommended — runs in a child shell so the installer can't crash yours):
+# Usage (recommended - runs in a child shell so the installer can't crash yours):
 #   powershell -ExecutionPolicy ByPass -c "iwr -useb https://physiclaw.ai/install.ps1 | iex"
 #
 # Also works, but if the install fails the calling shell may exit:
@@ -12,7 +12,7 @@
 #   $env:NO_COLOR = '1'                # plain output
 #
 # To pass options through ``iwr | iex``, wrap the script in a scriptblock.
-# Use .Content here — iwr returns a response object, not a string:
+# Use .Content here - iwr returns a response object, not a string:
 #   & ([scriptblock]::Create((iwr -useb https://physiclaw.ai/install.ps1).Content)) -Version 0.0.5 -DryRun
 #
 # What it does (hardware setup is still a separate step at the end):
@@ -20,7 +20,7 @@
 #   2. Installs `uv` if missing (via astral.sh installer, run in a child shell
 #      so its `exit 1` on failure never reaches your session).
 #   3. Ensures Python 3.12 is available (no-op if already cached).
-#   4. Installs `physiclaw` (small — no heavy ML deps in the package).
+#   4. Installs `physiclaw` (small - no heavy ML deps in the package).
 #   5. Runs `physiclaw setup local-vision-model` to install the icon-detector
 #      model. By default it fetches a prebuilt ONNX (fast, no extra deps); if
 #      that's unreachable it falls back to downloading the upstream PyTorch
@@ -41,7 +41,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # Windows PowerShell 5.1 can default to TLS 1.0, which astral.sh and PyPI
-# refuse — force TLS 1.2+ before any web request. No-op on PowerShell 7+,
+# refuse - force TLS 1.2+ before any web request. No-op on PowerShell 7+,
 # which already negotiates TLS 1.2/1.3 from the OS.
 try {
     [Net.ServicePointManager]::SecurityProtocol =
@@ -54,12 +54,12 @@ if (-not $DryRun -and $env:PHYSICLAW_DRY_RUN -eq '1') { $DryRun = $true }
 
 # --- Colors: respect NO_COLOR and whether the host is interactive. ---------
 $useColor = -not $env:NO_COLOR -and $Host.UI.RawUI -ne $null
-function Info($msg) { if ($useColor) { Write-Host "→ $msg" -ForegroundColor Green } else { Write-Host "→ $msg" } }
+function Info($msg) { if ($useColor) { Write-Host "-> $msg" -ForegroundColor Green } else { Write-Host "-> $msg" } }
 function Warn($msg) { if ($useColor) { Write-Host "! $msg" -ForegroundColor Yellow } else { Write-Host "! $msg" } }
 function Die($msg)  {
     # `throw` so this script terminates without killing the user's shell
     # when invoked via ``iwr | iex``. `exit 1` would tear down the host
-    # PowerShell process — `iex` runs in the caller's scope.
+    # PowerShell process - `iex` runs in the caller's scope.
     throw $msg
 }
 
@@ -75,13 +75,13 @@ try {
     }
 
     # git is only needed by `physiclaw skills install` (clones a repo with
-    # skills/<name>/SKILL.md layout). Warn-and-continue — most users don't
+    # skills/<name>/SKILL.md layout). Warn-and-continue - most users don't
     # need skill installation immediately.
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Warn "git not found. Install one of:"
         Warn "    winget install --id Git.Git -e             # winget (built into Windows 11)"
         Warn "    https://git-scm.com/download/win           # official installer"
-        Warn "Continuing — ``physiclaw skills install`` stays unavailable until git is on PATH."
+        Warn "Continuing - ``physiclaw skills install`` stays unavailable until git is on PATH."
     }
 
     # -Version flag wins over the env var, which wins over "latest".
@@ -89,23 +89,23 @@ try {
     $specPlain = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
 
     if ($DryRun) {
-        Info "Dry run — would:"
+        Info "Dry run - would:"
         Write-Host "    install uv (if missing) from https://astral.sh/uv/install.ps1"
         Write-Host "    uv python install 3.12 (if not cached)"
         Write-Host "    uv tool install $specPlain --python 3.12 --force --refresh"
         Write-Host "    physiclaw setup local-vision-model"
-        if ($useColor) { Write-Host "✓ Dry run complete. No changes made." -ForegroundColor Green }
-        else           { Write-Host "✓ Dry run complete. No changes made." }
+        if ($useColor) { Write-Host "[OK] Dry run complete. No changes made." -ForegroundColor Green }
+        else           { Write-Host "[OK] Dry run complete. No changes made." }
         return
     }
 
     $freshUv = $false
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-        Info "Installing uv (Python + tool manager)…"
+        Info "Installing uv (Python + tool manager)..."
 
         # Run uv's installer in a CHILD PowerShell process. Its top-level
         # ``catch { exit 1 }`` (line ~653 of astral.sh's install.ps1) would
-        # otherwise tear down our host — and the user's shell, if our script
+        # otherwise tear down our host - and the user's shell, if our script
         # was loaded via ``iwr | iex``. Download to a temp file, run with
         # `-File`, capture the child's exit code.
         $uvScript = Join-Path $env:TEMP "physiclaw-uv-install.ps1"
@@ -142,7 +142,7 @@ Common causes on Windows:
       https://docs.astral.sh/uv/getting-started/installation/
   - Corporate proxy / VPN is intercepting HTTPS to astral.sh
     (TLS errors, MITM cert).
-  - %USERPROFILE%\.local\bin\uv.exe is locked by another process — close
+  - %USERPROFILE%\.local\bin\uv.exe is locked by another process - close
     any running ``uv`` / ``physiclaw`` and retry.
   - Restricted execution policy. Run once, then retry:
       Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -164,7 +164,7 @@ Common causes on Windows:
         if ($LASTEXITCODE -eq 0) { $pythonOk = $true }
     } catch { $pythonOk = $false }
     if (-not $pythonOk) {
-        Info "Installing Python 3.12…"
+        Info "Installing Python 3.12..."
         & uv python install 3.12 --quiet
         if ($LASTEXITCODE -ne 0) {
             Die @"
@@ -181,11 +181,11 @@ stable will resume where it stopped.
         }
     }
 
-    Info "Installing $specPlain…"
+    Info "Installing $specPlain..."
     # `--refresh` invalidates uv's cached PyPI metadata so re-runs always
     # resolve to the actual latest version, not whatever was in the cache
     # from a previous `uv tool install` an hour ago.
-    # Don't redirect uv's output to $null — on Windows, uv may exit
+    # Don't redirect uv's output to $null - on Windows, uv may exit
     # non-zero even when the install succeeds (Defender briefly locking
     # the new physiclaw.exe shim, or a stderr write failing on a non-UTF8
     # console codepage). Showing uv's actual output is the most reliable
@@ -194,7 +194,7 @@ stable will resume where it stopped.
     $installExit = $LASTEXITCODE
 
     # Trust the binary, not the exit code. uv may have reported failure
-    # while the package is in fact installed and working — verify by
+    # while the package is in fact installed and working - verify by
     # actually invoking it.
     $physiclawCmd = Get-Command physiclaw -ErrorAction SilentlyContinue
     $verifiedVersion = $null
@@ -231,7 +231,7 @@ stable will resume where it stopped.
 Likely causes:
   - Pinned version does not exist. Check available versions:
       https://pypi.org/project/physiclaw/#history
-  - Network blip while downloading wheels — retry.
+  - Network blip while downloading wheels - retry.
   - A native build dep (e.g. opencv-python) failed to install. uv's
     output above should show the real error.
 
@@ -241,33 +241,33 @@ To debug, run manually with verbose output:
     }
 
     if ($installExit -ne 0) {
-        # uv claimed failure but the binary works — common on Windows when
+        # uv claimed failure but the binary works - common on Windows when
         # Defender briefly locks the shim or a stderr write hits a bad
         # codepage. Tell the user we noticed, but don't bail.
         Warn "uv reported exit $installExit, but ``physiclaw`` is installed and runs."
-        Warn "Continuing — likely a Defender / codepage false positive."
+        Warn "Continuing - likely a Defender / codepage false positive."
     }
     Info "Installed: $verifiedVersion"
 
-    # Step 5: install the icon-detector model — fetch the prebuilt ONNX, or
+    # Step 5: install the icon-detector model - fetch the prebuilt ONNX, or
     # fall back to download + convert. No-op if already cached.
-    Info "Installing the vision model (one-time)…"
+    Info "Installing the vision model (one-time)..."
     & physiclaw setup local-vision-model
     if ($LASTEXITCODE -ne 0) {
         # Non-fatal: physiclaw itself is installed by now. The model download
-        # needs huggingface.co, which a locked-down network may block — warn
+        # needs huggingface.co, which a locked-down network may block - warn
         # and point to the re-run rather than aborting a complete install.
-        Warn "Vision model not set up — the download or convert step failed (see above)."
+        Warn "Vision model not set up - the download or convert step failed (see above)."
         Warn "physiclaw itself is installed. Re-run this once your machine can reach"
         Warn "huggingface.co:"
         Warn "    physiclaw setup local-vision-model"
     }
 
     Write-Host ""
-    if ($useColor) { Write-Host "✓ Done." -ForegroundColor Green -NoNewline; Write-Host " Next steps:" }
-    else           { Write-Host "✓ Done. Next steps:" }
+    if ($useColor) { Write-Host "[OK] Done." -ForegroundColor Green -NoNewline; Write-Host " Next steps:" }
+    else           { Write-Host "[OK] Done. Next steps:" }
     Write-Host "    physiclaw doctor   check your environment"
-    Write-Host "    physiclaw          start the server — opens the hardware-setup wizard"
+    Write-Host "    physiclaw          start the server - opens the hardware-setup wizard"
     if ($freshUv) {
         Write-Host ""
         Warn "Open a new PowerShell window so uv is on PATH in your interactive shell."
@@ -275,12 +275,12 @@ To debug, run manually with verbose output:
 }
 catch {
     # Single, clean failure block. Don't dump PowerShell's script-position
-    # stack trace — users don't need that to fix the problem; the message
+    # stack trace - users don't need that to fix the problem; the message
     # already says what went wrong.
     $msg = $_.Exception.Message
     Write-Host ""
-    if ($useColor) { Write-Host "✗ Installation failed." -ForegroundColor Red }
-    else           { Write-Host "✗ Installation failed." }
+    if ($useColor) { Write-Host "[X] Installation failed." -ForegroundColor Red }
+    else           { Write-Host "[X] Installation failed." }
     Write-Host ""
     Write-Host $msg
     Write-Host ""
