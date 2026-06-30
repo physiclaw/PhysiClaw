@@ -12,6 +12,7 @@ Model: ``microsoft/OmniParser-v2.0`` ``icon_detect`` (AGPL-3.0; a finetuned
 YOLOv8). See THIRD_PARTY_NOTICES.md.
 """
 
+import base64
 import hashlib
 import shutil
 import subprocess
@@ -31,21 +32,38 @@ _PT_URL = (
     "resolve/main/icon_detect/model.pt"
 )
 
-# Pre-converted ONNX, served from the PhysiClaw release mirror — the fast,
-# network-friendly default. Tried in order: the GitHub release is the source
-# of truth, physiclaw.ai/downloads is the CDN alias.
-_PREBUILT_URLS = (
-    "https://physiclaw.ai/downloads/local_vision_model.zip",
+# physiclaw.ai serves the prebuilt zip as base64 parts: Cloudflare Pages caps
+# each static asset at 25 MiB, and base64(zip) split four ways stays under it.
+# The CLI concatenates the parts and base64-decodes them back to the zip. The
+# GitHub release carries the whole zip (no size cap) as a fallback.
+_PREBUILT_PARTS = 4
+_PREBUILT_PARTS_URL = (
+    "https://physiclaw.ai/downloads/local_vision_model.zip.b64.{i:02d}"
+)
+_PREBUILT_ZIP_URL = (
     "https://github.com/physiclaw/PhysiClaw/releases/download/"
-    "local-vision-model/local_vision_model.zip",
+    "local-vision-model/local_vision_model.zip"
 )
 
-# sha256 of the extracted model.onnx — pinned so a corrupted or tampered
-# download is rejected. We hash the model, not the archive, so it stays valid
-# across zip recompression. Bump when the model is re-released.
+# sha256 of the extracted model.onnx — pinned so a corrupted, truncated, or
+# tampered download is rejected (a missing part can't yield a half model). We
+# hash the model, not the archive, so it stays valid across re-zipping /
+# re-splitting. Bump when the model is re-released.
 _PREBUILT_ONNX_SHA256 = (
     "a0f977a4674d11074341895331ac523ce1372ee0a4ae97001219e50876cd1b7c"
 )
+
+# Cloudflare's WAF 403s the default Python-urllib User-Agent, so every request
+# to the physiclaw.ai mirror must set one (matches flash.py).
+_USER_AGENT = "physiclaw"
+
+
+def _http_get(url: str, timeout: int = 120):
+    """urlopen with a User-Agent set — the CDN's WAF blocks the default one."""
+    return urllib.request.urlopen(
+        urllib.request.Request(url, headers={"User-Agent": _USER_AGENT}),
+        timeout=timeout,
+    )
 
 # Bumping these is a deliberate decision — the ONNX export contract has
 # shifted between ultralytics minor versions before.
@@ -85,40 +103,69 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _download_prebuilt_zip(dest: Path) -> bool:
+    """Write the prebuilt zip to ``dest``.
+
+    Tries the base64 parts on physiclaw.ai first (concatenate + decode), then
+    the whole-zip GitHub release. Returns False on any network failure so the
+    caller can fall back to converting from source.
+    """
+    try:
+        b64 = bytearray()
+        for i in range(_PREBUILT_PARTS):
+            url = _PREBUILT_PARTS_URL.format(i=i)
+            typer.echo(f"Fetching prebuilt model: part {i + 1}/{_PREBUILT_PARTS} …")
+            with _http_get(url) as r:
+                b64 += r.read()
+        dest.write_bytes(base64.b64decode(b64))
+        return True
+    except OSError as e:
+        typer.echo(typer.style(
+            f"  CDN parts unavailable ({e}) — trying the release.",
+            fg=typer.colors.YELLOW,
+        ))
+    try:
+        typer.echo(f"Fetching prebuilt model: {_PREBUILT_ZIP_URL} …")
+        with _http_get(_PREBUILT_ZIP_URL) as r, open(dest, "wb") as f:
+            shutil.copyfileobj(r, f)
+        return True
+    except OSError as e:
+        typer.echo(typer.style(f"  release unavailable ({e}).", fg=typer.colors.YELLOW))
+        return False
+
+
 def _try_prebuilt(onnx: Path) -> bool:
-    """Fetch the pre-converted ONNX from the release mirror, verify its
-    sha256, and install it at ``onnx``.
+    """Install the pre-converted ONNX from the release mirror, verifying its
+    sha256.
 
     Returns True on success, False (quietly) on any network / archive /
     integrity failure so the caller can fall back to converting from source.
     Needs no uv and no conversion deps.
     """
-    for url in _PREBUILT_URLS:
-        with tempfile.TemporaryDirectory() as td:
-            tmp = Path(td)
-            try:
-                typer.echo(f"Fetching prebuilt model: {url} …")
-                urllib.request.urlretrieve(url, tmp / "model.zip")
-                with zipfile.ZipFile(tmp / "model.zip") as z:
-                    z.extract(_ONNX_NAME, tmp)
-            except (OSError, zipfile.BadZipFile, KeyError) as e:
-                typer.echo(typer.style(
-                    f"  unavailable ({e}) — trying next source.",
-                    fg=typer.colors.YELLOW,
-                ))
-                continue
-            extracted = tmp / _ONNX_NAME
-            digest = _sha256(extracted)
-            if digest != _PREBUILT_ONNX_SHA256:
-                typer.echo(typer.style(
-                    f"  checksum mismatch ({digest[:12]}…) — skipping.",
-                    fg=typer.colors.YELLOW,
-                ))
-                continue
-            onnx.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(extracted), onnx)
-            return True
-    return False
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        if not _download_prebuilt_zip(tmp / "model.zip"):
+            return False
+        try:
+            with zipfile.ZipFile(tmp / "model.zip") as z:
+                z.extract(_ONNX_NAME, tmp)
+        except (zipfile.BadZipFile, KeyError) as e:
+            typer.echo(typer.style(
+                f"  bad archive ({e}) — skipping prebuilt.",
+                fg=typer.colors.YELLOW,
+            ))
+            return False
+        extracted = tmp / _ONNX_NAME
+        digest = _sha256(extracted)
+        if digest != _PREBUILT_ONNX_SHA256:
+            typer.echo(typer.style(
+                f"  checksum mismatch ({digest[:12]}…) — skipping prebuilt.",
+                fg=typer.colors.YELLOW,
+            ))
+            return False
+        onnx.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(extracted), onnx)
+        return True
 
 
 def _report_ready(onnx: Path, label: str) -> None:
@@ -130,7 +177,7 @@ def _report_ready(onnx: Path, label: str) -> None:
 def _abort_download(exc: OSError) -> None:
     """Friendly message for a failed weights download — no raw traceback.
 
-    ``urlretrieve`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
+    ``_http_get`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
     ``OSError`` subclasses) on a 403/blocked-host/offline fetch; surface the
     reason plus the likely fix instead of a stack trace.
     """
@@ -210,9 +257,10 @@ def vision(
     if not pt_path.exists():
         typer.echo(f"Downloading {_PT_URL} …")
         try:
-            urllib.request.urlretrieve(_PT_URL, pt_path)
+            with _http_get(_PT_URL) as r, open(pt_path, "wb") as f:
+                shutil.copyfileobj(r, f)
         except OSError as e:
-            # urlretrieve can leave a partial file behind; drop it so a retry
+            # A failed fetch can leave a partial file behind; drop it so a retry
             # re-fetches from scratch instead of skipping the download.
             pt_path.unlink(missing_ok=True)
             _abort_download(e)

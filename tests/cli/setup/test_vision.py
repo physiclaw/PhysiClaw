@@ -1,7 +1,9 @@
 """Tests for `physiclaw.cli.setup.vision` — local vision model download."""
 from __future__ import annotations
 
+import base64
 import importlib
+import io
 import subprocess
 from pathlib import Path
 
@@ -10,21 +12,34 @@ from typer.testing import CliRunner
 
 vision_mod = importlib.import_module("physiclaw.cli.setup.vision")
 
+
+class _BytesCtx:
+    """Stand-in for an ``urlopen`` response: a context manager backed by a
+    BytesIO, so it supports both ``.read()`` (parts) and ``shutil.copyfileobj``
+    (whole-zip fallback)."""
+
+    def __init__(self, data: bytes) -> None:
+        self._buf = io.BytesIO(data)
+
+    def __enter__(self) -> _BytesCtx:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def read(self, *args: object) -> bytes:
+        return self._buf.read(*args)
+
 runner = CliRunner()
 app = typer.Typer()
 app.command()(vision_mod.vision)
 
 
 def _stub_download(mocker, payload: bytes = b"PT") -> None:
-    """Replace urllib.request.urlretrieve with one that just touches the file."""
-
-    def _fake_urlretrieve(_url, dest):
-        Path(dest).parent.mkdir(parents=True, exist_ok=True)
-        Path(dest).write_bytes(payload)
-
+    """Replace the HF fetch (_http_get -> urlopen) with one returning payload."""
     mocker.patch.object(
-        vision_mod.urllib.request, "urlretrieve",
-        side_effect=_fake_urlretrieve,
+        vision_mod.urllib.request, "urlopen",
+        side_effect=lambda *_a, **_k: _BytesCtx(payload),
     )
 
 
@@ -38,22 +53,34 @@ def _stub_uv_run(mocker, *, onnx_bytes: bytes = b"ONNX") -> object:
     return mocker.patch.object(vision_mod.subprocess, "run", side_effect=_fake_run)
 
 
-def _stub_prebuilt(mocker, onnx_bytes: bytes) -> None:
-    """Make the prebuilt fetch return a zip containing model.onnx=onnx_bytes,
-    and pin the expected sha256 to match it."""
-    import hashlib
+def _zip_bytes(onnx_bytes: bytes) -> bytes:
+    """A zip archive (as bytes) holding model.onnx=onnx_bytes."""
+    import io
     import zipfile
 
-    def _fake_urlretrieve(_url, dest):
-        with zipfile.ZipFile(dest, "w") as z:
-            z.writestr(vision_mod._ONNX_NAME, onnx_bytes)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(vision_mod._ONNX_NAME, onnx_bytes)
+    return buf.getvalue()
+
+
+def _stub_prebuilt(mocker, onnx_bytes: bytes, *, pin_hash: bool = True) -> None:
+    """Make `_download_prebuilt_zip` write a zip holding model.onnx=onnx_bytes;
+    optionally pin the expected sha256 so the install succeeds."""
+    import hashlib
+
+    def _fake_download(dest):
+        Path(dest).write_bytes(_zip_bytes(onnx_bytes))
+        return True
 
     mocker.patch.object(
-        vision_mod.urllib.request, "urlretrieve", side_effect=_fake_urlretrieve
+        vision_mod, "_download_prebuilt_zip", side_effect=_fake_download
     )
-    mocker.patch.object(
-        vision_mod, "_PREBUILT_ONNX_SHA256", hashlib.sha256(onnx_bytes).hexdigest()
-    )
+    if pin_hash:
+        mocker.patch.object(
+            vision_mod, "_PREBUILT_ONNX_SHA256",
+            hashlib.sha256(onnx_bytes).hexdigest(),
+        )
 
 
 def test_vision_prebuilt_installs_without_uv(tmp_path: Path, mocker) -> None:
@@ -79,14 +106,7 @@ def test_vision_prebuilt_checksum_mismatch_falls_back_to_build(
     mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
 
     # Prebuilt zip downloads fine but its onnx hash won't match the pinned one.
-    def _fake_urlretrieve(_url, dest):
-        import zipfile
-        with zipfile.ZipFile(dest, "w") as z:
-            z.writestr(vision_mod._ONNX_NAME, b"TAMPERED")
-
-    mocker.patch.object(
-        vision_mod.urllib.request, "urlretrieve", side_effect=_fake_urlretrieve
-    )
+    _stub_prebuilt(mocker, onnx_bytes=b"TAMPERED", pin_hash=False)
     _stub_uv_run(mocker)
 
     result = runner.invoke(app, [])
@@ -95,6 +115,62 @@ def test_vision_prebuilt_checksum_mismatch_falls_back_to_build(
     assert "checksum mismatch" in result.output
     assert "converting from source" in result.output
     assert onnx.read_bytes() == b"ONNX"  # came from the convert fallback
+
+
+def test_download_prebuilt_zip_reassembles_base64_parts(
+    tmp_path: Path, mocker,
+) -> None:
+    payload = _zip_bytes(b"PARTED-ONNX")
+    b64 = base64.b64encode(payload)
+    n = len(b64)
+    cuts = [b64[0:n // 4], b64[n // 4:n // 2], b64[n // 2:3 * n // 4], b64[3 * n // 4:]]
+    seen: list[str] = []
+
+    def _fake_urlopen(req, **_kw):
+        seen.append(req.full_url)
+        return _BytesCtx(cuts[len(seen) - 1])
+
+    mocker.patch.object(
+        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+    )
+
+    dest = tmp_path / "out.zip"
+    assert vision_mod._download_prebuilt_zip(dest) is True
+    assert dest.read_bytes() == payload
+    assert len(seen) == vision_mod._PREBUILT_PARTS
+
+
+def test_download_prebuilt_zip_falls_back_to_release(
+    tmp_path: Path, mocker,
+) -> None:
+    # CDN parts fail; the whole-zip release (also fetched via _http_get) wins.
+    def _fake_urlopen(req, **_kw):
+        if "b64" in req.full_url:
+            raise OSError("CDN down")
+        return _BytesCtx(b"WHOLE-ZIP")
+
+    mocker.patch.object(
+        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+    )
+
+    dest = tmp_path / "out.zip"
+    assert vision_mod._download_prebuilt_zip(dest) is True
+    assert dest.read_bytes() == b"WHOLE-ZIP"
+
+
+def test_download_prebuilt_zip_sets_user_agent(tmp_path: Path, mocker) -> None:
+    # Cloudflare 403s the default Python-urllib UA — every request must set one.
+    seen_ua: list[str] = []
+
+    def _fake_urlopen(req, **_kw):
+        seen_ua.append(req.get_header("User-agent"))
+        return _BytesCtx(b"")  # body irrelevant — we only assert the header
+
+    mocker.patch.object(
+        vision_mod.urllib.request, "urlopen", side_effect=_fake_urlopen
+    )
+    vision_mod._download_prebuilt_zip(tmp_path / "out.zip")
+    assert seen_ua and all(ua == vision_mod._USER_AGENT for ua in seen_ua)
 
 
 def test_vision_already_present_no_op(tmp_path: Path, mocker) -> None:
@@ -179,8 +255,8 @@ def test_vision_force_purges_stale_scratch(tmp_path: Path, mocker) -> None:
     (convert_dir / vision_mod._PT_NAME).write_bytes(b"stale PT")
 
     download_spy = mocker.patch.object(
-        vision_mod.urllib.request, "urlretrieve",
-        side_effect=lambda _url, dest: Path(dest).write_bytes(b"FRESH PT"),
+        vision_mod.urllib.request, "urlopen",
+        side_effect=lambda *_a, **_k: _BytesCtx(b"FRESH PT"),
     )
     _stub_uv_run(mocker)
 
@@ -201,9 +277,7 @@ def test_vision_skips_download_when_pt_already_exists(
     convert_dir.mkdir(parents=True)
     (convert_dir / vision_mod._PT_NAME).write_bytes(b"existing PT")
 
-    download_spy = mocker.patch.object(
-        vision_mod.urllib.request, "urlretrieve",
-    )
+    download_spy = mocker.patch.object(vision_mod.urllib.request, "urlopen")
     _stub_uv_run(mocker)
 
     result = runner.invoke(app, ["--build"])
