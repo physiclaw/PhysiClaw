@@ -1,0 +1,47 @@
+# Lint + test on every push / PR. Runs the fast suite (the default
+# `pytest` addopts exclude @slow and @integration) on Linux and macOS, so
+# the platform backends — including the Linux one — are exercised on a real
+# host of each OS. Windows isn't run here yet (no hosted rig); install.ps1 +
+# the windows backend are validated manually.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # OpenCV's manylinux wheel links libGL + glib; install them so `import
+      # cv2` works headless (mirrors install.sh's Linux guidance).
+      - name: Install OpenCV system libs (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Test
+        run: uv run pytest
