@@ -460,7 +460,7 @@ def doctor(
     else:
         typer.echo(_fmt_warn(
             f"no calibration yet: {bundle}\n"
-            "    Run: physiclaw setup hardware (needs the server running)"
+            "    Run: physiclaw  (starts the server and opens the hardware-setup wizard)"
         ))
 
     typer.echo()
@@ -519,10 +519,15 @@ def doctor(
     steps = []
     if not model.exists():
         steps.append("physiclaw setup local-vision-model")
-    if status is None:
-        steps.append("physiclaw server   (leave running in one shell)")
     if not (status and status.get("ready")):
-        steps.append("physiclaw setup hardware   (in another shell — talks to the server)")
+        if status is None:
+            steps.append(
+                "physiclaw   (starts the server and opens the hardware-setup wizard)"
+            )
+        else:
+            steps.append(
+                "finish setup in the browser wizard (or run: physiclaw setup hardware)"
+            )
     for i, step in enumerate(steps, 1):
         typer.echo(f"  {i}. {step}")
     if not steps:

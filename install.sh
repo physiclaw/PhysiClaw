@@ -228,8 +228,8 @@ if ! physiclaw setup local-vision-model; then
 fi
 
 printf '\n%s%s✓ Done.%s Next steps:\n' "$B" "$G" "$N"
-printf '    %sphysiclaw doctor%s            check your environment\n' "$B" "$N"
-printf '    %sphysiclaw setup hardware%s    calibrate the arm + camera (plug them in first)\n' "$B" "$N"
+printf '    %sphysiclaw doctor%s   check your environment\n' "$B" "$N"
+printf '    %sphysiclaw%s          start the server — opens the hardware-setup wizard\n' "$B" "$N"
 if [[ "$FRESH_UV" == "1" ]]; then
   printf '\n%s%s!%s Open a new terminal so uv is on PATH in your interactive shell.\n' \
     "$B" "$Y" "$N"

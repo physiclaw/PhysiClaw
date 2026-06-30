@@ -266,8 +266,8 @@ To debug, run manually with verbose output:
     Write-Host ""
     if ($useColor) { Write-Host "✓ Done." -ForegroundColor Green -NoNewline; Write-Host " Next steps:" }
     else           { Write-Host "✓ Done. Next steps:" }
-    Write-Host "    physiclaw doctor            check your environment"
-    Write-Host "    physiclaw setup hardware    calibrate the arm + camera (plug them in first)"
+    Write-Host "    physiclaw doctor   check your environment"
+    Write-Host "    physiclaw          start the server — opens the hardware-setup wizard"
     if ($freshUv) {
         Write-Host ""
         Warn "Open a new PowerShell window so uv is on PATH in your interactive shell."

@@ -476,7 +476,7 @@ def test_doctor_server_not_running_probes_locally(mocker) -> None:
     assert "server: not running" in result.output
     assert "GRBL arm" in result.output
     assert "physiclaw setup local-vision-model" in result.output
-    assert "physiclaw server" in result.output
+    assert "starts the server and opens the hardware-setup wizard" in result.output
 
 
 def test_doctor_no_cameras_detected_offline(mocker) -> None:

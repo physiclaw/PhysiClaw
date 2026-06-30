@@ -56,7 +56,7 @@ curl -fsSL https://physiclaw.ai/install.sh | bash
 # Windows: iwr -useb https://physiclaw.ai/install.ps1 | iex
 
 physiclaw doctor    # check your environment
-physiclaw           # start the server + built-in agent
+physiclaw           # start the server — opens the hardware-setup wizard, then runs the agent
 ```
 
 ## License
