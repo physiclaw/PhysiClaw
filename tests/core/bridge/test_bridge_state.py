@@ -324,6 +324,48 @@ def test_clear_screenshot_resets_data_and_event(bs: BridgeState) -> None:
     assert bs._screenshot_ready.is_set() is False
 
 
+# ─── recent-screenshots ring ──────────────────────────────────
+
+
+def test_recent_screenshots_empty_at_init(bs: BridgeState) -> None:
+    assert bs.recent_screenshots() == []
+
+
+def test_recent_screenshots_returns_uploads_oldest_to_newest(
+    bs: BridgeState,
+) -> None:
+    for p in (b"a", b"b", b"c"):
+        bs.receive_screenshot(p)
+
+    assert bs.recent_screenshots() == [b"a", b"b", b"c"]
+
+
+def test_recent_screenshots_caps_at_max(bs: BridgeState) -> None:
+    for i in range(state_mod.RECENT_SCREENSHOTS_MAX + 5):
+        bs.receive_screenshot(bytes([i]))
+
+    shots = bs.recent_screenshots()
+    assert len(shots) == state_mod.RECENT_SCREENSHOTS_MAX
+    # Oldest 5 evicted; newest retained.
+    assert shots[-1] == bytes([state_mod.RECENT_SCREENSHOTS_MAX + 4])
+
+
+def test_recent_screenshots_honours_n(bs: BridgeState) -> None:
+    for p in (b"a", b"b", b"c", b"d"):
+        bs.receive_screenshot(p)
+
+    assert bs.recent_screenshots(2) == [b"c", b"d"]
+
+
+def test_clear_screenshot_does_not_touch_ring(bs: BridgeState) -> None:
+    # The MCP consume path must not disturb the ring the layout tool reads.
+    bs.receive_screenshot(b"first")
+    bs.clear_screenshot()
+    bs.wait_screenshot(timeout=0.01)
+
+    assert bs.recent_screenshots() == [b"first"]
+
+
 def test_wait_screenshot_returns_data_when_already_received(
     bs: BridgeState,
 ) -> None:

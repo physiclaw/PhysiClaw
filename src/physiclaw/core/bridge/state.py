@@ -7,10 +7,14 @@ MCP tool threads.
 import logging
 import threading
 import time
+from collections import deque
 
 from physiclaw.core.logger import save_screenshot
 
 log = logging.getLogger(__name__)
+
+# Bounded rolling window of recent raw uploads the layout tool can fetch.
+RECENT_SCREENSHOTS_MAX = 10
 
 
 class BridgeState:
@@ -66,6 +70,9 @@ class BridgeState:
             None  # PNG/JPEG bytes from iOS Shortcut upload
         )
         self._screenshot_ready = threading.Event()  # set when screenshot upload arrives
+        # Recent raw uploads, oldest→newest. Independent of the consume path
+        # above (wait/clear never touch it), so a reader can't disturb it.
+        self._recent_screens: deque[bytes] = deque(maxlen=RECENT_SCREENSHOTS_MAX)
 
     @property
     def connected(self) -> bool:
@@ -158,13 +165,26 @@ class BridgeState:
         save_screenshot(data)
         with self.lock:
             self._screenshot_data = data
+            self._recent_screens.append(data)
         self._screenshot_ready.set()
 
     def clear_screenshot(self):
-        """Clear any pending screenshot so wait_screenshot blocks for a fresh one."""
+        """Clear any pending screenshot so wait_screenshot blocks for a fresh one.
+
+        Only touches the consume path — the `_recent_screens` window is
+        deliberately left intact so a fetch after the MCP tool consumed a
+        shot still sees it.
+        """
         self._screenshot_ready.clear()
         with self.lock:
             self._screenshot_data = None
+
+    def recent_screenshots(self, n: int = RECENT_SCREENSHOTS_MAX) -> list[bytes]:
+        """Snapshot of the last `n` raw uploads, oldest→newest. Read-only
+        w.r.t. the MCP screenshot pipeline."""
+        with self.lock:
+            shots = list(self._recent_screens)
+        return shots[-n:] if n > 0 else shots
 
     def wait_screenshot(self, timeout: float = 10.0) -> bytes | None:
         """Block until a screenshot arrives, or timeout. Returns PNG/JPEG bytes.

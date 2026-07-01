@@ -92,6 +92,21 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
     return JSONResponse({"ok": True, "size": len(data)})
 
 
+async def handle_recent_screenshots(request, bridge: BridgeState):
+    """GET /api/bridge/recent-screenshots?n=10 — last N raw uploads as base64,
+    oldest→newest."""
+    import base64
+
+    try:
+        n = int(request.query_params.get("n", "10"))
+    except ValueError:
+        n = 10
+    shots = bridge.recent_screenshots(n)
+    return JSONResponse(
+        {"screenshots": [base64.b64encode(s).decode("ascii") for s in shots]}
+    )
+
+
 async def handle_clipboard_fetch(request, bridge: BridgeState):
     """GET /api/bridge/clipboard — iOS Shortcut fetches the current bridge text.
 

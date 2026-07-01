@@ -27,6 +27,7 @@ def test_bridge_register_wires_all_routes(fake_mcp) -> None:
         ("/api/bridge/tapped", "POST"),
         ("/api/bridge/screen-dimension", "POST"),
         ("/api/bridge/screenshot", "POST"),
+        ("/api/bridge/recent-screenshots", "GET"),
         ("/api/bridge/clipboard", "GET"),
         ("/api/bridge/switch", "POST"),
         ("/api/bridge/touch", "POST"),
@@ -58,6 +59,9 @@ async def test_bridge_routes_forward_to_handlers(
         "handle_screenshot_upload": mocker.patch.object(
             bridge_reg, "handle_screenshot_upload",
         ),
+        "handle_recent_screenshots": mocker.patch.object(
+            bridge_reg, "handle_recent_screenshots",
+        ),
         "handle_calib_touch": mocker.patch.object(bridge_reg, "handle_calib_touch"),
     }
 
@@ -88,6 +92,9 @@ async def test_bridge_routes_forward_to_handlers(
 
     await fake_mcp.get("/api/bridge/screenshot", "POST")(req)
     spies["handle_screenshot_upload"].assert_called_once_with(req, br)
+
+    await fake_mcp.get("/api/bridge/recent-screenshots")(req)
+    spies["handle_recent_screenshots"].assert_called_once_with(req, br)
 
     await fake_mcp.get("/api/bridge/clipboard")(req)
     spies["handle_clipboard_fetch"].assert_called_once_with(req, br)

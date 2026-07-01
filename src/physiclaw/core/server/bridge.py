@@ -16,6 +16,7 @@ from physiclaw.core.bridge.handler import (
     handle_mode_switch,
     handle_screen_dimension,
     handle_screenshot_upload,
+    handle_recent_screenshots,
     handle_phone_state,
     handle_calib_touch,
 )
@@ -51,6 +52,10 @@ def register(
     @mcp.custom_route("/api/bridge/screenshot", methods=["POST"])
     async def _bridge_screenshot(request):
         return await handle_screenshot_upload(request, bridge)
+
+    @mcp.custom_route("/api/bridge/recent-screenshots", methods=["GET"])
+    async def _bridge_recent_screenshots(request):
+        return await handle_recent_screenshots(request, bridge)
 
     @mcp.custom_route("/api/bridge/clipboard", methods=["GET"])
     async def _bridge_clipboard(request):

@@ -161,6 +161,61 @@ async def test_handle_screenshot_upload_400_on_empty_body() -> None:
     assert resp.status_code == 400
 
 
+# ---------- handle_recent_screenshots ----------
+
+
+def _fake_get(query: dict[str, str] | None = None):
+    req = SimpleNamespace()
+    req.query_params = query or {}
+    return req
+
+
+@pytest.mark.asyncio
+async def test_handle_recent_screenshots_returns_base64_oldest_to_newest() -> None:
+    import base64
+    import json
+
+    from physiclaw.core.bridge.handler import handle_recent_screenshots
+
+    bridge = BridgeState()
+    for p in (b"a", b"b"):
+        bridge.receive_screenshot(p)
+
+    resp = await handle_recent_screenshots(_fake_get(), bridge)
+
+    shots = json.loads(resp.body)["screenshots"]
+    assert [base64.b64decode(s) for s in shots] == [b"a", b"b"]
+
+
+@pytest.mark.asyncio
+async def test_handle_recent_screenshots_honours_n_param() -> None:
+    import json
+
+    from physiclaw.core.bridge.handler import handle_recent_screenshots
+
+    bridge = BridgeState()
+    for p in (b"a", b"b", b"c"):
+        bridge.receive_screenshot(p)
+
+    resp = await handle_recent_screenshots(_fake_get({"n": "1"}), bridge)
+
+    assert len(json.loads(resp.body)["screenshots"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_recent_screenshots_defaults_on_bad_n() -> None:
+    import json
+
+    from physiclaw.core.bridge.handler import handle_recent_screenshots
+
+    bridge = BridgeState()
+    bridge.receive_screenshot(b"a")
+
+    resp = await handle_recent_screenshots(_fake_get({"n": "notint"}), bridge)
+
+    assert len(json.loads(resp.body)["screenshots"]) == 1
+
+
 # ---------- handle_clipboard_fetch ----------
 
 
