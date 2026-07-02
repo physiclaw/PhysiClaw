@@ -14,7 +14,7 @@ from physiclaw.core.logger import save_screenshot
 log = logging.getLogger(__name__)
 
 # Bounded rolling window of recent raw uploads the layout tool can fetch.
-RECENT_SCREENSHOTS_MAX = 10
+RECENT_SCREENSHOTS_MAX = 3
 
 
 class BridgeState:
