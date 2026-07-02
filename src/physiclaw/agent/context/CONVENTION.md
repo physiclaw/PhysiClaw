@@ -1,76 +1,51 @@
 # Convention
 
-Use native tool_calls.
+Act through native tool_calls — never write calls as prose text.
 
 ## Turn rules
 
-- **Every turn = `[note, one-other]`** — exactly two tool calls. `note.summary` is one line, ≤20 words. **It is the ONLY part of the turn that survives compaction** (see § Compaction) — write it so a reader picking up cold understands the move.
-- **Split admin across turns.** `append_log` → `end_session`. `save_memory` → `append_log` → `end_session`. One step per turn.
-- **Zero or text-only tool_calls stalls the loop.** Always emit `[note, one-other]` or `[note, end_session]`.
+- **Every turn = `[note, one-other]`** — exactly two tool calls. Zero or text-only calls stall the loop.
+- `note.summary`: one line, ≤20 words — the only part of an aged-out turn that survives compaction (§ Compaction). Write it for a cold reader.
+- **Admin splits across turns**: `append_log` → `end_session`; `save_memory` → `append_log` → `end_session`.
 
 ## The plan
 
-The engine pins your plan at the tail of every request as `<plan>...</plan>`. Mutate via `update_progress`. Each step is `{content, status}` with status `pending` / `in_progress` / `completed`. **Exactly one step may be `in_progress`** (engine rejects violators).
+Pinned at the request tail as `<plan>`; mutate via `update_progress`. Steps are `{content, status}` (`pending` / `in_progress` / `completed`); **exactly one `in_progress`** (engine-enforced). Skip the plan when the wake has ≤2 concrete steps.
 
-**Skip the plan when the wake has ≤2 concrete steps.**
-
-- **Draft once, up front** — right after reading the IM, full step list through `end_session`.
-- **Tick after every step** — the moment the screen confirms intent (cart toast, badge increment, page change), flip `completed` → next `in_progress` in the same call. Skip → risk re-doing the step (JD double-add pattern).
-- **Re-plan on shift** — unexpected screen, user adjusts the ask, fallback path needed → re-emit `steps`. Pass only changed fields.
-
-**One objective per step, concrete imperative.** Two shapes:
-
-- **Multi-call mid-task** — `Search 'chips', tap first match, add to cart` is 5+ tool calls for one objective. Stay `in_progress` the whole span.
-- **Single-call wrap-up** — `append_log` is one tool_call, one step.
-
-Wrong: bundling. `Reply, log, end_session` is three steps. `Search chips, search cola` is two.
+- **Draft once, up front** — right after reading the IM, full list through `end_session`.
+- **Tick on intent-confirmed** — cart toast, badge increment, page change → flip `completed` → next `in_progress` in the same call. Skipping risks re-doing steps.
+- **Re-plan on shift** — unexpected screen, changed ask, fallback path → re-emit `steps`; pass only changed fields.
+- **One objective per step**, concrete imperative. `Search 'chips', tap first match, add to cart` = one step spanning 5+ calls; `append_log` = one single-call step. Don't bundle objectives: `Reply, log, end_session` is three steps; `Search chips, search cola` is two.
 
 ## Compaction
 
-Two layers, both automatic.
+Automatic, two layers:
 
-**Per-turn: latest screen wins.** Only the most recent `peek` / `screenshot` keeps its image and full listing. Earlier view results stub down to `(superseded <tool>)` plus the **text-kind rows**. Icon rows drop (numbered boxes are opaque without the image); text rows stay re-targetable via their label. Decision history (assistant messages, `note` results) is preserved.
+- **Per-turn: latest screen wins.** Only the newest `peek`/`screenshot` keeps its image + full listing; earlier ones stub to `(superseded <tool>)` plus **text rows**. Text rows (labelled buttons, tabs, category names — `Add to Cart`) stay re-targetable; icon rows drop — re-`peek`.
+- **Turn-age (~30 turns).** Older turns fold into pinned slots: `[earlier turns]` (one bullet per turn = its `note.summary`; the rest is gone), `[memory loads]` (all `read_memory`/`read_logs` results, in full), `[loaded skills]` (all skill bodies, in full). The last ~10 turns stay intact; plan + scratchpad sit at the tail.
 
-→ Labelled targets (`加入购物车`, nav tabs, category names) survive — reference them many turns later. Icon-only targets — re-`peek`.
-
-**Turn-age: collapse old turns into pinned slots.** After ~30 turns, older turns fold into three pinned slots near the top of the transcript. The most recent ~10 turns stay intact; the plan and the scratchpad (§ Scratchpad) sit at the tail.
-
-- `[earlier turns]` — one bullet per old turn, taken from that turn's `note.summary`. The full turn (tool_calls, results, taps) is gone — only the bullet remains.
-- `[memory loads]` — every prior `read_memory` / `read_logs` result, in full. Pinned because reloading defeats the load.
-- `[loaded skills]` — every prior `Skill(...)` body and reference, in full. Pinned for the same reason.
-
-→ Don't try to "remember" a 25-turn-old screen — only your `note.summary` bullet survives. DO trust skill bodies and `read_logs` results loaded earlier are still in context — don't reload. For payloads bigger than a one-line summary, use the scratchpad (§ Scratchpad).
+→ Never rely on an old screen — only its `note.summary` bullet survives. DO trust already-loaded skills and logs — never reload. Anything bigger than a one-liner → scratchpad.
 
 ## Scratchpad
 
-Your free-form working memory — rendered as a `<scratchpad>...</scratchpad>` block at the request tail. **Survives compaction.** Accumulate everything that contributes to the answer: order details, item lists, prices, addresses, a draft reply. By the time you compose the reply, the scratchpad is the complete picture.
-
-Write via the optional `scratchpad` field on `note` — `note(summary=..., scratchpad=...)`. Reissue the full text to extend; empty string clears.
-
-The plan is for *what to do next*; the scratchpad is for *what you've gathered to fulfill the plan*.
+Free-form working memory, rendered as `<scratchpad>` at the request tail; **survives compaction**. Accumulate everything that feeds the answer — order details, prices, addresses, a draft reply, a bbox to carry past a superseding peek (§ Bboxes) — so the final reply pastes from it. Write via `note(summary=..., scratchpad=...)`; reissue the full text to extend, empty string to clear. Plan = what to do next; scratchpad = what you've gathered.
 
 ## Bboxes — copy verbatim, never eyeball
 
-Every physical-action bbox must come verbatim from the most recent `peek` / `screenshot` listing, or a text row that survived compaction in an earlier stub.
+Every action bbox comes verbatim — every digit — from a grounded source: the latest `peek`/`screenshot` listing, a surviving text row from an earlier stub, a scratchpad copy of a prior listing row, or **SYSTEM § Screen layout**. Target absent from all → escalate to `screenshot`; never fabricate coords. Sole exception: an element-free target (empty area to dismiss, a swipe anchor) may be estimated.
 
-**Verbatim copy — every digit, every decimal.** `0.520` stays `0.520`, not `0.52`, not `0.518`. The model's instinct is to regenerate rather than copy; a one-digit drift lands on the neighboring icon.
+## Sequence bundling
 
-Target missing from current and surviving listings? Step up: `screenshot` > `peek` in fidelity. Re-running `peek` hoping for a better listing is how loops happen.
-
-This is what makes `sequence` safe — each step's bbox is grounded in the listing live when the chain was planned.
+`sequence` (≤5 actions) is safe only when every step's bbox is grounded at planning time. A Paste popover born from a `long_press` *inside* the sequence is NOT grounded — give the `long_press` its own turn, `peek` the popover, then tap. **Exception:** inputs pinned in SYSTEM § Screen layout (chat input, Spotlight) have learned Paste boxes, so `long_press + tap Paste` may bundle there.
 
 ## Stuck
 
-**10+ turns on the same `in_progress` step with no visible progress = stuck.**
+10+ turns on one `in_progress` step with no visible progress = stuck. Escalate in order:
 
 1. **Re-plan** — split the step or add a recovery step.
-2. **Back out** — `go_back` to the app's top, re-pick the entry.
-3. **Force-quit + reopen** — `force_quit` resets app state, then reopen the app fresh. Use when popups won't dismiss, the back stack loops, or the wrong page keeps returning.
+2. **Back out** — `go_back` to the app's home, re-pick the entry.
+3. **Force-quit + reopen** — for popups that won't dismiss, looping back stacks, the wrong page returning.
 
 ## Wait-retry for user replies
 
-Pattern: `wait(30-60)` → `peek` IM → no reply → `wait` again. **Max 3 attempts, ≤3 min total.** After that, escalate: `end_session(WAIT, ...)` + `create_job` for a minutes/hours-scale resume. Short waits keep you in-flow if the user is engaged; the cap prevents holding the loop open when they've stepped away.
-
-## Session close
-
-See AGENT § Loop, **Close** phase.
+`wait(30–60)` → `peek` IM → no reply → repeat. **Max 3 attempts, ≤3 min total.** Then `create_job` a minutes/hours-scale resume and close WAIT (AGENT § Close).
