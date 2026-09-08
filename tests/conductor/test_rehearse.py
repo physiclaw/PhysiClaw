@@ -338,6 +338,7 @@ def _fake_micro(monkeypatch):
     walk wired, then answers `done` with the return field."""
     from physiclaw.conductor.spec.calls import AGENT_DONE
     from physiclaw.conductor.walk.micro import MicroOutcome, MicroResult
+    from physiclaw.contract.dto import MicroRecord
 
     class Caller:
         def __init__(self, rlog):
@@ -345,12 +346,19 @@ def _fake_micro(monkeypatch):
 
         async def run(self, req):
             self.rlog.write_micro(
-                req.call,
-                [
-                    {"role": "system", "content": "sys"},
-                    {"role": "user", "content": "ask"},
-                ],
-                OPENAI_REPLY,
+                MicroRecord(
+                    call=req.call,
+                    node=req.node_id,
+                    thinking=None,
+                    allowed=(AGENT_DONE,),
+                    answer=AGENT_DONE,
+                    confidence=0.9,
+                    request=[
+                        {"role": "system", "content": "sys"},
+                        {"role": "user", "content": "ask"},
+                    ],
+                    raw=OPENAI_REPLY,
+                )
             )
             return MicroResult(
                 outcome=MicroOutcome(
@@ -451,15 +459,22 @@ async def test_walk_without_raw_still_hands_exchanges_to_the_hook(
     assert not any("── model" in line for line in lines)
 
 
-def test_exchange_lines_reads_both_wire_shapes() -> None:
+def test_exchange_lines_folds_the_replayed_turns_and_reads_both_shapes() -> None:
+    # The record is whole (system, one replayed turn, the newest block);
+    # the eye gets the system message and the newest exchange.
     anthropic = {"content": [{"type": "text", "text": "hi"}]}
     record = {
         "call": "agent_act",
         "node": "pick",
         "attempt": 2,
         "attempts": 2,
-        "history": 4,
-        "request": [{"role": "user", "content": [{"type": "text", "text": "block"}]}],
+        "history": 1,
+        "request": [
+            {"role": "system", "content": "contract"},
+            {"role": "user", "content": "earlier screen"},
+            {"role": "assistant", "content": "{}"},
+            {"role": "user", "content": [{"type": "text", "text": "block"}]},
+        ],
         "reply": anthropic,
         "outcome": "act → 'row'",
     }
@@ -467,10 +482,9 @@ def test_exchange_lines_reads_both_wire_shapes() -> None:
     lines = rehearsal.exchange_lines(record)
 
     assert (
-        lines[0]
-        == "── model agent_act (pick) attempt 2/2 · 4 replayed turn(s) not repeated"
+        lines[0] == "── model agent_act (pick) attempt 2/2 · 1 replayed turn(s) folded"
     )
-    assert lines[1:3] == ["[user]", "block"]
-    assert lines[3:5] == ["── reply", "hi"]
+    assert lines[1:5] == ["[system]", "contract", "[user]", "block"]
+    assert lines[5:7] == ["── reply", "hi"]
     assert lines[-1] == "── decision: act → 'row'"
     assert rehearsal.reply_text({"odd": 1}) == '{"odd": 1}'

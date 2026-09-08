@@ -2,11 +2,13 @@
 
 import json
 import logging
+from dataclasses import asdict
 from typing import Any
 
 from physiclaw.agent.trace import store
 from physiclaw.common.logger import iso_now
 from physiclaw.contract import wire
+from physiclaw.contract.dto import MicroRecord
 
 log = logging.getLogger(__name__)
 
@@ -70,11 +72,11 @@ class RawLog:
         extra = {"synthesized": True} if synthesized else {}
         self._emit("response", turn=turn, elapsed_ms=elapsed_ms, **extra, raw=raw)
 
-    def write_micro(self, call: str, request: list[dict], raw: dict[str, Any]) -> None:
-        """One conductor micro-call round-trip — the exact prompt and the
-        raw reply in a single record (kind "micro"). Small fixed-shape
-        contexts, no images, so no scrubbing pass is needed."""
-        self._emit("micro", call=call, request=request, raw=raw)
+    def write_micro(self, rec: MicroRecord) -> None:
+        """One conductor decision call in a single record (kind "micro")
+        — self-contained, so `playbooks micro` re-asks it without the
+        walk. Text only, so no scrubbing pass."""
+        self._emit("micro", **asdict(rec))
 
     def close(self) -> None:
         if not self._f.closed:

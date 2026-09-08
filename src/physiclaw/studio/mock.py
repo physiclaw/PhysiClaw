@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from physiclaw.common import gesture_vocab
+from physiclaw.common.text import iter_jsonl
 from physiclaw.conductor.drive.corpus import is_screen
 from physiclaw.contract.wire import image_ref, iter_request_messages
 from physiclaw.studio.session import unpublished, view_reply
@@ -78,28 +79,18 @@ def session_frames(session_dir: Path) -> list[Frame]:
 def _event_frames(session_dir: Path) -> list[Frame]:
     """The views the session's `tool_result` events carry: the result's
     text whole (a screen) beside the frame it filed."""
-    path = session_dir / "events.jsonl"
-    if not path.exists():
-        return []
     frames: list[Frame] = []
     seen: set[str] = set()
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if '"tool_result"' not in line:
-                continue
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            text, refs = rec.get("text"), rec.get("images") or []
-            if rec.get("event") != "tool_result" or not refs:
-                continue
-            if not isinstance(text, str) or text in seen or not is_screen(text):
-                continue
-            image = session_dir / refs[0]
-            if image.exists():
-                seen.add(text)
-                frames.append(Frame(image=image, listing=text))
+    for rec in iter_jsonl(session_dir / "events.jsonl", '"tool_result"'):
+        text, refs = rec.get("text"), rec.get("images") or []
+        if rec.get("event") != "tool_result" or not refs:
+            continue
+        if not isinstance(text, str) or text in seen or not is_screen(text):
+            continue
+        image = session_dir / refs[0]
+        if image.exists():
+            seen.add(text)
+            frames.append(Frame(image=image, listing=text))
     return frames
 
 

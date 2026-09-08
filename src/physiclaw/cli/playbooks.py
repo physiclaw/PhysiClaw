@@ -18,6 +18,7 @@ and stops; the conductor's own doors at wake are the suspension file and
 the channel pack's boot."""
 
 import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Optional
 
@@ -27,6 +28,7 @@ from physiclaw.cli._format import (
     exit_error,
     ok,
     parse_inputs,
+    section,
     state_tag,
     step_fail,
     warn,
@@ -38,6 +40,7 @@ from physiclaw.conductor.drive import rehearsal
 from physiclaw.conductor.spec.model import PlaybookError
 
 if TYPE_CHECKING:
+    from physiclaw.conductor.drive import decisions
     from physiclaw.conductor.spec.model import Pack, Playbook, PlaybookEntry
 
 playbooks_app = typer.Typer(no_args_is_help=True)
@@ -589,6 +592,172 @@ def stats(
                 f"{rec.get('playbook', '?')} {rec.get('outcome', '?')} "
                 f"at {where}" + (f" — {reason}" if reason else "")
             )
+    _decisions_section(rows)
+
+
+def _decisions_section(rows: list[dict]) -> None:
+    """What the recorded walks' decision calls cost, per call kind, off
+    the sessions the runs name — the second KPI beside escalation: a
+    decision that takes minutes or escalates is a `think:` level, a
+    prompt, or a model to change."""
+    from physiclaw.conductor.drive import decisions
+    from physiclaw.conductor.walk import walklog
+
+    dirs = walklog.session_dirs(rows)
+    stats = decisions.decision_stats(dirs)
+    if not stats:
+        return
+    typer.echo(f"\ndecisions ({len(dirs)} session(s) on disk):")
+    for call, st in sorted(stats.items()):
+        nodes = ", ".join(f"{n} ×{c}" for n, c in sorted(st.nodes.items()))
+        typer.echo(
+            f"  {call}: calls={st.calls} escalated={st.escalated} "
+            f"repaired={st.repaired} mean={st.mean_ms / 1000:.1f}s "
+            f"max={st.ms_max / 1000:.1f}s reasoning={st.mean_reasoning:.0f}/call "
+            f"output={st.mean_output:.0f}/call rows≤{st.rows_max}  [{nodes}]"
+        )
+
+
+def _mark(r: "decisions.Reply", rec: "decisions.Recorded") -> str:
+    """One word on a reply, beside the recorded answer."""
+    if r.error:
+        return "error"
+    if not rec.allowed:
+        return "unjudged"
+    if not r.valid:
+        return "invalid"
+    return "same" if r.answer == rec.answer else "differs"
+
+
+@playbooks_app.command()
+def micro(
+    session: Annotated[
+        str, typer.Argument(help="A recorded session id (suffix ok if unique).")
+    ],
+    model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--model",
+            help="provider/model to ask (default: [conductor] micro_model, "
+            "else the session model).",
+        ),
+    ] = None,
+    think: Annotated[
+        Optional[str],
+        typer.Option(
+            "--think", help="off|low|medium|high — override the recorded level."
+        ),
+    ] = None,
+    reps: Annotated[
+        int, typer.Option("--reps", help="How many times to ask each call.")
+    ] = 1,
+    only: Annotated[
+        Optional[str],
+        typer.Option("--only", help="Only this call kind (parse_task…) or node id."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Rows as JSON.")] = False,
+) -> None:
+    """Re-ask a session's recorded decision calls against a live provider
+    and measure them: valid replies, agreement with what the wake read,
+    time, hidden tokens. The request goes exactly as the wake sent it —
+    a prompt or pack edit is measured by a new walk, a model or think
+    level by this. Spends tokens; writes nothing."""
+    from dataclasses import asdict
+
+    from physiclaw.cli._sessions import resolve_sid
+    from physiclaw.common import paths
+    from physiclaw.common.config import CONFIG
+    from physiclaw.common.model_ref import parse_model_ref
+    from physiclaw.conductor.drive import decisions
+    from physiclaw.contract.dto import THINKING_LEVELS, Thinking
+    from physiclaw.provider import make_provider
+
+    level: Thinking | None = None
+    if think is not None:
+        if think not in THINKING_LEVELS:
+            exit_error(f"--think must be one of {', '.join(THINKING_LEVELS)}", code=2)
+        level = think
+    if reps < 1:
+        exit_error("--reps must be at least 1", code=2)
+    d = paths.engine_sessions_dir() / resolve_sid(session)
+    try:
+        records = decisions.load(d)
+    except OSError as e:
+        exit_error(str(e))
+    if only:
+        records = [r for r in records if only in (r.call, r.node)]
+    if not records:
+        exit_error("no recorded decision calls match")
+    ref = model or CONFIG.conductor.micro_model or CONFIG.agent.model
+    try:
+        pid, mid = parse_model_ref(ref)
+        provider = make_provider(pid, mid)
+    except Exception as e:
+        exit_error(f"cannot build provider for {ref!r}: {e}")
+    if not as_json:
+        typer.echo(
+            section(
+                f"{len(records)} decision(s) × {reps} on {ref}"
+                + (f" think={think}" if think else " (recorded think levels)")
+            )
+        )
+
+    async def _run() -> list[decisions.Row]:
+        try:
+            return [
+                await decisions.ask(provider, r, thinking=level, reps=reps)
+                for r in records
+            ]
+        finally:
+            await provider.aclose()
+
+    rows = asyncio.run(_run())
+    if as_json:
+        typer.echo(
+            json.dumps(
+                [
+                    {
+                        "call": row.recorded.call,
+                        "node": row.recorded.node,
+                        "recorded": row.recorded.answer,
+                        "replies": [asdict(r) for r in row.replies],
+                    }
+                    for row in rows
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    unjudged = sum(1 for row in rows if not row.recorded.allowed)
+    if unjudged:
+        typer.echo(
+            warn(
+                f"{unjudged} record(s) predate the caller's reading (no allowed "
+                "answers kept) — their replies are shown, not judged"
+            )
+        )
+    for row in rows:
+        rec = row.recorded
+        typer.echo(
+            f"{rec.node or '?'} ({rec.call}) recorded: {rec.answer!r}"
+            + (f" {rec.confidence:.2f}" if rec.confidence is not None else "")
+        )
+        for r in row.replies:
+            mark = _mark(r, rec)
+            typer.echo(
+                f"    {mark:<8} {r.answer!r}"
+                + (f" {r.confidence:.2f}" if r.confidence is not None else "")
+                + f"  {r.ms / 1000:.1f}s out={r.output} reasoning={r.reasoning}"
+                + (f"  {r.error}" if r.error else "")
+            )
+    s = decisions.summarize(rows)
+    typer.echo(
+        f"\n{s.asks} ask(s): valid={s.valid_rate:.0%} agree={s.agreement:.0%} "
+        f"mean={s.mean_ms / 1000:.1f}s max={s.ms_max / 1000:.1f}s "
+        f"reasoning={s.mean_reasoning:.0f}/ask output={s.mean_output:.0f}/ask"
+        + (f" errors={s.errors}" if s.errors else "")
+    )
 
 
 @playbooks_app.command()

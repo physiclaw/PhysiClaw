@@ -30,12 +30,13 @@ two sink protocols becoming events returned in the advance response.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
     AssistantMessage,
     Message,
+    MicroRecord,
     Thinking,
     UsageCall,
 )
@@ -71,11 +72,9 @@ class EventSink(Protocol):
 
 
 class WireSink(Protocol):
-    """`RawLog.write_micro`-shaped: one scoped LLM round-trip, verbatim."""
+    """`RawLog.write_micro`-shaped: one scoped LLM round-trip, whole."""
 
-    def write_micro(
-        self, call: str, request: list[dict], raw: dict[str, Any]
-    ) -> None: ...
+    def write_micro(self, rec: MicroRecord) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

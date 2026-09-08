@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from physiclaw.conductor.spec.match import Verdict
     from physiclaw.conductor.walk.micro import DecisionRequest, MicroCaller, MicroResult
     from physiclaw.conductor.walk.program import Program
-    from physiclaw.contract.dto import ToolCall
+    from physiclaw.contract.dto import MicroRecord, ToolCall
     from physiclaw.contract.plugin import WireSink
     from physiclaw.macros.model import Macro
 
@@ -85,8 +85,10 @@ class ModelLog:
     def __init__(self) -> None:
         self.exchanges: list[dict] = []
 
-    def write_micro(self, call: str, request: list[dict], raw: dict) -> None:
-        self.exchanges.append({"call": call, "request": request, "reply": raw})
+    def write_micro(self, rec: "MicroRecord") -> None:
+        self.exchanges.append(
+            {"call": rec.call, "request": rec.request, "reply": rec.raw}
+        )
 
     def drain(self) -> list[dict]:
         out, self.exchanges = self.exchanges, []
@@ -255,11 +257,12 @@ async def unlock_if_covered(mcp: McpCaller, emit: Emit) -> None:
 def exchanges(drained: list[dict], req: "DecisionRequest", decision: str) -> list[dict]:
     """The drained round-trips of one decision as debugger records:
     which call and node, the attempt (a repair retry is a second
-    round-trip), how many replayed episode turns the request omits
-    (they are byte-identical to earlier calls' records), the decision
-    the caller made of the last reply, and `lines` — the round-trip
-    rendered once for every eye (the CLI prints them, the studio shows
-    them), so no skin parses the provider wire itself."""
+    round-trip), how many replayed episode turns the request carries
+    (the record is whole; the rendering folds them, since earlier
+    calls showed them), the decision the caller made of the last
+    reply, and `lines` — the round-trip rendered once for every eye
+    (the CLI prints them, the studio shows them), so no skin parses
+    the provider wire itself."""
     out = []
     for i, x in enumerate(drained, start=1):
         record = {
@@ -276,16 +279,22 @@ def exchanges(drained: list[dict], req: "DecisionRequest", decision: str) -> lis
 
 
 def exchange_lines(record: dict) -> list[str]:
-    """One round-trip for the eye: each request message with its role,
-    then the reply's text (or the whole raw reply when its shape is
-    unknown), then the decision."""
+    """One round-trip for the eye: the system message and the newest
+    exchange with their roles — an episode's replayed turns, a user
+    block and a reply per turn right after the system message, are
+    folded, since the calls that first showed them did — then the
+    reply's text (or the whole raw reply when its shape is unknown),
+    then the decision."""
     head = f"── model {record['call']} ({record['node']})"
     if record["attempts"] > 1:
         head += f" attempt {record['attempt']}/{record['attempts']}"
-    if record["history"]:
-        head += f" · {record['history']} replayed turn(s) not repeated"
+    replayed = record["history"]
+    if replayed:
+        head += f" · {replayed} replayed turn(s) folded"
     lines = [head]
-    for m in record["request"]:
+    request = record["request"]
+    shown = request[:1] + request[1 + 2 * replayed :] if replayed else request
+    for m in shown:
         lines.append(f"[{m.get('role', '?')}]")
         lines.extend(_message_text(m).splitlines())
     lines.append("── reply")

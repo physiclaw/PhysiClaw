@@ -44,11 +44,13 @@ from physiclaw.conductor.walk import prompts
 from physiclaw.contract.dto import (
     USAGE_CALL_MICRO,
     AssistantMessage,
-    FinishReason,
     Message,
+    MicroRecord,
     SystemMessage,
     Thinking,
     UserMessage,
+    message_of,
+    role_of,
 )
 from physiclaw.contract.plugin import ChatProvider, EventSink, WireSink
 from physiclaw.provider import Provider, ProviderTransientError
@@ -286,8 +288,8 @@ class MicroCaller:
                     "micro %s (%s): provider failed — %s", req.call, req.node_id, e
                 )
                 return None, "provider error", attempts
-            self._log_wire(req, provider, messages, asst)
-            parsed, err = _parse(asst.content or "", allowed)
+            parsed, err = parse_reply(asst.content or "", allowed)
+            self._log_wire(req, messages, asst, allowed, parsed)
             if parsed is None:
                 log.info(
                     "micro %s (%s) attempt %d invalid: %s",
@@ -323,23 +325,33 @@ class MicroCaller:
     def _log_wire(
         self,
         req: DecisionRequest,
-        provider: ChatProvider,
         messages: list[Message],
         asst: AssistantMessage,
+        allowed: tuple[str, ...],
+        parsed: "tuple[str, str, float, dict[str, Any]] | None",
     ) -> None:
-        """One round-trip to the wire sink. An episode replays its whole
-        history every call — log only the system prompt and the newest
-        exchange: the replayed turns are byte-identical to this
-        session's prior records for the same node, and dumping them
-        again would make the wire log quadratic in episode length."""
+        """One round-trip to the wire sink, whole — every message, an
+        episode's replayed history included (its replayed assistant
+        turns are the contract's re-serialisation, not the raw replies,
+        so a trimmed record could not be rebuilt byte for byte). The
+        prefix repeats per call, bounded by the call limit: a long
+        episode over dense screens logs a few megabytes."""
         if self._rlog is None:
             return
-        to_log = (
-            messages
-            if not req.history
-            else [messages[0], *messages[1 + len(req.history) :]]
+        self._rlog.write_micro(
+            MicroRecord(
+                call=req.call,
+                node=req.node_id,
+                thinking=req.thinking,
+                allowed=allowed,
+                answer=parsed[0] if parsed else None,
+                confidence=parsed[2] if parsed else None,
+                request=[
+                    {"role": role_of(m), "content": str(m.content)} for m in messages
+                ],
+                raw=asst.raw,
+            )
         )
-        self._rlog.write_micro(req.call, provider.serialize_history(to_log), asst.raw)
 
     def _trace(self, req: DecisionRequest, result: MicroResult) -> None:
         """The decision event — one per decision, whatever happened; the
@@ -372,14 +384,7 @@ def _messages(req: DecisionRequest, allowed: tuple[str, ...]) -> list[Message]:
     turns replayed verbatim (append-only — the byte-identical-prefix
     contract the provider cache pays), then the newest user block."""
     messages: list[Message] = [SystemMessage(content=_system(req, allowed))]
-    for role, text in req.history:
-        messages.append(
-            AssistantMessage(
-                content=text, tool_calls=[], finish_reason=FinishReason.STOP
-            )
-            if role == "assistant"
-            else UserMessage(content=text)
-        )
+    messages.extend(message_of(role, text) for role, text in req.history)
     messages.append(UserMessage(content=_user(req)))
     return messages
 
@@ -679,7 +684,7 @@ def _user(req: DecisionRequest) -> str:
     return "\n".join(p for p in parts if p)
 
 
-def _parse(
+def parse_reply(
     text: str, allowed: tuple[str, ...]
 ) -> tuple[tuple[str, str, float, dict[str, Any]] | None, str]:
     """Strict JSON-object parse + the constraint tax. Returns

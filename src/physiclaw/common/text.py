@@ -14,6 +14,7 @@ file handle in a helper would be more indirection than it's worth.
 
 import json
 import unicodedata
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,25 @@ def json_span(text: str, opener: str, closer: str) -> Any | None:
         return json.loads(text[start : end + 1])
     except (ValueError, TypeError):
         return None
+
+
+def iter_jsonl(path: Path, needle: str | None = None) -> Iterator[dict[str, Any]]:
+    """The objects of a JSONL file, streamed; a torn line is skipped, a
+    missing file yields nothing. `needle` skips lines that cannot be
+    wanted before they are parsed (a substring the wanted records
+    carry) — the reader still checks the record."""
+    if not path.exists():
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if needle is not None and needle not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(rec, dict):
+                yield rec
 
 
 def read_text(path: Path) -> str:

@@ -139,7 +139,11 @@ miss. Each manifest ends with its own checklist; the generic one:
 
 1. replay offline: `physiclaw playbooks replay <app>/<playbook> --session <id>`
    walks recorded screens through the real route and shows where it
-   would hand over — no phone, nothing written
+   would hand over — no phone, nothing written; `physiclaw playbooks
+   micro <id> [--model …] [--think …] [--reps N]` re-asks the session's
+   recorded decision calls and reports valid replies, agreement with
+   what the wake read, time and hidden tokens — the way to compare a
+   model or a `think:` level before a wake runs on it
 2. rehearse: `physiclaw playbooks run <app>/<playbook> --input k=v`
 3. capture page geometry: `physiclaw playbooks pages calibrate <app>`
 4. set `enabled: true` in the pack files
@@ -153,4 +157,6 @@ results missing 综合`), every decision
 call logs one line (`micro parse_task (parse) → taobao/buy (0.90) …`),
 and the walk's end logs its reason (`handing taobao/buy over to the
 model — …`); `summary.json` lists the same ends under `walks`, and
-`physiclaw playbooks stats` aggregates them from `runs.jsonl`.
+`physiclaw playbooks stats` aggregates them from `runs.jsonl`, with
+the decisions those walks made (calls, escalations, time, hidden
+tokens per call kind) read off their sessions.

@@ -206,8 +206,13 @@ in the `env` event / `summary.json.env.utc_offset`.
   nothing was sent to the provider, and no request record precedes
   it). Inline base64 images are replaced by relative paths into
   `images/` — the file the frame's own `tool_result` wrote. `micro`
-  records carry one conductor decision call's exact prompt and raw
-  reply.
+  records carry one conductor decision call whole: `call` and `node`,
+  `thinking` (the step's level), `allowed` (the answers the caller
+  accepted), `request` (every message — role and text, the caller's
+  own shape rather than the provider's wire — an episode's replayed
+  history included), `raw` (the reply), and `answer`/`confidence` as
+  the caller read them — `physiclaw playbooks micro <sid>` re-asks
+  them.
 
 - `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — every frame a tool result
   carried (typically .jpg), written once when the result arrived: the

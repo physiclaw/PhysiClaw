@@ -21,7 +21,7 @@ from pathlib import Path
 
 from physiclaw.common import paths
 from physiclaw.common.listing import LISTING_HEADER, Screen, parse_row
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.text import iter_jsonl, read_text, write_text
 from physiclaw.contract.wire import iter_request_texts
 
 UNLABELED = "?"
@@ -63,19 +63,10 @@ def _screens(texts: Iterable[str]) -> list[str]:
 
 
 def _result_texts(path: Path) -> Iterator[str]:
-    """The `text` of every `tool_result` event in an events.jsonl,
-    streamed; lines that are not one are skipped before they are
-    parsed."""
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if '"tool_result"' not in line:
-                continue
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if rec.get("event") == "tool_result" and isinstance(rec.get("text"), str):
-                yield rec["text"]
+    """The `text` of every `tool_result` event in an events.jsonl."""
+    for rec in iter_jsonl(path, '"tool_result"'):
+        if rec.get("event") == "tool_result" and isinstance(rec.get("text"), str):
+            yield rec["text"]
 
 
 def is_screen(text: str) -> bool:

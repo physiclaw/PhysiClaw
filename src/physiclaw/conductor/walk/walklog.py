@@ -231,5 +231,13 @@ def escalation_sites(rows: list[dict], top: int = 3) -> list[EscalationSite]:
     return out
 
 
+def session_dirs(rows: list[dict]) -> list[Path]:
+    """The session directories the runs name, those still on disk —
+    sorted, each once."""
+    sessions_dir = paths.engine_sessions_dir()
+    sids = {str(r["session"]) for r in rows if r.get("session")}
+    return sorted(d for d in (sessions_dir / s for s in sids) if d.exists())
+
+
 def _clip(text: str) -> str:
     return clip(text, _TRUNCATE_REASON)

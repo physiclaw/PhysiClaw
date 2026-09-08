@@ -6,7 +6,7 @@ result/trace records."""
 from __future__ import annotations
 
 import pytest
-from conductor_fakes import Sink, make_screen
+from conductor_fakes import ScriptedProvider, Sink, make_screen
 
 from physiclaw.conductor.spec.calls import (
     ACT_SCROLL_DOWN,
@@ -26,30 +26,6 @@ from physiclaw.conductor.walk.micro import (
     build_request,
     canonical_reply,
 )
-from physiclaw.contract.dto import AssistantMessage, FinishReason, Usage
-
-
-class ScriptedProvider:
-    """Consumes scripted reply strings (or exceptions) in order; keeps
-    the message lists it was called with."""
-
-    def __init__(self, replies):
-        self._replies = list(replies)
-        self.calls: list[list] = []
-        self.asks: list[dict] = []  # each call's keyword arguments
-
-    async def chat(self, history, tools, **kw):
-        self.calls.append(list(history))
-        self.asks.append(kw)
-        nxt = self._replies.pop(0)
-        if isinstance(nxt, Exception):
-            raise nxt
-        return AssistantMessage(
-            content=nxt,
-            tool_calls=[],
-            finish_reason=FinishReason.STOP,
-            usage=Usage(prompt_tokens=100, completion_tokens=20),
-        )
 
 
 def _fields_req(prompt: str = "the keyword, please"):
@@ -743,3 +719,43 @@ def test_episode_system_prompt_says_what_the_screen_rows_are() -> None:
     assert prompts.SCREEN_ROWS_NOTE not in _system(
         fields, _SPECS[AGENT_FIELDS].answer_space(fields)
     )
+
+
+# ---------- the wire record is whole ----------
+
+
+class _WireSink:
+    def __init__(self) -> None:
+        self.records: list = []
+
+    def write_micro(self, rec) -> None:
+        self.records.append(rec)
+
+
+@pytest.mark.asyncio
+async def test_the_wire_record_carries_the_whole_request_and_the_reading() -> None:
+    # An episode's replayed history is logged with every call, so a
+    # record replays byte for byte without the walk; the caller's
+    # reading (node, allowed answers, the answer) rides beside it.
+    from dataclasses import replace
+
+    from physiclaw.conductor.walk.micro import AGENT_ACT
+
+    sink = _WireSink()
+    req = replace(
+        _act_req("牛奶", history=(("user", "earlier screen"), ("assistant", "{}"))),
+        thinking="low",
+    )
+    provider = ScriptedProvider([_ok("牛奶")])
+    await MicroCaller(provider, confidence_floor=0.6, rlog=sink).run(req)
+
+    (rec,) = sink.records
+    assert rec.call == AGENT_ACT and rec.node == req.node_id
+    assert [m["role"] for m in rec.request] == ["system", "user", "assistant", "user"]
+    # The caller's own shape: the contract text is there whatever wire
+    # the provider speaks (Anthropic's moves the system prompt out of
+    # its messages array).
+    assert rec.request[0]["content"].startswith("Reply with ONLY this JSON")
+    assert rec.request[1]["content"] == "earlier screen"
+    assert rec.answer == "牛奶" and rec.confidence == 0.9
+    assert rec.thinking == "low" and "牛奶" in rec.allowed

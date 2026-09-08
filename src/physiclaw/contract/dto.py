@@ -280,6 +280,45 @@ class ToolResultMessage:
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolResultMessage]
 
 
+def role_of(m: Message) -> str:
+    """A message's role word — the one vocabulary a text record of a
+    conversation is written and read in."""
+    if isinstance(m, SystemMessage):
+        return "system"
+    if isinstance(m, AssistantMessage):
+        return "assistant"
+    return "user"
+
+
+def message_of(role: str, text: str) -> Message:
+    """A text message back from its role word (`role_of`'s inverse for
+    the three text roles)."""
+    if role == "system":
+        return SystemMessage(content=text)
+    if role == "assistant":
+        return AssistantMessage(
+            content=text, tool_calls=[], finish_reason=FinishReason.STOP
+        )
+    return UserMessage(content=text)
+
+
+@dataclass(frozen=True)
+class MicroRecord:
+    """One conductor decision call, whole — what the wire log keeps and
+    a re-ask reads back: the request in its own shape (role and text per
+    message; a provider's wire may move the system prompt elsewhere),
+    the raw reply, and the caller's reading of it."""
+
+    call: str
+    node: str
+    thinking: Thinking | None
+    allowed: tuple[str, ...]  # the answers the caller accepted
+    answer: str | None  # what it read; None = an invalid reply
+    confidence: float | None
+    request: list[dict[str, str]]
+    raw: dict[str, Any]
+
+
 # ---------- collapse policy ----------
 
 

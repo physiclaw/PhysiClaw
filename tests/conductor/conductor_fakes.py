@@ -6,6 +6,7 @@ from __future__ import annotations
 from textwrap import indent
 
 from physiclaw.common.listing import Element, Screen, format_elements
+from physiclaw.contract.dto import AssistantMessage, FinishReason, Usage
 
 # One bbox convention for every fake row: ±0.05 × ±0.02 around the center.
 BOX_W, BOX_H = 0.05, 0.02
@@ -302,3 +303,34 @@ def make_print(
             anchors={a.text: a for a in learned_anchors}, observations=6
         )
     return PagePrint(app=app, decl=decl, learned=learned)
+
+
+class ScriptedProvider:
+    """A `ChatProvider` that answers scripted reply strings (or raises
+    the exceptions) in order, keeping every call's messages and keyword
+    arguments."""
+
+    def __init__(self, replies, *, reasoning: int = 0):
+        self._replies = list(replies)
+        self.calls: list[list] = []
+        self.asks: list[dict] = []
+        self.reasoning = reasoning
+        self.closed = False
+
+    async def chat(self, history, tools, **kw):
+        self.calls.append(list(history))
+        self.asks.append(kw)
+        nxt = self._replies.pop(0)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return AssistantMessage(
+            content=nxt,
+            tool_calls=[],
+            finish_reason=FinishReason.STOP,
+            usage=Usage(
+                prompt_tokens=100, completion_tokens=20, reasoning_tokens=self.reasoning
+            ),
+        )
+
+    async def aclose(self):
+        self.closed = True
