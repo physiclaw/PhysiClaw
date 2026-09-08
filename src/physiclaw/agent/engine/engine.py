@@ -37,6 +37,7 @@ from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import STUCK
 from physiclaw.agent.trace import RawLog, Trace, new_sid
+from physiclaw.agent.trace.store import Images
 from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.contract.dto import Message
 from physiclaw.contract.plugin import SetupContext, TurnPlugin
@@ -114,8 +115,9 @@ async def _run_session(
     try:
         # Open inside the try so the finally block's close() runs even
         # if construction fails midway (disk full, perms, etc.).
-        tr = Trace(sid)
-        rlog = RawLog(sid)
+        images = Images(sid)
+        tr = Trace(sid, images=images)
+        rlog = RawLog(sid, images=images)
         tr.write(
             {
                 "event": "wake",

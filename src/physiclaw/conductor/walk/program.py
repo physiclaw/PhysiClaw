@@ -387,13 +387,15 @@ class Program:
             self.screen,
             self.channel.prints if pending.channel and self.channel else self.prints,
         )
+        verdict = self.verdict.describe()
         log.info(
             "conductor: %s/%s read after %s — %s",
             self.app,
             self.spec.name,
             kind,
-            self.verdict.describe(),
+            verdict,
         )
+        self.record.read(kind, self.node.id if self.node is not None else None, verdict)
         if (
             self.phase is Phase.OPENING
             and self._from_suspension

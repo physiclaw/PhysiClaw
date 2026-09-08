@@ -70,13 +70,35 @@ class Record:
             rescues=rescues,
             total=total,
         )
-        if self.events is not None:
-            try:
-                self.events.write({"event": "walk", **fields})
-            except Exception:
-                log.warning("conductor walk event write failed", exc_info=True)
+        self._event("walk", fields)
         if not self.dry:
             walklog.record(**fields, values=values)
+
+    def read(self, after: str, node: str | None, verdict: str) -> None:
+        """One screen reading — what the walk thought the screen was,
+        beside the tool result that carried it — so a session dir
+        answers the first question of any post-mortem without the
+        runtime log."""
+        self._event(
+            "walk_read",
+            dict(
+                app=self.app,
+                playbook=self.playbook,
+                after=after,
+                node=node,
+                verdict=verdict,
+            ),
+        )
+
+    def _event(self, name: str, fields: dict[str, Any]) -> None:
+        """One event into the session's stream, when one is listening —
+        fail-open."""
+        if self.events is None:
+            return
+        try:
+            self.events.write({"event": name, **fields})
+        except Exception:
+            log.warning("conductor %s event write failed", name, exc_info=True)
 
     def day(self, entry: str) -> None:
         """One daily-log line in the agent's own convention, stamped —

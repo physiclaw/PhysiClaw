@@ -11,7 +11,6 @@ from physiclaw.agent.trace import store
 from physiclaw.agent.trace.format import (
     MIRRORED_EVENTS,
     _end_footer,
-    brief_content,
     summarize_event,
 )
 from physiclaw.common import paths
@@ -25,7 +24,7 @@ from physiclaw.common.logger import (
     iso_now,
     write_json_atomic,
 )
-from physiclaw.contract.dto import USAGE_BUCKETS
+from physiclaw.contract.dto import USAGE_BUCKETS, ImageBlock, TextBlock
 
 log = logging.getLogger(__name__)
 
@@ -40,11 +39,14 @@ class Trace:
     daily-log END footer.
     """
 
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, images: "store.Images"):
         self.session_id = session_id
         self._daily = DailyLogWriter(store._log_dir(), "engine")
         d = store._session_dir(session_id)
         d.mkdir(parents=True, exist_ok=True)
+        # The session's frame store — the wire log holds the same one, so
+        # a frame filed here is what a request's scrub references.
+        self._images = images
         ensure_readme(store._sessions_dir(), store.SESSIONS_README)
         self._events = open(d / "events.jsonl", "a", encoding="utf-8", newline="\n")
         # Self-containment: runtime.log (process log mirror) + mcp.log
@@ -154,19 +156,38 @@ class Trace:
                     pass
 
     def _write_event(self, event: dict[str, Any]) -> None:
-        """Append the structured event to events.jsonl. `tool_result`
-        payloads are summarized — `blocks` may carry base64 screenshots
-        whose full bytes already live in wire.jsonl/images; duplicating
-        them here would double the session's disk cost for nothing."""
+        """Append the structured event to events.jsonl. A `tool_result`'s
+        blocks become what the runtime saw: its text whole and its
+        frames written to `images/` now — a walk's turns send no
+        request, and by the first model turn the older screens are
+        compacted away, so the wire log alone would lose them."""
         obj: dict[str, Any] = {"t": iso_now(), **event}
         if event.get("event") == "tool_result" and "blocks" in obj:
-            obj["result_summary"] = brief_content(obj.pop("blocks"))
+            text, images = self._view(obj.pop("blocks"), int(obj.get("turn", -1)))
+            obj["text"] = text
+            if images:
+                obj["images"] = images
         try:
             line = json.dumps(obj, ensure_ascii=False, default=repr)
             self._events.write(line + "\n")
             self._events.flush()
         except (OSError, TypeError, ValueError):
             log.warning("events.jsonl write failed", exc_info=True)
+
+    def _view(self, content: Any, turn: int) -> tuple[str, list[str]]:
+        """A result's text whole, and its frames' session-relative paths
+        (filed on first sight). `content` is the `ToolResultMessage`
+        shape: a bare string, or the engine's content blocks."""
+        if isinstance(content, str):
+            return content, []
+        texts: list[str] = []
+        images: list[str] = []
+        for b in content if isinstance(content, list) else []:
+            if isinstance(b, TextBlock):
+                texts.append(b.text)
+            elif isinstance(b, ImageBlock):
+                images.append(self._images.put(turn, b.media_type, b.data_b64))
+        return "\n".join(texts), [p for p in images if p]
 
 
 # ---------- session summary (derived from the event stream) ----------

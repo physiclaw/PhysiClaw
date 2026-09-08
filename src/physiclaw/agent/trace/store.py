@@ -12,6 +12,7 @@ alongside any schema change.
 """
 
 import datetime as dt
+import hashlib
 import logging
 import secrets
 import time
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
+from physiclaw.common.logger import save_image
 from physiclaw.common.logger.retention import purge_daily_logs, purge_old_sessions
 
 log = logging.getLogger(__name__)
@@ -38,6 +40,36 @@ def _sessions_dir() -> Path:
 
 def _session_dir(sid: str) -> Path:
     return _sessions_dir() / sid
+
+
+class Images:
+    """One file per distinct frame in `images/`, named by the turn that
+    first filed it; "" for a frame that cannot be written (the wire
+    keeps a byte-count stub), never a crash. Both session sinks hold
+    the same store, so the trace files a frame at its tool result and
+    the wire log references that file."""
+
+    def __init__(self, sid: str):
+        self.dir = _session_dir(sid) / "images"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self._seen: dict[str, str] = {}
+
+    def put(self, turn: int, mime: str, b64: str) -> str:
+        """The session-relative path of this frame, writing it on first
+        sight."""
+        key = hashlib.sha256(b64.encode()).hexdigest()
+        known = self._seen.get(key)
+        if known is not None:
+            return known
+        try:
+            name = save_image(self.dir, turn, mime, b64)
+        except OSError:
+            log.warning("session image write failed", exc_info=True)
+            return ""
+        if not name:
+            return ""
+        self._seen[key] = rel = f"images/{name}"
+        return rel
 
 
 def new_sid() -> str:
@@ -154,9 +186,14 @@ in the `env` event / `summary.json.env.utc_offset`.
   reported no usage; the field names follow the OpenTelemetry GenAI
   conventions' token buckets;
   `physiclaw logs <sid> --usage` tabulates them),
-  `tool_result` (name, arguments, elapsed_ms, text or result_summary;
+  `tool_result` (name, arguments, elapsed_ms, `text` — the result as
+  the model received it, whole, a screen's listing included — and
+  `images`, the session-relative paths of the frames it carried;
   gesture results also carry `changed`: true/false/null, the camera
   verdict as data),
+  `walk_read` (one conductor screen reading, beside the tool result
+  that carried it: app, playbook, after — the action read after —,
+  node, verdict),
   `tool_blocked_no_plan|_layout|_stuck` (engine refused the call),
   `stuck_warning` (loop detector fired), `bad_turn_shape` /
   `*_checkpoint` (turn rejected, corrective sent), `done`
@@ -168,15 +205,19 @@ in the `env` event / `summary.json.env.utc_offset`.
   elapsed_ms; `synthesized: true` marks a conductor-composed turn —
   nothing was sent to the provider, and no request record precedes
   it). Inline base64 images are replaced by relative paths into
-  `images/`. `micro` records carry one conductor decision call's exact
-  prompt and raw reply.
+  `images/` — the file the frame's own `tool_result` wrote. `micro`
+  records carry one conductor decision call's exact prompt and raw
+  reply.
 
-- `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — screenshots the model saw
-  (typically .jpg). The name is the local capture time (hour-minute-
-  second `_` milliseconds) plus `_t<turn>` = the turn whose request
-  carried the frame, so `ls` sorts them in capture order and each links
-  back to its turn in `events.jsonl` / `wire.jsonl`. Example:
-  `104542_123_t20.jpg` = 10:45:42.123, turn 20.
+- `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — every frame a tool result
+  carried (typically .jpg), written once when the result arrived: the
+  frames the model saw and the frames a conductor walk read without
+  ever sending them to a model. The name is the local capture time
+  (hour-minute-second `_` milliseconds) plus `_t<turn>` = the turn
+  whose tool result carried the frame, so `ls` sorts them in capture
+  order and each links back to its `tool_result` in `events.jsonl`
+  (its `images` field) and to any `wire.jsonl` request that carried
+  it. Example: `104542_123_t20.jpg` = 10:45:42.123, turn 20.
 
 - `notes.md` — the agent's own turn-by-turn narration: one line per
   `note(summary=...)`, `- turn N — <summary>`. The fastest human read
@@ -200,7 +241,10 @@ in the `env` event / `summary.json.env.utc_offset`.
 - Underperforming session? Check `images/` first — bad runs usually
   trace to what the model actually saw, not how it reasoned. Look for
   blur, glare, or a cropped/off-frame screen before blaming the
-  prompt or the model.
+  prompt or the model. A conductor walk's turns read the same way:
+  each `tool_result` has the listing (`text`) and the frame
+  (`images`), and the `walk_read` right after it says what the walk
+  took the screen for.
 - Failure post-mortem: `summary.json` outcome + errors first, then grep
   `events.jsonl` for `tool_blocked`/`stuck_warning`/`bad_turn_shape`
   around the last turns, then view the matching `images/`.

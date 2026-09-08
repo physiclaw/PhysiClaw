@@ -3,9 +3,11 @@
 `Trace` writes the per-day human log (through the shared
 `DailyLogWriter`, the same one `agent/claude/session_log.py` uses, so
 operators scan either runtime the same way) plus the session's
-events.jsonl and summary.json; `RawLog` captures the provider
-round-trips into wire.jsonl, extracting inline base64 images to
-turn-tagged files. Everything lands under log/engine/sessions/<sid>/ —
+events.jsonl and summary.json, filing every frame a tool result
+carries into the session's `store.Images` as it arrives; `RawLog`
+captures the provider round-trips into wire.jsonl, with each inline
+image replaced by a reference into that same store. Everything lands
+under log/engine/sessions/<sid>/ —
 self-contained (image refs are relative), so "share the bad session"
 is one directory copy. The on-disk format is documented once, in
 `store.SESSIONS_README` (shipped into the sessions dir and every

@@ -52,8 +52,9 @@ def test_session_frames_pairs_images_with_listings_in_order(tmp_path) -> None:
         [
             {"kind": "session_start"},
             _request(_openai_view("images/a_t1.jpg", home)),
-            # The next request re-persists the SAME view (a fresh stamp)
-            # beside the superseded stub of the old one — one frame each.
+            # The next request carries the SAME view again (a session
+            # recorded before the shared store filed a fresh copy) beside
+            # the superseded stub of the old one — one frame each.
             _request(
                 [{"type": "text", "text": "(superseded peek) — labels only\nhome"}],
                 _openai_view("images/b_t2.jpg", home),
@@ -185,3 +186,46 @@ async def test_clipboard_is_text_only_and_unknown_tools_refuse(tmp_path) -> None
 def test_empty_session_refuses() -> None:
     with pytest.raises(ValueError, match="no screen views"):
         mock.MockSession([], "abc123")
+
+
+def test_session_frames_prefer_the_tool_results_own_record(tmp_path) -> None:
+    # The trace keeps every view whole on its tool_result — a walk's
+    # turns included, which the wire log never carries.
+    home, results = _listing("home"), _listing("results")
+    d = _session_dir(
+        tmp_path,
+        [{"kind": "session_start"}, _request(_openai_view("images/w_t9.jpg", results))],
+        ["a_t1.jpg", "c_t3.jpg", "w_t9.jpg"],
+    )
+    events = [
+        {"event": "env"},
+        {
+            "event": "tool_result",
+            "turn": 1,
+            "name": "peek",
+            "text": home,
+            "images": ["images/a_t1.jpg"],
+        },
+        {"event": "tool_result", "turn": 2, "name": "note", "text": "noted"},
+        {
+            "event": "tool_result",
+            "turn": 3,
+            "name": "tap",
+            "text": f"Tapped | screen: changed\n{results}",
+            "images": ["images/c_t3.jpg"],
+        },
+        {
+            "event": "walk_read",
+            "after": "tap",
+            "verdict": "match demo.results (1 anchor)",
+        },
+    ]
+    (d / "events.jsonl").write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in events) + "\n",
+        encoding="utf-8",
+    )
+
+    frames = mock.session_frames(d)
+
+    assert [f.image.name for f in frames] == ["a_t1.jpg", "c_t3.jpg"]
+    assert frames[1].listing.startswith("Tapped | screen: changed")

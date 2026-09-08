@@ -119,8 +119,9 @@ _MIME_EXT = {
 def image_filename(turn: int, mime: str) -> str:
     """Name a captured screenshot `<HHMMSS>_<mmm>_t<turn>.<ext>`: a
     local-time stamp (hour-minute-second + milliseconds, so the names sort
-    chronologically within a session) plus the turn whose request carried
-    it. Shared by both engines so the `images/` layout stays identical.
+    chronologically within a session) plus the turn that carried it — the
+    tool result's, in the engine; the request's, in the claude runtime.
+    Shared by both engines so the `images/` layout stays identical.
     `.bin` is the fallback for an unknown mime."""
     now = dt.datetime.now()
     ext = _MIME_EXT.get(mime, ".bin")
@@ -131,8 +132,8 @@ def save_image(img_dir: Path, turn: int, mime: str, b64: str) -> str | None:
     """Decode a base64 screenshot and write it to
     `<img_dir>/<image_filename(turn, mime)>`; returns the filename, or
     None on undecodable data. A failed write raises OSError — each
-    caller picks its own fail-open policy (RawLog stubs the reference,
-    the claude writer skips its counter)."""
+    caller picks its own fail-open policy (the engine's session store
+    stubs the reference, the claude writer skips its counter)."""
     try:
         raw = base64.b64decode(b64, validate=False)
     except (ValueError, TypeError):

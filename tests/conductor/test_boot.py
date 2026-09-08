@@ -340,6 +340,24 @@ def test_every_reading_logs_its_verdict(caplog: pytest.LogCaptureFixture) -> Non
     )
 
 
+def test_every_reading_is_an_event_in_the_session() -> None:
+    # The same answer as data, beside the tool result that carried the
+    # screen — a session dir explains a walk without the runtime log.
+    write_channel(CHANNEL_OPEN)
+    write_pack(playbooks={"flow": FLOW})
+    sink = Sink()
+    program, _ = setup.session_setup(events=sink)
+    assert program is not None
+    h = _history()
+    _feed(h, program.advance(h), THREAD)
+
+    program.advance(h)
+
+    (read,) = [e for e in sink.events if e["event"] == "walk_read"]
+    assert read["after"] == "peek"
+    assert read["verdict"] == "match channel.thread (1 anchor)"
+
+
 def test_the_boot_hands_on_as_a_walk_event_in_the_session() -> None:
     # Dry as it is, the boot's conclusion lands in events.jsonl, so the
     # summary's `walks` list opens with which playbook it picked.
@@ -357,6 +375,7 @@ def test_the_boot_hands_on_as_a_walk_event_in_the_session() -> None:
     assert [
         (e["event"], e["app"], e["playbook"], e["outcome"], e["reason"])
         for e in sink.events
+        if e["event"] == "walk"
     ] == [("walk", "channel", "boot", "completed", "hands over to demo/flow")]
     # …and the baton records into the same session.
     assert program.baton is not None and program.baton.record.events is sink

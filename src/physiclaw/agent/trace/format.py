@@ -12,7 +12,10 @@ from typing import Any
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
 # summary branch.
-_SILENT_EVENTS = frozenset({"prefix_pinned", "finish_length_warning"})
+# Data-only events: recorded for analysis, never a daily-log line
+# (`walk_read` is per gesture — the walk's process line covers a human
+# following along).
+_SILENT_EVENTS = frozenset({"prefix_pinned", "finish_length_warning", "walk_read"})
 
 
 def brief(value: Any, limit: int = 80) -> str:

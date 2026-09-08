@@ -21,10 +21,10 @@ PersistImage = Callable[[str, str], str]
 
 def scrub_messages(messages: list[dict], persist: PersistImage) -> list[dict]:
     """Copy of `messages` with inline base64 image data replaced by a
-    reference `persist` returns. No cross-request dedup, by design: a
-    screen still in context is re-persisted each request it appears in
-    (a fresh stamp each time), so the frames sort chronologically on
-    disk for debugging.
+    reference `persist` returns. `persist` is asked once per occurrence;
+    whether a screen still in context maps to one file or a fresh one
+    each request is the callback's policy (the session store keeps one
+    file per frame).
 
     Handles two wire shapes (recognized at the block level, not the
     provider level):

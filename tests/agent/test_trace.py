@@ -29,6 +29,7 @@ from physiclaw.agent.trace import (
     format_call_args,
     format_call_result,
 )
+from physiclaw.agent.trace.store import Images
 from physiclaw.common import paths
 from physiclaw.contract import wire
 from physiclaw.contract.dto import ImageBlock, TextBlock
@@ -367,7 +368,7 @@ def test_trace_creates_log_directory_and_opens_file_with_separator(
     _trace_dirs: Path,
 ) -> None:
     with freeze_time("2026-04-28T10:00:00"):
-        t = Trace("session-1")
+        t = Trace("session-1", Images("session-1"))
         t.close()
 
     log_path = _trace_dirs / "engine-2026-04-28.log"
@@ -379,7 +380,7 @@ def test_trace_write_appends_summary_line_with_timestamp(
     _trace_dirs: Path,
 ) -> None:
     with freeze_time("2026-04-28T10:00:00"):
-        t = Trace("s1")
+        t = Trace("s1", Images("s1"))
         t.write({"event": "tools_loaded", "mcp": [], "local": []})
         t.close()
 
@@ -389,7 +390,7 @@ def test_trace_write_appends_summary_line_with_timestamp(
 
 def test_trace_write_skips_silent_events(_trace_dirs: Path) -> None:
     with freeze_time("2026-04-28T10:00:00"):
-        t = Trace("s1")
+        t = Trace("s1", Images("s1"))
         t.write({"event": "prefix_pinned"})
         t.close()
 
@@ -398,13 +399,13 @@ def test_trace_write_skips_silent_events(_trace_dirs: Path) -> None:
 
 
 def test_trace_close_is_idempotent(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.close()
     t.close()  # must not raise
 
 
 def test_trace_writes_per_turn_note_history(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write(
         {
             "event": "tool_result",
@@ -430,7 +431,7 @@ def test_trace_mirrors_process_log_into_session_runtime_log(_trace_dirs: Path) -
     from physiclaw.common.logger import setup_logging
 
     setup_logging("runtime", level=logging.INFO)  # permissive root, console INFO
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     logging.getLogger("physiclaw.test.trace").debug("captured-debug-line")
     t.close()
 
@@ -442,7 +443,7 @@ def test_trace_publishes_and_clears_active_session_marker(_trace_dirs: Path) -> 
     from physiclaw.common import paths
 
     marker = paths.active_session_marker()
-    t = Trace("s1")  # SessionLogSidecars publishes the active session id
+    t = Trace("s1", Images("s1"))  # SessionLogSidecars publishes the active session id
     assert marker.read_text(encoding="utf-8").strip() == "s1"
 
     t.close()
@@ -453,7 +454,7 @@ def test_trace_rolls_over_to_new_day_when_midnight_crossed(
     _trace_dirs: Path,
 ) -> None:
     with freeze_time("2026-04-28T23:59:00") as ft:
-        t = Trace("s1")
+        t = Trace("s1", Images("s1"))
         ft.move_to("2026-04-29T00:00:00")
         t.write({"event": "tools_loaded", "mcp": [], "local": []})
         t.close()
@@ -469,7 +470,7 @@ def test_trace_rolls_over_to_new_day_when_midnight_crossed(
 
 
 def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
-    log = RawLog("sess-A")
+    log = RawLog("sess-A", Images("sess-A"))
     log.write_session_start(
         provider="anthropic",
         model="claude-test",
@@ -488,7 +489,7 @@ def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
 
 
 def test_rawlog_writes_request_with_turn_index(_trace_dirs: Path) -> None:
-    log = RawLog("sess-B")
+    log = RawLog("sess-B", Images("sess-B"))
     log.write_request(turn=3, messages=[{"role": "user", "content": "hi"}])
     log.close()
 
@@ -502,7 +503,7 @@ def test_rawlog_writes_request_with_turn_index(_trace_dirs: Path) -> None:
 
 
 def test_rawlog_writes_response_with_elapsed(_trace_dirs: Path) -> None:
-    log = RawLog("sess-C")
+    log = RawLog("sess-C", Images("sess-C"))
     log.write_response(turn=1, raw={"id": "r1"}, elapsed_ms=42)
     log.close()
 
@@ -515,16 +516,22 @@ def test_rawlog_writes_response_with_elapsed(_trace_dirs: Path) -> None:
 
 
 def test_rawlog_close_is_idempotent(_trace_dirs: Path) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     log.close()
     log.close()
 
 
-# ---------- the wire scrub codec, through RawLog's persist ----------
+# ---------- the wire scrub codec, through the session's frame store ----------
+
+
+def _persist(log: RawLog):
+    """What `write_request` hands the scrubber: this log's store, at the
+    turn the request is for (-1 outside a request)."""
+    return lambda mime, b64: log._images.put(-1, mime, b64)
 
 
 def test_rawlog_scrubs_openai_image_url_data_to_disk(_trace_dirs: Path) -> None:
-    log = RawLog("sess-IMG")
+    log = RawLog("sess-IMG", Images("sess-IMG"))
     raw_bytes = b"fake jpeg bytes"
     b64 = base64.b64encode(raw_bytes).decode()
     messages = [
@@ -540,7 +547,7 @@ def test_rawlog_scrubs_openai_image_url_data_to_disk(_trace_dirs: Path) -> None:
         }
     ]
 
-    out = wire.scrub_messages(messages, log._persist_image)
+    out = wire.scrub_messages(messages, _persist(log))
 
     # The image_url is replaced with a session-relative turn-tagged path
     # (turn defaults to -1 when scrubbing outside write_request).
@@ -551,7 +558,7 @@ def test_rawlog_scrubs_openai_image_url_data_to_disk(_trace_dirs: Path) -> None:
 
 
 def test_rawlog_scrubs_anthropic_image_block_to_ref(_trace_dirs: Path) -> None:
-    log = RawLog("sess-A")
+    log = RawLog("sess-A", Images("sess-A"))
     raw_bytes = b"png data"
     b64 = base64.b64encode(raw_bytes).decode()
     messages = [
@@ -570,7 +577,7 @@ def test_rawlog_scrubs_anthropic_image_block_to_ref(_trace_dirs: Path) -> None:
         }
     ]
 
-    out = wire.scrub_messages(messages, log._persist_image)
+    out = wire.scrub_messages(messages, _persist(log))
 
     src = out[0]["content"][0]["source"]
     assert src["type"] == "ref"
@@ -579,7 +586,7 @@ def test_rawlog_scrubs_anthropic_image_block_to_ref(_trace_dirs: Path) -> None:
 
 
 def test_rawlog_scrubs_anthropic_tool_result_inner_content(_trace_dirs: Path) -> None:
-    log = RawLog("sess-T")
+    log = RawLog("sess-T", Images("sess-T"))
     raw_bytes = b"img"
     b64 = base64.b64encode(raw_bytes).decode()
     messages = [
@@ -605,7 +612,7 @@ def test_rawlog_scrubs_anthropic_tool_result_inner_content(_trace_dirs: Path) ->
         }
     ]
 
-    out = wire.scrub_messages(messages, log._persist_image)
+    out = wire.scrub_messages(messages, _persist(log))
 
     inner = out[0]["content"][0]["content"]
     assert inner[0] == {"type": "text", "text": "caption"}
@@ -613,7 +620,7 @@ def test_rawlog_scrubs_anthropic_tool_result_inner_content(_trace_dirs: Path) ->
 
 
 def test_rawlog_passes_through_non_data_image_url(_trace_dirs: Path) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {
         "role": "user",
         "content": [
@@ -621,7 +628,7 @@ def test_rawlog_passes_through_non_data_image_url(_trace_dirs: Path) -> None:
         ],
     }
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     assert out[0]["content"][0]["image_url"]["url"] == "https://x/img.jpg"
 
@@ -629,7 +636,7 @@ def test_rawlog_passes_through_non_data_image_url(_trace_dirs: Path) -> None:
 def test_rawlog_passes_through_non_base64_anthropic_image(
     _trace_dirs: Path,
 ) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {
         "role": "user",
         "content": [
@@ -637,7 +644,7 @@ def test_rawlog_passes_through_non_base64_anthropic_image(
         ],
     }
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     assert out[0]["content"][0]["source"]["type"] == "url"
 
@@ -645,7 +652,7 @@ def test_rawlog_passes_through_non_base64_anthropic_image(
 def test_rawlog_falls_back_to_byte_count_stub_on_decode_failure(
     _trace_dirs: Path,
 ) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {
         "role": "user",
         "content": [
@@ -660,7 +667,7 @@ def test_rawlog_falls_back_to_byte_count_stub_on_decode_failure(
         ],
     }
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     # base64.b64decode with validate=False is permissive — won't raise
     # on most strings. Confirm we end up with either a ref or a stub
@@ -672,10 +679,10 @@ def test_rawlog_falls_back_to_byte_count_stub_on_decode_failure(
 def test_rawlog_passes_through_messages_with_string_content(
     _trace_dirs: Path,
 ) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {"role": "user", "content": "plain string"}
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     assert out == [msg]
 
@@ -683,10 +690,10 @@ def test_rawlog_passes_through_messages_with_string_content(
 def test_rawlog_passes_through_unknown_block_types(
     _trace_dirs: Path,
 ) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {"role": "user", "content": [{"type": "tool_use", "name": "tap"}]}
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     assert out[0]["content"][0] == {"type": "tool_use", "name": "tap"}
 
@@ -694,7 +701,7 @@ def test_rawlog_passes_through_unknown_block_types(
 def test_rawlog_empty_data_field_returns_unreadable_stub(
     _trace_dirs: Path,
 ) -> None:
-    log = RawLog("s")
+    log = RawLog("s", Images("s"))
     msg = {
         "role": "user",
         "content": [
@@ -702,7 +709,7 @@ def test_rawlog_empty_data_field_returns_unreadable_stub(
         ],
     }
 
-    out = wire.scrub_messages([msg], log._persist_image)
+    out = wire.scrub_messages([msg], _persist(log))
 
     url = out[0]["content"][0]["image_url"]["url"]
     assert "unreadable" in url
@@ -749,7 +756,7 @@ def _events(log_dir: Path, sid: str) -> list[dict]:
 
 
 def test_trace_writes_every_event_to_events_jsonl(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "request", "turn": 0, "message_count": 5})
     t.write({"event": "prefix_pinned", "hash": "abc"})  # silent in daily log
     t.close()
@@ -764,35 +771,10 @@ def test_trace_writes_every_event_to_events_jsonl(_trace_dirs: Path) -> None:
     assert events[2] == {"t": events[2]["t"], "event": "prefix_pinned", "hash": "abc"}
 
 
-def test_trace_events_jsonl_summarizes_tool_result_blocks(_trace_dirs: Path) -> None:
-    # blocks may carry base64 screens whose bytes already live in
-    # wire.jsonl — events.jsonl keeps a summary, not a second copy.
-    t = Trace("s1")
-    t.write(
-        {
-            "event": "tool_result",
-            "turn": 1,
-            "name": "tap",
-            "id": "c1",
-            "arguments": {"bbox": [0, 0, 1, 1]},
-            "blocks": [
-                {"type": "text", "text": "ok"},
-                {"type": "image", "data": "aGk="},
-            ],
-        }
-    )
-    t.close()
-
-    e = _events(_trace_dirs, "s1")[1]  # [0] is the env snapshot
-    assert "blocks" not in e
-    assert e["result_summary"] == "ok + <image 4b>"
-    assert e["arguments"] == {"bbox": [0, 0, 1, 1]}
-
-
 def test_trace_events_jsonl_degrades_on_non_serializable_values(
     _trace_dirs: Path,
 ) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "tool_error", "turn": 0, "error": ValueError("boom")})
     t.close()
 
@@ -877,7 +859,7 @@ def _feed_session(t: Trace) -> None:
 
 
 def test_summary_json_derived_from_event_stream(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     _feed_session(t)
     t.close()
 
@@ -922,7 +904,7 @@ def test_summary_json_derived_from_event_stream(_trace_dirs: Path) -> None:
 
 
 def test_summary_marks_crashed_sessions(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "wake", "session": "s1", "model_ref": "m/x", "triggers": []})
     t.write({"event": "crashed"})
     t.close()
@@ -934,7 +916,7 @@ def test_summary_marks_crashed_sessions(_trace_dirs: Path) -> None:
 
 def test_close_writes_end_footer_to_daily_log(_trace_dirs: Path) -> None:
     with freeze_time("2026-04-28T10:00:00"):
-        t = Trace("s1")
+        t = Trace("s1", Images("s1"))
         _feed_session(t)
         t.close()
 
@@ -944,7 +926,7 @@ def test_close_writes_end_footer_to_daily_log(_trace_dirs: Path) -> None:
 
 
 def test_close_counts_images_from_session_dir(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     img_dir = _trace_dirs / "sessions" / "s1" / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
     (img_dir / "120000_000_t0.jpg").write_bytes(b"x")
@@ -956,7 +938,7 @@ def test_close_counts_images_from_session_dir(_trace_dirs: Path) -> None:
 
 
 def test_close_writes_summary_only_once(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.close()
     first = (_trace_dirs / "sessions" / "s1" / "summary.json").read_text()
     t.close()  # idempotent — no rewrite, no raise
@@ -973,7 +955,7 @@ def test_fmt_tokens_scales() -> None:
 
 
 def test_write_request_tags_images_with_turn(_trace_dirs: Path) -> None:
-    log = RawLog("sess-T")
+    log = RawLog("sess-T", Images("sess-T"))
     b64 = base64.b64encode(b"img").decode()
     log.write_request(
         turn=7,
@@ -1013,8 +995,8 @@ def test_close_appends_summary_line_to_durable_stats(_trace_dirs: Path) -> None:
     # Tiered retention: session dirs purge after trace_days; the one-line
     # summary appended at close lands at the sweep-free `log/` root — no
     # purge target ever matches it, by placement rather than by exemption.
-    Trace("s1").close()
-    Trace("s2").close()
+    Trace("s1", Images("s1")).close()
+    Trace("s2", Images("s2")).close()
 
     lines = (paths.LOG_DIR / "stats.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(ln)["sid"] for ln in lines] == ["s1", "s2"]
@@ -1095,7 +1077,7 @@ def test_new_sid_sorts_chronologically() -> None:
 
 
 def test_first_event_of_every_session_is_the_env_snapshot(_trace_dirs: Path) -> None:
-    Trace("s1").close()
+    Trace("s1", Images("s1")).close()
 
     e = _events(_trace_dirs, "s1")[0]
     assert e["event"] == "env"
@@ -1106,7 +1088,7 @@ def test_first_event_of_every_session_is_the_env_snapshot(_trace_dirs: Path) -> 
 
 
 def test_env_snapshot_never_carries_secrets(_trace_dirs: Path) -> None:
-    Trace("s1").close()
+    Trace("s1", Images("s1")).close()
 
     raw = (_trace_dirs / "sessions" / "s1" / "events.jsonl").read_text()
     assert "api_key" not in raw
@@ -1114,7 +1096,7 @@ def test_env_snapshot_never_carries_secrets(_trace_dirs: Path) -> None:
 
 
 def test_summary_includes_env(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "done", "sentinel": "DONE", "recap": "ok"})
     t.close()
 
@@ -1125,7 +1107,7 @@ def test_summary_includes_env(_trace_dirs: Path) -> None:
 
 def test_env_renders_one_daily_log_line(_trace_dirs: Path) -> None:
     with freeze_time("2026-04-28T10:00:00"):
-        Trace("s1").close()
+        Trace("s1", Images("s1")).close()
 
     text = (_trace_dirs / "engine-2026-04-28.log").read_text()
     assert "env physiclaw=" in text
@@ -1138,10 +1120,10 @@ def test_env_renders_one_daily_log_line(_trace_dirs: Path) -> None:
 def test_log_files_use_lf_newlines_regardless_of_platform(_trace_dirs: Path) -> None:
     # newline="\n" pinned on every writer: identical bytes on Windows and
     # POSIX, so hashing/diffing sessions across rigs is meaningful.
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "done", "sentinel": "DONE", "recap": "ok"})
     t.close()
-    rlog = RawLog("s1")
+    rlog = RawLog("s1", Images("s1"))
     rlog.write_request(turn=0, messages=[{"role": "user", "content": "hi"}])
     rlog.close()
 
@@ -1153,14 +1135,14 @@ def test_log_files_use_lf_newlines_regardless_of_platform(_trace_dirs: Path) -> 
 
 
 def test_sessions_readme_written_once(_trace_dirs: Path) -> None:
-    Trace("s1").close()
+    Trace("s1", Images("s1")).close()
     readme = _trace_dirs / "sessions" / "README.md"
     assert readme.is_file()
     text = readme.read_text(encoding="utf-8")
     assert "events.jsonl" in text and "summary.json" in text
 
     stamp = readme.stat().st_mtime_ns
-    Trace("s2").close()  # second session must not rewrite it
+    Trace("s2", Images("s2")).close()  # second session must not rewrite it
     assert readme.stat().st_mtime_ns == stamp
 
 
@@ -1192,7 +1174,7 @@ def test_sessions_readme_refreshed_when_stale(_trace_dirs: Path) -> None:
     readme.parent.mkdir(parents=True, exist_ok=True)
     readme.write_text("stale doc", encoding="utf-8")
 
-    Trace("s1").close()
+    Trace("s1", Images("s1")).close()
 
     text = readme.read_text(encoding="utf-8")
     assert "stale doc" not in text
@@ -1202,7 +1184,7 @@ def test_sessions_readme_refreshed_when_stale(_trace_dirs: Path) -> None:
 def test_summary_splits_conductor_turns_from_provider_calls(
     _trace_dirs: Path,
 ) -> None:
-    t = Trace("s2")
+    t = Trace("s2", Images("s2"))
     t.write({"event": "response", "turn": 0, "elapsed_ms": 3, "synthesized": True})
     t.write({"event": "response", "turn": 1, "elapsed_ms": 1500})
     t.close()
@@ -1218,7 +1200,7 @@ def test_summary_splits_conductor_turns_from_provider_calls(
 def test_summary_counts_micro_calls_and_folds_their_tokens(
     _trace_dirs: Path,
 ) -> None:
-    t = Trace("s3")
+    t = Trace("s3", Images("s3"))
     t.write(
         {
             "event": "micro_call",
@@ -1261,7 +1243,7 @@ def test_micro_decisions_are_mirrored_into_the_process_log(
     # renders the `micro_call` event once and mirrors that one line, so
     # runtime.log and `physiclaw logs` can never disagree about it.
     caplog.set_level("INFO", logger="physiclaw.agent.trace")
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write(
         {
             "event": "micro_call",
@@ -1283,7 +1265,7 @@ def test_micro_decisions_are_mirrored_into_the_process_log(
 
 
 def test_summary_lists_every_walk_in_order(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.write({"event": "wake", "session": "s1", "model_ref": "x/y", "triggers": []})
     t.write(
         {
@@ -1320,8 +1302,100 @@ def test_summary_lists_every_walk_in_order(_trace_dirs: Path) -> None:
 
 
 def test_summary_omits_walks_when_no_playbook_ran(_trace_dirs: Path) -> None:
-    t = Trace("s1")
+    t = Trace("s1", Images("s1"))
     t.close()
 
     s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
     assert "walks" not in s
+
+
+# ---------- the view a tool result carried, written when it arrives ----------
+
+
+def test_tool_result_keeps_its_text_whole_and_writes_its_frame(
+    _trace_dirs: Path,
+) -> None:
+    # A walk's turn sends no request, so the frame and the listing must
+    # land when the result arrives — not when (if) a request carries them.
+    raw_bytes = b"jpeg bytes"
+    b64 = base64.b64encode(raw_bytes).decode()
+    tr = Trace("sess-VIEW", Images("sess-VIEW"))
+    tr.write(
+        {
+            "event": "tool_result",
+            "turn": 3,
+            "name": "peek",
+            "arguments": {"bbox": [0, 0, 1, 1]},
+            "elapsed_ms": 1,
+            "blocks": [
+                TextBlock(text="Tapped | screen: changed"),
+                ImageBlock(media_type="image/jpeg", data_b64=b64),
+                TextBlock(text='0 [text] "综合" [0.1,0.1,0.2,0.2] 0.9'),
+            ],
+        }
+    )
+    tr.close()
+
+    d = _trace_dirs / "sessions" / "sess-VIEW"
+    (event,) = [
+        json.loads(line)
+        for line in (d / "events.jsonl").read_text().splitlines()
+        if '"tool_result"' in line
+    ]
+    assert "blocks" not in event and "result_summary" not in event
+    assert (
+        event["text"]
+        == 'Tapped | screen: changed\n0 [text] "综合" [0.1,0.1,0.2,0.2] 0.9'
+    )
+    (image,) = event["images"]
+    assert image.startswith("images/") and image.endswith("_t3.jpg")
+    assert (d / image).read_bytes() == raw_bytes
+
+
+def test_a_frame_is_written_once_and_the_wire_references_it(
+    _trace_dirs: Path,
+) -> None:
+    b64 = base64.b64encode(b"one frame").decode()
+    images = Images("sess-ONCE")
+    tr = Trace("sess-ONCE", images=images)
+    rlog = RawLog("sess-ONCE", images=images)
+    tr.write(
+        {
+            "event": "tool_result",
+            "turn": 2,
+            "name": "peek",
+            "arguments": {},
+            "elapsed_ms": 1,
+            "blocks": [ImageBlock(media_type="image/jpeg", data_b64=b64)],
+        }
+    )
+    rlog.write_request(
+        3,
+        [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                    }
+                ],
+            }
+        ],
+    )
+    tr.close()
+    rlog.close()
+
+    d = _trace_dirs / "sessions" / "sess-ONCE"
+    files = sorted(p.name for p in (d / "images").iterdir())
+    assert len(files) == 1 and files[0].endswith("_t2.jpg")  # the capture turn
+    (req,) = [
+        json.loads(line)
+        for line in (d / "wire.jsonl").read_text().splitlines()
+        if '"request"' in line
+    ]
+    assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{files[0]}"
+
+
+def test_walk_read_is_data_not_a_daily_line() -> None:
+    assert trace.summarize_event({"event": "walk_read", "verdict": "x"}) is None

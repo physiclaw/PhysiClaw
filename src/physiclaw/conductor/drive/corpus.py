@@ -1,10 +1,11 @@
 """Session-listing corpus — recorded screens for offline matching work.
 
-`wire.jsonl` is the one artifact that retains full listings (trace events
-truncate them); the wire-shape walking itself lives beside the writer
-(`contract.wire.iter_request_messages` and its text view) — this module owns only "is this text
-a screen" and the corpus file format. A corpus file is JSONL, one screen
-per line::
+`events.jsonl` keeps every screen the runtime saw, whole, on its
+`tool_result` (a walk's turns included — those send no request, so
+`wire.jsonl` never carries them); a session recorded before the trace
+kept them falls back to the wire log's requests. This module owns only
+"is this text a screen" and the corpus file format. A corpus file is
+JSONL, one screen per line::
 
     {"label": "taobao.results" | "other" | "?", "listing": "<text>"}
 
@@ -14,6 +15,7 @@ observations, everything else labeled non-"?" is a hard negative.
 """
 
 import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,19 +35,47 @@ class CorpusItem:
 
 def session_listings(sid: str) -> list[str]:
     """Every distinct listing text in one recorded session, in first-seen
-    order."""
-    p = paths.engine_sessions_dir() / sid / "wire.jsonl"
-    if not p.exists():
-        raise FileNotFoundError(f"no wire.jsonl for session {sid!r} ({p})")
+    order — the tool results' own record when the session kept it, else
+    (a session recorded before the trace kept them) the wire log's
+    requests."""
+    d = paths.engine_sessions_dir() / sid
+    events, wire_log = d / "events.jsonl", d / "wire.jsonl"
+    if events.exists():
+        found = _screens(_result_texts(events))
+        if found:
+            return found
+    if not wire_log.exists():
+        raise FileNotFoundError(f"no events.jsonl or wire.jsonl for session {sid!r}")
+    # The SYSTEM prompt quotes the listing header verbatim in doctrine,
+    # so system messages must not extract as screens.
+    return _screens(
+        text for role, text in iter_request_texts(wire_log) if role != "system"
+    )
+
+
+def _screens(texts: Iterable[str]) -> list[str]:
+    """The screens among `texts`, deduped in first-seen order."""
     seen: dict[str, None] = {}
-    for role, text in iter_request_texts(p):
-        # The SYSTEM prompt quotes the listing header verbatim in
-        # doctrine, so system messages must not extract as screens.
-        if role == "system" or text in seen:
-            continue
-        if is_screen(text):
+    for text in texts:
+        if text not in seen and is_screen(text):
             seen[text] = None
     return list(seen)
+
+
+def _result_texts(path: Path) -> Iterator[str]:
+    """The `text` of every `tool_result` event in an events.jsonl,
+    streamed; lines that are not one are skipped before they are
+    parsed."""
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if '"tool_result"' not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if rec.get("event") == "tool_result" and isinstance(rec.get("text"), str):
+                yield rec["text"]
 
 
 def is_screen(text: str) -> bool:

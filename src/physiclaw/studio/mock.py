@@ -3,7 +3,9 @@
 
 The page is checked against real frames without a rig or an MCP server:
 every screen view a session logged (the annotated JPEG beside its full
-listing, paired off the wire log) becomes one frame, and `MockSession`
+listing — off the tool results the trace kept, a walk's turns included;
+off the wire log for a session recorded before it kept them) becomes
+one frame, and `MockSession`
 serves them behind the same `Session` door `StudioSession` has. A peek
 shows the current frame; a gesture advances to the next one, so
 tapping through the page walks the recorded session in order.
@@ -42,14 +44,17 @@ class Frame:
 
 def session_frames(session_dir: Path) -> list[Frame]:
     """Every distinct screen view in a recorded session, in order: the
-    image a tool reply attached and the full listing beside it.
-    Older views in a request are superseded to labels-only stubs with
-    no image, so each request contributes its latest view; the same
-    view carried into the next request is not a second frame."""
+    image a tool reply attached and the full listing beside it — the
+    tool results' own record when the session kept it, else the wire
+    log's requests (older views there are superseded to labels-only
+    stubs, so each request contributes its latest view; the same view
+    carried into the next request is not a second frame)."""
+    frames = _event_frames(session_dir)
+    if frames:
+        return frames
     wire = session_dir / "wire.jsonl"
     if not wire.exists():
-        raise FileNotFoundError(f"no wire.jsonl in {session_dir}")
-    frames: list[Frame] = []
+        raise FileNotFoundError(f"no events.jsonl views or wire.jsonl in {session_dir}")
     seen: set[str] = set()
     for role, blocks in iter_request_messages(wire):
         if role == "system":  # doctrine quotes the header; never a view
@@ -67,6 +72,34 @@ def session_frames(session_dir: Path) -> list[Frame]:
             if listing not in seen and image.exists():
                 seen.add(listing)
                 frames.append(Frame(image=image, listing=listing))
+    return frames
+
+
+def _event_frames(session_dir: Path) -> list[Frame]:
+    """The views the session's `tool_result` events carry: the result's
+    text whole (a screen) beside the frame it filed."""
+    path = session_dir / "events.jsonl"
+    if not path.exists():
+        return []
+    frames: list[Frame] = []
+    seen: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if '"tool_result"' not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            text, refs = rec.get("text"), rec.get("images") or []
+            if rec.get("event") != "tool_result" or not refs:
+                continue
+            if not isinstance(text, str) or text in seen or not is_screen(text):
+                continue
+            image = session_dir / refs[0]
+            if image.exists():
+                seen.add(text)
+                frames.append(Frame(image=image, listing=text))
     return frames
 
 

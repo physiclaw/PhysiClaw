@@ -17,7 +17,7 @@ LISTING_B = f'{LISTING_HEADER}\n0 [text] "结算" [0.500,0.900,0.600,0.940] 0.90
 
 def _write_wire(sid: str, lines: list[dict]) -> None:
     d = paths.engine_sessions_dir() / sid
-    d.mkdir(parents=True)
+    d.mkdir(parents=True, exist_ok=True)
     (d / "wire.jsonl").write_text(
         "\n".join(json.dumps(rec, ensure_ascii=False) for rec in lines) + "\n",
         encoding="utf-8",
@@ -119,3 +119,41 @@ def test_partition_splits_genuine_and_negatives() -> None:
     # a label that names no declared page counts as a hard negative;
     # '?' lines are ignored entirely.
     assert len(negatives) == 2
+
+
+def test_session_listings_prefers_the_tool_results_own_record() -> None:
+    # The trace keeps every screen whole on its tool_result — a walk's
+    # turns included, which the wire log never carries.
+    sid = "20260101-000000-eeeeee"
+    d = paths.engine_sessions_dir() / sid
+    d.mkdir(parents=True)
+    events = [
+        {"event": "env"},
+        {"event": "tool_result", "turn": 1, "name": "peek", "text": LISTING_B},
+        {"event": "tool_result", "turn": 2, "name": "note", "text": "noted"},
+        {"event": "tool_result", "turn": 3, "name": "tap", "text": LISTING_B},
+        {"event": "tool_result", "turn": 4, "name": "tap", "text": LISTING_A},
+    ]
+    (d / "events.jsonl").write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in events) + "\n",
+        encoding="utf-8",
+    )
+    _write_wire_lines(
+        d,
+        [
+            {
+                "kind": "request",
+                "turn": 5,
+                "messages": [{"role": "user", "content": "x"}],
+            }
+        ],
+    )
+
+    assert corpus.session_listings(sid) == [LISTING_B, LISTING_A]
+
+
+def _write_wire_lines(d, lines: list[dict]) -> None:
+    (d / "wire.jsonl").write_text(
+        "\n".join(json.dumps(rec, ensure_ascii=False) for rec in lines) + "\n",
+        encoding="utf-8",
+    )

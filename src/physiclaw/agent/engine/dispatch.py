@@ -226,7 +226,11 @@ def _blocks_result(
             "arguments": call.arguments,
             "elapsed_ms": elapsed_ms,
             "changed": changed,
-            "blocks": blocks,
+            # The content as the model receives it (scaled frames, the
+            # observer's verdict line) — the trace keeps its text whole
+            # and files its frames once, and the wire log's scrub of a
+            # later request finds those same bytes already on disk.
+            "blocks": content,
         }
     )
     log.info("  ✓ %s → %s", call.name, brief_content(content))

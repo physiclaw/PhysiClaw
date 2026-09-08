@@ -97,3 +97,25 @@ def test_a_failing_sink_never_stops_the_record() -> None:
 
     assert record.outcome is Outcome.HANDOVER
     assert len(walklog.load()) == 1
+
+
+def test_a_reading_is_an_event_beside_its_tool_result() -> None:
+    from conductor_fakes import Sink
+
+    from physiclaw.conductor.walk.record import Record
+
+    sink = Sink()
+    Record("taobao", "buy", dry=True, events=sink).read(
+        "peek", "search", "match taobao.results (2 anchors)"
+    )
+
+    assert sink.events == [
+        {
+            "event": "walk_read",
+            "app": "taobao",
+            "playbook": "buy",
+            "after": "peek",
+            "node": "search",
+            "verdict": "match taobao.results (2 anchors)",
+        }
+    ]

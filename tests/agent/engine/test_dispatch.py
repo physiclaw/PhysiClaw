@@ -113,8 +113,11 @@ async def test_dispatch_local_blocks_traced_like_mcp_result() -> None:
     await dispatch(run, Session(), _tc("run_macro"), 0)
 
     traced = [c.args[0] for c in run.tr.write.call_args_list]
+    # The event carries the content as the model receives it — a lone
+    # text block rides as its bare string.
     assert any(
-        e.get("event") == "tool_result" and e.get("blocks") == blocks for e in traced
+        e.get("event") == "tool_result" and e.get("blocks") == "log line"
+        for e in traced
     )
 
 
@@ -623,3 +626,87 @@ async def test_dispatch_feeds_keyboard_tracker_the_verdict(mocker) -> None:
     name, args, changed = kb_spy.call_args.args
     assert name == "tap"
     assert changed in (True, False)  # the parsed verdict, not None
+
+
+@pytest.mark.asyncio
+async def test_a_frame_is_filed_at_dispatch_and_the_wire_reuses_it(
+    tmp_path, monkeypatch
+) -> None:
+    # End to end through the real sinks: the dispatcher hands the trace
+    # the converted content, the trace files the frame once at its
+    # turn, and a later request's scrub finds those same bytes on disk.
+    import base64
+    import json
+
+    from physiclaw.agent.trace import RawLog, Trace
+    from physiclaw.agent.trace.store import Images
+    from physiclaw.common import paths
+    from physiclaw.contract.dto import ImageBlock
+
+    log_dir = tmp_path / "engine"
+    monkeypatch.setattr(paths, "engine_log_dir", lambda: log_dir)
+    monkeypatch.setattr(paths, "engine_sessions_dir", lambda: log_dir / "sessions")
+    import cv2
+    import numpy as np
+
+    images = Images("s-e2e")
+    tr, rlog = Trace("s-e2e", images), RawLog("s-e2e", images)
+    ok, jpeg = cv2.imencode(".jpg", np.zeros((4, 4, 3), dtype=np.uint8))
+    assert ok
+    b64 = base64.b64encode(jpeg.tobytes()).decode()
+    blocks = [
+        {"type": "text", "text": "Tapped | screen: changed"},
+        {"type": "image", "mime_type": "image/jpeg", "data": b64},
+    ]
+
+    async def handler(_session, _args):
+        return blocks
+
+    tool = LocalTool("run_macro", "x", {"type": "object"}, handler, returns_blocks=True)
+    schema = {"name": "run_macro", "input_schema": {"type": "object"}}
+    run = _mk_run(
+        schema_by_name={"run_macro": schema},
+        local_registry={"run_macro": tool},
+        tr=tr,
+        rlog=rlog,
+    )
+
+    result = await dispatch(run, Session(), _tc("run_macro"), 7)
+    # The next request carries that same result — encoded the way the
+    # provider does, off the stored block's own bytes.
+    (frame,) = [b for b in result.content if isinstance(b, ImageBlock)]
+    rlog.write_request(
+        8,
+        [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{frame.media_type};base64,{frame.data_b64}"
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    tr.close()
+    rlog.close()
+
+    d = log_dir / "sessions" / "s-e2e"
+    (filed,) = sorted(p.name for p in (d / "images").iterdir())
+    assert filed.endswith("_t7.jpg")  # the capture turn, not the request's
+    (event,) = [
+        json.loads(line)
+        for line in (d / "events.jsonl").read_text().splitlines()
+        if '"tool_result"' in line
+    ]
+    assert event["images"] == [f"images/{filed}"]
+    assert event["text"].startswith("Tapped | screen: changed")
+    (req,) = [
+        json.loads(line)
+        for line in (d / "wire.jsonl").read_text().splitlines()
+        if '"request"' in line
+    ]
+    assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{filed}"

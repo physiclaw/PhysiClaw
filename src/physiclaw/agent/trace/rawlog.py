@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from physiclaw.agent.trace import store
-from physiclaw.common.logger import iso_now, save_image
+from physiclaw.common.logger import iso_now
 from physiclaw.contract import wire
 
 log = logging.getLogger(__name__)
@@ -19,17 +19,15 @@ class RawLog:
     `close()` on session end.
     """
 
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, images: "store.Images"):
         d = store._session_dir(session_id)
-        self._image_dir = d / "images"
-        self._image_dir.mkdir(parents=True, exist_ok=True)
+        # The session's frame store, the trace's too: a frame filed at
+        # its tool result is what a request's scrub references.
+        self._images = images
         store._purge_old()
         self.session_id = session_id
         self.path = d / "wire.jsonl"
         self._f = open(self.path, "a", encoding="utf-8", newline="\n")
-        # The turn currently being scrubbed — set by write_request before
-        # _scrub_images so extracted images carry their turn in the name.
-        self._turn = -1
 
     def write_session_start(
         self,
@@ -51,8 +49,11 @@ class RawLog:
         )
 
     def write_request(self, turn: int, messages: list[dict]) -> None:
-        self._turn = turn
-        scrubbed = wire.scrub_messages(messages, self._persist_image)
+        # Inline frames become session-relative paths: the file the
+        # frame's own tool result filed, or one filed now under this turn.
+        scrubbed = wire.scrub_messages(
+            messages, lambda mime, b64: self._images.put(turn, mime, b64)
+        )
         self._emit("request", turn=turn, messages=scrubbed)
 
     def write_response(
@@ -89,14 +90,3 @@ class RawLog:
             self._f.flush()
         except (OSError, TypeError, ValueError):
             log.warning("wire.jsonl write failed", exc_info=True)
-
-    def _persist_image(self, mime: str, b64_data: str) -> str:
-        """Decode `b64_data`, write to
-        `sessions/<sid>/images/<HHMMSS>_<mmm>_t<turn><ext>`, return the path
-        relative to the session dir (so wire.jsonl + images move together
-        when the dir is copied). The `image_filename` stamp sorts the frames
-        chronologically and its `_t<turn>` tag links each straight to its
-        turn. Returns "" on decode failure so the caller can fall back to a
-        byte-count stub."""
-        name = save_image(self._image_dir, self._turn, mime, b64_data)
-        return f"images/{name}" if name else ""
