@@ -180,7 +180,20 @@ def readiness_warnings(spec: Playbook, pack: Pack) -> list[str]:
         _gate_word_warnings(spec)
         + _resume_warnings(spec)
         + _anchor_warnings(spec, pack)
+        + _think_warnings(spec)
     )
+
+
+def _think_warnings(spec: Playbook) -> list[str]:
+    """A model step that leaves `think:` unsaid: the vendor's default
+    then decides how long the model deliberates on each call, and on a
+    thinking model that is minutes and thousands of tokens per decision."""
+    return [
+        f"step {n.id!r} declares no `think:` — the model deliberates at its "
+        "vendor default on every call there; declare off, low, medium or high"
+        for n in spec.nodes
+        if isinstance(n, (AgentNode, ActivateNode)) and n.think is None
+    ]
 
 
 def _resume_warnings(spec: Playbook) -> list[str]:

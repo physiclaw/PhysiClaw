@@ -47,6 +47,7 @@ from physiclaw.contract.dto import (
     FinishReason,
     Message,
     SystemMessage,
+    Thinking,
     UserMessage,
 )
 from physiclaw.contract.plugin import ChatProvider, EventSink, WireSink
@@ -116,6 +117,9 @@ class DecisionRequest:
     # each call's prefix is byte-identical to the previous call's whole
     # request. Empty for every one-shot call.
     history: tuple[tuple[str, str], ...] = ()
+    # The step's `think:` — how much hidden thinking the call asks the
+    # model for; None leaves the vendor's default.
+    thinking: Thinking | None = None
 
 
 @dataclass(frozen=True)
@@ -151,18 +155,21 @@ def build_request(
     args: dict[str, str],
     screen: Screen,
     context: str = "",
+    thinking: Thinking | None = None,
 ) -> DecisionRequest:
     """The one assembler of a one-shot request's screen material — the
-    label text when the call reads the screen (`_SPECS` says which).
-    (Episode requests are assembled by the agent step: they carry
-    replayed history and granted candidates this cannot produce.)"""
+    row labels when the call reads the screen (`_SPECS` says which);
+    never `Screen.content`, which keeps a macro result's step summary
+    for guards. (Episode requests are assembled by the agent step: they
+    carry replayed history and granted candidates this cannot produce.)"""
     return DecisionRequest(
         call=call,
         node_id=node_id,
         outcomes=outcomes,
         args=args,
-        listing=screen.content if _SPECS[call].material == "listing" else "",
+        listing=screen.labels_text if _SPECS[call].material == "listing" else "",
         context=context,
+        thinking=thinking,
     )
 
 
@@ -347,6 +354,10 @@ class MicroCaller:
                 "event": "micro_call",
                 "call": req.call,
                 "node": req.node_id,
+                # An episode turn's answerable rows — the count says how
+                # much screen the decision saw (a truncated one is
+                # visible here, not only in the process log).
+                "rows": len(req.candidates),
                 "out": result.outcome.out if result.outcome else None,
                 "confidence": (result.outcome.confidence if result.outcome else None),
                 "detail": result.detail,
@@ -380,8 +391,13 @@ async def _chat(
     taxonomy: timeout / 429 / 5xx — permanent 4xx and real bugs fail
     fast): a blip on the cheap tier is common and permanent escalation
     is too big a price for it. Raises whatever the second try raises."""
+    # How much the model may think is the step's `think:` (the vendor
+    # translates it, see `BaseProvider.thinking_params`); the reply's
+    # `reason` field is the chain of thought the contract always gets.
     try:
-        return await provider.chat(messages, [], purpose=USAGE_CALL_MICRO)
+        return await provider.chat(
+            messages, [], purpose=USAGE_CALL_MICRO, thinking=req.thinking
+        )
     except ProviderTransientError:
         log.info(
             "micro %s (%s): transient provider error — one retry",
@@ -389,7 +405,9 @@ async def _chat(
             req.node_id,
         )
         await asyncio.sleep(CONFIG.engine.retry_backoff_seconds)
-        return await provider.chat(messages, [], purpose=USAGE_CALL_MICRO)
+        return await provider.chat(
+            messages, [], purpose=USAGE_CALL_MICRO, thinking=req.thinking
+        )
 
 
 # ---------- the call table (prompts / answer spaces / outcomes) ----------
@@ -444,6 +462,9 @@ class _CallSpec:
     to_outcome: "Callable[[DecisionRequest, str, str, float, dict], MicroOutcome]" = (
         _enum_outcome
     )
+    # What the call's data block is made of, said once in the system
+    # prompt when the shape needs saying (an episode's OCR rows).
+    material_note: str = ""
 
 
 def _parse_task_space(req: DecisionRequest) -> tuple[str, ...]:
@@ -607,7 +628,8 @@ _SPECS: dict[str, _CallSpec] = {
     ),
     # The two agent rows: the author's prompt IS the brief (the first
     # user block — replayed verbatim in an episode), the conductor adds
-    # only the output contract and the answers the author's tools grant.
+    # only the output contract, the answers the author's tools grant,
+    # and — for an episode — what its screen block is made of.
     AGENT_FIELDS: _CallSpec(
         role="",
         material="none",
@@ -626,6 +648,7 @@ _SPECS: dict[str, _CallSpec] = {
         # granted-landmark candidates `build_request` cannot produce, so
         # there is deliberately no build_request arm to half-mirror them.
         material="none",
+        material_note=prompts.SCREEN_ROWS_NOTE,
         answer_space=lambda req: tuple(c.key for c in req.candidates) + req.outcomes,
         answer_spec=_act_legend,
         user_parts=lambda req: [req.args.get("block", "")],
@@ -636,13 +659,15 @@ _SPECS: dict[str, _CallSpec] = {
 
 def _system(req: DecisionRequest, allowed: tuple[str, ...]) -> str:
     # One skeleton owns the prompt's load-bearing order (role sentence →
-    # contract → answer legend); the row supplies only the two texts.
+    # contract → material note, when the row has one → answer legend);
+    # the row supplies only the texts.
     # `format` fills the optional {allowed} placeholder and unescapes a
     # JSON legend's doubled braces; a legend with neither (agent_act —
     # its rows change per turn, so the system prompt stays byte-stable
     # for the prefix cache) passes through unchanged.
     spec = _SPECS[req.call]
-    return f"{spec.role} {_CONTRACT}\n{spec.answer_spec(req, allowed)}".lstrip()
+    note = f"{spec.material_note}\n" if spec.material_note else ""
+    return f"{spec.role} {_CONTRACT}\n{note}{spec.answer_spec(req, allowed)}".lstrip()
 
 
 def _user(req: DecisionRequest) -> str:

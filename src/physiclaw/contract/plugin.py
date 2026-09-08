@@ -36,6 +36,7 @@ from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
     AssistantMessage,
     Message,
+    Thinking,
     UsageCall,
 )
 from physiclaw.macros.model import Macro
@@ -57,6 +58,7 @@ class ChatProvider(Protocol):
         tools: list[dict],
         *,
         purpose: UsageCall = USAGE_CALL_TURN,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage: ...
 
     def serialize_history(self, messages: list[Message]) -> list[dict]: ...

@@ -9,7 +9,15 @@ exercised in `test_provider_base.py`).
 
 from __future__ import annotations
 
+import pytest
+
 from physiclaw.provider.vendors.qwen import QwenProvider
+
+
+@pytest.fixture(autouse=True)
+def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QWEN_API_KEY", "sk-test")
+
 
 # ---------- class metadata ----------
 
@@ -71,3 +79,23 @@ def test_system_prompt_fragment_matches_declared_attr() -> None:
     surfaces here as a failed test."""
     assert QwenProvider.system_prompt_fragment() == QwenProvider.SYSTEM_PROMPT_FRAGMENT
     assert QwenProvider.SYSTEM_PROMPT_FRAGMENT != ""
+
+
+# ---------- thinking table ----------
+
+
+def test_hybrid_models_switch_and_bound_thinking() -> None:
+    p = QwenProvider(model="qwen3-max")
+    assert p.thinking_params("off") == {"enable_thinking": False}
+    assert p.thinking_params("low") == {
+        "enable_thinking": True,
+        "thinking_budget": 1024,
+    }
+    assert p.thinking_params("high") == {
+        "enable_thinking": True,
+        "thinking_budget": 16384,
+    }
+
+
+def test_a_model_without_the_switch_gets_no_field() -> None:
+    assert QwenProvider(model="qwen-max").thinking_params("off") == {}

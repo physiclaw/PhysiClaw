@@ -916,3 +916,51 @@ async def test_list_models_non_json_200_maps_to_transient(
 
     with pytest.raises(ProviderTransientError, match=r"^non-JSON response: "):
         await provider.list_models()
+
+
+# ---------- reasoning ask → vendor request fields ----------
+
+
+class _ThinkingOpenAI(_TestOpenAI):
+    def thinking_params(self, thinking):
+        return {"thinking": {"type": "disabled" if thinking == "off" else "enabled"}}
+
+
+@pytest.mark.asyncio
+async def test_chat_merges_the_vendors_thinking_params_into_the_payload(
+    respx_mock: respx.MockRouter,
+) -> None:
+    import json
+
+    route = respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        json={
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+            "usage": {},
+        },
+    )
+    provider = _ThinkingOpenAI(model="gpt-test")
+
+    await provider.chat([UserMessage(content="x")], tools=[], thinking="off")
+    await provider.chat([UserMessage(content="x")], tools=[])
+
+    off, default = (json.loads(c.request.read()) for c in route.calls)
+    assert off["thinking"] == {"type": "disabled"}
+    assert "thinking" not in default  # None never reaches the vendor table
+
+
+@pytest.mark.asyncio
+async def test_unmeasured_vendor_sends_nothing_extra(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter
+) -> None:
+    import json
+
+    route = respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        json={
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+            "usage": {},
+        },
+    )
+
+    await provider.chat([UserMessage(content="x")], tools=[], thinking="high")
+
+    assert set(json.loads(route.calls.last.request.read())) == {"model", "messages"}

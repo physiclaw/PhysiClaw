@@ -87,6 +87,7 @@ from physiclaw.conductor.spec.limits import (
     DEFAULT_RECOVER_LIMIT,
 )
 from physiclaw.conductor.spec.pages import Landmark, PageDecl
+from physiclaw.contract.dto import Thinking
 from physiclaw.macros.model import MACRO_SUFFIX, Macro, MacroInput
 
 # The three readings a page's `recover:` may key its hands by: the page
@@ -161,6 +162,9 @@ class AgentNode:
     irreversible: str | None = None
     context: tuple[str, ...] = ()  # `context:` — what to load (`context.py`)
     macros: tuple[str, ...] = ()  # granted pack macros (`give: [macros.<name>]`)
+    # `think:` — how much hidden thinking each of its calls asks the
+    # model for; None = the vendor's default for that model.
+    think: Thinking | None = None
 
     @property
     def return_fields(self) -> tuple[str, ...]:
@@ -215,6 +219,7 @@ class ActivateNode:
     enter: str
     max_scrolls: int
     irreversible: str | None = None  # `Checked`'s obligation; never set here
+    think: Thinking | None = None  # `think:` — as on an agent step
 
 
 class Checked(Protocol):

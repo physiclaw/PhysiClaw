@@ -62,8 +62,9 @@ beside it)
 alternating with moves — `start` (the cold launch, usually a pack
 macro every route shares), `do` (a recorded macro), `agent` (the
 model drives inside your prompt's fence, with the tools, the `give:`
-grants — landmarks to tap, pack macros to run — and the `context:`
-you list), `ask` (human gate; `yes:`/`no:` are the replies it reads,
+grants — landmarks to tap, pack macros to run — the `context:` you
+list, and `think:` — off, low, medium or high — how much hidden
+thinking each of its calls may spend), `ask` (human gate; `yes:`/`no:` are the replies it reads,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
 `resume:` re-enters the app), `tell`. A move's enter/verify checks
 derive from the adjacent waypoints; there is no branching and no loop

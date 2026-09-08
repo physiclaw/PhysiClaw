@@ -141,8 +141,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   `wake` (triggers), `response` (finish_reason, tool_calls requested,
   elapsed_ms; `synthesized: true` = a conductor playbook turn, no
   request sent), `micro_call` (one conductor decision call: call, node,
-  out or null when it escalated, confidence, detail, attempts,
-  elapsed_ms), `walk` (a conductor walk's terminal moment — the
+  rows the decision saw, out or null when it escalated, confidence,
+  detail, attempts, elapsed_ms), `walk` (a conductor walk's terminal moment — the
   fields `summary.walks` lists),
   `usage` (ONE per model call, answered or failed, written by the
   provider itself so no caller can skip it — call: turn|micro|curate,

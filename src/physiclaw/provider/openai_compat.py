@@ -52,6 +52,7 @@ from physiclaw.contract.dto import (
     FinishReason,
     Message,
     SystemMessage,
+    Thinking,
     ToolCall,
     ToolResultMessage,
     Usage,
@@ -116,11 +117,16 @@ class OpenAICompatibleProvider(BaseProvider):
         self,
         history: list[Message],
         tools: list[dict],
+        *,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage:
         wire = self.serialize_history(history)
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": wire,
+            # The vendor's spelling of a declared thinking level (nothing
+            # for the vendor default, or a model the vendor's table omits).
+            **(self.thinking_params(thinking) if thinking is not None else {}),
         }
         if tools:
             payload["tools"] = [tool_to_wire(t) for t in tools]

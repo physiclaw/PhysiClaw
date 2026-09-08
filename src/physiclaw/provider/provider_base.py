@@ -23,7 +23,7 @@ Principle 3: preserve the real `finish_reason` — never derive it.
 import logging
 import os
 import time
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -34,6 +34,7 @@ from physiclaw.contract.dto import (
     ImageBlock,
     Message,
     SystemMessage,
+    Thinking,
     ToolResultMessage,
     Usage,
     UsageCall,
@@ -77,6 +78,7 @@ class Provider(Protocol):
         tools: list[dict],
         *,
         purpose: UsageCall = USAGE_CALL_TURN,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage: ...
 
     def serialize_history(self, history: list[Message]) -> list[dict]:
@@ -91,6 +93,10 @@ class Provider(Protocol):
 
 
 # ---------- shared constants ----------
+
+# The three levels as token budgets, for vendors that bound thinking by
+# tokens (Anthropic, Qwen) — one table so "medium" means one thing.
+THINKING_BUDGETS: dict[str, int] = {"low": 1024, "medium": 4096, "high": 16384}
 
 
 # 5-minute TTL prefix-cache marker. DashScope, Moonshot K2, and
@@ -411,17 +417,20 @@ class BaseProvider:
         tools: list[dict],
         *,
         purpose: UsageCall = USAGE_CALL_TURN,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage:
         """One model call, whatever asks for it. THE door every call
         passes through — so the account of it (the `usage` event: model,
         purpose, elapsed time, every token bucket, the reply's id, or the
         error class when the call failed) is written here and cannot be
         skipped by a caller. `purpose` names who asked (the turn loop, a
-        conductor decision, curation); the wire-shape subclass does the
-        request in `_chat`."""
+        conductor decision, curation); `thinking` is the caller's word
+        for how much hidden thinking it wants, None for the vendor's
+        default (the vendor translates a level, see `thinking_params`);
+        the wire-shape subclass does the request in `_chat`."""
         t0 = time.perf_counter()
         try:
-            asst = await self._chat(history, tools)
+            asst = await self._chat(history, tools, thinking=thinking)
         except Exception as e:
             self._account(purpose, t0, error=type(e).__name__)
             raise
@@ -458,11 +467,20 @@ class BaseProvider:
         self,
         history: list[Message],
         tools: list[dict],
+        *,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage:
         raise NotImplementedError(
             f"{type(self).__name__} must inherit from a wire-shape base "
             "(OpenAICompatibleProvider or AnthropicCompatibleProvider)"
         )
+
+    def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
+        """This vendor's request fields for a declared thinking level,
+        merged into the request body by the wire-shape base. Empty by
+        default; a model outside a vendor's table also gets nothing,
+        never a guessed field the endpoint may reject."""
+        return {}
 
     async def list_models(self) -> list[dict]:
         """Live model list from the provider's `/v1/models` endpoint.

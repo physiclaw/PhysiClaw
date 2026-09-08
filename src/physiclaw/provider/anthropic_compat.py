@@ -45,6 +45,7 @@ inspection.
 
 import logging
 import uuid
+from typing import Any
 
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -52,6 +53,7 @@ from physiclaw.contract.dto import (
     ImageBlock,
     Message,
     SystemMessage,
+    Thinking,
     ToolCall,
     ToolResultMessage,
     Usage,
@@ -59,6 +61,7 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.provider.provider_base import (
     EPHEMERAL_CACHE_CONTROL,
+    THINKING_BUDGETS,
     BaseProvider,
     CacheMarkers,
     ProviderPermanentError,
@@ -195,10 +198,24 @@ class AnthropicCompatibleProvider(BaseProvider):
 
     # ---------- request flow ----------
 
+    def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
+        """Extended thinking is a token budget; `max_tokens` grows by it
+        so the answer keeps its whole allowance. "off" sends no block —
+        thinking is off unless asked for."""
+        budget = THINKING_BUDGETS.get(thinking)
+        if budget is None:
+            return {}
+        return {
+            "thinking": {"type": "enabled", "budget_tokens": budget},
+            "max_tokens": _DEFAULT_MAX_TOKENS + budget,
+        }
+
     async def _chat(
         self,
         history: list[Message],
         tools: list[dict],
+        *,
+        thinking: Thinking | None = None,
     ) -> AssistantMessage:
         from anthropic import (
             APIConnectionError,
@@ -214,6 +231,8 @@ class AnthropicCompatibleProvider(BaseProvider):
             "max_tokens": _DEFAULT_MAX_TOKENS,
             "messages": am_messages,
         }
+        if thinking is not None:
+            payload.update(self.thinking_params(thinking))
         if system:
             # Anthropic's `system` accepts a list of text blocks; a
             # `cache_control` on the trailing block caches the whole

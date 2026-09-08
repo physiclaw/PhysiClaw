@@ -271,8 +271,8 @@ def nearest_labeled_row(
 class Screen:
     """One reading of the phone screen, parsed once and asked many times.
 
-    Built from the element listing. Two haystacks fall out of it, and the
-    distinction is load-bearing:
+    Built from the element listing. Three readings fall out of it, and
+    the distinction is load-bearing:
 
     `content` is what a WHOLE-SCREEN check matches — labels only, with the
     listing's own syntax removed. Matching the raw listing meant
@@ -282,7 +282,10 @@ class Screen:
 
     `rows` is what an ELEMENT-granular check matches — the parsed
     `Element` per row, so a match can be required to sit where it was
-    rehearsed (macro region clauses) or learned (page anchors)."""
+    rehearsed (macro region clauses) or learned (page anchors).
+
+    `labels_text` is what a MODEL CALL reads — the row labels alone,
+    without the plain prose a macro result puts ahead of its view."""
 
     text: str
     content: str
@@ -305,6 +308,13 @@ class Screen:
                 # kill.
                 content.append(line)
         return cls(text=text, content="\n".join(content), rows=tuple(rows))
+
+    @property
+    def labels_text(self) -> str:
+        """The row labels as one block, top to bottom — what a model call
+        reads (`content` keeps a result's plain prose for guards; a call
+        must not)."""
+        return "\n".join(self.labels)
 
     @property
     def labels(self) -> list[str]:

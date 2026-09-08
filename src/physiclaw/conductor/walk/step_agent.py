@@ -140,6 +140,7 @@ class AgentStep(Step[AgentNode]):
                 "fields": self._fields(),
             },
             context=self._context(),
+            thinking=node.think,
         )
 
     def _fields_done(self, outcome: MicroOutcome | None) -> Turn:
@@ -251,6 +252,7 @@ class AgentStep(Step[AgentNode]):
             },
             candidates=self.candidates,
             history=tuple(self.history),
+            thinking=node.think,
         )
 
     def _episode_resolve(self, outcome: MicroOutcome | None) -> Turn:

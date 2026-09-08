@@ -15,6 +15,12 @@ from physiclaw.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.provider_base import NO_CACHE_MARKERS
 from physiclaw.provider.vendors.deepseek import DeepSeekProvider
 
+
+@pytest.fixture(autouse=True)
+def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+
+
 # ---------- class metadata ----------
 
 
@@ -33,7 +39,6 @@ def test_constructs_with_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
     """No longer a stub — with a credential present, construction
     succeeds. The model id passes through verbatim; a text-only pick
     fails on the first peek with the API's own error."""
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
 
     p = DeepSeekProvider(model="deepseek-v4-flash-vision-exp")
 
@@ -57,3 +62,19 @@ def test_no_parse_usage_override() -> None:
     — a vendor override reappearing here would mean the quirk handling
     is duplicated."""
     assert "_parse_usage" not in DeepSeekProvider.__dict__
+
+
+# ---------- thinking table ----------
+
+
+def test_chat_and_v_series_have_one_switch() -> None:
+    assert DeepSeekProvider(model="deepseek-v4-flash").thinking_params("off") == {
+        "thinking": {"type": "disabled"}
+    }
+    assert DeepSeekProvider(model="deepseek-chat").thinking_params("medium") == {
+        "thinking": {"type": "enabled"}
+    }
+
+
+def test_the_reasoner_always_thinks_and_takes_no_field() -> None:
+    assert DeepSeekProvider(model="deepseek-reasoner").thinking_params("off") == {}

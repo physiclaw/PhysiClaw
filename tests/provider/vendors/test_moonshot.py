@@ -9,9 +9,17 @@ inherited `OpenAICacheMarkers`.
 
 from __future__ import annotations
 
+import pytest
+
 from physiclaw.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.provider_base import NO_CACHE_MARKERS
 from physiclaw.provider.vendors.moonshot import MoonshotProvider
+
+
+@pytest.fixture(autouse=True)
+def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MOONSHOT_API_KEY", "sk-test")
+
 
 # ---------- class metadata ----------
 
@@ -44,3 +52,37 @@ def test_no_parse_usage_override() -> None:
     `_parse_usage` fallback — a vendor override reappearing here would
     mean the quirk handling is duplicated."""
     assert "_parse_usage" not in MoonshotProvider.__dict__
+
+
+# ---------- thinking table ----------
+
+
+@pytest.mark.parametrize(
+    "level, switch",
+    [
+        ("off", "disabled"),
+        ("low", "disabled"),
+        ("medium", "enabled"),
+        ("high", "enabled"),
+    ],
+)
+def test_k2_has_one_switch_so_the_levels_split_in_two(level, switch):
+    assert MoonshotProvider(model="kimi-k2.6").thinking_params(level) == {
+        "thinking": {"type": switch}
+    }
+
+
+@pytest.mark.parametrize(
+    "level, effort",
+    [("off", "low"), ("low", "low"), ("medium", "high"), ("high", "max")],
+)
+def test_k3_scales_reasoning_effort_never_the_thinking_block(
+    monkeypatch, level, effort
+):
+    assert MoonshotProvider(model="kimi-k3").thinking_params(level) == {
+        "reasoning_effort": effort
+    }
+
+
+def test_a_model_outside_the_table_sends_nothing() -> None:
+    assert MoonshotProvider(model="moonshot-v1-8k").thinking_params("off") == {}

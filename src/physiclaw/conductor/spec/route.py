@@ -83,6 +83,7 @@ from physiclaw.conductor.spec.refs import (
     field_name,
     refs_in,
 )
+from physiclaw.contract.dto import THINKING_LEVELS, Thinking
 from physiclaw.macros.model import Macro, MacroError, checked_readings
 from physiclaw.macros.parse import parse_inline_macro
 
@@ -127,6 +128,7 @@ _ENTRY_KEYS = {
         "limit",
         "context",
         "irreversible",
+        "think",
     },
     "ask": {
         "ask",
@@ -140,7 +142,7 @@ _ENTRY_KEYS = {
         "resume",
     },
     "tell": {"tell", "message"},
-    "select": {"select", "limit"},
+    "select": {"select", "limit", "think"},
 }
 
 # The shape `_macro_resolver` returns.
@@ -459,15 +461,32 @@ def _unique_list(raw: Any, where: str, check: Callable[[Any], _T]) -> list[_T]:
     return out
 
 
+def _closed_word(entry: dict, key: str, allowed: tuple[str, ...], where: str) -> Any:
+    """An optional key whose value is one word of a closed vocabulary —
+    absent stays None."""
+    word = entry.get(key)
+    if word is not None and word not in allowed:
+        raise PlaybookError(
+            f"{where}: `{key}` must be one of {', '.join(allowed)} (got {word!r})"
+        )
+    return word
+
+
+def _think_level(entry: dict, where: str) -> Thinking | None:
+    """A model step's optional `think:` — how much hidden thinking its
+    calls ask for; absent leaves the vendor's default (`playbooks
+    check` says so, since a thinking model's default is minutes per
+    call)."""
+    think: Thinking | None = _closed_word(entry, "think", THINKING_LEVELS, where)
+    return think
+
+
 def _irreversible_class(entry: dict, where: str) -> str | None:
     """A move's optional `irreversible:` class — the same closed
     vocabulary on a `do` and an `agent`."""
-    irreversible = entry.get("irreversible")
-    if irreversible is not None and irreversible not in IRREVERSIBLE_CLASSES:
-        raise PlaybookError(
-            f"{where}: `irreversible` must be one of "
-            f"{', '.join(IRREVERSIBLE_CLASSES)} (got {irreversible!r})"
-        )
+    irreversible: str | None = _closed_word(
+        entry, "irreversible", IRREVERSIBLE_CLASSES, where
+    )
     return irreversible
 
 
@@ -925,6 +944,7 @@ def _parse_agent(
         irreversible=irreversible,
         context=tuple(_context_entries(entry, where)),
         macros=macros,
+        think=_think_level(entry, where),
     )
 
 
@@ -1008,7 +1028,12 @@ def _parse_select(
             0,
             MAX_AGENT_CALLS,
         )
-    return ActivateNode(id=nid, enter=current_page, max_scrolls=max_scrolls)
+    return ActivateNode(
+        id=nid,
+        enter=current_page,
+        max_scrolls=max_scrolls,
+        think=_think_level(entry, where),
+    )
 
 
 def _is_boot(ctx: _Ctx) -> bool:

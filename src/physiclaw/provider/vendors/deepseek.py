@@ -22,8 +22,17 @@ ordinary-priced input (auto-stored), not cache writes.
 
 Auth: `DEEPSEEK_API_KEY` env, or `[provider] deepseek_api_key` in
 `~/.physiclaw/config.toml`.
+
+Thinking: the chat and V-series models have one switch, `thinking:
+{type: disabled | enabled}` (no levels, so "off" is the only level
+that changes anything); `deepseek-reasoner` always thinks and takes no
+field. The V-series thinks by default, so a step that says nothing
+gets a thinking model there.
 """
 
+from typing import Any
+
+from physiclaw.contract.dto import Thinking
 from physiclaw.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.provider_base import NO_CACHE_MARKERS
 
@@ -32,3 +41,10 @@ class DeepSeekProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "deepseek"
     BASE_URL = "https://api.deepseek.com/v1"
     CACHE_MARKERS = NO_CACHE_MARKERS
+
+    def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
+        if self.model == "deepseek-chat" or self.model.startswith("deepseek-v"):
+            return {
+                "thinking": {"type": "disabled" if thinking == "off" else "enabled"}
+            }
+        return {}

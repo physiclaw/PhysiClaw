@@ -694,7 +694,7 @@ class _UsageProvider(_TestProvider):
         super().__init__(model="m1")
         self._usage = usage
 
-    async def _chat(self, history, tools):
+    async def _chat(self, history, tools, **kw):
         if isinstance(self._usage, Exception):
             raise self._usage
         return AssistantMessage(

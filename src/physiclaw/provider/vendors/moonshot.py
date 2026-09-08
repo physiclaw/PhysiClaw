@@ -27,11 +27,32 @@ cache write per ~10 turns.
 
 K2's occasional top-level `usage.cached_tokens` placement is handled
 by the base `_parse_usage` fallback in `openai_compat.py`.
+
+Thinking: K2.x thinks by default and has one switch — `thinking:
+{type: disabled | enabled}` — so the two low levels turn it off and
+the two high levels leave it on. K3 always thinks and scales with
+`reasoning_effort` (low / high / max; the `thinking` block is rejected
+there), so "off" gets its floor. Neither `reasoning_effort` on K2.x
+nor a `max_tokens` cap reduces K2.x's thinking: the first is ignored,
+the second truncates the reply before the answer. Any other model id
+gets nothing extra.
 """
 
+from typing import Any
+
+from physiclaw.contract.dto import Thinking
 from physiclaw.provider.openai_compat import OpenAICompatibleProvider
 
 
 class MoonshotProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "moonshot"
     BASE_URL = "https://api.moonshot.cn/v1"
+
+    def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
+        if self.model.startswith("kimi-k2"):
+            off = thinking in ("off", "low")
+            return {"thinking": {"type": "disabled" if off else "enabled"}}
+        if self.model.startswith("kimi-k3"):
+            effort = {"off": "low", "low": "low", "medium": "high", "high": "max"}
+            return {"reasoning_effort": effort[thinking]}
+        return {}

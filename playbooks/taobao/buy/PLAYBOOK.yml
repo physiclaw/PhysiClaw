@@ -29,6 +29,7 @@ route:
       If the message names no concrete product, answer escalate.
     returns:
       keyword: the search keyword, exactly as it should be typed
+    think: off                    # a keyword is read off the words, not reasoned out
 
   - start: app                    # ── START: cold-launch taobao ─────
     macro: launch                 # the pack macro every route shares
@@ -83,6 +84,8 @@ route:
         confirm this purchase - name the item, spec, qty and price;
         say nothing about tools, walkers, or how the payment is made
     limit: {calls: 12, scrolls: 4}
+    think: low                    # a bounded think per call: the pick weighs
+                                  # rows, it does not deliberate for minutes
 
   - page: buysheet
 

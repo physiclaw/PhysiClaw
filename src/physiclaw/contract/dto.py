@@ -32,7 +32,7 @@ replay / debugging.
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Final, Literal, Union
+from typing import Any, Final, Literal, Union, get_args
 
 
 class FinishReason(StrEnum):
@@ -153,6 +153,17 @@ UsageCall = Literal["turn", "micro", "curate"]
 USAGE_CALL_TURN: Final[UsageCall] = "turn"
 USAGE_CALL_MICRO: Final[UsageCall] = "micro"
 USAGE_CALL_CURATE: Final[UsageCall] = "curate"
+
+# How much hidden thinking a call asks the model for — the playbook
+# author's word (`think:` on an `agent` or `select` step), vendor-
+# neutral: "off" asks for none, the three levels scale it. Each vendor
+# translates a level into its own request field (a `thinking` block
+# with a token budget, a `reasoning_effort` word, an `enable_thinking`
+# flag — `BaseProvider.thinking_params`), and a model that cannot go
+# that low or high gets its nearest setting. None = the vendor's own
+# default for that model.
+Thinking = Literal["off", "low", "medium", "high"]
+THINKING_LEVELS: tuple[Thinking, ...] = get_args(Thinking)
 
 
 def usage_event(

@@ -28,17 +28,22 @@ Auth: `GOOGLE_API_KEY` env, or `[provider] google_api_key` in
 Model ref examples:  `google/gemini-3.1-pro-preview`,
 `google/gemini-3-flash-preview`, `google/gemini-2.5-pro`.
 
-`gemini-2.5-flash` is omitted — it CAN reason via the `thinkingBudget`
-parameter, but defaults to off. Until we wire that param, it would
-return non-reasoning responses, which violates PhysiClaw's requirement.
-Gemini 3 series (`gemini-3.x-*-preview`) uses dynamic thinking by default.
+Thinking rides `google.thinking_config` in the body (the SDK's
+`extra_body`); the field follows the generation — Gemini 3 takes a
+`thinking_level` word, Gemini 2.5 a `thinking_budget` in tokens — and
+the shim's budget-based `reasoning_effort` is not used (reported
+ignored by Gemini 3). Written from the shim's reference: it rejects
+this network's region, so none of it is measured here.
 """
+
+from typing import Any
 
 from physiclaw.contract.dto import (
     AssistantMessage,
     ContentBlock,
     ImageBlock,
     Message,
+    Thinking,
     ToolResultMessage,
 )
 from physiclaw.provider.openai_compat import OpenAICompatibleProvider
@@ -53,9 +58,32 @@ from physiclaw.provider.wire import (
 _SIG_BYPASS = "skip_thought_signature_validator"
 
 
+# No line can stop: "off" is the lowest each offers (2.5 Pro's floor is
+# 128 tokens; 3 Flash has `minimal`, 3 Pro only low and high, so it
+# reads "medium" as low — the field exists to bound deliberation).
+_BUDGETS_25 = {"off": 0, "low": 1024, "medium": 8192, "high": 24576}
+
+
 class GoogleProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "google"
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+    def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
+        model = self.model
+        if model.startswith("gemini-3"):
+            if thinking == "off":
+                level = "minimal" if "flash" in model else "low"
+            elif thinking == "medium" and model.startswith("gemini-3-pro"):
+                level = "low"
+            else:
+                level = thinking
+            return {"google": {"thinking_config": {"thinking_level": level}}}
+        if model.startswith("gemini-2.5"):
+            budget = _BUDGETS_25[thinking]
+            if "pro" in model:
+                budget = max(budget, 128)
+            return {"google": {"thinking_config": {"thinking_budget": budget}}}
+        return {}
 
     # Cache markers: disabled. Gemini's shim ignores Anthropic-style
     # `cache_control`. The bigger reason for stripping is that the stub

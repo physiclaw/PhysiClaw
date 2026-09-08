@@ -51,9 +51,12 @@ MAX_LANDMARKS = 12
 
 # ---- model calls (micro.py) ----
 
-# Prompt-size guard: a listing rarely exceeds ~40 rows; more candidates
-# than this add tokens without adding real choices.
-MAX_CANDIDATES = 40
+# Sanity ceiling on an episode turn's answerable rows, not a budget:
+# candidates ride in screen order, so a cut removes the bottom of the
+# screen — the listings a pick weighs — and keeps the header chrome. A
+# dense phone screen reads under a hundred rows; this only stops a
+# runaway listing from growing a prompt without limit.
+MAX_CANDIDATES = 200
 
 # ---- the boot (channel/boot/PLAYBOOK.yml, step_activate.py) ----
 

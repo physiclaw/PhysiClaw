@@ -16,3 +16,4 @@ route:
   - select: parse                  # the boot's own step: read the thread and select
     limit: {scrolls: 2}            # the playbook it asks for (scrolls up for an
                                    # older request)
+    think: off                     # a thread is read, not deliberated over

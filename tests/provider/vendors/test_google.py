@@ -466,3 +466,34 @@ def test_extract_signature_prefers_extra_content_over_function_fallback() -> Non
     }
 
     assert _extract_thought_signature(raw) == "primary"
+
+
+# ---------- thinking table ----------
+
+
+def _cfg(**kw):
+    return {"google": {"thinking_config": kw}}
+
+
+def test_gemini_25_takes_a_budget_and_pro_cannot_go_below_its_floor():
+    flash = GoogleProvider(model="gemini-2.5-flash")
+    pro = GoogleProvider(model="gemini-2.5-pro")
+    assert flash.thinking_params("off") == _cfg(thinking_budget=0)
+    assert flash.thinking_params("medium") == _cfg(thinking_budget=8192)
+    assert pro.thinking_params("off") == _cfg(thinking_budget=128)
+    assert pro.thinking_params("high") == _cfg(thinking_budget=24576)
+
+
+def test_gemini_3_takes_a_level_each_line_floors_where_it_can():
+    flash = GoogleProvider(model="gemini-3-flash-preview")
+    pro3 = GoogleProvider(model="gemini-3-pro-preview")
+    pro31 = GoogleProvider(model="gemini-3.1-pro-preview")
+    assert flash.thinking_params("off") == _cfg(thinking_level="minimal")
+    assert pro3.thinking_params("off") == _cfg(thinking_level="low")
+    assert pro3.thinking_params("medium") == _cfg(thinking_level="low")
+    assert pro31.thinking_params("medium") == _cfg(thinking_level="medium")
+    assert flash.thinking_params("high") == _cfg(thinking_level="high")
+
+
+def test_a_model_outside_both_generations_gets_no_field() -> None:
+    assert GoogleProvider(model="gemini-1.5-pro").thinking_params("off") == {}

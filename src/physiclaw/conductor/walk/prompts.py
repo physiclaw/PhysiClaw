@@ -4,7 +4,8 @@ Text only: the mechanism (`micro.py`) assembles the skeleton — role
 sentence → reply contract → answer legend — and the rows there name
 these. Kept apart so a prompt can be read and edited as prose, and the
 agent rows stay what they are: the author's prompt is the whole brief
-and the conductor adds only the output contract.
+and the conductor adds only the output contract and, for an episode,
+what its own screen block is made of (`SCREEN_ROWS_NOTE`).
 """
 
 # parse_task — the boot's one question over the user's thread.
@@ -63,8 +64,22 @@ AGENT_FIELDS_LEGEND = (
     "cannot be fulfilled from what it gives you."
 )
 
-# agent_act — the episode legend's fixed options (`micro._act_legend`
-# adds the granted tools' lines from `calls.py`).
+# agent_act — what the screen block IS, said once in the system prompt.
+# Rows are OCR boxes: a title breaks across rows, its price sits on the
+# row below, a bundle's ×4 on another row than its brand; a model that
+# reads rows as whole items taps a continuation row or a bundle it
+# never saw. Written for a model that answers: with hidden thinking on,
+# the sentence is one more thing to ruminate about.
+SCREEN_ROWS_NOTE = (
+    "The screen block is OCR text boxes read top to bottom, one row per "
+    "box: one on-screen item (a listing, a card, a message) usually spans "
+    "several consecutive rows, a title may be cut at the row edge and "
+    "continue on the next, and a price or sales row belongs to the title "
+    "rows just above it. Read rows that way; never reconstruct beyond "
+    "what they say."
+)
+# The episode legend's fixed options (`micro._act_legend` adds the
+# granted tools' lines from `calls.py`).
 GRANTED_LANDMARKS_OPTION = (
     "a granted landmark name, but ONLY one the NEWEST screen block "
     "lists under 'Granted landmarks' ({give})"

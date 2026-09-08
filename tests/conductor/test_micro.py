@@ -36,9 +36,11 @@ class ScriptedProvider:
     def __init__(self, replies):
         self._replies = list(replies)
         self.calls: list[list] = []
+        self.asks: list[dict] = []  # each call's keyword arguments
 
     async def chat(self, history, tools, **kw):
         self.calls.append(list(history))
+        self.asks.append(kw)
         nxt = self._replies.pop(0)
         if isinstance(nxt, Exception):
             raise nxt
@@ -635,3 +637,109 @@ async def test_repair_attempt_failure_keeps_first_attempt_usage(monkeypatch) -> 
 
     assert result.outcome is None and result.detail == "provider error"
     assert result.attempts == 2
+
+
+# ---------- what the screen material carries, and how it is asked ----------
+
+
+def test_listing_material_is_row_labels_never_result_prose() -> None:
+    # A screen read off a macro's result view starts with the macro's
+    # step summary as plain text; `Screen.content` keeps it for
+    # whole-screen guards, the thread block must not. The re-ask after a
+    # history scroll already reads labels — the first ask reads the same.
+    from physiclaw.common.listing import LISTING_HEADER, Screen
+    from physiclaw.conductor.walk.micro import PARSE_TASK
+
+    text = "\n".join(
+        [
+            "macro open [macro-run-1]: all 12 steps completed — the view below",
+            "✓ 1. home_screen",
+            "Tapped at bbox [0.031, 0.185, 0.9, 0.235] | screen: changed",
+            LISTING_HEADER,
+            '0 [text] "QiaoQian" [0.30,0.03,0.70,0.12] 0.95',
+            '1 [text] "买牛奶" [0.10,0.40,0.60,0.45] 0.95',
+        ]
+    )
+    screen = Screen.read(text)
+    assert "macro open" in screen.content  # the guard haystack keeps it
+
+    req = build_request(
+        PARSE_TASK, "activation", ("taobao/buy",), {"menu": "m"}, screen
+    )
+
+    assert req.listing == "QiaoQian\n买牛奶"
+
+
+@pytest.mark.asyncio
+async def test_a_decision_call_asks_for_the_steps_think_level() -> None:
+    # The step's `think:` rides the request to the provider door
+    # verbatim; the vendor translates the word. Unsaid = None = the
+    # vendor's default.
+    from dataclasses import replace
+
+    from physiclaw.contract.dto import USAGE_CALL_MICRO
+
+    provider = ScriptedProvider([_ok(AGENT_DONE), _ok(AGENT_DONE)])
+    caller = MicroCaller(provider, confidence_floor=0.6)
+    await caller.run(replace(_fields_req(), thinking="off"))
+    await caller.run(_fields_req())
+
+    assert provider.asks == [
+        {"purpose": USAGE_CALL_MICRO, "thinking": "off"},
+        {"purpose": USAGE_CALL_MICRO, "thinking": None},
+    ]
+
+
+def test_build_request_carries_the_think_level() -> None:
+    from physiclaw.conductor.walk.micro import PARSE_TASK
+
+    req = build_request(
+        PARSE_TASK,
+        "parse",
+        ("taobao/buy",),
+        {"menu": "m"},
+        make_screen(),
+        thinking="low",
+    )
+
+    assert req.thinking == "low"
+
+
+@pytest.mark.asyncio
+async def test_trace_event_records_how_many_rows_the_decision_saw() -> None:
+    # A truncated screen must be visible in the trace, not only in the
+    # process log.
+    tr = Sink()
+    req = _act_req("a", "b", "c")
+    await _caller([_ok("b")], tr=tr).run(req)
+
+    (event,) = [e for e in tr.events if e["event"] == "micro_call"]
+    assert event["rows"] == 3
+
+
+def test_a_full_results_screen_is_never_cut() -> None:
+    # A Taobao results page reads 70–85 rows; the ceiling is a sanity
+    # bound above any real screen, so the bottom listings (store link,
+    # 百亿补贴 badge, the third item) reach the model.
+    rows = make_screen(*((f"row {i}", 0.5, i / 100) for i in range(85))).rows
+
+    assert len(act_candidates(rows)) == 85
+
+
+def test_episode_system_prompt_says_what_the_screen_rows_are() -> None:
+    # The screen-format note is the mechanism describing its own output
+    # (OCR boxes, one item over several rows) — it rides the byte-stable
+    # system prompt, after the contract, never a turn's user block.
+    from physiclaw.conductor.walk import prompts
+    from physiclaw.conductor.walk.micro import _CONTRACT, _SPECS, _system
+
+    act = _act_req("牛奶")
+    system = _system(act, _SPECS[AGENT_ACT].answer_space(act))
+
+    assert system.startswith(_CONTRACT)
+    assert prompts.SCREEN_ROWS_NOTE in system
+    assert prompts.SCREEN_ROWS_NOTE not in act.args["block"]
+    fields = _fields_req()
+    assert prompts.SCREEN_ROWS_NOTE not in _system(
+        fields, _SPECS[AGENT_FIELDS].answer_space(fields)
+    )

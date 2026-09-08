@@ -99,7 +99,10 @@ class ActivateStep(Step[ActivateNode]):
         current viewport."""
         walk = self.walk
         assert walk.activation is not None and walk.screen is not None
-        req = walk.activation.request(walk.screen, self.node.id)
+        req = replace(
+            walk.activation.request(walk.screen, self.node.id),
+            thinking=self.node.think,
+        )
         if self.merged is not None:
             self.merged = merge_labels(walk.screen.labels, self.merged)
             req = replace(req, listing="\n".join(self.merged))

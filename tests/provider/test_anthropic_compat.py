@@ -935,3 +935,28 @@ def test_parse_usage_handles_none_attribute_values_as_zero() -> None:
     )
 
     assert out == Usage()
+
+
+# ---------- thinking: a budget, and room beyond it ----------
+
+
+@pytest.mark.asyncio
+async def test_a_think_level_becomes_a_budget_with_room_for_the_answer(
+    provider: _TestAnthropic, mocker
+) -> None:
+    fake_resp = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="hi", id=None)],
+        stop_reason="end_turn",
+        usage=None,
+        model_dump=lambda: {"id": "m1"},
+    )
+    provider._client.messages.create.return_value = fake_resp
+
+    await provider.chat([UserMessage(content="ping")], tools=[], thinking="medium")
+    medium = provider._client.messages.create.call_args.kwargs
+    await provider.chat([UserMessage(content="ping")], tools=[], thinking="off")
+    off = provider._client.messages.create.call_args.kwargs
+
+    assert medium["thinking"] == {"type": "enabled", "budget_tokens": 4096}
+    assert medium["max_tokens"] == _DEFAULT_MAX_TOKENS + 4096
+    assert "thinking" not in off and off["max_tokens"] == _DEFAULT_MAX_TOKENS

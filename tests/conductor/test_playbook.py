@@ -963,3 +963,53 @@ def test_flat_recover_covers_the_locked_reading_too() -> None:
     r = spec.recovers["home"]
     assert r.locked is r.elsewhere is r.covered
     assert r.hand_for("locked") is r.locked
+
+
+# ---------- think: the step's word on hidden thinking ----------
+
+
+def test_agent_think_is_read_and_bounded_to_the_levels() -> None:
+    text = _mutate(
+        "    limit: {calls: 4, scrolls: 2}\n",
+        "    limit: {calls: 4, scrolls: 2}\n    think: low\n",
+    )
+    assert pb.parse_playbook(text, "buy", _pack()).nodes[1].think == "low"
+    # YAML 1.2 keeps `off` a string — the level, not a boolean.
+    text = _mutate(
+        "    limit: {calls: 4, scrolls: 2}\n",
+        "    limit: {calls: 4, scrolls: 2}\n    think: off\n",
+    )
+    assert pb.parse_playbook(text, "buy", _pack()).nodes[1].think == "off"
+    assert pb.parse_playbook(VALID, "buy", _pack()).nodes[1].think is None
+
+    with pytest.raises(PlaybookError, match="`think` must be one of off, low"):
+        pb.parse_playbook(
+            _mutate(
+                "    limit: {calls: 4, scrolls: 2}\n",
+                "    limit: {calls: 4, scrolls: 2}\n    think: max\n",
+            ),
+            "buy",
+            _pack(),
+        )
+
+
+def test_the_boot_select_takes_think_too() -> None:
+    spec = pb.parse_playbook(
+        BOOT.replace("  - select: parse\n", "  - select: parse\n    think: off\n"),
+        "boot",
+        _channel_pack(),
+    )
+    assert spec.nodes[-1].think == "off"
+
+
+def test_check_names_a_model_step_that_leaves_think_unsaid() -> None:
+    from physiclaw.conductor.spec import lints
+
+    pack = _pack()
+    spec = pb.parse_playbook(VALID, "buy", pack)
+
+    lines = [w for w in lints.readiness_warnings(spec, pack) if "`think:`" in w]
+    assert lines == [
+        "step 'choose' declares no `think:` — the model deliberates at its "
+        "vendor default on every call there; declare off, low, medium or high"
+    ]

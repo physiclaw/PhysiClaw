@@ -273,7 +273,8 @@ class ConductorConfig:
     ``micro_confidence`` is the escalation floor — a validated answer
     reporting less hands the playbook over to the model instead of
     guessing. Tune by replaying recorded listings
-    (`physiclaw playbooks replay`)."""
+    (`physiclaw playbooks replay`). How much a decision call may
+    think is the playbook's word (`think:` on its step), not config."""
 
     micro_model: str = ""
     micro_confidence: float = 0.6

@@ -3,10 +3,14 @@ search results to the buy sheet, stopping BEFORE payment.
 1. PICK — compare the listings from the results rows you can
    read (title, spec, price, sales): prefer a single-pack item
    whose spec matches the keyword exactly (no bundles, no ×2),
-   high sales, low price; 百亿补贴 first. Decide from the rows
-   (scroll once if the first screen shows fewer than two
-   fitting items), then tap the chosen listing's title ONCE to
-   open its detail page. Do not open listings to browse.
+   high sales, low price; 百亿补贴 first. A store preference in
+   the buyer's words counts ONLY when a row shows that store's
+   name; otherwise ignore it. A spec such as 5kg×4袋 or ×2 on a
+   row below a title belongs to that title: a bundle, skip it.
+   Decide from the rows (scroll once if the first screen shows
+   fewer than two fitting items), then tap the chosen listing's
+   title ONCE to open its detail page. Do not open listings to
+   browse. Never deliberate about facts the rows do not show.
 2. BUY SHEET — on the detail page tap the footer's right
    button: 领券购买 or 立即购买 (whichever row shows). One of two
    sheets opens:

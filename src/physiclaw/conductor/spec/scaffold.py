@@ -172,7 +172,9 @@ PLAYBOOK_TEMPLATE = """\
 #            `tools:` and `give:` grants you list; `returns:` fields read downstream as
 #            {{name.field}}. No tools = a pure-text call, legal before the
 #            first page. `limit: {{calls, scrolls}}` bounds an episode
-#            (≤ {max_agent_calls} calls).
+#            (≤ {max_agent_calls} calls). `think: off|low|medium|high` says
+#            how much the model may think per call (its `reason` field
+#            is always written; hidden thinking is minutes per call).
 #   ask    — message the user and wait for `yes:` / `no:` (whole-message);
 #            `wait:` × `rounds:` is its patience (default {ask_wait}s ×
 #            {ask_rounds}); `approve: payment` reads the amount beside
@@ -201,6 +203,7 @@ route:
   #     The user said: "{{inputs.message}}"
   #   returns:
   #     keyword: EDIT ME — what this field holds
+  #   think: off
   - start: app              # ── the cold-launch; `home` below is the
     macro:                  #    landing it must reach
       steps:
@@ -240,6 +243,7 @@ route:
   #   returns:
   #     summary: EDIT ME — what to report back
   #   limit: {{calls: {agent_calls}, scrolls: {agent_scrolls}}}
+  #   think: low
   # - page: home
   # A human gate before money moves — the payment move follows it:
   # - ask: confirm-pay
@@ -311,7 +315,10 @@ adds only the output contract), `tools:` the closed gesture allowlist,
 pack macros it may run whole (`macros.<name>`), `context:` what to
 load beside the prompt (`memory`, `memory.<slug>`, `daylog` — nothing
 else travels), `returns:` the fields it must fill, `limit:` its
-call/scroll budget; each episode turn the model answers with a screen
+call/scroll budget, `think:` how much hidden thinking each call may
+spend (off, low, medium, high — the vendor translates the word; the
+reply's own `reason` field is always written); each episode turn the
+model answers with a screen
 row, a granted landmark or macro, a scroll verb, done, or escalate —
 never coordinates — and `done` counts only on the following page,
 judged by the matcher. An `ask` reads the reply against its own
@@ -440,6 +447,7 @@ route:
   - select: parse                  # the boot's own step: read the thread and select
     limit: {{scrolls: 2}}            # the playbook it asks for (scrolls up for an
                                    # older request)
+    think: off                     # a thread is read, not deliberated over
 """
 
 
