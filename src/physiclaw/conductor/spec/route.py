@@ -50,6 +50,7 @@ from physiclaw.conductor.spec.limits import (
 from physiclaw.conductor.spec.model import (
     INPUTS_ROOT,
     IRREVERSIBLE_CLASSES,
+    ON_FAIL_MODES,
     READING_COVERED,
     READING_ELSEWHERE,
     READING_LOCKED,
@@ -117,8 +118,8 @@ _GRANT_ROOTS = (GRANT_LANDMARKS, GRANT_MACROS)
 ENTRY_KINDS = ("page", "start", "do", "agent", "ask", "tell", "select")
 _ENTRY_KEYS = {
     "page": {"page", *PAGE_RECOVERY_FIELDS, *PAGE_DECL_FIELDS},
-    "start": {"start", "macro"},
-    "do": {"do", "with", "macro", "irreversible"},
+    "start": {"start", "macro", "on_fail"},
+    "do": {"do", "with", "macro", "irreversible", "on_fail"},
     "agent": {
         "agent",
         "prompt",
@@ -129,6 +130,7 @@ _ENTRY_KEYS = {
         "context",
         "irreversible",
         "think",
+        "on_fail",
     },
     "ask": {
         "ask",
@@ -140,8 +142,9 @@ _ENTRY_KEYS = {
         "wait",
         "rounds",
         "resume",
+        "on_fail",
     },
-    "tell": {"tell", "message"},
+    "tell": {"tell", "message", "on_fail"},
     "select": {"select", "limit", "think"},
 }
 
@@ -224,20 +227,17 @@ def compile_route(
             current_page = wp_ids[i]
             fields = recovery_fields(entry)
             if fields:
-                rpage = wp_ids[i]
+                rpage = current_page
                 assert rpage is not None
                 if "." in rpage:
                     raise PlaybookError(
                         f"route entry {pos}: {rpage!r} is a reserved built-in "
                         "— packs declare recovery for their own pages only"
                     )
-                hand = _parse_recover(ctx, fields, f"route entry {pos}", rpage)
-                if rpage in recovers and recovers[rpage] != hand:
-                    raise PlaybookError(
-                        f"route entry {pos}: page {rpage!r} declares `recover` "
-                        "twice with different hands — declare it once"
-                    )
-                recovers[rpage] = hand
+                declared = _parse_recover(ctx, fields, f"route entry {pos}", rpage)
+                recovers[rpage] = _declared_once(
+                    recovers.get(rpage), declared, f"route entry {pos}", rpage
+                )
             continue
         where = f"route entry {pos}"
         check_name(name, f"{where}: `{kind}`")
@@ -294,7 +294,9 @@ def compile_route(
             moves.append(_parse_select(ctx, where, name, entry, current_page))
         else:  # tell
             message, _ = _entry_message(ctx, where, entry, ctx.payloads)
-            moves.append(TellNode(id=name, message=message))
+            moves.append(
+                TellNode(id=name, message=message, on_fail=_on_fail(entry, where))
+            )
     if len(moves) > MAX_NODES:
         raise PlaybookError(f"too many moves ({len(moves)} > {MAX_NODES})")
     lints.check_money(moves)
@@ -306,7 +308,7 @@ def compile_route(
     return CompiledRoute(
         nodes=moves,
         start=start,
-        recovers={**_inherited_hands(ctx), **recovers},
+        recovers=_overlay(_inherited_hands(ctx), recovers),
         inline=inline,
         prompts_used=frozenset(ctx.prompts_used),
     )
@@ -470,6 +472,62 @@ def _closed_word(entry: dict, key: str, allowed: tuple[str, ...], where: str) ->
             f"{where}: `{key}` must be one of {', '.join(allowed)} (got {word!r})"
         )
     return word
+
+
+def _on_fail(entry: dict, where: str) -> str | None:
+    """An entry's optional `on_fail:` — stop or handover once its own
+    means are spent; absent = handover."""
+    return _closed_word(entry, "on_fail", ON_FAIL_MODES, where)
+
+
+def _declared_once(
+    prior: Recovery | None, declared: Recovery, where: str, page: str
+) -> Recovery:
+    """A page's recovery, declared at every waypoint of that page: a
+    later waypoint may add what an earlier left unsaid (a hand, an
+    `on_fail`), never contradict it."""
+    if prior is None:
+        return declared
+    if declared.hands and prior.hands and _hands_of(declared) != _hands_of(prior):
+        raise PlaybookError(
+            f"{where}: page {page!r} declares `recover` twice with different "
+            "hands — declare it once"
+        )
+    if (
+        declared.on_fail is not None
+        and prior.on_fail is not None
+        and declared.on_fail != prior.on_fail
+    ):
+        raise PlaybookError(
+            f"{where}: page {page!r} declares `on_fail` twice with different "
+            "words — declare it once"
+        )
+    return _overlay_one(prior, declared)
+
+
+def _hands_of(r: Recovery) -> tuple:
+    return (r.covered, r.elsewhere, r.locked, r.tries)
+
+
+def _overlay_one(base: Recovery, over: Recovery) -> Recovery:
+    """`over`'s hands where it declares any (else `base`'s), and its
+    `on_fail` where said."""
+    hands = over if over.hands else base
+    return replace(
+        hands, on_fail=over.on_fail if over.on_fail is not None else base.on_fail
+    )
+
+
+def _overlay(
+    base: dict[str, Recovery], over: dict[str, Recovery]
+) -> dict[str, Recovery]:
+    """The manifest's page recovery under the route's own: a route
+    inherits a shared page's hands and `on_fail` unless it declares its
+    own."""
+    out = dict(base)
+    for page, r in over.items():
+        out[page] = _overlay_one(base[page], r) if page in base else r
+    return out
 
 
 def _think_level(entry: dict, where: str) -> Thinking | None:
@@ -784,6 +842,7 @@ def _parse_do(
         enter=enter,
         verify=verify,
         irreversible=_irreversible_class(entry, where),
+        on_fail=_on_fail(entry, where),
     )
 
 
@@ -945,6 +1004,7 @@ def _parse_agent(
         context=tuple(_context_entries(entry, where)),
         macros=macros,
         think=_think_level(entry, where),
+        on_fail=_on_fail(entry, where),
     )
 
 
@@ -996,6 +1056,7 @@ def _parse_ask(
         total_label=total,
         wait_seconds=wait_seconds,
         silence_rounds=rounds,
+        on_fail=_on_fail(entry, where),
     )
 
 
@@ -1089,17 +1150,22 @@ def _refuse_bodies(raw: Any, where: str) -> None:
 
 
 def _parse_recover(ctx: _Ctx, fields: dict, where: str, page: str) -> Recovery:
-    """A page's `recover:` and `tries:` (the `PAGE_RECOVERY_FIELDS` slice
-    of its mapping). `recover:` is one hand for any deviation (a bare
-    gesture, `{tap: landmarks.<name>}`, or `{macro: <name>}`), or one per
-    reading (`covered:` the page itself under a sheet or popup, `locked:`
-    the phone's lock screen, `elsewhere:` any other screen); `tries:`
-    beside it is the page's own bound under the walk-wide ceiling, and
-    means nothing without a hand to count."""
+    """A page's `recover:`, `tries:` and `on_fail:` (the
+    `PAGE_RECOVERY_FIELDS` slice of its mapping, in a route waypoint or
+    the manifest alike). `recover:` is one hand for any deviation (a
+    bare gesture, `{tap: landmarks.<name>}`, or `{macro: <name>}`), or
+    one per reading (`covered:` the page itself under a sheet or popup,
+    `locked:` the phone's lock screen, `elsewhere:` any other screen);
+    `tries:` beside it is the page's own bound under the walk-wide
+    ceiling, and means nothing without a hand to count; `on_fail:` is
+    the page's word once they are spent — legal on its own."""
+    on_fail = _on_fail(fields, where)
     if "recover" not in fields:
-        raise PlaybookError(
-            f"{where}: `tries` bounds a `recover:` — declare the hand it counts"
-        )
+        if "tries" in fields:
+            raise PlaybookError(
+                f"{where}: `tries` bounds a `recover:` — declare the hand it counts"
+            )
+        return Recovery(on_fail=on_fail)
     raw = fields["recover"]
     tries = _limit_int(
         fields.get("tries", DEFAULT_RECOVER_LIMIT),
@@ -1134,11 +1200,14 @@ def _parse_recover(ctx: _Ctx, fields: dict, where: str, page: str) -> Recovery:
                 elsewhere=hands.get(READING_ELSEWHERE),
                 locked=hands.get(READING_LOCKED),
                 tries=tries,
+                on_fail=on_fail,
             )
     # A bare gesture, `{tap: ...}` / `{macro: ...}`, or a non-hand — the
     # one hand parser judges the shape and names the alternatives.
     hand = _parse_hand(ctx, raw, f"{where}: `recover`", page)
-    return Recovery(covered=hand, elsewhere=hand, locked=hand, tries=tries)
+    return Recovery(
+        covered=hand, elsewhere=hand, locked=hand, tries=tries, on_fail=on_fail
+    )
 
 
 def _parse_hand(ctx: _Ctx, raw: Any, where: str, page: str) -> RecoverHand:

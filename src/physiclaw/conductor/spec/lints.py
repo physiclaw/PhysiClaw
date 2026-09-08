@@ -17,6 +17,7 @@ from physiclaw.conductor.spec import reply
 from physiclaw.conductor.spec.conventions import BOOT_PLAYBOOK, CHANNEL_APP
 from physiclaw.conductor.spec.match import SHORT_ANCHOR_MIN, normalize, score_page
 from physiclaw.conductor.spec.model import (
+    ON_FAIL_STOP,
     ActivateNode,
     AgentNode,
     AskNode,
@@ -48,7 +49,7 @@ def check_resume(nodes: list[Node]) -> None:
     `resume:` is a certain handover the moment the user says yes."""
     for i, n in enumerate(nodes[:-1]):
         nxt = nodes[i + 1]
-        if isinstance(n, AskNode) and n.approve == "payment" and n.resume is None:
+        if isinstance(n, AskNode) and n.pays and n.resume is None:
             if screen_move(nxt):
                 raise PlaybookError(
                     f"ask {n.id!r} (approve: payment) is followed by "
@@ -71,7 +72,7 @@ def check_money(nodes: list[Node]) -> None:
         if not (isinstance(n, (DoNode, AgentNode)) and n.irreversible):
             continue
         prev = nodes[i - 1] if i > 0 else None
-        if not (isinstance(prev, AskNode) and prev.approve == "payment"):
+        if not (isinstance(prev, AskNode) and prev.pays):
             raise PlaybookError(
                 f"move {n.id!r} (irreversible: payment) must DIRECTLY "
                 "follow an `ask` with `approve: payment` — the ask "
@@ -181,7 +182,52 @@ def readiness_warnings(spec: Playbook, pack: Pack) -> list[str]:
         + _resume_warnings(spec)
         + _anchor_warnings(spec, pack)
         + _think_warnings(spec)
+        + _on_fail_warnings(spec)
     )
+
+
+def _on_fail_warnings(spec: Playbook) -> list[str]:
+    """A payment ask that leaves `on_fail:` unsaid: a failure at the gate
+    briefs the model, which then holds the pay hand with no consent
+    bound — the one place the default is worth a second look."""
+    out = [
+        f"payment ask {n.id!r} declares no `on_fail:` — a failure at the gate "
+        "briefs the model, which may then pay by hand; declare `on_fail: stop` "
+        "(end the session, nothing paid, the next wake retries) or "
+        "`on_fail: handover`"
+        for n in spec.nodes
+        if isinstance(n, AskNode) and n.pays and n.on_fail is None
+    ]
+    # A stop once money may have moved leaves the order unverified and
+    # the request unreported — the next wake may read it as still open
+    # and buy again. Legal; the author is told.
+    fired = next(
+        (
+            i
+            for i, n in enumerate(spec.nodes)
+            if isinstance(n, (DoNode, AgentNode)) and n.irreversible == "payment"
+        ),
+        None,
+    )
+    if fired is None:
+        return out
+    for n in spec.nodes[fired:]:
+        pages = [n.verify] if isinstance(n, (DoNode, AgentNode)) else []
+        stops = [n.id] if n.on_fail == ON_FAIL_STOP else []
+        stops += [
+            f"page {p!r}"
+            for p in pages
+            if p
+            and (r := spec.recovers.get(p)) is not None
+            and r.on_fail == ON_FAIL_STOP
+        ]
+        out += [
+            f"{name} says `on_fail: stop` at or after payment move "
+            f"{spec.nodes[fired].id!r} — a stop once money may have moved leaves "
+            "the order unverified and unreported; the next wake may buy again"
+            for name in stops
+        ]
+    return out
 
 
 def _think_warnings(spec: Playbook) -> list[str]:

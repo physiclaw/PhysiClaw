@@ -100,6 +100,11 @@ RECOVER_READINGS = (READING_COVERED, READING_ELSEWHERE, READING_LOCKED)
 # The one irreversible class: money. A payment move is entered only as
 # the fall-through of an `ask` with `approve: payment` (`lints.py`).
 IRREVERSIBLE_CLASSES = ("payment",)
+# A route entry's `on_fail:` — once its own means are spent, `handover`
+# (also when unsaid) briefs the model, `stop` ends the session by the
+# walk's own hand. The playbook decides, entry by entry (README).
+ON_FAIL_STOP = "stop"
+ON_FAIL_MODES = ("handover", ON_FAIL_STOP)
 
 # The ref grammar's one global root — `{inputs.name}` — rejected as a
 # move name so an agent's `{move.field}` outputs can never shadow it.
@@ -138,6 +143,7 @@ class DoNode:
     enter: str  # the page the move starts on; "" = unconditional (`start`)
     verify: str  # the page it must land on
     irreversible: str | None = None
+    on_fail: str | None = None  # `on_fail:` — see ON_FAIL_MODES
 
     @property
     def start(self) -> bool:
@@ -165,6 +171,7 @@ class AgentNode:
     # `think:` — how much hidden thinking each of its calls asks the
     # model for; None = the vendor's default for that model.
     think: Thinking | None = None
+    on_fail: str | None = None  # `on_fail:` — see ON_FAIL_MODES
 
     @property
     def return_fields(self) -> tuple[str, ...]:
@@ -195,6 +202,13 @@ class AskNode:
     # silent rounds before the session suspends for the next wake.
     wait_seconds: int = DEFAULT_ASK_WAIT_SECONDS
     silence_rounds: int = DEFAULT_ASK_ROUNDS
+    on_fail: str | None = None  # `on_fail:` — see ON_FAIL_MODES
+
+    @property
+    def pays(self) -> bool:
+        """Whether this ask is the payment gate — the one that binds a
+        consented total and precedes the irreversible move."""
+        return self.approve == "payment"
 
 
 @dataclass(frozen=True)
@@ -204,6 +218,7 @@ class TellNode:
 
     id: str
     message: str
+    on_fail: str | None = None  # `on_fail:` — see ON_FAIL_MODES
 
 
 @dataclass(frozen=True)
@@ -220,6 +235,7 @@ class ActivateNode:
     max_scrolls: int
     irreversible: str | None = None  # `Checked`'s obligation; never set here
     think: Thinking | None = None  # `think:` — as on an agent step
+    on_fail: str | None = None  # a `Node`'s obligation; never set here
 
 
 class Checked(Protocol):
@@ -250,8 +266,10 @@ class RecoverHand:
 
 @dataclass(frozen=True)
 class Recovery:
-    """A page's declared `recover:` — which hand runs for which reading
-    of the deviation, and how many `tries` this page gets in one walk.
+    """A page's declared failure behaviour: `recover:` — which hand runs
+    for which reading of the deviation — with `tries`, how many this
+    page gets in one walk, and `on_fail`, what happens once they are
+    spent.
     `covered` fires when the page itself reads under a sheet or popup;
     `locked` when the phone shows its lock screen; `elsewhere` for any
     other screen. The flat form (`recover: go_back`) declares one hand
@@ -261,6 +279,9 @@ class Recovery:
     elsewhere: RecoverHand | None = None
     locked: RecoverHand | None = None
     tries: int = DEFAULT_RECOVER_LIMIT
+    # The page's `on_fail:` — what a page that cannot be reached does
+    # once its hand is spent (or it has none); see ON_FAIL_MODES.
+    on_fail: str | None = None
 
     def hand_for(self, reading: str) -> RecoverHand | None:
         """The hand declared for one of `RECOVER_READINGS`."""

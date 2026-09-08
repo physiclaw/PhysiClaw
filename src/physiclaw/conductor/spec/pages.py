@@ -176,7 +176,7 @@ def parse_pages(text: str, app: str) -> dict[str, PageDecl]:
 PAGE_DECL_FIELDS = ("anchors", "forbid", "scrollable")
 # A manifest page's one non-declaration key: the recover hand every
 # route of the pack inherits for it (a route may declare its own).
-PAGE_RECOVERY_FIELDS = ("recover", "tries")
+PAGE_RECOVERY_FIELDS = ("recover", "tries", "on_fail")
 
 
 def recovery_fields(spec: dict) -> dict:
@@ -189,7 +189,8 @@ def recovery_fields(spec: dict) -> dict:
 
 def collect_page_recovers(doc: dict) -> dict[str, dict]:
     """The RAW recovery the manifest's `pages:` declare, by page name —
-    `{recover: hand(s), tries: n}`, whichever keys the page carries —
+    `{recover: hand(s), tries: n, on_fail: word}`, whichever keys the
+    page carries —
     resolved by the route compiler (`route._inherited_hands`) against
     the pack's macros and landmarks, so the grammar has one home. Shape
     errors surface at that parse; this only collects."""

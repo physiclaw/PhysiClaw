@@ -34,6 +34,7 @@ from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.conventions import LOCKED_ID, owned_by, page_id, page_name
 from physiclaw.conductor.spec.match import Reading, Verdict, match_screen
 from physiclaw.conductor.spec.model import (
+    ON_FAIL_STOP,
     READING_COVERED,
     READING_ELSEWHERE,
     READING_LOCKED,
@@ -298,17 +299,22 @@ class Program:
             write_json_atomic(suspended_path(), self.state())
         recap = f"waiting for the user's reply on {self.app}/{self.spec.name}"
         self._record_run(Outcome.SUSPENDED, recap)
-        # The close-routine's log line, harness-written: the conductor
-        # synthesizes end_session directly, so the model never runs this
-        # wake — with no per-step logs either, the suspension would be
-        # invisible to the next wake's memory window.
-        self.log_day(
-            f"conductor: {self.app}/{self.spec.name} suspended — {recap}; "
-            "any wake resumes it"
-        )
-        return self.synth(
+        return self._close_session(
             "suspend",
-            f"conductor: suspending — {recap}",
+            recap,
+            f"{self.app}/{self.spec.name} suspended — {recap}; any wake resumes it",
+        )
+
+    def _close_session(self, kind: str, recap: str, day_line: str) -> AssistantMessage:
+        """The session closed WAIT by the walk's own hand — the one
+        synthesized `end_session` (a suspension's, a stop's). The
+        close-routine's daily-log line is harness-written here: the
+        model never runs this wake, so without it the close would be
+        invisible to the next wake's memory window."""
+        self.log_day(f"conductor: {day_line}")
+        return self.synth(
+            kind,
+            f"conductor: {kind} — {recap}",
             "end_session",
             {"status": SUSPEND_STATUS, "recap": recap},
         )
@@ -620,7 +626,13 @@ class Program:
         """The walk's exit: log and record, then mint the ONE final
         synthesized [note, peek] brief turn (`brief.walk_brief`) — the
         distilled report the model resumes from. `_done` makes the NEXT
-        advance the permanent None the conductor drops the program on."""
+        advance the permanent None the conductor drops the program on —
+        or `stop`, when the node at the cursor said `on_fail: stop` (a
+        page that could not be reached answers for itself first, in
+        `recover_or_handover`)."""
+        node = self.node
+        if node is not None and node.on_fail == ON_FAIL_STOP:
+            return self.stop(reason)
         log.warning(
             "conductor: handing %s/%s over to the model — %s",
             self.app,
@@ -645,6 +657,24 @@ class Program:
             {},
         )
 
+    def stop(self, reason: str) -> AssistantMessage:
+        """The walk's exit that keeps the model out: recorded as a
+        handover, then the session closes WAIT by the walk's own hand
+        (the same synthesized end_session a suspension uses). No
+        suspension is written, so the next wake reads the thread again
+        and walks the route from the top. The recap says whether money
+        moved: after a fired payment a stop leaves the order unverified."""
+        node = self._node_id() or "(end)"
+        money = (
+            f"a payment of ¥{self.paid:g} fired, unverified"
+            if self.paid is not None
+            else "nothing paid"
+        )
+        recap = f"{self.app}/{self.spec.name} stopped at {node} — {reason}; {money}"
+        log.warning("conductor: %s", recap)
+        self._end(Outcome.HANDOVER, reason)
+        return self._close_session("stop", recap, recap)
+
     # ---- recovery ----
 
     def recover_or_handover(
@@ -656,17 +686,25 @@ class Program:
         with consent bound, mid-gate, for an irreversible move, or once
         a payment fired: money keeps the hard handover (a restart from
         the top would walk back into the ask and pay again)."""
+        recovery = self.spec.recovers.get(page_name(expected_id))
+        # The page's own word once its hand is spent (or it has none);
+        # unsaid, the cursor node's word decides in `handover`.
+        fail = (
+            self.stop
+            if recovery is not None and recovery.on_fail == ON_FAIL_STOP
+            else self.handover
+        )
         if (
             self.gate.consented is not None
             or self.gate.awaiting
             or node.irreversible
             or self.paid is not None
         ):
-            return self.handover(reason)
+            return fail(reason)
         if not owned_by(expected_id, self.app):
             # Recovery covers this pack's own pages only — a reserved or
             # channel target has no hand to declare.
-            return self.handover(reason)
+            return fail(reason)
         st = recover.State(target=expected_id, mode=mode, reason=reason)
         v = self.verdict
         # The reading the page declared its hands for: the lock screen
@@ -679,12 +717,12 @@ class Program:
             reading = READING_COVERED
         step = recover.plan(
             self._recoveries,
-            self.spec.recovers.get(page_name(expected_id)),
+            recovery,
             self._page_recoveries[expected_id],
             reading=reading,
         )
         if isinstance(step, recover.Exhausted):
-            return self.handover(f"{reason} — {step.reason}")
+            return fail(f"{reason} — {step.reason}")
         # The page's DECLARED hand — the planner decides WHETHER, the
         # walk interprets WHAT: a bare gesture, a landmark tap
         # (label-healed), or an argument-less macro.

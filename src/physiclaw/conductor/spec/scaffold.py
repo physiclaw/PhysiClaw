@@ -179,6 +179,10 @@ PLAYBOOK_TEMPLATE = """\
 #            `wait:` × `rounds:` is its patience (default {ask_wait}s ×
 #            {ask_rounds}); `approve: payment` reads the amount beside
 #            `total_label:` into {{ask.total}}; `resume:` re-enters the app.
+#   on_fail — on any entry, pages included: what a failure of that entry
+#            does once its own means are spent — `handover` (the default:
+#            the model takes the session with every tool) or `stop` (the
+#            session ends, the next wake reads the thread again).
 #   tell   — message the user and move on (a trailing tell ends the walk).
 # Values: the manifest's placeholders fill at install, {{inputs.x}} /
 # {{node.field}} / {{ask.total}} when the walk reaches the move, {{x}}
@@ -229,6 +233,7 @@ route:
     #   elsewhere: go_back
     #   locked: unlock_phone
     # tries: 2              # this page's tries per walk (default {recover_limit})
+    # on_fail: stop         # cannot reach this page → the session ends
   - do: {macro}             # the recorded gesture
     macro: {macro}          # the pack macro (macros/{macro}/)
     with: {{message: "{{inputs.message}}"}}
@@ -255,6 +260,7 @@ route:
   #   wait: {ask_wait}              # seconds between reply polls
   #   rounds: {ask_rounds}          # silent polls before the session suspends
   #   resume: {macro}         # re-enter the app after the reply
+  #   on_fail: stop           # a failure here ends the session, nothing paid
   - tell: done
     # The EXACT text sent to the user — write it in THEIR language.
     message: "EDIT ME — done with {{inputs.message}}"

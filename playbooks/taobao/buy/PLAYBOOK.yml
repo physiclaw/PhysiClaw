@@ -98,6 +98,7 @@ route:
     no: ["不用", "不要", "取消", "算了"]   # …and that close it; anything else hands over
     wait: 45                      # seconds between reply polls…
     rounds: 3                     # …and silent polls before the session suspends
+    on_fail: stop                 # a failure here ends the session; nothing paid
     resume:                       # the ask left the app — come back
       macro:
         steps:
@@ -115,6 +116,7 @@ route:
   # on screen.
   - do: pay
     irreversible: payment
+    on_fail: handover             # money may have moved: the model verifies and reports
     macro:
       steps:
         - tap: ["免密支付", "立即支付", "提交订单"]   # one target, three spellings; heals by text

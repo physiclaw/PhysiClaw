@@ -66,7 +66,12 @@ grants — landmarks to tap, pack macros to run — the `context:` you
 list, and `think:` — off, low, medium or high — how much hidden
 thinking each of its calls may spend), `ask` (human gate; `yes:`/`no:` are the replies it reads,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
-`resume:` re-enters the app), `tell`. A move's enter/verify checks
+`resume:` re-enters the app), `tell`. Any entry, a page included, may
+say `on_fail: stop|handover` — what a failure of that entry does once
+its own means are spent: hand the session to the model with every tool
+(the default), or end it so the next wake reads the thread again. The
+playbook decides; after a fired payment a stop leaves the order
+unverified and unreported, which the next wake may read as still open. A move's enter/verify checks
 derive from the adjacent waypoints; there is no branching and no loop
 — judgment is an `agent` step, approval is an `ask`. What the playbook
 declares is what runs: a page without `recover:` hands over, and

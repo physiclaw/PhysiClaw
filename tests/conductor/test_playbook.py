@@ -1013,3 +1013,135 @@ def test_check_names_a_model_step_that_leaves_think_unsaid() -> None:
         "step 'choose' declares no `think:` — the model deliberates at its "
         "vendor default on every call there; declare off, low, medium or high"
     ]
+
+
+# ---------- on_fail: the ask's word on a failure past the gate ----------
+
+
+def test_on_fail_is_unsaid_everywhere_by_default() -> None:
+    spec = pb.parse_playbook(VALID, "buy", _pack())
+    assert all(n.on_fail is None for n in spec.nodes)
+    assert all(r.on_fail is None for r in spec.recovers.values())
+
+
+@pytest.mark.parametrize(
+    "anchor, node_id, word",
+    [
+        ('    no: ["no"]\n', "pay", "stop"),  # the payment ask
+        ('    with: {message: "{choose.pick}"}\n', "to-cart", "handover"),  # a do
+        (
+            '    message: "Added to the cart, ordering soon"\n',
+            "confirm",
+            "stop",
+        ),  # a tell
+        ("    limit: {calls: 4, scrolls: 2}\n", "choose", "stop"),  # an agent
+    ],
+)
+def test_on_fail_is_read_on_every_kind_of_move(anchor, node_id, word) -> None:
+    spec = pb.parse_playbook(
+        _mutate(anchor, f"{anchor}    on_fail: {word}\n"), "buy", _pack()
+    )
+    assert {n.id: n.on_fail for n in spec.nodes}[node_id] == word
+
+
+def test_a_pages_on_fail_rides_its_recovery() -> None:
+    # A page that says only `on_fail` gets a hand-less recovery; one that
+    # also declares a hand keeps it.
+    text = VALID.replace(
+        "  - page: results\n", "  - page: results\n    on_fail: stop\n", 1
+    )
+    spec = pb.parse_playbook(text, "buy", _pack())
+    assert spec.recovers["results"].on_fail == "stop"
+    assert spec.recovers["results"].hands == ()
+
+    text = VALID.replace(
+        "  - page: results\n",
+        "  - page: results\n    recover: go_back\n    on_fail: stop\n",
+        1,
+    )
+    spec = pb.parse_playbook(text, "buy", _pack())
+    assert spec.recovers["results"].on_fail == "stop"
+    assert spec.recovers["results"].elsewhere is not None
+
+
+def test_a_page_declares_on_fail_once() -> None:
+    # `home` is a waypoint twice in VALID: the same word twice is fine,
+    # a later waypoint may add what the earlier left unsaid, and two
+    # different words are a contradiction.
+    text = VALID.replace("  - page: home\n", "  - page: home\n    on_fail: stop\n")
+    assert pb.parse_playbook(text, "buy", _pack()).recovers["home"].on_fail == "stop"
+
+    once = VALID.replace("  - page: home\n", "  - page: home\n    on_fail: stop\n", 1)
+    assert pb.parse_playbook(once, "buy", _pack()).recovers["home"].on_fail == "stop"
+
+    twice = text.replace(
+        "  - page: home\n    on_fail: stop\n",
+        "  - page: home\n    on_fail: handover\n",
+        1,
+    )
+    with pytest.raises(PlaybookError, match="declares `on_fail` twice"):
+        pb.parse_playbook(twice, "buy", _pack())
+
+
+def test_on_fail_takes_only_its_two_words() -> None:
+    with pytest.raises(PlaybookError, match="`on_fail` must be one of handover, stop"):
+        pb.parse_playbook(
+            _mutate('    no: ["no"]\n', '    no: ["no"]\n    on_fail: brief\n'),
+            "buy",
+            _pack(),
+        )
+
+
+def test_check_names_a_payment_ask_that_leaves_on_fail_unsaid() -> None:
+    from physiclaw.conductor.spec import lints
+
+    pack = _pack()
+    unsaid = pb.parse_playbook(VALID, "buy", pack)
+    said = pb.parse_playbook(
+        _mutate('    no: ["no"]\n', '    no: ["no"]\n    on_fail: handover\n'),
+        "buy",
+        pack,
+    )
+
+    assert any("`on_fail:`" in w for w in lints.readiness_warnings(unsaid, pack))
+    assert not any("on_fail" in w for w in lints.readiness_warnings(said, pack))
+
+
+def test_only_the_payment_ask_is_told_when_on_fail_is_unsaid() -> None:
+    from physiclaw.conductor.spec import lints
+
+    pack = _pack()
+    text = VALID.replace(
+        "  - page: results\n",
+        "  - page: results\n"
+        "  - ask: proceed\n"
+        "    approve: go\n"
+        '    message: "Continue? reply go or no"\n'
+        '    yes: ["go"]\n'
+        '    no: ["no"]\n',
+        1,
+    )
+    spec = pb.parse_playbook(text, "buy", pack)
+
+    on_fail = [w for w in lints.readiness_warnings(spec, pack) if "on_fail" in w]
+    assert not any("'proceed'" in w for w in on_fail)
+    assert any("'pay'" in w for w in on_fail)
+
+
+def test_check_names_a_stop_once_money_may_have_moved() -> None:
+    # A stop at or after the payment move — on the move, or on the page
+    # it must land on — is legal and worth a second look.
+    from physiclaw.conductor.spec import lints
+
+    pack = _pack()
+    text = (VALID + PAY_TAIL).replace(
+        "    irreversible: payment\n",
+        "    irreversible: payment\n    on_fail: stop\n",
+        1,
+    )
+    spec = pb.parse_playbook(text, "buy", pack)
+
+    lines = [
+        w for w in lints.readiness_warnings(spec, pack) if "money may have moved" in w
+    ]
+    assert len(lines) == 1 and "'do-pay'" in lines[0]

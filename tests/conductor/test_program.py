@@ -246,15 +246,21 @@ def _sheet(total: str = "¥45") -> str:
     return make_screen(("综合", 0.5, 0.1), (f"合计 {total}", 0.5, 0.5)).text
 
 
-def _at_gate(total: str = "¥45", playbook: str = GATED):
-    """Arm the gated playbook (with a channel pack) and walk to the sent
-    ask; `total` is what the payment sheet shows."""
+def _armed(playbook: str = GATED):
+    """Arm the gated playbook (with a channel pack) on its start page."""
     write_channel(CHANNEL_OPEN)
     write_pack(playbooks={"pay": playbook})
     p = _program(name="pay", keyword="milk")
     assert p.channel is not None and p.channel.send == "channel/send"
     h = _history()
     _feed(h, p.advance(h), HOME)  # the start page
+    return p, h
+
+
+def _at_gate(total: str = "¥45", playbook: str = GATED):
+    """Walk the gated playbook to the sent ask; `total` is what the
+    payment sheet shows."""
+    p, h = _armed(playbook)
     _feed(h, p.advance(h), _sheet(total))  # move open landed on the sheet
     send = p.advance(h)
     assert send is not None and send.tool_names() == ["note", "run_macro"]
@@ -1602,3 +1608,87 @@ def test_suspended_walk_with_a_broken_spec_is_dropped() -> None:
     assert setup.load_suspended() is None
     with pytest.raises(PlaybookError):
         build.load_spec("demo", "pay")
+
+
+# ---------- on_fail: stop — the model never inherits the pay hand ----------
+
+STOPPING = GATED.replace(
+    "    resume: open-app\n", "    resume: open-app\n    on_fail: stop\n"
+)
+
+
+def test_the_ask_that_says_stop_ends_the_session_with_nothing_paid() -> None:
+    # The ask's send fails (Saturday's case): instead of the brief that
+    # would leave the model standing next to the pay hand, the walk
+    # closes the session WAIT by its own end_session — recorded as a
+    # handover, no suspension file, the next wake retries from the top.
+    p, h, send = _at_gate(playbook=STOPPING)
+    _feed(h, send, "macro send ABORTED at step 13/17 (guard_failed)", error=True)
+
+    stop = p.advance(h)
+
+    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    args = stop.tool_calls[1].arguments
+    assert args["status"] == "WAIT"
+    assert "stopped at gate" in args["recap"] and "nothing paid" in args["recap"]
+    assert p.outcome == "handover"
+    assert not suspension.suspended_path().exists()
+    _feed(h, stop, "session ended")
+    assert p.advance(h) is None
+
+
+@pytest.mark.parametrize(
+    "anchor, result, fragment",
+    [
+        # a page waypoint that says stop: the move landed elsewhere and
+        # the page declares no recover hand
+        ("  - page: results\n", ELSEWHERE, "did not land on 'results'"),
+        # a move that says stop: its macro was blocked
+        (
+            '    with: {message: "{inputs.keyword}"}\n',
+            "BLOCKED — not executed",
+            "stopped at open",
+        ),
+    ],
+)
+def test_an_entry_that_says_stop_ends_the_session_when_it_fails(
+    anchor, result, fragment
+) -> None:
+    p, h = _armed(GATED.replace(anchor, f"{anchor}    on_fail: stop\n", 1))
+    move = p.advance(h)
+    _feed(h, move, result, error=result.startswith("BLOCKED"))
+
+    stop = p.advance(h)
+
+    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    assert fragment in stop.tool_calls[1].arguments["recap"]
+    assert p.outcome == "handover"
+
+
+def test_before_the_gate_a_handover_still_briefs_the_model() -> None:
+    p, h = _armed(STOPPING)
+    move = p.advance(h)
+    _feed(h, move, "BLOCKED — not executed", error=True)
+
+    summary = _finish(p, h, p.advance(h))
+
+    assert "conductor handing over" in summary
+
+
+def test_after_a_fired_payment_stop_still_stops_and_says_so() -> None:
+    # The playbook decides, even here: a stop after money moved reports
+    # the fired amount as unverified rather than claiming nothing paid.
+    text = STOPPING.replace(
+        "    irreversible: payment\n", "    irreversible: payment\n    on_fail: stop\n"
+    )
+    p, h, send = _at_gate(playbook=text)
+    pay = _reply_arrives(p, h, send, "好的")
+    _feed(h, pay, _sheet("¥45"))
+    fire = p.advance(h)
+    assert fire.tool_calls[1].arguments["name"] == "demo/add-cart"
+    _feed(h, fire, "BLOCKED — not executed", error=True)
+
+    stop = p.advance(h)
+
+    assert stop.tool_names() == ["note", "end_session"]
+    assert "a payment of ¥45 fired, unverified" in stop.tool_calls[1].arguments["recap"]

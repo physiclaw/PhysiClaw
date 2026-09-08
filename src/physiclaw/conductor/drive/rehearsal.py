@@ -100,6 +100,7 @@ class ModelLog:
 # own outcome vocabulary one level up; these are the loop's.)
 WALK_ENDED = "walk finished or handed over — see the notes above"
 WALK_SUSPENDED = "walk suspended waiting on you — suspension dropped"
+WALK_STOPPED = "walk stopped by its own word — see the notes above"
 WALK_PAUSED = "walk paused — the node settled"
 
 
@@ -135,6 +136,7 @@ async def walk(
     RuntimeError when a model call fires with no model configured."""
     from physiclaw.conductor.walk.micro import DecisionRequest
     from physiclaw.conductor.walk.step import Paused
+    from physiclaw.conductor.walk.suspension import clear_suspended
     from physiclaw.contract.dto import SystemMessage, ToolResultMessage, UserMessage
 
     history: list = [
@@ -192,12 +194,13 @@ async def walk(
             note, act = step.tool_calls
             emit(f"  {note.arguments['summary']}")
             if act.name == "end_session":
-                # The walk wants to suspend for a later wake. A
-                # rehearsal has no later wake, and `_suspend` already
-                # wrote the file — drop it so it cannot ambush the
-                # next real session.
-                from physiclaw.conductor.walk.suspension import clear_suspended
-
+                # The walk closed the session by its own hand: a stop
+                # (nothing to resume), or a suspension for a later wake
+                # — a rehearsal has none, and `suspend` already wrote
+                # the file, so drop it before it ambushes a real wake.
+                pending = program.turns.pending
+                if pending is not None and pending.kind == "stop":
+                    return WALK_STOPPED
                 clear_suspended()
                 return WALK_SUSPENDED
             emit(f"    → {act.name}({_args(act.arguments)})")

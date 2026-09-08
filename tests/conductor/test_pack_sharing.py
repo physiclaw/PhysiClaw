@@ -409,3 +409,35 @@ def test_ambiguity_is_judged_by_the_matcher_not_by_text_sets() -> None:
         "pages 'receipt' and 'bar': a screen showing 'bar' whole also reads "
         "'receipt' — add an anchor or a `forbid` to 'receipt'"
     ]
+
+
+def test_a_manifest_pages_on_fail_is_inherited_and_a_route_may_override() -> None:
+    # `on_fail` is a page's word like its hands: declared once in the
+    # manifest it reaches every route; a route may say its own.
+    from conductor_fakes import PAGES, write_pack
+
+    pages = PAGES.replace(
+        'results:\n  anchors: ["综合"]\n',
+        'results:\n  anchors: ["综合"]\n  on_fail: stop\n',
+    )
+    route = """\
+description: d
+inputs:
+  keyword:
+    description: what
+route:
+  - page: home
+  - do: open
+    macro: open-app
+    with: {message: "{inputs.keyword}"}
+  - page: results
+"""
+    override = route.replace(
+        "  - page: results\n", "  - page: results\n    on_fail: handover\n"
+    )
+    write_pack(pages=pages, playbooks={"inherits": route, "overrides": override})
+    pack = pb.load_pack("demo")
+    specs = {e.name: e.spec for e in pb.scan_playbooks("demo", pack)}
+
+    assert specs["inherits"].recovers["results"].on_fail == "stop"
+    assert specs["overrides"].recovers["results"].on_fail == "handover"
