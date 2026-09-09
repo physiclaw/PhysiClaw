@@ -4,6 +4,7 @@ and page."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -299,11 +300,29 @@ def test_write_puts_the_page_in_the_session_dir_outside_the_inventory(
     assert "session.html" not in [f["name"] for f in viewer.load(session_dir)["files"]]
 
 
+def test_recent_breaks_an_mtime_tie_by_name(tmp_path: Path) -> None:
+    # Two sessions stamped within one tick of a coarse filesystem clock
+    # still list in one order everywhere: the later sid first.
+    root = tmp_path / "sessions"
+    for sid in ("20260908-100000-bbbbbb", "20260908-090000-aaaaaa"):
+        d = root / sid
+        d.mkdir(parents=True)
+        os.utime(d, (1_000_000, 1_000_000))
+
+    rows = viewer.recent(root)
+
+    assert [r["sid"] for r in rows] == [
+        "20260908-100000-bbbbbb",
+        "20260908-090000-aaaaaa",
+    ]
+
+
 def test_recent_lists_the_newest_first_with_what_the_summary_says(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "sessions"
-    (root / "20260908-090000-aaaaaa").mkdir(parents=True)
+    older = root / "20260908-090000-aaaaaa"
+    older.mkdir(parents=True)
     newer = root / "20260908-100000-bbbbbb"
     newer.mkdir()
     (newer / "summary.json").write_text(
@@ -312,6 +331,10 @@ def test_recent_lists_the_newest_first_with_what_the_summary_says(
         )
     )
     (root / "stray.txt").write_text("")
+    # The order is by mtime, so say which is newer instead of trusting
+    # two mkdirs to land in different ticks of the filesystem clock.
+    os.utime(older, (1_000_000, 1_000_000))
+    os.utime(newer, (2_000_000, 2_000_000))
 
     rows = viewer.recent(root)
 

@@ -304,17 +304,19 @@ def recent_sessions(root: Path, n: int) -> list[dict[str, Any]]:
     """The newest `n` sessions' summaries (a stub for a dir without one),
     newest first. mtime, not name: dirs from before the `-` sid format
     sort ABOVE newer `-` dirs lexicographically ('_' > '-'), which would
-    list stale sessions as most recent."""
+    list stale sessions as most recent. Equal mtimes (two sessions
+    within one tick of a coarse-stamped filesystem) break by name, so
+    the order is the same on every run and platform."""
 
-    def mtime(d: Path) -> float:
+    def newest(d: Path) -> tuple[float, str]:
         try:
-            return d.stat().st_mtime
+            return (d.stat().st_mtime, d.name)
         except OSError:
-            return 0.0
+            return (0.0, d.name)
 
     try:
         dirs = sorted(
-            (d for d in root.iterdir() if d.is_dir()), key=mtime, reverse=True
+            (d for d in root.iterdir() if d.is_dir()), key=newest, reverse=True
         )
     except OSError:
         return []
