@@ -10,7 +10,9 @@ search results to the buy sheet, stopping BEFORE payment.
    Decide from the rows (scroll once if the first screen shows
    fewer than two fitting items), then tap the chosen listing's
    title ONCE to open its detail page. Do not open listings to
-   browse. Never deliberate about facts the rows do not show.
+   browse. Pick by these rules and name that one row — do not
+   narrate every listing. Never deliberate about facts the rows
+   do not show.
 2. BUY SHEET — on the detail page tap the footer's right
    button: 领券购买 or 立即购买 (whichever row shows). One of two
    sheets opens:
@@ -23,8 +25,12 @@ search results to the buy sheet, stopping BEFORE payment.
    (b) the ORDER sheet — the address, a 实付￥… row, option
        rows, and a pay button (免密支付, 提交订单 or 立即支付).
        While 实付 reads a RANGE (…起) tap the matching option
-       row; once it shows ONE exact price the spec is chosen —
-       do not tap an option row then. Keep quantity 1.
+       row; once it shows ONE exact price for the fitting spec,
+       the spec is chosen — do not tap an option row then, and do
+       not re-check it: answer done in that same call. Keep
+       quantity 1. OCR may
+       garble a character (袋 read as 级): read a spec by its
+       numbers (500g*1) and its price, not letter by letter.
    Never scroll a sheet looking for 实付: no 实付 row listed
    means sheet (a) — pick the spec and tap its bottom button.
    A tap on an option row sometimes does not take: if the

@@ -64,7 +64,9 @@ macro every route shares), `do` (a recorded macro), `agent` (the
 model drives inside your prompt's fence, with the tools, the `give:`
 grants — landmarks to tap, pack macros to run — the `context:` you
 list, and `think:` — off, low, medium or high — how much hidden
-thinking each of its calls may spend), `ask` (human gate; `yes:`/`no:` are the replies it reads,
+thinking each of its calls may spend; a vendor whose thinking is a
+switch, Kimi K2.x, reads low as off and cannot bound the rest, so keep
+its micro calls at off or low), `ask` (human gate; `yes:`/`no:` are the replies it reads,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
 `resume:` re-enters the app), `tell`. Any entry, a page included, may
 say `on_fail: stop|handover` — what a failure of that entry does once

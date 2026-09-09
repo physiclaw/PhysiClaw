@@ -422,11 +422,17 @@ async def _chat(
 # load-bearing: the model generates left to right, so `reason` first is
 # chain-of-thought baked into the schema (answer-first demotes the
 # reasoning to post-hoc rationalization), `answer` commits after the
-# reasoning, and `confidence` judges the committed answer.
+# reasoning, and `confidence` judges the committed answer. The reason
+# is asked as the deciding fact, one sentence: an open "weigh the
+# evidence" line is where a model narrates its whole working — the
+# pick's reasons ran to paragraphs, tripling the output for the same
+# answers — and a model that thinks first has already done that
+# working out of sight.
 _CONTRACT = (
     "Reply with ONLY this JSON object — no code fence, no other text, "
     "these three fields in this order:\n"
-    '{"reason": "<one short line: weigh the evidence BEFORE answering>", '
+    '{"reason": "<ONE sentence, at most 25 words: the deciding fact, '
+    'not your working>", '
     '"answer": "<see below>", '
     '"confidence": <0.0-1.0, your honest probability that answer is right>}'
 )
