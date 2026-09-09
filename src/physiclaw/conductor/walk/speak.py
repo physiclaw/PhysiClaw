@@ -66,8 +66,8 @@ def new_replies(walk: Walk, *, after_ask: bool = True) -> list[str]:
 
 
 def verdict(walk: Walk, messages: list[str]) -> reply.Answer | None:
-    """The gate's own words over `messages` — deny wins over anything
-    else said, an uncovered message defers."""
+    """The gate's own words over `messages` — the newest one is the
+    answer; an uncovered newest message defers."""
     return reply.classify_all(
         messages, frozenset(walk.gate.yes), frozenset(walk.gate.no)
     )
@@ -98,7 +98,9 @@ def sent_landed(walk: Walk) -> Turn:
     if (
         gate.baseline
         and gate.no
-        and verdict(walk, new_replies(walk, after_ask=False)) is reply.Answer.DENY
+        and reply.any_deny(
+            new_replies(walk, after_ask=False), frozenset(gate.yes), frozenset(gate.no)
+        )
     ):
         return deny(walk)
     # The send landed: its words and its thread snapshot take over together.

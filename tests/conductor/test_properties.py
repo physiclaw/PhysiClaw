@@ -66,19 +66,20 @@ def test_a_declared_word_is_read_whatever_wraps_it(
 
 
 @given(st.lists(_text, max_size=5), _words, _words)
-def test_deny_wins_and_partial_understanding_never_confirms(
+def test_the_newest_message_is_the_answer(
     messages: list[str], yes: list[str], no: list[str]
 ) -> None:
     yes_n = frozenset(reply.normalize(w) for w in yes) - {""}
     no_n = frozenset(reply.normalize(w) for w in no) - {""}
-    verdicts = [reply.classify(m, yes_n, no_n) for m in messages]
     out = reply.classify_all(messages, yes_n, no_n)
-    if reply.Answer.DENY in verdicts:
-        assert out is reply.Answer.DENY
-    elif out is reply.Answer.CONFIRM:
-        assert messages and all(v is reply.Answer.CONFIRM for v in verdicts)
-    else:
+    if not messages:
         assert out is None
+    else:
+        assert out is reply.classify(messages[-1], yes_n, no_n)
+    # The sweep's rule: a deny anywhere is a deny.
+    assert reply.any_deny(messages, yes_n, no_n) is any(
+        reply.classify(m, yes_n, no_n) is reply.Answer.DENY for m in messages
+    )
 
 
 # ---------- money: amounts off a screen ----------

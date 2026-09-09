@@ -37,10 +37,11 @@ def test_classify_whole_message_only(text: str, expected: str | None) -> None:
     assert reply.classify(text, YES, NO) == expected
 
 
-def test_classify_all_deny_wins_and_partial_defers() -> None:
+def test_classify_all_follows_the_newest_message() -> None:
     assert reply.classify_all(["好的", "不要"], YES, NO) == "deny"
-    assert reply.classify_all(["好的", "嗯"], YES, NO) == "confirm"
-    # One unclassifiable message alongside a confirm defers — the model reads.
+    assert reply.classify_all(["不要", "好的"], YES, NO) == "confirm"  # a changed mind
+    assert reply.classify_all(["顺便查下天气", "嗯"], YES, NO) == "confirm"
+    # An undeclared newest message defers — the model reads the thread.
     assert reply.classify_all(["好的", "顺便查下天气"], YES, NO) is None
     assert reply.classify_all([], YES, NO) is None
 
@@ -152,3 +153,89 @@ def test_sweep_skips_the_just_sent_asks_own_band() -> None:
     )
 
     assert _new(screen.rows, {"MyChat"}, ask, after_ask=False) == ["cancel"]
+
+
+def test_a_raised_keyboard_is_not_the_thread() -> None:
+    # A send leaves the keyboard up: its keys and the predictive bar
+    # above them sit left of center below the ask, exactly where a reply
+    # would — recognized by shape, they never read as messages.
+    ask = "已为您选好太古小粒优级黄冰糖454g，实付13.68元。回复 好的 确认支付，或 不用 取消。"
+    keys = [(k, 0.05 + i * 0.1, 0.71) for i, k in enumerate("QWERTYUIOP")]
+    screen = make_screen(
+        ("QiaoQian", 0.5, 0.08),
+        (ask[:22], 0.6, 0.38),
+        ("好的", 0.2, 0.53),  # the reply
+        ("I", 0.15, 0.656),
+        ("The", 0.5, 0.656),
+        ("I'm", 0.83, 0.656),  # predictive bar
+        *keys,
+        ("123", 0.12, 0.885),
+        ("space", 0.5, 0.885),
+    )
+
+    # The floor hangs off the key ROW, one line above its top edge and
+    # the input bar: the predictive bar's lone "I" is not a row.
+    assert reply.keyboard_top(screen.rows) == pytest.approx(0.59)
+    assert _new(screen.rows, {"QiaoQian"}, ask) == ["好的"]
+    assert (
+        reply.classify_all(_new(screen.rows, {"QiaoQian"}, ask), YES, NO) == "confirm"
+    )
+
+
+def test_a_bubbles_rows_are_one_message() -> None:
+    # OCR reads a two-line bubble as two rows a line apart; the whole
+    # message carries the qualifier, so it must not confirm off its last
+    # line — while two bubbles, further apart, stay two messages.
+    ask = "现在下单吗？回复 好的 或 不用"
+    screen = make_screen(
+        (ask, 0.75, 0.3),
+        ("买两袋，", 0.25, 0.500),
+        ("好的", 0.2, 0.523),  # the same bubble's second line
+    )
+
+    new = _new(screen.rows, set(), ask)
+    assert new == ["买两袋， 好的"]
+    assert reply.classify_all(new, YES, NO) is None
+
+    two = make_screen((ask, 0.75, 0.3), ("不用", 0.2, 0.5), ("好的", 0.2, 0.56))
+    assert _new(two.rows, set(), ask) == ["不用", "好的"]
+
+
+def test_no_keyboard_without_a_spread_of_keys() -> None:
+    # Two lone letters are no keyboard; they read as bubbles like any
+    # other, in screen order whatever order the listing had — and at
+    # one height they are one line, so one message.
+    screen = make_screen(("A", 0.2, 0.9), ("B", 0.4, 0.9), ("好的", 0.2, 0.5))
+
+    assert reply.keyboard_top(screen.rows) is None
+    assert _new(screen.rows, set(), "ask") == ["好的", "A B"]
+
+
+def test_the_asks_own_wrapped_tail_is_not_a_reply() -> None:
+    # The ask's last line wraps short and OCRs left of center just under
+    # its recognized lines; spacing differs from the sent text (OCR drops
+    # it). It is ours — without it the round would hand over before the
+    # user has said anything.
+    ask = "实付13.68元。回复 好的 确认支付，或 不用 取消。"
+    rows = [
+        ("QiaoQian", 0.5, 0.08),
+        (ask[:12], 0.6, 0.40),
+        ("付，或不用取消。", 0.3, 0.43),  # the wrapped tail, one line under
+    ]
+
+    assert _new(make_screen(*rows).rows, {"QiaoQian"}, ask) == []
+    assert _new(make_screen(*rows, ("好的", 0.2, 0.53)).rows, {"QiaoQian"}, ask) == [
+        "好的"
+    ]
+
+    # A tail as short as the ask's own no word is still the ask's.
+    short = make_screen(*rows[:2], ("取消。", 0.3, 0.43))
+    assert _new(short.rows, {"QiaoQian"}, ask) == []
+
+
+def test_any_deny_is_the_sweeps_rule() -> None:
+    # A deny said while the walk was in the app stops it whatever
+    # followed — the sweep does not follow the newest message.
+    assert reply.any_deny(["不要", "顺便查下天气"], YES, NO) is True
+    assert reply.any_deny(["好的", "嗯"], YES, NO) is False
+    assert reply.any_deny([], YES, NO) is False
