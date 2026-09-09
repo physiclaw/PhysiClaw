@@ -102,13 +102,16 @@ def test_a_failing_sink_never_stops_the_record() -> None:
 def test_a_reading_is_an_event_beside_its_tool_result() -> None:
     from conductor_fakes import Sink
 
+    from physiclaw.conductor.spec.match import Reading, Verdict
     from physiclaw.conductor.walk.record import Record
 
     sink = Sink()
-    Record("taobao", "buy", dry=True, events=sink).read(
-        "peek", "search", "match taobao.results (2 anchors)"
+    verdict = Verdict(
+        kind=Reading.MATCH, page_id="taobao.results", dy=0.0, detail="2 anchors"
     )
+    Record("taobao", "buy", dry=True, events=sink).read("peek", "search", verdict)
 
+    # The prose line for a grep, and the same reading as fields.
     assert sink.events == [
         {
             "event": "walk_read",
@@ -117,5 +120,7 @@ def test_a_reading_is_an_event_beside_its_tool_result() -> None:
             "after": "peek",
             "node": "search",
             "verdict": "match taobao.results (2 anchors)",
+            "kind": "match",
+            "page": "taobao.results",
         }
     ]

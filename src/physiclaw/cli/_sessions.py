@@ -12,12 +12,10 @@ from physiclaw.cli._format import exit_error
 def resolve_sid(suffix: str) -> str:
     """A session id from a unique suffix. Exits with the ambiguity, or
     with "no session matches", the way every CLI reader reports it."""
-    from physiclaw.agent.trace.store import find_session_dirs
+    from physiclaw.agent.trace.store import resolve_session
     from physiclaw.common import paths
 
-    matches = find_session_dirs(paths.engine_sessions_dir(), suffix)
-    if len(matches) == 1:
-        return matches[0].name
-    if not matches:
-        exit_error(f"no session matches {suffix!r}")
-    exit_error(f"ambiguous session {suffix!r}: {', '.join(m.name for m in matches)}")
+    try:
+        return resolve_session(paths.engine_sessions_dir(), suffix).name
+    except LookupError as e:
+        exit_error(str(e))

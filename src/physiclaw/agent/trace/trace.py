@@ -212,6 +212,29 @@ _BLOCKED_KEYS = {
     "tool_blocked_layout": "blocked_layout",
     "tool_blocked_stuck": "blocked_stuck",
 }
+# Every event that marks something going wrong, with its words for a
+# reader — what the session viewer flags and says; the sets above stay
+# the summary's buckets. A new warning event is added here once.
+WARNING_WORDS: dict[str, str] = {
+    "bad_turn_shape": "The model's turn was malformed — a corrective was sent",
+    "checkpoint_corrective": "The model skipped a checkpoint — a corrective was sent",
+    "stuck_reflection": "The model was asked to reflect on being stuck",
+    "pitfall_checkpoint": "A known pitfall was pointed out to the model",
+    "memory_cue_checkpoint": "A memory cue was pointed out to the model",
+    "stuck_warning": "The loop detector warned",
+    "tool_blocked_no_plan": "A tool call was blocked: no plan yet",
+    "tool_blocked_layout": "A tool call was blocked: layout guard",
+    "tool_blocked_stuck": "A tool call was blocked: stuck guard",
+    "tool_error": "A tool failed",
+    "tool_invalid_args": "A tool was called with invalid arguments",
+    "tool_unknown": "An unknown tool was called",
+    "provider_failed": "The model call failed",
+    "crashed": "The session crashed",
+    "budget_exhausted": "The session's time budget ran out",
+    "finish_length_warning": "The reply was cut short at the length limit",
+}
+WARNING_EVENTS = frozenset(WARNING_WORDS)
+assert _CORRECTIVE_EVENTS | _STUCK_EVENTS | frozenset(_BLOCKED_KEYS) <= WARNING_EVENTS
 
 
 def fold_usage(by_model: dict[str, Counter[str]], event: dict[str, Any]) -> None:

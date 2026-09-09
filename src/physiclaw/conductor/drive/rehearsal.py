@@ -30,7 +30,7 @@ from physiclaw.conductor.drive.hooks import (
     Transform,
 )
 from physiclaw.conductor.spec.limits import REHEARSE_MAX_TURNS
-from physiclaw.contract.wire import leaf_blocks
+from physiclaw.contract.wire import leaf_blocks, reply_gist
 
 if TYPE_CHECKING:
     from physiclaw.conductor.spec.match import Verdict
@@ -317,19 +317,9 @@ def _message_text(message: dict) -> str:
 
 def reply_text(raw: dict) -> str:
     """The model's text out of a raw provider reply — the two wire
-    shapes in the tree, else the reply verbatim."""
-    try:
-        choices = raw.get("choices")
-        if choices:  # the OpenAI shape
-            return str(choices[0]["message"]["content"])
-        content = raw.get("content")
-        if isinstance(content, list):  # the Anthropic shape
-            return "\n".join(
-                str(b.get("text", "")) for b in content if isinstance(b, dict)
-            )
-    except (KeyError, IndexError, TypeError, AttributeError):
-        pass
-    return json.dumps(raw, ensure_ascii=False)
+    shapes in the tree (`wire.reply_gist`), else the reply verbatim."""
+    gist = reply_gist(raw)
+    return gist["text"] if gist is not None else json.dumps(raw, ensure_ascii=False)
 
 
 def _describe_verdict(v: "Verdict") -> str:

@@ -24,7 +24,7 @@ Make sure the room is evenly lit, avoid glare on the screen, and set the phone's
 Tasks that used to run reliably start failing. The agent mis-taps, gets lost, or gives up, yet nothing in software changed. The cause is almost always physical. The camera got bumped and no longer points straight at the phone screen, or a light is now hitting the screen directly, blowing out the image so the agent can barely see it.
 
 :::tip[Fix]
-Check what the model actually saw. `physiclaw logs` lists recent sessions, and `physiclaw logs <id>` prints the path to the session's `images/` folder, which holds the exact frames sent to the LLM. Tilted, blurry, or washed-out frames confirm it. Re-aim the camera, recalibrate if it moved, and light the screen evenly with no direct glare.
+Check what the model actually saw. `physiclaw logs` lists recent sessions, and `physiclaw studio --review --session <id>` opens one in the browser with every frame, request and reply in order; `physiclaw logs <id>` prints the path to the session's `images/` folder, which holds the exact frames sent to the LLM. Tilted, blurry, or washed-out frames confirm it. Re-aim the camera, recalibrate if it moved, and light the screen evenly with no direct glare.
 :::
 
 ## Solenoid clicks sometimes, unresponsive other times

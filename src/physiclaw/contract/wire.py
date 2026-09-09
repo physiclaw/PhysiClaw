@@ -144,3 +144,51 @@ def leaf_blocks(content: Any) -> Iterable[dict]:
             yield from leaf_blocks(block.get("content"))
         else:
             yield block
+
+
+def reply_gist(raw: dict) -> dict[str, Any] | None:
+    """What a raw provider reply said, in one shape whichever wire it
+    came over: `text`, `calls` ([{name, args}]), `thinking`. None when
+    the dict is neither the OpenAI nor the Anthropic shape — the caller
+    shows it verbatim."""
+    try:
+        choices = raw.get("choices")
+        if choices:  # the OpenAI shape
+            msg = choices[0]["message"]
+            content = msg.get("content")
+            if not content:
+                text = ""
+            elif isinstance(content, str):
+                text = content
+            else:
+                text = json.dumps(content, ensure_ascii=False)
+            calls = [tc.get("function") or {} for tc in msg.get("tool_calls") or []]
+            return {
+                "text": text,
+                "calls": [
+                    {"name": fn.get("name", "?"), "args": fn.get("arguments", "")}
+                    for fn in calls
+                ],
+                "thinking": str(msg.get("reasoning_content") or ""),
+            }
+        content = raw.get("content")
+        if isinstance(content, list):  # the Anthropic shape
+            blocks = [b for b in content if isinstance(b, dict)]
+            return {
+                "text": "\n".join(
+                    str(b.get("text", "")) for b in blocks if b.get("type") == "text"
+                ),
+                "calls": [
+                    {"name": b.get("name", "?"), "args": b.get("input")}
+                    for b in blocks
+                    if b.get("type") == "tool_use"
+                ],
+                "thinking": "\n".join(
+                    str(b.get("thinking", ""))
+                    for b in blocks
+                    if b.get("type") == "thinking"
+                ),
+            }
+    except (KeyError, IndexError, TypeError, AttributeError):
+        pass
+    return None

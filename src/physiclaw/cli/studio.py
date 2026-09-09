@@ -45,6 +45,16 @@ def studio(
             "show the current frame; gestures step to the next.",
         ),
     ] = None,
+    review: Annotated[
+        bool,
+        typer.Option(
+            "--review",
+            help="Open the session viewer instead of the driver: every "
+            "request, reply, tool result, frame and decision of a recorded "
+            "session, in order — the one --session names, else the newest. "
+            "Needs no MCP server.",
+        ),
+    ] = False,
 ) -> None:
     """Drive the phone by hand from the browser, and step playbooks.
 
@@ -53,23 +63,32 @@ def studio(
     long-press, or swipe it. The playbook panel steps a pack one node
     at a time — the same core as `physiclaw playbooks step`, the same
     position file, so a terminal and the page can take turns. A
-    frontend only: it needs `physiclaw mcp` already running.
+    frontend only: it needs `physiclaw mcp` already running — except
+    to review a recorded session, which reads only the session dir.
     """
     import uvicorn
 
     from physiclaw.studio.server import build_app
+    from physiclaw.studio.session import StudioSession
 
     driven: Session
-    if session is not None:
+    url = f"http://127.0.0.1:{port}/"
+    if review:
+        # The viewer reads the session dir; the driver behind the page's
+        # studio link dials the rig only when used, so no probe here.
+        driven = StudioSession(mcp_url or _server_address()[0])
+        url += (
+            "sessions/"
+            if session is None
+            else f"sessions/{_session_dir(session).name}/"
+        )
+    elif session is not None:
         recorded = _recorded_session(session)
         typer.echo(f"studio: recorded {recorded.label} ({len(recorded.frames)} frames)")
         driven = recorded
     else:
-        from physiclaw.studio.session import StudioSession
-
         driven = StudioSession(mcp_url or _server_base())
         typer.echo(f"studio: hardware via {driven.mcp_url}")
-    url = f"http://127.0.0.1:{port}/"
     typer.echo(f"studio: {url}")
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
@@ -80,27 +99,32 @@ def studio(
     ).run()
 
 
-def _recorded_session(ref: str):
-    """A `MockSession` over a session directory — a path, or an id
-    resolved the `logs <suffix>` way."""
+def _session_dir(ref: str) -> Path:
+    """The session directory `--session` names — a path, or an id
+    resolved the `logs <suffix>` way (a miss exits here)."""
     from physiclaw.cli._sessions import resolve_sid
     from physiclaw.common import paths
-    from physiclaw.studio.mock import MockSession, session_frames
 
     d = Path(ref).expanduser()
-    if not d.is_dir():
-        d = paths.engine_sessions_dir() / resolve_sid(ref)
+    return d if d.is_dir() else paths.engine_sessions_dir() / resolve_sid(ref)
+
+
+def _recorded_session(ref: str):
+    """A `MockSession` over a session directory."""
+    from physiclaw.studio.mock import MockSession, session_frames
+
+    d = _session_dir(ref)
     try:
         return MockSession(session_frames(d), d.name)
     except (FileNotFoundError, ValueError) as e:
         raise typer.BadParameter(str(e), param_hint="--session") from e
 
 
-def _server_base() -> str:
-    """The server to drive. The live server's own record wins
-    (`runtime_state`, the pid-checked answer every CLI shares — a
+def _server_address() -> tuple[str, bool]:
+    """The server's address, and whether it is the live server's own
+    record (`runtime_state`, the pid-checked answer every CLI shares — a
     server on a non-default port is found, never doubled); otherwise
-    the configured address, which must already answer."""
+    the configured address, unverified."""
     from physiclaw.common import runtime_state
     from physiclaw.common.config import server_url, url_host
 
@@ -108,9 +132,14 @@ def _server_base() -> str:
     if live:
         base = f"http://{url_host(live['host'])}:{live['port']}"
         typer.echo(f"studio: MCP server running at {base}")
-        return base
-    base = server_url().rstrip("/")
-    if not _listening(base):
+        return base, True
+    return server_url().rstrip("/"), False
+
+
+def _server_base() -> str:
+    """The server to drive: its address, which must already answer."""
+    base, live = _server_address()
+    if not live and not _listening(base):
         exit_error(f"no MCP server at {base}. {START_HINT}")
     return base
 

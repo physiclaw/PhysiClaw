@@ -350,6 +350,7 @@ class MicroCaller:
                     {"role": role_of(m), "content": str(m.content)} for m in messages
                 ],
                 raw=asst.raw,
+                reason=parsed[1] if parsed else None,
             )
         )
 

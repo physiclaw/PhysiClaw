@@ -11,6 +11,11 @@ terminal can take turns. A step or a macro run is one background
 `Job` holding the session's one-rig lock; the page polls `/api/step`
 for its progress lines and the latest phone view.
 
+A second page reads the past: `/sessions/<sid>/` is the session viewer
+(`agent/trace/viewer.py`) over a recorded session dir, its frames
+served from `/sessions/<sid>/images/<file>`; `/sessions/` is the
+newest one. It touches no rig.
+
 Error convention, read by the browser's banner (`_refused` is its one
 home): 400 — request the studio refuses (unknown tool, unreadable
 body, a bad playbook ref or input); 409 — a call or a step is in
@@ -26,10 +31,18 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Route
 
-from physiclaw.common import gesture_vocab
+from physiclaw.agent.trace import viewer
+from physiclaw.agent.trace.store import recent_sessions, resolve_session
+from physiclaw.common import gesture_vocab, paths
 from physiclaw.common.ready import START_HINT
 from physiclaw.common.text import read_text
 from physiclaw.conductor.spec.pack import split_ref
@@ -215,6 +228,57 @@ async def handle_page(request: Request) -> HTMLResponse:
     )
 
 
+# The session routes are plain functions: they read files, so Starlette
+# runs them in its threadpool and the driver's polls are not held up.
+
+
+def _not_found(why: str) -> HTMLResponse:
+    return HTMLResponse(
+        f"<p>{why}. <a href='/sessions/'>The newest session.</a></p>", status_code=404
+    )
+
+
+def handle_sessions(request: Request) -> Response:
+    """GET /sessions/ — the newest recorded session's viewer."""
+    rows = recent_sessions(paths.engine_sessions_dir(), 1)
+    if not rows:
+        return HTMLResponse(
+            "<p>No recorded sessions yet — a wake writes one under the "
+            "engine's sessions dir. <a href='/'>Back to the studio.</a></p>",
+            status_code=404,
+        )
+    return RedirectResponse(f"/sessions/{rows[0]['sid']}/")
+
+
+def handle_session_page(request: Request) -> Response:
+    """GET /sessions/{sid}/ — the viewer over one session dir, with the
+    picker of recent sessions; `no-store` like the studio page."""
+    ref = request.path_params["sid"]
+    try:
+        d = resolve_session(paths.engine_sessions_dir(), ref)
+    except LookupError as e:
+        return _not_found(str(e))
+    if d.name != ref:
+        # The canonical address, so the page's relative frame paths
+        # resolve by exact name rather than a directory scan each.
+        return RedirectResponse(f"/sessions/{d.name}/")
+    model = viewer.load(d, sessions=viewer.recent(paths.engine_sessions_dir()))
+    return HTMLResponse(viewer.render(model), headers={"Cache-Control": "no-store"})
+
+
+def handle_session_image(request: Request) -> Response:
+    """GET /sessions/{sid}/images/{name} — one frame from the session's
+    `images/`; the name is one path segment, so it cannot leave the dir."""
+    try:
+        d = resolve_session(paths.engine_sessions_dir(), request.path_params["sid"])
+    except LookupError:
+        return Response("no such frame", status_code=404)
+    name = request.path_params["name"]
+    if "/" in name or not (d / "images" / name).is_file():
+        return Response("no such frame", status_code=404)
+    return FileResponse(d / "images" / name)
+
+
 async def handle_state(request: Request, session: Session) -> JSONResponse:
     """GET /api/state — connection + surface, without dialing out.
     `swipe` carries the stroke ladder the page maps a drag onto, so JS
@@ -370,6 +434,9 @@ def build_app(session: Session) -> Starlette:
     return Starlette(
         routes=[
             Route("/", handle_page),
+            Route("/sessions/", handle_sessions),
+            Route("/sessions/{sid}/", handle_session_page),
+            Route("/sessions/{sid}/images/{name}", handle_session_image),
             Route("/api/state", bind(handle_state, session)),
             Route("/api/act", bind(handle_act, session), methods=["POST"]),
             Route("/api/playbooks", handle_playbooks),

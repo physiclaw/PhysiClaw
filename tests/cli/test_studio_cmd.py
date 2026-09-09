@@ -72,3 +72,17 @@ def test_listening_tells_a_refused_connect_from_any_answer(monkeypatch) -> None:
 def test_recorded_session_flag_reports_a_missing_recording(tmp_path) -> None:
     with pytest.raises(typer.BadParameter, match="wire.jsonl"):
         studio_mod._recorded_session(str(tmp_path))
+
+
+def test_session_dir_takes_a_path_or_resolves_a_suffix(
+    physiclaw_home, tmp_path
+) -> None:
+    from physiclaw.common import paths
+
+    recorded = paths.engine_sessions_dir() / "20260908-100000-abc123"
+    recorded.mkdir(parents=True)
+
+    assert studio_mod._session_dir(str(tmp_path)) == tmp_path
+    assert studio_mod._session_dir("abc123") == recorded
+    with pytest.raises(typer.Exit):
+        studio_mod._session_dir("nope")

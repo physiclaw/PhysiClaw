@@ -155,6 +155,9 @@ async def test_build_app_routes_and_closes_the_session_on_shutdown() -> None:
 
     assert {r.path for r in app.routes} == {
         "/",
+        "/sessions/",
+        "/sessions/{sid}/",
+        "/sessions/{sid}/images/{name}",
         "/api/state",
         "/api/act",
         "/api/playbooks",
@@ -432,3 +435,103 @@ async def test_macros_lists_the_catalog(monkeypatch) -> None:
     resp = await server.handle_macros(SimpleNamespace())
 
     assert _payload(resp) == {"status": "ok", "macros": [{"name": "mine"}]}
+
+
+# ---------- /sessions — the session viewer ----------
+
+
+def _recorded(sid: str = "20260908-100000-abc123"):
+    from physiclaw.common import paths
+
+    d = paths.engine_sessions_dir() / sid
+    (d / "images").mkdir(parents=True)
+    (d / "images" / "100001_000_t0.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    (d / "events.jsonl").write_text(
+        '{"t": "2026-09-08T10:00:01.500", "event": "tool_result", "turn": 0, '
+        '"name": "peek", "text": "Screen", "images": ["images/100001_000_t0.jpg"]}\n'
+    )
+    (d / "summary.json").write_text(json.dumps({"outcome": {"sentinel": "DONE"}}))
+    return d
+
+
+def _path_request(**params) -> SimpleNamespace:
+    return SimpleNamespace(path_params=params)
+
+
+@pytest.mark.asyncio
+async def test_sessions_root_redirects_to_the_newest(physiclaw_home) -> None:
+    _recorded("20260908-090000-aaaaaa")
+    _recorded("20260908-100000-bbbbbb")
+
+    resp = server.handle_sessions(SimpleNamespace())
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/sessions/20260908-100000-bbbbbb/"
+
+
+@pytest.mark.asyncio
+async def test_sessions_root_without_recordings_is_404(physiclaw_home) -> None:
+    resp = server.handle_sessions(SimpleNamespace())
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_session_page_sends_a_suffix_to_its_canonical_address(
+    physiclaw_home,
+) -> None:
+    _recorded()
+
+    resp = server.handle_session_page(_path_request(sid="abc123"))
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/sessions/20260908-100000-abc123/"
+
+
+@pytest.mark.asyncio
+async def test_session_page_serves_the_viewer_no_store(physiclaw_home) -> None:
+    _recorded()
+
+    resp = server.handle_session_page(_path_request(sid="20260908-100000-abc123"))
+
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-store"
+    body = bytes(resp.body).decode()
+    assert '"sid": "20260908-100000-abc123"' in body
+    assert "images/100001_000_t0.jpg" in body  # the frame, by its relative path
+    assert '"sessions": [{' in body  # the picker rides the served page
+
+
+@pytest.mark.asyncio
+async def test_session_page_unknown_or_ambiguous_sid_is_404(physiclaw_home) -> None:
+    resp = server.handle_session_page(_path_request(sid="nope"))
+
+    assert resp.status_code == 404
+    assert b"no session matches" in bytes(resp.body)
+
+    _recorded("20260908-090000-abc123")
+    _recorded("20260908-100000-abc123")
+    resp = server.handle_session_page(_path_request(sid="abc123"))
+
+    assert resp.status_code == 404
+    assert b"ambiguous session" in bytes(resp.body)
+
+
+@pytest.mark.asyncio
+async def test_session_image_serves_a_frame_and_nothing_outside_images(
+    physiclaw_home,
+) -> None:
+    _recorded()
+
+    ok = server.handle_session_image(
+        _path_request(sid="abc123", name="100001_000_t0.jpg")
+    )
+    assert ok.status_code == 200
+    assert ok.media_type == "image/jpeg"
+
+    for name in ("missing.jpg", "../summary.json", "..", ""):
+        resp = server.handle_session_image(_path_request(sid="abc123", name=name))
+        assert resp.status_code == 404, name
+    assert (
+        server.handle_session_image(_path_request(sid="nope", name="x.jpg"))
+    ).status_code == 404

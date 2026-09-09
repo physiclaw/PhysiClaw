@@ -7,7 +7,10 @@ renders a session's narrative from its events.jsonl with the same
 formatter the daily log uses.
 """
 
-from typing import Any
+from typing import Any, Callable
+
+from physiclaw.agent.runtime import sentinel
+from physiclaw.common import gesture_vocab
 
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
@@ -229,3 +232,74 @@ def summarize_event(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat
         return None
     # Fallback — compact repr so nothing disappears silently.
     return f"event {name}: {brief(repr(event), 200)}"
+
+
+# ---- words for a reader (the session viewer) ---------------------------
+# What each decision call asks, and what each sentinel means with the
+# tone the page colors it — pinned to the runtime's roster.
+CALL_WORDS = {
+    "parse_task": "Which playbook?",
+    "agent_fields": "Fill the fields",
+    "agent_act": "Next move",
+}
+SENTINEL_WORDS: dict[str, dict[str, str]] = {
+    sentinel.DONE: {"words": "finished", "tone": "ok"},
+    sentinel.WAIT: {"words": "waiting for the user", "tone": "amber"},
+    sentinel.IDLE: {"words": "nothing to do", "tone": ""},
+    sentinel.STUCK: {"words": "got stuck", "tone": "bad"},
+    sentinel.FAIL: {"words": "failed", "tone": "bad"},
+}
+assert SENTINEL_WORDS.keys() == sentinel.STATUSES
+
+
+def _at(args: dict[str, Any]) -> str:
+    bbox = args.get("bbox")
+    return f"[{', '.join(str(v) for v in bbox)}]" if bbox else ""
+
+
+# One verb phrase per tool, for a reader who did not write the tool: a
+# string, or a callable over the arguments. Gesture rows are keyed by
+# the vocabulary so a rename fails here, not on the page; the engine's
+# own tools have no name constants and stay literal.
+_TOOL_VERBS: dict[str, str | Callable[[dict[str, Any]], str]] = {
+    gesture_vocab.PEEK: "Looked at the screen",
+    gesture_vocab.SCREENSHOT: "Took a phone screenshot",
+    "tap": lambda a: f"Tapped {_at(a)}",
+    "double_tap": lambda a: f"Double-tapped {_at(a)}",
+    "long_press": lambda a: f"Long-pressed {_at(a)}",
+    gesture_vocab.SWIPE: lambda a: f"Swiped {a.get('direction', '')}",
+    gesture_vocab.GO_BACK: "Went back",
+    "home_screen": "Went to the home screen",
+    gesture_vocab.FORCE_QUIT: "Force-quit the app",
+    gesture_vocab.UNLOCK_PHONE: "Unlocked the phone",
+    gesture_vocab.SEND_TO_CLIPBOARD: lambda a: (
+        f"Copied to the phone's clipboard: {brief(a.get('text', ''), 60)}"
+    ),
+    "wait": lambda a: f"Waited {a.get('seconds', '')} s",
+    gesture_vocab.RUN_MACRO: lambda a: f"Ran macro {a.get('name', '')}",
+    gesture_vocab.SEQUENCE: "Ran a gesture sequence",
+    "note": lambda a: f"Noted: {brief(note_text(a), 140)}",
+    "update_progress": "Updated the plan",
+    "end_session": lambda a: f"Ended the session: {a.get('status', '')}",
+    "append_log": "Wrote to the log",
+    "finish_job": lambda a: f"Finished job {a.get('id', '')}",
+    "Skill": lambda a: f"Loaded skill {a.get('name', '')}",
+}
+assert gesture_vocab.PRESS_TOOLS | gesture_vocab.NAV_TOOLS <= _TOOL_VERBS.keys()
+
+
+def note_text(args: dict[str, Any]) -> str:
+    """A note's summary as a reader sees it — the walk's own notes
+    carry a `conductor: ` prefix that names the author, not the news."""
+    return str(args.get("summary", "")).removeprefix("conductor: ")
+
+
+def describe_call(name: str, args: dict[str, Any]) -> str:
+    """A tool call as a verb phrase — `Tapped [0.1, 0.2, 0.3, 0.4]` — for
+    a reader; a tool without a phrase reads as `name(args)`."""
+    if not isinstance(args, dict):  # a torn record: still a row, still named
+        args = {}
+    verb = _TOOL_VERBS.get(name)
+    if verb is None:
+        return f"{name}({brief_args(args)})"
+    return verb(args) if callable(verb) else verb

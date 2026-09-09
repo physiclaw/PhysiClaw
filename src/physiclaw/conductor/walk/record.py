@@ -15,12 +15,15 @@ failure logs and the walk goes on.
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from physiclaw.common import daylog
 from physiclaw.conductor.walk import walklog
 from physiclaw.conductor.walk.walklog import Outcome
 from physiclaw.contract.plugin import EventSink
+
+if TYPE_CHECKING:
+    from physiclaw.conductor.spec.match import Verdict
 
 log = logging.getLogger(__name__)
 
@@ -74,11 +77,12 @@ class Record:
         if not self.dry:
             walklog.record(**fields, values=values)
 
-    def read(self, after: str, node: str | None, verdict: str) -> None:
+    def read(self, after: str, node: str | None, verdict: "Verdict") -> None:
         """One screen reading — what the walk thought the screen was,
         beside the tool result that carried it — so a session dir
         answers the first question of any post-mortem without the
-        runtime log."""
+        runtime log. `verdict` is the prose line; `kind` and `page` are
+        the same reading as fields."""
         self._event(
             "walk_read",
             dict(
@@ -86,7 +90,9 @@ class Record:
                 playbook=self.playbook,
                 after=after,
                 node=node,
-                verdict=verdict,
+                verdict=verdict.describe(),
+                kind=str(verdict.kind),
+                page=verdict.page_id,
             ),
         )
 

@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysiClaw session</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f1eb; --card: #ffffff; --card2: #f8f6f1; --card3: #efebe3;
+    --line: #e6e0d6; --line2: #d5cdc0;
+    --txt: #26211c; --muted: #6e675e; --faint: #a59d91;
+    --accent: #d4511a; --accent-ink: #fff6f0; --sel: #fbe9df;
+    --ok: #2f9e6a; --red: #c8483f; --blue: #4f7fb5; --amber: #c98d1f; --violet: #7d63b5;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --shadow: 0 1px 2px rgba(60, 45, 30, .06), 0 8px 24px rgba(60, 45, 30, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17161a; --card: #212026; --card2: #27262d; --card3: #2f2e36;
+      --line: #34333b; --line2: #46454f;
+      --txt: #efece7; --muted: #a8a39b; --faint: #746f68; --sel: #3a2a22;
+      --ok: #4cc98a; --red: #e0685f; --blue: #7aa3d0; --amber: #e0a93f; --violet: #a78fe0;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--txt); font: 13.5px/1.45 var(--sans); }
+  a { color: var(--blue); }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line2); border-radius: 4px; padding: 0 4px; background: var(--card); }
+  button.btn { font: inherit; font-size: 12px; padding: 3px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--card); color: var(--muted); cursor: pointer; }
+  button.btn:hover { color: var(--txt); border-color: var(--faint); }
+
+  /* ---- header: one line of identity, then the story ---- */
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 0 20px 10px; }
+  .topbar { display: flex; align-items: center; gap: 12px; height: 44px; }
+  .topbar h1 { font-size: 14px; font-weight: 600; margin: 0; font-family: var(--mono); letter-spacing: -.01em; }
+  .topbar .muted { color: var(--muted); font-size: 12.5px; }
+  .topbar select { font: inherit; font-size: 12px; max-width: 380px; padding: 3px 6px; border: 1px solid var(--line2); border-radius: 6px; background: var(--card2); color: var(--txt); font-family: var(--mono); }
+  .topbar a { text-decoration: none; font-size: 12.5px; }
+  .topbar .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12.5px;
+    background: var(--card3); color: var(--muted); }
+  .pill::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .pill.ok { color: var(--ok); } .pill.amber { color: var(--amber); } .pill.bad { color: var(--red); }
+  .story { display: grid; grid-template-columns: 1fr auto; gap: 8px 32px; align-items: start; padding-top: 4px; }
+  .story .recap { font-size: 15px; line-height: 1.5; max-width: 72ch; }
+  .story .recap.none { color: var(--muted); }
+  .walks { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 6px; font-size: 12.5px; }
+  .walks .walk { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line2); background: var(--card2); }
+  .walks .walk.ok { border-color: var(--ok); } .walks .walk.amber { border-color: var(--amber); } .walks .walk.bad { border-color: var(--red); }
+  .walks .walk small { color: var(--muted); }
+  .walks .arrow { color: var(--faint); }
+  .stats { display: grid; grid-template-columns: repeat(4, auto); gap: 6px 22px; font-size: 11.5px; color: var(--muted); }
+  .stats .chip b { display: block; color: var(--txt); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  /* the filmstrip: every frame the phone showed, in order */
+  .film { display: flex; gap: 4px; overflow-x: auto; padding: 10px 0 4px; scrollbar-width: thin; }
+  .film img { height: 84px; width: auto; border-radius: 4px; border: 2px solid transparent; cursor: pointer; background: #000; flex: 0 0 auto; }
+  .film img:hover { border-color: var(--faint); }
+  .film img.here { border-color: var(--accent); }
+  .film .empty { color: var(--faint); font-size: 12px; padding: 8px 0; }
+  /* the minimap: the session's turns on one time axis */
+  .minimap { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: var(--card3); margin-top: 8px; }
+  .scale { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--faint); margin-top: 2px; }
+  .minimap span { display: block; height: 100%; min-width: 2px; border-right: 1px solid var(--card); cursor: pointer; opacity: .85; }
+  .minimap span:hover, .minimap span.here { opacity: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+  .minimap .model { background: var(--blue); } .minimap .conductor { background: var(--violet); } .minimap .warn { background: var(--red); } .minimap .other { background: var(--faint); }
+  .legend { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+  .legend .g { margin: 0 2px 0 8px; }
+
+  /* ---- three panes ---- */
+  #layout { display: grid; grid-template-columns: 220px minmax(380px, 5fr) 6fr; align-items: start; }
+  nav { border-right: 1px solid var(--line); background: var(--card2); position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 8px 0; font-size: 12.5px; }
+  nav .tools { padding: 6px 12px 10px; border-bottom: 1px solid var(--line); display: grid; gap: 5px; }
+  nav input[type=search] { width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--card); color: var(--txt); font: inherit; }
+  nav label { display: flex; gap: 7px; align-items: center; color: var(--muted); cursor: pointer; }
+  nav label .g { width: 14px; text-align: center; }
+  nav .navhead { padding: 10px 12px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); display: flex; justify-content: space-between; align-items: center; }
+  nav .navhead button { font-size: 11px; padding: 1px 6px; }
+  nav .turn { display: block; padding: 4px 12px; color: var(--txt); text-decoration: none; border-left: 3px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav .turn:hover { background: var(--card); }
+  nav .turn b { font-family: var(--mono); font-weight: 600; display: inline-block; min-width: 20px; }
+  nav .turn small { color: var(--muted); }
+  nav .turn.model { border-left-color: var(--blue); } nav .turn.conductor { border-left-color: var(--violet); } nav .turn.warn { border-left-color: var(--red); }
+  nav .turn.here { background: var(--card); font-weight: 600; }
+
+  main { padding: 6px 18px 60px 14px; min-width: 0; }
+  .group { position: relative; margin-bottom: 6px; }
+  .group > h2 { position: sticky; top: 0; z-index: 2; background: var(--bg); font-size: 12.5px; margin: 0; padding: 12px 0 6px;
+    display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; cursor: pointer; user-select: none; }
+  .group > h2 .gl { font-family: var(--mono); font-weight: 700; }
+  .group > h2 .t { font-family: var(--mono); color: var(--faint); font-size: 11.5px; }
+  .group > h2 .gnote { color: var(--txt); font-weight: 400; flex-basis: 100%; padding-left: 18px; font-size: 13px; }
+  .group > h2 .caret { color: var(--faint); font-size: 10px; width: 10px; }
+  .group.closed > .rec, .group.closed > h2 .gnote { display: none; }
+  .group.closed > h2 .caret { transform: rotate(-90deg); display: inline-block; }
+  /* the spine: one line through the turn, a glyph per record sitting on it */
+  .group > .rec { position: relative; }
+  .group > .rec::before { content: ''; position: absolute; left: 61px; top: -3px; bottom: -3px; width: 1px; background: var(--line2); }
+  .group > .rec:last-of-type::before { bottom: 50%; }
+  .rec { display: grid; grid-template-columns: 44px 20px 1fr auto auto; gap: 8px; align-items: center; padding: 5px 8px 5px 4px;
+    cursor: pointer; user-select: none; border-radius: 6px; white-space: nowrap; overflow: hidden; }
+  .rec:hover { background: var(--card); }
+  .rec.selected { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
+  .rec .t { font-family: var(--mono); color: var(--faint); font-size: 11px; text-align: right; }
+  .rec .g { position: relative; z-index: 1; text-align: center; font-size: 11px; line-height: 20px; background: var(--bg); border-radius: 50%; }
+  .rec:hover .g, .rec.selected .g { background: transparent; }
+  .rec .body { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .rec .body .title { font-weight: 560; }
+  .rec .body .sub { color: var(--muted); margin-left: 6px; }
+  .rec .dur { font-family: var(--mono); font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .rec .thumb { height: 26px; width: auto; border-radius: 3px; border: 1px solid var(--line2); }
+  .rec.warn .body .title { color: var(--red); }
+  .rec[hidden] { display: none; }
+  .g.model { color: var(--blue); } .g.tool { color: var(--ok); } .g.decision, .g.walk { color: var(--violet); } .g.warn { color: var(--red); } .g.plumbing { color: var(--faint); }
+
+  #detail { position: sticky; top: 0; height: 100vh; overflow: auto; border-left: 1px solid var(--line); background: var(--card); min-width: 0; display: flex; flex-direction: column; }
+  #detail .dh { position: sticky; top: 0; background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 20px 0; z-index: 1; }
+  #detail .crumb { font-size: 11.5px; color: var(--faint); font-family: var(--mono); display: flex; gap: 12px; }
+  #detail .crumb .spacer { flex: 1; }
+  #detail .dtitle { font-size: 16px; font-weight: 600; margin: 6px 0 2px; letter-spacing: -.01em; }
+  #detail .dsub { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .chips { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; margin-left: 4px; }
+  .callout { border-left: 3px solid var(--violet); background: var(--card2); padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 6px 0 10px; line-height: 1.5; }
+  .answer { font-size: 15px; font-weight: 600; margin: 2px 0 6px; }
+  .answer small { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 8px; }
+  #detail .tabs { display: flex; gap: 2px; margin-top: 8px; }
+  #detail .tabs button { font: inherit; font-size: 12.5px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+  #detail .tabs button.on { color: var(--txt); border-bottom-color: var(--accent); font-weight: 600; }
+  #detail .content { padding: 14px 20px 48px; }
+  #detail h3 { font-size: 11.5px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  #detail h3:first-child { margin-top: 2px; }
+  #detail p.note { margin: 4px 0 8px; color: var(--muted); font-size: 12.5px; }
+  #detail .hint { color: var(--muted); padding: 40px 24px; max-width: 520px; line-height: 1.6; }
+
+  .tag { display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 17px; background: var(--card2); color: var(--muted); border: 1px solid var(--line); font-family: var(--mono); }
+  .tag.role-system { color: var(--amber); } .tag.role-user { color: var(--ok); } .tag.role-assistant { color: var(--blue); } .tag.role-tool { color: var(--violet); }
+  .tag.ok { color: var(--ok); } .tag.bad { color: var(--red); } .tag.blue { color: var(--blue); } .tag.violet { color: var(--violet); } .tag.amber { color: var(--amber); }
+  pre { margin: 4px 0; padding: 8px 10px; background: var(--card2); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; overflow: hidden; }
+  pre.cut { max-height: 420px; position: relative; }
+  pre.cut::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: linear-gradient(to bottom, transparent, var(--card2)); }
+  .more { font-size: 11.5px; color: var(--blue); cursor: pointer; margin: 0 0 6px; display: inline-block; }
+  .msg { border-left: 3px solid var(--line2); padding: 2px 0 2px 10px; margin: 10px 0; }
+  .msg.new { border-left-color: var(--accent); }
+  .msg > .mh { display: flex; gap: 8px; align-items: baseline; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 12.5px; }
+  .kv dt { color: var(--muted); font-family: var(--mono); }
+  .kv dd { margin: 0; word-break: break-word; }
+  .frames { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+  .view { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .view > .text { flex: 1 1 340px; min-width: 0; }
+  .view > .frames { flex: 0 1 auto; max-width: 100%; }
+  .frames img { max-height: 360px; border: 1px solid var(--line2); border-radius: 6px; cursor: zoom-in; background: #000; box-shadow: var(--shadow); }
+  .frames img.full { max-height: none; max-width: 100%; cursor: zoom-out; }
+  .frames figure { margin: 0; }
+  .frames figcaption { font: 11px var(--mono); color: var(--faint); }
+  .note { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+  .empty { padding: 30px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<div id="layout">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+  <aside id="detail"></aside>
+</div>
+<script id="session-data" type="application/json">__SESSION_JSON__</script>
+<script>
+(function () {
+  'use strict';
+  const data = document.getElementById('session-data');
+  const S = JSON.parse(data.textContent);
+  data.remove();
+
+  // ---- tiny DOM helpers -------------------------------------------------
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : String(k));
+    return n;
+  }
+  const tag = (text, cls) => el('span', { class: 'tag ' + (cls || ''), text });
+  const pretty = (v) => JSON.stringify(v, null, 2);
+  const h3 = (text) => el('h3', { text });
+  const omit = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.has(k)));
+  // A two-state control: offText until clicked, onText after, `flip(on)` each time.
+  function toggle(offText, onText, flip) {
+    let on = false;
+    const b = el('span', { class: 'more', text: offText });
+    b.addEventListener('click', () => { on = !on; b.textContent = on ? onText : offText; flip(on); });
+    return b;
+  }
+  function pre(text) {
+    const p = el('pre', { text });
+    const lines = (text.match(/\n/g) || []).length + 1;
+    if (lines <= 25 && text.length <= 4000) return p;
+    p.classList.add('cut');
+    return el('div', null, p, toggle(`show all (${lines} lines)`, 'show less', (on) => p.classList.toggle('cut', !on)));
+  }
+  function kv(obj) {
+    const dl = el('dl', { class: 'kv' });
+    for (const [k, v] of Object.entries(obj)) {
+      dl.append(el('dt', { text: k }), el('dd', null, typeof v === 'string' ? (v.includes('\n') ? pre(v) : v) : (v !== null && typeof v === 'object' ? pre(pretty(v)) : String(v))));
+    }
+    return dl;
+  }
+  const clip = (s, n) => (s = String(s == null ? '' : s)).length > n ? s.slice(0, n - 1) + '…' : s;
+  const ms = (n) => n == null ? '' : (n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms');
+  const secs = (n) => n == null ? '' : n >= 60 ? `${Math.floor(n / 60)} min ${Math.round(n % 60)} s` : `${Math.round(n)} s`;
+  // Time: the clock in a tooltip, the offset from the session's first record in the row.
+  const t0 = S.groups.length ? Date.parse(S.groups[0].t) : null;
+  const clock = (t) => (t || '').slice(11, 19);
+  function since(t) {
+    if (!t || t0 == null) return '';
+    const d = Math.max(0, Math.round((Date.parse(t) - t0) / 1000));
+    return `+${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`;
+  }
+  function frame(src) {
+    if (typeof src !== 'string' || !src.startsWith('images/')) return el('div', { class: 'note', text: `image: ${src}` });
+    const img = el('img', { src, alt: src, loading: 'lazy', onclick: () => img.classList.toggle('full') });
+    return el('figure', null, img, el('figcaption', { text: src }));
+  }
+  const framesBox = (srcs) => srcs.length ? el('div', { class: 'frames' }, ...srcs.map(frame)) : null;
+  const isFrame = (b) => b != null && typeof b === 'object' && (b.type === 'image_url' || b.type === 'image');
+  function frameSrc(b) {
+    if (b.type === 'image_url') return (b.image_url || {}).url || '';
+    const s = b.source || {};
+    return s.ref || s.data || (s.byte_count != null ? `${s.byte_count}b (not written)` : '');
+  }
+
+  // ---- message rendering (a request's message array) -------------------
+  function block(b) {
+    if (typeof b === 'string') return pre(b);
+    if (b == null || typeof b !== 'object') return pre(String(b));
+    if (b.type === 'text' && typeof b.text === 'string') return pre(b.text);
+    if (isFrame(b)) return framesBox([frameSrc(b)]);
+    if (b.type === 'tool_result' && Array.isArray(b.content)) return el('div', null, el('div', { class: 'note', text: `tool result ${b.tool_use_id || ''}` }), ...b.content.map(block));
+    return pre(pretty(b));
+  }
+  const ROLE = { system: 'system prompt', user: 'user', assistant: 'model', tool: 'tool result' };
+  const MSG_KEYS = new Set(['role', 'content', 'text', 'name', 'tool_call_id', 'tool_calls', 'reasoning_content']);
+  function message(m, i, isNew) {
+    const box = el('div', { class: 'msg' + (isNew ? ' new' : '') });
+    const head = el('div', { class: 'mh' }, tag(ROLE[m.role] || m.role || '?', 'role-' + (m.role || '')), el('span', { text: '#' + i }));
+    if (m.name) head.append(el('span', { text: m.name }));
+    if (m.tool_call_id) head.append(el('span', { text: 'for ' + m.tool_call_id }));
+    box.append(head);
+    const c = m.content !== undefined ? m.content : m.text;  // micro records carry {role, text}
+    if (typeof c === 'string') { if (c) box.append(pre(c)); }
+    else if (Array.isArray(c)) {
+      const frames = c.filter(isFrame), rest = c.filter((b) => !isFrame(b));
+      if (frames.length && rest.length) box.append(el('div', { class: 'view' }, el('div', { class: 'text' }, ...rest.map(block)), framesBox(frames.map(frameSrc))));
+      else c.forEach((b) => box.append(block(b)));
+    }
+    else if (c != null) box.append(pre(pretty(c)));
+    if (m.reasoning_content) box.append(el('div', { class: 'note', text: 'hidden reasoning the model wrote' }), pre(String(m.reasoning_content)));
+    for (const tc of m.tool_calls || []) {
+      const fn = tc.function || tc;
+      box.append(el('div', { class: 'note', text: `called ${fn.name || '?'} (${tc.id || ''})` }), pre(typeof fn.arguments === 'string' ? fn.arguments : pretty(fn.arguments || tc.input || {})));
+    }
+    const more = omit(m, MSG_KEYS);
+    if (Object.keys(more).length) box.append(kv(more));
+    return box;
+  }
+  function messages(msgs, newFrom, carried, label) {
+    // newFrom: index of the first message unlike the previous request's; carried: how many that request had.
+    const wrap = el('div');
+    const n = msgs.length;
+    const from = newFrom == null ? 0 : newFrom;
+    if (newFrom != null && carried > 0) {
+      wrap.append(h3(newFrom >= carried ? `New this turn (${n - newFrom} of ${n} messages)` : `Changed from message #${newFrom} (${n - newFrom} of ${n})`));
+      if (newFrom < carried) wrap.append(el('p', { class: 'note', text: `The ${carried - newFrom} messages the previous request carried from here on were not sent as they were — a re-rendered plan or a compacted screen — so what follows is what the model saw in their place.` }));
+    } else wrap.append(h3(n ? `${label || 'Every message'} (${n})` : 'No messages'));
+    const list = el('div');
+    const draw = (start) => { list.replaceChildren(); msgs.forEach((m, i) => { if (i >= start) list.append(message(m, i, i >= from)); }); };
+    draw(from);
+    if (from > 0) wrap.append(toggle(`also show the ${from} carried from earlier turns`, 'hide the carried messages', (on) => draw(on ? 0 : from)));
+    wrap.append(list);
+    return wrap;
+  }
+
+  // ---- record rows: one line each; the detail pane shows the selected one ----
+  // cat: what the filters and glyphs know — model, tool, decision, walk, warn, plumbing (the default)
+  const GLYPH = { model: '●', tool: '▣', decision: '◆', walk: '⚑', warn: '⚠', plumbing: '○' };
+  let selected = null;
+  const SKIP = new Set(['t', 'event', 'kind']);
+  function card(r, title, sub, body, opts) {
+    opts = opts || {};
+    const rec = r.rec;
+    const warn = !!(opts.warn || r.warn);
+    const cat = warn ? 'warn' : (opts.cat || 'plumbing');
+    const row = el('div', { class: 'rec' + (warn ? ' warn' : '') });
+    row.dataset.cat = cat;
+    row.title = clock(rec.t);
+    const thumb = (r.frames || [])[0];
+    row.append(el('span', { class: 't', text: since(rec.t) }), el('span', { class: 'g ' + cat, text: GLYPH[cat] }),
+      el('span', { class: 'body' }, el('span', { class: 'title', text: title || '' }), sub ? el('span', { class: 'sub', text: sub }) : null),
+      el('span', { class: 'dur', text: rec.elapsed_ms ? ms(rec.elapsed_ms) : '' }),
+      thumb ? el('img', { class: 'thumb', src: thumb, loading: 'lazy', decoding: 'async', alt: '' }) : el('span'));
+    const ref = r.line === '' ? r.src : `${r.src}:${r.line}`;
+    row.id = ref.replace(/\W+/g, '-');  // a link to this record: #events-70
+    row.detail = { r, ref, title, sub, opts, body: body || (() => kv(omit(rec, SKIP))) };
+    // What the search reads: a request's own news, not the history it carries again.
+    row.searchable = () => (row.searchText ??= JSON.stringify(rec.messages && r.new_from != null ? { ...rec, messages: rec.messages.slice(r.new_from) } : rec).toLowerCase());
+    row.addEventListener('click', () => select(row));
+    return row;
+  }
+  function select(row) {
+    if (selected) selected.classList.remove('selected');
+    selected = row;
+    row.classList.add('selected');
+    row.closest('.group')?.classList.remove('closed');
+    row.scrollIntoView({ block: 'nearest' });
+    for (const img of document.querySelectorAll('.film img')) img.classList.toggle('here', img.dataset.row === row.id);
+    const d = document.getElementById('detail');
+    const { r, ref, title, sub, opts, body } = row.detail;
+    const rec = r.rec;
+    const group = row.closest('.group');
+    const content = el('div', { class: 'content' });
+    const tabs = el('div', { class: 'tabs' });
+    const show = (which) => {
+      for (const b of tabs.children) b.classList.toggle('on', b.dataset.tab === which);
+      content.replaceChildren();
+      const b = which === 'raw' ? el('div', null, h3('The stored record, as written'), pre(pretty(rec))) : body();
+      if (b) content.append(b);
+    };
+    for (const [key, label] of [['read', 'Reading'], ['raw', 'Raw record']]) {
+      const b = el('button', { text: label }); b.dataset.tab = key; b.addEventListener('click', () => show(key)); tabs.append(b);
+    }
+    const dh = el('div', { class: 'dh' },
+      el('div', { class: 'crumb' }, el('span', { text: group ? group.dataset.label : '' }), el('span', { text: `${since(rec.t)}  ${clock(rec.t)}` }), el('span', { class: 'spacer' }), el('span', { title: 'file:line', text: ref })),
+      el('div', { class: 'dtitle' }, tag(opts.tag || 'log', opts.tagCls), ' ', title || ''),
+      sub ? el('div', { class: 'dsub', text: sub }) : null,
+      tabs);
+    d.replaceChildren(dh, content);
+    show('read');
+    d.scrollTop = 0;
+    history.replaceState(null, '', '#' + row.id);
+  }
+  function step(delta) {
+    const rows = [...document.querySelectorAll('.rec:not([hidden])')].filter((r) => !r.closest('.group.closed'));
+    if (!rows.length) return;
+    const i = selected ? rows.indexOf(selected) : -1;
+    const next = rows[Math.min(rows.length - 1, Math.max(0, i + delta))];
+    if (next !== selected) select(next);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); step(1); }
+    else if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); step(-1); }
+  });
+
+  // ---- a reply, from the gist the loader read off it ------------------------
+  function reply(raw, gist) {
+    const wrap = el('div');
+    if (gist) {
+      if (gist.calls.length) wrap.append(h3('What it did'), el('div', { class: 'chips' }, ...gist.calls.map((c) => tag(c.name, 'ok'))));
+      if (gist.thinking) wrap.append(h3('Hidden reasoning the model wrote'), pre(gist.thinking));
+      if (gist.text) wrap.append(h3('What the model said'), pre(gist.text));
+      for (const c of gist.calls) wrap.append(h3(`Called ${c.name}`), pre(typeof c.args === 'string' ? c.args : pretty(c.args)));
+    }
+    wrap.append(h3('The raw reply'), pre(pretty(raw)));
+    return wrap;
+  }
+
+  // ---- rows, kind by kind: the words come stamped on the record -------------
+  function render(r) {
+    const rec = r.rec;
+    if (rec.unparsed !== undefined) return card(r, 'A line that is not JSON', clip(rec.unparsed, 120), () => pre(rec.unparsed), { warn: true, tag: 'unparsed' });
+    return r.src === 'wire' ? renderWire(r) : renderEvent(r);
+  }
+
+  function renderWire(r) {
+    const rec = r.rec;
+    switch (rec.kind) {
+      case 'session_start':
+        return card(r, `Model ${rec.provider}/${rec.model} and its ${(rec.tools || []).length} tools`, `prompt hash ${String(rec.prompt_hash || '').slice(0, 12)}`,
+          () => el('div', null, kv(omit(rec, new Set(['t', 'kind', 'tools']))), h3('Tool schemas sent with every request'), pre(pretty(rec.tools || []))), { tag: 'setup' });
+      case 'request': {
+        const msgs = rec.messages || [];
+        const fresh = msgs.length - (r.new_from || 0);
+        const sub = `${msgs.length} messages — ${fresh} ${r.carried && r.new_from < r.carried ? 'changed or new since the last request' : 'new'}`;
+        return card(r, 'Asked the model', sub, () => messages(msgs, r.new_from, r.carried), { cat: 'model', tag: 'to model', tagCls: 'blue' });
+      }
+      case 'response': {
+        const raw = rec.raw || {};
+        if (rec.synthesized) return card(r, 'The playbook composed this turn itself', 'nothing was sent to the model', () => reply(raw, r.gist), { tag: 'playbook', tagCls: 'violet' });
+        const g = r.gist || { calls: [], text: '' };
+        const sub = [g.calls.length ? 'called ' + g.calls.map((c) => c.name).join(', ') : '', clip(g.text, 120)].filter(Boolean).join(' · ');
+        return card(r, 'The model replied', sub, () => reply(raw, r.gist), { cat: 'model', tag: 'from model', tagCls: 'blue' });
+      }
+      case 'micro': {
+        const conf = rec.confidence != null ? ` (${Math.round(rec.confidence * 100)}% sure)` : '';
+        const title = `${S.words.calls[rec.call] || rec.call}${rec.node ? ' at ' + rec.node : ''} → ${'answer' in rec ? JSON.stringify(rec.answer) : '?'}${conf}`;
+        const sub = r.reason ? clip(r.reason, 160) : ('answer' in rec ? '' : 'a record from before the answer was kept with it');
+        return card(r, title, sub, () => el('div', null,
+            h3('The answer'),
+            'answer' in rec ? el('div', { class: 'answer' }, JSON.stringify(rec.answer), conf ? el('small', { text: conf.trim().replace(/[()]/g, '') }) : null) : null,
+            r.reason ? el('div', { class: 'callout', text: r.reason }) : null,
+            'thinking' in rec ? kv({ 'thinking level': rec.thinking ?? 'vendor default' }) : null,
+            messages(rec.request || [], null, null, 'The question, every message'),
+            reply(rec.raw || {}, r.gist),
+            Array.isArray(rec.allowed) ? el('div', null, h3(`Answers it could give (${rec.allowed.length})`), pre(rec.allowed.join('\n'))) : null),
+          { cat: 'decision', tag: 'decision', tagCls: 'violet' });
+      }
+      default:
+        return card(r, rec.kind || 'record', '');
+    }
+  }
+
+  const READ = { unknown: 'Screen not recognized', ambiguous: 'Screen reads as two pages', occluded: 'Screen is covered' };
+  function renderEvent(r) {
+    const rec = r.rec;
+    const name = rec.event;
+    switch (name) {
+      case 'env':
+      case 'tools_loaded':
+      case 'prefix_pinned':
+        return card(r, r.summary || name, '', null, { tag: 'setup' });
+      case 'usage':
+        return card(r, `Tokens for a ${rec.call === 'turn' ? 'model turn' : rec.call + ' call'}`, r.summary || '', null, { tag: 'tokens', tagCls: rec.error ? 'bad' : 'amber', warn: !!rec.error });
+      case 'tool_result': {
+        const a = rec.arguments || {};
+        const first = String(rec.text == null ? '' : rec.text).split('\n')[0];
+        const outcome = rec.name === 'end_session' || rec.name === 'note' ? '' : clip(first, 100);
+        const sub = [rec.changed === true ? 'the screen changed' : rec.changed === false ? 'no visible change' : '', outcome].filter(Boolean).join(' · ');
+        const frames = rec.images || [];
+        return card(r, r.title || rec.name, sub, () => el('div', null,
+            Object.keys(a).length ? el('div', null, h3('Arguments'), pre(pretty(a))) : null,
+            frames.length ? h3('What the screen showed') : rec.text != null ? h3('What the tool returned') : null,
+            rec.changed != null ? el('p', { class: 'note', text: `Camera verdict: ${rec.changed ? 'the screen changed' : 'no visible change'}.` }) : null,
+            rec.text == null ? el('p', { class: 'note', text: 'No result text was recorded (a session from before results were kept whole).' }) : null,
+            el('div', { class: 'view' }, rec.text == null ? null : el('div', { class: 'text' }, pre(String(rec.text))), framesBox(frames))),
+          { cat: 'tool', tag: rec.name === 'note' ? 'note' : 'tool', tagCls: 'ok' });
+      }
+      case 'walk_read': {
+        // The reading as fields; a record from before the fields shows its prose line whole.
+        const title = rec.kind === 'match' ? `Screen is ${rec.page}` : READ[rec.kind] || `Screen read: ${rec.verdict}`;
+        const why = rec.kind === 'unknown' ? ' — ' + clip(rec.verdict, 120) : '';
+        return card(r, title, `${rec.app}/${rec.playbook} after ${rec.after}${rec.node ? ' at ' + rec.node : ''}${why}`, () => el('div', null, h3('The reading'), kv(omit(rec, SKIP))), { cat: 'walk', tag: 'screen', tagCls: 'violet' });
+      }
+      case 'walk':
+        return card(r, `Walk ${rec.app}/${rec.playbook} ${rec.outcome}${rec.node ? ' at ' + rec.node : ''}`, `${rec.reason || ''} · step ${rec.idx + 1} of ${rec.nodes}`, null,
+          { cat: 'walk', tag: 'walk', tagCls: rec.outcome === 'completed' ? 'ok' : 'amber', warn: rec.outcome === 'crashed' });
+      case 'done':
+        return card(r, `Session ended: ${rec.sentinel}`, rec.recap || '', null, { cat: 'walk', tag: 'end', tagCls: rec.sentinel === 'DONE' ? 'ok' : 'amber' });
+      case 'wake':
+        return card(r, 'Woke up', (rec.triggers || []).map((x) => x.description || JSON.stringify(x)).join(' · '), null, { cat: 'walk', tag: 'wake', tagCls: 'ok' });
+      case 'debug_faked':
+        return card(r, `Debug harness rewrote the ${rec.name} result`, 'the virtual thread stood in for the real one', null, { cat: 'walk', tag: 'debug', tagCls: 'amber' });
+      default:
+        return card(r, r.words || r.summary || name, r.warn ? clip(JSON.stringify(omit(rec, SKIP)), 140) : '', null, { tag: r.warn ? 'warning' : 'log', tagCls: r.warn ? 'bad' : '' });
+    }
+  }
+
+  // ---- page --------------------------------------------------------------
+  function header() {
+    const s = S.summary || {};
+    const o = s.outcome || {};
+    const u = s.usage || {};
+    const h = document.getElementById('hdr');
+    const top = el('div', { class: 'topbar' });
+    if (S.sessions) {
+      top.append(el('a', { href: '../../', text: '← studio', title: 'back to the studio' }));
+      const pick = el('select', { title: 'review another session' });
+      for (const row of S.sessions) {
+        const opt = el('option', { value: row.sid, text: `${row.sid}  ${row.outcome.sentinel || '?'}${row.outcome.recap ? '  — ' + row.outcome.recap.slice(0, 60) : ''}` });
+        if (row.sid === S.sid) opt.selected = true;
+        pick.append(opt);
+      }
+      pick.addEventListener('change', () => { location.href = `../${encodeURIComponent(pick.value)}/`; });
+      top.append(pick);
+    }
+    const said = S.words.sentinels[o.sentinel] || { words: '', tone: '' };
+    top.append(el('h1', { text: S.sid }),
+      el('span', { class: 'pill ' + (o.crashed ? 'bad' : said.tone), text: o.sentinel ? `${o.sentinel} · ${said.words}${o.crashed ? ', crashed' : ''}` : 'no summary' }),
+      el('span', { class: 'muted', text: s.started_at ? s.started_at.replace('T', ' ').slice(0, 19) : '' }),
+      el('span', { class: 'muted', text: s.model_ref || '' }),
+      el('span', { class: 'spacer' }));
+    h.append(top);
+    const story = el('div', { class: 'story' });
+    const left = el('div');
+    left.append(el('div', { class: 'recap' + (o.recap ? '' : ' none') }, o.recap || (o.sentinel ? 'The session left no recap.' : 'No summary was written — the session was killed or is still running.')));
+    if (Array.isArray(s.walks) && s.walks.length) {
+      const strip = el('div', { class: 'walks' });
+      s.walks.forEach((w, i) => {
+        if (i) strip.append(el('span', { class: 'arrow', text: '→' }));
+        strip.append(el('span', { class: 'walk ' + (w.outcome === 'completed' ? 'ok' : w.outcome === 'crashed' ? 'bad' : 'amber') },
+          el('b', { text: `${w.app}/${w.playbook}` }), ` ${w.outcome}${w.node && w.outcome !== 'completed' ? ' at ' + w.node : ''}`, w.reason ? el('small', { text: ' — ' + w.reason }) : null));
+      });
+      left.append(strip);
+    }
+    const chip = (label, value) => value == null || value === '' ? null : el('span', { class: 'chip' }, el('b', { text: String(value) }), label);
+    const stats = el('div', { class: 'stats' },
+      chip('duration', secs(s.duration_s)), chip('turns', s.turns), chip('by the model', s.provider_calls), chip('by the playbook', s.conductor_turns || null),
+      chip('quick decisions', s.micro_calls || null),
+      chip(`tokens in${u.cache_hit_pct != null ? ` · ${Math.round(u.cache_hit_pct)}% cached` : ''}`, S.words.tokens.input_tokens),
+      chip('tokens out', S.words.tokens.output_tokens),
+      chip('screen frames', S.files.filter((f) => f.name.startsWith('images/')).length));
+    story.append(left, stats);
+    h.append(story);
+    h.append(el('div', { class: 'film', id: 'film' }), el('div', { class: 'minimap', id: 'minimap' }), el('div', { class: 'scale', id: 'scale' }));
+    h.append(el('p', { class: 'legend' },
+      'Every frame the phone showed, in order — click one to jump to it. The bar is the session on one time axis, a segment per turn:',
+      el('span', { class: 'g model', text: '●' }), 'the model was asked', el('span', { class: 'g walk', text: '●' }), 'the playbook acted alone', el('span', { class: 'g warn', text: '●' }), 'something went wrong.',
+      ' Click a row to read it on the right; ', el('kbd', { text: '↑' }), ' ', el('kbd', { text: '↓' }), ' move between rows.'));
+  }
+
+  // The filmstrip and the minimap, built once the rows exist.
+  function overview() {
+    const film = document.getElementById('film');
+    // The first row that carries each frame — a tool result's own before the request that re-sent it.
+    const carrier = new Map();
+    for (const row of document.querySelectorAll('.rec')) for (const path of row.detail.r.frames || []) if (!carrier.has(path)) carrier.set(path, row);
+    const frames = S.files.map((f) => f.name).filter((n) => n.startsWith('images/'));  // capture order: the name is the clock
+    for (const path of frames) {
+      const row = carrier.get(path);
+      const img = el('img', { src: path, loading: 'lazy', decoding: 'async', title: row ? `${since(row.detail.r.rec.t)}  ${row.detail.title}` : path, alt: '' });
+      if (row) { img.dataset.row = row.id; img.addEventListener('click', () => select(row)); }
+      film.append(img);
+    }
+    if (!frames.length) film.append(el('span', { class: 'empty', text: 'no frames were recorded' }));
+    const map = document.getElementById('minimap');
+    const end = S.groups.length ? Date.parse(S.groups[S.groups.length - 1].t_end) : null;
+    const span = end != null && t0 != null ? Math.max(1, end - t0) : null;
+    if (span) {
+      const at = (f) => { const d = Math.round(span * f / 1000); return `+${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`; };
+      document.getElementById('scale').append(...[0, 0.25, 0.5, 0.75, 1].map((f) => el('span', { text: at(f) })));
+    }
+    S.groups.forEach((g, i) => {
+      const a = Date.parse(g.t), b = i + 1 < S.groups.length ? Date.parse(S.groups[i + 1].t) : end;
+      const width = span ? Math.max(0.3, ((b - a) / span) * 100) : 100 / S.groups.length;
+      const seg = el('span', { class: g.info.warn ? 'warn' : g.info.model ? 'model' : g.info.conductor ? 'conductor' : 'other', title: `${g.label}${g.info.note ? ' — ' + g.info.note : ''}`, style: `width:${width}%` });
+      seg.dataset.group = g.id;
+      seg.addEventListener('click', () => { const box = document.getElementById(g.id); box.classList.remove('closed'); box.scrollIntoView({ block: 'start' }); });
+      map.append(seg);
+    });
+  }
+
+  // The turn's own words: the note the model or the playbook wrote, else the tools it used.
+  function groupInfo(g) {
+    const names = []; let model = false, conductor = false, warn = false, note = '';
+    for (const r of g.records) {
+      const rec = r.rec;
+      if (r.note != null) note ||= r.note;
+      else if (r.src === 'events' && rec.event === 'tool_result') names.push(rec.name);
+      if (r.src === 'wire' && rec.kind === 'request') model = true;
+      if (rec.synthesized) conductor = true;
+      if (r.warn || (rec.event === 'walk' && rec.outcome === 'crashed')) warn = true;
+    }
+    return { names: [...new Set(names)], model, conductor, warn, note, id: 'g' + (g.turn == null ? 'start' : g.turn), label: g.turn == null ? 'Before the first turn' : `Turn ${g.turn}` };
+  }
+
+  function nav() {
+    const n = document.getElementById('nav');
+    const tools = el('div', { class: 'tools' });
+    const q = el('input', { type: 'search', placeholder: 'find text in any row…' });
+    tools.append(q);
+    const cats = [['model', 'the model: requests and replies'], ['tool', 'tools and screens'], ['decision', 'quick decisions'], ['walk', 'the playbook walk'], ['warn', 'warnings'], ['plumbing', 'plumbing: tokens, bookkeeping']];
+    const on = new Set(cats.map((c) => c[0]));
+    on.delete('plumbing');
+    for (const [c, label] of cats) {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = on.has(c);
+      cb.addEventListener('change', () => { cb.checked ? on.add(c) : on.delete(c); apply(); });
+      tools.append(el('label', null, cb, el('span', { class: 'g ' + c, text: GLYPH[c] }), label));
+    }
+    const apply = () => {
+      const needle = q.value.trim().toLowerCase();
+      for (const box of document.querySelectorAll('.rec')) box.hidden = !(on.has(box.dataset.cat) && (!needle || box.searchable().includes(needle)));
+    };
+    q.addEventListener('input', apply);
+    const fold = el('button', { class: 'btn', text: 'collapse all' });
+    let folded = false;
+    fold.addEventListener('click', () => { folded = !folded; for (const g of document.querySelectorAll('.group')) g.classList.toggle('closed', folded); fold.textContent = folded ? 'expand all' : 'collapse all'; });
+    n.append(tools, el('div', { class: 'navhead' }, 'Turns', fold));
+    for (const g of S.groups) {
+      const info = g.info;
+      const cls = 'turn' + (info.warn ? ' warn' : info.model ? ' model' : info.conductor ? ' conductor' : '');
+      n.append(el('a', { class: cls, href: '#' + g.id, title: info.note || info.names.join(' ') }, el('b', { text: g.turn == null ? '·' : String(g.turn) }), ' ', el('small', { text: info.note || info.names.join(', ') })));
+    }
+    return apply;
+  }
+
+  const FILE_WORDS = { 'notes.md': 'Notes — one line per turn, as the model or playbook wrote them', 'runtime.log': 'Runtime log — the process log for this session', 'mcp.log': 'Phone-server log — camera, exposure, gestures', 'summary.json': 'Summary — the numbers the session ended with' };
+  function main() {
+    const m = document.getElementById('main');
+    if (!S.groups.length) m.append(el('div', { class: 'empty', text: 'This session dir has no events.jsonl or wire.jsonl to show.' }));
+    for (const g of S.groups) {
+      const info = g.info;
+      const box = el('section', { class: 'group', id: g.id });
+      box.dataset.label = g.label;
+      const next = S.groups[S.groups.indexOf(g) + 1];
+      const took = next ? (Date.parse(next.t) - Date.parse(g.t)) / 1000 : null;
+      const h = el('h2', null, el('span', { class: 'caret', text: '▼' }), el('span', { class: 'gl', text: g.label }),
+        el('span', { class: 't', title: clock(g.t), text: since(g.t) + (took != null && took >= 1 ? ' · ' + secs(took) : '') }));
+      if (info.model) h.append(tag('model turn', 'blue'));
+      else if (info.conductor) h.append(tag('playbook turn', 'violet'));
+      if (info.warn) h.append(tag('warning', 'bad'));
+      if (info.note) h.append(el('span', { class: 'gnote', text: info.note }));
+      h.addEventListener('click', () => box.classList.toggle('closed'));
+      box.append(h);
+      for (const r of g.records) box.append(render(r));
+      if (g.runtime.length) box.append(card({ src: 'runtime.log', line: g.turn == null ? 'start' : g.turn, rec: { lines: g.runtime } }, 'Runtime log lines for this turn', `${g.runtime.length} line(s)`, () => pre(g.runtime.join('\n'))));
+      m.append(box);
+    }
+    // The session's files, each a row like any record, read in the pane.
+    const files = el('section', { class: 'group', id: 'gfiles' }, el('h2', null, el('span', { class: 'gl', text: 'The session\'s files' })));
+    files.dataset.label = 'Files';
+    for (const name of Object.keys(S.narrative).filter((key) => S.narrative[key])) {
+      const text = S.narrative[name];
+      files.append(card({ src: name, line: '', rec: { file: name, bytes: text.length } }, FILE_WORDS[name] || name, `${name} · ${text.split('\n').length} line(s)`, () => el('pre', { text }), { cat: 'walk', tag: 'file' }));
+    }
+    files.append(card({ src: 'inventory', line: '', rec: { files: S.files } }, 'Files on disk', `${S.files.length} file(s)`, () => pre(S.files.map((f) => `${String(f.bytes).padStart(9)}  ${f.name}`).join('\n')), { cat: 'walk', tag: 'file' }));
+    m.append(files, el('p', { class: 'note', text: `Page written ${S.generated_at}.` }));
+    document.getElementById('detail').append(el('div', { class: 'hint' },
+      el('p', null, 'Pick a row on the left, or a frame in the strip above, to read it here: the messages the model was sent, what it replied, what a tool returned and the screen it saw, or how a decision was made.'),
+      el('p', null, 'The ', el('b', { text: 'Raw record' }), ' tab shows the stored line itself.')));
+  }
+
+  for (const g of S.groups) { g.info = groupInfo(g); g.id = g.info.id; g.label = g.info.label; }
+  document.title = `${S.sid} · PhysiClaw session`;
+  header();
+  const apply = nav();
+  main();
+  apply();
+  overview();
+  const linked = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+  if (linked && linked.classList.contains('rec')) select(linked);
+  const links = new Map([...document.querySelectorAll('nav .turn')].map((a) => [a.getAttribute('href').slice(1), a]));
+  const segs = new Map([...document.querySelectorAll('.minimap span')].map((s) => [s.dataset.group, s]));
+  const seen = new Set();
+  const here = new IntersectionObserver((entries) => {
+    for (const e of entries) e.isIntersecting ? seen.add(e.target.id) : seen.delete(e.target.id);
+    const first = [...document.querySelectorAll('.group')].find((g) => seen.has(g.id));
+    for (const [id, a] of links) a.classList.toggle('here', first != null && id === first.id);
+    for (const [id, s] of segs) s.classList.toggle('here', first != null && id === first.id);
+  }, { rootMargin: '0px 0px -60% 0px' });
+  for (const g of document.querySelectorAll('.group')) here.observe(g);
+})();
+</script>
+</body>
+</html>

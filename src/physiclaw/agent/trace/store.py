@@ -13,10 +13,12 @@ alongside any schema change.
 
 import datetime as dt
 import hashlib
+import json
 import logging
 import secrets
 import time
 from pathlib import Path
+from typing import Any
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
@@ -193,7 +195,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   verdict as data),
   `walk_read` (one conductor screen reading, beside the tool result
   that carried it: app, playbook, after — the action read after —,
-  node, verdict),
+  node, verdict — the prose line —, and the same reading as fields:
+  kind (match / unknown / ambiguous / occluded) and page),
   `tool_blocked_no_plan|_layout|_stuck` (engine refused the call),
   `stuck_warning` (loop detector fired), `bad_turn_shape` /
   `*_checkpoint` (turn rejected, corrective sent), `done`
@@ -210,8 +213,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   `thinking` (the step's level), `allowed` (the answers the caller
   accepted), `request` (every message — role and text, the caller's
   own shape rather than the provider's wire — an episode's replayed
-  history included), `raw` (the reply), and `answer`/`confidence` as
-  the caller read them — `physiclaw playbooks micro <sid>` re-asks
+  history included), `raw` (the reply), and `answer`/`confidence`/
+  `reason` as the caller read them — `physiclaw playbooks micro <sid>` re-asks
   them.
 
 - `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — every frame a tool result
@@ -223,6 +226,12 @@ in the `env` event / `summary.json.env.utc_offset`.
   order and each links back to its `tool_result` in `events.jsonl`
   (its `images` field) and to any `wire.jsonl` request that carried
   it. Example: `104542_123_t20.jpg` = 10:45:42.123, turn 20.
+
+- `session.html` — the session viewer page (`agent/trace/viewer.py`):
+  every record of both streams, by turn, with the frames from `images/`
+  beside it. Written by `physiclaw logs <sid> --save` so the zip reviews
+  itself; the studio serves the same page live (`physiclaw studio
+  --review --session <sid>`). Absent until a `--save`.
 
 - `notes.md` — the agent's own turn-by-turn narration: one line per
   `note(summary=...)`, `- turn N — <summary>`. The fastest human read
@@ -271,6 +280,59 @@ Privacy: wire.jsonl carries full prompts (including the user profile /
 memory) and images/ are phone screenshots. Treat a session dir as
 sensitive.
 """
+
+
+def load_summary(d: Path) -> dict[str, Any] | None:
+    """A session dir's summary.json, or None when it has none (killed or
+    still running) or it does not parse."""
+    try:
+        return json.loads((d / "summary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
+        return None
+
+
+def stub_summary(d: Path) -> dict[str, Any]:
+    """The row for a session dir without a summary.json — visible rather
+    than silently missing."""
+    return {
+        "sid": d.name,
+        "outcome": {"sentinel": "?", "recap": "(no summary — killed or still running)"},
+    }
+
+
+def recent_sessions(root: Path, n: int) -> list[dict[str, Any]]:
+    """The newest `n` sessions' summaries (a stub for a dir without one),
+    newest first. mtime, not name: dirs from before the `-` sid format
+    sort ABOVE newer `-` dirs lexicographically ('_' > '-'), which would
+    list stale sessions as most recent."""
+
+    def mtime(d: Path) -> float:
+        try:
+            return d.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    try:
+        dirs = sorted(
+            (d for d in root.iterdir() if d.is_dir()), key=mtime, reverse=True
+        )
+    except OSError:
+        return []
+    return [{**(load_summary(d) or stub_summary(d)), "sid": d.name} for d in dirs[:n]]
+
+
+def resolve_session(root: Path, ref: str) -> Path:
+    """The one session dir `ref` names — a full id or a unique trailing
+    fragment — or a LookupError saying why not, worded once for every
+    reader (the CLI exits with it, the studio answers 404 with it)."""
+    matches = find_session_dirs(root, ref)
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise LookupError(f"no session matches {ref!r}")
+    raise LookupError(
+        f"ambiguous session {ref!r}: {', '.join(m.name for m in matches)}"
+    )
 
 
 def find_session_dirs(root: Path, query: str) -> list[Path]:

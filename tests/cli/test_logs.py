@@ -138,7 +138,7 @@ def test_logs_detail_unknown_sid_exits_nonzero(sessions: Path) -> None:
     result = runner.invoke(app, ["logs", "nope"])
 
     assert result.exit_code == 1
-    assert "no such session" in result.output
+    assert "no session matches" in result.output
 
 
 def test_logs_resolves_session_by_hex_suffix(sessions: Path) -> None:
@@ -168,7 +168,7 @@ def test_logs_unmatched_suffix_reports_missing(sessions: Path) -> None:
     result = runner.invoke(app, ["logs", "deadbeef"])
 
     assert result.exit_code == 1
-    assert "no such session" in result.output
+    assert "no session matches" in result.output
 
 
 # ---------- --save ----------
@@ -206,6 +206,8 @@ def test_save_packs_session_zip_with_privacy_notice(
     assert "20260710_090000_ab12cd/events.jsonl" in names
     assert "20260710_090000_ab12cd/wire.jsonl" in names
     assert "20260710_090000_ab12cd/images/090000_000_t0.jpg" in names
+    # The zip reviews itself: the viewer page rides along, beside its frames.
+    assert "20260710_090000_ab12cd/session.html" in names
     # Privacy notice; no issue-filing prompts.
     assert "PRIVATE" in result.output
     assert "review before sharing" in result.output
@@ -225,14 +227,15 @@ def test_save_unknown_sid_errors(sessions: Path, tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["logs", "nope", "--save"])
 
     assert result.exit_code == 1
-    assert "no such session" in result.output
+    assert "no session matches" in result.output
 
 
-def test_detail_view_hints_at_save(sessions: Path) -> None:
+def test_detail_view_hints_at_review_and_save(sessions: Path) -> None:
     _write_session(sessions, "20260710_090000_ab12cd")
 
     result = runner.invoke(app, ["logs", "ab12cd"])
 
+    assert "physiclaw studio --review --session ab12cd" in result.output
     assert "physiclaw logs ab12cd --save" in result.output
 
 
@@ -291,7 +294,7 @@ def test_logs_list_orders_by_mtime_across_sid_formats(sessions: Path) -> None:
     import os
     import time as time_mod
 
-    from physiclaw.cli.logs import _collect
+    from physiclaw.agent.trace.store import recent_sessions
 
     old = _write_session(sessions, "20260717_090000_aaaaaa")
     new = _write_session(sessions, "20260717-100000-bbbbbb")
@@ -299,7 +302,7 @@ def test_logs_list_orders_by_mtime_across_sid_formats(sessions: Path) -> None:
     os.utime(old, (now - 100, now - 100))
     os.utime(new, (now, now))
 
-    sids = [s["sid"] for s in _collect(sessions, 10)]
+    sids = [s["sid"] for s in recent_sessions(sessions, 10)]
 
     assert sids == ["20260717-100000-bbbbbb", "20260717_090000_aaaaaa"]
 

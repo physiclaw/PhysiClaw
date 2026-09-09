@@ -70,6 +70,8 @@
   .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
   #clip { display: flex; gap: 6px; margin-left: auto; }
   #clip input { width: 230px; }
+  #sessions { font-size: 12.5px; color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid var(--line2); border-radius: 6px; }
+  #sessions:hover { color: var(--txt); border-color: var(--line); }
   #banner {
     display: none; padding: 7px 16px; background: #fbe9e6; color: #8f2f27;
     border-bottom: 1px solid #efc6c0; cursor: pointer;
@@ -248,6 +250,7 @@
     <input type="text" id="clip-text" placeholder="text to paste on the phone…">
     <button type="submit">Send to clipboard</button>
   </form>
+  <a id="sessions" href="/sessions/" title="review a recorded session: every request, reply, tool result, frame and decision">Sessions</a>
 </header>
 <div id="actbar">
   <span class="cap"><b id="cap-label"></b><span id="cap-geo"></span></span>

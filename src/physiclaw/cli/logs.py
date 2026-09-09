@@ -6,7 +6,9 @@ The analysis entry point for `~/.physiclaw/log/engine/sessions/`:
 narrative (re-rendered from events.jsonl — the daily log interleaves
 sessions, so the per-session stream is the clean source). `--json` emits
 machine-readable output for scripting; `--save [DEST]` zips a session
-(with its format README) for backups or bug reports.
+(with its format README and the session viewer page) for backups or
+bug reports. Reviewing a session in the browser is the studio's:
+`physiclaw studio --review --session <sid>`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,13 @@ from typing import Annotated, Any
 
 import typer
 
+from physiclaw.agent.trace import viewer
+from physiclaw.agent.trace.store import (
+    load_summary,
+    recent_sessions,
+    resolve_session,
+    stub_summary,
+)
 from physiclaw.cli._format import info, section, warn
 
 
@@ -86,63 +95,20 @@ def logs(
 
 def _resolve(sessions_dir: Path, query: str) -> Path:
     """Resolve a session by full id, or by any unique trailing fragment
-    (`trace.store.find_session_dirs` owns the convention). Exits with the
-    candidates when the fragment is ambiguous."""
-    from physiclaw.agent.trace.store import find_session_dirs
+    (`trace.store.resolve_session` owns the convention and the wording)."""
+    from physiclaw.cli._format import exit_error
 
-    matches = find_session_dirs(sessions_dir, query)
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        typer.echo(warn(f"'{query}' is ambiguous — matches:"))
-        for m in matches:
-            typer.echo(info(m.name))
-        raise typer.Exit(1)
-    return sessions_dir / query  # no match — _show_session reports it
+    try:
+        return resolve_session(sessions_dir, query)
+    except LookupError as e:
+        exit_error(str(e))
 
 
 # ---------- list mode ----------
 
 
-def _load_summary(d: Path) -> dict[str, Any] | None:
-    try:
-        return json.loads((d / "summary.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
-        return None
-
-
-def _stub_summary(d: Path) -> dict[str, Any]:
-    """Row for a session dir without a summary.json (hard-killed session
-    or one still running) — visible rather than silently missing."""
-    return {
-        "sid": d.name,
-        "outcome": {"sentinel": "?", "recap": "(no summary — killed or still running)"},
-    }
-
-
-def _collect(sessions_dir: Path, n: int) -> list[dict[str, Any]]:
-    # mtime, not name: dirs from before the `-` sid format sort ABOVE
-    # newer `-` dirs lexicographically ('_' > '-'), which would list
-    # stale sessions as most recent and push the newest past [:n].
-    def mtime(d: Path) -> float:
-        try:
-            return d.stat().st_mtime
-        except OSError:
-            return 0.0
-
-    try:
-        dirs = sorted(
-            (d for d in sessions_dir.iterdir() if d.is_dir()),
-            key=mtime,
-            reverse=True,
-        )
-    except OSError:
-        dirs = []
-    return [(_load_summary(d) or _stub_summary(d)) for d in dirs[:n]]
-
-
 def _list_sessions(sessions_dir: Path, *, n: int, as_json: bool) -> None:
-    summaries = _collect(sessions_dir, n)
+    summaries = recent_sessions(sessions_dir, n)
     if as_json:
         typer.echo(json.dumps(summaries, ensure_ascii=False, indent=2))
         return
@@ -199,6 +165,7 @@ def _save_session(d: Path, dest: Path | None) -> None:
         typer.echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
         raise typer.Exit(1)
 
+    viewer.write(d)  # the zip's reader gets the viewer page, not just the streams
     default_name = f"physiclaw-session-{d.name}.zip"
     out = (dest or Path.cwd()).expanduser()
     if out.is_dir() or not out.suffix:
@@ -238,11 +205,9 @@ def _show_session(d: Path, *, n: int, as_json: bool) -> None:
     if not d.is_dir():
         typer.echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
         raise typer.Exit(1)
-    summary = _load_summary(d)
+    summary = load_summary(d)
     if as_json:
-        typer.echo(
-            json.dumps(summary or _stub_summary(d), ensure_ascii=False, indent=2)
-        )
+        typer.echo(json.dumps(summary or stub_summary(d), ensure_ascii=False, indent=2))
         return
     if summary is not None:
         typer.echo(section(f"Session {d.name}"))
@@ -255,6 +220,9 @@ def _show_session(d: Path, *, n: int, as_json: bool) -> None:
     typer.echo(info(f"images:    {d / 'images'}"))
     # Suffix handle = the trailing 6 hex chars — true regardless of the
     # id's separator style, and all `_resolve` matches via `endswith`.
+    typer.echo(
+        info(f"review it whole: physiclaw studio --review --session {d.name[-6:]}")
+    )
     typer.echo(info(f"save a copy: physiclaw logs {d.name[-6:]} --save"))
 
 

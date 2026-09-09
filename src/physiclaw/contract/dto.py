@@ -317,6 +317,7 @@ class MicroRecord:
     confidence: float | None
     request: list[dict[str, str]]
     raw: dict[str, Any]
+    reason: str | None = None  # the reply's own one-line reason, as read
 
 
 # ---------- collapse policy ----------
