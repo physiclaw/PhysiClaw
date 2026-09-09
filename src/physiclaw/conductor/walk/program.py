@@ -166,7 +166,7 @@ class Program:
         # is the playbook ref: two walks in one session (the boot, then
         # the program it activates) mint under different names, so a
         # call id can never find the other walk's stale result.
-        self.turns = Turnsmith(f"{spec.app}-{spec.name}")
+        self.turns = Turnsmith(f"{spec.app}/{spec.name}")
         self.gate = Gate()
         # Recorded agent outputs (`{node.field}` refs read them).
         self.outputs: dict[str, str] = {}
@@ -300,12 +300,12 @@ class Program:
         assert self.gate.awaiting, "only an ask awaiting its reply suspends"
         if not self.dry:
             write_json_atomic(suspended_path(), self.state())
-        recap = f"waiting for the user's reply on {self.app}/{self.spec.name}"
+        recap = f"waiting for the user's reply on {self.ref}"
         self._record_run(Outcome.SUSPENDED, recap)
         return self._close_session(
             "suspend",
             recap,
-            f"{self.app}/{self.spec.name} suspended — {recap}; any wake resumes it",
+            f"{self.ref} suspended — {recap}; any wake resumes it",
         )
 
     def _close_session(self, kind: str, recap: str, day_line: str) -> AssistantMessage:
@@ -321,6 +321,11 @@ class Program:
             "end_session",
             {"status": SUSPEND_STATUS, "recap": recap},
         )
+
+    @property
+    def ref(self) -> str:
+        """The playbook ref this walk runs, as every line names it."""
+        return f"{self.app}/{self.spec.name}"
 
     # ---- the conductor's two calls ----
 
@@ -572,7 +577,7 @@ class Program:
         self._paid_logged = True
         self.log_day(
             f"conductor: {self.app}: payment ¥{self.paid:g} fired "
-            f"(playbook {self.app}/{self.spec.name}) — verify the order before "
+            f"(playbook {self.ref}) — verify the order before "
             "paying again"
         )
 
@@ -603,7 +608,7 @@ class Program:
     def peek(self) -> AssistantMessage:
         return self.synth(
             "peek",
-            f"conductor: observing the screen before walking {self.app}/{self.spec.name}",
+            f"conductor: observing the screen before walking {self.ref}",
             gesture_vocab.PEEK,
             {},
         )
@@ -675,7 +680,7 @@ class Program:
             if self.paid is not None
             else "nothing paid"
         )
-        recap = f"{self.app}/{self.spec.name} stopped at {node} — {reason}; {money}"
+        recap = f"{self.ref} stopped at {node} — {reason}; {money}"
         log.warning("conductor: %s", recap)
         self._end(Outcome.HANDOVER, reason)
         return self._close_session("stop", recap, recap)
@@ -799,7 +804,7 @@ class Program:
         node = self._node_id() or "(end)"
         self._record_run(Outcome.ABANDONED, "session ended mid-walk")
         self.log_day(
-            f"conductor: {self.app}/{self.spec.name} cut short mid-walk "
+            f"conductor: {self.ref} cut short mid-walk "
             f"at node {node} — the next wake starts the route over"
         )
 

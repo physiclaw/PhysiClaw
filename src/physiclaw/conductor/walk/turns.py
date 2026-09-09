@@ -73,12 +73,15 @@ class Pending:
 class Turnsmith:
     """Mints synthesized turns and remembers the one action in flight.
 
-    `scope` names the walk this smith belongs to (its playbook ref) and
-    rides every call id — required rather than defaulted so two walks
-    in one session cannot silently collide on one sequence."""
+    `ref` names the walk this smith belongs to (its playbook ref,
+    `taobao/buy`) — required rather than defaulted so two walks in one
+    session cannot silently collide on one sequence. It rides every
+    minted turn as `driver`, so the engine can say who is driving, and
+    every call id in its id-safe spelling (`taobao-buy`)."""
 
-    def __init__(self, scope: str) -> None:
-        self.scope = scope
+    def __init__(self, ref: str) -> None:
+        self.driver = ref
+        self.scope = ref.replace("/", "-")
         self.pending: Pending | None = None
         self._seq = 0
 
@@ -133,4 +136,5 @@ class Turnsmith:
             ],
             finish_reason=FinishReason.TOOL_CALLS,
             synthesized=True,
+            driver=self.driver,
         )

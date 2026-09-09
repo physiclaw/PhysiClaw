@@ -35,14 +35,31 @@ _GREY_DARK = "38;5;244"
 _GREY_LIGHT = "38;5;250"
 _YELLOW = "33"
 _RED = "31"
+_GREEN = "32"
+_GREEN_BRIGHT = "92"
 
 # Tag → accent color. Each entry-point picks its own so devs can skim
 # interleaved output at a glance.
 _TAG_COLORS = {
     "physiclaw": "36",  # cyan — hardware server
     "runtime": "35",  # magenta — agent loop
-    "setup wizard": "32",  # green — `physiclaw auto` calibration steps
+    "setup wizard": _GREEN,  # `physiclaw auto` calibration steps
 }
+
+# Who is driving, painted on the tag: while a playbook walk produces the
+# turns the `[runtime]` tag turns green, so a terminal reader sees the
+# hand-off between playbook and model down the left edge without
+# reading a line. The engine sets it as each turn's producer is known
+# and clears it at session end; file sinks are plain and never see it.
+PLAYBOOK_ACCENT = _GREEN_BRIGHT  # a green of its own, not the wizard's
+_tag_accent: str | None = None
+
+
+def set_tag_accent(code: str | None) -> None:
+    """Override the tag's accent color (an ANSI code) for lines from now
+    on; None restores the tag's own."""
+    global _tag_accent
+    _tag_accent = code
 
 
 def _colorize() -> bool:
@@ -53,10 +70,8 @@ class _TaggedFormatter(logging.Formatter):
     def __init__(self, tag: str, color: bool):
         super().__init__(datefmt="%H:%M")
         self.color = color
-        if color:
-            self._tag_segment = f"\033[{_TAG_COLORS[tag]}m[{tag}]\033[0m"
-        else:
-            self._tag_segment = f"[{tag}]"
+        self.tag = tag
+        self._tag_color = _TAG_COLORS[tag]  # an unknown tag fails here, once
         # Derive the continuation indent from the actual uncolored prefix
         # so tweaks to the datefmt or tag layout can't drift.
         self._cont_indent = "\n" + " " * len(f"00:00 [{tag}] ")
@@ -84,16 +99,17 @@ class _TaggedFormatter(logging.Formatter):
             # skips the regex on the vast majority of records, which have none.
             if "\033" in msg:
                 msg = _ANSI_RE.sub("", msg)
-            return f"{ts} {self._tag_segment} {msg}"
+            return f"{ts} [{self.tag}] {msg}"
         if record.levelno >= logging.ERROR:
             msg_color = _RED
         elif record.levelno >= logging.WARNING:
             msg_color = _YELLOW
         else:
             msg_color = _GREY_LIGHT
+        tag_color = _tag_accent or self._tag_color
         return (
             f"\033[{_GREY_DARK}m{ts}\033[0m "
-            f"{self._tag_segment} "
+            f"\033[{tag_color}m[{self.tag}]\033[0m "
             f"\033[{msg_color}m{msg}\033[0m"
         )
 

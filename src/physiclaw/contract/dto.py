@@ -254,6 +254,9 @@ class AssistantMessage:
     raw: dict[str, Any] = field(default_factory=dict)
     vendor_extra: dict[str, Any] = field(default_factory=dict)
     synthesized: bool = False
+    # Who minted a synthesized turn — the playbook ref (`taobao/buy`) —
+    # so a log line can say which walk is driving; "" for the model.
+    driver: str = ""
 
     def tool_names(self) -> list[str]:
         return [tc.name for tc in self.tool_calls]

@@ -71,12 +71,14 @@ class RawLog:
         *,
         elapsed_ms: int,
         synthesized: bool = False,
+        driver: str = "",
     ) -> None:
         # Wire fidelity: a synthesized response was composed by the
         # conductor — nothing was sent to the provider, and no request
         # record precedes it (the loop skips the request write entirely).
+        # `driver` names the playbook that composed it.
         self._turn = turn
-        extra = {"synthesized": True} if synthesized else {}
+        extra = {"synthesized": True, "driver": driver} if synthesized else {}
         self._emit("response", turn=turn, elapsed_ms=elapsed_ms, **extra, raw=raw)
 
     def write_micro(self, rec: MicroRecord) -> None:

@@ -1,4 +1,5 @@
 from physiclaw.common.logger.logger import (
+    PLAYBOOK_ACCENT,
     SERVER_LOG_TAG,
     LineLogStream,
     SessionLogSidecars,
@@ -7,6 +8,7 @@ from physiclaw.common.logger.logger import (
     detach_session_log,
     logged,
     make_tagged_logger,
+    set_tag_accent,
     setup_logging,
 )
 from physiclaw.common.logger.session_artifacts import (
@@ -38,6 +40,8 @@ __all__ = [
     "logged",
     "make_tagged_logger",
     "save_image",
+    "PLAYBOOK_ACCENT",
+    "set_tag_accent",
     "setup_logging",
     "write_json_atomic",
 ]

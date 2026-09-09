@@ -88,3 +88,13 @@ def test_driver_scopes_keep_ids_unique_across_smiths() -> None:
 
     assert boot_ids.isdisjoint(walk_ids)
     assert all(i.startswith("conductor-") for i in boot_ids | walk_ids)
+
+
+def test_synth_stamps_the_turn_with_its_driver() -> None:
+    # The engine's per-turn log line names who drove it: a walk's turns
+    # carry the playbook ref; the model's carry none.
+    asst = Turnsmith("taobao/buy").synth("peek", "s", "peek", {})
+
+    assert asst.synthesized and asst.driver == "taobao/buy"
+    # The call id carries the same ref in its id-safe spelling.
+    assert asst.tool_calls[0].id == "conductor-taobao-buy-1-note"

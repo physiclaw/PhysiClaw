@@ -396,7 +396,7 @@
       }
       case 'response': {
         const raw = rec.raw || {};
-        if (rec.synthesized) return card(r, 'The playbook composed this turn itself', 'nothing was sent to the model', () => reply(raw, r.gist), { tag: 'playbook', tagCls: 'violet' });
+        if (rec.synthesized) { const who = rec.driver ? `playbook ${rec.driver}` : 'playbook'; return card(r, `The ${who} composed this turn itself`, 'nothing was sent to the model', () => reply(raw, r.gist), { tag: who, tagCls: 'violet' }); }
         const g = r.gist || { calls: [], text: '' };
         const sub = [g.calls.length ? 'called ' + g.calls.map((c) => c.name).join(', ') : '', clip(g.text, 120)].filter(Boolean).join(' · ');
         return card(r, 'The model replied', sub, () => reply(raw, r.gist), { cat: 'model', tag: 'from model', tagCls: 'blue' });

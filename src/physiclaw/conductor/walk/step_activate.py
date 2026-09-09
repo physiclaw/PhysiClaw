@@ -90,7 +90,7 @@ class ActivateStep(Step[ActivateNode]):
         # outputs (a stepping tool's position, a replay's report).
         walk.outputs[f"{node.id}.playbook"] = outcome.out
         walk.baton = program
-        walk.conclude(f"hands over to {program.app}/{program.spec.name}")
+        walk.conclude(f"hands over to {program.ref}")
         return None
 
     def _request(self) -> Turn:

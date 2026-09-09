@@ -22,6 +22,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
 from physiclaw.agent.trace import Trace
 from physiclaw.common import daylog
+from physiclaw.common.logger import PLAYBOOK_ACCENT, set_tag_accent
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -58,6 +59,15 @@ class _LoopState:
 
 
 async def drive(run: EngineRun, session: Session, messages: list[Message]) -> None:
+    """Run the turn loop (`_drive`); whatever ends it, the driver colour
+    the terminal wore for a playbook's turns ends with it."""
+    try:
+        await _drive(run, session, messages)
+    finally:
+        set_tag_accent(None)
+
+
+async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> None:
     """The driver (principle 7): model → tool_calls → dispatch → results → model.
 
     Each turn runs a fixed pipeline of phase helpers; the control flow between
@@ -130,6 +140,10 @@ async def drive(run: EngineRun, session: Session, messages: list[Message]) -> No
                 continue
 
         session.synthesized_turn = asst.synthesized
+        # The terminal's tag wears the driver's colour from here until
+        # the other side produces a turn — set where the session's own
+        # record of the producer is set, so the two cannot disagree.
+        set_tag_accent(PLAYBOOK_ACCENT if asst.synthesized else None)
         try:
             await _dispatch_turn(run, session, messages, asst, turn)
         finally:
@@ -289,7 +303,11 @@ async def _call_provider(
         # sent no request — never pays the full-transcript serialization.
         run.rlog.write_request(turn, run.serialize_wire(request_messages))
     run.rlog.write_response(
-        turn, asst.raw, elapsed_ms=elapsed_ms, synthesized=asst.synthesized
+        turn,
+        asst.raw,
+        elapsed_ms=elapsed_ms,
+        synthesized=asst.synthesized,
+        driver=asst.driver,
     )
     run.tr.write(
         {
@@ -305,20 +323,25 @@ async def _call_provider(
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in asst.tool_calls
             ],
-            **({"synthesized": True} if asst.synthesized else {}),
+            **(
+                {"synthesized": True, "driver": asst.driver} if asst.synthesized else {}
+            ),
         }
     )
+    # The one line per turn that says WHO drove it — a playbook by name,
+    # or the model — so a terminal reader can tell at a glance.
+    calls = ", ".join(asst.tool_names()) or "no calls"
     if asst.synthesized:
         # No provider round-trip: no usage to log, and the token/cache
         # metrics would report zeros that read as data.
-        log.info("turn %d: conductor synthesized calls=%s", turn, asst.tool_names())
+        log.info("turn %d: PLAYBOOK %s → %s", turn, asst.driver, calls)
         return asst
     # Tokens: the provider's `usage` event, rendered once by the trace.
     log.info(
-        "turn %d: finish=%s calls=%s — %.1fs",
+        "turn %d: MODEL → %s (finish=%s) — %.1fs",
         turn,
+        calls,
         asst.finish_reason,
-        asst.tool_names() or None,
         elapsed_ms / 1000,
     )
     return asst

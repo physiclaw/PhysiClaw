@@ -198,6 +198,16 @@ def test_brief_content_multiple_blocks_joined_by_plus() -> None:
         ),
         (
             {
+                "event": "response",
+                "turn": 4,
+                "synthesized": True,
+                "driver": "taobao/buy",
+                "tool_calls": [{"name": "note"}, {"name": "tap"}],
+            },
+            "turn 4: response by playbook taobao/buy calls=['note', 'tap']",
+        ),
+        (
+            {
                 "event": "usage",
                 "turn": 2,
                 "call": "turn",

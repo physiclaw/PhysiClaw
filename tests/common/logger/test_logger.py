@@ -637,3 +637,27 @@ def test_setup_logging_with_unwritable_dir_falls_back_to_stderr(tmp_path) -> Non
 
     root = logging.getLogger()
     assert len(root.handlers) == 1  # stream only
+
+
+def test_tag_accent_paints_the_tag_green_while_a_playbook_drives() -> None:
+    from physiclaw.common.logger import PLAYBOOK_ACCENT, set_tag_accent
+
+    fmt = _TaggedFormatter(tag="runtime", color=True)
+    try:
+        set_tag_accent(PLAYBOOK_ACCENT)
+        driven = fmt.format(_record("turn 5: PLAYBOOK taobao/buy → note, tap"))
+        set_tag_accent(None)
+        back = fmt.format(_record("turn 6: MODEL → note, tap"))
+    finally:
+        set_tag_accent(None)
+
+    assert "\033[92m[runtime]" in driven  # green while the playbook drives
+    assert "\033[35m[runtime]" in back  # the tag's own magenta once the model does
+    # Plain sinks never see the accent.
+    set_tag_accent(PLAYBOOK_ACCENT)
+    try:
+        assert "\033[" not in _TaggedFormatter(tag="runtime", color=False).format(
+            _record("x")
+        )
+    finally:
+        set_tag_accent(None)
