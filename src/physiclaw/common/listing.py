@@ -28,7 +28,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from physiclaw.common.bbox import Bbox, center_of
+from physiclaw.common.bbox import Bbox, format_bbox
 
 # Column header, first line of every listing.
 LISTING_HEADER = 'id [kind] "label" [left,top,right,bottom] conf'
@@ -169,8 +169,8 @@ class Element:
     def row(self) -> str:
         """This element as a listing row — the fields are validated and
         rounded already, so this is pure rendering."""
-        coords = ",".join(f"{v:.3f}" for v in self.bbox)
-        return f'{self.id} [{self.kind}] "{self.label}" [{coords}] {self.conf:.2f}'
+        box = format_bbox(self.bbox)
+        return f'{self.id} [{self.kind}] "{self.label}" {box} {self.conf:.2f}'
 
 
 def parse_row(line: str) -> Element | None:
@@ -239,32 +239,6 @@ def label_hit(needle: str, label: str) -> bool:
     if len(needle) == 1:
         return label.strip() == needle
     return needle in label
-
-
-def nearest_labeled_row(
-    rows: Iterable[Element],
-    readings: tuple[str, ...],
-    center: tuple[float, float],
-) -> "tuple[float, Element] | None":
-    """The text row whose label matches one of `readings` (the shared
-    base rule, `label_hit`) nearest `center`, with its distance — the
-    labeled-target search the macro heal and the rescue ladder's control
-    lookup both ride, spelled ONCE so the matching regime can never fork
-    between them. UNTHRESHOLDED on purpose: how far is too far is caller
-    policy (the heal notes an off-radius row; rescue treats it as
-    absent)."""
-    best: "tuple[float, Element] | None" = None
-    for row in rows:
-        if row.kind != "text":
-            continue
-        if not any(label_hit(t, row.label) for t in readings):
-            continue
-        c = center_of(row.bbox)
-        assert c is not None  # Element bboxes are valid by construction
-        d = math.dist(c, center)
-        if best is None or d < best[0]:
-            best = (d, row)
-    return best
 
 
 @dataclass(frozen=True)

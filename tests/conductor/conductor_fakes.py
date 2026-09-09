@@ -3,17 +3,41 @@ pattern: sibling module, imported bare thanks to pytest's rootdir path)."""
 
 from __future__ import annotations
 
+import base64
 from textwrap import indent
 
 from physiclaw.common.listing import Element, Screen, format_elements
-from physiclaw.contract.dto import AssistantMessage, FinishReason, Usage
+from physiclaw.contract.dto import (
+    AssistantMessage,
+    FinishReason,
+    ImageBlock,
+    TextBlock,
+    Usage,
+)
 
 # One bbox convention for every fake row: ±0.05 × ±0.02 around the center.
 BOX_W, BOX_H = 0.05, 0.02
 
+# A frame as a tool result carries it — the bytes are opaque to every
+# reader under test (nothing decodes them), so any bytes will do.
+FRAME = ImageBlock(
+    media_type="image/jpeg", data_b64=base64.b64encode(b"fake jpeg").decode()
+)
+
+
+def agent_reply(action: str, confidence: float = 0.9, **args) -> str:
+    """An agent reply in the tool-call envelope: `action` + its `args`."""
+    import json
+
+    return json.dumps(
+        {"reason": "r", "action": action, "args": args, "confidence": confidence},
+        ensure_ascii=False,
+    )
+
 
 def make_screen(*rows: tuple) -> Screen:
-    """Rows are (label, cx, cy) or (label, cx, cy, conf)."""
+    """Rows are (label, cx, cy) or (label, cx, cy, conf); an empty label
+    is an icon (the listing grammar's label-less kind)."""
     els = []
     for i, row in enumerate(rows):
         label, cx, cy = row[0], row[1], row[2]
@@ -21,7 +45,7 @@ def make_screen(*rows: tuple) -> Screen:
         els.append(
             Element(
                 id=i,
-                kind="text",
+                kind="text" if label else "icon",
                 label=label,
                 bbox=(cx - BOX_W, cy - BOX_H, cx + BOX_W, cy + BOX_H),
                 conf=conf,
@@ -70,15 +94,25 @@ def history() -> list:
     return [SystemMessage(content="sys"), UserMessage(content="wake")]
 
 
-def feed(history: list, turn, text: str = "", *, error: bool = False) -> None:
+def feed(
+    history: list,
+    turn,
+    text: str = "",
+    *,
+    error: bool = False,
+    frame: ImageBlock | None = None,
+) -> None:
     """Append the synthesized turn plus its ACTION's tool result — the
-    loop's contract (one result per call, in the very next messages)."""
+    loop's contract (one result per call, in the very next messages).
+    With `frame`, the result is the fused view a real read returns:
+    text beside the frame."""
     from physiclaw.contract.dto import ToolResultMessage
 
     history.append(turn)
+    content = text if frame is None else [TextBlock(text=text), frame]
     history.append(
         ToolResultMessage(
-            tool_call_id=turn.tool_calls[1].id, content=text, is_error=error
+            tool_call_id=turn.tool_calls[1].id, content=content, is_error=error
         )
     )
 

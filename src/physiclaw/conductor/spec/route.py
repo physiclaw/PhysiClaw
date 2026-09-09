@@ -1212,8 +1212,8 @@ def _parse_recover(ctx: _Ctx, fields: dict, where: str, page: str) -> Recovery:
 
 def _parse_hand(ctx: _Ctx, raw: Any, where: str, page: str) -> RecoverHand:
     """One recovery hand, in a step's shape: a bare gesture that takes no
-    object (`go_back`), `{tap: landmarks.<name>}` (the declared spot,
-    label-healed at run time), or `{macro: <name>}` (argument-less)."""
+    object (`go_back`), `{tap: landmarks.<name>}` (the declared spot, as
+    declared), or `{macro: <name>}` (argument-less)."""
     if isinstance(raw, str):
         if raw == "tap":
             raise PlaybookError(

@@ -589,7 +589,7 @@ def test_activation_builds_a_request_over_the_thread_screen() -> None:
     # check read it) — this turns it into the call.
     req = activation.request(Screen.read(_thread(("买牛奶", 0.25, 0.4))), "parse")
     assert req is not None and req.call == PARSE_TASK and req.node_id == "parse"
-    assert "买牛奶" in req.listing and "demo/flow" in req.args["menu"]
+    assert "买牛奶" in req.listing and "demo/flow" in req.material["menu"]
 
     prog = activation.build(
         MicroOutcome(

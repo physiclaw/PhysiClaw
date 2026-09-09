@@ -116,6 +116,16 @@ _MIME_EXT = {
 }
 
 
+def mime_for(name: str) -> str:
+    """The mime a frame was filed under — `image_filename`'s inverse over
+    the same table, so the reader and the writer cannot disagree; an
+    unknown suffix (the `.bin` fallback) reads as octet-stream."""
+    ext = Path(name).suffix
+    return next(
+        (m for m, e in _MIME_EXT.items() if e == ext), "application/octet-stream"
+    )
+
+
 def image_filename(turn: int, mime: str) -> str:
     """Name a captured screenshot `<HHMMSS>_<mmm>_t<turn>.<ext>`: a
     local-time stamp (hour-minute-second + milliseconds, so the names sort

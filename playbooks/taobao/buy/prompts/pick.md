@@ -7,12 +7,12 @@ search results to the buy sheet, stopping BEFORE payment.
    the buyer's words counts ONLY when a row shows that store's
    name; otherwise ignore it. A spec such as 5kg×4袋 or ×2 on a
    row below a title belongs to that title: a bundle, skip it.
-   Decide from the rows (scroll once if the first screen shows
-   fewer than two fitting items), then tap the chosen listing's
-   title ONCE to open its detail page. Do not open listings to
-   browse. Pick by these rules and name that one row — do not
-   narrate every listing. Never deliberate about facts the rows
-   do not show.
+   Decide from the rows and the screenshot (scroll once if the
+   first screen shows fewer than two fitting items), then tap the
+   chosen listing's title ONCE to open its detail page. Do not
+   open listings to browse. Pick by these rules and tap that one
+   title (its label: the listing's title) — do not narrate every
+   listing. Never deliberate about facts the screen does not show.
 2. BUY SHEET — on the detail page tap the footer's right
    button: 领券购买 or 立即购买 (whichever row shows). One of two
    sheets opens:
@@ -20,14 +20,14 @@ search results to the buy sheet, stopping BEFORE payment.
        规格, NO 实付 row, and a bottom button reading 领券购买,
        立即购买 or 确定. Tap the option row matching the keyword
        (the single pack: 500ml ×1瓶, 5kg ×1袋 — never a ×2, 套餐
-       or 搭配 row), then answer that bottom button row; the
-       order sheet (b) opens.
+       or 搭配 row), then tap that bottom button; the order
+       sheet (b) opens.
    (b) the ORDER sheet — the address, a 实付￥… row, option
        rows, and a pay button (免密支付, 提交订单 or 立即支付).
        While 实付 reads a RANGE (…起) tap the matching option
        row; once it shows ONE exact price for the fitting spec,
        the spec is chosen — do not tap an option row then, and do
-       not re-check it: answer done in that same call. Keep
+       not re-check it: return done in that same call. Keep
        quantity 1. OCR may
        garble a character (袋 read as 级): read a spec by its
        numbers (500g*1) and its price, not letter by letter.
@@ -35,20 +35,21 @@ search results to the buy sheet, stopping BEFORE payment.
    means sheet (a) — pick the spec and tap its bottom button.
    A tap on an option row sometimes does not take: if the
    price header still reads …起 after your tap, tap the SAME
-   option row once more — expected, answer it with confidence.
+   option row once more — expected, tap it again with confidence.
 3. DONE — with the buy sheet showing one exact 实付 price for
-   the right spec, answer done and return the fields, standing
+   the right spec, return done with the fields, standing
    on the sheet. The walker pays; you NEVER tap the pay button
    (免密支付 / 提交订单 / 立即支付), never 先用后付, never a
    顺手买 add-on, never coupons.
 Popups: a promo card (天降红包, 红包, 优惠券, 领券) may cover the
-page right after it opens — you know one is there ONLY when the
-rows show such text. Then answer the granted `close` landmark
-ONCE to dismiss it — never go_back on a popup, and NEVER tap
-its buttons (马上去用, 领券, 领取, 立即领取). Granted landmarks
-are always listed; their presence says nothing about the
-screen. Use go_back only to leave a detail page you rejected.
+page right after it opens — you know one is there when the
+screenshot shows it or the rows read such text. Then tap the
+granted `close` landmark's box ONCE to dismiss it — never go_back on a
+popup, and NEVER tap its buttons (马上去用, 领券, 领取, 立即领取).
+Granted landmarks are always listed; their presence says nothing
+about the screen. Use go_back only to leave a detail page you
+rejected.
 The buyer said: "{inputs.user_said}"
 Search keyword: {parse.keyword}
 If nothing fits, or the sheet cannot show the right spec at one
-exact price, answer escalate.
+exact price, return escalate.

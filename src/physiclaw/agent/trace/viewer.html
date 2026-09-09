@@ -403,11 +403,12 @@
       }
       case 'micro': {
         const conf = rec.confidence != null ? ` (${Math.round(rec.confidence * 100)}% sure)` : '';
-        const title = `${S.words.calls[rec.call] || rec.call}${rec.node ? ' at ' + rec.node : ''} → ${'answer' in rec ? JSON.stringify(rec.answer) : '?'}${conf}`;
+        const move = ('answer' in rec ? JSON.stringify(rec.answer) : '?') + (rec.args && Object.keys(rec.args).length ? ' ' + JSON.stringify(rec.args) : '');
+        const title = `${S.words.calls[rec.call] || rec.call}${rec.node ? ' at ' + rec.node : ''} → ${move}${conf}`;
         const sub = r.reason ? clip(r.reason, 160) : ('answer' in rec ? '' : 'a record from before the answer was kept with it');
         return card(r, title, sub, () => el('div', null,
             h3('The answer'),
-            'answer' in rec ? el('div', { class: 'answer' }, JSON.stringify(rec.answer), conf ? el('small', { text: conf.trim().replace(/[()]/g, '') }) : null) : null,
+            'answer' in rec ? el('div', { class: 'answer' }, move, conf ? el('small', { text: conf.trim().replace(/[()]/g, '') }) : null) : null,
             r.reason ? el('div', { class: 'callout', text: r.reason }) : null,
             'thinking' in rec ? kv({ 'thinking level': rec.thinking ?? 'vendor default' }) : null,
             messages(rec.request || [], null, null, 'The question, every message'),

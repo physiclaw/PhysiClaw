@@ -29,6 +29,7 @@ from physiclaw.conductor.spec.pack import (
     scan_playbooks,
 )
 from physiclaw.conductor.walk.micro import (
+    MENU,
     NOT_A_TASK,
     PARSE_TASK,
     DecisionRequest,
@@ -36,6 +37,7 @@ from physiclaw.conductor.walk.micro import (
     build_request,
 )
 from physiclaw.conductor.walk.program import Program
+from physiclaw.contract.dto import ImageBlock
 from physiclaw.contract.plugin import EventSink
 from physiclaw.macros.model import Macro, MacroInput
 
@@ -73,12 +75,16 @@ class Activation:
     # The session's event stream the activated program records into.
     events: EventSink | None = None
 
-    def request(self, screen: Screen, node_id: str) -> DecisionRequest:
+    def request(
+        self, screen: Screen, node_id: str, frame: ImageBlock | None = None
+    ) -> DecisionRequest:
         """The parse_task request for a thread screen. The CALLER
         establishes that the screen IS the thread — the boot's activate
         step knows, its enter check just read it — so this is purely
-        "turn the menu and this screen into a call". `node_id` names
-        the step for the logs.
+        "turn the menu and this screen into a call". `frame` is the
+        thread's screenshot when the read carried one (the bubbles'
+        sides say who said what). `node_id` names the step for the
+        logs.
         `entries` is non-empty by construction — `activation_for` stands
         down before building an Activation with nothing to offer."""
         # Playbook refs only — the `not_a_task` escape is the call's own
@@ -87,9 +93,10 @@ class Activation:
             PARSE_TASK,
             node_id,
             tuple(self.entries),
-            {"menu": self._menu()},
+            {MENU: self._menu()},
             screen,
             self.context,
+            frame=frame,
         )
 
     def _menu(self) -> str:

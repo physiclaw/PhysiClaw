@@ -9,7 +9,7 @@ so every reader of the transcript reads it identically.
 """
 
 from physiclaw.common.listing import Screen
-from physiclaw.contract.dto import Message, TextBlock, ToolResultMessage
+from physiclaw.contract.dto import ImageBlock, Message, TextBlock, ToolResultMessage
 
 
 def result_for(history: list[Message], call_id: str) -> ToolResultMessage | None:
@@ -30,3 +30,14 @@ def text_of(result: ToolResultMessage) -> str:
     if isinstance(result.content, str):
         return result.content
     return "\n".join(b.text for b in result.content if isinstance(b, TextBlock))
+
+
+def frame_of(result: ToolResultMessage) -> ImageBlock | None:
+    """The frame a tool result carries — the view's image, the same
+    bytes the model's own turn would see beside the listing. None for a
+    text-only result (a failed read, a replayed or rehearsed screen)."""
+    if isinstance(result.content, str):
+        return None
+    return next(
+        (b for b in reversed(result.content) if isinstance(b, ImageBlock)), None
+    )

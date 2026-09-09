@@ -1381,10 +1381,10 @@ async def test_skip_when_will_not_skip_on_an_unreadable_screen() -> None:
     assert ("tap", {"bbox": [0.1, 0.1, 0.2, 0.2]}) in mcp.calls
 
 
-# ---------- the label target: annotation + healing ----------
+# ---------- the label target: annotation, never a correction ----------
 
 
-HEAL_SPEC = """name: demo
+LABEL_SPEC = """name: demo
 description: d
 steps:
   - home_screen
@@ -1393,51 +1393,33 @@ steps:
 """
 
 
-async def test_label_heals_the_press_to_where_the_text_sits_today() -> None:
-    # The row matching the label drifted a little from the recorded spot
-    # — the tap follows the TEXT, and the wire never sees `label`.
+async def test_a_press_fires_the_recorded_box_even_when_its_text_sits_elsewhere() -> (
+    None
+):
+    # The label says what the box IS; it never moves the tap. A drifted
+    # row does not pull the press toward it — a miss shows on the next
+    # screen and in the run log, where a person can fix the recording.
     listing = format_row(0, "text", "Buy now", [0.42, 0.50, 0.52, 0.54], 0.9)
     mcp = FakeCaller([_gesture("home", listing=listing), _gesture("tapped")])
 
-    result = await run(_spec(HEAL_SPEC), {}, mcp)
-
-    assert result.ok
-    name, args = mcp.calls[1]
-    assert name == "tap"
-    assert args == {"bbox": [0.42, 0.5, 0.52, 0.54]}
-    assert "healed" in result.blocks[0]["text"]
-
-
-async def test_label_off_radius_falls_back_to_the_recorded_bbox() -> None:
-    # A matching label far across the screen is a DIFFERENT element, not
-    # drift — the recorded coordinates stand, and the log says so.
-    listing = format_row(0, "text", "Buy now", [0.42, 0.85, 0.52, 0.89], 0.9)
-    mcp = FakeCaller([_gesture("home", listing=listing), _gesture("tapped")])
-
-    result = await run(_spec(HEAL_SPEC), {}, mcp)
+    result = await run(_spec(LABEL_SPEC), {}, mcp)
 
     assert result.ok
     assert mcp.calls[1] == ("tap", {"bbox": [0.4, 0.4, 0.5, 0.44]})
-    assert "off-radius" in result.blocks[0]["text"]
+    assert "heal" not in result.blocks[0]["text"]
 
 
-async def test_label_not_found_uses_the_recorded_bbox_silently() -> None:
-    # A description that never appears on screen is annotation, not a
-    # broken promise — the recorded bbox fires with no note.
+async def test_the_label_never_reaches_the_wire() -> None:
     listing = format_row(0, "text", "Something else", [0.1, 0.1, 0.2, 0.14], 0.9)
     mcp = FakeCaller([_gesture("home", listing=listing), _gesture("tapped")])
 
-    result = await run(_spec(HEAL_SPEC), {}, mcp)
+    result = await run(_spec(LABEL_SPEC), {}, mcp)
 
     assert result.ok
-    assert mcp.calls[1] == ("tap", {"bbox": [0.4, 0.4, 0.5, 0.44]})
-    assert "healed" not in result.blocks[0]["text"]
+    assert "label" not in mcp.calls[1][1]
 
 
-async def test_swipe_label_is_stripped_but_never_heals() -> None:
-    # A swipe's box is a region, not an element: its object is the
-    # direction, so there is no label to heal by and the coordinates never
-    # move.
+async def test_swipe_label_is_stripped_and_the_box_fires_as_written() -> None:
     spec = _spec(
         "name: demo\ndescription: d\nsteps:\n  - home_screen\n  - swipe: up\n"
         "    at: [0.40, 0.40, 0.50, 0.44]\n    size: s\n"
@@ -1454,10 +1436,9 @@ async def test_swipe_label_is_stripped_but_never_heals() -> None:
     )
 
 
-async def test_healed_press_records_the_fired_coordinates(tmp_path) -> None:
-    # The forensic contract: `macros runs` must answer "where did the
-    # tap actually land" — a healed press logs the coordinates it FIRED
-    # with (label kept beside them), not the authored ones.
+async def test_the_run_log_records_the_authored_target(tmp_path) -> None:
+    # `macros runs` answers "where did the tap land": the authored box,
+    # label beside it — the only coordinates that ever fire.
     import json
 
     from physiclaw.macros import runlog
@@ -1465,7 +1446,7 @@ async def test_healed_press_records_the_fired_coordinates(tmp_path) -> None:
     listing = format_row(0, "text", "Buy now", [0.42, 0.50, 0.52, 0.54], 0.9)
     mcp = FakeCaller([_gesture("home", listing=listing), _gesture("tapped")])
 
-    result = await run_and_record(_spec(HEAL_SPEC), {}, mcp, caller="cli")
+    result = await run_and_record(_spec(LABEL_SPEC), {}, mcp, caller="cli")
 
     events = [
         json.loads(line)
@@ -1474,5 +1455,5 @@ async def test_healed_press_records_the_fired_coordinates(tmp_path) -> None:
         .splitlines()
     ]
     (press,) = [e for e in events if e.get("name") == "idx2-tap-buy"]
-    assert press["args"]["bbox"] == [0.42, 0.5, 0.52, 0.54]
+    assert press["args"]["bbox"] == [0.4, 0.4, 0.5, 0.44]
     assert press["args"]["label"] == "Buy"

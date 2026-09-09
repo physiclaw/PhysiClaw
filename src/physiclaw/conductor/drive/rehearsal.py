@@ -328,10 +328,12 @@ def _describe_verdict(v: "Verdict") -> str:
 
 
 def _describe(result: "MicroResult") -> str:
+    from physiclaw.conductor.walk.micro import describe_move, move_of
+
     o = result.outcome
     if o is None:
         return f"no outcome — {result.detail} ({result.elapsed_ms} ms)"
-    picked = f" → {o.picked.key!r}" if o.picked is not None else ""
+    picked = f" → {describe_move(*move_of(o))}" if o.picked is not None else ""
     fields = f" {o.payload}" if o.payload else ""
     return (
         f"{o.out}{picked}{fields} [{o.confidence:.2f}] {o.reason} "

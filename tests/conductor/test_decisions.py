@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from conductor_fakes import ScriptedProvider
+from conductor_fakes import ScriptedProvider, agent_reply
 from typer.testing import CliRunner
 
 from physiclaw.cli.playbooks import playbooks_app
@@ -55,8 +55,7 @@ def _session(records: list[dict], events: list[dict] | None = None):
     return d
 
 
-def _ok(answer: str, confidence: float = 0.9) -> str:
-    return f'{{"reason": "r", "answer": "{answer}", "confidence": {confidence}}}'
+_ok = agent_reply  # the fixtures' records are agent calls
 
 
 # ---------- load ----------
@@ -102,6 +101,64 @@ def test_load_keeps_an_episodes_replayed_history_in_order() -> None:
         "AssistantMessage",
         "UserMessage",
     ]
+
+
+def test_load_reads_a_scrubbed_frame_back_from_the_session_images() -> None:
+    # A micro record's frame is a ref (the sink filed the bytes); the
+    # re-ask sends the frame the wake sent. A ref whose file is gone
+    # leaves the call to ask over the listing alone.
+    import base64
+
+    from physiclaw.contract.dto import ImageBlock, TextBlock
+
+    d = _session(
+        [
+            _micro_record(
+                call="agent_act",
+                node="pick",
+                request=[
+                    {"role": "system", "content": "sys"},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "[you scrolled down]"},
+                            {
+                                "type": "image",
+                                "source": {"type": "ref", "ref": "images/t1.jpg"},
+                            },
+                            {"type": "text", "text": "listing"},
+                        ],
+                    },
+                    {"role": "assistant", "content": '{"answer": "3"}'},
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"type": "ref", "ref": "images/gone.jpg"},
+                            },
+                            {"type": "text", "text": "listing 2"},
+                        ],
+                    },
+                ],
+            )
+        ]
+    )
+    (d / "images").mkdir()
+    (d / "images" / "t1.jpg").write_bytes(b"jpeg bytes")
+
+    (rec,) = decisions.load(d)
+
+    first = rec.messages[1].content
+    assert first == [
+        TextBlock(text="[you scrolled down]"),
+        ImageBlock(
+            media_type="image/jpeg",
+            data_b64=base64.b64encode(b"jpeg bytes").decode(),
+        ),
+        TextBlock(text="listing"),
+    ]
+    assert rec.messages[3].content == "listing 2"
 
 
 def test_load_without_a_wire_log_raises() -> None:

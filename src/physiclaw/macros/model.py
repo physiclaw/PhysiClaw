@@ -93,8 +93,8 @@ REASON_BAD_INPUT = "bad_input"
 REASON_TIMEOUT = "timeout"
 
 # The gesture target's two halves: a `bbox` never travels alone — the
-# REQUIRED `label` beside it says what the coordinates ARE, and lets the
-# runner heal a press to where that text sits today. Full rules live in
+# REQUIRED `label` beside it says what the coordinates ARE, for the
+# reader of the file and of the run log. Full rules live in
 # the format README (`scaffold.README_CONTENT`). The cap is the ONE
 # alts-per-target number — `pages.MAX_ANCHOR_READINGS` re-exports it
 # (the `_spec` doctrine: the macro layer is the rules' true home).
@@ -105,10 +105,9 @@ MAX_LABEL_READINGS = 4
 
 def label_readings(args: dict, key: str = TARGET_LABEL) -> "tuple[str, ...]":
     """A target's `label` (or another readings-shaped `key`) as the tuple
-    of its readings — the ONE reader of the string-or-list shape. Parse
-    validates through it and the runner heals through it, so the two
-    can never disagree on what counts as a reading. () when the step
-    carries no label."""
+    of its readings — the ONE reader of the string-or-list shape, so
+    parse and display can never disagree on what counts as a reading.
+    () when the step carries no label."""
     raw = args.get(key)
     if raw is None:
         return ()

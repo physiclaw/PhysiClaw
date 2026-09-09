@@ -557,6 +557,60 @@ def test_rawlog_scrubs_openai_image_url_data_to_disk(_trace_dirs: Path) -> None:
     assert (_trace_dirs / "sessions" / "sess-IMG" / img_url).read_bytes() == raw_bytes
 
 
+def test_rawlog_files_a_micro_records_frame_like_a_turns(_trace_dirs: Path) -> None:
+    # A decision call's frame is scrubbed to the session's images/ under
+    # the latest turn's name — the same file a tool result already
+    # filed when the bytes match — so the record stays text and the
+    # viewer finds the frame where every other frame is.
+    from physiclaw.contract.dto import MicroRecord
+
+    log = RawLog("sess-MICRO", Images("sess-MICRO"))
+    raw_bytes = b"micro jpeg"
+    b64 = base64.b64encode(raw_bytes).decode()
+    log.write_response(4, {"choices": []}, elapsed_ms=1)
+    log.write_micro(
+        MicroRecord(
+            call="agent_act",
+            node="pick",
+            thinking=None,
+            allowed=("0",),
+            answer="0",
+            confidence=0.9,
+            request=[
+                {"role": "system", "content": "sys"},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "lead"},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": b64,
+                            },
+                        },
+                        {"type": "text", "text": "listing"},
+                    ],
+                },
+            ],
+            raw={},
+        )
+    )
+    log.close()
+
+    (rec,) = [
+        json.loads(line)
+        for line in log.path.read_text().splitlines()
+        if '"micro"' in line
+    ]
+    image = rec["request"][1]["content"][1]
+    ref = image["source"]["ref"]
+    assert image["source"]["type"] == "ref" and ref.endswith("_t4.jpg")
+    assert (_trace_dirs / "sessions" / "sess-MICRO" / ref).read_bytes() == raw_bytes
+    assert rec["request"][0]["content"] == "sys"
+
+
 def test_rawlog_scrubs_anthropic_image_block_to_ref(_trace_dirs: Path) -> None:
     log = RawLog("sess-A", Images("sess-A"))
     raw_bytes = b"png data"

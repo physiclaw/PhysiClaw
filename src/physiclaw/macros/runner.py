@@ -198,9 +198,7 @@ async def run(
                 step.tool,
                 step.name,
                 outcome.outcome,
-                # A healed press logs the coordinates it actually FIRED
-                # with (label kept beside them); authored args otherwise.
-                args=outcome.fired_args or step.log_args,
+                args=step.log_args,
                 verdict=outcome.verdict,
                 guard_polls=ctx.reads,
                 ms=int((time.monotonic() - t_step) * 1000),

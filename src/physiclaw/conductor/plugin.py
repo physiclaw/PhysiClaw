@@ -95,7 +95,7 @@ class ConductorPlugin:
 def _wire_micro(program: "Program | None", ctx: SetupContext) -> MicroCaller | None:
     """The micro-caller for the conductor's model calls — None only
     when NOTHING drives (no program). Any live walk can need one (the
-    boot's parse_task, an ask's reply judgment, an agent step) — and
+    boot's parse_task, an agent step) — and
     the owned cheap-tier client is built lazily on the FIRST call, so
     wiring the caller costs nothing at wake. The session provider (off
     the setup context) is the fail-open floor."""

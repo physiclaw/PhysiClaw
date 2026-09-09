@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from physiclaw.conductor.walk.micro import DecisionRequest, MicroOutcome
-from physiclaw.contract.dto import AssistantMessage
+from physiclaw.contract.dto import AssistantMessage, ImageBlock
 
 if TYPE_CHECKING:
     from physiclaw.common.listing import Screen
@@ -59,7 +59,9 @@ class Activator(Protocol):
     the parse_task request over a thread screen, and the program its
     outcome builds — or None when nothing activates."""
 
-    def request(self, screen: "Screen", node_id: str) -> DecisionRequest: ...
+    def request(
+        self, screen: "Screen", node_id: str, frame: ImageBlock | None = None
+    ) -> DecisionRequest: ...
 
     def build(self, outcome: MicroOutcome | None) -> "Program | None": ...
 
@@ -74,6 +76,7 @@ class Walk(Protocol):
     spec: "Playbook"
     gate: "Gate"
     screen: "Screen | None"
+    frame: ImageBlock | None
     verdict: "Verdict | None"
     outputs: dict[str, str]
     landmarks: "dict[str, Landmark]"

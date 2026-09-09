@@ -125,9 +125,9 @@ description: EDIT ME — what this pack automates, and when to adopt it
 
 # Named fixed spots the author KNOWS — recover hands tap them, and
 # agent episodes are granted them by name (`give: [landmarks.back]`).
-# Open vocabulary; each is {{label, at, [page]}}, label-healed live
-# when the label is readable on screen; `page:` scopes it — an episode
-# is offered it only while that page is the verified reading.
+# Open vocabulary; each is {{label, at, [page]}}: the tap fires at `at`
+# as declared, the label says what it is; `page:` scopes it — an
+# episode is offered it only while that page is the verified reading.
 # landmarks:
 #   back:
 #     label: "back chevron (top-left)"
@@ -317,17 +317,23 @@ What the playbook declares is what runs — no more, no less. An
 `agent` step is the model's, inside the author's fence: `prompt:` is
 the whole brief (refs fill once when the step opens; the conductor
 adds only the output contract), `tools:` the closed gesture allowlist,
-`give:` the landmarks it may name blind (`landmarks.<name>`) and the
-pack macros it may run whole (`macros.<name>`), `context:` what to
+`give:` the landmarks shown to it each turn with their reading and box
+(`landmarks.<name>`) and the pack macros it may run whole
+(`macros.<name>`), `context:` what to
 load beside the prompt (`memory`, `memory.<slug>`, `daylog` — nothing
 else travels), `returns:` the fields it must fill, `limit:` its
 call/scroll budget, `think:` how much hidden thinking each call may
 spend (off, low, medium, high — the vendor translates the word; the
 reply's own `reason` field is always written); each episode turn the
-model answers with a screen
-row, a granted landmark or macro, a scroll verb, done, or escalate —
-never coordinates — and `done` counts only on the following page,
-judged by the matcher. An `ask` reads the reply against its own
+model sees the screen as its own turns would — the screenshot beside
+the whole element listing, icons and text rows with ids — and answers
+a tool call the way its own turns would, one envelope for every tool
+(`action` + `args`): `tap {{label, at}}` (what the box is; its box
+`[left, top, right, bottom]`, a listed element's, a granted landmark's
+or one read off the screenshot), `scroll {{direction}}`,
+`back {{}}`, `run_macro {{name}}`, `done {{return fields}}`,
+`escalate {{}}` — and `done` counts only on the following page, judged
+by the matcher. An `ask` reads the reply against its own
 `yes:`/`no:` words (any other reply hands over), waits by its own
 `wait:` seconds for `rounds:` silent polls, and a payment ask reads
 the amount beside the label its `total_label:` names.

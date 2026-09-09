@@ -77,7 +77,7 @@ def test_already_on_the_thread_asks_straight_away() -> None:
 
     assert isinstance(req, DecisionRequest)
     assert req.call == "parse_task" and req.node_id == "parse"
-    assert "买牛奶" in req.listing and "demo/flow" in req.args["menu"]
+    assert "买牛奶" in req.listing and "demo/flow" in req.material["menu"]
     assert o.outcome is None  # not spent until the answer comes back
 
 

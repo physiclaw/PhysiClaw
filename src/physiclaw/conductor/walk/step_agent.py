@@ -2,47 +2,60 @@
 
 No tools = one pure-text call filling the declared `returns` (prompt
 in, fields out, no screen). Tools = an EPISODE: each turn one
-constrained call (append-only context, so every request's prefix is
-byte-identical to the previous one and the provider cache pays for all
-but the newest block) whose answer the walk grounds to a live bbox — a
-screen row, a granted landmark, a scroll or back verb, `done`, or
-`escalate` — or runs by name (a granted pack macro); never
-coordinates. A landmark scoped to a page is offered only while that
-page is the verified reading. `done` is audited against the adjacent
+constrained call over the screen as the model's own turns see it — the
+frame beside its whole element listing — with append-only, uncompressed
+context (every earlier frame and listing stays, so every request's
+prefix is byte-identical to the previous one and the provider cache
+pays for all but the newest block) answered as a tool call the walk
+carries out exactly: a tap (a box — a listed element's, a granted
+landmark's, or one read off the screenshot — with the label the model
+gives it), a scroll or back, `done`, `escalate`, or a granted pack
+macro run by name. A landmark scoped to a page is shown only while
+that page is the verified reading. `done` is audited against the adjacent
 verify page by the matcher, never trusted, and a payment episode
 re-runs the money predicates before EVERY tap or macro the model
 proposes.
 """
 
 from physiclaw.common import gesture_vocab
+from physiclaw.common.bbox import format_bbox
+from physiclaw.common.listing import Element
 from physiclaw.conductor.spec import context
 from physiclaw.conductor.spec.calls import (
     ACT_BACK,
     ACT_SCROLL_DOWN,
     ACT_SCROLL_UP,
     AGENT_DONE,
-    AGENT_TOOL_VERBS,
+    AGENT_TOOLS,
     ESCALATE,
+    TOOL_RUN,
+    TOOL_TAP,
 )
 from physiclaw.conductor.spec.conventions import LOCKED_ID, page_id
 from physiclaw.conductor.spec.model import AgentNode
 from physiclaw.conductor.spec.pack import qualified_macro
+from physiclaw.conductor.spec.pages import Landmark
 from physiclaw.conductor.spec.refs import fill_refs
-from physiclaw.conductor.walk import money, recover
+from physiclaw.conductor.walk import money
 from physiclaw.conductor.walk.micro import (
     ACT_ARM,
     AGENT_ACT,
     AGENT_FIELDS,
-    CAND_LANDMARK,
-    CAND_MACRO,
-    Candidate,
+    BLOCK,
+    FIELDS,
+    LEAD,
+    PROMPT,
+    Content,
     DecisionRequest,
+    Macro,
     MicroOutcome,
+    Tap,
     act_block,
-    act_candidates,
+    act_rows,
     canonical_reply,
     data_block,
     return_fields,
+    user_content,
 )
 from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.conductor.walk.turns import scroll_args
@@ -58,14 +71,19 @@ class AgentStep(Step[AgentNode]):
     def __init__(self, walk: Walk, node: AgentNode) -> None:
         super().__init__(walk, node)
         # Episode state. `history` is the append-only transcript of
-        # settled (user block, model reply) pairs — replayed verbatim on
-        # every call; `block` is the pending user block the next call
-        # sends. `consented` is a payment episode's bound, stashed at
-        # open so the per-tap predicates keep checking after the gate's
-        # consent is consumed by the first fire.
+        # settled (user content, model reply) pairs — replayed verbatim
+        # on every call; `lead` and `block` are the pending user turn
+        # the next call sends (what happened or the brief, then the
+        # screen: the walk's frame between them, the listing after);
+        # `sent` is the request in flight, settled whole at resolve.
+        # `consented` is a payment episode's bound, stashed at open so
+        # the per-tap predicates keep checking after the gate's consent
+        # is consumed by the first fire.
+        self.lead = ""
         self.block = ""
-        self.history: list[tuple[str, str]] = []
-        self.candidates: tuple[Candidate, ...] = ()
+        self.sent: DecisionRequest | None = None
+        self.history: list[tuple[str, Content]] = []
+        self.elements: tuple[Element, ...] = ()
         self.calls = 0
         self.scrolls = 0
         self.consented: float | None = None
@@ -135,9 +153,9 @@ class AgentStep(Step[AgentNode]):
             call=AGENT_FIELDS,
             node_id=node.id,
             outcomes=(),
-            args={
-                "prompt": self._prompt(self.walk.ref_values()),
-                "fields": self._fields(),
+            material={
+                PROMPT: self._prompt(self.walk.ref_values()),
+                FIELDS: self._fields(),
             },
             context=self._context(),
             thinking=node.think,
@@ -181,38 +199,35 @@ class AgentStep(Step[AgentNode]):
         self._screen_block("\n\n".join(brief))
         return self._request()
 
-    def _screen_block(self, prefix: str) -> None:
-        """Rebuild the episode's answerable candidates off the CURRENT
-        screen and set the pending user block. When the episode may tap,
-        granted landmarks ride as candidates too (their declared bbox —
-        healed to the live label only if picked) unless a live row
-        already reads their name — the fresher row wins — and a
-        page-scoped landmark rides only while its page is the verified
-        reading; with no tap tool there is nothing to tap, so no rows.
-        Granted macros are always answerable, by name."""
+    def _screen_block(self, lead: str) -> None:
+        """Read the CURRENT screen into the pending user turn: `lead` (what happened, or
+        the brief), then the screen — the walk's frame rides between
+        lead and listing when the read carried one. When the episode
+        may tap, the model answers a box (a listed element's, a granted
+        landmark's, or one it reads off the frame) and the journal keeps
+        the model's own label for what it tapped; a page-scoped landmark is shown
+        only while its page is the verified reading; with no tap tool
+        there is nothing to tap. Granted macros are always answerable,
+        by name."""
         walk, node = self.walk, self.node
         assert walk.screen is not None
-        macros = tuple(Candidate(key=n, kind=CAND_MACRO) for n in node.macros)
-        rows = tuple(
-            c for c in act_candidates(walk.screen.rows) if c.key not in node.macros
-        )
-        can_tap = "tap" in node.tools
+        rows = act_rows(walk.screen.rows)
+        can_tap = TOOL_TAP in node.tools
         give = tuple(n for n in node.give if self._granted(n)) if can_tap else ()
-        row_keys = {r.key for r in rows}
-        grants = tuple(
-            Candidate(key=n, bbox=walk.landmarks[n].bbox, kind=CAND_LANDMARK)
-            for n in give
-            if n not in row_keys
-        )
-        self.candidates = macros + (grants + rows if can_tap else ())
-        parts = [prefix] if prefix else []
-        parts.append(act_block("Current screen", rows))
+        self.elements = rows
+        parts = [act_block("Current screen", rows)]
         if give:
-            parts.append("Granted landmarks (answer by name): " + ", ".join(give))
+            # Each with what it reads and where it sits: the model taps a
+            # landmark's box like any other box.
+            parts.append(
+                "Granted landmarks (spots the playbook knows; tap their box):\n"
+                + "\n".join(f"- {n}: {_landmark_line(walk.landmarks[n])}" for n in give)
+            )
         if node.macros:
             parts.append(
-                "Granted macros (answer by name to run one): " + ", ".join(node.macros)
+                'Granted macros (run_macro with "name"): ' + ", ".join(node.macros)
             )
+        self.lead = lead
         self.block = "\n".join(parts)
 
     def _granted(self, name: str) -> bool:
@@ -235,35 +250,37 @@ class AgentStep(Step[AgentNode]):
             return self.walk.handover(
                 f"agent {node.id!r} exceeded its call limit ({node.max_calls})"
             )
-        verbs = [AGENT_DONE, ESCALATE]
-        for tool, tool_verbs in AGENT_TOOL_VERBS.items():
-            if tool in node.tools:
-                verbs.extend(tool_verbs)
-        return DecisionRequest(
+        # The tools this turn may call: the granted ones, the macro run
+        # when macros are granted, and the two exits.
+        actions = [AGENT_DONE, ESCALATE]
+        actions.extend(t for t in AGENT_TOOLS if t in node.tools)
+        if node.macros:
+            actions.append(TOOL_RUN)
+        self.sent = DecisionRequest(
             call=AGENT_ACT,
             node_id=node.id,
-            outcomes=tuple(verbs),
-            # `tools`/`give` shape the legend — fixed for the episode.
-            args={
-                "block": self.block,
-                "tools": " ".join(node.tools),
-                "give": ", ".join(node.give),
-                "macros": ", ".join(node.macros),
-            },
-            candidates=self.candidates,
+            outcomes=tuple(actions),
+            material={LEAD: self.lead, BLOCK: self.block},
+            macros=tuple(node.macros),
+            elements=self.elements,
+            frame=self.walk.frame,
             history=tuple(self.history),
             thinking=node.think,
         )
+        return self.sent
 
     def _episode_resolve(self, outcome: MicroOutcome | None) -> Turn:
         node, walk = self.node, self.walk
         if outcome is None:
             return walk.handover(f"agent {node.id!r}: call failed or under-confident")
-        # Settle the turn into the append-only history: the block that
-        # asked, then the reply in the contract's canonical spelling
-        # (micro re-serializes it, so repair-retry noise never enters
-        # the replayed prefix).
-        self.history.append(("user", self.block))
+        # Settle the turn into the append-only history: the user turn
+        # exactly as micro composed and sent it (frame included), then
+        # the reply in the contract's canonical spelling (micro
+        # re-serializes it, so repair-retry noise never enters the
+        # replayed prefix).
+        assert self.sent is not None  # resolve follows the request it answers
+        asked = user_content(self.sent)
+        self.history.append(("user", asked if isinstance(asked, str) else tuple(asked)))
         self.history.append(("assistant", canonical_reply(outcome)))
         if outcome.out == ESCALATE:
             return walk.handover(f"agent {node.id!r} escalated: {outcome.reason}")
@@ -302,9 +319,10 @@ class AgentStep(Step[AgentNode]):
                 else "no screen observed"
             )
             if wrong is not None:
-                self.block = (
+                # Same screen, same listing: only the lead changes.
+                self.lead = (
                     f"done rejected: the walk must be on {node.verify!r} — "
-                    f"{wrong}. Continue toward the goal, or answer escalate."
+                    f"{wrong}. Continue toward the goal, or escalate."
                 )
                 return self._request()
             return self._close(outcome, calls=self.calls)
@@ -324,23 +342,20 @@ class AgentStep(Step[AgentNode]):
             # needs its own gate (the move rule, episode-shaped).
             walk.spend_consent()
         picked = outcome.picked
-        if picked.kind == CAND_MACRO:
+        if isinstance(picked, Macro):
             # A granted pack macro: the recorded gesture sequence runs
             # whole, argument-less; its result view is the next screen.
-            self.pending_desc = f"ran macro {picked.key!r}"
+            self.pending_desc = f"ran macro {picked.name!r}"
             return walk.synth(
                 KIND_MACRO,
                 f"conductor: agent {node.id} — {self.pending_desc}",
                 gesture_vocab.RUN_MACRO,
-                {"name": qualified_macro(walk.app, picked.key)},
+                {"name": qualified_macro(walk.app, picked.name)},
             )
+        assert isinstance(picked, Tap)
         bbox = picked.bbox
-        assert bbox is not None  # rows and landmarks carry one
-        if picked.kind == CAND_LANDMARK:
-            # A granted landmark: label-healed to where its text sits
-            # NOW (the one search the macro heal rides too).
-            bbox = recover.locate_landmark(walk.landmarks[picked.key], walk.screen)[0]
-        self.pending_desc = f"tapped {picked.key!r}"
+        # Exactly what the model said: its label, its box.
+        self.pending_desc = f"tapped {picked.label!r} at {format_bbox(bbox)}"
         return walk.synth(
             KIND_TAP,
             f"conductor: agent {node.id} — {self.pending_desc}",
@@ -360,3 +375,11 @@ class AgentStep(Step[AgentNode]):
             return walk.handover(f"agent {node.id!r}: phone locked mid-episode")
         self._screen_block(f"[you {self.pending_desc}]")
         return self._request()
+
+
+def _landmark_line(landmark: Landmark) -> str:
+    """A granted landmark as the block shows it: its readings (the text
+    it carries, or the author's description of the spot) and its
+    declared box, the listing's spelling."""
+    reads = " / ".join(f'"{r}"' for r in landmark.label) or '""'
+    return f"reads {reads}, box {format_bbox(landmark.bbox)}"

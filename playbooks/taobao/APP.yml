@@ -23,7 +23,7 @@ landmarks:
     at: [0.231, 0.898, 0.346, 0.954]     # measured live on the detail footer
   confirm:
     label: ["确定", "加入购物车"]           # a sheet's full-width bottom button —
-    at: [0.06, 0.910, 0.94, 0.955]       # UNRECORDED estimate, heals by text
+    at: [0.06, 0.910, 0.94, 0.955]       # UNRECORDED estimate — record it
   close:
     label: "the ✕ below a promo popup card"  # 天降红包 / coupon popups: an icon,
     at: [0.44, 0.665, 0.56, 0.735]           # no text row — the box is the tap

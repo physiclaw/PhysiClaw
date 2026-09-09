@@ -35,8 +35,9 @@ recursive-descent style, sharing the scalar terminals at the bottom:
     band      ::= top | bottom | left | right     # common.bbox.BANDS
 
 The `at:` box never travels alone: the verb's object says what the
-coordinates ARE (on-screen text heals the press to where that text sits
-today; a description merely documents).
+coordinates ARE — the element's on-screen text, or a description — so
+the file and the run log read as annotated targets. The box fires as
+written.
 
 Validation is all-or-nothing (a file failing ANY check is excluded
 whole, never partially loaded), so the runner never meets an unknown
@@ -430,9 +431,9 @@ def _step_args(tool: str, step: dict, where: str, input_names: set[str]) -> dict
     args = parse_object(tool, obj, where, step)
     if at is not None:
         if not (isinstance(at, list) and any(isinstance(v, str) for v in at)):
-            # The runner READS this value (healing measures drift from
-            # its center), so a literal box must not reach it malformed.
-            # A box carrying `{placeholder}` strings stays server-checked
+            # A literal box is judged here so a malformed one never
+            # reaches the wire. A box carrying `{placeholder}` strings
+            # stays server-checked
             # (the placeholder pass below vets the names).
             _box(at, f"{where}: `at`")
         _check_placeholders(at, input_names, where)

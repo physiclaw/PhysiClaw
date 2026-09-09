@@ -619,14 +619,25 @@ def _decisions_section(rows: list[dict]) -> None:
 
 
 def _mark(r: "decisions.Reply", rec: "decisions.Recorded") -> str:
-    """One word on a reply, beside the recorded answer."""
+    """One word on a reply, beside the recorded move — the same
+    agreement `decisions.summarize` counts."""
+    from physiclaw.conductor.drive import decisions
+
     if r.error:
         return "error"
     if not rec.allowed:
         return "unjudged"
     if not r.valid:
         return "invalid"
-    return "same" if r.answer == rec.answer else "differs"
+    return "same" if decisions.agreed(r, rec) else "differs"
+
+
+def _move(answer: "str | None", args: "dict | None") -> str:
+    """A recorded or replayed move in words (`describe_move`); an
+    invalid reply reads as None."""
+    from physiclaw.conductor.walk.micro import describe_move
+
+    return describe_move(answer, args or {}) if answer is not None else "None"
 
 
 @playbooks_app.command()
@@ -681,11 +692,9 @@ def micro(
         exit_error("--reps must be at least 1", code=2)
     d = paths.engine_sessions_dir() / resolve_sid(session)
     try:
-        records = decisions.load(d)
+        records = decisions.load(d, only=only or None)
     except OSError as e:
         exit_error(str(e))
-    if only:
-        records = [r for r in records if only in (r.call, r.node)]
     if not records:
         exit_error("no recorded decision calls match")
     ref = model or CONFIG.conductor.micro_model or CONFIG.agent.model
@@ -720,6 +729,7 @@ def micro(
                         "call": row.recorded.call,
                         "node": row.recorded.node,
                         "recorded": row.recorded.answer,
+                        "recorded_args": row.recorded.args,
                         "replies": [asdict(r) for r in row.replies],
                     }
                     for row in rows
@@ -740,13 +750,13 @@ def micro(
     for row in rows:
         rec = row.recorded
         typer.echo(
-            f"{rec.node or '?'} ({rec.call}) recorded: {rec.answer!r}"
+            f"{rec.node or '?'} ({rec.call}) recorded: {_move(rec.answer, rec.args)}"
             + (f" {rec.confidence:.2f}" if rec.confidence is not None else "")
         )
         for r in row.replies:
             mark = _mark(r, rec)
             typer.echo(
-                f"    {mark:<8} {r.answer!r}"
+                f"    {mark:<8} {_move(r.answer, r.args)}"
                 + (f" {r.confidence:.2f}" if r.confidence is not None else "")
                 + f"  {r.ms / 1000:.1f}s out={r.output} reasoning={r.reasoning}"
                 + (f"  {r.error}" if r.error else "")

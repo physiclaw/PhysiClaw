@@ -290,24 +290,29 @@ def role_of(m: Message) -> str:
     return "user"
 
 
-def message_of(role: str, text: str) -> Message:
-    """A text message back from its role word (`role_of`'s inverse for
-    the three text roles)."""
+def message_of(role: str, content: "str | list[ContentBlock]") -> Message:
+    """A message back from its role word (`role_of`'s inverse for the
+    three roles a text record keeps). Only the user role carries blocks
+    (a screen's frame beside its listing); system and assistant content
+    is text."""
     if role == "system":
-        return SystemMessage(content=text)
+        assert isinstance(content, str), "a system message is text"
+        return SystemMessage(content=content)
     if role == "assistant":
+        assert isinstance(content, str), "an assistant message is text"
         return AssistantMessage(
-            content=text, tool_calls=[], finish_reason=FinishReason.STOP
+            content=content, tool_calls=[], finish_reason=FinishReason.STOP
         )
-    return UserMessage(content=text)
+    return UserMessage(content=content)
 
 
 @dataclass(frozen=True)
 class MicroRecord:
     """One conductor decision call, whole — what the wire log keeps and
-    a re-ask reads back: the request in its own shape (role and text per
-    message; a provider's wire may move the system prompt elsewhere),
-    the raw reply, and the caller's reading of it."""
+    a re-ask reads back: the request in its own shape (role and content
+    per message — text, or the typed blocks of a screen's frame beside
+    its listing; a provider's wire may move the system prompt
+    elsewhere), the raw reply, and the caller's reading of it."""
 
     call: str
     node: str
@@ -315,9 +320,13 @@ class MicroRecord:
     allowed: tuple[str, ...]  # the answers the caller accepted
     answer: str | None  # what it read; None = an invalid reply
     confidence: float | None
-    request: list[dict[str, str]]
+    request: list[dict[str, Any]]
     raw: dict[str, Any]
     reason: str | None = None  # the reply's own one-line reason, as read
+    # A tool call's arguments as read (a tap's label and at, a scroll's
+    # direction, a run's name, done's return fields); None for a
+    # question's answer.
+    args: dict[str, Any] | None = None
 
 
 # ---------- collapse policy ----------

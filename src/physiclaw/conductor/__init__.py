@@ -25,7 +25,8 @@ Vocabulary, in the order a reader meets it:
                unknown, with the page id
     hand       a declared recovery action: one gesture or one macro
     landmark   a named fixed spot the author knows ({label, bbox})
-    grant      what an episode may name blind: a landmark or a macro
+    grant      what an episode is given: a landmark (shown with its box,
+               tapped like any other) or a macro (run by name)
     gate       the ask-and-hold state (reply words, consent)
     brief      the walk's last note: why it stopped, where it stands
     handover   the walk goes quiet; the model takes the session

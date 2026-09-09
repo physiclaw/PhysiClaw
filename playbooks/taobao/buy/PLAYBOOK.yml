@@ -26,7 +26,7 @@ route:
       - a pure product keyword: name + spec (e.g. 五常大米 5kg)
       - no quantity words (一袋/两盒), no verbs, no politeness
       - keep the language the buyer used
-      If the message names no concrete product, answer escalate.
+      If the message names no concrete product, return escalate.
     returns:
       keyword: the search keyword, exactly as it should be typed
     think: off                    # a keyword is read off the words, not reasoned out
@@ -64,10 +64,14 @@ route:
   # frozen; each call appends one [action]/[screen] pair and nothing
   # is ever rewritten — every call's prefix is byte-identical to the
   # previous call's whole request, so the provider cache pays for
-  # all but the newest block. Screens arrive as element listings
-  # (text rows with ids, no images); the model answers with a row
-  # id, a granted landmark, or a verb (scroll / done / escalate) —
-  # never coordinates. The walker grounds the name to a live bbox.
+  # all but the newest block. Screens arrive as the model's own
+  # turns see them: the screenshot beside its element listing (icon
+  # and text rows with ids); the model answers a tool call the way
+  # its own turns would — one envelope, action + args, for every
+  # tool: tap {label, at}, scroll {direction}, back {}, done
+  # {returns}, escalate {}. A tap's box is judged by the engine's
+  # bbox rules, and a payment episode's by the money predicates
+  # before it fires.
   #
   # The pick ends on the BUY SHEET (立即购买 / 领券购买 from the detail
   # page): one item, the spec options, the address, 实付 and the pay
@@ -119,7 +123,7 @@ route:
     on_fail: handover             # money may have moved: the model verifies and reports
     macro:
       steps:
-        - tap: ["免密支付", "立即支付", "提交订单"]   # one target, three spellings; heals by text
+        - tap: ["免密支付", "立即支付", "提交订单"]   # one target, three spellings
           at: [0.368, 0.923, 0.629, 0.948]
         - wait: 4
         - tap: ["立即支付", "确认支付"]              # only a two-step cashier shows this

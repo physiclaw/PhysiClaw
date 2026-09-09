@@ -50,7 +50,6 @@ from typing import Any
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
-    ImageBlock,
     Message,
     SystemMessage,
     Thinking,
@@ -68,7 +67,7 @@ from physiclaw.provider.provider_base import (
     ProviderTransientError,
     describe,
 )
-from physiclaw.provider.wire import encode_content
+from physiclaw.provider.wire import anthropic_image_part, encode_content
 
 # `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
 # `physiclaw --help` (and any session that doesn't pick this provider)
@@ -287,17 +286,6 @@ def _extract_system_text(history: list[Message]) -> str:
     )
 
 
-def _anthropic_image_part(block: ImageBlock) -> dict:
-    return {
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": block.media_type,
-            "data": block.data_b64,
-        },
-    }
-
-
 def _content_to_anthropic(content) -> str | list[dict]:
     """User / tool-result content (`str` or list of `ContentBlock`) →
     Anthropic content (string or block list). Block dispatch is the
@@ -305,7 +293,7 @@ def _content_to_anthropic(content) -> str | list[dict]:
     empty fallback are ours."""
     return encode_content(
         content,
-        image_part=_anthropic_image_part,
+        image_part=anthropic_image_part,
         empty=_EMPTY_CONTENT,
         label="anthropic",
     )

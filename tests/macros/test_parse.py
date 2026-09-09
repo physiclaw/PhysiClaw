@@ -1133,7 +1133,7 @@ def test_inline_macro_rejects_aliases() -> None:
 
 def test_parse_macro_press_needs_its_object() -> None:
     # A box never travels alone — the object says what the coordinates
-    # are, so the file stays readable and the press can heal.
+    # are, so the file and the run log stay readable.
     text = "name: m\ndescription: d\nsteps:\n  - tap:\n    at: [0.1, 0.1, 0.2, 0.2]\n"
 
     with pytest.raises(MacroError, match="`tap` needs its object"):
@@ -1181,9 +1181,8 @@ def test_parse_macro_bad_label_readings_rejected(label: str, fragment: str) -> N
 
 
 def test_parse_macro_literal_bbox_is_shape_checked() -> None:
-    # The runner reads the target's bbox now (healing measures drift
-    # from its center) — a malformed literal must fail at parse, not
-    # heal itself past the server's backstop.
+    # A malformed literal box must fail at parse, before it ever reaches
+    # the wire — the server's backstop is not the first line.
     text = (
         'name: m\ndescription: d\nsteps:\n  - tap: "x"\n    at: [0.5, 0.44, 0.4, 0.4]\n'
     )

@@ -74,8 +74,8 @@ steps:
   - home_screen
 
   # The object says what the box IS: the element's own on-screen text when
-  # it has any (the runner then heals the tap to where that text sits
-  # today), or a plain description for icons and blank areas.
+  # it has any, or a plain description for icons and blank areas. The tap
+  # fires at the box as written.
   - tap: "WeChat dock icon"
     at: [0.317, 0.893, 0.488, 0.98]   # ← the dock icon; move to YOURS
     # No check here. A check runs BEFORE its own step, so "WeChat is
@@ -119,8 +119,8 @@ steps:
     require: {{text: "your-user-name", within: [0.15, 0.02, 0.85, 0.1]}}   # ← EDIT
     hint: "not in the right chat — paste by hand"
 
-  # "Paste" is the menu bubble's own text — a healing target. The check
-  # is region-scoped: THE paste bubble, not the word anywhere on screen.
+  # "Paste" is the menu bubble's own text. The check is region-scoped:
+  # THE paste bubble, not the word anywhere on screen.
   - tap: "Paste"               # rehearse just this one: --start-at idx8-tap-paste
     at: [0.099, 0.544, 0.197, 0.564]
     require: {{text: "Paste", within: [0.03, 0.5, 0.35, 0.62]}}
@@ -187,14 +187,11 @@ Scaffold one with `physiclaw macros init <name>`, edit it, then:
       - home_screen                      bare words: {", ".join(sorted(ARGLESS_TOOLS))}
 
   The verbs: {", ".join(sorted(ALLOWED_STEP_TOOLS))}. A press
-  ({" / ".join(sorted(gesture_vocab.PRESS_TOOLS))}) whose object IS
-  on-screen text HEALS: it taps where that text sits today if a match lies
-  near the recorded spot, falling back to `at` otherwise — never asserting
-  (presence checks stay `require`'s job). The object may list up to
-  {MAX_LABEL_READINGS} alternate readings of ONE target
-  (`tap: ["免密支付", "立即支付"]`). A step that heals on every run wants
-  re-recording — the step log names each heal, and the run log records the
-  coordinates that actually fired.
+  ({" / ".join(sorted(gesture_vocab.PRESS_TOOLS))}) fires at `at` exactly
+  as written — nothing moves the tap under the hood, so a miss is visible
+  and fixable (presence checks are `require`'s job). The object may list
+  up to {MAX_LABEL_READINGS} alternate readings of ONE target
+  (`tap: ["免密支付", "立即支付"]`), for the reader and for `require`.
 - Step handles are derived, never written: `idx<N>-<verb>-<object>`
   (`idx1-home_screen`, `idx3-wait-2`, `idx8-tap-paste`; a long object is
   cut to {HANDLE_OBJECT_CHARS} characters at a word boundary, a readings

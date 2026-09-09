@@ -1,17 +1,21 @@
 """The conductor's prompt texts — what its three micro-calls say.
 
 Text only: the mechanism (`micro.py`) assembles the skeleton — role
-sentence → reply contract → answer legend — and the rows there name
-these. Kept apart so a prompt can be read and edited as prose, and the
+sentence → reply contract → legend — and the rows there name these
+(the tool legend itself lives beside the tools, `calls.TOOL_LEGEND`).
+Kept apart so a prompt can be read and edited as prose, and the
 agent rows stay what they are: the author's prompt is the whole brief
 and the conductor adds only the output contract and, for an episode,
 what its own screen block is made of (`SCREEN_ROWS_NOTE`).
 """
 
+from physiclaw.common.listing import LISTING_HEADER
+
 # parse_task — the boot's one question over the user's thread.
 PARSE_TASK_ROLE = (
-    "You read an instant-message thread, oldest line first and "
-    "newest last, and decide whether the user has a request still "
+    "You read an instant-message thread — its screenshot, when one is "
+    "attached, and its text read off the screen, oldest line first and "
+    "newest last — and decide whether the user has a request still "
     "OUTSTANDING that one of the available playbooks performs."
 )
 PARSE_TASK_LEGEND = (
@@ -57,43 +61,29 @@ PARSE_TASK_LEGEND = (
     "them."
 )
 
-# agent_fields — the pure-text call: the author's prompt in, fields out.
-AGENT_FIELDS_LEGEND = (
-    '"answer" is "done" (then ALSO add one field per return field '
-    'listed, each a plain string) or "escalate" when the brief '
-    "cannot be fulfilled from what it gives you."
-)
-
-# agent_act — what the screen block IS, said once in the system prompt.
-# Rows are OCR boxes: a title breaks across rows, its price sits on the
-# row below, a bundle's ×4 on another row than its brand; a model that
-# reads rows as whole items taps a continuation row or a bundle it
-# never saw. Written for a model that answers: with hidden thinking on,
-# the sentence is one more thing to ruminate about.
+# agent_act — what the screen block IS, said once in the system prompt:
+# the screenshot the phone showed and the element listing read off it,
+# the same pair the model's own turns see. Text rows are OCR boxes: a
+# title breaks across rows, its price sits on the row below, a bundle's
+# ×4 on another row than its brand; a model that reads rows as whole
+# items taps a continuation row or a bundle it never saw. Icon rows
+# carry no label — the picture says what they are. Written for a model
+# that answers: with hidden thinking on, the sentence is one more thing
+# to ruminate about.
 SCREEN_ROWS_NOTE = (
-    "The screen block is OCR text boxes read top to bottom, one row per "
-    "box: one on-screen item (a listing, a card, a message) usually spans "
-    "several consecutive rows, a title may be cut at the row edge and "
-    "continue on the next, and a price or sales row belongs to the title "
-    "rows just above it. Read rows that way; never reconstruct beyond "
-    "what they say."
+    "Each screen block is the phone's screenshot (when one is attached; "
+    "icon boxes are drawn on it) followed by its element listing, one row "
+    "per detected element, top "
+    f"to bottom: `{LISTING_HEADER}`. A "
+    "[text] row is one OCR box: one on-screen item (a listing, a card, a "
+    "message) usually spans several consecutive rows, a title may be cut "
+    "at the row edge and continue on the next, and a price or sales row "
+    "belongs to the title rows just above it. An [icon] row has no label; "
+    "read what it is from the screenshot at its box (icons are drawn there "
+    "with their id). Boxes are fractions of the screenshot's width and "
+    "height. Use the screenshot to see layout and what the rows belong "
+    "to; never reconstruct beyond what the screen shows."
 )
-# The episode legend's fixed options (`micro._act_legend` adds the
-# granted tools' lines from `calls.py`).
-GRANTED_LANDMARKS_OPTION = (
-    "a granted landmark name, but ONLY one the NEWEST screen block "
-    "lists under 'Granted landmarks' ({give})"
+RETURN_FIELDS_HEADER = (
+    'Return fields (the keys of "args" when "action" is "done", each a plain string):'
 )
-GRANTED_MACROS_OPTION = (
-    "a granted macro name, copied exactly — it runs that recorded "
-    "gesture sequence ({macros})"
-)
-DONE_OPTION = (
-    '"done" ONLY when the goal is fully met (then ALSO add one field per '
-    "return field listed, each a plain string)"
-)
-ESCALATE_OPTION = (
-    '"escalate" when you are stuck, the screen is unexpected, or the goal '
-    "needs an action you were not given"
-)
-RETURN_FIELDS_HEADER = 'Return fields (each a plain string beside "answer": "done"):'

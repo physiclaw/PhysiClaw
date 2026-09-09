@@ -125,6 +125,20 @@ def encode_content(
     return parts or empty
 
 
+def anthropic_image_part(block: ImageBlock) -> dict:
+    """An `ImageBlock` as Anthropic's base64 `image` part — the shape the
+    Anthropic provider sends and the one `contract.wire.scrub_block`
+    reads back, so the conductor's wire records use it too."""
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": block.media_type,
+            "data": block.data_b64,
+        },
+    }
+
+
 def _openai_image_part(block: ImageBlock) -> dict:
     return {
         "type": "image_url",

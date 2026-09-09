@@ -138,7 +138,18 @@ def session_dir(tmp_path: Path) -> Path:
                 "kind": "micro",
                 "call": "parse_task",
                 "node": "parse",
-                "request": [{"role": "user", "text": "which"}],
+                "request": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"type": "ref", "ref": "images/micro.jpg"},
+                            },
+                            {"type": "text", "text": "which"},
+                        ],
+                    }
+                ],
                 "raw": {},
                 "answer": "x",
                 "confidence": 0.9,
@@ -343,6 +354,8 @@ def test_records_are_stamped_with_their_words(session_dir: Path) -> None:
     assert by["bad_turn_shape"]["words"].startswith("The model's turn was malformed")
     # A reply that is neither wire shape gets no gist; the words tables ride along.
     assert "gist" not in by["micro"]
+    # A decision's frame is read off its request like a turn's.
+    assert by["micro"]["frames"] == ["images/micro.jpg"]
     assert model["words"]["calls"]["parse_task"] == "Which playbook?"
     # The frames a record carries, whichever stream, so the page never searches for them.
     assert by["tool_result"]["frames"] == ["images/100001_000_t0.jpg"]

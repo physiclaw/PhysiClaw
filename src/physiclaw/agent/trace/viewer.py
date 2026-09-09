@@ -146,10 +146,13 @@ def _stamp(r: dict[str, Any]) -> None:
                 r["note"] = note_text(args)
         return
     kind = rec.get("kind")
-    if kind == "request" and isinstance(rec.get("messages"), list):
+    # A turn's request and a micro record carry their frames the same
+    # way (scrubbed refs in typed blocks), under different keys.
+    sent = rec.get("messages") if kind == "request" else rec.get("request")
+    if kind in ("request", "micro") and isinstance(sent, list):
         r["frames"] = [
             ref
-            for m in rec["messages"]
+            for m in sent
             if isinstance(m, dict)
             for b in leaf_blocks(m.get("content"))
             if (ref := image_ref(b))

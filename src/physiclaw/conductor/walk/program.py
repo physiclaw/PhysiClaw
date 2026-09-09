@@ -67,7 +67,7 @@ from physiclaw.conductor.walk.suspension import (
 )
 from physiclaw.conductor.walk.turns import Turnsmith
 from physiclaw.conductor.walk.walklog import Outcome
-from physiclaw.contract.dto import AssistantMessage, Message
+from physiclaw.contract.dto import AssistantMessage, ImageBlock, Message
 from physiclaw.contract.plugin import EventSink
 from physiclaw.macros.model import Macro
 
@@ -171,8 +171,11 @@ class Program:
         # Recorded agent outputs (`{node.field}` refs read them).
         self.outputs: dict[str, str] = {}
         # The screen/verdict the current step works from — every path
-        # observes one before acting.
+        # observes one before acting — and the frame the same result
+        # carried (None when the read had no image), what a model call
+        # sees beside the listing.
         self.screen: Screen | None = None
+        self.frame: ImageBlock | None = None
         self.verdict: Verdict | None = None
         # The amount a payment move actually fired with (consent is
         # consumed at fire, so this is the only place it survives to the
@@ -389,6 +392,7 @@ class Program:
         # the synth site) match against the thread; everything else
         # against the pack's own pages.
         self.screen = views.screen_of(result)
+        self.frame = views.frame_of(result)
         self.verdict = match_screen(
             self.screen,
             self.channel.prints if pending.channel and self.channel else self.prints,
@@ -725,8 +729,8 @@ class Program:
         if isinstance(step, recover.Exhausted):
             return fail(f"{reason} — {step.reason}")
         # The page's DECLARED hand — the planner decides WHETHER, the
-        # walk interprets WHAT: a bare gesture, a landmark tap
-        # (label-healed), or an argument-less macro.
+        # walk interprets WHAT: a bare gesture, a landmark tap (at its
+        # declared box, exactly), or an argument-less macro.
         hand = step.hand
         note = (
             f"conductor: recovering toward {expected_id} via its declared hand "
@@ -745,9 +749,7 @@ class Program:
                 return self.handover(
                     f"{reason} (recover landmark {hand.landmark!r} undeclared)"
                 )
-            assert self.screen is not None
-            bbox, located = recover.locate_landmark(landmark, self.screen)
-            return self._recover_act(st, note + located, "tap", {"bbox": list(bbox)})
+            return self._recover_act(st, note, "tap", {"bbox": list(landmark.bbox)})
         assert hand.tool is not None
         return self._recover_act(st, note, hand.tool, {})
 

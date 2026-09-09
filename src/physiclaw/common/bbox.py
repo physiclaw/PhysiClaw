@@ -56,6 +56,13 @@ def validate_bbox(bbox: list[float]) -> list[float]:
     return bbox
 
 
+def format_bbox(bbox) -> str:
+    """A box as the listing spells it: `[left,top,right,bottom]` at 3
+    decimals — the precision `listing.Element` canonicalizes to, so a
+    copied box and its source render (and compare) alike."""
+    return "[" + ",".join(f"{float(v):.3f}" for v in bbox) + "]"
+
+
 def parse_box(value) -> Bbox:
     """A declared `[left, top, right, bottom]` → the canonical tuple.
     `validate_bbox` plus the one check a YAML author can trip that a

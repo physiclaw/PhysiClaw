@@ -100,7 +100,7 @@ class ActivateStep(Step[ActivateNode]):
         walk = self.walk
         assert walk.activation is not None and walk.screen is not None
         req = replace(
-            walk.activation.request(walk.screen, self.node.id),
+            walk.activation.request(walk.screen, self.node.id, walk.frame),
             thinking=self.node.think,
         )
         if self.merged is not None:

@@ -9,8 +9,7 @@ waits for 好的 / 不用, `pay` is one recorded tap, `report` tells the user.
 ## Recorded facts
 
 - Search bar, paste bubble, and 搜索 key coordinates come from the
-  results screen of the recording device; the paste bubble heals by
-  its text.
+  results screen of the recording device and fire exactly as recorded.
 - The pay button (免密支付 / 立即支付 / 提交订单) sits at the sheet's
   bottom; a two-step cashier gets its second tap only when 立即支付 or
   确认支付 shows.

@@ -17,12 +17,8 @@ the walk-wide ceiling `MAX_RECOVER_ACTIONS`.
 from dataclasses import dataclass
 from enum import StrEnum
 
-from physiclaw.common.bbox import Bbox, center_of
-from physiclaw.common.listing import Screen, nearest_labeled_row
 from physiclaw.conductor.spec.limits import MAX_RECOVER_ACTIONS
 from physiclaw.conductor.spec.model import READING_ELSEWHERE, RecoverHand, Recovery
-from physiclaw.conductor.spec.pages import Landmark
-from physiclaw.macros.steps import HEAL_RADIUS
 
 
 class Mode(StrEnum):
@@ -88,19 +84,3 @@ def plan(
     if hand is None:
         return Exhausted(f"its page declares no `{reading}` recover hand")
     return Hand(hand)
-
-
-def locate_landmark(landmark: Landmark, screen: Screen) -> "tuple[Bbox, str]":
-    """Where a declared landmark IS right now: the text row matching one
-    of its label readings nearest the declared spot (`nearest_labeled_row`
-    — the one search the macro heal rides too, within the one
-    HEAL_RADIUS), else the declared bbox. Returns the bbox to tap and a
-    short note for the journal."""
-    if not screen.readable:
-        return landmark.bbox, ""
-    declared = center_of(landmark.bbox)
-    assert declared is not None  # Landmark bboxes are parse-validated
-    best = nearest_labeled_row(screen.rows, landmark.label, declared)
-    if best is None or best[0] > HEAL_RADIUS:
-        return landmark.bbox, ""
-    return best[1].bbox, f" (located {best[1].label.strip()!r} on screen)"

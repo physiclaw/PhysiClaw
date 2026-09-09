@@ -2,7 +2,7 @@
 
 import json
 import logging
-from dataclasses import asdict
+from dataclasses import fields
 from typing import Any
 
 from physiclaw.agent.trace import store
@@ -30,6 +30,11 @@ class RawLog:
         self.session_id = session_id
         self.path = d / "wire.jsonl"
         self._f = open(self.path, "a", encoding="utf-8", newline="\n")
+        # The turn the latest request/response record carried: a micro
+        # record files an unseen frame under it (its frame is normally
+        # one a tool result already filed, so the store returns that
+        # file; this only names a first sighting).
+        self._turn = 0
 
     def write_session_start(
         self,
@@ -53,6 +58,7 @@ class RawLog:
     def write_request(self, turn: int, messages: list[dict]) -> None:
         # Inline frames become session-relative paths: the file the
         # frame's own tool result filed, or one filed now under this turn.
+        self._turn = turn
         scrubbed = wire.scrub_messages(
             messages, lambda mime, b64: self._images.put(turn, mime, b64)
         )
@@ -69,14 +75,23 @@ class RawLog:
         # Wire fidelity: a synthesized response was composed by the
         # conductor — nothing was sent to the provider, and no request
         # record precedes it (the loop skips the request write entirely).
+        self._turn = turn
         extra = {"synthesized": True} if synthesized else {}
         self._emit("response", turn=turn, elapsed_ms=elapsed_ms, **extra, raw=raw)
 
     def write_micro(self, rec: MicroRecord) -> None:
         """One conductor decision call in a single record (kind "micro")
         — self-contained, so `playbooks micro` re-asks it without the
-        walk. Text only, so no scrubbing pass."""
-        self._emit("micro", **asdict(rec))
+        walk. Its frames are scrubbed to session files like a turn's
+        request (the same codec, so the viewer and the re-ask read them
+        back the same way)."""
+        # Shallow: the scrub copies what it changes, and `asdict` would
+        # deep-copy every replayed message (and frame) first.
+        data = {f.name: getattr(rec, f.name) for f in fields(rec)}
+        data["request"] = wire.scrub_messages(
+            data["request"], lambda mime, b64: self._images.put(self._turn, mime, b64)
+        )
+        self._emit("micro", **data)
 
     def close(self) -> None:
         if not self._f.closed:

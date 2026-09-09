@@ -4,9 +4,12 @@ text and acting episodes), the `start` move, per-page `recover:` hands,
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from conductor_fakes import (
     ELSEWHERE,
+    FRAME,
     make_screen,
     write_channel,
     write_pack,
@@ -26,18 +29,28 @@ from conductor_fakes import (
     thread_screen as _thread,
 )
 
+from physiclaw.common.listing import LISTING_HEADER
 from physiclaw.conductor.drive import build
 from physiclaw.conductor.spec import pack as pb
 from physiclaw.conductor.spec import pages
-from physiclaw.conductor.spec.calls import ACT_SCROLL_DOWN, AGENT_DONE
+from physiclaw.conductor.spec.calls import (
+    ACT_SCROLL_DOWN,
+    AGENT_DONE,
+    TOOL_SCROLL,
+    TOOL_TAP,
+)
 from physiclaw.conductor.spec.model import AgentNode, DoNode, PlaybookError
 from physiclaw.conductor.walk.micro import (
     ACT_ARM,
     AGENT_ACT,
     AGENT_FIELDS,
     DecisionRequest,
+    Macro,
     MicroOutcome,
+    Tap,
+    user_content,
 )
+from physiclaw.contract.dto import AssistantMessage, ImageBlock, TextBlock
 
 BACK_LANDMARK = """\
 back:
@@ -277,13 +290,13 @@ def _boot():
     _feed(h, p.advance(h), ELSEWHERE)
     req = p.advance(h)
     assert isinstance(req, DecisionRequest) and req.call == AGENT_FIELDS
-    assert "买牛奶" in req.args["prompt"]
+    assert "买牛奶" in req.material["prompt"]
     return p, h, req
 
 
 def test_text_agent_fills_outputs_then_start_runs_unconditionally() -> None:
     p, h, req = _boot()
-    assert "keyword" in req.args["fields"]
+    assert "keyword" in req.material["fields"]
 
     start = p.resolve(_done_outcome(keyword="milk"))
     assert start is not None and start.tool_names() == ["note", "run_macro"]
@@ -353,19 +366,36 @@ def _at_episode():
     return p, h, req
 
 
+def _spot(req: DecisionRequest, text: str, label: str | None = None) -> Tap:
+    """A tap on the listed element reading `text` — the box the model
+    would copy off the listing, with the label in its own words."""
+    el = next(e for e in req.elements if e.label == text)
+    return Tap(label=label if label is not None else text, bbox=el.bbox)
+
+
 def test_episode_offers_rows_grants_and_verbs() -> None:
     _, _, req = _at_episode()
 
-    keys = [c.key for c in req.candidates]
-    assert "back" in keys  # the granted landmark, by name
-    assert "Milk 5kg" in keys  # a live screen row
-    assert AGENT_DONE in req.outcomes and ACT_SCROLL_DOWN in req.outcomes
-    assert "Granted landmarks" in req.args["block"]
+    assert req.macros == ()  # no macros granted; landmarks are not answers
+    assert TOOL_TAP in req.outcomes  # taps are boxes, not names
+    assert any(e.label == "Milk 5kg" for e in req.elements)  # the live screen
+    assert AGENT_DONE in req.outcomes and TOOL_SCROLL in req.outcomes
+    # A granted landmark shows what it reads and where it sits, not a
+    # bare name the model would have to take on faith.
+    assert (
+        "Granted landmarks (spots the playbook knows; tap their box):"
+        in (req.material["block"])
+    )
+    assert (
+        '- back: reads "back", box [0.000,0.000,0.100,0.100]' in req.material["block"]
+    )
+    assert LISTING_HEADER in req.material["block"]  # the whole listing, not labels
+    assert req.material["lead"].startswith("Add the right item")  # the brief leads
 
 
 def test_episode_tap_grounds_and_history_is_append_only() -> None:
     p, h, req = _at_episode()
-    row = next(c for c in req.candidates if c.key == "Milk 5kg")
+    row = _spot(req, "Milk 5kg", "the milk listing")
 
     tap = p.resolve(
         MicroOutcome(out=ACT_ARM, reason="fits", confidence=0.9, picked=row)
@@ -376,11 +406,90 @@ def test_episode_tap_grounds_and_history_is_append_only() -> None:
     _feed(h, tap, RESULTS)
     req2 = p.advance(h)
     assert isinstance(req2, DecisionRequest)
-    # Append-only: the settled turn rides verbatim before the new block.
+    # Append-only: the settled turn rides verbatim before the new block —
+    # exactly the content micro sent, in the canonical reply's spelling.
     assert len(req2.history) == 2
-    assert req2.history[0] == ("user", req.args["block"])
-    assert '"answer": "Milk 5kg"' in req2.history[1][1]
-    assert "[you tapped 'Milk 5kg']" in req2.args["block"]
+    assert req2.history[0] == ("user", user_content(req))
+    assert (
+        '"action": "tap", "args": {"label": "the milk listing", "at": ['
+        in req2.history[1][1]
+    )
+    assert req2.material["lead"] == (
+        "[you tapped 'the milk listing' at [0.450,0.380,0.550,0.420]]"
+    )
+
+
+def test_episode_taps_a_box_off_the_listing() -> None:
+    # What the detector missed the model taps from the screenshot; the
+    # journal says so, box and label.
+    p, h, req = _at_episode()
+    own = Tap(label="the red badge", bbox=(0.1, 0.2, 0.3, 0.4))
+
+    tap = p.resolve(
+        MicroOutcome(out=ACT_ARM, reason="see it", confidence=0.9, picked=own)
+    )
+
+    assert tap is not None and tap.tool_calls[1].arguments["bbox"] == [
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+    ]
+    _feed(h, tap, RESULTS)
+    req2 = p.advance(h)
+    assert isinstance(req2, DecisionRequest)
+    assert req2.material["lead"] == (
+        "[you tapped 'the red badge' at [0.100,0.200,0.300,0.400]]"
+    )
+
+
+def test_episode_frame_rides_the_request_and_settles_into_history() -> None:
+    # A read that carried a frame: the request sends it beside the
+    # listing, and the settled turn keeps it — uncompressed — so the
+    # next request's prefix is the previous request whole.
+    p, h, _ = _boot()
+    _feed(h, p.resolve(_done_outcome(keyword="milk")), HOME)
+    _feed(h, p.advance(h), RESULTS, frame=FRAME)
+    req = p.advance(h)
+    assert isinstance(req, DecisionRequest) and req.frame is FRAME
+    sent = user_content(req)
+    assert isinstance(sent, list) and sent[1] is FRAME
+
+    row = _spot(req, "Milk 5kg")
+    tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="ok", confidence=0.9, picked=row))
+    _feed(h, tap, RESULTS)  # a text-only result: no frame this time
+    req2 = p.advance(h)
+
+    assert isinstance(req2, DecisionRequest) and req2.frame is None
+    assert req2.history[0] == ("user", tuple(sent))
+    assert [type(b) for b in req2.history[0][1]] == [TextBlock, ImageBlock, TextBlock]
+    assert isinstance(user_content(req2), str)
+
+
+def test_episode_taps_an_icon_by_its_listed_box() -> None:
+    # An icon has no listing label, but its box is a tap like any other,
+    # and the journal keeps the label the model gave it.
+    p, h, _ = _boot()
+    _feed(h, p.resolve(_done_outcome(keyword="milk")), HOME)
+    screen = make_screen(("综合", 0.5, 0.1), ("", 0.9, 0.9), ("Milk 5kg", 0.5, 0.5))
+    _feed(h, p.advance(h), screen.text)
+    req = p.advance(h)
+    assert isinstance(req, DecisionRequest)
+    icon = Tap(label="the cart icon", bbox=screen.rows[1].bbox)
+
+    tap = p.resolve(
+        MicroOutcome(out=ACT_ARM, reason="cart", confidence=0.9, picked=icon)
+    )
+
+    assert tap is not None and tap.tool_names() == ["note", "tap"]
+    assert tap.tool_calls[1].arguments["bbox"] == list(screen.rows[1].bbox)
+    _feed(h, tap, RESULTS)
+    req2 = p.advance(h)
+    assert isinstance(req2, DecisionRequest)
+    assert (
+        req2.material["lead"]
+        == "[you tapped 'the cart icon' at [0.850,0.880,0.950,0.920]]"
+    )
 
 
 def test_episode_runs_a_granted_macro_by_name() -> None:
@@ -395,9 +504,9 @@ def test_episode_runs_a_granted_macro_by_name() -> None:
     _feed(h, p.advance(h), RESULTS)
     req = p.advance(h)
     assert isinstance(req, DecisionRequest)
-    assert "Granted macros" in req.args["block"] and req.args["macros"] == "add-cart"
-    macro = next(c for c in req.candidates if c.key == "add-cart")
-    assert macro.bbox is None
+    assert "Granted macros" in req.material["block"]
+    assert req.macros == ("add-cart",)
+    macro = Macro("add-cart")
 
     run = p.resolve(
         MicroOutcome(out=ACT_ARM, reason="add", confidence=0.9, picked=macro)
@@ -409,7 +518,7 @@ def test_episode_runs_a_granted_macro_by_name() -> None:
     _feed(h, run, RESULTS)  # its result view is the next turn's screen
     req2 = p.advance(h)
     assert isinstance(req2, DecisionRequest)
-    assert req2.args["block"].startswith("[you ran macro 'add-cart']")
+    assert req2.material["lead"] == "[you ran macro 'add-cart']"
     assert KIND_MACRO in p._step.kinds
 
 
@@ -427,20 +536,21 @@ def test_page_scoped_landmark_is_offered_only_on_its_page(page, offered) -> None
     req = p.advance(h)
 
     assert isinstance(req, DecisionRequest)
-    assert any(c.key == "back" for c in req.candidates) is offered
-    assert ("Granted landmarks" in req.args["block"]) is offered
+    assert ("Granted landmarks" in req.material["block"]) is offered
 
 
 def test_episode_done_is_audited_against_the_verify_page() -> None:
     p, h, req = _at_episode()
 
-    # done while still on results → rejected, costs a call, continues.
+    # done while still on results → rejected, costs a call, continues
+    # over the same screen: only the lead changes.
     retry = p.resolve(_done_outcome(total="45"))
     assert isinstance(retry, DecisionRequest)
-    assert "done rejected" in retry.args["block"]
+    assert "done rejected" in retry.material["lead"]
+    assert retry.material["block"] == req.material["block"]
 
     # Move to the verify page, then done sticks and records the returns.
-    row = next(c for c in retry.candidates if c.key == "Milk 5kg")
+    row = _spot(retry, "Milk 5kg")
     tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=row))
     _feed(h, tap, DONE)
     req3 = p.advance(h)
@@ -649,9 +759,9 @@ def _at_pay_episode(resume_screen: str = SHEET):
 def test_payment_episode_taps_under_consent_then_completes() -> None:
     p, h, req = _at_pay_episode()
     assert isinstance(req, DecisionRequest)
-    assert "¥45" in req.args["block"]  # {ask.total} filled into the prompt
+    assert "¥45" in req.material["lead"]  # {ask.total} filled into the prompt
 
-    row = next(c for c in req.candidates if c.key == "支付")
+    row = _spot(req, "支付")
     tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="pay", confidence=0.9, picked=row))
     assert tap is not None and tap.tool_names() == ["note", "tap"]
 
@@ -667,11 +777,11 @@ def test_payment_episode_second_tap_keeps_the_paid_record() -> None:
     # Consent is spent on the first tap; a later tap of the same episode
     # finds nothing to spend and must not erase the amount that fired.
     p, h, req = _at_pay_episode()
-    row = next(c for c in req.candidates if c.key == "支付")
+    row = _spot(req, "支付")
     tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="pay", confidence=0.9, picked=row))
     _feed(h, tap, SHEET)  # the sheet still shows ¥45 — a confirm step
     req2 = p.advance(h)
-    row2 = next(c for c in req2.candidates if c.key == "支付")
+    row2 = _spot(req2, "支付")
     tap2 = p.resolve(
         MicroOutcome(out=ACT_ARM, reason="ok", confidence=0.9, picked=row2)
     )
@@ -744,7 +854,7 @@ def test_payment_episode_blocks_a_tap_when_the_sheet_changed() -> None:
     p, h, req = _at_pay_episode(resume_screen=SHEET_CHANGED)
     assert isinstance(req, DecisionRequest)
 
-    row = req.candidates[0]
+    row = Tap(label="anything", bbox=req.elements[0].bbox)
     step = p.resolve(
         MicroOutcome(out=ACT_ARM, reason="pay", confidence=0.9, picked=row)
     )
@@ -867,3 +977,94 @@ def test_inline_prose_that_merely_mentions_prompts_stays_prose() -> None:
 
     assert "see prompts.parse in the docs" in spec.nodes[0].prompt
     assert spec.prompts_used == frozenset()
+
+
+# ---------- the whole loop: conductor → micro → program, over tool calls ----------
+
+
+@pytest.mark.asyncio
+async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
+    # End to end through the real broker: the model answers tool calls
+    # (done with args, scroll, a tap by a listed box, a tap at a granted
+    # landmark, done), the walk grounds each, the frames ride and replay,
+    # and the returns land in the walk's outputs.
+    from conductor_fakes import ScriptedProvider, Sink
+
+    from physiclaw.conductor.drive.conductor import Conductor
+    from physiclaw.conductor.walk.micro import MicroCaller
+
+    milk = make_screen(("综合", 0.5, 0.1), ("Milk 5kg", 0.5, 0.4)).rows[1]
+    replies = [
+        '{"reason": "r", "action": "done", "args": {"keyword": "milk"}, '
+        '"confidence": 0.9}',
+        '{"reason": "r", "action": "scroll", "args": {"direction": "down"}, '
+        '"confidence": 0.9}',
+        json.dumps(
+            {
+                "reason": "r",
+                "action": "tap",
+                "args": {"label": "the milk listing", "at": list(milk.bbox)},
+                "confidence": 0.9,
+            }
+        ),
+        '{"reason": "r", "action": "tap", "args": {"label": "the back chevron", '
+        '"at": [0.0, 0.0, 0.1, 0.1]}, "confidence": 0.9}',
+        '{"reason": "r", "action": "done", "args": {"total": "45"}, "confidence": 0.9}',
+    ]
+    _write()
+    p = _program(name="walk", user_said="买牛奶")
+    provider = ScriptedProvider(replies)
+    conductor = Conductor(
+        program=p, micro=MicroCaller(provider, confidence_floor=0.6, tr=Sink())
+    )
+    h = _history()
+
+    peek = await conductor.advance(h)
+    _feed(h, peek, ELSEWHERE)
+    start = await conductor.advance(h)  # the parse call brokered inside
+    assert start is not None and start.tool_names() == ["note", "run_macro"]
+    _feed(h, start, HOME)
+    search = await conductor.advance(h)
+    _feed(h, search, RESULTS, frame=FRAME)
+
+    scroll = await conductor.advance(h)
+    assert scroll is not None and scroll.tool_names() == ["note", "swipe"]
+    _feed(h, scroll, RESULTS, frame=FRAME)
+    tap = await conductor.advance(h)
+    assert tap is not None and tap.tool_names() == ["note", "tap"]
+    assert tap.tool_calls[1].arguments["bbox"] == list(milk.bbox)
+    _feed(h, tap, RESULTS)
+    mark = await conductor.advance(h)
+    assert mark is not None and mark.tool_names() == ["note", "tap"]
+    assert (
+        "tapped 'the back chevron' at [0.000,0.000,0.100,0.100]"
+        in (mark.tool_calls[0].arguments["summary"])
+    )
+    _feed(h, mark, DONE)
+    brief = await conductor.advance(h)
+    assert brief is not None and brief.tool_names() == ["note", "peek"]
+    assert "completed" in brief.tool_calls[0].arguments["summary"]
+    assert p.outputs["pick.total"] == "45"
+    _feed(h, brief, ELSEWHERE)
+    assert await conductor.advance(h) is None
+
+    # The last episode call replayed every earlier turn: both frames,
+    # and each settled reply as the tool call it was.
+    last = provider.calls[-1]
+    frames = [
+        b
+        for m in last
+        if isinstance(m.content, list)
+        for b in m.content
+        if isinstance(b, ImageBlock)
+    ]
+    assert len(frames) == 2
+    settled = [m.content for m in last if isinstance(m, AssistantMessage)]
+    assert settled == [
+        '{"reason": "r", "action": "scroll", "args": {"direction": "down"}, '
+        '"confidence": 0.9}',
+        '{"reason": "r", "action": "tap", "args": {"label": "the milk listing", '
+        f'"at": {json.dumps([round(v, 3) for v in milk.bbox])}}}, "confidence": 0.9}}',
+        '{"reason": "r", "action": "tap", "args": {"label": "the back chevron", '
+        '"at": [0.0, 0.0, 0.1, 0.1]}, "confidence": 0.9}',
+    ]
