@@ -395,7 +395,7 @@ class PlanGate(DispatchGuard):
             return None
         return Block(
             content=(
-                f"BLOCKED — not executed: turn {turn + 1} and no plan drafted. "
+                f"BLOCKED — not executed: turn {turn} and no plan drafted. "
                 "Call update_progress NOW (CONVENTION § The plan). Read the IM "
                 "already? user_said verbatim + the full step list through "
                 "end_session. Still navigating to it? Draft the steps you know "

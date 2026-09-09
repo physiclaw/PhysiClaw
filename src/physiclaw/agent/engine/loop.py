@@ -154,7 +154,7 @@ def _close_budget_exhausted(run: EngineRun, session: Session, turn: int) -> None
     log.warning(
         "session wall-clock budget (%ds) exhausted at turn %d — closing STUCK",
         budget,
-        turn + 1,
+        turn,
     )
     run.tr.write({"event": "budget_exhausted", "turn": turn, "budget_seconds": budget})
     log_external_stop(session, run.tr, cause="wall-clock budget exhausted", event=None)
@@ -240,7 +240,7 @@ def _prepare_request(
     run.tr.write(
         {"event": "request", "turn": turn, "message_count": len(request_messages)}
     )
-    log.info("turn %d: %d messages", turn + 1, len(request_messages))
+    log.info("turn %d: %d messages", turn, len(request_messages))
     return request_messages, compaction_imminent
 
 
@@ -311,12 +311,12 @@ async def _call_provider(
     if asst.synthesized:
         # No provider round-trip: no usage to log, and the token/cache
         # metrics would report zeros that read as data.
-        log.info("turn %d: conductor synthesized calls=%s", turn + 1, asst.tool_names())
+        log.info("turn %d: conductor synthesized calls=%s", turn, asst.tool_names())
         return asst
     # Tokens: the provider's `usage` event, rendered once by the trace.
     log.info(
         "turn %d: finish=%s calls=%s — %.1fs",
-        turn + 1,
+        turn,
         asst.finish_reason,
         asst.tool_names() or None,
         elapsed_ms / 1000,
@@ -373,7 +373,7 @@ def _enforce_shape(
     if len(called) != 2 or called.count("note") != 1:
         log.warning(
             "turn %d: bad turn shape tool_calls=%s — injecting corrective",
-            turn + 1,
+            turn,
             called,
         )
         tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
@@ -444,7 +444,7 @@ def _apply_turn_gates(
         )
         if rej is None:
             continue
-        log.info("turn %d: %s", turn + 1, rej.log_msg)
+        log.info("turn %d: %s", turn, rej.log_msg)
         run.tr.write({"event": rej.event, "turn": turn, **rej.extra})
         messages.pop()
         messages.append(UserMessage(content=rej.corrective))
@@ -466,7 +466,7 @@ async def _dispatch_turn(
     bad args."""
     if asst.finish_reason == FinishReason.LENGTH:
         log.warning(
-            "turn %d: finish=length; last tool_call args may be truncated", turn + 1
+            "turn %d: finish=length; last tool_call args may be truncated", turn
         )
         run.tr.write({"event": "finish_length_warning", "turn": turn})
 

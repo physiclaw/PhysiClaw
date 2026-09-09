@@ -43,11 +43,11 @@ def test_record_logs_every_update_progress_even_if_unchanged() -> None:
     _drafted_plan(s, "u1", ["a"])
     trajectory.record(s, turn=0, plan_updated=True)
     trajectory.record(s, turn=1, plan_updated=True)  # same content, still logged
-    assert [t for t, _ in s.plan_log] == [1, 2]  # both calls captured
+    assert [t for t, _ in s.plan_log] == [0, 1]  # both calls captured
 
     _drafted_plan(s, "u2", ["a", "b"])
     trajectory.record(s, turn=5, plan_updated=True)
-    assert [t for t, _ in s.plan_log] == [1, 2, 6]
+    assert [t for t, _ in s.plan_log] == [0, 1, 5]
 
 
 def test_record_safety_net_logs_changed_plan_without_update_deduped() -> None:
@@ -57,7 +57,7 @@ def test_record_safety_net_logs_changed_plan_without_update_deduped() -> None:
     _drafted_plan(s, "u1", ["a"])
     trajectory.record(s, turn=2)  # no update_progress this turn
     trajectory.record(s, turn=3)  # unchanged → not re-logged
-    assert [t for t, _ in s.plan_log] == [3]
+    assert [t for t, _ in s.plan_log] == [2]
 
 
 def test_record_skips_undrafted_plan_and_blank_scratchpad() -> None:
@@ -77,7 +77,7 @@ def test_record_logs_scratchpad_changes() -> None:
     trajectory.record(s, turn=1)  # unchanged, no write → safety net skips
     s.scratchpad = "v2"
     trajectory.record(s, turn=2)
-    assert s.scratchpad_log == [(1, "v1"), (3, "v2")]
+    assert s.scratchpad_log == [(0, "v1"), (2, "v2")]
 
 
 def test_record_logs_every_scratchpad_write_even_if_unchanged() -> None:
@@ -86,12 +86,12 @@ def test_record_logs_every_scratchpad_write_even_if_unchanged() -> None:
     s.scratchpad = "same"
     trajectory.record(s, turn=0, scratchpad_written=True)
     trajectory.record(s, turn=1, scratchpad_written=True)  # same content, still logged
-    assert s.scratchpad_log == [(1, "same"), (2, "same")]
+    assert s.scratchpad_log == [(0, "same"), (1, "same")]
 
     # A write that clears to blank is not logged (nothing to reflect on).
     s.scratchpad = "   "
     trajectory.record(s, turn=2, scratchpad_written=True)
-    assert [t for t, _ in s.scratchpad_log] == [1, 2]
+    assert [t for t, _ in s.scratchpad_log] == [0, 1]
 
 
 def test_record_caps_retained_snapshots(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,11 +116,11 @@ def test_render_empty_when_no_history() -> None:
 def test_render_merges_into_one_ascending_timeline() -> None:
     s = Session()
     _drafted_plan(s, "u1", ["a"])
-    trajectory.record(s, turn=0)  # plan @ t1
+    trajectory.record(s, turn=0)  # plan @ t0
     _drafted_plan(s, "u2", ["a", "b"])
-    trajectory.record(s, turn=9)  # plan @ t10
+    trajectory.record(s, turn=9)  # plan @ t9
     s.scratchpad = "notes-late"
-    trajectory.record(s, turn=9, scratchpad_written=True)  # scratchpad @ t10
+    trajectory.record(s, turn=9, scratchpad_written=True)  # scratchpad @ t9
 
     out = trajectory.render(s)
     assert out.startswith("<session-trajectory>") and out.endswith(
@@ -129,9 +129,9 @@ def test_render_merges_into_one_ascending_timeline() -> None:
     # One merged timeline, ascending by turn regardless of kind; every entry is
     # `[tN] <kind>\n<content>`.
     assert (
-        out.index("[t1] plan\n")
-        < out.index("[t10] plan\n")
-        < out.index("[t10] scratchpad\n")
+        out.index("[t0] plan\n")
+        < out.index("[t9] plan\n")
+        < out.index("[t9] scratchpad\n")
     )
     assert out.index("u1") < out.index("u2")  # oldest→newest
 

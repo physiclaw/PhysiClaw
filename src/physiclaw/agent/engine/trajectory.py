@@ -12,7 +12,7 @@ explicit agent act (a re-plan, a re-write), even one that repeats the prior
 content, and worth its own turn-tagged entry. A safety net also logs a drafted
 plan / non-blank scratchpad that changed without the corresponding call (e.g.
 the closing turn). At a hard close the pre-close gate injects `render(session)`
-— plan re-plans and scratchpad writes merged into ONE `[t1]..[tN]` timeline
+— plan re-plans and scratchpad writes merged into ONE `[t0]..[tN]` timeline
 (oldest→newest, labelled by kind) — into the reflect corrective, so the model
 reflects on the whole run as it unfolded.
 
@@ -47,13 +47,13 @@ def record(
     snap = session.plan.snapshot()
     changed = not session.plan_log or session.plan_log[-1][1] != snap
     if plan_updated or (changed and session.plan.is_drafted()):
-        session.plan_log.append((turn + 1, snap))
+        session.plan_log.append((turn, snap))
         del session.plan_log[:-cap]
 
     sp = session.scratchpad
     changed_sp = not session.scratchpad_log or session.scratchpad_log[-1][1] != sp
     if sp.strip() and (scratchpad_written or changed_sp):
-        session.scratchpad_log.append((turn + 1, sp))
+        session.scratchpad_log.append((turn, sp))
         del session.scratchpad_log[:-cap]
 
 
@@ -77,7 +77,7 @@ def _select(entries: list, budget: int, max_count: int) -> tuple[list, int]:
 def render(session, budget: int | None = None, max_count: int | None = None) -> str:
     """A turn-marked `<session-trajectory>` block for the reflect corrective, or
     "" when nothing was logged. Plan re-plans and scratchpad writes are merged
-    into ONE timeline sorted `[t1]..[tN]` (oldest→newest), each entry labelled by
+    into ONE timeline sorted `[t0]..[tN]` (oldest→newest), each entry labelled by
     kind, so the run reads as it unfolded — regardless of type. Selection applies
     BOTH caps (chars `budget`, count `max_count`) from the newest backward,
     keeping whole entries with an explicit elision note — never a silent or
