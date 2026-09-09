@@ -14,6 +14,13 @@ steps:
   # (Official Accounts folder, new chats), so never tap a list row blind.
   - tap: "Search"
     at: [0.30, 0.098, 0.65, 0.132]
+  # WeChat resumes on the last search when a thread was opened from one
+  # (the boot's open, then this send in the same wake): the field still
+  # holds the previous term and a paste would double it. The clear (x)
+  # sits at the field's right end; on an empty field the tap only keeps
+  # focus.
+  - tap: "clear (x) in the search field"
+    at: [0.878, 0.064, 0.992, 0.124]
   - send_to_clipboard: "<<CONTACT>>"
   - long_press: "the search input field"
     at: [0.15, 0.063, 0.60, 0.100]
