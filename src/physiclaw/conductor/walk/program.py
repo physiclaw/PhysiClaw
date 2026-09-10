@@ -52,12 +52,14 @@ from physiclaw.conductor.spec.pack import qualified_macro
 from physiclaw.conductor.spec.pages import Landmark, PagePrint
 from physiclaw.conductor.walk import brief, recover, views
 from physiclaw.conductor.walk.gate import Gate
+from physiclaw.conductor.walk.ledger import Ledger
 from physiclaw.conductor.walk.micro import MicroOutcome
 from physiclaw.conductor.walk.record import Record
 from physiclaw.conductor.walk.step import Activator, Paused, Step, Turn
 from physiclaw.conductor.walk.step_activate import ActivateStep
 from physiclaw.conductor.walk.step_agent import AgentStep
 from physiclaw.conductor.walk.step_ask import AskStep
+from physiclaw.conductor.walk.step_close import CloseStep
 from physiclaw.conductor.walk.step_do import DoStep
 from physiclaw.conductor.walk.step_tell import TellStep
 from physiclaw.conductor.walk.suspension import (
@@ -65,9 +67,14 @@ from physiclaw.conductor.walk.suspension import (
     clear_suspended,
     suspended_path,
 )
+from physiclaw.conductor.walk.thread import Thread
 from physiclaw.conductor.walk.turns import Turnsmith
 from physiclaw.conductor.walk.walklog import Outcome
-from physiclaw.contract.dto import AssistantMessage, ImageBlock, Message
+from physiclaw.contract.dto import (
+    AssistantMessage,
+    ImageBlock,
+    Message,
+)
 from physiclaw.contract.plugin import EventSink
 from physiclaw.macros.model import Macro
 
@@ -76,6 +83,7 @@ log = logging.getLogger(__name__)
 # runtime.sentinel.WAIT, spelled literally: the conductor may not import
 # engine runtimes; a test pins the two equal.
 SUSPEND_STATUS = "WAIT"
+DONE_STATUS = "DONE"  # runtime.sentinel.DONE, likewise pinned
 
 # The one recovery action's pending kind — the declared hand's landing.
 KIND_RECOVER = "recover-hand"
@@ -134,6 +142,7 @@ class Program:
         dry: bool = False,
         activation: "Activator | None" = None,
         events: "EventSink | None" = None,
+        thread: "Thread | None" = None,
     ) -> None:
         self.app = spec.app
         # A dry walk (`replay.py`) leaves no trace: no runs.jsonl line,
@@ -166,10 +175,16 @@ class Program:
         # is the playbook ref: two walks in one session (the boot, then
         # the program it activates) mint under different names, so a
         # call id can never find the other walk's stale result.
-        self.turns = Turnsmith(f"{spec.app}/{spec.name}")
+        ref = f"{spec.app}/{spec.name}"  # one spelling, both readers
+        self.turns = Turnsmith(ref)
         self.gate = Gate()
-        # Recorded agent outputs (`{node.field}` refs read them).
-        self.outputs: dict[str, str] = {}
+        # The session's thread (`thread.py`): opened by the boot, handed
+        # to the walk it activates; a walk built alone opens its own.
+        self.thread = thread if thread is not None else Thread()
+        # The walk's one account (`ledger.py`): the task, the agents'
+        # decisions (`{node.field}` refs read them), what was said and
+        # paid — every step writes it, every exit reads it.
+        self.ledger = Ledger(ref=ref, nodes=len(spec.nodes), task=values)
         # The screen/verdict the current step works from — every path
         # observes one before acting — and the frame the same result
         # carried (None when the read had no image), what a model call
@@ -177,10 +192,8 @@ class Program:
         self.screen: Screen | None = None
         self.frame: ImageBlock | None = None
         self.verdict: Verdict | None = None
-        # The amount a payment move actually fired with (consent is
-        # consumed at fire, so this is the only place it survives to the
-        # completed history line), and whether its daily-log line landed.
-        self.paid: float | None = None
+        # Whether the fired payment's daily-log line landed (the amount
+        # itself is the ledger's).
         self._paid_logged = False
         # The step executor at the cursor (a resume pre-step rides the
         # same slot before the walk proper opens).
@@ -256,7 +269,8 @@ class Program:
             "playbook": self.spec.name,
             "idx": self.idx,
             "values": self.values,
-            "outputs": self.outputs,
+            **self.thread.to_suspended(),
+            **self.ledger.to_suspended(),
             **self.gate.to_suspended(),
         }
 
@@ -282,7 +296,8 @@ class Program:
         self.idx = idx
         self._resume_at = idx
         self._from_suspension = resumed
-        self.outputs = {str(k): str(v) for k, v in (data.get("outputs") or {}).items()}
+        self.ledger.restore(data)
+        self.thread.restore(data)
         self.gate = Gate.from_suspended(data)
 
     @property
@@ -300,7 +315,9 @@ class Program:
         assert self.gate.awaiting, "only an ask awaiting its reply suspends"
         if not self.dry:
             write_json_atomic(suspended_path(), self.state())
-        recap = f"waiting for the user's reply on {self.ref}"
+        recap = self.ledger.recap(
+            f"waiting for the user's reply on {self.ref}", consented=self.gate.consented
+        )
         self._record_run(Outcome.SUSPENDED, recap)
         return self._close_session(
             "suspend",
@@ -308,24 +325,43 @@ class Program:
             f"{self.ref} suspended — {recap}; any wake resumes it",
         )
 
-    def _close_session(self, kind: str, recap: str, day_line: str) -> AssistantMessage:
-        """The session closed WAIT by the walk's own hand — the one
-        synthesized `end_session` (a suspension's, a stop's). The
-        close-routine's daily-log line is harness-written here: the
-        model never runs this wake, so without it the close would be
-        invisible to the next wake's memory window."""
+    def close_done(self, recap: str, memory: str | None) -> AssistantMessage:
+        """A completed walk's end: recorded, the daily log's line (the
+        model's memory line when the closing call wrote one, else the
+        recap), and the session closed DONE."""
+        log.info("conductor: playbook %s complete — %s", self.ref, recap)
+        self._end(Outcome.COMPLETED)
+        return self._close_session(
+            "complete", recap, memory or recap, status=DONE_STATUS
+        )
+
+    def _close_session(
+        self, kind: str, recap: str, day_line: str, status: str = SUSPEND_STATUS
+    ) -> AssistantMessage:
+        """The session closed by the walk's own hand — the one
+        synthesized `end_session` (a completion's DONE; a suspension's
+        or a stop's WAIT). The close-routine's daily-log line is
+        harness-written here: the model never runs this wake, so without
+        it the close would be invisible to the next wake's memory
+        window."""
         self.log_day(f"conductor: {day_line}")
         return self.synth(
             kind,
             f"conductor: {kind} — {recap}",
             "end_session",
-            {"status": SUSPEND_STATUS, "recap": recap},
+            {"status": status, "recap": recap},
         )
 
     @property
     def ref(self) -> str:
         """The playbook ref this walk runs, as every line names it."""
-        return f"{self.app}/{self.spec.name}"
+        return self.ledger.ref
+
+    @property
+    def outputs(self) -> dict[str, str]:
+        """The agents' return fields, keyed `node.field` — the ledger's
+        decisions (`{node.field}` refs and the resume cursor read them)."""
+        return self.ledger.decided
 
     # ---- the conductor's two calls ----
 
@@ -367,8 +403,9 @@ class Program:
 
     def _advance(self, history: list[Message]) -> Turn:
         if self.phase is Phase.DONE:
-            # The brief turn was the walk's last word; its peek result is
-            # ordinary history. Quiet from here — the conductor drops us.
+            # The last turn (a brief's peek, or the walk's own end_session)
+            # was the walk's last word; its result is ordinary history.
+            # Quiet from here — the conductor drops us.
             return None
         if self.phase is Phase.PAUSED:
             return Paused()
@@ -475,18 +512,14 @@ class Program:
             return self.handover("no screen observed yet")
         nodes = self.spec.nodes
         if self.idx >= len(nodes):
-            log.info(
-                "conductor: playbook %s/%s complete — handing over",
-                self.app,
-                self.spec.name,
-            )
-            self._end(Outcome.COMPLETED)
-            return self.synth(
-                "brief",
-                brief.completion_brief(self.app, self.spec.name, len(nodes)),
-                gesture_vocab.PEEK,
-                {},
-            )
+            # The task is the playbook's and it is done: its `tell` already
+            # reported to the user and its record wrote the runs row, so
+            # the walk closes the session DONE itself (handing the model a
+            # "wrap up" bought four turns of note-taking over a full
+            # context). The close is a step (`step_close.py`): one call in
+            # the session's thread for the record, then `close_done`.
+            self._step = CloseStep(self)
+            return self._step.open()
         if self.step_one:
             if self._stepped is None:
                 self._stepped = self.idx
@@ -563,7 +596,7 @@ class Program:
         leaves the record alone."""
         amount = self.gate.spend()
         if amount is not None:
-            self.paid = amount
+            self.ledger.pay(amount)
             self._paid_logged = False
 
     def log_purchase(self) -> None:
@@ -572,11 +605,11 @@ class Program:
         whatever the next check says, money may have moved, and the
         daily log is the cross-wake record. Idempotent: nothing new to
         log is a no-op."""
-        if self.paid is None or self._paid_logged:
+        if self.ledger.paid is None or self._paid_logged:
             return
         self._paid_logged = True
         self.log_day(
-            f"conductor: {self.app}: payment ¥{self.paid:g} fired "
+            f"conductor: {self.app}: payment ¥{self.ledger.paid:g} fired "
             f"(playbook {self.ref}) — verify the order before "
             "paying again"
         )
@@ -602,8 +635,10 @@ class Program:
         )
 
     def journal(self, text: str) -> None:
-        """What the next synthesized note carries beside its own summary."""
+        """What the next synthesized note carries beside its own summary
+        — and one more line of the walk's account."""
         self._journal = text
+        self.ledger.note(text)
 
     def peek(self) -> AssistantMessage:
         return self.synth(
@@ -654,14 +689,10 @@ class Program:
             "brief",
             brief.walk_brief(
                 reason,
-                app=self.app,
-                playbook=self.spec.name,
+                ledger=self.ledger,
                 node=self._node_id(),
                 idx=self.idx,
-                nodes=len(self.spec.nodes),
-                outputs=self.outputs,
                 consented=self.gate.consented,
-                paid=self.paid,
             ),
             gesture_vocab.PEEK,
             {},
@@ -676,11 +707,19 @@ class Program:
         moved: after a fired payment a stop leaves the order unverified."""
         node = self._node_id() or "(end)"
         money = (
-            f"a payment of ¥{self.paid:g} fired, unverified"
-            if self.paid is not None
+            f"a payment of ¥{self.ledger.paid:g} fired, unverified"
+            if self.ledger.paid is not None
             else "nothing paid"
         )
-        recap = f"{self.ref} stopped at {node} — {reason}; {money}"
+        # A stop's money clause is a WARNING, not a tally: it says the
+        # order is unverified, so it is worded here, not by `recap`.
+        recap = "; ".join(
+            [
+                f"{self.ref} stopped at {node} — {reason}",
+                *self.ledger.account(),
+                money,
+            ]
+        )
         log.warning("conductor: %s", recap)
         self._end(Outcome.HANDOVER, reason)
         return self._close_session("stop", recap, recap)
@@ -708,7 +747,7 @@ class Program:
             self.gate.consented is not None
             or self.gate.awaiting
             or node.irreversible
-            or self.paid is not None
+            or self.ledger.paid is not None
         ):
             return fail(reason)
         if not owned_by(expected_id, self.app):
@@ -834,11 +873,11 @@ class Program:
         self.record.run(
             outcome,
             idx=self.idx,
-            nodes=len(self.spec.nodes),
+            nodes=self.ledger.nodes,
             node=self._node_id(),
             reason=reason,
             micros=self._micros,
             rescues=self._recoveries,
             values=self.values,
-            total=self.paid,
+            total=self.ledger.paid,
         )

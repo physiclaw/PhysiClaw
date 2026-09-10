@@ -1009,10 +1009,29 @@ def test_check_names_a_model_step_that_leaves_think_unsaid() -> None:
     spec = pb.parse_playbook(VALID, "buy", pack)
 
     lines = [w for w in lints.readiness_warnings(spec, pack) if "`think:`" in w]
+    # Every step that may call the model: the agent, and the ask (it
+    # reads a reply its words miss).
     assert lines == [
         "step 'choose' declares no `think:` — the model deliberates at its "
-        "vendor default on every call there; declare off, low, medium or high"
+        "vendor default on every call there; declare off, low, medium or high",
+        "step 'pay' declares no `think:` — the model deliberates at its "
+        "vendor default on every call there; declare off, low, medium or high",
     ]
+
+
+def test_an_ask_takes_think_too() -> None:
+    from physiclaw.conductor.spec.model import AskNode
+
+    def ask_of(text: str) -> AskNode:
+        return next(
+            n
+            for n in pb.parse_playbook(text, "buy", _pack()).nodes
+            if isinstance(n, AskNode)
+        )
+
+    text = _mutate('    yes: ["ok"]\n', '    yes: ["ok"]\n    think: off\n')
+    assert ask_of(text).think == "off"
+    assert ask_of(VALID).think is None
 
 
 # ---------- on_fail: the ask's word on a failure past the gate ----------

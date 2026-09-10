@@ -45,6 +45,7 @@ def send(
         )
     walk.gate.ask = text
     walk.gate.next_words = (yes, no)
+    walk.ledger.say(text)
     walk.gate.tried_open = False
     return walk.synth(
         kind,
@@ -75,7 +76,14 @@ def verdict(walk: Walk, messages: list[str]) -> reply.Answer | None:
 
 def deny(walk: Walk) -> Turn:
     """The one deny disposition: no re-asks, and no second chance this
-    session."""
+    session.
+
+    Who records the refusal: the ask step, which knows WHICH ask was
+    refused and writes `ledger.answered` beside its journal line. The
+    sweep below (a refusal typed while the walk was off in the app) has
+    no ask node in scope and writes nothing — its reason string carries
+    the fact to the model instead. Giving the disposition the write
+    would mean the gate carrying the ask's id, which it does not."""
     return walk.handover(
         "user declined the ask — acknowledge them, back out of any "
         "open checkout or cart state this task created, and wrap up"

@@ -234,11 +234,14 @@ def _think_warnings(spec: Playbook) -> list[str]:
     """A model step that leaves `think:` unsaid: the vendor's default
     then decides how long the model deliberates on each call, and on a
     thinking model that is minutes and thousands of tokens per decision."""
+    # Which node kinds can call the model is declared once, by giving
+    # them a `think:` field (`model.py`) — enumerating them again here
+    # would drift SILENTLY, since a missed kind just stops warning.
     return [
         f"step {n.id!r} declares no `think:` — the model deliberates at its "
         "vendor default on every call there; declare off, low, medium or high"
         for n in spec.nodes
-        if isinstance(n, (AgentNode, ActivateNode)) and n.think is None
+        if hasattr(n, "think") and n.think is None
     ]
 
 

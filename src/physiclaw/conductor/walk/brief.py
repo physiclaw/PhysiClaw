@@ -13,61 +13,45 @@ imperative (the deny back-out, the unlock doctrine), the caller already
 wrote it into the reason, so this module never invents instructions.
 """
 
+from physiclaw.conductor.walk.ledger import Ledger
+
 
 def walk_brief(
     reason: str,
     *,
-    app: str,
-    playbook: str,
+    ledger: Ledger,
     node: str | None,
     idx: int,
-    nodes: int,
-    outputs: dict[str, str],
     consented: float | None,
-    paid: float | None = None,
 ) -> str:
-    """A handed-over walk's report: why, where, and every piece of walk
-    state the model would otherwise re-derive from raw turns."""
+    """A handed-over walk's report: why, where, and the walk's account
+    (`Ledger.account` — the same facts every other exit reports) with
+    the two money warnings a model taking over must read."""
     where = (
-        f"node {node} ({idx + 1}/{nodes})"
+        f"node {node} ({idx + 1}/{ledger.nodes})"
         if node is not None
-        else f"past the last node ({nodes}/{nodes})"
+        else f"past the last node ({ledger.nodes}/{ledger.nodes})"
     )
     parts = [
         f"conductor handing over: {reason}.",
-        f"Walk {app}/{playbook} stopped at {where}.",
+        f"Walk {ledger.ref} stopped at {where}.",
     ]
-    if outputs:
-        decided = ", ".join(f"{k}={v!r}" for k, v in outputs.items())
-        parts.append(f"Decisions so far: {decided}.")
+    account = ledger.account()
+    if account:
+        parts.append("So far: " + "; ".join(account) + ".")
     if consented is not None:
         # Consent is CONSUMED by firing (program.py), so a consented
         # value surviving to the brief proves the payment did NOT fire.
         parts.append(
             f"The user consented to ¥{consented:g}; the payment has NOT been made."
         )
-    if paid is not None:
+    if ledger.paid is not None:
         parts.append(
-            f"A payment of ¥{paid:g} was FIRED before this stop and its result "
+            f"A payment of ¥{ledger.paid:g} was FIRED before this stop and its result "
             "is unverified — check the order before any further payment."
         )
     parts.append(
         "The synthesized turns above are the walk so far; this turn's "
         "peek shows the current screen. Verify state before acting."
-    )
-    return " ".join(parts)
-
-
-def completion_brief(
-    app: str,
-    playbook: str,
-    nodes: int,
-) -> str:
-    """A completed walk's report: the task portion is done; what remains
-    is the model's wrap-up (report to the user, close the session)."""
-    parts = [f"conductor: walk {app}/{playbook} completed ({nodes}/{nodes} nodes)."]
-    parts.append(
-        "This turn's peek shows the final screen. Report the outcome to "
-        "the user and wrap up."
     )
     return " ".join(parts)

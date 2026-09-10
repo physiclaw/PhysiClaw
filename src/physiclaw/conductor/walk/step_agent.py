@@ -52,10 +52,9 @@ from physiclaw.conductor.walk.micro import (
     Tap,
     act_block,
     act_rows,
-    canonical_reply,
     data_block,
     return_fields,
-    user_content,
+    settled,
 )
 from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.conductor.walk.turns import scroll_args
@@ -140,7 +139,7 @@ class AgentStep(Step[AgentNode]):
                 f"{', '.join(missing)}"
             )
         for n in node.return_fields:
-            walk.outputs[f"{node.id}.{n}"] = payload[n].strip()
+            walk.ledger.decide(f"{node.id}.{n}", payload[n].strip())
         after = f" after {calls} calls" if calls else ""
         walk.journal(f"agent {node.id}: done{after} — {outcome.reason}")
         return walk.advance_cursor()
@@ -279,9 +278,7 @@ class AgentStep(Step[AgentNode]):
         # re-serializes it, so repair-retry noise never enters the
         # replayed prefix).
         assert self.sent is not None  # resolve follows the request it answers
-        asked = user_content(self.sent)
-        self.history.append(("user", asked if isinstance(asked, str) else tuple(asked)))
-        self.history.append(("assistant", canonical_reply(outcome)))
+        self.history.extend(settled(self.sent, outcome))
         if outcome.out == ESCALATE:
             return walk.handover(f"agent {node.id!r} escalated: {outcome.reason}")
         if outcome.out == ACT_BACK:

@@ -11,12 +11,19 @@ what its own screen block is made of (`SCREEN_ROWS_NOTE`).
 
 from physiclaw.common.listing import LISTING_HEADER
 
-# parse_task — the boot's one question over the user's thread.
-PARSE_TASK_ROLE = (
-    "You read an instant-message thread — its screenshot, when one is "
-    "attached, and its text read off the screen, oldest line first and "
-    "newest last — and decide whether the user has a request still "
-    "OUTSTANDING that one of the available playbooks performs."
+# The session thread's one role, for its three calls (`thread.py`):
+# the parse, a reply the ask's words could not read, the closing
+# record. Fixed for the session; each block ends with what to answer.
+THREAD_ROLE = (
+    "You are the judgment behind one errand a playbook runs on the "
+    "user's phone. Across this conversation you read the user's chat "
+    "thread (its screenshot when one is attached, and its text read off "
+    "the screen, oldest line first and newest last) and decide whether "
+    "they have a request still OUTSTANDING that a playbook performs, read "
+    "a reply of theirs when the playbook's own yes/no words could not, "
+    "and finally write the record of what was done. Between your calls "
+    "the playbook acts on its own; what it did arrives as a block. Each "
+    "message ends with what to answer this time."
 )
 PARSE_TASK_LEGEND = (
     '"answer" is one playbook EXACTLY as listed; or "not_a_task" '
@@ -84,6 +91,25 @@ SCREEN_ROWS_NOTE = (
     "height. Use the screenshot to see layout and what the rows belong "
     "to; never reconstruct beyond what the screen shows."
 )
+# read_reply — an ask's reply the declared words did not cover.
+READ_REPLY_LEGEND = (
+    '"answer" is "confirm" when the user\'s newest reply agrees to the ask '
+    'exactly as put (a bare yes, an ok, a go-ahead), "deny" when they refuse '
+    'or want something different, and "other" for anything you cannot read '
+    "as one of those — a question, a hold, a change of quantity or item. "
+    'When unsure, "other": money moves on confirm, and a wrong confirm cannot '
+    "be undone."
+)
+# summarize — the closing record of a completed walk.
+SUMMARIZE_LEGEND = (
+    '"answer" is "done", and ALSO add two fields, each ONE line of plain text: '
+    '"recap" — the outcome for the session record (what was done or bought, '
+    "the amount paid, where it stands, in the user's language for names and "
+    'the item); "memory" — the line tomorrow\'s run should find in the daily '
+    "log: the fact that matters later (what the user got, its price, a "
+    "preference they showed), no narration, no tools."
+)
+SINCE_HEADER = "What the playbook did since the last call"
 RETURN_FIELDS_HEADER = (
     'Return fields (the keys of "args" when "action" is "done", each a plain string):'
 )

@@ -76,4 +76,14 @@ class DoStep(Step[DoNode]):
                 recover.Mode.VERIFY,
                 f"move {node.id!r} did not land on {node.verify!r} ({wrong})",
             )
+        # The move did what it was declared to do — a fact the session
+        # thread reads between its calls. Without it a walk whose
+        # substance IS its moves (a browse or scroll route, whose agent
+        # returns little) leaves the closing summary almost nothing to
+        # write from. A page is not a node — it is this move's `verify`
+        # — so landing IS the page's confirmation, and one clause
+        # records both. Note this reaches the thread, not the handover
+        # brief: the brief renders `Ledger.account`, which is the typed
+        # fields only.
+        walk.ledger.note(f"ran {node.macro}, now on {node.verify}")
         return walk.advance_cursor()

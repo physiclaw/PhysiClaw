@@ -26,7 +26,7 @@ from dataclasses import replace
 
 from physiclaw.common import gesture_vocab
 from physiclaw.conductor.spec.model import ActivateNode
-from physiclaw.conductor.walk.micro import SCROLL_UP, MicroOutcome
+from physiclaw.conductor.walk.micro import SCROLL_UP, DecisionRequest, MicroOutcome
 from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.conductor.walk.turns import scroll_args
 
@@ -45,6 +45,7 @@ class ActivateStep(Step[ActivateNode]):
         # reads — None until the first scroll.
         self.scrolls = 0
         self.merged: list[str] | None = None
+        self.sent: DecisionRequest | None = None
 
     def open(self) -> Turn:
         walk = self.walk
@@ -67,6 +68,10 @@ class ActivateStep(Step[ActivateNode]):
         node, walk = self.node, self.walk
         assert walk.activation is not None  # open() handed over without one
         if outcome is not None and outcome.out == SCROLL_UP:
+            # A scroll round is deliberately NOT settled into the thread:
+            # the re-ask over the merged listing supersedes it, and its
+            # frame would ride every later call for nothing. That holds
+            # for the budget-spent fall-through below too.
             self.scrolls += 1
             if self.scrolls <= node.max_scrolls:
                 if self.merged is None and walk.screen is not None:
@@ -81,14 +86,19 @@ class ActivateStep(Step[ActivateNode]):
             # Budget spent: the cautious read — a request we cannot fully
             # see activates nothing, exactly the `not_a_task` disposition.
             outcome = None
-        program = walk.activation.build(outcome)
+        if outcome is not None:
+            assert self.sent is not None  # resolve follows the request it answers
+            # The parse is the thread's first exchange — the walk this
+            # boot activates extends it.
+            walk.thread.settle(self.sent, outcome, walk.ledger)
+        program = walk.activation.build(outcome, walk.thread)
         if program is None:
             walk.conclude("no playbook covers the thread — the model takes it")
             return None
         assert outcome is not None  # build answers None without one
         # The record: what the boot decided, readable off the walk's
         # outputs (a stepping tool's position, a replay's report).
-        walk.outputs[f"{node.id}.playbook"] = outcome.out
+        walk.ledger.decide(f"{node.id}.playbook", outcome.out)
         walk.baton = program
         walk.conclude(f"hands over to {program.ref}")
         return None
@@ -99,13 +109,11 @@ class ActivateStep(Step[ActivateNode]):
         current viewport."""
         walk = self.walk
         assert walk.activation is not None and walk.screen is not None
-        req = replace(
-            walk.activation.request(walk.screen, self.node.id, walk.frame),
-            thinking=self.node.think,
-        )
+        req = walk.activation.request(walk, self.node.id, self.node.think)
         if self.merged is not None:
             self.merged = merge_labels(walk.screen.labels, self.merged)
             req = replace(req, listing="\n".join(self.merged))
+        self.sent = req
         return req
 
 

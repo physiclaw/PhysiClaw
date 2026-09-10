@@ -411,7 +411,8 @@ async def test_walk_captures_each_model_round_trip(monkeypatch, mocker) -> None:
         on_exchange=seen.append,
     )
 
-    (x,) = seen
+    x, close = seen  # the agent's call, then the close's record in the thread
+    assert close["call"] == "summarize"
     assert x["call"] == "agent_fields" and x["node"] == "parse"
     assert x["request"][0]["role"] == "system" and x["reply"] == OPENAI_REPLY
     assert x["attempt"] == 1 and x["attempts"] == 1 and x["history"] == 0
@@ -455,7 +456,7 @@ async def test_walk_without_raw_still_hands_exchanges_to_the_hook(
         on_exchange=seen.append,
     )
 
-    assert len(seen) == 1
+    assert [x["call"] for x in seen] == ["agent_fields", "summarize"]
     assert not any("── model" in line for line in lines)
 
 

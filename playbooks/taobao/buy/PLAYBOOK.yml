@@ -8,7 +8,6 @@ enabled: false  # rehearse on YOUR device, then enable
 inputs:
   user_said:
     description: what the user said, verbatim — the original message the task came from
-    example: "帮我在淘宝买一袋五常大米，5kg装的"
 
 # `page:` is where the walk must BE (checked every time); everything
 # else is a move landing on the page that follows it. Pages are declared
@@ -102,6 +101,7 @@ route:
     no: ["不用", "不要", "取消", "算了"]   # …and that close it; anything else hands over
     wait: 45                      # seconds between reply polls…
     rounds: 3                     # …and silent polls before the session suspends
+    think: off                    # a reply the words miss is read, not deliberated over
     on_fail: stop                 # a failure here ends the session; nothing paid
     resume:                       # the ask left the app — come back
       macro:

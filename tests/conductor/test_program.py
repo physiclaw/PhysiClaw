@@ -66,7 +66,7 @@ def test_walk_runs_both_moves_then_completes() -> None:
 
     _feed(h, move2, DONE)  # landed on `done` → playbook complete
     summary = _finish(p, h, p.advance(h))
-    assert "walk demo/flow completed" in summary
+    assert "demo/flow completed (2/2 nodes)" in summary
 
 
 def test_walk_starts_at_the_top_whatever_the_screen_reads() -> None:
@@ -233,6 +233,7 @@ route:
     message: "已选好{inputs.keyword}，合计 ¥{ask.total}。回复 好的 确认支付，或 不用 取消。"
     yes: ["好的"]
     no: ["不用"]
+    think: off
     resume: open-app
   - do: pay
     macro: add-cart
@@ -383,16 +384,71 @@ def test_gate_deny_hands_over_without_reasking() -> None:
     assert "user declined" in summary and "back out" in summary
 
 
-def test_gate_reply_outside_the_declared_words_hands_over() -> None:
+def test_gate_reply_outside_the_declared_words_is_read_in_the_thread() -> None:
     # "那就来一份吧" is a yes in spirit, but the ask declared 好的/不用: the
-    # conductor never guesses — the model reads the thread and decides.
+    # words do not decide, so the model that read the request reads the
+    # reply — in the session's thread, with the ask and the replies.
+    from physiclaw.conductor.walk.micro import READ_REPLY, DecisionRequest
+
     p, h, send = _at_gate()
+    ask = send.tool_calls[1].arguments["inputs"]["message"]
 
     step = _reply_arrives(p, h, send, "那就来一份吧")
 
+    assert isinstance(step, DecisionRequest) and step.call == READ_REPLY
+    assert step.material["ask"] == ask and step.listing == "那就来一份吧"
+    assert "sent to the user" in step.material["since"]  # the ask, from the ledger
+    assert step.thinking == "off"  # the ask's own `think:`
+
+
+def test_a_reply_the_model_reads_as_confirm_binds_consent_like_a_yes() -> None:
+    from physiclaw.conductor.walk.micro import MicroOutcome
+
+    p, h, send = _at_gate()
+    _reply_arrives(p, h, send, "那就来一份吧")
+
+    step = p.resolve(
+        MicroOutcome(out="confirm", reason="a yes in spirit", confidence=0.9)
+    )
+
+    assert p.gate.consented == 45.0 and step is not None
+    assert "read by the model" in p.ledger.events[-1]
+    assert len(p.thread.turns) == 2  # the reading joined the session's thread
+
+
+def test_a_reply_the_model_reads_as_deny_hands_over_as_a_no() -> None:
+    from physiclaw.conductor.walk.micro import MicroOutcome
+
+    p, h, send = _at_gate()
+    _reply_arrives(p, h, send, "算了吧")
+
+    step = p.resolve(MicroOutcome(out="deny", reason="a refusal", confidence=0.9))
+
     summary = _finish(p, h, step)
-    assert "matches none of its yes/no words" in summary
-    assert "那就来一份吧" in summary
+    assert "user declined the ask" in summary and p.gate.consented is None
+
+
+def test_a_reply_the_model_cannot_read_hands_over_before_any_payment() -> None:
+    from physiclaw.conductor.walk.micro import MicroOutcome
+
+    p, h, send = _at_gate()
+    _reply_arrives(p, h, send, "多少钱来着")
+
+    step = p.resolve(MicroOutcome(out="other", reason="a question", confidence=0.9))
+
+    summary = _finish(p, h, step)
+    assert "matches none of its yes/no words" in summary and "多少钱来着" in summary
+    assert p.gate.consented is None
+
+
+def test_a_declared_yes_never_calls_the_model_but_lands_in_the_ledger() -> None:
+    p, h, send = _at_gate()
+
+    step = _reply_arrives(p, h, send, "好的")
+
+    assert step is not None and not hasattr(step, "call")  # no decision request
+    assert p.gate.consented == 45.0
+    assert any("user confirmed" in n and "'好的'" in n for n in p.ledger.events)
 
 
 def test_gate_silence_suspends_and_resumes_on_next_wake() -> None:
@@ -586,10 +642,13 @@ def test_activation_builds_a_request_over_the_thread_screen() -> None:
     activation = boot.activation
 
     # The caller establishes the screen IS the thread (the boot's enter
-    # check read it) — this turns it into the call.
-    req = activation.request(Screen.read(_thread(("买牛奶", 0.25, 0.4))), "parse")
+    # check read it) — this turns it into the call, opening the walk's
+    # thread at the think level the boot's step declares.
+    boot.screen = Screen.read(_thread(("买牛奶", 0.25, 0.4)))
+    req = activation.request(boot, "parse", "off")
     assert req is not None and req.call == PARSE_TASK and req.node_id == "parse"
     assert "买牛奶" in req.listing and "demo/flow" in req.material["menu"]
+    assert req.thinking == "off" and boot.thread.thinking == "off"
 
     prog = activation.build(
         MicroOutcome(
@@ -597,8 +656,10 @@ def test_activation_builds_a_request_over_the_thread_screen() -> None:
             reason="purchase task",
             confidence=0.9,
             payload={"keyword": "牛奶"},
-        )
+        ),
+        boot.thread,
     )
+    assert prog.thread is boot.thread  # the walk extends the boot's thread
     assert prog is not None
     assert prog.values == {"keyword": "牛奶"} and prog.channel is activation.channel
 
@@ -630,15 +691,18 @@ def test_activation_rejects_unresolvable_inputs_and_not_a_task() -> None:
     assert boot is not None and boot.activation is not None
     activation = boot.activation
 
-    assert activation.build(None) is None
+    assert activation.build(None, boot.thread) is None
     assert (
-        activation.build(MicroOutcome(out="not_a_task", reason="chat", confidence=0.9))
+        activation.build(
+            MicroOutcome(out="not_a_task", reason="chat", confidence=0.9), boot.thread
+        )
         is None
     )
     # keyword is required; an empty extraction cannot activate.
     assert (
         activation.build(
-            MicroOutcome(out="demo/flow", reason="task", confidence=0.9, payload={})
+            MicroOutcome(out="demo/flow", reason="task", confidence=0.9, payload={}),
+            boot.thread,
         )
         is None
     )
@@ -694,6 +758,12 @@ def test_suspend_status_literal_matches_the_sentinel() -> None:
     from physiclaw.agent.runtime.sentinel import WAIT
 
     assert program.SUSPEND_STATUS == WAIT
+
+
+def test_done_status_literal_matches_the_sentinel() -> None:
+    from physiclaw.agent.runtime.sentinel import DONE
+
+    assert program.DONE_STATUS == DONE
 
 
 # ---------- regressions: money and suspension holes ----------
@@ -1395,7 +1465,7 @@ def test_completed_walk_records_one_completed_run_line() -> None:
     assert row["outcome"] == "completed"
     assert (row["app"], row["playbook"]) == ("demo", "flow")
     assert row["node"] is None  # cursor past the last node
-    assert row["micros"] == 0
+    assert row["micros"] == 1  # the close's record call, answered by nobody
 
 
 def test_handover_records_run_line_at_the_failing_node() -> None:
@@ -1692,3 +1762,81 @@ def test_after_a_fired_payment_stop_still_stops_and_says_so() -> None:
 
     assert stop.tool_names() == ["note", "end_session"]
     assert "a payment of ¥45 fired, unverified" in stop.tool_calls[1].arguments["recap"]
+
+
+def test_a_suspension_carries_the_threads_think_level() -> None:
+    # The reachable path: wake 1 suspends at the ask, wake 2 resumes and
+    # the declared yes/no words decide it (no thread call at all), the
+    # walk completes, and the close's `summarize` is that wake's FIRST
+    # model call. Without the level travelling it goes out at the
+    # vendor's default — on a thinking model, minutes over one line.
+    from physiclaw.conductor.walk.micro import SUMMARIZE
+
+    write_pack(playbooks={"flow": FLOW})
+    spec, pack = build.load_spec("demo", "flow", require_live=False)
+    first = _program(keyword="milk")
+    first.thread.thinking = "off"  # as the boot's `select` declared it
+
+    carried = first.state()
+    assert carried["think"] == "off"
+
+    resumed = build.build_program(
+        spec, pack, {"keyword": "milk"}, None, suspended=carried, dry=True
+    )
+    assert resumed.thread.thinking == "off"
+    close = resumed.thread.request(SUMMARIZE, "close", (), {}, ledger=resumed.ledger)
+    assert close.thinking == "off"
+
+    # A record from before the field was kept, or one hand-edited to
+    # nonsense, reads as unset rather than reaching the provider.
+    for bad in (
+        {k: v for k, v in carried.items() if k != "think"},
+        {**carried, "think": "banana"},
+    ):
+        plain = build.build_program(
+            spec, pack, {"keyword": "milk"}, None, suspended=bad, dry=True
+        )
+        assert plain.thread.thinking is None
+
+
+def test_a_landed_move_leaves_its_trace_in_the_ledger() -> None:
+    # A page is not a node — it is a move's `verify` — so the moment a
+    # move lands is the moment its page is confirmed, and one clause
+    # records both. It rides the session thread's since-block, which is
+    # how the closing summary learns the route actually ran.
+    p, h, _ = _at_gate()
+
+    ran = [e for e in p.ledger.events if e.startswith("ran ")]
+
+    assert ran == ["ran open-app, now on results"]
+    # The whole account still reads in order, task first.
+    assert p.ledger.events[0].startswith("asked ")
+    assert p.ledger.events.index(ran[0]) < len(p.ledger.events) - 1
+
+
+def test_the_asks_verdict_reaches_every_exit_as_an_answer() -> None:
+    # A payment ask leaves a consent amount, so the brief can warn about
+    # it. Any OTHER ask left only a journal note, and notes reach no
+    # reader outside the session thread — so a walk that got a yes and
+    # handed over later for some other reason never told the model the
+    # user had already agreed. It rides its own slot, NOT `decided`,
+    # which is the ref namespace an agent step's returns own.
+    from physiclaw.conductor.walk import brief
+
+    p, h, send = _at_gate()
+    _feed(h, send, _thread(("buy it?", 0.75, 0.3)))
+    _reply_arrives(p, h, send, "好的")
+
+    assert p.ledger.answers == {"gate": "yes"}
+    assert "gate.answer" not in p.ledger.decided  # not an agent output
+    # It reaches the account, so the recap and the handover brief carry it.
+    assert any("answered gate='yes'" in c for c in p.ledger.account())
+    assert "answered gate='yes'" in brief.walk_brief(
+        "something else broke",
+        ledger=p.ledger,
+        node="pay",
+        idx=4,
+        consented=None,
+    )
+    # The journal line still keeps the reply verbatim and who read it.
+    assert any("user confirmed" in e and "'好的'" in e for e in p.ledger.events)

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from physiclaw.conductor.walk.micro import DecisionRequest, MicroOutcome
-from physiclaw.contract.dto import AssistantMessage, ImageBlock
+from physiclaw.contract.dto import AssistantMessage, ImageBlock, Thinking
 
 if TYPE_CHECKING:
     from physiclaw.common.listing import Screen
@@ -35,8 +35,10 @@ if TYPE_CHECKING:
     from physiclaw.conductor.spec.model import Checked, Playbook
     from physiclaw.conductor.spec.pages import Landmark
     from physiclaw.conductor.walk.gate import Gate
+    from physiclaw.conductor.walk.ledger import Ledger
     from physiclaw.conductor.walk.program import Program
     from physiclaw.conductor.walk.recover import Mode
+    from physiclaw.conductor.walk.thread import Thread
 
 
 @dataclass(frozen=True)
@@ -60,10 +62,12 @@ class Activator(Protocol):
     outcome builds — or None when nothing activates."""
 
     def request(
-        self, screen: "Screen", node_id: str, frame: ImageBlock | None = None
+        self, walk: "Walk", node_id: str, thinking: "Thinking | None" = None
     ) -> DecisionRequest: ...
 
-    def build(self, outcome: MicroOutcome | None) -> "Program | None": ...
+    def build(
+        self, outcome: MicroOutcome | None, thread: "Thread"
+    ) -> "Program | None": ...
 
 
 class Walk(Protocol):
@@ -78,7 +82,8 @@ class Walk(Protocol):
     screen: "Screen | None"
     frame: ImageBlock | None
     verdict: "Verdict | None"
-    outputs: dict[str, str]
+    ledger: "Ledger"  # the walk's one account — what a step did lands here
+    thread: "Thread"  # the session's conversation with the model about the errand
     landmarks: "dict[str, Landmark]"
     channel: "Channel | None"
     # The boot's two extras: the activation (menu, parse_task, build)
@@ -86,6 +91,9 @@ class Walk(Protocol):
     # None on every other walk.
     activation: "Activator | None"
     baton: "Program | None"
+
+    @property
+    def outputs(self) -> dict[str, str]: ...  # the ledger's decisions, `node.field`
 
     def ref_values(self) -> dict[str, str]: ...
 
@@ -120,6 +128,8 @@ class Walk(Protocol):
     def conclude(self, reason: str) -> None: ...
 
     def suspend(self) -> AssistantMessage: ...
+
+    def close_done(self, recap: str, memory: str | None) -> AssistantMessage: ...
 
 
 N = TypeVar("N")

@@ -178,7 +178,8 @@ PLAYBOOK_TEMPLATE = """\
 #   ask    — message the user and wait for `yes:` / `no:` (whole-message);
 #            `wait:` × `rounds:` is its patience (default {ask_wait}s ×
 #            {ask_rounds}); `approve: payment` reads the amount beside
-#            `total_label:` into {{ask.total}}; `resume:` re-enters the app.
+#            `total_label:` into {{ask.total}}; `think:` bounds the model's
+#            reading of a reply the words miss; `resume:` re-enters the app.
 #   on_fail — on any entry, pages included: what a failure of that entry
 #            does once its own means are spent — `handover` (the default:
 #            the model takes the session with every tool) or `stop` (the
@@ -259,6 +260,7 @@ route:
   #   no: ["no"]
   #   wait: {ask_wait}              # seconds between reply polls
   #   rounds: {ask_rounds}          # silent polls before the session suspends
+  #   think: off              # a reply the words miss is read by the model
   #   resume: {macro}         # re-enter the app after the reply
   #   on_fail: stop           # a failure here ends the session, nothing paid
   - tell: done
@@ -334,9 +336,15 @@ or one read off the screenshot), `scroll {{direction}}`,
 `back {{}}`, `run_macro {{name}}`, `done {{return fields}}`,
 `escalate {{}}` — and `done` counts only on the following page, judged
 by the matcher. An `ask` reads the reply against its own
-`yes:`/`no:` words (any other reply hands over), waits by its own
-`wait:` seconds for `rounds:` silent polls, and a payment ask reads
-the amount beside the label its `total_label:` names.
+`yes:`/`no:` words first (no model call when they decide); a reply
+they do not cover is read by the model in the session's thread — the
+same conversation that parsed the request — as confirm, deny, or
+other, and other hands over (`think:` bounds that reading, as on an
+agent step). It waits by its own `wait:` seconds for
+`rounds:` silent polls, and a payment ask reads the amount beside the
+label its `total_label:` names. When the route completes, the walk
+asks that thread for the record (the session's recap and the daily
+log's memory line) and closes the session DONE itself.
 
 A pack may declare `landmarks:` — named fixed spots ({{label, at,
 [page]}}, open vocabulary) that recover hands tap and agent episodes

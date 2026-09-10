@@ -21,7 +21,15 @@ from physiclaw.conductor.spec.model import AskNode
 from physiclaw.conductor.spec.pack import qualified_macro
 from physiclaw.conductor.spec.refs import fill_refs
 from physiclaw.conductor.walk import money, speak
-from physiclaw.conductor.walk.step import Step, Turn
+from physiclaw.conductor.walk.micro import (
+    ASK,
+    READ_REPLY,
+    REPLY_CONFIRM,
+    REPLY_DENY,
+    DecisionRequest,
+    MicroOutcome,
+)
+from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.contract.dto import AssistantMessage
 
 KIND_ASK_SENT = "ask-sent"
@@ -35,6 +43,12 @@ class AskStep(Step[AskNode]):
     kinds = frozenset(
         {KIND_ASK_SENT, KIND_ASK_WAIT, KIND_ASK_PEEK, KIND_ASK_OPEN, KIND_ASK_RESUME}
     )
+
+    def __init__(self, walk: Walk, node: AskNode) -> None:
+        super().__init__(walk, node)
+        # A vague reply's reading in flight, and the replies it read.
+        self.sent: DecisionRequest | None = None
+        self.new: list[str] = []
 
     def open(self) -> Turn:
         if self.walk.gate.awaiting:
@@ -111,16 +125,62 @@ class AskStep(Step[AskNode]):
             return self._wait()
         verdict = speak.verdict(walk, new)
         if verdict is reply.Answer.DENY:
-            return speak.deny(walk)
+            return self._settled(False, new[-1])
         if verdict is reply.Answer.CONFIRM:
-            return self._confirmed()
+            return self._settled(True, new[-1])
         # The declared words do not cover it ("ok, but make it two
-        # boxes", a question, a hold): the model reads the thread from
-        # the transcript and decides — the conductor never guesses.
-        return walk.handover(
-            f"ask {node.id!r}: reply {' / '.join(new)!r} matches none of its "
-            "yes/no words — read the thread and decide before any payment"
+        # boxes", a question, a hold): the model that read the request
+        # reads the reply, in the session's thread; "other" still hands
+        # over — the conductor never guesses about money.
+        self.new = new
+        self.sent = walk.thread.request(
+            READ_REPLY,
+            node.id,
+            (),
+            {ASK: gate.ask or node.message},
+            ledger=walk.ledger,
+            listing="\n".join(new),
+            frame=walk.frame,
+            thinking=node.think,
         )
+        return self.sent
+
+    def resolve(self, outcome: MicroOutcome | None) -> Turn:
+        node, walk = self.node, self.walk
+        replies = " / ".join(self.new)
+        if outcome is not None:
+            assert self.sent is not None
+            walk.thread.settle(self.sent, outcome, walk.ledger)
+            if outcome.out == REPLY_CONFIRM:
+                return self._settled(True, replies, by_model=True)
+            if outcome.out == REPLY_DENY:
+                return self._settled(False, replies, by_model=True)
+        # No outcome and "other" mean the same thing to the gate: the
+        # words could not decide and neither could the model.
+        return walk.handover(
+            f"ask {node.id!r}: reply {replies!r} matches none of its yes/no words "
+            "and could not be read as one — read the thread and decide before "
+            "any payment"
+        )
+
+    def _settled(self, ok: bool, replies: str, *, by_model: bool = False) -> Turn:
+        """Record the verdict and take the branch it implies — one word
+        for one boolean, whether the declared yes/no words read the
+        reply or the model did.
+
+        The ledger keeps it as an ANSWER, in the ask's own `yes:`/`no:`
+        vocabulary: a payment ask leaves a consent amount an exit can
+        warn about, but any other ask left only a journal line, and
+        those reach no reader outside the session thread — so a walk
+        that got a yes and handed over later never told the model the
+        user had already agreed. The journal line beside it keeps the
+        reply verbatim and says who read it."""
+        walk, node = self.walk, self.node
+        how = ", read by the model" if by_model else ""
+        verb = "confirmed" if ok else "declined"
+        walk.ledger.answered(node.id, "yes" if ok else "no")
+        walk.journal(f"user {verb} {node.approve} ({replies!r}{how})")
+        return self._confirmed() if ok else speak.deny(walk)
 
     def _confirmed(self) -> Turn:
         node, walk = self.node, self.walk
@@ -128,7 +188,6 @@ class AskStep(Step[AskNode]):
         # becomes the consented one.
         walk.gate.consented = walk.gate.quoted
         walk.gate.awaiting = False
-        walk.journal(f"user confirmed {node.approve}")
         if node.resume is not None:
             return walk.synth(
                 KIND_ASK_RESUME,

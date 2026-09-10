@@ -142,6 +142,7 @@ _ENTRY_KEYS = {
         "wait",
         "rounds",
         "resume",
+        "think",
         "on_fail",
     },
     "tell": {"tell", "message", "on_fail"},
@@ -1056,6 +1057,7 @@ def _parse_ask(
         total_label=total,
         wait_seconds=wait_seconds,
         silence_rounds=rounds,
+        think=_think_level(entry, where),
         on_fail=_on_fail(entry, where),
     )
 

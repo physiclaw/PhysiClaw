@@ -44,6 +44,7 @@ from physiclaw.conductor.walk.micro import (
     ACT_ARM,
     AGENT_ACT,
     AGENT_FIELDS,
+    SUMMARIZE,
     DecisionRequest,
     Macro,
     MicroOutcome,
@@ -790,7 +791,7 @@ def test_payment_episode_second_tap_keeps_the_paid_record() -> None:
     assert isinstance(p.advance(h), DecisionRequest)
     summary = _finish(p, h, p.resolve(_done_outcome()))
 
-    assert "completed" in summary and p.paid == 45.0
+    assert "completed" in summary and p.ledger.paid == 45.0
 
 
 @pytest.mark.parametrize(
@@ -1010,6 +1011,9 @@ async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
         '{"reason": "r", "action": "tap", "args": {"label": "the back chevron", '
         '"at": [0.0, 0.0, 0.1, 0.1]}, "confidence": 0.9}',
         '{"reason": "r", "action": "done", "args": {"total": "45"}, "confidence": 0.9}',
+        # The close's record, written in the session thread.
+        '{"reason": "r", "answer": "done", "confidence": 0.9, '
+        '"recap": "bought 5kg milk for 45", "memory": "user buys Milk 5kg, ¥45"}',
     ]
     _write()
     p = _program(name="walk", user_said="买牛奶")
@@ -1041,16 +1045,21 @@ async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
         in (mark.tool_calls[0].arguments["summary"])
     )
     _feed(h, mark, DONE)
-    brief = await conductor.advance(h)
-    assert brief is not None and brief.tool_names() == ["note", "peek"]
-    assert "completed" in brief.tool_calls[0].arguments["summary"]
+    end = await conductor.advance(h)
+    assert end is not None and end.tool_names() == ["note", "end_session"]
+    # The close asked the session thread for the record and closed on it.
+    assert end.tool_calls[1].arguments == {
+        "status": "DONE",
+        "recap": "bought 5kg milk for 45",
+    }
     assert p.outputs["pick.total"] == "45"
-    _feed(h, brief, ELSEWHERE)
+    _feed(h, end, "ended")
     assert await conductor.advance(h) is None
 
     # The last episode call replayed every earlier turn: both frames,
-    # and each settled reply as the tool call it was.
-    last = provider.calls[-1]
+    # and each settled reply as the tool call it was. (The very last
+    # call is the close's, in the session thread.)
+    last = provider.calls[-2]
     frames = [
         b
         for m in last
@@ -1068,3 +1077,58 @@ async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
         '{"reason": "r", "action": "tap", "args": {"label": "the back chevron", '
         '"at": [0.0, 0.0, 0.1, 0.1]}, "confidence": 0.9}',
     ]
+
+
+def test_a_completed_walk_asks_the_thread_for_its_record_then_ends_done() -> None:
+    # The task was the playbook's; when it is done the walk asks the
+    # session thread for the record (the model that read the request
+    # writes the recap and the memory line), then closes the session
+    # DONE by its own hand.
+    p, h, req = _at_episode()
+    row = _spot(req, "Milk 5kg")
+    tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=row))
+    _feed(h, tap, DONE)
+    assert isinstance(p.advance(h), DecisionRequest)
+
+    close = p.resolve(_done_outcome(total="45"))
+
+    assert isinstance(close, DecisionRequest) and close.call == SUMMARIZE
+    # The ledger's events the call carries tell the whole walk, task to total.
+    block = str(user_content(close))
+    assert "asked user_said='买牛奶'" in block and "decided pick.total='45'" in block
+    end = p.resolve(
+        MicroOutcome(
+            out="done",
+            reason="r",
+            confidence=0.9,
+            payload={"recap": "bought milk, ¥45", "memory": "user buys Milk 5kg"},
+        )
+    )
+    assert end is not None and end.tool_names() == ["note", "end_session"]
+    assert end.tool_calls[1].arguments == {
+        "status": "DONE",
+        "recap": "bought milk, ¥45",
+    }
+    _feed(h, end, "ended")
+    assert p.advance(h) is None
+
+
+def test_a_completed_walk_closes_on_its_own_recap_when_nobody_answers() -> None:
+    p, h, req = _at_episode()
+    row = _spot(req, "Milk 5kg")
+    _feed(
+        h,
+        p.resolve(MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=row)),
+        DONE,
+    )
+    assert isinstance(p.advance(h), DecisionRequest)
+    close = p.resolve(_done_outcome(total="45"))
+    assert isinstance(close, DecisionRequest) and close.call == SUMMARIZE
+
+    end = p.resolve(None)
+
+    assert end is not None and end.tool_names() == ["note", "end_session"]
+    args = end.tool_calls[1].arguments
+    assert args["status"] == "DONE"
+    assert args["recap"].startswith("demo/walk completed (4/4 nodes)")
+    assert "pick.total='45'" in args["recap"]

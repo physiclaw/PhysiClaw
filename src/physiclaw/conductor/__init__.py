@@ -27,7 +27,12 @@ Vocabulary, in the order a reader meets it:
     landmark   a named fixed spot the author knows ({label, bbox})
     grant      what an episode is given: a landmark (shown with its box,
                tapped like any other) or a macro (run by name)
-    gate       the ask-and-hold state (reply words, consent)
+    gate       the ask-and-hold state (reply words decide first; a reply
+               they miss is read in the thread; consent)
+    ledger     the walk's one account: task, decisions, said, paid
+    thread     the session's conversation with the model about the errand:
+               the parse, a vague reply, the closing record — append-only,
+               the ledger's delta between calls, one cached prefix
     brief      the walk's last note: why it stopped, where it stands
     handover   the walk goes quiet; the model takes the session
 
@@ -43,9 +48,11 @@ One wake, end to end:
                             macro, its verify; an agent's fenced calls;
                             an ask's send, hold, and read; a tell's send
     a deviation           → the page's `recover:` hand, or handover
-    the end               → completion, handover (one brief turn), or an
-                            ask out of patience (suspended.json); the
-                            record writes the runs row and the daily log
+    the end               → completion (the walk closes the session DONE
+                            itself), handover (one brief turn, the model
+                            continues), a stop, or an ask out of patience
+                            (suspended.json); the record writes the runs
+                            row and the daily log
 
 The seam:
     plugin.py           the composition point the engine names: wake setup,
@@ -83,8 +90,13 @@ walk/ — one playbook executing (imports spec, never drive):
     turns.py            minting a synthesized turn, the one in flight
     views.py            reading tool results out of the transcript
     brief.py            the report the walk's last turn carries
+    ledger.py           the walk's one account: what was asked, decided,
+                        said, answered, paid — every step writes it
+    thread.py           the session's one conversation with the model
+    step_close.py       a completed walk's last step: the record, DONE
     suspension.py       suspended.json, the one cross-wake file
-    micro.py            the scoped model calls (agent, activation)
+    micro.py            the scoped model calls (agent, activation, and
+                        the thread's three)
     prompts.py          what those calls say — the prompt texts
     record.py           the walk's writes: the runs row, the daily log
     walklog.py          runs.jsonl — per-walk outcomes, the escalation KPI

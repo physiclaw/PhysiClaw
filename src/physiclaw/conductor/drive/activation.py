@@ -14,7 +14,6 @@ boot route's job; this owns only the menu, the call, and the build.
 import logging
 from dataclasses import dataclass
 
-from physiclaw.common.listing import Screen
 from physiclaw.conductor.drive.build import build_program, resolve_inputs
 from physiclaw.conductor.spec import context
 from physiclaw.conductor.spec.channel import Channel
@@ -34,10 +33,11 @@ from physiclaw.conductor.walk.micro import (
     PARSE_TASK,
     DecisionRequest,
     MicroOutcome,
-    build_request,
 )
 from physiclaw.conductor.walk.program import Program
-from physiclaw.contract.dto import ImageBlock
+from physiclaw.conductor.walk.step import Walk
+from physiclaw.conductor.walk.thread import Thread
+from physiclaw.contract.dto import Thinking
 from physiclaw.contract.plugin import EventSink
 from physiclaw.macros.model import Macro, MacroInput
 
@@ -76,27 +76,26 @@ class Activation:
     events: EventSink | None = None
 
     def request(
-        self, screen: Screen, node_id: str, frame: ImageBlock | None = None
+        self, walk: "Walk", node_id: str, thinking: "Thinking | None" = None
     ) -> DecisionRequest:
-        """The parse_task request for a thread screen. The CALLER
-        establishes that the screen IS the thread — the boot's activate
-        step knows, its enter check just read it — so this is purely
-        "turn the menu and this screen into a call". `frame` is the
-        thread's screenshot when the read carried one (the bubbles'
-        sides say who said what). `node_id` names the step for the
-        logs.
-        `entries` is non-empty by construction — `activation_for` stands
-        down before building an Activation with nothing to offer."""
-        # Playbook refs only — the `not_a_task` escape is the call's own
-        # (its _SPECS row appends it; no caller can forget the exit).
-        return build_request(
+        """The parse_task request over the walk's current screen — the
+        thread: the CALLER establishes that (the boot's activate step
+        knows, its enter check just read it). It opens the session's
+        thread (`walk.thread`), which the activated walk's later calls
+        extend, at the think level the boot's step declares. `entries`
+        is non-empty by construction — `activation_for` stands down
+        before building an Activation with nothing to offer."""
+        assert walk.screen is not None
+        return walk.thread.request(
             PARSE_TASK,
             node_id,
             tuple(self.entries),
             {MENU: self._menu()},
-            screen,
-            self.context,
-            frame=frame,
+            ledger=walk.ledger,
+            listing=walk.screen.labels_text,
+            frame=walk.frame,
+            context=self.context,
+            thinking=thinking,
         )
 
     def _menu(self) -> str:
@@ -114,7 +113,7 @@ class Activation:
             )
         return "\n".join(lines)
 
-    def build(self, outcome: MicroOutcome | None) -> Program | None:
+    def build(self, outcome: MicroOutcome | None, thread: "Thread") -> Program | None:
         """A ready Program from a parse_task outcome, or None (not a
         task, low confidence, or inputs that don't resolve — all stay in
         default mode, fail-open)."""
@@ -127,7 +126,9 @@ class Activation:
             log.warning("activation %s: inputs did not resolve (%s)", outcome.out, e)
             return None
         log.info("conductor: activated %s (%s)", outcome.out, outcome.reason)
-        return build_program(spec, pack, values, self.channel, events=self.events)
+        return build_program(
+            spec, pack, values, self.channel, events=self.events, thread=thread
+        )
 
 
 @dataclass(frozen=True)

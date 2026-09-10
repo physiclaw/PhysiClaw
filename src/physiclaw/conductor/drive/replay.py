@@ -20,7 +20,12 @@ from dataclasses import dataclass
 from physiclaw.conductor.spec.calls import AGENT_DONE
 from physiclaw.conductor.spec.limits import MAX_REPLAY_TURNS
 from physiclaw.conductor.spec.model import AgentNode
-from physiclaw.conductor.walk.micro import AGENT_FIELDS, DecisionRequest, MicroOutcome
+from physiclaw.conductor.walk.micro import (
+    AGENT_FIELDS,
+    DecisionRequest,
+    MicroOutcome,
+    has_fallback,
+)
 from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.step import Paused
 from physiclaw.contract.dto import SystemMessage, ToolResultMessage, UserMessage
@@ -61,13 +66,15 @@ def replay(
         step = program.advance(history)
         while isinstance(step, DecisionRequest):
             answer = _answer(program, step, outputs)
-            if answer is None:
+            if answer is None and not has_fallback(step.call):
                 return Replay(
                     tuple(turns),
                     "stopped",
                     f"needs a model decision at agent {step.node_id!r} "
                     f"({step.call}) — supply its outputs, or stop here",
                 )
+            # A thread call resolves without one (`has_fallback`); an
+            # episode's move does not, so it still stops the replay.
             step = program.resolve(answer)
         if step is None or isinstance(step, Paused):
             return Replay(tuple(turns), program.outcome or "stopped", "went quiet")

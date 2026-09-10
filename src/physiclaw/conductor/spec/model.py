@@ -202,6 +202,9 @@ class AskNode:
     # silent rounds before the session suspends for the next wake.
     wait_seconds: int = DEFAULT_ASK_WAIT_SECONDS
     silence_rounds: int = DEFAULT_ASK_ROUNDS
+    # `think:` — as on an agent step, for the one call an ask may make:
+    # reading a reply its yes/no words miss (`read_reply`).
+    think: Thinking | None = None
     on_fail: str | None = None  # `on_fail:` — see ON_FAIL_MODES
 
     @property

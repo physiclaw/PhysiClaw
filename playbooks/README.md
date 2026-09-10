@@ -68,6 +68,7 @@ thinking each of its calls may spend; a vendor whose thinking is a
 switch, Kimi K2.x, reads low as off and cannot bound the rest, so keep
 its micro calls at off or low), `ask` (human gate; `yes:`/`no:` are the replies it reads,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
+`think:` how much the model may think when it reads a reply those words miss,
 `resume:` re-enters the app), `tell`. Any entry, a page included, may
 say `on_fail: stop|handover` — what a failure of that entry does once
 its own means are spent: hand the session to the model with every tool

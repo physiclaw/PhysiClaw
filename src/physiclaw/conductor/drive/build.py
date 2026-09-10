@@ -17,6 +17,7 @@ from physiclaw.conductor.spec.model import Pack, Playbook, PlaybookError
 from physiclaw.conductor.spec.pages import PagePrint, prints_for_app
 from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.step import Activator
+from physiclaw.conductor.walk.thread import Thread
 from physiclaw.contract.plugin import EventSink
 from physiclaw.macros import inputs as macro_inputs
 from physiclaw.macros.model import MacroError
@@ -35,6 +36,7 @@ def build_program(
     dry: bool = False,
     activation: Activator | None = None,
     events: "EventSink | None" = None,
+    thread: "Thread | None" = None,
 ) -> "Program":
     """The one Program constructor call — the boot's activation, a
     resumed suspension, the CLI rehearsal, and the offline replay all
@@ -60,6 +62,7 @@ def build_program(
         dry=dry,
         activation=activation,
         events=events,
+        thread=thread,
     )
 
 

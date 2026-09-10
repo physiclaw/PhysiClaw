@@ -7,6 +7,7 @@ import base64
 from textwrap import indent
 
 from physiclaw.common.listing import Element, Screen, format_elements
+from physiclaw.conductor.walk.micro import DecisionRequest
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -118,13 +119,21 @@ def feed(
 
 
 def finish(driver, history: list, step) -> str:
-    """The terminal contract: a handover/completion/quit mints ONE final
-    synthesized [note, peek] brief turn; feed its peek result and the
-    driver is permanently quiet. Returns the brief's note summary so
-    tests can assert on the report itself."""
-    assert step is not None, "expected the terminal brief turn, got quiet"
-    assert step.synthesized and step.tool_names() == ["note", "peek"]
-    feed(history, step, ELSEWHERE)
+    """The terminal contract: a handover mints ONE final synthesized
+    [note, peek] brief turn; a completion or a stop ONE synthesized
+    [note, end_session]. Feed the action's result and the driver is
+    permanently quiet. Returns the note's summary so tests can assert
+    on the report itself."""
+    assert step is not None, "expected the terminal turn, got quiet"
+    if isinstance(step, DecisionRequest):
+        # A completion asks the session thread for its record first; with
+        # nobody to answer, the walk's own recap closes it.
+        step = driver.resolve(None)
+    assert step.synthesized and step.tool_names() in (
+        ["note", "peek"],
+        ["note", "end_session"],
+    )
+    feed(history, step, ELSEWHERE if step.tool_names()[1] == "peek" else "ended")
     assert driver.advance(history) is None
     return step.tool_calls[0].arguments["summary"]
 

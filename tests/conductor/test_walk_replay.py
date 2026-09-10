@@ -37,6 +37,23 @@ route:
   - page: results
 """
 
+ACTING_FLOW = """\
+description: an agent that acts on the screen
+inputs:
+  keyword:
+    description: what to search
+route:
+  - page: home
+  - agent: pick
+    prompt: "Pick the cheapest {inputs.keyword}"
+    tools: [tap, scroll]
+    returns:
+      summary: what was picked
+    limit: {calls: 4, scrolls: 2}
+    think: off
+  - page: results
+"""
+
 TELLING = """\
 description: tell then stop
 inputs:
@@ -64,7 +81,12 @@ def test_replay_walks_the_route_to_completion_and_writes_nothing() -> None:
     result = replay.replay(_dry(keyword="milk"), [HOME, RESULTS, DONE])
 
     assert result.outcome == "completed"
-    assert [t.tool for t in result.turns] == ["peek", "run_macro", "run_macro", "peek"]
+    assert [t.tool for t in result.turns] == [
+        "peek",
+        "run_macro",
+        "run_macro",
+        "end_session",
+    ]
     assert [t.node for t in result.turns] == ["open", "open", "search", None]
     assert result.turns[1].verdict == "match demo.home"
     assert not walklog.runs_file().exists()
@@ -132,3 +154,31 @@ def test_replay_cli_reads_listing_files(tmp_path) -> None:
 
     assert out.exit_code == 0, out.output
     assert "completed:" in out.output and "run_macro" in out.output
+
+
+def test_a_replay_stops_at_an_acting_agent_it_cannot_answer() -> None:
+    # An acting episode's move is a model decision like a text agent's:
+    # only a model can answer it, so the replay must STOP and say where,
+    # not fall through and report a handover. The rule is read off the
+    # call's own declaration (`micro.has_fallback`).
+    from physiclaw.conductor.walk.micro import (
+        AGENT_ACT,
+        AGENT_FIELDS,
+        PARSE_TASK,
+        READ_REPLY,
+        SUMMARIZE,
+        has_fallback,
+    )
+
+    write_pack(playbooks={"flow": ACTING_FLOW})
+
+    stopped = replay.replay(_dry(keyword="milk"), [HOME, RESULTS])
+
+    assert stopped.outcome == "stopped" and "agent 'pick'" in stopped.detail
+    # Only the close: it writes the walk's own recap. A `parse_task`
+    # resolved with None concludes "no playbook covers the thread",
+    # which would make a boot replay report success without ever asking.
+    assert has_fallback(SUMMARIZE)
+    assert not any(
+        has_fallback(c) for c in (AGENT_ACT, AGENT_FIELDS, PARSE_TASK, READ_REPLY)
+    )

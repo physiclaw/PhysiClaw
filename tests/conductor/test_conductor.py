@@ -137,7 +137,7 @@ async def _walk_to_decision(conductor, history) -> None:
 
 @pytest.mark.asyncio
 async def test_advance_brokers_decision_requests_through_the_micro_caller() -> None:
-    from physiclaw.conductor.walk.micro import AGENT_FIELDS, MicroOutcome
+    from physiclaw.conductor.walk.micro import AGENT_FIELDS, SUMMARIZE, MicroOutcome
 
     prog = _agent_program()
     micro = FakeMicro(
@@ -150,12 +150,14 @@ async def test_advance_brokers_decision_requests_through_the_micro_caller() -> N
     await _walk_to_decision(conductor, history)
 
     # One advance: the agent step brokers through the micro-caller, its
-    # outputs land, and the walk's next turn comes back (here the
-    # completion brief — the one-step route is done).
+    # outputs land, and the walk's next turn comes back (here the walk's
+    # own end_session — the one-step route is done).
     turn = await conductor.advance(history)
 
-    assert turn.synthesized and turn.tool_names() == ["note", "peek"]
-    assert len(micro.requests) == 1 and micro.requests[0].call == AGENT_FIELDS
+    assert turn.synthesized and turn.tool_names() == ["note", "end_session"]
+    # Two brokered calls: the agent's, then the close's record in the
+    # session thread (the fake answers no recap, so the walk's own closes).
+    assert [r.call for r in micro.requests] == [AGENT_FIELDS, SUMMARIZE]
     assert prog.outputs == {"parse.keyword": "牛奶"}
 
 

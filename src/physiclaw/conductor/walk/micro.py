@@ -1,11 +1,15 @@
-"""Micro-calls — the conductor's three scoped model calls, one channel.
+"""Micro-calls — the conductor's scoped model calls, one channel.
 
-`parse_task` (the boot: does the thread assign a task a playbook
-covers?), `agent_fields` (an agent step's pure-text call: the author's
-prompt in, declared fields out), and `agent_act` (one episode turn: a
-tool call — tap, scroll, back, run_macro, done, or escalate, each with
-its own args). Each call's shape is ONE row of `_SPECS` — role, answer
-space, legend, outcome mapping; the texts are `prompts.py`, the
+Two live in an agent step: `agent_fields` (a pure-text call: the
+author's prompt in, declared fields out) and `agent_act` (one episode
+turn: a tool call — tap, scroll, back, run_macro, done, or escalate,
+each with its own args). Three more are the session's thread
+(`thread.py`), which asks about the errand rather than a screen:
+`parse_task` (does the chat thread assign a task a playbook covers?),
+`read_reply` (a reply the ask's own yes/no words could not decide) and
+`summarize` (the record a completed walk closes on). Each call's shape
+is ONE row of `_SPECS` — answer space, legend, outcome mapping,
+and whether it rides the thread; the texts are `prompts.py`, the
 episode vocabulary `calls.py`.
 
 The contract: a fixed-shape prompt, strict JSON out, and the reply
@@ -28,12 +32,12 @@ import json
 import logging
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from physiclaw.common.bbox import Bbox, format_bbox, parse_box
 from physiclaw.common.config import CONFIG
-from physiclaw.common.listing import Element, Screen, format_elements
+from physiclaw.common.listing import Element, format_elements
 from physiclaw.common.text import json_span
 from physiclaw.conductor.spec.calls import (
     ACT_BACK,
@@ -45,6 +49,7 @@ from physiclaw.conductor.spec.calls import (
     ANSWER,
     ARGS,
     AT,
+    CONTRACT_FIELDS,
     DIRECTION,
     ESCALATE,
     LABEL,
@@ -60,6 +65,7 @@ from physiclaw.conductor.spec.calls import (
     legend_line,
 )
 from physiclaw.conductor.spec.limits import MAX_SCREEN_ROWS
+from physiclaw.conductor.spec.reply import Answer
 from physiclaw.conductor.walk import prompts
 from physiclaw.contract.dto import (
     USAGE_CALL_MICRO,
@@ -85,6 +91,16 @@ log = logging.getLogger(__name__)
 # Conductor-internal call names — a playbook never names them.
 PARSE_TASK = "parse_task"
 NOT_A_TASK = "not_a_task"
+# The session thread's other two calls (`thread.py`): a reply the ask's
+# declared words could not read, and the closing record.
+READ_REPLY = "read_reply"
+# The two verdicts the declared yes/no words also produce — spelled by
+# `reply.Answer` so the model's word and the words' word cannot drift.
+REPLY_CONFIRM = Answer.CONFIRM.value
+REPLY_DENY = Answer.DENY.value
+REPLY_OTHER = "other"
+SUMMARIZE = "summarize"
+SUMMARY_DONE = "done"
 # parse_task's second escape: the newest message is a nudge whose
 # request sits ABOVE the visible thread — the boot's activate step
 # scrolls up (bounded) and re-asks over the accumulated listing. The
@@ -120,6 +136,8 @@ BLOCK = "block"  # an episode turn's listing block (+ granted landmarks/macros)
 PROMPT = "prompt"  # the pure-text call's authored prompt
 FIELDS = "fields"  # the declared return fields, rendered
 MENU = "menu"  # parse_task's playbook menu
+SINCE = "since"  # a thread call's ledger delta (`Thread.request` fills it)
+ASK = "ask"  # read_reply's question, as it was put to the user
 
 
 @dataclass(frozen=True)
@@ -167,7 +185,8 @@ class DecisionRequest:
     # An agent episode's prior turns, append-only: ("user"|"assistant",
     # content) pairs replayed VERBATIM before the newest user block, so
     # each call's prefix is byte-identical to the previous call's whole
-    # request. Empty for every one-shot call.
+    # request. A thread call carries the session's turns the same way
+    # (`thread.py`); only a lone one-shot call has none.
     history: tuple[tuple[str, Content], ...] = ()
     # The step's `think:` — how much hidden thinking the call asks the
     # model for; None leaves the vendor's default.
@@ -184,8 +203,10 @@ class MicroOutcome:
     reason: str
     confidence: float
     picked: Tap | Macro | None = None
-    # parse_task's extracted playbook inputs / an agent call's return
-    # fields; None for every other call.
+    # The fields riding beside the answer: parse_task's extracted
+    # playbook inputs, an agent call's return fields, a summary's recap
+    # and memory line. Empty when the reply carried none; None only
+    # where a row suppresses them (a parse escape).
     payload: dict[str, str] | None = None
 
 
@@ -198,35 +219,6 @@ class MicroResult:
     detail: str  # the outcome's reason, or why there is none
     attempts: int
     elapsed_ms: int
-
-
-def build_request(
-    call: str,
-    node_id: str,
-    outcomes: tuple[str, ...],
-    material: dict[str, str],
-    screen: Screen,
-    context: str = "",
-    thinking: Thinking | None = None,
-    frame: ImageBlock | None = None,
-) -> DecisionRequest:
-    """The one assembler of a one-shot request's screen material — the
-    row labels and the frame when the call reads the screen (`_SPECS`
-    says which); never `Screen.content`, which keeps a macro result's
-    step summary for guards. (Episode requests are assembled by the
-    agent step: they carry replayed history and granted macros this
-    cannot produce.)"""
-    reads = _SPECS[call].reads_screen
-    return DecisionRequest(
-        call=call,
-        node_id=node_id,
-        outcomes=outcomes,
-        material=material,
-        listing=screen.labels_text if reads else "",
-        context=context,
-        thinking=thinking,
-        frame=frame if reads else None,
-    )
 
 
 def act_rows(rows: Iterable[Element]) -> tuple[Element, ...]:
@@ -324,7 +316,7 @@ class MicroCaller:
         over rather than asking a second model the same question."""
         allowed = _SPECS[req.call].answer_space(req)
         provider = self._live_provider()
-        messages = _messages(req, allowed)
+        messages = _messages(req)
         attempts = 0
         err = ""
         for attempts in (1, 2):  # one bounded repair retry
@@ -447,17 +439,28 @@ def _picked_words(outcome: MicroOutcome | None) -> str | None:
     return None
 
 
-def _messages(req: DecisionRequest, allowed: tuple[str, ...]) -> list[Message]:
+def _messages(req: DecisionRequest) -> list[Message]:
     """The request as messages: the system contract, an episode's prior
     turns replayed verbatim (append-only — the byte-identical-prefix
     contract the provider cache pays), then the newest user block."""
-    messages: list[Message] = [SystemMessage(content=_system(req, allowed))]
+    messages: list[Message] = [SystemMessage(content=_system(req))]
     messages.extend(
         message_of(role, content if isinstance(content, str) else list(content))
         for role, content in req.history
     )
     messages.append(UserMessage(content=user_content(req)))
     return messages
+
+
+def has_fallback(call: str) -> bool:
+    """Whether a caller may resolve this call with no outcome at all and
+    still get the outcome the call was FOR. True only of the close,
+    which writes the walk's own recap. Deliberately not `threaded`:
+    that flag shapes the prompt, and reading a walk-control question off
+    it made a replay of the boot report success — `parse_task` resolved
+    with None concludes "no playbook covers the thread", which is an
+    answer the replay never asked for."""
+    return _SPECS[call].walk_fallback
 
 
 def reply_args(obj: dict) -> dict[str, Any]:
@@ -584,14 +587,11 @@ def data_block(header: str, body: str) -> str:
 
 @dataclass(frozen=True)
 class _CallSpec:
-    """One call type's whole shape — the table dispatch. `reads_screen`
-    says whether `build_request` attaches the screen; `answer_spec` is a
+    """One call type's whole shape — the table dispatch. `answer_spec` is a
     template (an optional `{allowed}` placeholder); the callables own
     answer space, prompt body, and outcome mapping. Adding a call type
     is one row here."""
 
-    role: str
-    reads_screen: bool  # the call sees the screen: its labels and its frame
     # The field the call's word rides in and the contract asking for it.
     field: str
     contract: str
@@ -607,6 +607,17 @@ class _CallSpec:
     # What the call's data block is made of, said once in the system
     # prompt when the shape needs saying (an episode's OCR rows).
     material_note: str = ""
+    # A thread call (`thread.py`): the session's fixed system prompt
+    # instead of the row's, the legend at the tail of the user block,
+    # the ledger's delta at its head.
+    threaded: bool = False
+    # The walk can resolve this call with no outcome and still reach the
+    # outcome the call was for (`has_fallback`) — a separate fact from
+    # `threaded`, which only shapes the prompt.
+    walk_fallback: bool = False
+    # Where a thread call's payload rides in its canonical reply: under
+    # this key (parse_task's `inputs`), or flat when None.
+    payload_key: str | None = None
 
 
 def _parse_task_space(req: DecisionRequest) -> tuple[str, ...]:
@@ -658,16 +669,22 @@ def _string_fields(mapping: dict) -> dict[str, str]:
     }
 
 
-def _parse_task_outcome(
+def _answer_outcome(
     req: DecisionRequest, answer: str, reason: str, confidence: float, obj: dict
 ) -> MicroOutcome:
-    raw = obj.get("inputs")
-    inputs = _string_fields(raw) if isinstance(raw, dict) else {}
+    """A question's outcome: the word, and the fields beside it where
+    the row keeps them — under `payload_key` (parse_task's `inputs`) or
+    flat (a summary's recap and memory) — as strings."""
+    key = _SPECS[req.call].payload_key
+    if key is not None:
+        raw = obj.get(key)
+        fields = _string_fields(raw) if isinstance(raw, dict) else {}
+    else:
+        fields = _string_fields(
+            {k: v for k, v in obj.items() if str(k) not in CONTRACT_FIELDS}
+        )
     return MicroOutcome(
-        out=answer,
-        reason=reason,
-        confidence=confidence,
-        payload=None if answer in (NOT_A_TASK, SCROLL_UP) else inputs,
+        out=answer, reason=reason, confidence=confidence, payload=fields
     )
 
 
@@ -692,20 +709,54 @@ def move_of(outcome: MicroOutcome) -> tuple[str, dict[str, Any]]:
 _ARM_DIRECTION = {arm: direction for direction, arm in SCROLL_ARMS.items()}
 
 
-def canonical_reply(outcome: MicroOutcome) -> str:
-    """A validated agent outcome re-serialized in the contract's own
-    spelling — what an episode's replayed history carries as the
-    assistant turn. Rebuilt from the outcome (never the raw reply), so
-    repair-retry noise can't enter the byte-stable prefix; the envelope
-    in the contract's order: reason, action, args, confidence."""
-    action, args = move_of(outcome)
-    obj: dict = {
-        "reason": outcome.reason,
-        ACTION: action,
-        ARGS: args,
-        "confidence": round(outcome.confidence, 2),
-    }
+def _parse_task_outcome(
+    req: DecisionRequest, answer: str, reason: str, confidence: float, obj: dict
+) -> MicroOutcome:
+    """parse_task: the inputs ride only with a playbook. An escape
+    carries none — a `scroll_up` or `not_a_task` answer has read only
+    part of the thread, so anything it extracted is a guess, and
+    dropping it keeps it out of the settled history too."""
+    outcome = _answer_outcome(req, answer, reason, confidence, obj)
+    if answer in (NOT_A_TASK, SCROLL_UP):
+        return replace(outcome, payload=None)
+    return outcome
+
+
+def canonical(req: DecisionRequest, outcome: MicroOutcome) -> str:
+    """A validated outcome re-serialized in the contract's own spelling
+    — the assistant turn a history replays. Rebuilt from the outcome
+    (never the raw reply), so repair-retry noise can't enter the
+    byte-stable prefix. The row says the shape: a move is `reason,
+    action, args, confidence` (`move_of` is the inverse of the parse); a
+    question is `reason, answer, confidence` with its fields where the
+    row keeps them (`payload_key`, or flat)."""
+    spec = _SPECS[req.call]
+    obj: dict = {"reason": outcome.reason}
+    if spec.field == ACTION:
+        action, args = move_of(outcome)
+        obj[ACTION] = action
+        obj[ARGS] = args
+        obj["confidence"] = round(outcome.confidence, 2)
+    else:
+        obj[ANSWER] = outcome.out
+        obj["confidence"] = round(outcome.confidence, 2)
+        if outcome.payload:
+            if spec.payload_key:
+                obj[spec.payload_key] = outcome.payload
+            else:
+                obj.update(outcome.payload)
     return json.dumps(obj, ensure_ascii=False)
+
+
+def settled(req: DecisionRequest, outcome: MicroOutcome) -> list[tuple[str, Content]]:
+    """The exchange as a history keeps it: the user block exactly as
+    sent (the frame by reference), then the canonical reply — the one
+    settle both the agent episode and the session thread append."""
+    asked = user_content(req)
+    return [
+        ("user", asked if isinstance(asked, str) else tuple(asked)),
+        ("assistant", canonical(req, outcome)),
+    ]
 
 
 def _agent_done_outcome(
@@ -796,8 +847,6 @@ def _act_legend(req: DecisionRequest, allowed: tuple[str, ...]) -> str:
 
 _SPECS: dict[str, _CallSpec] = {
     PARSE_TASK: _CallSpec(
-        role=prompts.PARSE_TASK_ROLE,
-        reads_screen=True,
         field=ANSWER,
         contract=_contract(ANSWER),
         answer_space=_parse_task_space,
@@ -810,14 +859,41 @@ _SPECS: dict[str, _CallSpec] = {
             data_block("The user's message thread", req.listing),
         ],
         to_outcome=_parse_task_outcome,
+        threaded=True,
+        payload_key="inputs",
+    ),
+    READ_REPLY: _CallSpec(
+        field=ANSWER,
+        contract=_contract(ANSWER),
+        answer_space=_fixed((REPLY_CONFIRM, REPLY_DENY, REPLY_OTHER)),
+        answer_spec=_template(prompts.READ_REPLY_LEGEND),
+        # The ask as it was put, then the thread: its screenshot and the
+        # user's messages since the ask, newest last.
+        user_parts=lambda req: [
+            data_block("The ask, as sent to the user", req.material.get(ASK, "")),
+            req.frame,
+            data_block("The user's replies since, oldest first", req.listing),
+        ],
+        to_outcome=_answer_outcome,
+        threaded=True,
+    ),
+    SUMMARIZE: _CallSpec(
+        field=ANSWER,
+        contract=_contract(ANSWER),
+        answer_space=_fixed((SUMMARY_DONE,)),
+        answer_spec=_template(prompts.SUMMARIZE_LEGEND),
+        # No material of its own: the thread's history and its
+        # since-block already carry the whole walk.
+        user_parts=lambda req: [],
+        to_outcome=_answer_outcome,
+        threaded=True,
+        walk_fallback=True,
     ),
     # The two agent rows: the author's prompt IS the brief (the first
     # user block — replayed verbatim in an episode), the conductor adds
     # only the output contract, the answers the author's tools grant,
     # and — for an episode — what its screen block is made of.
     AGENT_FIELDS: _CallSpec(
-        role="",
-        reads_screen=False,
         field=ACTION,
         contract=_contract(ACTION),
         answer_space=_fixed((AGENT_DONE, ESCALATE)),
@@ -833,12 +909,9 @@ _SPECS: dict[str, _CallSpec] = {
         to_outcome=_agent_done_outcome,
     ),
     AGENT_ACT: _CallSpec(
-        role="",
-        # Not `build_request`'s to assemble: episode requests come from
-        # the agent step (`step_agent.AgentStep._request`) with replayed
-        # history and granted macros, so there is deliberately no
-        # build_request arm to half-mirror them.
-        reads_screen=False,
+        # Episode requests come from the agent step
+        # (`step_agent.AgentStep._request`): only it has the replayed
+        # history and the granted macros.
         field=ACTION,
         contract=_contract(ACTION),
         material_note=prompts.SCREEN_ROWS_NOTE,
@@ -857,18 +930,23 @@ _SPECS: dict[str, _CallSpec] = {
 }
 
 
-def _system(req: DecisionRequest, allowed: tuple[str, ...]) -> str:
-    # One skeleton owns the prompt's load-bearing order (role sentence →
-    # contract → material note, when the row has one → answer legend);
-    # the row supplies only the texts.
+def _system(req: DecisionRequest) -> str:
+    # One skeleton owns the prompt's load-bearing order (contract →
+    # material note, when the row has one → answer legend); the row
+    # supplies only the texts.
     # `format` fills the optional {allowed} placeholder and unescapes a
     # JSON legend's doubled braces; a legend with neither (agent_act —
     # its rows change per turn, so the system prompt stays byte-stable
     # for the prefix cache) passes through unchanged.
     spec = _SPECS[req.call]
+    if spec.threaded:
+        # The session thread's prompt is the same for all its calls —
+        # role and contract only; the call's legend rides the user
+        # block — so the whole thread is one cached prefix.
+        return f"{prompts.THREAD_ROLE} {spec.contract}"
     note = f"{spec.material_note}\n" if spec.material_note else ""
-    legend = spec.answer_spec(req, allowed)
-    return f"{spec.role} {spec.contract}\n{note}{legend}".lstrip()
+    legend = spec.answer_spec(req, spec.answer_space(req))
+    return f"{spec.contract}\n{note}{legend}"
 
 
 def user_content(req: DecisionRequest) -> str | list[ContentBlock]:
@@ -877,11 +955,20 @@ def user_content(req: DecisionRequest) -> str | list[ContentBlock]:
     the row places it. The one composer: the agent step settles exactly
     this into the episode history, so the replayed turn is byte for
     byte what was sent."""
-    parts = list(_SPECS[req.call].user_parts(req))
+    spec = _SPECS[req.call]
+    parts: list[str | ImageBlock | None] = []
+    if spec.threaded and req.material.get(SINCE):
+        # The playbook's own doing between two calls — the ledger's
+        # delta, one block, in place of the steps' turns.
+        parts.append(data_block(prompts.SINCE_HEADER, req.material[SINCE]))
+    parts.extend(spec.user_parts(req))
     if req.context:
         # Context (the recent daily log) is agent-written but ultimately
         # screen-derived too — same stamp.
         parts.append(data_block("Context", req.context))
+    if spec.threaded:
+        # What to answer THIS time — the tail, never the system prompt.
+        parts.append("This time: " + spec.answer_spec(req, spec.answer_space(req)))
     if not any(isinstance(p, ImageBlock) for p in parts):
         return "\n".join(p for p in parts if isinstance(p, str) and p)
     blocks: list[ContentBlock] = []
