@@ -29,6 +29,7 @@ from conductor_fakes import (
     thread_screen as _thread,
 )
 
+from physiclaw.common.bbox import BANDS
 from physiclaw.common.listing import LISTING_HEADER
 from physiclaw.conductor.drive import build
 from physiclaw.conductor.spec import pack as pb
@@ -39,7 +40,7 @@ from physiclaw.conductor.spec.calls import (
     TOOL_SCROLL,
     TOOL_TAP,
 )
-from physiclaw.conductor.spec.model import AgentNode, DoNode, PlaybookError
+from physiclaw.conductor.spec.model import AgentNode, DoNode, NeverTap, PlaybookError
 from physiclaw.conductor.walk.micro import (
     ACT_ARM,
     AGENT_ACT,
@@ -51,6 +52,7 @@ from physiclaw.conductor.walk.micro import (
     Tap,
     user_content,
 )
+from physiclaw.conductor.walk.step_agent import refusal
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, TextBlock
 
 BACK_LANDMARK = """\
@@ -98,7 +100,17 @@ route:
 
 HOME = make_screen(("Files", 0.5, 0.1)).text
 RESULTS = make_screen(("综合", 0.5, 0.1), ("Milk 5kg", 0.5, 0.4)).text
+# The same results screen with a pay button on it — what a walk sees once
+# a sheet has slid up over the list.
+RESULTS_WITH_PAY = make_screen(
+    ("综合", 0.5, 0.1), ("Milk 5kg", 0.5, 0.4), ("免密支付", 0.5, 0.93)
+).text
 DONE = make_screen(("AllDone", 0.5, 0.1)).text
+
+
+GUARDED = AGENTED.replace(
+    "  - agent: pick\n", '  - agent: pick\n    never_tap: ["免密支付"]\n'
+)
 
 
 def _write(playbook: str = AGENTED, name: str = "walk"):
@@ -282,10 +294,10 @@ def test_anchor_is_a_list_of_text_within_items() -> None:
 # ---------- the walk: pure-text agent + start ----------
 
 
-def _boot():
+def _boot(playbook: str = AGENTED):
     """Walk AGENTED to the parse agent's request (the opening peek lands
     on an unknown screen — the text agent needs none)."""
-    _write()
+    _write(playbook)
     p = _program(name="walk", user_said="买牛奶")
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
@@ -355,13 +367,13 @@ def test_text_agent_missing_return_field_hands_over() -> None:
 # ---------- the walk: the acting episode ----------
 
 
-def _at_episode():
+def _at_episode(playbook: str = AGENTED, screen: str = RESULTS):
     """Walk to the pick episode's first request (standing on results)."""
-    p, h, _ = _boot()
+    p, h, _ = _boot(playbook)
     start = p.resolve(_done_outcome(keyword="milk"))
     _feed(h, start, HOME)
     search = p.advance(h)
-    _feed(h, search, RESULTS)
+    _feed(h, search, screen)
     req = p.advance(h)
     assert isinstance(req, DecisionRequest) and req.call == AGENT_ACT
     return p, h, req
@@ -1132,3 +1144,92 @@ def test_a_completed_walk_closes_on_its_own_recap_when_nobody_answers() -> None:
     assert args["status"] == "DONE"
     assert args["recap"].startswith("demo/walk completed (4/4 nodes)")
     assert "pick.total='45'" in args["recap"]
+
+
+# ---------- never_tap: the taps the walker will not fire ----------
+
+_PAY = NeverTap(label=("免密支付", "立即支付"))
+_FOOTER_PAY = NeverTap(label=("免密支付",), within=BANDS["bottom"])
+
+
+def _sheet():
+    """The recorded shape of a Taobao order sheet: the pay word reads
+    BOTH as the caption beside the total (mid-sheet) and as the button at
+    the foot, with the walk's own button beside it."""
+    screen = make_screen(
+        ("免密支付", 0.30, 0.57),  # caption beside the total
+        ("加购物车", 0.25, 0.93),  # the walk's own button…
+        ("免密支付", 0.85, 0.93),  # …beside the pay button
+    )
+    caption, cart, button = (r.bbox for r in screen.rows)
+    return screen, caption, cart, button
+
+
+def test_a_tap_that_presses_a_listed_target_is_refused() -> None:
+    screen, caption, cart, button = _sheet()
+
+    said = refusal((_PAY,), screen.rows, Tap(label="the orange button", bbox=button))
+    assert said is not None and "免密支付" in said
+    # A box aimed a little past the text still presses the button under it.
+    nudged = (button[0] + 0.02, button[1] + 0.015, button[2] + 0.02, button[3] + 0.015)
+    assert refusal((_PAY,), screen.rows, Tap(label="x", bbox=nudged)) is not None
+    # Unbanded, the mid-sheet caption counts as the target too.
+    assert refusal((_PAY,), screen.rows, Tap(label="x", bbox=caption)) is not None
+    # Declaring nothing refuses nothing.
+    assert refusal((), screen.rows, Tap(label="x", bbox=button)) is None
+
+
+def test_the_press_lands_at_the_centre_so_that_is_the_whole_question() -> None:
+    # A tap fires at its box's CENTRE (`core.server.tools.tap`). A box
+    # drawn over the whole screen presses the middle of the screen, not
+    # whatever it happens to span — and naming a target while pressing
+    # elsewhere is narration, since the box is what fires.
+    screen, caption, cart, button = _sheet()
+
+    assert (
+        refusal((_PAY,), screen.rows, Tap(label="x", bbox=(0.0, 0.0, 1.0, 1.0))) is None
+    )
+    assert refusal((_PAY,), screen.rows, Tap(label="免密支付", bbox=cart)) is None
+    # …and the walk's own button, beside the pay button, goes through.
+    assert refusal((_PAY,), screen.rows, Tap(label="加购物车", bbox=cart)) is None
+
+
+def test_a_within_band_says_where_the_target_sits() -> None:
+    # The band gates the tap and the row alike, as `within:` does on a
+    # page anchor. It is what keeps the pay word's mid-sheet caption from
+    # standing in for the button — this playbook declares that same word
+    # as a `total_label:`.
+    screen, caption, cart, button = _sheet()
+
+    assert refusal((_FOOTER_PAY,), screen.rows, Tap(label="x", bbox=button)) is not None
+    assert refusal((_FOOTER_PAY,), screen.rows, Tap(label="x", bbox=caption)) is None
+
+
+def test_a_band_is_a_sketch_and_must_be_drawn_generously() -> None:
+    # A band drawn tight around its target can miss: here the row sits ON
+    # the edge, half above it, and a tap centred on that half is outside.
+    # That is the trade a band buys — declare one only to keep a word that
+    # also appears elsewhere from standing in, and draw it with room.
+    edge = make_screen(("免密支付", 0.5, 0.750))
+    row = edge.rows[0].bbox
+
+    assert refusal((_FOOTER_PAY,), edge.rows, Tap(label="x", bbox=row)) is not None
+    above = (row[0], row[1], row[2], 0.7480)
+    assert refusal((_FOOTER_PAY,), edge.rows, Tap(label="x", bbox=above)) is None
+
+
+def test_a_refused_tap_is_journaled_and_the_episode_goes_on() -> None:
+    # The move never becomes a turn, so without the journal line nothing
+    # would record that the model reached for the pay button at all.
+    p, h, req = _at_episode(GUARDED, RESULTS_WITH_PAY)
+    row = _spot(req, "免密支付")
+
+    again = p.resolve(
+        MicroOutcome(out=ACT_ARM, reason="pay", confidence=0.9, picked=row)
+    )
+
+    assert isinstance(again, DecisionRequest)  # re-asked, NOT handed over
+    assert "refused a tap" in p.ledger.events[-1]
+    assert "免密支付" in p.ledger.events[-1]
+    assert "免密支付" in str(again.material["lead"])
+    assert again.material["lead"] != req.material["lead"]

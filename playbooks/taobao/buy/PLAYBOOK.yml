@@ -81,6 +81,16 @@ route:
     prompt: prompts.pick          # buy/prompts/pick.md — the pick's whole brief
     tools: [tap, scroll, back]    # closed allowlist for this episode
     give: [landmarks.close]       # known spots the model may name
+    never_tap:                    # …and the ones the walker will not fire,
+      # Never shown to the model: the prompt says don't, this makes it
+      # so. The two buttons are banded because 免密支付 is ALSO one of
+      # the labels the sheet total sits beside (`total_label:` below),
+      # and that row reads mid-page — recorded at y 0.56 as a label and
+      # y 0.92 as the button.
+      - {label: ["免密支付", "立即支付"], within: bottom}
+      - {label: ["提交订单", "确认支付"], within: bottom}
+      # NOT banded: this one is an option row, recorded at y 0.34.
+      - "先用后付"
     returns:
       summary: one line - title, spec, qty, the 实付 price
       message: a short Chinese message to the buyer asking them to
@@ -89,6 +99,11 @@ route:
     limit: {calls: 12, scrolls: 4}
     think: low                    # a bounded think per call: the pick weighs
                                   # rows, it does not deliberate for minutes
+    on_fail: stop                 # a pick that cannot finish ends the session:
+                                  # it stands ON the buy sheet, and handing a
+                                  # free model the tools there is how an
+                                  # unasked payment happened. The cost is
+                                  # silence — a stop tells the user nothing
 
   - page: buysheet
 

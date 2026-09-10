@@ -38,6 +38,7 @@ class Ledger:
     decided: dict[str, str] = field(default_factory=dict)  # node.field → value
     said: list[str] = field(default_factory=list)  # messages sent to the user
     answers: dict[str, str] = field(default_factory=dict)  # ask id → yes/no
+    refused: dict[str, int] = field(default_factory=dict)  # never_tap target → tries
     paid: float | None = None  # the amount a payment move fired with
     events: list[str] = field(default_factory=list)  # every fact, one clause, in order
     reported: int = 0  # how many events the thread has carried to the model
@@ -77,6 +78,13 @@ class Ledger:
         ask left nothing an exit could see."""
         self.answers[ask] = verdict
 
+    def refuse(self, target: str) -> None:
+        """A guard rail turned a move away (`never_tap`). Counted rather
+        than noted, because a stop's day line would otherwise read like
+        any other failed step — and a walk where this fires is a prompt
+        or a route to fix, told to the reader who would fix it."""
+        self.refused[target] = self.refused.get(target, 0) + 1
+
     def pay(self, amount: float) -> None:
         self.paid = amount
         self.events.append(f"paid ¥{amount:g}")
@@ -109,6 +117,11 @@ class Ledger:
             parts.append("decided " + _pairs(self.decided, 120))
         if self.answers:
             parts.append("answered " + _pairs(self.answers, 40))
+        if self.refused:
+            parts.append(
+                "refused "
+                + ", ".join(f"{n}× a tap on {t}" for t, n in self.refused.items())
+            )
         if self.said:
             n = len(self.said)
             parts.append(
@@ -133,6 +146,7 @@ class Ledger:
             "outputs": dict(self.decided),
             "said": list(self.said),
             "answers": dict(self.answers),
+            "refused": dict(self.refused),
             "paid": self.paid,
             "events": list(self.events),
         }
@@ -146,6 +160,7 @@ class Ledger:
         landing order."""
         self.decided, self.said, self.paid = {}, [], None
         self.answers = {str(k): str(v) for k, v in (data.get("answers") or {}).items()}
+        self.refused = {str(k): int(v) for k, v in (data.get("refused") or {}).items()}
         self.events, self.reported, self._offered = [], 0, 0
         if self.task:
             self._seed()

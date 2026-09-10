@@ -40,6 +40,7 @@ DEFAULT_AGENT_SCROLLS = 6
 # pasted document (a real brief runs a few thousand characters).
 MAX_PROMPT_LEN = 8000
 MAX_RETURNS = 6
+MAX_NEVER_TAP = 8  # `never_tap:` targets on one agent step
 
 # ---- the pack (pages.py) ----
 

@@ -169,7 +169,10 @@ PLAYBOOK_TEMPLATE = """\
 #            payment` ask.
 #   agent  — the model drives inside YOUR prompt (inline, or
 #            `prompt: prompts.<name>` for prompts/<name>.md) with the
-#            `tools:` and `give:` grants you list; `returns:` fields read downstream as
+#            `tools:` and `give:` grants you list (`never_tap:` is the
+#            opposite — readings, or `{{label, within}}`, this episode's
+#            taps may never land on; never shown to the model);
+#            `returns:` fields read downstream as
 #            {{name.field}}. No tools = a pure-text call, legal before the
 #            first page. `limit: {{calls, scrolls}}` bounds an episode
 #            (≤ {max_agent_calls} calls). `think: off|low|medium|high` says
@@ -321,7 +324,11 @@ the whole brief (refs fill once when the step opens; the conductor
 adds only the output contract), `tools:` the closed gesture allowlist,
 `give:` the landmarks shown to it each turn with their reading and box
 (`landmarks.<name>`) and the pack macros it may run whole
-(`macros.<name>`), `context:` what to
+(`macros.<name>`), `never_tap:` the targets its taps may NEVER press —
+a reading, alternate readings of one target, or `{{label, within}}` to
+say which band the target sits in; never shown to the model, so a pay
+button stays unnameable, and a refused move costs one call while the
+episode goes on, `context:` what to
 load beside the prompt (`memory`, `memory.<slug>`, `daylog` — nothing
 else travels), `returns:` the fields it must fill, `limit:` its
 call/scroll budget, `think:` how much hidden thinking each call may

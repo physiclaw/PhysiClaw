@@ -181,6 +181,8 @@ def test_a_suspension_round_trips_the_events_and_the_payment() -> None:
     ledger = _ledger()
     ledger.decide("pick.total", "45")
     ledger.say("buy?")
+    ledger.answered("gate", "yes")
+    ledger.refuse("Pay Now")
     ledger.pay(45.0)
     ledger.reported = 2  # a thread call carried the first two
 
@@ -188,6 +190,11 @@ def test_a_suspension_round_trips_the_events_and_the_payment() -> None:
     fresh.restore(ledger.to_suspended())
 
     assert fresh.paid == 45.0 and fresh.events == ledger.events
+    # Every typed field the projection carries comes back, not just the
+    # ones a reader happened to test — a write with no matching read is
+    # silent until an exit renders an empty account.
+    assert fresh.answers == ledger.answers and fresh.refused == ledger.refused
+    assert fresh.to_suspended() == ledger.to_suspended()
     # A new wake opens a fresh thread with no history: everything is
     # unreported again.
     assert fresh.reported == 0

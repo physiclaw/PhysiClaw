@@ -80,13 +80,14 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, Protocol, TypeVar
 
 from physiclaw.common import paths
+from physiclaw.common.bbox import Bbox
 from physiclaw.conductor.spec import specfile
 from physiclaw.conductor.spec.limits import (
     DEFAULT_ASK_ROUNDS,
     DEFAULT_ASK_WAIT_SECONDS,
     DEFAULT_RECOVER_LIMIT,
 )
-from physiclaw.conductor.spec.pages import Landmark, PageDecl
+from physiclaw.conductor.spec.pages import AnchorDecl, Landmark, PageDecl
 from physiclaw.contract.dto import Thinking
 from physiclaw.macros.model import MACRO_SUFFIX, Macro, MacroInput
 
@@ -166,6 +167,10 @@ class AgentNode:
     max_calls: int
     max_scrolls: int
     irreversible: str | None = None
+    # `never_tap:` — the targets this episode's taps may never press,
+    # the opposite of `give:`. Enforced by `step_agent.refusal`, which
+    # owns the rule and says why they stay unnamed to the model.
+    never_tap: tuple["NeverTap", ...] = ()
     context: tuple[str, ...] = ()  # `context:` — what to load (`context.py`)
     macros: tuple[str, ...] = ()  # granted pack macros (`give: [macros.<name>]`)
     # `think:` — how much hidden thinking each of its calls asks the
@@ -176,6 +181,33 @@ class AgentNode:
     @property
     def return_fields(self) -> tuple[str, ...]:
         return tuple(f for f, _ in self.returns)
+
+
+@dataclass(frozen=True)
+class NeverTap:
+    """One target an episode's taps must never land on: its readings,
+    and optionally the band it lives in. Written as a reading
+    (`"Pay Now"`), as alternate spellings of ONE target (`["Pay Now",
+    "Confirm Payment"]`), or as `{label: …, within: …}`.
+
+    `within` takes a band name or a box (`bbox.parse_within`, the one
+    reader of "where to look") and says where the TARGET sits, as it
+    does on a page anchor. SKETCH IT GENEROUSLY: it gates the tap's
+    centre and the row's centre alike, so a band drawn tight around its
+    target can miss a row sitting on the edge. Omitting it means
+    anywhere, which is always the safe reading — declare one only to
+    keep a word that ALSO reads somewhere harmless from standing in for
+    the real control."""
+
+    label: tuple[str, ...]
+    within: Bbox | None = None
+
+    @property
+    def anchor(self) -> "AnchorDecl":
+        """The same shape the page grammar's anchors have — readings plus
+        the band they sit in — so the ONE row matcher
+        (`match.candidate_rows`) finds this target too."""
+        return AnchorDecl(text=self.label[0], alts=self.label[1:], within=self.within)
 
 
 @dataclass(frozen=True)

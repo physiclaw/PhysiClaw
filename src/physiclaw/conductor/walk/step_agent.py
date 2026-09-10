@@ -18,9 +18,9 @@ proposes.
 """
 
 from physiclaw.common import gesture_vocab
-from physiclaw.common.bbox import format_bbox
+from physiclaw.common.bbox import Bbox, center_of, format_bbox, inside
 from physiclaw.common.listing import Element
-from physiclaw.conductor.spec import context
+from physiclaw.conductor.spec import context, match
 from physiclaw.conductor.spec.calls import (
     ACT_BACK,
     ACT_SCROLL_DOWN,
@@ -32,7 +32,7 @@ from physiclaw.conductor.spec.calls import (
     TOOL_TAP,
 )
 from physiclaw.conductor.spec.conventions import LOCKED_ID, page_id
-from physiclaw.conductor.spec.model import AgentNode
+from physiclaw.conductor.spec.model import AgentNode, NeverTap
 from physiclaw.conductor.spec.pack import qualified_macro
 from physiclaw.conductor.spec.pages import Landmark
 from physiclaw.conductor.spec.refs import fill_refs
@@ -62,6 +62,48 @@ from physiclaw.conductor.walk.turns import scroll_args
 KIND_TAP = "agent-tap"
 KIND_SWIPE = "agent-swipe"
 KIND_MACRO = "agent-macro"
+
+
+# How far outside a listed row's own box a tap may still be pressing it.
+# A row is the TEXT's box; the button around it is bigger, so a press
+# aimed at the button can land just past the text. Measured against every
+# tap in the recorded sessions: no legitimate move is refused anywhere up
+# to 0.05, so this sits well inside the headroom.
+_NEAR_ENOUGH = 0.02
+
+
+def _centred_in(box: Bbox, region: Bbox, *, slack: float = 0.0) -> bool:
+    """Whether a tap on `box` presses inside `region`. The press lands at
+    the box's CENTRE (`core.server.tools.tap`), so that is the whole
+    question — a box merely overlapping a region presses wherever its own
+    centre is, which may be nothing at all."""
+    center = center_of(box)
+    return center is not None and inside(center, list(region), margin=slack)
+
+
+def refusal(
+    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], tap: Tap
+) -> str | None:
+    """Why this tap is refused, or None — a pure rule over what the step
+    declared, what the screen shows and what the model proposed, so it
+    reads and audits without the state machine around it.
+
+    The targets are never shown to the model: naming the pay button would
+    tell it where the pay button is, so this is a guard rail and not an
+    instruction."""
+    for target in targets:
+        # Not where this target lives — allow, next target. The band is a
+        # sketch (see `NeverTap`), so a tap centred outside it is not on
+        # the target and the rest is skipped outright.
+        if target.within is not None and not _centred_in(tap.bbox, target.within):
+            continue
+        # Which rows ARE the target: its readings, inside that same band.
+        # Nothing there means nothing to refuse — it cannot be tapped
+        # when it is not on the screen.
+        for row in match.candidate_rows(target.anchor, rows, ()):
+            if _centred_in(tap.bbox, row.bbox, slack=_NEAR_ENOUGH):
+                return f"that box presses {' / '.join(target.label)}, not this step's to tap."
+    return None
 
 
 class AgentStep(Step[AgentNode]):
@@ -242,6 +284,13 @@ class AgentStep(Step[AgentNode]):
             page_id(walk.app, landmark.page)
         )
 
+    def _again(self, why: str) -> Turn:
+        """A move the walker would not make: say why and re-ask over the
+        same screen. One call spent, the episode goes on — never a
+        handover, which is what put a free model beside a pay button."""
+        self.lead = f"{why} Continue toward the goal, or escalate."
+        return self._request()
+
     def _request(self) -> Turn:
         node = self.node
         self.calls += 1
@@ -317,14 +366,21 @@ class AgentStep(Step[AgentNode]):
             )
             if wrong is not None:
                 # Same screen, same listing: only the lead changes.
-                self.lead = (
-                    f"done rejected: the walk must be on {node.verify!r} — "
-                    f"{wrong}. Continue toward the goal, or escalate."
+                return self._again(
+                    f"done rejected: the walk must be on {node.verify!r} — {wrong}."
                 )
-                return self._request()
             return self._close(outcome, calls=self.calls)
         assert outcome.out == ACT_ARM and outcome.picked is not None
         assert walk.screen is not None
+        if isinstance(outcome.picked, Tap):
+            # Taps only; a granted macro's own targets are checked at
+            # parse (`route._guard_grants`). BEFORE the payment block, so
+            # a refusal cannot spend the consent it was guarding.
+            refused = refusal(node.never_tap, walk.screen.rows, outcome.picked)
+            if refused is not None:
+                walk.ledger.refuse(outcome.picked.label)
+                walk.journal(f"agent {node.id}: refused a tap — {refused}")
+                return self._again(refused)
         if node.irreversible == "payment":
             # The purse stays with the walker: BOTH predicates re-run
             # before every tap or macro the model proposes — one while

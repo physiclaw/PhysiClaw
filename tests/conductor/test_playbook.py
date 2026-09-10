@@ -1164,3 +1164,84 @@ def test_check_names_a_stop_once_money_may_have_moved() -> None:
         w for w in lints.readiness_warnings(spec, pack) if "money may have moved" in w
     ]
     assert len(lines) == 1 and "'do-pay'" in lines[0]
+
+
+def test_never_tap_takes_a_reading_a_list_or_a_label_with_a_band() -> None:
+    from physiclaw.common.bbox import BANDS
+    from physiclaw.conductor.spec.model import NeverTap
+
+    text = _mutate(
+        "    tools: [tap, scroll]\n",
+        "    tools: [tap, scroll]\n    never_tap:\n"
+        '      - "Pay Now"\n'
+        '      - ["Place Order", "Confirm Payment"]\n'
+        '      - {label: "Pay Now", within: bottom}\n'
+        "      - {label: [Buy], within: [0.0, 0.9, 1.0, 1.0]}\n",
+    )
+    node = pb.parse_playbook(text, "buy", _pack()).nodes[1]
+
+    assert node.never_tap == (
+        NeverTap(label=("Pay Now",)),
+        NeverTap(label=("Place Order", "Confirm Payment")),
+        NeverTap(label=("Pay Now",), within=BANDS["bottom"]),
+        NeverTap(label=("Buy",), within=(0.0, 0.9, 1.0, 1.0)),
+    )
+    assert pb.parse_playbook(VALID, "buy", _pack()).nodes[1].never_tap == ()
+
+
+@pytest.mark.parametrize(
+    ("block", "message"),
+    [
+        ('    never_tap: "x"\n', "non-empty LIST"),
+        ("    never_tap: []\n", "non-empty LIST"),
+        ("    never_tap: [{label: a, when: b}]\n", "unknown key"),
+        ("    never_tap: [{within: bottom}]\n", "`label`"),
+        ("    never_tap: [{label: a, within: sideways}]\n", "`within`"),
+        ("    never_tap: [a, b, c, d, e, f, g, h, i]\n", "at most 8"),
+    ],
+)
+def test_never_tap_rejects_a_malformed_target(block: str, message: str) -> None:
+    with pytest.raises(PlaybookError, match=message):
+        pb.parse_playbook(
+            _mutate("    tools: [tap, scroll]\n", f"    tools: [tap, scroll]\n{block}"),
+            "buy",
+            _pack(),
+        )
+
+
+def test_never_tap_needs_the_tap_tool_it_guards() -> None:
+    with pytest.raises(PlaybookError, match="no `tap` tool"):
+        pb.parse_playbook(
+            _mutate(
+                "    tools: [tap, scroll]\n",
+                '    tools: [scroll]\n    never_tap: ["Pay Now"]\n',
+            ),
+            "buy",
+            _pack(),
+        )
+
+
+def test_a_grant_that_walks_around_never_tap_is_refused_at_parse() -> None:
+    # Both contradictions are fully declared, so both belong at parse:
+    # only the model's OWN taps reach the runtime guard. A granted
+    # landmark is a box the model may press blind — and one with no text
+    # row leaves the runtime check nothing to find. A granted macro
+    # presses its recorded targets without proposing a tap at all.
+    from conductor_fakes import write_pack
+
+    def spec(extra: str) -> str:
+        return _mutate(
+            "    tools: [tap, scroll]\n", f"    tools: [tap, scroll]\n{extra}"
+        )
+
+    write_pack(landmarks='pay:\n  label: "t"\n  at: [0.1, 0.9, 0.9, 0.96]\n')
+    pack = pb.load_pack("demo")
+    guarded = '    never_tap: ["t"]\n'
+
+    with pytest.raises(PlaybookError, match="never_tap"):
+        pb.parse_playbook(spec(guarded + "    give: [landmarks.pay]\n"), "buy", pack)
+    # The shared fixture macro taps "t" too.
+    with pytest.raises(PlaybookError, match="presses"):
+        pb.parse_playbook(spec(guarded + "    give: [macros.add-cart]\n"), "buy", pack)
+    # The same grants, with nothing declared, stay legal.
+    pb.parse_playbook(spec("    give: [landmarks.pay, macros.add-cart]\n"), "buy", pack)

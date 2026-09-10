@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, TypeVar
 
 from physiclaw.common import gesture_vocab
+from physiclaw.common.bbox import parse_within
 from physiclaw.common.paths import PACK_MACROS_DIRNAME, PACK_PROMPTS_DIRNAME
 from physiclaw.conductor.spec import context, lints, reply
 from physiclaw.conductor.spec.calls import AGENT_TOOLS, CONTRACT_FIELDS, RESERVED_KEYS
@@ -41,12 +42,14 @@ from physiclaw.conductor.spec.limits import (
     MAX_AGENT_CALLS,
     MAX_ASK_ROUNDS,
     MAX_ASK_WAIT_SECONDS,
+    MAX_NEVER_TAP,
     MAX_NODES,
     MAX_PROMPT_LEN,
     MAX_RECOVER_ACTIONS,
     MAX_RETURNS,
     MIN_ASK_WAIT_SECONDS,
 )
+from physiclaw.conductor.spec.match import normalize
 from physiclaw.conductor.spec.model import (
     INPUTS_ROOT,
     IRREVERSIBLE_CLASSES,
@@ -59,6 +62,7 @@ from physiclaw.conductor.spec.model import (
     AgentNode,
     AskNode,
     DoNode,
+    NeverTap,
     Node,
     Pack,
     PlaybookError,
@@ -85,7 +89,12 @@ from physiclaw.conductor.spec.refs import (
     refs_in,
 )
 from physiclaw.contract.dto import THINKING_LEVELS, Thinking
-from physiclaw.macros.model import Macro, MacroError, checked_readings
+from physiclaw.macros.model import (
+    Macro,
+    MacroError,
+    checked_readings,
+    label_readings,
+)
 from physiclaw.macros.parse import parse_inline_macro
 
 # Agent-step grammar. `tools` is the closed per-episode gesture allowlist
@@ -125,6 +134,7 @@ _ENTRY_KEYS = {
         "prompt",
         "tools",
         "give",
+        "never_tap",
         "returns",
         "limit",
         "context",
@@ -531,6 +541,82 @@ def _overlay(
     return out
 
 
+def _guard_grants(
+    ctx: _Ctx,
+    where: str,
+    never_tap: tuple[NeverTap, ...],
+    give: tuple[str, ...],
+    macros: tuple[str, ...],
+) -> None:
+    """Refuse a grant that walks around this episode's `never_tap:`.
+
+    Both contradictions are fully declared, so both belong here rather
+    than at run time — where only the model's own taps pass the guard at
+    all. A granted LANDMARK is a box the model may press blind, and a
+    landmark with no text row leaves the runtime check nothing to find. A
+    granted MACRO presses its own recorded targets without ever
+    proposing a tap. Node-scoped on purpose: the payment move's macro
+    presses these same buttons by design and stays legal."""
+    if not never_tap:
+        return
+    readings = {normalize(r): " / ".join(t.label) for t in never_tap for r in t.label}
+
+    def _named(labels: tuple[str, ...]) -> str | None:
+        return next(
+            (readings[n] for r in labels if (n := normalize(r)) in readings), None
+        )
+
+    for name in give:
+        hit = _named(ctx.pack.landmarks[name].label)
+        if hit is not None:
+            raise PlaybookError(
+                f"{where}: `give` grants landmark {name!r}, which this step "
+                f"declares never_tap ({hit}) — the grant would hand the model "
+                "the box the guard exists to refuse"
+            )
+    for name in macros:
+        for step in ctx.resolve(name, where, "", "give").steps:
+            args = getattr(step, "args", None)  # gestures only; a wait has none
+            hit = _named(label_readings(args)) if args else None
+            if hit is not None:
+                raise PlaybookError(
+                    f"{where}: `give` grants macro {name!r}, which presses "
+                    f"{hit} — this step declares that never_tap, and a macro "
+                    "runs its recorded steps without proposing a tap"
+                )
+
+
+def _never_tap(entry: dict, where: str) -> tuple[NeverTap, ...]:
+    """`never_tap:` — the targets an episode's taps may never land on.
+    Each item is a reading, alternate readings of ONE target, or a
+    mapping with `label:` and an optional `within:` band; the readings
+    grammar is the one every other target list uses."""
+    raw = entry.get("never_tap")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not raw:
+        raise PlaybookError(f"{where}: `never_tap` takes a non-empty LIST")
+    if len(raw) > MAX_NEVER_TAP:
+        raise PlaybookError(f"{where}: at most {MAX_NEVER_TAP} `never_tap` targets")
+    out: list[NeverTap] = []
+    for i, item in enumerate(raw):
+        at = f"{where}: `never_tap[{i}]`"
+        spec = item if isinstance(item, dict) else {"label": item}
+        extra = set(spec) - {"label", "within"}
+        if extra:
+            raise PlaybookError(f"{at}: unknown key(s): {', '.join(sorted(extra))}")
+        label = checked_readings(spec, at, require_str, PlaybookError, key="label")
+        try:
+            within = parse_within(spec["within"]) if "within" in spec else None
+        except (ValueError, TypeError) as e:
+            # `parse_within` raises a bare ValueError; every spec parser
+            # wraps it, or `playbooks check` prints a traceback instead
+            # of a located message.
+            raise PlaybookError(f"{at}: `within` {e}") from e
+        out.append(NeverTap(label=label, within=within))
+    return tuple(out)
+
+
 def _think_level(entry: dict, where: str) -> Thinking | None:
     """A model step's optional `think:` — how much hidden thinking its
     calls ask for; absent leaves the vendor's default (`playbooks
@@ -898,6 +984,13 @@ def _parse_agent(
             f"{where}: `give` names {', '.join(shared)} as both a landmark and "
             "a macro — the model answers by name, so the two must differ"
         )
+    never_tap = _never_tap(entry, where)
+    if never_tap and "tap" not in tools:
+        raise PlaybookError(
+            f"{where}: `never_tap` guards this episode's taps, but it has no "
+            "`tap` tool — grant `tap` or drop the targets"
+        )
+    _guard_grants(ctx, where, never_tap, give, macros)
     if give and "tap" not in tools:
         raise PlaybookError(
             f"{where}: `give` grants landmarks, but without `tap` the episode "
@@ -996,6 +1089,7 @@ def _parse_agent(
         prompt=prompt,
         tools=tuple(tools),
         give=give,
+        never_tap=never_tap,
         returns=tuple(returns),
         enter=enter,
         verify=verify,
