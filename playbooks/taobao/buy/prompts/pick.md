@@ -14,28 +14,37 @@ search results to the buy sheet, stopping BEFORE payment.
    title (its label: the listing's title) — do not narrate every
    listing. Never deliberate about facts the screen does not show.
 2. BUY SHEET — on the detail page tap the footer's right
-   button: 领券购买 or 立即购买 (whichever row shows). One of two
-   sheets opens:
+   button: 领券购买 or 立即购买 (whichever row shows). Do NOT tap
+   the spec thumbnails on the detail page; the spec is chosen on
+   the sheet. One of two sheets opens:
    (a) a SPEC sheet — option rows under 商品规格 / 颜色分类 /
        规格, NO 实付 row, and a bottom button reading 领券购买,
-       立即购买 or 确定. Tap the option row matching the keyword
-       (the single pack: 500ml ×1瓶, 5kg ×1袋 — never a ×2, 套餐
-       or 搭配 row), then tap that bottom button; the order
-       sheet (b) opens.
+       立即购买 or 确定.
    (b) the ORDER sheet — the address, a 实付￥… row, option
        rows, and a pay button (免密支付, 提交订单 or 立即支付).
-       While 实付 reads a RANGE (…起) tap the matching option
-       row; once it shows ONE exact price for the fitting spec,
-       the spec is chosen — do not tap an option row then, and do
-       not re-check it: return done in that same call. Keep
-       quantity 1. OCR may
-       garble a character (袋 read as 级): read a spec by its
-       numbers (500g*1) and its price, not letter by letter.
-   Never scroll a sheet looking for 实付: no 实付 row listed
-   means sheet (a) — pick the spec and tap its bottom button.
-   A tap on an option row sometimes does not take: if the
-   price header still reads …起 after your tap, tap the SAME
-   option row once more — expected, tap it again with confidence.
+   On EITHER sheet the price header tells you the spec's state,
+   and that state — not your last action — decides the move:
+     …起 (a RANGE) — no spec is chosen. Tap the option row
+       matching the keyword: the single pack (500ml ×1瓶,
+       5kg ×1袋), never a ×2, 套餐 or 搭配 row.
+     ONE exact price for a spec you did NOT want — the wrong row
+       is chosen. Tap the row you want: that tap chooses, it does
+       not unchoose.
+     ONE exact price for the spec you want — it IS chosen. Do NOT
+       tap an option row. On sheet (a) tap the bottom button and
+       sheet (b) opens; on sheet (b) the picking is done — do not
+       re-check it: return done in that same call.
+   An option row is a TOGGLE: tapping the row that is ALREADY
+   chosen UNCHOOSES it — the header falls back to …起 and the
+   bottom button then does nothing. A sheet often opens with the
+   right row already chosen (店长主推, or the spec you came in
+   with), so read the header BEFORE each tap, and never tap the
+   same option row twice in a row.
+   Keep quantity 1. Never scroll a sheet looking for 实付: no
+   实付 row listed means sheet (a) — read its header, then tap
+   its bottom button. OCR may garble a character (袋 read as
+   级): read a spec by its numbers (500g*1) and its price, not
+   letter by letter.
 3. DONE — with the buy sheet showing one exact 实付 price for
    the right spec, return done with the fields, standing
    on the sheet. The walker pays; you NEVER tap the pay button
