@@ -10,7 +10,7 @@ down at process exit.
 import asyncio
 import logging
 from contextlib import AsyncExitStack
-from typing import Any
+from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
 import httpx2
@@ -115,6 +115,36 @@ class McpClient:
         except BaseException:
             log.debug("MCP teardown after failed connect", exc_info=True)
 
+    async def _with_session(self, op: Callable[[], Awaitable[Any]]) -> Any:
+        """Run one session call; when the server no longer knows our
+        session (it restarted under a runtime that outlived it), one
+        fresh handshake, then the same call — every later call would
+        fail the same way, and the model cannot repair a transport from
+        inside a turn."""
+        try:
+            return await op()
+        except Exception as e:
+            if "session not found" not in str(e).lower():
+                raise
+            log.warning("MCP session lost (%s) — reconnecting once", e)
+            await self._reconnect()
+            return await op()
+
+    def _live(self) -> ClientSession:
+        assert self._session is not None, "McpClient not entered"
+        return self._session
+
+    async def _reconnect(self) -> None:
+        """Drop the dead transport and session and open fresh ones —
+        through `__aenter__`, not `_connect`, so a server that is still
+        down raises the ConnectionError naming the URL instead of the
+        illegible CancelledError that contract exists to prevent, and
+        the half-open stack is unwound rather than leaked."""
+        await self._safe_close()
+        self._stack = AsyncExitStack()
+        self._session = None
+        await self.__aenter__()
+
     async def _connect(self) -> "McpClient":
         # Hand the transport our own httpx2 client so `trust_env` follows the
         # same per-platform proxy policy as every other localhost client (the
@@ -150,8 +180,7 @@ class McpClient:
 
     async def list_tools(self) -> list[dict]:
         """Return tool schemas as plain dicts: {name, description, input_schema}."""
-        assert self._session is not None, "McpClient not entered"
-        result = await self._session.list_tools()
+        result = await self._with_session(lambda: self._live().list_tools())
         return [
             {
                 "name": t.name,
@@ -170,8 +199,9 @@ class McpClient:
           {"type": "text", "text": str}
           {"type": "image", "mime_type": str, "data": <base64 str>}
         """
-        assert self._session is not None, "McpClient not entered"
-        result = await self._session.call_tool(name, args or {})
+        result = await self._with_session(
+            lambda: self._live().call_tool(name, args or {})
+        )
         blocks: list[dict] = []
         for c in result.content:
             if isinstance(c, TextContent):

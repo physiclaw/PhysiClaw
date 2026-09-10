@@ -451,3 +451,52 @@ def test_probe_targets_the_url_host_and_port() -> None:
     )
     assert mcp_tool.McpClient("https://rig.local")._host_port() == ("rig.local", 443)
     assert mcp_tool.McpClient("http://rig.local")._host_port() == ("rig.local", 80)
+
+
+@pytest.mark.asyncio
+async def test_call_tool_reconnects_once_when_the_server_lost_the_session(
+    patched_transport,
+) -> None:
+    # A runtime that outlived its server keeps a session id the new
+    # server never issued: the first call fails "Session not found". One
+    # fresh handshake, then the same call — instead of every tool call
+    # of the wake failing the same way.
+    ok = SimpleNamespace(
+        content=[TextContent(type="text", text="hello")], is_error=False
+    )
+    patched_transport.call_tool.side_effect = [Exception("Session not found"), ok]
+
+    async with mcp_tool.McpClient() as c:
+        out = await c.call_tool("peek")
+
+    assert out == [{"type": "text", "text": "hello"}]
+    assert patched_transport.initialize.await_count == 2  # the handshake ran again
+    assert patched_transport.call_tool.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_call_tool_other_errors_are_not_retried(patched_transport) -> None:
+    patched_transport.call_tool.side_effect = Exception("boom")
+
+    async with mcp_tool.McpClient() as c:
+        with pytest.raises(Exception, match="boom"):
+            await c.call_tool("peek")
+
+    assert patched_transport.call_tool.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_tools_reconnects_once_when_the_server_lost_the_session(
+    patched_transport,
+) -> None:
+    # The wake's first session call is the tool listing; a lost session
+    # shows there first, and the same one-handshake repair covers it.
+    tools = SimpleNamespace(tools=[])
+    patched_transport.list_tools.side_effect = [Exception("Session not found"), tools]
+
+    async with mcp_tool.McpClient() as c:
+        out = await c.list_tools()
+
+    assert out == []
+    assert patched_transport.initialize.await_count == 2
+    assert patched_transport.list_tools.await_count == 2
