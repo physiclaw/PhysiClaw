@@ -20,7 +20,7 @@ route:
     macro:
       steps:
         - tap: "购物车"                          # the footer tab: icon over its label
-          at: [0.630, 0.922, 0.780, 0.972]      # recorded 2026-09-11
+          at: [0.630, 0.922, 0.780, 0.972]
         - wait: 3
           expect: "结算"
 
@@ -53,11 +53,11 @@ route:
     macro:
       steps:
         - tap: "结算"                            # the cart footer's right button (reads 结算（N）)
-          at: [0.720, 0.855, 0.920, 0.898]     # recorded 2026-09-11
+          at: [0.720, 0.855, 0.920, 0.898]
         - wait: 6                              # the order page is slow to build
 
   - page: buysheet                # the order page after 结算 reads as the buy sheet: the same
-                                  # pay button and 补贴后/实付 row (recorded 2026-09-11)
+                                  # pay button and 补贴后/实付 row
 
   # The buyer confirms the number the buyer will pay: the order page's
   # total, after shipping and every discount.

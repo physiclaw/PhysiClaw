@@ -6,7 +6,7 @@ steps:
   # This phone's AssistiveTouch button floats over the left edge at y
   # 0.31–0.37, exactly where the cart's first line keeps its checkbox;
   # a full scroll snaps the list back to the top, a short slow stroke
-  # does not (recorded 2026-09-11).
+  # does not.
   - swipe: up
     at: [0.30, 0.50, 0.70, 0.60]
     size: s

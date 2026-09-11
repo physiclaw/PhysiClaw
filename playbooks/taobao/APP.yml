@@ -29,7 +29,7 @@ landmarks:
     at: [0.44, 0.665, 0.56, 0.735]           # no text row — the box is the tap
   select-all:
     label: "全选"                             # the cart footer's left checkbox + label
-    at: [0.040, 0.858, 0.220, 0.896]         # recorded 2026-09-11 (label at x 0.14–0.21)
+    at: [0.040, 0.858, 0.220, 0.896]         # the label sits at x 0.14–0.21
 
 # The pages every route lands on, declared once: anchors (semantics —
 # geometry is captured on YOUR device via `physiclaw playbooks pages
