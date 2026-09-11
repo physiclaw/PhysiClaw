@@ -1,0 +1,12 @@
+name: foreground
+description: bring Taobao back to the front where it was — an ask's resume hand
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/foreground
+enabled: false
+steps:
+  # Resumes, not cold: the sheet or the order page the ask left is still up.
+  - home_screen
+  - tap: "blank area below the app cards"
+    at: [0.42, 0.855, 0.58, 0.885]
+  - tap: "the taobao app icon"
+    at: [0.720, 0.425, 0.909, 0.551]
+  - wait: 2

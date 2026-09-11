@@ -1,0 +1,91 @@
+# taobao/checkout — the cart to ONE paid order: tick the lines to buy,
+# 结算, confirm the real total (shipping and discounts applied) with the
+# buyer, 提交订单, pay. Runs alone for "把购物车结算了" and as the last
+# move of `buy-together`.
+name: checkout
+description: pay for the items in the 淘宝 (Taobao) cart in ONE order
+enabled: false  # rehearse on YOUR device, then enable
+inputs:
+  lines:
+    description: the cart lines to buy, one per line, with quantities; 全部 means whatever is ticked
+    default: "全部"
+
+route:
+  - start: app                    # the cold launch every route shares
+    macro: launch
+
+  - page: home
+
+  - do: open-cart                 # the home footer's 购物车 tab
+    macro:
+      steps:
+        - tap: "购物车"                          # the footer tab: icon over its label
+          at: [0.630, 0.922, 0.780, 0.972]      # recorded 2026-09-11
+        - wait: 3
+          expect: "结算"
+
+  - page: cart
+
+  - do: nudge                     # this phone floats a button over the first line's
+    macro: nudge                  # checkbox while the list is at its top: shift it clear
+
+  - page: cart
+
+  # The one judgment the cart needs: make the ticked lines match the
+  # list — tick a listed line, untick any other ticked line, set a
+  # quantity with the stepper. Never 结算 (the walk's move), never 删除.
+  - agent: tick
+    prompt: prompts.tick
+    tools: [tap, scroll]
+    give: [landmarks.select-all, landmarks.close, macros.nudge]
+    never_tap:
+      - {label: ["结算", "删除"], within: bottom}
+      - {label: ["免密支付", "立即支付", "提交订单"], within: bottom}
+    returns:
+      ticked: the lines now ticked, one per line, as the cart shows them
+    limit: {calls: 10, scrolls: 4}
+    think: low
+    on_fail: stop
+
+  - page: cart
+
+  - do: checkout
+    macro:
+      steps:
+        - tap: "结算"                            # the cart footer's right button (reads 结算（N）)
+          at: [0.720, 0.855, 0.920, 0.898]     # recorded 2026-09-11
+        - wait: 6                              # the order page is slow to build
+
+  - page: buysheet                # the order page after 结算 reads as the buy sheet: the same
+                                  # pay button and 补贴后/实付 row (recorded 2026-09-11)
+
+  # The buyer confirms the number the buyer will pay: the order page's
+  # total, after shipping and every discount.
+  - ask: confirm-pay
+    approve: payment
+    total_label: ["补贴后", "实付", "实付款", "免密支付"]   # recorded: 补贴后￥… and the button carries the price
+    message: "一单下单：\n{tick.ticked}\n实付 ¥{ask.total}（含运费及优惠，以屏幕读数为准）。回复 好的 确认支付，或 不用 取消。"
+    yes: ["好的", "好", "可以", "确认"]
+    no: ["不用", "不要", "取消", "算了"]
+    denied: "好的，已取消付款，商品还留在购物车里，需要时回复「结算购物车」。"
+    wait: 45
+    rounds: 3
+    think: off
+    on_fail: stop
+    resume: foreground            # the ask left the app — come back where it was
+
+  # Payment: 提交订单, then the cashier's button when it shows.
+  - do: pay
+    irreversible: payment
+    on_fail: handover             # money may have moved: the model verifies and reports
+    macro:
+      steps:
+        - tap: ["免密支付", "提交订单", "立即支付"]   # one button, three spellings — recorded
+          at: [0.300, 0.918, 0.720, 0.960]     # 免密支付￥… read at [0.333,0.927,0.682,0.950]
+        - wait: 4
+        - tap: ["立即支付", "确认支付", "免密支付"]   # the cashier, when it shows
+          at: [0.30, 0.90, 0.70, 0.96]
+          when: ["立即支付", "确认支付", "免密支付"]
+        - wait: 4
+
+  - page: paid

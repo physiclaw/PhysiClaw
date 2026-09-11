@@ -27,6 +27,9 @@ landmarks:
   close:
     label: "the ✕ below a promo popup card"  # 天降红包 / coupon popups: an icon,
     at: [0.44, 0.665, 0.56, 0.735]           # no text row — the box is the tap
+  select-all:
+    label: "全选"                             # the cart footer's left checkbox + label
+    at: [0.040, 0.858, 0.220, 0.896]         # recorded 2026-09-11 (label at x 0.14–0.21)
 
 # The pages every route lands on, declared once: anchors (semantics —
 # geometry is captured on YOUR device via `physiclaw playbooks pages
@@ -56,11 +59,27 @@ pages:
   buysheet:
     anchors:
       - {text: ["免密支付", "提交订单", "立即支付"], within: bottom}
-      - {text: ["实付", "优惠后", "价格明细"], within: [0.0, 0.15, 1.0, 0.85]}  # the total row: below the header banner, above the pay bar
+      - {text: ["实付", "补贴后", "优惠后", "价格明细"], within: [0.0, 0.15, 1.0, 0.85]}  # the total row: below the header banner, above the pay bar
     forbid: ["支付成功"]
     recover:
       covered: {tap: landmarks.close}
       elsewhere: go_back
+    tries: 2
+  detail:                         # a listing's page: the footer's two buttons
+    anchors:
+      - {text: "加入购物车", within: bottom}
+      - {text: ["立即购买", "领券购买"], within: bottom}
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: go_back
+    tries: 2
+  cart:                           # the 购物车 tab. Not the 结算 button: it reads
+    anchors:                      # 结算（1） once a line is ticked, and a two-char
+      - {text: "购物车", within: top}     # anchor is read exactly — the title
+      - {text: "全选", within: bottom}    # (购物车（85）) and 全选 hold either way
+    scrollable: true
+    recover:
+      covered: {tap: landmarks.close}
     tries: 2
   paid:
     anchors:

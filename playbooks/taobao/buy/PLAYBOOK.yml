@@ -38,23 +38,7 @@ route:
 
   - do: search                    # type the keyword, run the search
     with: {keyword: "{parse.keyword} 非直播"}  # suffix the search, not the field
-    macro:
-      inputs:
-        keyword: {description: what to search for}
-      steps:
-        - tap: "home-feed search bar"       # only ever tapped ON the home feed —
-          at: [0.30, 0.092, 0.70, 0.128]    # the start contract guarantees it
-        - send_to_clipboard: "{keyword}"
-        - long_press: "search input field"
-          at: [0.08, 0.115, 0.55, 0.148]
-        - tap: "Paste"                      # en system — the iOS menu bubble reads Paste
-          at: [0.066, 0.070, 0.163, 0.098]
-        - tap: "搜索"
-          at: [0.811, 0.865, 0.923, 0.895]
-        - wait: 2
-        - tap: "close (X) on the coupon overlay"   # post-search coupon promo covers results
-          at: [0.858, 0.069, 0.901, 0.104]
-          when: ["确认领取", "消费券", "马上去用"]
+    macro: search                 # the pack macro (../macros/search.yml)
 
   - page: results
 
@@ -119,15 +103,7 @@ route:
     rounds: 3                     # …and silent polls before the session suspends
     think: off                    # a reply the words miss is read, not deliberated over
     on_fail: stop                 # a failure (or an answered no) ends the session; nothing paid
-    resume:                       # the ask left the app — come back
-      macro:
-        steps:
-          - home_screen
-          - tap: "blank area below the app cards"
-            at: [0.42, 0.855, 0.58, 0.885]
-          - tap: "the taobao app icon"    # resumes, not cold: the sheet is still up
-            at: [0.720, 0.425, 0.909, 0.551]
-          - wait: 2
+    resume: foreground            # the ask left the app — come back where it was
 
   # Payment is one recorded tap: the human consented to ¥{ask.total},
   # the walker re-reads the sheet (the consented amount still shows,

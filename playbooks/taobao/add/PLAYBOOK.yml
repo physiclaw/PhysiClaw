@@ -1,0 +1,55 @@
+# taobao/add — one item into the cart: search, pick, 加入购物车. A whole
+# story on its own (帮我把牛奶加入购物车), and the round `buy-together`
+# runs once per item — its `start` is also the reset between items.
+name: add
+description: put one item in the 淘宝 (Taobao) cart by keyword, nothing paid
+enabled: false  # rehearse on YOUR device, then enable
+inputs:
+  item:
+    description: one product, name + spec + quantity, as the buyer named it
+returns:
+  line: "{pick.title} ×{pick.qty}  ¥{pick.price}"   # the cart line, as the buyer will read it
+
+route:
+  - agent: parse
+    prompt: |
+      From this one item, produce the Taobao search keyword.
+      The item: "{inputs.item}"
+      Rules: a pure product keyword, name + spec (e.g. 五常大米 5kg); no
+      quantity words, no verbs; keep the buyer's language.
+      If it names no concrete product, return escalate.
+    returns:
+      keyword: the search keyword, exactly as it should be typed
+    think: off
+
+  - start: app                    # cold launch: every round starts clean
+    macro: launch
+
+  - page: home
+
+  - do: search
+    with: {keyword: "{parse.keyword} 非直播"}
+    macro: search                 # the pack macro every search shares
+
+  - page: results
+
+  # The pick ends on the DETAIL page with the item in the cart: one
+  # listing, its spec chosen on the 加入购物车 sheet, the quantity the
+  # buyer named. It never opens the buy sheet.
+  - agent: pick
+    prompt: prompts.pick-to-cart
+    tools: [tap, scroll, back]
+    give: [landmarks.close]
+    never_tap:
+      - {label: ["立即购买", "领券购买"], within: bottom}
+      - {label: ["免密支付", "立即支付", "提交订单"], within: bottom}
+    returns:
+      title: the listing title exactly as shown, the cart will show the same
+      qty: the quantity set on the sheet, a number
+      price: the unit price shown for the chosen spec, a number
+    limit: {calls: 12, scrolls: 4}
+    think: low
+    on_fail: stop                 # alone, a pick that cannot finish ends the session;
+                                  # under `miss: skip` the round is recorded as missed
+
+  - page: detail

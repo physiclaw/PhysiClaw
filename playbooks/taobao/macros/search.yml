@@ -1,0 +1,21 @@
+name: search
+description: type a keyword into the home-feed search bar and run the search
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/search
+enabled: false
+inputs:
+  keyword:
+    description: what to search for, exactly as it should be typed
+steps:
+  - tap: "home-feed search bar"       # only ever tapped ON the home feed —
+    at: [0.30, 0.092, 0.70, 0.128]    # the start contract guarantees it
+  - send_to_clipboard: "{keyword}"
+  - long_press: "search input field"
+    at: [0.08, 0.115, 0.55, 0.148]
+  - tap: "Paste"                      # en system — the iOS menu bubble reads Paste
+    at: [0.066, 0.070, 0.163, 0.098]
+  - tap: "搜索"
+    at: [0.811, 0.865, 0.923, 0.895]
+  - wait: 2
+  - tap: "close (X) on the coupon overlay"   # post-search coupon promo covers results
+    at: [0.858, 0.069, 0.901, 0.104]
+    when: ["确认领取", "消费券", "马上去用"]
