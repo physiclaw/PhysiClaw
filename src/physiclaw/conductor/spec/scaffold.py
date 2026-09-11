@@ -171,7 +171,8 @@ PLAYBOOK_TEMPLATE = """\
 #            `prompt: prompts.<name>` for prompts/<name>.md) with the
 #            `tools:` and `give:` grants you list (`never_tap:` is the
 #            opposite — readings, or `{{label, within}}`, this episode's
-#            taps may never land on; never shown to the model);
+#            taps may never land on, a granted macro's recorded taps
+#            included; never shown to the model);
 #            `returns:` fields read downstream as
 #            {{name.field}}. No tools = a pure-text call, legal before the
 #            first page. `limit: {{calls, scrolls}}` bounds an episode
@@ -179,10 +180,12 @@ PLAYBOOK_TEMPLATE = """\
 #            how much the model may think per call (its `reason` field
 #            is always written; hidden thinking is minutes per call).
 #   ask    — message the user and wait for `yes:` / `no:` (whole-message);
-#            `wait:` × `rounds:` is its patience (default {ask_wait}s ×
-#            {ask_rounds}); `approve: payment` reads the amount beside
-#            `total_label:` into {{ask.total}}; `think:` bounds the model's
-#            reading of a reply the words miss; `resume:` re-enters the app.
+#            `denied:` is the line sent back on a no, before `on_fail`
+#            decides; `wait:` × `rounds:` is its patience (default
+#            {ask_wait}s × {ask_rounds}); `approve: payment` reads the
+#            amount beside `total_label:` into {{ask.total}}; `think:`
+#            bounds the model's reading of a reply the words miss;
+#            `resume:` re-enters the app.
 #   on_fail — on any entry, pages included: what a failure of that entry
 #            does once its own means are spent — `handover` (the default:
 #            the model takes the session with every tool) or `stop` (the
@@ -261,6 +264,7 @@ route:
   #   message: "EDIT ME — total ¥{{ask.total}}, reply ok to pay or no to cancel"
   #   yes: ["ok"]
   #   no: ["no"]
+  #   denied: "EDIT ME — cancelled, nothing paid"   # the walk's answer to a no
   #   wait: {ask_wait}              # seconds between reply polls
   #   rounds: {ask_rounds}          # silent polls before the session suspends
   #   think: off              # a reply the words miss is read by the model
@@ -326,9 +330,10 @@ adds only the output contract), `tools:` the closed gesture allowlist,
 (`landmarks.<name>`) and the pack macros it may run whole
 (`macros.<name>`), `never_tap:` the targets its taps may NEVER press —
 a reading, alternate readings of one target, or `{{label, within}}` to
-say which band the target sits in; never shown to the model, so a pay
-button stays unnameable, and a refused move costs one call while the
-episode goes on, `context:` what to
+say which band the target sits in; a granted macro's recorded taps are
+held to it too; never shown to the model, so a pay button stays
+unnameable, and a refused move costs one call while the episode goes
+on, `context:` what to
 load beside the prompt (`memory`, `memory.<slug>`, `daylog` — nothing
 else travels), `returns:` the fields it must fill, `limit:` its
 call/scroll budget, `think:` how much hidden thinking each call may
@@ -347,7 +352,8 @@ by the matcher. An `ask` reads the reply against its own
 they do not cover is read by the model in the session's thread — the
 same conversation that parsed the request — as confirm, deny, or
 other, and other hands over (`think:` bounds that reading, as on an
-agent step). It waits by its own `wait:` seconds for
+agent step). A no is answered with the ask's `denied:` line, then the
+entry's `on_fail` word decides. It waits by its own `wait:` seconds for
 `rounds:` silent polls, and a payment ask reads the amount beside the
 label its `total_label:` names. When the route completes, the walk
 asks that thread for the record (the session's recap and the daily

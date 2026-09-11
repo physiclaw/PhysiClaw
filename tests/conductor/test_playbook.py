@@ -1126,6 +1126,42 @@ def test_check_names_a_payment_ask_that_leaves_on_fail_unsaid() -> None:
     assert not any("on_fail" in w for w in lints.readiness_warnings(said, pack))
 
 
+def test_check_names_a_payment_ask_that_leaves_denied_unsaid() -> None:
+    from physiclaw.conductor.spec import lints
+
+    pack = _pack()
+    unsaid = pb.parse_playbook(VALID, "buy", pack)
+    said = pb.parse_playbook(
+        _mutate('    no: ["no"]\n', '    no: ["no"]\n    denied: "cancelled"\n'),
+        "buy",
+        pack,
+    )
+
+    assert any("`denied:`" in w for w in lints.readiness_warnings(unsaid, pack))
+    assert not any("denied" in w for w in lints.readiness_warnings(said, pack))
+
+
+def test_denied_is_a_message_with_the_ask_refs() -> None:
+    # The answer to a no may quote what the ask could — the total too.
+    pack = _pack()
+    node = pb.parse_playbook(
+        _mutate(
+            '    no: ["no"]\n', '    no: ["no"]\n    denied: "no ¥{ask.total} taken"\n'
+        ),
+        "buy",
+        pack,
+    ).nodes[4]
+
+    assert node.denied == "no ¥{ask.total} taken"
+    assert pb.parse_playbook(VALID, "buy", pack).nodes[4].denied is None
+    with pytest.raises(PlaybookError, match="`denied`"):
+        pb.parse_playbook(
+            _mutate('    no: ["no"]\n', '    no: ["no"]\n    denied: "{nope.x}"\n'),
+            "buy",
+            pack,
+        )
+
+
 def test_only_the_payment_ask_is_told_when_on_fail_is_unsaid() -> None:
     from physiclaw.conductor.spec import lints
 
@@ -1164,6 +1200,62 @@ def test_check_names_a_stop_once_money_may_have_moved() -> None:
         w for w in lints.readiness_warnings(spec, pack) if "money may have moved" in w
     ]
     assert len(lines) == 1 and "'do-pay'" in lines[0]
+
+
+def test_a_granted_macro_with_a_templated_box_is_refused_under_never_tap() -> None:
+    # The runtime guard judges a macro by its recorded boxes; a box the
+    # run fills from an input default has no centre to judge, so under
+    # a never_tap the grant is refused at parse — and stays legal where
+    # nothing is declared.
+    from conductor_fakes import write_leaf, write_pack
+
+    root = write_pack()
+    write_leaf(
+        root,
+        None,
+        "macros",
+        "tmpl.yml",
+        "name: tmpl\ndescription: templated\ninputs:\n  x:\n"
+        '    description: left edge\n    default: "0.1"\nsteps:\n'
+        '  - tap: t\n    at: ["{x}", 0.9, 0.5, 0.95]\n',
+    )
+    pack = pb.load_pack("demo")
+
+    def spec(extra: str) -> str:
+        return _mutate(
+            "    tools: [tap, scroll]\n", f"    tools: [tap, scroll]\n{extra}"
+        )
+
+    with pytest.raises(PlaybookError, match="placeholder"):
+        pb.parse_playbook(
+            spec('    never_tap: ["Pay"]\n    give: [macros.tmpl]\n'), "buy", pack
+        )
+    pb.parse_playbook(spec("    give: [macros.tmpl]\n"), "buy", pack)
+
+
+def test_the_same_grant_twice_is_named_without_its_body() -> None:
+    pack = _pack()
+    with pytest.raises(PlaybookError, match=r"duplicate entry .*add-cart.*\)$"):
+        pb.parse_playbook(
+            _mutate(
+                "    tools: [tap, scroll]\n",
+                "    tools: [tap, scroll]\n    give: [macros.add-cart, macros.add-cart]\n",
+            ),
+            "buy",
+            pack,
+        )
+
+
+def test_a_macro_reads_its_recorded_taps_for_the_guards() -> None:
+    # What both guards judge a macro by — its labels at parse, its boxes
+    # on the live screen — read off the one macro the walk dispatches.
+    from physiclaw.macros.model import MacroTap
+
+    pack = _pack()
+
+    assert pack.macros["add-cart"].taps() == (
+        MacroTap(label=("t",), bbox=(0.1, 0.1, 0.2, 0.2)),
+    )
 
 
 def test_never_tap_takes_a_reading_a_list_or_a_label_with_a_band() -> None:

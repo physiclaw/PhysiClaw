@@ -100,6 +100,11 @@ def near(a: tuple[float, float], b: tuple[float, float], *, tolerance: float) ->
     return abs(a[0] - b[0]) <= tolerance and abs(a[1] - b[1]) <= tolerance
 
 
+def same_line(a: Bbox, b: Bbox) -> bool:
+    """Two boxes overlap vertically — the one geometry of "beside"."""
+    return a[1] < b[3] and b[1] < a[3]
+
+
 def inside(center: tuple[float, float], bbox: list, *, margin: float) -> bool:
     """True if `center` lies within `bbox` expanded by `margin` per side
     (0.0 = exact containment). Like `near`'s tolerance, the margin is

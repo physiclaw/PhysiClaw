@@ -25,8 +25,8 @@ vocabulary and the model classes below carry the same names)::
                 | "do" name macro [with] [irreversible]
                 | "agent" name prompt [tools] [give] [returns] [limit]
                   [context] [irreversible]   # the step handed to the model
-                | "ask" name approve message yes no [total_label] [wait]
-                  [rounds] [resume]           # payment: resume required when
+                | "ask" name approve message yes no [denied] [total_label]
+                  [wait] [rounds] [resume]    # payment: resume required when
                                               # a screen move follows
                 | "tell" name message
                 | "select" name [limit]       # channel/boot only, and last:
@@ -190,6 +190,13 @@ class NeverTap:
     (`"Pay Now"`), as alternate spellings of ONE target (`["Pay Now",
     "Confirm Payment"]`), or as `{label: …, within: …}`.
 
+    A target found on the screen is refused across the CONTROL its
+    label sits on, not just the label's own box: sideways to the next
+    listed element on the same row, or to the band's or the screen's
+    edge (`step_agent._control`). A word standing alone on its bar
+    refuses the whole bar; one beside another button ends where that
+    button's label begins.
+
     `within` takes a band name or a box (`bbox.parse_within`, the one
     reader of "where to look") and says where the TARGET sits, as it
     does on a page anchor. SKETCH IT GENEROUSLY: it gates the tap's
@@ -216,13 +223,20 @@ class AskNode:
     names the class the reply consents to (`payment` binds the quoted
     total); `yes`/`no` are the whole-message replies that open or close
     the gate, in `reply.normalize` space (anything else is the model's);
-    `resume` is the macro that re-enters the app afterwards."""
+    `denied` is the line sent back on a no, before the entry's `on_fail`
+    word decides what the walk does next; `resume` is the macro that
+    re-enters the app afterwards."""
 
     id: str
     approve: str
     message: str
     yes: tuple[str, ...]
     no: tuple[str, ...]
+    # `denied:` — the answer to a no, verbatim like `message:` (a deny
+    # is the gate working, not failing: the user is answered by the
+    # walk itself, then `on_fail` says whether the session ends or the
+    # model is briefed). None = no answer from the walk.
+    denied: str | None = None
     resume: str | None = None
     # The waypoint before the ask — the page a payment ask reads its
     # total off ("" when none precedes it; a payment ask requires one).

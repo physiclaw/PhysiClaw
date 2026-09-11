@@ -189,14 +189,24 @@ def readiness_warnings(spec: Playbook, pack: Pack) -> list[str]:
 def _on_fail_warnings(spec: Playbook) -> list[str]:
     """A payment ask that leaves `on_fail:` unsaid: a failure at the gate
     briefs the model, which then holds the pay hand with no consent
-    bound — the one place the default is worth a second look."""
+    bound — the one place the default is worth a second look. And one
+    that leaves `denied:` unsaid: a no is then answered by nobody when
+    the ask says stop, or by the model in its own words."""
+    paying = [n for n in spec.nodes if isinstance(n, AskNode) and n.pays]
     out = [
         f"payment ask {n.id!r} declares no `on_fail:` — a failure at the gate "
         "briefs the model, which may then pay by hand; declare `on_fail: stop` "
         "(end the session, nothing paid, the next wake retries) or "
         "`on_fail: handover`"
-        for n in spec.nodes
-        if isinstance(n, AskNode) and n.pays and n.on_fail is None
+        for n in paying
+        if n.on_fail is None
+    ]
+    out += [
+        f"payment ask {n.id!r} declares no `denied:` — a no then ends the "
+        "session unanswered when the ask says stop, or is answered by the "
+        "model in its own words; declare the line the walk sends back"
+        for n in paying
+        if n.denied is None
     ]
     # A stop once money may have moved leaves the order unverified and
     # the request unreported — the next wake may read it as still open

@@ -40,12 +40,19 @@ def stamped(entry: str) -> str:
 
 
 def append_log(entry: str, root: Path | None = None) -> None:
-    """Append a log line to today's daily file. Creates the file (with
+    """Append ONE log line to today's daily file. Creates the file (with
     its `# YYYY-MM-DD` header) if needed. The caller supplies the
     `[HH:MM]` prefix (`stamped`) — the model's tool passes its own.
     `root` overrides the memory dir (the engine threads its own
-    import-frozen path through; everyone else takes the live one)."""
-    entry = entry.strip()
+    import-frozen path through; everyone else takes the live one).
+
+    One entry is one line, by construction: the reader is line-wise
+    (`load_recent_entries`), so a newline inside an entry would read
+    back as a second entry under its own prefix — and a writer handing
+    over text it did not compose (the conductor's close writes the
+    model's memory line) would be minting records the next wake trusts
+    as its own. Lines are joined with a space instead."""
+    entry = " ".join(line.strip() for line in entry.splitlines() if line.strip())
     if not entry:
         return
     mem = root if root is not None else paths.memory_dir()

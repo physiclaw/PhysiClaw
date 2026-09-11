@@ -14,12 +14,13 @@ macro run by name. A landmark scoped to a page is shown only while
 that page is the verified reading. `done` is audited against the adjacent
 verify page by the matcher, never trusted, and a payment episode
 re-runs the money predicates before EVERY tap or macro the model
-proposes.
+proposes — on a verified own-pack page, as the payment move does.
 """
 
 from physiclaw.common import gesture_vocab
-from physiclaw.common.bbox import Bbox, center_of, format_bbox, inside
+from physiclaw.common.bbox import Bbox, center_of, format_bbox, inside, same_line
 from physiclaw.common.listing import Element
+from physiclaw.common.text import clip
 from physiclaw.conductor.spec import context, match
 from physiclaw.conductor.spec.calls import (
     ACT_BACK,
@@ -58,6 +59,8 @@ from physiclaw.conductor.walk.micro import (
 )
 from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.conductor.walk.turns import scroll_args
+from physiclaw.conductor.walk.walklog import REASON_CLIP
+from physiclaw.macros.model import Macro as PackMacro
 
 KIND_TAP = "agent-tap"
 KIND_SWIPE = "agent-swipe"
@@ -65,7 +68,7 @@ KIND_MACRO = "agent-macro"
 
 
 # How far outside a listed row's own box a tap may still be pressing it.
-# A row is the TEXT's box; the button around it is bigger, so a press
+# A row is the TEXT's box; the button around it is taller, so a press
 # aimed at the button can land just past the text. Measured against every
 # tap in the recorded sessions: no legitimate move is refused anywhere up
 # to 0.05, so this sits well inside the headroom.
@@ -81,12 +84,43 @@ def _centred_in(box: Bbox, region: Bbox, *, slack: float = 0.0) -> bool:
     return center is not None and inside(center, list(region), margin=slack)
 
 
+def _control(row: Element, rows: tuple[Element, ...], band: Bbox | None) -> Bbox:
+    """The extent of the control a target row sits on. OCR reads the
+    LABEL's box; the button around it reaches sideways as far as the
+    next listed element on the same row (text or icon), the band's edge,
+    or the screen's — a pay bar standing alone in its footer is the whole
+    footer's width, while the pay button beside the cart button ends
+    where the cart button's label begins. Never narrower than the text
+    plus the slack, which is what a nudge past the label needs."""
+    left, top, right, bottom = row.bbox
+    lo, hi = (band[0], band[2]) if band is not None else (0.0, 1.0)
+    for other in rows:
+        if other is row:
+            continue
+        if not same_line(row.bbox, other.bbox):
+            continue
+        o_left, _, o_right, _ = other.bbox
+        if o_right <= left:
+            lo = max(lo, o_right)
+        elif o_left >= right:
+            hi = min(hi, o_left)
+        # An element overlapping the label sideways (a box drawn around
+        # the whole button) bounds nothing — it IS the control.
+    return (
+        min(left - _NEAR_ENOUGH, lo),
+        top - _NEAR_ENOUGH,
+        max(right + _NEAR_ENOUGH, hi),
+        bottom + _NEAR_ENOUGH,
+    )
+
+
 def refusal(
-    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], tap: Tap
+    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], box: Bbox
 ) -> str | None:
-    """Why this tap is refused, or None — a pure rule over what the step
-    declared, what the screen shows and what the model proposed, so it
-    reads and audits without the state machine around it.
+    """Why a tap on `box` is refused, or None — a pure rule over what the
+    step declared, what the screen shows and where the tap would land,
+    so it reads and audits without the state machine around it. The box
+    is all that matters: what the model called it is narration.
 
     The targets are never shown to the model: naming the pay button would
     tell it where the pay button is, so this is a guard rail and not an
@@ -95,14 +129,32 @@ def refusal(
         # Not where this target lives — allow, next target. The band is a
         # sketch (see `NeverTap`), so a tap centred outside it is not on
         # the target and the rest is skipped outright.
-        if target.within is not None and not _centred_in(tap.bbox, target.within):
+        if target.within is not None and not _centred_in(box, target.within):
             continue
         # Which rows ARE the target: its readings, inside that same band.
         # Nothing there means nothing to refuse — it cannot be tapped
-        # when it is not on the screen.
+        # when it is not on the screen. A row found is refused across the
+        # control it labels (`_control`), not just its own text: the
+        # model boxes what it sees, and a button is wider than its word.
         for row in match.candidate_rows(target.anchor, rows, ()):
-            if _centred_in(tap.bbox, row.bbox, slack=_NEAR_ENOUGH):
+            if _centred_in(box, _control(row, rows, target.within)):
                 return f"that box presses {' / '.join(target.label)}, not this step's to tap."
+    return None
+
+
+def macro_refusal(
+    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], macro: PackMacro
+) -> str | None:
+    """Why running a granted macro is refused, or None: each tap the
+    macro records (`Macro.taps`) is judged as if the model had proposed
+    it, against the screen the macro would start on. Parse refused a
+    macro whose label NAMES a target (`route._guard_grants`); this is
+    the box the label could not tell — the same recorded coordinates
+    under another name."""
+    for tap in macro.taps():
+        said = refusal(targets, rows, tap.bbox)
+        if said is not None:
+            return f"macro {macro.name!r} taps {' / '.join(tap.label)!r} — {said}"
     return None
 
 
@@ -209,7 +261,7 @@ class AgentStep(Step[AgentNode]):
                 f"agent {node.id!r}: call failed or under-confident"
             )
         if outcome.out != AGENT_DONE:
-            return self.walk.handover(f"agent {node.id!r} escalated: {outcome.reason}")
+            return self.walk.handover(_escalated(node.id, outcome.reason))
         return self._close(outcome)
 
     # ---- the episode ----
@@ -329,7 +381,7 @@ class AgentStep(Step[AgentNode]):
         assert self.sent is not None  # resolve follows the request it answers
         self.history.extend(settled(self.sent, outcome))
         if outcome.out == ESCALATE:
-            return walk.handover(f"agent {node.id!r} escalated: {outcome.reason}")
+            return walk.handover(_escalated(node.id, outcome.reason))
         if outcome.out == ACT_BACK:
             # The OS back edge-swipe — the reliable pop on iOS (a corner
             # chevron tap misses too often to trust the stylus with).
@@ -372,29 +424,46 @@ class AgentStep(Step[AgentNode]):
             return self._close(outcome, calls=self.calls)
         assert outcome.out == ACT_ARM and outcome.picked is not None
         assert walk.screen is not None
-        if isinstance(outcome.picked, Tap):
-            # Taps only; a granted macro's own targets are checked at
-            # parse (`route._guard_grants`). BEFORE the payment block, so
-            # a refusal cannot spend the consent it was guarding.
-            refused = refusal(node.never_tap, walk.screen.rows, outcome.picked)
-            if refused is not None:
-                walk.ledger.refuse(outcome.picked.label)
-                walk.journal(f"agent {node.id}: refused a tap — {refused}")
-                return self._again(refused)
+        picked = outcome.picked
+        # The model's own tap, or the taps a granted macro records —
+        # one rule (`refusal`), BEFORE the payment block, so a refusal
+        # cannot spend the consent it was guarding. A granted macro the
+        # walk cannot find has nothing to judge; its run fails on its
+        # own when dispatched.
+        if isinstance(picked, Tap):
+            refused = refusal(node.never_tap, walk.screen.rows, picked.bbox)
+            what, named = "a tap", picked.label
+        else:
+            macro = walk.pack_macros.get(qualified_macro(walk.app, picked.name))
+            refused = (
+                macro_refusal(node.never_tap, walk.screen.rows, macro)
+                if macro is not None
+                else None
+            )
+            what, named = "a macro", picked.name
+        if refused is not None:
+            walk.ledger.refuse(named)
+            walk.journal(f"agent {node.id}: refused {what} — {refused}")
+            return self._again(refused)
         if node.irreversible == "payment":
-            # The purse stays with the walker: BOTH predicates re-run
-            # before every tap or macro the model proposes — one while
+            # The purse stays with the walker: the same two checks the
+            # payment move runs, before every tap or macro the model
+            # proposes. The page first — the enter gate verified it once
+            # at the episode's start, and a scroll or a tap since may
+            # have landed on a screen the pack never declared, where a
+            # matching amount proves nothing. Then the amounts: one while
             # no visible amount equals the consented total, or with any
             # amount above it, is refused.
-            blocked = money.fire_block(
-                consented=self.consented, seen=self.seen, screen=walk.screen
-            )
+            blocked = walk.money_page_block(f"payment agent {node.id!r}")
+            if blocked is None:
+                blocked = money.fire_block(
+                    consented=self.consented, seen=self.seen, screen=walk.screen
+                )
             if blocked is not None:
                 return walk.handover(f"payment agent {node.id!r}: {blocked}")
             # Consent is consumed by the FIRST fire — a later payment
             # needs its own gate (the move rule, episode-shaped).
             walk.spend_consent()
-        picked = outcome.picked
         if isinstance(picked, Macro):
             # A granted pack macro: the recorded gesture sequence runs
             # whole, argument-less; its result view is the next screen.
@@ -428,6 +497,14 @@ class AgentStep(Step[AgentNode]):
             return walk.handover(f"agent {node.id!r}: phone locked mid-episode")
         self._screen_block(f"[you {self.pending_desc}]")
         return self._request()
+
+
+def _escalated(node_id: str, reason: str) -> str:
+    """The handover reason for a model's escalate — its own words,
+    quoted as such and clipped to what any record keeps of a reason
+    (`walklog.REASON_CLIP`): it lands in the brief the driving model
+    resumes from, so a sentence's worth, never a page."""
+    return f"agent {node_id!r} escalated, saying {clip(reason, REASON_CLIP)!r}"
 
 
 def _landmark_line(landmark: Landmark) -> str:

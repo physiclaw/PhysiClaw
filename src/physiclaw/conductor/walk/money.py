@@ -22,7 +22,7 @@ Consent itself — quoting, binding, consuming — stays with the gate
 arithmetic.
 """
 
-from physiclaw.common.bbox import Bbox, center_of
+from physiclaw.common.bbox import Bbox, center_of, same_line
 from physiclaw.common.listing import Screen, label_hit
 from physiclaw.conductor.spec.conventions import PRICE_RE
 
@@ -82,18 +82,13 @@ def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
             (
                 (_gap(row.bbox, bbox), amt)
                 for bbox, amt in priced
-                if _same_line(row.bbox, bbox)
+                if same_line(row.bbox, bbox)
             ),
             default=None,
         )
         if beside is not None:
             return beside[1]
     return None
-
-
-def _same_line(a: Bbox, b: Bbox) -> bool:
-    """Two boxes overlap vertically — the one geometry of "beside"."""
-    return a[1] < b[3] and b[1] < a[3]
 
 
 def _gap(a: Bbox, b: Bbox) -> float:

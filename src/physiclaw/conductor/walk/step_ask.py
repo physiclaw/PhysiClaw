@@ -5,8 +5,10 @@ is the shared voice); the step polls the thread for a reply (the ask's
 own `wait:` cadence and silent rounds, then the session suspends for
 the next wake), reads the reply against the words the ask itself
 declares (`yes:` / `no:`, `reply.py`), and on consent binds the money
-numbers the following payment move spends. A deny ends the walk; a
-reply the declared words do not cover hands over — the model reads the
+numbers the following payment move spends. A deny is answered with the
+ask's own `denied:` line when it declares one, then the entry's
+`on_fail` word ends the walk (a stop, or the model's brief); a reply
+the declared words do not cover hands over — the model reads the
 thread, the conductor never guesses. A payment ask reads the sheet
 total off the waypoint before it, once that page reads — the amount
 beside the label its `total_label:` names — and quotes it in the message:
@@ -37,11 +39,19 @@ KIND_ASK_WAIT = "ask-wait"
 KIND_ASK_PEEK = "ask-peek"
 KIND_ASK_OPEN = "ask-open"
 KIND_ASK_RESUME = "ask-resume"
+KIND_ASK_DENIED = "ask-denied"
 
 
 class AskStep(Step[AskNode]):
     kinds = frozenset(
-        {KIND_ASK_SENT, KIND_ASK_WAIT, KIND_ASK_PEEK, KIND_ASK_OPEN, KIND_ASK_RESUME}
+        {
+            KIND_ASK_SENT,
+            KIND_ASK_WAIT,
+            KIND_ASK_PEEK,
+            KIND_ASK_OPEN,
+            KIND_ASK_RESUME,
+            KIND_ASK_DENIED,
+        }
     )
 
     def __init__(self, walk: Walk, node: AskNode) -> None:
@@ -60,7 +70,7 @@ class AskStep(Step[AskNode]):
     def landed(self, kind: str) -> Turn:
         walk = self.walk
         if kind == KIND_ASK_SENT:
-            stop = speak.sent_landed(walk)
+            stop = speak.sent_landed(walk, on_deny=self._denied)
             if stop is not None:
                 return stop
             walk.gate.awaiting = True
@@ -72,6 +82,10 @@ class AskStep(Step[AskNode]):
             # The resume macro landed; the next node's own checks judge
             # the landing.
             return walk.advance_cursor()
+        if kind == KIND_ASK_DENIED:
+            # The user is answered; now the entry's word — nothing else
+            # of this ask remains to run.
+            return speak.deny(walk, answered=True)
         return self._check()  # KIND_ASK_PEEK / KIND_ASK_OPEN
 
     def _start(self) -> Turn:
@@ -80,7 +94,6 @@ class AskStep(Step[AskNode]):
         happened to come last — the amount beside the label its `total_label:`
         declares — and quotes it: the message IS the consent record."""
         node, walk = self.node, self.walk
-        values = walk.ref_values()
         if node.approve == "payment":
             # The sheet is the waypoint before the ask — that page, not
             # any own-pack page the phone happens to show.
@@ -102,9 +115,19 @@ class AskStep(Step[AskNode]):
             # The number the user will see is the number they consent
             # to — and, at fire time, the bound.
             walk.gate.quoted = total
-            values = {**values, "ask.total": f"{walk.gate.quoted:g}"}
-        text = str(fill_refs(node.message, values, where=f"ask {node.id!r} `message`"))
+        text = str(
+            fill_refs(node.message, self._values(), where=f"ask {node.id!r} `message`")
+        )
         return speak.send(walk, KIND_ASK_SENT, text, node.yes, node.no)
+
+    def _values(self) -> dict[str, str]:
+        """The slots an ask's texts may quote — the walk's refs plus
+        `{ask.total}` once a payment ask has read its sheet."""
+        walk = self.walk
+        values = walk.ref_values()
+        if walk.gate.quoted is not None:
+            values = {**values, "ask.total": f"{walk.gate.quoted:g}"}
+        return values
 
     def _check(self) -> Turn:
         """One reply-evaluation round over the freshly peeked thread:
@@ -180,7 +203,20 @@ class AskStep(Step[AskNode]):
         verb = "confirmed" if ok else "declined"
         walk.ledger.answered(node.id, "yes" if ok else "no")
         walk.journal(f"user {verb} {node.approve} ({replies!r}{how})")
-        return self._confirmed() if ok else speak.deny(walk)
+        return self._confirmed() if ok else self._denied()
+
+    def _denied(self) -> Turn:
+        """A no: the walk answers it itself when the ask declared a
+        `denied:` line — from the thread it is reading, the same slots
+        the ask could quote — and the entry's word follows its landing;
+        without one, the word at once."""
+        node, walk = self.node, self.walk
+        if node.denied is None:
+            return speak.deny(walk)
+        text = str(
+            fill_refs(node.denied, self._values(), where=f"ask {node.id!r} `denied`")
+        )
+        return speak.send(walk, KIND_ASK_DENIED, text)
 
     def _confirmed(self) -> Turn:
         node, walk = self.node, self.walk

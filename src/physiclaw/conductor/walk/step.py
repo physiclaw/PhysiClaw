@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from physiclaw.conductor.walk.program import Program
     from physiclaw.conductor.walk.recover import Mode
     from physiclaw.conductor.walk.thread import Thread
+    from physiclaw.macros.model import Macro
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,7 @@ class Walk(Protocol):
     ledger: "Ledger"  # the walk's one account — what a step did lands here
     thread: "Thread"  # the session's conversation with the model about the errand
     landmarks: "dict[str, Landmark]"
+    pack_macros: "dict[str, Macro]"  # every hand the walk can dispatch, qualified
     channel: "Channel | None"
     # The boot's two extras: the activation (menu, parse_task, build)
     # its `select` step runs, and the program that step hands on —
@@ -123,7 +125,7 @@ class Walk(Protocol):
     # ---- the terminal moments, and the one way forward ----
     def advance_cursor(self) -> Turn: ...
 
-    def handover(self, reason: str) -> AssistantMessage: ...
+    def handover(self, reason: str, *, advice: str = "") -> AssistantMessage: ...
 
     def conclude(self, reason: str) -> None: ...
 

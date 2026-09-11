@@ -4,7 +4,8 @@ From the user's message to a paid order: `parse` derives the search
 keyword, `launch` cold-starts Taobao, `search` types the keyword with
 非直播 appended, the `pick` agent walks results to the buy sheet and
 stops before payment, `confirm-pay` quotes the sheet's exact total and
-waits for 好的 / 不用, `pay` is one recorded tap, `report` tells the user.
+waits for 好的 / 不用 (a 不用 is answered, then the session ends), `pay` is
+one recorded tap, `report` tells the user.
 
 ## Recorded facts
 

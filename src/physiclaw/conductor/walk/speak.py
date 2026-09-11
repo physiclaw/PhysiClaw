@@ -12,6 +12,8 @@ read, the verdict, the deny disposition — so the two steps cannot
 word one rule two ways.
 """
 
+from collections.abc import Callable
+
 from physiclaw.common import gesture_vocab
 from physiclaw.conductor.spec import reply
 from physiclaw.conductor.spec.conventions import THREAD_ID
@@ -74,29 +76,40 @@ def verdict(walk: Walk, messages: list[str]) -> reply.Answer | None:
     )
 
 
-def deny(walk: Walk) -> Turn:
+def deny(walk: Walk, *, answered: bool = False) -> Turn:
     """The one deny disposition: no re-asks, and no second chance this
-    session.
+    session. The cursor entry's `on_fail` word decides the exit
+    (`handover`): a stop records the fact, a brief adds what the model
+    owes — the user's acknowledgement too, unless the ask already sent
+    its `denied:` line (`answered`).
 
     Who records the refusal: the ask step, which knows WHICH ask was
     refused and writes `ledger.answered` beside its journal line. The
-    sweep below (a refusal typed while the walk was off in the app) has
-    no ask node in scope and writes nothing — its reason string carries
-    the fact to the model instead. Giving the disposition the write
-    would mean the gate carrying the ask's id, which it does not."""
+    sweep in `sent_landed` (a refusal typed while the walk was off in
+    the app) writes nothing — an ask landing there still answers with
+    its own line, a tell has no ask in scope — and its reason string
+    carries the fact to the model instead. Giving the disposition the
+    write would mean the gate carrying the ask's id, which it does not."""
+    walk.gate.awaiting = False
+    advice = (
+        "back out of any open checkout or cart state this task created, and wrap up"
+    )
+    if not answered:
+        advice = f"acknowledge them, {advice}"
     return walk.handover(
-        "user declined the ask — acknowledge them, back out of any "
-        "open checkout or cart state this task created, and wrap up"
+        "user declined the ask" + (", answered" if answered else ""), advice=advice
     )
 
 
-def sent_landed(walk: Walk) -> Turn:
+def sent_landed(walk: Walk, on_deny: Callable[[], Turn] | None = None) -> Turn:
     """A send's landing, shared by ask and tell: it must be on the
     thread; anything the user sent while the walk was off in the app (an
     earlier ask's baseline) lands here as new, and a deny among it must
     stop the walk NOW — overwriting the baseline would swallow it
     forever (deny only: an old confirm word above the fresh ask is never
-    treated as consent). Then the thread is baselined. None = carry on."""
+    treated as consent). `on_deny` is that disposition when the caller
+    has a better one than the bare `deny` (an ask answers with its own
+    `denied:` line). Then the thread is baselined. None = carry on."""
     wrong = thread_mismatch(walk)
     if wrong is not None:
         return walk.handover(f"channel send did not land on the thread ({wrong})")
@@ -110,7 +123,7 @@ def sent_landed(walk: Walk) -> Turn:
             new_replies(walk, after_ask=False), frozenset(gate.yes), frozenset(gate.no)
         )
     ):
-        return deny(walk)
+        return on_deny() if on_deny is not None else deny(walk)
     # The send landed: its words and its thread snapshot take over together.
     gate.yes, gate.no = gate.next_words
     assert walk.screen is not None

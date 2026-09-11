@@ -51,7 +51,7 @@ class Outcome(StrEnum):
 # designed and abandonments spent no model session — neither escalates.
 ESCALATION_OUTCOMES = frozenset({Outcome.HANDOVER, Outcome.CRASHED})
 
-_TRUNCATE_REASON = 200
+REASON_CLIP = 200  # how much of a model's free-text reason any record keeps
 
 
 def runs_file() -> Path:
@@ -240,4 +240,4 @@ def session_dirs(rows: list[dict]) -> list[Path]:
 
 
 def _clip(text: str) -> str:
-    return clip(text, _TRUNCATE_REASON)
+    return clip(text, REASON_CLIP)

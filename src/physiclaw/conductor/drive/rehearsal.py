@@ -5,8 +5,8 @@ No policy gates, no compaction, no trace, no sentinel: just the
 conductor's contract — ask the Program for a turn, dispatch its one
 action, feed the result back — so a rehearsal exercises the real walk.
 `arm` loads and validates everything BEFORE any connection exists;
-`walk` runs the loop over an open client and returns `WALK_ENDED`,
-`WALK_SUSPENDED`, or `WALK_PAUSED`. `emit` receives every progress
+`walk` runs the loop over an open client and returns one of the
+`WALK_*` outcomes below. `emit` receives every progress
 line; the core never prints.
 
 `playbooks run` is typer around it, `playbooks replay` shares `arm`,
@@ -30,6 +30,7 @@ from physiclaw.conductor.drive.hooks import (
     Transform,
 )
 from physiclaw.conductor.spec.limits import REHEARSE_MAX_TURNS
+from physiclaw.conductor.walk.walklog import Outcome
 from physiclaw.contract.wire import leaf_blocks, reply_gist
 
 if TYPE_CHECKING:
@@ -99,6 +100,7 @@ class ModelLog:
 # the outcome instead of parsing prose. (The stepping driver has its
 # own outcome vocabulary one level up; these are the loop's.)
 WALK_ENDED = "walk finished or handed over — see the notes above"
+WALK_COMPLETED = "walk completed — the session would close DONE"
 WALK_SUSPENDED = "walk suspended waiting on you — suspension dropped"
 WALK_STOPPED = "walk stopped by its own word — see the notes above"
 WALK_PAUSED = "walk paused — the node settled"
@@ -194,15 +196,19 @@ async def walk(
             note, act = step.tool_calls
             emit(f"  {note.arguments['summary']}")
             if act.name == "end_session":
-                # The walk closed the session by its own hand: a stop
-                # (nothing to resume), or a suspension for a later wake
-                # — a rehearsal has none, and `suspend` already wrote
-                # the file, so drop it before it ambushes a real wake.
-                pending = program.turns.pending
-                if pending is not None and pending.kind == "stop":
-                    return WALK_STOPPED
-                clear_suspended()
-                return WALK_SUSPENDED
+                # The walk closed the session by its own hand, having
+                # recorded how it ended: a completion, a suspension for
+                # a later wake, or a stop (recorded as a handover — a
+                # brief never mints end_session). Only a suspension
+                # wrote a file, and a rehearsal has no later wake, so
+                # only then is it dropped — a real wake's pending
+                # suspension survives a rehearsal that merely completed.
+                if program.outcome is Outcome.SUSPENDED:
+                    clear_suspended()
+                    return WALK_SUSPENDED
+                if program.outcome is Outcome.COMPLETED:
+                    return WALK_COMPLETED
+                return WALK_STOPPED
             emit(f"    → {act.name}({_args(act.arguments)})")
             run_opts: dict = {}
             if opts and act.name == gesture_vocab.RUN_MACRO:

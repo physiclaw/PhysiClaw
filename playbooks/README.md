@@ -63,12 +63,13 @@ alternating with moves — `start` (the cold launch, usually a pack
 macro every route shares), `do` (a recorded macro), `agent` (the
 model drives inside your prompt's fence, with the tools, the `give:`
 grants — landmarks to tap, pack macros to run — the `never_tap:` targets
-its taps may never land on (never shown to the model, so a pay button
-stays unnameable), the `context:` you
+its taps, and a granted macro's recorded taps, may never land on (never
+shown to the model, so a pay button stays unnameable), the `context:` you
 list, and `think:` — off, low, medium or high — how much hidden
 thinking each of its calls may spend; a vendor whose thinking is a
 switch, Kimi K2.x, reads low as off and cannot bound the rest, so keep
 its micro calls at off or low), `ask` (human gate; `yes:`/`no:` are the replies it reads,
+`denied:` the line it sends back on a no before `on_fail` decides,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
 `think:` how much the model may think when it reads a reply those words miss,
 `resume:` re-enters the app), `tell`. Any entry, a page included, may

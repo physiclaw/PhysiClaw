@@ -245,6 +245,160 @@ async def test_walk_pauses_when_the_stepping_cursor_moves(mocker) -> None:
     assert [n for n, _ in mcp.calls] == ["peek", "peek"]  # unlock probe + opening
 
 
+ONE_MOVE = """\
+description: one move
+inputs:
+  keyword:
+    description: what to search
+route:
+  - page: home
+  - do: open
+    macro: open-app
+    with: {message: "{inputs.keyword}"}
+  - page: home
+"""
+
+
+async def test_a_completed_walk_reports_completion_and_keeps_a_real_suspension(
+    monkeypatch, mocker
+) -> None:
+    # A completed walk closes the session DONE by its own end_session —
+    # the same tool a suspension uses. Read as a suspension, the loop
+    # would report the wrong outcome AND drop the file a REAL wake's
+    # walk left mid-purchase, sending that wake back to the top.
+    from conductor_fakes import build_program
+
+    from physiclaw.conductor.spec.pack import load_pack, qualified_pack
+
+    write_pack(playbooks={"flow": ONE_MOVE}, macros=("open-app",))
+    mocker.patch(
+        "physiclaw.macros.runner.run_and_record",
+        new=mocker.AsyncMock(
+            return_value=mocker.Mock(
+                ok=True,
+                blocks=[
+                    {"type": "text", "text": "ran"},
+                    {"type": "text", "text": HOME},
+                ],
+            )
+        ),
+    )
+    _fake_micro(monkeypatch)  # answers the close's summarize call
+    pending = suspension.suspended_path()
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text('{"app": "taobao", "playbook": "buy"}', encoding="utf-8")
+    program = build_program(dry=True, keyword="milk")
+    registry = qualified_pack("demo", load_pack("demo"))
+
+    out = await rehearsal.walk(program, registry, _FakeMcp(), emit=lambda s: None)
+
+    assert out == rehearsal.WALK_COMPLETED
+    assert program.outcome == "completed"
+    assert pending.exists()  # another walk's suspension, untouched
+
+
+async def test_a_stopped_walk_reports_a_stop_and_drops_nothing(mocker) -> None:
+    # The move's landing page is not reached and the move says stop: the
+    # walk closes the session by its own hand having recorded a handover
+    # — the loop reports the stop, and there is no suspension to drop.
+    from conductor_fakes import build_program
+
+    from physiclaw.conductor.spec.pack import load_pack, qualified_pack
+
+    write_pack(
+        playbooks={
+            "flow": FLOW.replace(
+                "  - do: search\n", "  - do: search\n    on_fail: stop\n"
+            )
+        },
+        macros=("open-app", "add-cart"),
+    )
+    mocker.patch(
+        "physiclaw.macros.runner.run_and_record",
+        new=mocker.AsyncMock(
+            return_value=mocker.Mock(
+                ok=True,
+                blocks=[
+                    {"type": "text", "text": "ran"},
+                    {"type": "text", "text": HOME},  # never `results`
+                ],
+            )
+        ),
+    )
+    program = build_program(dry=True, keyword="milk")
+    registry = qualified_pack("demo", load_pack("demo"))
+
+    out = await rehearsal.walk(program, registry, _FakeMcp(), emit=lambda s: None)
+
+    assert out == rehearsal.WALK_STOPPED
+    assert program.outcome == "handover"
+
+
+ASKING = """\
+description: one ask
+inputs:
+  keyword:
+    description: what
+route:
+  - page: results
+  - do: open
+    macro: open-app
+    with: {message: "{inputs.keyword}"}
+  - page: results
+  - ask: go
+    approve: go
+    message: "go on?"
+    yes: ["yes"]
+    no: ["no"]
+    wait: 5
+    rounds: 1
+"""
+
+
+async def test_a_suspended_walk_reports_the_suspension_and_drops_its_file(
+    mocker,
+) -> None:
+    # The ask hears nothing for its rounds and suspends — the one close
+    # that writes a file. A rehearsal has no later wake, so the loop
+    # drops that file, and only that one.
+    from conductor_fakes import build_program, write_channel
+
+    from physiclaw.conductor.spec.pack import load_pack, qualified_pack
+
+    mocker.patch(
+        "physiclaw.conductor.drive.rehearsal.asyncio.sleep", new=mocker.AsyncMock()
+    )
+    write_channel()
+    write_pack(playbooks={"flow": ASKING}, macros=("open-app",))
+    # One screen that reads as the pack's `results` AND the channel's
+    # thread, so every landing and every reply peek reads the same way.
+    both = make_screen(("综合", 0.5, 0.1), ("MyChat", 0.5, 0.05)).text
+    mocker.patch(
+        "physiclaw.macros.runner.run_and_record",
+        new=mocker.AsyncMock(
+            return_value=mocker.Mock(
+                ok=True,
+                blocks=[
+                    {"type": "text", "text": "ran"},
+                    {"type": "text", "text": both},
+                ],
+            )
+        ),
+    )
+    program = build_program(dry=False, keyword="milk")
+    registry = qualified_pack("demo", load_pack("demo")) | {
+        "channel/send": load_pack("channel").macros["send"]
+    }
+
+    out = await rehearsal.walk(
+        program, registry, _FakeMcp(reply=both), emit=lambda s: None
+    )
+
+    assert out == rehearsal.WALK_SUSPENDED
+    assert program.outcome == "suspended"
+    assert not suspension.suspended_path().exists()
+
+
 # ---------- _rehearse: drives, then leaves nothing behind ----------
 
 

@@ -472,6 +472,15 @@ class MacroGuard:
 
 
 @dataclass(frozen=True)
+class MacroTap:
+    """One tap a macro records — the author's readings for the target
+    and its box — for a guard that judges the macro by its targets."""
+
+    label: tuple[str, ...]
+    bbox: Bbox
+
+
+@dataclass(frozen=True)
 class Macro:
     """One validated macro. `parse.parse_macro` is the only producer, so a
     Macro is correct by construction: the runner never meets an unknown
@@ -482,6 +491,18 @@ class Macro:
     enabled: bool
     inputs: tuple[MacroInput, ...]
     steps: tuple["Step", ...]
+
+    def taps(self) -> tuple[MacroTap, ...]:
+        """Every tap the macro records — the ONE reader of which steps
+        tap something, shared by the guards that judge a macro by its
+        targets: their labels at parse, their boxes on a live screen."""
+        return tuple(
+            MacroTap(
+                label=label_readings(step.args), bbox=tuple(step.args[TARGET_BBOX])
+            )
+            for step in self.steps
+            if step.tool in gesture_vocab.PRESS_TOOLS and hasattr(step, "args")
+        )
 
 
 def check_name(name: str, where: str = "name", extra: str = "") -> None:

@@ -26,6 +26,7 @@ import logging
 from collections import Counter
 from collections.abc import Callable
 from enum import StrEnum
+from functools import partial
 
 from physiclaw.common import gesture_vocab
 from physiclaw.common.listing import Screen
@@ -297,6 +298,10 @@ class Program:
         self._resume_at = idx
         self._from_suspension = resumed
         self.ledger.restore(data)
+        # A restored payment was logged before it was persisted
+        # (`suspend`), so the latch closes with it: the purchase line
+        # is written once per fire, never once per wake carrying it.
+        self._paid_logged = self.ledger.paid is not None
         self.thread.restore(data)
         self.gate = Gate.from_suspended(data)
 
@@ -313,6 +318,9 @@ class Program:
         resumes the walk on ANY next wake. The one caller is an ask out
         of patience, which already holds the gate open."""
         assert self.gate.awaiting, "only an ask awaiting its reply suspends"
+        # A suspension never carries an unlogged payment: the amount
+        # rides to the next wake, the line saying it fired stays here.
+        self.log_purchase()
         if not self.dry:
             write_json_atomic(suspended_path(), self.state())
         recap = self.ledger.recap(
@@ -571,12 +579,14 @@ class Program:
         return f"screen reads as {verdict.describe()}"
 
     def money_page_block(self, what: str) -> str | None:
-        """A payment move fires only off a VERIFIED own-pack page: the
-        ask left the phone on the IM thread, and an unverified screen
-        could satisfy the predicates with the conductor's own ask
-        bubble. None when the current verdict is such a page; else the
-        handover reason. (The ask itself reads its total off the exact
-        waypoint before it — `AskNode.enter`.)"""
+        """A payment fires only off a VERIFIED own-pack page — the move
+        once, a payment episode before each of its taps: the ask left
+        the phone on the IM thread, and an unverified screen could
+        satisfy the predicates with the conductor's own ask bubble, or
+        with whatever a screen the pack never declared happens to print.
+        None when the current verdict is such a page; else the handover
+        reason. (The ask itself reads its total off the exact waypoint
+        before it — `AskNode.enter`.)"""
         v = self.verdict
         if (
             v is not None
@@ -667,16 +677,24 @@ class Program:
         log.info("conductor: %s/%s concluded — %s", self.app, self.spec.name, reason)
         self._end(Outcome.COMPLETED, reason)
 
-    def handover(self, reason: str) -> AssistantMessage:
-        """The walk's exit: log and record, then mint the ONE final
-        synthesized [note, peek] brief turn (`brief.walk_brief`) — the
-        distilled report the model resumes from. `_done` makes the NEXT
-        advance the permanent None the conductor drops the program on —
-        or `stop`, when the node at the cursor said `on_fail: stop` (a
-        page that could not be reached answers for itself first, in
-        `recover_or_handover`)."""
-        node = self.node
-        if node is not None and node.on_fail == ON_FAIL_STOP:
+    def handover(
+        self, reason: str, *, advice: str = "", word: str | None = None
+    ) -> AssistantMessage:
+        """The walk's exit by an `on_fail` word — `stop`, or (anything
+        else, unsaid included) the ONE final synthesized [note, peek]
+        brief turn (`brief.walk_brief`), the distilled report the model
+        resumes from; `_done` then makes the NEXT advance the permanent
+        None the conductor drops the program on. The word is the cursor
+        node's unless the caller passes one (a page that could not be
+        reached answers for itself, in `recover_or_handover`). `reason`
+        is the fact, and lands in the record either way; `advice` is
+        what the model taking over owes (a deny's back-out), so only the
+        brief carries it — a stop has no model to instruct, and its
+        recap is the daily log's line."""
+        if word is None:
+            node = self.node
+            word = node.on_fail if node is not None else None
+        if word == ON_FAIL_STOP:
             return self.stop(reason)
         log.warning(
             "conductor: handing %s/%s over to the model — %s",
@@ -693,6 +711,7 @@ class Program:
                 node=self._node_id(),
                 idx=self.idx,
                 consented=self.gate.consented,
+                advice=advice,
             ),
             gesture_vocab.PEEK,
             {},
@@ -736,12 +755,12 @@ class Program:
         a payment fired: money keeps the hard handover (a restart from
         the top would walk back into the ask and pay again)."""
         recovery = self.spec.recovers.get(page_name(expected_id))
-        # The page's own word once its hand is spent (or it has none);
-        # unsaid, the cursor node's word decides in `handover`.
-        fail = (
-            self.stop
-            if recovery is not None and recovery.on_fail == ON_FAIL_STOP
-            else self.handover
+        # The page's own word once its hand is spent (or it has none) —
+        # either spelling, since a page saying `handover` under a node
+        # saying `stop` means exactly that; unsaid, the cursor node's
+        # word decides in `handover`.
+        fail = partial(
+            self.handover, word=recovery.on_fail if recovery is not None else None
         )
         if (
             self.gate.consented is not None

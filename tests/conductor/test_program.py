@@ -295,6 +295,7 @@ def _suspend_via_silence(p, h, send) -> str:
         step = p.advance(h)
     assert step.tool_names() == ["note", "end_session"]
     assert step.tool_calls[1].arguments["status"] == "WAIT"
+    assert p.outcome == "suspended"  # recorded BEFORE the close is minted
     return ask
 
 
@@ -959,6 +960,38 @@ def test_second_ask_reads_a_deny_sent_meanwhile() -> None:
     assert "user declined" in summary
 
 
+def test_a_deny_swept_at_the_asks_landing_is_answered_with_its_line() -> None:
+    # Same sweep, but the second ask declares `denied:` — the ask IS the
+    # node in scope at its own landing, so the walk answers the swept
+    # "cancel" with that line before the entry's word ends the walk.
+    write_channel(CHANNEL_OPEN)
+    answering = TWO_ASKS.replace(
+        "    approve: handoff\n", '    approve: handoff\n    denied: "已取消。"\n'
+    )
+    write_pack(playbooks={"two": answering})
+    p = _program(name="two", keyword="milk")
+    h = _history()
+    _feed(h, p.advance(h), HOME)
+    _feed(h, p.advance(h), RESULTS)
+    send = p.advance(h)
+    back = _reply_arrives(p, h, send, "好的")
+    _feed(h, back, RESULTS)
+    resend = p.advance(h)
+    ask1 = send.tool_calls[1].arguments["inputs"]["message"]
+    ask2 = resend.tool_calls[1].arguments["inputs"]["message"]
+    _feed(
+        h, resend, _thread((ask1, 0.75, 0.2), ("cancel", 0.25, 0.4), (ask2, 0.75, 0.6))
+    )
+
+    ack = p.advance(h)
+
+    assert ack.tool_names() == ["note", "run_macro"]
+    assert ack.tool_calls[1].arguments["inputs"]["message"] == "已取消。"
+    _feed(h, ack, _thread((ask2, 0.75, 0.2), ("已取消。", 0.75, 0.4)))
+    summary = _finish(p, h, p.advance(h))
+    assert "user declined the ask, answered" in summary
+
+
 def test_second_ask_reads_a_yes_that_repeats_the_first() -> None:
     # Both asks take "好的"; the first reply is still on screen (and in
     # the second ask's baseline) when the user says "好的" again.
@@ -1529,6 +1562,46 @@ def test_payment_fire_writes_the_doctrine_purchase_log_line() -> None:
     assert "conductor: demo: payment ¥45 fired (playbook demo/pay)" in entries
 
 
+TRAILING_ASK = (
+    GATED
+    + """\
+  - ask: rate
+    approve: rating
+    message: "满意吗？回复 好的 或 不用。"
+    yes: ["好的"]
+    no: ["不用"]
+"""
+)
+
+
+def test_a_resumed_walk_does_not_log_last_wakes_payment_again() -> None:
+    # The amount survives a suspension (the next wake must know money
+    # moved); the line saying so was written by the wake that fired it.
+    # A resumed walk must not write it a second time under today's date
+    # — that record is what the doctrine reads to decide whether to buy
+    # again.
+    from physiclaw.common import daylog
+
+    p, h, send = _at_gate(playbook=TRAILING_ASK)
+    back = _reply_arrives(p, h, send, "好的")
+    _feed(h, back, _sheet())
+    pay = p.advance(h)
+    _feed(h, pay, HOME)
+    rate = p.advance(h)  # the landing logs the purchase; then the trailing ask
+    assert rate.tool_calls[1].arguments["name"] == "channel/send"
+    _suspend_via_silence(p, h, rate)
+    line = "conductor: demo: payment ¥45 fired (playbook demo/pay)"
+    assert daylog.load_recent_entries(20).count(line) == 1
+
+    resumed = setup.load_suspended()
+    assert resumed is not None and resumed.ledger.paid == 45.0
+    h2 = _history()
+    resumed.advance(h2)  # the wake opens on the reply check
+    resumed.abandon()  # the session's teardown — one of the line's writers
+
+    assert daylog.load_recent_entries(20).count(line) == 1
+
+
 def test_suspend_writes_the_close_routine_log_line() -> None:
     # A conductor-suspended wake never runs the model, and the walk has
     # no per-step logs — without this line the suspension is invisible
@@ -1687,6 +1760,90 @@ STOPPING = GATED.replace(
 )
 
 
+ANSWERING = STOPPING.replace(
+    '    no: ["不用"]\n',
+    '    no: ["不用"]\n    denied: "已取消，未付款 ¥{ask.total}。"\n',
+)
+
+
+def _deny_answered(p, h, send, playbook_reply: str = "不用"):
+    """Drive a deny to the ask's `denied:` send and land it on the thread;
+    returns the walk's next step (the exit the entry's word decides)."""
+    ack = _reply_arrives(p, h, send, playbook_reply)
+    assert ack.tool_names() == ["note", "run_macro"]
+    args = ack.tool_calls[1].arguments
+    assert args["name"] == "channel/send"
+    assert args["inputs"]["message"] == "已取消，未付款 ¥45。"
+    ask = send.tool_calls[1].arguments["inputs"]["message"]
+    _feed(
+        h,
+        ack,
+        _thread(
+            (ask, 0.75, 0.3),
+            (playbook_reply, 0.25, 0.5),
+            (args["inputs"]["message"], 0.75, 0.7),
+        ),
+    )
+    return p.advance(h)
+
+
+def test_a_deny_is_answered_by_the_ask_and_then_the_stop_takes_it() -> None:
+    # The user said no: the gate worked. The ask sends its own `denied:`
+    # line (the total it quoted still fills), and only then does the
+    # entry's `on_fail: stop` end the session — recorded as a fact, no
+    # imperative for a model that never runs, no suspension.
+    p, h, send = _at_gate(playbook=ANSWERING)
+
+    stop = _deny_answered(p, h, send)
+
+    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    args = stop.tool_calls[1].arguments
+    assert args["status"] == "WAIT"
+    assert "user declined the ask, answered" in args["recap"]
+    assert "back out" not in args["recap"] and "acknowledge" not in args["recap"]
+    assert "nothing paid" in args["recap"]
+    assert "已取消" in args["recap"]  # the answer is in the walk's account
+    assert p.gate.consented is None and not p.gate.awaiting
+    assert not suspension.suspended_path().exists()
+    _feed(h, stop, "session ended")
+    assert p.advance(h) is None
+
+
+def test_a_deny_is_answered_by_the_ask_before_the_brief() -> None:
+    # Same answer, the default word: the brief no longer asks the model
+    # to acknowledge (that is done), only to back out and wrap up.
+    p, h, send = _at_gate(playbook=ANSWERING.replace("    on_fail: stop\n", ""))
+
+    summary = _finish(p, h, _deny_answered(p, h, send))
+
+    assert "user declined the ask, answered" in summary
+    assert "Back out" in summary and "acknowledge" not in summary
+
+
+def test_a_deny_the_model_read_is_answered_too() -> None:
+    from physiclaw.conductor.walk.micro import MicroOutcome
+
+    p, h, send = _at_gate(playbook=ANSWERING)
+    _reply_arrives(p, h, send, "算了吧")
+
+    ack = p.resolve(MicroOutcome(out="deny", reason="a refusal", confidence=0.9))
+
+    assert ack.tool_names() == ["note", "run_macro"]
+    assert ack.tool_calls[1].arguments["inputs"]["message"] == "已取消，未付款 ¥45。"
+
+
+def test_a_deny_without_a_declared_answer_takes_the_word_at_once() -> None:
+    # No `denied:` — the stop ends the session with the fact alone; the
+    # cost (silence to the user) is what `playbooks check` warns about.
+    p, h, send = _at_gate(playbook=STOPPING)
+
+    stop = _reply_arrives(p, h, send, "不用")
+
+    assert stop.tool_names() == ["note", "end_session"]
+    recap = stop.tool_calls[1].arguments["recap"]
+    assert "user declined the ask" in recap and "acknowledge" not in recap
+
+
 def test_the_ask_that_says_stop_ends_the_session_with_nothing_paid() -> None:
     # The ask's send fails (Saturday's case): instead of the brief that
     # would leave the model standing next to the pay hand, the walk
@@ -1732,6 +1889,28 @@ def test_an_entry_that_says_stop_ends_the_session_when_it_fails(
 
     assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
     assert fragment in stop.tool_calls[1].arguments["recap"]
+    assert p.outcome == "handover"
+
+
+def test_a_page_that_says_handover_is_briefed_even_under_a_node_that_says_stop() -> (
+    None
+):
+    # The page answers for itself in BOTH spellings: the author put
+    # `handover` on the page the move must reach (the model verifies
+    # what the move did) and `stop` on the move itself; an unreached
+    # page briefs the model, it does not fall to the node's stop.
+    p, h = _armed(
+        GATED.replace("  - do: open\n", "  - do: open\n    on_fail: stop\n", 1).replace(
+            "  - page: results\n", "  - page: results\n    on_fail: handover\n", 1
+        )
+    )
+    move = p.advance(h)
+    _feed(h, move, ELSEWHERE)
+
+    summary = _finish(p, h, p.advance(h))
+
+    assert "conductor handing over" in summary
+    assert "did not land on 'results'" in summary
     assert p.outcome == "handover"
 
 

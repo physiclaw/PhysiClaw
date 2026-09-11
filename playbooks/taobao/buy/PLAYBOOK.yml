@@ -114,10 +114,11 @@ route:
     message: "{pick.message}（实付以屏幕读数为准：¥{ask.total}）回复 好的 确认支付，或 不用 取消。"
     yes: ["好的", "好", "可以", "确认"]   # whole-message replies that open the gate
     no: ["不用", "不要", "取消", "算了"]   # …and that close it; anything else hands over
+    denied: "好的，已取消，未付款。"     # the walk's answer to a no, before it stops
     wait: 45                      # seconds between reply polls…
     rounds: 3                     # …and silent polls before the session suspends
     think: off                    # a reply the words miss is read, not deliberated over
-    on_fail: stop                 # a failure here ends the session; nothing paid
+    on_fail: stop                 # a failure (or an answered no) ends the session; nothing paid
     resume:                       # the ask left the app — come back
       macro:
         steps:

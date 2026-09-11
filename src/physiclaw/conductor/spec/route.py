@@ -93,7 +93,6 @@ from physiclaw.macros.model import (
     Macro,
     MacroError,
     checked_readings,
-    label_readings,
 )
 from physiclaw.macros.parse import parse_inline_macro
 
@@ -148,6 +147,7 @@ _ENTRY_KEYS = {
         "message",
         "yes",
         "no",
+        "denied",
         "total_label",
         "wait",
         "rounds",
@@ -546,17 +546,20 @@ def _guard_grants(
     where: str,
     never_tap: tuple[NeverTap, ...],
     give: tuple[str, ...],
-    macros: tuple[str, ...],
+    granted: tuple[Macro, ...],
 ) -> None:
     """Refuse a grant that walks around this episode's `never_tap:`.
 
-    Both contradictions are fully declared, so both belong here rather
-    than at run time — where only the model's own taps pass the guard at
-    all. A granted LANDMARK is a box the model may press blind, and a
-    landmark with no text row leaves the runtime check nothing to find. A
-    granted MACRO presses its own recorded targets without ever
-    proposing a tap. Node-scoped on purpose: the payment move's macro
-    presses these same buttons by design and stays legal."""
+    Both contradictions are declared by name, so both belong here rather
+    than at run time. A granted LANDMARK is a box the model may press
+    blind, and a landmark with no text row leaves the runtime check
+    nothing to find. A granted MACRO presses its own recorded targets
+    without ever proposing a tap — its labels are refused here, and its
+    boxes at run time against the live screen (`step_agent.macro_refusal`,
+    off the same `Macro.taps`), since a label is the author's word and
+    the same coordinates under another word tap the same button.
+    Node-scoped on purpose: the payment move's macro presses these same
+    buttons by design and stays legal."""
     if not never_tap:
         return
     readings = {normalize(r): " / ".join(t.label) for t in never_tap for r in t.label}
@@ -574,15 +577,25 @@ def _guard_grants(
                 f"declares never_tap ({hit}) — the grant would hand the model "
                 "the box the guard exists to refuse"
             )
-    for name in macros:
-        for step in ctx.resolve(name, where, "", "give").steps:
-            args = getattr(step, "args", None)  # gestures only; a wait has none
-            hit = _named(label_readings(args)) if args else None
+    for macro in granted:
+        for tap in macro.taps():
+            hit = _named(tap.label)
             if hit is not None:
                 raise PlaybookError(
-                    f"{where}: `give` grants macro {name!r}, which presses "
+                    f"{where}: `give` grants macro {macro.name!r}, which presses "
                     f"{hit} — this step declares that never_tap, and a macro "
                     "runs its recorded steps without proposing a tap"
+                )
+            if any(isinstance(v, str) for v in tap.bbox):
+                # A box the run fills from an input default is one the
+                # runtime guard cannot judge against the screen (a
+                # placeholder has no centre); under a never_tap it is
+                # refused here rather than let through unjudged.
+                raise PlaybookError(
+                    f"{where}: `give` grants macro {macro.name!r}, whose "
+                    f"{tap.label[0]!r} box carries a placeholder — this step "
+                    "declares never_tap, and a box filled at run time cannot "
+                    "be judged against it; record the box"
                 )
 
 
@@ -642,15 +655,20 @@ def _limit_int(value: Any, where: str, lo: int, hi: int) -> int:
 
 
 def _entry_message(
-    ctx: _Ctx, where: str, entry: dict, payloads: dict[str, tuple[str, ...]]
+    ctx: _Ctx,
+    where: str,
+    entry: dict,
+    payloads: dict[str, tuple[str, ...]],
+    key: str = "message",
 ) -> tuple[str, set[str]]:
-    """A REQUIRED authored `message:` — the exact text sent to the user;
-    only the author knows the user's language, so the conductor composes
-    no prose around it. Refs held to the same defined-before-use rules
-    as `with:` values; returned with them so the ask lints can inspect."""
-    text = prose(entry.get("message"), f"{where}: `message`")
-    refs = refs_in(text, f"{where}: `message`")
-    check_refs(refs, ctx.input_names, payloads, f"{where}: `message`")
+    """A REQUIRED authored `message:` (or an ask's `denied:`, the same
+    shape under `key`) — the exact text sent to the user; only the
+    author knows the user's language, so the conductor composes no prose
+    around it. Refs held to the same defined-before-use rules as `with:`
+    values; returned with them so the ask lints can inspect."""
+    text = prose(entry.get(key), f"{where}: `{key}`")
+    refs = refs_in(text, f"{where}: `{key}`")
+    check_refs(refs, ctx.input_names, payloads, f"{where}: `{key}`")
     return text, refs
 
 
@@ -698,11 +716,23 @@ def _landmark_name(ctx: _Ctx, value: Any, where: str) -> str:
     return name
 
 
-def _grant(ctx: _Ctx, value: Any, where: str, nid: str) -> tuple[str, str]:
-    """One `give:` entry → (root, name): a `landmarks.<name>` the episode
-    may tap blind, or a `macros.<name>` pack macro it may run — argument-
-    less, like every helper hand, and never spelled like a fixed answer
-    (`done`, `escalate`, a verb) that the episode legend already owns."""
+@dataclass(frozen=True)
+class _Grant:
+    """One resolved `give:` entry. Two grants are the same grant by root
+    and name (`_unique_list`); a macro's resolved body rides beside its
+    name for the grant guard and is neither compared nor printed."""
+
+    root: str
+    name: str
+    macro: Macro | None = field(default=None, compare=False, repr=False)
+
+
+def _grant(ctx: _Ctx, value: Any, where: str, nid: str) -> _Grant:
+    """One `give:` entry: a `landmarks.<name>` the episode may tap blind,
+    or a `macros.<name>` pack macro it may run — argument-less, like
+    every helper hand, and never spelled like a fixed answer (`done`,
+    `escalate`, a verb) that the episode legend already owns. A macro's
+    name is its dispatch name (`_argless_macro`)."""
     prefix, _, name = value.partition(".") if isinstance(value, str) else ("", "", "")
     if prefix not in _GRANT_ROOTS or not name:
         roots = " or ".join(f"`{r}.<name>`" for r in _GRANT_ROOTS)
@@ -713,8 +743,9 @@ def _grant(ctx: _Ctx, value: Any, where: str, nid: str) -> tuple[str, str]:
             "landmark or macro cannot be spelled like one"
         )
     if prefix == GRANT_LANDMARKS:
-        return prefix, _landmark_name(ctx, value, where)
-    return prefix, _argless_macro(name, "give", where, nid, ctx.resolve)
+        return _Grant(prefix, _landmark_name(ctx, value, where))
+    macro = _argless_macro(name, "give", where, nid, ctx.resolve)
+    return _Grant(prefix, macro.name, macro)
 
 
 # ---------- macros ----------
@@ -859,13 +890,16 @@ def _prompt_text(ctx: _Ctx, raw: str, where: str) -> str:
 
 def _argless_macro(
     raw: Any, key: str, where: str, nid: str, resolve: _MacroResolve
-) -> str:
+) -> Macro:
     """Resolve one argument-less pack macro for a helper-hand slot
-    (`resume:`, `recover:`). The slot may wrap its body one level
-    (`{macro: ...}`) — unwrapped HERE, the rule's one home, so the
-    resolver sees the same shapes a `do` does. Both roles dispatch with
-    no arguments, so a required input could only abort at run time —
-    right after a confirmed ask, at the worst moment — hence the lint."""
+    (`resume:`, `recover:`, an agent's `give:`). The slot may wrap its
+    body one level (`{macro: ...}`) — unwrapped HERE, the rule's one
+    home, so the resolver sees the same shapes a `do` does. All roles
+    dispatch with no arguments, so a required input could only abort at
+    run time — right after a confirmed ask, at the worst moment — hence
+    the lint. Returns the resolved Macro: its `.name` is the dispatch
+    name every slot stores (a playbook-local one reads
+    `<playbook>.<name>`), and a grant's guard reads its taps."""
     if isinstance(raw, dict) and set(raw) == {"macro"}:
         raw = raw["macro"]
     spec = resolve(raw, where, nid, key)
@@ -876,7 +910,7 @@ def _argless_macro(
             f"{', '.join(required)} — the walk dispatches {key} with no "
             "arguments"
         )
-    return spec.name
+    return spec
 
 
 # ---------- the moves ----------
@@ -976,8 +1010,9 @@ def _parse_agent(
         f"{where}: `give`",
         lambda g: _grant(ctx, g, f"{where}: `give` entry", nid),
     )
-    give = tuple(n for root, n in grants if root == GRANT_LANDMARKS)
-    macros = tuple(n for root, n in grants if root == GRANT_MACROS)
+    give = tuple(g.name for g in grants if g.root == GRANT_LANDMARKS)
+    granted = tuple(g.macro for g in grants if g.macro is not None)
+    macros = tuple(m.name for m in granted)
     shared = sorted(set(give) & set(macros))
     if shared:
         raise PlaybookError(
@@ -990,7 +1025,7 @@ def _parse_agent(
             f"{where}: `never_tap` guards this episode's taps, but it has no "
             "`tap` tool — grant `tap` or drop the targets"
         )
-    _guard_grants(ctx, where, never_tap, give, macros)
+    _guard_grants(ctx, where, never_tap, give, granted)
     if give and "tap" not in tools:
         raise PlaybookError(
             f"{where}: `give` grants landmarks, but without `tap` the episode "
@@ -1136,16 +1171,21 @@ def _parse_ask(
         )
     elif "total_label" in entry:
         raise PlaybookError(f"{where}: `total_label` goes with `approve: payment`")
+    # The answer to a no quotes what the ask could (the total included).
+    denied = None
+    if entry.get("denied") is not None:
+        denied, _ = _entry_message(ctx, where, entry, g_payloads, key="denied")
     wait_seconds, rounds = _ask_wait(entry, where)
     resume = None
     if entry.get("resume") is not None:
-        resume = _argless_macro(entry["resume"], "resume", where, nid, ctx.resolve)
+        resume = _argless_macro(entry["resume"], "resume", where, nid, ctx.resolve).name
     return AskNode(
         id=nid,
         approve=approve,
         message=message,
         yes=tuple(_reply_words(entry, "yes", where)),
         no=tuple(_reply_words(entry, "no", where)),
+        denied=denied,
         resume=resume,
         enter=current_page or "",
         total_label=total,
@@ -1328,7 +1368,7 @@ def _parse_hand(ctx: _Ctx, raw: Any, where: str, page: str) -> RecoverHand:
         )
     if "macro" in raw:
         return RecoverHand(
-            macro=_argless_macro(raw["macro"], "recover", where, page, ctx.resolve)
+            macro=_argless_macro(raw["macro"], "recover", where, page, ctx.resolve).name
         )
     return RecoverHand(
         tool="tap", landmark=_landmark_name(ctx, raw["tap"], f"{where}: `tap`")
