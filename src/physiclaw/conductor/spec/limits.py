@@ -14,6 +14,14 @@ forever. The modules that enforce them import from here.
 # pack's own MAX_PAGES. (Inputs are capped by the macro grammar's
 # MAX_INPUTS — the same `inputs:` section.)
 MAX_NODES = 20
+# A `run` with `each:` walks one round per item of its list; the cap is
+# the run's own (`limit: {rounds}`), bounded like every other count.
+DEFAULT_RUN_ROUNDS = 6
+MAX_RUN_ROUNDS = 12
+# How many times an ask's uncovered reply may re-plan the walk
+# (`revise:`) before it hands over like any other reply the words miss.
+DEFAULT_REVISIONS = 2
+MAX_REVISIONS = 5
 
 # Recovery: the walk-wide ceiling on recovery actions (what stops a
 # splash ad on every cold launch from relaunching forever), and a
@@ -41,6 +49,9 @@ DEFAULT_AGENT_SCROLLS = 6
 MAX_PROMPT_LEN = 8000
 MAX_RETURNS = 6
 MAX_NEVER_TAP = 8  # `never_tap:` targets on one agent step
+# A message to the user may hold lines (an itemised confirmation, one
+# item per line), each bounded like any prose; this bounds the count.
+MAX_MESSAGE_LINES = 8
 
 # ---- the pack (pages.py) ----
 

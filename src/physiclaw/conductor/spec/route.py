@@ -39,20 +39,26 @@ from physiclaw.conductor.spec.limits import (
     DEFAULT_ASK_WAIT_SECONDS,
     DEFAULT_BOOT_SCROLLS,
     DEFAULT_RECOVER_LIMIT,
+    DEFAULT_REVISIONS,
+    DEFAULT_RUN_ROUNDS,
     MAX_AGENT_CALLS,
     MAX_ASK_ROUNDS,
     MAX_ASK_WAIT_SECONDS,
+    MAX_MESSAGE_LINES,
     MAX_NEVER_TAP,
     MAX_NODES,
     MAX_PROMPT_LEN,
     MAX_RECOVER_ACTIONS,
     MAX_RETURNS,
+    MAX_REVISIONS,
+    MAX_RUN_ROUNDS,
     MIN_ASK_WAIT_SECONDS,
 )
 from physiclaw.conductor.spec.match import normalize
 from physiclaw.conductor.spec.model import (
     INPUTS_ROOT,
     IRREVERSIBLE_CLASSES,
+    MISS_MODES,
     ON_FAIL_MODES,
     READING_COVERED,
     READING_ELSEWHERE,
@@ -65,9 +71,11 @@ from physiclaw.conductor.spec.model import (
     NeverTap,
     Node,
     Pack,
+    Playbook,
     PlaybookError,
     RecoverHand,
     Recovery,
+    RunNode,
     Scanned,
     TellNode,
     check_name,
@@ -92,6 +100,7 @@ from physiclaw.contract.dto import THINKING_LEVELS, Thinking
 from physiclaw.macros.model import (
     Macro,
     MacroError,
+    MacroInput,
     checked_readings,
 )
 from physiclaw.macros.parse import parse_inline_macro
@@ -123,7 +132,7 @@ _GRANT_ROOTS = (GRANT_LANDMARKS, GRANT_MACROS)
 # to the route. Page-declaration fields come from `pages.py`'s ONE
 # spelling (PAGE_DECL_FIELDS) — their content is validated there; they
 # appear here only so the unknown-key check names them as legal.
-ENTRY_KINDS = ("page", "start", "do", "agent", "ask", "tell", "select")
+ENTRY_KINDS = ("page", "start", "do", "agent", "ask", "tell", "run", "select")
 _ENTRY_KEYS = {
     "page": {"page", *PAGE_RECOVERY_FIELDS, *PAGE_DECL_FIELDS},
     "start": {"start", "macro", "on_fail"},
@@ -156,8 +165,10 @@ _ENTRY_KEYS = {
         "on_fail",
     },
     "tell": {"tell", "message", "on_fail"},
+    "run": {"run", "with", "each", "miss", "revise", "limit", "on_fail"},
     "select": {"select", "limit", "think"},
 }
+_RUN_LIMIT_KEYS = {"rounds", "revisions"}
 
 # The shape `_macro_resolver` returns.
 _MacroResolve = Callable[..., Macro]
@@ -177,18 +188,26 @@ class _Ctx:
     pack: Pack
     input_names: set[str]
     resolve: "_MacroResolve"
-    payloads: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Seeded with the ONE slot every text may quote, `{ask.replies}`;
+    # a payment ask's messages add `{ask.total}` (`payloads_with_total`).
+    payloads: dict[str, tuple[str, ...]] = field(
+        default_factory=lambda: {"ask": ("replies",)}
+    )
     # The prompt files an agent step may name — the pack's and this
     # route's own, one namespace (no overlap, checked at compile start)
     # — and the ones it did name.
     prompts: Scanned[str] = field(default_factory=Scanned)
     prompts_used: set[str] = field(default_factory=set)
+    # The pack's other playbooks, parsed on demand for a `run` entry —
+    # None where the caller has no pack of playbooks to offer (a
+    # playbook parsed from bare text).
+    resolve_playbook: Callable[[str], Playbook] | None = None
 
     def payloads_with_total(self) -> dict[str, tuple[str, ...]]:
         """The refs a payment step may quote: every recorded return
         field plus the ONE gate slot, `{ask.total}` — the consented
         amount its ask binds (`lints.check_money` keeps the two adjacent)."""
-        return {**self.payloads, "ask": ("total",)}
+        return {**self.payloads, "ask": ("replies", "total")}
 
 
 @dataclass(frozen=True)
@@ -202,6 +221,11 @@ class CompiledRoute:
     recovers: dict[str, Recovery]
     inline: dict[str, Macro]
     prompts_used: frozenset[str] = frozenset()
+    # The last waypoint ("" when the route ends on a move) and every
+    # move's declared outputs — what the playbook's own `returns:` and a
+    # `run` of it read.
+    end: str = ""
+    payloads: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 def compile_route(
@@ -210,6 +234,7 @@ def compile_route(
     playbook: str,
     input_names: set[str],
     pack: Pack,
+    resolve_playbook: Callable[[str], Playbook] | None = None,
 ) -> CompiledRoute:
     """`route:` → the compiled route (see `CompiledRoute`): the shape
     prepass first (every rule about WHERE an entry may sit), then one
@@ -227,7 +252,18 @@ def compile_route(
         input_names,
         _macro_resolver(playbook, pack, inline, local.macros),
         prompts=_prompt_namespace(playbook, pack, local.prompts),
+        resolve_playbook=resolve_playbook,
     )
+    # A run's returns are known before the route is walked, so a text
+    # ABOVE the run may quote them (empty until its rounds end — the
+    # one forward ref, for a plan that re-reads what a run already
+    # did). Resolved here, once, and the bodies kept for the parse.
+    subs: dict[int, Playbook] = {}
+    for i, (kind, name, _entry) in enumerate(entries):
+        if kind == "run":
+            check_name(name, f"route entry {i + 1}: `run`")
+            subs[i] = _sub_playbook(ctx, f"route entry {i + 1}", name)
+            ctx.payloads[name] = tuple(subs[i].returns)
     moves: list[Node] = []
     seen: dict[str, int] = {}
     recovers: dict[str, Recovery] = {}  # this route's own hands, by page
@@ -296,13 +332,17 @@ def compile_route(
                 )
             )
         elif kind == "agent":
-            agent = _parse_agent(ctx, where, name, entry, current_page, nxt)
-            ctx.payloads[agent.id] = agent.return_fields
-            moves.append(agent)
+            moves.append(_parse_agent(ctx, where, name, entry, current_page, nxt))
         elif kind == "ask":
             moves.append(_parse_ask(ctx, where, name, entry, current_page))
         elif kind == "select":
             moves.append(_parse_select(ctx, where, name, entry, current_page))
+        elif kind == "run":
+            moves.append(
+                _parse_run(
+                    ctx, where, name, entry, args, current_page, nxt, subs[i], moves
+                )
+            )
         else:  # tell
             message, _ = _entry_message(ctx, where, entry, ctx.payloads)
             moves.append(
@@ -310,8 +350,9 @@ def compile_route(
             )
     if len(moves) > MAX_NODES:
         raise PlaybookError(f"too many moves ({len(moves)} > {MAX_NODES})")
-    lints.check_money(moves)
-    lints.check_resume(moves)
+    flat = lints.flatten(moves)
+    lints.check_money(flat)
+    lints.check_resume(flat)
     if _is_boot(ctx):
         lints.check_boot(moves)
     # The manifest's hands beneath this route's own: a route that
@@ -322,6 +363,159 @@ def compile_route(
         recovers=_overlay(_inherited_hands(ctx), recovers),
         inline=inline,
         prompts_used=frozenset(ctx.prompts_used),
+        end=wp_ids[-1] or "",  # "" when the route ends on a move
+        payloads=dict(ctx.payloads),
+    )
+
+
+def _sub_playbook(ctx: _Ctx, where: str, name: str) -> Playbook:
+    """The playbook a `run` names, parsed against the same pack — the
+    resolver the pack loader wired; a playbook parsed from bare text
+    has none to offer."""
+    if ctx.resolve_playbook is None:
+        raise PlaybookError(f"{where}: `run` names a playbook, but none are loaded")
+    if name == ctx.playbook:
+        raise PlaybookError(f"{where}: a playbook cannot run itself")
+    return ctx.resolve_playbook(name)
+
+
+def _parse_run(
+    ctx: _Ctx,
+    where: str,
+    nid: str,
+    entry: dict,
+    args: dict,
+    current_page: str | None,
+    nxt: str | None,
+    sub: Playbook,
+    earlier: list[Node],
+) -> RunNode:
+    """A `run` move: a playbook of this pack walked as one move. Its
+    frame is derived like a `do`'s — it starts where the playbook
+    starts (cold, or on the page before it) and lands on the
+    playbook's last page, which the route must name next."""
+    if any(isinstance(n, RunNode) for n in sub.nodes):
+        raise PlaybookError(
+            f"{where}: playbook {sub.name!r} runs a playbook itself — a run "
+            "goes one level deep"
+        )
+    if any(isinstance(n, ActivateNode) for n in sub.nodes):
+        raise PlaybookError(f"{where}: the boot cannot be run as a move")
+    if not sub.end:
+        raise PlaybookError(
+            f"{where}: playbook {sub.name!r} ends on a move — a playbook run "
+            "as a move must end on a page, the landing the run checks"
+        )
+    if not sub.self_starting:
+        if current_page is None:
+            raise PlaybookError(
+                f"{where}: playbook {sub.name!r} starts on page {sub.start!r} — "
+                "put that page before the run, or give the playbook its own "
+                "`start`"
+            )
+        if current_page != sub.start:
+            raise PlaybookError(
+                f"{where}: the page before it is {current_page!r}, but playbook "
+                f"{sub.name!r} starts on {sub.start!r}"
+            )
+    if nxt is None:
+        raise PlaybookError(
+            f"{where}: a `run` must be followed by the page it lands on — "
+            f"playbook {sub.name!r} ends on {sub.end!r}"
+        )
+    if nxt != sub.end:
+        raise PlaybookError(
+            f"{where}: playbook {sub.name!r} lands on {sub.end!r}, but the "
+            f"route continues with page {nxt!r}"
+        )
+    declared = {inp.name for inp in sub.inputs}
+    agents = {n.id for n in earlier if isinstance(n, AgentNode)}
+    each: tuple[str, str] | None = None
+    raw_each = entry.get("each")
+    if raw_each is not None:
+        if not (isinstance(raw_each, dict) and len(raw_each) == 1):
+            raise PlaybookError(
+                f"{where}: `each` is one mapping, `{{<input>: <move>.<field>}}` — "
+                "the input each round fills, from a list an earlier agent returned"
+            )
+        ((inp, ref),) = raw_each.items()
+        inp, ref = str(inp), require_str(ref, f"{where}: `each` value")
+        if inp not in declared:
+            raise PlaybookError(
+                f"{where}: `each` fills {inp!r}, which is not an input of "
+                f"playbook {sub.name!r}"
+            )
+        if inp in args:
+            raise PlaybookError(f"{where}: {inp!r} is filled by both `with` and `each`")
+        check_refs({ref}, ctx.input_names, ctx.payloads, f"{where}: `each`")
+        if ref.split(".")[0] not in agents:
+            raise PlaybookError(
+                f"{where}: `each` iterates a list an EARLIER agent returned "
+                f"({{{ref}}} is not one)"
+            )
+        each = (inp, ref)
+    _check_with(
+        where,
+        args,
+        sub.inputs,
+        f"playbook {sub.name!r}",
+        filled=frozenset({each[0]}) if each else frozenset(),
+    )
+    miss = _closed_word(entry, "miss", MISS_MODES, where)
+    if miss is not None:
+        if each is None:
+            raise PlaybookError(f"{where}: `miss: skip` goes with `each`")
+        if any(
+            isinstance(n, (AskNode, TellNode)) or getattr(n, "irreversible", None)
+            for n in sub.nodes
+        ):
+            raise PlaybookError(
+                f"{where}: `miss: skip` needs a playbook that never asks, tells or pays "
+                f"— {sub.name!r} does; a skipped round must leave nothing owed"
+            )
+    revise = entry.get("revise")
+    if revise is not None:
+        revise = require_str(revise, f"{where}: `revise`")
+        if revise not in agents:
+            raise PlaybookError(
+                f"{where}: `revise` names {revise!r}, which is not an EARLIER "
+                "agent of this route — a revision re-runs the walk from there"
+            )
+        if not any(isinstance(n, AskNode) for n in sub.nodes):
+            raise PlaybookError(
+                f"{where}: `revise` needs an ask inside playbook {sub.name!r} "
+                "— it is that ask's uncovered reply that revises"
+            )
+    raw_limit = _limit_mapping(entry, where, _RUN_LIMIT_KEYS)
+    if "rounds" in raw_limit and each is None:
+        raise PlaybookError(f"{where}: `limit.rounds` goes with `each`")
+    if "revisions" in raw_limit and revise is None:
+        raise PlaybookError(f"{where}: `limit.revisions` goes with `revise`")
+    max_rounds = _limit_int(
+        raw_limit.get("rounds", DEFAULT_RUN_ROUNDS),
+        f"{where}: `limit.rounds`",
+        1,
+        MAX_RUN_ROUNDS,
+    )
+    revise_limit = _limit_int(
+        raw_limit.get("revisions", DEFAULT_REVISIONS),
+        f"{where}: `limit.revisions`",
+        1,
+        MAX_REVISIONS,
+    )
+    return RunNode(
+        id=nid,
+        playbook=sub.name,
+        args=args,
+        sub=sub,
+        enter="" if sub.self_starting else (current_page or ""),
+        verify=sub.end,
+        each=each,
+        miss=miss,
+        revise=revise,
+        revise_limit=revise_limit,
+        max_rounds=max_rounds,
+        on_fail=_on_fail(entry, where),
     )
 
 
@@ -353,15 +547,15 @@ def _shape(
         )
     for i in range(first_page):
         kind, _, _ = entries[i]
-        if kind == "start":
-            continue
-        if kind != "agent":
-            # (An acting agent up here fails in `_parse_agent`: it has
-            # no page to start on.)
+        # A tell speaks over the channel from any screen; a run up here
+        # must open with its playbook's own start (`_parse_run`); an
+        # acting agent fails in `_parse_agent`, having no page to start on.
+        if kind not in ("agent", "start", "tell", "run"):
             raise PlaybookError(
                 f"route entry {i + 1}: only pure-text `agent` steps (no "
-                "tools) and the `start` move may precede the first page — "
-                f"a `{kind}` needs a screen the route has not reached yet"
+                "tools), `start`, a `tell` and a self-starting `run` may "
+                f"precede the first page — a `{kind}` needs a screen the "
+                "route has not reached yet"
             )
     if all(kind == "page" for kind, _, _ in entries):
         raise PlaybookError(
@@ -666,7 +860,7 @@ def _entry_message(
     author knows the user's language, so the conductor composes no prose
     around it. Refs held to the same defined-before-use rules as `with:`
     values; returned with them so the ask lints can inspect."""
-    text = prose(entry.get(key), f"{where}: `{key}`")
+    text = prose(entry.get(key), f"{where}: `{key}`", lines=MAX_MESSAGE_LINES)
     refs = refs_in(text, f"{where}: `{key}`")
     check_refs(refs, ctx.input_names, payloads, f"{where}: `{key}`")
     return text, refs
@@ -916,6 +1110,49 @@ def _argless_macro(
 # ---------- the moves ----------
 
 
+def _check_with(
+    where: str,
+    args: dict,
+    inputs: "tuple[MacroInput, ...]",
+    what: str,
+    filled: frozenset[str] = frozenset(),
+) -> None:
+    """A move's `with:` against the inputs of what it runs (a macro, a
+    playbook): every key an input, every required input filled — by
+    `with`, or by the one `each` fills (`filled`)."""
+    declared = {inp.name: inp for inp in inputs}
+    unknown = sorted(set(args.keys()) - set(declared))
+    if unknown:
+        raise PlaybookError(
+            f"{where}: `with` key(s) {', '.join(unknown)} are not inputs of "
+            f"{what} (declares: {', '.join(sorted(declared)) or '(none)'})"
+        )
+    missing = sorted(
+        n
+        for n, i in declared.items()
+        if i.required and n not in args and n not in filled
+    )
+    if missing:
+        raise PlaybookError(
+            f"{where}: {what} requires input(s) {', '.join(missing)} — "
+            "supply them under `with`" + (" (or one with `each:`)" if filled else "")
+        )
+
+
+def _limit_mapping(entry: dict, where: str, keys: set[str]) -> dict:
+    """An entry's optional `limit:` mapping, its keys held to `keys` —
+    empty when absent; each caller reads its own bounds off it."""
+    raw = entry.get("limit")
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise PlaybookError(f"{where}: `limit` must be a mapping")
+    unknown = sorted(set(map(str, raw)) - keys)
+    if unknown:
+        raise PlaybookError(f"{where}: `limit`: unknown key(s): {', '.join(unknown)}")
+    return raw
+
+
 def _parse_do(
     ctx: _Ctx,
     where: str,
@@ -940,22 +1177,7 @@ def _parse_do(
         )
     spec = ctx.resolve(entry["macro"], where, nid)
     macro = spec.name
-    declared = {inp.name: inp for inp in spec.inputs}
-    unknown_args = sorted(set(args.keys()) - set(declared))
-    if unknown_args:
-        raise PlaybookError(
-            f"{where}: `with` key(s) {', '.join(unknown_args)} are not "
-            f"inputs of macro {macro!r} (declares: "
-            f"{', '.join(sorted(declared)) or '(none)'})"
-        )
-    missing_args = sorted(
-        name for name, inp in declared.items() if inp.required and name not in args
-    )
-    if missing_args:
-        raise PlaybookError(
-            f"{where}: macro {macro!r} requires input(s) "
-            f"{', '.join(missing_args)} — supply them under `with`"
-        )
+    _check_with(where, args, spec.inputs, f"macro {macro!r}")
     return DoNode(
         id=nid,
         macro=macro,
@@ -978,14 +1200,9 @@ def _parse_agent(
     """An `agent` move. No `tools` = a pure-text call (needs `returns`,
     no pages); tools = an acting episode framed by the adjacent
     waypoints exactly like a `do`. The prompt is the author's whole
-    brief — refs validated here, filled once when the step opens."""
-    prompt = _prompt_text(
-        ctx, require_str(entry.get("prompt"), f"{where}: `prompt`"), where
-    )
-    if len(prompt) > MAX_PROMPT_LEN:
-        raise PlaybookError(
-            f"{where}: `prompt` is {len(prompt)} characters (max {MAX_PROMPT_LEN})"
-        )
+    brief — refs validated here, filled once when the step opens; it
+    may quote the step's own returns (its last answer, empty the first
+    time — what a revision re-reads), so they are declared before it."""
 
     def _tool(t: Any) -> str:
         if not isinstance(t, str) or t not in AGENT_TOOLS:
@@ -1052,6 +1269,14 @@ def _parse_agent(
                     " — rename it"
                 )
             returns.append((fname, prose(desc, f"{where}: `returns.{fname}`")))
+    ctx.payloads[nid] = tuple(f for f, _ in returns)
+    prompt = _prompt_text(
+        ctx, require_str(entry.get("prompt"), f"{where}: `prompt`"), where
+    )
+    if len(prompt) > MAX_PROMPT_LEN:
+        raise PlaybookError(
+            f"{where}: `prompt` is {len(prompt)} characters (max {MAX_PROMPT_LEN})"
+        )
 
     if not tools and not returns:
         raise PlaybookError(
@@ -1079,28 +1304,19 @@ def _parse_agent(
             )
         enter, verify = current_page, next_wp
 
-    raw_limit = entry.get("limit")
-    max_calls, max_scrolls = DEFAULT_AGENT_CALLS, DEFAULT_AGENT_SCROLLS
-    if raw_limit is not None:
-        if not isinstance(raw_limit, dict):
-            raise PlaybookError(f"{where}: `limit` must be a mapping")
-        unknown = sorted(set(map(str, raw_limit)) - _AGENT_LIMIT_KEYS)
-        if unknown:
-            raise PlaybookError(
-                f"{where}: `limit`: unknown key(s): {', '.join(unknown)}"
-            )
-        max_calls = _limit_int(
-            raw_limit.get("calls", DEFAULT_AGENT_CALLS),
-            f"{where}: `limit.calls`",
-            1,
-            MAX_AGENT_CALLS,
-        )
-        max_scrolls = _limit_int(
-            raw_limit.get("scrolls", min(DEFAULT_AGENT_SCROLLS, max_calls)),
-            f"{where}: `limit.scrolls`",
-            0,
-            MAX_AGENT_CALLS,
-        )
+    raw_limit = _limit_mapping(entry, where, _AGENT_LIMIT_KEYS)
+    max_calls = _limit_int(
+        raw_limit.get("calls", DEFAULT_AGENT_CALLS),
+        f"{where}: `limit.calls`",
+        1,
+        MAX_AGENT_CALLS,
+    )
+    max_scrolls = _limit_int(
+        raw_limit.get("scrolls", min(DEFAULT_AGENT_SCROLLS, max_calls)),
+        f"{where}: `limit.scrolls`",
+        0,
+        MAX_AGENT_CALLS,
+    )
     if "scroll" not in tools:
         max_scrolls = 0
     elif max_scrolls == 0:

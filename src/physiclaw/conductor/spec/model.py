@@ -17,7 +17,7 @@ of waypoints (`page:` — where the walk must BE, checked every time) and
 moves (what it DOES). The grammar, top-down (the YAML keys are the user
 vocabulary and the model classes below carry the same names)::
 
-    playbook  ::= description [enabled] [inputs] route
+    playbook  ::= description [enabled] [scope] [inputs] [returns] route
     inputs    ::= {id: {description, [default], [example]}}   # ≤ MAX_INPUTS
     route     ::= [agent...] [start] page (move page | ask | tell)*
     entry     ::= "page" name [anchors] [forbid] [scrollable] [recover] [tries]
@@ -29,6 +29,9 @@ vocabulary and the model classes below carry the same names)::
                   [wait] [rounds] [resume]    # payment: resume required when
                                               # a screen move follows
                 | "tell" name message
+                | "run" name [with] [each] [miss] [revise] [limit]
+                                              # a playbook of this pack, walked
+                                              # as one move (per item, with each)
                 | "select" name [limit]       # channel/boot only, and last:
                                               # read the thread, hand a
                                               # playbook the baton
@@ -86,6 +89,7 @@ from physiclaw.conductor.spec.limits import (
     DEFAULT_ASK_ROUNDS,
     DEFAULT_ASK_WAIT_SECONDS,
     DEFAULT_RECOVER_LIMIT,
+    DEFAULT_RUN_ROUNDS,
 )
 from physiclaw.conductor.spec.pages import AnchorDecl, Landmark, PageDecl
 from physiclaw.contract.dto import Thinking
@@ -106,6 +110,15 @@ IRREVERSIBLE_CLASSES = ("payment",)
 # walk's own hand. The playbook decides, entry by entry (README).
 ON_FAIL_STOP = "stop"
 ON_FAIL_MODES = ("handover", ON_FAIL_STOP)
+# A `run`'s `miss:` — the third exit word, legal on a run with `each`
+# only: a failed round is recorded as missed and the walk goes on.
+ON_FAIL_SKIP = "skip"
+MISS_MODES = (ON_FAIL_SKIP,)
+# A playbook's `scope:` — `global` may be launched by the boot for a
+# request; `local` is walked only by another playbook of its pack.
+SCOPE_GLOBAL = "global"
+SCOPE_LOCAL = "local"
+SCOPES = (SCOPE_GLOBAL, SCOPE_LOCAL)
 
 # The ref grammar's one global root — `{inputs.name}` — rejected as a
 # move name so an agent's `{move.field}` outputs can never shadow it.
@@ -271,6 +284,41 @@ class TellNode:
 
 
 @dataclass(frozen=True)
+class RunNode:
+    """A `run` move — a playbook of this pack walked as ONE move, the
+    way a `do` runs a macro: its `with:` fills the playbook's inputs,
+    it starts on the page before it (or cold, when the playbook opens
+    with its own `start`) and lands on the playbook's last page; its
+    `returns:` are read downstream as `{<run>.<field>}`.
+
+    With `each:` it runs once per line of a list an earlier agent
+    returned — one round per distinct item, a round's returns joined
+    as lines afterwards — bounded by `max_rounds`. `miss: skip` lets a
+    round that hands over be recorded as missed while the walk goes
+    on (legal only for a playbook that never asks or pays). `revise`
+    names an earlier agent of the route: a reply the yes/no words miss
+    at any ask INSIDE this run re-runs the walk from there, at most
+    `revise_limit` times."""
+
+    id: str
+    playbook: str
+    args: dict  # `with:` — ref templates, filled at run time
+    sub: "Playbook"
+    enter: str  # "" when the playbook opens with its own `start`
+    verify: str  # the playbook's last page — the landing
+    each: tuple[str, str] | None = None  # (the input it fills, the list ref)
+    miss: str | None = None  # `miss: skip`, or None
+    revise: str | None = None  # an earlier agent's id, or None
+    revise_limit: int = 0
+    max_rounds: int = DEFAULT_RUN_ROUNDS
+    on_fail: str | None = None
+
+    @property
+    def self_starting(self) -> bool:
+        return self.sub.self_starting
+
+
+@dataclass(frozen=True)
 class ActivateNode:
     """The `select` step — the channel boot's own, and its last: on
     the thread (its `enter`, the page before it), ONE parse_task call
@@ -347,7 +395,7 @@ class Recovery:
         )
 
 
-Node = DoNode | AgentNode | AskNode | TellNode | ActivateNode
+Node = DoNode | AgentNode | AskNode | TellNode | RunNode | ActivateNode
 
 
 @dataclass(frozen=True)
@@ -362,6 +410,11 @@ class Playbook:
     enabled: bool
     inputs: tuple[PlaybookInput, ...]
     nodes: tuple[Node, ...]  # the route's MOVES, compiled (waypoints derived away)
+    # `scope:` — who may launch this playbook. `global` (the default):
+    # the boot, for a request. `local`: only another playbook of this
+    # pack, by `run:` (and `playbooks run`, to rehearse it) — never the
+    # agent, never a playbook of another pack.
+    scope: str = SCOPE_GLOBAL
     # The route's first waypoint — where the walk must be at start (it
     # is also the first move's derived enter, which is what the runtime
     # actually checks).
@@ -377,6 +430,25 @@ class Playbook:
     # The prompt files this route's agent steps read (`prompts.<name>`)
     # — `playbooks check` names the files no route reads.
     prompts_used: frozenset[str] = frozenset()
+    # `returns:` — what a run of this playbook yields, field → template
+    # over its own refs, filled when the run's round ends.
+    returns: dict[str, str] = field(default_factory=dict)
+    # The route's last waypoint — the landing a `run` of it checks; ""
+    # when the route ends on a move (then it cannot be run as a move).
+    end: str = ""
+
+    @property
+    def runs(self) -> tuple["RunNode", ...]:
+        """The playbooks this route runs as moves, in route order."""
+        return tuple(n for n in self.nodes if isinstance(n, RunNode))
+
+    @property
+    def self_starting(self) -> bool:
+        """Whether the route cold-launches by its own `start` before it
+        touches the screen (a `start` sits right before the first page,
+        so any pure-text agents above it change nothing) — what a `run`
+        of it needs no page before it for."""
+        return any(isinstance(n, DoNode) and n.start for n in self.nodes)
 
     @property
     def activates(self) -> bool:

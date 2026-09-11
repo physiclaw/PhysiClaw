@@ -37,7 +37,7 @@ from physiclaw.cli.pages import pages_app
 from physiclaw.common.paths import PACK_FILENAME
 from physiclaw.common.ready import START_HINT
 from physiclaw.conductor.drive import rehearsal
-from physiclaw.conductor.spec.model import PlaybookError
+from physiclaw.conductor.spec.model import SCOPE_GLOBAL, PlaybookError
 
 if TYPE_CHECKING:
     from physiclaw.conductor.drive import decisions
@@ -854,12 +854,15 @@ def _check_app(app: str) -> "tuple[bool, dict[str, Playbook]]":
             typer.echo(step_fail(f"{app}/{entry.name}: {entry.error or ''}"))
             bad = True
             continue
-        typer.echo(
-            ok(f"{app}/{entry.name}" + ("" if entry.spec.enabled else "  (disabled)"))
+        tags = ("" if entry.spec.enabled else "  (disabled)") + (
+            "" if entry.spec.scope == SCOPE_GLOBAL else "  (local)"
         )
-        if not entry.spec.enabled:
+        typer.echo(ok(f"{app}/{entry.name}{tags}"))
+        if not entry.spec.enabled and entry.spec.scope == SCOPE_GLOBAL:
             disabled.append(entry.name)
     _report_not_live(app, pack, entries, disabled)
+    for line in lints.unrun_playbooks([e.spec for e in entries if e.spec is not None]):
+        typer.echo(warn(f"{app}: {line}"))
     for entry in entries:
         if entry.spec is None:
             continue

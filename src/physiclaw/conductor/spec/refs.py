@@ -2,7 +2,8 @@
 parse (`refs_in`, `check_refs`) and filled at run (`fill_refs`).
 
 Every ref is dotted: `inputs.<name>` reads a declared input, `<move>.<field>`
-an EARLIER agent step's declared return field, `ask.total` a payment
+an EARLIER agent step's declared return field (or the quoting step's
+own: its last answer, empty the first time), `ask.total` a payment
 ask's quoted total. A bare `{name}` is a load error. Refs are
 playbook-level — resolved to plain strings before any macro sees them,
 so pack macros keep the stock single-name template grammar.
@@ -57,7 +58,8 @@ def check_refs(
     where: str,
 ) -> None:
     """Every ref resolves: an `inputs.*` to a declared input, anything
-    else to an EARLIER move's declared output field."""
+    else to an EARLIER move's declared output field — or the quoting
+    agent's own, declared before its prompt is read."""
     for ref in sorted(refs):
         root, _, fld = ref.partition(".")
         if root == INPUTS_ROOT:
@@ -66,8 +68,8 @@ def check_refs(
         elif root not in payloads:
             raise PlaybookError(
                 f"{where}: {{{ref}}} references move {root!r}, which "
-                "is not an EARLIER agent step — outputs wire forward "
-                "only, in route order"
+                "is not an EARLIER agent step (or this one) — outputs wire "
+                "forward only, in route order"
             )
         elif fld not in payloads[root]:
             raise PlaybookError(
@@ -92,6 +94,14 @@ def check_arg_refs(
     elif isinstance(value, dict):
         for v in value.values():
             check_arg_refs(v, input_names, payloads, where)
+
+
+def fill_args(args: dict, values: dict[str, str], where: str) -> dict[str, Any]:
+    """A move's `with:` block filled — each value through `fill_refs`,
+    named "<where> `with.<key>`" in any error."""
+    return {
+        k: fill_refs(v, values, where=f"{where} `with.{k}`") for k, v in args.items()
+    }
 
 
 def fill_refs(value: Any, values: dict[str, str], where: str) -> Any:

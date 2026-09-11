@@ -187,7 +187,7 @@ def bind(
     err: type[ValueError],
 ) -> tuple[
     Callable[[Any, str], str],
-    Callable[[Any, str], str],
+    Callable[..., str],
     Callable[[Any, str], str | None],
     Callable[[Any, str], None],
 ]:
@@ -204,12 +204,21 @@ def bind(
             f'({type(value).__name__}) — quote it: "{value}"'
         )
 
-    def prose(value: Any, where: str) -> str:
+    def prose(value: Any, where: str, *, lines: int = 1) -> str:
+        """Bounded prose: one line by default, each line under
+        MAX_PROSE_LEN; `lines` admits that many (a message to the user)."""
         text = require_str(value, where)
-        if "\n" in text or "\r" in text:
+        held = text.splitlines()
+        if lines == 1 and len(held) > 1:
             raise err(f"{where} must be a single line")
-        if len(text) > MAX_PROSE_LEN:
-            raise err(f"{where} is {len(text)} characters (max {MAX_PROSE_LEN})")
+        if len(held) > lines:
+            raise err(f"{where} has {len(held)} lines (max {lines})")
+        for line in held:
+            if len(line) > MAX_PROSE_LEN:
+                raise err(
+                    f"{where}{' has a line that' if lines > 1 else ''} is "
+                    f"{len(line)} characters (max {MAX_PROSE_LEN})"
+                )
         return text
 
     def opt_prose(value: Any, where: str) -> str | None:

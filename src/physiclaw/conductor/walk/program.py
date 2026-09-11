@@ -24,7 +24,8 @@ Money never recovers.
 
 import logging
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
 
@@ -35,6 +36,7 @@ from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.conventions import LOCKED_ID, owned_by, page_id, page_name
 from physiclaw.conductor.spec.match import Reading, Verdict, match_screen
 from physiclaw.conductor.spec.model import (
+    ON_FAIL_SKIP,
     ON_FAIL_STOP,
     READING_COVERED,
     READING_ELSEWHERE,
@@ -47,13 +49,16 @@ from physiclaw.conductor.spec.model import (
     Node,
     Playbook,
     PlaybookError,
+    Recovery,
+    RunNode,
     TellNode,
 )
-from physiclaw.conductor.spec.pack import qualified_macro
+from physiclaw.conductor.spec.pack import qualified_macro, resolve_inputs
 from physiclaw.conductor.spec.pages import Landmark, PagePrint
+from physiclaw.conductor.spec.refs import fill_args, fill_refs
 from physiclaw.conductor.walk import brief, recover, views
 from physiclaw.conductor.walk.gate import Gate
-from physiclaw.conductor.walk.ledger import Ledger
+from physiclaw.conductor.walk.ledger import Ledger, round_prefix
 from physiclaw.conductor.walk.micro import MicroOutcome
 from physiclaw.conductor.walk.record import Record
 from physiclaw.conductor.walk.step import Activator, Paused, Step, Turn
@@ -123,6 +128,54 @@ _CHECKED_KIND: dict[type, str] = {
 }
 
 
+@dataclass(frozen=True)
+class Round:
+    """One round of a `run`: the playbook's nodes walked once, with its
+    own inputs and its own record in the ledger (`ledger.rounds`, under
+    `ledger.round_prefix`), so a re-plan can tell a finished round from
+    one still to do, and a round's own refs read only its own record."""
+
+    run: RunNode
+    key: str
+    inputs: dict[str, str]  # `inputs.<name>` → value, this round's
+
+    @property
+    def prefix(self) -> str:
+        return round_prefix(self.run.id, self.key)
+
+
+@dataclass(frozen=True)
+class Slot:
+    """One place on the route the cursor walks: the node, the spec index
+    it came from (what a suspension stores), and the round it belongs
+    to — None for the route's own nodes."""
+
+    node: Node
+    origin: int
+    round: Round | None = None
+
+
+def _own_slots(nodes: "Iterable[Node]") -> dict[str, str]:
+    """Every agent return field of `nodes`, empty: what a step reads of
+    its own returns before it has answered (the parser lets a prompt
+    quote only earlier steps' fields and its own)."""
+    return {
+        f"{n.id}.{f}": ""
+        for n in nodes
+        if isinstance(n, AgentNode)
+        for f in n.return_fields
+    }
+
+
+def _run_keys(run: RunNode, vals: dict[str, str]) -> list[str]:
+    """The rounds a run has now: one, or one per distinct line of its
+    list (the list's CURRENT value — a re-plan changes it)."""
+    if run.each is None:
+        return [""]
+    lines = vals.get(run.each[1], "").splitlines()
+    return list(dict.fromkeys(k for line in lines if (k := line.strip())))
+
+
 class Program:
     """One playbook mid-walk. Constructed per session (the conductor
     plugin's wake setup builds it), so the cursor state lives for
@@ -171,6 +224,11 @@ class Program:
         # once this walk goes quiet.
         self.activation = activation
         self.baton: "Program | None" = None
+        # The route the cursor walks: one slot per node — the spec's
+        # nodes, with each `run` replaced by its rounds' nodes as the
+        # cursor reaches it (`_expand`); a slot knows the spec index it
+        # came from (the cursor a suspension stores) and its round.
+        self.slots: list[Slot] = [Slot(n, i) for i, n in enumerate(spec.nodes)]
         self.idx = 0
         # Turn minting + the one action in flight (`turns.py`). The scope
         # is the playbook ref: two walks in one session (the boot, then
@@ -205,7 +263,11 @@ class Program:
         self._page_recoveries: Counter[str] = Counter()
         # A restored walk's stored cursor and whether it is a wake's
         # suspension — `_restore` says what each buys.
-        self._resume_at = 0
+        # Where a restored walk resumed, as a POSITION (spec index, the
+        # round's key when inside one, the offset within it) — never a
+        # route index, which expansions, finished rounds and revisions
+        # all move. `_floor` resolves it against the route as it stands.
+        self._resume_pos: tuple[int, str | None, int] | None = None
         self._from_suspension = False
         self._unlocked = False  # the resume unlock, once
         # Telemetry (`walklog`): decision outcomes brokered to this walk.
@@ -248,8 +310,31 @@ class Program:
     @property
     def node(self) -> "Node | None":
         """The node at the cursor — None once the walk is past the last."""
-        nodes = self.spec.nodes
-        return nodes[self.idx] if self.idx < len(nodes) else None
+        return self.slots[self.idx].node if self.idx < len(self.slots) else None
+
+    def _round_at(self, idx: int) -> Round | None:
+        return self.slots[idx].round if 0 <= idx < len(self.slots) else None
+
+    def _span(self, rd: Round) -> tuple[int, int]:
+        """A round's first and last route index, inclusive."""
+        at = [j for j, s in enumerate(self.slots) if s.round is rd]
+        return at[0], at[-1]
+
+    def _route_index(self, spec_idx: int) -> int:
+        """The route index of a spec node — where the cursor lands for a
+        spec-level position once runs before it have expanded."""
+        return next(
+            (j for j, s in enumerate(self.slots) if s.origin >= spec_idx),
+            len(self.slots),
+        )
+
+    def label(self) -> str:
+        """Where the walk stands, for logs and the stepping driver:
+        `node (i/n)`, a round's node under its run and key."""
+        n = len(self.slots)
+        if self.idx >= n:
+            return f"(end, {n}/{n})"
+        return f"{self._node_id()} ({self.idx + 1}/{n})"
 
     @property
     def _recoveries(self) -> int:
@@ -263,12 +348,21 @@ class Program:
         the walk from (`suspended=` or `position=` at
         construction): walk state here,
         gate state via `Gate.to_suspended` — each field list lives
-        beside its fields."""
+        beside its fields. `idx` is the SPEC index (a run counts as one
+        node); a cursor inside a run's round adds the round's key and
+        the offset within it."""
+        rd = self._round_at(self.idx)
         return {
             "schema": SUSPENDED_SCHEMA,
             "app": self.app,
             "playbook": self.spec.name,
-            "idx": self.idx,
+            "idx": self.slots[self.idx].origin
+            if self.idx < len(self.slots)
+            else len(self.spec.nodes),
+            "round": {"key": rd.key, "at": self.idx - self._span(rd)[0]}
+            if rd is not None
+            else None,
+            "label": self.label(),
             "values": self.values,
             **self.thread.to_suspended(),
             **self.ledger.to_suspended(),
@@ -294,8 +388,6 @@ class Program:
             # stale cursor must not fake a completion. Raising drops the
             # suspension (load_suspended is fail-open).
             raise PlaybookError(f"suspended idx {idx} is outside the playbook")
-        self.idx = idx
-        self._resume_at = idx
         self._from_suspension = resumed
         self.ledger.restore(data)
         # A restored payment was logged before it was persisted
@@ -304,11 +396,54 @@ class Program:
         self._paid_logged = self.ledger.paid is not None
         self.thread.restore(data)
         self.gate = Gate.from_suspended(data)
+        # The stored cursor is a SPEC index; inside a run's round it
+        # comes with the round's key and offset, and the run is expanded
+        # again from the restored record (a finished round stays out,
+        # the same rule as live) to find that round's place.
+        self.idx = idx
+        inside = data.get("round")
+        if (
+            inside
+            and idx < len(self.slots)
+            and isinstance(self.slots[idx].node, RunNode)
+        ):
+            key, at = str(inside.get("key", "")), int(inside.get("at", 0))
+            rd = next((r for r in self._expand(idx) if r.key == key), None)
+            if rd is None:
+                raise PlaybookError(f"suspended round {key!r} is not in the run")
+            self.idx = self._span(rd)[0] + at
+        self._resume_pos = (
+            idx,
+            str(inside.get("key", "")) if inside else None,
+            int(inside.get("at", 0)) if inside else 0,
+        )
 
     @property
     def _floor(self) -> int:
-        """The cursor no recovery restarts below (`_restore`)."""
-        return self._resume_at if self._from_suspension else 0
+        """The cursor no recovery restarts below (`_restore`) — a wake's
+        suspension only; a stepping position keeps the fresh walk's rule."""
+        return self._resume_index() if self._from_suspension else 0
+
+    def _resume_index(self) -> int:
+        """The restored cursor on today's route: the node inside its
+        round while that round is still on the route, else the first
+        slot of the spec index it came from (a finished round is gone
+        by then). 0 for a walk that restored nothing."""
+        if self._resume_pos is None:
+            return 0
+        origin, key, at = self._resume_pos
+        if key is not None:
+            rd = next(
+                (
+                    s.round
+                    for s in self.slots
+                    if s.round is not None and s.origin == origin and s.round.key == key
+                ),
+                None,
+            )
+            if rd is not None:
+                return self._span(rd)[0] + at
+        return self._route_index(origin)
 
     def suspend(self) -> AssistantMessage:
         """Write the suspended state (`state()`, the cursor where it
@@ -368,8 +503,16 @@ class Program:
     @property
     def outputs(self) -> dict[str, str]:
         """The agents' return fields, keyed `node.field` — the ledger's
-        decisions (`{node.field}` refs and the resume cursor read them)."""
+        decisions (`{node.field}` refs and the resume cursor read them);
+        a round's under its prefix (`Round`)."""
         return self.ledger.decided
+
+    def decide(self, node_id: str, field: str, value: str) -> None:
+        rd = self._round_at(self.idx)
+        if rd is not None:
+            self.ledger.decide_in_round(rd.prefix, f"{node_id}.{field}", value)
+        else:
+            self.ledger.decide(f"{node_id}.{field}", value)
 
     # ---- the conductor's two calls ----
 
@@ -478,7 +621,10 @@ class Program:
             # Past the settled pure-text prefix, never below a restored
             # walk's stored cursor (`_restore`).
             self.phase = Phase.LIVE
-            self.idx = max(self.spec.first_unsettled(self.outputs), self._resume_at)
+            self.idx = max(
+                self._route_index(self.spec.first_unsettled(self.outputs)),
+                self._resume_index(),
+            )
             return self.next()
         if kind == KIND_RECOVER:
             return self._recover_landed()
@@ -518,7 +664,15 @@ class Program:
         one first."""
         if self.verdict is None:
             return self.handover("no screen observed yet")
-        nodes = self.spec.nodes
+        if self.idx < len(self.slots) and isinstance(
+            self.slots[self.idx].node, RunNode
+        ):
+            # The run's rounds take its place in the route, and the
+            # cursor walks the first of them — or whatever follows when
+            # every round is already done.
+            self._expand(self.idx)
+            return self.next()
+        nodes = [s.node for s in self.slots]
         if self.idx >= len(nodes):
             # The task is the playbook's and it is done: its `tell` already
             # reported to the user and its record wrote the runs row, so
@@ -547,23 +701,202 @@ class Program:
 
     def advance_cursor(self) -> Turn:
         """The step at the cursor is done — walk the next node. The ONE
-        way the cursor moves forward."""
+        way the cursor moves forward. Leaving a round's last node
+        records the round: its returns, or the miss."""
+        rd = self._round_at(self.idx)
         self.idx += 1
         self._step = None
+        if rd is not None and self._round_at(self.idx) is not rd:
+            self._finish_round(rd)
+            self._drop_round(rd)
         return self.next()
+
+    def _drop_round(self, rd: Round) -> None:
+        """A round that is done or missed leaves the route: its record
+        is the ledger's, and the route reads as a resumed one would (a
+        finished round is never expanded again), so a restart from the
+        top can never walk it twice. The cursor lands on what followed."""
+        start, end = self._span(rd)
+        del self.slots[start : end + 1]
+        self.ledger.nodes = len(self.slots)
+        self.idx = start
 
     def _node_id(self) -> str | None:
         node = self.node
-        return node.id if node is not None else None
+        if node is None:
+            return None
+        rd = self._round_at(self.idx)
+        return f"{rd.prefix}/{node.id}" if rd is not None else node.id
+
+    def _recovers(self) -> dict[str, Recovery]:
+        """The declared hands the cursor's page is under — the run
+        playbook's inside a round, else this route's."""
+        rd = self._round_at(self.idx)
+        return rd.run.sub.recovers if rd is not None else self.spec.recovers
 
     # ---- what the steps read and call ----
 
     def ref_values(self) -> dict[str, str]:
         """Ref-resolution values, keyed by the dotted ref spellings: the
-        walk's inputs under `inputs.<name>` and every recorded agent
-        output under `node.field`. The roots can never collide: the
-        parser reserves `inputs` as a move id."""
-        return {**self._input_vals, **self.outputs}
+        walk's inputs under `inputs.<name>`, every agent output under
+        `node.field` (the one read of an unrecorded one a text can make
+        is a step's own: its last answer, or empty), every run's returns under `run.field` (its
+        finished rounds' values, one per line — empty before any), and
+        the gate's `ask.replies` (the replies read so far, one per line —
+        empty before any). Inside a run's round: that round's inputs and
+        its own record, nothing of the route around it. The roots can
+        never collide: the parser reserves `inputs` as a move id."""
+        rd = self._round_at(self.idx)
+        if rd is not None:
+            return self._round_values(rd)
+        vals = {
+            **_own_slots(self.spec.nodes),
+            **self.ledger.previous,
+            **self._input_vals,
+            **self.outputs,
+        }
+        for run in self.spec.runs:
+            keys = _run_keys(run, vals)
+            for fld in run.sub.returns:
+                vals[f"{run.id}.{fld}"] = self._run_return(run, fld, keys)
+        vals["ask.replies"] = "\n".join(self.gate.replies)
+        return vals
+
+    def _round_values(self, rd: Round) -> dict[str, str]:
+        """A round's refs: its inputs, its own record, the replies."""
+        return {
+            **_own_slots(rd.run.sub.nodes),
+            **rd.inputs,
+            **self.ledger.round_values(rd.prefix),
+            "ask.replies": "\n".join(self.gate.replies),
+        }
+
+    def _run_return(self, run: RunNode, fld: str, keys: list[str]) -> str:
+        """A run's return: its done rounds' values, in list order, one
+        per line — a missed round has no line (its reason is the
+        ledger's), so a report never lists what was not done."""
+        lines = (self.ledger.round_return(round_prefix(run.id, k), fld) for k in keys)
+        return "\n".join(v for v in lines if v)
+
+    def _expand(self, i: int) -> list[Round]:
+        """Replace the `run` at route index `i` by its rounds' nodes —
+        the rounds still to do: every key of its list (or the one round
+        of a plain run) whose record is not in the ledger. Returns them;
+        raises PlaybookError when the run cannot expand (the guarded
+        callers hand over on it)."""
+        run = self.slots[i].node
+        assert isinstance(run, RunNode)
+        values = self.ref_values()
+        keys = _run_keys(run, values)
+        if len(keys) > run.max_rounds:
+            raise PlaybookError(
+                f"run {run.id!r}: {len(keys)} items, more than its "
+                f"{run.max_rounds} rounds"
+            )
+        rounds: list[Round] = []
+        for key in keys:
+            if self.ledger.round_finished(round_prefix(run.id, key)):
+                continue
+            provided = {
+                k: str(v)
+                for k, v in fill_args(run.args, values, f"run {run.id!r}").items()
+            }
+            if run.each is not None:
+                provided[run.each[0]] = key
+            try:
+                resolved = resolve_inputs(run.sub, provided)
+            except PlaybookError as e:
+                raise PlaybookError(f"run {run.id!r}: {e}") from e
+            rounds.append(
+                Round(run, key, {f"inputs.{n}": v for n, v in resolved.items()})
+            )
+        origin = self.slots[i].origin
+        self.slots[i : i + 1] = [
+            Slot(n, origin, rd) for rd in rounds for n in run.sub.nodes
+        ]
+        self.ledger.nodes = len(self.slots)
+        return rounds
+
+    def revise(self, replies: str) -> Turn:
+        """A reply the ask's words missed re-plans the walk, when the
+        enclosing `run` says `revise:` and its revisions are not spent:
+        the reply joins `{ask.replies}`, the route from the named agent
+        on goes back to its spec shape (a run in progress re-expands
+        later; a finished round keeps its record and is not walked
+        again), and the cursor re-runs that agent."""
+        rd = self._round_at(self.idx)
+        if rd is None or rd.run.revise is None:
+            return None
+        if self.gate.revisions >= rd.run.revise_limit:
+            return None
+        target = [n.id for n in self.spec.nodes].index(rd.run.revise)
+        at = self._route_index(target)
+        self.gate.revisions += 1
+        self.gate.replies.append(replies)
+        self.gate.abandon_ask()
+        self.journal(
+            f"revising from {rd.run.revise!r} ({self.gate.revisions}/"
+            f"{rd.run.revise_limit}) — the user said {replies!r}"
+        )
+        log.info("conductor: %s revises from %s — %r", self.ref, rd.run.revise, replies)
+        # A round in progress past the target starts over on the next
+        # pass: its partial record (an agent's output from this pass)
+        # is dropped, or refs would read it until overwritten.
+        opened = {id(s.round): s.round for s in self.slots[at:] if s.round is not None}
+        for rd_open in opened.values():
+            if not self.ledger.round_finished(rd_open.prefix):
+                self.ledger.rounds.pop(rd_open.prefix, None)
+        self.slots[at:] = [
+            Slot(n, j) for j, n in enumerate(self.spec.nodes[target:], target)
+        ]
+        # The target's answer is no longer a decision (a restart would
+        # open past a pure-text agent with one on record) but stays its
+        # last answer, which its own prompt re-reads.
+        self.ledger.unsettle(rd.run.revise)
+        self.ledger.nodes = len(self.slots)
+        if self._resume_pos is not None and self._resume_pos[0] >= target:
+            # The floor never stands above the node the walk re-runs from.
+            self._resume_pos = (target, None, 0)
+        self._recovery = None
+        self._step = None
+        self.idx = at
+        return self.next()
+
+    def _word_at_cursor(self, explicit: str | None) -> str | None:
+        """The exit word a failure at the cursor takes. Inside a run's
+        round, the composing route's word first — the run's `miss:`,
+        then its `on_fail:` — over the playbook's own, which holds when
+        it walks alone. Then the one the caller resolved (a page's own,
+        in `recover_or_handover`), then the cursor node's `on_fail`."""
+        rd = self._round_at(self.idx)
+        if rd is not None and (rd.run.miss or rd.run.on_fail):
+            return rd.run.miss or rd.run.on_fail
+        if explicit is not None:
+            return explicit
+        node = self.node
+        return node.on_fail if node is not None else None
+
+    def _skip_round(self, rd: Round, reason: str) -> Turn:
+        log.warning("conductor: round %s missed — %s", rd.prefix, reason)
+        self.journal(f"round {rd.prefix} missed — {reason}")
+        self.ledger.round_missed(rd.prefix, reason)
+        self._recovery = None
+        self._step = None
+        self._drop_round(rd)
+        return self.next()
+
+    def _finish_round(self, rd: Round) -> None:
+        """A round's last node settled: its returns, filled from its own
+        record, land under its prefix (a template that cannot fill
+        raises, and the guarded caller hands over)."""
+        values = self._round_values(rd)
+        self.ledger.round_done(
+            rd.prefix,
+            {
+                f: str(fill_refs(t, values, where=f"{rd.run.playbook} `returns.{f}`"))
+                for f, t in rd.run.sub.returns.items()
+            },
+        )
 
     def mismatch(self, verdict: Verdict, expected_id: str) -> str | None:
         """None when the verdict is a match on the full `expected_id`
@@ -679,23 +1012,27 @@ class Program:
 
     def handover(
         self, reason: str, *, advice: str = "", word: str | None = None
-    ) -> AssistantMessage:
+    ) -> Turn:
         """The walk's exit by an `on_fail` word — `stop`, or (anything
         else, unsaid included) the ONE final synthesized [note, peek]
         brief turn (`brief.walk_brief`), the distilled report the model
         resumes from; `_done` then makes the NEXT advance the permanent
-        None the conductor drops the program on. The word is the cursor
-        node's unless the caller passes one (a page that could not be
-        reached answers for itself, in `recover_or_handover`). `reason`
+        None the conductor drops the program on — or `skip`, inside a
+        run that declared its rounds skippable. The word is resolved
+        by `_word_at_cursor`: the caller's (a page that could not be
+        reached answers for itself, in `recover_or_handover`), else the
+        enclosing run's `miss`, else the cursor node's. `reason`
         is the fact, and lands in the record either way; `advice` is
         what the model taking over owes (a deny's back-out), so only the
         brief carries it — a stop has no model to instruct, and its
         recap is the daily log's line."""
-        if word is None:
-            node = self.node
-            word = node.on_fail if node is not None else None
+        word = self._word_at_cursor(word)
         if word == ON_FAIL_STOP:
             return self.stop(reason)
+        if word == ON_FAIL_SKIP:
+            rd = self._round_at(self.idx)
+            assert rd is not None  # the word comes from the round's run
+            return self._skip_round(rd, reason)
         log.warning(
             "conductor: handing %s/%s over to the model — %s",
             self.app,
@@ -754,7 +1091,7 @@ class Program:
         with consent bound, mid-gate, for an irreversible move, or once
         a payment fired: money keeps the hard handover (a restart from
         the top would walk back into the ask and pay again)."""
-        recovery = self.spec.recovers.get(page_name(expected_id))
+        recovery = self._recovers().get(page_name(expected_id))
         # The page's own word once its hand is spent (or it has none) —
         # either spelling, since a page saying `handover` under a node
         # saying `stop` means exactly that; unsaid, the cursor node's
@@ -843,7 +1180,13 @@ class Program:
                 return self.advance_cursor()
             return self.next()
         self.journal(f"recover hand ran — walking again toward {st.target}")
-        self.idx = max(self.spec.first_unsettled(self.outputs), self._floor)
+        rd = self._round_at(self.idx)
+        top = (
+            self._span(rd)[0]
+            if rd is not None
+            else self._route_index(self.spec.first_unsettled(self.outputs))
+        )
+        self.idx = max(top, self._floor)
         return self.next()
 
     # ---- the record ----

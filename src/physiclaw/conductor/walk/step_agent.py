@@ -233,7 +233,7 @@ class AgentStep(Step[AgentNode]):
                 f"{', '.join(missing)}"
             )
         for n in node.return_fields:
-            walk.ledger.decide(f"{node.id}.{n}", payload[n].strip())
+            walk.decide(node.id, n, payload[n].strip())
         after = f" after {calls} calls" if calls else ""
         walk.journal(f"agent {node.id}: done{after} — {outcome.reason}")
         return walk.advance_cursor()

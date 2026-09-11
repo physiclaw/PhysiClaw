@@ -19,8 +19,6 @@ from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.step import Activator
 from physiclaw.conductor.walk.thread import Thread
 from physiclaw.contract.plugin import EventSink
-from physiclaw.macros import inputs as macro_inputs
-from physiclaw.macros.model import MacroError
 
 log = logging.getLogger(__name__)
 
@@ -99,10 +97,5 @@ def load_spec(
 
 
 def resolve_inputs(spec: Playbook, provided: dict[str, str]) -> dict[str, str]:
-    """Provided values against the declared inputs — the macro layer's
-    resolution contract verbatim (unknown keys, missing required, defaults,
-    strings only), translated to this spec's error class at the one seam."""
-    try:
-        return macro_inputs.resolve_inputs(spec, provided)
-    except MacroError as e:
-        raise PlaybookError(str(e)) from e
+    """`pack.resolve_inputs`, re-exported for the drivers."""
+    return pack.resolve_inputs(spec, provided)

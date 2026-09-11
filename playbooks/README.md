@@ -52,7 +52,10 @@ empty file is a valid pack (the file is the pack marker):
 `<name>/PLAYBOOK.yml` is the playbook, headed like a macro or a skill: `name`
 (must equal the folder's), `description` (the line the activation menu
 shows — name the app the way users say it, 淘宝 not taobao, so two
-packs offering the same task read apart), `enabled`, `inputs` (a
+packs offering the same task read apart), `enabled`, `scope` (`global`,
+the default: the boot may launch it for a request; `local`: only another
+playbook of this pack walks it, by `run:` — never the agent, never a
+playbook of another pack; `playbooks run` still rehearses it), `inputs` (a
 `default:` makes one optional; the boot's menu says so), and
 `route` — a ROUTE of `page:` waypoints (checked every time, each
 optionally declaring its own `recover:` — one hand (`go_back`,
@@ -72,7 +75,20 @@ its micro calls at off or low), `ask` (human gate; `yes:`/`no:` are the replies 
 `denied:` the line it sends back on a no before `on_fail` decides,
 `wait:` and `rounds:` its patience, `total_label:` the label a payment total sits beside,
 `think:` how much the model may think when it reads a reply those words miss,
-`resume:` re-enters the app), `tell`. Any entry, a page included, may
+`resume:` re-enters the app), `tell`, and `run` (a playbook of this
+pack walked as one move — `with:` fills its inputs, it starts where
+that playbook starts and lands on its last page, and its `returns:`
+read downstream as `{<run>.<field>}`; `each: {<input>: <move>.<field>}`
+runs it once per line of a list an earlier agent returned, one round
+per distinct item, the returns joined as lines afterwards, `miss: skip`
+records a failed round as missed and goes on, `revise: <agent>` re-runs
+the walk from that agent when an ask inside the run reads a reply its
+words miss, `limit: {rounds, revisions}` bounds both; a run's `miss:`
+and `on_fail:` are the composing route's words and win over the
+playbook's own inside its rounds; a playbook is run once per route, as
+moves share one namespace). A list is lines:
+a return field holding several things is one per line, and that is
+what `each` iterates and a message renders. Any entry, a page included, may
 say `on_fail: stop|handover` — what a failure of that entry does once
 its own means are spent: hand the session to the model with every tool
 (the default), or end it so the next wake reads the thread again. The
@@ -91,6 +107,8 @@ Three spellings, filled at three times:
 |-------------------------------------------------|-----------------------------------------------|------------------------------------------------------|
 | `<<TOKEN>>`                                     | at install, from `placeholders.yml`           | any string in the pack, macros included              |
 | `{inputs.x}`, `{node.field}`, `{ask.total}`     | when the walk reaches the move                | a move's `with:`, an `ask`/`tell` `message:`, a prompt |
+| `{run.field}`, `{ask.replies}`                  | the same; empty before the run's rounds / any reply | the same — the one forward ref, for a plan that re-reads |
+| a step's own `{node.field}`                     | its last answer; empty the first time         | that step's prompt — what a revision re-reads        |
 | `{x}`                                           | when the macro runs, from the move's `with:`  | a macro's steps and checks                           |
 
 A check reads the same everywhere it appears — a macro step's `require`

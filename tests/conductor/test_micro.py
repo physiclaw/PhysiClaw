@@ -1107,3 +1107,15 @@ async def test_the_wire_record_carries_a_frame_as_a_typed_image_block() -> None:
     }
     scrubbed = scrub_messages(rec.request, lambda mime, b64: "images/f.jpg")
     assert image_ref(scrubbed[-1]["content"][1]) == "images/f.jpg"
+
+
+def test_a_list_answered_as_json_rides_as_lines() -> None:
+    # A field asked for "one per line" may come back as a JSON list; it
+    # lands as lines, the one text shape a list has here.
+    from physiclaw.conductor.walk.micro import _string_fields
+
+    assert _string_fields({"items": ["milk", "eggs"], "n": 2, "note": "x"}) == {
+        "items": "milk\neggs",
+        "n": "2",
+        "note": "x",
+    }

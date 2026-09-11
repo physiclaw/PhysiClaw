@@ -118,6 +118,22 @@ def feed(
     )
 
 
+def suspend_via_silence(driver, history: list, send, thread: str):
+    """Drive an ask through its silent rounds to the suspension: the
+    send lands on `thread`, every poll reads the same thread; returns
+    the walk's end_session turn."""
+    from physiclaw.conductor.spec import limits
+
+    feed(history, send, thread)
+    step = driver.advance(history)
+    for _ in range(limits.DEFAULT_ASK_ROUNDS):
+        feed(history, step, "waited")
+        feed(history, driver.advance(history), thread)
+        step = driver.advance(history)
+    assert step.tool_calls[1].arguments["status"] == "WAIT"
+    return step
+
+
 def finish(driver, history: list, step) -> str:
     """The terminal contract: a handover mints ONE final synthesized
     [note, peek] brief turn; a completion or a stop ONE synthesized

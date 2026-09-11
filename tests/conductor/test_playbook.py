@@ -364,6 +364,27 @@ def test_payment_move_behind_ask_parses() -> None:
     assert p.nodes[-1].enter == "done"
 
 
+def test_an_agent_prompt_may_quote_its_own_returns() -> None:
+    # A step re-run by a revision re-reads its last answer; the field
+    # is declared before the prompt is checked, so the ref resolves —
+    # and only to its own fields, a later step's stay out of reach.
+    pack = _pack()
+    text = _mutate(
+        'prompt: "Pick the cheapest {inputs.keyword} and land on the results"',
+        'prompt: "Pick the cheapest {inputs.keyword}; last time: {choose.pick}"',
+    )
+
+    p = pb.parse_playbook(text, "buy", pack)
+
+    assert "{choose.pick}" in next(n for n in p.nodes if n.id == "choose").prompt
+    with pytest.raises(PlaybookError, match="no output"):
+        pb.parse_playbook(
+            text.replace("last time: {choose.pick}", "last time: {choose.nope}"),
+            "buy",
+            pack,
+        )
+
+
 def test_non_payment_ask_does_not_approve_payment() -> None:
     # An address/handoff ask must NOT open a payment move: the class the
     # ask approves is declared, and money keys off the declaration.
@@ -482,7 +503,7 @@ def test_tell_reads_no_reply() -> None:
             '    total_label: "Total"\n'
             '    message: "Total ¥{ask.total}, reply ok to pay, or no to cancel"',
             'approve: handoff\n    message: "Total ¥{ask.total}, reply ok or no"',
-            "references move 'ask'",
+            "no output 'total'",
         ),
         # A payment ask declares where the total sits…
         ('    total_label: "Total"\n', "", "declares `total_label:`"),

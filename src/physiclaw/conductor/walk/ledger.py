@@ -16,7 +16,10 @@ the order it landed — for the session thread, which carries the
 unreported tail to the model as "what the playbook did since the last
 call". The writers (`decide`, `say`, `note`, `pay`) append to both, so a
 new kind of fact is one writer here and reaches every reader, and every
-clause has exactly one spelling.
+clause has exactly one spelling. A run's rounds are a third typed view,
+`rounds`, kept apart from `decided` so the route's own decisions stay
+what a recap prints; the thread never reads the typed fields, only
+`events`, where a round is one clause like any other fact.
 
 The thread's position lives here too (`offer` / `commit`), not on the
 thread: the thread outlives any one ledger — the boot's parse settles
@@ -30,12 +33,27 @@ from typing import Any
 from physiclaw.common.text import clip
 
 
+def round_prefix(run_id: str, key: str) -> str:
+    """The name a run's round keeps its record under: `<run>[<key>]`,
+    the key being the item (empty for a plain run)."""
+    return f"{run_id}[{key}]"
+
+
 @dataclass
 class Ledger:
     ref: str  # the playbook ref, as every line names it
     nodes: int  # the route's length, for "(n/m nodes)"
     task: dict[str, str]  # the playbook's inputs — what was asked
     decided: dict[str, str] = field(default_factory=dict)  # node.field → value
+    # A revised step's last answer (`unsettle`): no longer a decision
+    # the walk stands on, still what that step's own prompt re-reads.
+    previous: dict[str, str] = field(default_factory=dict)
+    # A run's rounds, each its own small record under `round_prefix`:
+    # the round's agents' outputs (`node.field`), its returns (`field`),
+    # and `done` ("done" / "missed", with `miss` the reason). Kept
+    # apart from `decided`, which is the route's own and what recaps
+    # and the stepping position print.
+    rounds: dict[str, dict[str, str]] = field(default_factory=dict)
     said: list[str] = field(default_factory=list)  # messages sent to the user
     answers: dict[str, str] = field(default_factory=dict)  # ask id → yes/no
     refused: dict[str, int] = field(default_factory=dict)  # never_tap target → tries
@@ -57,11 +75,60 @@ class Ledger:
 
     def decide(self, key: str, value: str) -> None:
         self.decided[key] = value
+        self.previous.pop(key, None)
         self.events.append(f"decided {key}={clip(value, 120)!r}")
+
+    def unsettle(self, node_id: str) -> None:
+        """A revision re-runs `node_id`: its outputs leave `decided` (a
+        restart opens past a pure-text agent whose outputs are on
+        record) and become its `previous` answer until it answers again.
+        The events already say why."""
+        for key in [k for k in self.decided if k.split(".", 1)[0] == node_id]:
+            self.previous[key] = self.decided.pop(key)
 
     def say(self, text: str) -> None:
         self.said.append(text)
         self.events.append(f"sent to the user: {clip(text, 160)!r}")
+
+    # ---- a run's rounds: one record per round, under its prefix ----
+
+    def decide_in_round(self, prefix: str, key: str, value: str) -> None:
+        """An agent's return field inside a round — the round's record,
+        and the same clause `decide` writes, named by the round."""
+        self.rounds.setdefault(prefix, {})[key] = value
+        self.events.append(f"decided {prefix}.{key}={clip(value, 120)!r}")
+
+    def round_done(self, prefix: str, returns: dict[str, str]) -> None:
+        """A round of a `run` ended: its returns and the done mark, one
+        clause for the account."""
+        record = self.rounds.setdefault(prefix, {})
+        record.update(returns)
+        record["done"] = "done"
+        self.events.append(
+            f"round {prefix} done" + (": " + _pairs(returns, 80) if returns else "")
+        )
+
+    def round_missed(self, prefix: str, reason: str) -> None:
+        """A round the run declared skippable handed over: recorded as
+        missed, with the reason its returns will carry."""
+        record = self.rounds.setdefault(prefix, {})
+        record["done"] = "missed"
+        record["miss"] = reason
+        self.events.append(f"round {prefix} missed: {clip(reason, 120)}")
+
+    def round_finished(self, prefix: str) -> bool:
+        return "done" in self.rounds.get(prefix, {})
+
+    def round_values(self, prefix: str) -> dict[str, str]:
+        """A round's own record, keys as the round's refs spell them
+        (`node.field`, `field` for its returns)."""
+        return dict(self.rounds.get(prefix, {}))
+
+    def round_return(self, prefix: str, field: str) -> str | None:
+        """A done round's return; None for a round still to do or one
+        that missed (its `miss` reason stays in the record)."""
+        record = self.rounds.get(prefix, {})
+        return record.get(field) if record.get("done") == "done" else None
 
     def note(self, text: str) -> None:
         """What a step reported, in its own words — an event only: no
@@ -115,6 +182,11 @@ class Ledger:
             parts.append(_asked(self.task))
         if self.decided:
             parts.append("decided " + _pairs(self.decided, 120))
+        if self.rounds:
+            parts.append(
+                "rounds "
+                + _pairs({p: r.get("done", "open") for p, r in self.rounds.items()}, 40)
+            )
         if self.answers:
             parts.append("answered " + _pairs(self.answers, 40))
         if self.refused:
@@ -144,6 +216,8 @@ class Ledger:
         rides as the walk's own `values`)."""
         return {
             "outputs": dict(self.decided),
+            "previous": dict(self.previous),
+            "rounds": {p: dict(r) for p, r in self.rounds.items()},
             "said": list(self.said),
             "answers": dict(self.answers),
             "refused": dict(self.refused),
@@ -159,6 +233,13 @@ class Ledger:
         `outputs` only, so its account is rebuilt grouped rather than in
         landing order."""
         self.decided, self.said, self.paid = {}, [], None
+        self.rounds = {
+            str(p): {str(k): str(v) for k, v in (r or {}).items()}
+            for p, r in (data.get("rounds") or {}).items()
+        }
+        self.previous = {
+            str(k): str(v) for k, v in (data.get("previous") or {}).items()
+        }
         self.answers = {str(k): str(v) for k, v in (data.get("answers") or {}).items()}
         self.refused = {str(k): int(v) for k, v in (data.get("refused") or {}).items()}
         self.events, self.reported, self._offered = [], 0, 0

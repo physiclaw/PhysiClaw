@@ -18,6 +18,7 @@ from physiclaw.conductor.spec.conventions import BOOT_PLAYBOOK, CHANNEL_APP
 from physiclaw.conductor.spec.match import SHORT_ANCHOR_MIN, normalize, score_page
 from physiclaw.conductor.spec.model import (
     ON_FAIL_STOP,
+    SCOPE_LOCAL,
     ActivateNode,
     AgentNode,
     AskNode,
@@ -27,11 +28,38 @@ from physiclaw.conductor.spec.model import (
     Playbook,
     PlaybookEntry,
     PlaybookError,
+    RunNode,
     TellNode,
 )
 from physiclaw.conductor.spec.pages import PageDecl, PagePrint
 
 # ---------- the route's whole-shape checks ----------
+
+
+def unrun_playbooks(specs: list[Playbook]) -> list[str]:
+    """`playbooks check`'s line for a local playbook that no playbook of
+    the pack runs — the boot never offers it and nothing walks it, so
+    it is dead until one does."""
+    run = {r.playbook for spec in specs for r in spec.runs}
+    return [
+        f"{spec.name} is local, but no playbook of this pack runs it — "
+        "the boot never offers a local playbook, so nothing walks it"
+        for spec in specs
+        if spec.scope == SCOPE_LOCAL and spec.name not in run
+    ]
+
+
+def flatten(nodes: list[Node]) -> list[Node]:
+    """The route with every `run` replaced by the moves of the playbook
+    it runs — what the adjacency lints read, since a run's rounds ARE
+    those moves at walk time."""
+    out: list[Node] = []
+    for n in nodes:
+        if isinstance(n, RunNode):
+            out.extend(n.sub.nodes)
+        else:
+            out.append(n)
+    return out
 
 
 def screen_move(node: Node) -> bool:

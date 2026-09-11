@@ -70,7 +70,7 @@ class AskStep(Step[AskNode]):
     def landed(self, kind: str) -> Turn:
         walk = self.walk
         if kind == KIND_ASK_SENT:
-            stop = speak.sent_landed(walk, on_deny=self._denied)
+            stop = speak.sent_landed(walk, on_deny=self._denied, on_other=walk.revise)
             if stop is not None:
                 return stop
             walk.gate.awaiting = True
@@ -179,8 +179,10 @@ class AskStep(Step[AskNode]):
             if outcome.out == REPLY_DENY:
                 return self._settled(False, replies, by_model=True)
         # No outcome and "other" mean the same thing to the gate: the
-        # words could not decide and neither could the model.
-        return walk.handover(
+        # words could not decide and neither could the model — a
+        # revision, when the run around this ask declared one; else the
+        # conductor never guesses about money.
+        return walk.revise(replies) or walk.handover(
             f"ask {node.id!r}: reply {replies!r} matches none of its yes/no words "
             "and could not be read as one — read the thread and decide before "
             "any payment"
@@ -201,6 +203,7 @@ class AskStep(Step[AskNode]):
         walk, node = self.walk, self.node
         how = ", read by the model" if by_model else ""
         verb = "confirmed" if ok else "declined"
+        walk.gate.replies.append(replies)
         walk.ledger.answered(node.id, "yes" if ok else "no")
         walk.journal(f"user {verb} {node.approve} ({replies!r}{how})")
         return self._confirmed() if ok else self._denied()

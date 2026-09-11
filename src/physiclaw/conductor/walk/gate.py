@@ -31,6 +31,11 @@ class Gate:
     no: tuple[str, ...] = ()
     next_words: tuple[tuple[str, ...], tuple[str, ...]] = ((), ())
     tried_open: bool = False
+    # Every reply an ask of this walk read, verbatim, in order — the
+    # `{ask.replies}` slot a prompt may quote (a revision re-reads the
+    # request with them) — and how many revisions the walk has taken.
+    replies: list[str] = field(default_factory=list)
+    revisions: int = 0
 
     def abandon_ask(self) -> "Gate":
         """Leave the ask the cursor was holding (a stepping jump): the
@@ -67,6 +72,8 @@ class Gate:
             "awaiting": self.awaiting,
             "yes": list(self.yes),
             "no": list(self.no),
+            "replies": list(self.replies),
+            "revisions": self.revisions,
         }
 
     @classmethod
@@ -80,4 +87,6 @@ class Gate:
             awaiting=bool(data.get("awaiting")),
             yes=tuple(str(w) for w in (data.get("yes") or [])),
             no=tuple(str(w) for w in (data.get("no") or [])),
+            replies=[str(r) for r in (data.get("replies") or [])],
+            revisions=int(data.get("revisions") or 0),
         )

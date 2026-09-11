@@ -29,6 +29,9 @@ from physiclaw.common.text import read_text
 from physiclaw.conductor.spec import scaffold, specfile
 from physiclaw.conductor.spec.conventions import CHANNEL_APP
 from physiclaw.conductor.spec.model import (
+    SCOPE_GLOBAL,
+    SCOPE_LOCAL,
+    SCOPES,
     AgentNode,
     AskNode,
     DoNode,
@@ -50,7 +53,9 @@ from physiclaw.conductor.spec.pages import (
     pack_landmarks,
     parse_pages_data,
 )
+from physiclaw.conductor.spec.refs import check_refs, field_name, refs_in
 from physiclaw.conductor.spec.route import compile_route
+from physiclaw.macros import inputs as macro_inputs
 from physiclaw.macros import parse as macro_parse
 from physiclaw.macros import store as macro_store
 from physiclaw.macros.model import Macro, MacroError
@@ -90,8 +95,13 @@ def qualified_pack(app: str, pack: Pack) -> dict[str, Macro]:
 def qualified_inline(app: str, spec: Playbook) -> dict[str, Macro]:
     """A playbook's inline macros under their qualified dispatch keys —
     `qualified_pack`'s sibling for the hands that live in the playbook
-    itself. Every registry a walk can dispatch through takes both."""
-    return {qualified_macro(app, n): m for n, m in spec.inline_macros.items()}
+    itself, the playbooks it runs included. Every registry a walk can
+    dispatch through takes both."""
+    return {
+        qualified_macro(app, n): m
+        for pb in _with_subs(spec)
+        for n, m in pb.inline_macros.items()
+    }
 
 
 def qualified_all(app: str, pack: Pack) -> dict[str, Macro]:
@@ -256,10 +266,11 @@ def scan_playbooks(app: str, pack: Pack | None = None) -> list[PlaybookEntry]:
         PlaybookEntry(app=app, name=n, error=e)
         for n, e in sorted(pack.playbook_errors.items())
     ]
-    for name, data in pack.playbook_docs.items():
+    parsed: dict[str, Playbook | None] = {}
+    for name in pack.playbook_docs:
         name = str(name)
         try:
-            spec = _parse_playbook_data(data, name, pack)
+            spec = _sub_playbook(name, pack, parsed)
             out.append(PlaybookEntry(app=app, name=name, spec=spec))
         except Exception as e:  # broad: exclude whole, never take a session down
             out.append(
@@ -304,12 +315,25 @@ def parse_playbook(text: str, name: str, pack: Pack) -> Playbook:
     return _parse_playbook_data(data, name, pack)
 
 
-_PLAY_KEYS = {"name", "description", "enabled", "inputs", "route"}
+_PLAY_KEYS = {
+    "name",
+    "description",
+    "enabled",
+    "scope",
+    "inputs",
+    "route",
+    "returns",
+}
 
 
-def _parse_playbook_data(data: Any, name: str, pack: Pack) -> Playbook:
+def _parse_playbook_data(
+    data: Any, name: str, pack: Pack, parsed: dict[str, Playbook | None] | None = None
+) -> Playbook:
     """One playbook's document → a validated Playbook. The folder IS
-    the name; the `name:` inside must agree with it."""
+    the name; the `name:` inside must agree with it. A `run` entry
+    names another playbook of the pack, parsed on demand against the
+    same pack (`_sub_playbook`); `parsed` is the scan's memo, so every
+    document compiles once and a parent and the scan hold one object."""
     if not isinstance(data, dict):
         raise PlaybookError("a playbook must be a YAML mapping (key: value pairs)")
     unknown = sorted(set(map(str, data.keys())) - _PLAY_KEYS)
@@ -334,23 +358,108 @@ def _parse_playbook_data(data: Any, name: str, pack: Pack) -> Playbook:
     enabled = data.get("enabled", True)
     if not isinstance(enabled, bool):
         raise PlaybookError("`enabled` must be true or false")
+    scope = data.get("scope", SCOPE_GLOBAL)
+    if scope not in SCOPES:
+        raise PlaybookError(f"`scope` must be one of {', '.join(SCOPES)}")
     inputs = _parse_inputs(data.get("inputs", {}))
     input_names = {i.name for i in inputs}
     route = compile_route(
-        data.get("route"), playbook=name, input_names=input_names, pack=pack
+        data.get("route"),
+        playbook=name,
+        input_names=input_names,
+        pack=pack,
+        resolve_playbook=lambda other: _sub_playbook(
+            other, pack, {} if parsed is None else parsed, run_by=name
+        ),
     )
+    returns = _parse_returns(data.get("returns"), input_names, route.payloads)
     return Playbook(
         app=pack.app,
         name=name,
         description=description,
         enabled=enabled,
+        scope=scope,
         inputs=inputs,
         nodes=tuple(route.nodes),
         start=route.start,
         inline_macros=route.inline,
         recovers=route.recovers,
         prompts_used=route.prompts_used,
+        returns=returns,
+        end=route.end,
     )
+
+
+def _sub_playbook(
+    name: str,
+    pack: Pack,
+    parsed: dict[str, Playbook | None],
+    *,
+    run_by: str | None = None,
+) -> Playbook:
+    """A playbook of the pack by name — for a `run` entry (`run_by` the
+    playbook running it, so its error names the file at fault) and for
+    the scan alike, so a run and a walk of it read the same file, once.
+    `parsed` memoises; a name in it with no spec yet is mid-parse, so
+    reaching it again is two playbooks running each other."""
+    if name in parsed:
+        spec = parsed[name]
+        if spec is None:
+            raise PlaybookError(f"playbooks run each other in a cycle through {name!r}")
+        return spec
+    if name in pack.playbook_errors:
+        raise PlaybookError(
+            f"playbook {name!r} is invalid: {pack.playbook_errors[name]}"
+        )
+    if name not in pack.playbook_docs:
+        have = ", ".join(sorted(map(str, pack.playbook_docs))) or "(none)"
+        raise PlaybookError(f"no playbook {name!r} in this pack (has: {have})")
+    parsed[name] = None
+    try:
+        spec = _parse_playbook_data(pack.playbook_docs[name], name, pack, parsed)
+    except PlaybookError as e:
+        del parsed[name]
+        if run_by is not None:
+            raise PlaybookError(f"playbook {name!r} (run by {run_by!r}): {e}") from e
+        raise
+    except BaseException:
+        del parsed[name]
+        raise
+    parsed[name] = spec
+    return spec
+
+
+def _parse_returns(
+    raw: Any, input_names: set[str], payloads: dict[str, tuple[str, ...]]
+) -> dict[str, str]:
+    """`returns:` — field → template over the playbook's own refs, what
+    a `run` of it yields (`{<run>.<field>}`) once its round ends."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not raw:
+        raise PlaybookError("`returns` must be a mapping of field → template")
+    out: dict[str, str] = {}
+    for fname, template in raw.items():
+        field_name(str(fname), "`returns` field")
+        text = prose(template, f"`returns.{fname}`")
+        check_refs(
+            refs_in(text, f"`returns.{fname}`"),
+            input_names,
+            payloads,
+            f"`returns.{fname}`",
+        )
+        out[str(fname)] = text
+    return out
+
+
+def resolve_inputs(spec: Playbook, provided: dict[str, str]) -> dict[str, str]:
+    """Provided values against the declared inputs — the macro layer's
+    resolution contract verbatim (unknown keys, missing required, defaults,
+    strings only), translated to this spec's error class at the one seam."""
+    try:
+        return macro_inputs.resolve_inputs(spec, provided)
+    except MacroError as e:
+        raise PlaybookError(str(e)) from e
 
 
 def _parse_inputs(raw: Any) -> tuple[PlaybookInput, ...]:
@@ -379,6 +488,13 @@ def live_gap(spec: Playbook, pack: Pack) -> str | None:
     wake roster prints it; both read one rule."""
     if not spec.enabled:
         return "disabled"
+    if spec.scope == SCOPE_LOCAL:
+        # Walked by another playbook of its pack only — never launched
+        # alone, so never offered.
+        return "local"
+    for r in spec.runs:
+        if not r.sub.enabled:
+            return f"runs disabled playbook {r.playbook!r}"
     disabled = disabled_macros(spec, pack)
     if disabled:
         return (
@@ -395,19 +511,26 @@ def disabled_macros(spec: Playbook, pack: Pack) -> list[str]:
     Safe unguarded access: parse
     validated every directory name against `pack.macros`."""
     named: set[str] = set()
-    for recovery in spec.recovers.values():
-        named.update(h.macro for h in recovery.hands if h.macro is not None)
-    for n in spec.nodes:
-        if isinstance(n, DoNode):
-            named.add(n.macro)
-        elif isinstance(n, AskNode) and n.resume is not None:
-            named.add(n.resume)
-        elif isinstance(n, AgentNode):
-            named.update(n.macros)
+    inline: dict[str, Macro] = {}
+    for pb in _with_subs(spec):
+        inline.update(pb.inline_macros)
+        for recovery in pb.recovers.values():
+            named.update(h.macro for h in recovery.hands if h.macro is not None)
+        for n in pb.nodes:
+            if isinstance(n, DoNode):
+                named.add(n.macro)
+            elif isinstance(n, AskNode) and n.resume is not None:
+                named.add(n.resume)
+            elif isinstance(n, AgentNode):
+                named.update(n.macros)
     # One rule, no special case: each name resolves through the merged
     # view. An inline body is enabled by construction (its gate is the
     # playbook's own `enabled:`); a pack macro or a playbook's recorded
     # file carries its own flag, and both are read here.
-    return sorted(
-        m for m in named if not (spec.inline_macros.get(m) or pack.macros[m]).enabled
-    )
+    return sorted(m for m in named if not (inline.get(m) or pack.macros[m]).enabled)
+
+
+def _with_subs(spec: Playbook) -> list[Playbook]:
+    """This playbook and every playbook it runs — one level, by the
+    compiler's rule."""
+    return [spec, *(r.sub for r in spec.runs)]

@@ -18,7 +18,12 @@ from physiclaw.conductor.drive.build import build_program, resolve_inputs
 from physiclaw.conductor.spec import context
 from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.conventions import RESERVED_APPS
-from physiclaw.conductor.spec.model import Pack, Playbook, PlaybookEntry, PlaybookError
+from physiclaw.conductor.spec.model import (
+    Pack,
+    Playbook,
+    PlaybookEntry,
+    PlaybookError,
+)
 from physiclaw.conductor.spec.pack import (
     list_apps,
     live_gap,

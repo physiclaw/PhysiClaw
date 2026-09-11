@@ -101,7 +101,11 @@ def deny(walk: Walk, *, answered: bool = False) -> Turn:
     )
 
 
-def sent_landed(walk: Walk, on_deny: Callable[[], Turn] | None = None) -> Turn:
+def sent_landed(
+    walk: Walk,
+    on_deny: Callable[[], Turn] | None = None,
+    on_other: Callable[[str], Turn] | None = None,
+) -> Turn:
     """A send's landing, shared by ask and tell: it must be on the
     thread; anything the user sent while the walk was off in the app (an
     earlier ask's baseline) lands here as new, and a deny among it must
@@ -109,21 +113,29 @@ def sent_landed(walk: Walk, on_deny: Callable[[], Turn] | None = None) -> Turn:
     forever (deny only: an old confirm word above the fresh ask is never
     treated as consent). `on_deny` is that disposition when the caller
     has a better one than the bare `deny` (an ask answers with its own
-    `denied:` line). Then the thread is baselined. None = carry on."""
+    `denied:` line); `on_other` reads anything else the user sent
+    meanwhile, an ask's chance to revise before it asks a question the
+    user already answered (None from it = nothing to revise, carry on).
+    Then the thread is baselined. None = carry on."""
     wrong = thread_mismatch(walk)
     if wrong is not None:
         return walk.handover(f"channel send did not land on the thread ({wrong})")
     gate = walk.gate
-    # The sweep needs a baseline to diff against and deny words to judge
-    # by — after a tell (which declares none) there is nothing to read.
-    if (
-        gate.baseline
-        and gate.no
-        and reply.any_deny(
-            new_replies(walk, after_ask=False), frozenset(gate.yes), frozenset(gate.no)
-        )
-    ):
+    # The sweep needs a baseline to diff against; the deny among it needs
+    # deny words to judge by — after a tell (which declares none) only
+    # the revision read is left.
+    # Judged by the previous send's words AND this one's: a bare yes or
+    # no typed early is the gate's vocabulary either way — a no stops the
+    # walk, a yes is never consent and never a revision.
+    news = new_replies(walk, after_ask=False) if gate.baseline else []
+    yes = frozenset(gate.yes) | frozenset(gate.next_words[0])
+    no = frozenset(gate.no) | frozenset(gate.next_words[1])
+    if reply.any_deny(news, yes, no):
         return on_deny() if on_deny is not None else deny(walk)
+    if on_other is not None:
+        others = [m for m in news if reply.normalize(m) not in yes]
+        if others and (revised := on_other("\n".join(others))) is not None:
+            return revised
     # The send landed: its words and its thread snapshot take over together.
     gate.yes, gate.no = gate.next_words
     assert walk.screen is not None

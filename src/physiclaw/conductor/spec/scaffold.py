@@ -191,6 +191,14 @@ PLAYBOOK_TEMPLATE = """\
 #            the model takes the session with every tool) or `stop` (the
 #            session ends, the next wake reads the thread again).
 #   tell   — message the user and move on (a trailing tell ends the walk).
+#   run    — a playbook of this pack walked as one move: `with:` fills
+#            its inputs, it lands on that playbook's last page, and its
+#            `returns:` read downstream as {{<run>.<field>}}. `each:
+#            {{<input>: <move>.<field>}}` runs it once per line of a list
+#            an earlier agent returned (`miss: skip` records a failed
+#            round and goes on; `revise: <agent>` re-plans from there
+#            when an ask inside reads a reply its words miss; `limit:
+#            {{rounds, revisions}}` bounds both).
 # Values: the manifest's placeholders fill at install, {{inputs.x}} /
 # {{node.field}} / {{ask.total}} when the walk reaches the move, {{x}}
 # inside a macro from its `with:`. Reference: ~/.physiclaw/playbooks/README.md.
@@ -198,6 +206,8 @@ name: {playbook}         # = this folder's name; referenced as {app}/{playbook}
 description: EDIT ME — one line saying what task this playbook does
 # A valid playbook is enabled by default; this scaffold starts off.
 enabled: false
+# scope: local           # only another playbook of this pack runs it (`run:`);
+                         # the agent never launches it. Default: global.
 # Values filled at activation; reference them as {{inputs.name}} in
 # `with:` values and agent prompts. ≤ {max_inputs}; `default`
 # present = optional.
@@ -270,6 +280,11 @@ route:
   #   think: off              # a reply the words miss is read by the model
   #   resume: {macro}         # re-enter the app after the reply
   #   on_fail: stop           # a failure here ends the session, nothing paid
+  # A playbook of this pack as one move, once per item of a list:
+  # - run: add
+  #   each: {{item: parse.items}}   # one round per line `parse` returned
+  #   miss: skip                  # a round that fails is recorded, not fatal
+  # - page: home                  # add's last page
   - tell: done
     # The EXACT text sent to the user — write it in THEIR language.
     message: "EDIT ME — done with {{inputs.message}}"

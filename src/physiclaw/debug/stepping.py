@@ -49,6 +49,7 @@ from physiclaw.conductor.spec.model import (
     Node,
     Playbook,
     PlaybookError,
+    RunNode,
     TellNode,
 )
 from physiclaw.conductor.spec.pack import qualified_all, qualified_macro
@@ -77,6 +78,7 @@ KIND_AGENT = "agent"
 KIND_ASK = "ask"
 KIND_TELL = "tell"
 KIND_SELECT = "select"
+KIND_RUN = "run"
 
 
 def state_path() -> Path:
@@ -127,6 +129,8 @@ def node_info(app: str, node: Node) -> NodeInfo:
         return NodeInfo(node.id, KIND_ASK, node.enter, macro=resume)
     if isinstance(node, ActivateNode):
         return NodeInfo(node.id, KIND_SELECT, node.enter)
+    if isinstance(node, RunNode):
+        return NodeInfo(node.id, KIND_RUN, node.enter, node.verify)
     assert isinstance(node, TellNode)
     return NodeInfo(node.id, KIND_TELL)
 
@@ -242,7 +246,7 @@ def position(spec: Playbook, state: dict, staged: list[str] | None = None) -> Po
         app=spec.app,
         name=spec.name,
         idx=int(state["idx"]),
-        node=node_label(spec, int(state["idx"])),
+        node=str(state.get("label") or node_label(spec, int(state["idx"]))),
         values=dict(state.get("values") or {}),
         outputs=dict(state.get("outputs") or {}),
         awaiting=bool(state.get("awaiting")),
@@ -438,7 +442,7 @@ async def step(
         )
         program.step_one = True
         registry = conductor_setup.walk_registry(program, channel)
-        emit(f"node {node_label(spec, program.idx)}")
+        emit(f"node {program.label()}")
         outcome = await rehearsal.walk(
             program,
             registry,

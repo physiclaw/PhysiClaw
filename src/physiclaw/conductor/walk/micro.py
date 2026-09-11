@@ -657,16 +657,24 @@ def _is_unfilled(value: object) -> bool:
 
 
 def _string_fields(mapping: dict) -> dict[str, str]:
-    """Payload values are strings by contract — a structured value rides
-    as ITS JSON (str() would produce a Python repr no parser accepts),
-    and unfilled spellings are dropped (a present "null" would shadow a
-    declared default). ONE home: parse_task's inputs and the agent
-    calls' return fields share the rule."""
-    return {
-        str(k): (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
-        for k, v in mapping.items()
-        if not _is_unfilled(v)
-    }
+    """Payload values are strings by contract. A LIST is the one
+    structured value with a text shape of its own — one item per line,
+    which is what a field asked for "one per line" already holds, what
+    a message renders, and what a repeated run iterates — so a list of
+    scalars rides as lines; any other structure rides as ITS JSON
+    (str() would produce a Python repr no parser accepts). Unfilled
+    spellings are dropped (a present "null" would shadow a declared
+    default). ONE home: parse_task's inputs and the agent calls' return
+    fields share the rule."""
+    return {str(k): _text_value(v) for k, v in mapping.items() if not _is_unfilled(v)}
+
+
+def _text_value(v: Any) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, list) and all(isinstance(x, (str, int, float)) for x in v):
+        return "\n".join(str(x).strip() for x in v if str(x).strip())
+    return json.dumps(v, ensure_ascii=False)
 
 
 def _answer_outcome(
