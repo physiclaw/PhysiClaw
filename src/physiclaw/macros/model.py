@@ -154,6 +154,18 @@ WAIT = "wait"
 # keys, not arguments — see `parse`.
 WAIT_SECONDS_ARG = "seconds"
 
+# A macro's jumps: `- if: {page: <name>}` / `goto: <mark>` skips forward
+# to `- mark: <mark>` while the pack's page already reads, so the span
+# between them — the steps that REACH that page — is not replayed onto
+# it. Jumps come one after another, never one inside another. Neither
+# line is an MCP tool; both are step kinds of their own
+# (`steps.GotoStep` / `steps.MarkStep`), named here so the parser, the
+# runner's log and the CLI's step listing spell them once.
+IF = "if"
+GOTO = "goto"
+MARK = "mark"
+JUMP_KEYS = frozenset({IF, GOTO, MARK})
+
 # Abort-header marker for a run that stopped before ANY gesture actuated
 # (a first-guard miss, a wait that timed out): the phone did not move, so
 # a retry replays nothing. One spelling, three consumers: the runner
@@ -214,8 +226,15 @@ def step_handle(index: int, tool: str, args: dict) -> str:
     """The handle of step `index` (1-based) — see `HANDLE_OBJECT_CHARS`."""
     key = OBJECT_ARG.get(tool)
     readings = label_readings(args, key) if key else ()
-    head = f"idx{index}-{tool}"
-    slug = _slug(str(readings[0])) if readings else ""
+    return handle(index, tool, str(readings[0]) if readings else "")
+
+
+def handle(index: int, verb: str, obj: str) -> str:
+    """The ONE spelling of a step handle: `idx<N>-<verb>[-<object slug>]`
+    — a gesture's verb and object (`step_handle`), or a jump line's
+    verb and mark name."""
+    head = f"idx{index}-{verb}"
+    slug = _slug(obj) if obj else ""
     return f"{head}-{slug}" if slug else head
 
 

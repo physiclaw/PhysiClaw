@@ -1,10 +1,14 @@
 name: send
-description: open the <<CONTACT>> WeChat thread via in-app search and send {message}
+description: reach the <<CONTACT>> WeChat thread (in-app search unless it already shows) and send {message}
 enabled: false
 inputs:
   message:
     description: the text to send to the user
 steps:
+  # Already on the thread (the walk just read a reply there, or the
+  # boot opened it): the jump skips the navigation and types.
+  - if: {page: thread}
+    goto: type
   - home_screen
   - wait: 1
   - tap: "blank area below the app cards"    # home_screen FROM home can open the app switcher
@@ -37,6 +41,8 @@ steps:
     at: [0.031, 0.185, 0.900, 0.235]
     require: {text: "<<CONTACT>>", within: [0.0, 0.16, 1.0, 0.25]}
     hint: "WeChat search's first result is not <<CONTACT>> - check the contact name"
+  - wait: 1
+  - mark: type                               # walked to: the steps above must show the thread
   - tap: "the message input box (keyboard down)"   # NEVER type into an unverified chat
     at: [0.15, 0.925, 0.60, 0.965]
     require: {text: "<<CONTACT>>", within: [0.20, 0.03, 0.80, 0.10]}

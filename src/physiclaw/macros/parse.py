@@ -18,6 +18,8 @@ recursive-descent style, sharing the scalar terminals at the bottom:
     step      ::= verb                                          # argless, bare word
                 | {verb: object, [at], [when | skip_when],
                    [require], [forbid], [expect [hint]]}
+                | {if: {page: name}, goto: mark}                # a jump, forward
+                | {mark: mark}                                  # where it lands
     verb      ::= tap | double_tap | long_press    object = label, at REQUIRED
                 | swipe                            object = up|down|left|right, at REQUIRED,
                                                   [size] [speed] off the ladder
@@ -45,8 +47,16 @@ tool, a bad guard shape, or a dangling placeholder mid-replay. The
 format is deliberately logic-free — fixed linear steps, string-only
 inputs, ``{name}`` substitution, and per-step checks that pass or
 abort — plus one sanctioned conditional, ``when`` / ``skip_when``, an
-idempotence postcondition rather than general branching. A macro's
-robustness comes from staying a dumb replay of a rehearsed path.
+idempotence postcondition rather than general branching, and its one
+span-sized form, the jump: ``if: {page: X}`` / ``goto: m`` skips forward
+to ``mark: m`` while the pack's page X already reads, so the steps
+between — the ones that reach X — are not replayed onto X. Jumps come in
+sequence (a goto, its mark, then the next goto — never one span inside
+another), forward only, a page (never a text) as the condition; the mark
+checks, when walked to, that the span did reach the page. A page is the
+pack's to read, so ``if`` parses only through the ``pages`` resolver a
+pack loader supplies. A macro's robustness comes from staying a dumb
+replay of a rehearsed path.
 
 A step carries no name: its handle (`idx3-tap-paste`) is derived here
 from its position and its verb line (`model.step_handle`), so every
@@ -61,6 +71,7 @@ to be alias-safe.
 
 import io
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from ruamel.yaml import YAML
@@ -73,7 +84,11 @@ from physiclaw.macros.model import (
     ARGLESS_TOOLS,
     BOXED_TOOLS,
     COMBINATORS,
+    GOTO,
+    IF,
     INPUT_NAME_RE,
+    JUMP_KEYS,
+    MARK,
     MAX_CLAUSE_DEPTH,
     MAX_INPUTS,
     MAX_PROSE_LEN,
@@ -95,9 +110,10 @@ from physiclaw.macros.model import (
     TextClause,
     check_name,
     checked_readings,
+    handle,
     step_handle,
 )
-from physiclaw.macros.steps import GestureStep, Step, WaitStep
+from physiclaw.macros.steps import GestureStep, GotoStep, MarkStep, Step, WaitStep
 from physiclaw.macros.template import TemplateError, placeholders
 
 # The key vocabulary of each mapping production, in grammar order.
@@ -121,6 +137,13 @@ _SWIPE_LADDER: dict[str, tuple[str, ...]] = {
 }
 _STEP_KEYS = ALLOWED_STEP_TOOLS | _QUALIFIER_KEYS
 _SWIPE_STEP_KEYS = _STEP_KEYS | _SWIPE_LADDER.keys()
+
+# A pack's page, as the ONE condition a jump may read: the resolver a
+# pack loader supplies turns the page's name into the clause the
+# conductor itself reads that page by, or raises MacroError naming the
+# pages the pack does declare. Without one (a user macro, `macros
+# check` outside a pack) there are no pages, so there is no jump.
+PageResolver = Callable[[str], Clause]
 
 
 def _press_object(tool: str, obj: Any, where: str, step: dict) -> dict:
@@ -178,11 +201,12 @@ assert _OBJECTS.keys() == OBJECT_ARG.keys()
 _yaml = YAML(typ="safe", pure=True)
 
 
-def parse_macro(text: str, stem: str) -> Macro:
+def parse_macro(text: str, stem: str, pages: PageResolver | None = None) -> Macro:
     """Parse + validate one macro file; `stem` is its file name without
-    the suffix, which `name:` must equal. Raises MacroError with a
-    message that names the offending field — never a partially-valid
-    spec."""
+    the suffix, which `name:` must equal. `pages` is the pack's page
+    resolver (`PageResolver`), which a jump's `if` needs. Raises
+    MacroError with a message that names the offending field — never a
+    partially-valid spec."""
     text = resolve_placeholders(text, MacroError)
     try:
         data = _yaml.load(io.StringIO(text))
@@ -212,7 +236,7 @@ def parse_macro(text: str, stem: str) -> Macro:
         raise MacroError("`enabled` must be true or false")
 
     inputs = parse_inputs(data.get("inputs", {}))
-    steps = _parse_steps(data.get("steps"), {i.name for i in inputs})
+    steps = _parse_steps(data.get("steps"), {i.name for i in inputs}, pages)
     return Macro(
         name=name,
         description=description,
@@ -231,7 +255,9 @@ _IDENTITY_KEYS = frozenset({"name", "description", "enabled"})
 _INLINE_KEYS = frozenset(_TOP_KEYS) - _IDENTITY_KEYS
 
 
-def parse_inline_macro(data: Any, name: str) -> Macro:
+def parse_inline_macro(
+    data: Any, name: str, pages: PageResolver | None = None
+) -> Macro:
     """A macro embedded where a name was expected (a playbook move's
     `macro:` mapping) → a validated `Macro` under the caller-synthesized
     `name`. Same `inputs`/`steps` grammar and budgets as a macro file —
@@ -252,7 +278,7 @@ def parse_inline_macro(data: Any, name: str) -> Macro:
             "belong to a directory macro"
         )
     inputs = parse_inputs(data.get("inputs", {}))
-    steps = _parse_steps(data.get("steps"), {i.name for i in inputs})
+    steps = _parse_steps(data.get("steps"), {i.name for i in inputs}, pages)
     return Macro(
         name=name,
         description=f"inline macro {name}",
@@ -301,27 +327,35 @@ def parse_inputs(raw: Any) -> tuple[MacroInput, ...]:
 # ---------- steps ----------
 
 
-def _parse_steps(raw: Any, input_names: set[str]) -> list[Step]:
+def _parse_steps(
+    raw: Any, input_names: set[str], pages: PageResolver | None
+) -> list[Step]:
     """The step list: shape and size here, each step in `_parse_step`,
-    then the one check that only the WHOLE list can answer (the wait
-    budget)."""
+    then the checks that only the WHOLE list can answer (the jump's
+    shape, the wait budget)."""
     if not isinstance(raw, list) or not raw:
         raise MacroError("`steps` must be a non-empty list")
     if len(raw) > MAX_STEPS:
         raise MacroError(f"too many steps ({len(raw)} > {MAX_STEPS})")
-    out = [_parse_step(i, step, input_names) for i, step in enumerate(raw, start=1)]
+    out = [
+        _parse_step(i, step, input_names, pages) for i, step in enumerate(raw, start=1)
+    ]
+    out = _check_jump(out)
     _check_wait_budget(out)
     return out
 
 
-def _parse_step(i: int, step: Any, input_names: set[str]) -> Step:
+def _parse_step(
+    i: int, step: Any, input_names: set[str], pages: PageResolver | None
+) -> Step:
     """One step: the verb and its object, `at`, its checks — in
     the order that yields the most specific error first (an unknown key
     beats a bad verb beats a malformed check).
 
-    Two spellings: a bare word for an argless verb (`- home_screen`), or
+    Three spellings: a bare word for an argless verb (`- home_screen`),
     a mapping whose ONE verb key carries the object (`- tap: "Paste"`)
-    beside the qualifiers."""
+    beside the qualifiers, or one of the jump's two lines (`- if: …` /
+    `goto: …`, `- mark: …`)."""
     where = f"step {i}"
     if isinstance(step, str):
         return _argless(i, step)
@@ -330,6 +364,8 @@ def _parse_step(i: int, step: Any, input_names: set[str]) -> Step:
             f"{where} must be a verb (`- home_screen`) or a mapping (`- tap: ...`)"
         )
     keys = set(map(str, step.keys()))
+    if keys & JUMP_KEYS:
+        return _parse_jump(i, step, keys, pages)
     verbs = sorted(keys & ALLOWED_STEP_TOOLS)
     allowed = _SWIPE_STEP_KEYS if gesture_vocab.SWIPE in verbs else _STEP_KEYS
     unknown = sorted(keys - allowed)
@@ -521,6 +557,119 @@ def _wait_seconds(raw: Any, where: str, has_expect: bool) -> int:
             "that neither sleeps nor checks does nothing"
         )
     return raw
+
+
+# ---------- the jump ----------
+
+
+def _parse_jump(i: int, step: dict, keys: set[str], pages: PageResolver | None) -> Step:
+    """One of the jump's two lines. `- if: {page: <name>}` / `goto:
+    <mark>` reads a page of the macro's pack and names the mark it
+    skips to; `- mark: <mark>` names itself. Nothing else may sit on
+    either line — no box, no check — so a reader sees the whole jump
+    in the two lines. The pair is judged in `_check_jump`."""
+    where = f"step {i}"
+    if MARK in keys:
+        if keys != {MARK}:
+            raise MacroError(
+                f"{where}: a `mark` line is exactly `mark: <mark>` "
+                f"(got: {', '.join(sorted(keys))})"
+            )
+        mark = _mark_name(step[MARK], f"{where}: `mark`")
+        return MarkStep(name=handle(i, MARK, mark), mark=mark)
+    if keys != {IF, GOTO}:
+        raise MacroError(
+            f"{where}: a jump line is exactly `if: {{page: <name>}}` with "
+            f"`goto: <mark>` (got: {', '.join(sorted(keys))})"
+        )
+    if pages is None:
+        raise MacroError(
+            f"{where}: `if` reads a page, and only a pack's macro has pages — "
+            "a user macro cannot jump"
+        )
+    cond = step[IF]
+    if not (isinstance(cond, dict) and set(map(str, cond.keys())) == {"page"}):
+        raise MacroError(
+            f"{where}: `if` takes exactly `{{page: <name>}}` — a page of this "
+            "pack, never a text check"
+        )
+    page_name = _require_str(cond["page"], f"{where}: `if.page`")
+    try:
+        page = pages(page_name)
+    except MacroError as e:
+        raise MacroError(f"{where}: `if.page`: {e}") from e
+    mark = _mark_name(step[GOTO], f"{where}: `goto`")
+    return GotoStep(name=handle(i, GOTO, mark), page=page, mark=mark)
+
+
+def _mark_name(raw: Any, where: str) -> str:
+    """A mark's name: the macro-name grammar, so it slugs into a handle
+    and reads in a log; never a placeholder."""
+    name = _require_str(raw, where)
+    check_name(name, where)
+    return name
+
+
+def _check_jump(steps: list[Step]) -> list[Step]:
+    """The whole-list rules of the jumps, then each pair wired: a goto
+    learns its mark's index, a mark gets its goto's page as a `require`
+    guard whose hint names the span that was to reach it. Jumps come in SEQUENCE — a goto, its mark,
+    then the next goto — so no span opens inside another, no two gotos
+    share a mark, every jump is forward, and a run visits each step at
+    most once. At least one step between a goto and its mark (a jump
+    over nothing hides nothing); mark names unique."""
+    out = list(steps)
+    open_goto: tuple[int, GotoStep] | None = None
+    seen: dict[str, int] = {}
+    for i, st in enumerate(steps, start=1):
+        if isinstance(st, GotoStep):
+            if open_goto is not None:
+                g, goto = open_goto
+                raise MacroError(
+                    f"step {i}: `goto` opens a span inside the span of step {g} "
+                    f"(`goto: {goto.mark}` has not reached its mark) — jumps "
+                    "come one after another, never one inside another"
+                )
+            if st.mark in seen:
+                raise MacroError(
+                    f"step {i}: `goto: {st.mark}` jumps BACKWARD to step "
+                    f"{seen[st.mark]} — a jump only skips forward"
+                )
+            open_goto = (i, st)
+        elif isinstance(st, MarkStep):
+            if st.mark in seen:
+                raise MacroError(
+                    f"steps {seen[st.mark]} and {i}: two marks named {st.mark!r} — "
+                    "a mark is the one place its `goto` lands"
+                )
+            seen[st.mark] = i
+            if open_goto is None:
+                raise MacroError(f"step {i}: `mark` without a `goto` that lands on it")
+            g, goto = open_goto
+            if goto.mark != st.mark:
+                raise MacroError(
+                    f"step {i}: `mark: {st.mark}` is not where step {g}'s "
+                    f"`goto: {goto.mark}` lands — a goto's mark is the NEXT mark"
+                )
+            if i == g + 1:
+                raise MacroError(
+                    f"step {g}: `goto: {goto.mark}` jumps over nothing — the mark "
+                    "is the very next line"
+                )
+            out[g - 1] = replace(goto, target=i)
+            span = f"{g + 1}–{i - 1}" if i - 1 > g + 1 else f"{g + 1}"
+            out[i - 1] = replace(
+                st,
+                guard=MacroGuard(
+                    require=goto.page,
+                    hint=f"step{'s' if i - 1 > g + 1 else ''} {span} were to reach it",
+                ),
+            )
+            open_goto = None
+    if open_goto is not None:
+        g, goto = open_goto
+        raise MacroError(f"step {g}: `goto: {goto.mark}` without its `mark`")
+    return out
 
 
 def _check_wait_budget(steps: list[Step]) -> None:

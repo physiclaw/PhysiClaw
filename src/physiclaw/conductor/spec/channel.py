@@ -26,7 +26,7 @@ from physiclaw.conductor.spec.pack import (
     require_live,
     scan_playbooks,
 )
-from physiclaw.conductor.spec.pages import PagePrint, prints_for_app
+from physiclaw.conductor.spec.pages import PagePrint
 from physiclaw.macros.model import Macro
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def load_channel() -> Channel | None:
     activation degrade; moves run unaffected)."""
     try:
         pack = load_pack(CHANNEL_APP)
-        prints = prints_for_app(CHANNEL_APP, decls=pack.pages)
+        prints = list(pack.prints)
     except Exception as e:
         log.warning("channel pack unusable (%s) — asks will hand over", e)
         return None

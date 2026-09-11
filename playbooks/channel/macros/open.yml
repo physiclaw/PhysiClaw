@@ -1,7 +1,11 @@
 name: open
-description: open the <<CONTACT>> WeChat thread via in-app search (resume reads)
+description: open the <<CONTACT>> WeChat thread via in-app search unless it already shows (resume reads)
 enabled: false
 steps:
+  # Already on the thread (a reply was just read there): nothing to
+  # reach — the jump skips every navigation step below.
+  - if: {page: thread}
+    goto: done
   - home_screen
   - wait: 1
   - tap: "blank area below the app cards"    # home_screen FROM home can open the app switcher
@@ -34,3 +38,5 @@ steps:
     at: [0.031, 0.185, 0.900, 0.235]
     require: {text: "<<CONTACT>>", within: [0.0, 0.16, 1.0, 0.25]}
     hint: "WeChat search's first result is not <<CONTACT>> - check the contact name"
+  - wait: 1
+  - mark: done                               # walked to: the steps above must show the thread

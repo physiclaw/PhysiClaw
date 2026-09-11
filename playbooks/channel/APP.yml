@@ -24,7 +24,8 @@ pages:
 
 # Adapting to your device
 # - `open`/`send` navigate via WeChat's search, never by chat-list
-#   position; both abort on a guard mismatch, and `send` refuses to
+#   position, and skip the navigation when the thread already shows;
+#   both abort on a guard mismatch, and `send` refuses to
 #   type unless the thread title matches — never message the wrong chat.
 # - Recorded on an English-system WeChat (guards accept Contacts and
 #   联系人). Rehearse once; re-record the search/paste taps if yours

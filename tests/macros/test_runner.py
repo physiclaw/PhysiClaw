@@ -6,6 +6,7 @@ single-verdict result composition, and the run+record fold."""
 from __future__ import annotations
 
 import pytest
+from jump_fakes import JUMP, pages
 
 from physiclaw.common import verdict
 from physiclaw.common.listing import format_row
@@ -1457,3 +1458,175 @@ async def test_the_run_log_records_the_authored_target(tmp_path) -> None:
     (press,) = [e for e in events if e.get("name") == "idx2-tap-buy"]
     assert press["args"]["bbox"] == [0.4, 0.4, 0.5, 0.44]
     assert press["args"]["label"] == "Buy"
+
+
+# ---------- the jump: `if: {page}` / `goto` / `mark` ----------
+
+
+def _jump_spec():
+    return parse_macro(JUMP, "send", pages)
+
+
+async def test_a_taken_jump_skips_the_span_and_lands_past_the_mark() -> None:
+    # Already on the thread: the goto (step 1) peeks once, the
+    # navigation is not replayed, the typing step runs.
+    mcp = FakeCaller(
+        [_gesture("current", changed=None, listing="Thread"), _gesture("copied")]
+    )
+
+    result = await run(_jump_spec(), {}, mcp)
+
+    assert result.ok is True
+    assert [name for name, _ in mcp.calls] == ["peek", "send_to_clipboard"]
+    text = result.blocks[0]["text"]
+    assert "↷ 1. if page thread → goto type — goto type — page thread shows" in text
+    assert "↷ 2–3. skipped — goto type — page thread shows" in text
+    assert "· 4. mark type — landed" in text
+    assert "✓ 5. send_to_clipboard" in text
+    assert result.gestures == 1  # the goto and the mark touch nothing
+
+
+async def test_a_jump_not_taken_walks_the_span_and_the_mark_checks_it() -> None:
+    mcp = FakeCaller(
+        [
+            _gesture("current", changed=None, listing="Chats"),
+            _gesture("went home", listing="Chats"),
+            _gesture("tapped", listing="Thread"),  # the span reached the page
+            _gesture("copied"),
+        ]
+    )
+
+    result = await run(_jump_spec(), {}, mcp)
+
+    assert result.ok is True
+    assert [name for name, _ in mcp.calls] == [
+        "peek",
+        "home_screen",
+        "tap",
+        "send_to_clipboard",
+    ]
+    text = result.blocks[0]["text"]
+    assert "· 1. if page thread → goto type — not on it, walking on" in text
+    assert "· 4. mark type — page thread shows" in text
+
+
+async def test_a_walked_span_that_misses_the_page_aborts_at_the_mark() -> None:
+    mcp = FakeCaller(
+        [
+            _gesture("current", changed=None, listing="Chats"),
+            _gesture("went home", listing="Chats"),
+            _gesture("tapped", listing="Chats"),  # still not the thread
+        ]
+    )
+
+    result = await run(_jump_spec(), {}, mcp)
+
+    assert result.ok is False
+    assert result.aborted_step == 4 and result.reason == REASON_GUARD_FAILED
+    assert "require page thread not on screen" in result.detail
+    assert "steps 2–3 were to reach it" in result.detail
+    assert [name for name, _ in mcp.calls][-1] == "tap"  # nothing typed
+
+
+async def test_an_unreadable_view_never_reads_as_the_page() -> None:
+    # The goto's peek comes back without a listing: no jump, the span
+    # is walked (the rehearsed path), and the mark reads a fresh screen.
+    mcp = FakeCaller(
+        [
+            _gesture("current", changed=None),  # no listing
+            _gesture("went home"),
+            _gesture("tapped", listing="Thread"),
+            _gesture("copied"),
+        ]
+    )
+
+    result = await run(_jump_spec(), {}, mcp)
+
+    assert result.ok is True
+    assert (
+        "· 1. if page thread → goto type — view unreadable, walking on"
+        in (result.blocks[0]["text"])
+    )
+    assert [name for name, _ in mcp.calls] == [
+        "peek",
+        "home_screen",
+        "tap",
+        "send_to_clipboard",
+    ]
+
+
+async def test_a_stop_after_inside_a_skipped_span_ends_the_run_at_the_jump() -> None:
+    mcp = FakeCaller([_gesture("current", changed=None, listing="Thread")])
+
+    result = await run(_jump_spec(), {}, mcp, stop_after="idx2-home_screen")
+
+    assert result.ok is True
+    assert [name for name, _ in mcp.calls] == ["peek"]
+    text = result.blocks[0]["text"]
+    assert "↷ 2–2. skipped — goto type — page thread shows" in text
+    assert "↷ 3–5. not run (stop_after 'idx2-home_screen')" in text
+
+
+async def test_two_jumps_in_sequence_are_judged_one_after_the_other() -> None:
+    two = (
+        JUMP
+        + """\
+  - if: {page: thread}
+    goto: sent
+  - tap: "Send"
+    at: [0.8, 0.9, 0.9, 0.95]
+  - mark: sent
+"""
+    )
+    spec = parse_macro(two, "send", pages)
+    # First span walked (not on the thread), second span skipped (the
+    # walk reached it, so the send is not replayed either).
+    mcp = FakeCaller(
+        [
+            _gesture("current", changed=None, listing="Chats"),
+            _gesture("went home", listing="Chats"),
+            _gesture("tapped", listing="Thread"),
+            _gesture("copied", listing="Thread"),
+        ]
+    )
+
+    result = await run(spec, {}, mcp)
+
+    assert result.ok is True
+    assert [name for name, _ in mcp.calls] == [
+        "peek",
+        "home_screen",
+        "tap",
+        "send_to_clipboard",
+    ]
+    text = result.blocks[0]["text"]
+    assert "· 4. mark type — page thread shows" in text
+    assert "↷ 7–7. skipped — goto sent — page thread shows" in text
+    assert "· 8. mark sent — landed" in text
+
+
+async def test_starting_at_a_mark_verifies_the_entry_like_a_guard() -> None:
+    # The caller did the navigation by hand: the mark's guard reads the
+    # page, so the "no guard" warning does not apply.
+    mcp = FakeCaller(
+        [_gesture("current", changed=None, listing="Thread"), _gesture("copied")]
+    )
+
+    result = await run(_jump_spec(), {}, mcp, start_at="idx4-mark-type")
+
+    assert result.ok is True
+    text = result.blocks[0]["text"]
+    assert "entry state was NOT verified" not in text
+    assert "· 4. mark type — page thread shows" in text
+    assert [name for name, _ in mcp.calls] == ["peek", "send_to_clipboard"]
+
+
+async def test_starting_inside_a_span_still_meets_the_marks_check() -> None:
+    mcp = FakeCaller(
+        [_gesture("tapped", listing="Chats")]
+    )  # the hand-done prefix missed
+
+    result = await run(_jump_spec(), {}, mcp, start_at="idx3-tap-the-chat")
+
+    assert result.ok is False and result.aborted_step == 4
+    assert "steps 2–3 were to reach it" in result.detail

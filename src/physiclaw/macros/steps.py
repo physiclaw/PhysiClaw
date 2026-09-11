@@ -6,10 +6,14 @@ sits above `model` (pure clause algebra) and below `runner` (which owns
 the loop and the run-wide state). The split is what keeps `model`
 importable from anywhere.
 
-Two kinds, and the difference is not cosmetic:
+Four kinds, and the difference is not cosmetic:
 
     GestureStep   one MCP call — the rehearsed physical action
     WaitStep      an in-process sleep, then one assertion
+    GotoStep      a jump: reads a page, and either skips forward to its
+                  mark or walks on
+    MarkStep      where the jump lands; walked to, its guard (the goto's
+                  page) checks the span reached it
 
 `expect` lives on `WaitStep` alone, as a field rather than a validation
 rule, so "expect is wait-only" is a fact about the type instead of a
@@ -33,6 +37,8 @@ from physiclaw.common import gesture_vocab, verdict
 from physiclaw.macros.inputs import substitute
 from physiclaw.macros.model import (
     BLANK_SCREEN,
+    GOTO,
+    MARK,
     OBJECT_ARG,
     REASON_EXPECT_FAILED,
     REASON_GUARD_FAILED,
@@ -149,6 +155,9 @@ class StepOutcome:
     verdict: bool | None = None
     view: list[dict] | None = None  # blocks worth logging for this step
     screen_text: str = ""  # the haystack a failed check actually saw
+    # A taken jump: the 1-based index of the mark the loop continues
+    # past. Only a `GotoStep` sets it.
+    jump_to: int | None = None
 
     @property
     def reason(self) -> str | None:
@@ -221,6 +230,12 @@ class Step(ABC):
         run budget. A future sleeping step kind is counted automatically."""
         return 0
 
+    @property
+    def actuates(self) -> bool:
+        """Whether an `ok` outcome means the phone was touched — what the
+        run's gesture count (the engine's burn rule) is made of."""
+        return False
+
 
 @dataclass(frozen=True)
 class GestureStep(Step):
@@ -282,6 +297,10 @@ class GestureStep(Step):
         args = dict(self.args)
         args.pop(TARGET_LABEL, None)
         return args
+
+    @property
+    def actuates(self) -> bool:
+        return True
 
     @property
     def touches_screen(self) -> bool:
@@ -371,6 +390,94 @@ class WaitStep(Step):
             guard=sub(self.guard, values),
             skip_when=sub(self.skip_when, values),
         )
+
+
+@dataclass(frozen=True)
+class GotoStep(Step):
+    """A jump: `- if: {page: <name>}` / `goto: <mark>`.
+
+    Reads the page off the view the runner holds (the previous step's,
+    or one peek at the top of a run) and, when it reads, skips forward
+    to the mark — the span between is the navigation that REACHES that
+    page, and it is never replayed onto the page itself. A view that
+    cannot be read never reads as a page, so the span is walked: the
+    straight line is the rehearsed path, and walking it is safe by the
+    same idempotence the jump relies on. Nothing here ever aborts.
+
+    The page clause comes from the pack the macro belongs to (the
+    parser's page resolver); this module knows only that it is a
+    `Clause`, and reads its name off `Clause.display`."""
+
+    page: Clause | None = None
+    mark: str = ""
+    target: int = 0  # the mark's 1-based step index, resolved at parse
+
+    @property
+    def tool(self) -> str:
+        return GOTO
+
+    @property
+    def object(self) -> str:
+        return self.mark
+
+    def display(self) -> str:
+        assert self.page is not None
+        return f"if {self.page.display()} → goto {self.mark}"
+
+    async def execute(self, ctx: RunContext) -> StepOutcome:
+        assert self.page is not None
+        screen = await ctx.read_screen()
+        taken = screen.readable and self.page.holds(screen)
+        if taken:
+            why = f"goto {self.mark} — {self.page.display()} shows"
+        elif screen.readable:
+            why = "not on it, walking on"
+        else:
+            why = "view unreadable, walking on"
+        return StepOutcome(
+            log_line=f"{'↷' if taken else '·'} {self.display()} — {why}",
+            outcome="ok",
+            detail=why if taken else "",
+            view=ctx.last_view or None,
+            jump_to=self.target if taken else None,
+        )
+
+    def substituted(self, values: dict[str, str]) -> "Step":
+        return self  # a page has no placeholders
+
+
+@dataclass(frozen=True)
+class MarkStep(Step):
+    """Where a jump lands: `- mark: <name>`. Runs nothing.
+
+    Reached by WALKING (the jump was not taken), it is the meeting
+    point of two paths, and its `guard` — the goto's page as a
+    `require`, wired at parse — checks that the walked span did what
+    the jump assumes it does, the same way any step's precondition is
+    checked: one retried read, unreadable fails closed, the abort
+    names the span in its hint. Reached by the jump, the loop lands
+    past it: the read that took the jump was that same check."""
+
+    mark: str = ""
+
+    @property
+    def tool(self) -> str:
+        return MARK
+
+    @property
+    def object(self) -> str:
+        return self.mark
+
+    async def execute(self, ctx: RunContext) -> StepOutcome:
+        assert self.guard is not None and self.guard.require is not None
+        return StepOutcome(
+            log_line=f"· {self.display()} — {self.guard.require.display()} shows",
+            outcome="ok",
+            view=ctx.last_view or None,
+        )
+
+    def substituted(self, values: dict[str, str]) -> "Step":
+        return replace(self, guard=sub(self.guard, values))
 
 
 def guard_outcome(step: Step, detail: str, screen_text: str) -> StepOutcome:

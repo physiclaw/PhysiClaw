@@ -54,7 +54,7 @@ from physiclaw.conductor.spec.limits import (
     MAX_RUN_ROUNDS,
     MIN_ASK_WAIT_SECONDS,
 )
-from physiclaw.conductor.spec.match import normalize
+from physiclaw.conductor.spec.match import normalize, page_resolver
 from physiclaw.conductor.spec.model import (
     INPUTS_ROOT,
     IRREVERSIBLE_CLASSES,
@@ -990,6 +990,8 @@ def _macro_resolver(
     pack's `macros/` (dispatch `app/<name>`) or this playbook's own
     (already in `inline`, dispatch `app/<playbook>.<name>`)."""
 
+    page_of = page_resolver(pack.app, pack.pages, pack.prints)
+
     def resolve(raw: Any, where: str, nid: str, role: str | None = None) -> Macro:
         slot = role or "macro"
         if isinstance(raw, dict):
@@ -1001,7 +1003,7 @@ def _macro_resolver(
                     "already holds — rename one"
                 )
             try:
-                spec = parse_inline_macro(raw, mname)
+                spec = parse_inline_macro(raw, mname, page_of)
             except MacroError as e:
                 raise PlaybookError(f"{where}: inline `{slot}`: {e}") from e
             inline[mname] = spec

@@ -5,6 +5,7 @@ check grammar."""
 from __future__ import annotations
 
 import pytest
+from jump_fakes import JUMP, pages
 
 from physiclaw.agent.engine.mcp_inventory import discover_mcp_tools
 from physiclaw.macros.model import (
@@ -22,6 +23,7 @@ from physiclaw.macros.model import (
     TextClause,
 )
 from physiclaw.macros.parse import parse_inline_macro, parse_macro
+from physiclaw.macros.steps import GotoStep, MarkStep
 
 VALID = """name: notify-user
 description: Tell the user something
@@ -1189,3 +1191,114 @@ def test_parse_macro_literal_bbox_is_shape_checked() -> None:
 
     with pytest.raises(MacroError, match="left < right"):
         parse_macro(text, "m")
+
+
+# ---------- the jump: `if: {page}` / `goto` / `mark` ----------
+
+
+def test_a_jump_parses_into_a_wired_goto_and_mark() -> None:
+    m = parse_macro(JUMP, "send", pages)
+
+    goto, mark = m.steps[0], m.steps[3]
+    assert isinstance(goto, GotoStep) and isinstance(mark, MarkStep)
+    assert goto.name == "idx1-goto-type" and mark.name == "idx4-mark-type"
+    assert goto.target == 4
+    # The mark's check is a guard: the goto's page, the span in its hint.
+    assert mark.guard is not None and mark.guard.require is goto.page
+    assert mark.guard.hint == "steps 2–3 were to reach it"
+
+
+def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:
+    with pytest.raises(MacroError, match="a user macro cannot jump"):
+        parse_macro(JUMP, "send")
+
+
+@pytest.mark.parametrize(
+    "mutate, fragment",
+    [
+        # a goto inside an open span
+        (
+            lambda t: t.replace(
+                "  - home_screen\n",
+                "  - home_screen\n  - if: {page: thread}\n    goto: type\n",
+            ),
+            "inside the span of step 1",
+        ),
+        # a mark nothing lands on
+        (lambda t: t + "  - mark: other\n", "without a `goto`"),
+        # two marks of one name
+        (
+            lambda t: (
+                t
+                + "  - if: {page: thread}\n    goto: sent\n  - home_screen\n  - mark: type\n"
+            ),
+            "two marks named",
+        ),
+        # goto without mark
+        (lambda t: t.replace("  - mark: type\n", ""), "without its `mark`"),
+        # names disagree: the next mark is not this goto's
+        (lambda t: t.replace("goto: type", "goto: typing"), "is not where step 1"),
+        # backward: a later goto names an earlier mark
+        (
+            lambda t: (
+                t
+                + "  - if: {page: thread}\n    goto: type\n  - home_screen\n  - mark: sent\n"
+            ),
+            "BACKWARD",
+        ),
+        # over nothing: the mark is the next line
+        (
+            lambda t: t.replace(
+                '  - home_screen\n  - tap: "the chat"\n    at: [0.1, 0.2, 0.9, 0.3]\n',
+                "",
+            ),
+            "jumps over nothing",
+        ),
+        # a text check under `if`
+        (lambda t: t.replace("{page: thread}", '"Thread"'), "never a text check"),
+        # an unknown page
+        (lambda t: t.replace("{page: thread}", "{page: home}"), "no page 'home'"),
+        # `if` without `goto`, a box on the jump line, a check on the mark line
+        (lambda t: t.replace("    goto: type\n", ""), "exactly `if"),
+        (
+            lambda t: t.replace(
+                "    goto: type\n", "    goto: type\n    at: [0, 0, 1, 1]\n"
+            ),
+            "exactly `if",
+        ),
+        (
+            lambda t: t.replace(
+                "  - mark: type\n", '  - mark: type\n    require: "x"\n'
+            ),
+            "exactly `mark",
+        ),
+        # a placeholder-shaped mark name
+        (lambda t: t.replace("mark: type", "mark: Type_1"), "lowercase"),
+    ],
+)
+def test_the_jump_rules_are_load_errors(mutate, fragment: str) -> None:
+    with pytest.raises(MacroError, match=fragment):
+        parse_macro(mutate(JUMP), "send", pages)
+
+
+def test_jumps_in_sequence_each_wire_their_own_mark() -> None:
+    two = (
+        JUMP
+        + """\
+  - if: {page: thread}
+    goto: sent
+  - tap: "Send"
+    at: [0.8, 0.9, 0.9, 0.95]
+  - mark: sent
+"""
+    )
+    m = parse_macro(two, "send", pages)
+
+    first, second = m.steps[0], m.steps[5]
+    assert isinstance(first, GotoStep) and first.target == 4
+    assert isinstance(second, GotoStep) and second.target == 8
+    assert isinstance(m.steps[7], MarkStep)
+    assert (
+        m.steps[7].guard is not None
+        and m.steps[7].guard.hint == "step 7 were to reach it"
+    )

@@ -52,7 +52,7 @@ def build_program(
         values=values,
         pack_macros=pack.qualified_pack(spec.app, pack_)
         | pack.qualified_inline(spec.app, spec),
-        prints=prints_for_app(spec.app, decls=pack_.pages) + os_prints(),
+        prints=[*pack_.prints, *os_prints()],
         channel=channel,
         suspended=suspended,
         position=position,

@@ -28,6 +28,7 @@ mathematically pass.
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import lru_cache
@@ -35,8 +36,19 @@ from functools import lru_cache
 from physiclaw.common.bbox import center_of, inside, near
 from physiclaw.common.listing import Element, Screen, label_hit
 from physiclaw.common.text import fold
-from physiclaw.conductor.spec.conventions import LOCKED_ID, PRICE_RE
-from physiclaw.conductor.spec.pages import AnchorDecl, LearnedAnchor, PagePrint
+from physiclaw.conductor.spec.conventions import (
+    LOCKED_ID,
+    PRICE_RE,
+    page_id,
+    page_name,
+)
+from physiclaw.conductor.spec.pages import (
+    AnchorDecl,
+    LearnedAnchor,
+    PageDecl,
+    PagePrint,
+)
+from physiclaw.macros.model import Clause, MacroError
 
 # Fuzzy-tier floors (industrial practice: fuzzy text is reliable only
 # paired with anchors/structure — UiPath's 0.5–0.6 band). Short anchors
@@ -485,6 +497,45 @@ def match_screen(screen: Screen, candidates: list[PagePrint]) -> Verdict:
         "; ".join(f"{r.print_.decl.name} {r.gap()}" for r in reads),
         gaps={r.page_id: r.gap() for r in reads},
     )
+
+
+@dataclass(frozen=True)
+class PageCheck(Clause):
+    """A pack's page as a macro clause — the ONE condition a macro's jump
+    reads (`if: {page: X}` / `goto:`), judged by this matcher over the
+    pack's candidate set (the very prints the walk matches its own
+    screens against), so a macro and the walk around it read one
+    screen one way. A pure boolean: an unknown or occluded read, a
+    forbid hit, the lock screen and an unreadable view all read False,
+    and nothing here raises."""
+
+    page_id: str
+    prints: tuple[PagePrint, ...]
+
+    def holds(self, screen: Screen) -> bool:
+        return match_screen(screen, list(self.prints)).matches(self.page_id)
+
+    def display(self) -> str:
+        return f"page {page_name(self.page_id)}"
+
+    def substituted(self, values: dict[str, str]) -> Clause:
+        return self  # a page carries no placeholders
+
+
+def page_resolver(
+    app: str, decls: dict[str, PageDecl], prints: tuple[PagePrint, ...]
+) -> Callable[[str], Clause]:
+    """The pack's pages as the macro parser's `PageResolver`: a page name
+    → its `PageCheck` over `prints` (the pack's, built once at load), or
+    a MacroError naming the pages the pack does declare."""
+
+    def resolve(name: str) -> Clause:
+        if name not in decls:
+            known = ", ".join(sorted(decls)) or "(none)"
+            raise MacroError(f"no page {name!r} in pack {app!r} — it declares: {known}")
+        return PageCheck(page_id=page_id(app, name), prints=prints)
+
+    return resolve
 
 
 def _under_overlay(read: PageScore, screen: Screen) -> bool:

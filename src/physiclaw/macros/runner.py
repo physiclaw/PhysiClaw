@@ -18,8 +18,11 @@ gate, act) with no per-tool branching left in it.
 
 Nothing branches: a decided-failed check or a tool error stops the run
 and reports where, and recovery is the agent's job with the returned
-screen to work from. `start_at` begins at a step (by handle), reporting the
-skipped prefix as NOT executed. Server-side safety (bbox validation,
+screen to work from. The one forward jump a macro may hold (`if` /
+`goto` / `mark`, see `parse`) skips a span, reported here exactly like
+a `start_at` prefix — not executed, one event per step. `start_at`
+begins at a step (by handle), reporting the skipped prefix as NOT
+executed. Server-side safety (bbox validation,
 AssistiveTouch guards, the hardware lock, auto-park) applies per step
 unchanged; this module cannot bypass it.
 
@@ -48,7 +51,6 @@ from physiclaw.macros.model import (
     REASON_BAD_INPUT,
     REASON_TIMEOUT,
     REASON_TOOL_ERROR,
-    WAIT,
     Macro,
     MacroError,
 )
@@ -181,15 +183,16 @@ async def run(
     log_lines = _skipped_prefix(spec, start, start_at, rlog)
 
     gestures = 0
-    for i, raw_step in enumerate(spec.steps[start - 1 : stop], start=start):
+    i = start
+    while i <= stop:
         # Checks are templated exactly like step arguments: a macro that
         # pastes to `{contact}` wants to VERIFY it landed in `{contact}`'s
         # chat. See `model.TextClause.substituted`.
-        step = raw_step.substituted(values)
+        step = spec.steps[i - 1].substituted(values)
         ctx.reads = 0
         t_step = time.monotonic()
         outcome = await _run_step(step, ctx)
-        if outcome.outcome in _ACTUATED and step.tool != WAIT:
+        if outcome.outcome in _ACTUATED and step.actuates:
             gestures += 1
         log_lines.append(_numbered(outcome.log_line, i))
         if rlog:
@@ -212,6 +215,18 @@ async def run(
             )
         if outcome.verdict is not None:
             ctx.last_verdict = outcome.verdict
+        if outcome.jump_to is not None:
+            # The span up to the mark is not executed — reported like a
+            # `start_at` prefix, one event per step — and the loop lands
+            # PAST the mark: the read that took the jump is the mark's
+            # own check. A `stop_after` inside the span ends the run at
+            # the jump; the suffix report then covers the rest.
+            log_lines += _jumped_span(
+                spec, i, outcome.jump_to, stop, outcome.detail, rlog
+            )
+            i = outcome.jump_to + 1
+            continue
+        i += 1
 
     log_lines += _unrun_suffix(spec, stop, stop_after, rlog)
     return await _completed(ctx, spec, ident, log_lines, start, stop, gestures)
@@ -221,6 +236,48 @@ async def run(
 # `ok`, a tool error mid-actuation, a timeout of the call itself. A
 # guard/skip/expect miss never reached the phone.
 _ACTUATED = ("ok", "tool_error", "timeout")
+
+
+def _jumped_span(
+    spec: Macro,
+    at: int,
+    target: int,
+    stop: int,
+    why: str,
+    rlog: "runlog.RunLogger | None",
+) -> list[str]:
+    """The log lines for a taken jump at step `at`: the span it skipped
+    — up to the mark at `target`, or the run's stop when that comes
+    first — and the mark it landed on."""
+    lines = _unrun(spec, at + 1, min(target - 1, stop), f"skipped — {why}", why, rlog)
+    if target <= stop:
+        mark = spec.steps[target - 1]
+        lines.append(f"· {target}. {mark.display()} — landed")
+        if rlog:
+            rlog.step(target, mark.tool, mark.name, "ok", detail="landed by the jump")
+    return lines
+
+
+def _unrun(
+    spec: Macro,
+    first: int,
+    last: int,
+    line: str,
+    detail: str,
+    rlog: "runlog.RunLogger | None",
+) -> list[str]:
+    """The report of steps `first`–`last` (1-based, inclusive) this run
+    did not execute: one log line, and — the forensic trail must show
+    every step's fate, or `macros runs` jumps from step 1 to step 3
+    with no explanation of the gap — one run-log event per step. []
+    for an empty range."""
+    if last < first:
+        return []
+    if rlog:
+        for j in range(first, last + 1):
+            unrun = spec.steps[j - 1]
+            rlog.step(j, unrun.tool, unrun.name, "skipped", detail=detail)
+    return [f"↷ {first}–{last}. {line}"]
 
 
 async def _run_step(step: Step, ctx: RunContext) -> StepOutcome:
@@ -283,27 +340,19 @@ def _skipped_prefix(
     """The log lines for a `start_at` prefix this run did not execute."""
     if start <= 1:
         return []
-    lines = [
-        f"↷ 1–{start - 1}. skipped (start_at {start_at!r} — done by you, "
-        "not by this run)"
-    ]
+    lines = _unrun(
+        spec,
+        1,
+        start - 1,
+        f"skipped (start_at {start_at!r} — done by you, not by this run)",
+        f"start_at {start_at!r} — done by the caller",
+        rlog,
+    )
     if spec.steps[start - 1].guard is None:
         # Resuming lands a rehearsed bbox on a screen this macro did not
         # produce. A guard on the entry step is what makes that safe; say
         # plainly when there is none rather than implying it was checked.
         lines.append(f"  ⚠ step {start} has no guard — entry state was NOT verified")
-    if rlog:
-        # One event per skipped step, not just the `start` line: the
-        # forensic trail must show every step's fate, or `macros runs`
-        # jumps from step 1 to step 3 with no explanation of the gap.
-        for j, skipped in enumerate(spec.steps[: start - 1], start=1):
-            rlog.step(
-                j,
-                skipped.tool,
-                skipped.name,
-                "skipped",
-                detail=f"start_at {start_at!r} — done by the caller",
-            )
     return lines
 
 
@@ -312,20 +361,14 @@ def _unrun_suffix(
 ) -> list[str]:
     """The log lines for a `stop_after` suffix this run did not execute —
     `_skipped_prefix`'s twin, one event per unrun step."""
-    total = len(spec.steps)
-    if stop >= total:
-        return []
-    lines = [f"↷ {stop + 1}–{total}. not run (stop_after {stop_after!r})"]
-    if rlog:
-        for j, unrun in enumerate(spec.steps[stop:], start=stop + 1):
-            rlog.step(
-                j,
-                unrun.tool,
-                unrun.name,
-                "skipped",
-                detail=f"stop_after {stop_after!r} — not run",
-            )
-    return lines
+    return _unrun(
+        spec,
+        stop + 1,
+        len(spec.steps),
+        f"not run (stop_after {stop_after!r})",
+        f"stop_after {stop_after!r} — not run",
+        rlog,
+    )
 
 
 def _step_index(spec: Macro, want: str, field: str) -> int:

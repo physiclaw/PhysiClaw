@@ -28,6 +28,7 @@ from physiclaw.common.placeholders import placeholder_values, resolve_placeholde
 from physiclaw.common.text import read_text
 from physiclaw.conductor.spec import scaffold, specfile
 from physiclaw.conductor.spec.conventions import CHANNEL_APP
+from physiclaw.conductor.spec.match import page_resolver
 from physiclaw.conductor.spec.model import (
     SCOPE_GLOBAL,
     SCOPE_LOCAL,
@@ -52,6 +53,7 @@ from physiclaw.conductor.spec.pages import (
     collect_page_recovers,
     pack_landmarks,
     parse_pages_data,
+    prints_for_app,
 )
 from physiclaw.conductor.spec.refs import check_refs, field_name, refs_in
 from physiclaw.conductor.spec.route import compile_route
@@ -152,19 +154,24 @@ def load_pack(app: str) -> Pack:
         raise PlaybookError(f"{app}/{PACK_FILENAME} landmarks: {e}") from e
     # One scanner per leaf kind, run on the pack's folders and on each
     # playbook's: traversal guard, skip convention, and the broad-except
-    # lesson live in `store.scan` and `paths.leaf_files`.
-    macros = _scan_macros(root / PACK_MACROS_DIRNAME)
+    # lesson live in `store.scan` and `paths.leaf_files`. A macro's jump
+    # reads a page of THIS pack, through the one resolver over the one
+    # candidate set the walk will match against.
+    prints = tuple(prints_for_app(app, decls=pages))
+    page_of = page_resolver(app, pages, prints)
+    macros = _scan_macros(root / PACK_MACROS_DIRNAME, page_of)
     return Pack(
         app=app,
         pages=pages,
         macros=macros.ok,
+        prints=prints,
         macro_errors=macros.errors,
         playbook_docs=docs,
         playbook_errors=pb_errors,
         prompts=_scan_prompts(root / PACK_PROMPTS_DIRNAME, values),
         local={
             name: Files(
-                macros=_scan_macros(root / name / PACK_MACROS_DIRNAME),
+                macros=_scan_macros(root / name / PACK_MACROS_DIRNAME, page_of),
                 prompts=_scan_prompts(root / name / PACK_PROMPTS_DIRNAME, values),
             )
             for name in docs
@@ -174,10 +181,10 @@ def load_pack(app: str) -> Pack:
     )
 
 
-def _scan_macros(root: Path) -> Scanned[Macro]:
+def _scan_macros(root: Path, pages: macro_parse.PageResolver) -> Scanned[Macro]:
     """The macro files under one `macros/` root, folded from `store.scan`."""
     out: Scanned[Macro] = Scanned()
-    for entry in macro_store.scan(root):
+    for entry in macro_store.scan(root, pages):
         if entry.spec is not None:
             out.ok[entry.name] = entry.spec
         else:

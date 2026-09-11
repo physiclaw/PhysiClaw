@@ -507,15 +507,14 @@ def _macro_item(name: str, source: str, spec: Macro | None, error: str | None) -
 
 def _step_detail(st: MacroStep) -> str:
     """The one thing to show beside a step: its target label, its text,
-    or its wait."""
+    its wait, or a jump line's mark."""
     args = getattr(st, "args", None) or {}
     label = args.get("label") or args.get("text")
     if isinstance(label, list):
         label = " / ".join(map(str, label))
     if label:
         return str(label)
-    seconds = getattr(st, "seconds", None)
-    return f"{seconds}s" if seconds is not None else ""
+    return st.object  # a wait's seconds, a jump line's mark
 
 
 def _pack_macros(app: str) -> tuple[dict[str, Macro], dict[str, str]]:

@@ -282,10 +282,10 @@ def test_a_file_the_loader_cannot_survive_is_excluded_not_fatal(mocker) -> None:
     _write("boom")
     real = store_mod.parse_macro
 
-    def _explode(text: str, stem: str):
+    def _explode(text: str, stem: str, pages=None):
         if stem == "boom":
             raise RecursionError("maximum recursion depth exceeded")
-        return real(text, stem)
+        return real(text, stem, pages)
 
     mocker.patch.object(store_mod, "parse_macro", side_effect=_explode)
 

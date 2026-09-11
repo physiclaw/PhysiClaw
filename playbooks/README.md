@@ -120,6 +120,13 @@ A check reads the same everywhere it appears — a macro step's `require`
                                         right) or a [l, t, r, b] box
     {and: [..]}  {or: [..]}  {not: ..}  combinators (macro checks only)
 
+A pack macro may also read a page whole: `- if: {page: thread}` with
+`goto: type` skips forward to `- mark: type` while the page already
+shows, so the steps between (the ones that reach it) are not replayed;
+walked to, the mark checks the page arrived. Jumps follow one
+another, forward only, never one inside another. The channel's `open` and `send` and Taobao's `launch`
+are written this way.
+
 Adaptation notes and the rehearsal checklist ride as comments in the
 files.
 

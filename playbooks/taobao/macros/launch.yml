@@ -27,27 +27,24 @@ steps:
     when: {text: "跳过", within: [0.70, 0.0, 1.0, 0.12]}
   - wait: 4
   # Taobao restores the page it was quit on ONCE: the first cold launch
-  # after a force_quit may come up on the last detail or order page
-  # (recorded 2026-09-11), and the launch after that on the feed. So
-  # when the feed is not showing, quit and launch once more — every
-  # step below is skipped while 推荐/关注 already reads.
-  - force_quit:
-    skip_when: ["推荐", "关注"]
-  - home_screen:
-    skip_when: ["推荐", "关注"]
+  # after a force_quit may come up on that page, and the launch after
+  # that on the feed. So the feed already showing skips the second
+  # pass; otherwise quit and launch once more, and the mark checks the
+  # pass reached the feed.
+  - if: {page: home}
+    goto: feed
+  - force_quit
+  - home_screen
   - tap: "blank area below the app cards"
     at: [0.42, 0.855, 0.58, 0.885]
-    skip_when: ["推荐", "关注"]
   - tap: "the taobao app icon"
     at: [0.720, 0.425, 0.909, 0.551]
-    skip_when: ["推荐", "关注"]
   - wait: 5
-    skip_when: ["推荐", "关注"]
   - tap: "跳过"
     at: [0.79, 0.030, 0.87, 0.065]
     when: {text: "跳过", within: [0.70, 0.0, 1.0, 0.12]}
-  # `expect` re-peeks AFTER the sleep — THIS fresh view is what the home
+  # The mark re-peeks AFTER the sleep — THIS fresh view is what the home
   # verify reads (a tap's own view is grabbed mid-launch; a post-ad cold
   # render needs the slack).
   - wait: 4
-    expect: "推荐"
+  - mark: feed

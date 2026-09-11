@@ -27,7 +27,7 @@ from physiclaw.macros.model import (
     MacroError,
     check_name,
 )
-from physiclaw.macros.parse import parse_macro
+from physiclaw.macros.parse import PageResolver, parse_macro
 
 log = logging.getLogger(__name__)
 
@@ -86,13 +86,16 @@ def list_names() -> set[str]:
     return {p.stem for root in paths.macros_dirs() for p in macro_files(root)}
 
 
-def scan(root: Path | None = None) -> list[ScanEntry]:
+def scan(
+    root: Path | None = None, pages: "PageResolver | None" = None
+) -> list[ScanEntry]:
     """Every macro file, sorted by name — valid or not. With no ``root``,
     unions the search path (first dir wins per name — the
     `paths.playbooks_dirs` layering rule). The CLI's view; the engine
     uses `discover_enabled`. Conductor packs point this at their private
-    ``macros/`` roots — one scanner, one traversal guard, one
-    broad-except lesson."""
+    ``macros/`` roots, with ``pages`` the pack's page resolver a jump
+    reads through — one scanner, one traversal guard, one broad-except
+    lesson."""
     if root is None:
         seen: set[str] = set()
         merged: list[ScanEntry] = []
@@ -118,7 +121,9 @@ def scan(root: Path | None = None) -> list[ScanEntry]:
             out.append(ScanEntry(md.stem, error="resolves outside the macros dir"))
             continue
         try:
-            out.append(ScanEntry(md.stem, spec=parse_macro(read_text(real), md.stem)))
+            out.append(
+                ScanEntry(md.stem, spec=parse_macro(read_text(real), md.stem, pages))
+            )
         except Exception as e:
             # Deliberately broad: a malformed file must be excluded WHOLE, per
             # this module's contract, and the YAML loader does not confine

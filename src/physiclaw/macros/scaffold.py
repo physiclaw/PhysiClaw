@@ -203,6 +203,12 @@ Scaffold one with `physiclaw macros init <name>`, edit it, then:
   state as executing (don't tap the input box when the keyboard is already
   up; tap 跳过 only when the ad is up). Checked before `require`; free when
   the screen text is already held, otherwise one peek; never polls.
+- `if: {{page: <name>}}` / `goto: <mark>` … `mark: <mark>` — a forward jump:
+  while the pack's page already reads (as the conductor reads it, never
+  an abort), the steps up to the mark are skipped, since they exist to
+  REACH that page; walked to, the mark requires the page. Condition first;
+  nothing else on either line; jumps one after another, never nested. A
+  user macro has no pages and cannot jump.
 - `require` / `forbid` — checked BEFORE the step fires, so they describe
   the screen the step NEEDS, never the screen the step produces (to wait
   on an app you just launched, use a `wait` carrying an `expect`).

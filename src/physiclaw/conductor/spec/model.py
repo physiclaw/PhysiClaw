@@ -91,7 +91,7 @@ from physiclaw.conductor.spec.limits import (
     DEFAULT_RECOVER_LIMIT,
     DEFAULT_RUN_ROUNDS,
 )
-from physiclaw.conductor.spec.pages import AnchorDecl, Landmark, PageDecl
+from physiclaw.conductor.spec.pages import AnchorDecl, Landmark, PageDecl, PagePrint
 from physiclaw.contract.dto import Thinking
 from physiclaw.macros.model import MACRO_SUFFIX, Macro, MacroInput
 
@@ -519,6 +519,10 @@ class Pack:
     pages: dict[str, PageDecl]
     macros: dict[str, Macro]
     macro_errors: dict[str, str]
+    # The pages merged with their learned geometry — the matcher's
+    # candidate set, built ONCE at load and shared by the walk's verdicts
+    # and every macro jump's page read (`match.PageCheck`).
+    prints: tuple[PagePrint, ...] = ()
     # The raw playbook files (`<name>/PLAYBOOK.yml`) — parsed per entry
     # by `scan_playbooks`, so one broken walk excludes itself, never the
     # pack; the files that would not load ride as errors.
