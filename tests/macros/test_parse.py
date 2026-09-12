@@ -1194,7 +1194,7 @@ def test_parse_macro_literal_bbox_is_shape_checked() -> None:
         parse_macro(text, "m")
 
 
-# ---------- the jump: `if: {page}` / `goto` / `mark` ----------
+# ---------- the jump: `if_page` / `goto` / `mark` ----------
 
 
 def test_a_jump_parses_into_a_wired_goto_and_mark() -> None:
@@ -1221,7 +1221,7 @@ def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:
         (
             lambda t: t.replace(
                 "  - home_screen\n",
-                "  - home_screen\n  - if: {page: thread}\n    goto: type\n",
+                "  - home_screen\n  - if_page: thread\n    goto: type\n",
             ),
             "inside the span of step 1",
         ),
@@ -1231,7 +1231,7 @@ def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:
         (
             lambda t: (
                 t
-                + "  - if: {page: thread}\n    goto: sent\n  - home_screen\n  - mark: type\n"
+                + "  - if_page: thread\n    goto: sent\n  - home_screen\n  - mark: type\n"
             ),
             "two marks named",
         ),
@@ -1243,7 +1243,7 @@ def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:
         (
             lambda t: (
                 t
-                + "  - if: {page: thread}\n    goto: type\n  - home_screen\n  - mark: sent\n"
+                + "  - if_page: thread\n    goto: type\n  - home_screen\n  - mark: sent\n"
             ),
             "BACKWARD",
         ),
@@ -1255,11 +1255,14 @@ def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:
             ),
             "jumps over nothing",
         ),
-        # a text check under `if`
-        (lambda t: t.replace("{page: thread}", '"Thread"'), "never a text check"),
+        # a text check under `if_page`
+        (
+            lambda t: t.replace("if_page: thread", 'if_page: {text: "Thread"}'),
+            "must be a string",
+        ),
         # an unknown page
-        (lambda t: t.replace("{page: thread}", "{page: home}"), "no page 'home'"),
-        # `if` without `goto`, a box on the jump line, a check on the mark line
+        (lambda t: t.replace("if_page: thread", "if_page: home"), "no page 'home'"),
+        # `if_page` without `goto`, a box on the jump line, a check on the mark line
         (lambda t: t.replace("    goto: type\n", ""), "exactly `if"),
         (
             lambda t: t.replace(
@@ -1286,7 +1289,7 @@ def test_jumps_in_sequence_each_wire_their_own_mark() -> None:
     two = (
         JUMP
         + """\
-  - if: {page: thread}
+  - if_page: thread
     goto: sent
   - tap: "Send"
     at: [0.8, 0.9, 0.9, 0.95]

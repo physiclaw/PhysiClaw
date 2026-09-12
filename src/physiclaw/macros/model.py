@@ -154,17 +154,17 @@ WAIT = "wait"
 # keys, not arguments — see `parse`.
 WAIT_SECONDS_ARG = "seconds"
 
-# A macro's jumps: `- if: {page: <name>}` / `goto: <mark>` skips forward
+# A macro's jumps: `- if_page: <name>` / `goto: <mark>` skips forward
 # to `- mark: <mark>` while the pack's page already reads, so the span
 # between them — the steps that REACH that page — is not replayed onto
 # it. Jumps come one after another, never one inside another. Neither
 # line is an MCP tool; both are step kinds of their own
 # (`steps.GotoStep` / `steps.MarkStep`), named here so the parser, the
 # runner's log and the CLI's step listing spell them once.
-IF = "if"
+IF_PAGE = "if_page"
 GOTO = "goto"
 MARK = "mark"
-JUMP_KEYS = frozenset({IF, GOTO, MARK})
+JUMP_KEYS = frozenset({IF_PAGE, GOTO, MARK})
 
 # Abort-header marker for a run that stopped before ANY gesture actuated
 # (a first-guard miss, a wait that timed out): the phone did not move, so

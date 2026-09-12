@@ -31,7 +31,7 @@ steps:
   # that on the feed. So the feed already showing skips the second
   # pass; otherwise quit and launch once more, and the mark checks the
   # pass reached the feed.
-  - if: {page: home}
+  - if_page: home
     goto: feed
   - force_quit
   - home_screen

@@ -502,7 +502,7 @@ def match_screen(screen: Screen, candidates: list[PagePrint]) -> Verdict:
 @dataclass(frozen=True)
 class PageCheck(Clause):
     """A pack's page as a macro clause — the ONE condition a macro's jump
-    reads (`if: {page: X}` / `goto:`), judged by this matcher over the
+    reads (`if_page: X` / `goto:`), judged by this matcher over the
     pack's candidate set (the very prints the walk matches its own
     screens against), so a macro and the walk around it read one
     screen one way. A pure boolean: an unknown or occluded read, a

@@ -1477,7 +1477,7 @@ async def test_the_run_log_records_the_authored_target(tmp_path) -> None:
     assert press["args"]["label"] == "Buy"
 
 
-# ---------- the jump: `if: {page}` / `goto` / `mark` ----------
+# ---------- the jump: `if_page` / `goto` / `mark` ----------
 
 
 def _jump_spec():
@@ -1588,7 +1588,7 @@ async def test_two_jumps_in_sequence_are_judged_one_after_the_other() -> None:
     two = (
         JUMP
         + """\
-  - if: {page: thread}
+  - if_page: thread
     goto: sent
   - tap: "Send"
     at: [0.8, 0.9, 0.9, 0.95]

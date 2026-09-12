@@ -18,7 +18,7 @@ recursive-descent style, sharing the scalar terminals at the bottom:
     step      ::= verb                                          # argless, bare word
                 | {verb: object, [at], [when | skip_when],
                    [require], [forbid], [expect [hint]]}
-                | {if: {page: name}, goto: mark}                # a jump, forward
+                | {if_page: name, goto: mark}                # a jump, forward
                 | {mark: mark}                                  # where it lands
     verb      ::= tap | double_tap | long_press    object = label, at REQUIRED
                 | swipe                            object = up|down|left|right, at REQUIRED,
@@ -48,13 +48,13 @@ format is deliberately logic-free — fixed linear steps, string-only
 inputs, ``{name}`` substitution, and per-step checks that pass or
 abort — plus one sanctioned conditional, ``when`` / ``skip_when``, an
 idempotence postcondition rather than general branching, and its one
-span-sized form, the jump: ``if: {page: X}`` / ``goto: m`` skips forward
+span-sized form, the jump: ``if_page: X`` / ``goto: m`` skips forward
 to ``mark: m`` while the pack's page X already reads, so the steps
 between — the ones that reach X — are not replayed onto X. Jumps come in
 sequence (a goto, its mark, then the next goto — never one span inside
 another), forward only, a page (never a text) as the condition; the mark
 checks, when walked to, that the span did reach the page. A page is the
-pack's to read, so ``if`` parses only through the ``pages`` resolver a
+pack's to read, so ``if_page`` parses only through the ``pages`` resolver a
 pack loader supplies. A macro's robustness comes from staying a dumb
 replay of a rehearsed path.
 
@@ -85,7 +85,7 @@ from physiclaw.macros.model import (
     BOXED_TOOLS,
     COMBINATORS,
     GOTO,
-    IF,
+    IF_PAGE,
     INPUT_NAME_RE,
     JUMP_KEYS,
     MARK,
@@ -203,7 +203,7 @@ _yaml = YAML(typ="safe", pure=True)
 def parse_macro(text: str, stem: str, pages: PageResolver | None = None) -> Macro:
     """Parse + validate one macro file; `stem` is its file name without
     the suffix, which `name:` must equal. `pages` is the pack's page
-    resolver (`PageResolver`), which a jump's `if` needs. Raises
+    resolver (`PageResolver`), which a jump's `if_page` needs. Raises
     MacroError with a message that names the offending field — never a
     partially-valid spec."""
     text = resolve_placeholders(text, MacroError)
@@ -353,7 +353,7 @@ def _parse_step(
 
     Three spellings: a bare word for an argless verb (`- home_screen`),
     a mapping whose ONE verb key carries the object (`- tap: "Paste"`)
-    beside the qualifiers, or one of the jump's two lines (`- if: …` /
+    beside the qualifiers, or one of the jump's two lines (`- if_page: …` /
     `goto: …`, `- mark: …`)."""
     where = f"step {i}"
     if isinstance(step, str):
@@ -572,7 +572,7 @@ def _wait_seconds(raw: Any, where: str, has_expect: bool) -> int:
 
 
 def _parse_jump(i: int, step: dict, keys: set[str], pages: PageResolver | None) -> Step:
-    """One of the jump's two lines. `- if: {page: <name>}` / `goto:
+    """One of the jump's two lines. `- if_page: <name>` / `goto:
     <mark>` reads a page of the macro's pack and names the mark it
     skips to; `- mark: <mark>` names itself. Nothing else may sit on
     either line — no box, no check — so a reader sees the whole jump
@@ -586,27 +586,21 @@ def _parse_jump(i: int, step: dict, keys: set[str], pages: PageResolver | None) 
             )
         mark = _mark_name(step[MARK], f"{where}: `mark`")
         return MarkStep(name=handle(i, MARK, mark), mark=mark)
-    if keys != {IF, GOTO}:
+    if keys != {IF_PAGE, GOTO}:
         raise MacroError(
-            f"{where}: a jump line is exactly `if: {{page: <name>}}` with "
+            f"{where}: a jump line is exactly `if_page: <name>` with "
             f"`goto: <mark>` (got: {', '.join(sorted(keys))})"
         )
     if pages is None:
         raise MacroError(
-            f"{where}: `if` reads a page, and only a pack's macro has pages — "
+            f"{where}: `if_page` reads a page, and only a pack's macro has pages — "
             "a user macro cannot jump"
         )
-    cond = step[IF]
-    if not (isinstance(cond, dict) and set(map(str, cond.keys())) == {"page"}):
-        raise MacroError(
-            f"{where}: `if` takes exactly `{{page: <name>}}` — a page of this "
-            "pack, never a text check"
-        )
-    page_name = _require_str(cond["page"], f"{where}: `if.page`")
+    page_name = _require_str(step[IF_PAGE], f"{where}: `if_page`")
     try:
         page = pages(page_name)
     except MacroError as e:
-        raise MacroError(f"{where}: `if.page`: {e}") from e
+        raise MacroError(f"{where}: `if_page`: {e}") from e
     mark = _mark_name(step[GOTO], f"{where}: `goto`")
     return GotoStep(name=handle(i, GOTO, mark), page=page, mark=mark)
 

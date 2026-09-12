@@ -9,7 +9,7 @@ from physiclaw.macros.model import Clause, MacroError, Screen
 JUMP = """name: send
 description: reach the thread unless already there, then type
 steps:
-  - if: {page: thread}
+  - if_page: thread
     goto: type
   - home_screen
   - tap: "the chat"

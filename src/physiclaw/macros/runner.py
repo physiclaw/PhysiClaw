@@ -18,7 +18,7 @@ gate, act) with no per-tool branching left in it.
 
 Nothing branches: a decided-failed check or a tool error stops the run
 and reports where, and recovery is the agent's job with the returned
-screen to work from. The one forward jump a macro may hold (`if` /
+screen to work from. The one forward jump a macro may hold (`if_page` /
 `goto` / `mark`, see `parse`) skips a span, reported here exactly like
 a `start_at` prefix — not executed, one event per step. `start_at`
 begins at a step (by handle), reporting the skipped prefix as NOT

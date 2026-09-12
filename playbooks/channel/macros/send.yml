@@ -7,7 +7,7 @@ inputs:
 steps:
   # Already on the thread (the walk just read a reply there, or the
   # boot opened it): the jump skips the navigation and types.
-  - if: {page: thread}
+  - if_page: thread
     goto: type
   - home_screen
   - wait: 1

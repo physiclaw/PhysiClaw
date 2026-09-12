@@ -4,7 +4,7 @@ enabled: false
 steps:
   # Already on the thread (a reply was just read there): nothing to
   # reach — the jump skips every navigation step below.
-  - if: {page: thread}
+  - if_page: thread
     goto: done
   - home_screen
   - wait: 1

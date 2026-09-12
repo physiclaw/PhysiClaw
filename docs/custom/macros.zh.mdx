@@ -74,7 +74,7 @@ steps:
 # 不点击发送按钮，由智能体确认文本后决定是否发送。
 ```
 
-动词：`tap`、`double_tap`、`long_press`（对象是标签，配 `at`），`swipe`（`up`/`down`/`left`/`right`，配 `at`，可选 `size`/`speed`），`send_to_clipboard`（文本），`wait`（秒数），以及不带对象的 `home_screen`、`go_back`、`force_quit`、`peek`。动词旁边可写：`at`，`when` 或 `skip_when`（条件成立时才执行，或成立时跳过；屏幕读不到时，`when` 的步骤跳过，`skip_when` 的步骤照常执行），`require` 与 `forbid`（执行前检查），`expect` 与 `hint`（写在 `wait` 上）。检查条件可以是一段文字、多个备选的列表、带区域的 `{text, within}`（区域可用 `top`、`bottom`、`left`、`right` 或坐标框），或 `{and|or|not}`。pack 内的宏可以向前跳转：`if: {page: <name>}` 加 `goto: <mark>`，在 pack 的页面已经显示时跳到 `mark: <mark>`，中间那些用来到达该页面的步骤不再重放；若是一步步走到 mark，mark 会检查页面确已到达。多个跳转依次排列，不能嵌套。
+动词：`tap`、`double_tap`、`long_press`（对象是标签，配 `at`），`swipe`（`up`/`down`/`left`/`right`，配 `at`，可选 `size`/`speed`），`send_to_clipboard`（文本），`wait`（秒数），以及不带对象的 `home_screen`、`go_back`、`force_quit`、`peek`。动词旁边可写：`at`，`when` 或 `skip_when`（条件成立时才执行，或成立时跳过；屏幕读不到时，`when` 的步骤跳过，`skip_when` 的步骤照常执行），`require` 与 `forbid`（执行前检查），`expect` 与 `hint`（写在 `wait` 上）。检查条件可以是一段文字、多个备选的列表、带区域的 `{text, within}`（区域可用 `top`、`bottom`、`left`、`right` 或坐标框），或 `{and|or|not}`。pack 内的宏可以向前跳转：`if_page: <name>` 加 `goto: <mark>`，在 pack 的页面已经显示时跳到 `mark: <mark>`，中间那些用来到达该页面的步骤不再重放；若是一步步走到 mark，mark 会检查页面确已到达。多个跳转依次排列，不能嵌套。
 
 完整参考见 `~/.physiclaw/macros/README.md`。
 

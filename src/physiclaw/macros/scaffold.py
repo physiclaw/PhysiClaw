@@ -206,7 +206,7 @@ Scaffold one with `physiclaw macros init <name>`, edit it, then:
   screen that cannot be read satisfies neither: a `skip_when` step then
   RUNS (skipping is an optimisation), a `when` step is SKIPPED (running
   is what it withholds — and those steps aim at pay buttons).
-- `if: {{page: <name>}}` / `goto: <mark>` … `mark: <mark>` — a forward jump:
+- `if_page: <name>` / `goto: <mark>` … `mark: <mark>` — a forward jump:
   while the pack's page already reads (as the conductor reads it, never
   an abort), the steps up to the mark are skipped, since they exist to
   REACH that page; walked to, the mark requires the page. Condition first;

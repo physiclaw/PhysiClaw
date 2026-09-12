@@ -409,7 +409,7 @@ class WaitStep(Step):
 
 @dataclass(frozen=True)
 class GotoStep(Step):
-    """A jump: `- if: {page: <name>}` / `goto: <mark>`.
+    """A jump: `- if_page: <name>` / `goto: <mark>`.
 
     Reads the page off the view the runner holds (the previous step's,
     or one peek at the top of a run) and, when it reads, skips forward
