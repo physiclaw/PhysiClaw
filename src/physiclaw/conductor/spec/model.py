@@ -458,9 +458,9 @@ class Playbook:
         return any(isinstance(n, ActivateNode) for n in self.nodes)
 
     def first_unsettled(self, outputs: dict[str, str]) -> int:
-        """Where a walk (re)starts: the route top, past any COMPLETED
+        """Where a walk opens: the route top, past any COMPLETED
         pure-text agent — its outputs are recorded, and re-deriving them
-        (a recover hand's walk-from-the-top) could silently change them.
+        (a resumed or stepped walk's opening) could silently change them.
         Never further: a page that happens to match a later move's
         landing proves nothing about the moves before it."""
         for i, node in enumerate(self.nodes):

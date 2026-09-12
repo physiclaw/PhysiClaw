@@ -265,15 +265,10 @@ class Program:
         # spent per target page (their sum is the walk-wide count).
         self._recovery: recover.State | None = None
         self._page_recoveries: Counter[str] = Counter()
-        # A restored walk's stored cursor and whether it is a wake's
-        # suspension — `_restore` says what each buys.
-        # Where a restored walk resumed, as a POSITION (spec index, the
-        # round's key when inside one, the offset within it) — never a
-        # route index, which expansions, finished rounds and revisions
-        # all move. `_floor` resolves it against the route as it stands.
-        self._resume_pos: tuple[int, str | None, int] | None = None
+        # Whether the restored cursor is a wake's suspension: its opening
+        # read may unlock a locked phone, once.
         self._from_suspension = False
-        self._unlocked = False  # the resume unlock, once
+        self._unlocked = False
         # Telemetry (`walklog`): decision outcomes brokered to this walk.
         self._micros = 0
         # The record (`record.py`): the runs.jsonl line, the session's
@@ -287,8 +282,8 @@ class Program:
         # Stepping: a rehearsal that wants ONE node sets `step_one`; the
         # walk runs the first node it opens and answers `Paused` the
         # moment the cursor stands anywhere else — forward when the node
-        # settles, backward when a recover hand restarted the route —
-        # WITHOUT opening the next step, so nothing of it (a payment's
+        # settles, backward when a revision re-plans — WITHOUT opening
+        # the next step, so nothing of it (a payment's
         # consent, an ask's numbers) is spent. (The opening peek may
         # move the cursor past a settled prefix first; the node opened
         # after it is the one.)
@@ -349,7 +344,7 @@ class Program:
         the SPEC index, the round's key, and the offset inside it. A
         route index is not that — expansions, finished rounds and
         revisions all shift it, so two different nodes can wear one
-        number (`_resume_pos` is stored this way for the same reason)."""
+        number."""
         if self.idx >= len(self.slots):
             return (len(self.spec.nodes), None, 0)
         rd = self._round_at(self.idx)
@@ -386,15 +381,9 @@ class Program:
         """Overlay one projection (`state()`'s shape). The stored cursor
         is where the walk opens either way (the next node's own checks
         judge whether the world still fits). `resumed` marks a WAKE's
-        suspension, which buys two more things: the cursor is also the
-        floor no recovery restarts below (the nodes before it ran on an
-        earlier wake — an ask answered — and re-running them per wake
-        would loop across wakes with a fresh recovery budget each time),
-        and the opening read may unlock a locked phone once. A stepping
-        position keeps the fresh walk's rules: a recover hand that does
-        not restore the page walks again from the top — exactly what
-        the author steps to see — and the tool's own preamble wakes the
-        phone."""
+        suspension: its opening read may unlock a locked phone once. A
+        stepping position keeps the fresh walk's rules, and the tool's
+        own preamble wakes the phone."""
         idx = int(data["idx"])
         if not (0 <= idx <= len(self.spec.nodes)):
             # The spec changed under the suspension (edited shorter) — a
@@ -435,34 +424,6 @@ class Program:
                     f"suspended round {key!r} offset {at} is outside it"
                 )
             self.idx = start + at
-        self._resume_pos = self.position()
-
-    @property
-    def _floor(self) -> int:
-        """The cursor no recovery restarts below (`_restore`) — a wake's
-        suspension only; a stepping position keeps the fresh walk's rule."""
-        return self._resume_index() if self._from_suspension else 0
-
-    def _resume_index(self) -> int:
-        """The restored cursor on today's route: the node inside its
-        round while that round is still on the route, else the first
-        slot of the spec index it came from (a finished round is gone
-        by then). 0 for a walk that restored nothing."""
-        if self._resume_pos is None:
-            return 0
-        origin, key, at = self._resume_pos
-        if key is not None:
-            rd = next(
-                (
-                    s.round
-                    for s in self.slots
-                    if s.round is not None and s.origin == origin and s.round.key == key
-                ),
-                None,
-            )
-            if rd is not None:
-                return self._span(rd)[0] + at
-        return self._route_index(origin)
 
     def drop_suspension(self) -> None:
         """Forget the walk's suspension file — a rehearsal's, once the
@@ -653,12 +614,11 @@ class Program:
         if kind == KIND_UNLOCK:
             return self._opening()
         if kind == "peek":
-            # Past the settled pure-text prefix, never below a restored
-            # walk's stored cursor (`_restore`).
+            # Past the settled pure-text prefix (a stepped walk may seed
+            # an agent's answer), never below a restored cursor.
             self.phase = Phase.LIVE
             self.idx = max(
-                self._route_index(self.spec.first_unsettled(self.outputs)),
-                self._resume_index(),
+                self._route_index(self.spec.first_unsettled(self.outputs)), self.idx
             )
             return self.next()
         if kind == KIND_RECOVER:
@@ -752,9 +712,9 @@ class Program:
 
     def _drop_round(self, rd: Round) -> None:
         """A round that is done or missed leaves the route: its record
-        is the ledger's, and the route reads as a resumed one would (a
-        finished round is never expanded again), so a restart from the
-        top can never walk it twice. The cursor lands on what followed."""
+        is the ledger's, and the live route keeps the one shape a resumed
+        walk rebuilds (labels, `ledger.nodes`, a finished round never
+        expanded again). The cursor lands on what followed."""
         start, end = self._span(rd)
         del self.slots[start : end + 1]
         self.ledger.nodes = len(self.slots)
@@ -909,14 +869,11 @@ class Program:
         self.slots[at:] = [
             Slot(n, j) for j, n in enumerate(self.spec.nodes[target:], target)
         ]
-        # The target's answer is no longer a decision (a restart would
-        # open past a pure-text agent with one on record) but stays its
-        # last answer, which its own prompt re-reads.
+        # The target's answer is no longer a decision (an opening walks
+        # past a pure-text agent with one on record) but stays its last
+        # answer, which its own prompt re-reads.
         self.ledger.unsettle(rd.run.revise)
         self.ledger.nodes = len(self.slots)
-        if self._resume_pos is not None and self._resume_pos[0] >= target:
-            # The floor never stands above the node the walk re-runs from.
-            self._resume_pos = (target, None, 0)
         self._recovery = None
         self._step = None
         self.idx = at
@@ -1149,8 +1106,8 @@ class Program:
         recovered toward the page the frozen cursor already requires —
         the cursor, outputs, and consent are untouched throughout. Never
         with consent bound, mid-gate, for an irreversible move, or once
-        a payment fired: money keeps the hard handover (a restart from
-        the top would walk back into the ask and pay again)."""
+        a payment fired: money keeps the hard handover (no hand moves
+        the phone beside a consent or a fired payment)."""
         recovery = self._recovers().get(page_name(expected_id))
         # The page's own word once its hand is spent (or it has none) —
         # either spelling, since a page saying `handover` under a node
@@ -1170,7 +1127,7 @@ class Program:
             # Recovery covers this pack's own pages only — a reserved or
             # channel target has no hand to declare.
             return fail(reason)
-        st = recover.State(target=expected_id, mode=mode, reason=reason)
+        st = recover.State(node=node, target=expected_id, mode=mode, reason=reason)
         v = self.verdict
         # The reading the page declared its hands for: the lock screen
         # (taps do not land there — the matcher reads it by shape), the
@@ -1227,9 +1184,10 @@ class Program:
         """The hand's result view, judged. Restored → resume exactly
         where the walk stood: an interrupted enter re-checks and runs its
         move; an interrupted verify is satisfied by the restored page
-        (the macro already ran — never re-run it). Still off → walk the
-        route again from its first unsettled node (the start re-runs,
-        which is a force_quit hand's whole point)."""
+        (the macro already ran — never re-run it). Still off → the same
+        page's hand again, within its `tries`, then its `on_fail` word;
+        nothing before the page runs again, so a landed move is never
+        crossed twice."""
         st = self._recovery
         assert st is not None and self.verdict is not None
         self._recovery = None
@@ -1239,20 +1197,8 @@ class Program:
             if st.mode is recover.Mode.VERIFY:
                 return self.advance_cursor()
             return self.next()
-        self.journal(f"recover hand ran — walking again toward {st.target}")
-        rd = self._round_at(self.idx)
-        if rd is None:
-            top = self._route_index(self.spec.first_unsettled(self.outputs))
-        else:
-            # The same rule inside a round: past the sub-playbook's
-            # settled pure-text prefix, judged on the ROUND's record.
-            # Re-deriving a recorded answer would silently change it —
-            # a second model call, a different search keyword, one item.
-            top = self._span(rd)[0] + rd.run.sub.first_unsettled(
-                self.ledger.round_values(rd.prefix)
-            )
-        self.idx = max(top, self._floor)
-        return self.next()
+        self.journal(f"recover hand ran — {st.target} still off")
+        return self.recover_or_handover(st.node, st.target, st.mode, st.reason)
 
     # ---- the record ----
 

@@ -65,4 +65,4 @@ def test_the_locked_reading_takes_its_own_hand() -> None:
 
 def test_state_rejects_an_unknown_mode() -> None:
     with pytest.raises(ValueError, match="unknown recovery mode"):
-        recover.State(target="demo.home", mode="sideways")
+        recover.State(node=HAND, target="demo.home", mode="sideways")  # type: ignore[arg-type]

@@ -44,9 +44,9 @@ pages:
     anchors:
       - {text: ["推荐", "关注"], within: top}   # one anchor, two readings
     forbid: ["我的闪购"]            # the 闪购外卖 tab prints the same header row
-    recover: force_quit           # not this page → force_quit, then walk
-                                  # again from the route top (start re-runs);
-                                  # what you write is what runs
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: {macro: launch}  # the cold launch lands on the feed
   results:                        # the filter row pins them: two-char
     anchors:                      # anchors are read exactly, so the band
       - {text: "综合", within: top}   # keeps feed text (组合, 热销) from
@@ -74,6 +74,7 @@ pages:
     anchors:
       - {text: "加入购物车", within: bottom}
       - {text: ["立即购买", "领券购买"], within: bottom}
+    forbid: ["闪购外卖"]            # the feed's bottom cards print both buttons; only its tab row says this
     recover:
       covered: {tap: landmarks.close}
       elsewhere: go_back

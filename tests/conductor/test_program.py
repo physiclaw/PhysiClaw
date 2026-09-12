@@ -1133,12 +1133,10 @@ def test_wrong_page_on_resume_runs_the_hand_then_the_move() -> None:
     assert "recovered demo.results" in move2.tool_calls[0].arguments["summary"]
 
 
-def test_a_stepping_position_restarts_below_its_cursor_a_suspension_never() -> None:
-    # The rig, 2026-09-03: `step --at search` with the phone off the app
-    # ran the home page's force_quit hand twice and hit its limit —
-    # the position had been overlaid as a suspension, whose stored
-    # cursor is a floor no recovery restarts below. A checkpoint keeps
-    # the fresh walk's rule: the hand ran, walk again from the top.
+def test_a_stepping_position_recovers_in_place() -> None:
+    # A hand that does not restore its page runs again in place: the
+    # cursor never moves, so the prefix the author stepped past never
+    # re-runs (a resumed suspension: `test_resumed_walk_never_re_runs…`).
     write_pack(playbooks={"flow": RECOVERING}, landmarks=LANDMARKS)
     spec, pack = build.load_spec("demo", "flow", require_live=False)
     at_search = {**_program(keyword="milk").state(), "idx": 1}
@@ -1151,22 +1149,9 @@ def test_a_stepping_position_restarts_below_its_cursor_a_suspension_never() -> N
     back = stepped.advance(h)
     assert back is not None and back.tool_names() == ["note", "go_back"]
     _feed(h, back, ELSEWHERE)  # the hand did not restore results
-    relaunch = stepped.advance(h)
-    assert relaunch is not None  # …so the walk restarted at move 1
-    assert (
-        stepped.idx == 0
-        and "walking again" in relaunch.tool_calls[0].arguments["summary"]
-    )
-
-    resumed = build.build_program(
-        spec, pack, {"keyword": "milk"}, None, suspended=at_search, dry=True
-    )
-    h2 = _history()
-    _feed(h2, resumed.advance(h2), ELSEWHERE)
-    _feed(h2, resumed.advance(h2), ELSEWHERE)
-    again = resumed.advance(h2)
+    again = stepped.advance(h)
     assert again is not None and again.tool_names() == ["note", "go_back"]
-    assert resumed.idx == 1  # the floor: never below the stored cursor
+    assert stepped.idx == 1 and "still off" in again.tool_calls[0].arguments["summary"]
 
 
 def test_declared_unlock_hand_wakes_the_phone_then_continues() -> None:
@@ -1187,20 +1172,32 @@ def test_declared_unlock_hand_wakes_the_phone_then_continues() -> None:
     assert move2.tool_calls[1].arguments["name"] == "demo/add-cart"
 
 
-def test_failed_move_hands_over() -> None:
-    # A macro that fails hands over — nothing re-runs in the background,
-    # whatever the failure text says.
+def test_blocked_move_hands_over() -> None:
+    # A blocked tool result hands over — nothing re-runs in the
+    # background, whatever the failure text says.
+    p, h, move1 = _recovering_walk()
+    _feed(h, move1, "tool run_macro failed: bridge unreachable", error=True)
+
+    summary = _finish(p, h, p.advance(h))
+    assert "blocked or failed" in summary
+
+
+def test_aborted_move_is_judged_by_its_landing_page() -> None:
+    # A macro that ABORTS mid-run is a result, not an error (the engine
+    # and the rehearsal driver return it the same way): its landing page
+    # does not read, so the page's declared hand runs — never a handover
+    # for the abort itself.
     p, h, move1 = _recovering_walk()
     _feed(
         h,
         move1,
         "macro demo/open-app: ABORTED at step 2/3 (guard_failed) — "
-        "steps 1-1 already executed. Do NOT re-run.",
-        error=True,
+        "steps 1-1 already executed. Do NOT re-run.\n" + ELSEWHERE,
     )
 
-    summary = _finish(p, h, p.advance(h))
-    assert "blocked or failed" in summary
+    back = p.advance(h)
+    assert back is not None and back.tool_names() == ["note", "go_back"]
+    assert "declared hand" in back.tool_calls[0].arguments["summary"]
 
 
 def test_recover_tap_hand_falls_back_to_the_declared_bbox() -> None:
@@ -1219,9 +1216,10 @@ def test_recover_tap_hand_falls_back_to_the_declared_bbox() -> None:
     assert "declared hand" in back.tool_calls[0].arguments["summary"]
 
 
-def test_hand_that_does_not_restore_relocates_from_the_top() -> None:
-    # After the hand the page still does not read: the walk starts the
-    # route over from its first unsettled node.
+def test_hand_that_does_not_restore_runs_again_then_hands_over() -> None:
+    # After the hand the page still does not read: the same hand runs
+    # again within the page's tries, and the walk never goes back to an
+    # earlier move to reach the page another way.
     p, h, move1 = _recovering_walk()
     _feed(h, move1, ELSEWHERE)
     back = p.advance(h)
@@ -1230,10 +1228,11 @@ def test_hand_that_does_not_restore_relocates_from_the_top() -> None:
     _feed(h, back, HOME)  # popped all the way to home
 
     again = p.advance(h)
-    assert (
-        again is not None and again.tool_calls[1].arguments["name"] == "demo/open-app"
-    )
-    assert "walking again" in again.tool_calls[0].arguments["summary"]
+    assert again is not None and again.tool_names() == ["note", "go_back"]
+    assert "still off" in again.tool_calls[0].arguments["summary"]
+    _feed(h, again, HOME)
+    summary = _finish(p, h, p.advance(h))
+    assert "recover tries (2) spent" in summary
 
 
 OCCLUDABLE_PAGES = """\
@@ -1374,7 +1373,7 @@ def test_failed_payment_call_logs_the_purchase_and_briefs_it() -> None:
 
 
 def test_recovery_never_restarts_once_a_payment_fired() -> None:
-    # A restart from the top would walk back into the ask and pay again:
+    # A hand beside a fired payment could walk back into the ask and pay again:
     # after the payment move, a deviation is the model's even where the
     # page declares a hand.
     gated = GATED.replace(
@@ -1391,10 +1390,10 @@ def test_recovery_never_restarts_once_a_payment_fired() -> None:
     assert "did not land on 'home'" in summary
 
 
-def test_resumed_walk_never_restarts_below_its_cursor() -> None:
+def test_resumed_walk_never_re_runs_the_nodes_before_its_cursor() -> None:
     # The nodes before the stored cursor ran on an earlier wake; a hand
-    # that does not restore walks again from the cursor, not the top —
-    # so the page's limit is what ends it, never a cross-wake loop.
+    # that does not restore runs again in place, never `open` — so the
+    # page's limit is what ends it, never a cross-wake loop.
     write_pack(playbooks={"flow": RECOVERING}, landmarks=LANDMARKS)
     _write_suspended("flow", 1, values={"keyword": "milk"})
     p = setup.load_suspended(channel.load_channel())
@@ -1506,17 +1505,9 @@ def test_handover_records_run_line_at_the_failing_node() -> None:
 
     p, h, move1 = _recovering_walk()
     _feed(h, move1, HOME)  # move 1 landed on the WRONG page
-    _feed(h, p.advance(h), HOME)  # the declared hand — still wrong → route top
-    _feed(h, p.advance(h), HOME)  # move 1 re-runs, lands wrong again
-    _feed(h, p.advance(h), HOME)  # hand again
-
-    step = p.advance(h)
-    for _ in range(40):  # relaunch attempts until the walk budget is spent
-        if "conductor handing over" in step.tool_calls[0].arguments["summary"]:
-            break
-        _feed(h, step, HOME)
-        step = p.advance(h)
-    _finish(p, h, step)
+    _feed(h, p.advance(h), HOME)  # the declared hand — still wrong
+    _feed(h, p.advance(h), HOME)  # the hand again — still wrong, tries spent
+    _finish(p, h, p.advance(h))
 
     (row,) = walklog.load()
     assert row["outcome"] == "handover"

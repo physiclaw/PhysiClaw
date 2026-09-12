@@ -96,8 +96,10 @@ playbook decides; after a fired payment a stop leaves the order
 unverified and unreported, which the next wake may read as still open. A move's enter/verify checks
 derive from the adjacent waypoints; there is no branching and no loop
 — judgment is an `agent` step, approval is an `ask`. What the playbook
-declares is what runs: a page without `recover:` hands over, and
-nothing retries or unlocks in the background.
+declares is what runs: a page without `recover:` hands over, a hand
+runs and the page is read again, at most `tries:` times, then `on_fail`
+decides — nothing before the page runs again, so a hand must land on
+its own page — and nothing retries or unlocks in the background.
 
 ## Values, and the one check shape
 

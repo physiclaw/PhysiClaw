@@ -6,9 +6,8 @@ page declared for the reading (`covered`: P under a sheet or popup;
 `locked`: the lock screen, read by shape; `elsewhere`: any other
 screen; the flat form declares one hand for all three) — or Exhausted,
 and the walk hands over. After a hand the walk re-checks on its own
-result view and, still off, walks the route again from its first
-unsettled node (a `force_quit` hand re-runs `start`). Nothing taps,
-unlocks, or waits in the background.
+result view and, still off, plans again — at most `tries` times.
+Nothing taps, unlocks, or waits in the background.
 
 Two bounds, both visible in the playbook: the page's own `tries:` and
 the walk-wide ceiling `MAX_RECOVER_ACTIONS`.
@@ -18,7 +17,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from physiclaw.conductor.spec.limits import MAX_RECOVER_ACTIONS
-from physiclaw.conductor.spec.model import READING_ELSEWHERE, RecoverHand, Recovery
+from physiclaw.conductor.spec.model import (
+    READING_ELSEWHERE,
+    Checked,
+    RecoverHand,
+    Recovery,
+)
 
 
 class Mode(StrEnum):
@@ -48,11 +52,14 @@ Step = Hand | Exhausted
 
 @dataclass(frozen=True)
 class State:
-    """One recovery in flight: the page the frozen cursor requires, how
-    the walk resumes once it is restored, and the ORIGINAL check failure
-    (the exhausted handover reports what actually went wrong, not the
-    hand's miss). Owned by the walk; cleared on the hand's landing."""
+    """One recovery in flight: the node whose check needed the page, the
+    page the frozen cursor requires, how the walk resumes once it is
+    restored, and the ORIGINAL check failure (the exhausted handover
+    reports what actually went wrong, not the hand's miss). Owned by the
+    walk; cleared on the hand's landing, and what the next try is
+    planned from."""
 
+    node: Checked
     target: str  # full `app.page` id the interrupted check needs
     mode: Mode  # the resume rule
     reason: str = ""

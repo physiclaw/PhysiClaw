@@ -140,12 +140,13 @@ description: EDIT ME — what this pack automates, and when to adopt it
 # is captured on YOUR device via `physiclaw playbooks pages calibrate`.
 # A `recover:` here is the hand every route inherits for the page (a
 # gesture, a tap on a landmark, or a pack macro BY NAME — the manifest
-# carries no bodies); a route may declare its own to override it.
+# carries no bodies); a route may declare its own to override it. A
+# hand must land on its own page.
 # pages:
 #   home:
 #     anchors:
 #       - {{text: ["Search", "搜索"], within: top}}
-#     recover: force_quit
+#     recover: {{macro: launch}}          # the pack's cold launch
 """
 
 
@@ -243,8 +244,13 @@ route:
       # - {{text: ["Search", "搜索"], within: top}}
     # forbid: ["popup text"]  # veto terms — kills look-alike takeovers
     # scrollable: true        # content may scroll under fixed chrome
-    recover: force_quit     # not this page → force_quit, then the walk
-                            # (and `start`) re-runs from the top
+    recover:                # not this page → this hand, read again
+      macro:                # (`tries` times), then `on_fail`
+        steps:
+          - home_screen
+          - tap: "the app icon"
+            at: [0.1, 0.1, 0.3, 0.2]
+          - wait: 3
     # recover:              # or one hand per reading:
     #   covered: {{tap: landmarks.dismiss}}
     #   elsewhere: go_back
@@ -395,9 +401,12 @@ page's `recover:` declares its recovery hand — a bare gesture
 landmarks.<name>}}`, or `{{macro: <name>}}` — or one hand per reading
 (`covered:` for a sheet over the page itself, `locked:` for the
 phone's lock screen, `elsewhere:` for any other screen), with `tries:`
-beside it as its own bound — nothing recovers in the background; a page
-declaring none hands over. A page's `anchors:` is the list of texts
-that identify it, and EVERY one must show — declare few, unmistakable
+beside it as its own bound: the hand runs, the page is read again, at
+most `tries` times, then `on_fail` decides — nothing before the page
+runs again, so the hand must land on the page itself; nothing recovers
+in the background; a page declaring none hands over. A page's
+`anchors:` is the list of texts that identify it, and EVERY one must
+show — declare few, unmistakable
 texts; alternate readings of one text go inside it (`text: [..]`),
 `within:` pins it to a band or a box, and a `forbid:` term showing
 reads the page out. No score: a screen reading exactly one page whole

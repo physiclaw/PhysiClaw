@@ -650,7 +650,7 @@ def test_page_without_recover_hands_over_in_declared_mode() -> None:
     assert "declares no recover" in summary
 
 
-def test_recover_relaunch_loop_is_bounded_by_the_walk_budget() -> None:
+def test_recover_hand_loop_is_bounded_by_the_walk_budget() -> None:
     # A hand that runs and restores its page clears its recovery State, so the
     # budget must count the WALK's spend, not the engagement's — else a
     # splash ad on every cold launch loops force_quit forever.
@@ -678,12 +678,12 @@ def test_recover_relaunch_loop_is_bounded_by_the_walk_budget() -> None:
             break
         step = nxt
     else:
-        pytest.fail("the relaunch loop never terminated")
+        pytest.fail("the hand loop never terminated")
     assert 1 <= quits <= MAX_RECOVER_ACTIONS
     assert "budget" in step.tool_calls[0].arguments["summary"]
 
 
-def test_page_recover_limit_stops_the_relaunch_before_the_walk_budget() -> None:
+def test_page_recover_limit_stops_the_hand_loop_before_the_walk_budget() -> None:
     # The page's own `limit:` (default 2) is spent first; the handover
     # names it, so the author sees which bound fired.
     from physiclaw.conductor.spec.limits import MAX_RECOVER_ACTIONS
@@ -699,6 +699,8 @@ def test_page_recover_limit_stops_the_relaunch_before_the_walk_budget() -> None:
         assert step is not None and step.synthesized
         if step.tool_names() == ["note", "force_quit"]:
             quits += 1
+        elif quits:  # between hands nothing else runs — never the start again
+            assert step.tool_names() != ["note", "run_macro"], "the start re-ran"
         _feed(h, step, ELSEWHERE)
         nxt = p.advance(h)
         if nxt is None:
@@ -706,24 +708,6 @@ def test_page_recover_limit_stops_the_relaunch_before_the_walk_budget() -> None:
         step = nxt
     assert quits == 2 < MAX_RECOVER_ACTIONS
     assert "recover tries (2) spent" in step.tool_calls[0].arguments["summary"]
-
-
-def test_recover_force_quit_then_walk_restarts_from_the_top() -> None:
-    _write()
-    p = _program(name="walk", user_said="买牛奶")
-    h = _history()
-    _feed(h, p.advance(h), ELSEWHERE)
-    assert isinstance(p.advance(h), DecisionRequest)
-    start = p.resolve(_done_outcome(keyword="milk"))
-    _feed(h, start, ELSEWHERE)  # the launch did NOT reach home
-
-    hand = p.advance(h)  # home's declared hand: force_quit
-    assert hand is not None and hand.tool_names() == ["note", "force_quit"]
-    _feed(h, hand, ELSEWHERE)  # springboard — home still does not read
-
-    relaunch = p.advance(h)  # still off → route top → start runs again
-    assert relaunch is not None
-    assert relaunch.tool_calls[1].arguments["name"] == "demo/walk.app"
 
 
 # ---------- the payment episode ----------

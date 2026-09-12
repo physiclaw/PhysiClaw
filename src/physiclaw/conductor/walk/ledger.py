@@ -82,8 +82,8 @@ class Ledger:
         self.events.append(f"decided {key}={clip(value, 120)!r}")
 
     def unsettle(self, node_id: str) -> None:
-        """A revision re-runs `node_id`: its outputs leave `decided` (a
-        restart opens past a pure-text agent whose outputs are on
+        """A revision re-runs `node_id`: its outputs leave `decided` (an
+        opening walks past a pure-text agent whose outputs are on
         record) and become its `previous` answer until it answers again.
         The events already say why."""
         for key in [k for k in self.decided if k.split(".", 1)[0] == node_id]:

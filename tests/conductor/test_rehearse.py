@@ -118,10 +118,12 @@ async def test_dispatch_routes_run_macro_to_the_macro_runner(mocker) -> None:
     assert runner.await_count == 1
 
 
-async def test_dispatch_keeps_an_aborted_macros_header(mocker) -> None:
-    # The runner's header + step log is block 0 — the engine's tool
-    # result carries it, so the rehearsal must too: an abort's cause
-    # (which step, which guard) is what the handover reason reports.
+async def test_dispatch_returns_an_aborted_macro_as_a_result(mocker) -> None:
+    # An abort is a result, not an error — exactly what the live engine
+    # returns: the header + step log is block 0 and the current screen
+    # follows, so the page check judges the landing and a recover hand's
+    # miss is one try, while the abort's cause (which step, which guard)
+    # still reaches the note and the log.
     mcp = _FakeMcp()
     header = "macro demo/open-app: ABORTED at step 2/3 (guard_failed) — steps 1-1 already executed"
     mocker.patch(
@@ -143,7 +145,7 @@ async def test_dispatch_keeps_an_aborted_macros_header(mocker) -> None:
 
     text, is_error = await rehearsal.dispatch(mcp, call, _registry())
 
-    assert is_error is True
+    assert is_error is False
     assert text.startswith(header) and "综合" in text
 
 

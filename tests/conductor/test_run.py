@@ -396,10 +396,9 @@ route:
 """
 
 
-def test_a_recover_restart_inside_a_round_keeps_the_rounds_settled_answer() -> None:
-    # `first_unsettled` exists so a recover hand's walk-from-the-top
-    # never re-derives a recorded answer. Inside a round the record is
-    # the ROUND's, and the rule is the same one.
+def test_a_recover_hand_inside_a_round_never_re_derives_the_rounds_answer() -> None:
+    # A hand that does not restore its page runs again in place; the
+    # round's recorded answer is never asked for a second time.
     pages = PAGES.replace(
         'home:\n  anchors: ["Files"]\n',
         'home:\n  anchors: ["Files"]\n  recover: force_quit\n',
@@ -422,8 +421,7 @@ def test_a_recover_restart_inside_a_round_keeps_the_rounds_settled_answer() -> N
     feed(h, hand, ELSEWHERE)  # …and the hand did not restore it either
     again = p.advance(h)
 
-    # The walk restarts at the round's top — but PAST the settled agent.
-    assert not isinstance(again, DecisionRequest), "re-derived a recorded answer"
+    assert again.tool_names() == ["note", "force_quit"], "re-derived a recorded answer"
 
 
 # ---------- revise: an uncovered reply re-plans ----------
@@ -517,8 +515,8 @@ def test_an_uncovered_reply_revises_from_the_named_agent_and_reuses_finished_rou
     assert "searched milk\nsearched eggs" in replan.material["prompt"]
     assert p.gate.revisions == 1 and not p.gate.awaiting
     assert set(p.ledger.rounds) == {"leg[milk]", "leg[eggs]"}  # finished rounds only
-    # The old list is its last answer, not a decision: a restart from
-    # here (a stepping rebuild, a recover hand) opens AT parse.
+    # The old list is its last answer, not a decision: a walk opening
+    # here (a stepping rebuild) opens AT parse.
     assert "parse.items" not in p.ledger.decided
     assert p.ledger.previous == {"parse.items": "milk\neggs"}
     assert p.spec.first_unsettled(p.outputs) == 0
@@ -707,7 +705,7 @@ def test_a_suspension_inside_the_second_round_resumes_there_without_the_first() 
     )
 
 
-def test_a_recover_hand_inside_a_round_restarts_that_round_not_the_walk() -> None:
+def test_a_recover_hand_inside_a_round_runs_again_never_the_rounds_start() -> None:
     leg = LEG.replace(
         "  - page: results\n", "  - page: results\n    recover: go_back\n"
     )
@@ -722,11 +720,11 @@ def test_a_recover_hand_inside_a_round_restarts_that_round_not_the_walk() -> Non
     feed(h, hand, HOME)  # …which did not restore the page either
     again = p.advance(h)
 
-    # The round walks again from ITS start — the milk round's cold
-    # launch — not from the route's top, and not from the eggs round.
-    assert again.tool_calls[1].arguments["name"] == "demo/open-app"
-    assert p.label() == "leg[milk]/app (2/6)"
-    assert "parse.items" in p.ledger.decided  # the parse was not re-run
+    # The same hand again, in place — never the milk round's cold
+    # launch, never the eggs round, never the parse.
+    assert again.tool_calls[1].name == "go_back"
+    assert p.label() == "leg[milk]/search (3/6)"
+    assert "parse.items" in p.ledger.decided
 
 
 TOP_ASK = EACH.replace(
@@ -792,10 +790,10 @@ PAY_LONG = PAY.replace(
 )
 
 
-def test_a_revision_on_a_resumed_walk_keeps_the_floor_below_the_new_rounds() -> None:
+def test_a_revision_on_a_resumed_walk_recovers_in_place_inside_the_new_round() -> None:
     # Resume at the confirmation inside `pay` (a route index deep in the
     # expanded layout), revise, and let the new round's page hand fail:
-    # the restart must land on that round's start, not past the end.
+    # the hand runs again where the round stands, never past the end.
     leg = LEG.replace(
         "  - page: results\n", "  - page: results\n    recover: go_back\n"
     )
@@ -834,8 +832,8 @@ def test_a_revision_on_a_resumed_walk_keeps_the_floor_below_the_new_rounds() -> 
     feed(h2, hand, HOME)  # the hand did not restore the page
     again = resumed.advance(h2)
 
-    assert again.tool_calls[1].arguments["name"] == "demo/open-app"
-    assert resumed.label() == "leg[eggs]/app (2/5)"  # the round's start, not the end
+    assert again.tool_calls[1].name == "go_back"  # the hand again, in place
+    assert resumed.label() == "leg[eggs]/search (3/5)"
 
 
 def test_a_runs_on_fail_word_covers_failures_inside_its_rounds() -> None:
@@ -863,7 +861,7 @@ def test_the_runs_miss_word_wins_over_a_sub_pages_own_stop() -> None:
     assert p.ledger.rounds["leg[milk]"]["done"] == "missed"
 
 
-def test_a_restart_from_the_top_never_walks_a_done_round_again() -> None:
+def test_a_hand_after_a_done_round_runs_in_place_never_the_round() -> None:
     flow = EACH.replace(
         "  - page: results\n  - tell: report\n",
         "  - page: results\n    recover: go_back\n"
@@ -882,11 +880,64 @@ def test_a_restart_from_the_top_never_walks_a_done_round_again() -> None:
 
     again = p.advance(h)
 
-    # The route restarts at its first unsettled node: the move after
+    # The hand runs a second time where the walk stands: the move after
     # the run — both rounds are done and gone, never their cold starts.
-    # Its enter page still reads wrong, so its hand runs a second time.
     assert p.label() == "after (2/3)"
     assert again.tool_calls[1].name == "go_back"
+
+
+ADDING_LEG = """\
+name: leg
+description: a leg whose move has an effect the phone keeps
+inputs:
+  what:
+    description: what to add
+returns:
+  did: "added {inputs.what}"
+route:
+  - start: app
+    macro: open-app
+  - page: home
+  - do: add
+    macro: add-cart
+    with: {message: "{inputs.what}"}
+  - page: results
+  - do: back
+    macro: open-app
+  - page: home
+    recover: go_back
+"""
+
+
+def test_a_hand_after_a_landed_move_never_runs_that_move_again() -> None:
+    # A hand runs in place: a move that landed (an add to a cart) is
+    # never crossed again by a recovery, so the round misses with the
+    # add done exactly once rather than searching and adding twice.
+    flow = EACH.replace("    limit: {rounds: 2}\n", "    miss: skip\n").replace(
+        "  - page: results\n  - tell", "  - page: home\n  - tell"
+    )
+    p, h = _walk(flow=flow, leg=ADDING_LEG, keyword="milk")
+    start = _listed(p, h, "milk")
+    feed(h, start, HOME)
+    add = p.advance(h)
+    assert add.tool_calls[1].arguments == {
+        "name": "demo/add-cart",
+        "inputs": {"message": "milk"},
+    }
+    feed(h, add, RESULTS)  # the add landed
+    back = p.advance(h)
+    assert back.tool_calls[1].arguments["name"] == "demo/open-app"
+    feed(h, back, ELSEWHERE)  # …but the return did not reach home
+
+    again = p.advance(h)
+    assert again.tool_names() == ["note", "go_back"]  # the hand, in place
+    feed(h, again, ELSEWHERE)
+    again = p.advance(h)
+    assert again.tool_names() == ["note", "go_back"]  # again — never the add
+    feed(h, again, ELSEWHERE)
+    p.advance(h)  # tries spent → the run's `miss: skip`
+
+    assert p.ledger.rounds["leg[milk]"]["done"] == "missed"
 
 
 def test_a_broken_sub_playbook_is_named_in_the_parents_error() -> None:

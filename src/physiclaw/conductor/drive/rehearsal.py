@@ -428,7 +428,10 @@ async def dispatch(
                 start_at=start_at,
                 stop_after=stop_after,
             )
-            blocks, is_error = result.blocks, not result.ok
+            # A mid-run abort is a substantive result, exactly as the live
+            # engine returns it: the step log and the current screen, for
+            # the page check to judge. Only an unknown macro is an error.
+            blocks, is_error = result.blocks, False
         else:
             blocks, is_error = await mcp.call_tool(call.name, call.arguments), False
         if observe is not None:

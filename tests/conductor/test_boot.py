@@ -110,8 +110,8 @@ def test_locked_screen_unlocks_then_continues() -> None:
     assert unlock.tool_names() == ["note", gesture_vocab.UNLOCK_PHONE]
     assert "(locked)" in unlock.tool_calls[0].arguments["summary"]
 
-    # Unlocked onto some app screen → the walk restarts the route from
-    # the top and the thread's `elsewhere` hand opens it.
+    # Unlocked onto some app screen → the thread still does not read,
+    # so its `elsewhere` hand opens it.
     _feed(h, unlock, ELSEWHERE)
     assert o.advance(h).tool_calls[1].arguments == {"name": "channel/open"}
 

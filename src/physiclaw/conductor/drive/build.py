@@ -42,7 +42,7 @@ def build_program(
     and any suspended state included) and never patched up afterwards.
     `dry` (the replay, the boot) runs the walk without writing any
     record; `position` is a stepping tool's checkpoint — the projection
-    overlaid without a wake-suspension's cursor floor (`Program`);
+    overlaid without a wake-suspension's one-time unlock (`Program`);
     `activation` is the boot's menu of enabled playbooks
     (`activation.activation_for`), which every door passes when the
     route activates; `events` is the session's event stream, so the
