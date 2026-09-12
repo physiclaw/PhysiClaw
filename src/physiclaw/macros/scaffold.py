@@ -202,7 +202,10 @@ Scaffold one with `physiclaw macros init <name>`, edit it, then:
   runs it only while X shows. Use ONLY when skipping leaves the same screen
   state as executing (don't tap the input box when the keyboard is already
   up; tap 跳过 only when the ad is up). Checked before `require`; free when
-  the screen text is already held, otherwise one peek; never polls.
+  the screen text is already held, otherwise one peek; never polls. A
+  screen that cannot be read satisfies neither: a `skip_when` step then
+  RUNS (skipping is an optimisation), a `when` step is SKIPPED (running
+  is what it withholds — and those steps aim at pay buttons).
 - `if: {{page: <name>}}` / `goto: <mark>` … `mark: <mark>` — a forward jump:
   while the pack's page already reads (as the conductor reads it, never
   an abort), the steps up to the mark are skipped, since they exist to

@@ -88,6 +88,8 @@ class RunContext:
     view_stale: bool = False
     last_verdict: bool | None = None
     reads: int = 0  # camera cycles this step spent, whatever the outcome
+    ran: int = 0  # steps the loop judged (a jump's span is not among them)
+    gestures: int = 0  # …of which actually touched the phone
 
     def adopt_view(self, blocks: list[dict], *, touched_screen: bool = True) -> None:
         """Take a step's fused view as the current screen."""
@@ -172,22 +174,28 @@ class StepOutcome:
 class Step(ABC):
     """One step with its optional checks.
 
-    `guard` runs BEFORE the step (a precondition), `skip_when` runs before
-    that (idempotence — if the postcondition already holds, the step is
-    not needed). Both are one clause; see `model.Clause`."""
+    `guard` runs BEFORE the step (a precondition); `skip_when` / `when`
+    run before that (idempotence — a step whose postcondition already
+    holds, or whose condition does not, is not needed). Each is one
+    clause; see `model.Clause`."""
 
     # The handle `model.step_handle` derives at parse (`idx3-tap-paste`):
     # what `start_at` / `stop_after` address and the run log records.
     name: str
     guard: MacroGuard | None = None
     # Idempotence, the Ansible creates/unless model, NOT general branching:
-    # when the clause already holds the step is skipped, because executing
-    # it would be redundant or harmful (e.g. tapping the keyboard-hidden
-    # input-box position while the keyboard is up hits the keys). The
-    # author writes `skip_when: X` (skip when X shows) or `when: X` (run only
-    # while X shows — parsed to `skip_when: {not: X}`). Author contract: skip
+    # `skip_when: X` skips the step while X shows, because executing it
+    # would be redundant or harmful (tapping the keyboard-hidden input-box
+    # position while the keyboard is up hits the keys); `when: X` runs it
+    # ONLY while X shows. Two fields, not one clause and a negation: they
+    # part company on a screen nobody could read. Skipping is an
+    # optimisation, so an unreadable screen runs a `skip_when` step;
+    # running is what `when` withholds, so an unreadable screen skips it —
+    # firing a rehearsed box because nothing could be read is the step
+    # doing more than its author declared. Author contract for both: skip
     # state == post-execution state, so later bboxes stay synchronized.
     skip_when: Clause | None = None
+    when: Clause | None = None
 
     @property
     @abstractmethod
@@ -300,7 +308,12 @@ class GestureStep(Step):
 
     @property
     def actuates(self) -> bool:
-        return True
+        # `peek` is the one step here that only LOOKS. Counting it as a
+        # gesture tells the engine's burn rule the phone moved, so a run
+        # that aborts on its very next guard reports "do NOT re-run" and
+        # the macro is refused for the rest of the session — over a
+        # camera read.
+        return self.mcp_tool != gesture_vocab.PEEK
 
     @property
     def touches_screen(self) -> bool:
@@ -315,6 +328,7 @@ class GestureStep(Step):
             args=substitute(self.args, values),
             guard=sub(self.guard, values),
             skip_when=sub(self.skip_when, values),
+            when=sub(self.when, values),
         )
 
 
@@ -389,6 +403,7 @@ class WaitStep(Step):
             hint=fill(self.hint, values),
             guard=sub(self.guard, values),
             skip_when=sub(self.skip_when, values),
+            when=sub(self.when, values),
         )
 
 

@@ -1195,7 +1195,7 @@ def test_failed_move_hands_over() -> None:
         h,
         move1,
         "macro demo/open-app: ABORTED at step 2/3 (guard_failed) — "
-        "steps 1–1 already executed. Do NOT re-run.",
+        "steps 1-1 already executed. Do NOT re-run.",
         error=True,
     )
 

@@ -378,7 +378,7 @@ async def test_macro_runs_the_range_on_the_lent_client(monkeypatch) -> None:
 
     async def run_macro(spec_, values, client, *, emit, observe, caller, **span):
         record.update(spec=spec_, values=values, client=client, caller=caller, **span)
-        emit("macro open-app: steps 2–2 completed")
+        emit("macro open-app: steps 2-2 completed")
         observe(SimpleNamespace(name="run_macro"), VIEW)
         return {"ok": True, "message": "done", "run_id": "r1"}
 
@@ -406,7 +406,7 @@ async def test_macro_runs_the_range_on_the_lent_client(monkeypatch) -> None:
     assert record["start_at"] == "clip" and record["stop_after"] == "clip"
     snap = job.snapshot(0)
     assert snap["kind"] == "macro" and snap["result"]["ok"] is True
-    assert snap["lines"] == ["macro open-app: steps 2–2 completed"]
+    assert snap["lines"] == ["macro open-app: steps 2-2 completed"]
     assert snap["view"]["tool"] == "run_macro"
 
 

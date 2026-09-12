@@ -18,7 +18,6 @@ from physiclaw.macros.model import (
     MAX_WAIT_SECONDS,
     AndClause,
     MacroError,
-    NotClause,
     OrClause,
     TextClause,
 )
@@ -333,13 +332,15 @@ def test_parse_macro_skip_when_parsed_with_clause_grammar() -> None:
     )
 
 
-def test_parse_macro_when_is_the_negated_skip_when() -> None:
-    # `when: X` runs the step only while X shows — one skip rule downstream.
+def test_parse_macro_when_is_its_own_clause() -> None:
+    # `when: X` runs the step only while X shows — kept apart from
+    # `skip_when`, since the two read an unreadable screen differently.
     text = 'name: m\ndescription: d\nsteps:\n  - tap: "跳过"\n    at: [0.7, 0, 1, 0.1]\n    when: "跳过"\n'
 
     spec = parse_macro(text, "m")
 
-    assert spec.steps[0].skip_when == NotClause(child=TextClause(text="跳过"))
+    assert spec.steps[0].when == TextClause(text="跳过")
+    assert spec.steps[0].skip_when is None
 
 
 def test_parse_macro_when_and_skip_when_together_contradict() -> None:
@@ -1205,7 +1206,7 @@ def test_a_jump_parses_into_a_wired_goto_and_mark() -> None:
     assert goto.target == 4
     # The mark's check is a guard: the goto's page, the span in its hint.
     assert mark.guard is not None and mark.guard.require is goto.page
-    assert mark.guard.hint == "steps 2–3 were to reach it"
+    assert mark.guard.hint == "steps 2-3 were to reach it"
 
 
 def test_a_user_macro_cannot_jump_since_it_has_no_pages() -> None:

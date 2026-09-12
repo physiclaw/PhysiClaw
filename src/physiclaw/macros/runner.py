@@ -182,7 +182,6 @@ async def run(
     ident = f" [{rlog.run_id}]" if rlog else ""
     log_lines = _skipped_prefix(spec, start, start_at, rlog)
 
-    gestures = 0
     i = start
     while i <= stop:
         # Checks are templated exactly like step arguments: a macro that
@@ -192,8 +191,9 @@ async def run(
         ctx.reads = 0
         t_step = time.monotonic()
         outcome = await _run_step(step, ctx)
+        ctx.ran += 1
         if outcome.outcome in _ACTUATED and step.actuates:
-            gestures += 1
+            ctx.gestures += 1
         log_lines.append(_numbered(outcome.log_line, i))
         if rlog:
             rlog.step(
@@ -210,9 +210,7 @@ async def run(
                 view=outcome.view,
             )
         if outcome.stop:
-            return await _aborted(
-                ctx, spec, ident, log_lines, i, outcome, start, gestures
-            )
+            return await _aborted(ctx, spec, ident, log_lines, i, outcome, start)
         if outcome.verdict is not None:
             ctx.last_verdict = outcome.verdict
         if outcome.jump_to is not None:
@@ -229,7 +227,7 @@ async def run(
         i += 1
 
     log_lines += _unrun_suffix(spec, stop, stop_after, rlog)
-    return await _completed(ctx, spec, ident, log_lines, start, stop, gestures)
+    return await _completed(ctx, spec, ident, log_lines, start, stop)
 
 
 # Step outcomes that mean the tool actually fired (or attempted to):
@@ -266,7 +264,7 @@ def _unrun(
     detail: str,
     rlog: "runlog.RunLogger | None",
 ) -> list[str]:
-    """The report of steps `first`–`last` (1-based, inclusive) this run
+    """The report of steps `first`-`last` (1-based, inclusive) this run
     did not execute: one log line, and — the forensic trail must show
     every step's fate, or `macros runs` jumps from step 1 to step 3
     with no explanation of the gap — one run-log event per step. []
@@ -277,7 +275,7 @@ def _unrun(
         for j in range(first, last + 1):
             unrun = spec.steps[j - 1]
             rlog.step(j, unrun.tool, unrun.name, "skipped", detail=detail)
-    return [f"↷ {first}–{last}. {line}"]
+    return [f"↷ {first}-{last}. {line}"]
 
 
 async def _run_step(step: Step, ctx: RunContext) -> StepOutcome:
@@ -285,8 +283,8 @@ async def _run_step(step: Step, ctx: RunContext) -> StepOutcome:
 
     The order is doctrine, not convenience. The budget is checked BETWEEN
     steps, never mid-gesture, so the phone is in a known state when a run
-    stops. `skip_when` comes before the guard so a guard cannot abort a run
-    for a step that is not needed. Everything tool-specific lives behind
+    stops. `when` / `skip_when` come before the guard so a guard cannot
+    abort a run for a step that is not needed. Everything tool-specific lives behind
     `step.execute`, which is why nothing here names a tool."""
     if ctx.out_of_time:
         detail = (
@@ -299,13 +297,30 @@ async def _run_step(step: Step, ctx: RunContext) -> StepOutcome:
             detail=detail,
         )
 
-    if step.skip_when is not None:
-        # Never judges an empty haystack: `{not: X}` is satisfied by a blank
-        # screen, so a camera hiccup would otherwise read as "X is gone,
-        # skip" and silently drop a gesture. No screen means no skip — the
-        # step simply runs (skip is an optimization, not a gate).
+    if step.when is not None or step.skip_when is not None:
+        # One rule for both conditions: an unreadable screen satisfies no
+        # check. A `skip_when` unsatisfied means the step runs (skipping
+        # is an optimisation, and `{not: X}` is satisfied by a blank
+        # screen — a camera hiccup must not silently drop a gesture); a
+        # `when` unsatisfied means it does not (running is what `when`
+        # withholds, and the steps written that way fire at pay buttons).
         screen = await ctx.read_screen()
-        if screen.readable and step.skip_when.holds(screen):
+        if step.when is not None and not (screen.readable and step.when.holds(screen)):
+            why = (
+                "its `when` does not hold"
+                if screen.readable
+                else "the screen could not be read"
+            )
+            return StepOutcome(
+                log_line=f"↷ {step.display()} — skipped ({why})",
+                outcome="skipped",
+                view=ctx.last_view or None,
+            )
+        if (
+            step.skip_when is not None
+            and screen.readable
+            and step.skip_when.holds(screen)
+        ):
             return StepOutcome(
                 log_line=f"↷ {step.display()} — skipped (already satisfied)",
                 outcome="skipped",
@@ -393,23 +408,26 @@ async def _completed(
     log_lines: list[str],
     start: int,
     total: int,
-    gestures: int,
 ) -> MacroRunResult:
     """The success result — `_aborted`'s twin, so the two ways a run ends
-    compose their reply the same way (header, step log, current view)."""
+    compose their reply the same way (header, step log, current view).
+    "All steps" only when the loop judged every one: a run that jumped a
+    span did not, and saying so would contradict the step log below."""
     view, view_note = await _current_view(ctx)
     count = len(spec.steps)
-    if start == 1 and total == count:
+    jumped = (total - start + 1) - ctx.ran
+    if start == 1 and total == count and not jumped:
         ran = f"all {total} steps completed"
     else:
-        skipped = f" (1–{start - 1} skipped by start_at)" if start > 1 else ""
-        unrun = f" ({total + 1}–{count} not run, stop_after)" if total < count else ""
-        ran = f"steps {start}–{total} completed{skipped}{unrun}"
+        skipped = f" (1-{start - 1} skipped by start_at)" if start > 1 else ""
+        unrun = f" ({total + 1}-{count} not run, stop_after)" if total < count else ""
+        over = f" ({jumped} skipped by a jump)" if jumped else ""
+        ran = f"steps {start}-{total} completed{skipped}{unrun}{over}"
     header = f"macro {spec.name}{ident}: {ran} — {view_note}."
     return MacroRunResult(
         blocks=_compose(header, log_lines, view, ctx.last_verdict),
         ok=True,
-        gestures=gestures,
+        gestures=ctx.gestures,
     )
 
 
@@ -421,7 +439,6 @@ async def _aborted(
     step_no: int,
     outcome: StepOutcome,
     start: int,
-    gestures: int,
 ) -> MacroRunResult:
     reason = outcome.reason or ""
     # Steer the recovery: completed steps already moved the phone, so a
@@ -430,15 +447,20 @@ async def _aborted(
     # not from 1: a start_at prefix was never executed by this run, and
     # telling the agent otherwise sends it to recover from a state it is
     # not actually in.
-    completed = (
-        f"steps {start}–{step_no - 1} already executed"
-        if step_no > start
-        else "no steps executed by this run"
-    )
+    before = ctx.ran - 1  # the loop judged the aborting step too
+    if before == 0:
+        completed = "no steps executed by this run"
+    elif before == step_no - start:
+        completed = f"steps {start}-{step_no - 1} already executed"
+    else:
+        completed = (
+            f"{before} of steps {start}-{step_no - 1} already executed "
+            "(the rest skipped by a jump)"
+        )
     # A failed gesture may have actuated before erroring, so the retained
     # view can be stale; a failed check fired nothing, so it stays current.
     view, view_note = await _current_view(ctx, stale=reason == REASON_TOOL_ERROR)
-    if gestures == 0:
+    if ctx.gestures == 0:
         # "Failed before acting" is not "burned": nothing moved, so the
         # steering flips — clearing the blocker makes a retry safe. The
         # marker is one spelling (`model.NO_GESTURES_NOTE`); the
@@ -459,7 +481,7 @@ async def _aborted(
         aborted_step=step_no,
         reason=reason,
         detail=outcome.detail,
-        gestures=gestures,
+        gestures=ctx.gestures,
     )
 
 

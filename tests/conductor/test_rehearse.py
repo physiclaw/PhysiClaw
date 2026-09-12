@@ -123,7 +123,7 @@ async def test_dispatch_keeps_an_aborted_macros_header(mocker) -> None:
     # result carries it, so the rehearsal must too: an abort's cause
     # (which step, which guard) is what the handover reason reports.
     mcp = _FakeMcp()
-    header = "macro demo/open-app: ABORTED at step 2/3 (guard_failed) — steps 1–1 already executed"
+    header = "macro demo/open-app: ABORTED at step 2/3 (guard_failed) — steps 1-1 already executed"
     mocker.patch(
         "physiclaw.macros.runner.run_and_record",
         new=mocker.AsyncMock(

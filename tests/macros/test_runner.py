@@ -605,7 +605,7 @@ async def test_run_abort_header_steers_against_rerun() -> None:
     result = await run(_guarded(GUARDED), {}, mcp)
 
     log = result.blocks[0]["text"]
-    assert "steps 1–1 already executed" in log
+    assert "steps 1-1 already executed" in log
     assert "Do NOT re-run the macro" in log
     assert "the view below is the current screen" in log
 
@@ -1043,7 +1043,7 @@ async def test_start_at_skips_the_prefix_without_executing_it() -> None:
     assert result.ok
     # home_screen and the app tap must NOT have fired — the caller did those.
     assert [name for name, _ in mcp.calls] == ["peek", "tap"]
-    assert "↷ 1–2. skipped" in result.blocks[0]["text"]
+    assert "↷ 1-2. skipped" in result.blocks[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -1063,7 +1063,7 @@ async def test_start_at_verifies_the_entry_step_guard() -> None:
 @pytest.mark.asyncio
 async def test_start_at_abort_counts_from_the_entry_step_not_from_one() -> None:
     # The skipped prefix was never executed BY THIS RUN. Reporting "steps
-    # 1–2 already executed" would send the agent to recover from a state it
+    # 1-2 already executed" would send the agent to recover from a state it
     # is not in — MACRO.md tells it to trust this line.
     mcp = FakeCaller([_gesture("peeked", listing="somewhere else")])
 
@@ -1094,8 +1094,8 @@ async def test_stop_after_runs_through_the_named_step_and_no_further() -> None:
     assert result.ok
     assert [name for name, _ in mcp.calls] == ["home_screen", "tap"]
     text = result.blocks[0]["text"]
-    assert "↷ 3–3. not run (stop_after 'idx2-tap-t')" in text
-    assert "steps 1–2 completed" in text and "not run, stop_after" in text
+    assert "↷ 3-3. not run (stop_after 'idx2-tap-t')" in text
+    assert "steps 1-2 completed" in text and "not run, stop_after" in text
 
 
 @pytest.mark.asyncio
@@ -1369,9 +1369,9 @@ def test_clause_operators_evaluate(body: str, expected: bool) -> None:
 async def test_skip_when_will_not_skip_on_an_unreadable_screen() -> None:
     # `not` is the one op an EMPTY haystack satisfies, so a camera hiccup
     # would otherwise read as "it's gone, skip the step" and silently drop
-    # a gesture. No screen text means no skip.
+    # a gesture. Skipping is an optimisation: no screen text means no skip.
     spec = _spec(
-        'name: demo\ndescription: d\nsteps:\n  - tap: t\n    at: [0.1, 0.1, 0.2, 0.2]\n    when: "popup"\n'
+        'name: demo\ndescription: d\nsteps:\n  - tap: t\n    at: [0.1, 0.1, 0.2, 0.2]\n    skip_when: "popup"\n'
     )
     mcp = FakeCaller([RuntimeError("camera busy"), _gesture("tapped")])
 
@@ -1380,6 +1380,23 @@ async def test_skip_when_will_not_skip_on_an_unreadable_screen() -> None:
     assert result.ok
     # The tap FIRED rather than being skipped on an unread screen.
     assert ("tap", {"bbox": [0.1, 0.1, 0.2, 0.2]}) in mcp.calls
+
+
+async def test_when_withholds_the_step_on_an_unreadable_screen() -> None:
+    # `when: X` says run ONLY while X shows. A screen nobody could read
+    # is not X showing — and the steps written this way are the ones that
+    # fire a rehearsed box at a pay button, so firing because the camera
+    # blinked is the step doing more than its author declared.
+    spec = _spec(
+        'name: demo\ndescription: d\nsteps:\n  - tap: t\n    at: [0.1, 0.1, 0.2, 0.2]\n    when: "popup"\n'
+    )
+    mcp = FakeCaller([RuntimeError("camera busy"), RuntimeError("still busy")])
+
+    result = await run(spec, {}, mcp)
+
+    assert result.ok
+    assert not [c for c in mcp.calls if c[0] == "tap"]
+    assert "the screen could not be read" in result.blocks[0]["text"]
 
 
 # ---------- the label target: annotation, never a correction ----------
@@ -1480,7 +1497,7 @@ async def test_a_taken_jump_skips_the_span_and_lands_past_the_mark() -> None:
     assert [name for name, _ in mcp.calls] == ["peek", "send_to_clipboard"]
     text = result.blocks[0]["text"]
     assert "↷ 1. if page thread → goto type — goto type — page thread shows" in text
-    assert "↷ 2–3. skipped — goto type — page thread shows" in text
+    assert "↷ 2-3. skipped — goto type — page thread shows" in text
     assert "· 4. mark type — landed" in text
     assert "✓ 5. send_to_clipboard" in text
     assert result.gestures == 1  # the goto and the mark touch nothing
@@ -1524,7 +1541,7 @@ async def test_a_walked_span_that_misses_the_page_aborts_at_the_mark() -> None:
     assert result.ok is False
     assert result.aborted_step == 4 and result.reason == REASON_GUARD_FAILED
     assert "require page thread not on screen" in result.detail
-    assert "steps 2–3 were to reach it" in result.detail
+    assert "steps 2-3 were to reach it" in result.detail
     assert [name for name, _ in mcp.calls][-1] == "tap"  # nothing typed
 
 
@@ -1563,8 +1580,8 @@ async def test_a_stop_after_inside_a_skipped_span_ends_the_run_at_the_jump() -> 
     assert result.ok is True
     assert [name for name, _ in mcp.calls] == ["peek"]
     text = result.blocks[0]["text"]
-    assert "↷ 2–2. skipped — goto type — page thread shows" in text
-    assert "↷ 3–5. not run (stop_after 'idx2-home_screen')" in text
+    assert "↷ 2-2. skipped — goto type — page thread shows" in text
+    assert "↷ 3-5. not run (stop_after 'idx2-home_screen')" in text
 
 
 async def test_two_jumps_in_sequence_are_judged_one_after_the_other() -> None:
@@ -1601,7 +1618,7 @@ async def test_two_jumps_in_sequence_are_judged_one_after_the_other() -> None:
     ]
     text = result.blocks[0]["text"]
     assert "· 4. mark type — page thread shows" in text
-    assert "↷ 7–7. skipped — goto sent — page thread shows" in text
+    assert "↷ 7-7. skipped — goto sent — page thread shows" in text
     assert "· 8. mark sent — landed" in text
 
 
@@ -1629,4 +1646,4 @@ async def test_starting_inside_a_span_still_meets_the_marks_check() -> None:
     result = await run(_jump_spec(), {}, mcp, start_at="idx3-tap-the-chat")
 
     assert result.ok is False and result.aborted_step == 4
-    assert "steps 2–3 were to reach it" in result.detail
+    assert "steps 2-3 were to reach it" in result.detail

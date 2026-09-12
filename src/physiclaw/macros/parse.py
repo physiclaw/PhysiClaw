@@ -105,7 +105,6 @@ from physiclaw.macros.model import (
     MacroError,
     MacroGuard,
     MacroInput,
-    NotClause,
     OrClause,
     TextClause,
     check_name,
@@ -384,7 +383,7 @@ def _parse_step(
     tool = verbs[0]
     args = _step_args(tool, step, where, input_names)
     name = step_handle(i, tool, args)
-    skip_when = _parse_skip_when(step, where, input_names)
+    skip_when, when = _parse_skip_when(step, where, input_names)
     hint = _opt_str(step.get("hint"), f"{where}: `hint`") or ""
     guard = _parse_guard(step, where, input_names, hint)
     expect = _parse_expect(step, tool, where, input_names)
@@ -395,7 +394,7 @@ def _parse_step(
             f"{where}: `hint` steers the recovery when a check fails, so it "
             "needs a `require`, `forbid` or `expect` to belong to"
         )
-    if expect is not None and skip_when is not None:
+    if expect is not None and (skip_when is not None or when is not None):
         # A skipped step never reaches its `expect`, so the weaker check
         # would silently disable the stronger one — and they are judged
         # on different frames besides (skip on the previous step's,
@@ -412,12 +411,18 @@ def _parse_step(
             name=name,
             guard=guard,
             skip_when=skip_when,
+            when=when,
             seconds=int(args[WAIT_SECONDS_ARG]),
             expect=expect,
             hint=hint,
         )
     return GestureStep(
-        name=name, guard=guard, skip_when=skip_when, mcp_tool=tool, args=args
+        name=name,
+        guard=guard,
+        skip_when=skip_when,
+        when=when,
+        mcp_tool=tool,
+        args=args,
     )
 
 
@@ -481,22 +486,26 @@ def _example(tool: str) -> str:
     return _OBJECTS[tool][1]
 
 
-def _parse_skip_when(step: dict, where: str, input_names: set[str]) -> Clause | None:
-    """`when` / `skip_when` → the one skip clause. `skip_when: X` skips the
-    step while X shows; `when: X` runs it only while X shows, i.e. skips
-    unless X — stored as `{not: X}` so the runner has one rule."""
+def _parse_skip_when(
+    step: dict, where: str, input_names: set[str]
+) -> tuple[Clause | None, Clause | None]:
+    """`skip_when` / `when` → the step's two conditions, at most one of
+    them written: `skip_when: X` skips the step while X shows, `when: X`
+    runs it only while X shows. Kept as two clauses, not one and its
+    negation — `steps.Step` says why."""
     if "when" in step and "skip_when" in step:
         raise MacroError(
             f"{where}: `when` and `skip_when` on one step contradict each other — "
             "keep the one that reads naturally"
         )
+    skip_when = when = None
     if "skip_when" in step:
-        return _parse_check(step["skip_when"], f"{where}: `skip_when`", input_names)
-    if "when" in step:
-        return NotClause(
-            child=_parse_check(step["when"], f"{where}: `when`", input_names)
+        skip_when = _parse_check(
+            step["skip_when"], f"{where}: `skip_when`", input_names
         )
-    return None
+    if "when" in step:
+        when = _parse_check(step["when"], f"{where}: `when`", input_names)
+    return skip_when, when
 
 
 def _parse_guard(
@@ -548,7 +557,7 @@ def _wait_seconds(raw: Any, where: str, has_expect: bool) -> int:
             f"{where}: `wait` takes a whole number of seconds (got {raw!r})"
         )
     if not 0 <= raw <= MAX_WAIT_SECONDS:
-        raise MacroError(f"{where}: `wait` must be 0–{MAX_WAIT_SECONDS} (got {raw})")
+        raise MacroError(f"{where}: `wait` must be 0-{MAX_WAIT_SECONDS} (got {raw})")
     if raw == 0 and not has_expect:
         # 0 earns its place only as "check now": a `wait` with neither sleep
         # nor assertion is a step that does nothing at all.
@@ -657,7 +666,7 @@ def _check_jump(steps: list[Step]) -> list[Step]:
                     "is the very next line"
                 )
             out[g - 1] = replace(goto, target=i)
-            span = f"{g + 1}–{i - 1}" if i - 1 > g + 1 else f"{g + 1}"
+            span = f"{g + 1}-{i - 1}" if i - 1 > g + 1 else f"{g + 1}"
             out[i - 1] = replace(
                 st,
                 guard=MacroGuard(
