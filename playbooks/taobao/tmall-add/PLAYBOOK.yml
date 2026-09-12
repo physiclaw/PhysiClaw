@@ -1,0 +1,54 @@
+# taobao/tmall-add — one item into the 天猫超市 store cart; runs once per
+# item under `tmall-buy`, which opens the store first. Starts and ends
+# on the store's page so the rounds chain without a relaunch.
+name: tmall-add
+description: put one item in the 天猫超市 (Tmall Supermarket) store cart inside Taobao, nothing paid
+enabled: false  # rehearse on YOUR device, then enable
+scope: local
+inputs:
+  item:
+    description: one product, name + spec + quantity, as the buyer named it
+returns:
+  line: "{pick.title} ×{pick.qty}  ¥{pick.price}"
+
+route:
+  - agent: parse
+    prompt: prompts.item-keyword
+    returns:
+      keyword: the search keyword, exactly as it should be typed
+    think: off
+
+  - page: tmall-home
+
+  - do: find
+    with: {keyword: "{parse.keyword}"}
+    macro: store-search
+
+  - page: store-results
+
+  - agent: pick
+    prompt: prompts.store-pick
+    tools: [tap, scroll]
+    give: [landmarks.close, landmarks.pairing-close]
+    never_tap:
+      - {label: ["去结算", "立即购买"], within: bottom}       # one target: the checkout button
+      - {label: ["提交订单", "立即支付", "免密支付"], within: bottom}   # one target: the pay button
+      - "凑单"
+      - "换购"
+    returns:
+      title: the item title exactly as its page shows it
+      qty: the quantity set, a number
+      price: the unit price shown, a number
+    limit: {calls: 12, scrolls: 4}
+    think: low
+    on_fail: stop
+
+  - page: store-detail
+
+  # Back to the storefront's home, where the next round (and the
+  # checkout) starts: the item page, then the results, then the search
+  # page, each popped by the pack's one hand for this store.
+  - do: back-to-store
+    macro: store-back
+
+  - page: tmall-home

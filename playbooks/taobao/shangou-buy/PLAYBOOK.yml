@@ -1,0 +1,108 @@
+# taobao/shangou-buy — takeout from ONE restaurant or shop on 淘宝闪购:
+# search the store by name, then one episode opens its card and adds
+# every dish the buyer named (each through its spec sheet); 去结算,
+# confirm the order page's total, pay. One order is one store.
+name: shangou-buy
+description: >-
+  order takeout from ONE restaurant or shop on 淘宝闪购 (ex-饿了么) inside 淘宝,
+  ~30 min: meals, coffee, milk tea, drinks, medicine — when the buyer says
+  外卖 / 闪购, or names a café, restaurant or drink
+enabled: false  # rehearse on YOUR device, then enable
+inputs:
+  user_said:
+    description: what the user said, verbatim — the original message the task came from
+
+route:
+  - agent: parse
+    prompt: |
+      The buyer said: "{inputs.user_said}"
+      Later replies, if any: {ask.replies}
+      The list as it stood before those replies: {parse.dishes}
+      This is a takeout order on 淘宝闪购: ONE store, one or more dishes.
+      Return `store`: the restaurant or shop to order from, as the buyer
+      named it (a brand is enough — 瑞幸咖啡, 麦当劳; keep a branch when
+      they named one). Return `dishes`: one dish per line as name + spec
+      + quantity (e.g. 生椰拿铁 大杯 冰 ×2); leave out anything they no
+      longer want. Keep the buyer's language, and keep every line of
+      the earlier list the buyer did not change word for word.
+      If the message names no store and no dish that implies one, return
+      escalate.
+    returns:
+      store: the store to order from
+      dishes: the dishes, one per line
+    think: off
+
+  - tell: ack
+    message: "收到，正在淘宝闪购为你点单：{parse.store}\n{parse.dishes}"
+
+  - start: app
+    macro: launch
+
+  - page: home
+
+  - do: open-shangou
+    macro: open-shangou
+
+  - page: shangou-home
+
+  - do: find-store
+    with: {keyword: "{parse.store}"}
+    macro: shangou-search
+
+  - page: shangou-results
+
+  # One episode: open the store's card, then add every dish. Which card
+  # is the store is a reading of names the results reorder, so it is
+  # the model's; the dishes follow in the same context.
+  - agent: order
+    prompt: prompts.dish-order
+    tools: [tap, scroll, back]
+    never_tap:
+      - {label: ["去结算", "立即支付", "提交订单"], within: bottom}
+      - "清空"
+      - "凑单"
+      - "换购"
+    returns:
+      added: the dishes now in the cart, one per line, with the spec chosen
+    limit: {calls: 18, scrolls: 8}       # the card, then ~4 calls a dish for four dishes
+    think: low
+    on_fail: stop
+
+  - page: shangou-store
+
+  - do: settle
+    macro: settle
+
+  - page: shangou-order
+
+  # The order page pays from its own button, which carries the total.
+  - ask: confirm-pay
+    approve: payment
+    total_label: ["立即支付", "合计"]
+    message: "闪购下单：{parse.store}\n{order.added}\n合计 ¥{ask.total}（以屏幕读数为准）。回复 好的 确认支付，或 不用 取消。"
+    yes: ["好的", "好", "可以", "确认"]
+    no: ["不用", "不要", "取消", "算了"]
+    denied: "好的，已取消付款，这单没有提交。"
+    wait: 45
+    rounds: 3
+    think: off
+    on_fail: stop
+    resume: foreground            # the ask left the app — come back where it was
+
+  - do: pay
+    irreversible: payment
+    on_fail: handover
+    macro:
+      steps:
+        - tap: "立即支付￥…"                      # the order page's own pay button
+          at: [0.30, 0.90, 0.70, 0.95]
+        - wait: 4
+        - tap: "确认支付"                        # a cashier, only when one shows
+          at: [0.30, 0.90, 0.70, 0.96]
+          when: ["确认支付"]
+        - wait: 4
+
+  - page: paid
+
+  - tell: report
+    message: "闪购已下单并完成支付：{parse.store}\n{order.added}"

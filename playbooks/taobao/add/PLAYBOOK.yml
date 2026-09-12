@@ -12,12 +12,7 @@ returns:
 
 route:
   - agent: parse
-    prompt: |
-      From this one item, produce the Taobao search keyword.
-      The item: "{inputs.item}"
-      Rules: a pure product keyword, name + spec (e.g. 五常大米 5kg); no
-      quantity words, no verbs; keep the buyer's language.
-      If it names no concrete product, return escalate.
+    prompt: prompts.item-keyword
     returns:
       keyword: the search keyword, exactly as it should be typed
     think: off

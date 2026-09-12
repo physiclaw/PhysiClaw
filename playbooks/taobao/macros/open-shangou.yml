@@ -1,0 +1,21 @@
+name: open-shangou
+description: the home feed's 闪购外卖 tab — the door to 淘宝闪购 and to 天猫超市's store
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/open-shangou
+enabled: false
+steps:
+  # The feed can still be rendering right after `launch` (a read that
+  # shows only the clock): give it a moment before the guarded tap.
+  - wait: 2
+  # A text tab, not a grid icon: the grid reorders, the tab row does not.
+  - tap: "闪购外卖"
+    at: [0.27, 0.055, 0.46, 0.095]
+    require: {text: "闪购外卖", within: top}
+    hint: "the home feed's tab row is not showing — the walk is not on the feed"
+  - wait: 3
+  # A coupon card covers the tab on first open (送你超级吃货卡): its ✕ is
+  # an icon below 开心收下 — tap it only while the card shows.
+  - tap: "✕ under the 闪购 coupon card"
+    at: [0.455, 0.807, 0.555, 0.852]
+    when: ["开心收下", "超级吃货卡"]
+  - wait: 1
+    expect: "我的闪购"

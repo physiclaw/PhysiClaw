@@ -1,0 +1,21 @@
+name: shangou-search
+description: type a store or dish name into the 闪购 search and run it
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/shangou-search
+enabled: false
+inputs:
+  keyword:
+    description: what to search for on 淘宝闪购 — a store name, or a dish
+steps:
+  - tap: "the 闪购 search bar"                  # only ever tapped ON the 闪购 tab
+    at: [0.25, 0.11, 0.75, 0.145]
+  - send_to_clipboard: "{keyword}"
+  # The field sits at the very top; the Paste bubble comes up BELOW it,
+  # anchored on the press — a press further right than `store-search`'s,
+  # since this field starts with a category chip (全部·).
+  - long_press: "the search input field"
+    at: [0.32, 0.075, 0.55, 0.10]
+  - tap: "Paste"
+    at: [0.17, 0.12, 0.28, 0.15]
+  - tap: "搜索"
+    at: [0.85, 0.07, 0.93, 0.10]
+  - wait: 3

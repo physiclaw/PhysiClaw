@@ -1,0 +1,60 @@
+# taobao/hema-buy — groceries from 盒马 (Hema) inside Taobao, several
+# items in ONE order delivered in about 30 minutes: enter the storefront
+# once, `hema-add` per item, then `hema-checkout`.
+name: hema-buy
+description: >-
+  buy groceries from 盒马 (Hema) inside 淘宝, one order in ~30 min: fresh food,
+  fruit, vegetables, meat, dairy, drinks — when the buyer says 盒马 or 买菜,
+  or wants fresh ingredients now
+enabled: false  # rehearse on YOUR device, then enable
+inputs:
+  user_said:
+    description: what the user said, verbatim — the original message the task came from
+
+route:
+  - agent: parse
+    prompt: |
+      The buyer said: "{inputs.user_said}"
+      Later replies, if any: {ask.replies}
+      The list as it stood before those replies: {parse.items}
+      Already in the 盒马 cart from this errand: {hema-add.line}
+      Return the FULL list the buyer wants now, one product per line as
+      name + spec + quantity (e.g. 鲜牛奶 950ml ×2); leave out anything
+      they no longer want. Keep the buyer's language. Keep every line
+      of the earlier list the buyer did not change WORD FOR WORD — that
+      line is how the cart knows the item is already in it.
+      If the message names no concrete product, return escalate.
+    returns:
+      items: the full list now, one per line
+    think: off
+
+  - tell: ack
+    message: "收到，正在盒马为你挑选：\n{parse.items}"
+
+  - start: app
+    macro: launch
+
+  - page: home
+
+  - do: enter                     # the main search for 盒马 opens its storefront
+    with: {keyword: "盒马"}
+    macro: search
+
+  - page: hema-home
+
+  - run: hema-add
+    each: {item: parse.items}
+    miss: skip
+    limit: {rounds: 4}
+
+  - page: hema-home
+
+  - run: hema-checkout
+    with: {lines: "{hema-add.line}"}
+    revise: parse
+    limit: {revisions: 2}
+
+  - page: paid
+
+  - tell: report
+    message: "盒马已下单并完成支付：\n{hema-add.line}"

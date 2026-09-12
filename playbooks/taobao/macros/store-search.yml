@@ -1,0 +1,20 @@
+name: store-search
+description: type a keyword into a storefront's own search (盒马 or 天猫超市) and run it
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/store-search
+enabled: false
+inputs:
+  keyword:
+    description: what to search for inside the storefront, exactly as it should be typed
+steps:
+  - tap: "the storefront's search bar"        # under the address header
+    at: [0.15, 0.115, 0.75, 0.155]
+  - send_to_clipboard: "{keyword}"
+  # The search page's field sits at the very top, so iOS draws the Paste
+  # bubble BELOW it, anchored on where the press landed.
+  - long_press: "the search input field"
+    at: [0.15, 0.07, 0.60, 0.10]
+  - tap: "Paste"
+    at: [0.07, 0.12, 0.20, 0.15]
+  - tap: "搜索"
+    at: [0.82, 0.07, 0.94, 0.10]
+  - wait: 3

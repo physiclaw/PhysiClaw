@@ -1,0 +1,69 @@
+# taobao/tmall-checkout — the 天猫超市 store cart to ONE paid order; the
+# last move of `tmall-buy`, starting where its rounds end: the store's
+# page, whose footer total opens the cart sheet.
+name: tmall-checkout
+description: pay for the lines in the 天猫超市 (Tmall Supermarket) store cart inside Taobao in ONE order
+enabled: false  # rehearse on YOUR device, then enable
+scope: local
+inputs:
+  lines:
+    description: the cart lines to buy, one per line, with quantities
+
+route:
+  - page: tmall-home
+
+  - do: open-cart                 # the footer's running total opens the cart sheet
+    macro:
+      steps:
+        - tap: "到手约￥… (the cart footer's total)"
+          at: [0.15, 0.90, 0.45, 0.95]
+        - wait: 3
+          expect: "清空"
+
+  - page: store-cart
+
+  - do: nudge                     # the 全选 row sits under this phone's floating button
+    macro: nudge
+
+  - page: store-cart
+
+  - agent: tick
+    prompt: prompts.store-tick
+    tools: [tap, scroll]
+    give: [landmarks.close, macros.nudge]
+    never_tap:
+      - "去结算"
+      - "清空"
+      - {label: ["提交订单", "立即支付", "免密支付"], within: bottom}
+    returns:
+      ticked: the lines now ticked, one per line, as the cart shows them
+    limit: {calls: 10, scrolls: 4}
+    think: low
+    on_fail: stop
+
+  - page: store-cart
+
+  - do: settle
+    macro: settle
+
+  - page: store-order
+
+  - ask: confirm-pay
+    approve: payment
+    total_label: ["合计"]                       # 合计￥… beside 提交订单
+    message: "天猫超市下单：\n{tick.ticked}\n合计 ¥{ask.total}（以屏幕读数为准）。回复 好的 确认支付，或 不用 取消。"
+    yes: ["好的", "好", "可以", "确认"]
+    no: ["不用", "不要", "取消", "算了"]
+    denied: "好的，已取消付款，商品还留在购物车里。"
+    wait: 45
+    rounds: 3
+    think: off
+    on_fail: stop
+    resume: foreground            # the ask left the app — come back where it was
+
+  - do: pay
+    irreversible: payment
+    on_fail: handover
+    macro: submit-order
+
+  - page: paid

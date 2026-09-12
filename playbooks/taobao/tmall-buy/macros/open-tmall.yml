@@ -1,0 +1,10 @@
+name: open-tmall
+description: open the 天猫超市闪购 store from the 闪购 search results for 天猫超市 — its card comes first
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/open-tmall
+enabled: false
+steps:
+  - tap: "天猫超市闪购"
+    at: [0.15, 0.29, 0.70, 0.35]
+    require: {text: "天猫超市闪购", within: [0.10, 0.27, 0.80, 0.37]}
+    hint: "the first result is not the 天猫超市闪购 store — the results moved"
+  - wait: 4

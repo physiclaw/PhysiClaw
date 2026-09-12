@@ -5,9 +5,9 @@
 # macros (macros/launch.yml is the cold launch every route starts with).
 app: taobao
 description: >-
-  Buy one item on 淘宝 (Taobao) by keyword, deterministically — search →
-  pick by criteria → buy sheet → human payment gate → pay. Adopt for
-  淘宝 purchases without freeform driving.
+  Buy on 淘宝 (Taobao) deterministically: the marketplace by courier, plus
+  盒马 groceries, 天猫超市 staples and 淘宝闪购 takeout — search, pick, the
+  storefront's own cart, a human payment gate, pay.
 
 placeholders:
   CONTACT:
@@ -30,6 +30,9 @@ landmarks:
   select-all:
     label: "全选"                             # the cart footer's left checkbox + label
     at: [0.040, 0.858, 0.220, 0.896]         # the label sits at x 0.14–0.21
+  pairing-close:
+    label: "the ✕ on a storefront's 推荐搭配 sheet"   # 盒马 covers the item page with it
+    at: [0.884, 0.246, 0.977, 0.298]                # right after 加入购物车: an icon, top right
 
 # The pages every route lands on, declared once: anchors (semantics —
 # geometry is captured on YOUR device via `physiclaw playbooks pages
@@ -40,6 +43,7 @@ pages:
   home:
     anchors:
       - {text: ["推荐", "关注"], within: top}   # one anchor, two readings
+    forbid: ["我的闪购"]            # the 闪购外卖 tab prints the same header row
     recover: force_quit           # not this page → force_quit, then walk
                                   # again from the route top (start re-runs);
                                   # what you write is what runs
@@ -47,6 +51,7 @@ pages:
     anchors:                      # anchors are read exactly, so the band
       - {text: "综合", within: top}   # keeps feed text (组合, 热销) from
       - {text: "销量", within: top}   # standing in for them
+    forbid: ["综合排序", "超值外卖送到家"]   # a storefront's results say 综合排序 / 销量优先; the 闪购 results carry the 闪购 slogan
     scrollable: true
     recover:                      # one hand per reading of the deviation:
       covered: {tap: landmarks.dismiss}   # a coupon sheet over the results
@@ -60,7 +65,7 @@ pages:
     anchors:
       - {text: ["免密支付", "提交订单", "立即支付"], within: bottom}
       - {text: ["实付", "补贴后", "优惠后", "价格明细"], within: [0.0, 0.15, 1.0, 0.85]}  # the total row: below the header banner, above the pay bar
-    forbid: ["支付成功"]
+    forbid: ["支付成功", "外卖到家"]   # a 闪购 takeout order page prints 优惠后 and 立即支付 too
     recover:
       covered: {tap: landmarks.close}
       elsewhere: go_back
@@ -84,3 +89,95 @@ pages:
   paid:
     anchors:
       - ["支付成功", "付款成功", "购买成功"]
+
+  # ---- the three delivery storefronts, each with its own cart and order page ----
+  # 盒马 (Hema): the main search jumps straight into its storefront.
+  hema-home:
+    anchors:
+      - {text: "权益中心", within: [0.5, 0.10, 1.0, 0.30]}
+      - {text: "分类", within: bottom}          # the storefront's own tab bar
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: go_back
+    tries: 2
+  # 淘宝闪购: the home tab, its search results (store cards), a store's menu.
+  shangou-home:
+    anchors:
+      - {text: "闪购外卖", within: top}
+      - {text: "我的闪购", within: [0.5, 0.10, 1.0, 0.30]}
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: go_back
+    tries: 2
+  shangou-results:                # the search header's slogan under the query; the chips,
+    anchors:                      # the sort row and the cards all vary by query
+      - {text: "超值外卖送到家", within: [0.0, 0.10, 0.6, 0.16]}
+    forbid: ["我的闪购", "历史搜索"]   # the 闪购 tab itself; the search-entry page keeps the slogan
+    scrollable: true
+    recover:
+      elsewhere: go_back
+    tries: 2
+  shangou-store:                  # a restaurant's or shop's menu: 外送/自取 up top
+    anchors:
+      - {text: "外送", within: top}
+      - {text: "自取", within: top}
+    scrollable: true
+    recover:
+      covered: {tap: landmarks.dismiss}
+      elsewhere: go_back
+    tries: 2
+  shangou-order:                  # the takeout order page: pays from its own button
+    anchors:
+      - {text: "外卖到家", within: top}
+      - {text: "立即支付", within: bottom}
+    forbid: ["支付成功"]
+    recover:
+      elsewhere: go_back
+    tries: 2
+  # 天猫超市闪购: a store inside 闪购, reached by searching its name there.
+  tmall-home:
+    anchors:
+      - {text: "天猫超市闪购", within: top}
+      - {text: "全部商品", within: [0.0, 0.15, 1.0, 0.35]}
+    forbid: ["清空"]                # the cart sheet over the storefront leaves the header showing
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: {macro: store-back}
+    tries: 3
+  # Shared by 盒马 and 天猫超市: their in-store search results, item page,
+  # cart and order page read alike, and the walk knows which store it is in.
+  store-order:                    # 确认订单 (盒马) / 闪购天猫超市闪购 (天猫超市), 提交订单 below
+    anchors:
+      - {text: ["确认订单", "天猫超市闪购"], within: [0.0, 0.0, 1.0, 0.60]}
+      - {text: "提交订单", within: bottom}
+    forbid: ["支付成功"]
+    recover:
+      elsewhere: go_back
+    tries: 2
+  store-results:
+    anchors:
+      - {text: "综合排序", within: top}
+      - {text: "销量优先", within: top}
+    scrollable: true
+    recover:
+      elsewhere: go_back
+    tries: 2
+  store-detail:                   # an item page: 加入购物车 and the 店铺 tab, no 立即购买
+    anchors:
+      - {text: "加入购物车", within: bottom}
+      - {text: "店铺", within: bottom}
+    # The marketplace's detail page prints 立即购买; the 闪购 tab's feed
+    # prints tiles with 加入购物车 and a 店铺 link in the same band.
+    forbid: ["立即购买", "领券购买", "我的闪购", "闪购外卖"]
+    recover:
+      covered: {tap: landmarks.close}
+      elsewhere: go_back
+    tries: 2
+  store-cart:                     # the storefront's cart: 清空 up top, 去结算 below
+    anchors:
+      - {text: "清空", within: [0.5, 0.10, 1.0, 0.80]}
+      - {text: "去结算", within: bottom}
+    scrollable: true
+    recover:
+      covered: {tap: landmarks.close}
+    tries: 2

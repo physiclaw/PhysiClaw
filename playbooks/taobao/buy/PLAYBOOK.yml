@@ -3,7 +3,7 @@
 # shares; hands only this route uses embed in it or sit in this
 # folder's macros/, shared ones are pack macros (../macros/<name>.yml).
 name: buy                       # = this folder's name; referenced as taobao/buy
-description: buy one item on Taobao by keyword
+description: buy one item on 淘宝 (Taobao) by keyword, shipped by courier — the default for a product that names no store
 enabled: false  # rehearse on YOUR device, then enable
 inputs:
   user_said:

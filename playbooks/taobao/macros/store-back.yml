@@ -1,0 +1,19 @@
+name: store-back
+description: pop toward the 天猫超市闪购 storefront from its item, results or search-entry page — the item page and the search-entry page (history + keyboard) take their own top-left arrow, the results page a swipe
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/store-back
+enabled: false
+steps:
+  # The item page's gallery swallows an edge swipe now and then, so its
+  # arrow pops it; the search-entry page never pops on a swipe. Each
+  # tap is guarded by the page it belongs to, so the same hand runs
+  # from any of the three pages.
+  - tap: "the item page's top-left arrow"
+    at: [0.008, 0.064, 0.123, 0.117]
+    when: ["加入购物车"]
+  - wait: 2
+  - go_back
+  - wait: 1
+  - tap: "the search page's back arrow"
+    at: [0.008, 0.064, 0.123, 0.117]
+    when: ["历史搜索"]
+  - wait: 2

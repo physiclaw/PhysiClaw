@@ -1,0 +1,74 @@
+# taobao/hema-checkout — the 盒马 cart to ONE paid order; the last move
+# of `hema-buy`, starting where its rounds end: the storefront's home.
+name: hema-checkout
+description: pay for the lines in the 盒马 (Hema) cart inside Taobao in ONE order
+enabled: false  # rehearse on YOUR device, then enable
+scope: local
+inputs:
+  lines:
+    description: the cart lines to buy, one per line, with quantities
+
+route:
+  - page: hema-home
+
+  - do: open-cart                 # the storefront's own tab bar
+    macro:
+      steps:
+        - tap: "购物车"
+          at: [0.55, 0.925, 0.72, 0.965]
+        - wait: 3
+          expect: "去结算"
+
+  - page: store-cart
+
+  - do: nudge                     # the 全选 row sits under this phone's floating button
+    macro: nudge
+
+  - page: store-cart
+
+  - agent: tick
+    prompt: prompts.store-tick
+    tools: [tap, scroll]
+    give: [landmarks.close, macros.nudge]
+    never_tap:
+      - "去结算"
+      - "清空"
+      - {label: ["提交订单", "立即支付", "免密支付"], within: bottom}
+    returns:
+      ticked: the lines now ticked, one per line, as the cart shows them
+    limit: {calls: 10, scrolls: 4}
+    think: low
+    on_fail: stop
+
+  - page: store-cart
+
+  - do: settle                    # 盒马's footer sits higher than the others'
+    macro:
+      steps:
+        - tap: "去结算"
+          at: [0.74, 0.86, 0.92, 0.91]
+          require: {text: "去结算", within: bottom}
+          hint: "no 去结算 in the footer — nothing is ticked, or the store is below its 起送"
+        - wait: 5                # the order page is slow to build
+
+  - page: store-order
+
+  - ask: confirm-pay
+    approve: payment
+    total_label: ["合计"]                       # 合计：￥… in the footer
+    message: "盒马下单：\n{tick.ticked}\n合计 ¥{ask.total}（以屏幕读数为准）。回复 好的 确认支付，或 不用 取消。"
+    yes: ["好的", "好", "可以", "确认"]
+    no: ["不用", "不要", "取消", "算了"]
+    denied: "好的，已取消付款，商品还留在购物车里。"
+    wait: 45
+    rounds: 3
+    think: off
+    on_fail: stop
+    resume: foreground            # the ask left the app — come back where it was
+
+  - do: pay
+    irreversible: payment
+    on_fail: handover             # money may have moved: the model verifies and reports
+    macro: submit-order
+
+  - page: paid

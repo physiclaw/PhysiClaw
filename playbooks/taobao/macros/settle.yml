@@ -1,0 +1,10 @@
+name: settle
+description: press 去结算 on a storefront cart or a 闪购 store's cart bar, landing on its order page
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/settle
+enabled: false
+steps:
+  - tap: "去结算"
+    at: [0.74, 0.90, 0.92, 0.955]
+    require: {text: "去结算", within: bottom}
+    hint: "no 去结算 in the footer — nothing is ticked or added, or the store is below its 起送"
+  - wait: 5                                  # the order page is slow to build

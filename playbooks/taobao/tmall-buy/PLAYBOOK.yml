@@ -1,0 +1,71 @@
+# taobao/tmall-buy — supermarket staples from 天猫超市 inside Taobao,
+# several items in ONE order delivered within about 4 hours: open the
+# store once (through 闪购's search), `tmall-add` per item, then
+# `tmall-checkout`.
+name: tmall-buy
+description: >-
+  buy supermarket staples from 天猫超市 (猫超) inside 淘宝, one order in ~4 h:
+  packaged food, snacks, milk, rice, oil, tissue, household goods — when the
+  buyer says 天猫超市 / 猫超 or wants staples today
+enabled: false  # rehearse on YOUR device, then enable
+inputs:
+  user_said:
+    description: what the user said, verbatim — the original message the task came from
+
+route:
+  - agent: parse
+    prompt: |
+      The buyer said: "{inputs.user_said}"
+      Later replies, if any: {ask.replies}
+      The list as it stood before those replies: {parse.items}
+      Already in the 天猫超市 cart from this errand: {tmall-add.line}
+      Return the FULL list the buyer wants now, one product per line as
+      name + spec + quantity (e.g. 金典纯牛奶 250ml*24盒 ×1); leave out
+      anything they no longer want. Keep the buyer's language. Keep every
+      line of the earlier list the buyer did not change WORD FOR WORD —
+      that line is how the cart knows the item is already in it.
+      If the message names no concrete product, return escalate.
+    returns:
+      items: the full list now, one per line
+    think: off
+
+  - tell: ack
+    message: "收到，正在天猫超市为你挑选：\n{parse.items}"
+
+  - start: app
+    macro: launch
+
+  - page: home
+
+  - do: open-shangou
+    macro: open-shangou
+
+  - page: shangou-home
+
+  - do: find-store
+    with: {keyword: "天猫超市"}
+    macro: shangou-search
+
+  - page: shangou-results
+
+  - do: open-store
+    macro: open-tmall
+
+  - page: tmall-home
+
+  - run: tmall-add
+    each: {item: parse.items}
+    miss: skip
+    limit: {rounds: 4}
+
+  - page: tmall-home
+
+  - run: tmall-checkout
+    with: {lines: "{tmall-add.line}"}
+    revise: parse
+    limit: {revisions: 2}
+
+  - page: paid
+
+  - tell: report
+    message: "天猫超市已下单并完成支付：\n{tmall-add.line}"

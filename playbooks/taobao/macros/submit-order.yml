@@ -1,0 +1,15 @@
+name: submit-order
+description: 提交订单 on a storefront order page, then the cashier's button when one shows
+# Disabled until rehearsed on YOUR device: physiclaw macros run taobao/submit-order
+enabled: false
+steps:
+  - tap: "提交订单"
+    at: [0.72, 0.905, 0.94, 0.955]
+  - wait: 4
+  # The cashier after 提交订单 is unrecorded on both storefronts: this
+  # presses it only while one of its buttons shows (a screen that cannot
+  # be read skips it — `when` withholds).
+  - tap: ["立即支付", "确认支付"]
+    at: [0.30, 0.90, 0.70, 0.96]
+    when: ["立即支付", "确认支付"]
+  - wait: 4

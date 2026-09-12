@@ -2,7 +2,7 @@
 # (`add`, once per item), then one checkout. Read top to bottom: understand,
 # acknowledge, gather each, check out, report.
 name: buy-together
-description: buy several items on 淘宝 (Taobao) in ONE order — each into the cart, then one checkout
+description: buy several items on 淘宝 (Taobao) in ONE order by courier — the default for a list of products naming no store
 enabled: false  # rehearse on YOUR device, then enable
 inputs:
   user_said:

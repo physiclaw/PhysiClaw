@@ -26,6 +26,13 @@ steps:
     at: [0.79, 0.030, 0.87, 0.065]
     when: {text: "跳过", within: [0.70, 0.0, 1.0, 0.12]}
   - wait: 4
+  # Taobao also restores the last TAB: a walk that ended on 闪购外卖 comes
+  # back on it, and that tab is not the feed. Its header still holds the
+  # 推荐 tab — press it while the tab's own row (我的闪购) shows.
+  - tap: "推荐"
+    at: [0.14, 0.055, 0.26, 0.095]
+    when: ["我的闪购"]
+  - wait: 2
   # Taobao restores the page it was quit on ONCE: the first cold launch
   # after a force_quit may come up on that page, and the launch after
   # that on the feed. So the feed already showing skips the second
@@ -43,8 +50,12 @@ steps:
   - tap: "跳过"
     at: [0.79, 0.030, 0.87, 0.065]
     when: {text: "跳过", within: [0.70, 0.0, 1.0, 0.12]}
-  # The mark re-peeks AFTER the sleep — THIS fresh view is what the home
-  # verify reads (a tap's own view is grabbed mid-launch; a post-ad cold
-  # render needs the slack).
+  # A post-ad cold render needs the slack before the tab row is read.
   - wait: 4
+  - tap: "推荐"
+    at: [0.14, 0.055, 0.26, 0.095]
+    when: ["我的闪购"]
+  # The mark re-peeks AFTER the sleep — THIS fresh view is what the home
+  # verify reads, once the tab switch has settled.
+  - wait: 2
   - mark: feed
