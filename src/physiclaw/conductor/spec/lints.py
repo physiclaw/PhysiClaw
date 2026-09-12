@@ -10,6 +10,8 @@ that let a walk start and then quietly under-perform — legal, and the
 author is told the cost rather than refused.
 """
 
+from collections.abc import Sequence
+
 from physiclaw.common.bbox import center_of
 from physiclaw.common.listing import Element, Screen, format_elements
 from physiclaw.common.paths import PACK_PROMPTS_DIRNAME, PROMPT_SUFFIX
@@ -49,7 +51,7 @@ def unrun_playbooks(specs: list[Playbook]) -> list[str]:
     ]
 
 
-def flatten(nodes: list[Node]) -> list[Node]:
+def flatten(nodes: Sequence[Node]) -> list[Node]:
     """The route with every `run` replaced by the moves of the playbook
     it runs — what the adjacency lints read, since a run's rounds ARE
     those moves at walk time.
