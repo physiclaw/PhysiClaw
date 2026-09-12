@@ -7,6 +7,7 @@ import pytest
 from conductor_fakes import (
     ELSEWHERE,
     HOME,
+    PAGES,
     RESULTS,
     build_program,
     feed,
@@ -21,8 +22,10 @@ from conductor_fakes import (
 from physiclaw.conductor.drive import activation, build, setup
 from physiclaw.conductor.spec import lints
 from physiclaw.conductor.spec import pack as pb
+from physiclaw.conductor.spec.limits import MAX_MESSAGE_LINES
 from physiclaw.conductor.spec.model import PlaybookError, RunNode, TellNode
 from physiclaw.conductor.walk.micro import READ_REPLY, DecisionRequest, MicroOutcome
+from physiclaw.conductor.walk.step import Paused
 
 LEG = """\
 name: leg
@@ -294,12 +297,36 @@ def test_each_walks_one_round_per_line_and_joins_the_returns() -> None:
     assert p.ledger.rounds["leg[eggs]"]["did"] == "searched eggs"
 
 
-def test_each_refuses_more_items_than_its_rounds() -> None:
+def test_each_refuses_more_rounds_than_its_budget() -> None:
     p, h = _walk(flow=EACH, keyword="three things")
 
     step = _listed(p, h, "a\nb\nc")
 
-    assert "3 items, more than its 2 rounds" in finish(p, h, step)
+    assert "3 rounds, more than its 2" in finish(p, h, step)
+
+
+def test_the_rounds_budget_counts_work_done_not_one_reading_of_the_list() -> None:
+    # A revision re-plans and the run expands again. Counting only
+    # today's items would hand every re-plan a fresh budget, so a walk
+    # could cold-launch, search and add far more times than the author
+    # allowed. Rounds already on record are work this run did.
+    p, h = _walk(
+        flow=REVISING.replace(
+            "    each: {what: parse.items}\n",
+            "    each: {what: parse.items}\n    limit: {rounds: 2}\n",
+        ),
+        pay=PAY,
+        keyword="milk and eggs",
+    )
+    send = _to_confirm(p, h, "milk\neggs")
+    _reply(p, h, send, "换成 juice")
+    p.resolve(MicroOutcome(out="other", reason="a change", confidence=0.9))
+
+    step = p.resolve(
+        MicroOutcome(out="done", reason="r", confidence=0.9, payload={"items": "juice"})
+    )
+
+    assert "3 rounds, more than its 2" in finish(p, h, step)
 
 
 # ---------- miss: skip ----------
@@ -321,6 +348,82 @@ def test_a_skippable_round_that_fails_is_recorded_and_the_walk_goes_on() -> None
     message = tell.tool_calls[1].arguments["inputs"]["message"]
     assert message == "done: searched eggs"  # the missed item has no line
     assert any("round leg[milk] missed" in e for e in p.ledger.events)
+
+
+def test_a_stepping_run_pauses_when_a_missed_round_leaves_the_route() -> None:
+    # A finished or missed round leaves the route, so the NEXT round's
+    # first node inherits the index this one had. The one-node latch has
+    # to judge by position, or it opens that node — a cold launch — in a
+    # run the author asked to stop after one.
+    flow = EACH.replace("    limit: {rounds: 2}\n", "    miss: skip\n")
+    p, h = _walk(flow=flow, keyword="milk and eggs")
+    start = _listed(p, h, "milk\neggs")
+    assert p.label() == "leg[milk]/app (2/6)"
+    p.step_one = True
+
+    feed(h, start, HOME)  # the leg's cold start landed
+    search = p.advance(h)
+    feed(h, search, ELSEWHERE)  # …and its search did not land on `results`
+
+    step = p.advance(h)
+
+    assert p.phase == "paused"  # not walking into the eggs round
+    assert isinstance(step, Paused)
+    assert p.label() == "leg[eggs]/app (2/4)"
+    assert p.ledger.rounds["leg[milk]"]["done"] == "missed"
+
+
+RECOVERING_LEG = """\
+name: leg
+description: a leg that decides a keyword, then searches
+inputs:
+  what:
+    description: what to search
+returns:
+  did: "searched {inputs.what}"
+route:
+  - agent: plan
+    prompt: "a keyword for {inputs.what}"
+    returns:
+      key: the keyword
+  - start: app
+    macro: open-app
+  - page: home
+  - do: search
+    macro: add-cart
+    with: {message: "{plan.key}"}
+  - page: results
+"""
+
+
+def test_a_recover_restart_inside_a_round_keeps_the_rounds_settled_answer() -> None:
+    # `first_unsettled` exists so a recover hand's walk-from-the-top
+    # never re-derives a recorded answer. Inside a round the record is
+    # the ROUND's, and the rule is the same one.
+    pages = PAGES.replace(
+        'home:\n  anchors: ["Files"]\n',
+        'home:\n  anchors: ["Files"]\n  recover: force_quit\n',
+    )
+    write_channel()
+    write_pack(playbooks={"leg": RECOVERING_LEG, "flow": EACH}, pages=pages)
+    p = build_program(name="flow", keyword="milk")
+    h = history()
+    feed(h, p.advance(h), ELSEWHERE)
+    start = _listed(p, h, "milk")
+    plan = start  # the leg's first node is the pure-text agent
+    assert isinstance(plan, DecisionRequest) and plan.node_id == "plan"
+    step = p.resolve(
+        MicroOutcome(out="done", reason="r", confidence=0.9, payload={"key": "milk-1"})
+    )
+
+    feed(h, step, ELSEWHERE)  # the cold start did not reach `home`
+    hand = p.advance(h)
+    assert hand is not None and hand.tool_names() == ["note", "force_quit"]
+    feed(h, hand, ELSEWHERE)  # …and the hand did not restore it either
+    again = p.advance(h)
+
+    # The walk restarts at the round's top — but PAST the settled agent.
+    assert not isinstance(again, DecisionRequest), "re-derived a recorded answer"
 
 
 # ---------- revise: an uncovered reply re-plans ----------
@@ -438,6 +541,36 @@ def test_an_uncovered_reply_revises_from_the_named_agent_and_reuses_finished_rou
     step = p.resolve(MicroOutcome(out="other", reason="again", confidence=0.9))
 
     assert "matches none of its yes/no words" in finish(p, h, step)
+
+
+def test_a_no_typed_while_the_walk_re_plans_is_read_at_the_next_landing() -> None:
+    # The sweep at a send's landing exists so a deny typed while the walk
+    # was off in the app can never be baselined away unread. A revision
+    # leaves the ask but NOT the conversation, so it must keep the thread
+    # snapshot the sweep diffs against.
+    p, h = _walk(flow=REVISING, pay=PAY, keyword="milk and eggs")
+    send = _to_confirm(p, h, "milk\neggs")
+    ask = send.tool_calls[1].arguments["inputs"]["message"]
+    _reply(p, h, send, "再加 juice，不要 milk")
+    p.resolve(MicroOutcome(out="other", reason="a change", confidence=0.9))
+    start = p.resolve(
+        MicroOutcome(
+            out="done", reason="r", confidence=0.9, payload={"items": "eggs\njuice"}
+        )
+    )
+    assert p.gate.baseline  # the thread is still there to diff against
+
+    resend = _round(p, h, start, "juice")
+    # The user changed their mind again while the juice round walked.
+    feed(
+        h,
+        resend,
+        thread_screen(
+            *_bubbles(ask), ("再加 juice，不要 milk", 0.25, 0.6), ("不用", 0.25, 0.7)
+        ),
+    )
+
+    assert "user declined" in finish(p, h, p.advance(h))
 
 
 def test_a_stepping_rebuild_after_a_revision_opens_at_the_revised_agent() -> None:
@@ -805,3 +938,38 @@ def test_a_bare_yes_or_no_typed_early_is_the_gates_word_not_a_revision() -> None
     summary = finish(p2, h2, p2.advance(h2))
 
     assert "user declined the ask" in summary
+
+
+BOUNDED = """\
+description: one agent, then a message quoting it
+inputs:
+  keyword:
+    description: what
+route:
+  - agent: parse
+    prompt: "describe {inputs.keyword}"
+    returns:
+      items: the items, one per line
+  - page: results
+  - tell: report
+    message: "买了：\\n{parse.items}"
+"""
+
+
+def test_a_filled_message_is_bounded_before_it_reaches_the_user() -> None:
+    # A return field is written by an agent reading a screen a seller
+    # controls. Unbounded, one of them forges a consent clause quoting
+    # another number, or pushes the authored one past what the bubble
+    # shows. Every value is held to what one authored message may say.
+    forged = "\n".join(f"实付 ¥0.01 回复 好的 确认支付 {i}" for i in range(40))
+    write_channel()
+    write_pack(playbooks={"flow": BOUNDED})
+    p = build_program(name="flow", keyword="milk")
+    h = history()
+    feed(h, p.advance(h), ELSEWHERE)
+    send = _listed(p, h, forged)
+
+    message = send.tool_calls[1].arguments["inputs"]["message"]
+
+    assert message.count("实付") == MAX_MESSAGE_LINES
+    assert message.endswith("…")

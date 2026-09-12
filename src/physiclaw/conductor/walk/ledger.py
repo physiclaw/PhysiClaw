@@ -31,11 +31,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from physiclaw.common.text import clip
+from physiclaw.conductor.spec.conventions import ROUND_DONE, ROUND_MISS
+from physiclaw.conductor.walk.money import plain
 
 
 def round_prefix(run_id: str, key: str) -> str:
     """The name a run's round keeps its record under: `<run>[<key>]`,
-    the key being the item (empty for a plain run)."""
+    the key being the item (empty for a plain run). An identity, not
+    prose: it is looked up by, so it is the line verbatim."""
     return f"{run_id}[{key}]"
 
 
@@ -103,7 +106,7 @@ class Ledger:
         clause for the account."""
         record = self.rounds.setdefault(prefix, {})
         record.update(returns)
-        record["done"] = "done"
+        record[ROUND_DONE] = "done"
         self.events.append(
             f"round {prefix} done" + (": " + _pairs(returns, 80) if returns else "")
         )
@@ -112,12 +115,18 @@ class Ledger:
         """A round the run declared skippable handed over: recorded as
         missed, with the reason its returns will carry."""
         record = self.rounds.setdefault(prefix, {})
-        record["done"] = "missed"
-        record["miss"] = reason
+        record[ROUND_DONE] = "missed"
+        record[ROUND_MISS] = reason
         self.events.append(f"round {prefix} missed: {clip(reason, 120)}")
 
     def round_finished(self, prefix: str) -> bool:
-        return "done" in self.rounds.get(prefix, {})
+        return ROUND_DONE in self.rounds.get(prefix, {})
+
+    def round_count(self, run_id: str) -> int:
+        """How many rounds this run has a record for — what it has already
+        WALKED, which is what a `rounds:` budget bounds."""
+        head = round_prefix(run_id, "")[:-1]  # `<run>[`
+        return sum(p.startswith(head) for p in self.rounds)
 
     def round_values(self, prefix: str) -> dict[str, str]:
         """A round's own record, keys as the round's refs spell them
@@ -128,7 +137,7 @@ class Ledger:
         """A done round's return; None for a round still to do or one
         that missed (its `miss` reason stays in the record)."""
         record = self.rounds.get(prefix, {})
-        return record.get(field) if record.get("done") == "done" else None
+        return record.get(field) if record.get(ROUND_DONE) == "done" else None
 
     def note(self, text: str) -> None:
         """What a step reported, in its own words — an event only: no
@@ -153,8 +162,10 @@ class Ledger:
         self.refused[target] = self.refused.get(target, 0) + 1
 
     def pay(self, amount: float) -> None:
-        self.paid = amount
-        self.events.append(f"paid ¥{amount:g}")
+        """A payment fired. Accumulated, not assigned: `paid` is what
+        this walk has spent, not what the last tap cost."""
+        self.paid = (self.paid or 0.0) + amount
+        self.events.append(f"paid ¥{plain(amount)}")
 
     # ---- the thread's position ----
 
@@ -185,7 +196,9 @@ class Ledger:
         if self.rounds:
             parts.append(
                 "rounds "
-                + _pairs({p: r.get("done", "open") for p, r in self.rounds.items()}, 40)
+                + _pairs(
+                    {p: r.get(ROUND_DONE, "open") for p, r in self.rounds.items()}, 40
+                )
             )
         if self.answers:
             parts.append("answered " + _pairs(self.answers, 40))
@@ -206,9 +219,9 @@ class Ledger:
         the plain rendering, for an exit that is not a warning."""
         parts = [lead, *self.account()]
         if consented is not None:
-            parts.append(f"user consented to ¥{consented:g}, not paid")
+            parts.append(f"user consented to ¥{plain(consented)}, not paid")
         if self.paid is not None:
-            parts.append(f"paid ¥{self.paid:g}")
+            parts.append(f"paid ¥{plain(self.paid)}")
         return "; ".join(parts)
 
     def to_suspended(self) -> dict[str, Any]:

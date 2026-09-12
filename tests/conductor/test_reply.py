@@ -239,3 +239,44 @@ def test_any_deny_is_the_sweeps_rule() -> None:
     assert reply.any_deny(["不要", "顺便查下天气"], YES, NO) is True
     assert reply.any_deny(["好的", "嗯"], YES, NO) is False
     assert reply.any_deny([], YES, NO) is False
+
+
+# ---------- the ask's own band: what counts as OUR bubble ----------
+
+
+ASK = "一单下单：\n牛奶 1L ×2\n实付 ¥40.8。回复 好的 确认支付，或 不用 取消。"
+
+
+def test_short_leading_lines_of_our_own_bubble_are_not_a_reply() -> None:
+    # A multi-line bubble is wide; its short leading lines sit inside it
+    # and OCR LEFT of center, above the lines that anchor the band. Read
+    # as incoming they become a reply the ask's words do not cover — and
+    # a run that declares `revise:` then re-plans the errand from the
+    # text the walk just sent itself.
+    screen = make_screen(
+        ("一单下单：", 0.25, 0.31),
+        ("牛奶 1L ×2", 0.25, 0.34),
+        ("实付 ¥40.8。回复 好的 确认支付，或 不用 取消。", 0.70, 0.37),
+    )
+
+    assert reply.ask_band(screen.rows, ASK) == (0.31, 0.37)
+    assert _new(screen.rows, {"earlier"}, ASK, after_ask=False) == []
+
+
+def test_a_reply_repeating_one_of_the_asks_own_words_still_counts() -> None:
+    # The band grows UPWARD only: "不用" is in the ask's own text, so
+    # growing downward over it would swallow the cancellation.
+    screen = make_screen(
+        ("一单下单：", 0.25, 0.30),
+        ("实付 ¥40.8。回复 好的 确认支付，或 不用 取消。", 0.70, 0.34),
+        ("不用", 0.25, 0.37),
+    )
+
+    assert _new(screen.rows, set(), ASK) == ["不用"]
+
+
+def test_the_band_is_none_when_our_message_is_not_on_the_thread() -> None:
+    screen = make_screen(("好的", 0.25, 0.40))
+
+    assert reply.ask_band(screen.rows, ASK) is None
+    assert _new(screen.rows, set(), ASK) == ["好的"]  # the baseline still decides

@@ -139,6 +139,60 @@ def _is_key(label: str) -> bool:
     return len(label) == 1 and label.isascii() and label.isalpha()
 
 
+def ask_band(rows: tuple[Element, ...], own_text: str) -> tuple[float, float] | None:
+    """Where OUR just-sent message sits on the thread — the y of its
+    first and last recognized line — or None when we cannot find it.
+
+    Anchored on the lines that render right of center, then grown UPWARD
+    over rows that are our own text: a multi-line bubble's short leading
+    lines sit inside a wide bubble and can OCR left of center, above the
+    lines that anchored the band. Never grown downward — a reply typed
+    right under the ask may repeat one of the ask's own no words (the
+    ask names them), and swallowing that is the one thing the read
+    around this must not do (the tail below the band has its own,
+    tighter rule).
+
+    None is a real answer, not a failure: the thread may have scrolled
+    past it. What a caller may conclude from that is the caller's rule —
+    `new_incoming` falls back to the baseline, and the ask step refuses
+    to read consent it cannot place."""
+    own = normalize(own_text)
+    if not own:
+        return None
+    top: float | None = None
+    bottom: float | None = None
+    for row in rows:
+        label = normalize(row.label)
+        if not label:
+            continue
+        c = center_of(row.bbox)
+        if c is None or c[0] <= INCOMING_MAX_CX:
+            continue  # ask lines render as OUR bubbles, right of center
+        if own in label or (len(label) >= _OWN_FRAGMENT_MIN and label in own):
+            top = c[1] if top is None else min(top, c[1])
+            bottom = c[1] if bottom is None else max(bottom, c[1])
+    if top is None or bottom is None:
+        return None
+    # Rows of our own text above the anchor, nearest first: the band
+    # climbs them while each is within one wrap gap of the last.
+    ours = sorted(
+        (
+            c[1]
+            for row in rows
+            if (label := normalize(row.label))
+            and label in own
+            and (c := center_of(row.bbox)) is not None
+            and c[1] < top
+        ),
+        reverse=True,
+    )
+    for y in ours:
+        if top - y > _WRAP_GAP:
+            break
+        top = y
+    return (top, bottom)
+
+
 def new_incoming(
     rows: tuple[Element, ...],
     baseline: AbstractSet[str],
@@ -146,8 +200,21 @@ def new_incoming(
     *,
     after_ask: bool = True,
 ) -> list[str]:
+    """`read_incoming`'s messages alone — for readers that do not act on
+    whether the ask was placed."""
+    return read_incoming(rows, baseline, own_text, after_ask=after_ask)[0]
+
+
+def read_incoming(
+    rows: tuple[Element, ...],
+    baseline: AbstractSet[str],
+    own_text: str,
+    *,
+    after_ask: bool = True,
+) -> tuple[list[str], bool]:
     """The user's new bubbles since the baseline snapshot, in screen
-    order. Incoming = left of center (our own lines sit right, so they
+    order, and whether our own ask was PLACED on the thread — the
+    positional rule below stood on it — or the baseline had to decide. Incoming = left of center (our own lines sit right, so they
     never enter the candidate set).
 
     `after_ask` (the default) reads THIS ask's reply: when the ask
@@ -167,19 +234,8 @@ def new_incoming(
             r for r in rows if (c := center_of(r.bbox)) is not None and c[1] < floor
         )
     own = normalize(own_text)
-    ask_top: float | None = None
-    ask_bottom: float | None = None
-    if own:
-        for row in rows:
-            label = normalize(row.label)
-            if not label:
-                continue
-            c = center_of(row.bbox)
-            if c is None or c[0] <= INCOMING_MAX_CX:
-                continue  # ask lines render as OUR bubbles, right of center
-            if own in label or (len(label) >= _OWN_FRAGMENT_MIN and label in own):
-                ask_top = c[1] if ask_top is None else min(ask_top, c[1])
-                ask_bottom = c[1] if ask_bottom is None else max(ask_bottom, c[1])
+    band = ask_band(rows, own_text)
+    ask_top, ask_bottom = band if band is not None else (None, None)
     out: list[tuple[float, str]] = []
     for row in rows:
         label = row.label.strip()
@@ -204,7 +260,7 @@ def new_incoming(
     # Screen order top to bottom is thread order oldest to newest — the
     # last one is the answer. A bubble's rows are one message: the
     # whole-message rule must see "买两袋，好的" whole, not its last line.
-    return _bubbles(sorted(out, key=lambda x: x[0]))
+    return _bubbles(sorted(out, key=lambda x: x[0])), band is not None
 
 
 def _bubbles(rows: list[tuple[float, str]]) -> list[str]:

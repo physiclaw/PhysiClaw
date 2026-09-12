@@ -312,7 +312,8 @@ One directory per app, self-contained — everything its playbooks use:
         PLAYBOOK.yml       name (referenced as <app>/<name>, and `name:`
                            inside must agree) and the body is the
                            playbook: name, description, enabled,
-                           inputs, route (page → move → page → move).
+                           inputs, route (page → move → page → move),
+                           and optionally returns and scope.
         macros/<n>.yml     this route's own recorded hands (dispatch
                            <app>/<name>.<n>); a name may not also be a
                            pack macro's — there is no lookup order.
@@ -328,14 +329,26 @@ directory ships some, and when physiclaw runs from a source checkout
 those load directly — home packs shadow same-named tree packs).
 
 The route's shape IS the contract the checker enforces: an optional
-prefix of pure-text `agent` steps and one `start` (the unconditional
-cold-launch) opens the route, the first page is the start contract,
-every `do` — and every acting `agent` episode — is followed by the
-page it lands on, `{{inputs.name}}` refs name declared inputs and
-`{{move.field}}` refs name EARLIER agent outputs, moves run forward
-only, and `irreversible: payment` moves (do and agent alike) directly
-follow an `ask` with `approve: payment` — the total the user consented
-to is the fire-time bound.
+prefix of pure-text `agent` steps, `tell`s and self-starting `run`s
+plus one `start` (the unconditional cold-launch) opens the route, the
+first page is the start contract, every `do` — and every acting
+`agent` episode — is followed by the page it lands on,
+`{{inputs.name}}` refs name declared inputs and `{{move.field}}` refs
+name EARLIER agent outputs or the quoting step's own last answer, and
+`irreversible: payment` moves (do and agent alike) directly follow an
+`ask` with `approve: payment` — the total the user consented to is the
+fire-time bound.
+
+A `run: <playbook>` walks another playbook of this pack as one move:
+`with:` fills its inputs, `each: {{<input>: <move>.<field>}}` walks it
+once per line of a list an earlier agent returned, `miss: skip`
+records a failed round and goes on, `revise: <agent>` re-plans from
+that agent when a reply the ask's words miss comes back, and
+`limit: {{rounds, revisions}}` bounds both. The playbook it runs
+declares `returns: {{field: template}}`, read downstream as
+`{{<run>.field}}` — the lines of its finished rounds — and may declare
+`scope: local` to be walked only by its own pack's playbooks, never
+offered on its own.
 
 What the playbook declares is what runs — no more, no less. An
 `agent` step is the model's, inside the author's fence: `prompt:` is

@@ -418,6 +418,12 @@ async def step(
         # so a re-run really re-runs it (the walk starts past any
         # SETTLED pure-text node).
         state["idx"] = node_index(spec, at)
+        # …including the round it was in. The stored offset is read
+        # against whatever run the new index lands on, so leaving it
+        # behind seats the cursor INSIDE that run at the old node —
+        # a jump backwards onto `run: checkout` would reopen its
+        # payment move, with the consent an abandoned ask keeps.
+        state["round"] = None
         state.update(Gate.from_suspended(state).abandon_ask().to_suspended())
         state["outputs"] = {
             k: v for k, v in state["outputs"].items() if not k.startswith(f"{at}.")

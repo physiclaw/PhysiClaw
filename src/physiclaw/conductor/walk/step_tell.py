@@ -26,7 +26,9 @@ class TellStep(Step[TellNode]):
         # so it declares no words.
         text = str(
             fill_refs(
-                node.message, walk.ref_values(), where=f"tell {node.id!r} `message`"
+                node.message,
+                speak.for_message(walk.ref_values()),
+                where=f"tell {node.id!r} `message`",
             )
         )
         return speak.send(walk, KIND_TELL_SENT, text)

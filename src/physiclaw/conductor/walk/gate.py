@@ -38,7 +38,7 @@ class Gate:
     revisions: int = 0
 
     def abandon_ask(self) -> "Gate":
-        """Leave the ask the cursor was holding (a stepping jump): the
+        """Leave the ask the cursor was holding (a stepping JUMP): the
         ask text, its reply words, the thread snapshot they were read
         against, and the hold — a later send's landing must not read a
         reply staged for THAT ask as its own. Consent is kept: a jump
@@ -48,6 +48,20 @@ class Gate:
         self.baseline = set()
         self.awaiting = False
         self.yes = self.no = ()
+        return self
+
+    def rewind_ask(self, seen: set[str]) -> "Gate":
+        """Leave the ask for a RE-PLAN (`revise`): the hold and the ask
+        text go, the conversation does not. The thread snapshot becomes
+        the screen just read (`seen`) and the declared words stay, so a
+        `no:` typed while the walk is off re-planning is still new, and
+        still a no, at the next send's landing — which after a re-plan
+        is usually a `tell` with no words of its own. Emptying either,
+        as a stepping jump does, would baseline that cancellation away
+        unread: the one thing `speak.sent_landed` exists to prevent."""
+        self.ask = ""
+        self.awaiting = False
+        self.baseline = seen
         return self
 
     def spend(self) -> float | None:

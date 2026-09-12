@@ -1404,3 +1404,27 @@ def test_a_refused_tap_is_journaled_and_the_episode_goes_on() -> None:
     assert "免密支付" in p.ledger.events[-1]
     assert "免密支付" in str(again.material["lead"])
     assert again.material["lead"] != req.material["lead"]
+
+
+def test_a_banned_band_refuses_a_box_no_readable_row_accounts_for() -> None:
+    # The pay pill detected as an unlabelled ICON: its text is not in the
+    # listing, so the target cannot be matched — and the episode is told
+    # it may read a box off the screenshot. Absent from the listing is
+    # not absent from the screen, so in a band the pack declared off
+    # limits the walk presses only what it can read.
+    screen = make_screen(("商品总价", 0.15, 0.60))
+    pill = (0.30, 0.90, 0.70, 0.96)
+
+    said = refusal((_FOOTER_PAY,), screen.rows, pill)
+
+    assert said is not None
+    assert "no row of the screen reads as what it would press" in said
+
+
+def test_a_banned_band_still_allows_a_tap_on_a_row_it_can_read() -> None:
+    # The same band on a page where the target is simply not there: the
+    # listed button accounts for the press, so nothing is refused.
+    screen = make_screen(("加入购物车", 0.25, 0.93), ("立即购买", 0.75, 0.93))
+    cart = screen.rows[0].bbox
+
+    assert refusal((_FOOTER_PAY,), screen.rows, cart) is None

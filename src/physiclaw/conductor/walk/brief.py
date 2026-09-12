@@ -22,6 +22,7 @@ read a seller's words as the conductor's. A model-written reason is
 quoted and clipped where it enters (`step_agent`), for the same cause.
 """
 
+from physiclaw.conductor.walk import money
 from physiclaw.conductor.walk.ledger import Ledger
 from physiclaw.conductor.walk.prompts import DATA_STAMP
 
@@ -55,11 +56,11 @@ def walk_brief(
         # Consent is CONSUMED by firing (program.py), so a consented
         # value surviving to the brief proves the payment did NOT fire.
         parts.append(
-            f"The user consented to ¥{consented:g}; the payment has NOT been made."
+            f"The user consented to ¥{money.plain(consented)}; the payment has NOT been made."
         )
     if ledger.paid is not None:
         parts.append(
-            f"A payment of ¥{ledger.paid:g} was FIRED before this stop and its result "
+            f"A payment of ¥{money.plain(ledger.paid)} was FIRED before this stop and its result "
             "is unverified — check the order before any further payment."
         )
     parts.append(

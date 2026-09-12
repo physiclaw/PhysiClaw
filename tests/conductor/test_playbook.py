@@ -1322,8 +1322,8 @@ def test_never_tap_rejects_a_malformed_target(block: str, message: str) -> None:
         )
 
 
-def test_never_tap_needs_the_tap_tool_it_guards() -> None:
-    with pytest.raises(PlaybookError, match="no `tap` tool"):
+def test_never_tap_needs_something_that_presses() -> None:
+    with pytest.raises(PlaybookError, match="neither a `tap` tool nor a granted macro"):
         pb.parse_playbook(
             _mutate(
                 "    tools: [tap, scroll]\n",
@@ -1332,6 +1332,24 @@ def test_never_tap_needs_the_tap_tool_it_guards() -> None:
             "buy",
             _pack(),
         )
+
+
+def test_never_tap_is_allowed_on_an_episode_that_only_runs_a_macro() -> None:
+    # A granted macro presses its own recorded boxes without ever
+    # proposing a tap, so the ban has something to guard.
+    spec = pb.parse_playbook(
+        _mutate(
+            "    tools: [tap, scroll]\n",
+            "    tools: [scroll]\n"
+            "    give: [macros.add-cart]\n"
+            '    never_tap: ["Pay Now"]\n',
+        ),
+        "buy",
+        _pack(),
+    )
+
+    node = next(n for n in spec.nodes if n.id == "choose")
+    assert node.never_tap and node.macros == ("add-cart",)
 
 
 def test_a_grant_that_walks_around_never_tap_is_refused_at_parse() -> None:

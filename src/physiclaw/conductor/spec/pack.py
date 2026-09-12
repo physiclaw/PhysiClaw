@@ -27,7 +27,7 @@ from physiclaw.common.paths import (
 from physiclaw.common.placeholders import placeholder_values, resolve_placeholders
 from physiclaw.common.text import read_text
 from physiclaw.conductor.spec import scaffold, specfile
-from physiclaw.conductor.spec.conventions import CHANNEL_APP
+from physiclaw.conductor.spec.conventions import CHANNEL_APP, ROUND_MARKS
 from physiclaw.conductor.spec.match import page_resolver
 from physiclaw.conductor.spec.model import (
     SCOPE_GLOBAL,
@@ -448,6 +448,11 @@ def _parse_returns(
     out: dict[str, str] = {}
     for fname, template in raw.items():
         field_name(str(fname), "`returns` field")
+        if str(fname) in ROUND_MARKS:
+            raise PlaybookError(
+                f"`returns` field {fname!r} is how a round records whether it "
+                f"ran ({', '.join(sorted(ROUND_MARKS))}) — rename it"
+            )
         text = prose(template, f"`returns.{fname}`")
         check_refs(
             refs_in(text, f"`returns.{fname}`"),

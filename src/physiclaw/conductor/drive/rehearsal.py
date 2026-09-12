@@ -30,6 +30,7 @@ from physiclaw.conductor.drive.hooks import (
     Transform,
 )
 from physiclaw.conductor.spec.limits import REHEARSE_MAX_TURNS
+from physiclaw.conductor.walk.micro import MicroResult, has_fallback
 from physiclaw.conductor.walk.walklog import Outcome
 from physiclaw.contract.wire import leaf_blocks, reply_gist
 
@@ -138,7 +139,6 @@ async def walk(
     RuntimeError when a model call fires with no model configured."""
     from physiclaw.conductor.walk.micro import DecisionRequest
     from physiclaw.conductor.walk.step import Paused
-    from physiclaw.conductor.walk.suspension import clear_suspended
     from physiclaw.contract.dto import SystemMessage, ToolResultMessage, UserMessage
 
     history: list = [
@@ -157,6 +157,7 @@ async def walk(
         # hand, in which case the walk wakes the phone itself.
         if unlock and not _declares_locked_hand(program):
             await unlock_if_covered(mcp, emit)
+        unwired: str | None = None  # why no model can be called, once known
         for _ in range(REHEARSE_MAX_TURNS):
             step = program.advance(history)
             if program.verdict is not None and program.verdict is not shown:
@@ -167,9 +168,21 @@ async def walk(
                 # "start the server first" is what a user without one
                 # hears, and a walk that never calls a model never pays
                 # a model-config error either.
-                if micro is None:
-                    micro = micro_caller(rlog=wire)
-                result = await micro.run(step)
+                if micro is None and unwired is None:
+                    try:
+                        micro = micro_caller(rlog=wire)
+                    except Exception as e:
+                        # A call that declares its own answer for "nobody
+                        # is wired" (the close writes the recap from the
+                        # ledger) gets it, as in `replay.py`; any other
+                        # call is the config error the user must hear.
+                        if not has_fallback(step.call):
+                            raise
+                        unwired = f"nobody wired ({e})"
+                if micro is not None:
+                    result = await micro.run(step)
+                else:
+                    result = MicroResult(None, unwired or "", attempts=0, elapsed_ms=0)
                 decision = _describe(result)
                 emit(f"  model {step.call} ({step.node_id}): {decision}")
                 for record in exchanges(wire.drain(), step, decision):
@@ -204,7 +217,7 @@ async def walk(
                 # only then is it dropped — a real wake's pending
                 # suspension survives a rehearsal that merely completed.
                 if program.outcome is Outcome.SUSPENDED:
-                    clear_suspended()
+                    program.drop_suspension()
                     return WALK_SUSPENDED
                 if program.outcome is Outcome.COMPLETED:
                     return WALK_COMPLETED

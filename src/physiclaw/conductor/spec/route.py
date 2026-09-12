@@ -24,7 +24,7 @@ from typing import Any, TypeVar
 from physiclaw.common import gesture_vocab
 from physiclaw.common.bbox import parse_within
 from physiclaw.common.paths import PACK_MACROS_DIRNAME, PACK_PROMPTS_DIRNAME
-from physiclaw.conductor.spec import context, lints, reply
+from physiclaw.conductor.spec import context, lints, match, reply
 from physiclaw.conductor.spec.calls import AGENT_TOOLS, CONTRACT_FIELDS, RESERVED_KEYS
 from physiclaw.conductor.spec.conventions import (
     BOOT_PLAYBOOK,
@@ -329,6 +329,7 @@ def compile_route(
                     args={},
                     enter="",  # unconditional: the start runs from anywhere
                     verify=nxt,
+                    on_fail=_on_fail(entry, where),
                 )
             )
         elif kind == "agent":
@@ -454,6 +455,16 @@ def _parse_run(
                 f"({{{ref}}} is not one)"
             )
         each = (inp, ref)
+        if not sub.self_starting and sub.end != sub.start:
+            # Round two enters where round one LANDED. Without a `start`
+            # of its own the sub has no way back, so every round after
+            # the first fails its enter check — recorded "missed" with
+            # nothing ever attempted.
+            raise PlaybookError(
+                f"{where}: `each` walks {sub.name!r} once per item, and each "
+                f"round starts where the last one landed — but it ends on "
+                f"{sub.end!r} and starts on {sub.start!r}. Give it a `start`."
+            )
     _check_with(
         where,
         args,
@@ -756,12 +767,22 @@ def _guard_grants(
     buttons by design and stays legal."""
     if not never_tap:
         return
-    readings = {normalize(r): " / ".join(t.label) for t in never_tap for r in t.label}
 
     def _named(labels: tuple[str, ...]) -> str | None:
-        return next(
-            (readings[n] for r in labels if (n := normalize(r)) in readings), None
-        )
+        """Which target these recorded labels name, by the rule the
+        RUNTIME reads a screen row with (`match.label_matches`) — not
+        exact equality. The natural thing to write is the label as the
+        listing shows it, price and all ("立即支付（￥3.60）"), which is
+        not equal to the target and is the same button."""
+        written = [normalize(w) for w in labels]
+        for target in never_tap:
+            if any(
+                match.label_matches(normalize(reading), w, ())
+                for reading in target.label
+                for w in written
+            ):
+                return " / ".join(target.label)
+        return None
 
     for name in give:
         hit = _named(ctx.pack.landmarks[name].label)
@@ -1239,10 +1260,15 @@ def _parse_agent(
             "a macro — the model answers by name, so the two must differ"
         )
     never_tap = _never_tap(entry, where)
-    if never_tap and "tap" not in tools:
+    # A granted macro presses its own recorded boxes without ever
+    # proposing a tap, so `never_tap` has something to guard on a
+    # macro-only episode too (`_guard_grants` at parse, and
+    # `step_agent.macro_refusal` on the live screen).
+    if never_tap and "tap" not in tools and not granted:
         raise PlaybookError(
-            f"{where}: `never_tap` guards this episode's taps, but it has no "
-            "`tap` tool — grant `tap` or drop the targets"
+            f"{where}: `never_tap` guards what this episode presses, but it has "
+            "neither a `tap` tool nor a granted macro — grant one or drop the "
+            "targets"
         )
     _guard_grants(ctx, where, never_tap, give, granted)
     if give and "tap" not in tools:

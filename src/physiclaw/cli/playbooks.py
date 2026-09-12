@@ -848,7 +848,6 @@ def _check_app(app: str) -> "tuple[bool, dict[str, Playbook]]":
     entries = pb.scan_playbooks(app, pack)
     for line in lints.pack_warnings(pack, entries):
         typer.echo(warn(f"{app}/{line}"))
-    disabled: list[str] = []
     for entry in entries:
         if entry.spec is None:
             typer.echo(step_fail(f"{app}/{entry.name}: {entry.error or ''}"))
@@ -858,9 +857,7 @@ def _check_app(app: str) -> "tuple[bool, dict[str, Playbook]]":
             "" if entry.spec.scope == SCOPE_GLOBAL else "  (local)"
         )
         typer.echo(ok(f"{app}/{entry.name}{tags}"))
-        if not entry.spec.enabled and entry.spec.scope == SCOPE_GLOBAL:
-            disabled.append(entry.name)
-    _report_not_live(app, pack, entries, disabled)
+    _report_not_live(app, pack, entries)
     for line in lints.unrun_playbooks([e.spec for e in entries if e.spec is not None]):
         typer.echo(warn(f"{app}: {line}"))
     for entry in entries:
@@ -873,42 +870,16 @@ def _check_app(app: str) -> "tuple[bool, dict[str, Playbook]]":
     return bad, {f"{app}/{e.name}": e.spec for e in entries if e.spec is not None}
 
 
-def _report_not_live(
-    app: str,
-    pack: "Pack",
-    entries: "list[PlaybookEntry]",
-    disabled: list[str],
-) -> None:
+def _report_not_live(app: str, pack: "Pack", entries: "list[PlaybookEntry]") -> None:
     """Valid is not live: a green check invites the wrong assumption. Say
-    which playbooks the boot will not offer, and why — disabled files,
-    and referenced pack macros that are themselves disabled. Rehearse
-    them (`playbooks run`), then enable."""
-    from physiclaw.conductor.spec.pack import disabled_macros
+    which playbooks the boot will not offer, and why — the reason from
+    `pack.live_gap`, the one rule the wake roster and `require_live`
+    also read. Rehearse them (`playbooks run`), then enable."""
+    from physiclaw.conductor.spec.pack import live_gap
 
-    if disabled:
-        typer.echo(
-            warn(
-                f"{app}: disabled, so the boot will not offer: "
-                f"{', '.join(disabled)}. Set `enabled: true` once rehearsed."
-            )
-        )
-    # Only enabled playbooks: a disabled playbook's macros are not "not
-    # live" beyond the playbook itself, already reported above.
-    not_live = sorted(
-        {
-            m
-            for e in entries
-            if e.spec is not None and e.spec.enabled
-            for m in disabled_macros(e.spec, pack)
-        }
-    )
-    if not_live:
-        typer.echo(
-            warn(
-                f"{app}: referenced pack macro(s) still disabled: "
-                f"{', '.join(not_live)} — rehearse, then enable."
-            )
-        )
+    for e in entries:
+        if e.spec is not None and (gap := live_gap(e.spec, pack)) is not None:
+            typer.echo(warn(f"{app}/{e.name}: the boot will not offer it — {gap}."))
 
 
 def _split_ref(ref: str) -> tuple[str, str]:

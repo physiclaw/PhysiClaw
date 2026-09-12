@@ -26,6 +26,7 @@ from dataclasses import replace
 
 from physiclaw.common import gesture_vocab
 from physiclaw.conductor.spec.model import ActivateNode
+from physiclaw.conductor.walk import speak
 from physiclaw.conductor.walk.micro import SCROLL_UP, DecisionRequest, MicroOutcome
 from physiclaw.conductor.walk.step import Step, Turn, Walk
 from physiclaw.conductor.walk.turns import scroll_args
@@ -61,7 +62,19 @@ class ActivateStep(Step[ActivateNode]):
 
     def landed(self, kind: str) -> Turn:
         # The history scroll landed: its result view is the thread one
-        # notch up — re-ask over the seamed listing.
+        # notch up — re-ask over the seamed listing. Check it IS the
+        # thread first: the swipe is blind, and every other read of this
+        # screen is gated (`open`'s enter check, `speak.sent_landed`,
+        # the ask's own peek). Whatever a stray landing shows — the chat
+        # list, a banner from another chat — would otherwise be merged
+        # in and handed to the model as "the user's message thread",
+        # then settled into the thread every later call replays.
+        wrong = speak.thread_mismatch(self.walk)
+        if wrong is not None:
+            return self.walk.handover(
+                f"activate {self.node.id!r}: the history scroll did not land on "
+                f"the user thread ({wrong})"
+            )
         return self._request()
 
     def resolve(self, outcome: MicroOutcome | None) -> Turn:

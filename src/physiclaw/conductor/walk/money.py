@@ -27,6 +27,19 @@ from physiclaw.common.listing import Screen, label_hit
 from physiclaw.conductor.spec.conventions import PRICE_RE
 
 
+def plain(value: float) -> str:
+    """An amount as a person reads it — `40.8`, `40`, `12345.67`. The
+    ONE spelling, because every place an amount is shown is a consent
+    record or its audit trail. The currency sign belongs to whoever
+    writes the sentence (a pack's `message:`, our own log lines).
+
+    Never `%g`, which is six significant figures and an exponent past a
+    million: it quotes a ¥12,345.67 sheet as 12345.7 and a ¥99,999.99
+    one as 100000. A total the user is asked to approve must be the
+    total on the screen, to the fen."""
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 def amount(text: str) -> float:
     """One `PRICE_RE` group as a number — thousands separators stripped."""
     return float(text.replace(",", ""))
@@ -107,7 +120,7 @@ def fire_block(
     amts = amounts(screen)
     if not any(abs(a - consented) < 0.01 for a in amts):
         return (
-            f"sheet changed after consent: confirmed ¥{consented:g}, "
+            f"sheet changed after consent: confirmed ¥{plain(consented)}, "
             f"now sees {amts or 'no amounts'}"
         )
     over = [
@@ -117,7 +130,7 @@ def fire_block(
     ]
     if over:
         return (
-            f"amount(s) {over} above the consented total ¥{consented:g} "
+            f"amount(s) {over} above the consented total ¥{plain(consented)} "
             "appeared after the ask"
         )
     return None

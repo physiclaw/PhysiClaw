@@ -15,8 +15,11 @@ word one rule two ways.
 from collections.abc import Callable
 
 from physiclaw.common import gesture_vocab
+from physiclaw.common.text import clip
 from physiclaw.conductor.spec import reply
 from physiclaw.conductor.spec.conventions import THREAD_ID
+from physiclaw.conductor.spec.limits import MAX_MESSAGE_LINES
+from physiclaw.conductor.spec.specfile import MAX_PROSE_LEN
 from physiclaw.conductor.walk.step import Turn, Walk
 
 
@@ -61,9 +64,15 @@ def send(
 def new_replies(walk: Walk, *, after_ask: bool = True) -> list[str]:
     """The user's messages since the gate's baseline (`reply.py` owns
     the diff), off the current thread screen."""
+    return read_replies(walk, after_ask=after_ask)[0]
+
+
+def read_replies(walk: Walk, *, after_ask: bool = True) -> tuple[list[str], bool]:
+    """`new_replies`, and whether the ask they answer was placed on the
+    thread — the reading that binds money must be."""
     assert walk.screen is not None
     gate = walk.gate
-    return reply.new_incoming(
+    return reply.read_incoming(
         walk.screen.rows, gate.baseline, gate.ask, after_ask=after_ask
     )
 
@@ -138,6 +147,34 @@ def sent_landed(
             return revised
     # The send landed: its words and its thread snapshot take over together.
     gate.yes, gate.no = gate.next_words
-    assert walk.screen is not None
-    gate.baseline = {label.strip() for label in walk.screen.labels}
+    gate.baseline = snapshot(walk)
     return None
+
+
+def for_message(values: dict[str, str]) -> dict[str, str]:
+    """The walk's refs, bounded for a message the USER will read.
+
+    A template is held to `MAX_MESSAGE_LINES` lines of `MAX_PROSE_LEN`
+    at load, but what fills it is decided at run time: an agent's return
+    field, read off a screen whose text a seller writes. Unbounded, one
+    of them can forge a consent clause quoting another number, or push
+    the authored one past what a bubble shows. Each value is held to
+    what one authored message may say — no more room in the bubble than
+    the author had — and truncation is marked, so a reader can tell a
+    clipped line from a written one."""
+    return {k: _bounded(v) for k, v in values.items()}
+
+
+def _bounded(value: str) -> str:
+    lines = [clip(line, MAX_PROSE_LEN) for line in value.splitlines()]
+    if len(lines) > MAX_MESSAGE_LINES:
+        lines = [*lines[:MAX_MESSAGE_LINES], "…"]
+    return "\n".join(lines)
+
+
+def snapshot(walk: Walk) -> set[str]:
+    """The thread as it stands on the screen just read — the baseline
+    every later read diffs against. One spelling, shared by a send's
+    landing and a revision's rewind."""
+    assert walk.screen is not None
+    return {label.strip() for label in walk.screen.labels}

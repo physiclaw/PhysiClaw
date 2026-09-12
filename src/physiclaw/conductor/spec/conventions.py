@@ -48,6 +48,14 @@ BOOT_PLAYBOOK = "boot"
 LOCKED_PAGE = "locked"
 
 
+# The two slots a `run`'s round keeps in its own record, beside the
+# agents' outputs and the sub-playbook's `returns:` — written by the
+# ledger, and named here so the parser can refuse a `returns:` field
+# that would land on one and be overwritten by the bookkeeping.
+ROUND_DONE, ROUND_MISS = "done", "miss"
+ROUND_MARKS = frozenset({ROUND_DONE, ROUND_MISS})
+
+
 def page_id(app: str, page: str) -> str:
     """The `app.page` spelling — the ONE format matcher verdicts carry
     and every expectation is compared against."""

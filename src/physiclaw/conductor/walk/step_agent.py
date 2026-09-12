@@ -132,14 +132,47 @@ def refusal(
         if target.within is not None and not _centred_in(box, target.within):
             continue
         # Which rows ARE the target: its readings, inside that same band.
-        # Nothing there means nothing to refuse — it cannot be tapped
-        # when it is not on the screen. A row found is refused across the
-        # control it labels (`_control`), not just its own text: the
-        # model boxes what it sees, and a button is wider than its word.
+        # A row found is refused across the control it labels
+        # (`_control`), not just its own text: the model boxes what it
+        # sees, and a button is wider than its word.
         for row in match.candidate_rows(target.anchor, rows, ()):
             if _centred_in(box, _control(row, rows, target.within)):
                 return f"that box presses {' / '.join(target.label)}, not this step's to tap."
+        # The target's text is not in the listing — which is NOT the same
+        # as not on the screen. An orange pay pill can be detected as an
+        # unlabelled icon, or lose its text to glare, and the episode is
+        # told it may read a box off the screenshot: absent from the
+        # listing, addressable on the frame, unbannable by the rule
+        # above. So inside a band the pack declared off limits, the walk
+        # presses only what it can READ: a box no listed row accounts
+        # for is refused, whatever it turns out to be.
+        if target.within is not None and not _accounted(box, rows, target.within):
+            return (
+                f"that box is in the band {' / '.join(target.label)} sits in, and "
+                "no row of the screen reads as what it would press — scroll it "
+                "into view and aim at a listed element."
+            )
     return None
+
+
+def _accounted(box: Bbox, rows: tuple[Element, ...], band: Bbox) -> bool:
+    """Whether some LABELLED row of the screen accounts for a tap on
+    `box` — its control covers where the press would land. Icons are not
+    rows for this: an unlabelled detection says something is there, not
+    what it is, and the whole question here is whether we know."""
+    # `_control` widens a row sideways only, so a row whose height does
+    # not reach the press cannot account for it — one pass keeps the
+    # O(rows²) widening to the handful of rows at that height.
+    centre = center_of(box)
+    if centre is None:
+        return False
+    at_height = [
+        row
+        for row in rows
+        if row.label
+        and row.bbox[1] - _NEAR_ENOUGH <= centre[1] <= row.bbox[3] + _NEAR_ENOUGH
+    ]
+    return any(_centred_in(box, _control(row, rows, band)) for row in at_height)
 
 
 def macro_refusal(
@@ -282,7 +315,7 @@ class AgentStep(Step[AgentNode]):
                 )
             self.consented = walk.gate.consented
             self.seen = walk.gate.seen
-            vals = {**vals, "ask.total": f"{self.consented:g}"}
+            vals = {**vals, "ask.total": money.plain(self.consented)}
         brief = [self._prompt(vals)]
         if self.node.returns:
             brief.append(return_fields(self._fields()))

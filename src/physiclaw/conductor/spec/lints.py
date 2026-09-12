@@ -52,11 +52,17 @@ def unrun_playbooks(specs: list[Playbook]) -> list[str]:
 def flatten(nodes: list[Node]) -> list[Node]:
     """The route with every `run` replaced by the moves of the playbook
     it runs — what the adjacency lints read, since a run's rounds ARE
-    those moves at walk time."""
+    those moves at walk time.
+
+    An `each:` run walks them ONCE PER ITEM, so its moves go in twice:
+    the pair that only a second round creates — the sub's last move
+    followed by its own first — is an adjacency the walk really has,
+    and a lint that never sees it cannot refuse it. Twice is enough;
+    every later round repeats the same two pairs."""
     out: list[Node] = []
     for n in nodes:
         if isinstance(n, RunNode):
-            out.extend(n.sub.nodes)
+            out.extend(n.sub.nodes * (2 if n.each is not None else 1))
         else:
             out.append(n)
     return out
@@ -265,6 +271,17 @@ def _on_fail_warnings(spec: Playbook) -> list[str]:
             "the order unverified and unreported; the next wake may buy again"
             for name in stops
         ]
+    # The same hazard without any failure: a route that pays and then
+    # simply ends says nothing on the thread, and the thread is how the
+    # next wake judges a request finished — the walk's own record is
+    # background the boot is told never to read as an answer.
+    if not any(isinstance(n, TellNode) for n in spec.nodes[fired:]):
+        out.append(
+            f"nothing is told to the user after payment move "
+            f"{spec.nodes[fired].id!r} — the next wake judges a request finished "
+            "from this thread, so it may read this one as still open and buy "
+            "again; end the route with a `tell`, or have whatever runs it report"
+        )
     return out
 
 
@@ -291,7 +308,7 @@ def _resume_warnings(spec: Playbook) -> list[str]:
     is told. (A payment ask in that shape is refused at parse — consent
     never recovers.)"""
     out = []
-    nodes = spec.nodes
+    nodes = flatten(spec.nodes)  # the moves a run's rounds are, round to round
     for i, n in enumerate(nodes[:-1]):
         nxt = nodes[i + 1]
         if not screen_move(nxt):

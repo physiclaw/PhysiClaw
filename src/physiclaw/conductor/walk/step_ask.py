@@ -121,12 +121,15 @@ class AskStep(Step[AskNode]):
         return speak.send(walk, KIND_ASK_SENT, text, node.yes, node.no)
 
     def _values(self) -> dict[str, str]:
-        """The slots an ask's texts may quote — the walk's refs plus
-        `{ask.total}` once a payment ask has read its sheet."""
+        """The slots an ask's texts may quote — the walk's refs, bounded
+        for a message a person reads (`speak.for_message`), plus
+        `{ask.total}` once a payment ask has read its sheet. The total is
+        added AFTER the bound: it is a number this step read off a
+        verified page, not something a screen wrote."""
         walk = self.walk
-        values = walk.ref_values()
+        values = speak.for_message(walk.ref_values())
         if walk.gate.quoted is not None:
-            values = {**values, "ask.total": f"{walk.gate.quoted:g}"}
+            values = {**values, "ask.total": money.plain(walk.gate.quoted)}
         return values
 
     def _check(self) -> Turn:
@@ -140,7 +143,7 @@ class AskStep(Step[AskNode]):
             if reopen is not None:
                 return reopen
             return walk.handover(f"cannot reach the user thread ({wrong})")
-        new = speak.new_replies(walk)
+        new, placed = speak.read_replies(walk)
         if not new:
             gate.silence += 1
             if gate.silence >= node.silence_rounds:
@@ -150,6 +153,17 @@ class AskStep(Step[AskNode]):
         if verdict is reply.Answer.DENY:
             return self._settled(False, new[-1])
         if verdict is reply.Answer.CONFIRM:
+            if not placed:
+                # A yes the baseline read, not the ask's position: the
+                # baseline is snapshotted with the keyboard UP, so history
+                # it covered reads as new once it dismisses, and an old
+                # yes can arrive here on a wake nobody answered. A deny
+                # in the same position still stops the walk — only the
+                # reading that BINDS money has to be placed.
+                return walk.handover(
+                    f"ask {node.id!r}: read a yes, but the ask itself is not on the "
+                    "thread — read it yourself before any payment"
+                )
             return self._settled(True, new[-1])
         # The declared words do not cover it ("ok, but make it two
         # boxes", a question, a hold): the model that read the request
