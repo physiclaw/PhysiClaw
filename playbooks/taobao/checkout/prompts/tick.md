@@ -7,10 +7,12 @@ inventory it. A line added minutes ago sits at the TOP, so work
 from the top down, and the footer's 合计 is your check: it shows
 the ticked total. If the list is not at its top (no promo or
 商品缺货 section above the first line), scroll UP first.
-1. If 合计 is not ￥0 when you start, tap the granted `select-all`
-   landmark's box TWICE (the first tap ticks everything, the
-   second clears everything) so nothing of the buyer's own
-   leftovers rides along.
+1. Only when the list above NAMES lines: if 合计 is not ￥0 when
+   you start, tap the granted `select-all` landmark's box TWICE
+   (the first tap ticks everything, the second clears everything)
+   so nothing of the buyer's own leftovers rides along. On 全部
+   you were asked to keep what is ticked — clear nothing, tick
+   nothing, and go straight to step 4.
 2. Tick each listed line as you see it: tap its checkbox, the
    circle left of the item image. This phone floats a round
    button over the left edge at about y 0.31–0.37 of the

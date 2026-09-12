@@ -83,9 +83,12 @@ route:
         - tap: ["免密支付", "提交订单", "立即支付"]   # one button, three spellings — recorded
           at: [0.300, 0.918, 0.720, 0.960]     # 免密支付￥… read at [0.333,0.927,0.682,0.950]
         - wait: 4
-        - tap: ["立即支付", "确认支付", "免密支付"]   # the cashier, when it shows
+        - tap: ["立即支付", "确认支付"]           # the cashier, when it shows
           at: [0.30, 0.90, 0.70, 0.96]
-          when: ["立即支付", "确认支付", "免密支付"]
+          # NOT 免密支付: that is step 1's own target at an overlapping
+          # box, so a sheet that has simply not navigated in 4s would
+          # satisfy this and press the order button a second time.
+          when: ["立即支付", "确认支付"]
         - wait: 4
 
   - page: paid
