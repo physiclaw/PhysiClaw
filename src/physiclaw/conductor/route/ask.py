@@ -20,6 +20,7 @@ from physiclaw.conductor.spec.limits import (
     MIN_ASK_WAIT_SECONDS,
 )
 from physiclaw.conductor.spec.model import (
+    PAYMENT,
     AskNode,
     PlaybookError,
     check_name,
@@ -50,7 +51,7 @@ def parse_ask(scope: Scope, line: Line) -> AskNode:
     where, nid, entry, before = line.where, line.name, line.entry, line.before
     approve = require_str(entry.get("approve"), f"{where}: `approve`")
     check_name(approve, f"{where}: `approve`")
-    if approve == "payment":
+    if approve == PAYMENT:
         if before is None or "." in before:
             raise PlaybookError(
                 f"{where}: a payment ask reads its total off the page before "
@@ -59,10 +60,10 @@ def parse_ask(scope: Scope, line: Line) -> AskNode:
     # A payment ask may quote the consent slot (a move literally named
     # `ask` is shadowed in this message — the money slot wins, both at
     # parse and at fill).
-    g_payloads = scope.payloads_with_total() if approve == "payment" else scope.payloads
+    g_payloads = scope.payloads_with_total() if approve == PAYMENT else scope.payloads
     message, msg_refs = entry_message(scope, where, entry, g_payloads)
     total: tuple[str, ...] = ()
-    if approve == "payment":
+    if approve == PAYMENT:
         if "ask.total" not in msg_refs:
             raise PlaybookError(
                 f"{where}: a payment ask's `message` must quote the sheet "

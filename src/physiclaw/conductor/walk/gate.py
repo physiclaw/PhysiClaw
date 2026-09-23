@@ -6,7 +6,9 @@ the thread snapshot the reply is diffed against, the money numbers a
 payment ask quotes and a `yes:` binds, the silence counter, and the
 reply words the last send declared. Consent lives here rather than on
 the ask step because the payment move AFTER the ask spends it, and a
-suspension in between must carry it across wakes.
+suspension in between must carry it across wakes. The money numbers
+change only through the gate's own methods (`quote`, `consent`,
+`spend`), so the whole consent life reads in this one file.
 """
 
 from dataclasses import dataclass, field
@@ -70,6 +72,25 @@ class Gate:
         self.awaiting = False
         self.baseline = seen
         return self
+
+    # ---- consent: quote, hold, bind, spend — the gate's own moves ----
+
+    def quote(self, total: float, labels: tuple[str, ...]) -> None:
+        """A payment ask read its sheet: the amount the message quotes,
+        and the label readings the fire-time check reads it by again."""
+        self.quoted = total
+        self.total_label = labels
+
+    def hold(self) -> None:
+        """The ask landed on the thread: poll for the reply from zero."""
+        self.awaiting = True
+        self.silence = 0
+
+    def consent(self) -> None:
+        """A yes ends the hold and binds the quoted total as the
+        consented one — None for an ask that quoted nothing."""
+        self.consented = self.quoted
+        self.awaiting = False
 
     def spend(self) -> float | None:
         """Consent is CONSUMED by firing: a later payment needs its own

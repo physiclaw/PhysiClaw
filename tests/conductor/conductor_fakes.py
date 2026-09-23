@@ -159,6 +159,54 @@ def finish(driver, history: list, step) -> str:
     return step.tool_calls[0].arguments["summary"]
 
 
+# The `run` pair the run tests walk: a leg playbook of the demo pack,
+# and an entry that runs it once per listed item (`each:`).
+
+LEG = """\
+kind: playbook
+schema: 1
+name: leg
+description: one leg — open, then search
+inputs:
+  what:
+    description: what to search
+returns:
+  did: "searched {inputs.what}"
+route:
+  - start: app
+    macro: app.macros.open-app
+  - page: app.pages.home
+  - do: search
+    macro: app.macros.add-cart
+    with: {message: "{inputs.what}"}
+  - page: app.pages.results
+"""
+
+EACH = """\
+kind: entry
+schema: 1
+name: flow
+description: one leg per item
+inputs:
+  keyword:
+    description: what
+route:
+  - agent: parse
+    context:
+      prompt: |
+        List the items for {keyword}.
+      given: {keyword: "{inputs.keyword}"}
+    returns:
+      items: the items, one per line
+  - run: leg
+    each: {what: parse.items}
+    limit: {rounds: 2}
+  - page: app.pages.results
+  - tell: report
+    message: "done: {leg.did}"
+"""
+
+
 # One canonical demo pack for the pack-consuming test files (playbook,
 # program): two declared pages, two enabled macros.
 

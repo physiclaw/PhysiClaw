@@ -1024,12 +1024,25 @@ def test_second_ask_reads_a_yes_that_repeats_the_first() -> None:
     assert "completed" in summary
 
 
-def test_gate_total_label_survives_the_suspension() -> None:
-    gate = program.Gate(quoted=45.0, consented=45.0, total_label=("合计", "实付"))
+def test_each_fired_payment_logs_one_line_naming_the_walks_total(mocker) -> None:
+    write_pack(playbooks={"flow": FLOW})
+    p = _program(keyword="milk")
+    day = mocker.patch.object(p.record, "day")
+    p.gate.quote(45.0, ("合计",))
+    p.gate.consent()
+    p.spend_consent()
+    p.log_purchase()
+    p.gate.quote(12.5, ("合计",))
+    p.gate.consent()
+    p.spend_consent()
 
-    restored = program.Gate.from_suspended(gate.to_suspended())
+    p.log_purchase()
+    p.log_purchase()
 
-    assert restored.total_label == ("合计", "实付") and restored.consented == 45.0
+    assert [c.args[0].split(" (playbook")[0] for c in day.call_args_list] == [
+        "conductor: demo: payment 45 fired",
+        "conductor: demo: payment 57.5 fired",
+    ]
 
 
 # ---------- payment gate: total edges ----------
@@ -1226,6 +1239,24 @@ def test_recover_tap_hand_falls_back_to_the_declared_bbox() -> None:
     assert back is not None and back.tool_names() == ["note", "tap"]
     assert back.tool_calls[1].arguments == {"bbox": [0.02, 0.05, 0.10, 0.10]}
     assert "declared hand" in back.tool_calls[0].arguments["summary"]
+
+
+def test_an_undeclared_recover_landmark_takes_the_pages_own_word() -> None:
+    # The loader refuses an undeclared landmark, so only a walk built
+    # around it gets here; the page's `on_fail` still decides.
+    flow = FLOW.replace(
+        "  - page: app.pages.results\n",
+        "  - page: app.pages.results\n    recover: {tap: app.landmarks.back}\n"
+        "    on_fail: stop\n",
+    )
+    p, h, move1 = _recovering_walk(flow)
+    p.landmarks.pop("back")
+    _feed(h, move1, ELSEWHERE)
+
+    step = p.advance(h)
+
+    assert step is not None and step.tool_names() == ["note", "end_session"]
+    assert "recover landmark 'back' undeclared" in step.tool_calls[1].arguments["recap"]
 
 
 def test_hand_that_does_not_restore_runs_again_then_hands_over() -> None:

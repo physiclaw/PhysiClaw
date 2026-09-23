@@ -97,7 +97,8 @@ READING_LOCKED = "locked"
 RECOVER_READINGS = (READING_COVERED, READING_ELSEWHERE, READING_LOCKED)
 # The one irreversible class: money. A payment move is entered only as
 # the fall-through of an `ask` with `approve: payment` (`lints.py`).
-IRREVERSIBLE_CLASSES = ("payment",)
+PAYMENT = "payment"
+IRREVERSIBLE_CLASSES = (PAYMENT,)
 # A route line's `on_fail:` — once its own means are spent, `handover`
 # (also when unsaid) briefs the model, `stop` ends the session by the
 # walk's own hand. The playbook decides, line by line (README).
@@ -149,6 +150,11 @@ class DoNode:
     @property
     def start(self) -> bool:
         return not self.enter
+
+    @property
+    def pays(self) -> bool:
+        """Whether this move fires the payment its adjacent ask consented to."""
+        return self.irreversible == PAYMENT
 
 
 @dataclass(frozen=True)
@@ -238,6 +244,12 @@ class AgentNode:
     def return_fields(self) -> tuple[str, ...]:
         return tuple(f for f, _ in self.returns)
 
+    @property
+    def pays(self) -> bool:
+        """Whether this episode's taps fire the payment its adjacent ask
+        consented to."""
+        return self.irreversible == PAYMENT
+
 
 @dataclass(frozen=True)
 class AskNode:
@@ -279,7 +291,7 @@ class AskNode:
     def pays(self) -> bool:
         """Whether this ask is the payment gate — the one that binds a
         consented total and precedes the irreversible move."""
-        return self.approve == "payment"
+        return self.approve == PAYMENT
 
 
 @dataclass(frozen=True)

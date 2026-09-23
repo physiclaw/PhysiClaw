@@ -124,3 +124,38 @@ def test_a_reading_is_an_event_beside_its_tool_result() -> None:
             "page": "taobao.results",
         }
     ]
+
+
+def test_record_purchase_after_a_fire_writes_one_line(mocker) -> None:
+    record = Record("demo", "flow", dry=False)
+    day = mocker.patch.object(record, "day")
+    record.fired(45.0)
+
+    record.purchase("demo/buy")
+    record.purchase("demo/buy")
+
+    day.assert_called_once_with(
+        "conductor: demo: payment 45 fired (playbook demo/buy) — "
+        "verify what it paid for before paying again"
+    )
+
+
+def test_record_purchase_with_nothing_fired_writes_nothing(mocker) -> None:
+    record = Record("demo", "flow", dry=False)
+    day = mocker.patch.object(record, "day")
+
+    record.purchase("demo/buy")
+
+    day.assert_not_called()
+
+
+def test_record_purchase_owes_again_after_a_second_fire(mocker) -> None:
+    record = Record("demo", "flow", dry=False)
+    day = mocker.patch.object(record, "day")
+    record.fired(45.0)
+    record.purchase("demo/buy")
+    record.fired(12.5)
+
+    record.purchase("demo/buy")
+
+    assert day.call_count == 2

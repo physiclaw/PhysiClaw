@@ -1,9 +1,10 @@
 """The route as the cursor walks it — the `Course` of `Slot`s, and the
 `Round`s a `run` expands into. The walk (`program.py`) decides WHEN
 the shape changes — a run reached, a round done or missed, a revision
-— and what each round's inputs are; this is the shape itself, the
-cursor's place in it, and the readings of that place (label, spec
-position, the node's prose id) every log, brief and suspension prints.
+— and `rounds.py` computes what each round's inputs are; this is the
+shape itself, the cursor's place in it, and the readings of that place
+(label, spec position, the node's prose id) every log, brief and
+suspension prints.
 """
 
 from dataclasses import dataclass

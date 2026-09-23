@@ -36,6 +36,7 @@ from physiclaw.conductor.spec.limits import (
 )
 from physiclaw.conductor.spec.match import normalize
 from physiclaw.conductor.spec.model import (
+    PAYMENT,
     AgentNode,
     NeverTap,
     PlaybookError,
@@ -447,7 +448,7 @@ def parse_agent(scope: Scope, line: Line) -> AgentNode:
         )
 
     g_payloads = (
-        scope.payloads_with_total() if irreversible == "payment" else scope.payloads
+        scope.payloads_with_total() if irreversible == PAYMENT else scope.payloads
     )
     reads = _parse_context(scope, where, entry, g_payloads)
     # The hands, the fence and the frame, held to each other — every

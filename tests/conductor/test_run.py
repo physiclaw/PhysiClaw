@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import pytest
 from conductor_fakes import (
+    EACH,
     ELSEWHERE,
     HOME,
+    LEG,
     PAGES,
     RESULTS,
     build_program,
@@ -29,26 +31,6 @@ from physiclaw.conductor.spec.live import disabled_macros, live_gap
 from physiclaw.conductor.spec.model import PlaybookError, RunNode, TellNode
 from physiclaw.conductor.spec.pack import qualified_inline
 from physiclaw.conductor.walk.surface import Paused
-
-LEG = """\
-kind: playbook
-schema: 1
-name: leg
-description: one leg — open, then search
-inputs:
-  what:
-    description: what to search
-returns:
-  did: "searched {inputs.what}"
-route:
-  - start: app
-    macro: app.macros.open-app
-  - page: app.pages.home
-  - do: search
-    macro: app.macros.add-cart
-    with: {message: "{inputs.what}"}
-  - page: app.pages.results
-"""
 
 FLOW = """\
 kind: entry
@@ -261,30 +243,6 @@ def test_a_suspension_inside_a_round_resumes_inside_it() -> None:
 
 
 # ---------- each: one round per item ----------
-
-EACH = """\
-kind: entry
-schema: 1
-name: flow
-description: one leg per item
-inputs:
-  keyword:
-    description: what
-route:
-  - agent: parse
-    context:
-      prompt: |
-        List the items for {keyword}.
-      given: {keyword: "{inputs.keyword}"}
-    returns:
-      items: the items, one per line
-  - run: leg
-    each: {what: parse.items}
-    limit: {rounds: 2}
-  - page: app.pages.results
-  - tell: report
-    message: "done: {leg.did}"
-"""
 
 
 def _listed(p, h, items: str):

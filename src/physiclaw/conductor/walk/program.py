@@ -9,13 +9,15 @@ ONE last ``[note, peek]`` brief turn first (`brief.py`).
 
 This file is the walk alone: the phase, the cursor on the route
 (`course.py`; the walk says when a run expands, a round ends, a
-revision re-plans), the one action in flight (`turns.py`), the page
-verdict every step judges against, the declared recovery toward a
-page (`recover.py`), the money state an ask binds and a payment move
-spends, the terminal moments, and the record they write
-(`record.py`). What each STEP does is its executor's
-(`walk/surface.py` is the contract), one per route line kind: `steps.do`,
-`steps.agent`, `steps.ask`, `steps.tell`, `steps.select`.
+revision re-plans, and `rounds.py` computes what those moments
+produce), the one action in flight (`turns.py`), the page verdict
+every step judges against, the sequencing of declared recovery toward
+a page (`recover.py` holds its rules and counts), the terminal
+moments, and the record they write (`record.py`). The money state is
+the gate's (`gate.py`), its guard `money.py`'s. What each STEP does is
+its executor's (`walk/surface.py` is the contract), one per route line
+kind: `steps.do`, `steps.agent`, `steps.ask`, `steps.tell`,
+`steps.select`.
 
 What the playbook declares is what runs: the walk opens with one peek,
 starts at the route's first unsettled node (never below a resumed
@@ -25,7 +27,6 @@ Money never recovers.
 """
 
 import logging
-from collections import Counter
 from collections.abc import Callable
 from enum import StrEnum
 from functools import partial
@@ -34,7 +35,12 @@ from physiclaw.common import gesture_vocab
 from physiclaw.common.listing import Screen
 from physiclaw.conductor.micro.decision import MicroOutcome
 from physiclaw.conductor.spec.channel import Channel
-from physiclaw.conductor.spec.conventions import LOCKED_ID, owned_by, page_id, page_name
+from physiclaw.conductor.spec.conventions import (
+    LOCKED_ID,
+    owned_by,
+    page_id,
+    page_name,
+)
 from physiclaw.conductor.spec.match import Verdict, match_screen
 from physiclaw.conductor.spec.model import (
     ON_FAIL_SKIP,
@@ -47,15 +53,12 @@ from physiclaw.conductor.spec.model import (
     PlaybookError,
     RunNode,
     SelectNode,
-    resolve_inputs,
 )
-from physiclaw.conductor.spec.pack import qualified_macro
 from physiclaw.conductor.spec.pages import Landmark, PagePrint
-from physiclaw.conductor.spec.refs import fill_args, fill_refs, own_fields
-from physiclaw.conductor.walk import brief, money, recover, speak, views
-from physiclaw.conductor.walk.course import Course, Round, run_keys
+from physiclaw.conductor.walk import brief, recover, rounds, speak, views
+from physiclaw.conductor.walk.course import Course, Round
 from physiclaw.conductor.walk.gate import Gate
-from physiclaw.conductor.walk.ledger import Ledger, round_prefix
+from physiclaw.conductor.walk.ledger import Ledger
 from physiclaw.conductor.walk.record import Record
 from physiclaw.conductor.walk.surface import Activator, Paused, Step, Steps, Turn
 from physiclaw.conductor.walk.suspension import (
@@ -183,16 +186,12 @@ class Program:
         self.screen: Screen | None = None
         self.frame: ImageBlock | None = None
         self.verdict: Verdict | None = None
-        # Whether the fired payment's daily-log line landed (the amount
-        # itself is the ledger's).
-        self._paid_logged = False
         # The step executor at the cursor (a resume pre-step rides the
         # same slot before the walk proper opens).
         self._step: Step | None = None
         # Recovery (`recover.py`): the hand in flight and the actions
-        # spent per target page (their sum is the walk-wide count).
-        self._recovery: recover.State | None = None
-        self._page_recoveries: Counter[str] = Counter()
+        # spent per target page.
+        self.recoveries = recover.Recoveries()
         # Whether the restored cursor is a wake's suspension: its opening
         # read may unlock a locked phone, once.
         self._from_suspension = False
@@ -234,10 +233,6 @@ class Program:
                 "awaiting reply" if self.gate.awaiting else "walk",
             )
 
-    @property
-    def _recoveries(self) -> int:
-        return sum(self._page_recoveries.values())
-
     # ---- suspension ----
 
     def state(self) -> dict:
@@ -278,10 +273,6 @@ class Program:
             raise PlaybookError(f"suspended idx {idx} is outside the playbook")
         self._from_suspension = resumed
         self.ledger.restore(data)
-        # A restored payment was logged before it was persisted
-        # (`suspend`), so the latch closes with it: the purchase line
-        # is written once per fire, never once per wake carrying it.
-        self._paid_logged = self.ledger.paid is not None
         self.thread.restore(data)
         self.gate = Gate.from_suspended(data)
         # The stored cursor is a SPEC index; inside a run's round it
@@ -595,89 +586,18 @@ class Program:
     # ---- what the steps read and call ----
 
     def ref_values(self) -> dict[str, str]:
-        """Ref-resolution values, keyed by the dotted ref spellings: the
-        walk's inputs under `inputs.<name>`, every agent output under
-        `node.field` (the one read of an unrecorded one a text can make
-        is a step's own: its last answer, or empty), every run's returns under `run.field` (its
-        finished rounds' values, one per line — empty before any), and
-        the gate's `ask.replies` (the replies read so far, one per line —
-        empty before any). Inside a run's round: that round's inputs and
-        its own record, nothing of the route around it. The roots can
-        never collide: the parser reserves `inputs` as a move id."""
-        rd = self.course.round
-        if rd is not None:
-            return self._round_values(rd)
-        vals = {
-            **own_fields(self.course.node),
-            **self.ledger.previous,
-            **self._input_vals,
-            **self.outputs,
-        }
-        for run in self.spec.runs:
-            keys = run_keys(run, vals)
-            for fld in run.sub.returns:
-                vals[f"{run.id}.{fld}"] = self._run_return(run, fld, keys)
-        vals["ask.replies"] = "\n".join(self.gate.replies)
-        return vals
-
-    def _round_values(self, rd: Round) -> dict[str, str]:
-        """A round's refs: its inputs, its own record, the replies."""
-        return {
-            **own_fields(self.course.node),
-            **rd.inputs,
-            **self.ledger.round_values(rd.prefix),
-            "ask.replies": "\n".join(self.gate.replies),
-        }
-
-    def _run_return(self, run: RunNode, fld: str, keys: list[str]) -> str:
-        """A run's return: its done rounds' values, in list order, one
-        per line — a missed round has no line (its reason is the
-        ledger's), so a report never lists what was not done."""
-        lines = (self.ledger.round_return(round_prefix(run.id, k), fld) for k in keys)
-        return "\n".join(v for v in lines if v)
+        """Ref-resolution values at the cursor (`rounds.values`)."""
+        return rounds.values(
+            self.course, self.ledger, self._input_vals, self.gate.replies
+        )
 
     def _expand(self, run: RunNode) -> list[Round]:
-        """Replace the `run` at the cursor by its rounds' nodes — the
-        rounds still to do: every key of its list (or the one round of a
-        plain run) whose record is not in the ledger. Returns them;
-        raises PlaybookError when the run cannot expand (the guarded
-        callers hand over on it)."""
-        values = self.ref_values()
-        keys = run_keys(run, values)
-        # `rounds:` bounds the WORK, not one reading of the list: a
-        # revision re-plans and the run expands again, so counting only
-        # today's items would hand each re-plan a fresh budget. Rounds
-        # already on record count — a finished one is work this run did.
-        todo = [
-            k for k in keys if not self.ledger.round_finished(round_prefix(run.id, k))
-        ]
-        total = self.ledger.round_count(run.id) + len(todo)
-        if total > run.max_rounds:
-            raise PlaybookError(
-                f"run {run.id!r}: {total} rounds, more than its {run.max_rounds}"
-            )
-        rounds: list[Round] = []
-        for key in todo:
-            # A ref that is empty BY DESIGN — a run's returns before any
-            # round ends, an `each` whose rounds all missed — is not a
-            # value: left out, so the sub's declared `default:` covers
-            # it, and a required input fed nothing fails closed.
-            provided = {
-                k: str(v)
-                for k, v in fill_args(run.args, values, f"run {run.id!r}").items()
-                if str(v) != ""
-            }
-            if run.each is not None:
-                provided[run.each[0]] = key
-            try:
-                resolved = resolve_inputs(run.sub, provided)
-            except PlaybookError as e:
-                raise PlaybookError(f"run {run.id!r}: {e}") from e
-            rounds.append(
-                Round(run, key, {f"inputs.{n}": v for n, v in resolved.items()})
-            )
-        self.course.expand(rounds)
-        return rounds
+        """Replace the `run` at the cursor by its rounds still to do
+        (`rounds.plan`). Returns them; raises PlaybookError when the run
+        cannot expand (the guarded callers hand over on it)."""
+        planned = rounds.plan(run, self.ref_values(), self.ledger)
+        self.course.expand(planned)
+        return planned
 
     def revise(self, replies: str) -> Turn:
         """A reply the ask's words missed re-plans the walk, when the
@@ -713,7 +633,7 @@ class Program:
         # past a pure-text agent with one on record) but stays its last
         # answer, which its own prompt re-reads.
         self.ledger.unsettle(rd.run.revise)
-        self._recovery = None
+        self.recoveries.drop()
         self._step = None
         return self.next()
 
@@ -735,23 +655,16 @@ class Program:
         log.warning("conductor: round %s missed — %s", rd.prefix, reason)
         self.journal(f"round {rd.prefix} missed — {reason}")
         self.ledger.round_missed(rd.prefix, reason)
-        self._recovery = None
+        self.recoveries.drop()
         self._step = None
         self.course.drop_round(rd)
         return self.next()
 
     def _finish_round(self, rd: Round) -> None:
         """A round's last node settled: its returns, filled from its own
-        record, land under its prefix (a template that cannot fill
-        raises, and the guarded caller hands over)."""
-        values = self._round_values(rd)
-        self.ledger.round_done(
-            rd.prefix,
-            {
-                f: str(fill_refs(t, values, where=f"{rd.run.id} `returns.{f}`"))
-                for f, t in rd.run.sub.returns.items()
-            },
-        )
+        record, land under its prefix (`rounds.returns`)."""
+        vals = rounds.round_values(self.course.node, rd, self.ledger, self.gate.replies)
+        self.ledger.round_done(rd.prefix, rounds.returns(rd, vals))
 
     def spend_consent(self) -> None:
         """A payment move fires: consent is consumed, the amount survives
@@ -761,21 +674,13 @@ class Program:
         amount = self.gate.spend()
         if amount is not None:
             self.ledger.pay(amount)
-            self._paid_logged = False
+            # The line names the walk's running total (`ledger.paid`),
+            # not this one fire's amount.
+            self.record.fired(self.ledger.paid)
 
     def log_purchase(self) -> None:
-        """The doctrine's purchase line, harness-written ONCE as soon as
-        a fired payment's result lands, fails, or the session dies —
-        whatever the next check says, money may have moved, and the
-        daily log is the cross-wake record. Idempotent: nothing new to
-        log is a no-op."""
-        if self.ledger.paid is None or self._paid_logged:
-            return
-        self._paid_logged = True
-        self.log_day(
-            f"conductor: {self.app}: payment {money.plain(self.ledger.paid)} fired "
-            f"(playbook {self.ref}) — {money.VERIFY_AFTER_PAY}"
-        )
+        """The fired payment's purchase line, once (`Record.purchase`)."""
+        self.record.purchase(self.ref)
 
     def enter_gate(self, node: Checked) -> Turn:
         """The one enter-page guard moves, acting agents, and the boot's
@@ -895,9 +800,7 @@ class Program:
         """The page's declared hand before the model: a deviation is
         recovered toward the page the frozen cursor already requires —
         the cursor, outputs, and consent are untouched throughout. Never
-        with consent bound, mid-gate, for an irreversible move, or once
-        a payment fired: money keeps the hard handover (no hand moves
-        the phone beside a consent or a fired payment)."""
+        where `recover.barred` says money keeps the hard handover."""
         recovery = self.course.recovers().get(page_name(expected_id))
         # The page's own word once its hand is spent (or it has none) —
         # either spelling, since a page saying `handover` under a node
@@ -906,61 +809,42 @@ class Program:
         fail = partial(
             self.handover, word=recovery.on_fail if recovery is not None else None
         )
-        if (
-            self.gate.consented is not None
-            or self.gate.awaiting
-            or node.irreversible
-            or self.ledger.paid is not None
+        if recover.barred(
+            node,
+            consented=self.gate.consented,
+            awaiting=self.gate.awaiting,
+            paid=self.ledger.paid,
         ):
             return fail(reason)
         if not owned_by(expected_id, self.app):
             # Recovery covers this pack's own pages only — a reserved or
             # channel target has no hand to declare.
             return fail(reason)
-        st = recover.State(node=node, target=expected_id, mode=mode, reason=reason)
         reading = recover.reading_of(self.verdict, expected_id)
         step = recover.plan(
-            self._recoveries,
+            self.recoveries.total,
             recovery,
-            self._page_recoveries[expected_id],
+            self.recoveries.spent(expected_id),
             reading=reading,
         )
         if isinstance(step, recover.Exhausted):
             return fail(f"{reason} — {step.reason}")
-        # The page's DECLARED hand — the planner decides WHETHER, the
-        # walk interprets WHAT: a bare gesture, a landmark tap (at its
-        # declared box, exactly), or an argument-less macro.
-        hand = step.hand
-        note = (
-            f"conductor: recovering toward {expected_id} via its declared hand "
-            f"({reading})"
+        act = recover.action(step.hand, self.app, self.landmarks)
+        if isinstance(act, str):
+            return fail(f"{reason} ({act})")
+        tool, args = act
+        # In flight and counted (the page's `tries` and the walk-wide
+        # ceiling); the landing dispatch reads `KIND_RECOVER`.
+        self.recoveries.engage(
+            recover.State(node=node, target=expected_id, mode=mode, reason=reason)
         )
-        if hand.macro is not None:
-            return self._recover_act(
-                st,
-                note,
-                gesture_vocab.RUN_MACRO,
-                {"name": qualified_macro(self.app, hand.macro)},
-            )
-        if hand.tool == "tap":
-            landmark = self.landmarks.get(hand.landmark or "")
-            if landmark is None:
-                return self.handover(
-                    f"{reason} (recover landmark {hand.landmark!r} undeclared)"
-                )
-            return self._recover_act(st, note, "tap", {"bbox": list(landmark.bbox)})
-        assert hand.tool is not None
-        return self._recover_act(st, note, hand.tool, {})
-
-    def _recover_act(
-        self, st: recover.State, note: str, tool: str, args: dict
-    ) -> AssistantMessage:
-        """The hand's turn: the engagement goes in flight, the page's
-        limit and the walk-wide ceiling both count it, and the landing
-        dispatch reads `KIND_RECOVER`."""
-        self._recovery = st
-        self._page_recoveries[st.target] += 1
-        return self.synth(KIND_RECOVER, note, tool, args)
+        return self.synth(
+            KIND_RECOVER,
+            f"conductor: recovering toward {expected_id} via its declared hand "
+            f"({reading})",
+            tool,
+            args,
+        )
 
     def _recover_landed(self) -> Turn:
         """The hand's result view, judged. Restored → resume exactly
@@ -970,9 +854,8 @@ class Program:
         page's hand again, within its `tries`, then its `on_fail` word;
         nothing before the page runs again, so a landed move is never
         crossed twice."""
-        st = self._recovery
-        assert st is not None and self.verdict is not None
-        self._recovery = None
+        st = self.recoveries.land()
+        assert self.verdict is not None
         self._step = None
         if self.verdict.matches(st.target):
             self.journal(f"recovered {st.target} via its declared hand")
@@ -1032,7 +915,7 @@ class Program:
             node=self.course.node_id(),
             reason=reason,
             micros=self._micros,
-            rescues=self._recoveries,
+            rescues=self.recoveries.total,
             values=self.values,
             total=self.ledger.paid,
         )

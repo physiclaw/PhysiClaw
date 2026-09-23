@@ -107,13 +107,14 @@ micro/ — asking the model: the scoped calls, one subsystem:
     channel.py          the channel: the provider call, retries, the logs
 
 walk/ — one playbook executing:
-    program.py          the walk: phase, cursor moves, verdicts, recovery, ends
+    program.py          the walk: phase, cursor moves, verdicts, the terminal moments
     surface.py          the seam with the steps: `Step`, `Walk`, `Steps`
     course.py           the Course: the route as slots, and the cursor on it
+    rounds.py           a run's rounds as values, and the refs read at the cursor
     speak.py            the walk's voice: send, land, read replies
-    gate.py             the ask-and-hold state, one suspension projection
-    money.py            the declared total and the payment predicates
-    recover.py          declared recovery: the page's hands and bounds
+    gate.py             the ask-and-hold state and consent's moves, one suspension projection
+    money.py            the declared total and the payment guard
+    recover.py          declared recovery: the page's hands, bounds, and counts
     turns.py            minting a synthesized turn, the one in flight
     views.py            reading tool results out of the transcript
     brief.py            the report the walk's last turn carries
@@ -121,7 +122,7 @@ walk/ — one playbook executing:
                         said, answered, paid — every step writes it
     thread.py           the session's one conversation with the model
     suspension.py       suspended.json, the one cross-wake file
-    record.py           the walk's writes: the runs row, the daily log
+    record.py           the walk's writes: the runs row, the daily log, the purchase line
     walklog.py          runs.jsonl — the per-walk row, written
 
 steps/ — one executor per route line kind, on the walk's surface:

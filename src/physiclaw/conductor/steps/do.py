@@ -31,24 +31,22 @@ class DoStep(Step[DoNode]):
         gate = walk.enter_gate(node)
         if gate is not None:
             return gate
-        if node.irreversible == "payment":
-            blocked = money.page_block(
-                walk.verdict, walk.app, f"payment move {node.id!r}"
+        if node.pays:
+            blocked = money.payment_block(
+                walk.verdict,
+                walk.screen,
+                walk.app,
+                f"payment move {node.id!r}",
+                consented=walk.gate.consented,
+                total_label=walk.gate.total_label,
             )
-            if blocked is None:
-                assert walk.screen is not None  # a matched verdict was read off it
-                blocked = money.fire_block(
-                    consented=walk.gate.consented,
-                    total_label=walk.gate.total_label,
-                    screen=walk.screen,
-                )
             if blocked is not None:
-                return walk.handover(f"payment move {node.id!r}: {blocked}")
+                return walk.handover(blocked)
         inputs = fill_args(node.args, walk.ref_values(), f"move {node.id!r}")
         args: dict = {"name": qualified_macro(walk.app, node.macro)}
         if inputs:
             args["inputs"] = inputs
-        if node.irreversible == "payment":
+        if node.pays:
             walk.spend_consent()
         return walk.synth(
             KIND_RUN,

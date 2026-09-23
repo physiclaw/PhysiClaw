@@ -1,6 +1,6 @@
 """Money runs in code — the payment doctrine's predicates, one home.
 
-Two pure functions, deliberately free of walk state so the money
+Pure functions, deliberately free of walk state so the money
 rules can be read (and audited) without the state machine around them.
 The walk supplies the numbers and acts on the answers:
 
@@ -14,11 +14,13 @@ The walk supplies the numbers and acts on the answers:
     money on the page; every other price on it (a promo card, an add-on
     carousel, a struck-through original) is not the order, and a page
     re-renders those between two frames. None = pay; else the bare
-    reason — the walk prefixes the move it was guarding and hands over.
+    reason.
+  - `payment_block` — the one guard both payment steps call before
+    they fire: `page_block`, then `fire_block`, the reason prefixed
+    with the move it was guarding; the walk hands over on it.
 
 Consent itself — quoting, binding, consuming — stays with the gate
-(`steps/ask.py`, `speak.py`, `gate.Gate`): consent is a conversation, these are
-arithmetic.
+(`gate.Gate`): consent is a conversation, these are arithmetic.
 """
 
 from physiclaw.common.bbox import Bbox, center_of, same_line
@@ -108,8 +110,8 @@ def fire_block(
 ) -> str | None:
     """The fire-time predicate. `total_label` is the ask's own readings —
     the total is read at fire time exactly as it was quoted. None = pay;
-    else the bare reason to block — the walk prefixes the move it was
-    guarding."""
+    else the bare reason to block — `payment_block` prefixes the move it
+    was guarding."""
     if consented is None:
         return "reached without a confirmed total"
     total = declared_total(screen, total_label)
@@ -122,18 +124,47 @@ def fire_block(
     )
 
 
-def page_block(verdict: Verdict | None, app: str, what: str) -> str | None:
+def page_block(verdict: Verdict | None, app: str) -> str | None:
     """A payment fires only off a VERIFIED own-pack page — the move
     once, a payment episode before each of its taps: the ask left the
     phone on the IM thread, and an unverified screen could satisfy the
     predicates with the conductor's own ask bubble, or with whatever a
     screen the pack never declared happens to print. None when
-    `verdict` is such a page; else the handover reason. (The ask itself
-    reads its total off the exact waypoint before it — `AskNode.enter`.)"""
+    `verdict` is such a page; else the bare reason — `payment_block`
+    prefixes what it was guarding. (The ask itself reads its total off
+    the exact waypoint before it — `AskNode.enter`.)"""
     if (
         verdict is not None
         and verdict.kind is Reading.MATCH
         and owned_by(verdict.page_id or "", app)
     ):
         return None
-    return f"{what}: current screen is not a verified {app} page — money never reads or fires blind"
+    return f"current screen is not a verified {app} page — money never reads or fires blind"
+
+
+def payment_block(
+    verdict: Verdict | None,
+    screen: Screen | None,
+    app: str,
+    what: str,
+    *,
+    consented: float | None,
+    total_label: tuple[str, ...],
+) -> str | None:
+    """The one guard before anything that pays fires — a payment move
+    once, a payment episode before each of its taps: the page first (a
+    matching amount on a screen the pack never declared proves
+    nothing), then the total against the consent. None = pay; else the
+    handover reason, prefixed with `what`.
+
+    The consent is the caller's to pass, not read here: a move reads
+    the gate as it stands, an episode the amount it stashed at its
+    start, so its later taps still check against the consent its first
+    tap spent."""
+    blocked = page_block(verdict, app)
+    if blocked is None:
+        assert screen is not None  # a matched verdict was read off it
+        blocked = fire_block(
+            consented=consented, total_label=total_label, screen=screen
+        )
+    return f"{what}: {blocked}" if blocked is not None else None

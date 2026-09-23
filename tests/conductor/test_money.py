@@ -1,11 +1,15 @@
-"""Tests for `physiclaw.conductor.walk.money` — the declared total and the
-fire-time predicates, pure arithmetic over a screen."""
+"""Tests for `physiclaw.conductor.walk.money` — the declared total, the
+fire-time predicates, and the one payment guard, pure arithmetic over a
+screen."""
 
 from __future__ import annotations
 
 from conductor_fakes import make_screen
 
+from physiclaw.conductor.spec.match import Reading, Verdict
 from physiclaw.conductor.walk import money
+
+_ON_SHEET = Verdict(Reading.MATCH, "shop.sheet", 0.0, "3/3 anchors")
 
 
 def test_declared_total_reads_the_label_row_itself() -> None:
@@ -120,3 +124,49 @@ def test_declared_total_prefers_the_exact_label_and_the_footer() -> None:
     )
 
     assert money.declared_total(sheet, ("合计",)) == 59.9
+
+
+def test_payment_block_on_the_consented_total_is_none() -> None:
+    sheet = make_screen(("合计 ¥45", 0.5, 0.9))
+
+    blocked = money.payment_block(
+        _ON_SHEET, sheet, "shop", "move 'pay'", consented=45.0, total_label=("合计",)
+    )
+
+    assert blocked is None
+
+
+def test_payment_block_off_a_verified_page_names_the_page_once() -> None:
+    elsewhere = Verdict(Reading.UNKNOWN, None, 0.0, "no page")
+    sheet = make_screen(("合计 ¥45", 0.5, 0.9))
+
+    blocked = money.payment_block(
+        elsewhere, sheet, "shop", "move 'pay'", consented=45.0, total_label=("合计",)
+    )
+
+    assert blocked == (
+        "move 'pay': current screen is not a verified shop page"
+        " — money never reads or fires blind"
+    )
+
+
+def test_payment_block_on_a_changed_total_prefixes_the_fire_reason() -> None:
+    changed = make_screen(("合计 ¥60", 0.5, 0.9))
+
+    blocked = money.payment_block(
+        _ON_SHEET, changed, "shop", "move 'pay'", consented=45.0, total_label=("合计",)
+    )
+
+    assert blocked == (
+        "move 'pay': sheet changed after consent: confirmed 45, now 60 beside 合计"
+    )
+
+
+def test_payment_block_without_consent_blocks() -> None:
+    sheet = make_screen(("合计 ¥45", 0.5, 0.9))
+
+    blocked = money.payment_block(
+        _ON_SHEET, sheet, "shop", "move 'pay'", consented=None, total_label=("合计",)
+    )
+
+    assert blocked == "move 'pay': reached without a confirmed total"

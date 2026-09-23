@@ -206,7 +206,7 @@ class AgentStep(Step[AgentNode]):
         stashes that bound for the per-tap predicates."""
         node, walk = self.node, self.walk
         vals = walk.ref_values()
-        if node.irreversible == "payment":
+        if node.pays:
             if walk.gate.consented is None:
                 return walk.handover(
                     f"agent {node.id!r}: payment episode without bound consent"
@@ -344,25 +344,23 @@ class AgentStep(Step[AgentNode]):
             walk.ledger.refuse(named)
             walk.journal(f"agent {node.id}: refused {what} — {refused}")
             return self._again(refused)
-        if node.irreversible == "payment":
-            # The purse stays with the walker: the same two checks the
-            # payment move runs, before every tap or macro the model
-            # proposes. The page first — the enter gate verified it once
-            # at the episode's start, and a scroll or a tap since may
-            # have landed on a screen the pack never declared, where a
-            # matching amount proves nothing. Then the total: the ask's
-            # label must still read the consented amount.
-            blocked = money.page_block(
-                walk.verdict, walk.app, f"payment agent {node.id!r}"
+        if node.pays:
+            # The purse stays with the walker: the payment move's guard,
+            # before every tap or macro the model proposes — the enter
+            # gate verified the page once at the episode's start, and a
+            # scroll or a tap since may have landed anywhere. Against
+            # the consent stashed at the start, which the first tap
+            # spends from the gate.
+            blocked = money.payment_block(
+                walk.verdict,
+                walk.screen,
+                walk.app,
+                f"payment agent {node.id!r}",
+                consented=self.consented,
+                total_label=self.total_label,
             )
-            if blocked is None:
-                blocked = money.fire_block(
-                    consented=self.consented,
-                    total_label=self.total_label,
-                    screen=walk.screen,
-                )
             if blocked is not None:
-                return walk.handover(f"payment agent {node.id!r}: {blocked}")
+                return walk.handover(blocked)
             # Consent is consumed by the FIRST fire — a later payment
             # needs its own gate (the move rule, episode-shaped).
             walk.spend_consent()

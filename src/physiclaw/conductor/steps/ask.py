@@ -73,8 +73,7 @@ class AskStep(Step[AskNode]):
             stop = speak.sent_landed(walk, on_deny=self._denied, on_other=walk.revise)
             if stop is not None:
                 return stop
-            walk.gate.awaiting = True
-            walk.gate.silence = 0
+            walk.gate.hold()
             return self._wait()
         if kind == KIND_ASK_WAIT:
             return self._peek()
@@ -94,7 +93,7 @@ class AskStep(Step[AskNode]):
         happened to come last — the amount beside the label its `total_label:`
         declares — and quotes it: the message IS the consent record."""
         node, walk = self.node, self.walk
-        if node.approve == "payment":
+        if node.pays:
             # The sheet is the waypoint before the ask — that page, not
             # any own-pack page the phone happens to show.
             assert walk.verdict is not None
@@ -105,7 +104,6 @@ class AskStep(Step[AskNode]):
                     f"({wrong}) — refusing to ask blind"
                 )
             assert walk.screen is not None  # a verified verdict was read off it
-            walk.gate.total_label = tuple(node.total_label)
             total = money.declared_total(walk.screen, node.total_label)
             if total is None:
                 return walk.handover(
@@ -114,7 +112,7 @@ class AskStep(Step[AskNode]):
                 )
             # The number the user will see is the number they consent
             # to — and, at fire time, the bound.
-            walk.gate.quoted = total
+            walk.gate.quote(total, tuple(node.total_label))
         text = str(
             fill_refs(node.message, self._values(), where=f"ask {node.id!r} `message`")
         )
@@ -239,8 +237,7 @@ class AskStep(Step[AskNode]):
         node, walk = self.node, self.walk
         # Informed consent binds the money predicates: the quoted total
         # becomes the consented one.
-        walk.gate.consented = walk.gate.quoted
-        walk.gate.awaiting = False
+        walk.gate.consent()
         if node.resume is not None:
             return walk.synth(
                 KIND_ASK_RESUME,

@@ -6,10 +6,11 @@ end_session is then blocked stays recorded as suspended; one `walk`
 event into the session's events.jsonl (the summary lists them, so a
 session's playbook story is readable without the runtime log); and the
 daily-log lines the agent reads at wake (`common.daylog`): a
-suspension, a fired payment, a walk cut short. A dry walk (the replay,
-the boot, a stepping checkpoint) writes no runs row and no daily-log
-line but still its `walk` event when a session is listening — the boot
-handing its baton on IS the session's story. Fail-open: a write
+suspension, a fired payment (once per fire: `fired`, then `purchase`),
+a walk cut short. A dry walk (the replay, the boot, a stepping
+checkpoint) writes no runs row and no daily-log line but still its
+`walk` event when a session is listening — the boot handing its baton
+on IS the session's story. Fail-open: a write
 failure logs and the walk goes on.
 """
 
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from physiclaw.common import daylog
-from physiclaw.conductor.walk import walklog
+from physiclaw.conductor.walk import money, walklog
 from physiclaw.conductor.walk.walklog import Outcome
 from physiclaw.contract.plugin import EventSink
 
@@ -39,6 +40,11 @@ class Record:
     # The walk's recorded outcome, None while it runs — set by the
     # first terminal moment and never again.
     outcome: Outcome | None = None
+    # The amount the purchase line of a fired payment will name, while
+    # that daily-log line is not written yet. Never persisted: a
+    # suspension logs before it writes (`Program.suspend`), so a
+    # restored walk starts with nothing owed.
+    purchase_owed: float | None = None
 
     def run(
         self,
@@ -105,6 +111,23 @@ class Record:
             self.events.write({"event": name, **fields})
         except Exception:
             log.warning("conductor %s event write failed", name, exc_info=True)
+
+    def fired(self, paid: float | None) -> None:
+        """A payment fired: its purchase line is owed, naming `paid`."""
+        self.purchase_owed = paid
+
+    def purchase(self, ref: str) -> None:
+        """The doctrine's purchase line, written ONCE per fire as soon as
+        its result lands, fails, or the session dies — whatever the next
+        check says, money may have moved, and the daily log is the
+        cross-wake record. Nothing owed is a no-op."""
+        amount, self.purchase_owed = self.purchase_owed, None
+        if amount is None:
+            return
+        self.day(
+            f"conductor: {self.app}: payment {money.plain(amount)} fired "
+            f"(playbook {ref}) — {money.VERIFY_AFTER_PAY}"
+        )
 
     def day(self, entry: str) -> None:
         """One daily-log line in the agent's own convention, stamped —

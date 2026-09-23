@@ -307,7 +307,7 @@ def _on_fail_warnings(spec: Playbook) -> list[str]:
         (
             i
             for i, n in enumerate(spec.nodes)
-            if isinstance(n, (DoNode, AgentNode)) and n.irreversible == "payment"
+            if isinstance(n, (DoNode, AgentNode)) and n.pays
         ),
         None,
     )
