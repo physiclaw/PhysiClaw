@@ -1401,7 +1401,7 @@ def test_a_macro_reads_its_recorded_taps_for_the_guards() -> None:
 
 def test_never_tap_takes_a_reading_a_list_or_a_label_with_a_band() -> None:
     from physiclaw.common.bbox import BANDS
-    from physiclaw.conductor.spec.model import NeverTap
+    from physiclaw.conductor.spec.pages import AnchorDecl
 
     text = _mutate(
         "    tools: [tap, scroll]\n",
@@ -1414,10 +1414,10 @@ def test_never_tap_takes_a_reading_a_list_or_a_label_with_a_band() -> None:
     node = playbook.parse_playbook(text, "buy", _pack()).nodes[1]
 
     assert node.never_tap == (
-        NeverTap(label=("Pay Now",)),
-        NeverTap(label=("Place Order", "Confirm Payment")),
-        NeverTap(label=("Pay Now",), within=BANDS["bottom"]),
-        NeverTap(label=("Buy",), within=(0.0, 0.9, 1.0, 1.0)),
+        AnchorDecl(text="Pay Now"),
+        AnchorDecl(text="Place Order", alts=("Confirm Payment",)),
+        AnchorDecl(text="Pay Now", within=BANDS["bottom"]),
+        AnchorDecl(text="Buy", within=(0.0, 0.9, 1.0, 1.0)),
     )
     assert playbook.parse_playbook(VALID, "buy", _pack()).nodes[1].never_tap == ()
 
@@ -1431,6 +1431,10 @@ def test_never_tap_takes_a_reading_a_list_or_a_label_with_a_band() -> None:
         ("    never_tap: [{within: bottom}]\n", "`label`"),
         ("    never_tap: [{label: a, within: sideways}]\n", "`within`"),
         ("    never_tap: [a, b, c, d, e, f, g, h, i]\n", "at most 8"),
+        # The text rules a page anchor has — the same row matcher reads both.
+        ('    never_tap: ["two\\nlines"]\n', "single-line"),
+        (f'    never_tap: ["{"x" * 81}"]\n', "chars > max 80"),
+        ("    never_tap: [{label: [a, a]}]\n", "duplicate `label` reading"),
     ],
 )
 def test_never_tap_rejects_a_malformed_target(block: str, message: str) -> None:

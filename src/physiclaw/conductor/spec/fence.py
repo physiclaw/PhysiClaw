@@ -1,15 +1,29 @@
 """The never_tap fence, judged on a live screen — the runtime half of
-`never_tap:` (`NeverTap` is the declaration): why a tap on a box is
-refused, or None, as a pure rule over the screen's rows, so it reads
-and audits without the state machine around it. The agent step asks
-before every tap it forwards and, tap by recorded tap, before every
-granted macro it runs (`macro_refusal`).
+`never_tap:` (`AgentNode.never_tap` is the declaration, each target an
+`AnchorDecl`): why a tap on a box is refused, or None, as a pure rule
+over the screen's rows, so it reads and audits without the state
+machine around it. The agent step asks before every tap it forwards
+and, tap by recorded tap, before every granted macro it runs
+(`macro_refusal`).
+
+A target found on the screen is refused across the CONTROL its label
+sits on, not just the label's own box: sideways to the next listed
+element on the same row, or to the band's or the screen's edge
+(`_control`). A word standing alone on its bar refuses the whole bar;
+one beside another button ends where that button's label begins.
+
+A target's `within` says where the TARGET sits, as it does on a page
+anchor. SKETCH IT GENEROUSLY: it gates the tap's centre and the row's
+centre alike, so a band drawn tight around its target can miss a row
+sitting on the edge. Omitting it means anywhere, which is always the
+safe reading — declare one only to keep a word that ALSO reads
+somewhere harmless from standing in for the real control.
 """
 
 from physiclaw.common.bbox import Bbox, center_of, inside, same_line
 from physiclaw.common.listing import Element
 from physiclaw.conductor.spec import match
-from physiclaw.conductor.spec.model import NeverTap
+from physiclaw.conductor.spec.pages import AnchorDecl
 from physiclaw.macros.model import Macro
 
 # How far outside a listed row's own box a tap may still be pressing it.
@@ -60,7 +74,7 @@ def _control(row: Element, rows: tuple[Element, ...], band: Bbox | None) -> Bbox
 
 
 def refusal(
-    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], box: Bbox
+    targets: tuple[AnchorDecl, ...], rows: tuple[Element, ...], box: Bbox
 ) -> str | None:
     """Why a tap on `box` is refused, or None — a pure rule over what the
     step declared, what the screen shows and where the tap would land,
@@ -72,7 +86,7 @@ def refusal(
     instruction."""
     for target in targets:
         # Not where this target lives — allow, next target. The band is a
-        # sketch (see `NeverTap`), so a tap centred outside it is not on
+        # sketch (the module docstring), so a tap centred outside it is not on
         # the target and the rest is skipped outright.
         if target.within is not None and not _centred_in(box, target.within):
             continue
@@ -80,9 +94,9 @@ def refusal(
         # A row found is refused across the control it labels
         # (`_control`), not just its own text: the model boxes what it
         # sees, and a button is wider than its word.
-        for row in match.candidate_rows(target.anchor, rows, ()):
+        for row in match.candidate_rows(target, rows, ()):
             if _centred_in(box, _control(row, rows, target.within)):
-                return f"that box presses {' / '.join(target.label)}, not this step's to tap."
+                return f"that box presses {' / '.join(target.readings)}, not this step's to tap."
         # The target's text is not in the listing — which is NOT the same
         # as not on the screen. An orange pay pill can be detected as an
         # unlabelled icon, or lose its text to glare, and the episode is
@@ -93,7 +107,7 @@ def refusal(
         # for is refused, whatever it turns out to be.
         if target.within is not None and not _accounted(box, rows, target.within):
             return (
-                f"that box is in the band {' / '.join(target.label)} sits in, and "
+                f"that box is in the band {' / '.join(target.readings)} sits in, and "
                 "no row of the screen reads as what it would press — scroll the "
                 "row it is on higher up the screen, out of that band, or aim at "
                 "a listed element."
@@ -122,7 +136,7 @@ def _accounted(box: Bbox, rows: tuple[Element, ...], band: Bbox) -> bool:
 
 
 def macro_refusal(
-    targets: tuple[NeverTap, ...], rows: tuple[Element, ...], macro: Macro
+    targets: tuple[AnchorDecl, ...], rows: tuple[Element, ...], macro: Macro
 ) -> str | None:
     """Why running a granted macro is refused, or None: each tap the
     macro records (`Macro.taps`) is judged as if the model had proposed

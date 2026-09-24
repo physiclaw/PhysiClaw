@@ -7,7 +7,6 @@ grants to each other.
 from dataclasses import dataclass
 from typing import Any
 
-from physiclaw.common.bbox import parse_within
 from physiclaw.conductor.route.fields import (
     irreversible_class,
     limit_int,
@@ -38,11 +37,11 @@ from physiclaw.conductor.spec.match import normalize
 from physiclaw.conductor.spec.model import (
     PAYMENT,
     AgentNode,
-    NeverTap,
     PlaybookError,
     prose,
     require_str,
 )
+from physiclaw.conductor.spec.pages import AnchorDecl, parse_target
 from physiclaw.conductor.spec.refs import (
     BARE_REF_RE,
     check_refs,
@@ -55,7 +54,6 @@ from physiclaw.macros.model import (
     MACROS_KIND,
     Macro,
     app_ref,
-    checked_readings,
     parse_ref,
 )
 
@@ -65,7 +63,7 @@ _AGENT_LIMIT_KEYS = {"calls", "scrolls"}
 def _guard_grants(
     scope: Scope,
     where: str,
-    never_tap: tuple[NeverTap, ...],
+    never_tap: tuple[AnchorDecl, ...],
     spots: tuple[str, ...],
     granted: tuple[Macro, ...],
 ) -> None:
@@ -94,10 +92,10 @@ def _guard_grants(
         for target in never_tap:
             if any(
                 match.label_matches(normalize(reading), w, ())
-                for reading in target.label
+                for reading in target.readings
                 for w in written
             ):
-                return " / ".join(target.label)
+                return " / ".join(target.readings)
         return None
 
     for name in spots:
@@ -130,11 +128,12 @@ def _guard_grants(
                 )
 
 
-def _never_tap(entry: dict, where: str) -> tuple[NeverTap, ...]:
+def _never_tap(entry: dict, where: str) -> tuple[AnchorDecl, ...]:
     """`never_tap:` — the targets an episode's taps may never land on.
     Each item is a reading, alternate readings of ONE target, or a
-    mapping with `label:` and an optional `within:` band; the readings
-    grammar is the one every other target list uses."""
+    mapping with `label:` and an optional `within:` band — the target
+    shape a page anchor takes, read by the same parser
+    (`pages.parse_target`), since the same row matcher reads both."""
     raw = entry.get("never_tap")
     if raw is None:
         return ()
@@ -142,23 +141,16 @@ def _never_tap(entry: dict, where: str) -> tuple[NeverTap, ...]:
         raise PlaybookError(f"{where}: `never_tap` takes a non-empty LIST")
     if len(raw) > MAX_NEVER_TAP:
         raise PlaybookError(f"{where}: at most {MAX_NEVER_TAP} `never_tap` targets")
-    out: list[NeverTap] = []
-    for i, item in enumerate(raw):
-        at = f"{where}: `never_tap[{i}]`"
-        spec = item if isinstance(item, dict) else {"label": item}
-        extra = set(spec) - {"label", "within"}
-        if extra:
-            raise PlaybookError(f"{at}: unknown key(s): {', '.join(sorted(extra))}")
-        label = checked_readings(spec, at, require_str, PlaybookError, key="label")
-        try:
-            within = parse_within(spec["within"]) if "within" in spec else None
-        except (ValueError, TypeError) as e:
-            # `parse_within` raises a bare ValueError; every spec parser
-            # wraps it, or `playbooks check` prints a traceback instead
-            # of a located message.
-            raise PlaybookError(f"{at}: `within` {e}") from e
-        out.append(NeverTap(label=label, within=within))
-    return tuple(out)
+    return tuple(
+        parse_target(
+            item,
+            f"{where}: `never_tap[{i}]`",
+            key="label",
+            require_str=require_str,
+            err=PlaybookError,
+        )
+        for i, item in enumerate(raw)
+    )
 
 
 # What an agent's `context:` may hold: the brief, what it may name,

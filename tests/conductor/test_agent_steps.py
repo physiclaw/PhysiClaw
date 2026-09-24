@@ -53,7 +53,8 @@ from physiclaw.conductor.spec.calls import (
 )
 from physiclaw.conductor.spec.fence import refusal
 from physiclaw.conductor.spec.live import disabled_macros
-from physiclaw.conductor.spec.model import AgentNode, DoNode, NeverTap, PlaybookError
+from physiclaw.conductor.spec.model import AgentNode, DoNode, PlaybookError
+from physiclaw.conductor.spec.pages import AnchorDecl
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, TextBlock
 
 BACK_LANDMARK = """\
@@ -1456,8 +1457,8 @@ def test_a_completed_walk_closes_on_its_own_recap_when_nobody_answers() -> None:
 
 # ---------- never_tap: the taps the walker will not fire ----------
 
-_PAY = NeverTap(label=("免密支付", "立即支付"))
-_FOOTER_PAY = NeverTap(label=("免密支付",), within=BANDS["bottom"])
+_PAY = AnchorDecl(text="免密支付", alts=("立即支付",))
+_FOOTER_PAY = AnchorDecl(text="免密支付", within=BANDS["bottom"])
 
 
 def _sheet():

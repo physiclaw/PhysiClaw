@@ -96,7 +96,7 @@ REASON_TIMEOUT = "timeout"
 # REQUIRED `label` beside it says what the coordinates ARE, for the
 # reader of the file and of the run log. Full rules live in
 # the format README (`scaffold.README_CONTENT`). The cap is the ONE
-# alts-per-target number — `pages.MAX_ANCHOR_READINGS` re-exports it
+# alts-per-target number — page anchors read it through `checked_readings`
 # (the `_spec` doctrine: the macro layer is the rules' true home).
 TARGET_LABEL = "label"
 TARGET_BBOX = "bbox"

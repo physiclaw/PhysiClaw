@@ -114,12 +114,12 @@ def test_anchor_alternates_parse_as_one_anchor() -> None:
 @pytest.mark.parametrize(
     "text, fragment",
     [
-        ("p:\n  anchors: [{text: []}]", "list is empty"),
+        ("p:\n  anchors: [{text: []}]", "one string or up to 4"),
         (
             "p:\n  anchors: [{text: ['a1','b2','c3','d4','e5']}]",
-            "5 readings > max 4",
+            "one string or up to 4",
         ),
-        ("p:\n  anchors: [{text: ['dup', 'dup']}]", "repeats the reading"),
+        ("p:\n  anchors: [{text: ['dup', 'dup']}]", "duplicate `text` reading"),
         # The single-char rule is per reading — one loose alternate opens
         # the same door as one loose anchor.
         ("p:\n  anchors: [{text: ['Search', 'x']}]", "needs a `within`"),

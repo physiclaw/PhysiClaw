@@ -19,7 +19,7 @@ declarations alone. Geometry adds position checks, the scroll vote,
 the overlay reading, and mined OCR variants; it never adds a score.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,19 +35,10 @@ from physiclaw.conductor.spec.limits import (
     MAX_PAGES,
 )
 from physiclaw.macros.model import (
-    MAX_LABEL_READINGS,
     PAGES_KIND,
     app_ref,
     checked_readings,
 )
-
-# Acceptable readings of ONE anchor, canonical included (see `AnchorDecl`).
-# A handful covers the real cases — a bilingual label plus a known OCR
-# confusion; more than that is usually two anchors wearing one coat.
-# The VALUE is the macro layer's one alts-per-target cap (`specfile`
-# doctrine): anchors and gesture labels follow the same convention, so
-# the two caps can never drift.
-MAX_ANCHOR_READINGS = MAX_LABEL_READINGS
 
 
 class PagesError(specfile.SpecError):
@@ -470,68 +461,63 @@ def _parse_anchors(raw: Any, where: str) -> tuple[AnchorDecl, ...]:
     return tuple(_parse_anchor(a, where) for a in raw)
 
 
-def _parse_anchor(raw: Any, where: str) -> AnchorDecl:
-    raw_text: Any  # validated (and narrowed to str) by _anchor_text below
+def parse_target(
+    raw: Any,
+    where: str,
+    *,
+    key: str,
+    require_str: "Callable[[object, str], str]",
+    err: type[Exception],
+) -> AnchorDecl:
+    """The target shape every readings-plus-band declaration takes — a
+    page anchor and a `forbid:` term (`text`), an episode's `never_tap:`
+    (`label`): one reading, a list of alternate readings of ONE target,
+    or a mapping of the readings under `key` with an optional `within`
+    band or box. The ONE parser of that shape, raising the caller's
+    error class: the readings grammar (`checked_readings`), the text
+    rules (single-line, under `MAX_ANCHOR_LEN`) and the band can never
+    drift between the declarations one row matcher reads."""
     within: Bbox | None = None
     if isinstance(raw, (str, list)):
-        raw_text = raw
+        spec: dict = {key: raw}
     elif isinstance(raw, dict):
-        unknown = sorted(set(raw.keys()) - {"text", "within"})
+        unknown = sorted(set(raw.keys()) - {key, "within"})
         if unknown:
-            raise PagesError(
-                f"{where}: anchor has unknown key(s): {', '.join(map(str, unknown))}"
-            )
-        if "text" not in raw:
-            raise PagesError(f"{where}: an anchor mapping needs `text`")
-        raw_text = raw["text"]
-        within = _parse_within(raw.get("within"), f"{where}: anchor `within`")
+            raise err(f"{where}: unknown key(s): {', '.join(map(str, unknown))}")
+        if key not in raw:
+            raise err(f"{where}: a target mapping needs `{key}`")
+        spec = raw
+        if raw.get("within") is not None:
+            try:
+                within = parse_within(raw["within"])
+            except (ValueError, TypeError) as e:
+                raise err(f"{where}: `within` {e}") from e
     else:
-        raise PagesError(
-            f"{where}: each anchor must be a text, a list of readings, or a "
-            "{text, within} mapping"
+        raise err(
+            f"{where} must be a text, a list of readings, or a "
+            f"{{{key}, within}} mapping"
         )
-    # `text:` takes one reading, or a list of alternate readings of the SAME
-    # anchor — any one satisfies it, and it counts once (see `AnchorDecl`).
-    readings = list(raw_text) if isinstance(raw_text, list) else [raw_text]
-    if not readings:
-        raise PagesError(f"{where}: anchor `text` list is empty")
-    if len(readings) > MAX_ANCHOR_READINGS:
-        raise PagesError(
-            f"{where}: anchor has {len(readings)} readings > max {MAX_ANCHOR_READINGS}"
-        )
-    texts: list[str] = []
-    for one in readings:
-        text = _anchor_text(one, f"{where} anchor")
-        # A single character as a whole-screen anchor would match inside almost
-        # any label — the macro grammar's rule, for the same reason. Checked
-        # per reading: one loose alternate opens the same door as one loose
-        # anchor.
-        if len(text) == 1 and within is None:
-            raise PagesError(
-                f"{where}: single-character anchor {text!r} needs a `within`"
-            )
-        if text in texts:
-            raise PagesError(f"{where}: anchor repeats the reading {text!r}")
-        texts.append(text)
-    # First reading is canonical — the learned-geometry key (see AnchorDecl).
-    return AnchorDecl(text=texts[0], alts=tuple(texts[1:]), within=within)
+    readings = checked_readings(spec, where, require_str, err, key=key)
+    for text in readings:
+        if len(text) > MAX_ANCHOR_LEN:
+            raise err(f"{where}: `{key}` {len(text)} chars > max {MAX_ANCHOR_LEN}")
+        if "".join(text.splitlines()) != text:
+            raise err(f"{where}: `{key}` must be single-line: {text!r}")
+    return AnchorDecl(text=readings[0], alts=readings[1:], within=within)
 
 
-def _parse_within(raw: Any, where: str) -> "Bbox | None":
-    """A check's `within:` — a band name or a box, read by the one shared
-    parser (`common.bbox.parse_within`); None when absent."""
-    if raw is None:
-        return None
-    try:
-        return parse_within(raw)
-    except (ValueError, TypeError) as e:
-        raise PagesError(f"{where}: {e}") from e
-
-
-def _anchor_text(value: Any, where: str) -> str:
-    text = _require_str(value, f"{where}: text")
-    if len(text) > MAX_ANCHOR_LEN:
-        raise PagesError(f"{where}: text {len(text)} chars > max {MAX_ANCHOR_LEN}")
-    if "".join(text.splitlines()) != text:
-        raise PagesError(f"{where}: text must be single-line: {text!r}")
-    return text
+def _parse_anchor(raw: Any, where: str) -> AnchorDecl:
+    """An anchor or forbid term: the target shape, plus the identity
+    rule — a single character as a whole-screen anchor would match
+    inside almost any label, so it needs a `within`. Per reading: one
+    loose alternate opens the same door as one loose anchor."""
+    decl = parse_target(
+        raw, f"{where} anchor", key="text", require_str=_require_str, err=PagesError
+    )
+    if decl.within is None:
+        for text in decl.readings:
+            if len(text) == 1:
+                raise PagesError(
+                    f"{where}: single-character anchor {text!r} needs a `within`"
+                )
+    return decl
