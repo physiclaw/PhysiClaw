@@ -8,9 +8,18 @@ app move declares `resume:`), and the boot's shape (`check_boot`).
 And the advisories (`readiness_warnings`, `menu_warnings`): things
 that let a walk start and then quietly under-perform — legal, and the
 author is told the cost rather than refused.
+
+What a lint reads decides what it reports once. A lint on a move reads
+the route's OWN moves: a playbook this route runs is linted under its
+own name (`playbooks check` lints every playbook of the pack; a
+rehearsal adds the ones its entry runs, `walk_warnings`). A lint on
+two adjacent moves reads `pairs`: the route as walked, a run's moves
+in the run's place, each pair once, and a pair inside one playbook
+left to that playbook's own lint.
 """
 
 from collections.abc import Iterable, Sequence
+from itertools import pairwise
 
 from physiclaw.common.bbox import center_of
 from physiclaw.common.listing import Element, Screen, format_elements
@@ -68,6 +77,24 @@ def flatten(nodes: Sequence[Node]) -> list[Node]:
     return out
 
 
+def pairs(nodes: Sequence[Node]) -> list[tuple[Node, Node]]:
+    """The adjacent pairs this route itself creates, one per place it
+    creates them: two of its own moves; the move before a run and the
+    sub's first; the sub's last and the move after; and, for an
+    `each:`, the sub's last and its own first — the pair only a second
+    round has. A pair of two moves inside one playbook it runs is that
+    playbook's own, read when it is linted under its own name."""
+    out: list[tuple[Node, Node]] = []
+    for n in nodes:
+        if isinstance(n, RunNode) and n.each is not None:
+            out.append((n.sub.nodes[-1], n.sub.nodes[0]))
+    for a, b in pairwise(nodes):
+        last = a.sub.nodes[-1] if isinstance(a, RunNode) else a
+        first = b.sub.nodes[0] if isinstance(b, RunNode) else b
+        out.append((last, first))
+    return out
+
+
 def screen_move(node: Node) -> bool:
     """A move whose enter page must read before it runs — a `do` with an
     enter, or an acting agent."""
@@ -76,13 +103,13 @@ def screen_move(node: Node) -> bool:
     )
 
 
-def check_resume(nodes: list[Node]) -> None:
+def check_resume(nodes: Sequence[Node]) -> None:
     """An ask leaves the phone on the IM thread; a screen move right
     after it needs the app back first. For a payment ask that is not
     advisory: consent is bound, money never recovers, so a missing
-    `resume:` is a certain handover the moment the user says yes."""
-    for i, n in enumerate(nodes[:-1]):
-        nxt = nodes[i + 1]
+    `resume:` is a certain handover the moment the user says yes. Over
+    `pairs`: a run's own such pair refused that playbook already."""
+    for n, nxt in pairs(nodes):
         if isinstance(n, AskNode) and n.pays and n.resume is None:
             if screen_move(nxt):
                 raise PlaybookError(
@@ -222,6 +249,17 @@ def readiness_warnings(spec: Playbook, pack: Pack) -> list[str]:
     )
 
 
+def walk_warnings(spec: Playbook, pack: Pack) -> list[str]:
+    """The advisories a rehearsal prints for the walk it is about to
+    make: the entry's own, then each playbook the entry runs, once
+    each under its name — the moves a run's rounds walk are that
+    playbook's, and a lint on them is its own."""
+    out = readiness_warnings(spec, pack)
+    for name, sub in {r.sub.name: r.sub for r in spec.runs}.items():
+        out += [f"{name}: {line}" for line in readiness_warnings(sub, pack)]
+    return out
+
+
 # What the tool legend already teaches, spelled as an instruction. The
 # bare verbs are the author's to use ("if nothing fits, escalate") —
 # it is the REPLY FORMAT that is taught twice.
@@ -237,7 +275,7 @@ def _prompt_warnings(spec: Playbook) -> list[str]:
     prose is the author's, and only the author knows whether a label is
     there to identify a control or to forbid it."""
     out = []
-    for n in flatten(spec.nodes):
+    for n in spec.nodes:
         if not isinstance(n, AgentNode):
             continue
         # One text rule for every comparison here: prose is the author's,
@@ -272,7 +310,7 @@ def _prompt_warnings(spec: Playbook) -> list[str]:
             "pay button is; name a label to say which control is which, "
             "never to forbid one"
             for target in n.never_tap
-            for reading in target.label
+            for reading in target.readings
             if reading.casefold() in low
         ]
     return out
@@ -366,9 +404,7 @@ def _resume_warnings(spec: Playbook) -> list[str]:
     is told. (A payment ask in that shape is refused at parse — consent
     never recovers.)"""
     out = []
-    nodes = flatten(spec.nodes)  # the moves a run's rounds are, round to round
-    for i, n in enumerate(nodes[:-1]):
-        nxt = nodes[i + 1]
+    for n, nxt in pairs(spec.nodes):
         if not screen_move(nxt):
             continue
         if isinstance(n, AskNode) and n.resume is None:

@@ -861,6 +861,110 @@ def test_a_recover_hand_inside_a_round_runs_again_never_the_rounds_start() -> No
     assert "parse.items" in p.ledger.decided
 
 
+# ---------- lints read a run's moves once, under the right name ----------
+
+LEG_SAYS_DONE = LEG.replace(
+    "  - start: app\n",
+    "  - agent: judge\n"
+    "    context:\n"
+    '      prompt: "Judge {what}; return done."\n'
+    '      given: {what: "{inputs.what}"}\n'
+    "    returns:\n"
+    "      ok: whether it fits\n"
+    "  - start: app\n",
+)
+
+LEG_ASKS = LEG.replace(
+    "  - do: search\n",
+    "  - ask: go\n"
+    "    approve: go\n"
+    '    message: "go on? 好的/不用"\n'
+    '    yes: ["好的"]\n'
+    '    no: ["不用"]\n'
+    "  - do: search\n",
+)
+
+# A leg that begins on the app and ends on the thread (back on home, as
+# `each` requires): only a second round puts its tell right before its
+# own first screen move.
+LEG_TELLS_LAST = """\
+kind: playbook
+schema: 1
+name: leg
+description: search, come back, say so
+inputs:
+  what:
+    description: what to search
+returns:
+  did: "searched {inputs.what}"
+route:
+  - page: app.pages.home
+  - do: search
+    macro: app.macros.add-cart
+    with: {message: "{inputs.what}"}
+  - page: app.pages.results
+  - do: back
+    macro: app.macros.open-app
+  - page: app.pages.home
+  - tell: say
+    message: "did {inputs.what}"
+  - page: app.pages.home
+"""
+
+EACH_ON_HOME = EACH.replace(
+    "  - run: leg\n",
+    "  - start: app\n    macro: app.macros.open-app\n"
+    "  - page: app.pages.home\n"
+    "  - run: leg\n",
+).replace(
+    "  - page: app.pages.results\n  - tell: report\n",
+    "  - page: app.pages.home\n  - tell: report\n",
+)
+
+
+def _entry_and_leg(entry: str, leg: str):
+    pack = _pack(flow=entry, **{"flow.leg": leg})
+    return playbook.parse_playbook(entry, "flow", pack), pack
+
+
+@pytest.mark.parametrize(
+    "leg, needle, prefix",
+    [(LEG_SAYS_DONE, "done", "agent 'judge'"), (LEG_ASKS, "resume", "ask 'go'")],
+    ids=["prompt-lint", "resume-lint"],
+)
+def test_a_lint_on_a_legs_moves_is_the_legs_own_not_the_entrys(
+    leg: str, needle: str, prefix: str
+) -> None:
+    spec, pack = _entry_and_leg(EACH, leg)
+
+    entry_lines = [w for w in lints.readiness_warnings(spec, pack) if needle in w]
+    leg_lines = [
+        w for w in lints.readiness_warnings(spec.runs[0].sub, pack) if needle in w
+    ]
+
+    assert entry_lines == []
+    assert len(leg_lines) == 1 and leg_lines[0].startswith(prefix)
+
+
+def test_walk_warnings_add_each_run_leg_once_under_its_name() -> None:
+    spec, pack = _entry_and_leg(EACH, LEG_SAYS_DONE)
+
+    lines = [w for w in lints.walk_warnings(spec, pack) if "done" in w]
+
+    assert len(lines) == 1 and lines[0].startswith("flow.leg: agent 'judge'")
+
+
+def test_the_pair_a_second_round_creates_is_the_entrys_and_read_once() -> None:
+    spec, pack = _entry_and_leg(EACH_ON_HOME, LEG_TELLS_LAST)
+    leg = spec.runs[0].sub
+
+    entry_lines = [w for w in lints.readiness_warnings(spec, pack) if "tell 'say'" in w]
+    leg_lines = [w for w in lints.readiness_warnings(leg, pack) if "tell 'say'" in w]
+
+    assert len(entry_lines) == 1 and "'search' runs on the app next" in entry_lines[0]
+    assert leg_lines == []
+
+
 TOP_ASK = EACH.replace(
     "  - page: app.pages.results\n  - tell: report\n",
     "  - page: app.pages.results\n"

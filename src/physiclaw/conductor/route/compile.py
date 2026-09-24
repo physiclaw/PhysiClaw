@@ -208,9 +208,10 @@ def compile_route(
     moves = scope.compiled
     if len(moves) > MAX_NODES:
         raise PlaybookError(f"too many moves ({len(moves)} > {MAX_NODES})")
-    flat = lints.flatten(moves)
-    lints.check_money(flat)
-    lints.check_resume(flat)
+    # Money reads the walked route whole (a pay move's predecessor, in
+    # every round); resume reads the pairs this route creates.
+    lints.check_money(lints.flatten(moves))
+    lints.check_resume(moves)
     if is_boot(scope):
         lints.check_boot(moves)
     # The route's defaults beneath its waypoints' hands: a waypoint that

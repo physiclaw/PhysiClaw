@@ -179,7 +179,7 @@ def arm(
     values = resolve_inputs(spec, values)
     if not spec.enabled:
         emit_warn(f"{app}/{name} is disabled — rehearsing it anyway")
-    for line in lints.readiness_warnings(spec, pack):
+    for line in lints.walk_warnings(spec, pack):
         emit_warn(line)
     channel = channel_mod.load_channel()
     program = build_program(

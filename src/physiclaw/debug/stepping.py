@@ -386,7 +386,7 @@ async def step(
             dry=True,
             activation=menu,
         ).state()
-        for line in lints.readiness_warnings(spec, pack):
+        for line in lints.walk_warnings(spec, pack):
             emit_warn(line)
         # The virtual thread opens with the user's words — the playbook's
         # first declared input, the one the boot fills from the message —
