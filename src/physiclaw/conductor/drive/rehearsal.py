@@ -97,8 +97,7 @@ async def walk(
         SystemMessage(content="rehearsal"),
         UserMessage(content="rehearse the armed walk"),
     ]
-    micro = None
-    wire = ModelLog()
+    decider = _Decider(emit, raw=raw, on_exchange=on_exchange)
     opts = dict(macro_opts or {})
     shown = None  # the last verdict printed — one line per reading
     try:
@@ -109,40 +108,13 @@ async def walk(
         # hand, in which case the walk wakes the phone itself.
         if unlock and not _declares_locked_hand(program):
             await unlock_if_covered(mcp, emit)
-        unwired: str | None = None  # why no model can be called, once known
         for _ in range(REHEARSE_MAX_TURNS):
             step = program.advance(history)
             if program.verdict is not None and program.verdict is not shown:
                 shown = program.verdict
                 emit(f"  {describe_verdict(shown)}")
             while isinstance(step, DecisionRequest):
-                # Built on FIRST use, and after the connection — so
-                # "start the server first" is what a user without one
-                # hears, and a walk that never calls a model never pays
-                # a model-config error either.
-                if micro is None and unwired is None:
-                    try:
-                        micro = micro_caller(rlog=wire)
-                    except Exception as e:
-                        # A call that declares its own answer for "nobody
-                        # is wired" (the close writes the recap from the
-                        # ledger) gets it, as in `replay.py`; any other
-                        # call is the config error the user must hear.
-                        if not has_fallback(step.call):
-                            raise
-                        unwired = f"nobody wired ({e})"
-                if micro is not None:
-                    result = await micro.run(step)
-                else:
-                    result = MicroResult(None, unwired or "", attempts=0, elapsed_ms=0)
-                decision = describe_result(result)
-                emit(f"  model {step.call} ({step.node_id}): {decision}")
-                for record in exchanges(wire.drain(), step, decision):
-                    if raw:
-                        for line in record["lines"]:
-                            emit(f"      {line}")
-                    if on_exchange is not None:
-                        on_exchange(record)
+                result = await decider.decide(step)
                 step = program.resolve(result.outcome)
             if isinstance(step, Paused):
                 return WALK_PAUSED
@@ -161,19 +133,7 @@ async def walk(
             note, act = step.tool_calls
             emit(f"  {note.arguments['summary']}")
             if act.name == "end_session":
-                # The walk closed the session by its own hand, having
-                # recorded how it ended: a completion, a suspension for
-                # a later wake, or a stop (recorded as a handover — a
-                # brief never mints end_session). Only a suspension
-                # wrote a file, and a rehearsal has no later wake, so
-                # only then is it dropped — a real wake's pending
-                # suspension survives a rehearsal that merely completed.
-                if program.outcome is Outcome.SUSPENDED:
-                    program.drop_suspension()
-                    return WALK_SUSPENDED
-                if program.outcome is Outcome.COMPLETED:
-                    return WALK_COMPLETED
-                return WALK_STOPPED
+                return _closed(program)
             emit(f"    → {act.name}({args_text(act.arguments)})")
             run_opts: dict = {}
             if opts and act.name == gesture_vocab.RUN_MACRO:
@@ -200,8 +160,72 @@ async def walk(
         # abandoned row like a real wake's teardown would — latched, so
         # a walk that closed properly is a no-op.
         program.abandon()
-        if micro is not None:
-            await micro.aclose()
+        await decider.aclose()
+
+
+class _Decider:
+    """The rehearsal's side of a decision request: the model caller,
+    built on FIRST use and after the connection — so "start the server
+    first" is what a user without one hears, and a walk that never
+    calls a model never pays a model-config error either — the one
+    rule for a call with nobody wired, and the wire log every round
+    trip lands in (`raw` emits each; `on_exchange` receives each)."""
+
+    def __init__(
+        self, emit: Emit, *, raw: bool, on_exchange: OnExchange | None
+    ) -> None:
+        self._emit = emit
+        self._raw = raw
+        self._on_exchange = on_exchange
+        self._micro: "MicroCaller | None" = None
+        self._unwired: str | None = None  # why no model can be called, once known
+        self._wire = ModelLog()
+
+    async def decide(self, step: DecisionRequest) -> MicroResult:
+        if self._micro is None and self._unwired is None:
+            try:
+                self._micro = micro_caller(rlog=self._wire)
+            except Exception as e:
+                # A call that declares its own answer for "nobody is
+                # wired" (the close writes the recap from the ledger)
+                # gets it, as in `replay.py` and `Conductor._drive`; any
+                # other call is the config error the user must hear.
+                if not has_fallback(step.call):
+                    raise
+                self._unwired = f"nobody wired ({e})"
+        if self._micro is not None:
+            result = await self._micro.run(step)
+        else:
+            assert self._unwired is not None  # set the moment the build failed
+            result = MicroResult(None, self._unwired, attempts=0, elapsed_ms=0)
+        decision = describe_result(result)
+        self._emit(f"  model {step.call} ({step.node_id}): {decision}")
+        for record in exchanges(self._wire.drain(), step, decision):
+            if self._raw:
+                for line in record["lines"]:
+                    self._emit(f"      {line}")
+            if self._on_exchange is not None:
+                self._on_exchange(record)
+        return result
+
+    async def aclose(self) -> None:
+        if self._micro is not None:
+            await self._micro.aclose()
+
+
+def _closed(program: "Program") -> str:
+    """The walk closed the session by its own hand, having recorded how
+    it ended: a completion, a suspension for a later wake, or a stop
+    (recorded as a handover — a brief never mints end_session). Only a
+    suspension wrote a file, and a rehearsal has no later wake, so only
+    then is it dropped — a real wake's pending suspension survives a
+    rehearsal that merely completed."""
+    if program.outcome is Outcome.SUSPENDED:
+        program.drop_suspension()
+        return WALK_SUSPENDED
+    if program.outcome is Outcome.COMPLETED:
+        return WALK_COMPLETED
+    return WALK_STOPPED
 
 
 def _declares_locked_hand(program: "Program") -> bool:
