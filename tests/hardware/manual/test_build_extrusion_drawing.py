@@ -4,6 +4,8 @@ the rendered sheet."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from hardware.manual import BuildError
@@ -214,21 +216,44 @@ def test_wrap_leaves_a_fitting_or_unbreakable_string_alone():
 # ── the sheet ─────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_document_is_one_a4_landscape_svg_with_every_length(lang):
+@pytest.mark.parametrize(("lang", "pages"), [("en", 2), ("zh", 1)])
+def test_document_has_a4_landscape_sheets_with_every_length(lang, pages):
     doc = bed.render_document(bed.cut_list(bom_rows()), lang)
 
-    assert doc.count("<svg") == 1
+    sheets = re.findall(r"<svg\b.*?</svg>", doc, re.DOTALL)
+    assert len(sheets) == pages
     assert "@page { size: A4 landscape; margin: 0; }" in doc
     assert f'<html lang="{ {"en": "en", "zh": "zh-Hans"}[lang] }">' in doc
-    for cut in bed.SPECS:
-        assert f">{cut.length:g} mm<" in doc  # the cut-list cell
-        assert f">{cut.length:g}<" in doc  # the length dimension
+    for sheet in sheets:
+        assert 'width="297mm" height="210mm"' in sheet
+        for cut in bed.SPECS:
+            assert f">{cut.length:g} mm<" in sheet  # the cut-list cell
+            assert f">{cut.length:g}<" in sheet  # the length dimension
     assert "Ø11" in doc and "M6" in doc
     # Standard sections are dimensioned by their nominal size, never the
     # model's measured 19.8 × 9.9.
     assert ">19.8<" not in doc and ">9.9<" not in doc
     assert ">20<" in doc and ">10<" in doc and ">40<" in doc
+
+
+def test_english_document_appends_the_chinese_sheet_with_original_footers():
+    items = bed.cut_list(bom_rows())
+    en = bed.render_document(items, "en")
+    zh = bed.render_document(items, "zh")
+    english, chinese = re.findall(r"<svg\b.*?</svg>", en, re.DOTALL)
+    standalone = re.search(r"<svg\b.*?</svg>", zh, re.DOTALL).group()
+
+    assert "Aluminum extrusion tech drawing" in english
+    assert "铝型材加工图" not in english
+    assert "Sheet 1 of 1" in english
+    assert "第 1 页，共 1 页" in chinese
+    assert chinese == standalone.replace(bed.DEFS, "")
+    assert ".sheet + .sheet { break-before: page; }" in en
+    assert "break-before" not in zh
+    # IDs are document-wide, including across separate inline SVG sheets.
+    ids = re.findall(r'\bid="([^"]+)"', en)
+    assert len(ids) == len(set(ids))
+    assert set(re.findall(r"url\(#([^)]+)\)", en)) <= set(ids)
 
 
 def test_chinese_sheet_is_localized():
@@ -264,20 +289,31 @@ def test_build_writes_the_html_per_language_and_skips_pdf_without_chrome(
     assert "no Chrome/Chromium found" in capsys.readouterr().out
 
 
-def test_build_renders_a_pdf_per_language_when_chrome_prints(tmp_path, monkeypatch):
+@pytest.mark.parametrize("langs", [["en"], ["zh"], ["en", "zh"]])
+def test_build_prints_the_same_sheets_as_the_selected_html(
+    tmp_path, monkeypatch, langs
+):
+    printed = {}
+
     def fake_render(html: str, pdf_path, chrome: str) -> bool:
+        printed[pdf_path.name] = html
         pdf_path.write_bytes(b"%PDF")
         return True
 
     monkeypatch.setattr(bed, "find_chrome", lambda: "chrome")
     monkeypatch.setattr(bed, "render_pdf", fake_render)
 
-    written = bed.build(["en"], tmp_path, pdf=True)
+    written = bed.build(langs, tmp_path, pdf=True)
 
     assert [p.name for p in written] == [
-        bed.LANG_FILENAME["en"],
-        bed.PDF_FILENAME["en"],
+        name
+        for lang in langs
+        for name in (bed.LANG_FILENAME[lang], bed.PDF_FILENAME[lang])
     ]
+    for lang in langs:
+        document = (tmp_path / bed.LANG_FILENAME[lang]).read_text(encoding="utf-8")
+        assert printed[bed.PDF_FILENAME[lang]] == document
+        assert document.count("<svg") == (2 if lang == "en" else 1)
 
 
 def test_output_names_are_ascii_release_asset_names():

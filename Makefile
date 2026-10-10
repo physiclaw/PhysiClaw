@@ -54,7 +54,7 @@ help:
 	@echo "  hw-print                — 3D-print package (zip)"
 	@echo "  hw-manual [ARGS=--pdf]  — bilingual build manual"
 	@echo "  hw-sourcing             — sourcing guide"
-	@echo "  hw-drawing [ARGS=--pdf] — extrusion tech drawing: cut & drill, one A4 page, EN + ZH"
+	@echo "  hw-drawing [ARGS=--pdf] — extrusion tech drawing: English file EN + ZH (2 pages), Chinese file ZH (1 page)"
 	@echo "  hw-mark ARGS=<svg|json> — annotate a step drawing"
 	@echo "  hw-replay [ARGS=file]   — replay annotation patches"
 	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
@@ -323,7 +323,7 @@ _hw-package:
 		'Build artifacts for assembling a PhysiClaw rig (English + 中文).' '' \
 		'- **physiclaw-assembly-manual.zip** — full assembly manual: HTML + PDF in English and 中文, with all exploded/step SVG figures.' \
 		'- **physiclaw-sourcing-guide.zip** — sourcing guide: HTML in English and 中文, plus the extrusion tech drawing (HTML + PDF).' \
-		'- **physiclaw_extrusion_drawing_en.pdf / _zh.pdf** — the one-page extrusion tech drawing (cut & drill for the 7 frame extrusions), to send to the profile supplier.' \
+		'- **physiclaw_extrusion_drawing_en.pdf / _zh.pdf** — extrusion tech drawings for the 7 frame extrusions: English + Chinese in _en.pdf (2 pages), Chinese only in _zh.pdf (1 page).' \
 		'- **physiclaw_custom_parts.zip** — the 9 custom 3D-printed parts as STEP files (print in black PA12 via SLS/MJF) plus a bilingual print guide.' \
 		> "$$REL/notes.md"; \
 	gh release create "$(HW_REL_TAG)" "$$REL"/*.zip "$$REL"/*.pdf \

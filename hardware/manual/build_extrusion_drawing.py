@@ -1,42 +1,15 @@
-"""Render the bilingual extrusion cut-and-drill drawing — the one-page A4
-sheet a profile supplier machines the frame's seven aluminum extrusions from.
+"""Render A4 landscape cut-and-drill drawings for the frame's seven extrusions.
 
-The sourcing guide tells the buyer to send this sheet to the profile shop
-with the order. This builder draws it from the numbers the CAD model is
-built from, so the sheet can never disagree with the assembly:
+Dimensions and profiles use the CAD constants in ``travel_ranges`` and
+``extrusion_spec``; quantities and applications come from ``11_bom.json``.
+The build rejects BOM lengths that disagree with the CAD.
 
-- lengths come from ``hardware.assembly.travel_ranges`` (the same
-  constants the assembly procedures cut their extrusions to);
-- hole positions, diameters and depths come from
-  ``hardware.parts.standard.extrusion_spec`` (the same constants
-  ``extrusion.py`` drills the solids with);
-- the 2040 and 1020 section outlines are traced from the profile vertices
-  the CAD extrudes — the 2020 cell's eighth-wedge mirrored eight ways, two
-  cells joined with the central channel cut, and the 1020 half-profile
-  mirrored — so the sections are the model's, not an illustration;
-- quantity and application come from the manual's BOM rows (``11_bom.json``),
-  joined by ``part_id``; the build refuses to run if a BOM row's spec text no
-  longer states the length the model cuts (``cut_list``), which is the
-  drift the static ``hardware check`` gate also reports.
+English output: EN then ZH (2 pages). Chinese output: ZH (1 page).
+Each sheet keeps its "1 of 1" footer. Sections and details are 1:1;
+machined faces are 1:2.
 
-One sheet per language (``en`` / ``zh``), each a single A4 landscape page:
-the cut list on top, then one group per profile — its section at 1:1 and,
-per specification, the machined face at 1:2 with the holes dimensioned from
-the ends, plus a 1:1 detail or end view where the words alone would be
-ambiguous (the counterbore's pocket, the tapped end bores, the vertical
-hole through the 1020).
-
-Standard-library only, like the other document builders; the PDF is
-printed by headless Chrome (``hardware.manual.pdf``) when ``--pdf`` is set.
-Output is byte-stable for a given source tree — no dates, the version
-stamp is the manual's ``MANUAL_VERSION``.
-
-Run from the repo root::
-
-    uv run python -m hardware.manual.build_extrusion_drawing           # HTML, both languages
-    uv run python -m hardware.manual.build_extrusion_drawing --pdf     # also a PDF per language
-
-or through the pipeline's front door, ``python -m hardware drawing``.
+Run ``python -m hardware drawing`` for HTML; add ``--pdf`` for headless
+Chrome PDFs. HTML is deterministic and stamped with ``MANUAL_VERSION``.
 """
 
 from __future__ import annotations
@@ -868,8 +841,8 @@ def render_table(
     return "".join(parts), yy + 5.0
 
 
-def render_sheet(items: list[CutItem], lang: str) -> str:
-    """The whole A4 page as one SVG."""
+def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) -> str:
+    """The whole A4 page as one SVG; later sheets reuse the first sheet's defs."""
     x0, w = MARGIN, PAGE_W - 2 * MARGIN
     parts = [rect(x0, MARGIN, w, PAGE_H - 2 * MARGIN, "frame")]
 
@@ -1003,17 +976,22 @@ def render_sheet(items: list[CutItem], lang: str) -> str:
     return (
         f'<svg class="sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n(PAGE_W)} {n(PAGE_H)}" '
         f'width="{n(PAGE_W)}mm" height="{n(PAGE_H)}mm" role="img" aria-label="{esc(ui("doc_title", lang))}">'
-        f"{DEFS}{''.join(parts)}</svg>"
+        f"{DEFS if include_defs else ''}{''.join(parts)}</svg>"
     )
 
 
 def render_document(items: list[CutItem], lang: str) -> str:
+    sheets = render_sheet(items, lang)
+    css = CSS
+    if lang == "en":
+        sheets += "\n" + render_sheet(items, "zh", include_defs=False)
+        css += "@media print { .sheet + .sheet { break-before: page; } }\n"
     return (
         f'<!DOCTYPE html>\n<html lang="{HTML_LANG[lang]}">\n<head>\n'
         '<meta charset="UTF-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{esc(ui('doc_title', lang))}</title>\n"
-        f"<style>\n{CSS}</style>\n</head>\n<body>\n{render_sheet(items, lang)}\n</body>\n</html>\n"
+        f"<style>\n{css}</style>\n</head>\n<body>\n{sheets}\n</body>\n</html>\n"
     )
 
 
@@ -1021,9 +999,7 @@ def render_document(items: list[CutItem], lang: str) -> str:
 # Build
 # --------------------------------------------------------------------------- #
 def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
-    """Write the HTML per language, and a PDF per language when ``pdf`` is
-    set and a Chromium-family browser is installed (else a note, like the
-    manual)."""
+    """Write selected editions as HTML; optionally print PDFs if Chrome is available."""
     with _step("load cut list"):
         items = cut_list()
     chrome = find_chrome() if pdf else None
@@ -1052,7 +1028,7 @@ def main() -> None:
         "--lang",
         choices=("en", "zh", "all"),
         default="all",
-        help="language(s) to render (default: all)",
+        help="output edition: en includes English + Chinese; zh is Chinese only (default: all)",
     )
     parser.add_argument(
         "--out",

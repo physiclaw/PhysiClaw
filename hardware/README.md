@@ -71,7 +71,7 @@ hardware/
 ├── manual/                Bilingual (EN/ZH) assembly manual + sourcing guide
 │   ├── build_manual.py        content/*.json + SVGs → HTML / PDF
 │   ├── build_sourcing_guide.py  manual BOM + vendor data → HTML
-│   ├── build_extrusion_drawing.py  lengths + hole specs + profile vertices → one A4 sheet
+│   ├── build_extrusion_drawing.py  lengths + hole specs + profile vertices → A4 sheets
 │   ├── assets.py / common.py / paginate.py / pdf.py   Support modules (asset
 │   │                          strategies, shared helpers, page numbering +
 │   │                          BOM splits, headless-Chrome PDF)
@@ -159,7 +159,7 @@ The subcommands — each forwarding its flags to the stage it wraps:
 | `print` | 3D-print package → `output/print_3d/*.zip` |
 | `manual` | bilingual HTML / PDF manual → `output/manual/` |
 | `sourcing` | sourcing guide → `output/sourcing/` |
-| `drawing` | extrusion tech drawing (cut & drill; EN + ZH, one A4 page each; `--pdf`) → `output/drawing/` |
+| `drawing` | A4 extrusion cut-and-drill drawings (`--pdf`) → `output/drawing/` |
 | `mark` / `replay` | annotate step SVGs / replay saved patches |
 | `refit <json> --parts …` | recompute a patch's highlights as the exact silhouettes of the named parts (by label prefix), then replay |
 | `camera` | FreeCAD camera view → `Camera()` literal |
@@ -238,10 +238,9 @@ packaged from a freshly regenerated `output/`:
   and 中文, plus the step figures).
 - **Sourcing guide** — the `sourcing/` folder (HTML in English and 中文)
   together with the `drawing/` folder (the extrusion tech drawing, HTML + PDF).
-- **Extrusion tech drawing PDFs** — `physiclaw_extrusion_drawing_en.pdf` and
-  `_zh.pdf` as direct assets too, so the sourcing guide's note can link
-  them at `releases/latest/download/`; the docs site rewrites that link to
-  its own `/downloads/` copy.
+- **Extrusion tech drawing PDFs** — `physiclaw_extrusion_drawing_en.pdf`
+  (EN then ZH, 2 pages) and `_zh.pdf` (ZH, 1 page). The sourcing guide links
+  to `releases/latest/download/`; the docs site uses `/downloads/`.
 - **Camera frame** — just the assembled camera-frame STEP file, on its own.
 - **Custom parts** — the print package from `output/print_3d/`.
 
