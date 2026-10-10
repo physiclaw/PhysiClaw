@@ -19,13 +19,16 @@ adds the sourcing columns of the table — all optional:
   ``{inquiry}`` placeholder as a click-to-copy "询价信息" control (hover
   previews the message). Only custom / cut-to-order parts carry one;
   standard parts are bought off the shelf by spec;
-- ``suppliers`` — 商家 1..3: up to three shops, each ``{name, link?,
-  product?}``: the name (linked to the shop's ``link`` URL when filled in)
+- ``suppliers`` — 商家 1..3: up to three shops, each ``{name, url?,
+  product?, details?}``: the name (linked to the shop's ``url`` when filled in)
   over the shop's own ``product`` spec. Missing slots render as pending;
   a slot whose name is ``—`` renders as a muted dash (nothing to buy —
   e.g. the part comes bundled with another purchase).
   Localizable values take ``{"en":…,"zh":…}``; plain strings show in both
-  languages;
+  languages. Optional ``details`` opens a dialog with ``label`` (trigger),
+  ``title`` (accessible name), ``heading``, ``instructions`` (trusted inline
+  HTML, like notes), and ``parts``. Each part has ``part_number``, ``qty`` and
+  ``description``; the renderer builds the table and part-number copy controls;
 - ``note`` — 备注: a free remark column at the table's end (missing -> em
   dash). Notes are prose and emitted as trusted HTML, the manual's
   convention for content strings (inline ``<a>`` is fine); data fields
@@ -149,6 +152,8 @@ UI = {
     },
     "inquiry_label": {"en": "Inquiry message", "zh": "询价信息"},
     "supplier_n": {"en": "Supplier", "zh": "商家"},
+    "close": {"en": "Close", "zh": "关闭"},
+    "copy": {"en": "Copy", "zh": "复制"},
     # Bought-checklist chrome. tally_fmt/tally_done are JS templates
     # ({n} ticked / {t} rows).
     "th_bought": {"en": "Bought", "zh": "已购"},
@@ -161,6 +166,7 @@ UI = {
     "th_component": {"en": "Component", "zh": "组件"},
     "th_spec": {"en": "Spec", "zh": "规格"},
     "th_qty": {"en": "Qty", "zh": "数量"},
+    "th_guide_part": {"en": "Part / machining", "zh": "零件 / 加工"},
     "th_desc": {"en": "Application", "zh": "用途"},
     "th_ref": {"en": "Ref. price", "zh": "参考价"},
     "th_note": {"en": "Notes", "zh": "备注"},
@@ -344,7 +350,9 @@ def _span_attr(span: int) -> str:
     return f' rowspan="{span}"' if span > 1 else ""
 
 
-def _inquiry_button(message: str, lang: str, flip: bool = False) -> str:
+def _inquiry_button(
+    message: str, lang: str, flip: bool = False, label: str | None = None
+) -> str:
     """The click-to-copy 询价信息 control: copy icon + label; hovering shows
     the message in a tooltip, clicking copies it (icon morphs to a check).
     ``flip`` opens the tooltip leftward — for buttons near the table's right
@@ -354,14 +362,21 @@ def _inquiry_button(message: str, lang: str, flip: bool = False) -> str:
     # the hover preview and the copied text are the same string.
     msg_attr = html.escape(message, quote=True).replace("\n", "&#10;")
     cls = "copy flip" if flip else "copy"
+    aria = (
+        f' aria-label="{html.escape(label + ": " + message, quote=True)}"'
+        if label
+        else ""
+    )
     return (
-        f'<button class="{cls}" type="button" data-q="{msg_attr}">'
+        f'<button class="{cls}" type="button" data-q="{msg_attr}"{aria}>'
         f"{COPY_ICON_SVG}{CHECK_ICON_SVG}"
-        f"<span>{ui('inquiry_label', lang)}</span></button>"
+        f"<span>{html.escape(label) if label is not None else ui('inquiry_label', lang)}</span></button>"
     )
 
 
-def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
+def render_supplier_cell(
+    supplier: dict | None, lang: str, span: int, guide_id: str = ""
+) -> str:
     """One supplier cell: the shop name (linked to its url) over the shop's
     own ``product`` spec, when set."""
     name = loc(supplier.get("name") or "", lang) if supplier else ""
@@ -377,10 +392,71 @@ def render_supplier_cell(supplier: dict | None, lang: str, span: int) -> str:
     product_html = (
         f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
     )
+    details_html = ""
+    if guide_id and supplier.get("details"):
+        label = html.escape(loc(supplier["details"]["label"], lang))
+        details_html = (
+            f'<button class="guide-open" type="button" data-guide="{guide_id}" '
+            f'aria-haspopup="dialog" aria-controls="{guide_id}">{label}</button>'
+        )
     return (
         f'<td class="offer"{_span_attr(span)}><div class="v-vendor">{name}</div>'
-        f"{product_html}</td>"
+        f"{product_html}{details_html}</td>"
     )
+
+
+def render_supplier_guide_body(details: dict, lang: str) -> str:
+    """Render structured ordering details, escaping data and preserving inline prose."""
+    rows = []
+    for part in details["parts"]:
+        number = part["part_number"]
+        description = html.escape(loc(part["description"], lang))
+        qty = html.escape(str(part["qty"]))
+        rows.append(
+            '<tr><td><div class="guide-part">'
+            f"<code>{html.escape(number)}</code>"
+            f"{_inquiry_button(number, lang, label=ui('copy', lang))}</div>"
+            f'<div class="guide-spec">{description}</div></td>'
+            f'<td><span class="guide-qty">{qty}</span></td></tr>'
+        )
+    return (
+        f"<h3>{html.escape(loc(details['heading'], lang))}</h3>\n"
+        f"<p>{loc(details['instructions'], lang)}</p>\n"
+        '<table class="guide-parts"><thead><tr>'
+        f'<th scope="col">{ui("th_guide_part", lang)}</th>'
+        f'<th scope="col">{ui("th_qty", lang)}</th></tr></thead><tbody>\n'
+        + "\n".join(rows)
+        + "\n</tbody></table>"
+    )
+
+
+def render_supplier_guides(entries: list[dict], lang: str) -> str:
+    """Keep long supplier instructions outside the BOM table and its checklist."""
+    guides = []
+    for idx, entry in enumerate(entries):
+        suppliers = entry.get("suppliers")
+        if not isinstance(suppliers, list):
+            continue  # Ditto uses the anchor row's dialog.
+        for slot, supplier in enumerate(suppliers[:SUPPLIERS_PER_ROW]):
+            if not isinstance(supplier, dict) or not supplier.get("details"):
+                continue
+            name = loc(supplier.get("name") or "", lang)
+            if not name or name == "—":
+                continue  # Match the pending/empty cells, which have no dialog action.
+            details = supplier["details"]
+            guide_id = f"supplier-guide-{idx}-{slot}"
+            title = html.escape(loc(details["title"], lang))
+            body = render_supplier_guide_body(details, lang)
+            guides.append(
+                f'<dialog class="supplier-guide" id="{guide_id}" '
+                f'aria-label="{title}">'
+                '<form method="dialog" class="guide-close">'
+                f'<button aria-label="{ui("close", lang)}" title="{ui("close", lang)}" autofocus>'
+                '<span aria-hidden="true">×</span></button></form>'
+                f'<div class="guide-body">{body}</div>'
+                "</dialog>"
+            )
+    return "".join(guides)
 
 
 def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
@@ -422,9 +498,11 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
         )
 
         message = loc(inquiries[idx] or "", lang)
-        for spans, col in sup_walks:
+        for slot, (spans, col) in enumerate(sup_walks):
             if spans[idx]:
-                cells += render_supplier_cell(col[idx], lang, spans[idx])
+                cells += render_supplier_cell(
+                    col[idx], lang, spans[idx], f"supplier-guide-{idx}-{slot}"
+                )
         if ref_spans[idx]:
             ref = loc(refs[idx] or "", lang) or "—"
             cells += (
@@ -493,7 +571,7 @@ PAGE_JS = """\
   } catch (e) {}
 
   // The row anatomy, resolved once: the tr, its part id, its checkbox.
-  var items = Array.from(document.querySelectorAll('tbody tr')).map(function (tr) {
+  var items = Array.from(document.querySelectorAll('.sourcing > tbody > tr')).map(function (tr) {
     return {tr: tr, pid: tr.dataset.pid, box: tr.querySelector('td.get input')};
   });
   // A cell that spans several rows (class group, component group, Ditto
@@ -582,6 +660,30 @@ document.querySelectorAll('button.copy').forEach(function (b) {
     });
   });
 });
+
+document.querySelectorAll('[data-guide]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    document.getElementById(button.dataset.guide).showModal();
+  });
+});
+
+document.querySelectorAll('.supplier-guide').forEach(function (guide) {
+  function outside(event) {
+    var rect = guide.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right ||
+      event.clientY < rect.top || event.clientY > rect.bottom;
+  }
+  // A drag that starts on a part number must not dismiss the dialog.
+  var pressedOutside = false;
+  guide.addEventListener('pointerdown', function (event) {
+    pressedOutside = outside(event);
+  });
+  guide.addEventListener('click', function (event) {
+    if (pressedOutside && outside(event)) guide.close();
+    pressedOutside = false;
+  });
+});
+
 """
 
 
@@ -608,6 +710,7 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         f'<div class="preamble"><p class="lede">{ui("lede", lang)}</p>'
         f'<p class="disclaimer">{ui("disclaimer", lang)}</p></div>'
         f"{checklist}{render_table(rows, entries, lang)}</div>"
+        f"{render_supplier_guides(entries, lang)}"
     )
     body = typeset_quantities(body)
     # Bought marks and the highlight preference persist per manual version

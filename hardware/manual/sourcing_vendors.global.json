@@ -9,15 +9,43 @@
         "url": "https://www.aliexpress.us/item/3256808792776211.html"
       },
       {
-        "name": "Magic Dragon",
-        "url": "https://www.aliexpress.us/item/3256802521560261.html"
-      },
-      {
         "name": "HighQ",
         "url": "https://www.aliexpress.us/item/3256806710682237.html"
+      },
+      {
+        "name": "MISUMI USA",
+        "url": "https://us.misumi-ec.com/",
+        "details": {
+          "label": "Ordering details",
+          "title": "MISUMI USA · Extrusions",
+          "heading": "Get a quote",
+          "instructions": "Sign in to <a href=\"https://us.misumi-ec.com/\" target=\"_blank\" rel=\"noopener\">MISUMI USA</a>, open <strong>Quote / Order</strong>, and enter the part numbers and quantities below.",
+          "parts": [
+            {
+              "part_number": "HFSB5-2040-345-Z5-YA10-YB335",
+              "qty": 2,
+              "description": "Black 2040 · 345 mm · 4 × M5 counterbores"
+            },
+            {
+              "part_number": "HFSB5-2040-190-TPW",
+              "qty": 2,
+              "description": "Black 2040 · 190 mm · M5 taps, both ends"
+            },
+            {
+              "part_number": "HFSFIN5-1020-185",
+              "qty": 1,
+              "description": "1020 · 185 mm · Cut to length"
+            },
+            {
+              "part_number": "HFSFIN5-1020-230-Z5-XA10-XB220",
+              "qty": 2,
+              "description": "1020 · 230 mm · 2 × M5 counterbores"
+            }
+          ]
+        }
       }
     ],
-    "note": "Custom order. Send the {inquiry} together with the <a href=\"https://github.com/physiclaw/PhysiClaw/releases/latest/download/physiclaw_extrusion_drawing_en.pdf\">tech drawing</a> (PDF) to the shop's customer service for a quote."
+    "note": "send the {inquiry} and <a href=\"https://github.com/physiclaw/PhysiClaw/releases/latest/download/physiclaw_extrusion_drawing_en.pdf\">tech drawing</a> for a quote."
   },
   {
     "part_id": "ext-2040-x",

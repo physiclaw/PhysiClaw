@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from copy import deepcopy
 
 import pytest
 
@@ -203,3 +205,190 @@ def test_build_uses_and_scaffolds_only_selected_vendor_files(
             assert json.loads(path.read_text())[-1] == {"part_id": "p2"}
         else:
             assert path.read_bytes() == originals[lang]
+
+
+@pytest.fixture
+def ordering_supplier():
+    return {
+        "name": "Example shop",
+        "url": "https://example.com/",
+        "details": {
+            "label": "Ordering details",
+            "title": "Parts & quantities",
+            "heading": "Get a quote",
+            "instructions": "Enter the parts below.",
+            "parts": [
+                {"part_number": "PART-123", "qty": 2, "description": "Cut to length"}
+            ],
+        },
+    }
+
+
+@pytest.mark.parametrize("ditto", ["Ditto", ["Ditto"]])
+def test_supplier_details_share_one_dialog_across_ditto_rows(ordering_supplier, ditto):
+    rows = [dict(bom_row(pid), qty="1", desc="") for pid in ("p1", "p2")]
+    entries = [
+        {
+            "part_id": "p1",
+            "suppliers": [ordering_supplier],
+        },
+        {"part_id": "p2", "suppliers": ditto},
+    ]
+    document = bsg.render_document(rows, entries, "", "en")
+    assert document.count('<dialog class="supplier-guide"') == 1
+    assert document.count('data-guide="supplier-guide-0-0"') == 1
+    assert 'id="supplier-guide-0-0"' in document
+    assert 'aria-label="Parts &amp; quantities"' in document
+    assert 'class="guide-close"' in document
+    assert 'aria-label="Close"' in document
+    assert 'aria-hidden="true">×</span>' in document
+    assert '<td class="offer" rowspan="2">' in document
+    assert document.index("</table></div>") < document.index("<dialog")
+
+
+def test_supplier_without_details_has_no_dialog_action():
+    cell = bsg.render_supplier_cell({"name": "Example"}, "en", 1, "guide")
+    assert "guide-open" not in cell
+    assert (
+        bsg.render_supplier_guides([{"suppliers": [{"name": "Example"}]}], "en") == ""
+    )
+
+
+@pytest.mark.parametrize("guide_lang", ["en", "zh"])
+@pytest.mark.parametrize("ditto", ["Ditto", ["Ditto", "Ditto"]])
+@pytest.mark.parametrize(
+    "change", ["remove_details", "remove_supplier", "replace_supplier"]
+)
+def test_rebuild_follows_supplier_changes(
+    tmp_path, monkeypatch, ordering_supplier, guide_lang, ditto, change
+):
+    rows = [dict(bom_row(pid), qty="1", desc="") for pid in ("p1", "p2")]
+    suppliers = [ordering_supplier, {"name": "Other shop"}]
+    entries = [
+        {
+            "part_id": "p1",
+            "suppliers": suppliers,
+            "inquiry": "Quote the parts",
+            "note": "Ask the shop: {inquiry}",
+        },
+        {"part_id": "p2", "suppliers": ditto, "inquiry": "Ditto", "note": "Ditto"},
+    ]
+    files = {lang: tmp_path / f"vendors.{lang}.json" for lang in ("en", "zh")}
+    other_lang = "zh" if guide_lang == "en" else "en"
+    files[guide_lang].write_text(json.dumps(entries))
+    files[other_lang].write_text(
+        json.dumps([{"part_id": row["part_id"]} for row in rows])
+    )
+    monkeypatch.setattr(bsg, "VENDOR_FILES", files)
+    monkeypatch.setattr(bsg, "load_bom_rows", lambda: rows)
+    output = tmp_path / "output"
+    bsg.build(["en", "zh"], output, scaffold=False)
+    path = output / bsg.LANG_FILENAME[guide_lang]
+    before = path.read_text()
+    other_before = (output / bsg.LANG_FILENAME[other_lang]).read_bytes()
+    assert before.count('<dialog class="supplier-guide"') == 1
+    assert 'data-q="PART-123"' in before
+    assert b"<dialog" not in other_before
+
+    if change == "remove_details":
+        suppliers[0].pop("details")
+    elif change == "remove_supplier":
+        suppliers.pop(0)
+    else:
+        replacement = deepcopy(ordering_supplier)
+        replacement["name"] = "Replacement shop"
+        replacement["details"]["parts"][0]["part_number"] = "NEW-456"
+        suppliers[0] = replacement
+    files[guide_lang].write_text(json.dumps(entries))
+    bsg.build(["en", "zh"], output, scaffold=False)
+    after = path.read_text()
+
+    assert "PART-123" not in after
+    assert after.count("data-pid=") == 2
+    assert 'data-q="Quote the parts"' in after
+    assert "Other shop" in after
+    assert (output / bsg.LANG_FILENAME[other_lang]).read_bytes() == other_before
+    if change == "replace_supplier":
+        assert "Example shop" not in after
+        assert "Replacement shop" in after
+        assert 'data-q="NEW-456"' in after
+        assert after.count('<dialog class="supplier-guide"') == 1
+        assert after.count('data-guide="supplier-guide-0-0"') == 1
+        assert 'id="supplier-guide-0-0"' in after
+    else:
+        assert "<dialog" not in after
+        assert "data-guide=" not in after
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+@pytest.mark.parametrize(
+    "name_fields",
+    [{}, {"name": None}, {"name": ""}, {"name": "—"}, {"name": {"en": "", "zh": ""}}],
+    ids=["missing", "null", "blank", "dash", "localized-blank"],
+)
+def test_hidden_supplier_has_no_orphan_dialog(ordering_supplier, lang, name_fields):
+    ordering_supplier.pop("name")
+    ordering_supplier.update(name_fields)
+    rows = [dict(bom_row("p1"), qty="1", desc="")]
+    entries = [{"part_id": "p1", "suppliers": [ordering_supplier]}]
+
+    document = bsg.render_document(rows, entries, "", lang)
+
+    assert "<dialog" not in document
+    assert "data-guide=" not in document
+    assert "PART-123" not in document
+
+
+@pytest.mark.parametrize("ditto", ["Ditto", ["Ditto", "Ditto"]])
+def test_supplier_guide_targets_follow_reordered_slots(ordering_supplier, ditto):
+    rows = [dict(bom_row(pid), qty="1", desc="") for pid in ("p1", "p2", "p3")]
+    suppliers = [ordering_supplier, {"name": "Other shop"}]
+    entries = [
+        {"part_id": "p1"},
+        {"part_id": "p2", "suppliers": suppliers},
+        {"part_id": "p3", "suppliers": ditto},
+    ]
+    for slot in (0, 1):
+        document = bsg.render_document(rows, entries, "", "en")
+        targets = re.findall(r'data-guide="([^"]+)"', document)
+        dialogs = re.findall(r'<dialog class="supplier-guide" id="([^"]+)"', document)
+        assert targets == dialogs == [f"supplier-guide-1-{slot}"]
+        suppliers.reverse()
+
+
+def test_supplier_guide_reuses_inquiry_copy_controls(ordering_supplier):
+    rendered = bsg.render_supplier_guides([{"suppliers": [ordering_supplier]}], "en")
+    assert bsg._inquiry_button("PART-123", "en", label="Copy") in rendered
+    assert "<h2" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("lang", "part_heading", "qty_heading", "copy_label"),
+    [("en", "Part / machining", "Qty", "Copy"), ("zh", "零件 / 加工", "数量", "复制")],
+)
+def test_supplier_guide_escapes_part_data_and_preserves_inline_instructions(
+    lang, part_heading, qty_heading, copy_label
+):
+    details = {
+        "heading": "Parts & quantities",
+        "instructions": 'Open <a href="https://example.com/">Quote</a>.',
+        "parts": [
+            {
+                "part_number": 'PART-<&"',
+                "qty": 2,
+                "description": "Length < 50 mm & black",
+            }
+        ],
+    }
+
+    rendered = bsg.render_supplier_guide_body(details, lang)
+
+    assert "<h3>Parts &amp; quantities</h3>" in rendered
+    assert '<p>Open <a href="https://example.com/">Quote</a>.</p>' in rendered
+    assert "<code>PART-&lt;&amp;&quot;</code>" in rendered
+    assert 'data-q="PART-&lt;&amp;&quot;"' in rendered
+    assert f'aria-label="{copy_label}: PART-&lt;&amp;&quot;"' in rendered
+    assert "Length &lt; 50 mm &amp; black" in rendered
+    assert '<span class="guide-qty">2</span>' in rendered
+    assert f'<th scope="col">{part_heading}</th>' in rendered
+    assert f'<th scope="col">{qty_heading}</th>' in rendered

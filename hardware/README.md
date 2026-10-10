@@ -202,6 +202,14 @@ can be maintained independently. Vendor text is stored as plain Chinese strings
 in the CN file and plain English strings in the global file. `--scaffold` syncs the selected language files
 (or both by default) with the BOM.
 
+Each supplier can include optional `details` for an ordering popup: `label`,
+`title` (accessible name), `heading`, `instructions` (inline HTML), and `parts`
+(`part_number`, `qty`, `description`). Remove `details` to drop the popup, or
+remove the entire supplier object to drop both the supplier and its popup.
+Rebuild with `make hw-sourcing`; no renderer changes are needed. Whole-row
+`"Ditto"` follows the updated supplier list. Per-slot `"Ditto"` follows column
+positions, so check those entries when deleting or reordering suppliers.
+
 > **Photoreal render — WIP.** A separate Blender render of the full machine
 > (`camera_40_frame`) is being reworked; its scripts were cleared and are not
 > currently in the tree. The line-art SVG pipeline is unaffected.
