@@ -211,44 +211,44 @@
   },
   {
     "part_id": "control-board",
-    "ref": "¥100",
+    "ref": "$25",
     "suppliers": [
       {
         "name": "Makerbase",
-        "product": "MKS DLC32",
-        "url": "https://item.taobao.com/item.htm?id=660133023604&skuId=4759861713260"
-      },
-      {
-        "name": "Sanwei Cube",
-        "product": "MKS DLC32 V2.1 board",
-        "url": "https://item.taobao.com/item.htm?id=624116243332&skuId=4759128976305"
+        "product": "Suit 1: MKS DLC32 V2.1",
+        "url": "https://www.aliexpress.us/item/3256802997183501.html"
       },
       {
         "name": "TwoTrees",
-        "product": "MKS DLC32 V2.1 board",
-        "url": "https://item.taobao.com/item.htm?id=652783651566&skuId=4937682023482"
+        "product": "DLC32 V2.1",
+        "url": "https://www.aliexpress.us/item/3256804430815456.html"
+      },
+      {
+        "name": "Victory",
+        "product": "MKS DLC32 V2.1",
+        "url": "https://www.aliexpress.us/item/3256803342472175.html"
       }
     ],
     "note": "Control board and stepper drivers: same spec from every maker."
   },
   {
     "part_id": "tmc2209",
-    "ref": "¥35",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "Makerbase",
-        "product": "MKS TMC2209 stepper driver (with heatsink)",
-        "url": "https://item.taobao.com/item.htm?id=660133023604&skuId=5166488233343"
+        "name": "BEGRINT",
+        "product": "TMC2209 V2.0",
+        "url": "https://www.aliexpress.us/item/3256808517783633.html"
       },
       {
-        "name": "Sanwei Cube",
-        "product": "TT TMC2209 driver",
-        "url": "https://item.taobao.com/item.htm?id=624116243332&skuId=5688178270462"
+        "name": "Usongshine",
+        "product": "TMC2209",
+        "url": "https://www.aliexpress.us/item/3256806396656136.html"
       },
       {
-        "name": "TwoTrees",
-        "product": "2209 V2.0 (with heatsink)",
-        "url": "https://item.taobao.com/item.htm?id=652783651566&skuId=6019775037611"
+        "name": "BIG TREE",
+        "product": "TMC2209 V1.3",
+        "url": "https://www.aliexpress.us/item/2251832843273068.html"
       }
     ],
     "note": "Ditto"
