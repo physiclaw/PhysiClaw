@@ -255,22 +255,22 @@
   },
   {
     "part_id": "psu",
-    "ref": "¥50",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "UGREEN",
+        "name": "LARZI",
         "product": "12 V 2 A adapter, 5.5×2.5 mm barrel plug",
-        "url": "https://item.taobao.com/item.htm?id=731915982634&skuId=5937503277169"
+        "url": "https://www.aliexpress.us/item/3256812158688430.html"
       },
       {
-        "name": "Samzhe",
-        "product": "12 V 2 A, 5.5×2.1 mm plug, 1.5 m cable",
-        "url": "https://detail.tmall.com/item.htm?id=861594569451&skuId=6078092673551"
+        "name": "Adiodo",
+        "product": "12 V 2 A, 5.5×2.1 mm plug",
+        "url": "https://www.aliexpress.us/item/3256806098229742.html"
       },
       {
-        "name": "Pisen",
-        "product": "12 V 2 A adapter, 1.2 m cable",
-        "url": "https://detail.tmall.com/item.htm?id=926498939211&skuId=6116098339184"
+        "name": "QvvCev",
+        "product": "12 V 2 A adapter",
+        "url": "https://www.aliexpress.us/item/3256805314867176.html"
       }
     ],
     "note": "Buy a reputable brand. A 5.5×2.5 mm barrel plug fits too."
