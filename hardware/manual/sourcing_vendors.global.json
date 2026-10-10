@@ -123,7 +123,7 @@
   },
   {
     "part_id": "pulley",
-    "ref": "¥1",
+    "ref": "$1",
     "suppliers": [
       {
         "name": "POWGE",
@@ -136,75 +136,75 @@
         "url": "https://www.aliexpress.us/item/2251832836965041.html"
       },
       {
-        "name": "Creality",
-        "product": "20T Bore 5mm 2PCS",
-        "url": "https://www.aliexpress.us/item/3256807522316463.html"
+        "name": "DFORCE",
+        "product": "Size: 2PCS 2GT 6MM P5",
+        "url": "https://www.aliexpress.us/item/2251832630591353.html"
       }
     ],
     "note": "Standard part, same spec from every maker. Buy the cheapest."
   },
   {
     "part_id": "idler-smooth",
-    "ref": "¥25",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "20T, 5 mm bore, smooth (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=572126642416&skuId=3714008004304"
+        "name": "POWGE",
+        "product": "Bore Diameter: 5mm-No Teeth-Silver, Width: For belt width 6mm, 10pcs",
+        "url": "https://www.aliexpress.us/item/2251832539995194.html"
       },
       {
-        "name": "Sanwei Cube",
-        "product": "20T, 5 mm bore, smooth (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=544358606505&skuId=3422244497830"
+        "name": "Mellow",
+        "product": "Color: H8.5mm without t",
+        "url": "https://www.aliexpress.us/item/3256804188092382.html"
       },
       {
-        "name": "Tongtuo Zhanzhi",
-        "product": "20T, 5 mm bore, smooth (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=559682437946&skuId=3872290557038"
+        "name": "DFORCE",
+        "product": "Size: 20T W6 B5 Without T, 10pcs",
+        "url": "https://www.aliexpress.us/item/3256804771193337.html"
       }
     ],
     "note": "Ditto"
   },
   {
     "part_id": "idler-toothed",
-    "ref": "¥5",
+    "ref": "$1",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "20T, 5 mm bore, toothed (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=572126642416&skuId=3714008004303"
+        "name": "POWGE",
+        "product": "Bore Diameter: 5mm-WithTeeth-Silver, Width: For belt width 6mm, 2pcs",
+        "url": "https://www.aliexpress.us/item/2251832539995194.html"
       },
       {
-        "name": "Sanwei Cube",
-        "product": "20T, 5 mm bore, toothed (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=544358606505&skuId=3422244497837"
+        "name": "Mellow",
+        "product": "Color: H8.5mm with t",
+        "url": "https://www.aliexpress.us/item/3256804188092382.html"
       },
       {
-        "name": "Tongtuo Zhanzhi",
-        "product": "20T, 5 mm bore, toothed (6 mm belt)",
-        "url": "https://item.taobao.com/item.htm?id=559682437946&skuId=3872290557039"
+        "name": "DFORCE",
+        "product": "Size: 20T W6 B5 With T, 2pcs",
+        "url": "https://www.aliexpress.us/item/3256804771193337.html"
       }
     ],
     "note": "Ditto"
   },
   {
     "part_id": "belt",
-    "ref": "¥15",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "GT2 6 mm rubber belt, 5 m roll",
-        "url": "https://item.taobao.com/item.htm?id=572171792144&skuId=4454393450696"
+        "name": "POWGE",
+        "product": "Width: 6mm-(CR-Black), Length: 5Meters",
+        "url": "https://www.aliexpress.us/item/2251832058358826.html"
       },
       {
-        "name": "Sanwei Cube",
-        "product": "GT2 6 mm rubber timing belt, 5 m roll",
-        "url": "https://item.taobao.com/item.htm?id=544300031449&skuId=5019700795849"
+        "name": "Mellow",
+        "product": "Size: 5M-6MM-2GT",
+        "url": "https://www.aliexpress.us/item/2251832766081359.html"
       },
       {
-        "name": "Tongtuo Zhanzhi",
-        "product": "GT2 6 mm rubber timing belt, 5 m roll",
-        "url": "https://item.taobao.com/item.htm?id=558903222636&skuId=3869974812267"
+        "name": "DFORCE",
+        "product": "Size: Length 5M, Color: Width 6mm",
+        "url": "https://www.aliexpress.us/item/3256806321466333.html"
       }
     ],
     "note": "Ditto"
@@ -664,7 +664,7 @@
         "url": "https://detail.tmall.com/item.htm?id=684328822068&skuId=5937566337891"
       }
     ],
-    "note": "If the custom extrusion order already includes these 8 screws, do not buy them again."
+    "note": "Check the tapped holes in your frame extrusions and choose matching M5 or M6 screws."
   },
   {
     "part_id": "shcs-unc14-16",
