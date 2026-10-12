@@ -449,22 +449,22 @@
   },
   {
     "part_id": "bumper",
-    "ref": "¥5",
+    "ref": "$3",
     "suppliers": [
       {
-        "name": "Tianzhuo",
-        "product": "Ø20 top/bottom × 22 mm (10-pack), w/ machine screws",
-        "url": "https://detail.tmall.com/item.htm?id=850698518813&skuId=5653203589906"
+        "name": "Conch",
+        "product": "20x16x20mm",
+        "url": "https://www.aliexpress.us/item/2255801178473063.html"
       },
       {
-        "name": "Dulei",
-        "product": "20×20×22 mm, w/ machine screws",
-        "url": "https://detail.tmall.com/item.htm?id=592188833539&skuId=4078088461124"
+        "name": "ManyUse",
+        "product": "XD-20x14x17 mm",
+        "url": "https://www.aliexpress.us/item/3256805245298775.html"
       },
       {
-        "name": "Jinfenghuang",
-        "product": "20×20×22 mm (10-pack), w/ machine screws",
-        "url": "https://item.taobao.com/item.htm?id=657240920029&skuId=4743630412377"
+        "name": "Halojaju",
+        "product": "19X16X15 MM",
+        "url": "https://www.aliexpress.us/item/2251832794475613.html"
       }
     ]
   },
