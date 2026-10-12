@@ -343,22 +343,22 @@
   },
   {
     "part_id": "stepper-motor",
-    "ref": "¥50",
+    "ref": "$25",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "Black high-quality (XH cable)",
-        "url": "https://item.taobao.com/item.htm?id=586441580168&skuId=4946625633271"
+        "name": "TWO TREES",
+        "product": "4401S (black) 1pcs, XH2.54",
+        "url": "https://www.aliexpress.us/item/3256803891332263.html"
       },
       {
-        "name": "Dachuan",
-        "product": "NEMA17, 0.45 N·m, 40 mm body",
-        "url": "https://item.taobao.com/item.htm?id=674923594606&skuId=4995409077330"
+        "name": "Usongshine",
+        "product": "With XH-2.54",
+        "url": "https://www.aliexpress.us/item/3256808273084374.html"
       },
       {
-        "name": "Gaoyang",
-        "product": "NEMA17, 38 mm body, 1000 mm XH2.54 cable",
-        "url": "https://item.taobao.com/item.htm?id=714153589005&skuId=4998215524564"
+        "name": "ChgImposs",
+        "product": "Color: 42HS40 2A 48N.cm",
+        "url": "https://www.aliexpress.us/item/3256809685035975.html"
       }
     ]
   },
