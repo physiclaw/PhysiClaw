@@ -364,22 +364,22 @@
   },
   {
     "part_id": "solenoid",
-    "ref": "¥15",
+    "ref": "$7",
     "suppliers": [
       {
-        "name": "Langshuo",
-        "product": "LSD-0530B-12V",
-        "url": "https://item.taobao.com/item.htm?id=592528485538&skuId=5295181857221"
-      },
-      {
         "name": "Elecall",
-        "product": "EML-0530B: 12 V, 6 N, 10 mm stroke",
-        "url": "https://detail.tmall.com/item.htm?id=571034504694&skuId=4521602674575"
+        "product": "EML-0530B 12V",
+        "url": "https://www.aliexpress.us/item/3256812075615727.html"
       },
       {
-        "name": "MITG",
-        "product": "LS-0530B-12V: 0.2–6 N push-pull, 10 mm stroke",
-        "url": "https://detail.tmall.com/item.htm?id=972516011330&skuId=6091561787183"
+        "name": "WTong",
+        "product": "0530B, 12V",
+        "url": "https://www.aliexpress.us/item/3256805246337810.html"
+      },
+      {
+        "name": "Gangbei",
+        "product": "12V DC",
+        "url": "https://www.aliexpress.us/item/2251832590918427.html"
       }
     ],
     "note": "You must splice the leads longer, and careless handling breaks them easily. Buy one spare."
