@@ -299,22 +299,22 @@
   },
   {
     "part_id": "motor-cable",
-    "ref": "¥2",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Tianle",
-        "product": "0.3 m PH2.0-6P to XH-4P cable",
-        "url": "https://item.taobao.com/item.htm?id=807040319382&skuId=5928464937081"
+        "name": "Usongshine",
+        "product": "1 m, XH2.54",
+        "url": "https://www.aliexpress.us/item/3256807293333012.html"
       },
       {
-        "name": "Lunqu",
-        "product": "XH2.54 4P to PH2.0 6P stepper motor cable (30 cm)",
-        "url": "https://item.taobao.com/item.htm?id=594099488032&skuId=4330049361960"
+        "name": "JKHJ",
+        "product": "XH2.54",
+        "url": "https://www.aliexpress.us/item/2255799911123403.html"
       },
       {
-        "name": "Linxiang",
-        "product": "XH2.54 4P to PH2.0 6P stepper motor cable (30 cm)",
-        "url": "https://item.taobao.com/item.htm?id=822954691545&skuId=5949725363039"
+        "name": "DeKuSi",
+        "product": "1 m, 1 pc",
+        "url": "https://www.aliexpress.us/item/3256803466111890.html"
       }
     ],
     "note": "Optional. The cable bundled with the motor is about 1 m, too long to store neatly. A 30 cm cable is plenty."
