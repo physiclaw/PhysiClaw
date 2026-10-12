@@ -321,22 +321,22 @@
   },
   {
     "part_id": "lead-wire",
-    "ref": "¥6",
+    "ref": "$3",
     "suppliers": [
       {
-        "name": "Pengfei",
-        "product": "5 m, 0.3 mm², red — GB full-measure",
-        "url": "https://item.taobao.com/item.htm?id=679174967756&skuId=5710275586172"
+        "name": "Kelepu",
+        "product": "Length: 5 Meters, Specification: 22AWG",
+        "url": "https://www.aliexpress.us/item/3256811936470551.html"
       },
       {
-        "name": "Aiweimei",
-        "product": "5 m, 0.3 mm², red",
-        "url": "https://detail.tmall.com/item.htm?id=657813674873&skuId=5652917324466"
+        "name": "DCpowercord",
+        "product": "Length: 5m, Specification: 22AWG",
+        "url": "https://www.aliexpress.us/item/3256808056857652.html"
       },
       {
-        "name": "Hongmaisi",
-        "product": "5 m, 0.3 mm², red",
-        "url": "https://item.taobao.com/item.htm?id=668641608310&skuId=6196538982576"
+        "name": "SZDelightFire",
+        "product": "Length: 5m, Specification: 22AWG",
+        "url": "https://www.aliexpress.us/item/3256806280998161.html"
       }
     ],
     "note": "Buy 5 m to leave slack for the ground wire."
