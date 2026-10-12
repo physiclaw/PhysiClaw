@@ -407,22 +407,22 @@
   },
   {
     "part_id": "motor-bracket",
-    "ref": "¥5",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "NEMA17 motor bracket, black",
-        "url": "https://item.taobao.com/item.htm?id=594071400687&skuId=4282774614351"
+        "name": "Tojiato",
+        "product": "2pcs",
+        "url": "https://www.aliexpress.us/item/3256806509064883.html"
       },
       {
-        "name": "Yousheng Guangcai",
-        "product": "NEMA17 motor bracket, black",
-        "url": "https://item.taobao.com/item.htm?id=672120132474&skuId=4840246572119"
+        "name": "SEEJIE",
+        "product": "black",
+        "url": "https://www.aliexpress.us/item/2251832655754814.html"
       },
       {
-        "name": "Sanwei Cube",
-        "product": "NEMA17 motor bracket, black",
-        "url": "https://item.taobao.com/item.htm?id=592349548006&skuId=4596541845952"
+        "name": "JINGLIN",
+        "product": "2PCS, black",
+        "url": "https://www.aliexpress.us/item/2255799870071457.html"
       }
     ]
   },
