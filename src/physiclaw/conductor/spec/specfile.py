@@ -13,9 +13,8 @@ distinct catch surfaces without re-spelling the validation:
 
 from typing import Any, Callable
 
-from ruamel.yaml import YAML
-
-from physiclaw.common.placeholders import resolve_placeholders
+from physiclaw.common.placeholders import resolve_data_placeholders
+from physiclaw.common.yaml import safe_yaml
 from physiclaw.macros.model import (
     INPUT_NAME_RE as INPUT_NAME_RE,
 )
@@ -30,7 +29,6 @@ from physiclaw.macros.model import (
 )
 from physiclaw.macros.model import MacroError
 from physiclaw.macros.model import check_name as _model_check_name
-from physiclaw.macros.parse import reject_aliases
 
 
 class SpecError(ValueError):
@@ -43,7 +41,7 @@ class SpecError(ValueError):
 # `macros/parse.py`. `load_yaml` below is the resolved-spec door; the
 # install flow's raw template read (`load.files.read_template_manifest`)
 # shares the instance.
-yaml_loader = YAML(typ="safe", pure=True)
+yaml_loader = safe_yaml()
 
 
 def load_yaml(
@@ -52,25 +50,20 @@ def load_yaml(
     where: str = "",
     values: dict[str, str] | None = None,
 ) -> Any:
-    """The one load ritual every spec door shares: fill `<<TOKEN>>`s
-    from the local values file (rejecting survivors), YAML 1.2 load,
-    reject anchors/aliases document-wide, wrap errors in the door's own
-    error class. The alias guard is the macro parser's: inline macros
+    """The one load ritual every spec door shares: YAML 1.2 load,
+    reject aliases before expansion, fill string `<<TOKEN>>`s
+    from the local values file, wrap errors in the door's own
+    error class. The alias guard is shared with the macro parser: inline macros
     put clause parsing — which materializes a Clause per path, the
     alias-bomb ride — behind these doors, and running it HERE keeps the
     grammar door-independent (a text that parses at the test/tooling
     door must not fail only at the live pack file)."""
-    text = resolve_placeholders(text, error_cls, values)
     prefix = f"{where}: " if where else ""
     try:
         data = yaml_loader.load(text)
     except Exception as e:  # loader errors are not confined to YAMLError
         raise error_cls(f"{prefix}invalid YAML: {e or type(e).__name__}") from e
-    try:
-        reject_aliases(data)
-    except MacroError as e:
-        raise error_cls(f"{prefix}{e}") from e
-    return data
+    return resolve_data_placeholders(data, error_cls, values)
 
 
 def bind(

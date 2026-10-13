@@ -5,7 +5,7 @@ render the commented template from those same defaults, so bumping a default
 doesn't need two edits.
 
 Unknown top-level sections, unknown keys inside a section, and
-wrong-typed values (a quoted number, a bool for an int) raise
+wrong-typed values (a quoted number, a bool for an int), and non-finite floats raise
 ``ConfigError`` on load. The CLI catches this and points users at
 ``physiclaw config edit``.
 
@@ -15,6 +15,7 @@ Layering (first match wins):
 
 import dataclasses
 import json
+import math
 import os
 import tomllib
 from collections.abc import MutableMapping
@@ -541,7 +542,13 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
             return value
     elif declared is float:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return float(value)
+            try:
+                number = float(value)
+            except OverflowError:
+                number = math.inf
+            if not math.isfinite(number):
+                raise ConfigError(f"[{section}] {key}: expected a finite float")
+            return number
     elif isinstance(value, str):
         return value
     raise ConfigError(
@@ -614,16 +621,15 @@ def _toml_scalar(v: Any) -> str:
     if isinstance(v, int):
         return repr(v)
     if isinstance(v, float):
-        import math
-
-        if math.isnan(v) or math.isinf(v):
+        if not math.isfinite(v):
             raise ConfigError(f"non-finite float not representable in TOML: {v!r}")
         return repr(v)
     if isinstance(v, str):
-        # json.dumps escaping (\" \\ \uXXXX, control chars) is valid TOML
-        # basic-string syntax — a bare f'"{v}"' emitted invalid TOML for
-        # values containing quotes or backslashes (Windows paths).
-        return json.dumps(v)
+        # JSON's quote/control escaping is valid TOML, but its ASCII
+        # surrogate pairs for non-BMP characters are not. Keep Unicode
+        # literal so emoji round-trip too. TOML also requires DEL to
+        # be escaped, unlike JSON.
+        return json.dumps(v, ensure_ascii=False).replace("\x7f", "\\u007f")
     raise ConfigError(f"cannot serialize {v!r} ({type(v).__name__}) to TOML")
 
 
@@ -732,7 +738,9 @@ def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
     path = path or config_path()
     section, field_name = _validate_dotted(dotted)
     current = getattr(getattr(load(path), section), field_name)
-    coerced = _coerce(raw_value, current)
+    coerced = _check_scalar_type(
+        section, field_name, type(current), _coerce(raw_value, current)
+    )
 
     if not path.exists():
         write_default(path)

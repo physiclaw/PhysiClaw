@@ -494,14 +494,14 @@ def learned_pages_dir() -> Path:
 
 def live_session_id() -> str | None:
     """The engine session currently running, per the cross-process
-    marker the runtime maintains — None when no session is live (CLI
+    marker the runtime maintains — None when absent or unreadable (CLI
     rehearsals, probes). One reader spelling: macro run logs and walk
     telemetry both tag their records with it."""
     try:
         marker = active_session_marker()
         if marker.exists():
             return marker.read_text(encoding="utf-8").strip() or None
-    except OSError:
+    except (OSError, UnicodeError):
         pass
     return None
 

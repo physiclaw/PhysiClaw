@@ -246,6 +246,10 @@ it at load and rejects a token with no value, so a template adopted
 without values fails loudly instead of tapping around looking for the
 literal string.
 
+Values must be YAML strings; quote names that look like numbers or booleans.
+Substitution happens after YAML parsing, so quotes and backslashes in a
+contact name stay literal and cannot change the pack's structure.
+
 Placeholders are deliberately not playbook inputs: inputs are per-run
 values the activation extracts from the user's message, while a
 placeholder is a constant of your installation that also lives where

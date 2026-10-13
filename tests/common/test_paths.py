@@ -27,6 +27,17 @@ import pytest
 
 from physiclaw.common import paths
 
+
+def test_regression_live_session_id_ignores_invalid_utf8() -> None:
+    marker = paths.active_session_marker()
+    marker.parent.mkdir(parents=True)
+    marker.write_bytes(b"\xff")
+
+    session = paths.live_session_id()
+
+    assert session is None
+
+
 # ---------- module-level invariants ----------
 
 

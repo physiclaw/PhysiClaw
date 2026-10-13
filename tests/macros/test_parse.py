@@ -1141,6 +1141,30 @@ def test_parse_rejects_unpopulated_template_placeholder() -> None:
         parse_macro(text, "m")
 
 
+@pytest.mark.parametrize(
+    "contact", ['Alice "Q"', "Alice: Q", r"Alice\team", "0123", "null"]
+)
+@pytest.mark.parametrize("template", ['"<<CONTACT>>"', "'<<CONTACT>>'", "<<CONTACT>>"])
+def test_regression_macro_placeholders_preserve_literal_contact(
+    contact, template
+) -> None:
+    from physiclaw.common.placeholders import write_placeholder_values
+
+    write_placeholder_values({"CONTACT": contact})
+    text = HEAD + f"steps:\n  - send_to_clipboard: {template}\n"
+
+    macro = parse_macro(text, "m")
+
+    assert macro.steps[0].args == {"text": contact}
+
+
+def test_regression_macro_rejects_merge_aliases() -> None:
+    text = HEAD + "steps:\n  - &step {tap: Search}\n  - {<<: [*step, *step]}\n"
+
+    with pytest.raises(MacroError, match="aliases"):
+        parse_macro(text, "m")
+
+
 # ---------- parse_inline_macro (a playbook LEG's embedded body) ----------
 
 

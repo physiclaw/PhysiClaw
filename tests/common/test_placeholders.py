@@ -4,11 +4,15 @@ and the local `playbooks/placeholders.yml` values file it fills from."""
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
+from physiclaw.common import paths
 from physiclaw.common.placeholders import (
     PLACEHOLDER_VALUES_FILENAME,
     find_placeholders,
     placeholder_values,
+    resolve_data_placeholders,
     resolve_placeholders,
     write_placeholder_values,
 )
@@ -63,3 +67,61 @@ def test_write_placeholder_values_round_trips() -> None:
     write_placeholder_values({"CONTACT": "小乔", "CITY": "Hangzhou"})
 
     assert placeholder_values() == {"CONTACT": "小乔", "CITY": "Hangzhou"}
+
+
+@pytest.mark.parametrize(
+    "value", ["[Alice, Bob]", "{name: Alice}", "null", "123", "true"]
+)
+def test_regression_placeholder_values_reject_nonstring_values(value) -> None:
+    path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    path.parent.mkdir(parents=True)
+    path.write_text(f"CONTACT: {value}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="CONTACT.*string"):
+        placeholder_values()
+
+
+def test_placeholder_values_reject_nonstring_keys() -> None:
+    path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    path.parent.mkdir(parents=True)
+    path.write_text("123: Alice\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="token names must be strings"):
+        placeholder_values()
+
+
+@given(st.text().filter(lambda value: not find_placeholders(value)))
+def test_resolve_data_placeholders_preserves_literal_unicode(value) -> None:
+    data = {"nested": [{"<<KEY>>": "Hello <<VALUE>>", "number": 3, "empty": None}]}
+
+    resolved = resolve_data_placeholders(
+        data, ValueError, {"KEY": "contact", "VALUE": value}
+    )
+
+    assert resolved == {
+        "nested": [{"contact": "Hello " + value, "number": 3, "empty": None}]
+    }
+    assert data["nested"][0]["<<KEY>>"] == "Hello <<VALUE>>"
+
+
+def test_resolve_data_placeholders_rejects_key_collisions() -> None:
+    data = {"<<NAME>>": "first", "same": "second"}
+
+    with pytest.raises(ValueError, match="duplicate key.*same"):
+        resolve_data_placeholders(data, ValueError, {"NAME": "same"})
+
+
+def test_resolve_data_placeholders_rejects_unpopulated_nested_tokens() -> None:
+    data = {"nested": ["<<MISSING>>"]}
+
+    with pytest.raises(ValueError, match="unpopulated.*MISSING"):
+        resolve_data_placeholders(data, ValueError, {})
+
+
+def test_regression_placeholder_values_reject_aliases() -> None:
+    path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    path.parent.mkdir(parents=True)
+    path.write_text("CONTACT: &name Alice\nOTHER: *name\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="aliases"):
+        placeholder_values()

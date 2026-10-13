@@ -12,11 +12,11 @@ string "<<CONTACT>>".
 
 import io
 import re
-
-from ruamel.yaml import YAML
+from typing import Any
 
 from physiclaw.common import paths
 from physiclaw.common.text import read_text, write_text
+from physiclaw.common.yaml import safe_yaml
 
 PLACEHOLDER_RE = re.compile(r"<<([A-Z][A-Z0-9_]*)>>")
 
@@ -27,7 +27,7 @@ PLACEHOLDER_VALUES_FILENAME = "placeholders.yml"
 
 # YAML 1.2 safe handler for the values file — this module's one
 # instance (the `specfile.yaml_loader` pattern, one layer down).
-_yaml = YAML(typ="safe", pure=True)
+_yaml = safe_yaml()
 
 
 def find_placeholders(text: str) -> list[str]:
@@ -62,7 +62,17 @@ def placeholder_values() -> dict[str, str]:
         raise ValueError(
             f"{PLACEHOLDER_VALUES_FILENAME} must be a flat TOKEN: value mapping"
         )
-    return {str(k): str(v) for k, v in data.items()}
+    for key, value in data.items():
+        if not isinstance(key, str):
+            raise ValueError(
+                f"{PLACEHOLDER_VALUES_FILENAME}: token names must be strings"
+            )
+        if not isinstance(value, str):
+            raise ValueError(
+                f"{PLACEHOLDER_VALUES_FILENAME}: {key} must be a string — "
+                "quote literal values such as numbers or true/false"
+            )
+    return data
 
 
 def write_placeholder_values(values: dict[str, str]) -> None:
@@ -84,16 +94,10 @@ def resolve_placeholders(
     text: str, error_cls: type[Exception], values: dict[str, str] | None = None
 ) -> str:
     """`text` with its `<<TOKEN>>`s filled from the local values file —
-    the one wrapper every pack-file parser (macros, pages, playbooks)
-    calls. A surviving token (or a broken values file) raises
+    plain-text wrapper for prompt files and string terminal for parsed
+    YAML. A surviving token (or a broken values file) raises
     `error_cls`, so the message cannot drift between grammars."""
-    if values is None:
-        # A caller loading many files reads the values file once and
-        # threads them; a single load reads it here.
-        try:
-            values = placeholder_values()
-        except ValueError as e:
-            raise error_cls(str(e)) from e
+    values = _load_values(values, error_cls)
     if values:
         text = fill_placeholders(text, values)
     tokens = find_placeholders(text)
@@ -104,3 +108,45 @@ def resolve_placeholders(
             "(`physiclaw playbooks install` prompts for them)"
         )
     return text
+
+
+def resolve_data_placeholders(
+    data: Any, error_cls: type[Exception], values: dict[str, str] | None = None
+) -> Any:
+    """Fill string keys and values AFTER parsing a YAML document.
+
+    A contact's quotes, backslashes, colons, or numeric spelling are
+    literal text, never YAML syntax. Callers reject aliases before this
+    tree walk. Plain prompt files use `resolve_placeholders` instead.
+    """
+    values = _load_values(values, error_cls)
+
+    def fill(value: Any) -> Any:
+        if isinstance(value, str):
+            return resolve_placeholders(value, error_cls, values)
+        if isinstance(value, list):
+            return [fill(item) for item in value]
+        if isinstance(value, dict):
+            filled = {}
+            for key, item in value.items():
+                resolved_key = fill(key)
+                if resolved_key in filled:
+                    raise error_cls(
+                        f"duplicate key after placeholder substitution: {resolved_key!r}"
+                    )
+                filled[resolved_key] = fill(item)
+            return filled
+        return value
+
+    return fill(data)
+
+
+def _load_values(
+    values: dict[str, str] | None, error_cls: type[Exception]
+) -> dict[str, str]:
+    if values is not None:
+        return values
+    try:
+        return placeholder_values()
+    except ValueError as e:
+        raise error_cls(str(e)) from e

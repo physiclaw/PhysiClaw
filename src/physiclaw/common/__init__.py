@@ -20,6 +20,8 @@ Members:
     gesture_vocab  — gesture tool names + sequence step keys
     listing        — element-listing grammar (core composes, agent parses)
     doctrine       — `{{token}}` rendering for doctrine delivery paths
+    placeholders   — literal installation constants in pack strings
+    yaml           — YAML 1.2 loading with aliases rejected before expansion
     platform       — OS-specific branching (single source of truth)
     logger         — log formatting, tagging, and daily-file retention
     dumps          — image/artifact dumps (screenshots, tool calls)

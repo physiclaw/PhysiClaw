@@ -20,9 +20,12 @@ strings. Joining an empty or 1-element list ignores the separator.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from physiclaw.common import config
 
@@ -294,6 +297,48 @@ def test_to_toml_round_trips_through_load(tmp_path: Path) -> None:
     reloaded = config.load(p)
 
     assert reloaded == cfg
+
+
+@given(st.text())
+@example("team/🦾")
+@example("\x7f")
+def test_to_toml_roundtrips_unicode_strings(value: str) -> None:
+    cfg = config.Config()
+    cfg.skills.default_source = value
+
+    restored = tomllib.loads(config.to_toml(cfg))
+
+    assert restored["skills"]["default_source"] == value
+
+
+@pytest.mark.parametrize("value", ["nan", "+inf", "-inf", "1e999", "1" + "0" * 400])
+def test_regression_load_rejects_nonfinite_thresholds(tmp_path, value) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f"[conductor]\nmicro_confidence = {value}\n", encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match="micro_confidence.*finite"):
+        config.load(path)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "1e999"])
+def test_regression_set_rejects_nonfinite_before_changing_file(tmp_path, value) -> None:
+    path = tmp_path / "config.toml"
+    original = "[conductor]\nmicro_confidence = 0.8\n"
+    path.write_text(original, encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match="micro_confidence.*finite"):
+        config.set_dotted("conductor.micro_confidence", value, path)
+
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_set_nonfinite_value_does_not_create_config(tmp_path) -> None:
+    path = tmp_path / "absent" / "config.toml"
+
+    with pytest.raises(config.ConfigError, match="finite"):
+        config.set_dotted("conductor.micro_confidence", "nan", path)
+
+    assert not path.exists()
 
 
 def test_to_toml_emits_header_and_section_comments_when_with_comments() -> None:

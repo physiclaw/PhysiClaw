@@ -55,9 +55,11 @@ def normalize_proxy_env() -> None:
 
 
 def _ensure_loopback_no_proxy() -> None:
-    current = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+    current = os.environ.get("no_proxy", os.environ.get("NO_PROXY", ""))
     entries = [h.strip() for h in current.split(",")]
     missing = [h for h in LOOPBACK_HOSTS if h not in entries]
-    if missing:
-        merged = ",".join(filter(None, [current, *missing]))
-        os.environ["NO_PROXY"] = os.environ["no_proxy"] = merged
+    merged = ",".join(filter(None, [current, *missing]))
+    # Clients differ in which spelling they read. Lowercase takes
+    # precedence, as with urllib/httpx, but both must carry the floor
+    # even when the selected value already includes every loopback host.
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = merged

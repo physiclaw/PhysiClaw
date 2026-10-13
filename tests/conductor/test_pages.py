@@ -8,6 +8,7 @@ from conductor_fakes import make_learned
 
 from physiclaw.common import paths
 from physiclaw.common.bbox import BANDS
+from physiclaw.common.placeholders import write_placeholder_values
 from physiclaw.conductor.load import prints
 from physiclaw.conductor.spec import conventions, pages
 from physiclaw.conductor.spec.pages import (
@@ -45,6 +46,31 @@ def test_parse_valid_pages() -> None:
     assert r.forbid[0].text == "直播中" and r.forbid[0].within is None
     assert r.scrollable is True
     assert out["item-detail"].scrollable is False
+
+
+@pytest.mark.parametrize(
+    "contact", ['Alice "Q"', "Alice: Q", r"Alice\team", "0123", "null"]
+)
+@pytest.mark.parametrize("template", ['"<<CONTACT>>"', "'<<CONTACT>>'", "<<CONTACT>>"])
+def test_regression_page_placeholders_preserve_literal_contact(
+    contact, template
+) -> None:
+    write_placeholder_values({"CONTACT": contact})
+    text = f"thread:\n  description: the contact chat\n  anchors:\n    - {template}\n"
+
+    pages = parse_pages(text, "channel")
+
+    assert pages["thread"].anchors[0].text == contact
+
+
+def test_regression_pages_reject_merge_aliases() -> None:
+    text = (
+        "first: &page {description: chat, anchors: [Alice]}\n"
+        "second: {<<: [*page, *page]}\n"
+    )
+
+    with pytest.raises(PagesError, match="aliases"):
+        parse_pages(text, "channel")
 
 
 def test_parse_empty_file_is_no_pages() -> None:

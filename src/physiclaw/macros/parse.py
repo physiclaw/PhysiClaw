@@ -81,12 +81,12 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from physiclaw.common import bbox, gesture_vocab
 from physiclaw.common.paths import KIND_MACRO, header_gap
-from physiclaw.common.placeholders import resolve_placeholders
+from physiclaw.common.placeholders import resolve_data_placeholders
+from physiclaw.common.yaml import safe_yaml
 from physiclaw.macros.inputs import resolve_inputs
 from physiclaw.macros.model import (
     ALLOWED_STEP_TOOLS,
@@ -225,7 +225,7 @@ _OBJECTS: dict[str, tuple[Callable[[str, Any, str, dict], dict], str]] = {
 assert _OBJECTS.keys() == OBJECT_ARG.keys()
 
 # YAML 1.2 safe loader, pure-python. One instance, load-only.
-_yaml = YAML(typ="safe", pure=True)
+_yaml = safe_yaml()
 
 
 def parse_macro(
@@ -240,7 +240,6 @@ def parse_macro(
     the folder's macro resolver (`MacroResolver`), which a `run` step
     needs. Raises MacroError with a message that names the offending
     field — never a partially-valid spec."""
-    text = resolve_placeholders(text, MacroError)
     try:
         data = _yaml.load(io.StringIO(text))
     except YAMLError as e:
@@ -248,7 +247,7 @@ def parse_macro(
     if not isinstance(data, dict):
         raise MacroError("a macro file must be a YAML mapping (key: value pairs)")
 
-    reject_aliases(data)
+    data = resolve_data_placeholders(data, MacroError)
 
     # The header before any other key, so a file in the wrong folder or
     # the wrong grammar is named for what it IS rather than refused for
@@ -1154,11 +1153,10 @@ def reject_aliases(
     20-step file nothing, and refusing them keeps every later consumer a
     plain tree walk instead of making each one alias-safe.
 
-    Public because the guard is document-shaped, not macro-shaped: the
-    conductor's spec doors run it over PLAYBOOK.yml too (inline macros
-    put clause parsing — the materializer the bomb rides — behind every
-    spec door; `specfile.load_yaml` calls it after every load, and
-    `parse_inline_macro` guards its own data-shaped door)."""
+    The YAML loaders reject aliases before construction (`common.yaml`),
+    including merge aliases that disappear during construction. This
+    identity check guards `parse_inline_macro`'s Python-data door, which
+    can receive a shared or recursive object graph without a YAML load."""
     if not isinstance(value, (dict, list)):
         return
     seen = {} if seen is None else seen
