@@ -703,43 +703,43 @@
   },
   {
     "part_id": "shoulder-5x10",
-    "ref": "¥5",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "Ø5×10×M4 (20-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=629302870354&skuId=5720274725623"
+        "name": "ZONSANTA",
+        "product": "Size: D5x M4 (5pcs), Length: 10mm",
+        "url": "https://www.aliexpress.us/item/3256806959412076.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø5×10×M4, 304 stainless (10-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=651089596067&skuId=5701335813692"
+        "name": "Metal Master",
+        "product": "Size: D5x M4 (5pcs), Length: 10mm",
+        "url": "https://www.aliexpress.us/item/3256808128361290.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø5×10×M4 (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=989320776058&skuId=5953211896803"
+        "name": "Canrich",
+        "product": "Size: D5x M4 (5pcs), Length: 10mm",
+        "url": "https://www.aliexpress.us/item/3256808128103163.html"
       }
     ]
   },
   {
     "part_id": "shoulder-5x20",
-    "ref": "¥5",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "Ø5×20×M4 (20-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=629302870354&skuId=5720274725628"
+        "name": "ZONSANTA",
+        "product": "Size: D5x M4 (5pcs), Length: 20mm",
+        "url": "https://www.aliexpress.us/item/3256806959412076.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø5×20×M4 (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=651089596067&skuId=6112813150976"
+        "name": "Metal Master",
+        "product": "Size: D5x M4 (5pcs), Length: 20mm",
+        "url": "https://www.aliexpress.us/item/3256808128361290.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø5×20×M4 (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=989320776058&skuId=5953211896810"
+        "name": "Canrich",
+        "product": "Size: D5x M4 (5pcs), Length: 20mm",
+        "url": "https://www.aliexpress.us/item/3256808128103163.html"
       }
     ],
     "note": "You need 6. If the shop sells packs of 5, order 2 packs."
