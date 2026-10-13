@@ -41,11 +41,15 @@ def gaussian_blur(frame: np.ndarray, ksize: int) -> np.ndarray:
 def resize_to_max_edge(frame: np.ndarray, max_edge: int) -> np.ndarray:
     """Downscale so the long edge is at most ``max_edge`` (aspect kept,
     INTER_AREA); smaller frames pass through untouched."""
+    if max_edge <= 0:
+        raise ValueError("max_edge must be positive")
     long_edge = max(frame.shape[:2])
     if long_edge <= max_edge:
         return frame
-    scale = max_edge / long_edge
-    new_size = (int(frame.shape[1] * scale), int(frame.shape[0] * scale))
+    new_size = (
+        max(1, frame.shape[1] * max_edge // long_edge),
+        max(1, frame.shape[0] * max_edge // long_edge),
+    )
     return cv2.resize(frame, new_size, interpolation=cv2.INTER_AREA)
 
 
@@ -53,11 +57,13 @@ def resize_to_width(frame: np.ndarray, width: int) -> np.ndarray:
     """Downscale so the width is at most ``width`` (aspect kept,
     INTER_AREA); narrower frames pass through untouched — upscaling
     would interpolation-smooth genuinely sharp pixels into false blur."""
+    if width <= 0:
+        raise ValueError("width must be positive")
     h, w = frame.shape[:2]
     if w <= width:
         return frame
     return cv2.resize(
-        frame, (width, round(h * width / w)), interpolation=cv2.INTER_AREA
+        frame, (width, max(1, round(h * width / w))), interpolation=cv2.INTER_AREA
     )
 
 
@@ -91,12 +97,15 @@ def crop_to_phone_screen(
     pixels survive as sharpness through the INTER_AREA downscale, not as
     payload.
 
-    Returns the frame untouched if calibration is missing.
+    Returns the frame untouched if calibration is missing. Raises ValueError
+    if a calibrated screen does not overlap the frame.
     """
     if max_long_edge is None:
         max_long_edge = CONFIG.compact.max_image_edge_px
+    if transforms is None:
+        return frame
     box = phone_screen_crop_box(frame, transforms)
     if box is None:
-        return frame
+        raise ValueError("Calibrated phone screen does not overlap the camera frame")
     left, top, right, bottom = box
     return resize_to_max_edge(frame[top:bottom, left:right], max_long_edge)

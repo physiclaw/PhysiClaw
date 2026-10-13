@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.vision.ocr import (
     OCRReader,
@@ -265,3 +268,136 @@ def test_annotate_handles_empty_results() -> None:
 
     np.testing.assert_array_equal(out, frame)
     assert out is not frame  # still a copy
+
+
+@pytest.mark.parametrize(
+    "crop",
+    [
+        (-20, 0, -10, 10),
+        (0, -20, 10, -10),
+        (110, 0, 120, 10),
+        (0, 110, 10, 120),
+        (30, 10, 20, 20),
+    ],
+)
+def test_read_off_frame_crop_skips_model(mocker, crop):
+    model = MagicMock(return_value=_ocr_result([], [], []))
+    reader = _new_reader(mocker, model)
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    result = reader.read(frame, crop_box=crop, max_edge=50)
+
+    assert result == []
+    model.assert_not_called()
+
+
+@pytest.mark.parametrize("crop", [(-20, 0, -10, 10), (0, -20, 10, -10)])
+def test_read_crop_off_frame_skips_model(mocker, crop):
+    model = MagicMock(return_value=_ocr_result([], [], []))
+    reader = _new_reader(mocker, model)
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    result = reader.read_crop(frame, *crop)
+
+    assert result == ""
+    model.assert_not_called()
+
+
+def _full_image_ocr(image):
+    h, w = image.shape[:2]
+    return _ocr_result([[(0, 0), (w, 0), (w, h), (0, h)]], ["whole"], [0.9])
+
+
+@pytest.mark.parametrize("shape", [(3, 100), (100, 3), (1, 2000)])
+def test_read_integer_resize_restores_each_axis(mocker, shape):
+    reader = _new_reader(mocker, _full_image_ocr)
+    frame = np.zeros((*shape, 3), dtype=np.uint8)
+
+    results = reader.read(frame, max_edge=50)
+
+    assert results[0].bbox == (0, 0, shape[1], shape[0])
+
+
+def test_read_partly_off_frame_crop_uses_clamped_offset(mocker):
+    reader = _new_reader(mocker, _full_image_ocr)
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    results = reader.read(frame, crop_box=(-10, -20, 80, 90))
+
+    assert results[0].bbox == (0, 0, 80, 90)
+
+
+def test_ocr_initialization_preserves_process_logging(mocker, monkeypatch):
+    observed = []
+
+    def build(**kwargs):
+        observed.append(logging.root.manager.disable)
+        return _full_image_ocr
+
+    monkeypatch.setattr(logging.root.manager, "disable", logging.ERROR)
+    mocker.patch.dict("sys.modules", {"rapidocr": SimpleNamespace(RapidOCR=build)})
+
+    OCRReader()
+
+    assert observed == [logging.ERROR]
+    assert logging.root.manager.disable == logging.ERROR
+
+
+def test_ocr_initialization_failure_preserves_process_logging(mocker, monkeypatch):
+    def build(**kwargs):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(logging.root.manager, "disable", logging.ERROR)
+    mocker.patch.dict("sys.modules", {"rapidocr": SimpleNamespace(RapidOCR=build)})
+
+    with pytest.raises(RuntimeError, match="model unavailable"):
+        OCRReader()
+
+    assert logging.root.manager.disable == logging.ERROR
+
+
+@given(shear=st.sampled_from([-1.0, -0.5, 0.5, 1.0]))
+def test_results_to_elements_encloses_all_affine_corners(shear):
+    transforms = SimpleNamespace(
+        pixel_to_pct=lambda x, y: (0.5 + (x - 50 + shear * (y - 50)) / 100, y / 100)
+    )
+    results = [TextResult("tilted", (40, 40, 60, 60), 0.9)]
+
+    elements = results_to_elements(results, transforms)
+
+    assert elements[0]["bbox"] == [
+        round(0.4 - abs(shear) * 0.1, 3),
+        0.4,
+        round(0.6 + abs(shear) * 0.1, 3),
+        0.6,
+    ]
+
+
+@pytest.mark.parametrize("width", [52, 63, 93, 104, 115])
+def test_read_float32_model_box_does_not_lose_edge_pixel(mocker, width):
+    points = np.array([[0, 0], [11, 0], [11, 1], [0, 1]], dtype=np.float32)
+    model = MagicMock(return_value=_ocr_result([points], ["whole"], [0.9]))
+    reader = _new_reader(mocker, model)
+    frame = np.zeros((3, width, 3), dtype=np.uint8)
+
+    results = reader.read(frame, max_edge=11)
+
+    assert results[0].bbox == (0, 0, width, 3)
+
+
+@pytest.mark.parametrize(
+    "point,score",
+    [(float("nan"), 0.9), (float("inf"), 0.9), (0, float("nan")), (0, -0.1)],
+)
+def test_read_invalid_model_region_keeps_valid_neighbor(mocker, point, score):
+    boxes = [
+        [(point, 0), (10, 0), (10, 10), (0, 10)],
+        [(20, 20), (30, 20), (30, 30), (20, 30)],
+    ]
+    model = MagicMock(return_value=_ocr_result(boxes, ["bad", "good"], [score, 0.9]))
+    reader = _new_reader(mocker, model)
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    results = reader.read(frame)
+
+    assert [r.text for r in results] == ["good"]

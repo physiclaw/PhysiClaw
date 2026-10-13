@@ -353,3 +353,59 @@ def test_encode_view_jpeg_leaves_small_frames_at_native_size() -> None:
     out = decode_image(encode_view_jpeg(img))
 
     assert out.shape == (300, 200, 3)
+
+
+@pytest.mark.parametrize("label", ["²", "١", "１"])
+def test_find_numpad_digit_unsupported_unicode_does_not_form_keypad(label):
+    unsupported = {**_pad_element("1", 0.3, 0.3), "label": label}
+    elements = [unsupported, _pad_element("5", 0.5, 0.5)]
+
+    result = find_numpad_digit(elements, "1")
+
+    assert result is None
+
+
+@pytest.mark.parametrize("target", ["x", "١", ""])
+def test_find_numpad_digit_unsupported_target_returns_none(target):
+    elements = [_pad_element("1", 0.3, 0.3), _pad_element("9", 0.7, 0.5)]
+
+    result = find_numpad_digit(elements, target)
+
+    assert result is None
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ((0.25, 0.35), (0.5, 0.5)),
+        ((0.5, 0.35), (0.5, 0.5)),
+        ((0.7, 0.5), (0.5, 0.35)),
+        ((0.7, 0.5), (0.5, 0.5)),
+    ],
+)
+def test_find_numpad_digit_rejects_reversed_or_zero_spacing(first, second):
+    elements = [_pad_element("3", *first), _pad_element("5", *second)]
+
+    result = find_numpad_digit(elements, "1")
+
+    assert result is None
+
+
+def test_find_numpad_digit_continues_after_invalid_pair():
+    elements = [
+        _pad_element("3", 0.1, 0.35),
+        _pad_element("5", 0.5, 0.45),
+        _pad_element("9", 0.7, 0.55),
+    ]
+
+    result = find_numpad_digit(elements, "1")
+
+    assert result == pytest.approx([0.25, 0.3, 0.35, 0.4])
+
+
+def test_find_numpad_digit_rejects_offscreen_inferred_box():
+    elements = [_pad_element("5", 0.2, 0.4), _pad_element("9", 0.7, 0.6)]
+
+    result = find_numpad_digit(elements, "1")
+
+    assert result is None

@@ -13,6 +13,8 @@ import logging
 import cv2
 import numpy as np
 
+from physiclaw.common.bbox import near
+from physiclaw.core.geometry import validate_affine
 from physiclaw.core.vision.blobs import (
     contour_centroid,
     find_all_hsv_blobs,
@@ -148,10 +150,15 @@ def compute_affine_transforms(
     pct_to_grbl, _ = cv2.estimateAffine2D(screen_pcts, grbl_positions)
     pct_to_pixel, _ = cv2.estimateAffine2D(screen_pcts, camera_pixels)
 
-    if pct_to_grbl is None or pct_to_pixel is None:
+    try:
+        if pct_to_grbl is None or pct_to_pixel is None:
+            raise ValueError("no affine fit")
+        validate_affine(pct_to_grbl)
+        validate_affine(pct_to_pixel)
+    except ValueError as exc:
         raise RuntimeError(
             "Failed to compute affine transforms — not enough valid calibration points"
-        )
+        ) from exc
 
     return pct_to_grbl, pct_to_pixel
 
@@ -215,13 +222,20 @@ def detect_bridge_corners(
     if not all(blobs[k] for k in "RGBM"):
         return None
 
-    # Brute force — at most 4 clusters × 1 blob per color per cluster =
-    # 4⁴ = 256 candidates. The span filter rejects cross-cluster pairings
-    # almost immediately, so this stays cheap in practice.
+    # Clutter can add many blobs. Discard distant pairs before constructing
+    # four-color candidates; preserve contour order to keep first-match behavior.
     for r in blobs["R"]:
-        for g in blobs["G"]:
-            for b in blobs["B"]:
-                for m in blobs["M"]:
+        nearby = {
+            k: [p for p in blobs[k] if near(r, p, tolerance=max_cluster_span)]
+            for k in "GBM"
+        }
+        if not all(nearby.values()):
+            continue
+        for g in nearby["G"]:
+            for b in nearby["B"]:
+                if not near(g, b, tolerance=max_cluster_span):
+                    continue
+                for m in nearby["M"]:
                     candidate = {"R": r, "G": g, "B": b, "M": m}
                     if _is_clockwise_rgbm_cluster(candidate, max_cluster_span):
                         return candidate

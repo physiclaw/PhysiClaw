@@ -414,3 +414,46 @@ def test_detect_red_dots_accepts_4k_scale_dot_over_1080p_max_area() -> None:
 
     assert len(dots) == 1
     assert abs(dots[0][0] - 400) < 3 and abs(dots[0][1] - 400) < 3
+
+
+@pytest.mark.parametrize(
+    "points", [np.zeros((3, 2)), np.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])]
+)
+def test_compute_affine_transforms_degenerate_points_raise(points):
+    source = points.copy()
+
+    with pytest.raises(RuntimeError, match="Failed to compute affine transforms"):
+        compute_affine_transforms(source, points, points)
+
+
+@pytest.mark.parametrize(
+    "g,b,m",
+    [
+        ((140, 140), (60, 60), (100, 120)),
+        ((140, 100), (100, 140), (60, 140)),
+        ((100, 140), (140, 100), (140, 140)),
+    ],
+)
+def test_detect_bridge_corners_rejects_incompatible_partial_clusters(g, b, m):
+    frame = np.zeros((200, 200, 3), dtype=np.uint8)
+    _swatch(frame, 100, 100, (0, 0, 255))
+    _swatch(frame, *g, (0, 255, 0))
+    _swatch(frame, *b, (255, 0, 0))
+    _swatch(frame, *m, (255, 0, 255))
+
+    result = detect_bridge_corners(frame, max_cluster_span=60)
+
+    assert result is None
+
+
+@pytest.mark.parametrize("point_count", [3, 4])
+@pytest.mark.parametrize("bad_target", ["grbl", "camera"])
+def test_compute_affine_transforms_rejects_collapsed_destination(
+    bad_target, point_count
+):
+    pcts = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])[:point_count]
+    destinations = {"grbl": pcts.copy(), "camera": pcts.copy()}
+    destinations[bad_target] = np.zeros((point_count, 2))
+
+    with pytest.raises(RuntimeError, match="Failed to compute affine transforms"):
+        compute_affine_transforms(pcts, destinations["grbl"], destinations["camera"])

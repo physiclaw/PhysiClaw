@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from physiclaw.common import paths
+from physiclaw.common.bbox import validate_bbox
 from physiclaw.common.listing import Element
 from physiclaw.common.text import write_text
 from physiclaw.core.vision.render import annotate_elements
@@ -165,9 +166,15 @@ def _clean(
     """Drop noise, then dedupe by IoU."""
     out = []
     for e in elements:
+        try:
+            validate_bbox(e.bbox)
+            # Listing precision can collapse an otherwise usable box.
+            validate_bbox(list(e.to_element().bbox))
+        except (TypeError, ValueError):
+            continue
         w = e.bbox[2] - e.bbox[0]
         h = e.bbox[3] - e.bbox[1]
-        if w <= 0 or h <= 0 or w * h < 1e-4:
+        if w * h < 1e-4:
             continue
         if e.kind == "icon" and e.conf < min_icon_conf:
             continue

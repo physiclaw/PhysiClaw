@@ -6,6 +6,9 @@ from types import SimpleNamespace
 
 import cv2
 import numpy as np
+import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from physiclaw.core.vision.preprocess import (
     CONFIG,
@@ -201,3 +204,44 @@ def test_crop_to_phone_screen_default_cap_reads_compact_config(monkeypatch) -> N
     out = crop_to_phone_screen(frame, transforms)
 
     assert max(out.shape[:2]) == 400
+
+
+@example(h=1, w=841, cap=2)
+@given(h=st.integers(1, 30), w=st.integers(31, 1000), cap=st.integers(1, 30))
+def test_resize_to_max_edge_preserves_nonempty_pixels(h, w, cap):
+    frame = np.full((h, w, 3), 127, dtype=np.uint8)
+
+    out = resize_to_max_edge(frame, cap)
+
+    assert 1 <= out.shape[0] <= cap
+    assert out.shape[1] == cap
+    assert np.all(out == 127)
+
+
+@example(h=1, w=841, cap=2)
+@given(h=st.integers(1, 30), w=st.integers(31, 1000), cap=st.integers(1, 30))
+def test_resize_to_width_preserves_nonempty_pixels(h, w, cap):
+    frame = np.full((h, w, 3), 127, dtype=np.uint8)
+
+    out = resize_to_width(frame, cap)
+
+    assert 1 <= out.shape[0] <= h
+    assert out.shape[1] == cap
+    assert np.all(out == 127)
+
+
+def test_crop_to_phone_screen_off_frame_calibration_rejects_desk_pixels():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    transforms = SimpleNamespace(bbox_to_pixel_rect=lambda b: ((200, 200), (300, 300)))
+
+    with pytest.raises(ValueError, match="screen.*outside|screen.*overlap"):
+        crop_to_phone_screen(frame, transforms)
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+@pytest.mark.parametrize("resize", [resize_to_max_edge, resize_to_width])
+def test_resize_nonpositive_limit_raises(resize, limit):
+    frame = np.zeros((10, 20, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="must be positive"):
+        resize(frame, limit)

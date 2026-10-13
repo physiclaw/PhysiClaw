@@ -224,3 +224,42 @@ def test_annotate_labels_each_element_with_index() -> None:
     # Drawing happened — non-zero pixels in both regions.
     assert (out[8:35, 8:35] != 0).any()
     assert (out[48:75, 48:75] != 0).any()
+
+
+@pytest.mark.parametrize(
+    "shape,prediction",
+    [
+        ((3, 2000), (640, 0.5, 1280, 1, 0.9)),
+        ((2000, 3), (0.5, 640, 1, 1280, 0.9)),
+        ((1, 2000), (640, 0.5, 1280, 1, 0.9)),
+    ],
+)
+def test_detect_thin_frame_restores_full_image_box(mocker, tmp_path, shape, prediction):
+    detector, _ = _make_detector(
+        mocker, _yolo_output([prediction]), tmp_path / "m.onnx"
+    )
+    frame = np.zeros((*shape, 3), dtype=np.uint8)
+
+    result = detector.detect(frame)
+
+    assert result[0].bbox == (0, 0, shape[1], shape[0])
+
+
+@pytest.mark.parametrize(
+    "prediction",
+    [
+        (1000, 300, 100, 100, 0.9),
+        (200, 300, 0.1, 100, 0.9),
+        (float("nan"), 300, 100, 100, 0.9),
+        (200, 300, -100, 100, 0.9),
+    ],
+)
+def test_detect_discards_unusable_model_box(mocker, tmp_path, prediction):
+    detector, _ = _make_detector(
+        mocker, _yolo_output([prediction]), tmp_path / "m.onnx"
+    )
+    frame = np.zeros((1000, 500, 3), dtype=np.uint8)
+
+    result = detector.detect(frame)
+
+    assert result == []

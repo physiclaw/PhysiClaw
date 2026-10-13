@@ -363,3 +363,46 @@ def test_detect_ui_elements_filters_via_clean(mocker) -> None:
     )
 
     assert elements == []
+
+
+@pytest.mark.parametrize(
+    "bbox,conf",
+    [
+        ((-5, 20, 20, 40), 0.9),
+        ((-0.01, 20, 20, 40), 0.9),
+        ((10, 20, 30, 40), float("nan")),
+        ((float("nan"), 20, 30, 40), 0.9),
+        ((10, 20, float("inf"), 40), 0.9),
+        ((10, 20, 30, 40), -1),
+    ],
+)
+def test_detect_ui_elements_discards_bad_result_preserves_valid_neighbor(bbox, conf):
+    from physiclaw.core.vision.ocr import TextResult
+
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    reader = MagicMock()
+    reader.read.return_value = [
+        TextResult("bad", bbox, conf),
+        TextResult("good", (50, 50, 80, 80), 0.9),
+    ]
+    detector = MagicMock()
+    detector.detect.return_value = []
+
+    result, _ = detect_ui_elements(frame, icon_detector=detector, ocr_reader=reader)
+
+    assert [e.label for e in result] == ["good"]
+    assert [e.id for e in result] == [0]
+
+
+def test_detect_ui_elements_discards_box_collapsed_by_listing_rounding():
+    from physiclaw.core.vision.ocr import TextResult
+
+    frame = np.zeros((1000, 4000, 3), dtype=np.uint8)
+    reader = MagicMock()
+    reader.read.return_value = [TextResult("thin", (2000, 100, 2001, 900), 0.9)]
+    detector = MagicMock()
+    detector.detect.return_value = []
+
+    result, _ = detect_ui_elements(frame, icon_detector=detector, ocr_reader=reader)
+
+    assert result == []

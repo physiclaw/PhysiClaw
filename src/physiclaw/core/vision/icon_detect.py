@@ -74,8 +74,9 @@ class IconDetector:
         h, w = frame.shape[:2]
 
         # Letterbox: resize longest edge to INPUT_SIZE, pad bottom-right to square
-        scale = INPUT_SIZE / max(h, w)
-        new_h, new_w = int(h * scale), int(w * scale)
+        long_edge = max(h, w)
+        new_h = max(1, h * INPUT_SIZE // long_edge)
+        new_w = max(1, w * INPUT_SIZE // long_edge)
         resized = cv2.resize(frame, (new_w, new_h))
         padded = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
         padded[:new_h, :new_w] = resized
@@ -93,7 +94,11 @@ class IconDetector:
 
         # Filter by confidence
         scores = preds[:, 4]
-        mask = scores >= confidence
+        mask = (
+            (scores >= confidence)
+            & np.isfinite(preds).all(axis=1)
+            & (preds[:, 2:4] > 0).all(axis=1)
+        )
         preds = preds[mask]
         scores = scores[mask]
 
@@ -115,18 +120,20 @@ class IconDetector:
 
         elements = []
         for i in indices:
-            cx, cy, bw, bh = preds[i, :4]
+            cx, cy, bw, bh = (float(v) for v in preds[i, :4])
             conf = float(scores[i])
 
             # Map back to original image coordinates
-            x1 = max(0, (cx - bw / 2) / scale)
-            y1 = max(0, (cy - bh / 2) / scale)
-            x2 = min(w, (cx + bw / 2) / scale)
-            y2 = min(h, (cy + bh / 2) / scale)
+            x1 = int(max(0, (cx - bw / 2) * w / new_w))
+            y1 = int(max(0, (cy - bh / 2) * h / new_h))
+            x2 = int(min(w, (cx + bw / 2) * w / new_w))
+            y2 = int(min(h, (cy + bh / 2) * h / new_h))
+            if x1 >= x2 or y1 >= y2:
+                continue
 
             elements.append(
                 Element(
-                    bbox=(int(x1), int(y1), int(x2), int(y2)),
+                    bbox=(x1, y1, x2, y2),
                     confidence=conf,
                 )
             )

@@ -179,6 +179,10 @@ def _fake_transforms(*, w: int = 100, h: int = 200):
     """Transforms whose pct_to_cam_pixel maps (px, py) → (px*w, py*h)."""
     t = MagicMock()
     t.pct_to_cam_pixel.side_effect = lambda px, py: (int(px * w), int(py * h))
+    t.bbox_to_pixel_rect.side_effect = lambda b: (
+        t.pct_to_cam_pixel(b[0], b[1]),
+        t.pct_to_cam_pixel(b[2], b[3]),
+    )
     return t
 
 
@@ -198,7 +202,7 @@ def test_crop_zones_returns_none_on_empty_crop() -> None:
     frame = np.zeros((10, 10, 3), dtype=np.uint8)
     t = MagicMock()
     # Both corners map outside frame → empty crop.
-    t.pct_to_cam_pixel.side_effect = lambda px, py: (1000, 1000)
+    t.bbox_to_pixel_rect.return_value = ((1000, 1000), (1000, 1000))
 
     assert _crop_zones(frame, t) is None
 
@@ -230,7 +234,7 @@ def test_watchdog_first_poll_initializes_ema() -> None:
 def test_watchdog_returns_no_wake_when_zones_unavailable() -> None:
     w = Watchdog()
     t = MagicMock()
-    t.pct_to_cam_pixel.side_effect = lambda px, py: (1000, 1000)
+    t.bbox_to_pixel_rect.return_value = ((1000, 1000), (1000, 1000))
 
     out = w.poll(np.zeros((10, 10, 3), dtype=np.uint8), t)
 
@@ -411,3 +415,41 @@ def test_crop_zones_leaves_1080p_scale_crops_untouched() -> None:
 
     assert crops is not None
     assert all(c.shape[1] == 100 for c in crops)
+
+
+@freeze_time("2026-10-14 10:00:00", as_kwarg="clock")
+def test_poll_resolution_change_resets_baseline_without_wake(clock=None):
+    from physiclaw.core.calibration.transforms import ScreenTransforms
+
+    identity = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+    watch = Watchdog()
+    watch.poll(
+        np.zeros((200, 100, 3), dtype=np.uint8),
+        ScreenTransforms(identity, identity, (100, 200)),
+    )
+    clock.tick(1)
+    transforms = ScreenTransforms(identity, identity, (101, 202))
+    brighter = np.full((202, 101, 3), 255, dtype=np.uint8)
+
+    result = watch.poll(brighter, transforms)
+
+    assert result == {"wake": False, "reason": "ema initialized"}
+
+
+@freeze_time("2026-10-14 10:00:00", as_kwarg="clock")
+def test_poll_reflected_calibration_detects_banner(clock=None):
+    from physiclaw.core.calibration.transforms import ScreenTransforms
+
+    identity = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+    reflected = np.array([[-1.0, 0, 1], [0, 1.0, 0]])
+    transforms = ScreenTransforms(identity, reflected, (100, 200))
+    frame = np.zeros((200, 100, 3), dtype=np.uint8)
+    watch = Watchdog()
+    watch.poll(frame, transforms)
+    frame[:20] = 255
+    clock.tick(1)
+
+    result = watch.poll(frame, transforms)
+
+    assert result["wake"] is True
+    assert "banner" in result["reason"]

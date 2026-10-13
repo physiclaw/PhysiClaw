@@ -178,12 +178,14 @@ def _infer_numpad(key_a: str, pos_a: tuple, key_b: str, pos_b: tuple) -> dict:
     """Infer full numpad coordinates from two detected keys.
 
     Requires keys on different rows AND different columns.
-    Returns {digit: (cx, cy)} for all 10 digits.
+    Returns {digit: (cx, cy)} for all 10 digits, or {} for reversed/collapsed axes.
     """
     r_a, c_a = _NUMPAD_GRID[key_a]
     r_b, c_b = _NUMPAD_GRID[key_b]
     col_step = (pos_a[0] - pos_b[0]) / (c_a - c_b)
     row_step = (pos_a[1] - pos_b[1]) / (r_a - r_b)
+    if col_step <= 0 or row_step <= 0:
+        return {}
     x_origin = pos_a[0] - c_a * col_step
     y_origin = pos_a[1] - r_a * row_step
     return {
@@ -215,12 +217,16 @@ def find_numpad_digit(elements: list[dict], digit: str) -> list[float] | None:
 
     Returns [left, top, right, bottom] as 0-1 decimals, or None.
     """
-    # Collect single-digit elements in the keypad area (y ∈ [0.2, 0.8])
+    if digit not in _NUMPAD_GRID:
+        return None
+    # Collect supported digits in the keypad area (y ∈ [0.2, 0.8]).
     detected: dict[str, dict] = {}
     for e in elements:
         label = e["label"].strip()
+        if label not in _NUMPAD_GRID or not bbox_on_screen(e["bbox"]):
+            continue
         _, y1, _, y2 = e["bbox"]
-        if len(label) == 1 and label.isdigit() and 0.2 <= y1 and y2 <= 0.8:
+        if 0.2 <= y1 and y2 <= 0.8:
             detected[label] = e
 
     if len(detected) < NUMPAD_MIN_DIGITS:
@@ -241,10 +247,15 @@ def find_numpad_digit(elements: list[dict], digit: str) -> list[float] | None:
             ba, bb = detected[ka]["bbox"], detected[kb]["bbox"]
             cx_a, cy_a = (ba[0] + ba[2]) / 2, (ba[1] + ba[3]) / 2
             cx_b, cy_b = (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2
-            cx, cy = _infer_numpad(ka, (cx_a, cy_a), kb, (cx_b, cy_b))[digit]
+            grid = _infer_numpad(ka, (cx_a, cy_a), kb, (cx_b, cy_b))
+            if not grid:
+                continue
+            cx, cy = grid[digit]
             hw = (ba[2] - ba[0]) / 2
             hh = (ba[3] - ba[1]) / 2
-            return [cx - hw, cy - hh, cx + hw, cy + hh]
+            bbox = [cx - hw, cy - hh, cx + hw, cy + hh]
+            if bbox_on_screen(bbox):
+                return bbox
 
     return None
 

@@ -48,15 +48,7 @@ class OCRReader:
                 "rapidocr is required but couldn't be imported — it ships as a "
                 "physiclaw dependency, so reinstall physiclaw to restore it."
             ) from None
-        # try/finally: if RapidOCR() raises (missing/corrupt models), the
-        # disable must not leak — it would suppress INFO logging
-        # process-wide for the rest of the server's life.
-        logging.disable(logging.INFO)
-        try:
-            self._ocr = RapidOCR()
-        finally:
-            logging.disable(logging.NOTSET)
-        logging.getLogger("RapidOCR").setLevel(logging.WARNING)
+        self._ocr = RapidOCR(params={"Global.log_level": "warning"})
 
     def read(
         self,
@@ -83,14 +75,18 @@ class OCRReader:
             dx, dy = 0, 0
         else:
             left, top, right, bottom = crop_box
+            h, w = frame.shape[:2]
+            left, top = max(0, left), max(0, top)
+            right, bottom = max(0, min(w, right)), max(0, min(h, bottom))
             image = frame[top:bottom, left:right]
             dx, dy = left, top
 
-        scale = 1.0
+        if image.size == 0:
+            return []
+        orig_h, orig_w = image.shape[:2]
         if max_edge is not None:
-            orig_h = image.shape[0]
             image = resize_to_max_edge(image, max_edge)
-            scale = image.shape[0] / orig_h
+        work_h, work_w = image.shape[:2]
 
         result = self._ocr(image)
 
@@ -99,10 +95,14 @@ class OCRReader:
 
         texts = []
         for points, text, score in zip(result.boxes, result.txts, result.scores):
+            if not np.isfinite(points).all() or not np.isfinite(score) or score < 0:
+                continue
             xs = [p[0] for p in points]
             ys = [p[1] for p in points]
-            x1, y1 = int(min(xs) / scale) + dx, int(min(ys) / scale) + dy
-            x2, y2 = int(max(xs) / scale) + dx, int(max(ys) / scale) + dy
+            x1 = int(float(min(xs)) * orig_w / work_w) + dx
+            y1 = int(float(min(ys)) * orig_h / work_h) + dy
+            x2 = int(float(max(xs)) * orig_w / work_w) + dx
+            y2 = int(float(max(ys)) * orig_h / work_h) + dy
 
             texts.append(
                 TextResult(
@@ -126,17 +126,7 @@ class OCRReader:
         Returns:
             Concatenated text found in the region, or empty string.
         """
-        h, w = frame.shape[:2]
-        x1 = max(0, x1)
-        y1 = max(0, y1)
-        x2 = min(w, x2)
-        y2 = min(h, y2)
-
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0:
-            return ""
-
-        results = self.read(crop)
+        results = self.read(frame, crop_box=(x1, y1, x2, y2))
         return " ".join(r.text for r in results)
 
 
@@ -150,8 +140,12 @@ def results_to_elements(results: list[TextResult], transforms) -> list[dict]:
     elements = []
     for i, r in enumerate(results):
         x1, y1, x2, y2 = r.bbox
-        left, top = transforms.pixel_to_pct(x1, y1)
-        right, bottom = transforms.pixel_to_pct(x2, y2)
+        corners = [
+            transforms.pixel_to_pct(x, y)
+            for x, y in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))
+        ]
+        xs, ys = zip(*corners)
+        left, top, right, bottom = min(xs), min(ys), max(xs), max(ys)
         elements.append(
             {
                 "id": i,

@@ -148,8 +148,7 @@ def _crop_zones(frame, transforms) -> list[np.ndarray] | None:
     h, w = frame.shape[:2]
     crops = []
     for y0, y1 in ZONES:
-        tl = transforms.pct_to_cam_pixel(0.0, y0)
-        br = transforms.pct_to_cam_pixel(1.0, y1)
+        tl, br = transforms.bbox_to_pixel_rect([0.0, y0, 1.0, y1])
         crop = frame[
             max(0, min(tl[1], h)) : max(0, min(br[1], h)),
             max(0, min(tl[0], w)) : max(0, min(br[0], w)),
@@ -182,7 +181,11 @@ class Watchdog:
         now = time.monotonic()
 
         with self._lock:
-            if self._ema is None or (now - self._poll_time) > EMA_STALE:
+            if (
+                self._ema is None
+                or (now - self._poll_time) > EMA_STALE
+                or any(f.shape != c.shape for (f, _), c in zip(self._ema, crops))
+            ):
                 self._ema = tuple(
                     (c.astype(np.float32), c.astype(np.float32)) for c in crops
                 )
