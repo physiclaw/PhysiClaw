@@ -64,6 +64,8 @@ class HardwareRig:
         self.calibration: Calibration = Calibration()
         self._lock = threading.Lock()
         self._lock_owner: int | None = None  # thread ident; see assert_locked
+        self._lifecycle_lock = threading.Lock()  # device publication vs shutdown
+        self._closed = False
         self._assistive_touch = AssistiveTouch()
         self._bridge: BridgeState | None = None
         self._ready = False  # set True only after /setup finishes its last step
@@ -91,7 +93,8 @@ class HardwareRig:
         Don't call this directly from a new path — go through
         ``PhysiClaw.become_ready()``, which settles the camera FIRST so
         the agent can never observe ``ready`` on an unsettled camera."""
-        self._ready = True
+        with self._lifecycle_lock:
+            self._ready = not self._closed
 
     def unmark_ready(self) -> None:
         """Drop the ready flag so the next ``become_ready`` re-settles.
@@ -109,7 +112,8 @@ class HardwareRig:
     def hardware_ready(self) -> bool:
         """True when arm, camera, and grid calibration are all set."""
         return (
-            self._arm is not None
+            not self._closed
+            and self._arm is not None
             and self._cam is not None
             and self.calibration.transforms_ready
         )
@@ -117,7 +121,8 @@ class HardwareRig:
     def status(self) -> dict:
         """Return current hardware and calibration state."""
         steps = self.calibration.summary()
-        if self._arm and self._arm.MOVE_DIRECTIONS:
+        arm = self._arm
+        if arm is not None and arm.MOVE_DIRECTIONS:
             steps["alignment"] = "OK"
         at_pos = self._assistive_touch.at_screen
         if self._assistive_touch.ready and at_pos is not None:  # ready ⇒ at_pos
@@ -154,6 +159,10 @@ class HardwareRig:
 
     # ─── Concurrency ──────────────────────────────────────────
 
+    def _require_open(self):
+        if self._closed:
+            raise RuntimeError("Hardware rig has shut down")
+
     def acquire(self, wait_seconds: float = 0):
         """Mark hardware as busy. Raises if not acquired within
         `wait_seconds` (default: immediately). Background work keeps the
@@ -163,11 +172,17 @@ class HardwareRig:
         that race killed a conductor walk mid-gate)."""
         # timeout=0 IS the immediate non-blocking poll — one call form
         # covers every wait.
+        self._require_open()
         if not self._lock.acquire(timeout=wait_seconds):
             raise RuntimeError(
                 "PhysiClaw is busy — wait for the current operation to finish, then retry."
             )
         self._lock_owner = threading.get_ident()
+        try:
+            self._require_open()
+        except BaseException:
+            self.release()
+            raise
 
     def release(self):
         """Mark hardware as idle."""
@@ -243,6 +258,7 @@ class HardwareRig:
         keep the immediate default and skip on busy."""
         self.require_hardware()
         with self.locked(wait_seconds=wait_seconds):
+            self.require_hardware()
             try:
                 yield
             finally:
@@ -266,12 +282,24 @@ class HardwareRig:
         ``physiclaw server`` boots with empty calibration, so the
         propagation is a no-op and step 7 of setup measures fresh.
         """
-        if self._arm is not None:
-            self._arm.close()
-            self._arm = None
+        with self._lifecycle_lock:
+            self._require_open()
+            self.unmark_ready()
+            self._origin_pinned = False
+            old, self._arm = self._arm, None
+        if old is not None:
+            old.close()
         arm = StylusArm()
         try:
+            self._require_open()
             arm.setup()
+            self._apply_bundle_to_arm(arm)
+            # Shutdown can time out on the hardware lock while USB setup is
+            # blocked. Publish only if it has not started; otherwise close
+            # the late handle through the same failure cleanup below.
+            with self._lifecycle_lock:
+                self._require_open()
+                self._arm = arm
         except BaseException:
             # BaseException, matching StylusArm.__init__: a Ctrl-C mid-setup
             # must still close the port (releasing the coil via the DTR
@@ -284,9 +312,6 @@ class HardwareRig:
             except Exception:
                 log.exception("connect_arm: close after failed setup also failed")
             raise
-        self._arm = arm
-        self._origin_pinned = False  # arm.setup() re-zeroed the work frame
-        self._apply_bundle_to_arm()
         log.info("Arm connected")
 
     def connect_camera(self, index: int):
@@ -305,15 +330,21 @@ class HardwareRig:
         from the very first open; empty calibration (fresh setup) leaves
         AF live until the mapping step pins it.
         """
-        if self._cam is not None:
-            self._cam.close()
-            self._cam = None
-        self._cam = Camera(index, focus_value=self.calibration.cam_focus)
-        if self.calibration.cam_rotation is not None:
-            self._cam.rotation = self.calibration.cam_rotation
-        # A fresh Camera starts with default exposure — force the next
-        # become_ready to re-settle it (see unmark_ready).
-        self.unmark_ready()
+        self._require_open()
+        self.disconnect_camera()
+        cam = Camera(index, focus_value=self.calibration.cam_focus)
+        try:
+            if self.calibration.cam_rotation is not None:
+                cam.rotation = self.calibration.cam_rotation
+            with self._lifecycle_lock:
+                self._require_open()
+                self._cam = cam
+        except BaseException:
+            try:
+                cam.close()
+            except Exception:
+                log.exception("connect_camera: close after failed setup also failed")
+            raise
         log.info(f"Camera {index} connected")
 
     def disconnect_camera(self) -> bool:
@@ -324,12 +355,14 @@ class HardwareRig:
         device — Media Foundation enforces exclusive access, so the
         server has to let go before the aim app opens.
         """
-        if self._cam is None:
+        # Clear readiness and detach first: close() can fail after it has
+        # already stopped the reader. That handle must not remain live.
+        with self._lifecycle_lock:
+            self.unmark_ready()
+            cam, self._cam = self._cam, None
+        if cam is None:
             return False
-        self._cam.close()
-        self._cam = None
-        # No camera → not ready; a later reconnect re-settles via become_ready.
-        self.unmark_ready()
+        cam.close()
         log.info("Camera disconnected")
         return True
 
@@ -392,16 +425,17 @@ class HardwareRig:
         self.calibration.pct_to_grbl = None
         self._origin_pinned = False
 
-    def _apply_bundle_to_arm(self):
+    def _apply_bundle_to_arm(self, arm: StylusArm | None = None):
         """Propagate cached calibration into the newly-connected arm."""
-        if self._arm is None:
+        arm = self._arm if arm is None else arm
+        if arm is None:
             return
         cal = self.calibration
         if cal.pct_to_grbl is not None:
             p = cal.pct_to_grbl
             right_vec = (float(p[0, 0]), float(p[1, 0]))
             down_vec = (float(p[0, 1]), float(p[1, 1]))
-            self._arm.set_direction_mapping(right_vec, down_vec)
+            arm.set_direction_mapping(right_vec, down_vec)
 
     # ─── Hardware accessors ───────────────────────────────────
 
@@ -504,17 +538,14 @@ class HardwareRig:
         bridge.send_text(text)
         try:
             self.at_long_press()
-        except Exception:
-            # Arm failure after the text is queued: retire it before
-            # re-raising, or a later Shortcut run / /bridge tap could
-            # fetch THIS run's text — the residue the expire path exists
-            # to prevent, and a violation of ClipboardSyncError's "the
-            # phone clipboard still holds the previous content" contract.
-            bridge.expire_text()
+            if bridge.wait_clipboard(timeout=timeout):
+                return True
+            return bridge.expire_text()
+        except BaseException:
+            # Retire queued text on either a failed gesture or an interrupted
+            # wait, so a later Shortcut cannot fetch a cancelled operation.
+            bridge.clear_text()
             raise
-        if bridge.wait_clipboard(timeout=timeout):
-            return True
-        return bridge.expire_text()
 
     # ─── Primitive movements ─────────────────────────────────
 
@@ -627,12 +658,23 @@ class HardwareRig:
           only. Its bounded M5 releases the coil when the wire is free,
           and the port close is the true backstop either way (it unblocks
           a stuck reader; the DTR drop resets the board, coil included).
+
+        Shutdown is terminal and idempotent. An in-flight device open is
+        closed instead of installed if it finishes after shutdown starts.
         """
+
+        with self._lifecycle_lock:
+            if self._closed:
+                return
+            self._closed = True
+            self.unmark_ready()
 
         def _safe(action, desc):
             try:
                 action()
-            except Exception:
+            except BaseException:
+                # Teardown must finish even if another Ctrl-C interrupts a
+                # device call; the terminal flag prevents a later retry.
                 log.exception("shutdown: %s failed", desc)
 
         # Order teardown after any in-flight holder (a gesture mid-move,
@@ -641,11 +683,19 @@ class HardwareRig:
         # shorter than a warm-start bridge wait.
         with self.try_locked(lock_timeout) as got:
             if got:
-                if self._arm:
-                    _safe(self._arm.lift_stylus, "lift stylus")
+                arm = self._arm
+                if arm is not None:
+                    _safe(arm.lift_stylus, "lift stylus")
                     _safe(self._park_for_teardown, "park")
-                    _safe(self._arm.close, "arm close")
-            elif self._arm:
+
+            # Transfer ownership once, even on timeout: a current lock
+            # holder may be disconnecting a device while shutdown runs.
+            with self._lifecycle_lock:
+                arm, self._arm = self._arm, None
+                cam, self._cam = self._cam, None
+                self._origin_pinned = False
+
+            if not got and arm is not None:
                 # The lock is owned by a live or abandoned holder: any
                 # motion here would be unserialized, and the pin flag can't
                 # be trusted from outside the lock (the holder may be
@@ -655,6 +705,7 @@ class HardwareRig:
                 log.warning(
                     "shutdown: hardware lock still held; closing without parking"
                 )
-                _safe(self._arm.close, "arm close")
-            if self._cam:
-                _safe(self._cam.close, "camera close")
+            if arm is not None:
+                _safe(arm.close, "arm close")
+            if cam is not None:
+                _safe(cam.close, "camera close")

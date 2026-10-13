@@ -332,10 +332,12 @@ async def test_handle_disconnect_camera_releases_lock_on_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_camera_preview_happy_path(mocker) -> None:
+    rig = _rig_mock()
     mocker.patch.object(hardware_setup, "camera_preview", return_value=b"JPEG-bytes")
 
     resp = await handle_camera_preview(
         _fake_request(path_params={"index": "3"}, query_params={}),
+        rig,
     )
 
     body = _read_json(resp)
@@ -346,28 +348,33 @@ async def test_handle_camera_preview_happy_path(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_camera_preview_passes_watermark_query_param(mocker) -> None:
+    rig = _rig_mock()
     spy = mocker.patch.object(hardware_setup, "camera_preview", return_value=b"x")
 
     await handle_camera_preview(
         _fake_request(path_params={"index": "5"}, query_params={"watermark": "1"}),
+        rig,
     )
 
-    spy.assert_called_once_with(5, True)
+    spy.assert_called_once_with(5, True, connected=rig.cam)
 
 
 @pytest.mark.asyncio
 async def test_handle_camera_preview_default_watermark_is_false(mocker) -> None:
+    rig = _rig_mock()
     spy = mocker.patch.object(hardware_setup, "camera_preview", return_value=b"x")
 
     await handle_camera_preview(
         _fake_request(path_params={"index": "0"}),
+        rig,
     )
 
-    spy.assert_called_once_with(0, False)
+    spy.assert_called_once_with(0, False, connected=rig.cam)
 
 
 @pytest.mark.asyncio
 async def test_handle_camera_preview_returns_404_on_capture_failure(mocker) -> None:
+    rig = _rig_mock()
     mocker.patch.object(
         hardware_setup,
         "camera_preview",
@@ -376,6 +383,7 @@ async def test_handle_camera_preview_returns_404_on_capture_failure(mocker) -> N
 
     resp = await handle_camera_preview(
         _fake_request(path_params={"index": "0"}),
+        rig,
     )
 
     assert resp.status_code == 404
@@ -438,3 +446,47 @@ async def test_regression_camera_malformed_body_does_not_start_auto_pick(mocker,
     assert response.status_code == 400
     pick.assert_not_called()
     rig.acquire.assert_not_called()
+
+
+async def test_camera_preview_busy_does_not_open_or_capture(mocker):
+    rig = _rig_mock()
+    rig.acquire.side_effect = RuntimeError("busy")
+    preview = mocker.patch.object(hardware_setup, "camera_preview")
+
+    response = await handle_camera_preview(
+        _fake_request(path_params={"index": "0"}), rig
+    )
+
+    assert response.status_code == 404
+    preview.assert_not_called()
+
+
+async def test_camera_preview_route_reuses_exclusively_owned_camera(fake_mcp, mocker):
+    import cv2
+    import numpy as np
+
+    from physiclaw.core.orchestration import camera_pick
+    from physiclaw.core.orchestration.rig import HardwareRig
+    from physiclaw.core.server.hardware import register
+
+    rig = HardwareRig()
+    rig._cam = MagicMock(index=2)
+    rig.cam.raw_frame.return_value = np.full((12, 20, 3), 80, np.uint8)
+    opener = mocker.patch.object(
+        camera_pick, "Camera", side_effect=RuntimeError("owned")
+    )
+    register(fake_mcp, rig, MagicMock())
+
+    response = await fake_mcp.get("/api/camera-preview/{index}")(
+        _fake_request(path_params={"index": "2"})
+    )
+
+    assert response.status_code == 200
+    jpeg = base64.b64decode(_read_json(response)["image"])
+    assert cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR).shape == (
+        12,
+        20,
+        3,
+    )
+    opener.assert_not_called()
+    rig.cam.close.assert_not_called()

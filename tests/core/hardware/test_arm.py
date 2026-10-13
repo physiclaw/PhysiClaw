@@ -735,3 +735,13 @@ def test_close_swallows_coil_release_failure(mocker) -> None:
     arm.close()
 
     assert fake.closed is True
+
+
+def test_regression_close_interrupt_still_releases_serial_port(mocker) -> None:
+    arm, fake = _arm(mocker)
+    mocker.patch.object(fake, "write", side_effect=KeyboardInterrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        arm.close()
+
+    assert fake.closed is True

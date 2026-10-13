@@ -364,6 +364,56 @@ def test_close_stops_thread_and_releases(mocker) -> None:
     assert vc.released is True
 
 
+@pytest.mark.parametrize("stage", ["reader", "exposure", "focus"])
+def test_regression_interrupted_close_still_releases_capture(mocker, stage):
+    cam, vc = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
+    cam.set_manual_exposure(-5)
+    cam.lock_focus()
+    boundaries = {
+        "reader": (cam._reader, "stop"),
+        "exposure": (camera_mod.platform, "camera_set_auto_exposure"),
+        "focus": (camera_mod.platform, "camera_unlock_focus"),
+    }
+    owner, method = boundaries[stage]
+    mocker.patch.object(owner, method, side_effect=KeyboardInterrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        cam.close()
+
+    assert vc.released
+    assert not cam._cap_lock.locked()
+
+
+def test_interrupted_close_keeps_native_release_behind_capture_lock(mocker):
+    cam, vc = _ready_camera(mocker)
+    mocker.patch.object(cam._reader, "stop", side_effect=KeyboardInterrupt)
+    mocker.patch.object(cam, "CLOSE_LOCK_TIMEOUT_SECONDS", 0)
+    cam._cap_lock.acquire()
+
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            cam.close()
+    finally:
+        cam._cap_lock.release()
+
+    assert not vc.released
+
+
+@pytest.mark.parametrize("control", ["camera_set_auto_exposure", "camera_unlock_focus"])
+def test_close_control_restore_failure_still_releases_capture(mocker, control, caplog):
+    cam, vc = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
+    cam.set_manual_exposure(-5)
+    cam.lock_focus()
+    mocker.patch.object(camera_mod.platform, control, side_effect=OSError("unplugged"))
+
+    cam.close()
+
+    assert vc.released
+    assert "hand-back on close failed" in caplog.text
+
+
 def test_close_hands_held_manual_exposure_back_to_auto(mocker) -> None:
     # A held manual value lives in the camera's volatile RAM and would
     # outlive the process — close() must hand exposure back to firmware

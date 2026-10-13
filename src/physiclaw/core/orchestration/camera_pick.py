@@ -11,6 +11,7 @@ package itself knows nothing about vision, and the HTTP layer
 
 import logging
 import time
+from contextlib import closing, contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -35,23 +36,31 @@ AUTO_PICK_BRIDGE_TIMEOUT = CONFIG.auto_pick.bridge_wait_timeout_seconds
 AUTO_PICK_BRIDGE_SETTLE = CONFIG.auto_pick.bridge_settle_seconds
 
 
-def camera_preview(index: int, watermark: bool = False) -> bytes:
+@contextmanager
+def _camera_for(index: int, connected: Camera | None):
+    """Borrow the rig's matching handle; close only handles opened here."""
+    if connected is not None and connected.index == index:
+        yield connected
+    else:
+        with closing(Camera(index)) as camera:
+            yield camera
+
+
+def camera_preview(
+    index: int, watermark: bool = False, *, connected: Camera | None = None
+) -> bytes:
     """Capture one frame from a camera, optionally watermark the index.
 
-    Opens the camera, grabs a frame, closes the camera, returns JPEG bytes.
+    Returns an unrotated frame as JPEG. Reuses a matching ``connected``
+    camera (caller holds the rig lock); otherwise opens and closes its own.
     Used by /api/camera-preview/{index} during /setup so the user can pick
     the right camera index by previewing each one without committing to a
     connection.
 
     Raises RuntimeError if the camera can't be opened or returns no frame.
     """
-    cam = Camera(index)
-    try:
-        frame = cam.snapshot()
-    finally:
-        # Mirror _capture_raw below: a snapshot()/save failure must not
-        # leave the capture handle claimed (exclusive on Windows MF).
-        cam.close()
+    with _camera_for(index, connected) as cam:
+        frame = cam.raw_frame()
     if frame is None:
         raise RuntimeError(f"Camera {index} returned no frame")
 
@@ -60,26 +69,22 @@ def camera_preview(index: int, watermark: bool = False) -> bytes:
     return encode_jpeg(frame, quality=80)
 
 
-def _capture_raw(idx: int) -> np.ndarray | None:
+def _capture_raw(idx: int, connected: Camera | None = None) -> np.ndarray | None:
     """Open camera ``idx``, return one raw unrotated frame or None.
 
     Logs the reason on failure so a silent None doesn't mask a real issue.
     """
-    cam = None
     try:
         # Constructor inside the try: a missing index raises here, and
         # the auto-pick loop must move on to the next index, not crash.
-        cam = Camera(idx)
-        return cam.raw_frame()
+        with _camera_for(idx, connected) as cam:
+            return cam.raw_frame()
     except (OSError, RuntimeError) as e:
         log.warning(f"  cam {idx}: capture failed — {e}")
         return None
-    finally:
-        if cam is not None:
-            cam.close()
 
 
-def _auto_pick_camera_index() -> int | None:
+def _auto_pick_camera_index(connected: Camera | None = None) -> int | None:
     """Identify the overhead camera by the RGBM corner markers on /bridge.
 
     Caller must first put the phone page into the ``corners`` phase so
@@ -93,7 +98,7 @@ def _auto_pick_camera_index() -> int | None:
     # typical configurations without measurably slowing the loop —
     # missing-index opens fail fast on macOS.
     for idx in range(8):
-        frame = _capture_raw(idx)
+        frame = _capture_raw(idx, connected)
         if frame is None:
             continue
         corners = detect_bridge_corners(frame)
@@ -113,8 +118,10 @@ def resolve_auto_index(rig: "HardwareRig", phone: "PageState") -> int:
     is backgrounded, set_mode would update server state but the canvas
     would never paint the RGBM markers, and auto-pick would always
     fail. (warm-start uses the same gate.) The phone is restored to
-    bridge mode before returning, even on failure.
+    bridge mode before returning, even on failure. Caller holds the rig lock
+    so an existing camera can be borrowed without a duplicate device open.
     """
+    rig.assert_locked()
     bridge = rig.require_bridge()
     if not bridge.wait_for_connection(
         AUTO_PICK_BRIDGE_TIMEOUT, AUTO_PICK_BRIDGE_SETTLE
@@ -125,9 +132,9 @@ def resolve_auto_index(rig: "HardwareRig", phone: "PageState") -> int:
             f"on the phone, then retry."
         )
     phone.set_mode("calibrate", phase="corners")
-    time.sleep(0.5)  # give bridge.html time to render the corners
     try:
-        picked = _auto_pick_camera_index()
+        time.sleep(0.5)  # give bridge.html time to render the corners
+        picked = _auto_pick_camera_index(rig.cam)
     finally:
         phone.set_mode("bridge")
     if picked is None:

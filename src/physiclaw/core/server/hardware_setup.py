@@ -161,7 +161,7 @@ async def handle_disconnect_camera(
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
-async def handle_camera_preview(request: Request) -> JSONResponse:
+async def handle_camera_preview(request: Request, rig: "HardwareRig") -> JSONResponse:
     """GET /api/camera-preview/{index} — capture one frame from a camera index."""
     watermark = request.query_params.get("watermark", "0") == "1"
     try:
@@ -169,7 +169,12 @@ async def handle_camera_preview(request: Request) -> JSONResponse:
         # non-numeric index must produce this module's JSON error shape,
         # not a bare 500.
         index = int(request.path_params["index"])
-        jpeg = await asyncio.to_thread(camera_preview, index, watermark)
+
+        def _do() -> bytes:
+            with rig.locked():
+                return camera_preview(index, watermark, connected=rig.cam)
+
+        jpeg = await asyncio.to_thread(_do)
         return JSONResponse(
             {"status": "ok", "index": index, "image": base64.b64encode(jpeg).decode()}
         )

@@ -52,4 +52,4 @@ def register(mcp: "MCPServer", rig: "HardwareRig", phone: PageState) -> None:
 
     @mcp.custom_route("/api/camera-preview/{index}", methods=["GET"])
     async def _camera_preview(request: Request) -> JSONResponse:
-        return await handle_camera_preview(request)
+        return await handle_camera_preview(request, rig)

@@ -599,12 +599,13 @@ def test_shutdown_closes_arm_and_camera(rig, arm_double, cam_double) -> None:
     rig._arm = arm_double()
     rig._cam = cam_double()
 
+    arm, cam = rig.arm, rig.cam
     rig.shutdown()
 
-    rig._arm.lift_stylus.assert_called_once()
-    rig._arm.return_to_origin.assert_called_once()
-    rig._arm.close.assert_called_once()
-    rig._cam.close.assert_called_once()
+    arm.lift_stylus.assert_called_once()
+    arm.return_to_origin.assert_called_once()
+    arm.close.assert_called_once()
+    cam.close.assert_called_once()
 
 
 def test_shutdown_parks_off_screen_when_calibrated_and_pinned(
@@ -618,14 +619,15 @@ def test_shutdown_parks_off_screen_when_calibrated_and_pinned(
     rig.calibration.pct_to_grbl = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     rig.restore_park_origin()
 
+    arm, cam = rig.arm, rig.cam
     rig.shutdown()
 
-    rig._arm.lift_stylus.assert_called_once()
-    rig._arm.return_to_origin.assert_not_called()
+    arm.lift_stylus.assert_called_once()
+    arm.return_to_origin.assert_not_called()
     # park() drives a fast move to the calibrated park coordinate.
-    rig._arm.rapid_to.assert_called_once_with(-0.1, -0.05)
-    rig._arm.close.assert_called_once()
-    rig._cam.close.assert_called_once()
+    arm.rapid_to.assert_called_once_with(-0.1, -0.05)
+    arm.close.assert_called_once()
+    cam.close.assert_called_once()
 
 
 def test_shutdown_never_moves_the_arm_in_an_unpinned_frame(
@@ -636,12 +638,13 @@ def test_shutdown_never_moves_the_arm_in_an_unpinned_frame(
     rig._cam = cam_double()
     rig.calibration.pct_to_grbl = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
+    arm, cam = rig.arm, rig.cam
     rig.shutdown()
 
-    rig._arm.rapid_to.assert_not_called()
-    rig._arm.return_to_origin.assert_not_called()
-    rig._arm.close.assert_called_once()  # handles still released
-    rig._cam.close.assert_called_once()
+    arm.rapid_to.assert_not_called()
+    arm.return_to_origin.assert_not_called()
+    arm.close.assert_called_once()  # handles still released
+    cam.close.assert_called_once()
 
 
 def test_park_refuses_an_unpinned_frame(rig, arm_double) -> None:
@@ -669,10 +672,11 @@ def test_connect_arm_unpins_the_frame(rig, mocker, arm_double) -> None:
     )
 
     rig.connect_arm()
+    arm = rig.arm
     rig.shutdown()
 
     assert rig.origin_pinned is False
-    rig._arm.rapid_to.assert_not_called()
+    arm.rapid_to.assert_not_called()
 
 
 def test_install_arm_calibration_pins_and_wires_the_arm(rig, arm_double) -> None:
@@ -730,12 +734,13 @@ def test_shutdown_waits_briefly_for_a_held_lock_then_proceeds(rig, arm_double) -
     rig._lock.acquire()
     rig._lock_owner = 12345  # held by another thread
 
+    arm = rig.arm
     rig.shutdown(lock_timeout=0.05)  # returns despite the held lock
 
-    rig._arm.rapid_to.assert_not_called()
-    rig._arm.return_to_origin.assert_not_called()
-    rig._arm.lift_stylus.assert_not_called()  # coil handled by close()
-    rig._arm.close.assert_called_once()
+    arm.rapid_to.assert_not_called()
+    arm.return_to_origin.assert_not_called()
+    arm.lift_stylus.assert_not_called()  # coil handled by close()
+    arm.close.assert_called_once()
     assert rig._lock.locked()  # shutdown did not steal or release it
 
 
@@ -773,11 +778,12 @@ def test_shutdown_continues_when_coil_release_fails(
     rig._arm.lift_stylus.side_effect = RuntimeError("serial timeout")
     rig._cam = cam_double()
 
+    arm, cam = rig.arm, rig.cam
     rig.shutdown()  # swallows the error
 
-    rig._arm.return_to_origin.assert_called_once()
-    rig._arm.close.assert_called_once()
-    rig._cam.close.assert_called_once()
+    arm.return_to_origin.assert_called_once()
+    arm.close.assert_called_once()
+    cam.close.assert_called_once()
 
 
 def test_shutdown_continues_when_arm_close_fails(rig, arm_double, cam_double) -> None:
@@ -787,10 +793,11 @@ def test_shutdown_continues_when_arm_close_fails(rig, arm_double, cam_double) ->
     rig._arm.close.side_effect = RuntimeError("port gone")
     rig._cam = cam_double()
 
+    arm, cam = rig.arm, rig.cam
     rig.shutdown()
 
-    rig._arm.close.assert_called_once()  # attempted despite the prior failure
-    rig._cam.close.assert_called_once()
+    arm.close.assert_called_once()  # attempted despite the prior failure
+    cam.close.assert_called_once()
 
 
 def test_shutdown_swallows_camera_close_failure(rig, cam_double) -> None:
@@ -861,3 +868,315 @@ def test_engaged_waits_for_the_lock(rig, mocker) -> None:
     with rig.engaged(wait_seconds=2.0):
         pass  # acquired despite the initial holder
     t.join()
+
+
+def test_regression_shutdown_reports_disconnected_and_rejects_further_work(
+    rig, wire_rig
+):
+    wire_rig(rig)
+    rig.mark_ready()
+
+    rig.shutdown()
+
+    assert rig.arm is None
+    assert rig.cam is None
+    assert not rig.ready
+    assert not rig.origin_pinned
+    with pytest.raises(RuntimeError, match="shut down"):
+        rig.acquire()
+
+
+def test_regression_shutdown_closes_camera_that_finishes_connecting_late(
+    mocker, cam_double
+):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    rig = HardwareRig()
+    opening, finish = threading.Event(), threading.Event()
+    camera = cam_double()
+
+    def open_camera(*args, **kwargs):
+        opening.set()
+        assert finish.wait(2)
+        return camera
+
+    def connect():
+        with rig.locked():
+            rig.connect_camera(0)
+
+    mocker.patch.object(rig_mod, "Camera", side_effect=open_camera)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(connect)
+        try:
+            assert opening.wait(2)
+            rig.shutdown(lock_timeout=0)
+        finally:
+            finish.set()
+        with pytest.raises(RuntimeError, match="shut down"):
+            future.result(timeout=2)
+
+    assert rig.cam is None
+    camera.close.assert_called_once()
+
+
+def test_regression_engaged_rechecks_devices_after_waiting_for_lock(rig, wire_rig):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    wire_rig(rig)
+    checked = threading.Event()
+    original = rig.calibration
+
+    class CalibrationDuringWait:
+        pct_to_grbl = None
+
+        @property
+        def transforms_ready(self):
+            checked.set()
+            return True
+
+        def pct_to_grbl_mm(self, *args):
+            return original.pct_to_grbl_mm(*args)
+
+    def gesture():
+        with rig.engaged(wait_seconds=2):
+            return "entered"
+
+    rig.calibration = CalibrationDuringWait()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with rig.locked():
+            future = pool.submit(gesture)
+            assert checked.wait(2)
+            rig.disconnect_camera()
+        with pytest.raises(RuntimeError, match="Hardware not set up"):
+            future.result(timeout=2)
+
+    rig.arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.parametrize("stage", ["gesture", "wait"])
+def test_regression_cancelled_clipboard_sync_retires_queued_text(
+    rig, wire_rig, mocker, stage
+):
+    from physiclaw.core.bridge import BridgeState
+
+    wire_rig(rig)
+    bridge = BridgeState()
+    rig.attach_bridge(bridge)
+    failures = {"gesture": rig.assistive_touch, "wait": bridge}
+    methods = {"gesture": "long_press", "wait": "wait_clipboard"}
+    mocker.patch.object(failures[stage], methods[stage], side_effect=KeyboardInterrupt)
+
+    with rig.locked(), pytest.raises(KeyboardInterrupt):
+        rig.sync_clipboard("cancelled fixture", timeout=0)
+
+    assert bridge.current_text() is None
+    assert bridge.fetch_text() is None
+
+
+def test_regression_failed_arm_reconnect_drops_old_origin_pin(mocker, rig, wire_rig):
+    wire_rig(rig)
+    rig.mark_ready()
+    mocker.patch.object(rig_mod, "StylusArm", side_effect=RuntimeError("unplugged"))
+
+    with pytest.raises(RuntimeError, match="unplugged"):
+        rig.connect_arm()
+
+    assert rig.arm is None
+    assert not rig.origin_pinned
+    assert not rig.ready
+
+
+def test_regression_camera_close_failure_does_not_keep_closed_device_live(
+    rig, wire_rig
+):
+    wire_rig(rig)
+    rig.mark_ready()
+    rig.cam.close.side_effect = RuntimeError("close failed")
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        rig.disconnect_camera()
+
+    assert rig.cam is None
+    assert not rig.ready
+
+
+@pytest.mark.parametrize("stage", ["lift_stylus", "return_to_origin", "close"])
+def test_regression_shutdown_interrupt_still_closes_every_device(
+    rig, arm_double, cam_double, stage
+):
+    arm, cam = arm_double(), cam_double()
+    rig._arm, rig._cam = arm, cam
+    getattr(arm, stage).side_effect = KeyboardInterrupt
+
+    rig.shutdown()
+    rig.shutdown()
+
+    arm.close.assert_called_once()
+    cam.close.assert_called_once()
+    assert rig.arm is None
+    assert rig.cam is None
+
+
+def test_shutdown_late_ready_completion_does_not_revive_rig(rig, wire_rig):
+    wire_rig(rig)
+    rig.shutdown()
+
+    rig.mark_ready()
+
+    assert not rig.ready
+    assert not rig.hardware_ready
+
+
+def test_connect_arm_setup_failure_closes_unpublished_device(mocker, arm_double):
+    rig = HardwareRig()
+    arm = arm_double()
+    arm.setup.side_effect = RuntimeError("setup failed")
+    mocker.patch.object(rig_mod, "StylusArm", return_value=arm)
+
+    with pytest.raises(RuntimeError, match="setup failed"):
+        rig.connect_arm()
+
+    arm.close.assert_called_once()
+    assert rig.arm is None
+    assert not rig.origin_pinned
+
+
+def test_regression_late_arm_open_closes_without_running_setup(mocker, arm_double):
+    rig = HardwareRig()
+    arm = arm_double()
+
+    def open_arm():
+        rig.shutdown(lock_timeout=0)
+        return arm
+
+    mocker.patch.object(rig_mod, "StylusArm", side_effect=open_arm)
+
+    with rig.locked(), pytest.raises(RuntimeError, match="shut down"):
+        rig.connect_arm()
+
+    arm.setup.assert_not_called()
+    arm.close.assert_called_once()
+    assert rig.arm is None
+
+
+@pytest.mark.parametrize("stage", ["gesture", "wait"])
+def test_regression_cancelled_clipboard_sync_retires_already_fetched_text(
+    rig, wire_rig, mocker, stage
+):
+    from physiclaw.core.bridge import BridgeState
+
+    wire_rig(rig)
+    bridge = BridgeState()
+    rig.attach_bridge(bridge)
+    failures = {"gesture": rig.assistive_touch, "wait": bridge}
+    methods = {"gesture": "long_press", "wait": "wait_clipboard"}
+
+    def fetch_then_cancel(*args, **kwargs):
+        assert bridge.fetch_text() == "cancelled fixture"
+        raise KeyboardInterrupt
+
+    mocker.patch.object(failures[stage], methods[stage], side_effect=fetch_then_cancel)
+
+    with rig.locked(), pytest.raises(KeyboardInterrupt):
+        rig.sync_clipboard("cancelled fixture", timeout=0)
+
+    assert bridge.current_text() is None
+    assert bridge.fetch_text() is None
+
+
+def test_regression_shutdown_handles_camera_detached_between_reads(
+    rig, arm_double, cam_double
+):
+    arm, cam = arm_double(), cam_double()
+
+    # Force a disconnect in the old check-then-read window. Real lock
+    # holders can detach a camera while timeout teardown runs.
+    class ConcurrentCamera:
+        def __bool__(self):
+            rig.disconnect_camera()
+            return True
+
+        def close(self):
+            cam.close()
+
+    rig._arm, rig._cam = arm, ConcurrentCamera()
+    rig._origin_pinned = True
+    rig._lock.acquire()
+
+    try:
+        rig.shutdown(lock_timeout=0)
+    finally:
+        rig._lock.release()
+
+    arm.close.assert_called_once()
+    cam.close.assert_called_once()
+    assert rig.arm is None
+    assert rig.cam is None
+    assert not rig.origin_pinned
+
+
+def test_acquire_shutdown_during_wait_releases_lock_before_rejecting(rig):
+    import threading
+
+    lock = threading.Lock()
+
+    class ShutdownDuringAcquire:
+        def acquire(self, timeout):
+            acquired = lock.acquire(timeout=timeout)
+            if acquired:
+                rig.shutdown(lock_timeout=0)
+            return acquired
+
+        def release(self):
+            lock.release()
+
+    rig._lock = ShutdownDuringAcquire()
+
+    with pytest.raises(RuntimeError, match="shut down"):
+        rig.acquire()
+
+    assert not lock.locked()
+
+
+def test_connect_arm_shutdown_during_setup_closes_unpublished_device(
+    mocker, arm_double
+):
+    rig = HardwareRig()
+    arm = arm_double()
+    arm.setup.side_effect = rig.shutdown
+    mocker.patch.object(rig_mod, "StylusArm", return_value=arm)
+
+    with rig.locked(), pytest.raises(RuntimeError, match="shut down"):
+        rig.connect_arm()
+
+    arm.close.assert_called_once()
+    assert rig.arm is None
+
+
+@pytest.mark.parametrize("device", ["arm", "camera"])
+def test_connect_late_device_preserves_shutdown_error_when_close_also_fails(
+    rig, mocker, arm_double, cam_double, device, caplog
+):
+    handles = {"arm": arm_double(), "camera": cam_double()}
+    constructors = {"arm": "StylusArm", "camera": "Camera"}
+    connects = {"arm": rig.connect_arm, "camera": lambda: rig.connect_camera(0)}
+    handle = handles[device]
+    handle.close.side_effect = OSError("unplugged during close")
+
+    def open_after_shutdown(*args, **kwargs):
+        rig.shutdown()
+        return handle
+
+    mocker.patch.object(rig_mod, constructors[device], side_effect=open_after_shutdown)
+
+    with rig.locked(), pytest.raises(RuntimeError, match="shut down"):
+        connects[device]()
+
+    handle.close.assert_called_once()
+    assert "close after failed setup also failed" in caplog.text
+    assert rig.arm is None
+    assert rig.cam is None

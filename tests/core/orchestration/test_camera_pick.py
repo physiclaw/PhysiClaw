@@ -24,7 +24,7 @@ from physiclaw.core.orchestration.camera_pick import (
 def test_camera_preview_returns_jpeg_bytes(mocker) -> None:
     fake_frame = np.zeros((10, 10, 3), dtype=np.uint8)
     fake_cam = MagicMock()
-    fake_cam.snapshot.return_value = fake_frame
+    fake_cam.raw_frame.return_value = fake_frame
     mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
     encode_spy = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
     wm_spy = mocker.patch.object(camera_pick, "watermark_index")
@@ -41,7 +41,7 @@ def test_camera_preview_applies_watermark_when_requested(mocker) -> None:
     fake_frame = np.zeros((10, 10, 3), dtype=np.uint8)
     wm_frame = np.ones((10, 10, 3), dtype=np.uint8)
     fake_cam = MagicMock()
-    fake_cam.snapshot.return_value = fake_frame
+    fake_cam.raw_frame.return_value = fake_frame
     mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
     mocker.patch.object(camera_pick, "watermark_index", return_value=wm_frame)
     encode_spy = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
@@ -56,7 +56,7 @@ def test_camera_preview_applies_watermark_when_requested(mocker) -> None:
 
 def test_camera_preview_raises_when_snapshot_returns_none(mocker) -> None:
     fake_cam = MagicMock()
-    fake_cam.snapshot.return_value = None
+    fake_cam.raw_frame.return_value = None
     mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
 
     with pytest.raises(RuntimeError, match="Camera 0 returned no frame"):
@@ -120,7 +120,7 @@ def test_auto_pick_camera_returns_first_match(mocker) -> None:
     capture_spy = mocker.patch.object(
         camera_pick,
         "_capture_raw",
-        side_effect=lambda idx: frames[idx] if idx < len(frames) else None,
+        side_effect=lambda idx, connected: frames[idx] if idx < len(frames) else None,
     )
 
     def detect_corners(f):
@@ -166,6 +166,7 @@ def test_auto_pick_camera_skips_when_corners_not_detected(
 
 def test_resolve_auto_index_happy_path(mocker) -> None:
     rig = MagicMock()
+    rig.assert_locked = MagicMock()
     rig.require_bridge.return_value = rig.bridge
     rig.bridge.wait_for_connection.return_value = True
     phone = MagicMock()
@@ -185,6 +186,7 @@ def test_resolve_auto_index_happy_path(mocker) -> None:
 
 def test_resolve_auto_index_fails_when_bridge_not_polling(mocker) -> None:
     rig = MagicMock()
+    rig.assert_locked = MagicMock()
     rig.require_bridge.return_value = rig.bridge
     rig.bridge.wait_for_connection.return_value = False
     phone = MagicMock()
@@ -198,6 +200,7 @@ def test_resolve_auto_index_fails_when_bridge_not_polling(mocker) -> None:
 
 def test_resolve_auto_index_restores_bridge_mode_on_no_match(mocker) -> None:
     rig = MagicMock()
+    rig.assert_locked = MagicMock()
     rig.require_bridge.return_value = rig.bridge
     rig.bridge.wait_for_connection.return_value = True
     phone = MagicMock()
@@ -209,3 +212,97 @@ def test_resolve_auto_index_restores_bridge_mode_on_no_match(mocker) -> None:
 
     # Phone restored to bridge mode even on failure.
     assert phone.set_mode.call_args_list[-1].args == ("bridge",)
+
+
+def test_regression_auto_pick_reuses_the_camera_already_owned_by_rig(mocker):
+    from physiclaw.core.orchestration import rig as rig_module
+    from physiclaw.core.orchestration.rig import HardwareRig
+
+    frame = np.zeros((20, 20, 3), np.uint8)
+    camera = MagicMock(index=0)
+    camera.raw_frame.return_value = frame
+    opens = []
+
+    def exclusive_camera(index, **kwargs):
+        if index != 0 or opens:
+            raise RuntimeError("missing or exclusively owned camera")
+        opens.append(index)
+        return camera
+
+    mocker.patch.object(rig_module, "Camera", side_effect=exclusive_camera)
+    mocker.patch.object(camera_pick, "Camera", side_effect=exclusive_camera)
+    mocker.patch.object(camera_pick, "detect_bridge_corners", return_value=[(0, 0)] * 4)
+    mocker.patch.object(camera_pick.time, "sleep")
+    rig = HardwareRig()
+    rig.attach_bridge(MagicMock())
+    rig.connect_camera(0)
+
+    with rig.locked():
+        result = resolve_auto_index(rig, MagicMock())
+
+    assert result == 0
+    assert opens == [0]
+    camera.close.assert_not_called()
+
+
+def test_regression_auto_pick_restores_page_if_render_wait_is_interrupted(mocker):
+    rig = MagicMock()
+    rig.assert_locked = MagicMock()
+    phone = MagicMock()
+    mocker.patch.object(camera_pick.time, "sleep", side_effect=KeyboardInterrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        resolve_auto_index(rig, phone)
+
+    assert phone.set_mode.call_args_list[-1].args == ("bridge",)
+
+
+def test_camera_preview_borrows_raw_frame_without_closing_or_rotating(mocker):
+    camera = MagicMock(index=2, rotation=0)
+    frame = np.zeros((10, 20, 3), np.uint8)
+    camera.raw_frame.return_value = frame
+    opener = mocker.patch.object(camera_pick, "Camera")
+    encoder = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
+
+    result = camera_preview(2, connected=camera)
+
+    assert result == b"JPEG"
+    assert encoder.call_args.args[0] is frame
+    opener.assert_not_called()
+    camera.close.assert_not_called()
+    camera.snapshot.assert_not_called()
+
+
+def test_camera_preview_other_index_closes_only_its_own_handle(mocker):
+    connected = MagicMock(index=1)
+    preview = MagicMock(index=2)
+    preview.raw_frame.return_value = np.zeros((10, 20, 3), np.uint8)
+    mocker.patch.object(camera_pick, "Camera", return_value=preview)
+
+    result = camera_preview(2, connected=connected)
+
+    assert result.startswith(b"\xff\xd8")
+    preview.close.assert_called_once()
+    connected.close.assert_not_called()
+
+
+def test_camera_preview_failure_preserves_borrowed_handle():
+    camera = MagicMock(index=2)
+    camera.raw_frame.side_effect = RuntimeError("capture failed")
+
+    with pytest.raises(RuntimeError, match="capture failed"):
+        camera_preview(2, connected=camera)
+
+    camera.close.assert_not_called()
+
+
+def test_resolve_auto_index_requires_lock_before_changing_page():
+    from physiclaw.core.orchestration.rig import HardwareRig
+
+    phone = MagicMock()
+    rig = HardwareRig()
+
+    with pytest.raises(RuntimeError, match="hardware lock not held"):
+        resolve_auto_index(rig, phone)
+
+    phone.set_mode.assert_not_called()

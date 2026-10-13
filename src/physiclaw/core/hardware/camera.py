@@ -557,7 +557,13 @@ class Camera:
 
     def close(self) -> None:
         self._closing = True
-        self._reader.stop()
+        try:
+            self._reader.stop()
+        finally:
+            self._release_capture()
+
+    def _release_capture(self) -> None:
+        """Release safely even when stopping the reader was interrupted."""
         # Never release the cap without holding the lock — a native
         # release() concurrent with the reader's cap.read() can segfault
         # the whole process. If the reader is wedged holding the lock,
@@ -566,29 +572,31 @@ class Camera:
             try:
                 if self._closed:
                     return
-                # Hand a held manual exposure back to firmware auto on the
-                # way out: the value lives in the camera's volatile RAM, so
-                # it would outlive this process and poison the next run (or
-                # any other app) until a re-tune or a USB power cycle.
-                # Skipped when the user pinned manual in config — that pin
-                # is theirs to keep. Best-effort: never blocks the close.
-                if CONFIG.camera.auto_exposure and not self._exposure_auto:
-                    try:
-                        platform.camera_set_auto_exposure(self.cap)
-                    except Exception:
-                        log.warning("exposure hand-back on close failed", exc_info=True)
-                # Same volatile-RAM story for a pinned lens: hand it back
-                # to AF so the next run (or any other app) starts hunting
-                # from a live autofocus, not our frozen position.
-                if self._focus_needs_restore:
-                    try:
-                        platform.camera_unlock_focus(self.cap)
-                        self._focus_needs_restore = False
-                    except Exception:
-                        log.warning("focus hand-back on close failed", exc_info=True)
-                self.cap.release()
-                self._focus_applied = False
-                self._closed = True
+                try:
+                    # Controls live in volatile RAM: hand a tune-imposed
+                    # exposure hold and pinned lens back to firmware auto
+                    # so the next run starts fresh. Keep user-pinned exposure.
+                    if CONFIG.camera.auto_exposure and not self._exposure_auto:
+                        try:
+                            platform.camera_set_auto_exposure(self.cap)
+                        except Exception:
+                            log.warning(
+                                "exposure hand-back on close failed", exc_info=True
+                            )
+                    if self._focus_needs_restore:
+                        try:
+                            platform.camera_unlock_focus(self.cap)
+                            self._focus_needs_restore = False
+                        except Exception:
+                            log.warning(
+                                "focus hand-back on close failed", exc_info=True
+                            )
+                finally:
+                    # A Ctrl-C during a control reset must still release the
+                    # native handle, just as an interrupted reader stop does.
+                    self.cap.release()
+                    self._focus_applied = False
+                    self._closed = True
             finally:
                 self._cap_lock.release()
         else:

@@ -66,4 +66,4 @@ async def test_hardware_routes_forward_to_handlers(
     spies["handle_connect_camera"].assert_called_once_with(req, pl, ph)
 
     await fake_mcp.get("/api/camera-preview/{index}")(req)
-    spies["handle_camera_preview"].assert_called_once_with(req)
+    spies["handle_camera_preview"].assert_called_once_with(req, pl)

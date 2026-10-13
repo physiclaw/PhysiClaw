@@ -421,4 +421,5 @@ class StylusArm:
             )
         except Exception:
             pass
-        self.transport.close()
+        finally:
+            self.transport.close()
