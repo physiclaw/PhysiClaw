@@ -93,27 +93,43 @@ async def handle_connect_camera(
     Body: ``{"index": "auto"}`` (or body omitted) — auto-pick via the
     RGBM corner markers (see ``camera_pick.resolve_auto_index``).
     """
-    body = (await json_or_none(request)) or {}
+    body = await json_or_none(request)
+    if body is None:
+        if await request.body():
+            return JSONResponse(
+                {"status": "error", "message": "body must be a JSON object"},
+                status_code=400,
+            )
+        body = {}
     index = body.get("index")
+    if index is None or index == "auto":
+        index = None
+    elif type(index) is not int or index < 0:
+        return JSONResponse(
+            {
+                "status": "error",
+                "message": "index must be a non-negative integer or auto",
+            },
+            status_code=400,
+        )
 
-    def _do() -> None:
-        nonlocal index
-        if index is None or index == "auto":
-            index = resolve_auto_index(rig, phone)
+    def _do() -> int:
         with rig.locked():
-            rig.connect_camera(int(index))
-            rig.calibration.cam_index = int(index)
+            # Auto-pick opens devices and changes the calibration page too.
+            # Keep selection, connection, and the response snapshot in one lock.
+            selected = resolve_auto_index(rig, phone) if index is None else index
+            rig.connect_camera(selected)
+            cam = rig.require_cam()
+            rig.calibration.cam_index = cam.index
+            return cam.index
 
     try:
-        await asyncio.to_thread(_do)
-        cam = rig.cam
-        if cam is None:  # _do just connected it, so the handle is set
-            raise RuntimeError("camera missing after connect")
+        connected_index = await asyncio.to_thread(_do)
         return JSONResponse(
             {
                 "status": "ok",
-                "message": f"Camera {cam.index} connected",
-                "index": cam.index,
+                "message": f"Camera {connected_index} connected",
+                "index": connected_index,
             }
         )
     except DeviceNotFound as e:

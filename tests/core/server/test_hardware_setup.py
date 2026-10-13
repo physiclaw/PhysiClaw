@@ -79,6 +79,7 @@ def _fake_request(
         req.json = _async(json_obj)
     req.path_params = path_params or {}
     req.query_params = query_params or {}
+    req.body = _async(b"")
     return req
 
 
@@ -174,6 +175,7 @@ def _fake_rig_cam_index(idx: int = 5) -> SimpleNamespace:
     """Build a fake rig with .cam.index and required methods."""
     rig = _rig_mock()
     rig.cam.index = idx
+    rig.require_cam.return_value = rig.cam
     return rig
 
 
@@ -380,3 +382,59 @@ async def test_handle_camera_preview_returns_404_on_capture_failure(mocker) -> N
     body = _read_json(resp)
     assert body["status"] == "error"
     assert "no frame" in body["message"]
+
+
+async def test_regression_auto_camera_busy_does_not_probe_or_change_page(mocker):
+    rig = _rig_mock()
+    rig.acquire.side_effect = RuntimeError("busy")
+    phone = MagicMock()
+    pick = mocker.patch.object(hardware_setup, "resolve_auto_index", return_value=2)
+
+    response = await handle_connect_camera(_fake_request({"index": "auto"}), rig, phone)
+
+    assert response.status_code == 500
+    pick.assert_not_called()
+    rig.connect_camera.assert_not_called()
+
+
+async def test_regression_camera_response_keeps_index_from_its_own_connection():
+    rig = _fake_rig_cam_index(idx=2)
+    rig.release.side_effect = lambda: setattr(rig, "cam", None)
+
+    response = await handle_connect_camera(
+        _fake_request({"index": 2}), rig, MagicMock()
+    )
+
+    assert response.status_code == 200
+    assert _read_json(response)["index"] == 2
+
+
+@pytest.mark.parametrize("index", [True, False, 1.5, "2", -1, [], {}, float("inf")])
+async def test_regression_camera_invalid_index_cannot_select_another_device(index):
+    rig = _fake_rig_cam_index()
+
+    response = await handle_connect_camera(
+        _fake_request({"index": index}), rig, MagicMock()
+    )
+
+    assert response.status_code == 400
+    rig.acquire.assert_not_called()
+    rig.connect_camera.assert_not_called()
+
+
+@pytest.mark.parametrize("raw", [b"{", b"null", b"[]", b"true", b'"auto"'])
+async def test_regression_camera_malformed_body_does_not_start_auto_pick(mocker, raw):
+    from starlette.requests import Request
+
+    async def receive():
+        return {"type": "http.request", "body": raw}
+
+    req = Request({"type": "http", "method": "POST", "headers": []}, receive)
+    rig = _rig_mock()
+    pick = mocker.patch.object(hardware_setup, "resolve_auto_index", return_value=1)
+
+    response = await handle_connect_camera(req, rig, MagicMock())
+
+    assert response.status_code == 400
+    pick.assert_not_called()
+    rig.acquire.assert_not_called()

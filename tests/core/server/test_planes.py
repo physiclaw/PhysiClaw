@@ -7,6 +7,8 @@ scopes around a dummy inner app — no sockets, no Starlette routing.
 from __future__ import annotations
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from physiclaw.core.server.planes import ControlGate, PhoneApp, build_bridge_app
 
@@ -80,6 +82,28 @@ async def test_control_gate_admits_configured_bind_host() -> None:
     gate = ControlGate(_inner_ok, host="10.0.0.9")
 
     assert await _call(gate, headers={"host": "10.0.0.9:8048"}) == 200
+
+
+@pytest.mark.parametrize(
+    ("bind", "header"),
+    [("2001:db8::1", "[2001:db8::1]:8048"), ("device.local", "DEVICE.LOCAL:8048")],
+)
+async def test_regression_control_gate_accepts_configured_host_spelling(bind, header):
+    gate = ControlGate(_inner_ok, host=bind)
+
+    result = await _call(gate, headers={"host": header})
+
+    assert result == 200
+
+
+@settings(max_examples=25, derandomize=True)
+@given(address=st.ip_addresses(v=6))
+async def test_control_gate_equivalent_ipv6_spellings_are_accepted(address):
+    gate = ControlGate(_inner_ok, host=address.exploded)
+
+    result = await _call(gate, headers={"host": f"[{address.compressed}]:8048"})
+
+    assert result == 200
 
 
 @pytest.mark.asyncio

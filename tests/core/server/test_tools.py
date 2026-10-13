@@ -510,3 +510,14 @@ async def test_real_mcpserver_keeps_a_crash_masked(real) -> None:
     with pytest.raises(UnexpectedToolError) as exc:
         await mcp.call_tool("tap", {"bbox": [0.1, 0.1, 0.2, 0.2]})
     assert "NoneType" not in str(exc.value)
+
+
+@pytest.mark.parametrize("coordinate", [False, "0.1"])
+async def test_regression_mcp_rejects_non_numeric_bbox_before_gesture(real, coordinate):
+    mcp, pl = real
+    pl.tap.return_value = _gr("Tapped")
+
+    with pytest.raises(ToolError):
+        await mcp.call_tool("tap", {"bbox": [coordinate, 0.1, 0.2, 0.2]})
+
+    pl.tap.assert_not_called()

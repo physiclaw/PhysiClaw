@@ -365,6 +365,23 @@ def test_try_resume_holds_lock_from_connect_through_origin_repin(mocker) -> None
     assert names.index("restore_park_origin") < names.index("release")
 
 
+def test_regression_resume_busy_leaves_live_calibration_untouched(mocker):
+    old_cal = _ready_bundle()
+    loaded = _ready_bundle()
+    app = _ready_app(old_cal)
+    app.rig.acquire.side_effect = RuntimeError("busy")
+    _patch_resume_env(mocker, loaded, app)
+    calib = MagicMock()
+    old_shift = calib.viewport_shift
+
+    with pytest.raises(RuntimeError, match="busy"):
+        _resume(app, calib=calib, verify=False)
+
+    assert app.rig.calibration is old_cal
+    assert calib.viewport_shift is old_shift
+    app.rig.assistive_touch.compute_at_screen_pos.assert_not_called()
+
+
 def test_try_resume_auto_parks_before_release_even_on_early_failure(
     mocker,
 ) -> None:

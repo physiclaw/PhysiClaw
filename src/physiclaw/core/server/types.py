@@ -19,7 +19,9 @@ from pydantic import Field
 # each item and `min_length`/`max_length` for the outer list. The
 # left<right / top<bottom invariant lives in the engine validator and
 # the orchestrator — see module docstring.
-_BboxCoord = Annotated[float, Field(ge=0.0, le=1.0)]
+# Preserve the core validator's numeric contract: never turn bools or
+# numeric strings into coordinates before it sees them. Integers stay valid.
+_BboxCoord = Annotated[float, Field(strict=True, ge=0.0, le=1.0)]
 
 Bbox = Annotated[
     list[_BboxCoord],

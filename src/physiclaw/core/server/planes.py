@@ -25,6 +25,7 @@ header on *all* control routes: a DNS-rebinding page reaches 127.0.0.1
 but presents the attacker's hostname, so it is refused before routing.
 """
 
+import ipaddress
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -91,6 +92,14 @@ class PhoneApp:
         return Starlette(routes=self._routes)
 
 
+def _normalize_host(host: str) -> str:
+    """Compare literal IPs canonically and DNS names without case sensitivity."""
+    try:
+        return str(ipaddress.ip_address(host.removeprefix("[").removesuffix("]")))
+    except ValueError:
+        return host.lower()
+
+
 def _host_name(scope: Scope) -> str:
     """Hostname from the Host header, port stripped (IPv6-bracket aware)."""
     raw = ""
@@ -99,8 +108,8 @@ def _host_name(scope: Scope) -> str:
             raw = v.decode("latin-1")
             break
     if raw.startswith("["):
-        return raw.split("]", 1)[0] + "]"
-    return raw.rsplit(":", 1)[0]
+        return _normalize_host(raw.split("]", 1)[0] + "]")
+    return _normalize_host(raw.rsplit(":", 1)[0])
 
 
 class ControlGate:
@@ -118,7 +127,7 @@ class ControlGate:
         # loopback bind's rebinding hole) stands down instead of 421-ing
         # every real client. Concrete-IP binds keep the allowlist.
         self._wildcard = host in WILDCARD_HOSTS
-        self._allowed = LOOPBACK_HOST_HEADERS | {host}
+        self._allowed = {_normalize_host(h) for h in LOOPBACK_HOST_HEADERS | {host}}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":

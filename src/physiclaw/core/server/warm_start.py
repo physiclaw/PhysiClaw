@@ -164,18 +164,7 @@ def try_resume(
         # against.
         log.error(f"{flag}: bundle on disk is incomplete")
         return False
-    rig.calibration = loaded
-    # Mirror into the bridge-side state so calibration handlers that
-    # read `calib.viewport_shift` (e.g. show_assistive_touch) see it,
-    # and restore the CSS-pt dimensions so warm-start's validate can run
-    # without waiting for the phone's /bridge page to POST them again.
-    # `loaded.complete` (gated above) guarantees the shift is present.
-    shift = cast("ViewportShift", loaded.viewport_shift)
-    calib.viewport_shift = shift
-    rig.assistive_touch.compute_at_screen_pos(shift)
-    calib.screen_dimension = loaded.screen_dimension
-
-    cal = rig.calibration
+    cal = loaded
     cam_index = (
         cam_index_override
         if cam_index_override is not None
@@ -195,6 +184,15 @@ def try_resume(
     # reject the not-yet-connected rig. rig.locked() is the same lock bracket
     # without that gate; the auto-park below is this path's own.)
     with rig.locked():
+        # Installing saved geometry also needs the lock: a concurrent gesture
+        # must not start with one mapping and finish with another, and a busy
+        # resume must leave the live session untouched.
+        rig.calibration = cal
+        shift = cast("ViewportShift", cal.viewport_shift)
+        with calib.lock:
+            calib.viewport_shift = shift
+            calib.screen_dimension = cal.screen_dimension
+        rig.assistive_touch.compute_at_screen_pos(shift)
         try:
             try:
                 rig.connect_arm()
