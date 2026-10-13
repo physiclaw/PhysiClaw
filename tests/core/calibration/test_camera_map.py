@@ -9,7 +9,7 @@ failure modes — the real detection and fitting code runs throughout.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 
 import cv2
 import numpy as np
@@ -345,3 +345,261 @@ def test_compute_camera_mapping_returns_pinned_focus(mocker) -> None:
     _, _, cam_focus = camera_map_mod.compute_camera_mapping(cam, cal, rotation=-1)
 
     assert cam_focus == 42.0
+
+
+class _PhaseCamera:
+    """Device boundary fake: real images/focus metering, no native hardware."""
+
+    focus_lockable = True
+
+    def __init__(self, cal, *, corners=None, grid=None):
+        self.cal = cal
+        self.frames = {
+            "corners": np.zeros((900, 600, 3), np.uint8)
+            if corners is None
+            else corners,
+            "focus": _sharp_frame(),
+            "grid": _grid_dot_image() if grid is None else grid,
+        }
+        self.frozen = False
+        self.applied = False
+        self.unlocks = 0
+
+    def raw_frame(self):
+        return self.frames[self.cal.phase]
+
+    def wait_frames(self, *args, **kwargs):
+        return True
+
+    def lock_focus(self):
+        self.frozen = True
+        return True
+
+    def unlock_focus(self):
+        self.frozen = self.applied = False
+        self.unlocks += 1
+
+    def read_focus(self):
+        return 42.0
+
+    def apply_focus(self, value):
+        self.applied = True
+        return True
+
+
+def _real_cal():
+    cal = CalibrationState()
+    cal.viewport_shift = ViewportShift(0, 0, 1, 600, 900)
+    cal.screen_dimension = {"viewport_width": 600, "viewport_height": 900}
+    return cal
+
+
+def _corner_frame(positions):
+    frame = np.zeros((900, 600, 3), np.uint8)
+    for x, y in positions:
+        _draw_corner_cluster(frame, x, y)
+    return frame
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [
+        [(60, 90), (540, 90)],
+        [(60, 90), (540, 300)],
+        [(60, 90), (540, 90), (540, 810)],
+    ],
+)
+def test_regression_partial_corners_do_not_clip_complete_grid(
+    mocker, positions
+) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal, corners=_corner_frame(positions))
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900)
+    assert focus == 42.0
+    assert cam.frozen and cam.applied
+
+
+def test_regression_expanded_focus_crop_clamps_negative_bounds(mocker) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(
+        camera_map_mod,
+        "detect_screen_corners",
+        return_value=[(5, 5), (595, 5), (595, 895), (5, 895)],
+    )
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    cam.frames["focus"][:, 300:] = 0
+
+    _, _, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert focus == 42
+    assert cam.frozen and cam.applied
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [
+        [(60, 90), (540, 90), (540, 810), (400, 300)],
+        [(60, 90), (200, 90), (400, 90), (540, 90)],
+    ],
+)
+def test_camera_mapping_ignores_degenerate_four_corner_fence(mocker, positions) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(camera_map_mod, "detect_screen_corners", return_value=positions)
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900)
+    assert focus == 42
+
+
+def test_focus_crop_outside_frame_fails_mapping_without_opencv_assertion(
+    mocker,
+) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(
+        camera_map_mod,
+        "detect_screen_corners",
+        return_value=[(-900, -900), (-600, -900), (-600, -600), (-900, -600)],
+    )
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+
+    with pytest.raises(RuntimeError, match="clean 15-dot grid"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.frozen is False
+    assert cam.applied is False
+
+
+def _fail_camera_stage(mocker, cam, stage, failure):
+    read = cam.raw_frame
+
+    def failed_frame():
+        if (stage == "verification" and cam.applied) or (
+            stage == "grid" and cam.cal.phase == "grid"
+        ):
+            raise failure
+        return read()
+
+    target = "raw_frame" if stage in ("verification", "grid") else stage
+    effect = failed_frame if target == "raw_frame" else failure
+    mocker.patch.object(cam, target, side_effect=effect)
+
+
+@pytest.mark.parametrize("stage", ["read_focus", "apply_focus", "verification", "grid"])
+@pytest.mark.parametrize(
+    "failure", [OSError("device failed"), KeyboardInterrupt("cancelled")]
+)
+def test_regression_mapping_failures_restore_autofocus(mocker, stage, failure) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    _fail_camera_stage(mocker, cam, stage, failure)
+
+    with pytest.raises(type(failure), match=str(failure)):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.frozen is False
+    assert cam.applied is False
+    assert cam.unlocks >= 2
+
+
+def test_regression_exhausted_grid_fit_releases_successful_focus_pin(mocker) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal, grid=np.zeros((900, 600, 3), np.uint8))
+
+    with pytest.raises(RuntimeError, match="clean 15-dot grid"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.frozen is False
+    assert cam.applied is False
+
+
+def test_mapping_cleanup_failure_preserves_original_exception(mocker) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    mocker.patch.object(cam, "read_focus", side_effect=KeyboardInterrupt("original"))
+    cleanup = mocker.patch.object(
+        cam, "unlock_focus", side_effect=[None, OSError("cleanup")]
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="original"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cleanup.call_count == 2
+
+
+def test_mapping_cleanup_capability_failure_preserves_original_exception(mocker):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    mocker.patch.object(cam, "read_focus", side_effect=KeyboardInterrupt("original"))
+    mocker.patch.object(
+        _PhaseCamera,
+        "focus_lockable",
+        new_callable=PropertyMock,
+        side_effect=[True, OSError("capability query failed")],
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="original"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+
+@pytest.mark.parametrize(
+    "affine",
+    [
+        np.full((2, 3), np.nan),
+        np.zeros((2, 3)),
+        np.array([[1e-320, 0, 0], [0, 1e-320, 0]]),
+    ],
+)
+def test_camera_mapping_rejects_unusable_fit_and_releases_lens(mocker, affine) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(
+        camera_map_mod.cv2, "estimateAffine2D", return_value=(affine, np.ones((15, 1)))
+    )
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+
+    with pytest.raises(RuntimeError, match="clean 15-dot grid"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.frozen is False
+
+
+def _compressed_grid():
+    frame = np.zeros((1800, 600, 3), np.uint8)
+    for row in CalibrationState.GRID_ROWS_PCT:
+        for col in CalibrationState.GRID_COLS_PCT:
+            center = (int(col * 600), int(900 + (row - 0.5) * 150))
+            cv2.circle(frame, center, 5, (0, 0, 255), -1)
+    return frame
+
+
+def test_camera_mapping_rejects_singular_fit_despite_small_residual(mocker) -> None:
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    # A nearly edge-on grid can have small residual even if the native fit
+    # collapses one axis completely. Such a mapping cannot be inverted.
+    mocker.patch.object(
+        camera_map_mod.cv2,
+        "estimateAffine2D",
+        return_value=(np.array([[1.0, 0, 0], [0, 0, 0.5]]), np.ones((15, 1))),
+    )
+    cal = _real_cal()
+    cam = _PhaseCamera(cal, grid=_compressed_grid())
+
+    with pytest.raises(RuntimeError, match="clean 15-dot grid"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.frozen is False

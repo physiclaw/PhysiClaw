@@ -14,7 +14,9 @@ non-interactive reruns skip the manual upload; interactive setup passes
 """
 
 import logging
+import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import cv2
@@ -42,11 +44,34 @@ VIEWPORT_CACHE_STEM = paths.calibration_cache_dir() / "viewport"
 
 def _find_viewport_cache() -> Path | None:
     """Return the first existing cached viewport screenshot, or None."""
-    for ext in ("png", "jpg"):
+    # New writes use one content-neutral destination. Keep reading legacy
+    # images, but never prefer one over a newer upload in another format.
+    for ext in ("img", "png", "jpg"):
         p = VIEWPORT_CACHE_STEM.with_suffix(f".{ext}")
         if p.exists():
             return p
     return None
+
+
+def _cache_viewport(data: bytes) -> None:
+    """Best-effort atomic cache; a disk failure must not undo a measurement."""
+    out = VIEWPORT_CACHE_STEM.with_suffix(".img")
+    tmp: Path | None = None
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            dir=out.parent, prefix=f".{out.name}.", suffix=".tmp", delete=False
+        ) as f:
+            tmp = Path(f.name)
+            f.write(data)
+        tmp.replace(out)
+        log.info(f"  Cached screenshot: {out}")
+    except OSError as exc:
+        log.warning(f"  Could not cache viewport screenshot: {exc}")
+    finally:
+        if tmp is not None:
+            with suppress(OSError):
+                tmp.unlink(missing_ok=True)
 
 
 def _decode_screenshot_square(
@@ -58,8 +83,10 @@ def _decode_screenshot_square(
     doesn't decode or shows no square — callers holding a maybe-stale
     upload catch that and fall back to waiting for a fresh one.
     """
-    arr = np.frombuffer(data, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    try:
+        img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error as exc:
+        raise RuntimeError("Failed to decode screenshot image") from exc
     if img is None:
         raise RuntimeError("Failed to decode screenshot image")
 
@@ -130,19 +157,25 @@ def measure_viewport_shift(
         f"({SQUARE_CSS_X}, {SQUARE_CSS_Y})"
     )
 
-    cached = None if fresh else _find_viewport_cache()
+    cached = None
+    decoded: tuple[np.ndarray, tuple[int, int, int, int]] | None = None
     data: bytes | None
-    if cached is not None:
-        data = cached.read_bytes()
-        log.info(f"  Using cached screenshot: {cached} ({len(data)} bytes)")
-        img, rect = _decode_screenshot_square(data)
-    else:
+    if not fresh:
+        try:
+            cached = _find_viewport_cache()
+            if cached is not None:
+                data = cached.read_bytes()
+                decoded = _decode_screenshot_square(data)
+                log.info(f"  Using cached screenshot: {cached} ({len(data)} bytes)")
+        except (OSError, RuntimeError) as exc:
+            log.warning(f"  Viewport cache unusable ({exc}) — waiting for an upload")
+            cached = None
+    if decoded is None:
         # Best case: the user already double-tapped while the square was on
         # screen (the wizard says to upload before pressing Measure) — use
         # that shot straight away. The phase-entry cutoff excludes uploads
         # that predate the square; a shot that decodes but shows no square
         # (tapped mid-render) falls through to a fresh wait.
-        decoded: tuple[np.ndarray, tuple[int, int, int, int]] | None = None
         data = bridge.take_pending_screenshot(received_after=cal.phase_since)
         if data is not None:
             try:
@@ -164,7 +197,7 @@ def measure_viewport_shift(
                 )
             log.info(f"  Screenshot received: {len(data)} bytes")
             decoded = _decode_screenshot_square(data)
-        img, rect = decoded
+    img, rect = decoded
 
     sh, sw = img.shape[:2]
     x, y, w, h = rect
@@ -201,16 +234,12 @@ def measure_viewport_shift(
         screenshot_width=sw,
         screenshot_height=sh,
     )
-    cal.viewport_shift = transform
     log.info(
         f"  ✓ Pre-cal done: dpr={dpr:.2f}, offset=({offset_x:.1f}, {offset_y:.1f})px, "
         f"screenshot={sw}×{sh}px"
     )
 
-    if cached is None:
-        ext = "png" if data[:4] == b"\x89PNG" else "jpg"
-        out = VIEWPORT_CACHE_STEM.with_suffix(f".{ext}")
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(data)
-        log.info(f"  Cached screenshot: {out}")
+    if cached is None and data is not None:
+        _cache_viewport(data)
+    cal.viewport_shift = transform
     return transform

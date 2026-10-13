@@ -24,6 +24,7 @@ from physiclaw.core.calibration._common import (
     require_viewport_shift,
 )
 from physiclaw.core.calibration.state import ROTATION_NAMES
+from physiclaw.core.geometry import validate_affine
 from physiclaw.core.hardware import focus
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.grid_detect import (
@@ -52,17 +53,19 @@ SCREEN_POLY_MARGIN_FRAC = 0.05
 def _detect_screen_region(cam: Camera, rotation: int) -> np.ndarray | None:
     """Grab a frame in the ``corners`` phase and return the screen-bounding
     polygon (camera px, rotated frame) from the RGBM corner blocks — or None if
-    fewer than two corners are found (caller then proceeds ungated)."""
+    all four corners cannot be identified (caller then proceeds ungated)."""
     f = cam.raw_frame()
     if f is None:
         return None
     frame = cv2.rotate(f, rotation) if rotation >= 0 else f
     corners = detect_screen_corners(frame)
     margin = min(frame.shape[:2]) * SCREEN_POLY_MARGIN_FRAC
-    poly = screen_polygon(corners, margin=margin)
+    poly = screen_polygon(corners, margin=margin) if len(corners) == 4 else None
+    if poly is not None and (len(poly) != 4 or cv2.contourArea(poly) <= 0):
+        poly = None
     log.info(
         f"  Screen corners: detected {len(corners)} "
-        f"→ {'polygon gate active' if poly is not None else 'no gate (need ≥2)'}"
+        f"→ {'polygon gate active' if poly is not None else 'no gate (need 4 corners)'}"
     )
     return poly
 
@@ -84,7 +87,10 @@ def _focus_region(frame: np.ndarray, poly: np.ndarray | None) -> np.ndarray:
     if poly is None:
         return frame
     x, y, w, h = cv2.boundingRect(poly.astype(np.int32))
-    return frame[y : y + h, x : x + w]
+    height, width = frame.shape[:2]
+    return frame[
+        max(0, y) : min(height, max(0, y + h)), max(0, x) : min(width, max(0, x + w))
+    ]
 
 
 def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | None:
@@ -122,7 +128,10 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             log.debug("  Focus meter: reader returned no frame — meter aborts")
             return None
         frame = cv2.rotate(f, rotation) if rotation >= 0 else f
-        gray = grayscale(_focus_region(frame, poly))
+        region = _focus_region(frame, poly)
+        if region.size == 0:
+            return None
+        gray = grayscale(region)
         score = laplacian_variance(gray)
         # The gate itself is voiced by focus.lock's verdict, not here.
         # Guarded: the full-res median costs more than the (downscaled)
@@ -179,6 +188,10 @@ def _fit_grid_mapping(
     pct_to_cam, _ = cv2.estimateAffine2D(screen_pcts, camera_01)
     if pct_to_cam is None:
         return None, inliers, float("inf")
+    try:
+        validate_affine(pct_to_cam)
+    except (ValueError, np.linalg.LinAlgError):
+        return None, inliers, float("inf")
     proj = (pct_to_cam @ np.c_[screen_pcts, np.ones(len(screen_pcts))].T).T
     max_res = float(np.max(np.linalg.norm(proj - camera_01, axis=1)))
     return pct_to_cam, inliers, max_res
@@ -230,8 +243,32 @@ def compute_camera_mapping(
     #     the other pages are too flat to meter (see hardware/focus.py).
     cal.set_phase("focus")
     time.sleep(1.0)
-    cam_focus = _pin_focus(cam, rotation, screen_poly)
+    try:
+        cam_focus = _pin_focus(cam, rotation, screen_poly)
+        pct_to_cam, cam_size = _detect_grid_mapping(
+            cam, cal, rotation, screen_pcts, screen_poly, expected
+        )
+        return pct_to_cam, cam_size, cam_focus
+    except BaseException:
+        # No mapping was committed: retain no new lens pin whose metadata
+        # the caller never received. Native cleanup may itself fail.
+        try:
+            if cam.focus_lockable:
+                cam.unlock_focus()
+        except Exception:
+            log.exception("Camera mapping failed; restoring autofocus also failed")
+        raise
 
+
+def _detect_grid_mapping(
+    cam: Camera,
+    cal: CalibrationState,
+    rotation: int,
+    screen_pcts: np.ndarray,
+    screen_poly: np.ndarray | None,
+    expected: int,
+) -> tuple[np.ndarray, tuple[int, int]]:
+    """Capture and fit a complete grid under the established lens state."""
     # 2. Grid phase: grab a few fresh frames; accept the first that yields the
     #    full grid inside the screen AND passes the fit-quality gate. Off-screen
     #    reflections are masked out before detection.
@@ -306,4 +343,4 @@ def compute_camera_mapping(
         f"  ✓ Camera mapping done: Mapping B ready (screen 0-1 → camera 0-1) "
         f"from {expected} dot pairs, frame {cam_size[0]}×{cam_size[1]}px"
     )
-    return pct_to_cam, cam_size, cam_focus
+    return pct_to_cam, cam_size

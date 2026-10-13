@@ -1,7 +1,7 @@
 """Tests for `physiclaw.core.calibration.at_verify` — AT gesture checks.
 
 `verify_assistive_touch` is exercised over its precondition errors (AT
-position / nonce / viewport-shift unset), the screenshot-timeout and
+position / viewport-shift unset), the screenshot-timeout and
 decode-failure records, the full tap + double-tap + long-press success
 path, the phone-mode choreography (grid up front, plain bridge page at
 the end), and the clipboard-timeout partial failure.
@@ -16,17 +16,22 @@ import cv2
 import numpy as np
 import pytest
 
+from physiclaw.core.bridge import BridgeState, PageState
 from physiclaw.core.bridge.calib import CalibrationState
 from physiclaw.core.calibration import at_verify as at_verify_mod
 from physiclaw.core.calibration.transforms import ViewportShift
 
 
-def _make_cal(*, viewport_shift=None) -> MagicMock:
+def _make_cal(*, viewport_shift="identity") -> MagicMock:
     """A CalibrationState mock with the grid constants surfaced."""
     cal = MagicMock()
     cal.GRID_COLS_PCT = CalibrationState.GRID_COLS_PCT
     cal.GRID_ROWS_PCT = CalibrationState.GRID_ROWS_PCT
-    cal.viewport_shift = viewport_shift
+    cal.viewport_shift = (
+        ViewportShift(0, 0, 1, 400, 800)
+        if viewport_shift == "identity"
+        else viewport_shift
+    )
     return cal
 
 
@@ -50,17 +55,26 @@ def test_verify_assistive_touch_raises_when_at_unset(mocker) -> None:
         )
 
 
-def test_verify_assistive_touch_raises_when_no_nonce(mocker) -> None:
+def test_verify_assistive_touch_generates_nonce_when_none_is_stored(mocker) -> None:
+    mocker.patch.object(at_verify_mod.time, "sleep")
+    nonce = [1] * 64
+    mocker.patch.object(at_verify_mod, "generate_nonce", return_value=nonce)
     arm = MagicMock()
     at = MagicMock()
     at.at_screen = (0.05, 0.1)
     cal = _make_cal()
     cal._screenshot_nonce = None
 
-    with pytest.raises(RuntimeError, match="No nonce set"):
-        at_verify_mod.verify_assistive_touch(
-            arm, at, MagicMock(), cal, _identity_pct_to_grbl(), MagicMock()
-        )
+    phone, bridge = MagicMock(), MagicMock()
+    bridge.wait_screenshot.return_value = None
+
+    at_verify_mod.verify_assistive_touch(
+        arm, at, bridge, cal, _identity_pct_to_grbl(), phone
+    )
+
+    phone.set_mode.assert_called_once_with(
+        "calibrate", "assistive_touch", nonce_bits=nonce
+    )
 
 
 def test_verify_assistive_touch_returns_failed_dict_on_screenshot_timeout(
@@ -71,7 +85,6 @@ def test_verify_assistive_touch_returns_failed_dict_on_screenshot_timeout(
     at = MagicMock()
     at.at_screen = (0.05, 0.1)
     cal = _make_cal()
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_screenshot.return_value = None  # timeout
     bridge.connectivity_hint.return_value = None  # phone still polling
@@ -98,7 +111,6 @@ def test_verify_assistive_touch_screenshot_timeout_carries_connectivity_hint(
     at = MagicMock()
     at.at_screen = (0.05, 0.1)
     cal = _make_cal()
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_screenshot.return_value = None  # timeout
     bridge.connectivity_hint.return_value = (
@@ -127,7 +139,6 @@ def test_verify_assistive_touch_returns_failed_dict_on_decode_error(mocker) -> N
     at = MagicMock()
     at.at_screen = (0.05, 0.1)
     cal = _make_cal()
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_screenshot.return_value = b"not an image"
 
@@ -149,7 +160,6 @@ def test_verify_assistive_touch_raises_when_viewport_shift_unset(mocker) -> None
     at = MagicMock()
     at.at_screen = (0.05, 0.1)
     cal = _make_cal()
-    cal._screenshot_nonce = [1, 0, 1, 0]
     cal.viewport_shift = None
     bridge = MagicMock()
     img = np.zeros((400, 400, 3), dtype=np.uint8)
@@ -180,7 +190,6 @@ def test_verify_assistive_touch_full_success_path(mocker) -> None:
         screenshot_height=2532,
     )
     cal = _make_cal(viewport_shift=vshift)
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_clipboard.return_value = True
     img = np.zeros((400, 400, 3), dtype=np.uint8)
@@ -208,6 +217,7 @@ def test_verify_assistive_touch_shows_clipboard_confirmation_on_phone(mocker) ->
     # On the clipboard sub-step the phone flips to bridge mode and the clip
     # text is queued, so the page shows it then the "copied" confirmation.
     mocker.patch.object(at_verify_mod.time, "sleep")
+    mocker.patch.object(at_verify_mod, "generate_nonce", return_value=[1] * 64)
     mocker.patch.object(at_verify_mod.random, "randbytes", return_value=b"\xab\xcd\xef")
     arm = MagicMock()
     at = MagicMock()
@@ -220,7 +230,6 @@ def test_verify_assistive_touch_shows_clipboard_confirmation_on_phone(mocker) ->
         screenshot_height=2532,
     )
     cal = _make_cal(viewport_shift=vshift)
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_clipboard.return_value = True
     img = np.zeros((400, 400, 3), dtype=np.uint8)
@@ -242,7 +251,7 @@ def test_verify_assistive_touch_shows_clipboard_confirmation_on_phone(mocker) ->
     # /show), then flips to bridge mode for the confirmation and stays there
     # — success ends on the plain bridge page, not the grid.
     assert phone.set_mode.call_args_list == [
-        mocker.call("calibrate", "assistive_touch", nonce_bits=[1, 0, 1, 0]),
+        mocker.call("calibrate", "assistive_touch", nonce_bits=[1] * 64),
         mocker.call("bridge"),
     ]
     bridge.send_text.assert_called_once()
@@ -264,7 +273,6 @@ def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
         screenshot_height=2532,
     )
     cal = _make_cal(viewport_shift=vshift)
-    cal._screenshot_nonce = [1, 0, 1, 0]
     bridge = MagicMock()
     bridge.wait_clipboard.return_value = False
     img = np.zeros((400, 400, 3), dtype=np.uint8)
@@ -285,3 +293,94 @@ def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
     assert out["passed"] is False
     assert out["screenshot"]["passed"] is True
     assert out["clipboard"]["fetched"] is False
+
+
+def _render_nonce(phone: PageState) -> bytes:
+    nonce = phone.get_state()["nonce"]
+    image = np.zeros((800, 400, 3), np.uint8)
+    for i, color in enumerate(nonce["colors"]):
+        x = nonce["x"] + i % nonce["cols"] * nonce["size"]
+        y = nonce["y"] + i // nonce["cols"] * nonce["size"]
+        image[y : y + nonce["size"], x : x + nonce["size"]] = color
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    return encoded.tobytes()
+
+
+def _real_at_setup(mocker):
+    mocker.patch.object(at_verify_mod.time, "sleep")
+    mocker.patch.object(
+        at_verify_mod, "generate_nonce", side_effect=[[1] * 64, [0] * 64]
+    )
+    cal, bridge = CalibrationState(), BridgeState()
+    cal.viewport_shift = ViewportShift(0, 0, 1, 400, 800)
+    cal.screen_dimension = {"viewport_width": 400, "viewport_height": 800}
+    phone = PageState(bridge, cal)
+    at = MagicMock(at_screen=(0.1, 0.3))
+    at.double_tap.side_effect = lambda *_: bridge.receive_screenshot(
+        _render_nonce(phone)
+    )
+    at.long_press.side_effect = lambda *_: bridge.fetch_text()
+    return at, cal, bridge, phone
+
+
+def test_regression_at_retry_rejects_photo_from_previous_attempt(mocker) -> None:
+    at, cal, bridge, phone = _real_at_setup(mocker)
+    first = at_verify_mod.verify_assistive_touch(
+        MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
+    )
+    old_photo = bridge.recent_screenshots(1)[0]
+    at.double_tap.side_effect = lambda *_: bridge.receive_screenshot(old_photo)
+
+    second = at_verify_mod.verify_assistive_touch(
+        MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
+    )
+
+    assert first["passed"] is True
+    assert second["passed"] is False
+    assert second["screenshot"] == {"passed": False, "matched": 0, "total": 64}
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError("gesture failed"), KeyboardInterrupt("cancelled")]
+)
+@pytest.mark.parametrize("stage", ["send", "press", "wait"])
+def test_regression_at_failure_retires_clipboard_payload(
+    mocker, stage, failure
+) -> None:
+    at, cal, bridge, phone = _real_at_setup(mocker)
+    send = bridge.send_text
+
+    def fail_after_send(text):
+        send(text)
+        raise failure
+
+    targets = {
+        "send": (bridge, "send_text", fail_after_send),
+        "press": (at, "long_press", failure),
+        "wait": (bridge, "wait_clipboard", failure),
+    }
+    target, method, effect = targets[stage]
+    mocker.patch.object(target, method, side_effect=effect)
+
+    with pytest.raises(type(failure), match=str(failure)):
+        at_verify_mod.verify_assistive_touch(
+            MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
+        )
+
+    assert bridge.current_text() is None
+
+
+def test_at_cleanup_failure_preserves_original_exception(mocker) -> None:
+    at, cal, bridge, phone = _real_at_setup(mocker)
+    at.long_press.side_effect = KeyboardInterrupt("original cancellation")
+    cleanup = mocker.patch.object(
+        bridge, "clear_text", side_effect=OSError("cleanup failed")
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="original cancellation"):
+        at_verify_mod.verify_assistive_touch(
+            MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
+        )
+
+    cleanup.assert_called_once()

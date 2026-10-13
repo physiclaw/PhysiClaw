@@ -11,7 +11,9 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
 from physiclaw.core.calibration import handler
+from physiclaw.core.calibration import validate as validate_mod
 from physiclaw.core.calibration.handler import (
     _err,
     _ok,
@@ -27,6 +29,7 @@ from physiclaw.core.calibration.handler import (
     handle_verify_assistive_touch,
 )
 from physiclaw.core.calibration.transforms import ViewportShift
+from physiclaw.core.orchestration import rig as rig_mod
 from tests.core.conftest import wire_locked
 
 
@@ -450,7 +453,7 @@ async def test_handle_calibrate_camera_frame_happy_path(mocker) -> None:
     mocker.patch.object(
         handler,
         "calibrate_camera_frame",
-        return_value={"rotation": 90, "issues": []},
+        return_value={"rotation": 0, "issues": []},
     )
 
     resp = await handle_calibrate_camera_frame(
@@ -460,9 +463,9 @@ async def test_handle_calibrate_camera_frame_happy_path(mocker) -> None:
     )
 
     body = _read_json(resp)
-    assert body["rotation"] == 90
-    assert rig.calibration.cam_rotation == 90
-    assert rig.cam.rotation == 90
+    assert body["rotation"] == 0
+    assert rig.calibration.cam_rotation == 0
+    assert rig.cam.rotation == 0
     rig.park.assert_called_once()
     rig.release.assert_called_once()
 
@@ -510,8 +513,8 @@ async def test_handle_calibrate_camera_frame_releases_on_failure(mocker) -> None
 async def test_handle_compute_camera_mapping_happy_path(mocker) -> None:
     rig = _rig_mock()
     rig.cam = MagicMock()
-    rig.calibration = SimpleNamespace(effective_rotation=lambda: 90)
-    pct_to_cam = np.eye(3)
+    rig.calibration = SimpleNamespace(effective_rotation=lambda: 0)
+    pct_to_cam = np.eye(2, 3)
     mocker.patch.object(
         handler,
         "compute_camera_mapping",
@@ -858,3 +861,118 @@ async def test_handle_verify_assistive_touch_requires_at_show() -> None:
     # Precondition failures are client state, not server faults.
     assert resp.status_code == 409
     assert "assistive-touch/show" in _read_json(resp)["message"]
+
+
+def _real_ready_rig(mocker):
+    arm, cam = MagicMock(), MagicMock()
+    mocker.patch.object(rig_mod, "StylusArm", return_value=arm)
+    mocker.patch.object(rig_mod, "Camera", return_value=cam)
+    rig = rig_mod.HardwareRig()
+    rig.connect_arm()
+    rig.connect_camera(0)
+    rig.install_arm_calibration(np.eye(2, 3))
+    rig.calibration.pct_to_cam = np.eye(2, 3)
+    rig.calibration.cam_size = (100, 100)
+    rig.calibration.cam_focus = 42
+    rig.calibration.cam_rotation = -1
+    rig.mark_ready()
+    calib = CalibrationState()
+    calib.viewport_shift = ViewportShift(0, 0, 1, 100, 100)
+    calib.screen_dimension = {"viewport_width": 100, "viewport_height": 100}
+    return rig, calib
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route, step",
+    [
+        (handle_calibrate_camera_frame, "calibrate_camera_frame"),
+        (handle_compute_camera_mapping, "compute_camera_mapping"),
+    ],
+)
+async def test_regression_camera_recalibration_failure_invalidates_old_mapping(
+    mocker, route, step
+) -> None:
+    rig, calib = _real_ready_rig(mocker)
+    previous_arm_mapping = rig.calibration.pct_to_grbl
+    mocker.patch.object(handler, step, side_effect=RuntimeError("measurement failed"))
+
+    response = await route(_fake_request(), rig, calib)
+
+    assert response.status_code == 500
+    assert rig.calibration.pct_to_cam is None
+    assert rig.calibration.cam_size is None
+    assert rig.calibration.cam_focus is None
+    assert rig.calibration.pct_to_grbl is previous_arm_mapping
+    assert rig.origin_pinned is True
+    assert rig.ready is False
+
+
+@pytest.mark.asyncio
+async def test_camera_mapping_missing_prerequisite_preserves_existing_mapping(
+    mocker,
+) -> None:
+    rig, calib = _real_ready_rig(mocker)
+    previous = rig.calibration.pct_to_cam
+    calib.viewport_shift = None
+    step = mocker.patch.object(handler, "compute_camera_mapping")
+
+    response = await handle_compute_camera_mapping(_fake_request(), rig, calib)
+
+    assert response.status_code == 409
+    assert rig.calibration.pct_to_cam is previous
+    assert rig.ready is True
+    step.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_successful_camera_remapping_requires_readiness_confirmation(mocker):
+    rig, calib = _real_ready_rig(mocker)
+    mocker.patch.object(
+        handler, "compute_camera_mapping", return_value=(np.eye(2, 3), (100, 100), 43)
+    )
+
+    response = await handle_compute_camera_mapping(_fake_request(), rig, calib)
+
+    assert response.status_code == 200
+    assert rig.hardware_ready is True
+    assert rig.calibration.cam_focus == 43
+    assert rig.ready is False
+
+
+@pytest.mark.asyncio
+async def test_regression_camera_frame_change_cannot_reuse_old_fit(mocker) -> None:
+    rig, calib = _real_ready_rig(mocker)
+    mocker.patch.object(handler, "calibrate_camera_frame", return_value={"rotation": 2})
+
+    response = await handle_calibrate_camera_frame(_fake_request(), rig, calib)
+
+    assert response.status_code == 200
+    assert rig.cam.rotation == 2
+    assert rig.calibration.cam_rotation == 2
+    assert rig.transforms is None
+    assert rig.ready is False
+
+
+@pytest.mark.asyncio
+async def test_regression_accurate_fallback_taps_do_not_save_calibration(
+    mocker,
+) -> None:
+    mocker.patch.object(validate_mod.time, "sleep")
+    mocker.patch.object(validate_mod.random, "random", return_value=0.5)
+    rig, calib = _real_ready_rig(mocker)
+    rig.cam.raw_frame.return_value = None
+    rig.arm.solenoid.tap.side_effect = lambda *_: calib.report_touch(
+        {"x": 0.5, "y": 0.5}
+    )
+    phone = PageState(BridgeState(), calib)
+    save = mocker.patch.object(rig.calibration, "save")
+
+    response = await handle_validate_calibration(_fake_request(), rig, calib, phone)
+
+    result = _read_json(response)
+    assert response.status_code == 200
+    assert result["calibrated"] is False
+    assert result["passed"] == 0
+    assert [r["error"] for r in result["results"]] == [0] * 5
+    save.assert_not_called()

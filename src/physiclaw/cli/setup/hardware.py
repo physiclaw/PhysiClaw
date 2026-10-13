@@ -27,7 +27,7 @@ BASE = config.server_url()
 
 def _viewport_cache_candidates() -> list:
     root = paths.calibration_cache_dir()
-    return [root / "viewport.png", root / "viewport.jpg"]
+    return [root / "viewport.img", root / "viewport.png", root / "viewport.jpg"]
 
 
 def api(method, path, body=None, timeout=60):
@@ -240,11 +240,14 @@ def _step_locate_screen(auto: bool) -> None:
     print("\n── 5. Locate the screen ──")
     print("  Lines up where PhysiClaw draws with the real screen, so taps land right.")
     # Cache policy: interactive setup always re-measures; --auto trusts
-    # the cached screenshot at ~/.physiclaw/calibration/cache/viewport.png
-    # if it exists.
+    # the cached screenshot at ~/.physiclaw/calibration/cache/viewport.img
+    # (or a legacy PNG/JPEG) if it exists.
     vp_cache = next((p for p in _viewport_cache_candidates() if p.exists()), None)
     if auto and vp_cache is not None:
-        print(f"  Using cached screenshot: {vp_cache} (delete to re-measure)")
+        print(
+            f"  Using cached screenshot: {vp_cache} "
+            "(run interactive setup to re-measure)"
+        )
     else:
         if vp_cache is not None:
             print(

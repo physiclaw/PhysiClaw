@@ -29,7 +29,7 @@ from physiclaw.core.calibration._common import (
     require_viewport_shift,
 )
 from physiclaw.core.calibration.transforms import PARK_PCT, ScreenTransforms
-from physiclaw.core.geometry import apply_affine, invert_affine
+from physiclaw.core.geometry import apply_affine, invert_affine, validate_affine
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.grid_detect import (
@@ -79,7 +79,12 @@ def _run_validation_test(
 
     def _failed() -> dict:
         """The no-touch failure record — expected position, sentinel error."""
-        return {"expected": (expected_x, expected_y), "error": 999.0, "passed": False}
+        return {
+            "expected": (expected_x, expected_y),
+            "error": 999.0,
+            "camera_observed": camera_observed,
+            "passed": False,
+        }
 
     # 1. Show orange dot (bridge.html renders in viewport space)
     cal.set_phase("dot", dot_x=vp_x, dot_y=vp_y)
@@ -115,6 +120,7 @@ def _run_validation_test(
         else None
     )
 
+    camera_observed = detected is not None
     if detected is None:
         log.warning(
             "    2. Camera: no orange dot near the predicted spot — "
@@ -145,6 +151,7 @@ def _run_validation_test(
                 "is off-screen — rejecting, using known position"
             )
             cam_pct_x, cam_pct_y = expected_x, expected_y
+            camera_observed = False
 
     # 4. Mapping A: screen pct → GRBL mm
     gx, gy = apply_affine(pct_to_grbl, cam_pct_x, cam_pct_y)
@@ -164,7 +171,8 @@ def _run_validation_test(
     # 7. Compare in screenshot 0-1 space
     actual_x, actual_y = touch["x"], touch["y"]
     error = ((actual_x - expected_x) ** 2 + (actual_y - expected_y) ** 2) ** 0.5
-    passed = error < max_error
+    # A fallback tap can diagnose Mapping A, but cannot certify Mapping B.
+    passed = camera_observed and error < max_error
 
     log.info(f"    5. Tap: touch at screen ({actual_x:.3f}, {actual_y:.3f})")
     log.info(
@@ -177,6 +185,7 @@ def _run_validation_test(
         "actual": (round(actual_x, 3), round(actual_y, 3)),
         "camera_pct": (round(cam_pct_x, 3), round(cam_pct_y, 3)),
         "error": round(error, 4),
+        "camera_observed": camera_observed,
         "passed": passed,
     }
 
@@ -219,6 +228,8 @@ def validate_calibration(
     # canonical screenshot 0-1 space, never raw viewport 0-1.
     require_viewport_shift(cal)
     require_screen_dimension(cal)
+    validate_affine(pct_to_grbl)
+    validate_affine(pct_to_cam)
 
     # Inverse of Mapping B for camera 0-1 → screen pct — the one
     # inverse implementation (see geometry.invert_affine).

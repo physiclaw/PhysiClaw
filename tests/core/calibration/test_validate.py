@@ -13,6 +13,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 from physiclaw.core.calibration import validate as validate_mod
 from tests.core.calibration.conftest import make_cal as _make_cal
@@ -93,8 +94,10 @@ def test_validate_calibration_falls_back_when_dot_undetected(mocker) -> None:
     )
 
     assert len(results) == 1
-    # Fallback used expected position → should pass.
-    assert results[0]["passed"] is True
+    assert results[0]["passed"] is False
+    assert results[0]["camera_observed"] is False
+    assert results[0]["error"] == 0
+    arm.rapid_to.assert_called_with(5.0, 10.0)
 
 
 def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
@@ -184,7 +187,10 @@ def test_validate_calibration_rejects_off_screen_backprojection(mocker, caplog) 
             num_tests=1,
         )
 
-    assert results[0]["passed"] is True  # fell back to the known position
+    assert results[0]["passed"] is False
+    assert results[0]["camera_observed"] is False
+    assert results[0]["error"] == 0
+    arm.rapid_to.assert_called_with(5.0, 10.0)
     assert any("off-screen" in r.message for r in caplog.records)
 
 
@@ -202,3 +208,44 @@ def test_trace_screen_edge_visits_all_check_points(mocker) -> None:
     # 9 check points + 2 return_to_origin → 9 fast moves + 2 origin returns.
     assert arm.rapid_to.call_count == 9
     assert arm.return_to_origin.call_count == 2
+
+
+def test_regression_validation_without_camera_cannot_pass_on_accurate_touches(
+    mocker,
+) -> None:
+    mocker.patch.object(validate_mod.time, "sleep")
+    mocker.patch.object(validate_mod.random, "random", return_value=0.5)
+    cam, arm, cal = MagicMock(), MagicMock(), _make_cal()
+    cam.raw_frame.return_value = None
+    cal.flush_touches.side_effect = [[], [{"x": 0.5, "y": 0.5}]] * 2
+
+    results = validate_mod.validate_calibration(
+        arm,
+        cam,
+        cal,
+        -1,
+        _identity_pct_to_grbl(),
+        _identity_pct_to_cam(),
+        cam_size=(100, 100),
+        num_tests=2,
+    )
+
+    assert [r["passed"] for r in results] == [False, False]
+    assert [r["camera_observed"] for r in results] == [False, False]
+    assert [r["error"] for r in results] == [0, 0]
+    arm.rapid_to.assert_called_with(5.0, 10.0)
+
+
+@pytest.mark.parametrize("which", ["arm", "camera"])
+def test_validation_rejects_degenerate_mapping_before_motion(mocker, which) -> None:
+    arm, cam, cal = MagicMock(), MagicMock(), _make_cal()
+    matrices = {"arm": _identity_pct_to_grbl(), "camera": _identity_pct_to_cam()}
+    matrices[which] = np.zeros((2, 3))
+
+    with pytest.raises(ValueError, match="invertible"):
+        validate_mod.validate_calibration(
+            arm, cam, cal, -1, matrices["arm"], matrices["camera"]
+        )
+
+    arm.rapid_to.assert_not_called()
+    cal.set_phase.assert_not_called()

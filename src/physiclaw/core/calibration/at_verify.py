@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
-from physiclaw.core.bridge.nonce import NONCE_COUNT, verify_nonce
+from physiclaw.core.bridge.nonce import NONCE_COUNT, generate_nonce, verify_nonce
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.iphone import AssistiveTouch
 
@@ -55,8 +55,8 @@ def verify_assistive_touch(
        Return the queued text so the user can paste-verify downstream.
 
     Requires:
-    - assistive-touch/show has run (generated the nonce bits) — this call
-      re-displays the grid itself, so the phone may be in any mode on entry
+    - assistive-touch/show has positioned the button — this call generates
+      a fresh nonce grid, so the phone may be in any mode on entry
     - User has positioned AT at the orange circle
     - cal.viewport_shift is set (from pre-cal)
 
@@ -71,16 +71,16 @@ def verify_assistive_touch(
     """
     if at.at_screen is None:
         raise RuntimeError("AT position not set — call compute_at_screen_pos first")
+    t = cal.viewport_shift
+    if t is None:
+        raise RuntimeError("viewport_shift not set — run measure-viewport-shift first")
 
     log.info("═══ AssistiveTouch screenshot verification ═══")
     log.info(
         f"  AT position: screen 0-1 ({at.at_screen[0]:.3f}, {at.at_screen[1]:.3f})"
     )
 
-    nonce = cal._screenshot_nonce
-    if nonce is None:
-        raise RuntimeError("No nonce set — call assistive-touch/show first")
-
+    nonce = generate_nonce()
     bridge.clear_screenshot()
 
     # Show the nonce grid for the screenshot sub-step, whatever mode the
@@ -115,10 +115,6 @@ def verify_assistive_touch(
 
     log.info(f"  Screenshot received: {img.shape[1]}×{img.shape[0]}px")
 
-    t = cal.viewport_shift
-    if t is None:
-        raise RuntimeError("viewport_shift not set — run measure-viewport-shift first")
-
     shot_passed, matched = verify_nonce(img, t, nonce, css_x=cal.nonce_x())
 
     if shot_passed:
@@ -142,31 +138,31 @@ def verify_assistive_touch(
     # for the screenshot sub-steps; the long-press lands on the iOS AT
     # button regardless of what the web page is showing underneath.
     phone.set_mode("bridge")
-    bridge.send_text(clip_text)
+    try:
+        bridge.send_text(clip_text)
+        log.info("  Long-press AT (iOS Shortcut → fetch bridge text)...")
+        at.long_press(arm, pct_to_grbl)
 
-    log.info("  Long-press AT (iOS Shortcut → fetch bridge text)...")
-    at.long_press(arm, pct_to_grbl)
-
-    log.info("  Waiting for iOS Shortcut to fetch clipboard text...")
-    clip_fetched = bridge.wait_clipboard(timeout=10.0)
-    if clip_fetched:
-        log.info(f"  ✓ Clipboard fetched from server — text: {clip_text!r}")
-        log.info("    Phone now shows the copied text — paste anywhere to verify.")
-        # Hold the confirmation on-screen so the operator can read it
-        # before we clear the text out.
-        time.sleep(3.0)
-    else:
-        hint = bridge.connectivity_hint()
-        log.warning(
-            "  ✗ Clipboard fetch timed out — server was not hit"
-            + (f"; {hint}" if hint else "")
-        )
-
-    # Clear the queued text — the phone drops back to the plain bridge page
-    # ("PhysiClaw"). We deliberately stay in bridge mode rather than
-    # restoring the calibration grid: a re-run re-establishes its own grid at
-    # the screenshot sub-step above, so ending here keeps the success screen
-    # clean instead of flashing the grid box back up.
+        log.info("  Waiting for iOS Shortcut to fetch clipboard text...")
+        clip_fetched = bridge.wait_clipboard(timeout=10.0)
+        if clip_fetched:
+            log.info(f"  ✓ Clipboard fetched from server — text: {clip_text!r}")
+            log.info("    Phone now shows the copied text — paste anywhere to verify.")
+            time.sleep(3.0)  # Hold the confirmation for the operator.
+        else:
+            hint = bridge.connectivity_hint()
+            log.warning(
+                "  ✗ Clipboard fetch timed out — server was not hit"
+                + (f"; {hint}" if hint else "")
+            )
+    except BaseException:
+        # Retire even a partially published payload when a gesture fails or
+        # is interrupted. Leave the page in bridge mode for the next attempt.
+        try:
+            bridge.clear_text()
+        except Exception:
+            log.exception("AT verification failed; retiring clipboard text also failed")
+        raise
     bridge.clear_text()
 
     passed = shot_passed and clip_fetched

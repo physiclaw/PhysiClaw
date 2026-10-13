@@ -596,14 +596,16 @@ def test_run_camera_auto_pick_falls_back_to_manual(mocker, tmp_path) -> None:
     hw_mod.run(auto=True, trace=False)
 
 
+@pytest.mark.parametrize("cache_name", ["viewport.img", "viewport.png", "viewport.jpg"])
 def test_run_uses_cached_viewport_in_auto_mode(
     mocker,
     tmp_path,
     capsys: pytest.CaptureFixture,
+    cache_name,
 ) -> None:
-    cache = tmp_path / "viewport.png"
+    cache = tmp_path / cache_name
     cache.write_bytes(b"x")
-    mocker.patch.object(hw_mod, "_viewport_cache_candidates", return_value=[cache])
+    mocker.patch.object(hw_mod.paths, "calibration_cache_dir", return_value=tmp_path)
     mocker.patch.object(hw_mod.time, "sleep")
     mocker.patch.object(hw_mod, "_camera_aim_adjust")
 
@@ -636,7 +638,7 @@ def test_run_uses_cached_viewport_in_auto_mode(
     hw_mod.run(auto=True, trace=False)
     out = capsys.readouterr().out
 
-    assert "Using cached screenshot" in out
+    assert f"Using cached screenshot: {cache}" in out
 
 
 # ---------- _step_locate_screen ----------

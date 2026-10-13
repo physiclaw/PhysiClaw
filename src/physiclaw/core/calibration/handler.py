@@ -21,6 +21,7 @@ from physiclaw.core.bridge.handler import json_or_none
 from physiclaw.core.bridge.nonce import generate_nonce
 from physiclaw.core.calibration._common import (
     PreconditionError,
+    require_screen_dimension,
     require_viewport_shift,
 )
 from physiclaw.core.calibration.calibrate import (
@@ -277,6 +278,14 @@ async def handle_calibrate_arm(
 # ─── Camera frame calibration — setup check + rotation ──────
 
 
+def _invalidate_camera_mapping(rig: "HardwareRig") -> None:
+    """A frame or lens change makes the previous camera fit unusable."""
+    rig.calibration.pct_to_cam = None
+    rig.calibration.cam_size = None
+    rig.calibration.cam_focus = None
+    rig.unmark_ready()
+
+
 async def handle_calibrate_camera_frame(
     request: Request, rig: "HardwareRig", calib: CalibrationState
 ) -> JSONResponse:
@@ -300,6 +309,7 @@ async def handle_calibrate_camera_frame(
         if cam is None:  # prechecked; re-narrow under the lock
             raise PreconditionError("Camera not connected")
         rig.park()
+        _invalidate_camera_mapping(rig)
         result = calibrate_camera_frame(cam, calib)
         rig.calibration.cam_rotation = result["rotation"]
         cam.rotation = result["rotation"]
@@ -324,8 +334,11 @@ async def handle_compute_camera_mapping(
         cam = rig.cam
         if cam is None:  # prechecked; re-narrow under the lock
             raise PreconditionError("Camera not connected")
+        require_viewport_shift(calib)
+        require_screen_dimension(calib)
         rotation = rig.calibration.effective_rotation()
         rig.park()
+        _invalidate_camera_mapping(rig)
         pct_to_cam, cam_size, cam_focus = compute_camera_mapping(cam, calib, rotation)
         rig.calibration.pct_to_cam = pct_to_cam
         rig.calibration.cam_size = cam_size
