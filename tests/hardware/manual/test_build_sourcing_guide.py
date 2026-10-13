@@ -140,6 +140,75 @@ def test_clean_supplier_url_leaves_other_links_unchanged(url):
     assert bsg.clean_supplier_url(url) == url
 
 
+# ── accessories ──────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_accessories_stay_in_notes_without_changing_bom_or_checklist(lang):
+    rows = [dict(bom_row("tip"), qty="1", desc="")]
+    accessory = {
+        "name": "Adapter <M3 & M5>",
+        "url": "https://www.aliexpress.us/item/123.html?spm=tracking#details",
+    }
+    entries = [
+        {
+            "part_id": "tip",
+            "note": "Required.",
+            "accessories": [accessory],
+        }
+    ]
+    table = bsg.render_table(rows, entries, lang)
+    assert table.count("data-pid=") == 1
+    assert table.count('type="checkbox"') == 1
+    assert table.count('class="note-accessory"') == 1
+    assert "Also buy" not in table
+    assert "另需购买" not in table
+    assert "Required." in table
+    assert "Adapter &lt;M3 &amp; M5&gt;" in table
+    assert 'href="https://www.aliexpress.us/item/123.html"' in table
+    entries.append({"part_id": "other", "note": "Ditto"})
+    rows.append(dict(bom_row("other"), qty="1", desc=""))
+    shared = bsg.render_table(rows, entries, lang)
+    assert shared.count('class="note-accessory"') == 1
+    assert 'class="note" rowspan="2"' in shared
+
+
+@pytest.mark.parametrize("note", [None, ""])
+def test_accessories_render_without_note_text(note):
+    rows = [dict(bom_row("tip"), qty="1", desc="")]
+    entry = {
+        "part_id": "tip",
+        "accessories": [{"name": "Adapter", "url": "https://example.com/adapter"}],
+    }
+    if note is not None:
+        entry["note"] = note
+    table = bsg.render_table(rows, [entry], "en")
+    assert 'class="note-accessory"' in table
+    assert 'href="https://example.com/adapter"' in table
+
+
+def test_accessory_vendors_each_show_link_above_localized_spec():
+    accessories = [
+        {"name": "Vendor 1", "url": "https://example.com/1", "spec": "M3-M5 <5pcs>"},
+        {"name": "Vendor 2", "url": "https://example.com/2", "spec": "M3-M5 <5pcs>"},
+        {
+            "name": "Vendor 3",
+            "url": "https://example.com/3",
+            "spec": {"en": "10pcs", "zh": "10个"},
+        },
+    ]
+    rendered = bsg.render_accessories(accessories, "en")
+    assert rendered.count('class="accessory-spec">M3-M5 &lt;5pcs&gt;</div>') == 2
+    assert rendered.count('class="note-accessory"') == 1
+    assert rendered.count('class="accessory-offer"') == 3
+    assert rendered.count("<a href=") == 3
+    assert 'Vendor 1</a><div class="accessory-spec">' in rendered
+    assert 'class="accessory-spec">10pcs</div>' in rendered
+    assert 'class="accessory-spec">10个</div>' in bsg.render_accessories(
+        accessories, "zh"
+    )
+
+
 # ── load_bom_rows ─────────────────────────────────────────────────────────────
 
 

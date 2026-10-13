@@ -35,6 +35,12 @@ adds the sourcing columns of the table — all optional:
   (names, products, refs) are escaped instead. The placeholder ``{inquiry}``
   renders as the same click-to-copy 询价信息 control as in the supplier
   cells.
+- ``accessories`` — purchases needed with a particular supplier variant,
+  kept inside the Notes cell rather than added to the BOM or checklist.
+  Each has ``name``, ``url`` and optional ``spec`` (name/spec may be
+  localized). Each vendor link appears above its optional spec.
+  When present, purchase links render automatically after the note text,
+  including when no note text is supplied.
 
 The special value ``"Ditto"`` makes a field merge with the row above — the
 table cell spans both rows, exactly like a ditto mark in a paper ledger. Use
@@ -459,6 +465,24 @@ def render_supplier_guides(entries: list[dict], lang: str) -> str:
     return "".join(guides)
 
 
+def render_accessories(accessories: list[dict], lang: str) -> str:
+    """Variant-specific purchases within a part's note; never checklist rows."""
+    offers = []
+    for accessory in accessories:
+        spec = loc(accessory.get("spec") or "", lang)
+        name = html.escape(loc(accessory["name"], lang))
+        href = html.escape(clean_supplier_url(accessory["url"]), quote=True)
+        spec_html = (
+            f'<div class="accessory-spec">{html.escape(spec)}</div>' if spec else ""
+        )
+        offers.append(
+            '<div class="accessory-offer">'
+            f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
+            f"{spec_html}</div>"
+        )
+    return f'<div class="note-accessory">{"".join(offers)}</div>'
+
+
 def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     """The grouped parts table: BOM columns rendered verbatim from the manual
     content, then the sourcing columns (ref price / one column per supplier
@@ -521,6 +545,9 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
                 note = note.replace(
                     "{inquiry}", _inquiry_button(message, lang, flip=True)
                 )
+            accessories = entries[idx].get("accessories")
+            if accessories:
+                note += render_accessories(accessories, lang)
             cells += f'<td class="note"{_span_attr(note_spans[idx])}>{note or "—"}</td>'
 
         # Only class starts get a heavier separator; the full cell grid

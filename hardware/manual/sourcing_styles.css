@@ -398,6 +398,19 @@ button.copy.flip::before { left: auto; right: 14px; }
 /* notes; an embedded 询价说明 control flows inline with the sentence. */
 td.note { color: var(--ink-soft); font-size: 12.5px; }
 td.note button.copy { margin-top: 0; vertical-align: -1px; }
+.note-accessory {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+
+.accessory-offer { margin-top: 4px; }
+.accessory-offer + .accessory-offer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, var(--rule) 65%, transparent);
+}
+.accessory-spec { font-family: var(--font-mono); font-size: 11px; }
 
 /* Bought dimming. Row-level dimming covers only single-row cells; a cell
    spanning several rows ([rowspan]) greys via its own `done` class, which
@@ -406,7 +419,7 @@ td.note button.copy { margin-top: 0; vertical-align: -1px; }
    the per-column color rules (td.cls, td.note, td.ref, .v-prod) regardless
    of source order. */
 :is(tr.done td:not([rowspan]), td.done),
-:is(tr.done td:not([rowspan]), td.done) :is(.v-vendor a, .v-prod, button.copy) {
+:is(tr.done td:not([rowspan]), td.done) :is(.v-vendor a, .v-prod, button.copy, .note-accessory a) {
   color: var(--ink-faint);
 }
 

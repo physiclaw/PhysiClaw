@@ -488,7 +488,19 @@
         "url": "https://www.aliexpress.us/item/3256813137974411.html"
       }
     ],
-    "note": "These stylus tips have an M5 thread, while the solenoid has an M3 thread. An M3-to-M5 thread adapter is required."
+    "note": "These M5 tips require an M3 female → M5 male adapter. Buy from either vendor below:",
+    "accessories": [
+      {
+        "name": "RUIRUIYANG",
+        "spec": "M3-M5 (5pcs), 6mm (L)",
+        "url": "https://www.aliexpress.us/item/3256809071948415.html"
+      },
+      {
+        "name": "Victor Hardware",
+        "spec": "M3-M5 (5pcs), length 6mm",
+        "url": "https://www.aliexpress.us/item/3256809129808580.html"
+      }
+    ]
   },
   {
     "part_id": "teflon-tube",
