@@ -257,9 +257,9 @@ def parse_macro(
     if gap is not None:
         raise MacroError(gap)
 
-    unknown = sorted(set(data.keys()) - _TOP_KEYS)
+    unknown = sorted(map(str, data.keys() - _TOP_KEYS))
     if unknown:
-        raise MacroError(f"unknown key(s): {', '.join(map(str, unknown))}")
+        raise MacroError(f"unknown key(s): {', '.join(unknown)}")
 
     name = _require_str(data.get("name"), "`name`")
     if name != stem:
@@ -353,7 +353,7 @@ def parse_inputs(raw: Any) -> tuple[MacroInput, ...]:
             )
         if not isinstance(spec, dict):
             raise MacroError(f"input {name!r} must be a mapping")
-        unknown = sorted(set(spec.keys()) - _INPUT_KEYS)
+        unknown = sorted(map(str, spec.keys() - _INPUT_KEYS))
         if unknown:
             raise MacroError(f"input {name!r}: unknown key(s): {', '.join(unknown)}")
         out.append(
@@ -441,6 +441,7 @@ def _parse_step(
     name = step_handle(i, tool, args)
     skip_when, when = _parse_skip_when(step, where, input_names)
     hint = _opt_str(step.get("hint"), f"{where}: `hint`") or ""
+    _check_placeholders(hint, input_names, f"{where}: `hint`")
     guard = _parse_guard(step, where, input_names, hint)
     expect = _parse_expect(step, tool, where, input_names)
     # One `hint` per step: it steers the recovery when THIS step's checks
@@ -894,12 +895,12 @@ def _clause_expr(
         return TextClause(text=_require_str(v, f"{where} item"), within=scope)
     ops = [k for k in COMBINATORS if k in v]
     if ops:
-        extra = sorted(set(v.keys()) - {*ops, "within"})
+        extra = v.keys() - {*ops, "within"}
         if len(ops) > 1 or extra:
             raise MacroError(
                 f"{where}: a clause takes exactly one of "
                 f"{_operator_list()} (plus an optional `within`); got: "
-                f"{', '.join(map(str, sorted(v)))} — nest them instead of "
+                f"{', '.join(sorted(map(str, v)))} — nest them instead of "
                 "listing them side by side"
             )
         op = ops[0]
@@ -931,10 +932,10 @@ def _clause_expr(
 
 
 def _region_clause(raw: dict, where: str, scope: Bbox | None = None) -> Clause:
-    unknown = sorted(set(raw.keys()) - {"text", "within"})
+    unknown = sorted(map(str, raw.keys() - {"text", "within"}))
     if unknown:
         raise MacroError(
-            f"{where} mapping item: unknown key(s): {', '.join(map(str, unknown))} "
+            f"{where} mapping item: unknown key(s): {', '.join(unknown)} "
             f"(want `text` and `within`, or {_operator_list()})"
         )
     if "text" not in raw:

@@ -1,31 +1,37 @@
-"""User-authored gesture macros — rehearsed MCP-gesture sequences.
+"""Rehearsed gesture sequences, executed as one tool call.
 
-A macro is a named, linear, parameterized batch of gesture calls the user
-authors by hand as ``~/.physiclaw/macros/<name>.yml`` and rehearses
-via ``physiclaw macros run`` (a valid macro is enabled by default; the
-scaffold starts ``enabled: false`` until rehearsed). The agent then
-executes it as ONE tool call (``run_macro``) instead of one LLM round trip
-per gesture — an Excel macro, not a workflow: no general conditionals, no loops, no
-macro-calling-macro (a `wait` step may settle, and `skip_when` may skip a
-step whose postcondition already holds — neither is a branch in the flow). Anything needing judgment stays with the agent; a macro
-only replays a rehearsed, fixed path and aborts the moment the screen stops
-matching it (per-step ``require`` / ``forbid`` checks).
+A macro lives in ``~/.physiclaw/macros/<name>.yml`` or a conductor pack's
+macro directory. The user rehearses it with ``physiclaw macros run``;
+the agent invokes it through ``run_macro``. Valid files are enabled by
+default, while newly generated scaffolds start disabled.
 
-Module split — depends on ``common`` only (no ``engine`` imports; the engine
-imports us). Listed leaf-first, the DSL pipeline top to bottom:
+The path from authoring to execution:
 
-    template.py the `{name}` placeholder engine — the true leaf, pure strings
-    model.py    the shapes: constants, MacroError, clause algebra, Screen
-    steps.py    the executable step hierarchy (GestureStep / WaitStep)
-    parse.py    a macro file → a validated Macro (YAML 1.2 + strict types)
-    inputs.py   input resolution + `{name}` substitution at replay time
-    scaffold.py the authoring texts: `init` template + the macros README
-    store.py    discovery under ~/.physiclaw/macros/, prompt-section render
-    runner.py   replay a spec over an MCP caller, compose the one tool result
-    runlog.py   per-step forensic log, one `macro-run-<hex6>` id per run
-    stats.py    per-macro run counters in macros/stats.json
+    scaffold.py  the init template and installed format reference
+    store.py     discover files, resolve callees, expose enabled macros
+    parse.py     validate YAML, inputs, checks, jumps, and run budgets
+    model.py     immutable macro shapes and screen predicates
+    template.py  string-only {name} substitution with escaped braces
+    inputs.py    resolve declared inputs and substitute step arguments
+    steps.py     gestures, waits, forward jumps, marks, and macro calls
+    runner.py    walk steps and compose one result with the current view
+    runlog.py    per-run events and screenshots
+    stats.py     best-effort run counters and consecutive-abort history
 
-Nothing is re-exported here on purpose: every consumer imports the
-submodule it needs, and a package-level re-export drags `parse`
-(ruamel) and `runner` (asyncio) in behind any one of them.
+Execution is bounded: no loops, only forward page-based jumps and one
+level of ``run`` calls. Callees share the caller's deadline, screen, and
+gesture count. ``when`` / ``skip_when`` avoid redundant steps;
+``require`` / ``forbid`` gate actions, and ``wait`` with ``expect`` checks
+the settled screen. A failed guard, expectation, or tool call aborts.
+Recovery and decisions belong to the agent.
+
+Gesture counts track attempted actuating calls, including calls that
+raise after possibly touching the phone. Checks, peeks, and timeouts
+before dispatch do not count. The result uses this distinction to tell
+callers whether retrying could repeat an action. Taps use their authored
+boxes; labels describe targets rather than relocating them.
+
+The package depends on common utilities, never on the agent engine.
+Consumers import the submodule they need; nothing is re-exported here,
+so importing a data type need not load YAML parsing or the runner.
 """

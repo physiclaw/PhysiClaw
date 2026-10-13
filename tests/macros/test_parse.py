@@ -123,6 +123,23 @@ def test_parse_macro_unknown_top_key_raises() -> None:
         _parse(VALID + "\nauthor: me\n")
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "1: x\nextra: y\nsteps:\n  - peek\n",
+        "inputs:\n  msg: {description: d, 1: x}\nsteps:\n  - peek\n",
+        "steps:\n  - peek:\n    require: {text: Home, within: top, 1: x, extra: y}\n",
+        "steps:\n  - peek:\n    require: {and: [Home, Page], 1: x, extra: y}\n",
+        "steps:\n  - peek:\n    require: {and: [Home, Page], 1: x}\n",
+    ],
+)
+def test_parse_macro_non_string_keys_report_macro_error(body: str) -> None:
+    text = HEAD + body
+
+    with pytest.raises(MacroError, match="unknown key|a clause takes exactly one"):
+        parse_macro(text, "m")
+
+
 def test_parse_macro_name_dir_mismatch_raises() -> None:
     with pytest.raises(MacroError, match="must equal the file name"):
         parse_macro(VALID, "other-dir")
@@ -432,6 +449,22 @@ def test_parse_macro_hint_rides_the_gate() -> None:
     guard = parse_macro(text, "m").steps[0].guard
 
     assert guard is not None and guard.hint == "close it"
+
+
+@pytest.mark.parametrize(
+    "step", ["peek:\n    require: Home", "wait: 0\n    expect: Home"]
+)
+@pytest.mark.parametrize(
+    ("hint", "error"),
+    [("open {missing}", "placeholder.*missing"), ("open {", "stray")],
+)
+def test_parse_macro_invalid_hint_template_fails_at_load(
+    step: str, hint: str, error: str
+) -> None:
+    text = HEAD + f'steps:\n  - {step}\n    hint: "{hint}"\n'
+
+    with pytest.raises(MacroError, match=error):
+        parse_macro(text, "m")
 
 
 def test_parse_macro_argless_verb_rejects_an_object() -> None:

@@ -16,11 +16,11 @@ the composition of the one result (`_completed` / `_aborted`). So
 `_run_step` reads as the macro doctrine itself (budget, idempotence,
 gate, act) with no per-tool branching left in it.
 
-Nothing branches: a decided-failed check or a tool error stops the run
+An unsatisfied guard or a tool error stops the run
 and reports where, and recovery is the agent's job with the returned
-screen to work from. The one forward jump a macro may hold (`if_page` /
-`goto` / `mark`, see `parse`) skips a span, reported here exactly like
-a `start_at` prefix — not executed, one event per step. A `run` step
+screen to work from. Forward page jumps (`if_page` / `goto` / `mark`,
+see `parse`) skip spans, reported here exactly like a `start_at` prefix —
+not executed, one event per step. A `run` step
 walks its macro's steps here too, in the same run context (`_walk`
 recurses once), each reported under the run step's number (`3.2`);
 its abort is the run step's abort. `start_at` begins at a step (by
@@ -81,10 +81,10 @@ class MacroRunResult:
     aborted_step: int | None = None  # 1-based; None on success
     reason: str | None = None
     detail: str = ""
-    # How many steps actually ACTUATED a gesture (wait steps and
-    # pre-actuation failures excluded). Zero on an abort means the phone
-    # did not move — "failed before acting" is not "burned", so the
-    # engine's one-strike rule stands down (`builtin_tool`).
+    # Attempted actuating calls, including failures that may have moved
+    # the phone. Waits, peeks, and failures before dispatch are excluded.
+    # Zero on abort means no action could be replayed, so the engine's
+    # one-strike rule stands down (`builtin_tool`).
     gestures: int = 0
     # `macro-run-<hex6>`, set by `run_and_record`. Returned rather than left
     # for the caller to scrape back out of the composed header — that would
@@ -108,7 +108,7 @@ async def run_and_record(
     logged) cannot drift between layers. Mints the run's
     ``macro-run-<hex6>`` id — it rides in every log line, the result
     header, and stats, so one id references the whole run. The prune set
-    is derived here from the dirs on disk — a disabled macro keeps its
+    is derived here from the files on disk — a disabled macro keeps its
     stats. Raises MacroError — recorded as bad_input — before any
     gesture fires.
 
@@ -236,8 +236,6 @@ async def _walk(
         else:
             outcome = await _run_step(step, ctx)
         judged += 1
-        if outcome.outcome in _ACTUATED and step.actuates:
-            ctx.gestures += 1
         lines.append(indent + _numbered(outcome.log_line, f"{prefix}{i}"))
         if rlog:
             rlog.step(
@@ -317,12 +315,6 @@ async def _run_callee(
         outcome="ok",
         view=ctx.last_view or None,
     )
-
-
-# Step outcomes that mean the tool actually fired (or attempted to):
-# `ok`, a tool error mid-actuation, a timeout of the call itself. A
-# guard/skip/expect miss never reached the phone.
-_ACTUATED = ("ok", "tool_error", "timeout")
 
 
 def _jumped_span(

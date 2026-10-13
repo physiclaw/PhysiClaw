@@ -100,8 +100,8 @@ steps:
   # messages. `require`: about to tap a FIXED row position, so check the
   # name is really sitting there — a message in another chat reorders the
   # list and this box would then open the wrong person.
-  - tap: "your-user-name"                    # ← EDIT — the row's own text, so
-    at: [0.066, 0.086, 0.249, 0.186]         #   the tap follows it if rows shift
+  - tap: "your-user-name"                    # ← EDIT — the row's own text
+    at: [0.066, 0.086, 0.249, 0.186]         #   fixed box; require checks the row
     skip_when: {{text: "your-user-name", within: [0.15, 0.02, 0.85, 0.1]}}    # ← EDIT
     require: {{text: "your-user-name", within: [0.05, 0.08, 0.95, 0.19]}}  # ← EDIT
     # forbid: "Account protection"   # tripwire: abort if that text is up
@@ -293,10 +293,10 @@ Habit: quote every text value.
   whatever step tripped three lines later.
 - Check the steps where drift would hurt: taps at a FIXED position in a
   list that can reorder, and anything just short of a commit.
-- Give text targets their REAL on-screen text as the object — that is
-  what lets the tap follow a button that moved. Volatile text (prices,
-  times, item titles) makes a bad object for the same reason it makes a
-  bad anchor.
+- Give text targets their REAL on-screen text as the object so the file
+  and run log identify the intended target. Taps use the fixed `at` box;
+  they do not follow a moved button. Use a region-scoped `require` to
+  check the target before tapping, and re-rehearse when the layout changes.
 - Point a check's `within` at the SAME region the step is about to tap.
   Checking that the text is somewhere in a wider band, then tapping a
   fixed box elsewhere, passes the check and still hits the wrong row.

@@ -13,6 +13,7 @@ from physiclaw.common.listing import format_row
 from physiclaw.macros import runner as runner_mod
 from physiclaw.macros import stats as macro_stats
 from physiclaw.macros.model import (
+    NO_GESTURES_NOTE,
     REASON_BAD_INPUT,
     REASON_EXPECT_FAILED,
     REASON_GUARD_FAILED,
@@ -565,6 +566,26 @@ async def test_run_skipped_step_bypasses_its_guard() -> None:
 # ---------- tool error ----------
 
 
+@pytest.mark.parametrize(
+    ("step", "gestures"),
+    [("peek", 0), ("home_screen", 1), ("send_to_clipboard: hi", 1)],
+)
+@pytest.mark.parametrize(
+    "reply",
+    [_gesture("view"), RuntimeError("uncertain actuation")],
+    ids=["success", "failure"],
+)
+async def test_run_dispatched_call_counts_even_if_it_raises(
+    step: str, gestures: int, reply: list[dict] | RuntimeError
+) -> None:
+    spec = _spec(f"name: demo\ndescription: d\nsteps:\n  - {step}\n")
+    mcp = FakeCaller([reply, _gesture("recovery")])
+
+    result = await run(spec, {}, mcp)
+
+    assert result.gestures == gestures
+
+
 async def test_run_tool_error_aborts_with_detail() -> None:
     mcp = FakeCaller([_gesture("went home"), RuntimeError("arm busy")])
 
@@ -783,6 +804,21 @@ async def test_run_and_record_success_folds_into_stats() -> None:
 
     assert result.ok is True
     assert macro_stats.load()["demo"]["total_successes"] == 1
+
+
+async def test_run_and_record_corrupt_stats_preserves_the_completed_result() -> None:
+    macro_stats.stats_file().parent.mkdir(parents=True, exist_ok=True)
+    macro_stats.stats_file().write_text(
+        '{"demo": {"total_runs": "bad"}}', encoding="utf-8"
+    )
+    mcp = FakeCaller([_gesture("went home"), _gesture("copied")])
+
+    result = await run_and_record(_spec(TWO_STEPS), {"msg": "x"}, mcp)
+
+    assert result.ok
+    assert result.gestures == 2
+    assert result.run_id
+    assert "all 2 steps completed" in result.blocks[0]["text"]
 
 
 async def test_run_and_record_abort_folds_into_stats() -> None:
@@ -1205,6 +1241,41 @@ async def test_run_aborts_once_the_wall_clock_budget_is_spent(mocker) -> None:
     # Stopped BETWEEN steps, so the phone is in a known state and the count
     # of fired gestures matches what the abort report claims.
     assert len(mcp.calls) == result.aborted_step - 1
+    assert result.gestures == len(mcp.calls)
+
+
+async def test_timeout_before_first_gesture_preserves_retry_permission(mocker) -> None:
+    mocker.patch(
+        "physiclaw.macros.runner.time.monotonic",
+        side_effect=[1000.0] + [1400.0] * 400,
+    )
+    mcp = FakeCaller([_gesture("current screen", listing="Home")])
+
+    result = await run(_spec(TWO_STEPS), {"msg": "x"}, mcp)
+
+    assert result.reason == REASON_TIMEOUT
+    assert result.gestures == 0
+    assert NO_GESTURES_NOTE in result.blocks[0]["text"]
+    assert mcp.calls == [("peek", {})]
+
+
+@pytest.mark.parametrize(
+    "step", ["peek:\n    require: Home", "wait: 0\n    expect: Home"]
+)
+async def test_run_hint_substitutes_declared_input_and_preserves_literal_braces(
+    step: str,
+) -> None:
+    spec = _spec(
+        "name: demo\ndescription: d\ninputs:\n  target:\n    description: d\n"
+        f'steps:\n  - {step}\n    hint: "Open {{target}}, then {{{{retry}}}}"\n'
+    )
+    mcp = FakeCaller([_gesture("view", listing="Other page")])
+
+    result = await run(spec, {"target": "Alice {literal}"}, mcp)
+
+    assert not result.ok
+    assert "Open Alice {literal}, then {retry}" in result.detail
+    assert result.gestures == 0
 
 
 @pytest.mark.asyncio

@@ -84,6 +84,17 @@ def test_substitute_string_without_braces_is_identity(text: str) -> None:
     assert substitute({"v": text}, {}) == {"v": text}
 
 
+@given(prefix=st.text(), value=st.text())
+def test_substitute_escaped_text_round_trips_and_input_is_literal(
+    prefix: str, value: str
+) -> None:
+    escaped = prefix.replace("{", "{{").replace("}", "}}")
+
+    result = substitute({"text": escaped + "{message}"}, {"message": value})
+
+    assert result == {"text": prefix + value}
+
+
 def test_substitute_reaches_placeholders_nested_in_a_mapping() -> None:
     # `parse._check_placeholders` walks dicts, so a nested placeholder
     # validates clean at load. If `substitute` did not walk them too, it

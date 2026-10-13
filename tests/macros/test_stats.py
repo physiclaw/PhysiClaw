@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from freezegun import freeze_time
 
 from physiclaw.common import paths
@@ -150,6 +151,58 @@ def test_record_over_a_scalar_entry_resets_that_key_instead_of_raising() -> None
     _record_ok()
 
     assert stats.load()["demo"]["total_runs"] == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "ok"),
+    [
+        ("total_runs", True),
+        ("total_successes", True),
+        ("total_aborts", False),
+        ("consecutive_aborts", False),
+    ],
+)
+@pytest.mark.parametrize("corrupt", [None, "bad", [], {}, True, -2, 1.5])
+def test_record_corrupt_counter_restarts_as_an_integer(
+    field: str, ok: bool, corrupt: object
+) -> None:
+    paths.macros_dir().mkdir(parents=True)
+    stats.stats_file().write_text(
+        json.dumps({"demo": {field: corrupt, "last_success_at": "earlier"}}),
+        encoding="utf-8",
+    )
+
+    stats.record("demo", ok=ok, known_names={"demo"})
+
+    saved = json.loads(stats.stats_file().read_text(encoding="utf-8"))["demo"]
+    assert saved[field] == 1
+    assert type(saved[field]) is int
+
+
+def test_load_sanitizes_counters_and_abort_shape_preserving_valid_history() -> None:
+    paths.macros_dir().mkdir(parents=True)
+    stats.stats_file().write_text(
+        json.dumps(
+            {
+                "demo": {
+                    "total_runs": 8,
+                    "total_aborts": "bad",
+                    "last_abort": "bad",
+                    "last_success_at": "earlier",
+                },
+                "broken": 3,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = stats.load()
+
+    assert loaded["demo"]["total_runs"] == 8
+    assert loaded["demo"]["total_aborts"] == 0
+    assert loaded["demo"]["last_success_at"] == "earlier"
+    assert loaded["demo"].get("last_abort") is None
+    assert loaded["broken"]["total_runs"] == 0
 
 
 def test_bad_input_does_not_move_the_re_rehearse_streak() -> None:

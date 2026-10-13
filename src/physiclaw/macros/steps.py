@@ -93,7 +93,7 @@ class RunContext:
     last_verdict: bool | None = None
     reads: int = 0  # camera cycles this step spent, whatever the outcome
     ran: int = 0  # steps the loop judged (a jump's span is not among them)
-    gestures: int = 0  # …of which actually touched the phone
+    gestures: int = 0  # attempted actuating calls, including uncertain failures
 
     def adopt_view(self, blocks: list[dict], *, touched_screen: bool = True) -> None:
         """Take a step's fused view as the current screen."""
@@ -244,8 +244,7 @@ class Step(ABC):
 
     @property
     def actuates(self) -> bool:
-        """Whether an `ok` outcome means the phone was touched — what the
-        run's gesture count (the engine's burn rule) is made of."""
+        """Whether calling this step may actuate the phone or clipboard."""
         return False
 
     @property
@@ -284,6 +283,10 @@ class GestureStep(Step):
 
     async def execute(self, ctx: RunContext) -> StepOutcome:
         args = self._lowered()
+        # Count at dispatch, after the gate: a tool error may have actuated,
+        # but a timeout or failed guard before this call touched nothing.
+        if self.actuates:
+            ctx.gestures += 1
         try:
             blocks = await ctx.mcp.call_tool(self.mcp_tool, args)
         except Exception as e:

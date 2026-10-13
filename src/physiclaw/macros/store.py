@@ -130,7 +130,7 @@ def scan(
             continue
         try:
             texts[md.stem] = read_text(real)
-        except OSError as e:
+        except (OSError, UnicodeError) as e:
             unread[md.stem] = ScanEntry(md.stem, error=str(e) or type(e).__name__)
     parsed = parse_folder(texts, pages, fallback)
     return [unread.get(md.stem) or parsed[md.stem] for md in files]

@@ -85,6 +85,19 @@ def test_scan_invalid_yaml_keeps_reason() -> None:
     assert "invalid YAML" in (entries[0].error or "")
 
 
+def test_scan_invalid_utf8_excludes_only_the_unreadable_macro() -> None:
+    _write("broken").write_bytes(b"\xff\xfe")
+    _write("demo")
+
+    entries = scan()
+
+    assert entries[0].name == "broken"
+    assert entries[0].spec is None
+    assert "decode" in (entries[0].error or "")
+    assert entries[1].spec is not None
+    assert entries[1].spec.name == "demo"
+
+
 def test_scan_reads_only_yml_files() -> None:
     # A macro is a leaf file: a stray folder (the old layout, a note dir)
     # and non-yml files beside the macros are not macros and not errors.

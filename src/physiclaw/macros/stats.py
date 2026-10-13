@@ -9,9 +9,10 @@ layout changed under it). Every run records through
 `physiclaw macros stats` — never rendered into the prompt, which must
 stay byte-stable across wakes.
 
-Never fatal in either direction: a missing or corrupt file loads as
-empty and is rewritten whole (atomic tmp+rename) on the next record.
-Keys whose macro directory is gone are pruned at write time. Additive
+Never fatal in either direction: a missing or invalid JSON file loads as
+empty. Malformed entries and counters reset without discarding valid
+history. The next record rewrites the file whole (atomic tmp+rename).
+Keys whose macro file is gone are pruned at write time. Additive
 fields load as absent — no schema versioning (alpha convention).
 """
 
@@ -40,7 +41,11 @@ def stats_file() -> Path:
 
 
 def load() -> dict[str, dict]:
-    """All recorded stats, keyed by macro name. Missing/corrupt → {}."""
+    """Recorded stats with mapping entries and nonnegative integer counters.
+
+    Normalize at the read boundary so both recording and the CLI can use
+    a partially corrupt file. Valid history and additive fields survive.
+    """
     path = stats_file()
     if not path.exists():
         return {}
@@ -49,7 +54,17 @@ def load() -> dict[str, dict]:
     except (OSError, ValueError):
         log.warning("macro stats unreadable; starting fresh", exc_info=True)
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    for name, raw in data.items():
+        entry = raw if isinstance(raw, dict) else {}
+        for counter in _COUNTERS:
+            value = entry.get(counter, 0)
+            entry[counter] = value if type(value) is int and value >= 0 else 0
+        if "last_abort" in entry and not isinstance(entry["last_abort"], dict):
+            del entry["last_abort"]
+        data[name] = entry
+    return data
 
 
 def record(
@@ -63,32 +78,25 @@ def record(
     run_id: str | None = None,
 ) -> None:
     """Fold one run outcome into the file. `known_names` (the currently
-    existing macro dirs) prunes orphan keys so deleted macros don't leave
+    existing macro names) prunes orphan keys so deleted macros don't leave
     stats behind. Best-effort: a write failure logs and moves on — stats
     must never take down a session."""
     data = load()
-    # Qualified `app/name` keys are pack macros: their dirs live under
-    # playbooks/, not macros/, so the dir-derived prune set can never
+    # Qualified `app/name` keys are pack macros: their files live under
+    # playbooks/, not macros/, so the user-macro prune set can never
     # vouch for them — keep them unconditionally (a deleted pack leaves
     # a few orphan lines, which beats losing the decay signal).
     data = {k: v for k, v in data.items() if k in known_names or k == name or "/" in k}
     entry = data.setdefault(name, dict(_COUNTERS))
-    if not isinstance(entry, dict):
-        # A hand-edited or truncated file can leave a scalar under a macro
-        # key. Recording happens AFTER the gestures physically ran, so an
-        # AttributeError here would swallow the step log and the screen the
-        # agent needs — start that key over instead.
-        log.warning("macro stats entry for %r was not a mapping; reset", name)
-        entry = data[name] = dict(_COUNTERS)
     now = dt.datetime.now().isoformat(timespec="seconds")
-    entry["total_runs"] = entry.get("total_runs", 0) + 1
+    entry["total_runs"] += 1
     entry["last_run_at"] = now
     if ok:
-        entry["total_successes"] = entry.get("total_successes", 0) + 1
+        entry["total_successes"] += 1
         entry["consecutive_aborts"] = 0
         entry["last_success_at"] = now
     else:
-        entry["total_aborts"] = entry.get("total_aborts", 0) + 1
+        entry["total_aborts"] += 1
         # `consecutive_aborts` is the re-rehearse signal — "the app layout
         # changed under this macro". A `bad_input` run never reached the
         # screen (a missing input, an unknown `start_at`), so it says
@@ -96,7 +104,7 @@ def record(
         # the streak alone rather than let three typos in a row make a
         # healthy macro read as decayed.
         if reason != REASON_BAD_INPUT:
-            entry["consecutive_aborts"] = entry.get("consecutive_aborts", 0) + 1
+            entry["consecutive_aborts"] += 1
         entry["last_abort"] = {
             "ts": now,
             "step": step,
