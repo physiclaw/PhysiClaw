@@ -9,6 +9,8 @@ from __future__ import annotations
 import socket
 from unittest.mock import MagicMock
 
+import pytest
+
 from physiclaw.core.bridge import lan
 
 # ---------- get_lan_ip ----------
@@ -16,6 +18,7 @@ from physiclaw.core.bridge import lan
 
 def test_get_lan_ip_returns_local_ip_on_success(mocker) -> None:
     fake_sock = MagicMock()
+    fake_sock.__enter__.return_value = fake_sock
     fake_sock.getsockname.return_value = ("192.168.1.42", 12345)
     mocker.patch.object(lan.socket, "socket", return_value=fake_sock)
 
@@ -24,6 +27,7 @@ def test_get_lan_ip_returns_local_ip_on_success(mocker) -> None:
 
 def test_get_lan_ip_falls_back_to_loopback_on_socket_error(mocker) -> None:
     fake_sock = MagicMock()
+    fake_sock.__enter__.return_value = fake_sock
     fake_sock.connect.side_effect = OSError("network unreachable")
     mocker.patch.object(lan.socket, "socket", return_value=fake_sock)
 
@@ -32,6 +36,7 @@ def test_get_lan_ip_falls_back_to_loopback_on_socket_error(mocker) -> None:
 
 def test_get_lan_ip_falls_back_to_loopback_on_timeout(mocker) -> None:
     fake_sock = MagicMock()
+    fake_sock.__enter__.return_value = fake_sock
     fake_sock.connect.side_effect = socket.timeout()
     mocker.patch.object(lan.socket, "socket", return_value=fake_sock)
 
@@ -124,3 +129,42 @@ def test_bridge_base_urls_uses_custom_port(mocker) -> None:
     primary, _ = lan.bridge_base_urls(9999)
 
     assert primary == "http://10.0.0.1:10000"
+
+
+@pytest.mark.parametrize("failure", [None, "settimeout", "connect", "getsockname"])
+def test_lan_probe_releases_socket_on_success_and_failure(mocker, failure):
+    class ProbeSocket:
+        closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.closed = True
+
+        def settimeout(self, _):
+            if failure == "settimeout":
+                raise OSError("probe failed")
+
+        def connect(self, _):
+            if failure == "connect":
+                raise OSError("probe failed")
+
+        def getsockname(self):
+            if failure == "getsockname":
+                raise OSError("probe failed")
+            return "192.168.1.42", 12345
+
+    sock = ProbeSocket()
+    mocker.patch.object(lan.socket, "socket", return_value=sock)
+    expected = {
+        None: "192.168.1.42",
+        "settimeout": "127.0.0.1",
+        "connect": "127.0.0.1",
+        "getsockname": "127.0.0.1",
+    }
+
+    address = lan.get_lan_ip()
+
+    assert address == expected[failure]
+    assert sock.closed

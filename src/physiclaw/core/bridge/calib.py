@@ -6,6 +6,7 @@ what interactions trigger a green flash.
 """
 
 import logging
+import math
 import threading
 import time
 
@@ -66,6 +67,8 @@ class CalibrationState:
     def __init__(self):
         self.lock = threading.Lock()  # protects shared fields across threads
         self.phase: str = "idle"  # current display phase (one of PHASES)
+        self._phase_id = 0  # identifies the rendered target, including repeated phases
+        self._touch_generation = 0  # changes when a consumer drains the queue
         # Monotonic time the CURRENT phase was entered (re-setting the same
         # phase keeps it). Lets a consumer tell whether an upload arrived
         # while its visual target was already on screen.
@@ -89,28 +92,65 @@ class CalibrationState:
         Args:
             phase: one of self.PHASES
             dot_x, dot_y: position for "dot" phase (0-1 decimals)
-            direction: expected direction for "swipe" phase
+            nonce_bits: binary sequence for "assistive_touch", or None
         """
-        if phase not in self.PHASES:
+        if not isinstance(phase, str) or phase not in self.PHASES:
             raise ValueError(f"Unknown phase: {phase}. Must be one of {self.PHASES}")
+        dot = None
+        nonce = None
+        if phase == "dot":
+            try:
+                values = (kwargs.get("dot_x", 0.5), kwargs.get("dot_y", 0.5))
+                if any(isinstance(v, bool) for v in values):
+                    raise ValueError("boolean coordinate")
+                dot = (float(values[0]), float(values[1]))
+                if not all(math.isfinite(v) and 0 <= v <= 1 for v in dot):
+                    raise ValueError("coordinate outside screen")
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(
+                    "dot_x/dot_y must be finite numbers between 0 and 1"
+                ) from exc
+        if phase == "assistive_touch":
+            nonce = kwargs.get("nonce_bits")
+            if nonce is not None:
+                if not isinstance(nonce, (list, tuple)) or any(
+                    type(bit) is not int or bit not in (0, 1) for bit in nonce
+                ):
+                    raise ValueError("nonce_bits must be a sequence of 0 or 1")
+                nonce = list(nonce)
         with self.lock:
             if phase != self.phase:
                 self.phase_since = time.monotonic()
             self.phase = phase
-            self.dot_position = None
+            self._phase_id += 1
+            self.dot_position = dot
             self.touches = []
             self._touch_event.clear()
-            if phase == "dot":
-                self.dot_position = (kwargs.get("dot_x", 0.5), kwargs.get("dot_y", 0.5))
             if phase == "assistive_touch":
-                self._screenshot_nonce = kwargs.get("nonce_bits")
+                self._screenshot_nonce = nonce
 
-    def report_touch(self, touch: dict):
+    def touch_token(self) -> int | None:
+        """Capture an active touch collection before awaiting an HTTP request body."""
+        with self.lock:
+            return self._touch_generation if self.phase != "idle" else None
+
+    def report_touch(
+        self,
+        touch: dict,
+        *,
+        touch_token: int | None = None,
+        phase_id: int | None = None,
+    ) -> bool:
         """Page reports a touch event. x, y are 0-1 percentages relative to screen."""
         with self.lock:
+            if touch_token is not None and (
+                touch_token != self._touch_generation or phase_id != self._phase_id
+            ):
+                return False
             self.touches.append(touch)
-        self._touch_event.set()
+            self._touch_event.set()
         log.debug(f"Calibration touch: ({touch.get('x')}, {touch.get('y')})")
+        return True
 
     def wait_touch(self, timeout: float = 10.0) -> dict | None:
         """Block until a touch event arrives. Returns the touch or None.
@@ -119,9 +159,9 @@ class CalibrationState:
         This method waits for the NEXT report_touch() call.
         """
         if self._touch_event.wait(timeout=timeout):
-            self._touch_event.clear()
             with self.lock:
-                if self.touches:
+                if self._touch_event.is_set() and self.touches:
+                    self._touch_event.clear()
                     return self.touches[-1]
         return None
 
@@ -130,6 +170,7 @@ class CalibrationState:
         with self.lock:
             touches = list(self.touches)
             self.touches = []
+            self._touch_generation += 1
             self._touch_event.clear()
         return touches
 
@@ -179,7 +220,7 @@ class CalibrationState:
         Returns a nested dict — fields are grouped by feature so the schema
         is self-documenting:
             {
-              phase, screen_dimension,
+              phase, phase_id, screen_dimension,
               grid:   {cols, rows},
               square: {x, y, size},                # only when phase=="screenshot_cal"
               dot:    {x, y},                      # only when phase=="dot"
@@ -190,7 +231,12 @@ class CalibrationState:
         with self.lock:
             d = {
                 "phase": self.phase,
-                "screen_dimension": self.screen_dimension,
+                "phase_id": self._phase_id,
+                "screen_dimension": (
+                    self.screen_dimension.copy()
+                    if self.screen_dimension is not None
+                    else None
+                ),
                 "grid": {
                     "cols": self.GRID_COLS_PCT,
                     "rows": self.GRID_ROWS_PCT,

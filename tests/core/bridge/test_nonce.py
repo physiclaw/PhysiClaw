@@ -487,3 +487,47 @@ def test_verify_round_trip_holds_for_any_bit_sequence(bits: list[int]) -> None:
 
     assert ok is True
     assert count == NONCE_COUNT
+
+
+def _render_full_nonce_cells(bits, dpr, offset_x, offset_y):
+    """Rasterize the page's CSS rectangles, independently of sample-center math."""
+    import math
+
+    image = np.zeros((1200, 1000, 3), dtype=np.uint8)
+    for index, bit in enumerate(bits):
+        x = NONCE_CSS_X + index % NONCE_GRID_COLS * NONCE_SQUARE_SIZE
+        y = NONCE_CSS_Y + index // NONCE_GRID_COLS * NONCE_SQUARE_SIZE
+        left = math.floor(x * dpr + offset_x)
+        right = math.ceil((x + NONCE_SQUARE_SIZE) * dpr + offset_x)
+        top = math.floor(y * dpr + offset_y)
+        bottom = math.ceil((y + NONCE_SQUARE_SIZE) * dpr + offset_y)
+        image[top:bottom, left:right] = NONCE_LIGHT if bit else NONCE_DARK
+    return image
+
+
+@settings(deadline=None, max_examples=25)
+@given(dpr=st.floats(0.5, 2.5), offset_x=st.floats(0, 2), offset_y=st.floats(0, 2))
+def test_nonce_css_rectangles_verify_at_fractional_scale(dpr, offset_x, offset_y):
+    bits = [i % 2 for i in range(NONCE_COUNT)]
+    image = _render_full_nonce_cells(bits, dpr, offset_x, offset_y)
+
+    result = verify_nonce(image, _viewport(dpr, offset_x, offset_y), bits)
+
+    assert result == (True, NONCE_COUNT)
+
+
+def test_regression_nonce_sampling_does_not_accumulate_fractional_cell_error():
+    bits = [i % 2 for i in range(NONCE_COUNT)]
+    image = _render_full_nonce_cells(bits, 0.86, 0.8, 0.8)
+
+    result = verify_nonce(image, _viewport(0.86, 0.8, 0.8), bits)
+
+    assert result == (True, NONCE_COUNT)
+
+
+@pytest.mark.parametrize("bits", [[], [0] * 63, [0] * 65, [True] * 64, [2] * 64])
+def test_nonce_verification_requires_complete_binary_evidence(bits):
+    image = np.zeros((700, 400, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="64 binary integers"):
+        verify_nonce(image, _viewport(), bits)

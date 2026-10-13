@@ -116,7 +116,10 @@ async def test_handle_clipboard_copied_marks_event() -> None:
     bridge = BridgeState()
     bridge.send_text("hi")
 
-    resp = await handle_clipboard_copied(_fake_request(), bridge)
+    bridge.send_text("example")
+    request = _fake_request(json_obj={"text_id": bridge.clipboard_state()["text_id"]})
+
+    resp = await handle_clipboard_copied(request, bridge)
 
     import json
 
@@ -527,7 +530,7 @@ async def test_handle_calib_touch_records_touch_with_screenshot_pcts() -> None:
     cal = _touch_ready_cal()
 
     resp = await handle_calib_touch(
-        _fake_request(json_obj={"clientX": 100, "clientY": 200}),
+        _fake_request(json_obj={"clientX": 100, "clientY": 200, "phase_id": 1}),
         cal,
     )
 
@@ -548,7 +551,7 @@ async def test_handle_calib_touch_409_when_no_step_waiting() -> None:
     cal.set_phase("idle")
 
     resp = await handle_calib_touch(
-        _fake_request(json_obj={"clientX": 100, "clientY": 200}),
+        _fake_request(json_obj={"clientX": 100, "clientY": 200, "phase_id": 1}),
         cal,
     )
 
@@ -613,8 +616,227 @@ async def test_handle_calib_touch_409_before_viewport_shift_measured() -> None:
     cal.set_phase("grid")
 
     resp = await handle_calib_touch(
-        _fake_request(json_obj={"clientX": 100, "clientY": 200}), cal
+        _fake_request(json_obj={"clientX": 100, "clientY": 200, "phase_id": 1}), cal
     )
 
     assert resp.status_code == 409
     assert cal.touches == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), True, 10**400])
+async def test_regression_invalid_dimension_preserves_previous_geometry(value):
+    cal = CalibrationState()
+    previous = {
+        "width": 200,
+        "height": 400,
+        "viewport_width": 200,
+        "viewport_height": 400,
+    }
+    cal.screen_dimension = previous
+    body = {
+        "screen_width": value,
+        "screen_height": 400,
+        "viewport_width": 200,
+        "viewport_height": 400,
+    }
+
+    response = await handle_screen_dimension(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 400
+    assert cal.screen_dimension is previous
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), "-Infinity", True, 10**400]
+)
+@pytest.mark.parametrize("field", ["clientX", "clientY"])
+async def test_regression_nonfinite_touch_never_enters_calibration(value, field):
+    cal = _touch_ready_cal()
+    body = {
+        "clientX": 100,
+        "clientY": 200,
+        "phase_id": cal.get_state()["phase_id"],
+        field: value,
+    }
+
+    response = await handle_calib_touch(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 400
+    assert cal.flush_touches() == []
+
+
+@pytest.mark.asyncio
+async def test_touch_conversion_overflow_never_enters_calibration():
+    cal = _touch_ready_cal()
+    cal.viewport_shift = ViewportShift(0, 0, 3, 200, 400)
+    body = {"clientX": 1e308, "clientY": 200, "phase_id": cal.get_state()["phase_id"]}
+
+    response = await handle_calib_touch(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 400
+    assert cal.flush_touches() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [None, {"text_id": True}, {"text_id": "1"}])
+async def test_clipboard_ack_requires_a_typed_text_identity(body):
+    bridge = BridgeState()
+    bridge.send_text("new")
+
+    response = await handle_clipboard_copied(_fake_request(json_obj=body), bridge)
+
+    assert response.status_code == 400
+    assert not bridge.wait_clipboard(timeout=0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("next_text", ["old", "new"])
+async def test_regression_old_clipboard_ack_cannot_confirm_new_queue(next_text):
+    bridge = BridgeState()
+    bridge.send_text("old")
+    old = bridge.clipboard_state()
+    bridge.send_text(next_text)
+
+    response = await handle_clipboard_copied(
+        _fake_request(json_obj={"text_id": old["text_id"]}), bridge
+    )
+
+    assert response.status_code == 409
+    assert not bridge.wait_clipboard(timeout=0)
+    assert bridge.current_text() == next_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transition", ["idle", "dot", "drain"])
+async def test_regression_touch_body_read_cannot_cross_collection_boundary(transition):
+    cal = _touch_ready_cal()
+    body = {"clientX": 100, "clientY": 200, "phase_id": cal.get_state()["phase_id"]}
+    actions = {
+        "idle": lambda: cal.set_phase("idle"),
+        "dot": lambda: cal.set_phase("dot"),
+        "drain": cal.flush_touches,
+    }
+    request = _fake_request()
+
+    async def read_body():
+        actions[transition]()
+        return body
+
+    request.json = read_body
+
+    response = await handle_calib_touch(request, cal)
+
+    assert response.status_code == 409
+    assert cal.flush_touches() == []
+
+
+@pytest.mark.asyncio
+async def test_old_rendered_dot_cannot_report_touch_for_new_dot():
+    cal = _touch_ready_cal()
+    cal.set_phase("dot", dot_x=0.2)
+    body = {"clientX": 40, "clientY": 200, "phase_id": cal.get_state()["phase_id"]}
+    cal.set_phase("dot", dot_x=0.8)
+
+    response = await handle_calib_touch(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 409
+    assert cal.flush_touches() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [{"clientX": 1, "clientY": 1}, {"clientX": 1, "clientY": 1, "phase_id": True}],
+)
+async def test_touch_requires_rendered_phase_identity(body):
+    cal = _touch_ready_cal()
+
+    response = await handle_calib_touch(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 400
+    assert cal.flush_touches() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("clear_first", [False, True])
+async def test_regression_old_stream_cannot_overwrite_a_newer_upload(clear_first):
+    bridge = BridgeState()
+    bridge.clear_screenshot()
+    request = _fake_request()
+    newer = PNG + b"new"
+
+    async def stream():
+        if clear_first:
+            bridge.clear_screenshot()
+        accepted = await handle_screenshot_upload(
+            _fake_request(body_bytes=newer), bridge
+        )
+        assert accepted.status_code == 200
+        yield PNG + b"old"
+
+    request.stream = stream
+
+    response = await handle_screenshot_upload(request, bridge)
+
+    assert response.status_code == 409
+    assert bridge.take_pending_screenshot() == newer
+    assert bridge.recent_screenshots() == [newer]
+    assert not bridge.upload_armed()
+
+
+@pytest.mark.asyncio
+async def test_old_stream_cannot_consume_newly_cleared_window():
+    bridge = BridgeState()
+    bridge.clear_screenshot()
+    request = _fake_request()
+
+    async def stream():
+        bridge.clear_screenshot()
+        yield PNG
+
+    request.stream = stream
+
+    response = await handle_screenshot_upload(request, bridge)
+
+    assert response.status_code == 409
+    assert bridge.upload_armed()
+    assert bridge.take_pending_screenshot() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"mode": "calibrate", "phase": ["grid"]},
+        {"mode": "calibrate", "phase": "dot", "dot_x": float("nan")},
+        {"mode": "calibrate", "phase": "assistive_touch", "nonce_bits": 1},
+    ],
+)
+async def test_invalid_mode_request_preserves_pollable_phone_state(body):
+    phone = PageState(BridgeState(), CalibrationState())
+    before = phone.get_state()
+
+    response = await handle_mode_switch(_fake_request(json_obj=body), phone)
+    poll = await handle_phone_state(_fake_request(), phone)
+
+    assert response.status_code == 400
+    assert poll.status_code == 200
+    assert phone.get_state() == before
+
+
+@pytest.mark.asyncio
+async def test_nonfinite_touch_is_bad_input_even_before_viewport_calibration():
+    cal = CalibrationState()
+    cal.set_phase("grid")
+    body = {
+        "clientX": float("nan"),
+        "clientY": 0,
+        "phase_id": cal.get_state()["phase_id"],
+    }
+
+    response = await handle_calib_touch(_fake_request(json_obj=body), cal)
+
+    assert response.status_code == 400
+    assert cal.flush_touches() == []

@@ -89,7 +89,7 @@ def test_connectivity_hint_suggests_wifi_when_page_is_silent() -> None:
 
 
 def test_connectivity_hint_none_while_phone_is_polling(bs: BridgeState, mocker) -> None:
-    fake_time = mocker.patch.object(state_mod.time, "time")
+    fake_time = mocker.patch.object(state_mod.time, "monotonic")
     fake_time.return_value = 1000.0
     bs.poll()
 
@@ -97,7 +97,7 @@ def test_connectivity_hint_none_while_phone_is_polling(bs: BridgeState, mocker) 
 
 
 def test_connected_true_when_polled_within_500ms(bs: BridgeState, mocker) -> None:
-    fake_time = mocker.patch.object(state_mod.time, "time")
+    fake_time = mocker.patch.object(state_mod.time, "monotonic")
     fake_time.return_value = 1000.0
     bs.poll()  # writes last_seen = 1000.0
     fake_time.return_value = 1000.4  # 400ms later
@@ -108,7 +108,7 @@ def test_connected_true_when_polled_within_500ms(bs: BridgeState, mocker) -> Non
 def test_connected_false_when_last_poll_was_over_500ms_ago(
     bs: BridgeState, mocker
 ) -> None:
-    fake_time = mocker.patch.object(state_mod.time, "time")
+    fake_time = mocker.patch.object(state_mod.time, "monotonic")
     fake_time.return_value = 1000.0
     bs.poll()
     fake_time.return_value = 1000.6  # 600ms later — over the 500ms cutoff
@@ -119,7 +119,7 @@ def test_connected_false_when_last_poll_was_over_500ms_ago(
 def test_connected_false_at_exactly_500ms_boundary(bs: BridgeState, mocker) -> None:
     # `< 0.5` (strict). Exactly 0.5s difference must NOT count as
     # connected — mutating to `<= 0.5` would flip this case.
-    fake_time = mocker.patch.object(state_mod.time, "time")
+    fake_time = mocker.patch.object(state_mod.time, "monotonic")
     fake_time.return_value = 1000.0
     bs.poll()
     fake_time.return_value = 1000.5  # exactly 500ms
@@ -311,7 +311,8 @@ def test_is_copied_true_after_fetch(bs: BridgeState) -> None:
 
 
 def test_is_copied_true_after_tap_confirmation(bs: BridgeState) -> None:
-    bs.mark_clipboard_copied()
+    bs.send_text("old")
+    bs.mark_clipboard_copied(bs.clipboard_state()["text_id"])
 
     assert bs.is_copied() is True
 
@@ -319,14 +320,16 @@ def test_is_copied_true_after_tap_confirmation(bs: BridgeState) -> None:
 def test_is_copied_resets_when_new_text_queued(bs: BridgeState) -> None:
     # New text hasn't been copied yet — the flag must not linger from the
     # previous copy, or the phone would falsely show a stale confirmation.
-    bs.mark_clipboard_copied()
+    bs.send_text("old")
+    bs.mark_clipboard_copied(bs.clipboard_state()["text_id"])
     bs.send_text("fresh")
 
     assert bs.is_copied() is False
 
 
 def test_is_copied_resets_when_text_cleared(bs: BridgeState) -> None:
-    bs.mark_clipboard_copied()
+    bs.send_text("old")
+    bs.mark_clipboard_copied(bs.clipboard_state()["text_id"])
     bs.clear_text()
 
     assert bs.is_copied() is False
@@ -336,7 +339,8 @@ def test_is_copied_resets_when_text_cleared(bs: BridgeState) -> None:
 
 
 def test_mark_clipboard_copied_sets_the_event(bs: BridgeState) -> None:
-    bs.mark_clipboard_copied()
+    bs.send_text("old")
+    bs.mark_clipboard_copied(bs.clipboard_state()["text_id"])
 
     assert bs._clipboard_copied.is_set() is True
 
@@ -344,7 +348,8 @@ def test_mark_clipboard_copied_sets_the_event(bs: BridgeState) -> None:
 def test_wait_clipboard_returns_true_when_signal_already_set(
     bs: BridgeState,
 ) -> None:
-    bs.mark_clipboard_copied()
+    bs.send_text("old")
+    bs.mark_clipboard_copied(bs.clipboard_state()["text_id"])
 
     assert bs.wait_clipboard(timeout=0.01) is True
 
@@ -599,3 +604,136 @@ def test_two_live_pollers_are_both_upload_eligible(bs: BridgeState) -> None:
     assert bs.upload_ip_allowed("192.168.1.40")
     # The gate survives the fix: off-path senders are still rejected.
     assert not bs.upload_ip_allowed("192.168.1.99")
+
+
+def test_regression_consuming_existing_screenshot_does_not_rearm_upload(bs):
+    bs.clear_screenshot()
+    bs.receive_screenshot(b"early")
+
+    result = bs.wait_screenshot(timeout=0)
+
+    assert result == b"early"
+    assert not bs.upload_armed()
+    assert bs.take_pending_screenshot() is None
+
+
+@pytest.mark.parametrize("retire", ["clear", "expire"])
+def test_retired_text_cannot_be_acknowledged(bs, retire):
+    bs.send_text("old")
+    identity = bs.clipboard_state()["text_id"]
+    actions = {"clear": bs.clear_text, "expire": bs.expire_text}
+    actions[retire]()
+
+    accepted = bs.mark_clipboard_copied(identity)
+
+    assert not accepted
+    assert not bs.is_copied()
+    assert bs.current_text() is None
+
+
+def test_upload_token_expires_without_losing_new_window(bs, mocker):
+    clock = mocker.patch.object(state_mod.time, "monotonic", return_value=10.0)
+    bs.arm_upload(1)
+    old = bs.screenshot_upload_token()
+    clock.return_value = 12
+    bs.arm_upload(1)
+
+    accepted = bs.receive_screenshot(b"old", upload_token=old)
+
+    assert accepted is False
+    assert bs.upload_armed()
+    assert bs.recent_screenshots() == []
+
+
+def test_upload_token_expired_at_commit_is_rejected(bs, mocker):
+    clock = mocker.patch.object(state_mod.time, "monotonic", return_value=10.0)
+    bs.arm_upload(1)
+    old = bs.screenshot_upload_token()
+    clock.return_value = 11
+
+    accepted = bs.receive_screenshot(b"old", upload_token=old)
+
+    assert accepted is False
+    assert not bs.upload_armed()
+    assert bs.recent_screenshots() == []
+
+
+def test_regression_backward_wall_clock_does_not_keep_phone_connected(bs, mocker):
+    wall = mocker.patch.object(state_mod.time, "time", return_value=1000.0)
+    monotonic = mocker.patch.object(state_mod.time, "monotonic", return_value=100.0)
+    bs.poll()
+    wall.return_value = 900.0
+    monotonic.return_value = 101.0
+
+    connected = bs.connected
+
+    assert connected is False
+
+
+def test_simultaneous_screenshot_consumers_receive_image_only_once(bs):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    bs.receive_screenshot(b"one")
+    original = bs.lock
+    barrier = threading.Barrier(2)
+
+    class ArrivalLock:
+        def __enter__(self):
+            barrier.wait(timeout=2)
+            original.acquire()
+
+        def __exit__(self, *_):
+            original.release()
+
+    bs.lock = ArrivalLock()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(bs.take_pending_screenshot)
+        second = pool.submit(bs.take_pending_screenshot)
+        results = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert results.count(b"one") == 1
+    assert results.count(None) == 1
+
+
+def test_wait_screenshot_keeps_waiting_after_another_consumer_wins(bs, mocker):
+    wait = bs._screenshot_ready.wait
+    arrivals = iter([b"first", b"second"])
+    stolen = []
+
+    def competing_upload(timeout):
+        data = next(arrivals)
+        bs.receive_screenshot(data)
+        woke = wait(timeout=0)
+        if data == b"first":
+            stolen.append(bs.take_pending_screenshot())
+        return woke
+
+    mocker.patch.object(bs._screenshot_ready, "wait", side_effect=competing_upload)
+
+    result = bs.wait_screenshot(timeout=1)
+
+    assert result == b"second"
+    assert stolen == [b"first"]
+    assert not bs.upload_armed()
+
+
+def test_wait_screenshot_racing_consumer_cannot_extend_original_deadline(bs, mocker):
+    clock = mocker.patch.object(state_mod.time, "monotonic", return_value=10.0)
+    original_wait = bs._screenshot_ready.wait
+
+    def consume_at_deadline(timeout):
+        assert timeout > 0, "wait must stop at its original deadline"
+        bs.receive_screenshot(b"first")
+        woke = original_wait(timeout=0)
+        bs.take_pending_screenshot()
+        clock.return_value = 11.0
+        return woke
+
+    mocker.patch.object(bs._screenshot_ready, "wait", side_effect=consume_at_deadline)
+
+    result = bs.wait_screenshot(timeout=1)
+
+    assert result is None
+    assert not bs.upload_armed()

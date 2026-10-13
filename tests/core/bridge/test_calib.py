@@ -301,6 +301,7 @@ def test_get_state_idle_returns_phase_screen_dim_and_grid_only() -> None:
 
     assert state == {
         "phase": "idle",
+        "phase_id": 0,
         "screen_dimension": None,
         "grid": {
             "cols": (0.25, 0.50, 0.75),
@@ -422,3 +423,65 @@ def test_get_state_non_assistive_phase_with_nonce_set_still_omits_blocks() -> No
 
     assert "at" not in state
     assert "nonce" not in state
+
+
+@pytest.mark.parametrize(
+    "phase, kwargs",
+    [
+        (["dot"], {}),
+        ({"dot": True}, {}),
+        ("dot", {"dot_x": float("nan")}),
+        ("dot", {"dot_y": float("inf")}),
+        ("dot", {"dot_x": True}),
+        ("dot", {"dot_x": 10**400}),
+        ("dot", {"dot_x": -0.1}),
+        ("dot", {"dot_y": 1.1}),
+        ("dot", {"dot_x": None}),
+        ("assistive_touch", {"nonce_bits": 1}),
+        ("assistive_touch", {"nonce_bits": [1, 2]}),
+        ("assistive_touch", {"nonce_bits": [True]}),
+    ],
+)
+def test_invalid_phase_payload_preserves_existing_state_and_touches(phase, kwargs):
+    cal = CalibrationState()
+    cal.set_phase("grid")
+    cal.report_touch({"x": 0.4, "y": 0.5})
+    before = cal.get_state()
+
+    with pytest.raises(ValueError):
+        cal.set_phase(phase, **kwargs)
+
+    assert cal.get_state() == before
+    assert cal.wait_touch(timeout=0) == {"x": 0.4, "y": 0.5}
+
+
+def test_nonce_state_owns_input_bits():
+    cal = CalibrationState()
+    bits = [0, 1]
+    cal.set_phase("assistive_touch", nonce_bits=bits)
+
+    bits[:] = [1, 0]
+
+    assert cal.get_state()["nonce"]["colors"] == [[NONCE_DARK] * 3, [NONCE_LIGHT] * 3]
+
+
+def test_returned_dimensions_cannot_mutate_calibration():
+    cal = CalibrationState()
+    cal.screen_dimension = {"viewport_width": 200, "viewport_height": 400}
+    state = cal.get_state()
+
+    state["screen_dimension"]["viewport_width"] = 1
+
+    assert cal.get_state()["screen_dimension"]["viewport_width"] == 200
+
+
+def test_repeated_phase_keeps_upload_cutoff_but_retires_previous_target_id():
+    cal = CalibrationState()
+    cal.set_phase("dot", dot_x=0.2)
+    before = cal.get_state()["phase_id"]
+    since = cal.phase_since
+
+    cal.set_phase("dot", dot_x=0.8)
+
+    assert cal.phase_since == since
+    assert cal.get_state()["phase_id"] != before

@@ -57,7 +57,8 @@ class BridgeState:
        - Phone polls, sees text, displays it large on screen
        - Agent's arm physically taps the phone screen
        - Phone JS copies text to clipboard on touch event
-       - Phone POSTs /api/bridge/tapped → mark_clipboard_copied()
+       - Phone POSTs /api/bridge/tapped with the polled text_id
+         → mark_clipboard_copied(text_id) confirms only that queued item
        - Agent's bridge_tap() tool was blocking on wait_clipboard(),
          now unblocks and returns success
 
@@ -66,7 +67,7 @@ class BridgeState:
        - User long-presses AssistiveTouch (or any trigger) to run the
          "PhysiClaw Clipboard" Shortcut
        - Shortcut GETs /api/bridge/clipboard → server returns the text
-         and calls mark_clipboard_copied()
+         and atomically marks that fetched text copied
        - Shortcut writes the response into the iOS clipboard directly
        - This path bypasses the bridge page and the physical tap entirely.
 
@@ -86,9 +87,11 @@ class BridgeState:
             threading.Lock()
         )  # protects shared fields (text, screenshot) across threads
         self._text: str | None = None  # current text queued for the phone bridge page
+        self._text_id = 0
         self.last_seen: float = (
-            0  # timestamp of last phone poll, for connection detection
+            0  # wall timestamp of last phone poll, retained for diagnostics
         )
+        self._last_poll: float | None = None
         self._clipboard_copied = (
             threading.Event()
         )  # set when phone confirms tap-to-copy
@@ -104,6 +107,7 @@ class BridgeState:
         # (0.0 = disarmed), plus the TTL'd set of upload-eligible IPs —
         # ip → monotonic last-seen (see PHONE_IP_TTL_SECONDS).
         self._upload_armed_until: float = 0.0
+        self._upload_generation = 0
         self._phone_ips: dict[str, float] = {}
 
     @property
@@ -114,7 +118,10 @@ class BridgeState:
         enough to detect a tab going to sleep almost immediately, loose
         enough to ride through one dropped poll.
         """
-        return time.time() - self.last_seen < 0.5
+        with self.lock:
+            return (
+                self._last_poll is not None and time.monotonic() - self._last_poll < 0.5
+            )
 
     def connectivity_hint(self) -> str | None:
         """Possible cause for an upload/fetch that never arrived.
@@ -159,12 +166,14 @@ class BridgeState:
         """Set text for the phone to display and copy on tap."""
         with self.lock:
             self._text = text
+            self._text_id += 1
             self._clipboard_copied.clear()
 
     def clear_text(self):
         """Clear any queued text so the phone bridge page goes blank."""
         with self.lock:
             self._text = None
+            self._text_id += 1
             self._clipboard_copied.clear()
 
     def current_text(self) -> str | None:
@@ -180,6 +189,15 @@ class BridgeState:
         CURRENT text. Drives the phone's on-screen "copied — paste to
         verify" confirmation (see ``PageState.get_state``)."""
         return self._clipboard_copied.is_set()
+
+    def clipboard_state(self) -> dict:
+        """One consistent poll snapshot, including the text's acknowledgement ID."""
+        with self.lock:
+            return {
+                "text": self._text,
+                "text_id": self._text_id,
+                "copied": self._clipboard_copied.is_set(),
+            }
 
     def fetch_text(self) -> str | None:
         """Atomically read the queued text and mark it as copied.
@@ -215,11 +233,16 @@ class BridgeState:
             if self._clipboard_copied.is_set():
                 return True
             self._text = None
+            self._text_id += 1
             return False
 
-    def mark_clipboard_copied(self):
-        """Phone confirms the tap-to-copy succeeded."""
-        self._clipboard_copied.set()
+    def mark_clipboard_copied(self, text_id: int) -> bool:
+        """Confirm only the text the page actually copied, never a newer queue item."""
+        with self.lock:
+            if self._text is None or text_id != self._text_id:
+                return False
+            self._clipboard_copied.set()
+            return True
 
     def wait_clipboard(self, timeout: float = 30.0) -> bool:
         """Block until phone confirms clipboard copy, or timeout."""
@@ -227,22 +250,35 @@ class BridgeState:
 
     def poll(self):
         """Update last-seen timestamp (called on every phone poll)."""
-        self.last_seen = time.time()
+        with self.lock:
+            self.last_seen = time.time()
+            self._last_poll = time.monotonic()
 
     # ─── Screenshot upload ────────────────────────────────────
 
-    def receive_screenshot(self, data: bytes):
+    def receive_screenshot(
+        self, data: bytes, *, upload_token: int | None = None
+    ) -> bool:
         """Store an uploaded screenshot and signal waiters.
 
         Called from the async route handler when the iOS Shortcut POSTs
         the image. Writes data under lock, then signals the event so
         ``wait_screenshot()`` sees consistent data. Disarms the upload
-        window — one armed window admits one upload. When
+        window — one armed window admits one upload. HTTP callers must
+        pass their admission token; False means that window expired or was
+        superseded while reading the body. Direct device callers may omit it.
+        When
         ``PHYSICLAW_SAVE_SCREENSHOTS`` is set, also dumps the raw bytes
         to ``data/screenshots/``.
         """
-        save_screenshot(data)
         with self.lock:
+            # HTTP uploads retain the window they entered before streaming.
+            # A newer clear, consumed window, or expiry makes them obsolete.
+            if upload_token is not None and (
+                upload_token != self._upload_generation
+                or time.monotonic() >= self._upload_armed_until
+            ):
+                return False
             self._screenshot_data = data
             self._screenshot_received_at = time.monotonic()
             self._recent_screens.append(data)
@@ -252,6 +288,8 @@ class BridgeState:
             # _screenshot_data=None (waiter returns "no screenshot" while
             # the fresh upload lands unconsumed).
             self._screenshot_ready.set()
+        save_screenshot(data)
+        return True
 
     def clear_screenshot(self):
         """Clear any pending screenshot so wait_screenshot blocks for a fresh one.
@@ -269,13 +307,15 @@ class BridgeState:
             # outside the lock raced a late-window upload.
             self._screenshot_ready.clear()
             self._screenshot_data = None
+            self._upload_generation += 1
             self._arm_upload_locked(UPLOAD_WINDOW_SECONDS)
 
     def _arm_upload_locked(self, seconds: float):
         """Extend (never shrink) the upload window. Caller holds the lock."""
-        self._upload_armed_until = max(
-            self._upload_armed_until, time.monotonic() + seconds
-        )
+        now = time.monotonic()
+        if now >= self._upload_armed_until:
+            self._upload_generation += 1
+        self._upload_armed_until = max(self._upload_armed_until, now + seconds)
 
     def arm_upload(self, seconds: float = UPLOAD_WINDOW_SECONDS):
         """Open the upload window ahead of an expected manual upload,
@@ -292,22 +332,32 @@ class BridgeState:
         while the calibrate page shows the orange square, before pressing
         Measure — instead of making them upload again. The cutoff excludes
         shots that predate whatever the step needs on screen."""
-        if not self._screenshot_ready.is_set():
-            return None
         with self.lock:
-            if self._screenshot_data is None:
-                return None
-            if self._screenshot_received_at <= received_after:
-                return None
-            self._screenshot_ready.clear()
-            return self._screenshot_data
+            return self._take_screenshot_locked(received_after)
+
+    def _take_screenshot_locked(self, received_after: float = 0.0) -> bytes | None:
+        """Consume bytes and signal together. Caller holds the lock."""
+        if not self._screenshot_ready.is_set() or self._screenshot_data is None:
+            return None
+        if self._screenshot_received_at <= received_after:
+            return None
+        self._screenshot_ready.clear()
+        data = self._screenshot_data
+        self._screenshot_data = None
+        return data
 
     def upload_armed(self) -> bool:
         """True while an upload is expected — a `clear_screenshot()` or a
         live `wait_screenshot()` opened the window and it hasn't expired
         or been consumed."""
+        return self.screenshot_upload_token() is not None
+
+    def screenshot_upload_token(self) -> int | None:
+        """Identify the current upload window before reading an HTTP body."""
         with self.lock:
-            return time.monotonic() < self._upload_armed_until
+            if time.monotonic() < self._upload_armed_until:
+                return self._upload_generation
+            return None
 
     # ─── Phone IP gate (TTL'd recently-seen set) ──────────────
 
@@ -383,10 +433,20 @@ class BridgeState:
         receive_screenshot couldn't acquire it to store data). Once
         signaled, grabs the lock briefly to read the data safely.
         """
+        deadline = time.monotonic() + timeout
         with self.lock:
+            pending = self._take_screenshot_locked()
+            if pending is not None:
+                return pending
             self._arm_upload_locked(timeout + UPLOAD_WINDOW_GRACE_SECONDS)
-        if self._screenshot_ready.wait(timeout=timeout):
-            self._screenshot_ready.clear()
-            with self.lock:
-                return self._screenshot_data
+        while self._screenshot_ready.wait(
+            timeout=max(0.0, deadline - time.monotonic())
+        ):
+            data = self.take_pending_screenshot()
+            if data is not None:
+                return data
+            # Another consumer or clear can win after wakeup. Keep the
+            # original deadline instead of reporting an early timeout.
+            if time.monotonic() >= deadline:
+                break
         return None

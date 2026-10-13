@@ -19,6 +19,7 @@ def _bridge_stub(text: str = "default text", copied: bool = False) -> object:
     obj = type("BridgeStub", (), {})()
     obj.current_text = lambda: text
     obj.is_copied = lambda: copied
+    obj.clipboard_state = lambda: {"text": text, "text_id": 1, "copied": copied}
     obj.arm_upload_calls: list[float] = []
     obj.arm_upload = lambda seconds: obj.arm_upload_calls.append(seconds)
     return obj
@@ -156,6 +157,7 @@ def test_get_state_in_bridge_mode_includes_text_from_bridge() -> None:
         "mode": "bridge",
         "has_device_info": False,
         "text": "hello user",
+        "text_id": 1,
         "copied": False,
     }
 
@@ -191,3 +193,25 @@ def test_get_state_in_calibrate_mode_merges_cal_state() -> None:
     assert state["step"] == 3
     # `text` from bridge is NOT included in calibrate mode.
     assert "text" not in state
+
+
+def test_regression_clipboard_poll_cannot_mix_two_queue_items(mocker):
+    from physiclaw.core.bridge import BridgeState, CalibrationState
+
+    bridge = BridgeState()
+    bridge.send_text("old")
+    page = PageState(bridge, CalibrationState())
+    read_text = bridge.current_text
+
+    def replace_after_text_read():
+        text = read_text()
+        bridge.send_text("new")
+        bridge.fetch_text()
+        return text
+
+    mocker.patch.object(bridge, "current_text", side_effect=replace_after_text_read)
+
+    state = page.get_state()
+
+    assert state["text"] == "old"
+    assert state["copied"] is False

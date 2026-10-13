@@ -137,6 +137,7 @@ body.mode-bridge #bridge-layer{
   }
   updateSize();
   window.addEventListener('resize', updateSize);
+  window.addEventListener('resize', sendDeviceInfo);
 
   // ════════════════════════════════════════════════════════
   // SVG HELPERS — draw calibration targets (dots, markers, labels) into #canvas
@@ -219,7 +220,7 @@ body.mode-bridge #bridge-layer{
     // 4×/s (the focus checkerboard alone is ~180 nodes). The key derives
     // from the polled payload, so the server stays the single source of
     // truth: any state change still re-renders on the next poll.
-    var calKey = JSON.stringify([data.phase, data.square, data.dot,
+    var calKey = JSON.stringify([W, H, data.phase, data.square, data.dot,
                                  data.grid, data.at, data.nonce]);
     if(calKey === lastCalKey) return;
     lastCalKey = calKey;
@@ -376,11 +377,15 @@ body.mode-bridge #bridge-layer{
     ta.value = txt;
     ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;font-size:16px';
     document.body.appendChild(ta);
-    ta.focus();
-    ta.setSelectionRange(0, ta.value.length);
-    var ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
+    try {
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+      return document.execCommand('copy');
+    } catch(e) {
+      return false;
+    } finally {
+      document.body.removeChild(ta);
+    }
   }
 
   function bridgeFlash(){
@@ -388,23 +393,25 @@ body.mode-bridge #bridge-layer{
     setTimeout(function(){ msgTextEl.style.opacity = '1'; }, 200);
   }
 
-  function notifyBridgeTap(){
+  function notifyBridgeTap(textId){
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/bridge/tapped', true);
-    xhr.send();
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify({text_id: textId}));
   }
 
   // ════════════════════════════════════════════════════════
   // STATE — mirrors server's PageState.get_state() response
   // ════════════════════════════════════════════════════════
   // Updated every 250ms from GET /api/bridge/state. Touch handlers read this.
-  // Bridge mode:    {mode, text, copied}
-  // Calibrate mode: {mode, phase, screen_dimension, grid:{cols,rows},
+  // Bridge mode:    {mode, text, text_id, copied}
+  // Calibrate mode: {mode, phase, phase_id, screen_dimension, grid:{cols,rows},
   //                   square?:{x,y,size}, dot?:{x,y}, at?:{x,y,r},
   //                   nonce?:{colors,x,y,size,cols}}
   var state = {
     mode: 'bridge',
     text: null,
+    text_id: null,
     copied: false,
     phase: 'idle',
     grid: {cols: [0.25, 0.50, 0.75], rows: [0.20, 0.40, 0.50, 0.60, 0.80]},
@@ -430,7 +437,7 @@ body.mode-bridge #bridge-layer{
       flashTouch(t.clientX, t.clientY);
       return;
     }
-    sendTouch({ clientX: t.clientX, clientY: t.clientY });
+    sendTouch({ clientX: t.clientX, clientY: t.clientY, phase_id: state.phase_id });
     flashTouch(t.clientX, t.clientY);
   }, {passive:false});
 
@@ -439,21 +446,28 @@ body.mode-bridge #bridge-layer{
   // in touchstart async callbacks)
   document.body.addEventListener('click', function(){
     if(state.mode !== 'bridge' || state.text === null) return;
-    copyToClipboard(state.text);
-    bridgeFlash();
-    notifyBridgeTap();
+    if(copyToClipboard(state.text)){
+      bridgeFlash();
+      notifyBridgeTap(state.text_id);
+    }
   });
 
   // ════════════════════════════════════════════════════════
   // POLL LOOP — single source of truth from server
   // ════════════════════════════════════════════════════════
   var pollErrors = 0;
+  var polling = false;
 
   function poll(){
+    // A slow response must not arrive after a newer one and restore an
+    // obsolete calibration target or clipboard item.
+    if(polling) return;
+    polling = true;
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '/api/bridge/state', true);
     xhr.timeout = 3000;
     xhr.onload = function(){
+      polling = false;
       if(xhr.status === 200){
         pollErrors = 0;
         msgStatusEl.innerHTML = '● <span id="msg-conn-label">connected</span>';
@@ -483,6 +497,7 @@ body.mode-bridge #bridge-layer{
   }
 
   function onPollError(){
+    polling = false;
     pollErrors++;
     if(pollErrors > 3){
       msgStatusEl.innerHTML = '● <span id="msg-conn-label">disconnected</span>';

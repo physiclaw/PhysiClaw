@@ -6,6 +6,7 @@ and report calibration touch events.
 """
 
 import logging
+import math
 from pathlib import Path
 
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
@@ -92,11 +93,18 @@ async def handle_phone_state(request, phone: PageState):
 async def handle_clipboard_copied(request, bridge: BridgeState):
     """POST /api/bridge/tapped — phone confirms text was copied to clipboard.
 
+    Body: {"text_id": int}, from the poll that supplied the copied text.
+    Stale acknowledgements return 409 without confirming the current text.
+
     Deliberately NOT gated by the phone-IP set (see
     ``BridgeState.upload_ip_allowed``): the trust model for this route
     is the documented one (planes.py) — nothing secret crosses it."""
-    bridge.mark_clipboard_copied()
-    log.info(f"Bridge: clipboard copied — '{bridge.current_text()}'")
+    body = await json_or_none(request)
+    if body is None or type(body.get("text_id")) is not int:
+        return _bad_request("text_id must be an integer from the phone state")
+    if not bridge.mark_clipboard_copied(body["text_id"]):
+        return JSONResponse({"error": "clipboard text changed"}, status_code=409)
+    log.info("Bridge: clipboard copied")
     return JSONResponse({"ok": True})
 
 
@@ -106,13 +114,25 @@ async def handle_screen_dimension(request, cal: CalibrationState):
     if body is None:
         return _bad_request("invalid JSON body")
     try:
+        if any(
+            isinstance(body.get(k), bool)
+            for k in (
+                "screen_width",
+                "screen_height",
+                "viewport_width",
+                "viewport_height",
+            )
+        ):
+            raise ValueError("boolean dimension")
         dim = {
             "width": int(body.get("screen_width", 0)),
             "height": int(body.get("screen_height", 0)),
             "viewport_width": int(body.get("viewport_width", 0)),
             "viewport_height": int(body.get("viewport_height", 0)),
         }
-    except (TypeError, ValueError):
+        if not all(math.isfinite(v) for v in dim.values()):
+            raise ValueError("nonfinite dimension")
+    except (TypeError, ValueError, OverflowError):
         return _bad_request("dimension fields must be numbers")
     if any(v <= 0 for v in dim.values()):
         # A missing key int()s to 0 and a backgrounded tab reports a zero
@@ -121,7 +141,6 @@ async def handle_screen_dimension(request, cal: CalibrationState):
         return _bad_request("dimension fields must all be positive")
     with cal.lock:
         cal.screen_dimension = dim
-    dim = cal.screen_dimension
     log.info(
         f"Bridge device: {dim['width']}×{dim['height']}pt, "
         f"viewport {dim['viewport_width']}×{dim['viewport_height']}pt"
@@ -146,7 +165,8 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
         body is cut off instead of buffered, and must look like PNG/JPEG.
     """
     ip = request.client.host if request.client else None
-    if not bridge.upload_armed():
+    upload_token = bridge.screenshot_upload_token()
+    if upload_token is None:
         log.warning(f"Bridge: screenshot upload rejected — not armed (from {ip})")
         return JSONResponse({"error": "no screenshot expected"}, status_code=403)
     if not bridge.upload_ip_allowed(ip):
@@ -171,7 +191,8 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
     if not data.startswith(_IMAGE_MAGICS):
         log.warning("Bridge: screenshot upload rejected — not PNG/JPEG")
         return JSONResponse({"error": "not a PNG/JPEG image"}, status_code=415)
-    bridge.receive_screenshot(data)
+    if not bridge.receive_screenshot(data, upload_token=upload_token):
+        return JSONResponse({"error": "screenshot request expired"}, status_code=409)
     return JSONResponse({"ok": True, "size": len(data)})
 
 
@@ -251,8 +272,10 @@ async def serve_qr_page(request):
 async def handle_calib_touch(request, cal: CalibrationState):
     """POST /api/bridge/touch — page reports a touch event.
 
-    Body: {"clientX": float, "clientY": float} viewport CSS coords from
-    bridge.html. The viewport shift is measured during pre-cal (which
+    Body: {"clientX": float, "clientY": float, "phase_id": int} from
+    bridge.html. The coordinates use viewport CSS pixels; phase_id identifies
+    the polled visual target. Stale targets/collections return 409. The
+    viewport shift is measured during pre-cal (which
     always runs before any touch-driven step), so we convert directly to
     screenshot 0-1 coords and attach them as x, y.
 
@@ -265,7 +288,8 @@ async def handle_calib_touch(request, cal: CalibrationState):
     single-IP pin this route once dodged, which flip-flopped between
     two open /bridge tabs, is gone, but the exemption stays.)
     """
-    if cal.phase == "idle":
+    touch_token = cal.touch_token()
+    if touch_token is None:
         log.warning("Bridge: calibration touch rejected — no step waiting (idle)")
         return JSONResponse(
             {"error": "no calibration step waiting for touches"}, status_code=409
@@ -273,9 +297,19 @@ async def handle_calib_touch(request, cal: CalibrationState):
     body = await json_or_none(request)
     if body is None:
         return _bad_request("invalid JSON body")
+    # Checked again when the touch is committed: a poll can show an older
+    # target even when the HTTP request itself starts after the phase changed.
+    if type(body.get("phase_id")) is not int:
+        return _bad_request("phase_id must be an integer from the phone state")
     try:
+        if isinstance(body.get("clientX"), bool) or isinstance(
+            body.get("clientY"), bool
+        ):
+            raise ValueError("boolean coordinate")
         cx, cy = float(body["clientX"]), float(body["clientY"])
-    except (KeyError, TypeError, ValueError):
+        if not math.isfinite(cx) or not math.isfinite(cy):
+            raise ValueError("nonfinite coordinate")
+    except (KeyError, TypeError, ValueError, OverflowError):
         return _bad_request("clientX/clientY must be numbers")
     try:
         body["x"], body["y"] = cal.viewport_to_screenshot_pct(cx, cy)
@@ -283,5 +317,8 @@ async def handle_calib_touch(request, cal: CalibrationState):
         # Touch arrived before pre-cal measured the shift — a state
         # conflict, not a malformed request.
         return JSONResponse({"error": str(e)}, status_code=409)
-    cal.report_touch(body)
+    if not math.isfinite(body["x"]) or not math.isfinite(body["y"]):
+        return _bad_request("touch coordinates exceed the screenshot range")
+    if not cal.report_touch(body, touch_token=touch_token, phase_id=body["phase_id"]):
+        return JSONResponse({"error": "calibration step changed"}, status_code=409)
     return JSONResponse({"ok": True})

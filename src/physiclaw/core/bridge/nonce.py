@@ -12,6 +12,7 @@ ICC profile shift can't fool the verifier.
 """
 
 import logging
+import math
 import random
 
 import numpy as np
@@ -49,15 +50,24 @@ def verify_nonce(
 
     Returns (all_matched, match_count).
     """
-    dpr = t.dpr
-    step = int(NONCE_SQUARE_SIZE * dpr)
-    base_x = int((NONCE_CSS_X if css_x is None else css_x) * dpr + t.offset_x)
-    base_y = int(NONCE_CSS_Y * dpr + t.offset_y)
+    if len(expected_bits) != NONCE_COUNT or any(
+        type(bit) is not int or bit not in (0, 1) for bit in expected_bits
+    ):
+        raise ValueError(f"expected_bits must contain {NONCE_COUNT} binary integers")
+    left = NONCE_CSS_X if css_x is None else css_x
 
     matched = 0
     for i, expected in enumerate(expected_bits):
-        cx = base_x + (i % NONCE_GRID_COLS) * step + step // 2
-        cy = base_y + (i // NONCE_GRID_COLS) * step + step // 2
+        # Transform each CSS center before rounding: truncating the cell
+        # width once accumulates an error across fractional-DPR screenshots.
+        cx = math.floor(
+            (left + (i % NONCE_GRID_COLS + 0.5) * NONCE_SQUARE_SIZE) * t.dpr
+            + t.offset_x
+        )
+        cy = math.floor(
+            (NONCE_CSS_Y + (i // NONCE_GRID_COLS + 0.5) * NONCE_SQUARE_SIZE) * t.dpr
+            + t.offset_y
+        )
         if not (0 <= cy < img.shape[0] and 0 <= cx < img.shape[1]):
             log.warning(
                 f"  Nonce square {i}: pixel ({cx}, {cy}) out of bounds "
