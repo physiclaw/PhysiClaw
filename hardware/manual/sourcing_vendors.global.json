@@ -525,22 +525,22 @@
   },
   {
     "part_id": "spiral-wrap",
-    "ref": "¥5",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "Ø4 mm, black (20 m)",
-        "url": "https://detail.tmall.com/item.htm?id=615427949338&skuId=4334995916672"
+        "name": "U Officer",
+        "product": "4mm x 4m",
+        "url": "https://www.aliexpress.us/item/2251832695460059.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø4 mm, black (20 m)",
-        "url": "https://detail.tmall.com/item.htm?id=668814695975&skuId=4986898195854"
+        "name": "NexusHub",
+        "product": "Black 4mm ID 5mm OD",
+        "url": "https://www.aliexpress.us/item/3256810262528489.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø4 mm, black (20 m)",
-        "url": "https://detail.tmall.com/item.htm?id=854808621205&skuId=5656161788144"
+        "name": "Double N",
+        "product": "4mm-Black",
+        "url": "https://www.aliexpress.us/item/3256808097089851.html"
       }
     ]
   },
