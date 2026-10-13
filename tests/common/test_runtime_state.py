@@ -14,6 +14,7 @@ import json
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -267,4 +268,157 @@ def test_request_shutdown_without_a_live_server_is_false(mocker) -> None:
     kill = mocker.patch.object(runtime_state.os, "kill")
 
     assert runtime_state.request_shutdown() is False
+    kill.assert_not_called()
+
+
+@pytest.mark.parametrize("state", [None, [], [1], "server", 42, True])
+def test_regression_runtime_state_non_object_is_ignored(state, mocker) -> None:
+    path = paths.runtime_state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    live = runtime_state.read_live()
+    runtime_state.clear()
+
+    assert live is None
+    assert path.exists()
+    kill.assert_not_called()
+
+
+@pytest.mark.parametrize("pid", [0, -1, -4242, True, False, 2**32, 2**100])
+def test_regression_shutdown_rejects_non_process_pids(pid, mocker) -> None:
+    path = paths.runtime_state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"pid": pid, "host": "localhost", "port": 8048}))
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    sent = runtime_state.request_shutdown()
+
+    assert sent is False
+    kill.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("host", None),
+        ("host", []),
+        ("host", ""),
+        ("port", None),
+        ("port", "8048"),
+        ("port", True),
+        ("port", 0),
+        ("port", 65536),
+    ],
+)
+def test_read_live_rejects_malformed_server_address(field, value, mocker) -> None:
+    state = {"pid": os.getpid(), "host": "localhost", "port": 8048, field: value}
+    path = paths.runtime_state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    live = runtime_state.read_live()
+
+    assert live is None
+    kill.assert_not_called()
+
+
+def test_read_live_treats_os_pid_overflow_as_invalid(mocker) -> None:
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="linux"))
+    mocker.patch.object(runtime_state.os, "kill", side_effect=OverflowError)
+
+    live = runtime_state.read_live()
+
+    assert live is None
+
+
+def test_clear_tolerates_unlink_permission_failure(mocker) -> None:
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(Path, "unlink", side_effect=PermissionError)
+
+    runtime_state.clear()
+
+    assert paths.runtime_state_file().exists()
+
+
+@pytest.mark.parametrize("payload", [b"\xff", b'{"pid":'])
+def test_read_live_ignores_damaged_state_bytes(payload, mocker) -> None:
+    path = paths.runtime_state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    live = runtime_state.read_live()
+
+    assert live is None
+    kill.assert_not_called()
+
+
+def test_request_shutdown_failed_signal_returns_false(mocker) -> None:
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="linux"))
+    mocker.patch.object(
+        runtime_state.os, "kill", side_effect=[None, ProcessLookupError]
+    )
+
+    sent = runtime_state.request_shutdown()
+
+    assert sent is False
+
+
+def test_read_live_windows_queries_process_without_signaling(mocker) -> None:
+    import ctypes
+
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    kernel = mocker.Mock()
+    kernel.OpenProcess.return_value = 1234
+    mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    live = runtime_state.read_live()
+
+    assert live is not None and live["pid"] == os.getpid()
+    kernel.OpenProcess.assert_called_once_with(0x1000, False, os.getpid())
+    kernel.CloseHandle.assert_called_once_with(1234)
+    kill.assert_not_called()
+
+
+@pytest.mark.parametrize("error,expected", [(5, True), (87, False)])
+def test_read_live_windows_distinguishes_access_denied_from_missing(
+    error, expected, mocker
+) -> None:
+    import ctypes
+
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    kernel = mocker.Mock()
+    kernel.OpenProcess.return_value = 0
+    mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
+    mocker.patch.object(ctypes, "get_last_error", return_value=error, create=True)
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    live = runtime_state.read_live()
+
+    assert (live is not None) is expected
+    kernel.CloseHandle.assert_not_called()
+    kill.assert_not_called()
+
+
+def test_request_shutdown_windows_does_not_terminate_process(mocker) -> None:
+    import ctypes
+
+    runtime_state.write("localhost", 8048)
+    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    kernel = mocker.Mock()
+    kernel.OpenProcess.return_value = 1234
+    mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
+    kill = mocker.patch.object(runtime_state.os, "kill")
+
+    sent = runtime_state.request_shutdown()
+
+    assert sent is False
     kill.assert_not_called()

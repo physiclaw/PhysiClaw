@@ -33,9 +33,9 @@ STATUS_PATH = "/api/status"
 START_HINT = "Start it first: physiclaw mcp"
 
 
-def ready_from_status(payload: dict) -> bool:
-    """Read the ``ready`` flag out of an ``/api/status`` JSON body."""
-    return bool(payload.get("ready"))
+def ready_from_status(payload: object) -> bool:
+    """Ready only when an ``/api/status`` body explicitly says ``true``."""
+    return isinstance(payload, dict) and payload.get("ready") is True
 
 
 async def check_ready(client: httpx.AsyncClient) -> bool:

@@ -26,6 +26,7 @@ Accepted equivalent mutants (cannot be killed by behavior tests):
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 
@@ -48,6 +49,41 @@ from physiclaw.provider.wire import (
     tool_to_wire,
     user_content_to_openai,
 )
+
+
+@pytest.mark.parametrize(
+    "extension,mime", [(".jpg", "image/jpeg"), (".png", "image/png")]
+)
+def test_regression_mcp_image_codec_failure_preserves_original_mime(
+    extension, mime, mocker, monkeypatch
+) -> None:
+    import cv2
+    import numpy as np
+
+    from physiclaw.common import config
+
+    _, encoded = cv2.imencode(extension, np.full((20, 20, 3), 128, dtype=np.uint8))
+    data = base64.b64encode(encoded).decode()
+    monkeypatch.setattr(config.CONFIG.compact, "max_image_edge_px", 10)
+    mocker.patch.object(cv2, "resize", side_effect=cv2.error("resize failed"))
+
+    out = mcp_blocks_to_content_blocks(
+        [{"type": "image", "data": data, "mime_type": mime}]
+    )
+
+    assert out == [ImageBlock(media_type=mime, data_b64=data)]
+
+
+def test_mcp_image_soft_scale_failure_defaults_missing_mime_to_jpeg(mocker) -> None:
+    mocker.patch(
+        "physiclaw.common.image.scale_image_bytes",
+        return_value=(b"hi", "application/octet-stream"),
+    )
+
+    out = mcp_blocks_to_content_blocks([{"type": "image", "data": "aGk="}])
+
+    assert out == [ImageBlock(media_type="image/jpeg", data_b64="aGk=")]
+
 
 # ---------- tool_to_wire ----------
 

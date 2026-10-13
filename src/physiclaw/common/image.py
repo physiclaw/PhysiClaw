@@ -35,21 +35,25 @@ def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
 
     max_edge = config.CONFIG.compact.max_image_edge_px
     quality = config.CONFIG.compact.jpeg_quality
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        log.warning("scale_image_bytes: decode failed on %d bytes", len(raw))
+    try:
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            log.warning("scale_image_bytes: decode failed on %d bytes", len(raw))
+            return raw, "application/octet-stream"
+        h, w = img.shape[:2]
+        long_edge = max(h, w)
+        if long_edge <= max_edge and raw.startswith(_JPEG_MAGIC):
+            return raw, "image/jpeg"
+        if long_edge > max_edge:
+            scale = max_edge / long_edge
+            new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+            img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        if not ok:
+            log.warning("scale_image_bytes: encode failed")
+            return raw, "application/octet-stream"
+        return buf.tobytes(), "image/jpeg"
+    except cv2.error:
+        log.warning("scale_image_bytes: OpenCV could not process image", exc_info=True)
         return raw, "application/octet-stream"
-    h, w = img.shape[:2]
-    long_edge = max(h, w)
-    if long_edge <= max_edge and raw.startswith(_JPEG_MAGIC):
-        return raw, "image/jpeg"
-    if long_edge > max_edge:
-        scale = max_edge / long_edge
-        new_size = (int(round(w * scale)), int(round(h * scale)))
-        img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
-    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-    if not ok:
-        log.warning("scale_image_bytes: encode failed")
-        return raw, "application/octet-stream"
-    return buf.tobytes(), "image/jpeg"

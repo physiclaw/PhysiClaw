@@ -180,6 +180,10 @@ def mcp_blocks_to_content_blocks(blocks: list[dict]) -> str | list[ContentBlock]
             try:
                 raw = base64.b64decode(b["data"])
                 scaled, mime = image.scale_image_bytes(raw)
+                if mime == "application/octet-stream":
+                    # The scaler kept the original on a codec failure;
+                    # retain MCP's image type for the provider envelope.
+                    mime = b.get("mime_type") or "image/jpeg"
                 # Steady state returns `raw` itself (byte-identical
                 # pass-through) — the b64 we already hold is the answer.
                 new_b64 = (

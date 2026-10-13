@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -52,3 +53,25 @@ def test_check_ready_async_reads_the_flag() -> None:
             return await ready.check_ready(client)
 
     assert asyncio.run(_probe()) is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        "ready",
+        {},
+        {"ready": "false"},
+        {"ready": "true"},
+        {"ready": 1},
+        {"ready": [True]},
+    ],
+)
+@respx.mock
+def test_regression_ready_requires_explicit_boolean_true(payload) -> None:
+    respx.get(f"{BASE}/api/status").respond(content=json.dumps(payload))
+
+    is_ready = ready.check_ready_once(BASE)
+
+    assert is_ready is False

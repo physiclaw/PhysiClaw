@@ -44,10 +44,10 @@ def validate_bbox(bbox: list[float]) -> list[float]:
     """
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         raise ValueError(f"bbox: must be [left, top, right, bottom]; got {bbox!r}")
-    if not all(isinstance(v, (int, float)) for v in bbox):
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in bbox):
         raise ValueError(f"bbox: each coord must be a number; got {bbox!r}")
     left, top, right, bottom = bbox
-    if any(v < 0 or v > 1 for v in bbox):
+    if any(not 0 <= v <= 1 for v in bbox):
         raise ValueError(
             f"bbox: each coord must be in [0, 1]; got [{left}, {top}, {right}, {bottom}]"
         )
@@ -67,10 +67,7 @@ def format_bbox(bbox) -> str:
 
 def parse_box(value) -> Bbox:
     """A declared `[left, top, right, bottom]` → the canonical tuple.
-    `validate_bbox` plus the one check a YAML author can trip that a
-    tool call cannot: a bool is not a coordinate. Raises ValueError."""
-    if isinstance(value, (list, tuple)) and any(isinstance(v, bool) for v in value):
-        raise ValueError(f"bbox: each coord must be a number; got {value!r}")
+    Uses the same validation as tool arguments. Raises ValueError."""
     left, top, right, bottom = (float(v) for v in validate_bbox(value))
     return (left, top, right, bottom)
 

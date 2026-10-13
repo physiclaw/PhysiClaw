@@ -67,29 +67,35 @@ def clear() -> None:
         state = json.loads(read_text(p))
     except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
         return
-    if state.get("pid") != os.getpid():
+    if not isinstance(state, dict) or state.get("pid") != os.getpid():
         return
     try:
         p.unlink()
-    except FileNotFoundError:
+    except OSError:
         pass
 
 
 def read_live() -> dict | None:
     """Return ``{pid, host, port, started_at}`` if a live server is recorded.
 
-    Returns ``None`` for: missing file, malformed JSON, or stale pid.
+    Returns ``None`` for missing/malformed state or a stale pid.
     Doesn't delete stale files — the next ``server`` start overwrites them.
     """
     p = paths.runtime_state_file()
-    if not p.exists():
-        return None
     try:
         state = json.loads(read_text(p))
     except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
         return None
-    pid = state.get("pid")
-    if not isinstance(pid, int) or not _pid_alive(pid):
+    if not isinstance(state, dict):
+        return None
+    pid, host, port = state.get("pid"), state.get("host"), state.get("port")
+    # Zero/negative pids signal process groups on POSIX. Windows accepts
+    # a DWORD, so larger integers could wrap to an unrelated process.
+    if type(pid) is not int or not 0 < pid <= 0xFFFFFFFF:
+        return None
+    if not isinstance(host, str) or not host or type(port) is not int:
+        return None
+    if not 1 <= port <= 65535 or not _pid_alive(pid):
         return None
     return state
 
@@ -144,6 +150,6 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         # Exists but owned by another user — still alive
         return True
-    except OSError:
+    except (OSError, OverflowError):
         return False
     return True

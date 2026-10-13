@@ -65,3 +65,51 @@ def test_scale_image_bytes_png_within_cap_reencoded_to_jpeg(
 
     assert mime == "image/jpeg"
     assert out_bytes.startswith(b"\xff\xd8\xff")
+
+
+@pytest.mark.parametrize("shape", [(1, 5000, 3), (5000, 1, 3)])
+def test_regression_scale_image_keeps_thin_dimension_nonzero(
+    shape, monkeypatch
+) -> None:
+    monkeypatch.setattr(config.CONFIG.compact, "max_image_edge_px", 100)
+    raw = _encode_jpg(np.full(shape, 128, dtype=np.uint8))
+
+    out, mime = image.scale_image_bytes(raw)
+
+    decoded = cv2.imdecode(np.frombuffer(out, np.uint8), cv2.IMREAD_COLOR)
+    assert sorted(decoded.shape[:2]) == [1, 100]
+    assert mime == "image/jpeg"
+
+
+def test_regression_scale_image_empty_bytes_return_unchanged() -> None:
+    raw = b""
+
+    out, mime = image.scale_image_bytes(raw)
+
+    assert out is raw
+    assert mime == "application/octet-stream"
+
+
+@pytest.mark.parametrize("operation", ["imdecode", "resize", "imencode"])
+def test_scale_image_opencv_failure_returns_original(
+    operation, monkeypatch, mocker
+) -> None:
+    monkeypatch.setattr(config.CONFIG.compact, "max_image_edge_px", 10)
+    raw = _encode_jpg(np.full((20, 20, 3), 128, dtype=np.uint8))
+    mocker.patch.object(cv2, operation, side_effect=cv2.error("codec failed"))
+
+    out, mime = image.scale_image_bytes(raw)
+
+    assert out is raw
+    assert mime == "application/octet-stream"
+
+
+def test_scale_image_unsuccessful_encode_returns_original(monkeypatch, mocker) -> None:
+    monkeypatch.setattr(config.CONFIG.compact, "max_image_edge_px", 10)
+    raw = _encode_jpg(np.full((20, 20, 3), 128, dtype=np.uint8))
+    mocker.patch.object(cv2, "imencode", return_value=(False, None))
+
+    out, mime = image.scale_image_bytes(raw)
+
+    assert out is raw
+    assert mime == "application/octet-stream"

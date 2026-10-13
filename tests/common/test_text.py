@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from physiclaw.common.text import append_text, read_text, write_text
+import pytest
+
+from physiclaw.common.text import append_text, iter_jsonl, read_text, write_text
 
 
 def test_write_then_read_roundtrips_utf8(tmp_path: Path) -> None:
@@ -31,3 +33,33 @@ def test_write_text_pins_lf_newlines(tmp_path: Path) -> None:
     raw = path.read_bytes()
     assert b"\r\n" not in raw  # never CRLF, even on Windows
     assert raw == b"line1\nline2\n"
+
+
+@pytest.mark.parametrize("needle", [None, "keep"])
+def test_regression_iter_jsonl_recovers_after_invalid_utf8(tmp_path, needle) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_bytes(
+        b'{"keep": 1}\n{"keep": "\xff"}\n{"keep": 2}\n'
+        b'null\n[]\n42\n{"torn":\n{"keep": 3}\n'
+    )
+
+    records = list(iter_jsonl(path, needle))
+
+    assert records == [{"keep": 1}, {"keep": 2}, {"keep": 3}]
+
+
+def test_iter_jsonl_filters_before_parsing(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text('{"kind": "other"}\n{"kind": "保留"}\n', encoding="utf-8")
+
+    records = list(iter_jsonl(path, "保留"))
+
+    assert records == [{"kind": "保留"}]
+
+
+def test_iter_jsonl_missing_file_yields_nothing(tmp_path) -> None:
+    path = tmp_path / "missing.jsonl"
+
+    records = list(iter_jsonl(path))
+
+    assert records == []

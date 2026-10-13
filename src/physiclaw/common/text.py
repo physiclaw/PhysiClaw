@@ -35,17 +35,20 @@ def json_span(text: str, opener: str, closer: str) -> Any | None:
 
 
 def iter_jsonl(path: Path, needle: str | None = None) -> Iterator[dict[str, Any]]:
-    """The objects of a JSONL file, streamed; a torn line is skipped, a
+    """The objects of a JSONL file, streamed; a malformed line is skipped, a
     missing file yields nothing. `needle` skips lines that cannot be
     wanted before they are parsed (a substring the wanted records
     carry) — the reader still checks the record."""
     if not path.exists():
         return
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if needle is not None and needle not in line:
-                continue
+    # Decode per line: a torn UTF-8 sequence must not discard the rest
+    # of the stream (TextIOWrapper can fail while decoding a whole chunk).
+    with open(path, "rb") as f:
+        for raw in f:
             try:
+                line = raw.decode("utf-8")
+                if needle is not None and needle not in line:
+                    continue
                 rec = json.loads(line)
             except ValueError:
                 continue

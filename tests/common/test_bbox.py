@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
-from physiclaw.common.bbox import center_of, inside, near, validate_bbox
+from physiclaw.common.bbox import center_of, inside, near, parse_box, validate_bbox
 
 
 @pytest.mark.parametrize(
@@ -70,10 +72,13 @@ def test_core_reexport_is_the_same_object() -> None:
     assert util.validate_bbox is validate_bbox
 
 
-def test_engine_validator_wraps_the_same_message() -> None:
+@pytest.mark.parametrize(
+    "bad",
+    [[0.9, 0.2, 0.1, 1.0], [float("nan"), 0.2, 0.9, 1.0], [False, 0.2, 0.9, 1.0]],
+)
+def test_engine_validator_wraps_the_same_message(bad) -> None:
     from physiclaw.agent.engine.validator import ValidationError, validate_arguments
 
-    bad = [0.9, 0.2, 0.1, 1.0]
     with pytest.raises(ValueError) as common_err:
         validate_bbox(bad)
     with pytest.raises(ValidationError) as engine_err:
@@ -116,3 +121,34 @@ def test_inside_expands_by_margin() -> None:
     box = [0.2, 0.2, 0.4, 0.4]
     assert inside((0.4 + 0.02, 0.3), box, margin=0.02)
     assert not inside((0.4 + 0.02 * 1.5, 0.3), box, margin=0.02)
+
+
+@pytest.mark.parametrize("reader", [validate_bbox, parse_box])
+@pytest.mark.parametrize("index", [0, 1, 2, 3])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_regression_bbox_rejects_nonfinite_coordinates(reader, index, value) -> None:
+    box = [0.1, 0.2, 0.8, 0.9]
+    box[index] = value
+
+    with pytest.raises(ValueError, match=r"each coord must be in \[0, 1\]"):
+        reader(box)
+
+
+@pytest.mark.parametrize("reader", [validate_bbox, parse_box])
+@pytest.mark.parametrize("box", [[False, 0.2, 0.8, 0.9], [0.1, 0.2, True, 0.9]])
+def test_regression_bbox_rejects_boolean_coordinates(reader, box) -> None:
+    with pytest.raises(ValueError, match="each coord must be a number"):
+        reader(box)
+
+
+@given(
+    st.lists(st.floats(min_value=0, max_value=1), min_size=4, max_size=4).filter(
+        lambda box: box[0] < box[2] and box[1] < box[3]
+    )
+)
+def test_valid_bbox_values_survive_validation_and_parsing(box) -> None:
+    validated = validate_bbox(box)
+    parsed = parse_box(box)
+
+    assert validated is box
+    assert parsed == tuple(box)
