@@ -1,7 +1,7 @@
 """Tests for hardware/assembly/cache.py — keys, layers, manifest integrity.
 
 All directory constants are re-pointed at a per-test fake repo, so the
-cache's hashing (which walks the procedure's ``hardware.*`` import closure
+cache's hashing (which walks the procedure's project import closure
 under ``REPO_ROOT``) and its store/restore run against tmp files only.
 """
 
@@ -74,6 +74,21 @@ def test_source_key_changes_when_imported_dependency_changes(repo):
     before = cache.source_key(STEM)
 
     repo.helper.write_text("SIZE = 2\n")
+
+    assert cache.source_key(STEM) != before
+
+
+def test_source_key_changes_when_shared_arm_travel_changes(repo, tmp_path):
+    shared = tmp_path / "src" / "physiclaw" / "core" / "arm_geometry.py"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("X_TRAVEL = 110\nY_TRAVEL = 200\n")
+    repo.helper.write_text(
+        "from __future__ import annotations\n"
+        "from src.physiclaw.core.arm_geometry import X_TRAVEL\n"
+    )
+    before = cache.source_key(STEM)
+
+    shared.write_text("X_TRAVEL = 120\nY_TRAVEL = 200\n")
 
     assert cache.source_key(STEM) != before
 

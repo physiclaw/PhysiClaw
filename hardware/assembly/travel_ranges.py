@@ -10,15 +10,15 @@ gantry travel). Everything else is DERIVED from them:
     phone-bed beam    = frame width + two 2040 widths
 
 So to change how far the machine reaches, edit ``X_TRAVEL`` / ``Y_TRAVEL``
-and nothing else — the rail, frame (length and width), beam, and phone-bed
-lengths follow, and the belt path, motor / idler / pulley-mount positions,
+in ``physiclaw.core.arm_geometry`` — the rail, frame (length and width), beam,
+and phone-bed lengths follow, and the belt path, motor / idler / pulley-mount positions,
 and T-nut seats all derive downstream and re-adapt on rebuild. (Note: X
 travel widens the frame and phone bed; Y travel lengthens the frame.)
 """
 
-# ── BASE knobs — the only values you normally change ─────────────────────────
-X_TRAVEL = 110  # mm — toolhead carriage travel along the X crossbeam
-Y_TRAVEL = 200  # mm — gantry travel along the long extrusions
+# CAD runs from the source tree, including without an installed runtime.
+# Import this checkout's shared constants without loading device dependencies.
+from src.physiclaw.core.arm_geometry import X_TRAVEL, Y_TRAVEL
 
 # ── Shared fixed allowances ──────────────────────────────────────────────────
 CARRIAGE_LENGTH = 40  # mm — MGN9H slider footprint a rail loses to travel (≈ 39.9)

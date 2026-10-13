@@ -3,8 +3,8 @@
 Three output kinds, two invalidation layers (their "subtly different logic"):
 
   * ``.step`` (geometry) and the raw ``.svg`` (render) share one **source
-    key** — a content hash of the procedure's transitive ``hardware.*``
-    import closure (its source + every part / predecessor it pulls in) plus
+    key** — a content hash of the procedure's transitive project
+    import closure (hardware and shared ``src.physiclaw`` sources) plus
     the build123d version. The cumulative / delta BOM ``.md`` rides along:
     it is a pure function of the same parts. Change a part → source key
     changes → rebuild geometry, re-render, re-aggregate BOM.
@@ -68,19 +68,23 @@ _PATCH_KEY = "patch.key"
 
 
 def _module_to_path(mod: str) -> Path | None:
-    """``hardware.a.b.c`` → ``<repo>/hardware/a/b/c.py`` (None if not a file)."""
-    if not (mod == "hardware" or mod.startswith("hardware.")):
+    """Resolve hardware and shared runtime source modules within this checkout."""
+    if not (
+        mod == "hardware"
+        or mod.startswith("hardware.")
+        or mod.startswith("src.physiclaw.")
+    ):
         return None
     p = REPO_ROOT / Path(*mod.split(".")).with_suffix(".py")
     return p if p.is_file() else None
 
 
 def _imports(path: Path) -> set[str]:
-    """Absolute ``hardware.*`` modules imported by ``path`` (AST, no exec)."""
+    """Absolute imports, filtered to project files by ``_module_to_path``."""
     mods: set[str] = set()
     for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
         if isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module and node.module.startswith("hardware"):
+            if node.level == 0 and node.module:
                 mods.add(node.module)
                 # `from hardware.parts import custom` names the SUBMODULE
                 # hardware/parts/custom.py — record the package-qualified
@@ -88,13 +92,13 @@ def _imports(path: Path) -> set[str]:
                 # resolve to no file in _module_to_path and drop out.
                 mods.update(f"{node.module}.{a.name}" for a in node.names)
         elif isinstance(node, ast.Import):
-            mods.update(a.name for a in node.names if a.name.startswith("hardware"))
+            mods.update(a.name for a in node.names)
     return mods
 
 
 @functools.cache
 def _closure(path: Path) -> frozenset[Path]:
-    """All hardware source files reachable from ``path`` through imports."""
+    """All project source files reachable from ``path`` through imports."""
     seen: set[Path] = set()
     stack = [path]
     while stack:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -127,7 +128,7 @@ def _viewport_shift() -> ViewportShift:
 @pytest.mark.asyncio
 async def test_handle_measure_viewport_shift_happy_path(mocker) -> None:
     rig = _rig_mock()
-    rig.calibration = SimpleNamespace()
+    rig.calibration = SimpleNamespace(viewport_shift=None)
     calib = MagicMock()
     bridge = MagicMock()
     phone = MagicMock()
@@ -879,6 +880,8 @@ def _real_ready_rig(mocker):
     calib = CalibrationState()
     calib.viewport_shift = ViewportShift(0, 0, 1, 100, 100)
     calib.screen_dimension = {"viewport_width": 100, "viewport_height": 100}
+    rig.calibration.viewport_shift = calib.viewport_shift
+    rig.calibration.screen_dimension = calib.screen_dimension
     return rig, calib
 
 
@@ -976,3 +979,358 @@ async def test_regression_accurate_fallback_taps_do_not_save_calibration(
     assert result["passed"] == 0
     assert [r["error"] for r in result["results"]] == [0] * 5
     save.assert_not_called()
+
+
+def _active_setup(mocker):
+    rig, cal = _real_ready_rig(mocker)
+    bridge = BridgeState()
+    phone = PageState(bridge, cal)
+    phone.set_mode("calibrate", phase="grid")
+    cal.report_touch({"x": 0.5, "y": 0.5})
+    rig.assistive_touch.compute_at_screen_pos(cal.viewport_shift)
+    return rig, cal, bridge, phone
+
+
+async def _invoke_setup(route, rig, cal, bridge, phone, body=None):
+    request = _fake_request(body)
+    calls = {
+        "arm": (handle_calibrate_arm, (request, rig, cal, phone)),
+        "viewport": (handle_measure_viewport_shift, (request, rig, cal, bridge, phone)),
+        "show": (handle_show_assistive_touch, (request, rig, cal, phone)),
+        "camera": (handle_compute_camera_mapping, (request, rig, cal)),
+        "validate": (handle_validate_calibration, (request, rig, cal, phone)),
+        "trace": (handle_trace_edge, (request, rig, phone)),
+        "verify": (handle_verify_assistive_touch, (request, rig, cal, bridge, phone)),
+    }
+    function, args = calls[route]
+    return await function(*args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["arm", "viewport", "show"])
+async def test_regression_busy_setup_preserves_active_page_and_touches(mocker, route):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    previous = rig.calibration.pct_to_grbl
+    rig.acquire()
+
+    try:
+        response = await _invoke_setup(route, rig, cal, bridge, phone)
+    finally:
+        rig.release()
+
+    assert response.status_code == 500
+    assert "busy" in _read_json(response)["message"]
+    assert cal.phase == "grid"
+    assert cal.touches == [{"x": 0.5, "y": 0.5}]
+    assert rig.calibration.pct_to_grbl is previous
+    assert rig.ready is True
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.set_origin.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route, body",
+    [
+        ("arm", {}),
+        ("arm", {"from_park": True}),
+        ("camera", {}),
+        ("validate", {}),
+        ("verify", {}),
+        ("show", {}),
+    ],
+)
+async def test_regression_missing_viewport_never_moves_or_changes_page(
+    mocker, route, body
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    previous = rig.calibration.pct_to_grbl
+    cal.viewport_shift = None
+
+    response = await _invoke_setup(route, rig, cal, bridge, phone, body)
+
+    assert response.status_code == 409
+    assert "Viewport shift" in _read_json(response)["message"]
+    assert cal.phase == "grid"
+    assert rig.calibration.pct_to_grbl is previous
+    assert rig.ready is True
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.set_origin.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["arm", "viewport", "camera", "validate"])
+async def test_missing_screen_dimensions_take_precedence_over_busy_setup(mocker, route):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    cal.screen_dimension = None
+    rig.acquire()
+
+    try:
+        response = await _invoke_setup(route, rig, cal, bridge, phone)
+    finally:
+        rig.release()
+
+    assert response.status_code == 409
+    assert "Screen dimension" in _read_json(response)["message"]
+    assert cal.phase == "grid"
+    assert cal.touches == [{"x": 0.5, "y": 0.5}]
+    assert rig.ready is True
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.set_origin.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["validate", "trace", "verify"])
+async def test_regression_verification_refuses_reconnected_unpinned_arm(mocker, route):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    rig.connect_arm()
+
+    response = await _invoke_setup(route, rig, cal, bridge, phone)
+
+    assert response.status_code == 409
+    assert "not pinned" in _read_json(response)["message"]
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.tap.assert_not_called()
+    rig.arm.solenoid.tap.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trace_refuses_arm_missing_after_failed_reconnection(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    arm = rig.arm
+    arm.setup.side_effect = RuntimeError("serial setup failed")
+    with pytest.raises(RuntimeError, match="serial setup failed"):
+        rig.connect_arm()
+
+    response = await _invoke_setup("trace", rig, cal, bridge, phone)
+
+    assert response.status_code == 409
+    assert "Arm not connected" in _read_json(response)["message"]
+    assert cal.phase == "grid"
+    arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["validate", "trace", "verify"])
+async def test_verification_rechecks_origin_after_acquiring_lock(mocker, route):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    locked = rig.locked
+
+    @contextmanager
+    def reconnect_before_acquire():
+        rig.connect_arm()
+        with locked():
+            yield
+
+    mocker.patch.object(rig, "locked", side_effect=reconnect_before_acquire)
+
+    response = await _invoke_setup(route, rig, cal, bridge, phone)
+
+    assert response.status_code == 409
+    assert "not pinned" in _read_json(response)["message"]
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.solenoid.tap.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_regression_manual_probe_starts_with_new_origin_and_no_stale_mapping(
+    mocker,
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    events = []
+
+    def reset_origin():
+        rig.assert_locked()
+        assert rig.calibration.pct_to_grbl is None
+        assert rig.origin_pinned is False
+        assert rig.ready is False
+        events.append("origin")
+
+    def probe(*_):
+        assert events == ["origin"]
+        events.append("probe")
+        return np.eye(2, 3), 0.0, []
+
+    rig.arm.set_origin.side_effect = reset_origin
+    mocker.patch.object(handler, "calibrate_arm", side_effect=probe)
+
+    response = await _invoke_setup("arm", rig, cal, bridge, phone)
+
+    assert response.status_code == 200
+    assert events == ["origin", "probe"]
+    assert rig.origin_pinned is True
+    assert rig.ready is False
+    rig.arm.rapid_to.assert_called_once_with(-0.1, -0.05)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["origin", "probe"])
+async def test_failed_manual_calibration_cannot_park_with_old_coordinates(
+    mocker, stage
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    failures = {
+        "origin": (rig.arm, "set_origin"),
+        "probe": (handler, "calibrate_arm"),
+    }
+    target, method = failures[stage]
+    mocker.patch.object(target, method, side_effect=RuntimeError("device failed"))
+
+    response = await _invoke_setup("arm", rig, cal, bridge, phone)
+
+    assert response.status_code == 500
+    assert rig.calibration.pct_to_grbl is None
+    assert rig.origin_pinned is False
+    assert rig.ready is False
+    rig.arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_failed_borrow_parks_before_discarding_provisional_coordinates(
+    mocker,
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    prior = handler.Calibration(pct_to_grbl=rig.calibration.pct_to_grbl.copy())
+    rig.uninstall_arm_calibration()
+    mocker.patch.object(handler.Calibration, "load", return_value=prior)
+    mocker.patch.object(
+        handler, "calibrate_arm", side_effect=RuntimeError("probe failed")
+    )
+
+    response = await _invoke_setup("arm", rig, cal, bridge, phone, {"from_park": True})
+
+    assert response.status_code == 500
+    assert rig.arm.rapid_to.call_args_list == [
+        mocker.call(0.5, 0.5),
+        mocker.call(-0.1, -0.05),
+    ]
+    assert rig.calibration.pct_to_grbl is None
+    assert rig.origin_pinned is False
+    rig.arm.set_origin.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_changed_viewport_retires_all_dependent_geometry_after_parking(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    measured = dataclasses.replace(cal.viewport_shift, offset_y=20)
+    mocker.patch.object(handler, "measure_viewport_shift", return_value=measured)
+
+    response = await _invoke_setup("viewport", rig, cal, bridge, phone)
+
+    assert response.status_code == 200
+    assert cal.viewport_shift is measured
+    assert rig.calibration.viewport_shift is measured
+    assert rig.calibration.pct_to_grbl is None
+    assert rig.calibration.pct_to_cam is None
+    assert rig.calibration.cam_size is None
+    assert rig.calibration.cam_focus is None
+    assert rig.assistive_touch.at_screen is None
+    assert rig.assistive_touch.at_radius_screen is None
+    assert rig.origin_pinned is False
+    assert rig.ready is False
+    rig.arm.rapid_to.assert_called_once_with(-0.1, -0.05)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_viewport_preserves_existing_calibration(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    previous_arm = rig.calibration.pct_to_grbl
+    previous_camera = rig.calibration.pct_to_cam
+    previous_at = rig.assistive_touch.at_screen
+    mocker.patch.object(
+        handler, "measure_viewport_shift", return_value=cal.viewport_shift
+    )
+
+    response = await _invoke_setup("viewport", rig, cal, bridge, phone)
+
+    assert response.status_code == 200
+    assert rig.calibration.pct_to_grbl is previous_arm
+    assert rig.calibration.pct_to_cam is previous_camera
+    assert rig.assistive_touch.at_screen is previous_at
+    assert rig.origin_pinned is True
+    assert rig.ready is True
+    rig.arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_viewport_measurement_failure_preserves_prior_state_without_motion(
+    mocker,
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    previous = cal.viewport_shift
+    previous_arm = rig.calibration.pct_to_grbl
+    mocker.patch.object(
+        handler, "measure_viewport_shift", side_effect=RuntimeError("no upload")
+    )
+
+    response = await _invoke_setup("viewport", rig, cal, bridge, phone)
+
+    assert response.status_code == 500
+    assert cal.viewport_shift is previous
+    assert rig.calibration.viewport_shift is previous
+    assert rig.calibration.pct_to_grbl is previous_arm
+    assert rig.origin_pinned is True
+    assert rig.ready is True
+    rig.arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_viewport_park_failure_still_invalidates_stale_geometry(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    measured = dataclasses.replace(cal.viewport_shift, offset_y=20)
+    mocker.patch.object(handler, "measure_viewport_shift", return_value=measured)
+    rig.arm.rapid_to.side_effect = RuntimeError("park failed")
+
+    response = await _invoke_setup("viewport", rig, cal, bridge, phone)
+
+    assert response.status_code == 500
+    assert cal.viewport_shift is measured
+    assert rig.calibration.viewport_shift is measured
+    assert rig.transforms is None
+    assert rig.origin_pinned is False
+    assert rig.ready is False
+    assert rig.assistive_touch.at_screen is None
+    rig.arm.rapid_to.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_show_assistive_touch_failure_does_not_move_arm(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    mocker.patch.object(phone, "set_mode", side_effect=RuntimeError("page failed"))
+
+    response = await _invoke_setup("show", rig, cal, bridge, phone)
+
+    assert response.status_code == 500
+    rig.arm.rapid_to.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_page_failure_cannot_park_using_hand_positioned_stale_frame(
+    mocker,
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    mocker.patch.object(phone, "set_mode", side_effect=RuntimeError("page failed"))
+
+    response = await _invoke_setup("arm", rig, cal, bridge, phone)
+
+    assert response.status_code == 500
+    assert rig.calibration.pct_to_grbl is None
+    assert rig.origin_pinned is False
+    assert rig.ready is False
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.set_origin.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_auto_calibration_preserves_current_page_and_touches(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    rig.uninstall_arm_calibration()
+    mocker.patch.object(handler.Calibration, "load", return_value=None)
+
+    response = await _invoke_setup("arm", rig, cal, bridge, phone, {"from_park": True})
+
+    assert response.status_code == 500
+    assert "previous calibration" in _read_json(response)["message"]
+    assert cal.phase == "grid"
+    assert cal.touches == [{"x": 0.5, "y": 0.5}]
+    rig.arm.rapid_to.assert_not_called()

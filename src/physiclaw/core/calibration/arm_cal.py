@@ -16,6 +16,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.core.arm_geometry import X_TRAVEL, Y_TRAVEL
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
     _tap_and_read,
@@ -23,13 +24,39 @@ from physiclaw.core.calibration._common import (
     require_screen_dimension,
     require_viewport_shift,
 )
-from physiclaw.core.geometry import apply_affine
+from physiclaw.core.calibration.transforms import PARK_PCT
+from physiclaw.core.geometry import apply_affine, validate_affine
 from physiclaw.core.hardware.arm import StylusArm
 
 log = logging.getLogger(__name__)
 
 PROBE_D = 10.0  # mm offset for the probe triangle
 TILT_ALIGNED_THRESHOLD = 0.02  # arm/phone axis mismatch below this is "aligned"
+MIN_FIT_INLIERS = 6
+
+
+def _require_fit(affine: np.ndarray | None, stage: str) -> np.ndarray:
+    """OpenCV can return a non-None fit containing NaNs or a collapsed axis."""
+    if affine is None:
+        raise RuntimeError(f"Arm calibration FAILED — {stage} affine fit failed")
+    try:
+        validate_affine(affine)
+    except (ValueError, np.linalg.LinAlgError) as exc:
+        raise RuntimeError(
+            f"Arm calibration FAILED — {stage} affine fit is unusable: {exc}"
+        ) from exc
+    return affine
+
+
+def _require_reachable_span(points) -> None:
+    """Reject a trajectory too large for the build, without assuming its origin."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        span = np.ptp(np.asarray(points, dtype=np.float64), axis=0)
+    if not np.isfinite(span).all() or np.any(span > (X_TRAVEL, Y_TRAVEL)):
+        raise RuntimeError(
+            "Arm calibration FAILED — predicted movement exceeds "
+            f"the {X_TRAVEL}×{Y_TRAVEL}mm gantry travel; check the probe touches"
+        )
 
 
 def _tilt_from_affine(pct_to_grbl: np.ndarray) -> float:
@@ -103,22 +130,26 @@ def calibrate_arm(
     )
     probe_grbl = np.array([[0, 0], [PROBE_D, 0], [0, PROBE_D]], dtype=np.float64)
     probe_affine, _ = cv2.estimateAffine2D(probe_screen, probe_grbl)
-    if probe_affine is None:
-        raise RuntimeError("Arm calibration FAILED — probe affine fit failed")
+    probe_affine = _require_fit(probe_affine, "probe")
+
+    grid = list(grid_positions(cal))
+    grid_targets = [
+        apply_affine(probe_affine, *cal.viewport_pct_to_screenshot_pct(col, row))
+        for col, row in grid
+    ]
+    trajectory = [*probe_grbl.tolist(), *grid_targets]
+    _require_reachable_span(trajectory)
 
     # Grid — 15 viewport positions predicted via the bootstrap affine.
     cal.set_phase("grid")
     time.sleep(0.3)
-    grid = list(grid_positions(cal))
     log.info(f"  Grid: {len(grid)} taps across full screen (phase=grid)")
 
-    grbl_pts: list = [probe_grbl[i].tolist() for i in range(3)]
-    screen_pts: list = [probe_screen[i].tolist() for i in range(3)]
+    grbl_pts: list = probe_grbl.tolist()
+    screen_pts: list = probe_screen.tolist()
     grid_touches: list = []
 
-    for idx, (col, row) in enumerate(grid, start=1):
-        scr_col, scr_row = cal.viewport_pct_to_screenshot_pct(col, row)
-        gx, gy = apply_affine(probe_affine, scr_col, scr_row)
+    for idx, ((col, row), (gx, gy)) in enumerate(zip(grid, grid_targets), start=1):
         log.info(
             f"    Grid {idx}/{len(grid)}: viewport ({col:.2f}, {row:.2f}) → "
             f"arm ({gx:.1f}, {gy:.1f})mm"
@@ -141,17 +172,23 @@ def calibrate_arm(
         f"  Collected {len(grbl_pts)} point pairs "
         f"(3 probes + {len(grbl_pts) - 3} grid hits)"
     )
-    if len(grbl_pts) < 6:
+    if len(grbl_pts) < MIN_FIT_INLIERS:
         raise RuntimeError(
-            f"Arm calibration FAILED — only {len(grbl_pts)} valid taps (need ≥6)"
+            f"Arm calibration FAILED — only {len(grbl_pts)} valid taps "
+            f"(need ≥{MIN_FIT_INLIERS})"
         )
 
-    pct_to_grbl, _ = cv2.estimateAffine2D(
+    pct_to_grbl, mask = cv2.estimateAffine2D(
         np.array(screen_pts, dtype=np.float64),
         np.array(grbl_pts, dtype=np.float64),
     )
-    if pct_to_grbl is None:
-        raise RuntimeError("Arm calibration FAILED — final affine fit failed")
+    pct_to_grbl = _require_fit(pct_to_grbl, "final")
+    inliers = int(np.count_nonzero(mask)) if mask is not None else 0
+    if inliers < MIN_FIT_INLIERS:
+        raise RuntimeError(
+            f"Arm calibration FAILED — only {inliers} inlier taps "
+            f"support the final fit (need ≥{MIN_FIT_INLIERS})"
+        )
 
     tilt = _tilt_from_affine(pct_to_grbl)
     aligned = tilt < TILT_ALIGNED_THRESHOLD
@@ -166,16 +203,25 @@ def calibrate_arm(
 
     # Re-origin at screen center.
     center_gx, center_gy = apply_affine(pct_to_grbl, 0.5, 0.5)
+    # Runtime may reach any screen edge and the off-screen parking point.
+    # A huge final scale can keep its center near zero, so checking only
+    # the center would still allow the handler's immediate park to run away.
+    operating_targets = [
+        apply_affine(pct_to_grbl, x, y)
+        for x, y in ((0, 0), (1, 0), (1, 1), (0, 1), PARK_PCT)
+    ]
+    _require_reachable_span([*trajectory, *operating_targets])
+    rebased = pct_to_grbl.copy()
+    rebased[0, 2] -= center_gx
+    rebased[1, 2] -= center_gy
     log.info(
         f"  Re-origin: screen center is at arm "
         f"({center_gx:.2f}, {center_gy:.2f})mm → setting as (0, 0)"
     )
     arm.rapid_to(center_gx, center_gy)
     arm.wait_idle()
-    arm.set_origin()
-    pct_to_grbl[0, 2] -= center_gx
-    pct_to_grbl[1, 2] -= center_gy
     cal.set_phase("center")
+    arm.set_origin()
 
     log.info(f"  ✓ Arm calibration done: {len(grbl_pts)} pairs, tilt={tilt:.4f}")
-    return pct_to_grbl, tilt, grid_touches
+    return rebased, tilt, grid_touches
