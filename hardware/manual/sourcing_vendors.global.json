@@ -681,22 +681,22 @@
   },
   {
     "part_id": "shcs-unc14-16",
-    "ref": "¥5",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "1/4-20 × 5/8 (30-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=15831362641&skuId=5056818688424"
+        "name": "TINGGOO",
+        "product": "Size: 10Pcs 1/4-20, Length: 5/8",
+        "url": "https://www.aliexpress.us/item/3256808188506668.html"
       },
       {
-        "name": "Guwanji",
-        "product": "1/4-20 × 5/8 (10-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=641602915619&skuId=5179374758354"
+        "name": "Hongsen",
+        "product": "1/4-20 (5pcs), Length: 5/8",
+        "url": "https://www.aliexpress.us/item/3256810313900643.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "1/4-20 × 5/8 (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=617126314161&skuId=5917844858026"
+        "name": "qingmai",
+        "product": "1/4-20, Length: 5/8",
+        "url": "https://www.aliexpress.us/item/3256809722568114.html"
       }
     ],
     "note": "Use with a 3/16\" imperial hex key."
