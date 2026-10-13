@@ -1,0 +1,112 @@
+[
+  [
+    {
+      "choices": [
+        {
+          "message": {
+            "content": "answer",
+            "reasoning_content": "private",
+            "tool_calls": [
+              {
+                "function": {
+                  "name": "peek",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "text": "answer",
+      "thinking": "private",
+      "calls": [
+        {
+          "name": "peek",
+          "args": "{}"
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "private"
+        },
+        {
+          "type": "text",
+          "text": "answer"
+        },
+        {
+          "type": "tool_use",
+          "name": "peek",
+          "input": {}
+        }
+      ]
+    },
+    {
+      "text": "answer",
+      "thinking": "private",
+      "calls": [
+        {
+          "name": "peek",
+          "args": {}
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "choices": [
+        {
+          "message": {
+            "content": [
+              {
+                "type": "text",
+                "text": "answer"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "text": "[{\"type\": \"text\", \"text\": \"answer\"}]",
+      "thinking": "",
+      "calls": []
+    }
+  ],
+  [
+    {
+      "choices": [
+        {
+          "message": {
+            "content": null
+          }
+        }
+      ]
+    },
+    {
+      "text": "",
+      "thinking": "",
+      "calls": []
+    }
+  ],
+  [
+    {
+      "choices": [
+        null
+      ]
+    },
+    null
+  ],
+  [
+    {
+      "unknown": "reply"
+    },
+    null
+  ]
+]

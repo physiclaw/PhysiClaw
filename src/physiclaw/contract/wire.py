@@ -63,7 +63,7 @@ def scrub_block(b: dict, persist: PersistImage) -> dict:
         mime = head[5:].partition(";")[0]
         rel = persist(mime, data) if data else ""
         scrubbed = rel or f"{head},<{len(data)}b unreadable>"
-        return {"type": "image_url", "image_url": {"url": scrubbed}}
+        return {**b, "image_url": {**b["image_url"], "url": scrubbed}}
     if bt == "image":
         src = b.get("source") or {}
         if src.get("type") != "base64":
@@ -76,7 +76,7 @@ def scrub_block(b: dict, persist: PersistImage) -> dict:
             if rel
             else {"type": "base64", "byte_count": len(data)}
         )
-        return {"type": "image", "source": scrubbed_src}
+        return {**b, "source": scrubbed_src}
     if bt == "tool_result":
         inner = b.get("content")
         if isinstance(inner, list):
@@ -93,16 +93,24 @@ def iter_request_messages(path) -> Iterator[tuple[str, list[dict]]]:
     records — the reader beside the writer above. A string content is
     one text block; a ``tool_result``'s nested content is flattened so
     a consumer sees the image and listing blocks it carries in order.
-    Streams the file; skips unparseable lines."""
-    with open(path, encoding="utf-8") as f:
+    Streams the file; skips malformed records, messages, and UTF-8 lines.
+    A bad line must not hide the valid records that follow it."""
+    with open(path, "rb") as f:
         for line in f:
             try:
-                rec = json.loads(line)
+                rec = json.loads(line.decode("utf-8"))
             except ValueError:
                 continue
             if not isinstance(rec, dict) or rec.get("kind") != "request":
                 continue
-            for msg in rec.get("messages", ()):
+            messages = rec.get("messages")
+            if not isinstance(messages, list):
+                continue
+            for msg in messages:
+                if not isinstance(msg, dict) or not isinstance(
+                    msg.get("role", ""), str
+                ):
+                    continue
                 yield msg.get("role", ""), list(leaf_blocks(msg.get("content")))
 
 
@@ -120,11 +128,18 @@ def image_ref(block: dict) -> str | None:
     `scrub_block`. None for any other block, or an unscrubbed data URL."""
     bt = block.get("type")
     if bt == "image_url":
-        url = (block.get("image_url") or {}).get("url", "")
-        return url if url and not url.startswith("data:") else None
+        image = block.get("image_url")
+        url = image.get("url") if isinstance(image, dict) else None
+        return (
+            url
+            if isinstance(url, str) and url and not url.startswith("data:")
+            else None
+        )
     if bt == "image":
-        src = block.get("source") or {}
-        return src.get("ref") or None if src.get("type") == "ref" else None
+        src = block.get("source")
+        if isinstance(src, dict) and src.get("type") == "ref":
+            ref = src.get("ref")
+            return ref if isinstance(ref, str) and ref else None
     return None
 
 
@@ -142,6 +157,8 @@ def leaf_blocks(content: Any) -> Iterable[dict]:
             continue
         if block.get("type") == "tool_result":
             yield from leaf_blocks(block.get("content"))
+        elif block.get("type") == "text" and not isinstance(block.get("text"), str):
+            continue
         else:
             yield block
 

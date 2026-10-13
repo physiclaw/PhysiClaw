@@ -1,8 +1,8 @@
 """The contract — shapes shared across the agent's package seams.
 
-Everything here is data or protocol, never behavior: the packages on
-either side of a seam depend on this one so they need not depend on
-each other (the agent ↔ conductor split relies on it — see
+Shared data, protocols, and trace codecs live here. Packages on either
+side of a seam depend on this one so they need not depend on each
+other (the agent ↔ conductor split relies on it — see
 `tests/test_architecture.py` for the enforced graph).
 
     dto.py     — the message/tool-call shapes the engine loop, the

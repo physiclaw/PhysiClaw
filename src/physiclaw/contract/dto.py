@@ -4,8 +4,8 @@ Every provider serializes messages, tool_calls, finish reasons, and
 assistant content differently. These DTOs normalize that boundary: the
 engine deals only in DTOs; provider classes own translation to/from
 their native wire format (`AnthropicProvider` → `/v1/messages` blocks,
-`OpenAICompatibleProvider` → `/chat/completions` dicts, etc.). Provider-
-reasoning stays out of public assistant content. Opaque state needed
+`OpenAICompatibleProvider` → `/chat/completions` dicts, etc.). Reasoning
+stays out of public assistant content. Opaque state needed
 for protocol continuity (such as signed Anthropic thinking blocks) lives
 in `vendor_extra` and is replayed only by the originating provider.
 
@@ -100,7 +100,7 @@ class Usage:
       - Anthropic: `usage.input_tokens`, `usage.output_tokens`,
         `usage.cache_read_input_tokens`,
         `usage.cache_creation_input_tokens`
-      - Google: TBD (different again)
+      - Google: the OpenAI shape through its compatibility endpoint
 
     All zero = "provider didn't report" (e.g. local models, error
     responses). The engine treats zeros as "no data" rather than 0%
