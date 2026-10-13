@@ -470,24 +470,25 @@
   },
   {
     "part_id": "stylus-tip",
-    "ref": "¥15",
+    "ref": "$6",
     "suppliers": [
       {
-        "name": "Wenku",
-        "product": "M3 female thread, Ø6.8 fabric head",
-        "url": "https://item.taobao.com/item.htm?id=540696187134&skuId=3710468466331"
+        "name": "Creative Office",
+        "product": "M5 7mm thread",
+        "url": "https://www.aliexpress.us/item/3256813033884372.html"
       },
       {
-        "name": "Yongxing",
-        "product": "M3 female thread, Ø6.8 fabric head (5-pack)",
-        "url": "https://item.taobao.com/item.htm?id=951707635228&skuId=6037112926646"
+        "name": "Techverse",
+        "product": "M5 7mm thread",
+        "url": "https://www.aliexpress.us/item/3256813044701122.html"
       },
       {
-        "name": "Pasenjie",
-        "product": "M3 female thread, Ø7.0 fabric head (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=652898030762&skuId=5197108428102"
+        "name": "Office DIY",
+        "product": "M5 7mm thread",
+        "url": "https://www.aliexpress.us/item/3256813137974411.html"
       }
-    ]
+    ],
+    "note": "These stylus tips have an M5 thread, while the solenoid has an M3 thread. An M3-to-M5 thread adapter is required."
   },
   {
     "part_id": "teflon-tube",
