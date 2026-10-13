@@ -915,22 +915,22 @@
   },
   {
     "part_id": "spacer-5x10",
-    "ref": "¥4",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "TwoTrees",
-        "product": "5 mm ID × 10 mm OD × 9 mm",
-        "url": "https://item.taobao.com/item.htm?id=608843333546&skuId=4447032678855"
+        "name": "KINGROON",
+        "product": "5x8x9mm, 10PCS",
+        "url": "https://www.aliexpress.us/item/3256801428839709.html"
       },
       {
-        "name": "Kufan",
-        "product": "Spacer 5×10×9 mm (5-pack)",
-        "url": "https://item.taobao.com/item.htm?id=643586054546&skuId=4710482460571"
+        "name": "Torupy",
+        "product": "10pcs, 5x8x9mm",
+        "url": "https://www.aliexpress.us/item/3256808890488933.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø5×10×9 mm (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=851546806052&skuId=5815653223547"
+        "name": "Ramps",
+        "product": "5x8x9mm, 20pcs",
+        "url": "https://www.aliexpress.us/item/3256803150543171.html"
       }
     ],
     "note": "If the exact 9 mm height is unavailable, stack shorter spacers to reach 9 mm."
