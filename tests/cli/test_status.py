@@ -28,7 +28,12 @@ def _bundle(**overrides) -> dict:
         "pct_to_cam": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         "cam_size": [1920, 1080],
         "cam_index": 0,
-        "screen_dimension": {"width": 390, "height": 844},
+        "screen_dimension": {
+            "width": 390,
+            "height": 844,
+            "viewport_width": 390,
+            "viewport_height": 700,
+        },
     }
     base.update(overrides)
     return base
@@ -97,10 +102,19 @@ def test_status_reports_calibration_complete(
     assert "complete" in out
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"pct_to_cam": None},
+        {"screen_dimension": {}},
+        {"screen_dimension": {"width": 390, "height": 844}},
+    ],
+)
 def test_status_reports_calibration_partial(
     tmp_path: Path,
     mocker,
     capsys: pytest.CaptureFixture,
+    overrides: dict,
 ) -> None:
     mocker.patch.object(
         status_mod.paths,
@@ -110,7 +124,7 @@ def test_status_reports_calibration_partial(
     mocker.patch.object(
         status_mod.paths,
         "load_calibration_bundle",
-        return_value=_bundle(pct_to_cam=None),  # camera mapping step not done
+        return_value=_bundle(**overrides),
     )
     mocker.patch.object(status_mod.paths, "jobs_file", return_value=tmp_path / "no.md")
 

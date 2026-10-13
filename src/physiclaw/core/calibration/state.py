@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
 from pathlib import Path
 
 import cv2
@@ -22,7 +23,7 @@ from physiclaw.common import paths
 from physiclaw.common.logger import write_json_atomic
 from physiclaw.common.text import read_text
 from physiclaw.core.calibration.transforms import ScreenTransforms, ViewportShift
-from physiclaw.core.geometry import apply_affine
+from physiclaw.core.geometry import apply_affine, validate_affine
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,60 @@ BUNDLE_PATH = paths.calibration_bundle()
 # (lens left on live AF — degraded, not wrong), so no forced
 # recalibration; re-running the camera-mapping step pins it.
 BUNDLE_VERSION = 1
+
+
+def _finite_number(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a finite number")
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{field} must be a finite number") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be a finite number")
+    return number
+
+
+def _positive_size(value: object, field: str) -> tuple[int, int]:
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 2
+        or any(type(v) is not int or v <= 0 for v in value)
+    ):
+        raise ValueError(f"{field} must contain two positive integer dimensions")
+    for dimension in value:
+        _finite_number(dimension, field)
+    return (value[0], value[1])
+
+
+def _load_affine(value: object, field: str) -> np.ndarray | None:
+    if value is None:
+        return None
+    try:
+        affine = np.array(value, dtype=np.float64)
+        validate_affine(affine)
+    except (TypeError, ValueError, OverflowError, np.linalg.LinAlgError) as exc:
+        raise ValueError(f"invalid {field}: {exc}") from exc
+    return affine
+
+
+def _load_viewport_shift(value: object) -> ViewportShift | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("viewport_shift must be an object")
+    try:
+        shift = ViewportShift(**value)
+    except TypeError as exc:
+        raise ValueError(f"invalid viewport_shift: {exc}") from exc
+    _finite_number(shift.offset_x, "viewport_shift.offset_x")
+    _finite_number(shift.offset_y, "viewport_shift.offset_y")
+    if _finite_number(shift.dpr, "viewport_shift.dpr") <= 0:
+        raise ValueError("viewport_shift.dpr must be positive")
+    _positive_size(
+        (shift.screenshot_width, shift.screenshot_height), "viewport_shift size"
+    )
+    return shift
 
 
 @dataclasses.dataclass
@@ -81,6 +136,8 @@ class Calibration:
             self.viewport_shift is not None
             and self.cam_rotation is not None
             and self.screen_dimension is not None
+            and "viewport_width" in self.screen_dimension
+            and "viewport_height" in self.screen_dimension
             and self.transforms_ready
         )
 
@@ -194,29 +251,57 @@ class Calibration:
     def from_dict(cls, payload: dict) -> "Calibration":
         """Reconstruct from the output of to_dict().
 
-        Raises ``ValueError`` on a schema-version mismatch — a bundle
-        written by an incompatible format must fail loudly, not
-        reconstruct with silently-wrong fields. Pre-versioning bundles
-        (no key) count as version 1."""
+        Populated fields must be usable before readiness checks or motion.
+        Raises ``ValueError`` for malformed data or an incompatible schema.
+        Missing/None fields remain unset; pre-versioning bundles count as
+        version 1 and unknown top-level fields are ignored.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("calibration bundle must be an object")
         found = payload.get("version", 1)
-        if found != BUNDLE_VERSION:
+        if type(found) is not int or found != BUNDLE_VERSION:
             raise ValueError(
                 f"calibration bundle schema version {found} != "
                 f"expected {BUNDLE_VERSION} — recalibrate"
             )
-        vs = payload.get("viewport_shift")
-        pg = payload.get("pct_to_grbl")
-        pc = payload.get("pct_to_cam")
         cs = payload.get("cam_size")
+        rotation = payload.get("cam_rotation")
+        if rotation is not None and (
+            type(rotation) is not int or rotation not in ROTATION_NAMES
+        ):
+            raise ValueError("cam_rotation must be -1, 0, 1 or 2")
+        index = payload.get("cam_index")
+        if index is not None and (type(index) is not int or index < 0):
+            raise ValueError("cam_index must be a non-negative integer")
+        focus = payload.get("cam_focus")
+        if focus is not None and _finite_number(focus, "cam_focus") < 0:
+            raise ValueError("cam_focus must be non-negative")
+        dimension = payload.get("screen_dimension")
+        if dimension is not None:
+            if not isinstance(dimension, dict):
+                raise ValueError("screen_dimension must be an object")
+            for field in (
+                "width",
+                "height",
+                "viewport_width",
+                "viewport_height",
+                "dpr",
+            ):
+                if (
+                    field in dimension
+                    and _finite_number(dimension[field], f"screen_dimension.{field}")
+                    <= 0
+                ):
+                    raise ValueError(f"screen_dimension.{field} must be positive")
         return cls(
-            viewport_shift=ViewportShift(**vs) if vs is not None else None,
-            cam_rotation=payload.get("cam_rotation"),
-            pct_to_grbl=np.array(pg, dtype=np.float64) if pg is not None else None,
-            pct_to_cam=np.array(pc, dtype=np.float64) if pc is not None else None,
-            cam_size=tuple(cs) if cs is not None else None,
-            cam_index=payload.get("cam_index"),
-            screen_dimension=payload.get("screen_dimension"),
-            cam_focus=payload.get("cam_focus"),
+            viewport_shift=_load_viewport_shift(payload.get("viewport_shift")),
+            cam_rotation=rotation,
+            pct_to_grbl=_load_affine(payload.get("pct_to_grbl"), "pct_to_grbl"),
+            pct_to_cam=_load_affine(payload.get("pct_to_cam"), "pct_to_cam"),
+            cam_size=_positive_size(cs, "cam_size") if cs is not None else None,
+            cam_index=index,
+            screen_dimension=dimension,
+            cam_focus=focus,
         )
 
     def save(self, path: Path = BUNDLE_PATH) -> None:
@@ -230,10 +315,10 @@ class Calibration:
     @classmethod
     def load(cls, path: Path = BUNDLE_PATH) -> "Calibration | None":
         """Return the bundle at ``path``, or None if missing/unreadable."""
-        if not path.exists():
-            return None
         try:
             return cls.from_dict(json.loads(read_text(path)))
+        except FileNotFoundError:
+            return None
         except (OSError, ValueError, TypeError, KeyError) as e:
             log.warning(f"Failed to load calibration bundle from {path}: {e}")
             return None

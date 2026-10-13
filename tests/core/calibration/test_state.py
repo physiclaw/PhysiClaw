@@ -29,6 +29,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.calibration.state import (
     DEFAULT_ROTATION,
@@ -115,7 +117,12 @@ def test_complete_property_is_false_until_every_required_field_set() -> None:
     c.cam_rotation = cv2.ROTATE_90_CLOCKWISE
     assert c.complete is False  # still missing screen_dimension
 
-    c.screen_dimension = {"width": 1170, "height": 2532}
+    c.screen_dimension = {
+        "width": 1170,
+        "height": 2532,
+        "viewport_width": 390,
+        "viewport_height": 700,
+    }
     assert c.complete is True
 
 
@@ -504,3 +511,221 @@ def test_reconcile_cam_size_handles_rotated_portrait_sizes() -> None:
 
     assert cal.reconcile_cam_size((2160, 3840)) is True
     assert cal.cam_size == (2160, 3840)
+
+
+@pytest.mark.parametrize("payload", [[], [1], "bundle", 1, True, None])
+def test_regression_load_rejects_non_object_json(tmp_path, payload) -> None:
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(payload))
+
+    result = Calibration.load(path)
+
+    assert result is None
+
+
+@pytest.mark.parametrize("field", ["pct_to_grbl", "pct_to_cam"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        [],
+        [[1, 0], [0, 1]],
+        [[1, 0, 0], [0]],
+        "bad",
+        [[1, 1, 0], [2, 2, 1]],
+        [[1, 0, float("nan")], [0, 1, 0]],
+        [[float("inf"), 0, 0], [0, 1, 0]],
+        [[10**400, 0, 0], [0, 1, 0]],
+    ],
+)
+def test_regression_from_dict_rejects_unusable_affines(field, value) -> None:
+    payload = {field: value}
+
+    with pytest.raises(ValueError, match=f"invalid {field}"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "value", [[], [1], [1, 2, 3], "12", {}, [0, 1], [-1, 1], [1.5, 2], [True, 2]]
+)
+def test_regression_from_dict_rejects_invalid_camera_dimensions(value) -> None:
+    payload = {"cam_size": value}
+
+    with pytest.raises(ValueError, match="cam_size"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [True, 1.0, "1", None])
+def test_from_dict_rejects_non_integer_schema_versions(value) -> None:
+    payload = {"version": value}
+
+    with pytest.raises(ValueError, match="schema version"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [True, 1.0, "1", -2, 3, [], {}])
+def test_from_dict_rejects_invalid_rotation_codes(value) -> None:
+    payload = {"cam_rotation": value}
+
+    with pytest.raises(ValueError, match="cam_rotation"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [True, 1.0, "1", -1])
+def test_from_dict_rejects_invalid_camera_indices(value) -> None:
+    payload = {"cam_index": value}
+
+    with pytest.raises(ValueError, match="cam_index"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [True, "1", -1, float("nan"), float("inf"), 10**400])
+def test_from_dict_rejects_invalid_focus_values(value) -> None:
+    payload = {"cam_focus": value}
+
+    with pytest.raises(ValueError, match="cam_focus"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [[], {"offset_x": 0}])
+def test_from_dict_rejects_malformed_viewport_shift(value) -> None:
+    payload = {"viewport_shift": value}
+
+    with pytest.raises(ValueError, match="viewport_shift"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("offset_x", float("nan")),
+        ("offset_y", "0"),
+        ("dpr", 0),
+        ("dpr", -1),
+        ("dpr", True),
+        ("screenshot_width", 0),
+        ("screenshot_height", 1.5),
+    ],
+)
+def test_from_dict_rejects_unusable_viewport_shift(field, value) -> None:
+    shift = dict(
+        offset_x=0, offset_y=0, dpr=2, screenshot_width=100, screenshot_height=200
+    )
+    shift[field] = value
+
+    with pytest.raises(ValueError, match="viewport_shift"):
+        Calibration.from_dict({"viewport_shift": shift})
+
+
+@pytest.mark.parametrize("value", [[], 0, "100x200"])
+def test_from_dict_rejects_non_object_screen_dimension(value) -> None:
+    payload = {"screen_dimension": value}
+
+    with pytest.raises(ValueError, match="screen_dimension"):
+        Calibration.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "field", ["width", "height", "viewport_width", "viewport_height", "dpr"]
+)
+@pytest.mark.parametrize("value", [0, -1, True, "100", float("nan"), float("inf")])
+def test_from_dict_rejects_unusable_screen_dimensions(field, value) -> None:
+    payload = {"screen_dimension": {field: value}}
+
+    with pytest.raises(ValueError, match=f"screen_dimension.{field}"):
+        Calibration.from_dict(payload)
+
+
+def test_load_returns_none_when_bundle_path_is_unreadable(tmp_path) -> None:
+    path = tmp_path / "bundle.json"
+    path.mkdir()
+
+    result = Calibration.load(path)
+
+    assert result is None
+
+
+def test_from_dict_preserves_offscreen_offsets_and_zero_focus() -> None:
+    original = Calibration(
+        viewport_shift=ViewportShift(-10, -20, 2, 100, 200),
+        pct_to_grbl=np.array([[-100, 0, -5], [0, 200, 10]]),
+        cam_index=0,
+        cam_focus=0,
+        cam_rotation=-1,
+        screen_dimension={"width": 100, "height": 200, "future": "value"},
+    )
+
+    restored = Calibration.from_dict(original.to_dict())
+
+    assert restored.to_dict() == original.to_dict()
+    assert restored.pct_to_grbl_mm(-0.1, -0.05) == pytest.approx((5, 0))
+
+
+@given(
+    x_scale=st.floats(0.01, 1000),
+    y_scale=st.floats(-1000, -0.01),
+    offset=st.tuples(st.floats(-1000, 1000), st.floats(-1000, 1000)),
+    cam_size=st.tuples(st.integers(1, 4000), st.integers(1, 4000)),
+)
+def test_from_dict_preserves_valid_partial_bundle_through_json(
+    x_scale, y_scale, offset, cam_size
+) -> None:
+    original = Calibration(
+        pct_to_grbl=np.array([[x_scale, 0, offset[0]], [0, y_scale, offset[1]]]),
+        cam_size=cam_size,
+    )
+
+    restored = Calibration.from_dict(json.loads(json.dumps(original.to_dict())))
+
+    assert restored.to_dict() == original.to_dict()
+    assert restored.complete is False
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    [
+        {},
+        {"width": 100, "height": 200},
+        {"viewport_width": 100},
+        {"viewport_height": 200},
+    ],
+)
+def test_regression_partial_screen_dimensions_load_but_cannot_resume(dimension) -> None:
+    original = Calibration(
+        viewport_shift=ViewportShift(0, 0, 1, 100, 200),
+        cam_rotation=-1,
+        pct_to_grbl=np.eye(2, 3),
+        pct_to_cam=np.eye(2, 3),
+        cam_size=(100, 200),
+        screen_dimension=dimension,
+    )
+
+    restored = Calibration.from_dict(original.to_dict())
+
+    assert restored.to_dict() == original.to_dict()
+    assert restored.complete is False
+
+
+@pytest.mark.parametrize("field", ["cam_size", "viewport_shift"])
+def test_regression_load_rejects_dimensions_that_overflow_coordinate_math(
+    tmp_path, field
+) -> None:
+    values = {
+        "cam_size": [10**400, 1],
+        "viewport_shift": dict(
+            offset_x=0, offset_y=0, dpr=1, screenshot_width=1, screenshot_height=10**400
+        ),
+    }
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps({field: values[field]}))
+
+    result = Calibration.load(path)
+
+    assert result is None
+
+
+@pytest.mark.parametrize("field", ["pct_to_grbl", "pct_to_cam"])
+def test_regression_from_dict_rejects_affine_with_unusable_inverse(field) -> None:
+    payload = {field: [[1e-320, 0, 0], [0, 1e-320, 0]]}
+
+    with pytest.raises(ValueError, match="inverse must be finite"):
+        Calibration.from_dict(payload)

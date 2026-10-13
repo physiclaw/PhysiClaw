@@ -6,7 +6,7 @@ Two modules, one public surface (re-exported here):
   page-target constants both bridge and calibration must agree on).
 """
 
-from physiclaw.core.geometry.affine import apply_affine, invert_affine
+from physiclaw.core.geometry.affine import apply_affine, invert_affine, validate_affine
 from physiclaw.core.geometry.screen import (
     AT_CSS_X,
     AT_CSS_Y,
@@ -49,4 +49,5 @@ __all__ = [
     "apply_affine",
     "invert_affine",
     "nonce_css_x",
+    "validate_affine",
 ]

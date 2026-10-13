@@ -300,3 +300,59 @@ def test_bbox_to_pixel_rect_returns_top_left_and_bottom_right() -> None:
 
     assert tl == (100, 100)
     assert br == (900, 400)
+
+
+@pytest.mark.parametrize(
+    "affine, expected",
+    [
+        ([[0.8, -0.2, 0.2], [0.2, 0.8, 0]], ((0, 0), (1000, 1000))),
+        ([[1, -0.5, 0], [0, 1, 0]], ((-500, 0), (1000, 1000))),
+        ([[-1, 0, 1], [0, -1, 1]], ((0, 0), (1000, 1000))),
+    ],
+)
+def test_regression_bbox_encloses_rotated_sheared_and_reflected_screens(
+    affine, expected
+) -> None:
+    transforms = ScreenTransforms(IDENTITY_AFFINE, np.array(affine), (1000, 1000))
+
+    rectangle = transforms.bbox_to_pixel_rect([0, 0, 1, 1])
+
+    assert rectangle == expected
+
+
+def test_bbox_to_pixel_rect_rounds_outward_without_clamping_to_frame() -> None:
+    transforms = ScreenTransforms(IDENTITY_AFFINE, IDENTITY_AFFINE, (100, 200))
+
+    rectangle = transforms.bbox_to_pixel_rect([-0.125, -0.0625, 0.125, 1.0625])
+
+    assert rectangle == ((-13, -13), (13, 213))
+
+
+@given(
+    coefficients=st.lists(st.integers(-100, 100), min_size=6, max_size=6),
+    bbox=st.lists(st.integers(-10, 10), min_size=4, max_size=4),
+    width=st.integers(1, 4000),
+    height=st.integers(1, 4000),
+)
+def test_bbox_to_pixel_rect_encloses_every_corner_with_subpixel_padding(
+    coefficients, bbox, width, height
+) -> None:
+    affine = np.array(coefficients).reshape(2, 3) / 8
+    bounds = np.array(bbox) / 8
+    corners = np.array(
+        [
+            [bounds[0], bounds[1], 1],
+            [bounds[2], bounds[1], 1],
+            [bounds[2], bounds[3], 1],
+            [bounds[0], bounds[3], 1],
+        ]
+    )
+    expected_pixels = (corners @ affine.T) * [width, height]
+    transforms = ScreenTransforms(IDENTITY_AFFINE, affine, (width, height))
+
+    lower, upper = transforms.bbox_to_pixel_rect(bounds.tolist())
+
+    assert np.all(expected_pixels >= lower)
+    assert np.all(expected_pixels <= upper)
+    assert np.all(expected_pixels.min(axis=0) - lower < 1)
+    assert np.all(upper - expected_pixels.max(axis=0) < 1)

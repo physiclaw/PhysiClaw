@@ -9,6 +9,22 @@ the arm affine) must reach them without importing ``calibration``.
 import numpy as np
 
 
+def validate_affine(affine: np.ndarray) -> None:
+    """Reject malformed, non-finite or degenerate (2, 3) point mappings.
+
+    Validate once when loading or fitting a mapping, before using it for
+    motion or caching its inverse. Reflections and off-screen offsets are valid.
+    """
+    if affine.shape != (2, 3) or not np.isfinite(affine).all():
+        raise ValueError("affine must be a finite 2-by-3 matrix")
+    if np.linalg.matrix_rank(affine[:, :2]) != 2:
+        raise ValueError("affine must have an invertible linear part")
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        inverse = invert_affine(affine)
+    if not np.isfinite(inverse).all():
+        raise ValueError("affine inverse must be finite")
+
+
 def apply_affine(affine: np.ndarray, x: float, y: float) -> tuple[float, float]:
     """Apply a (2, 3) affine to a point — THE point-mapping primitive.
 

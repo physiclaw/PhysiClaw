@@ -16,6 +16,7 @@ see the `calibrate.py` facade for the map.
 """
 
 import dataclasses
+import math
 
 import numpy as np
 
@@ -110,7 +111,19 @@ class ScreenTransforms:
     def bbox_to_pixel_rect(
         self, bbox: list[float]
     ) -> tuple[tuple[int, int], tuple[int, int]]:
-        """Convert bbox [left, top, right, bottom] (0-1) to camera pixel rectangle."""
-        tl = self.pct_to_cam_pixel(bbox[0], bbox[1])
-        br = self.pct_to_cam_pixel(bbox[2], bbox[3])
-        return (tl, br)
+        """Enclose all four bbox corners in a camera pixel rectangle.
+
+        Rotation or shear can put the extrema at any corner. Round outward
+        to retain edge pixels; the image consumer clamps to its frame bounds.
+        """
+        left, top, right, bottom = bbox
+        corners = [
+            apply_affine(self.pct_to_cam, x, y)
+            for x, y in ((left, top), (right, top), (right, bottom), (left, bottom))
+        ]
+        xs, ys = zip(*corners)
+        w, h = self.cam_size
+        return (
+            (math.floor(min(xs) * w), math.floor(min(ys) * h)),
+            (math.ceil(max(xs) * w), math.ceil(max(ys) * h)),
+        )
