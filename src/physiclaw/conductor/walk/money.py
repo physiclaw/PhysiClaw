@@ -23,6 +23,8 @@ Consent itself — quoting, binding, consuming — stays with the gate
 (`gate.Gate`): consent is a conversation, these are arithmetic.
 """
 
+import re
+
 from physiclaw.common.bbox import Bbox, center_of, same_line
 from physiclaw.common.listing import Screen, label_hit
 from physiclaw.conductor.spec.conventions import PRICE_RE, owned_by
@@ -62,6 +64,27 @@ def _is_label_row(label: str, readings: tuple[str, ...]) -> tuple[bool, bool]:
     return True, any("".join(ch for ch in r if ch.isalnum()) == bare for r in readings)
 
 
+def _label_amount(text: str, readings: tuple[str, ...]) -> float | None:
+    """Read a price adjacent to the declared label inside one OCR row.
+
+    A merged discount/subtotal/total row cannot be read by taking its
+    first price. Require an amount immediately after the label (with
+    optional spaces/colons), or a standalone price before it. Conflicting
+    occurrences are ambiguous and yield no total.
+    """
+    amounts: set[float] = set()
+    for reading in readings:
+        for label in re.finditer(re.escape(reading), text):
+            after = re.sub(r"^[\s:：]+", "", text[label.end() :])
+            price = PRICE_RE.match(after)
+            if not after:
+                before = re.sub(r"[\s:：]+$", "", text[: label.start()].lstrip())
+                price = PRICE_RE.fullmatch(before)
+            if price is not None:
+                amounts.add(amount(price.group(1)))
+    return next(iter(amounts)) if len(amounts) == 1 else None
+
+
 def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
     """The amount beside the declared total label: on the label's own
     row, else the nearest amount on a row sharing its line (OCR splits
@@ -69,9 +92,13 @@ def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
     distance. A row that is the label and nothing else beats one that
     merely contains it (the payable Total over an Items total subtotal); among
     equals the lowest on screen wins (the footer); a label row with no
-    amount on its line yields to the next. None when none reads."""
+    amount on its line yields to the next. A priced label row must
+    identify one adjacent total: ambiguity returns None immediately,
+    without borrowing a price from another row."""
     priced = [
-        (r.bbox, amount(m[0])) for r in screen.rows if (m := PRICE_RE.findall(r.label))
+        (r.bbox, amount(m[0]))
+        for r in screen.rows
+        if len(m := PRICE_RE.findall(r.label)) == 1
     ]
     ranked = []
     for row in screen.rows:
@@ -84,9 +111,8 @@ def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
         assert c is not None  # Element bboxes are valid by construction
         ranked.append((not exact, -c[1], row))
     for _, _, row in sorted(ranked, key=lambda t: (t[0], t[1])):
-        own = PRICE_RE.findall(row.label)
-        if own:
-            return amount(own[0])
+        if PRICE_RE.search(row.label):
+            return _label_amount(row.label, readings)
         beside = min(
             (
                 (_gap(row.bbox, bbox), amt)
@@ -115,7 +141,10 @@ def fire_block(
     if consented is None:
         return "reached without a confirmed total"
     total = declared_total(screen, total_label)
-    if total is not None and abs(total - consented) < 0.01:
+    # Both values come directly from the same two-decimal parser (and
+    # JSON preserves the consented value). A tolerance can admit a
+    # one-cent change through floating-point rounding.
+    if total is not None and total == consented:
         return None
     now = plain(total) if total is not None else "no amount"
     return (

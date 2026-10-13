@@ -53,8 +53,12 @@ log = logging.getLogger(__name__)
 
 
 class MicroCaller:
-    """The session's decision-call channel — provider + confidence floor
-    + logging sinks, constructed by `plugin.py` off the setup context."""
+    """Scoped model calls for live sessions and rehearsals.
+
+    The constructor borrows its provider; `owning` takes responsibility
+    for closing a standalone provider. Both use the same validation,
+    confidence floor, and diagnostic sinks.
+    """
 
     def __init__(
         self,
@@ -72,12 +76,29 @@ class MicroCaller:
         self._floor = confidence_floor
         self._tr = tr
         self._rlog = rlog
-        # The cheap-tier provider, built lazily on the FIRST call: most
-        # sessions that wire a caller (an activation trigger) never fire
-        # a micro-call, so the second client must not be paid for at
-        # wake. Ours to close (`aclose`); the session provider is not.
+        # Live sessions build an optional micro provider on the first
+        # call. Rehearsals set `_owned` directly through `owning`.
+        # Only `_owned` is ours to close; the session provider is borrowed.
         self._owned_factory = owned_factory
         self._owned: Provider | None = None
+
+    @classmethod
+    def owning(
+        cls,
+        provider: Provider,
+        *,
+        confidence_floor: float,
+        rlog: WireSink | None = None,
+    ) -> "MicroCaller":
+        """Take ownership of a standalone provider, as rehearsals do.
+
+        The normal constructor borrows the engine's session provider;
+        this caller instead closes the supplied provider at teardown,
+        even when no decision was made.
+        """
+        caller = cls(provider, confidence_floor=confidence_floor, rlog=rlog)
+        caller._owned = provider
+        return caller
 
     def _live_provider(self) -> ChatProvider:
         if self._owned_factory is not None:
@@ -94,9 +115,10 @@ class MicroCaller:
         return self._owned if self._owned is not None else self._provider
 
     async def aclose(self) -> None:
-        """Close the lazily-built cheap-tier provider, if one was built."""
-        if self._owned is not None:
-            await self._owned.aclose()
+        """Close an owned provider once; never close a borrowed one."""
+        owned, self._owned = self._owned, None
+        if owned is not None:
+            await owned.aclose()
 
     async def run(self, req: DecisionRequest) -> MicroResult:
         """One decision. `result.outcome` is None when the caller should
@@ -113,7 +135,10 @@ class MicroCaller:
             attempts=attempts,
             elapsed_ms=int((time.perf_counter() - t0) * 1000),
         )
-        self._trace(req, result)
+        try:
+            self._trace(req, result)
+        except Exception:
+            log.warning("micro decision event write failed", exc_info=True)
         return result
 
     async def _ask(
@@ -139,7 +164,10 @@ class MicroCaller:
                 )
                 return None, "provider error", attempts
             parsed, err = parse_reply(asst.content or "", allowed, req.call)
-            self._log_wire(req, msgs, asst, allowed, parsed)
+            try:
+                self._log_wire(req, msgs, asst, allowed, parsed)
+            except Exception:
+                log.warning("micro wire record write failed", exc_info=True)
             if parsed is None:
                 log.info(
                     "micro %s (%s) attempt %d invalid: %s",

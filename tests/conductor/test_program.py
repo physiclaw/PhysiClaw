@@ -438,6 +438,26 @@ def test_a_reply_the_model_reads_as_deny_hands_over_as_a_no() -> None:
     assert "user declined the ask" in summary and p.gate.consented is None
 
 
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [("confirm", "ask itself is not on the thread"), ("deny", "user declined the ask")],
+)
+def test_model_read_reply_without_the_current_ask_never_binds_consent(answer, reason):
+    from physiclaw.conductor.micro.decision import MicroOutcome
+
+    p, h, send = _at_gate()
+    ask = send.tool_calls[1].arguments["inputs"]["message"]
+    _feed(h, send, _thread((ask, 0.75, 0.3)))
+    _feed(h, p.advance(h), "waited")
+    _feed(h, p.advance(h), _thread(("那就来一份吧", 0.25, 0.5)))
+    p.advance(h)  # The vague reply needs the model, but its ask is offscreen.
+
+    step = p.resolve(MicroOutcome(out=answer, reason="read the reply", confidence=0.9))
+
+    assert p.gate.consented is None
+    assert reason in _finish(p, h, step)
+
+
 def test_a_reply_the_model_cannot_read_hands_over_before_any_payment() -> None:
     from physiclaw.conductor.micro.decision import MicroOutcome
 

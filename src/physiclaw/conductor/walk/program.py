@@ -577,10 +577,14 @@ class Program:
         way the cursor moves forward. Leaving a round's last node
         records the round: its returns, or the miss."""
         self._step = None
-        left = self.course.step()
-        if left is not None:
-            self._finish_round(left)
-            self.course.drop_round(left)
+        finishing = self.course.finishing_round()
+        if finishing is not None:
+            # Resolve returns before leaving: a stale checkpoint must
+            # fail this round, never skip or borrow fields from the next.
+            self._finish_round(finishing)
+            self.course.drop_round(finishing)
+        else:
+            self.course.step()
         return self.next()
 
     # ---- what the steps read and call ----
@@ -663,7 +667,9 @@ class Program:
     def _finish_round(self, rd: Round) -> None:
         """A round's last node settled: its returns, filled from its own
         record, land under its prefix (`rounds.returns`)."""
-        vals = rounds.round_values(self.course.node, rd, self.ledger, self.gate.replies)
+        # Empty own-field defaults belong only to an agent's prompt;
+        # finished returns must come from recorded answers.
+        vals = rounds.round_values(None, rd, self.ledger, self.gate.replies)
         self.ledger.round_done(rd.prefix, rounds.returns(rd, vals))
 
     def spend_consent(self) -> None:
@@ -741,12 +747,12 @@ class Program:
         """The walk's exit by an `on_fail` word — `stop`, or (anything
         else, unsaid included) the ONE final synthesized [note, peek]
         brief turn (`brief.walk_brief`), the distilled report the model
-        resumes from; `_done` then makes the NEXT advance the permanent
+        resumes from; `Phase.DONE` makes the NEXT advance the permanent
         None the conductor drops the program on — or `skip`, inside a
-        run that declared its rounds skippable. The word is resolved
-        by `_word_at_cursor`: the caller's (a page that could not be
-        reached answers for itself, in `recover_or_handover`), else the
-        enclosing run's `miss`, else the cursor node's. `reason`
+        run that declared its rounds skippable. `_word_at_cursor`
+        resolves precedence: the enclosing run's `miss` or `on_fail`,
+        then an explicit caller/page policy, then the cursor node's
+        `on_fail`. `reason`
         is the fact, and lands in the record either way; `advice` is
         what the model taking over owes (a deny's back-out), so only the
         brief carries it — a stop has no model to instruct, and its

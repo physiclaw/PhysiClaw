@@ -1,17 +1,14 @@
-"""Conductor — orchestration only: decide who produces each turn.
+"""Choose the source of the next assistant turn.
 
-While a walk is live the turn loop never calls the provider; it asks
-``Conductor.advance()``, which drives the walk (`program.py`), brokers
-its model requests through the micro-caller (`micro/channel.py`), and — when
-the walk goes quiet — takes the baton it may hand on (the boot's
-`select` step built the program the thread asked for) and drives
-that. With no walk left it answers None, "not mine", and the loop
-calls the provider with the context the runtime curated.
+``advance(history)`` drives the current Program, resolves its model
+requests through MicroCaller, and returns its next tool-call message.
+When the boot selects a task, its ``baton`` is the next Program to run.
+When no Program remains, return None so the engine calls its model.
 
-Going quiet is permanent for the session: a walk that handed over is
-dropped, not retried — the transcript of its turns IS the handoff. The
-conductor holds no session state; context, compaction, and wire
-logging stay with the engine.
+The conductor owns the current Program; the engine owns the transcript,
+tool dispatch, and context compaction. A failed Program is recorded and
+retired for this session. Its transcript is the general model's handoff;
+playbook-local restrictions do not become engine-wide policies.
 """
 
 import logging

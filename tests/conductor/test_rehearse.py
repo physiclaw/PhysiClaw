@@ -14,7 +14,14 @@ the MCP connection and the macro runner are both faked.
 from __future__ import annotations
 
 import pytest
-from conductor_fakes import PACK_MACRO, make_screen, write_pack
+from conductor_fakes import (
+    HOME,
+    PACK_MACRO,
+    RESULTS,
+    ScriptedProvider,
+    make_screen,
+    write_pack,
+)
 
 from physiclaw.cli import playbooks as cli
 from physiclaw.common import gesture_vocab
@@ -23,8 +30,37 @@ from physiclaw.conductor.load.pack import load_spec
 from physiclaw.conductor.walk import suspension
 from physiclaw.contract.dto import ToolCall
 
-HOME = make_screen(("Files", 0.5, 0.1)).text
-RESULTS = make_screen(("综合", 0.5, 0.1)).text
+
+async def test_rehearsal_caller_closes_the_provider_it_created(mocker) -> None:
+    provider = ScriptedProvider([])
+    mocker.patch("physiclaw.common.config.model_ref", return_value="demo/model")
+    mocker.patch("physiclaw.provider.make_provider", return_value=provider)
+
+    caller = rehearsal.micro_caller()
+    await caller.aclose()
+
+    assert provider.closed
+
+
+async def test_rehearsal_closes_its_caller_when_abandonment_fails(mocker) -> None:
+    from conductor_fakes import build_program
+
+    from physiclaw.conductor.micro.channel import MicroCaller
+
+    write_pack(playbooks={"flow": AGENT_FLOW})
+    program = build_program(dry=True, keyword="milk")
+    provider = ScriptedProvider([])
+    caller = MicroCaller.owning(provider, confidence_floor=0.6)
+    mocker.patch.object(rehearsal, "micro_caller", return_value=caller)
+    mocker.patch.object(program, "abandon", side_effect=OSError("record failed"))
+
+    with pytest.raises(OSError, match="record failed"):
+        await rehearsal.walk(
+            program, {}, _FakeMcp(), emit=lambda line: None, unlock=False
+        )
+
+    assert provider.closed
+
 
 FLOW = """\
 description: two moves

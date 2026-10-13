@@ -59,6 +59,9 @@ class AskStep(Step[AskNode]):
         # A vague reply's reading in flight, and the replies it read.
         self.sent: DecisionRequest | None = None
         self.new: list[str] = []
+        # Approval needs the current ask's position, including when the
+        # model interprets the reply on the next resolve() call.
+        self.ask_placed = False
 
     def open(self) -> Turn:
         if self.walk.gate.awaiting:
@@ -141,7 +144,7 @@ class AskStep(Step[AskNode]):
             if reopen is not None:
                 return reopen
             return walk.handover(f"cannot reach the user thread ({wrong})")
-        new, placed = speak.read_replies(walk)
+        new, self.ask_placed = speak.read_replies(walk)
         if not new:
             gate.silence += 1
             if gate.silence >= node.silence_rounds:
@@ -151,17 +154,6 @@ class AskStep(Step[AskNode]):
         if verdict is reply.Answer.DENY:
             return self._settled(False, new[-1])
         if verdict is reply.Answer.CONFIRM:
-            if not placed:
-                # A yes the baseline read, not the ask's position: the
-                # baseline is snapshotted with the keyboard UP, so history
-                # it covered reads as new once it dismisses, and an old
-                # yes can arrive here on a wake nobody answered. A deny
-                # in the same position still stops the walk — only the
-                # reading that BINDS money has to be placed.
-                return walk.handover(
-                    f"ask {node.id!r}: read a yes, but the ask itself is not on the "
-                    "thread — read it yourself before any irreversible move"
-                )
             return self._settled(True, new[-1])
         # The declared words do not cover it ("ok, but make it two
         # boxes", a question, a hold): the model that read the request
@@ -213,6 +205,15 @@ class AskStep(Step[AskNode]):
         user had already agreed. The journal line beside it keeps the
         reply verbatim and says who read it."""
         walk, node = self.walk, self.node
+        if ok and not self.ask_placed:
+            # Dismissing the keyboard can expose old messages absent
+            # from the baseline. Neither literal nor model-read assent
+            # is consent without the current ask above it. A denial
+            # still stops the walk even when its ask is offscreen.
+            return walk.handover(
+                f"ask {node.id!r}: read a yes, but the ask itself is not on the "
+                "thread — read it yourself before any irreversible move"
+            )
         how = ", read by the model" if by_model else ""
         verb = "confirmed" if ok else "declined"
         walk.gate.replies.append(replies)

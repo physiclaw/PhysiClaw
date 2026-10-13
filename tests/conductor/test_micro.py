@@ -126,6 +126,35 @@ def _ok(answer: str, confidence: float = 0.9) -> str:
     return f'{{"reason": "r", "answer": "{answer}", "confidence": {confidence}}}'
 
 
+@pytest.mark.parametrize("direction", [[], {}, None, 1, True])
+async def test_malformed_scroll_direction_gets_a_repair_attempt(direction) -> None:
+    provider = ScriptedProvider([_act(TOOL_SCROLL, direction=direction), _scroll()])
+
+    result = await MicroCaller(provider, confidence_floor=0.6).run(_act_req("item"))
+
+    assert result.outcome is not None and result.outcome.out == ACT_SCROLL_DOWN
+    assert result.attempts == 2
+
+
+async def test_failed_trace_sink_preserves_the_decision(mocker) -> None:
+    sink = Sink()
+    mocker.patch.object(sink, "write", side_effect=OSError("disk full"))
+
+    result = await _caller([_scroll()], tr=sink).run(_act_req("item"))
+
+    assert result.outcome is not None and result.outcome.out == ACT_SCROLL_DOWN
+    assert result.attempts == 1
+
+
+async def test_closing_a_caller_does_not_close_its_borrowed_provider() -> None:
+    provider = ScriptedProvider([])
+    caller = MicroCaller(provider, confidence_floor=0.6)
+
+    await caller.aclose()
+
+    assert not provider.closed
+
+
 @pytest.mark.asyncio
 async def test_a_tap_is_the_models_box_and_target_exactly() -> None:
     # The tap is the engine's own move — a box — with the label in the
@@ -1047,6 +1076,19 @@ class _WireSink:
 
     def write_micro(self, rec) -> None:
         self.records.append(rec)
+
+
+async def test_failed_wire_sink_preserves_the_decision(mocker) -> None:
+    sink = _WireSink()
+    mocker.patch.object(sink, "write_micro", side_effect=OSError("disk full"))
+    provider = ScriptedProvider([_scroll()])
+
+    result = await MicroCaller(provider, confidence_floor=0.6, rlog=sink).run(
+        _act_req("item")
+    )
+
+    assert result.outcome is not None and result.outcome.out == ACT_SCROLL_DOWN
+    assert result.attempts == 1
 
 
 @pytest.mark.asyncio

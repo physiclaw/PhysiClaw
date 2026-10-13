@@ -368,7 +368,7 @@ def score_page(pp: PagePrint, screen: Screen) -> PageScore:
         # Chrome (a region-pinned anchor) does not scroll with the
         # content: it is checked at its absolute position, exactly as
         # `_vote_dy` leaves it out of the vote.
-        adj = 0.0 if a.within is not None else dy
+        adj = _scroll_offset(a, dy)
         # Expected-visible: with a scroll offset, an anchor whose learned
         # position moved off-screen is neither expected nor missing.
         if la is not None and pp.decl.scrollable and not (0.0 <= la.cy + adj <= 1.0):
@@ -378,6 +378,11 @@ def score_page(pp: PagePrint, screen: Screen) -> PageScore:
         else:
             missing.append(a.text)
     return PageScore(pp, tuple(hits), tuple(missing), dy)
+
+
+def _scroll_offset(anchor: AnchorDecl, dy: float) -> float:
+    """Region-pinned controls stay fixed; only page content scrolls."""
+    return 0.0 if anchor.within is not None else dy
 
 
 def _verified(la: LearnedAnchor | None, rows: list[Element], dy: float) -> bool:
@@ -582,7 +587,11 @@ def _under_overlay(read: PageScore, screen: Screen) -> bool:
     learned = read.print_.learned
     if learned is None or not read.missing:
         return False
-    ys = [learned.anchors[t].cy + read.dy for t in read.missing if t in learned.anchors]
+    ys = [
+        learned.anchors[a.text].cy + _scroll_offset(a, read.dy)
+        for a in read.print_.decl.anchors
+        if a.text in read.missing and a.text in learned.anchors
+    ]
     if not ys:
         return False
     lo, hi = min(ys), max(ys)

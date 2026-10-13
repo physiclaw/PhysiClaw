@@ -107,6 +107,22 @@ def test_score_scrollable_page_votes_shared_dy() -> None:
     assert abs(s.dy + 0.2) < 0.03
 
 
+def test_match_screen_keeps_pinned_missing_anchors_fixed_under_an_overlay() -> None:
+    page = _print(
+        anchors=[AnchorDecl("商品"), AnchorDecl("发送", within=BANDS["bottom"])],
+        learned_anchors=[_learned("商品", 0.2, 0.7), _learned("发送", 0.8, 0.9)],
+        scrollable=True,
+    )
+    screen = make_screen(
+        ("商品", 0.2, 0.3), ("ABC", 0.2, 0.85), ("DEF", 0.5, 0.90), ("GHI", 0.8, 0.95)
+    )
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.kind == m.Reading.OCCLUDED
+    assert verdict.page_id == "app.page"
+
+
 def test_score_forbid_vetoes() -> None:
     pp = _print(anchors=[AnchorDecl("综合")], forbid=[AnchorDecl("直播中")])
     screen = make_screen(("综合", 0.2, 0.1), ("直播中", 0.5, 0.5))

@@ -1,17 +1,14 @@
-"""The conductor as a turn plugin — the package's one composition point.
+"""Connect the conductor to the engine's TurnPlugin interface.
 
-`contract.plugin.TurnPlugin` is the seam: the engine loads this module
-by its config-listed dotted path (`[agent] plugins`) and never imports
-the conductor's name. Everything the engine used to wire by hand lands
-here instead — `setup.session_setup()` at wake, the micro-caller with
-its cheap-tier client, and the `Conductor` arbiter per turn.
+``session_setup`` restores a suspended Program or builds the boot,
+registers its hidden macros, and wires its MicroCaller. ``advance``
+returns the conductor's next turn, or None for a normal engine turn.
+``aclose`` records an interrupted walk and closes any owned model client.
 
-The micro-caller wiring: None only when nothing drives (no program —
-the boot, a resumed walk; an agent step can fire on any live walk,
-and the owned client is built lazily on the FIRST call, so wiring
-costs nothing at wake); `[conductor] micro_model`
-selects the cheap decision tier, ours to close (`aclose`); fail-open to
-the session provider on any problem, at parse time or build time.
+The engine's session provider is borrowed. An optional configured
+micro provider is created lazily and owned here; invalid configuration
+or construction failure falls back to the borrowed provider. Plugin
+failures are logged and release the session to the general model.
 """
 
 import logging

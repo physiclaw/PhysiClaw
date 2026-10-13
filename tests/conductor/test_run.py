@@ -292,6 +292,23 @@ def test_each_refuses_more_rounds_than_its_budget() -> None:
     assert "3 rounds, more than its 2" in finish(p, h, step)
 
 
+def test_partial_round_restores_at_the_same_cursor() -> None:
+    p, h = _walk(flow=EACH, leg=RECOVERING_LEG, keyword="milk and eggs")
+    _listed(p, h, "milk\neggs")
+    p.resolve(
+        MicroOutcome(out="done", reason="r", confidence=0.9, payload={"key": "milk"})
+    )
+    state = p.state()
+    spec, pack = load_spec("demo", "flow")
+
+    restored = build.build_program(
+        spec, pack, p.values, p.channel, position=state, dry=True
+    )
+
+    assert restored.course.position() == p.course.position()
+    assert restored.ref_values()["plan.key"] == "milk"
+
+
 def test_the_rounds_budget_counts_work_done_not_one_reading_of_the_list() -> None:
     # A revision re-plans and the run expands again. Counting only
     # today's items would hand every re-plan a fresh budget, so a walk
@@ -385,6 +402,54 @@ route:
     with: {message: "{plan.key}"}
   - page: app.pages.results
 """
+
+
+_LEG_START = (
+    "  - start: app\n    macro: app.macros.open-app\n  - page: app.pages.home\n"
+)
+
+
+@pytest.mark.parametrize(
+    "updated_leg",
+    [
+        RECOVERING_LEG,
+        RECOVERING_LEG.replace(_LEG_START, "").replace(
+            "route:\n", f"route:\n{_LEG_START}"
+        ),
+    ],
+    ids=["next-round-starts-with-agent", "next-round-starts-with-macro"],
+)
+def test_a_stale_round_return_misses_only_its_own_round(updated_leg) -> None:
+    flow = EACH.replace("    limit: {rounds: 2}\n", "    miss: skip\n")
+    p, h = _walk(flow=flow, leg=RECOVERING_LEG, keyword="milk and eggs")
+    _listed(p, h, "milk\neggs")
+    start = p.resolve(
+        MicroOutcome(out="done", reason="r", confidence=0.9, payload={"key": "milk"})
+    )
+    feed(h, start, HOME)
+    p.advance(h)  # Save at search, after the old plan recorded only its key.
+    state = p.state()
+    updated_leg = updated_leg.replace(
+        "      key: the keyword\n", "      key: the keyword\n      detail: a detail\n"
+    ).replace('did: "searched {inputs.what}"', 'did: "{plan.detail}"')
+    write_pack(playbooks={"flow": flow, "flow.leg": updated_leg})
+    spec, pack = load_spec("demo", "flow")
+    restored = build.build_program(
+        spec, pack, p.values, p.channel, position=state, dry=True
+    )
+    resumed_history = history()
+    feed(resumed_history, restored.advance(resumed_history), HOME)
+    search = restored.advance(resumed_history)
+    feed(resumed_history, search, RESULTS)
+
+    step = restored.advance(resumed_history)
+
+    assert step is not None
+    assert restored.ledger.rounds["leg[milk]"]["done"] == "missed"
+    assert "no value for {plan.detail}" in restored.ledger.rounds["leg[milk]"]["miss"]
+    assert "did" not in restored.ledger.rounds["leg[milk]"]
+    assert "leg[eggs]" not in restored.ledger.rounds
+    assert restored.course.round.key == "eggs"
 
 
 def test_a_recover_hand_inside_a_round_never_re_derives_the_rounds_answer() -> None:

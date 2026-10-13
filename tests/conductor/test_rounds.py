@@ -51,6 +51,25 @@ def test_plan_leaves_out_a_finished_round() -> None:
     assert [r.key for r in planned] == ["eggs"]
 
 
+def test_plan_counts_a_partially_recorded_round_only_once() -> None:
+    run = _run(_spec())
+    ledger = Ledger(ref="demo/flow", task={})
+    ledger.decide_in_round(Round(run, "milk", {}).prefix, "pick.item", "milk")
+
+    planned = rounds.plan(run, {"parse.items": "milk\neggs"}, ledger)
+
+    assert [r.key for r in planned] == ["milk", "eggs"]
+
+
+def test_plan_counts_recorded_rounds_removed_from_the_current_list() -> None:
+    run = _run(_spec())
+    ledger = Ledger(ref="demo/flow", task={})
+    ledger.round_done(Round(run, "tea", {}).prefix, {"did": "searched tea"})
+
+    with pytest.raises(PlaybookError, match="3 rounds, more than its 2"):
+        rounds.plan(run, {"parse.items": "milk\neggs"}, ledger)
+
+
 def test_plan_past_the_round_budget_raises() -> None:
     spec = _spec()
 

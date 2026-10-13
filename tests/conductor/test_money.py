@@ -4,6 +4,7 @@ screen."""
 
 from __future__ import annotations
 
+import pytest
 from conductor_fakes import make_screen
 
 from physiclaw.conductor.spec.match import Reading, Verdict
@@ -16,6 +17,80 @@ def test_declared_total_reads_the_label_row_itself() -> None:
     screen = make_screen(("原价 ¥79", 0.5, 0.4), ("合计: ¥59.9", 0.5, 0.9))
 
     assert money.declared_total(screen, ("合计",)) == 59.9
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [("已优惠 ¥10 合计 ¥59.9", "合计"), ("商品合计 ¥79 实付 ¥59.9", "实付")],
+)
+def test_declared_total_reads_the_price_after_its_label(text, label) -> None:
+    screen = make_screen((text, 0.5, 0.9))
+
+    total = money.declared_total(screen, (label,))
+
+    assert total == 59.9
+
+
+def test_declared_total_does_not_borrow_a_price_before_its_label() -> None:
+    screen = make_screen(("已优惠 ¥10 合计", 0.5, 0.9))
+
+    total = money.declared_total(screen, ("合计",))
+
+    assert total is None
+
+
+def test_declared_total_accepts_a_standalone_price_before_its_label() -> None:
+    screen = make_screen(("¥59.9 合计", 0.5, 0.9))
+
+    total = money.declared_total(screen, ("合计",))
+
+    assert total == 59.9
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [
+        ("Total\u00a0$59.90", "Total"),
+        ("合计\u3000¥59.90", "合计"),
+        ("$59.90\u00a0Total", "Total"),
+    ],
+)
+def test_declared_total_accepts_unicode_whitespace(text, label) -> None:
+    screen = make_screen((text, 0.5, 0.9))
+
+    total = money.declared_total(screen, (label,))
+
+    assert total == 59.9
+
+
+def test_declared_total_rejects_conflicting_labels_in_a_merged_row() -> None:
+    screen = make_screen(("商品合计 ¥79 合计 ¥59.9", 0.5, 0.9))
+
+    total = money.declared_total(screen, ("合计",))
+
+    assert total is None
+
+
+def test_declared_total_rejects_an_unlabelled_row_with_multiple_prices() -> None:
+    screen = make_screen(("合计", 0.2, 0.9), ("¥59.9 ¥79", 0.4, 0.9))
+
+    total = money.declared_total(screen, ("合计",))
+
+    assert total is None
+
+
+@pytest.mark.parametrize(
+    ("consented", "current"),
+    [(59.9, "59.89"), (59.9, "59.91"), (45.0, "45.01"), (45.0, "44.99")],
+)
+def test_fire_block_rejects_a_one_cent_change(consented, current) -> None:
+    screen = make_screen((f"合计 ¥{current}", 0.5, 0.9))
+
+    blocked = money.fire_block(
+        consented=consented, total_label=("合计",), screen=screen
+    )
+
+    assert blocked is not None and "sheet changed after consent" in blocked
 
 
 def test_declared_total_joins_a_split_row_on_the_same_line() -> None:

@@ -8,7 +8,7 @@ from __future__ import annotations
 import unicodedata
 
 from conductor_fakes import make_screen
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from physiclaw.conductor.spec import conventions, match, reply
@@ -107,17 +107,20 @@ def _grouped(a) -> str:
 
 
 @given(st.text(alphabet=st.characters(blacklist_categories=("Cc", "Cs")), max_size=40))
+@example(label="$0")
+@example(label="saved $10 Total $59.90")
 def test_the_total_reader_never_raises_and_reads_only_currency_marked_numbers(
     label: str,
 ) -> None:
-    # Through the listing grammar, as a real screen arrives — what the
-    # row keeps of the label is what the reader must agree with: a
-    # total reads when the row carries a currency-marked number, else
-    # None, and never an exception.
-    screen = make_screen((label, 0.5, 0.15))
-    out = money.declared_total(screen, (label,) if label.strip() else ("x",))
-    marked = any(conventions.PRICE_RE.findall(r.label) for r in screen.rows)
-    assert (out is not None) == (marked and bool(label.strip()))
+    # Arbitrary OCR text may contain ambiguous or unassociated prices.
+    # The reader may decline those, but must never raise or invent an
+    # amount without a currency-marked number in the parsed listing.
+    screen = make_screen((f"Total {label}", 0.5, 0.15))
+    amounts = set(map(money.amount, conventions.PRICE_RE.findall(screen.labels_text)))
+
+    out = money.declared_total(screen, ("Total",))
+
+    assert out is None or out in amounts
 
 
 # ---------- match: normalization and the label tiers ----------

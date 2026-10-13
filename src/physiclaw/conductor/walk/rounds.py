@@ -72,7 +72,7 @@ def _run_return(ledger: Ledger, run: RunNode, fld: str, keys: list[str]) -> str:
 
 def plan(run: RunNode, vals: dict[str, str], ledger: Ledger) -> list[Round]:
     """The rounds still to do for `run`: every key of its list (or the
-    one round of a plain run) whose record is not in the ledger, each
+    one round of a plain run) whose record is not finished, each
     with its resolved inputs. Raises PlaybookError when the run cannot
     expand (the guarded callers hand over on it)."""
     keys = run_keys(run, vals)
@@ -81,22 +81,28 @@ def plan(run: RunNode, vals: dict[str, str], ledger: Ledger) -> list[Round]:
     # today's items would hand each re-plan a fresh budget. Rounds
     # already on record count — a finished one is work this run did.
     todo = [k for k in keys if not ledger.round_finished(round_prefix(run.id, k))]
-    total = ledger.round_count(run.id) + len(todo)
+    # A resumed/stepped round may already have agent outputs recorded.
+    # Count that identity once, while retaining records no longer on
+    # the revised list so a revision cannot reset the work budget.
+    total = ledger.round_count(run.id) + sum(
+        round_prefix(run.id, key) not in ledger.rounds for key in todo
+    )
     if total > run.max_rounds:
         raise PlaybookError(
             f"run {run.id!r}: {total} rounds, more than its {run.max_rounds}"
         )
+    if not todo:
+        return []
+    # Shared arguments do not depend on the item. Resolve once, only
+    # when work remains; an empty ref lets the sub's default apply.
+    shared = {
+        k: str(v)
+        for k, v in fill_args(run.args, vals, f"run {run.id!r}").items()
+        if str(v) != ""
+    }
     planned: list[Round] = []
     for key in todo:
-        # A ref that is empty BY DESIGN — a run's returns before any
-        # round ends, an `each` whose rounds all missed — is not a
-        # value: left out, so the sub's declared `default:` covers it,
-        # and a required input fed nothing fails closed.
-        provided = {
-            k: str(v)
-            for k, v in fill_args(run.args, vals, f"run {run.id!r}").items()
-            if str(v) != ""
-        }
+        provided = dict(shared)
         if run.each is not None:
             provided[run.each[0]] = key
         try:

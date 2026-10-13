@@ -91,13 +91,25 @@ class Course:
         slot = self._slot
         return slot.round if slot is not None else None
 
-    def step(self) -> Round | None:
-        """Move the cursor one slot on. Returns the round it thereby
-        LEFT (its last node settled) — None when it stays in the same
-        round, or was in none."""
+    def finishing_round(self) -> Round | None:
+        """The round whose last node is at the cursor, if any.
+
+        Check before moving so a failure to resolve its returns is
+        still handled under that round's policy and recorded for it.
+        """
         rd = self.round
+        following = self.idx + 1
+        if rd is not None and (
+            following >= len(self.slots) or self.slots[following].round is not rd
+        ):
+            return rd
+        return None
+
+    def step(self) -> Round | None:
+        """Move one slot forward and return the round left, if any."""
+        left = self.finishing_round()
         self.idx += 1
-        return rd if rd is not None and self.round is not rd else None
+        return left
 
     def span(self, rd: Round) -> tuple[int, int]:
         """A round's first and last route index, inclusive."""

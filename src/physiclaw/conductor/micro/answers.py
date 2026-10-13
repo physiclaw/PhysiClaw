@@ -87,7 +87,7 @@ def _check_box(value: Any, allowed: tuple[str, ...]) -> str:
 
 
 def _check_direction(value: Any, allowed: tuple[str, ...]) -> str:
-    return "" if value in SCROLL_ARMS else MISSING
+    return "" if isinstance(value, str) and value in SCROLL_ARMS else MISSING
 
 
 def _check_macro(value: Any, allowed: tuple[str, ...]) -> str:

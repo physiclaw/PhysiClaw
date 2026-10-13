@@ -159,8 +159,10 @@ async def walk(
         # A rehearsal cut short (Ctrl-C, the turn cap) records its
         # abandoned row like a real wake's teardown would — latched, so
         # a walk that closed properly is a no-op.
-        program.abandon()
-        await decider.aclose()
+        try:
+            program.abandon()
+        finally:
+            await decider.aclose()
 
 
 class _Decider:
@@ -332,7 +334,7 @@ def micro_caller(rlog: "WireSink | None" = None) -> "MicroCaller":
 
     ref = CONFIG.conductor.micro_model or model_ref()
     pid, mid = parse_model_ref(ref)
-    return MicroCaller(
+    return MicroCaller.owning(
         make_provider(pid, mid),
         confidence_floor=CONFIG.conductor.micro_confidence,
         rlog=rlog,
