@@ -63,10 +63,10 @@ def _parse(text: str) -> list[str] | None:
 async def curate(provider, *, tr=None) -> bool:
     """Consolidate the pitfalls list in place. Returns True if it was rewritten.
     Fail-open: any error / unparseable / empty reply leaves the list as-is."""
-    current = pitfalls.read()
-    if not current:
-        return False
     try:
+        current = pitfalls.read()
+        if not current:
+            return False
         asst = await provider.chat(
             [
                 SystemMessage(content=_system()),

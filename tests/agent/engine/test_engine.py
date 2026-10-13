@@ -7,6 +7,8 @@ execution in `test_dispatch.py`."""
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,6 +35,7 @@ from physiclaw.agent.engine import (
 from physiclaw.agent.engine import (
     memory as memory_mod,
 )
+from physiclaw.agent.engine import pitfalls
 from physiclaw.agent.engine import (
     prompt as prompt_mod,
 )
@@ -101,6 +104,128 @@ def _patch_session_deps(mocker):
     mocker.patch.object(engine_mod, "Trace", return_value=fake_tr)
     mocker.patch.object(engine_mod, "RawLog", return_value=fake_rlog)
     return {"tr": fake_tr, "rlog": fake_rlog}
+
+
+@pytest.fixture
+def completed_run(mocker):
+    deps = _patch_session_deps(mocker)
+    provider = FakeProvider(
+        [_asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])]
+    )
+    plugin = SimpleNamespace(
+        session_setup=mocker.AsyncMock(return_value=None),
+        advance=mocker.AsyncMock(return_value=None),
+        aclose=mocker.AsyncMock(),
+    )
+    mocker.patch.object(
+        engine_mod.plugin_loader, "load_plugins", return_value=(plugin,)
+    )
+    factory = mocker.patch.object(engine_mod, "make_provider", return_value=provider)
+    return SimpleNamespace(**deps, provider=provider, plugin=plugin, factory=factory)
+
+
+async def test_regression_failed_plugin_setup_is_skipped_but_closed(completed_run):
+    completed_run.plugin.session_setup.side_effect = RuntimeError("setup failed")
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    completed_run.plugin.advance.assert_not_awaited()
+    completed_run.plugin.aclose.assert_awaited_once()
+
+
+async def test_run_plugin_without_setup_contribution_still_advances(completed_run):
+    plugin = completed_run.plugin
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    plugin.advance.assert_awaited_once()
+    plugin.aclose.assert_awaited_once()
+
+
+@pytest.mark.parametrize("resource", ["provider", "plugin"])
+async def test_regression_cancelled_close_finishes_remaining_cleanup(
+    completed_run, mocker, resource
+):
+    async def cancel_close():
+        asyncio.current_task().cancel("stop")
+        await asyncio.sleep(0)
+
+    close = mocker.patch.object(
+        getattr(completed_run, resource),
+        "aclose",
+        side_effect=cancel_close,
+    )
+
+    with pytest.raises(asyncio.CancelledError, match="stop"):
+        await asyncio.create_task(
+            engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+        )
+
+    close.assert_awaited_once()
+    completed_run.plugin.aclose.assert_awaited_once()
+    completed_run.tr.close.assert_called_once()
+    completed_run.rlog.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("resource", "method"),
+    [("provider", "aclose"), ("plugin", "aclose"), ("tr", "close"), ("rlog", "close")],
+)
+async def test_regression_close_error_preserves_done_and_closes_other_resources(
+    completed_run, mocker, resource, method
+):
+    target = getattr(completed_run, resource)
+    mocker.patch.object(target, method, side_effect=OSError("close failed"))
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    completed_run.factory.assert_called_once()
+    completed_run.plugin.aclose.assert_awaited_once()
+    completed_run.tr.close.assert_called_once()
+    completed_run.rlog.close.assert_called_once()
+
+
+@pytest.mark.parametrize(("sink", "trace_closes"), [("Trace", 0), ("RawLog", 1)])
+async def test_run_log_construction_failure_closes_only_opened_resources(
+    completed_run, mocker, sink, trace_closes
+):
+    mocker.patch.object(engine_mod, sink, side_effect=OSError("cannot open log"))
+    mocker.patch.object(engine_mod.CONFIG.engine, "max_attempts", 1)
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == STUCK
+    assert "cannot open log" in outcome.recap
+    assert completed_run.tr.close.call_count == trace_closes
+    completed_run.rlog.close.assert_not_called()
+    completed_run.factory.assert_not_called()
+
+
+async def test_regression_curate_read_error_does_not_retry_completed_task(
+    completed_run, mocker
+):
+    registry = _registry()
+    path = pitfalls.paths.pitfalls_dir() / "pitfalls.md"
+
+    async def note(session, args):
+        session.added_pitfalls = True
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\xff")
+        return "noted"
+
+    registry["note"] = replace(registry["note"], handler=note)
+    mocker.patch.object(builtin_tool_mod, "build_registry", return_value=registry)
+    mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    completed_run.factory.assert_called_once()
+    assert len(completed_run.provider.calls) == 1
+    assert path.read_bytes() == b"\xff"
 
 
 @pytest.mark.asyncio

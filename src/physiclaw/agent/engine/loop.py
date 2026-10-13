@@ -56,18 +56,31 @@ class _LoopState:
     """
 
     consecutive_correctives: int = 0
+    turn: int = 0
 
 
 async def drive(run: EngineRun, session: Session, messages: list[Message]) -> None:
-    """Run the turn loop (`_drive`); whatever ends it, the driver colour
-    the terminal wore for a playbook's turns ends with it."""
+    """Run turns within the time budget, including awaited calls and retries.
+    Whatever ends the loop, clear the playbook's terminal colour."""
+    state = _LoopState()
+    remaining = (
+        max(0.0, run.deadline - time.monotonic()) if run.deadline is not None else None
+    )
+    budget = asyncio.timeout(remaining)
     try:
-        await _drive(run, session, messages)
+        async with budget:
+            await _drive(run, session, messages, state)
+    except TimeoutError:
+        if not budget.expired():
+            raise  # An unrelated timeout must retain its own failure path.
+        _close_budget_exhausted(run, session, state.turn)
     finally:
         set_tag_accent(None)
 
 
-async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> None:
+async def _drive(
+    run: EngineRun, session: Session, messages: list[Message], state: _LoopState
+) -> None:
     """The driver (principle 7): model → tool_calls → dispatch → results → model.
 
     Each turn runs a fixed pipeline of phase helpers; the control flow between
@@ -85,10 +98,9 @@ async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> N
     3–5 — those judge model output — and dispatches under
     `session.synthesized_turn`.
     """
-    state = _LoopState()
     for turn in range(run.settings.max_turns):
-        if run.deadline is not None and time.monotonic() >= run.deadline:
-            _close_budget_exhausted(run, session, turn)
+        state.turn = turn
+        if _stop_if_expired(run, session, turn):
             return
         request_messages, compaction_imminent = _prepare_request(
             run,
@@ -98,6 +110,8 @@ async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> N
         )
 
         asst = await _call_provider(run, session, request_messages, turn)
+        if _stop_if_expired(run, session, turn):
+            return
         if asst is None:
             return  # provider exhausted its retries — STUCK already set
 
@@ -148,6 +162,10 @@ async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> N
             await _dispatch_turn(run, session, messages, asst, turn)
         finally:
             session.synthesized_turn = False
+        if session.budget_exhausted:
+            return
+        if session.sentinel_status is None and _stop_if_expired(run, session, turn):
+            return
         _finalize_turn(run, session, messages, asst, called, turn)
 
         if session.sentinel_status:
@@ -156,6 +174,15 @@ async def _drive(run: EngineRun, session: Session, messages: list[Message]) -> N
         log.warning("engine hit max turns (%d)", run.settings.max_turns)
         session.sentinel_status = STUCK
         session.sentinel_recap = f"max turns ({run.settings.max_turns}) reached"
+
+
+def _stop_if_expired(run: EngineRun, session: Session, turn: int) -> bool:
+    # Calls that finish without yielding can cross the deadline before the
+    # asyncio timer gets a chance to cancel us. Do not start another action.
+    if run.deadline is not None and time.monotonic() >= run.deadline:
+        _close_budget_exhausted(run, session, turn)
+        return True
+    return False
 
 
 def _close_budget_exhausted(run: EngineRun, session: Session, turn: int) -> None:
@@ -494,6 +521,8 @@ async def _dispatch_turn(
         run.tr.write({"event": "finish_length_warning", "turn": turn})
 
     for call in asst.tool_calls:
+        if _stop_if_expired(run, session, turn):
+            return
         result = await dispatch(run, session, call, turn)
         messages.append(result)
 

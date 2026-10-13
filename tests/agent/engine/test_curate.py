@@ -85,3 +85,16 @@ async def test_curate_skips_unparseable_without_clobbering() -> None:
     pitfalls.add(["keep me"])
     assert await curate.curate(_FakeProvider(["garbage not json"])) is False
     assert pitfalls.read() == ["keep me"]
+
+
+async def test_regression_curate_unreadable_file_is_nonfatal() -> None:
+    path = pitfalls.paths.pitfalls_dir() / "pitfalls.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff")
+    provider = _FakeProvider([])
+
+    result = await curate.curate(provider)
+
+    assert result is False
+    assert provider.calls == []
+    assert path.read_bytes() == b"\xff"

@@ -50,8 +50,8 @@ log = logging.getLogger(__name__)
 async def run(triggers: list[Trigger], *, model_ref: str) -> contract.SessionOutcome:
     """Run engine sessions for `triggers` under the session-outcome contract.
 
-    One attempt = one fresh `Session` through `_run_session` (which never
-    raises — crashes close STUCK). Everything above the attempt belongs to
+    One attempt = one fresh `Session` through `_run_session` (runtime crashes
+    close STUCK; cancellation propagates). Everything above the attempt belongs to
     `contract.drive`: STUCK retries up to `max_attempts` (STUCK here is
     mostly harness-detected — max turns, provider exhausted, crash — so a
     fresh session is worth it; DONE / FAIL / IDLE / WAIT are final), the
@@ -102,8 +102,8 @@ async def _run_session(
     settings: Settings | None = None,
 ) -> None:
     """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider /
-    policy set per call. Writes outcome to `session.sentinel_*`; never
-    raises."""
+    policy set per call. Writes outcome to `session.sentinel_*`; invalid
+    model references and cancellation propagate, runtime crashes close STUCK."""
     provider_id, model_id = parse_model_ref(model_ref)
     settings = settings or Settings.from_config()
 
@@ -153,6 +153,7 @@ async def _run_session(
             wire=rlog,
         )
         gated_macros: dict[str, Macro] = {}
+        active_plugins: list[TurnPlugin] = []
         for plug in plugins:
             try:
                 contribution = await plug.session_setup(setup_ctx)
@@ -170,6 +171,7 @@ async def _run_session(
                         sorted(taken),
                     )
                 gated_macros.update(contribution.gated_macros)
+            active_plugins.append(plug)
         # Built-in skills are inlined full-text into SYSTEM; user skills are
         # indexed and loaded on demand via the Skill tool — so only user
         # skills go into the local registry. The first-run screen-layout skill
@@ -222,7 +224,7 @@ async def _run_session(
             # side-calls of the very kind its playbooks emit.
             # Session-management wiring (collapse cadence, wire logging)
             # comes straight off the provider — not a plugin's job.
-            plugins=plugins,
+            plugins=tuple(active_plugins),
             chat=provider.chat,
             collapse=provider.COLLAPSE,
             serialize_wire=provider.serialize_history,
@@ -277,17 +279,25 @@ async def _run_session(
         session.sentinel_status = STUCK
         session.sentinel_recap = f"session crashed: {e}"
     finally:
+        # Retain all loaded plugins for cleanup, including partial setup.
+        cancelled: asyncio.CancelledError | None = None
         closers = [provider.aclose] if provider is not None else []
         closers += [plug.aclose for plug in plugins]
         for close in closers:
             try:
                 await close()
+            except asyncio.CancelledError as exc:
+                # Finish the other resources in this task, then propagate
+                # cancellation. Moving closes to a new task can break MCP
+                # transports whose cancellation scopes belong to this one.
+                cancelled = cancelled or exc
             except Exception:
-                # A close failure (cancellation landing here, transport
-                # error) must not skip the trace closes below — losing
-                # summary.json mislabels the session as killed.
-                log.warning("provider close failed", exc_info=True)
-        if tr is not None:
-            tr.close()
-        if rlog is not None:
-            rlog.close()
+                log.warning("session resource close failed", exc_info=True)
+        for sink in (tr, rlog):
+            if sink is not None:
+                try:
+                    sink.close()
+                except Exception:
+                    log.warning("session log close failed", exc_info=True)
+        if cancelled is not None:
+            raise cancelled

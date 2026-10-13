@@ -7,7 +7,10 @@ session lifecycle in `test_engine.py`."""
 
 from __future__ import annotations
 
+import asyncio
 import time
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,6 +24,7 @@ from engine_fakes import (
     _tc,
     patch_loop_tails,
 )
+from freezegun import freeze_time
 
 from physiclaw.agent.engine import compact as compact_mod
 from physiclaw.agent.engine import memory as memory_mod
@@ -770,17 +774,222 @@ async def test_loop_memory_gate_fails_open_after_one_retry(patched_loop_deps) ->
 # ---------- wall-clock budget ----------
 
 
+@pytest.fixture
+def budget_clock():
+    # Frozen monotonic deadlines, real event-loop scheduling for cancellation.
+    with freeze_time("2026-10-14", real_asyncio=True) as clock:
+        yield clock
+
+
+@pytest.fixture(params=["provider", "plugin", "local", "mcp"])
+def stalled_run(request, mocker, patched_loop_deps, budget_clock):
+    registry = _registry()
+    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    run = _loop_run(
+        provider,
+        registry,
+        settings=_settings(max_session_seconds=1),
+        deadline=time.monotonic() + 0.005,
+    )
+    cancelled = []
+
+    async def stall(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(True)
+
+    call = mocker.AsyncMock(side_effect=stall)
+    if request.param == "provider":
+        run.chat = call
+    elif request.param == "plugin":
+        run.plugins = (SimpleNamespace(advance=call),)
+    elif request.param == "local":
+        registry["peek"] = replace(registry["peek"], handler=call)
+    else:
+        registry.pop("peek")
+        run.mcp.call_tool = call
+    return run, call, cancelled
+
+
+async def test_regression_budget_cancels_inflight_calls(stalled_run):
+    run, call, cancelled = stalled_run
+    session = Session()
+
+    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+
+    assert session.sentinel_status == STUCK
+    assert session.budget_exhausted is True
+    assert session.synthesized_turn is False
+    call.assert_awaited_once()
+    assert cancelled == [True]
+    run.tr.write.assert_any_call(
+        {"event": "budget_exhausted", "turn": 0, "budget_seconds": 1}
+    )
+
+
+async def test_regression_budget_interrupts_provider_retry_backoff(
+    patched_loop_deps, budget_clock
+):
+    provider = FakeProvider([ProviderTransientError("busy")])
+    run = _loop_run(
+        provider,
+        _registry(),
+        settings=_settings(retry_backoff_seconds=30),
+        deadline=time.monotonic() + 0.005,
+    )
+    session = Session()
+
+    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+
+    assert session.budget_exhausted is True
+    assert len(provider.calls) == 1
+
+
+@pytest.fixture(params=["provider", "note"])
+def expired_before_action(request, mocker, patched_loop_deps, budget_clock):
+    registry = _registry()
+    end = mocker.AsyncMock(wraps=registry["end_session"].handler)
+    registry["end_session"] = replace(registry["end_session"], handler=end)
+    reply = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    run = _loop_run(
+        FakeProvider([reply]),
+        registry,
+        deadline=time.monotonic() + 1,
+    )
+
+    async def slow_call(*args):
+        budget_clock.tick(2)
+        return reply if request.param == "provider" else "noted"
+
+    if request.param == "provider":
+        run.chat = slow_call
+    else:
+        registry["note"] = replace(registry["note"], handler=slow_call)
+    return run, end
+
+
+async def test_regression_budget_rechecked_before_starting_next_action(
+    expired_before_action,
+):
+    run, end = expired_before_action
+    session = Session()
+
+    await drive(run, session, [])
+
+    assert session.budget_exhausted is True
+    assert session.sentinel_status == STUCK
+    end.assert_not_awaited()
+
+
+async def test_budget_does_not_swallow_external_cancellation(
+    mocker, patched_loop_deps, budget_clock
+):
+    run = _loop_run(FakeProvider([]), _registry(), deadline=time.monotonic() + 10)
+    run.chat = mocker.AsyncMock(side_effect=asyncio.CancelledError("external stop"))
+    session = Session()
+
+    with pytest.raises(asyncio.CancelledError, match="external stop"):
+        await drive(run, session, [])
+
+    assert session.budget_exhausted is False
+
+
+async def test_budget_does_not_mislabel_an_unrelated_timeout(
+    mocker, patched_loop_deps, budget_clock
+):
+    run = _loop_run(FakeProvider([]), _registry(), deadline=time.monotonic() + 10)
+    run.tr.write.side_effect = [TimeoutError("trace timeout"), None]
+    session = Session()
+
+    with pytest.raises(TimeoutError, match="trace timeout"):
+        await drive(run, session, [])
+
+    assert session.budget_exhausted is False
+
+
+async def test_budget_on_last_tool_of_last_turn_is_not_retryable(
+    patched_loop_deps, budget_clock
+):
+    registry = _registry()
+
+    async def peek(session, args):
+        budget_clock.tick(2)
+        return "peeked"
+
+    registry["peek"] = replace(registry["peek"], handler=peek)
+    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    run = _loop_run(
+        provider,
+        registry,
+        settings=_settings(max_turns=1),
+        deadline=time.monotonic() + 1,
+    )
+    session = Session()
+
+    await drive(run, session, [])
+
+    assert session.sentinel_status == STUCK
+    assert session.budget_exhausted is True
+
+
+async def test_budget_does_not_overwrite_a_completed_outcome(
+    patched_loop_deps, budget_clock
+):
+    registry = _registry()
+
+    async def finish(session, args):
+        budget_clock.tick(2)
+        session.sentinel_status = DONE
+        return "done"
+
+    registry["end_session"] = replace(registry["end_session"], handler=finish)
+    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("end_session")])])
+    run = _loop_run(provider, registry, deadline=time.monotonic() + 1)
+    session = Session()
+
+    await drive(run, session, [])
+
+    assert session.sentinel_status == DONE
+    assert session.budget_exhausted is False
+
+
+async def test_budget_trace_records_the_interrupted_turn(
+    patched_loop_deps, budget_clock
+):
+    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    run = _loop_run(provider, _registry(), deadline=time.monotonic() + 0.005)
+
+    async def stall(*args):
+        await asyncio.Event().wait()
+
+    async def chat(messages, tools):
+        if provider.calls:
+            return await stall()
+        return await provider.chat(messages, tools)
+
+    run.chat = chat
+    session = Session()
+
+    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+
+    assert session.budget_exhausted is True
+    run.tr.write.assert_any_call(
+        {"event": "budget_exhausted", "turn": 1, "budget_seconds": 0}
+    )
+
+
 @pytest.mark.asyncio
-async def test_loop_closes_stuck_when_budget_exhausted() -> None:
-    # Deadline already in the past: the loop must close before any
+@pytest.mark.parametrize("offset", [-1, 0])
+async def test_loop_closes_stuck_when_budget_exhausted(budget_clock, offset) -> None:
+    # Deadline already reached: the loop must close before any
     # provider round-trip (FakeProvider([]) raises if chatted with).
-    # Every other drive test runs with deadline=None, covering the
-    # disabled-budget path.
+    # The ordinary drive tests use deadline=None for the disabled-budget path.
     session = Session()
     run = _mk_run(
         FakeProvider([]),
         settings=_settings(max_session_seconds=10),
-        deadline=time.monotonic() - 1,
+        deadline=time.monotonic() + offset,
     )
     messages: list = []
 

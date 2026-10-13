@@ -90,8 +90,11 @@ def load_debug_intercept() -> DebugIntercept | None:
     try:
         mod_name, _, attr = DEBUG_INTERCEPT.partition(":")
         interceptor = getattr(importlib.import_module(mod_name), attr)()
+        intercept = interceptor.intercept
+        if not callable(intercept):
+            raise TypeError("debug interceptor must provide a callable intercept")
     except Exception:
         log.warning("debug fake-channel failed to load — running real", exc_info=True)
         return None
     log.warning("DEBUG fake-channel active — user-channel actions are virtual")
-    return interceptor.intercept
+    return intercept

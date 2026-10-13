@@ -10,10 +10,12 @@ loop suite, whose `_mk_run` builds exactly that.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from physiclaw.agent.engine import plugins as plugins_mod
-from physiclaw.common.config import CONFIG
+from physiclaw.common.config import CONFIG, DEBUG_ENV_VAR
 from physiclaw.contract.plugin import TurnPlugin
 
 
@@ -96,3 +98,32 @@ async def test_advance_with_retry_passes_a_crashing_plugin_to_the_provider() -> 
     )
 
     assert turn is spoken
+
+
+@pytest.mark.parametrize("interceptor", [object(), SimpleNamespace(intercept=None)])
+def test_regression_debug_loader_skips_invalid_interceptor(
+    monkeypatch, mocker, interceptor, caplog
+):
+    monkeypatch.setenv(DEBUG_ENV_VAR, "1")
+    module = SimpleNamespace(build=lambda: interceptor)
+    mocker.patch.object(plugins_mod.importlib, "import_module", return_value=module)
+
+    result = plugins_mod.load_debug_intercept()
+
+    assert result is None
+    assert "failed to load" in caplog.text
+    assert "fake-channel active" not in caplog.text
+
+
+def test_debug_loader_returns_valid_intercept(monkeypatch, mocker):
+    monkeypatch.setenv(DEBUG_ENV_VAR, "1")
+
+    def intercept(*args):
+        return None
+
+    module = SimpleNamespace(build=lambda: SimpleNamespace(intercept=intercept))
+    mocker.patch.object(plugins_mod.importlib, "import_module", return_value=module)
+
+    result = plugins_mod.load_debug_intercept()
+
+    assert result is intercept
