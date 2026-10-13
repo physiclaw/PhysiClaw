@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.calibration.transforms import ViewportShift
 from physiclaw.core.hardware.iphone import AssistiveTouch
@@ -130,6 +132,35 @@ def test_overlaps_at_returns_false_when_radius_unset() -> None:
     at.at_screen = (0.1, 0.1)  # Manually set screen but not radius.
 
     assert at.overlaps_at(0.1, 0.1) is False
+
+
+@pytest.mark.parametrize("radius", [(0.0, 0.1), (0.1, 0.0), (-0.1, 0.1)])
+def test_regression_overlap_with_degenerate_radius_is_unset(radius) -> None:
+    at = AssistiveTouch()
+    at.at_screen = (0.1, 0.1)
+    at.at_radius_screen = radius
+
+    overlaps = at.overlaps_at(0.1, 0.1)
+
+    assert overlaps is False
+
+
+@given(
+    point=st.tuples(st.floats(0, 1), st.floats(0, 1)),
+    radius=st.tuples(
+        st.one_of(st.just(0.0), st.floats(0.0001, 1)),
+        st.one_of(st.just(0.0), st.floats(0.0001, 1)),
+    ),
+)
+def test_overlap_matches_zero_length_swipe(point, radius) -> None:
+    at = AssistiveTouch()
+    at.at_screen = (0.1, 0.3)
+    at.at_radius_screen = radius
+
+    point_hit = at.overlaps_at(*point)
+    segment_hit = at.swipe_crosses_at(*point, *point)
+
+    assert point_hit == segment_hit
 
 
 # ---------- swipe_crosses_at ----------

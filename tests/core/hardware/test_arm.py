@@ -25,9 +25,8 @@ class FakeSerial:
     """Minimal in-memory replacement for `serial.Serial`.
 
     `responses` is an iterable of byte sequences returned by successive
-    `readline()` calls. `?` queries pull from `status_replies`. Status
-    queries use `read(in_waiting)` rather than `readline`, so we keep
-    those bytes separate.
+    reads. `?` queries pull from `status_replies`, and ordinary commands
+    pull from `responses`. Reads respect the requested byte count.
     """
 
     def __init__(
@@ -42,7 +41,9 @@ class FakeSerial:
         self.status_replies = deque(status_replies)
         self._startup = startup_bytes
         self._startup_consumed = False
+        self._command_written = False
         self.in_waiting = len(startup_bytes)
+        self.timeout = 3.0
         self.closed = False
 
     def write(self, data: bytes) -> int:
@@ -54,22 +55,28 @@ class FakeSerial:
             else:
                 self._next_status = b""
             self.in_waiting = len(self._next_status)
+        else:
+            self._command_written = True
         return len(data)
-
-    def readline(self) -> bytes:
-        if self.responses:
-            return self.responses.popleft()
-        return b""
 
     def read(self, n: int) -> bytes:
         if not self._startup_consumed and self._startup:
-            self._startup_consumed = True
-            self.in_waiting = 0
-            return self._startup
+            out, self._startup = self._startup[:n], self._startup[n:]
+            self._startup_consumed = not self._startup
+            self.in_waiting = len(self._startup)
+            return out
         out = getattr(self, "_next_status", b"")
+        if out:
+            self._next_status = out[n:]
+            self.in_waiting = len(self._next_status)
+            return out[:n]
         self.in_waiting = 0
-        self._next_status = b""
-        return out
+        if not self._command_written:
+            return b""
+        out = self.responses.popleft() if self.responses else b""
+        if len(out) > n:
+            self.responses.appendleft(out[n:])
+        return out[:n]
 
     def reset_input_buffer(self) -> None:
         pass
@@ -155,6 +162,15 @@ def test_init_uses_explicit_port_when_provided(mocker) -> None:
     assert arm.port == "/dev/cu.explicit"
     detect_spy.assert_not_called()
     serial_spy.assert_called_once_with("/dev/cu.explicit", 9600, timeout=3)
+
+
+def test_regression_serial_open_uses_device_error_taxonomy(mocker) -> None:
+    mocker.patch.object(
+        arm_mod.serial, "Serial", side_effect=arm_mod.serial.SerialException("busy")
+    )
+
+    with pytest.raises(arm_mod.DeviceNotFound, match="Cannot open GRBL.*busy"):
+        StylusArm(port="/dev/cu.fake")
 
 
 # ---------- _send ----------
@@ -268,9 +284,10 @@ def test_wait_idle_raises_on_timeout(mocker) -> None:
         mocker,
         status_replies=[b"<Run|WPos:0,0>\n"] * 50,
     )
-    # Force time.time() to advance past the deadline.
+    # A monotonic deadline must remain independent of wall-clock adjustments.
     times = iter([0.0, 100.0, 100.0])
-    mocker.patch.object(arm_mod.time, "time", side_effect=lambda: next(times))
+    mocker.patch.object(arm_mod.time, "monotonic", side_effect=lambda: next(times))
+    mocker.patch.object(arm_mod.time, "time", return_value=0.0)
 
     with pytest.raises(RuntimeError, match="Arm not idle"):
         arm.wait_idle(timeout=1)

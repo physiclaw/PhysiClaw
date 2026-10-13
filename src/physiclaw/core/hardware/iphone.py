@@ -62,6 +62,8 @@ class AssistiveTouch:
             return False
         ax, ay = self.at_screen
         rx, ry = self.at_radius_screen
+        if rx <= 0.0 or ry <= 0.0:
+            return False
         # Ellipse test: ((sx-ax)/rx)^2 + ((sy-ay)/ry)^2 < 1
         return ((sx - ax) / rx) ** 2 + ((sy - ay) / ry) ** 2 < 1.0
 
@@ -113,7 +115,9 @@ class AssistiveTouch:
         )
         return self.at_screen
 
-    def _move_to_at(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
+    def _move_to_at(
+        self, arm: StylusArm, pct_to_grbl: np.ndarray
+    ) -> tuple[float, float]:
         """Move arm to AT button position."""
         if self.at_screen is None:
             raise RuntimeError("AT position not set — call compute_at_screen_pos first")
@@ -121,36 +125,25 @@ class AssistiveTouch:
         gx, gy = geometry.apply_affine(pct_to_grbl, sx, sy)
         arm.rapid_to(gx, gy)
         arm.wait_idle()
+        return sx, sy
 
     def tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
         """Single-tap AT — iOS takes a screenshot (saved to Photos)."""
-        if self.at_screen is None:
-            raise RuntimeError("AT position not set — call compute_at_screen_pos first")
-        self._move_to_at(arm, pct_to_grbl)
+        sx, sy = self._move_to_at(arm, pct_to_grbl)
         arm.tap()
-        log.info(
-            f"AT single-tap at screen ({self.at_screen[0]:.3f}, {self.at_screen[1]:.3f})"
-        )
+        log.info(f"AT single-tap at screen ({sx:.3f}, {sy:.3f})")
 
     def double_tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
         """Double-tap AT — iOS Shortcut gets latest screenshot and uploads it."""
-        if self.at_screen is None:
-            raise RuntimeError("AT position not set — call compute_at_screen_pos first")
-        self._move_to_at(arm, pct_to_grbl)
+        sx, sy = self._move_to_at(arm, pct_to_grbl)
         arm.double_tap()
-        log.info(
-            f"AT double-tap at screen ({self.at_screen[0]:.3f}, {self.at_screen[1]:.3f})"
-        )
+        log.info(f"AT double-tap at screen ({sx:.3f}, {sy:.3f})")
 
     def long_press(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
         """Long-press AT — iOS Shortcut fetches bridge text to clipboard."""
-        if self.at_screen is None:
-            raise RuntimeError("AT position not set — call compute_at_screen_pos first")
-        self._move_to_at(arm, pct_to_grbl)
+        sx, sy = self._move_to_at(arm, pct_to_grbl)
         arm.long_press()
-        log.info(
-            f"AT long-press at screen ({self.at_screen[0]:.3f}, {self.at_screen[1]:.3f})"
-        )
+        log.info(f"AT long-press at screen ({sx:.3f}, {sy:.3f})")
 
     def take_screenshot(
         self,

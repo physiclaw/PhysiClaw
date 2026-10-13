@@ -101,7 +101,10 @@ class StylusArm:
                 )
             raise DeviceNotFound("GRBL device not found, please specify port manually")
 
-        self.ser = serial.Serial(port, baudrate, timeout=3)
+        try:
+            self.ser = serial.Serial(port, baudrate, timeout=3)
+        except (serial.SerialException, OSError) as exc:
+            raise DeviceNotFound(f"Cannot open GRBL port {port}: {exc}") from exc
         try:
             self.transport = SerialTransport(self.ser)
             self.port = port
@@ -141,8 +144,8 @@ class StylusArm:
     def wait_idle(self, timeout: float = 10) -> None:
         """Poll until GRBL reports Idle status."""
         time.sleep(0.01)  # let GRBL transition from Idle→Run after buffering
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
             status = self._query_status()
             if "Idle" in status:
                 return
