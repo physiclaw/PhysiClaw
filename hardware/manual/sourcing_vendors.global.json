@@ -13,7 +13,7 @@
         "url": "https://www.aliexpress.us/item/3256806710682237.html"
       },
       {
-        "name": "MISUMI USA",
+        "name": "MISUMI",
         "url": "https://us.misumi-ec.com/",
         "details": {
           "label": "Ordering details",
@@ -567,25 +567,25 @@
   },
   {
     "part_id": "bhcs-m3x6",
-    "ref": "¥25",
+    "ref": "$15",
     "suppliers": [
       {
-        "name": "Bairuite",
+        "name": "NINDEJIN",
         "product": "BHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=16979965616&skuId=5241613567720"
+        "url": "https://www.aliexpress.us/item/2255799851750939.html"
       },
       {
-        "name": "Guwanji",
+        "name": "JUIDINTO",
         "product": "BHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=1048175312634&skuId=6073237337873"
+        "url": "https://www.aliexpress.us/item/3256804345288240.html"
       },
       {
-        "name": "Tianzhuo",
+        "name": "ONLYA",
         "product": "BHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=601878431269&skuId=5751904261691"
+        "url": "https://www.aliexpress.us/item/3256806629971774.html"
       }
     ],
-    "note": "Screws are inexpensive, but each size is sold in packs of 20/50/100. Even if you need only a few, you buy the whole pack."
+    "note": "Buy enough packs to get at least the quantity in the BOM."
   },
   {
     "part_id": "bhcs-m3x8",
@@ -625,22 +625,22 @@
   },
   {
     "part_id": "fhcs-m3x8",
-    "ref": "¥10",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "Bairuite",
+        "name": "NINDEJIN",
         "product": "FHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=17046691882&skuId=5070760537532"
+        "url": "https://www.aliexpress.us/item/2255800052949704.html"
       },
       {
-        "name": "Guwanji",
+        "name": "JUIDINTO",
         "product": "FHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=693377485791&skuId=4920755308732"
+        "url": "https://www.aliexpress.us/item/3256804346937100.html"
       },
       {
-        "name": "Tianzhuo",
+        "name": "ONLYA",
         "product": "FHCS, M3–M5 per spec and quantity",
-        "url": "https://detail.tmall.com/item.htm?id=601686390456&skuId=5058384094300"
+        "url": "https://www.aliexpress.us/item/3256806551771194.html"
       }
     ],
     "note": "Ditto"
@@ -659,25 +659,25 @@
   },
   {
     "part_id": "shcs-m6x20",
-    "ref": "¥3",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "M6×20, full thread (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=22060492907&skuId=5256984043602"
+        "name": "NINDEJIN",
+        "product": "Size: M6 10pcs, Length: 20mm",
+        "url": "https://www.aliexpress.us/item/2255800598515019.html"
       },
       {
-        "name": "Guwanji",
-        "product": "M6×20 (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=534600992151&skuId=5044451193674"
+        "name": "JUIDINTO",
+        "product": "Size: M6 5pcs, Length: 20mm (buy 2 packs)",
+        "url": "https://www.aliexpress.us/item/3256804341271555.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "M6×20 (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=684328822068&skuId=5937566337891"
+        "name": "ONLYA",
+        "product": "M6 x10pcs, Length: 20mm",
+        "url": "https://www.aliexpress.us/item/3256806576724919.html"
       }
     ],
-    "note": "Check the tapped holes in your frame extrusions and choose matching M5 or M6 screws."
+    "note": "Use M5 or M6 screws that match the tapped holes in your 2040 frame extrusions."
   },
   {
     "part_id": "shcs-unc14-16",
