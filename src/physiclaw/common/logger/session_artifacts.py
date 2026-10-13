@@ -22,6 +22,8 @@ import base64
 import datetime as dt
 import json
 import logging
+import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -71,10 +73,22 @@ def env_snapshot() -> dict[str, Any]:
 
 
 def write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
-    """tmp + rename so a crash mid-write can't leave a truncated summary."""
-    tmp = path.with_suffix(".json.tmp")
-    write_text(tmp, json.dumps(obj, ensure_ascii=False, indent=2, default=repr) + "\n")
-    tmp.replace(path)
+    """Replace with one complete JSON document, even with concurrent writers.
+
+    Each writer owns a sibling temporary file; the last rename wins.
+    A failed write/rename leaves the previous document intact.
+    """
+    text = json.dumps(obj, ensure_ascii=False, indent=2, default=repr) + "\n"
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as f:
+        tmp = Path(f.name)
+    try:
+        write_text(tmp, text)
+        tmp.replace(path)
+    finally:
+        with suppress(OSError):
+            tmp.unlink(missing_ok=True)
 
 
 def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:
@@ -87,7 +101,7 @@ def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:
         line = json.dumps(summary, ensure_ascii=False, default=repr)
         with _open_log_file(log_dir / "stats.jsonl") as f:
             f.write(line + "\n")
-    except OSError:
+    except (OSError, UnicodeError):
         log.warning("stats.jsonl append failed", exc_info=True)
 
 
@@ -98,7 +112,11 @@ def ensure_readme(dir: Path, content: str) -> None:
     small read per session start)."""
     path = dir / "README.md"
     try:
-        if not path.exists() or read_text(path) != content:
+        try:
+            current = read_text(path)
+        except (FileNotFoundError, UnicodeError):
+            current = None
+        if current != content:
             dir.mkdir(parents=True, exist_ok=True)
             write_text(path, content)
     except OSError:
@@ -155,11 +173,14 @@ def save_image(img_dir: Path, turn: int, mime: str, b64: str) -> str | None:
     # within 1ms, and a silent overwrite loses a frame the model saw.
     stem, _, ext = name.rpartition(".")
     n = 1
-    while path.exists():
-        path = img_dir / f"{stem}_{n}.{ext}"
-        n += 1
-    path.write_bytes(raw)
-    return path.name
+    while True:
+        try:
+            with path.open("xb") as f:
+                f.write(raw)
+            return path.name
+        except FileExistsError:
+            path = img_dir / f"{stem}_{n}.{ext}"
+            n += 1
 
 
 # The session banner/footer rule — one width, so "operators scan either
@@ -190,8 +211,7 @@ class DailyLogWriter:
     def _write(self, text: str) -> None:
         """The one guarded write: fail-open (like the sibling sinks) — a
         full disk costs narrative lines, never the session. ValueError
-        covers writes after a failed rollover reopen left the handle
-        closed."""
+        covers late writes after the handle was closed."""
         try:
             self._f.write(text)
             self._f.flush()
@@ -204,18 +224,20 @@ class DailyLogWriter:
         now = dt.datetime.now()
         today = now.strftime("%Y-%m-%d")
         if today != self._date:
+            new_path = daily_log_path(self._dir, self._prefix, today)
             try:
-                new_path = daily_log_path(self._dir, self._prefix, today)
-                self._f.write(f"[{now:%H:%M:%S}] ROLLOVER → {new_path.name}\n")
-                self._f.flush()
-                self._f.close()
+                new_file = _open_log_file(new_path)
+            except OSError:
+                # Keep the old file usable and retry on the next line.
+                log.warning("daily log rollover failed", exc_info=True)
+            else:
+                self._write(f"[{now:%H:%M:%S}] ROLLOVER → {new_path.name}\n")
+                self.close()
+                self._f = new_file
                 self._date = today
-                self._f = _open_log_file(new_path)
-                self._f.write(
+                self._write(
                     f"\n[{now:%H:%M:%S}] ROLLOVER ← continued from previous day\n"
                 )
-            except (OSError, ValueError):
-                log.warning("daily log rollover failed", exc_info=True)
         self._write(f"[{now:%H:%M:%S}] {msg}\n")
 
     def footer(self) -> None:

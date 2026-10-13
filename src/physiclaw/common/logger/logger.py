@@ -323,7 +323,7 @@ def _publish_active_session(sid: str) -> None:
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
         write_text(marker, sid)
-    except OSError:
+    except (OSError, UnicodeError):
         log.debug("active-session marker write failed", exc_info=True)
 
 
@@ -336,7 +336,7 @@ def _clear_active_session(sid: str) -> None:
     try:
         if read_text(marker).strip() == sid:
             marker.unlink()
-    except OSError:
+    except (OSError, UnicodeError):
         pass
 
 
@@ -346,6 +346,8 @@ def _active_session_dir(sid: str) -> Path | None:
     exactly one does (the writer created it before publishing the marker)."""
     from physiclaw.common import paths
 
+    if not sid or sid in {".", ".."} or any(c in sid for c in "/\\:\0"):
+        return None
     for base in (paths.engine_sessions_dir(), paths.claude_sessions_dir()):
         d = base / sid
         if d.is_dir():
@@ -393,12 +395,12 @@ class _SessionMcpTee(logging.Handler):
         """Repoint the mcp.log handle when the marker names a different session.
         Keying on the session id (not the marker's mtime) so a new session is
         followed even when two markers land in the same mtime tick; the id is
-        resolved to its dir only on a change."""
+        resolved again when an earlier open failed."""
         try:
             sid = read_text(self._marker).strip()
-        except OSError:
+        except (OSError, UnicodeError):
             sid = ""
-        if sid == self._sid:
+        if sid == self._sid and (not sid or self._f is not None):
             return
         self._sid = sid
         self._close_file()
@@ -476,13 +478,17 @@ class LineLogStream:
         self._buf += s
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
-            line = _ANSI_RE.sub("", line).rstrip()
-            if line:
-                self._logger.info(line)
+            self._emit(line)
         return len(s)
 
     def flush(self) -> None:
-        pass
+        line, self._buf = self._buf, ""
+        self._emit(line)
+
+    def _emit(self, line: str) -> None:
+        line = _ANSI_RE.sub("", line).rstrip()
+        if line:
+            self._logger.info(line)
 
 
 # Caps a tool-call log line so a 100KB clipboard body doesn't flood it.
@@ -516,7 +522,8 @@ def logged(fn: AsyncFn) -> AsyncFn:
     A failing tool logs `… — 0.0s FAILED: <err>` instead of a bare duration, so
     the server stream tells a fast failure apart from a fast success (both would
     otherwise read as an identical `tool X(…) — 0.0s`). Cancellation
-    (BaseException) propagates unlogged — it isn't a tool completion."""
+    (BaseException) propagates unlogged — it isn't a tool completion.
+    Formatting or sink failures never replace the tool's result/error."""
 
     # MCPServer dispatches tool calls with keyword args only (positional
     # args land in `args` but never in practice); the log reads kwargs.
@@ -528,20 +535,25 @@ def logged(fn: AsyncFn) -> AsyncFn:
         try:
             result = await fn(*args, **kwargs)
         except Exception as e:
-            log.info(
-                "tool %s(%s) — %.1fs FAILED: %s",
-                fn.__name__,
-                _format_args(fn.__name__, kwargs),
-                time.monotonic() - t0,
-                e,
-            )
+            _log_completion(fn.__name__, kwargs, t0, e)
             raise
-        log.info(
-            "tool %s(%s) — %.1fs",
-            fn.__name__,
-            _format_args(fn.__name__, kwargs),
-            time.monotonic() - t0,
-        )
+        _log_completion(fn.__name__, kwargs, t0)
         return result
 
     return cast(AsyncFn, wrapper)
+
+
+def _log_completion(
+    name: str, kwargs: dict, started: float, error: Exception | None = None
+) -> None:
+    try:
+        log.info(
+            "tool %s(%s) — %.1fs%s",
+            name,
+            _format_args(name, kwargs),
+            time.monotonic() - started,
+            f" FAILED: {error}" if error is not None else "",
+        )
+    except Exception:
+        # Reporting is best-effort; retrying the log here could recurse.
+        pass

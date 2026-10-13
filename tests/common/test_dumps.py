@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from freezegun import freeze_time
 
 from physiclaw.common import dumps
 
@@ -21,24 +22,17 @@ def fake_dirs(tmp_path: Path, mocker) -> dict[str, Path]:
     return {"tool_calls": tc, "snapshots": sn, "screenshots": ss}
 
 
-# ---------- _stamp ----------
+@freeze_time("2026-10-13T10:11:12.123456")
+def test_save_screenshot_name_keeps_chronological_prefix(
+    fake_dirs, monkeypatch
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_SCREENSHOTS", "1")
 
+    dumps.save_screenshot(b"image")
 
-def test_stamp_format() -> None:
-    s = dumps._stamp()
-
-    # YYYYMMDD_HHMMSS_NNN — 19 chars (8 + 1 + 6 + 1 + 3).
-    assert len(s) == 19
-    assert s[8] == "_"
-    assert s[15] == "_"
-
-
-def test_stamp_strips_to_milliseconds() -> None:
-    """`%f` is microseconds (6 digits); we slice to 3 → milliseconds."""
-    s = dumps._stamp()
-
-    # Last segment is the millisecond fragment (3 digits).
-    assert len(s.split("_")[-1]) == 3
+    path = next(fake_dirs["screenshots"].iterdir())
+    assert path.name.startswith("20261013_101112_123_")
+    assert path.suffix == ".jpg"
 
 
 # ---------- _mkdir ----------
@@ -203,3 +197,121 @@ def test_save_screenshot_filenames_unique_per_call(
         dumps.save_screenshot(b"x")
 
     assert {p.stem for p in fake_dirs["screenshots"].iterdir()} == {"t1", "t2", "t3"}
+
+
+@freeze_time("2026-10-13T10:11:12.123456")
+def test_regression_tool_dumps_same_tick_preserve_both_pairs(
+    fake_dirs, monkeypatch
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_TOOL_CALLS", "1")
+
+    dumps.save_tool_call("peek", "first", b"first")
+    dumps.save_tool_call("peek", "second", b"second")
+
+    text_files = sorted(fake_dirs["tool_calls"].glob("*.txt"))
+    assert {p.read_text() for p in text_files} == {"first", "second"}
+    assert {p.with_suffix(".jpg").read_bytes() for p in text_files} == {
+        b"first",
+        b"second",
+    }
+
+
+@pytest.mark.parametrize(
+    "save,args,env",
+    [
+        (
+            dumps.save_tool_call,
+            ("peek", "listing", b"jpeg"),
+            "PHYSICLAW_SAVE_TOOL_CALLS",
+        ),
+        (dumps.save_screenshot, (b"jpeg",), "PHYSICLAW_SAVE_SCREENSHOTS"),
+        (dumps.save_snapshot, (None,), "PHYSICLAW_SAVE_SNAPSHOTS"),
+        (dumps.save_raw_camera, (None,), "PHYSICLAW_SAVE_RAW_CAMERA"),
+    ],
+)
+def test_regression_dump_directory_failure_does_not_escape(
+    save, args, env, monkeypatch, mocker
+) -> None:
+    monkeypatch.setenv(env, "1")
+    mkdir = mocker.patch.object(Path, "mkdir", side_effect=PermissionError("read only"))
+
+    save(*args)
+
+    mkdir.assert_called_once()
+
+
+@pytest.mark.parametrize("operation", ["write_text", "write_bytes"])
+def test_dump_tool_pair_write_failure_is_nonfatal(
+    operation, fake_dirs, monkeypatch, mocker
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_TOOL_CALLS", "1")
+    write = mocker.patch.object(Path, operation, side_effect=OSError("disk full"))
+
+    dumps.save_tool_call("peek", "text", b"image")
+
+    write.assert_called_once()
+
+
+def test_dump_screenshot_write_failure_is_nonfatal(
+    fake_dirs, monkeypatch, mocker
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_SCREENSHOTS", "1")
+    write = mocker.patch.object(Path, "write_bytes", side_effect=OSError("disk full"))
+
+    dumps.save_screenshot(b"image")
+
+    write.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "save,env",
+    [
+        (dumps.save_snapshot, "PHYSICLAW_SAVE_SNAPSHOTS"),
+        (dumps.save_raw_camera, "PHYSICLAW_SAVE_RAW_CAMERA"),
+    ],
+)
+def test_dump_camera_encoder_failure_is_nonfatal(
+    save, env, monkeypatch, mocker
+) -> None:
+    import cv2
+
+    monkeypatch.setenv(env, "1")
+    encode = mocker.patch.object(cv2, "imwrite", side_effect=cv2.error("bad frame"))
+
+    save(None)
+
+    encode.assert_called_once()
+
+
+def test_dump_camera_unsuccessful_write_is_reported(
+    monkeypatch, mocker, caplog
+) -> None:
+    import cv2
+
+    monkeypatch.setenv("PHYSICLAW_SAVE_RAW_CAMERA", "1")
+    mocker.patch.object(cv2, "imwrite", return_value=False)
+
+    dumps.save_raw_camera(None)
+
+    assert "could not write" in caplog.text
+
+
+def test_dump_raw_camera_disabled_does_not_encode(monkeypatch, mocker) -> None:
+    import cv2
+
+    monkeypatch.delenv("PHYSICLAW_SAVE_RAW_CAMERA", raising=False)
+    encode = mocker.patch.object(cv2, "imwrite")
+
+    dumps.save_raw_camera(None)
+
+    encode.assert_not_called()
+
+
+def test_regression_dump_invalid_utf8_listing_is_nonfatal(
+    fake_dirs, monkeypatch, caplog
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_TOOL_CALLS", "1")
+
+    dumps.save_tool_call("peek", "unencodable \ud800", b"image")
+
+    assert "tool-call dump failed" in caplog.text

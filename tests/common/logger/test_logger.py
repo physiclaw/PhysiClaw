@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -351,6 +352,109 @@ def test_server_mcp_tee_repoints_on_marker_change(tmp_path) -> None:
     assert "line-B" not in (a / "mcp.log").read_text()  # repointed, no leak
 
 
+def test_regression_server_tee_retries_failed_open(mocker) -> None:
+    from physiclaw.common import paths
+
+    session_dir = paths.engine_sessions_dir() / "session"
+    session_dir.mkdir(parents=True)
+    _marker_for("session")
+    tee = logger_mod.attach_server_mcp_tee()
+    failure = mocker.patch.object(
+        logger_mod, "_open_log_file", side_effect=PermissionError
+    )
+    tee.handle(_record("initial open failed"))
+    mocker.stop(failure)
+
+    try:
+        tee.handle(_record("after recovery"))
+    finally:
+        logger_mod.detach_session_log(tee)
+
+    assert "after recovery" in (session_dir / "mcp.log").read_text()
+
+
+def test_regression_server_tee_retries_when_session_directory_appears() -> None:
+    from physiclaw.common import paths
+
+    session_dir = paths.engine_sessions_dir() / "session"
+    _marker_for("session")
+    tee = logger_mod.attach_server_mcp_tee()
+    tee.handle(_record("directory missing"))
+    session_dir.mkdir(parents=True)
+
+    try:
+        tee.handle(_record("directory available"))
+    finally:
+        logger_mod.detach_session_log(tee)
+
+    assert "directory available" in (session_dir / "mcp.log").read_text()
+
+
+@pytest.mark.parametrize("sid", ["..", "../escape", "."])
+def test_regression_server_tee_ignores_marker_path_traversal(sid) -> None:
+    from physiclaw.common import paths
+
+    base = paths.engine_sessions_dir()
+    outside = base / sid
+    outside.mkdir(parents=True, exist_ok=True)
+    _marker_for(sid)
+    tee = logger_mod.attach_server_mcp_tee()
+
+    try:
+        tee.handle(_record("must stay in session"))
+    finally:
+        logger_mod.detach_session_log(tee)
+
+    assert not (outside / "mcp.log").exists()
+
+
+def test_regression_sidecars_detach_after_corrupt_marker(tmp_path) -> None:
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    previous_handlers = logging.getLogger().handlers.copy()
+    sidecars = logger_mod.SessionLogSidecars(session_dir)
+    marker = _marker_for("session")
+    marker.write_bytes(b"\xff")
+
+    sidecars.close()
+
+    assert logging.getLogger().handlers == previous_handlers
+
+
+@pytest.mark.parametrize("sid", ["D:escape", "C:", "bad\0id", r"..\escape"])
+def test_regression_server_tee_invalid_path_ids_never_probe_directories(
+    sid, mocker
+) -> None:
+    from physiclaw.common import paths
+
+    _marker_for(sid)
+    root = mocker.patch.object(paths, "engine_sessions_dir")
+    tee = logger_mod.attach_server_mcp_tee()
+
+    try:
+        tee.handle(_record("invalid marker"))
+    finally:
+        logger_mod.detach_session_log(tee)
+
+    root.assert_not_called()
+
+
+def test_session_sidecars_marker_encoding_failure_is_nonfatal(tmp_path, mocker) -> None:
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    mocker.patch.object(
+        Path,
+        "write_text",
+        side_effect=UnicodeEncodeError("utf-8", "\ud800", 0, 1, "bad"),
+    )
+    previous_handlers = logging.getLogger().handlers.copy()
+
+    sidecars = logger_mod.SessionLogSidecars(session_dir)
+    sidecars.close()
+
+    assert logging.getLogger().handlers == previous_handlers
+
+
 # ---------- make_tagged_logger ----------
 
 
@@ -409,6 +513,17 @@ def test_line_log_stream_buffers_partial_lines() -> None:
     logger.info.assert_not_called()
     stream.write("line\n")
     logger.info.assert_called_once_with("half line")
+
+
+def test_regression_line_log_stream_flush_emits_partial_line_once() -> None:
+    logger = MagicMock()
+    stream = LineLogStream(logger)
+    stream.write("last line without newline")
+
+    stream.flush()
+    stream.flush()
+
+    logger.info.assert_called_once_with("last line without newline")
 
 
 # ---------- _format_args ----------
@@ -544,6 +659,56 @@ async def test_logged_success_line_has_no_failed_marker(
     msgs = [r.getMessage() for r in caplog.records if "my_tool" in r.getMessage()]
     assert msgs
     assert not any("FAILED" in m for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_regression_logged_sink_failure_preserves_tool_result(
+    mocker, caplog
+) -> None:
+    @logged
+    async def tool():
+        return "action completed"
+
+    mocker.patch.object(logger_mod.log, "info", side_effect=OSError("disk full"))
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        result = await tool()
+
+    assert result == "action completed"
+
+
+@pytest.mark.asyncio
+async def test_regression_logged_sink_failure_preserves_original_error(
+    mocker, caplog
+) -> None:
+    failure = ValueError("actual tool failure")
+
+    @logged
+    async def tool():
+        raise failure
+
+    mocker.patch.object(logger_mod.log, "info", side_effect=OSError("disk full"))
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        with pytest.raises(ValueError) as caught:
+            await tool()
+
+    assert caught.value is failure
+
+
+@pytest.mark.asyncio
+async def test_regression_logged_bad_arguments_do_not_mask_tool_error(caplog) -> None:
+    failure = ValueError("tool_name must be a string")
+
+    @logged
+    async def sequence(actions):
+        raise failure
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+        with pytest.raises(ValueError) as caught:
+            await sequence(actions=[{"tool_name": None}])
+
+    assert caught.value is failure
 
 
 # ---------- _DailyFileHandler ----------

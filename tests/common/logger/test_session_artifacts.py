@@ -6,10 +6,16 @@ from __future__ import annotations
 
 import functools
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
+import pytest
 from freezegun import freeze_time
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
+from physiclaw.common.logger import session_artifacts as artifacts
 from physiclaw.common.logger.session_artifacts import (
     DailyLogWriter,
     append_stats,
@@ -86,6 +92,137 @@ def test_write_json_atomic_leaves_no_tmp_file(tmp_path: Path) -> None:
     write_json_atomic(path, {"a": 1})
     assert json.loads(path.read_text()) == {"a": 1}
     assert list(d.iterdir()) == [path]
+
+
+def test_regression_atomic_json_writers_do_not_share_temporary_file(
+    tmp_path, mocker
+) -> None:
+    directory = tmp_path / "records"
+    directory.mkdir()
+    path = directory / "state.json"
+    rendezvous = Barrier(2)
+    replace = Path.replace
+
+    def simultaneous_replace(source, target):
+        rendezvous.wait(timeout=5)
+        return replace(source, target)
+
+    mocker.patch.object(Path, "replace", simultaneous_replace)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(write_json_atomic, path, {"writer": 1})
+        second = pool.submit(write_json_atomic, path, {"writer": 2})
+        first.result(timeout=5)
+        second.result(timeout=5)
+
+    assert json.loads(path.read_text()) in [{"writer": 1}, {"writer": 2}]
+    assert list(directory.iterdir()) == [path]
+
+
+def test_write_json_atomic_replace_failure_preserves_previous_file(
+    tmp_path, mocker
+) -> None:
+    directory = tmp_path / "records"
+    directory.mkdir()
+    path = directory / "state.json"
+    path.write_text('{"previous": true}', encoding="utf-8")
+    mocker.patch.object(Path, "replace", side_effect=PermissionError("cannot replace"))
+
+    with pytest.raises(PermissionError, match="cannot replace"):
+        write_json_atomic(path, {"new": True})
+
+    assert json.loads(path.read_text()) == {"previous": True}
+    assert list(directory.iterdir()) == [path]
+
+
+def test_write_json_atomic_write_failure_preserves_previous_file(
+    tmp_path, mocker
+) -> None:
+    directory = tmp_path / "records"
+    directory.mkdir()
+    path = directory / "state.json"
+    path.write_text('{"previous": true}', encoding="utf-8")
+    mocker.patch.object(Path, "write_text", side_effect=OSError("disk full"))
+
+    with pytest.raises(OSError, match="disk full"):
+        write_json_atomic(path, {"new": True})
+
+    assert json.loads(path.read_text()) == {"previous": True}
+    assert list(directory.iterdir()) == [path]
+
+
+# Each example replaces the same isolated file; no example depends on its old contents.
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    st.dictionaries(
+        st.text(), st.one_of(st.text(), st.integers(), st.booleans(), st.none())
+    )
+)
+def test_atomic_json_roundtrips_unicode_objects(tmp_path, payload) -> None:
+    path = tmp_path / "roundtrip.json"
+
+    write_json_atomic(path, payload)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == payload
+
+
+def test_regression_concurrent_image_saves_keep_both_frames(tmp_path, mocker) -> None:
+    rendezvous = Barrier(2)
+    open_file = Path.open
+    mocker.patch.object(artifacts, "image_filename", return_value="same-tick.jpg")
+
+    def simultaneous_open(path, mode="r", *args, **kwargs):
+        if path.name == "same-tick.jpg" and mode in {"wb", "xb"}:
+            rendezvous.wait(timeout=5)
+        return open_file(path, mode, *args, **kwargs)
+
+    mocker.patch.object(Path, "open", simultaneous_open)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(artifacts.save_image, tmp_path, 1, "image/jpeg", "Zmlyc3Q=")
+        second = pool.submit(
+            artifacts.save_image, tmp_path, 1, "image/jpeg", "c2Vjb25k"
+        )
+        first_name = first.result(timeout=5)
+        second_name = second.result(timeout=5)
+
+    assert first_name != second_name
+    assert (tmp_path / first_name).read_bytes() == b"first"
+    assert (tmp_path / second_name).read_bytes() == b"second"
+
+
+def test_regression_daily_log_retries_after_failed_rollover(tmp_path, mocker) -> None:
+    with freeze_time("2026-04-28T23:59:59") as clock:
+        writer = DailyLogWriter(tmp_path, "engine")
+        clock.move_to("2026-04-29T00:00:01")
+        fail_once = mocker.patch.object(
+            artifacts, "_open_log_file", side_effect=PermissionError
+        )
+        writer.line("during failure")
+        mocker.stop(fail_once)
+
+        writer.line("after recovery")
+        writer.close()
+
+    assert "during failure" in (tmp_path / "engine-2026-04-28.log").read_text()
+    assert "after recovery" in (tmp_path / "engine-2026-04-29.log").read_text()
+
+
+def test_append_stats_invalid_utf8_is_nonfatal(tmp_path, caplog) -> None:
+    summary = {"recap": "unencodable \ud800"}
+
+    append_stats(tmp_path, summary)
+
+    assert "stats.jsonl append failed" in caplog.text
+
+
+def test_regression_ensure_readme_repairs_invalid_utf8(tmp_path) -> None:
+    path = tmp_path / "README.md"
+    path.write_bytes(b"\xff")
+
+    artifacts.ensure_readme(tmp_path, "format documentation")
+
+    assert path.read_text(encoding="utf-8") == "format documentation"
 
 
 def test_image_filename_stamps_time_and_turn() -> None:
