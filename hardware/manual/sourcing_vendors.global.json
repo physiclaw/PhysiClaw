@@ -546,22 +546,22 @@
   },
   {
     "part_id": "gooseneck",
-    "ref": "¥8",
+    "ref": "$4",
     "suppliers": [
       {
-        "name": "Feiying",
-        "product": "30 cm gooseneck, 1/4 male/female",
-        "url": "https://item.taobao.com/item.htm?id=856578400006&skuId=5663181169281"
+        "name": "LMR",
+        "product": "300mm A",
+        "url": "https://www.aliexpress.us/item/3256809673340840.html"
       },
       {
-        "name": "Litu",
-        "product": "30 cm gooseneck, 1/4 male/female, w/ 1 nut",
-        "url": "https://item.taobao.com/item.htm?id=955656202854&skuId=6047477731494"
+        "name": "Remever",
+        "product": "Model D 30cm",
+        "url": "https://www.aliexpress.us/item/3256808640494681.html"
       },
       {
-        "name": "Oulin Bosi",
-        "product": "30 cm gooseneck, 1/4 female + 1/4 male",
-        "url": "https://detail.tmall.com/item.htm?id=723765800541&skuId=5200393014254"
+        "name": "Lucky Digital",
+        "product": "30cm M to F",
+        "url": "https://www.aliexpress.us/item/3256812346811541.html"
       }
     ]
   },
