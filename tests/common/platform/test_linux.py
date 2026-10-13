@@ -7,9 +7,79 @@ launches.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
+import pytest
+
 from physiclaw.common.platform import linux
+
+
+def test_regression_aim_viewer_tries_next_after_launch_failure(mocker) -> None:
+    mocker.patch.object(linux.shutil, "which", side_effect=lambda name: "/bin/" + name)
+    launch = mocker.patch.object(
+        linux.subprocess, "Popen", side_effect=[PermissionError, MagicMock()]
+    )
+
+    linux.open_camera_aim_app()
+
+    assert [item.args[0] for item in launch.call_args_list] == [
+        ["snapshot"],
+        ["cheese"],
+    ]
+
+
+def test_regression_aim_cleanup_tolerates_missing_pkill(mocker) -> None:
+    run = mocker.patch.object(linux.subprocess, "run", side_effect=FileNotFoundError)
+    sleep = mocker.patch.object(linux.time, "sleep")
+
+    linux.quit_camera_aim_app()
+
+    assert run.called
+    sleep.assert_called_once_with(0.5)
+
+
+def test_regression_image_viewer_tolerates_execution_denied(mocker) -> None:
+    run = mocker.patch.object(linux.subprocess, "run", side_effect=PermissionError)
+
+    linux.open_image_files(["capture.png"])
+
+    run.assert_called_once_with(["xdg-open", "capture.png"], capture_output=True)
+
+
+def test_regression_primary_video_group_does_not_warn(mocker) -> None:
+    mocker.patch.object(
+        linux.glob,
+        "glob",
+        side_effect=lambda pattern: ["/dev/video0"] if pattern == "/dev/video*" else [],
+    )
+    mocker.patch.object(linux.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=123))
+    mocker.patch.object(linux.os, "getegid", return_value=123)
+    mocker.patch.object(linux.os, "getgroups", return_value=[])
+
+    hints = linux.hardware_permission_hints()
+
+    assert hints == []
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+def test_regression_read_nonfinite_focus_is_unavailable(value) -> None:
+    cap = MagicMock()
+    cap.get.return_value = value
+
+    focus = linux.camera_read_focus(cap)
+
+    assert focus is None
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+def test_regression_apply_invalid_focus_preserves_autofocus(value) -> None:
+    cap = MagicMock()
+
+    ok = linux.camera_apply_focus(cap, value)
+
+    assert ok is False
+    cap.set.assert_not_called()
 
 
 def test_trust_proxy_env_is_true() -> None:

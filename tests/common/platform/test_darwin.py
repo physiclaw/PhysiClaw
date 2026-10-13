@@ -52,6 +52,26 @@ def test_ensure_camera_permission_swallows_timeout(mocker) -> None:
     darwin.ensure_camera_permission()  # must not raise
 
 
+def test_regression_camera_permission_probe_tolerates_execution_denied(mocker) -> None:
+    run = mocker.patch.object(darwin.subprocess, "run", side_effect=PermissionError)
+
+    darwin.ensure_camera_permission()
+
+    run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error", [PermissionError(), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")]
+)
+def test_regression_hostname_falls_back_after_scutil_failure(error, mocker) -> None:
+    mocker.patch.object(darwin.subprocess, "run", side_effect=error)
+    mocker.patch.object(socket, "gethostname", return_value="rig.local")
+
+    hostname = darwin.local_hostname()
+
+    assert hostname == "rig"
+
+
 # ---------- local_hostname ----------
 
 
@@ -384,3 +404,16 @@ def test_apply_focus_false_without_channel(monkeypatch) -> None:
     _reset_probe(monkeypatch, None)
 
     assert darwin.camera_apply_focus(MagicMock(), 137.0) is False
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0, 65536.0])
+def test_regression_apply_invalid_focus_does_not_touch_channel(
+    value, monkeypatch
+) -> None:
+    channel = _FakeFocusTerminal()
+    _reset_probe(monkeypatch, channel)
+
+    ok = darwin.camera_apply_focus(MagicMock(), value)
+
+    assert ok is False
+    assert channel.applied == []

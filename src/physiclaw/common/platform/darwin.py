@@ -5,6 +5,7 @@ never import this module directly — go through ``physiclaw.common.platform``.
 """
 
 import logging
+import math
 import socket
 import subprocess
 import time
@@ -34,7 +35,7 @@ def ensure_camera_permission() -> None:
             capture_output=True,
             timeout=5,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         pass
 
 
@@ -55,7 +56,7 @@ def local_hostname() -> str | None:
             name = result.stdout.strip()
             if name:
                 return name
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, UnicodeError):
         pass
 
     try:
@@ -227,6 +228,8 @@ def camera_read_focus(cap) -> float | None:
 def camera_apply_focus(cap, value: float) -> bool:
     """Drive the lens to a caller-supplied absolute position via UVC
     (`cap` unused)."""
+    if not math.isfinite(value) or not 0 <= value <= 0xFFFF:
+        return False
     channel = _camera_terminal()
     return channel is not None and channel.apply_focus(int(value))
 

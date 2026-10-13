@@ -15,6 +15,27 @@ import pytest
 
 from physiclaw.common.platform import windows
 
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+def test_regression_read_nonfinite_focus_is_unavailable(value) -> None:
+    cap = MagicMock()
+    cap.get.return_value = value
+
+    focus = windows.camera_read_focus(cap)
+
+    assert focus is None
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+def test_regression_apply_invalid_focus_preserves_autofocus(value) -> None:
+    cap = MagicMock()
+
+    ok = windows.camera_apply_focus(cap, value)
+
+    assert ok is False
+    cap.set.assert_not_called()
+
+
 # ---------- TRUST_PROXY_ENV ----------
 
 

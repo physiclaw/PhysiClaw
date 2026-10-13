@@ -4,6 +4,7 @@ Imported by ``physiclaw.common.platform`` on win32 only. Callers should
 never import this module directly — go through ``physiclaw.common.platform``.
 """
 
+import math
 import os
 import socket
 import subprocess
@@ -156,7 +157,7 @@ def camera_read_focus(cap) -> float | None:
     import cv2
 
     cur = cap.get(cv2.CAP_PROP_FOCUS)
-    return cur if cur > 0 else None
+    return cur if math.isfinite(cur) and cur > 0 else None
 
 
 def camera_apply_focus(cap, value: float) -> bool:
@@ -165,6 +166,8 @@ def camera_apply_focus(cap, value: float) -> bool:
     CameraControl_Focus."""
     import cv2
 
+    if not math.isfinite(value) or value < 0:
+        return False
     if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 0):
         return False
     return bool(cap.set(cv2.CAP_PROP_FOCUS, value))

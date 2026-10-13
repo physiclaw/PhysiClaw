@@ -1,9 +1,9 @@
 """Tests for `physiclaw.common.platform.uvc` — IOKit UVC exposure control.
 
-The IOKit layer is mocked throughout: these tests pin the fail-soft
-policy of `camera_terminal` (when it must return None) and the UVC
-request framing of `CameraTerminal`, not the ctypes ABI itself — that
-is exercised on real hardware by the darwin integration checks.
+Fake IOKit functions and COM vtables exercise discovery, ctypes dispatch,
+cleanup and UVC framing without touching hardware. Smaller doubles cover
+device quirks. Compatibility with Apple's actual ABI still needs hardware
+integration checks.
 """
 
 from __future__ import annotations
@@ -13,6 +13,124 @@ from unittest.mock import MagicMock
 import pytest
 
 from physiclaw.common.platform import uvc
+
+
+def test_regression_partial_framework_load_does_not_cache_success(mocker) -> None:
+    mocker.patch.object(uvc, "_iokit", None)
+    mocker.patch.object(uvc, "_cf", None)
+    iokit = MagicMock()
+    load = mocker.patch.object(
+        uvc.C,
+        "CDLL",
+        side_effect=[iokit, OSError("missing CF"), iokit, OSError("missing CF")],
+    )
+
+    first = uvc.camera_terminal()
+    second = uvc.camera_terminal()
+
+    assert first is second is None
+    assert load.call_count == 4
+    iokit.IOServiceGetMatchingServices.assert_not_called()
+
+
+def test_regression_failed_interface_number_never_probes_or_opens(usb_bus) -> None:
+    usb_bus.number_error = 1
+
+    channel = uvc.camera_terminal()
+
+    assert channel is None
+    assert usb_bus.calls.count("interface.Release") == 1
+    assert "open" not in usb_bus.calls
+    assert usb_bus.requests == []
+
+
+def test_terminal_constructor_reports_interface_number_failure(usb_bus) -> None:
+    usb_bus.number_error = 1
+
+    with pytest.raises(OSError, match="UVC GetInterfaceNumber failed: 1"):
+        uvc.CameraTerminal(usb_bus.interface)
+
+
+def test_terminal_native_dispatch_releases_discovery_and_keeps_channel(usb_bus) -> None:
+    channel = uvc.camera_terminal()
+
+    assert channel is not None
+    assert usb_bus.requests == [
+        (0xA1, 0x81, 0x0200, 0x0103, 1),
+        (0xA1, 0x81, 0x0400, 0x0103, 4),
+    ]
+    assert sorted(usb_bus.released_services) == [10, 20, 100, 200]
+    assert usb_bus.calls.count("device.Release") == 1
+    assert "interface.Release" not in usb_bus.calls
+    assert len(usb_bus.created_plugins) == 2
+    assert sorted(usb_bus.destroyed_plugins) == sorted(usb_bus.created_plugins)
+
+
+def test_terminal_native_dispatch_releases_unresponsive_interface(usb_bus) -> None:
+    usb_bus.exposure_answers = False
+
+    channel = uvc.camera_terminal()
+
+    assert channel is None
+    assert usb_bus.calls.count("interface.Release") == 1
+
+
+@pytest.mark.parametrize(
+    "error", ["iterator_error", "plugin_error", "query_error", "registry_error"]
+)
+def test_terminal_native_discovery_failure_does_not_probe(usb_bus, error) -> None:
+    setattr(usb_bus, error, 1)
+
+    channel = uvc.camera_terminal()
+
+    assert channel is None
+    assert usb_bus.requests == []
+
+
+def test_terminal_native_failed_query_destroys_plugins(usb_bus) -> None:
+    usb_bus.query_error = 1
+
+    channel = uvc.camera_terminal()
+
+    assert channel is None
+    # Both registry classes were attempted; each temporary plug-in is released.
+    assert len(usb_bus.created_plugins) == 2
+    assert sorted(usb_bus.destroyed_plugins) == sorted(usb_bus.created_plugins)
+    assert sorted(usb_bus.released_services) == [10, 10, 100, 100]
+
+
+@pytest.mark.parametrize("present", ["device_present", "interface_present"])
+def test_terminal_native_missing_device_does_not_probe(usb_bus, present) -> None:
+    setattr(usb_bus, present, False)
+
+    channel = uvc.camera_terminal()
+
+    assert channel is None
+    assert usb_bus.requests == []
+
+
+def test_terminal_native_open_refusal_still_probes_pipe_zero(usb_bus) -> None:
+    usb_bus.open_error = 1
+
+    channel = uvc.camera_terminal()
+
+    assert channel is not None
+    assert len(usb_bus.requests) == 2
+
+
+@pytest.mark.parametrize("position", [-1, 65536])
+def test_regression_invalid_focus_position_preserves_autofocus(
+    position, mocker
+) -> None:
+    call = mocker.patch.object(uvc, "_call", return_value=0)
+    channel = uvc.CameraTerminal("intf")
+    call.reset_mock()
+
+    ok = channel.apply_focus(position)
+
+    assert ok is False
+    call.assert_not_called()
+
 
 # ---------- camera_terminal fail-soft policy ----------
 

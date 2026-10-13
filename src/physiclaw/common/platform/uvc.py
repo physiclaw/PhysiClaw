@@ -238,33 +238,36 @@ def _load() -> bool:
     if _iokit is not None:
         return True
     try:
-        _iokit = C.CDLL("/System/Library/Frameworks/IOKit.framework/IOKit")
-        _cf = C.CDLL(
+        iokit = C.CDLL("/System/Library/Frameworks/IOKit.framework/IOKit")
+        cf = C.CDLL(
             "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
         )
     except OSError as exc:  # not macOS, or a very stripped system
         log.info("IOKit unavailable: %s", exc)
         return False
-    _cf.CFUUIDGetConstantUUIDWithBytes.restype = C.c_void_p
-    _cf.CFUUIDGetConstantUUIDWithBytes.argtypes = [C.c_void_p] + [C.c_uint8] * 16
-    _iokit.IOServiceMatching.restype = C.c_void_p
-    _iokit.IOServiceMatching.argtypes = [C.c_char_p]
-    _iokit.IOServiceGetMatchingServices.argtypes = [
+    cf.CFUUIDGetConstantUUIDWithBytes.restype = C.c_void_p
+    cf.CFUUIDGetConstantUUIDWithBytes.argtypes = [C.c_void_p] + [C.c_uint8] * 16
+    iokit.IOServiceMatching.restype = C.c_void_p
+    iokit.IOServiceMatching.argtypes = [C.c_char_p]
+    iokit.IOServiceGetMatchingServices.argtypes = [
         C.c_uint32,
         C.c_void_p,
         C.POINTER(C.c_uint32),
     ]
-    _iokit.IOIteratorNext.restype = C.c_uint32
-    _iokit.IOIteratorNext.argtypes = [C.c_uint32]
-    _iokit.IOObjectRelease.argtypes = [C.c_uint32]
-    _iokit.IOCreatePlugInInterfaceForService.argtypes = [
+    iokit.IOIteratorNext.restype = C.c_uint32
+    iokit.IOIteratorNext.argtypes = [C.c_uint32]
+    iokit.IOObjectRelease.argtypes = [C.c_uint32]
+    iokit.IOCreatePlugInInterfaceForService.argtypes = [
         C.c_uint32,
         C.c_void_p,
         C.c_void_p,
         C.POINTER(C.POINTER(C.POINTER(C.c_void_p))),
         C.POINTER(C.c_int32),
     ]
-    _iokit.IODestroyPlugInInterface.argtypes = [C.POINTER(C.POINTER(C.c_void_p))]
+    iokit.IODestroyPlugInInterface.argtypes = [C.POINTER(C.POINTER(C.c_void_p))]
+    # Publish only a fully loaded/configured pair. A partial load must
+    # remain retryable instead of skipping initialization next time.
+    _cf, _iokit = cf, iokit
     return True
 
 
@@ -359,7 +362,9 @@ class CameraTerminal:
         self._range: tuple[int | None, int | None] | None = None
         self._focus_support: bool | None = None  # probed lazily, cached
         ifnum = C.c_uint8()
-        _call(intf, "GetInterfaceNumber", C.byref(ifnum))
+        kr = _call(intf, "GetInterfaceNumber", C.byref(ifnum))
+        if kr != 0:
+            raise OSError(f"UVC GetInterfaceNumber failed: {kr}")
         self._ifnum = ifnum.value
         # Best-effort: instantiates the control pipe on some stacks. A
         # kIOReturnExclusiveAccess refusal (Apple's driver holds the
@@ -463,6 +468,10 @@ class CameraTerminal:
     def apply_focus(self, position: int) -> bool:
         """Continuous AF off, then drive the lens to a caller-supplied
         absolute ``position``."""
+        # Reject before disabling AF: an unencodable position must not
+        # leave the lens frozen at an arbitrary point.
+        if not 0 <= position <= 0xFFFF:
+            return False
         if not self._set(_CT_FOCUS_AUTO, 0, 1):
             return False
         return self._set(_CT_FOCUS_ABS, position, 2)
@@ -511,7 +520,12 @@ def camera_terminal() -> CameraTerminal | None:
         for intf in interfaces:
             _call(intf, "Release")
         return None
-    channel = CameraTerminal(interfaces[0])
+    try:
+        channel = CameraTerminal(interfaces[0])
+    except OSError as exc:
+        log.info("UVC camera control off: %s", exc)
+        _call(interfaces[0], "Release")
+        return None
     if not channel.probe():
         log.info("UVC camera control off: device doesn't answer for exposure")
         _call(interfaces[0], "Release")

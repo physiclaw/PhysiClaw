@@ -12,6 +12,7 @@ hardware`` flow and degrade gracefully when no desktop app is available.
 
 import glob
 import grp
+import math
 import os
 import shutil
 import socket
@@ -59,9 +60,12 @@ def open_camera_aim_app() -> None:
     """
     for app in _AIM_APPS:
         if shutil.which(app):
-            subprocess.Popen(
-                [app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            try:
+                subprocess.Popen(
+                    [app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+            except OSError:
+                continue
             return
 
 
@@ -72,7 +76,10 @@ def quit_camera_aim_app() -> None:
     so the device handle is free before the next ``Camera(...)`` open.
     """
     for app in _AIM_APPS:
-        subprocess.run(["pkill", "-x", app], capture_output=True)
+        try:
+            subprocess.run(["pkill", "-x", app], capture_output=True)
+        except OSError:
+            break
     time.sleep(0.5)
 
 
@@ -81,7 +88,7 @@ def open_image_files(paths: list[str]) -> None:
     for p in paths:
         try:
             subprocess.run(["xdg-open", p], capture_output=True)
-        except FileNotFoundError:
+        except OSError:
             pass
 
 
@@ -184,7 +191,7 @@ def camera_read_focus(cap) -> float | None:
     import cv2
 
     cur = cap.get(cv2.CAP_PROP_FOCUS)
-    return cur if cur > 0 else None
+    return cur if math.isfinite(cur) and cur > 0 else None
 
 
 def camera_apply_focus(cap, value: float) -> bool:
@@ -193,6 +200,8 @@ def camera_apply_focus(cap, value: float) -> bool:
     undefined/ignored while FOCUS_AUTO is on."""
     import cv2
 
+    if not math.isfinite(value) or value < 0:
+        return False
     if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 0):
         return False
     return bool(cap.set(cv2.CAP_PROP_FOCUS, value))
@@ -238,7 +247,7 @@ def _in_group(name: str) -> bool:
         gid = grp.getgrnam(name).gr_gid
     except KeyError:
         return False
-    return gid in os.getgroups()
+    return gid == os.getegid() or gid in os.getgroups()
 
 
 def hardware_permission_hints() -> list[str]:
