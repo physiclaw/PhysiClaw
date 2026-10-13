@@ -41,7 +41,7 @@
           "zh": "安装触控笔尖"
         },
         "body": {
-          "en": "The solenoid ships with a nut on its bottom end. 1. Remove the nut. 2. Thread the stylus tip on in its place.",
+          "en": "The solenoid has a nut on its bottom end. 1. Remove the nut. 2. If the stylus tip has an M5 female thread, install an M3 female-to-M5 male adapter on the solenoid. 3. Install the stylus tip.",
           "zh": "电磁铁底端出厂时拧有一颗螺母。1. 拧下螺母。2. 在原位拧上触控笔尖。"
         },
         "classes": "note overlay sm",
