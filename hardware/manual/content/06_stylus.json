@@ -49,12 +49,12 @@
       },
       {
         "h3": {
-          "en": "Solenoid mount holes",
-          "zh": "电磁铁安装孔"
+          "en": "Make the leads longer",
+          "zh": "先接长引线"
         },
         "body": {
-          "en": "Two M3 holes, 15 mm apart.",
-          "zh": "两个 M3 孔，间距 15 mm。"
+          "en": "Before you install the solenoid on the mount, make the positive and negative leads longer. Refer to Wiring — Extend the leads.",
+          "zh": "把电磁铁装到支架上之前，先接长正负极引线。方法见“接线 — 接长引线”。"
         },
         "classes": "note overlay sm",
         "style": "left:120mm; top:105mm; width:60mm;"
