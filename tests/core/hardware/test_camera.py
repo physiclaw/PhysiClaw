@@ -9,6 +9,7 @@ loop itself is unit-tested with scripted callables in
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import threading
@@ -84,7 +85,8 @@ class FakeVideoCapture:
         self._reads = list(read_results or [])
         self._raise_on_read = raise_on_read
         self.released = False
-        self.set_calls: list[tuple[int, int]] = []
+        self.set_calls: list[tuple[int, float]] = []
+        self._properties: dict[int, float] = {}
 
     def isOpened(self) -> bool:  # noqa: N802 — cv2 API
         return self._is_open and not self.released
@@ -98,6 +100,11 @@ class FakeVideoCapture:
 
     def set(self, prop, value):
         self.set_calls.append((prop, value))
+        self._properties[prop] = float(value)
+        return True
+
+    def get(self, prop):
+        return self._properties.get(prop, 0.0)
 
     def release(self):
         self.released = True
@@ -115,6 +122,23 @@ def _open_camera_no_thread(mocker, *, vc: FakeVideoCapture) -> Camera:
     # Halt the background reader so subsequent attribute pokes are stable.
     cam._reader.stop()
     return cam
+
+
+@pytest.fixture(params=["native", "linux", "windows"])
+def capture_controls(request, mocker):
+    """Exercise property-based controls even when the host uses macOS UVC."""
+    if request.param == "native":
+        return
+    backend = importlib.import_module(f"physiclaw.common.platform.{request.param}")
+    for name in (
+        "camera_set_auto_exposure",
+        "camera_set_manual_exposure",
+        "camera_lock_focus",
+        "camera_unlock_focus",
+        "camera_read_focus",
+        "camera_apply_focus",
+    ):
+        mocker.patch.object(camera_mod.platform, name, getattr(backend, name))
 
 
 # ---------- Camera construction ----------
@@ -353,6 +377,17 @@ def test_snapshot_no_bbox(mocker) -> None:
 # ---------- close ----------
 
 
+@pytest.mark.parametrize("capture_controls", ["linux", "windows"], indirect=True)
+def test_focus_controls_roundtrip_capture_properties(mocker, capture_controls):
+    cam, _ = _ready_camera(mocker)
+
+    applied = cam.apply_focus(137.0)
+    position = cam.read_focus()
+
+    assert applied is True
+    assert position == 137.0
+
+
 def test_close_stops_thread_and_releases(mocker) -> None:
     vc = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     mocker.patch.object(cv2, "VideoCapture", return_value=vc)
@@ -365,7 +400,9 @@ def test_close_stops_thread_and_releases(mocker) -> None:
 
 
 @pytest.mark.parametrize("stage", ["reader", "exposure", "focus"])
-def test_regression_interrupted_close_still_releases_capture(mocker, stage):
+def test_regression_interrupted_close_still_releases_capture(
+    mocker, stage, capture_controls
+):
     cam, vc = _ready_camera(mocker)
     mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
     cam.set_manual_exposure(-5)
@@ -401,7 +438,9 @@ def test_interrupted_close_keeps_native_release_behind_capture_lock(mocker):
 
 
 @pytest.mark.parametrize("control", ["camera_set_auto_exposure", "camera_unlock_focus"])
-def test_close_control_restore_failure_still_releases_capture(mocker, control, caplog):
+def test_close_control_restore_failure_still_releases_capture(
+    mocker, control, caplog, capture_controls
+):
     cam, vc = _ready_camera(mocker)
     mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
     cam.set_manual_exposure(-5)
