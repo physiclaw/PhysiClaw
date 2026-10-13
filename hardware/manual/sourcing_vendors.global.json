@@ -504,22 +504,22 @@
   },
   {
     "part_id": "teflon-tube",
-    "ref": "¥2",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Chunshi",
-        "product": "Black, 2 mm ID × 4 mm OD (per metre)",
-        "url": "https://detail.tmall.com/item.htm?id=655172054388&skuId=5856340424371"
+        "name": "Maecoom",
+        "product": "1M, Black",
+        "url": "https://www.aliexpress.us/item/3256803004650903.html"
       },
       {
-        "name": "OUPLI",
-        "product": "2×4 mm (5 m)",
-        "url": "https://detail.tmall.com/item.htm?id=569970454162&skuId=4508365327825"
+        "name": "3DSWAY",
+        "product": "Grey 4M",
+        "url": "https://www.aliexpress.us/item/3256806780305316.html"
       },
       {
-        "name": "Daoguan",
-        "product": "2×4 mm, 1 m",
-        "url": "https://detail.tmall.com/item.htm?id=20845971530&skuId=4499661631183"
+        "name": "Creality",
+        "product": "Blue PTFE-1M",
+        "url": "https://www.aliexpress.us/item/3256807633745958.html"
       }
     ]
   },
