@@ -1,16 +1,11 @@
 """
-Camera module — reusable Camera class and CLI test utilities.
+Camera capture, negotiation, and remembered device state.
 
 Usage as library:
     from physiclaw.core.hardware.camera import Camera
     cam = Camera(index=0)
     frame = cam.snapshot()
     cam.close()
-
-Usage as CLI:
-    uv run python -m physiclaw.camera              # scan all cameras
-    uv run python -m physiclaw.camera --index 0    # live preview (q=quit, s=save)
-    uv run python -m physiclaw.camera --snap 0     # save one frame
 
 Note: On macOS, OpenCV won't trigger the camera permission dialog.
 If the camera returns blank frames, run `imagesnap` once first to
@@ -223,6 +218,10 @@ class Camera:
         # setters, _reopen, and close. Non-reentrant, never nested; _open
         # does NOT take it (callers hold it, or run before the thread).
         self._cap_lock = threading.Lock()
+        # A close request forbids reconnect even if a native read outlives
+        # the join budget. A later close may still release a wedged handle.
+        self._closing = False
+        self._closed = False
         # Exposure state remembered on the instance so _reopen() re-applies
         # a converged manual value instead of silently reverting to auto.
         self._exposure_auto: bool = CONFIG.camera.auto_exposure
@@ -232,6 +231,9 @@ class Camera:
         # for the same reason as exposure: a reconnect must not silently
         # hand the lens back to continuous AF.
         self._focus_value: float | None = focus_value
+        # Raw calibration freezes and partial writes also need cleanup,
+        # even when no replayable position has been remembered yet.
+        self._focus_needs_restore = focus_value is not None
         # Whether the last apply of _focus_value landed (driver-confirmed)
         # — recomputed by _open on every (re)open. Distinct from
         # _focus_value, the remembered intent replayed on every reconnect:
@@ -253,21 +255,25 @@ class Camera:
         self._open()
         try:
             self._warmup()
-        except Exception:
-            # The cap opened but never produced a frame — release it, or
-            # the handle leaks for the process lifetime (and on Windows
-            # MSMF blocks any later open of the same device).
-            try:
-                self.cap.release()
-            except Exception:
-                pass
+            self._reader.start()
+        except BaseException:
+            # Failed warmup/startup, including cancellation, must release
+            # safely even if Thread.start began the pump before raising.
+            # _open owns cleanup if acquisition itself fails.
+            with contextlib.suppress(Exception):
+                self.close()
             raise
-        self._reader.start()
 
     def _locked_read(self):
         """One serialized ``cap.read()`` — the reader's injected pump."""
         with self._cap_lock:
+            self._require_open()
             return self.cap.read()
+
+    def _require_open(self) -> None:
+        """Reject queued operations after close was requested; cap lock held."""
+        if self._closing:
+            raise DeviceNotFound(f"Camera {self.index} is closing or closed")
 
     def health(self) -> bool:
         """Live check: the reader loop is running and frames are recent
@@ -281,23 +287,35 @@ class Camera:
         prompt. Caller must hold ``_cap_lock`` or run before the reader
         thread starts (``__init__``/``_warmup``)."""
         backend = platform.camera_backend()
-        with silenced_stderr():
-            self.cap = cv2.VideoCapture(self.index, backend)
-            if not self.cap.isOpened():
-                platform.ensure_camera_permission()
-                self.cap = cv2.VideoCapture(self.index, backend)
-        if not self.cap.isOpened():
-            raise DeviceNotFound(f"Cannot open camera index {self.index}")
-        # FOURCC → size → exposure, in that order (see configure_capture).
-        # Reads the REMEMBERED exposure state, so a converged manual value
-        # survives _reopen()'s reconstruction of the cap.
-        self._focus_applied = configure_capture(
-            self.cap,
-            exposure_auto=self._exposure_auto,
-            exposure=self._exposure_value,
-            size=self._request_size,
-            focus_value=self._focus_value,
-        )
+        self._focus_applied = False
+        cap = None
+        try:
+            with silenced_stderr():
+                cap = cv2.VideoCapture(self.index, backend)
+                if not cap.isOpened():
+                    cap.release()
+                    cap = None
+                    platform.ensure_camera_permission()
+                    cap = cv2.VideoCapture(self.index, backend)
+            if not cap.isOpened():
+                raise DeviceNotFound(f"Cannot open camera index {self.index}")
+            # Publish only a configured handle. Failed opens leave no live
+            # candidate behind and never retain a previous pin verdict.
+            if self._focus_value is not None:
+                self._focus_needs_restore = True
+            self._focus_applied = configure_capture(
+                cap,
+                exposure_auto=self._exposure_auto,
+                exposure=self._exposure_value,
+                size=self._request_size,
+                focus_value=self._focus_value,
+            )
+        except BaseException:
+            if cap is not None:
+                with contextlib.suppress(Exception):
+                    cap.release()
+            raise
+        self.cap = cap
 
     def _request_ladder(self) -> list[tuple[int, int]]:
         """The configured request first, then each strictly-smaller fallback."""
@@ -367,6 +385,8 @@ class Camera:
         manual exposure survives the reconnect."""
         log.warning(f"Camera {self.index}: reconnecting cv2.VideoCapture")
         with self._cap_lock:
+            if self._closing:
+                return
             try:
                 self.cap.release()
             except Exception:
@@ -391,17 +411,19 @@ class Camera:
     def set_auto_exposure(self) -> None:
         """Hand exposure back to the camera firmware. Remembered, so a
         later `_reopen` keeps the choice."""
-        self._exposure_auto = True
         with self._cap_lock:
+            self._require_open()
+            self._exposure_auto = True
             platform.camera_set_auto_exposure(self.cap)
 
     def set_manual_exposure(self, value: int) -> None:
-        """Hold a fixed exposure (backend-native units). Remembered, so a
+        """Hold a fixed exposure (log2 seconds). Remembered, so a
         later `_reopen` re-applies it. Verification is the caller's job —
         measured frame brightness, never the driver's word."""
-        self._exposure_auto = False
-        self._exposure_value = value
         with self._cap_lock:
+            self._require_open()
+            self._exposure_auto = False
+            self._exposure_value = value
             platform.camera_set_manual_exposure(self.cap, value)
 
     # ─── Focus control ──────────────────────────────────────────
@@ -431,19 +453,24 @@ class Camera:
         Verification is the caller's job — measured sharpness, never
         the driver's word."""
         with self._cap_lock:
+            self._require_open()
+            self._focus_needs_restore = True
             return platform.camera_lock_focus(self.cap)
 
     def unlock_focus(self) -> None:
         """Hand the lens back to continuous autofocus. Remembered."""
-        self._focus_value = None
-        self._focus_applied = False
         with self._cap_lock:
+            self._require_open()
+            self._focus_value = None
+            self._focus_applied = False
             platform.camera_unlock_focus(self.cap)
+            self._focus_needs_restore = False
 
     def read_focus(self) -> float | None:
         """Current absolute lens position, or None when the driver
         doesn't report a usable one."""
         with self._cap_lock:
+            self._require_open()
             return platform.camera_read_focus(self.cap)
 
     def apply_focus(self, value: float) -> bool:
@@ -453,11 +480,13 @@ class Camera:
         is the caller's job — measured sharpness, never the driver's
         word."""
         with self._cap_lock:
+            self._require_open()
+            self._focus_needs_restore = True
             ok = platform.camera_apply_focus(self.cap, value)
-        if ok:
-            self._focus_value = value
-            self._focus_applied = True
-        return ok
+            if ok:
+                self._focus_value = value
+                self._focus_applied = True
+            return ok
 
     def wait_frames(self, n: int, timeout: float = 5.0) -> bool:
         """Block until the reader publishes `n` MORE frames (or timeout).
@@ -527,6 +556,7 @@ class Camera:
         return frame
 
     def close(self) -> None:
+        self._closing = True
         self._reader.stop()
         # Never release the cap without holding the lock — a native
         # release() concurrent with the reader's cap.read() can segfault
@@ -534,6 +564,8 @@ class Camera:
         # leak the handle instead of deadlocking the caller.
         if self._cap_lock.acquire(timeout=self.CLOSE_LOCK_TIMEOUT_SECONDS):
             try:
+                if self._closed:
+                    return
                 # Hand a held manual exposure back to firmware auto on the
                 # way out: the value lives in the camera's volatile RAM, so
                 # it would outlive this process and poison the next run (or
@@ -548,12 +580,15 @@ class Camera:
                 # Same volatile-RAM story for a pinned lens: hand it back
                 # to AF so the next run (or any other app) starts hunting
                 # from a live autofocus, not our frozen position.
-                if self._focus_value is not None:
+                if self._focus_needs_restore:
                     try:
                         platform.camera_unlock_focus(self.cap)
+                        self._focus_needs_restore = False
                     except Exception:
                         log.warning("focus hand-back on close failed", exc_info=True)
                 self.cap.release()
+                self._focus_applied = False
+                self._closed = True
             finally:
                 self._cap_lock.release()
         else:

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
 from physiclaw.core.hardware import exposure
 from physiclaw.core.hardware.exposure import converge
 from physiclaw.core.vision.quality import QualityReport
@@ -516,3 +520,96 @@ def test_wants_retry_blown_truth_table() -> None:
     assert exposure.wants_retry(hold, blown_view) is False  # unchanged scene
     assert exposure.wants_retry(hold, _r(180.0, clip=0.3)) is True  # moved
     assert exposure.wants_retry(sentinel, blown_view) is True  # blown stays urgent
+
+
+def test_regression_saturated_medians_do_not_abort_darker_search() -> None:
+    saturated = _r(255.0, clip=1.0)
+    rig = Rig(saturated, {-6: saturated, -7: saturated, -8: GOOD})
+
+    result = converge(rig.meter, rig.set_auto, rig.set_manual, start=-6)
+
+    assert result.ok and result.exposure == -8
+    assert rig.manual_calls == [-6, -7, -8]
+
+
+def test_regression_stalled_usable_probe_is_kept_in_manual_mode() -> None:
+    rig = Rig(BLOWN, {-6: BLOWN, -7: _r(149.0, clip=0.08)})
+
+    result = converge(
+        rig.meter, rig.set_auto, rig.set_manual, start=-6, prefer_auto=False
+    )
+
+    assert result.exposure == -7
+    assert rig.manual_calls == [-6, -7, -7]
+
+
+@pytest.mark.parametrize("failure_stage", ["write", "meter"])
+@pytest.mark.parametrize("prefer_auto", [True, False])
+@pytest.mark.parametrize("error_type", [OSError, KeyboardInterrupt])
+def test_regression_interrupted_manual_tune_restores_configured_mode(
+    failure_stage, prefer_auto, error_type
+) -> None:
+    rig = Rig(BLOWN, {})
+
+    def set_manual(value):
+        rig.set_manual(value)
+        if failure_stage == "write":
+            raise error_type("camera disconnected")
+
+    def meter():
+        if rig.mode == "manual":
+            raise error_type("camera disconnected")
+        return BLOWN
+
+    with pytest.raises(error_type, match="camera disconnected"):
+        converge(meter, rig.set_auto, set_manual, start=-6, prefer_auto=prefer_auto)
+
+    assert rig.mode == ("auto" if prefer_auto else "manual")
+
+
+def test_regression_tune_cleanup_failure_preserves_original_error() -> None:
+    rig = Rig(BLOWN, {})
+    attempts = []
+
+    def set_auto():
+        attempts.append(rig.mode)
+        if rig.mode == "manual":
+            raise OSError("cleanup also failed")
+        rig.set_auto()
+
+    def set_manual(value):
+        rig.set_manual(value)
+        raise RuntimeError("exposure write failed")
+
+    with pytest.raises(RuntimeError, match="exposure write failed"):
+        converge(rig.meter, set_auto, set_manual, start=-6)
+
+    assert rig.manual_calls == [-6]
+    assert attempts == ["auto", "manual"]
+
+
+@given(
+    start=st.integers(-50, 50),
+    ceiling=st.integers(exposure.MIN_EXPOSURE, exposure.MAX_EXPOSURE),
+    steps=st.integers(0, 10),
+    prefer_auto=st.booleans(),
+)
+def test_converge_keeps_every_probe_and_hold_within_limits(
+    start, ceiling, steps, prefer_auto
+) -> None:
+    dark = _r(5.0)
+    rig = Rig(dark, dict.fromkeys(range(exposure.MIN_EXPOSURE, ceiling + 1), dark))
+
+    result = converge(
+        rig.meter,
+        rig.set_auto,
+        rig.set_manual,
+        start=start,
+        max_exposure=ceiling,
+        max_steps=steps,
+        prefer_auto=prefer_auto,
+    )
+
+    assert all(exposure.MIN_EXPOSURE <= value <= ceiling for value in rig.manual_calls)
+    assert len(rig.manual_calls) <= steps + 1
+    assert result.deferred

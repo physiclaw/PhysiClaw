@@ -44,6 +44,7 @@ from typing import Callable, Literal
 from physiclaw.core.vision.quality import (
     BLOWN_BLOB_COUNT,
     BLOWN_CLIP_PCT,
+    CLIP_LUMA,
     WASHED_HIGHLIGHT_PCT,
     QualityReport,
 )
@@ -310,13 +311,49 @@ def converge(
                 f"recovered by AE re-assert (median {r.median_luma:.0f})",
             )
 
-    # Phase 3: manual stepping. On the log2 scale, lower = darker.
+    # A native write may disable AE before raising, or the meter may fail
+    # after a manual probe. Preserve the original failure after attempting
+    # to restore firmware AE; a configured manual pin must stay manual.
+    try:
+        return _step_manual(
+            meter,
+            set_auto,
+            set_manual,
+            r,
+            start=start,
+            max_steps=max_steps,
+            prefer_auto=prefer_auto,
+            max_exposure=max_exposure,
+        )
+    except BaseException:
+        if prefer_auto:
+            try:
+                set_auto()
+            except Exception:
+                log.warning("exposure rollback to auto failed", exc_info=True)
+        raise
+
+
+def _step_manual(
+    meter: Callable[[], QualityReport | None],
+    set_auto: Callable[[], None],
+    set_manual: Callable[[int], None],
+    initial: QualityReport,
+    *,
+    start: int,
+    max_steps: int,
+    prefer_auto: bool,
+    max_exposure: int,
+) -> TuneResult:
+    """Probe bounded manual values, then hold a usable step or restore AE."""
+    r: QualityReport | None = initial
+    # On the log2 scale, lower = darker.
     # Clamp `start` once for the whole manual phase — config doesn't
     # range-check, and every manual value written below (steps and the
     # pinned-manual fallback) must respect set_manual's contract.
     start = max(MIN_EXPOSURE, min(max_exposure, start))
     exp = start
-    prev_luma = r.median_luma
+    prev_luma = initial.median_luma
     last_dir = 0
     flips = 0
     best: int | None = None  # darkest usable exposure tried
@@ -341,18 +378,17 @@ def converge(
                 f"converged at {exp} in {step} step(s) "
                 f"(median {r.median_luma:.0f}, clip {r.clip_pct:.0%})",
             )
-        # Stall check after the in-band accept (a step that lands in band
-        # is a success however little the luma moved), and only from the
-        # second step on: step 1's baseline is the auto-mode read, and a
-        # manual start that happens to match AE's converged brightness is
-        # normal — declaring it a stall would abort a search whose next
-        # step could still converge. Lit crops only: on a black screen
-        # the meter can't move regardless of the driver, and the asleep
-        # verdict below is the right conclusion, not "ignored or
-        # clamped writes".
+        if _usable(r) and (best is None or exp < best):
+            best = exp
+        # Stall check after recording a usable probe: even little movement
+        # may clear the runtime's warning threshold and improve the hold.
+        # A saturated median cannot reveal progress until it leaves clip.
+        # Compare only manual reads from lit crops: the first probe can
+        # legitimately match AE, and a black screen cannot reveal changes.
         if (
             step > 1
             and is_reference(r)
+            and max(prev_luma, r.median_luma) < CLIP_LUMA
             and abs(r.median_luma - prev_luma) < LUMA_STALL_EPSILON
         ):
             reason = (
@@ -361,8 +397,6 @@ def converge(
             )
             break
         prev_luma = r.median_luma
-        if _usable(r) and (best is None or exp < best):
-            best = exp
         # Darker while highlights are too hot — globally (clip fraction),
         # as burned icon blobs (which ride on a low global clip), or as a
         # washed highlight fraction (whites at ~230-249 that don't clip at

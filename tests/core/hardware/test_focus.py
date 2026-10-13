@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from physiclaw.core.hardware.focus import CONFIRM_METERS, lock
 
 SHARP = 400.0  # comfortably above BLUR_THRESHOLD (80)
@@ -101,7 +103,7 @@ def test_refused_freeze_fails_open_without_retry_bait() -> None:
 
     assert not res.locked
     assert "refused" in res.detail
-    assert rig.unfreeze_calls == 0
+    assert rig.unfreeze_calls == 1
 
 
 def test_soft_frozen_frame_reverts_to_autofocus() -> None:
@@ -124,3 +126,59 @@ def test_no_frame_after_freeze_reverts_to_autofocus() -> None:
 
     assert not res.locked
     assert rig.unfreeze_calls == 1
+
+
+def test_regression_partial_focus_freeze_restores_autofocus() -> None:
+    rig = Rig([SHARP, SHARP])
+
+    def partial_freeze() -> bool:
+        rig.freeze()
+        return False
+
+    res = lock(rig.meter, partial_freeze, rig.unfreeze)
+
+    assert not res.locked
+    assert not rig.frozen
+
+
+@pytest.mark.parametrize("failure_stage", ["freeze", "verify"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_regression_focus_exception_restores_autofocus(
+    failure_stage, error_type
+) -> None:
+    rig = Rig([SHARP, SHARP])
+
+    def freeze() -> bool:
+        rig.freeze()
+        if failure_stage == "freeze":
+            raise error_type("camera disconnected")
+        return True
+
+    def meter() -> float:
+        if rig.frozen:
+            raise error_type("camera disconnected")
+        return rig.meter()
+
+    with pytest.raises(error_type, match="camera disconnected"):
+        lock(meter, freeze, rig.unfreeze)
+
+    assert not rig.frozen
+
+
+def test_regression_focus_cleanup_failure_preserves_original_error() -> None:
+    rig = Rig([SHARP, SHARP])
+    attempts = []
+
+    def freeze() -> bool:
+        rig.freeze()
+        raise RuntimeError("focus write failed")
+
+    def unfreeze() -> None:
+        attempts.append("unfreeze")
+        raise OSError("cleanup also failed")
+
+    with pytest.raises(RuntimeError, match="focus write failed"):
+        lock(rig.meter, freeze, unfreeze)
+
+    assert rig.frozen  # Unreachable driver: cleanup could only be attempted.
+    assert attempts == ["unfreeze"]

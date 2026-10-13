@@ -4,7 +4,9 @@ except where the thread itself is under test, no cv2)."""
 
 from __future__ import annotations
 
+import threading
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -211,3 +213,45 @@ def test_loop_backs_off_on_fail_path() -> None:
     r._loop()
 
     assert time.monotonic() - start >= 0.05
+
+
+@pytest.mark.parametrize("outcome", ["frame", "failure", "exception"])
+@pytest.mark.parametrize("elapsed", [10.0, 70.0])
+def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> None:
+    blocked, release = threading.Event(), threading.Event()
+    clock = {"now": 100.0}
+    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    reopen = mocker.Mock()
+    interrupt = mocker.patch.object(fr_mod._thread, "interrupt_main")
+    calls = 0
+    seed, late = _frame(), _frame()
+
+    def read():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return False, None  # Start a drought before the blocking read.
+        blocked.set()
+        assert release.wait(1)
+        if outcome == "exception":
+            raise OSError("disconnected")
+        return (True, late) if outcome == "frame" else (False, None)
+
+    reader = FrameReader(read, reopen)
+    reader.READER_BACKOFF_SECONDS = 0
+    reader.JOIN_TIMEOUT_SECONDS = 0
+    reader.publish(seed)
+    reader.start()
+    try:
+        assert blocked.wait(1)
+        reader.stop()
+        clock["now"] += elapsed
+    finally:
+        release.set()
+        reader.JOIN_TIMEOUT_SECONDS = 1
+        reader.stop()
+
+    reader.FRAME_WAIT_SECONDS = 0
+    assert reader.fresh_frame() is seed
+    reopen.assert_not_called()
+    interrupt.assert_not_called()

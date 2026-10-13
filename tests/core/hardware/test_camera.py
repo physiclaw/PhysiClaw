@@ -13,6 +13,7 @@ import logging
 import os
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import cv2
@@ -877,3 +878,270 @@ def test_focus_pinned_drops_when_a_reopen_apply_is_refused(mocker) -> None:
     cam._reopen()
 
     assert cam.focus_pinned is False
+
+
+@pytest.mark.parametrize("stage", ["configure", "warmup", "thread_start"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_regression_camera_init_failure_releases_capture(mocker, stage, error_type):
+    mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
+    vc = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
+    mocker.patch.object(cv2, "VideoCapture", return_value=vc)
+    targets = {
+        "configure": (camera_mod.platform, "camera_set_auto_exposure"),
+        "warmup": (vc, "read"),
+        "thread_start": (threading.Thread, "start"),
+    }
+    mocker.patch.object(*targets[stage], side_effect=error_type("capture failed"))
+
+    with pytest.raises(error_type, match="capture failed"):
+        Camera(index=0)
+
+    assert vc.released
+
+
+def test_regression_camera_retry_releases_refused_handles(mocker) -> None:
+    first = FakeVideoCapture(index=0, is_open=False)
+    second = FakeVideoCapture(index=0, is_open=False)
+    mocker.patch.object(cv2, "VideoCapture", side_effect=[first, second])
+    mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
+
+    with pytest.raises(camera_mod.DeviceNotFound, match="Cannot open camera"):
+        Camera(index=0)
+
+    assert first.released and second.released
+
+
+def test_regression_repeated_close_does_not_reset_replacement_controls(mocker):
+    mocker.patch.object(camera_mod.CONFIG.camera, "auto_exposure", True)
+    cam, vc = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.platform, "camera_apply_focus", return_value=True)
+    auto = mocker.patch.object(camera_mod.platform, "camera_set_auto_exposure")
+    unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+    cam.set_manual_exposure(-5)
+    cam.apply_focus(137.0)
+
+    cam.close()
+    cam.close()
+
+    auto.assert_called_once_with(vc)
+    unlock.assert_called_once_with(vc)
+    assert not cam.focus_pinned
+
+
+class ScheduledLock:
+    """Real exclusion, with one-shot hooks for deterministic thread ordering."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.before_acquire = None
+        self.after_release = None
+
+    def acquire(self, *args, **kwargs):
+        hook, self.before_acquire = self.before_acquire, None
+        if hook is not None:
+            hook()
+        return self.lock.acquire(*args, **kwargs)
+
+    def release(self):
+        self.lock.release()
+        hook, self.after_release = self.after_release, None
+        if hook is not None:
+            hook()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *_):
+        self.release()
+
+
+class ControlledReader:
+    """A FrameReader boundary that delivers reconnects on demand."""
+
+    def __init__(self, *, read_frame, reopen, label):
+        self.reconnect = reopen
+
+    def publish(self, frame):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def note_reopened(self):
+        pass
+
+
+def _scheduled_camera(mocker, *, focus_value=None):
+    captures = [
+        FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200),
+        FakeVideoCapture(index=0),
+    ]
+    readers = []
+
+    def make_reader(**kwargs):
+        reader = ControlledReader(**kwargs)
+        readers.append(reader)
+        return reader
+
+    gate = ScheduledLock()
+    mocker.patch.object(camera_mod, "threading", SimpleNamespace(Lock=lambda: gate))
+    mocker.patch.object(camera_mod, "FrameReader", side_effect=make_reader)
+    mocker.patch.object(cv2, "VideoCapture", side_effect=captures)
+    camera = Camera(index=0, focus_value=focus_value)
+    return camera, captures, readers[0], gate
+
+
+def test_regression_reconnect_replays_just_applied_focus(mocker):
+    apply = mocker.patch.object(
+        camera_mod.platform, "camera_apply_focus", return_value=True
+    )
+    camera, captures, reader, gate = _scheduled_camera(mocker, focus_value=50.0)
+    gate.after_release = reader.reconnect
+
+    assert camera.apply_focus(137.0)
+
+    apply.assert_called_with(captures[1], 137.0)
+    assert camera.focus_pinned
+
+
+def test_regression_interleaved_exposure_writes_remember_final_mode(mocker):
+    camera, captures, reader, gate = _scheduled_camera(mocker)
+    manual = mocker.patch.object(camera_mod.platform, "camera_set_manual_exposure")
+    gate.before_acquire = camera.set_auto_exposure
+
+    camera.set_manual_exposure(-5)
+    reader.reconnect()
+
+    manual.assert_called_with(captures[1], -5)
+
+
+def test_regression_interleaved_unlock_clears_pin_verdict(mocker):
+    mocker.patch.object(camera_mod.platform, "camera_apply_focus", return_value=True)
+    camera, _, _, gate = _scheduled_camera(mocker, focus_value=50.0)
+    gate.before_acquire = lambda: camera.apply_focus(137.0)
+
+    camera.unlock_focus()
+
+    assert not camera.focus_pinned
+
+
+def test_regression_queued_reconnect_cannot_open_after_close(mocker):
+    camera, captures, reader, _ = _scheduled_camera(mocker)
+
+    camera.close()
+    reader.reconnect()
+
+    assert camera.cap is captures[0]
+    assert captures[0].released
+
+
+@pytest.mark.parametrize(
+    ("method", "args", "driver"),
+    [
+        ("set_auto_exposure", (), "camera_set_auto_exposure"),
+        ("set_manual_exposure", (-5,), "camera_set_manual_exposure"),
+        ("lock_focus", (), "camera_lock_focus"),
+        ("unlock_focus", (), "camera_unlock_focus"),
+        ("read_focus", (), "camera_read_focus"),
+        ("apply_focus", (137.0,), "camera_apply_focus"),
+    ],
+)
+def test_regression_control_queued_during_close_does_not_touch_driver(
+    mocker, method, args, driver
+):
+    camera, _, _, gate = _scheduled_camera(mocker)
+    control = mocker.patch.object(camera_mod.platform, driver)
+    gate.before_acquire = camera.close
+
+    with pytest.raises(camera_mod.DeviceNotFound, match="closing or closed"):
+        getattr(camera, method)(*args)
+
+    control.assert_not_called()
+
+
+def test_regression_interrupted_thread_start_does_not_release_during_read(mocker):
+    blocked, release = threading.Event(), threading.Event()
+    vc = FakeVideoCapture(index=0)
+    frame = _frame(1080, 1920)
+    reads = 0
+    threads = []
+    real_start = threading.Thread.start
+
+    def read():
+        nonlocal reads
+        reads += 1
+        if reads <= 16:  # Initial warmup, then a blocked background read.
+            return True, frame
+        blocked.set()
+        assert release.wait(1)
+        return False, None
+
+    def interrupted_start(thread):
+        threads.append(thread)
+        real_start(thread)
+        assert blocked.wait(1)
+        raise KeyboardInterrupt("startup interrupted")
+
+    mocker.patch.object(cv2, "VideoCapture", return_value=vc)
+    mocker.patch.object(vc, "read", side_effect=read)
+    mocker.patch.object(threading.Thread, "start", interrupted_start)
+    mocker.patch.object(camera_mod.FrameReader, "JOIN_TIMEOUT_SECONDS", 0)
+    mocker.patch.object(Camera, "CLOSE_LOCK_TIMEOUT_SECONDS", 0)
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="startup interrupted"):
+            Camera(index=0)
+        released_during_read = vc.released
+    finally:
+        release.set()
+        threads[0].join(timeout=1)
+        vc.release()
+
+    assert not released_during_read
+    assert not threads[0].is_alive()
+
+
+@pytest.mark.parametrize(
+    ("method", "args", "driver"),
+    [
+        ("lock_focus", (), "camera_lock_focus"),
+        ("apply_focus", (137.0,), "camera_apply_focus"),
+    ],
+)
+@pytest.mark.parametrize("accepted", [True, False])
+def test_regression_close_restores_unremembered_focus_attempt(
+    mocker, method, args, driver, accepted
+):
+    camera, cap = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.platform, driver, return_value=accepted)
+    unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+
+    getattr(camera, method)(*args)
+    camera.close()
+
+    unlock.assert_called_once_with(cap)
+
+
+@pytest.mark.parametrize(
+    ("method", "args", "driver"),
+    [
+        ("lock_focus", (), "camera_lock_focus"),
+        ("apply_focus", (137.0,), "camera_apply_focus"),
+    ],
+)
+def test_regression_close_restores_interrupted_focus_attempt(
+    mocker, method, args, driver
+):
+    camera, cap = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.platform, driver, side_effect=OSError("USB lost"))
+    unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+
+    with pytest.raises(OSError, match="USB lost"):
+        getattr(camera, method)(*args)
+    camera.close()
+
+    unlock.assert_called_once_with(cap)

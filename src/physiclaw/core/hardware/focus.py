@@ -84,7 +84,7 @@ def lock(
          the lock; AF stays in charge.
       2. Freeze. `freeze` disables continuous AF (and pins the current
          absolute focus where the channel allows). A refused freeze
-         fails open — AF stays in charge, no retry loop.
+         restores AF, including a partially applied freeze, with no retry loop.
       3. Verify from the frozen frame: still sharp means the lens was
          held where AF converged; a collapse means the freeze wedged a
          mid-hunt position — `unfreeze` and leave AF in charge.
@@ -105,11 +105,23 @@ def lock(
             f"scene never metered sharp (last {cur:.0f} < "
             f"{BLUR_THRESHOLD:.0f}) — no converged focus to freeze",
         )
-    if not freeze():
-        return LockResult(False, "driver refused the focus lock — AF left in charge")
-    after = meter()
-    if after is None or after < BLUR_THRESHOLD:
-        unfreeze()
-        got = "no frame" if after is None else f"sharpness {after:.0f}"
-        return LockResult(False, f"frozen frame soft ({got}) — reverted to autofocus")
-    return LockResult(True, f"focus locked (sharpness {after:.0f})")
+    locked = False
+    try:
+        if not freeze():
+            return LockResult(False, "driver refused the focus lock — reverted to AF")
+        after = meter()
+        if after is None or after < BLUR_THRESHOLD:
+            got = "no frame" if after is None else f"sharpness {after:.0f}"
+            return LockResult(
+                False, f"frozen frame soft ({got}) — reverted to autofocus"
+            )
+        locked = True
+        return LockResult(True, f"focus locked (sharpness {after:.0f})")
+    finally:
+        # A freeze can disable AF before its absolute-position write fails.
+        # Restore it on refusal, failed verification, or interruption alike.
+        if not locked:
+            try:
+                unfreeze()
+            except Exception:
+                log.warning("focus rollback to autofocus failed", exc_info=True)

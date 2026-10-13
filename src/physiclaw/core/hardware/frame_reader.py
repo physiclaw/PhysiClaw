@@ -168,6 +168,12 @@ class FrameReader:
                 log.warning(f"{self._label}: read raised {e!r}")
                 ok, frame = False, None
 
+            # stop() can time out while the native read remains blocked.
+            # Its eventual result must not publish, reconnect, or interrupt
+            # the process after the owner has already begun closing.
+            if self._stopped.is_set():
+                return
+
             now = time.monotonic()
 
             if ok and frame is not None:
