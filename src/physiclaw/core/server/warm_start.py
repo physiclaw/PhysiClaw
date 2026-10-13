@@ -279,6 +279,8 @@ def try_resume(
     # beats not checking at all). Synchronous is fine: try_resume already
     # runs on a background thread, and the settle half is fail-open +
     # bounded by frame-wait timeouts.
-    physiclaw.become_ready()
+    if not physiclaw.become_ready():
+        log.warning(f"{flag}: readiness was not confirmed; retry when hardware is idle")
+        return False
     log.info(f"{flag}: resumed from bundle (cam={cam_index}) — MCP tools ready")
     return True

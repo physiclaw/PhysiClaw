@@ -440,6 +440,18 @@ def test_sanity_passes_when_all_taps_within_tolerance(mocker) -> None:
     assert phone.set_mode.call_args_list[-1].args == ("bridge",)
 
 
+def test_regression_resume_does_not_report_success_when_readiness_skips(mocker, caplog):
+    cal = _ready_bundle()
+    app = _ready_app(cal)
+    app.become_ready.return_value = False
+    _patch_resume_env(mocker, cal, app)
+
+    result = _resume(app, verify=False)
+
+    assert result is False
+    assert "MCP tools ready" not in caplog.text
+
+
 def test_sanity_fails_when_no_taps_received(
     mocker,
     caplog: pytest.LogCaptureFixture,

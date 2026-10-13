@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.orchestration import observation
 from physiclaw.core.orchestration.observation import GestureObserver, GestureResult
@@ -629,6 +631,18 @@ def test_gesture_result_defaults_to_text_only() -> None:
         res.text = "frozen"  # type: ignore[misc]
 
 
+def test_grab_missing_frame_cannot_supply_screen_change_evidence():
+    from dataclasses import replace
+
+    frame = _flat(128)
+    good = observation.Grab(frame, _report_of(frame), sharp=True, retuned=False)
+    missing = replace(good, frame=None)
+
+    comparable = good.comparable_to(missing)
+
+    assert comparable is False
+
+
 def test_with_view_flip_regrab_skipped_when_after_was_retuned(mocker) -> None:
     # A dark after-frame the inline fix brightens jumps the median by
     # exposure, not a mid-transition flip — the flip settle+regrab would spend
@@ -702,3 +716,63 @@ def test_observe_quality_skips_on_quality_when_grab_was_retuned() -> None:
     obs.observe_quality("peek", observation.quality.assess(_flat()), retuned=True)
 
     assert calls == []
+
+
+def _sharp_exposure_frames():
+    good = np.random.default_rng(47).integers(60, 140, (200, 100, 3), dtype=np.uint8)
+    blown = good.copy()
+    blown[:60] = 255
+    dark = np.random.default_rng(48).integers(0, 30, (200, 100, 3), dtype=np.uint8)
+    return {"good": good, "blown": blown, "dark": dark}
+
+
+@pytest.mark.parametrize("bad_side", ["before", "after"])
+@pytest.mark.parametrize("exposure", ["blown", "dark"])
+def test_regression_bad_exposure_withholds_verdict_even_when_sharp(
+    mocker, bad_side, exposure
+):
+    frames = _sharp_exposure_frames()
+    pair = {"before": frames["good"], "after": frames["good"]}
+    pair[bad_side] = frames[exposure]
+    current = {"frame": pair["before"]}
+    observer = GestureObserver(
+        park=lambda: None,
+        grab=lambda: current["frame"],
+        detect=lambda frame: ("elements", frame),
+    )
+    mocker.patch.object(observation.time, "sleep")
+
+    def act():
+        current["frame"] = pair["after"]
+        return "Tapped"
+
+    result = observer.with_view(act)
+
+    assert "screen:" not in result.text
+    assert result.jpeg is not None
+    assert (
+        observation.quality.assess(frames[exposure]).sharpness
+        >= observer.GRAB_BLUR_THRESHOLD
+    )
+
+
+@given(
+    median=st.floats(min_value=0, max_value=255),
+    clip=st.floats(min_value=0, max_value=1),
+    sharp=st.booleans(),
+    retuned=st.booleans(),
+)
+def test_grab_comparison_is_symmetric_and_retuning_invalidates_it(
+    median, clip, sharp, retuned
+):
+    from dataclasses import replace
+
+    report = observation.quality.QualityReport(200, clip, median, p99_luma=190)
+    good = observation.quality.QualityReport(200, 0, 100, p99_luma=190)
+    candidate = observation.Grab(object(), report, sharp, retuned)
+    reference = observation.Grab(object(), good, True, False)
+
+    comparable = candidate.comparable_to(reference)
+
+    assert comparable == reference.comparable_to(candidate)
+    assert not candidate.comparable_to(replace(reference, retuned=True))

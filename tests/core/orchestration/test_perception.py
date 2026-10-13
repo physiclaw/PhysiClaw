@@ -494,11 +494,13 @@ def test_schedule_retune_runs_tune_on_a_thread_once(
     mocker, rig, per: Perception
 ) -> None:
     mocker.patch.object(perception_mod.time, "sleep")
-    tune = mocker.patch.object(per, "tune_exposure")
+    tune = mocker.patch.object(
+        perception_mod.exposure, "converge", return_value=_tune_ok()
+    )
     thread = mocker.patch.object(perception_mod.threading, "Thread")
 
-    per._schedule_retune("test")
-    per._schedule_retune("test again")  # single-flight: second is a no-op
+    per.on_quality_report(BLOWN_REPORT, streak=1)
+    per.on_quality_report(BLOWN_REPORT, streak=2)
 
     thread.assert_called_once()
     thread.return_value.start.assert_called_once()
@@ -506,7 +508,7 @@ def test_schedule_retune_runs_tune_on_a_thread_once(
     body()  # the thread body: runs the tune, then clears the pending flag
     tune.assert_called_once()
 
-    per._schedule_retune("after completion")  # pending flag was cleared
+    per.on_quality_report(BLOWN_REPORT, streak=3)
     assert thread.call_count == 2
 
 
@@ -583,6 +585,84 @@ def test_settle_camera_noop_without_camera(mocker, rig, per: Perception) -> None
     tune.assert_not_called()
 
 
+@pytest.mark.parametrize("failure_stage", ["construct", "start"])
+def test_regression_retune_thread_failure_does_not_disable_future_retunes(
+    mocker, per, failure_stage
+):
+    worker = MagicMock()
+    failures = {
+        "construct": [RuntimeError("thread unavailable"), worker],
+        "start": [worker, worker],
+    }
+    starts = {
+        "construct": [None],
+        "start": [RuntimeError("thread unavailable"), None],
+    }
+    worker.start.side_effect = starts[failure_stage]
+    thread = mocker.patch.object(
+        perception_mod.threading, "Thread", side_effect=failures[failure_stage]
+    )
+
+    with pytest.raises(RuntimeError, match="thread unavailable"):
+        per.on_quality_report(BLOWN_REPORT, streak=1)
+    per.on_quality_report(BLOWN_REPORT, streak=2)
+
+    assert thread.call_count == 2
+
+
+def _keypad_ocr(mocker, rig, results):
+    from physiclaw.core.calibration import Calibration
+
+    identity = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    rig.calibration = Calibration(
+        pct_to_cam=identity, pct_to_grbl=identity, cam_size=(100, 100), cam_rotation=-1
+    )
+    rig.cam.snapshot.return_value = np.zeros((100, 100, 3), np.uint8)
+    reader = MagicMock()
+    reader.read.return_value = results
+    mocker.patch.object(perception_mod, "OCRReader", return_value=reader)
+    return reader
+
+
+def test_regression_keypad_poll_does_not_start_ocr_after_deadline(mocker, rig, per):
+    reader = _keypad_ocr(mocker, rig, [])
+    clock = {"now": 0.0}
+    mocker.patch.object(
+        perception_mod.time, "monotonic", side_effect=lambda: clock["now"]
+    )
+    sleeper = mocker.patch.object(
+        perception_mod.time,
+        "sleep",
+        side_effect=lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+
+    with rig.locked():
+        result = per.wait_for_numpad_digit("1", timeout=0.05)
+
+    assert result is None
+    reader.read.assert_called_once()
+    rig.cam.snapshot.assert_called_once()
+    sleeper.assert_called_once_with(0.05)
+
+
+def test_regression_keypad_poll_rejects_offscreen_inferred_digit(mocker, rig, per):
+    from physiclaw.core.vision.ocr import TextResult
+
+    _keypad_ocr(
+        mocker,
+        rig,
+        [
+            TextResult("3", (60, 30, 70, 40), 0.9),
+            TextResult("5", (10, 40, 20, 50), 0.9),
+        ],
+    )
+
+    with rig.locked():
+        result = per.wait_for_numpad_digit("1", timeout=0)
+
+    assert result is None
+
+
 def test_settle_camera_skips_when_busy(mocker, rig, per: Perception) -> None:
     tune = mocker.patch.object(per, "tune_now")
     rig.acquire()
@@ -647,11 +727,150 @@ def test_scheduled_retune_superseded_by_a_fresher_tune(
     # conclusion fresher than the trigger — re-running the probe would
     # re-learn the same answer seconds later.
     mocker.patch.object(perception_mod.time, "sleep")
-    tune = mocker.patch.object(per, "tune_exposure")
+    tune = mocker.patch.object(
+        perception_mod.exposure, "converge", return_value=_tune_ok()
+    )
     thread = mocker.patch.object(perception_mod.threading, "Thread")
 
-    per._schedule_retune("test")
-    per._last_tune = perception_mod.exposure.TuneResult("auto", None, True, "fresh")
+    per.on_quality_report(BLOWN_REPORT, streak=1)
+    per.tune_exposure()
+    tune.reset_mock()
     thread.call_args.kwargs["target"]()
 
     tune.assert_not_called()
+
+
+def test_regression_retune_start_interrupt_keeps_running_worker_reserved(mocker, per):
+    import threading
+
+    entered, finish = threading.Event(), threading.Event()
+    native_thread = threading.Thread
+    workers = []
+
+    def delayed(_seconds):
+        entered.set()
+        assert finish.wait(3)
+
+    def start_then_interrupt(*, target, **kwargs):
+        worker = native_thread(target=target, **kwargs)
+        workers.append(worker)
+
+        def start():
+            worker.start()
+            assert entered.wait(3)
+            raise KeyboardInterrupt("start interrupted")
+
+        return MagicMock(start=start)
+
+    thread = mocker.patch.object(
+        perception_mod.threading, "Thread", side_effect=start_then_interrupt
+    )
+    mocker.patch.object(perception_mod.time, "sleep", side_effect=delayed)
+    mocker.patch.object(perception_mod.exposure, "converge", return_value=_tune_ok())
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="start interrupted"):
+            per.on_quality_report(BLOWN_REPORT, streak=1)
+        thread.side_effect = None
+        per.on_quality_report(BLOWN_REPORT, streak=2)
+    finally:
+        finish.set()
+        workers[0].join(timeout=3)
+
+    thread.assert_called_once()
+    assert not workers[0].is_alive()
+
+
+def test_regression_retune_cancelled_worker_cannot_clear_successor(mocker, per):
+    failed = MagicMock()
+    failed.start.side_effect = KeyboardInterrupt("start interrupted")
+    thread = mocker.patch.object(
+        perception_mod.threading, "Thread", side_effect=[failed, MagicMock()]
+    )
+    mocker.patch.object(perception_mod.time, "sleep")
+    tune = mocker.patch.object(
+        perception_mod.exposure, "converge", return_value=_tune_ok()
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="start interrupted"):
+        per.on_quality_report(BLOWN_REPORT, streak=1)
+    cancelled = thread.call_args.kwargs["target"]
+    per.on_quality_report(BLOWN_REPORT, streak=2)
+    successor = thread.call_args.kwargs["target"]
+    scheduled_before_cancelled_entry = thread.call_count
+    cancelled()
+    tunes_before_successor = tune.call_count
+    per.on_quality_report(BLOWN_REPORT, streak=3)
+    successor()
+
+    assert scheduled_before_cancelled_entry == thread.call_count == 2
+    assert tunes_before_successor == 0
+    tune.assert_called_once()
+
+
+def test_regression_retune_rechecks_freshness_after_acquiring_rig(mocker, per, rig):
+    thread = mocker.patch.object(perception_mod.threading, "Thread")
+    mocker.patch.object(perception_mod.time, "sleep")
+    tune = mocker.patch.object(
+        perception_mod.exposure, "converge", return_value=_tune_ok()
+    )
+    acquire = rig.acquire
+
+    def inline_tune_before_acquire_returns(*args, **kwargs):
+        acquire(*args, **kwargs)
+        per.tune_now()
+
+    mocker.patch.object(rig, "acquire", side_effect=inline_tune_before_acquire_returns)
+
+    per.on_quality_report(BLOWN_REPORT, streak=1)
+    thread.call_args.kwargs["target"]()
+
+    tune.assert_called_once()
+
+
+def test_regression_keypad_capture_crossing_deadline_does_not_start_ocr(
+    mocker, rig, per
+):
+    reader = _keypad_ocr(mocker, rig, [])
+    clock = {"now": 0.0}
+    frame = rig.cam.snapshot.return_value
+
+    def capture():
+        clock["now"] += 0.1
+        return frame
+
+    rig.cam.snapshot.side_effect = capture
+    mocker.patch.object(
+        perception_mod.time, "monotonic", side_effect=lambda: clock["now"]
+    )
+    mocker.patch.object(
+        perception_mod.time,
+        "sleep",
+        side_effect=lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+
+    with rig.locked():
+        result = per.wait_for_numpad_digit("1", timeout=1.15)
+
+    assert result is None
+    assert rig.cam.snapshot.call_count == 2
+    reader.read.assert_called_once()
+
+
+def test_keypad_zero_timeout_still_reads_the_current_frame(mocker, rig, per):
+    from physiclaw.core.vision.ocr import TextResult
+
+    reader = _keypad_ocr(
+        mocker,
+        rig,
+        [
+            TextResult("1", (10, 30, 20, 40), 0.9),
+            TextResult("5", (40, 40, 50, 50), 0.9),
+        ],
+    )
+
+    with rig.locked():
+        result = per.wait_for_numpad_digit("1", timeout=0)
+
+    assert result == pytest.approx([0.1, 0.3, 0.2, 0.4])
+    reader.read.assert_called_once()

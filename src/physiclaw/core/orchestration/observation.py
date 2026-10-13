@@ -70,18 +70,19 @@ class Grab:
 
     def comparable_to(self, other: "Grab") -> bool:
         """Whether this grab and ``other`` are trustworthy for a
-        screen-change diff: both frames present, both sharp, and neither
-        retuned. A blurry side erases edges and an exposure change between
-        the pair both diff as "changed everywhere" — so a False here means
+        screen-change diff: both frames present, sharp and neither badly
+        exposed nor retuned. A blurry side erases edges; an exposure change
+        between the pair also reads as "changed everywhere". A False here means
         withhold the verdict (None, the fail-open direction) rather than
         emit a false ``changed`` that would reset the agent's stuck guard."""
-        return (
-            self.frame is not None
-            and other.frame is not None
-            and self.sharp
-            and other.sharp
-            and not self.retuned
-            and not other.retuned
+        return all(
+            grab.frame is not None
+            and grab.report is not None
+            and grab.sharp
+            and not grab.retuned
+            and not grab.report.dark
+            and not grab.report.blown
+            for grab in (self, other)
         )
 
 

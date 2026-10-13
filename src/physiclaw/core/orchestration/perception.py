@@ -86,7 +86,7 @@ class Perception:
         self._last_tune: exposure.TuneResult | None = None
         # Single-flight guard for the background re-tune.
         self._pending_lock = threading.Lock()
-        self._retune_pending = False
+        self._retune_pending: object | None = None
 
     # ─── Lazy detectors ───────────────────────────────────────
 
@@ -187,12 +187,18 @@ class Perception:
         start = time.monotonic()
         deadline = start + timeout
         ocr_passes = 0
-        while True:
+        while ocr_passes == 0 or time.monotonic() < deadline:
             grab_start = time.monotonic()
             frame = self.camera_view()
             ocr_start = time.monotonic()
+            if ocr_passes and ocr_start >= deadline:
+                break
             elements = self._ocr_elements(frame, max_edge=self.NUMPAD_OCR_MAX_EDGE)
             bbox = find_numpad_digit(elements, digit)
+            # Grid inference can extrapolate beyond the screen even when
+            # every OCR input box was in bounds. Never hand that to the arm.
+            if bbox is not None and not bbox_on_screen(bbox):
+                bbox = None
             ocr_passes += 1
             now = time.monotonic()
             log.info(
@@ -212,9 +218,9 @@ class Perception:
                     ocr_passes,
                 )
                 return bbox
-            if time.monotonic() >= deadline:
+            if now >= deadline:
                 break
-            time.sleep(self.NUMPAD_OCR_INTERVAL_SECONDS)
+            time.sleep(min(self.NUMPAD_OCR_INTERVAL_SECONDS, deadline - now))
         log.info(
             "numpad digit %r not found — gave up after %.1fs (%d OCR pass(es))",
             digit,
@@ -277,15 +283,16 @@ class Perception:
             self._rig.release()
 
     def settle_camera(self) -> None:
-        """Startup settle for every ready-flipping path (warm start,
-        the /api/ready flip): verify/converge exposure. Fail-open.
+        """Standalone camera settle: verify/converge exposure. Fail-open.
+        Readiness holds the rig lock across tuning and marking ready,
+        so it parks and calls ``tune_now`` directly.
         Focus needs no settling — the lens is pinned from the moment
         the camera opens."""
         self.tune_exposure()
 
     def tune_exposure(self) -> None:
-        """Standalone verify-and-converge for camera exposure — the
-        background re-tune target. Fail-open: never raises; skipped
+        """Standalone verify-and-converge for camera exposure.
+        Fail-open: never raises; skipped
         when the hardware is busy (the trigger conditions persist, so
         it gets re-scheduled).
 
@@ -412,21 +419,43 @@ class Perception:
         fresher than the trigger — repeating the probe would re-learn
         the same answer seconds later."""
         with self._pending_lock:
-            if self._retune_pending:
+            if self._retune_pending is not None:
                 return
-            self._retune_pending = True
+            job = self._retune_pending = object()
         log.info("exposure re-tune scheduled: %s", reason)
         token = self._last_tune
+        started = False
+
+        def tune_if_current() -> None:
+            # The early check below avoids taking the lock for stale work;
+            # this check also covers an inline tune racing lock acquisition.
+            if self._last_tune is token:
+                self.tune_now()
 
         def run() -> None:
+            nonlocal started
+            with self._pending_lock:
+                if self._retune_pending is not job:
+                    return
+                started = True
             try:
                 time.sleep(self.RETUNE_DELAY_SECONDS)
                 if self._last_tune is not token:
                     log.info("exposure re-tune superseded — skipped")
                     return
-                self.tune_exposure()
+                self._with_rig_parked("exposure re-tune", tune_if_current)
             finally:
                 with self._pending_lock:
-                    self._retune_pending = False
+                    if self._retune_pending is job:
+                        self._retune_pending = None
 
-        threading.Thread(target=run, name="exposure re-tune", daemon=True).start()
+        try:
+            threading.Thread(target=run, name="exposure re-tune", daemon=True).start()
+        except BaseException:
+            # start() may launch the thread before raising (e.g. Ctrl-C).
+            # Cancel only a job whose body has not entered; a running job
+            # retains its reservation until its own finally block.
+            with self._pending_lock:
+                if not started and self._retune_pending is job:
+                    self._retune_pending = None
+            raise

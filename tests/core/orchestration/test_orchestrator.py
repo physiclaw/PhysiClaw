@@ -65,7 +65,7 @@ def test_become_ready_settles_camera_before_flipping_ready(
     be observable before the camera settle has run."""
     order: list[str] = []
     mocker.patch.object(
-        pc.perception, "settle_camera", side_effect=lambda: order.append("settle")
+        pc.perception, "tune_now", side_effect=lambda: order.append("settle")
     )
     mocker.patch.object(pc.rig, "mark_ready", side_effect=lambda: order.append("ready"))
 
@@ -81,6 +81,123 @@ def test_validator_reads_current_rig_state(pc: PhysiClaw) -> None:
     pc.rig._assistive_touch = replacement
 
     assert pc._validator._assistive_touch() is replacement
+
+
+def test_regression_busy_ready_request_does_not_mark_unsettled_camera_ready(
+    mocker, pc, wire_rig
+):
+    wire_rig(pc.rig)
+    mocker.patch.object(orchestrator, "TOOL_LOCK_WAIT_SECONDS", 0)
+    tune = mocker.patch.object(perception.exposure, "converge")
+
+    with pc.rig.locked():
+        ready = pc.become_ready()
+
+    assert ready is False
+    assert not pc.rig.ready
+    tune.assert_not_called()
+
+
+def test_regression_reconnect_after_settle_does_not_inherit_ready(
+    mocker, pc, wire_rig, cam_double
+):
+    from physiclaw.core.orchestration import rig as rig_module
+
+    wire_rig(pc.rig)
+    replacement = cam_double()
+    mocker.patch.object(rig_module, "Camera", return_value=replacement)
+    mocker.patch.object(perception.exposure, "converge")
+    release = pc.rig.release
+    reconnected = False
+
+    def release_then_reconnect():
+        nonlocal reconnected
+        release()
+        if not reconnected:
+            reconnected = True
+            with pc.rig.locked():
+                pc.rig.connect_camera(1)
+
+    mocker.patch.object(pc.rig, "release", side_effect=release_then_reconnect)
+
+    pc.become_ready()
+
+    assert pc.rig.cam is replacement
+    assert not pc.rig.ready
+
+
+def test_become_ready_repeated_request_skips_completed_tune(mocker, pc, wire_rig):
+    wire_rig(pc.rig)
+    pc.rig.mark_ready()
+    tune = mocker.patch.object(perception.exposure, "converge")
+
+    ready = pc.become_ready()
+
+    assert ready is True
+    assert pc.rig.ready
+    tune.assert_not_called()
+
+
+def test_become_ready_park_failure_still_marks_ready_and_releases_lock(
+    mocker, pc, wire_rig, caplog
+):
+    wire_rig(pc.rig)
+    mocker.patch.object(pc.rig, "park", side_effect=OSError("serial disconnected"))
+
+    ready = pc.become_ready()
+
+    assert ready is True
+    assert pc.rig.ready
+    assert "camera settle failed" in caplog.text
+    with pc.rig.locked():
+        pc.rig.assert_locked()
+
+
+def test_become_ready_concurrent_requests_share_one_completed_tune(
+    mocker, pc, wire_rig
+):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    wire_rig(pc.rig)
+    tuning, finish, waiting = threading.Event(), threading.Event(), threading.Event()
+    acquire = pc.rig.acquire
+
+    def converge(*args, **kwargs):
+        pc.rig.assert_locked()
+        assert not pc.rig.ready
+        tuning.set()
+        assert finish.wait(3)
+        return perception.exposure.TuneResult("auto", None, True, "settled")
+
+    def wait_for_lock(wait_seconds=0):
+        waiting.set()
+        return acquire(wait_seconds=wait_seconds)
+
+    tune = mocker.patch.object(perception.exposure, "converge", side_effect=converge)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(pc.become_ready)
+        try:
+            assert tuning.wait(3)
+            mocker.patch.object(pc.rig, "acquire", side_effect=wait_for_lock)
+            second = pool.submit(pc.become_ready)
+            assert waiting.wait(3)
+        finally:
+            finish.set()
+        results = first.result(timeout=3), second.result(timeout=3)
+
+    assert results == (True, True)
+    assert pc.rig.ready
+    tune.assert_called_once()
+
+
+def test_become_ready_reports_false_after_shutdown(pc):
+    pc.shutdown()
+
+    ready = pc.become_ready()
+
+    assert ready is False
 
 
 # ---------- AT guards ----------

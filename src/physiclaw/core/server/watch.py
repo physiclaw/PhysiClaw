@@ -55,7 +55,7 @@ def register(mcp: "MCPServer", physiclaw: "PhysiClaw") -> None:
         # the camera FIRST (exposure tune) and
         # flips ready AFTER, so the runtime's status poll can't observe
         # ready on an unsettled camera — without stalling the wizard's
-        # finish screen. become_ready is internally fail-open, so the
-        # future can't carry an exception that matters.
+        # finish screen. This only acknowledges the request; setup must
+        # poll /api/status because a busy/closed rig can skip readiness.
         asyncio.get_running_loop().run_in_executor(None, physiclaw.become_ready)
         return JSONResponse({"ok": True})

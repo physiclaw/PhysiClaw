@@ -17,7 +17,7 @@ surface. Image processing lives in physiclaw.core.vision — the
 orchestrator never touches pixels.
 """
 
-import threading
+import logging
 from typing import TYPE_CHECKING, assert_never, cast
 
 if TYPE_CHECKING:
@@ -38,6 +38,8 @@ from physiclaw.core.vision.util import (
     validate_bbox,
 )
 
+log = logging.getLogger(__name__)
+
 
 class PhysiClaw:
     """Facade over the rig + perception: the tool operations MCP exposes."""
@@ -55,7 +57,6 @@ class PhysiClaw:
         self._clipboard = ClipboardSyncState()
         # Long-lived so the located "1" bbox caches across unlocks.
         self._unlock = unlock.PhoneUnlock()
-        self._become_ready_lock = threading.Lock()  # see become_ready
         # Lambdas, not bound methods: they look `grab`/`detect` up on the
         # perception object at call time, so a replaced (or test-patched)
         # implementation is honored for the observer too.
@@ -74,28 +75,33 @@ class PhysiClaw:
 
     # ─── Lifecycle ─────────────────────────────────────────────
 
-    def become_ready(self):
+    def become_ready(self) -> bool:
         """Settle the camera (exposure tune), THEN flip the
-        ready flag — the single ready-flipping path. Ordering matters:
-        the agent runtime polls `ready` and peeks immediately, so
-        flipping first would let the first view of a session ship from
-        an unsettled camera. `settle_camera` is fail-open; the finally
-        is the backstop that keeps "ready always flips" true even if
-        that claim ever grows a hole — a failed settle must cost the
-        settle, never readiness.
+        ready flag under the same rig lock. A reconnect cannot swap the
+        camera between tuning and marking it ready. Duplicate requests
+        wait for the first tune and then no-op; the rig lock supplies
+        both device ownership and single-flight behavior.
 
-        Single-flight: a duplicate call (wizard page refreshed during
-        the settle window re-fires /api/ready) waits for the in-flight
-        settle instead of busy-skipping its own and flipping ready on a
-        still-unsettled camera; once ready, later calls no-op.
+        A failed park/tune is fail-open, but a busy or closed rig is not
+        marked ready. Wait as long as a tool operation before skipping.
+        Return whether readiness was confirmed.
         Callers: warm-start, /api/ready."""
-        with self._become_ready_lock:
-            if self.rig.ready:
-                return
-            try:
-                self.perception.settle_camera()
-            finally:
+        if self.rig.ready:
+            return True
+        try:
+            with self.rig.locked(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
+                if self.rig.ready:
+                    return True
+                try:
+                    self.rig.park()
+                    self.perception.tune_now()
+                except Exception:
+                    log.exception("camera settle failed — continuing readiness")
                 self.rig.mark_ready()
+                return self.rig.ready
+        except RuntimeError as exc:
+            log.info("ready setup skipped: %s", exc)
+            return False
 
     def shutdown(self):
         """Release the coil, park, and close every device handle.

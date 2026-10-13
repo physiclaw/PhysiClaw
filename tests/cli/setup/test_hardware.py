@@ -378,6 +378,27 @@ def test_run_finalizes_when_already_calibrated(
 # ---------- hardware (typer entry) ----------
 
 
+@pytest.mark.parametrize(
+    "responses",
+    [
+        [{"ready": False, "calibrated": True}, {}, None],
+        [{"ready": False, "calibrated": True}, {}, {}, None],
+        [{"ready": False, "calibrated": True}] * 48,
+    ],
+    ids=["ready-request-fails", "server-disappears", "readiness-times-out"],
+)
+def test_regression_setup_does_not_report_unconfirmed_readiness(
+    mocker, capsys, responses
+):
+    mocker.patch.object(hw_mod, "api", side_effect=responses)
+    mocker.patch.object(hw_mod.time, "sleep")
+
+    with pytest.raises(SystemExit, match="Readiness was not confirmed"):
+        hw_mod.run(auto=True)
+
+    assert "PhysiClaw is ready" not in capsys.readouterr().out
+
+
 def test_hardware_sets_base_and_calls_run(mocker) -> None:
     run_spy = mocker.patch.object(hw_mod, "run")
 
@@ -423,6 +444,22 @@ def test_poll_bridge_times_out_without_bridge(mocker) -> None:
 
 
 # ---------- run() full happy-path (auto mode) ----------
+
+
+def _ready_after_request(api):
+    """Model the server completing readiness after its POST is accepted."""
+    ready = False
+
+    def request(method, path, *args, **kwargs):
+        nonlocal ready
+        response = api(method, path, *args, **kwargs)
+        if method == "POST" and path == "/api/ready" and response is not None:
+            ready = True
+        if path == "/api/status" and response is not None:
+            return {**response, "ready": ready}
+        return response
+
+    return request
 
 
 def test_run_full_auto_path(mocker, tmp_path) -> None:
@@ -480,7 +517,7 @@ def test_run_full_auto_path(mocker, tmp_path) -> None:
             return {"status": "ok", "passed": True, "clipboard": {"fetched": False}}
         return {"status": "ok"}
 
-    mocker.patch.object(hw_mod, "api", side_effect=fake_api)
+    mocker.patch.object(hw_mod, "api", side_effect=_ready_after_request(fake_api))
     mocker.patch.object(hw_mod, "calibrate", side_effect=fake_calibrate)
 
     hw_mod.run(auto=True, trace=True)
@@ -526,7 +563,7 @@ def test_run_full_auto_with_warn_issues(mocker) -> None:
             }
         return {"status": "ok"}
 
-    mocker.patch.object(hw_mod, "api", side_effect=fake_api)
+    mocker.patch.object(hw_mod, "api", side_effect=_ready_after_request(fake_api))
     mocker.patch.object(hw_mod, "calibrate", side_effect=fake_calibrate)
 
     hw_mod.run(auto=True, trace=False)
@@ -590,7 +627,7 @@ def test_run_camera_auto_pick_falls_back_to_manual(mocker, tmp_path) -> None:
             "clipboard": {"fetched": False},
         }
 
-    mocker.patch.object(hw_mod, "api", side_effect=fake_api)
+    mocker.patch.object(hw_mod, "api", side_effect=_ready_after_request(fake_api))
     mocker.patch.object(hw_mod, "calibrate", side_effect=fake_calibrate)
 
     hw_mod.run(auto=True, trace=False)
@@ -632,7 +669,7 @@ def test_run_uses_cached_viewport_in_auto_mode(
             "clipboard": {"fetched": False},
         }
 
-    mocker.patch.object(hw_mod, "api", side_effect=fake_api)
+    mocker.patch.object(hw_mod, "api", side_effect=_ready_after_request(fake_api))
     mocker.patch.object(hw_mod, "calibrate", side_effect=fake_calibrate)
 
     hw_mod.run(auto=True, trace=False)

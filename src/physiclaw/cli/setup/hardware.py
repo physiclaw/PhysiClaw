@@ -407,19 +407,21 @@ def _mark_ready_and_wait(timeout: float = 45.0) -> None:
     The ready flip is deliberately asynchronous server-side: become_ready
     settles the camera (exposure tune, a few seconds) BEFORE
     marking ready, so a script that chains `setup hardware` into an agent
-    command would otherwise race the settle window. Bounded: on timeout
-    we proceed with a note rather than fail — the settle is fail-open and
-    ready still flips.
+    command would otherwise race the settle window. Stop setup on failure
+    or timeout so callers only report success after readiness is confirmed.
     """
-    api("POST", "/api/ready")
-    for _ in range(int(timeout)):
-        status = api("GET", STATUS_PATH)
-        if status is None:  # server gone — the CLI is fail-soft throughout
-            return
-        if ready_from_status(status):
-            return
-        time.sleep(1)
-    print("  (camera settle still running — ready will flip shortly)")
+    if api("POST", "/api/ready") is not None:
+        for _ in range(int(timeout)):
+            status = api("GET", STATUS_PATH)
+            if status is None:
+                break
+            if ready_from_status(status):
+                return
+            time.sleep(1)
+    sys.exit(
+        "Readiness was not confirmed. Check the server and retry setup "
+        "once hardware is idle."
+    )
 
 
 def _step_finish(t0: float) -> None:

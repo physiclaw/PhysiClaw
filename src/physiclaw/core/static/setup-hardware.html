@@ -494,7 +494,9 @@ const STR = {
     zh: "验证未通过，请把辅助触控按钮重新对准圆圈，并确认 iOS 快捷指令设置正确，然后重试。",
   },
   s_finish_finishingTitle: { en: "Calibration complete…", zh: "校准完成…" },
-  s_finish_finishingLede: { en: "Sending the phone back to its Home Screen.", zh: "正在让手机返回主屏幕。" },
+  s_finish_finishingLede: { en: "Sending the phone home and checking camera readiness.", zh: "正在让手机返回主屏幕，并检查相机是否就绪。" },
+  s_finish_err: { en: "Readiness was not confirmed. Check the server and retry once hardware is idle.", zh: "尚未确认设备就绪。请检查服务器，待硬件空闲后重试。" },
+  s_finish_retry: { en: "Retry", zh: "重试" },
   s_finish_readyTitle: { en: "PhysiClaw is ready", zh: "PhysiClaw 已就绪" },
   s_finish_readyLedeShort: { en: "The arm, camera, and screen are calibrated and working together.", zh: "机械臂、相机和屏幕已全部校准，正在协同工作。" },
   s_finish_readyLede: {
@@ -1014,15 +1016,36 @@ function finish(ctx) {
   }
 
   if (alreadyReady) { showReady(""); return wrap; }
+  let stop = false; _stopHooks.push(() => stop = true);
 
   (async () => {
     await api("POST", "/api/phone/home");
     await sleep(3000);
-    await api("POST", "/api/ready");
-    await refreshStatus();
-    const secs = Math.round((Date.now() - START) / 1000);
-    const mm = Math.floor(secs / 60), ss = secs % 60;
-    showReady(secs > 5 ? t("s_finish_when", mm, ss) : "");
+    if (stop) return;
+    const requested = await api("POST", "/api/ready");
+    if (requested.ok && requested.body && requested.body.ok) {
+      const deadline = Date.now() + 45000;
+      while (!stop && Date.now() < deadline) {
+        // Read a fresh response: refreshStatus retains old state on error.
+        const r = await api("GET", "/api/status", null, Math.min(5000, deadline - Date.now()));
+        if (stop) return;
+        if (!r.ok || !r.body) break;
+        STATUS = r.body;
+        if (STATUS.ready) {
+          const secs = Math.round((Date.now() - START) / 1000);
+          const mm = Math.floor(secs / 60), ss = secs % 60;
+          showReady(secs > 5 ? t("s_finish_when", mm, ss) : "");
+          return;
+        }
+        await sleep(1000);
+      }
+    }
+    if (stop) return;
+    hero.innerHTML = "";
+    hero.appendChild(note("err", t("s_finish_err")));
+    const retry = $(`<button class="btn primary" data-enter>${t("s_finish_retry")}</button>`);
+    retry.onclick = () => ctx.go(STEPS.length - 1);
+    hero.appendChild(retry);
   })();
   return wrap;
 }
