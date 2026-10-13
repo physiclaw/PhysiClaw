@@ -60,6 +60,20 @@ class ProviderPermanentError(ProviderError):
     """4xx (except 429) — retries will keep failing, fail fast."""
 
 
+def token_count(value: Any) -> int:
+    """An optional usage counter: accept integers and proxy-stringified integers.
+
+    Malformed accounting must not discard an otherwise usable model reply.
+    Booleans, fractions, negatives, and missing counts are unreported (zero).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return 0
+    try:
+        return max(0, int(value))
+    except ValueError:
+        return 0
+
+
 def describe(e: BaseException) -> str:
     """`ClassName: message`, or just `ClassName` when the message is
     empty — httpx timeouts commonly str() to '', which made wrapped
@@ -445,23 +459,28 @@ class BaseProvider:
         *,
         error: str | None = None,
     ) -> None:
-        """Write the call's `usage` event to the sink (none → a one-off
-        probe, nothing to record). Written for EVERY call, answered
-        (`asst`) or failed (`error`), tokens reported or not: zeros read
-        as "not reported", never as "no call"."""
+        """Attempt a usage event for every answered or failed call.
+
+        A missing sink means no recording; a broken sink is logged.
+        Zero tokens mean unreported usage, not an absent call.
+        """
         if self.usage_sink is None:
             return
-        self.usage_sink.write(
-            usage_event(
-                asst.usage if asst is not None else Usage(),
-                call=purpose,
-                model=self.ref,
-                elapsed_ms=int((time.perf_counter() - t0) * 1000),
-                response_id=asst.response_id if asst is not None else "",
-                response_model=asst.response_model if asst is not None else "",
-                error=error,
+        try:
+            self.usage_sink.write(
+                usage_event(
+                    asst.usage if asst is not None else Usage(),
+                    call=purpose,
+                    model=self.ref,
+                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                    response_id=asst.response_id if asst is not None else "",
+                    response_model=asst.response_model if asst is not None else "",
+                    error=error,
+                )
             )
-        )
+        except Exception:
+            # Preserve either the paid-for reply or the original provider error.
+            log.warning("provider usage event write failed", exc_info=True)
 
     async def _chat(
         self,

@@ -8,7 +8,7 @@ use the native messages endpoint. Vendors speaking this shape (just
 declare `BASE_URL` plus any auth quirks.
 
 Cache-control marker layout (the *why* — block-level translation rules
-live with the functions that emit them). Three breakpoints, within
+live with the functions that emit them). Up to four breakpoints, within
 Anthropic's limit of four:
   1. `system` field, sent as `[{type: text, text, cache_control: ephemeral}]`.
   2. Latest stubbed screen-obs `tool_result` — the source DTO has
@@ -37,14 +37,16 @@ Anthropic's limit of four:
      moved off serializes byte-identically minus the key and the
      prefix through it still matches.
 
-`thinking` blocks in the response are stripped from the assistant-echo
-path (principle 2) — they would break re-serialization to history. The
-full raw payload is preserved on `AssistantMessage.raw` for log-side
-inspection.
+Signed `thinking` and `redacted_thinking` blocks stay out of public
+assistant text. Responses carrying them retain their original content
+order in `vendor_extra` for exact replay on tool continuations; the
+Anthropic API requires these blocks unchanged. Other providers ignore
+this metadata. The raw payload remains available for trace inspection.
 """
 
 import logging
 import uuid
+from copy import deepcopy
 from typing import Any
 
 from physiclaw.contract.dto import (
@@ -66,6 +68,7 @@ from physiclaw.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
     describe,
+    token_count,
 )
 from physiclaw.provider.wire import anthropic_image_part, encode_content
 
@@ -301,6 +304,10 @@ def _content_to_anthropic(content) -> str | list[dict]:
 
 def _assistant_blocks(msg: AssistantMessage) -> list[dict]:
     """`AssistantMessage` (text + tool_calls) → Anthropic content blocks."""
+    if content := msg.vendor_extra.get("anthropic", {}).get("content"):
+        # Preserve signed blocks and their order, including redacted thinking.
+        # https://platform.claude.com/docs/en/build-with-claude/thinking
+        return deepcopy(content)
     blocks: list[dict] = []
     if msg.content:
         blocks.append({"type": "text", "text": msg.content})
@@ -336,28 +343,51 @@ def _tool_to_anthropic(tool: dict) -> dict:
 def _from_anthropic_response(resp) -> AssistantMessage:
     """Anthropic `Message` (Pydantic model) → `AssistantMessage`.
 
-    Drops `thinking` blocks and other provider-specific content from the
-    assistant-echo path (principle 2) — they would break re-serialization
-    to history. The full raw payload is preserved on `.raw` for log-side
-    inspection."""
+    Public text and tool calls are normalized; signed thinking stays in
+    vendor metadata so tool continuations can replay the original blocks.
+    The full payload is also preserved on `.raw` for trace inspection."""
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
-    for block in resp.content or []:
+    blocks = resp.content or []
+    if not isinstance(blocks, list):
+        raise ProviderTransientError("invalid response: content must be a list")
+    for block in blocks:
         bt = getattr(block, "type", None)
+        if not isinstance(bt, str) or not bt:
+            raise ProviderTransientError("invalid response: malformed content block")
         if bt == "text":
-            text_parts.append(getattr(block, "text", "") or "")
+            text = getattr(block, "text", "") or ""
+            if not isinstance(text, str):
+                raise ProviderTransientError("invalid response: text must be a string")
+            text_parts.append(text)
         elif bt == "tool_use":
+            call_id = getattr(block, "id", None)
+            name = getattr(block, "name", None)
+            arguments = getattr(block, "input", None)
+            if (
+                not isinstance(call_id, str)
+                or not call_id
+                or not isinstance(name, str)
+                or not name
+                or not isinstance(arguments, dict)
+            ):
+                # Inventing an ID would break pairing with signed-content replay.
+                raise ProviderTransientError("invalid response: malformed tool use")
             tool_calls.append(
                 ToolCall(
-                    id=getattr(block, "id", None) or f"auto_{uuid.uuid4().hex[:8]}",
-                    name=getattr(block, "name", "") or "",
-                    arguments=getattr(block, "input", None) or {},
+                    id=call_id,
+                    name=name,
+                    arguments=arguments,
                 )
             )
 
     stop_raw = getattr(resp, "stop_reason", None) or "end_turn"
     finish = _STOP_REASON_MAP.get(stop_raw, FinishReason.STOP)
     raw_dict = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    content = raw_dict.get("content") or []
+    vendor_extra = {}
+    if any(b.get("type") in ("thinking", "redacted_thinking") for b in content):
+        vendor_extra["anthropic"] = {"content": deepcopy(content)}
 
     return AssistantMessage(
         content="\n".join(text_parts),
@@ -367,6 +397,7 @@ def _from_anthropic_response(resp) -> AssistantMessage:
         response_id=str(getattr(resp, "id", "") or ""),
         response_model=str(getattr(resp, "model", "") or ""),
         raw=raw_dict,
+        vendor_extra=vendor_extra,
     )
 
 
@@ -386,12 +417,12 @@ def _parse_anthropic_usage(resp) -> Usage:
     u = getattr(resp, "usage", None)
     if u is None:
         return Usage()
-    fresh = int(getattr(u, "input_tokens", 0) or 0)
-    cached = int(getattr(u, "cache_read_input_tokens", 0) or 0)
-    created = int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+    fresh = token_count(getattr(u, "input_tokens", 0))
+    cached = token_count(getattr(u, "cache_read_input_tokens", 0))
+    created = token_count(getattr(u, "cache_creation_input_tokens", 0))
     return Usage(
         prompt_tokens=fresh + cached + created,
-        completion_tokens=int(getattr(u, "output_tokens", 0) or 0),
+        completion_tokens=token_count(getattr(u, "output_tokens", 0)),
         cached_tokens=cached,
         cache_creation_tokens=created,
     )

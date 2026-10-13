@@ -707,6 +707,32 @@ class _UsageProvider(_TestProvider):
         )
 
 
+class _BrokenSink:
+    def write(self, event: dict) -> None:
+        raise OSError("trace disk full")
+
+
+async def test_chat_failed_usage_sink_preserves_successful_response() -> None:
+    provider = _UsageProvider(Usage(prompt_tokens=7))
+    provider.usage_sink = _BrokenSink()
+
+    result = await provider.chat([], [])
+
+    assert result.content == "ok"
+    assert result.usage.prompt_tokens == 7
+
+
+async def test_chat_failed_usage_sink_preserves_original_provider_error() -> None:
+    failure = ProviderTransientError("upstream unavailable")
+    provider = _UsageProvider(failure)
+    provider.usage_sink = _BrokenSink()
+
+    with pytest.raises(ProviderTransientError) as caught:
+        await provider.chat([], [])
+
+    assert caught.value is failure
+
+
 async def test_chat_writes_one_usage_event_per_call_with_model_time_and_buckets(
     monkeypatch,
 ) -> None:

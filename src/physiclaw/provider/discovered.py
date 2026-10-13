@@ -25,7 +25,8 @@ import logging
 from pathlib import Path
 
 from physiclaw.common import paths
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.logger.session_artifacts import write_json_atomic
+from physiclaw.common.text import read_text
 
 log = logging.getLogger(__name__)
 
@@ -40,13 +41,13 @@ def save(provider_id: str, models: list[dict]) -> None:
     """Write the live list with a fetched-at timestamp. Best-effort —
     a write failure is logged but never raised; discovery still
     completes (the user got the printed list)."""
-    _DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "fetched_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
         "models": models,
     }
     try:
-        write_text(cache_path(provider_id), json.dumps(payload, indent=2))
+        _DIR.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(cache_path(provider_id), payload)
     except OSError as e:
         log.warning("failed to write discovered cache for %s: %s", provider_id, e)
 
@@ -66,11 +67,15 @@ def load(provider_id: str) -> list[dict]:
     models = payload.get("models")
     if not isinstance(models, list):
         return []
-    return [m for m in models if isinstance(m, dict)]
+    return [
+        m
+        for m in models
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip()
+    ]
 
 
 def model_ids(provider_id: str) -> set[str]:
-    return {m.get("id", "") for m in load(provider_id)} - {""}
+    return {m["id"] for m in load(provider_id)}
 
 
 def is_cached(provider_id: str, model_id: str) -> bool:

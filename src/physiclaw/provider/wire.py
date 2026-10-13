@@ -18,11 +18,10 @@ Two transformation directions:
     handling (and any future block type or scaling change) lands once,
     with only the per-shape part dicts differing.
 
-Provider-specific response fields (Qwen's `reasoning_content`,
-Anthropic's `thinking` blocks) are stripped at parse time inside the
-respective provider — they MUST NOT appear in the assistant content
-that gets re-serialized back to wire on the next turn (would break the
-prefix cache and confuse the model).
+Provider-specific reasoning stays out of public assistant text. Each
+provider controls any metadata its protocol needs to replay: this OpenAI
+encoder omits it, while Anthropic replays signed thinking blocks and
+Google attaches thought signatures in their own encoders.
 """
 
 import base64

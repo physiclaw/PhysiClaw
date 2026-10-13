@@ -1,48 +1,29 @@
-"""Provider package — one file per vendor, two wire-shape bases.
+"""Model providers: engine DTOs in, normalized assistant messages out.
 
-Provider ids follow OpenClaw's convention: the API surface (vendor /
-company), not the brand. So `openai` (not `chatgpt`), `moonshot` (not
-`kimi`), `google` (not `gemini`), `qwen` (Alibaba's Qwen API),
-`anthropic` (direct API). The existing `claude-code` is a separate
-concept (subprocess engine, not direct Anthropic API).
+Use ``make_provider(provider_id, model_id)`` and close the returned
+provider with ``aclose()``. ``BaseProvider.chat`` owns usage accounting;
+its wire-specific ``_chat`` implementation performs one model call.
+The engine owns retries through ``ProviderTransientError`` (transport,
+rate limits, server failures, malformed completions) and
+``ProviderPermanentError`` (requests that need correction).
 
-Layout:
-  - `provider_base.py`     — `Provider` Protocol, errors,
-                             `CacheMarkers` factory contract,
-                             `BaseProvider` (auth + HTTP-client +
-                             `SYSTEM_PROMPT_FRAGMENT` hook +
-                             `serialize_history` template)
-  - `openai_compat.py`     — `OpenAICompatibleProvider`:
-                             `/chat/completions` wire flow +
-                             `OpenAICacheMarkers` + response parser
-  - `anthropic_compat.py`  — `AnthropicCompatibleProvider`:
-                             `/v1/messages` wire flow (Anthropic SDK) +
-                             `AnthropicCacheMarkers` (per-block)
-  - `wire.py`              — DTO ↔ OpenAI wire-format adapters used by
-                             `openai_compat.py`, plus the shared
-                             `encode_content` block dispatch both wire
-                             shapes route through
-  - `registry.py`          — id → class map, lookup helpers
-                             (`make_provider`, `provider_class`,
-                             `provider_key_status`, `is_known`,
-                             `in_process_provider_ids`, `CLAUDE_CODE_ID`)
-  - `vendors/`             — one file per concrete vendor:
-      - `qwen.py`      — `QwenProvider` (DashScope)   — OpenAI-compat
-      - `moonshot.py`  — `MoonshotProvider` (Kimi)    — OpenAI-compat
-      - `openai.py`    — `OpenAIProvider` (GPT-5)     — OpenAI-compat
-      - `deepseek.py`  — `DeepSeekProvider` (Flash)   — OpenAI-compat
-      - `google.py`    — `GoogleProvider` (Gemini)    — OpenAI-compat
-                         with shim-quirk overrides
-      - `anthropic.py` — `AnthropicProvider` (Claude) — Anthropic-compat
+``openai_compat`` implements Chat Completions for OpenAI, Qwen,
+Moonshot, DeepSeek, and Google's compatibility endpoint.
+``anthropic_compat`` implements Messages through Anthropic's SDK.
+``vendors`` declare endpoints, thinking settings, and protocol quirks.
+``wire`` shares content encoders; ``registry`` resolves provider IDs;
+``discovered`` keeps a best-effort cache of accessible model IDs.
 
-This `__init__.py` is a thin re-export surface — import from here
-externally; logic lives in the modules above.
+``serialize_history`` creates fresh wire messages and places cache
+markers. Reasoning stays outside public assistant text; opaque state
+required for tool continuations lives in ``vendor_extra`` and is
+replayed only by its originating provider. Invalid completions fail
+before partial tools can execute. Optional accounting and cache-write
+failures must not discard a usable model reply or discovery result.
 
-Selection: the user picks a `provider/model` ref (e.g. `qwen/qwen3.6-plus`)
-in `~/.physiclaw/config.toml [agent] model`. The launcher parses the ref
-and routes on the provider id — `claude-code` goes to the subprocess
-engine, anything else here goes to the in-process engine via
-`make_provider(provider_id, model_id)`.
+A model ref is ``provider/model`` (for example ``qwen/qwen3.6-plus``).
+``claude-code`` selects the separate subprocess engine, not a provider
+in this package. This module is the public re-export surface.
 """
 
 from physiclaw.provider.anthropic_compat import AnthropicCompatibleProvider

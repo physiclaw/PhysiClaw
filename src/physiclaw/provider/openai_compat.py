@@ -65,6 +65,7 @@ from physiclaw.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
     describe,
+    token_count,
 )
 from physiclaw.provider.wire import (
     assistant_to_wire,
@@ -163,13 +164,29 @@ class OpenAICompatibleProvider(BaseProvider):
             r = await self._client.get("/models")
         except (httpx.TransportError, httpx.TimeoutException) as e:
             raise ProviderTransientError(f"transport: {describe(e)}") from e
+        if r.status_code == 429 or r.status_code >= 500:
+            raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:300]}")
         if r.status_code >= 400:
             raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:300]}")
         try:
             body = r.json()
         except ValueError as e:
             raise ProviderTransientError(f"non-JSON response: {r.text[:200]}") from e
-        return body.get("data") or []
+        if not isinstance(body, dict):
+            raise ProviderTransientError("invalid model list response: expected object")
+        models = body.get("data")
+        if models is None:
+            return []
+        if not isinstance(models, list) or any(
+            not isinstance(m, dict)
+            or not isinstance(m.get("id"), str)
+            or not m["id"].strip()
+            for m in models
+        ):
+            raise ProviderTransientError(
+                "invalid model list response: expected model ids"
+            )
+        return models
 
     # ---------- serialize_history hooks (called by BaseProvider) ----------
 
@@ -204,9 +221,21 @@ class OpenAICompatibleProvider(BaseProvider):
         they never leak into engine history; the raw dict is preserved
         on `.raw` for log-side inspection. Vendors with non-standard
         usage shapes override `_parse_usage`, not this method."""
-        # `or [{}]`: some gateways send `"choices": []` on a 200.
-        choice = (raw.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
+        # A gateway's empty/malformed completion is not an assistant STOP.
+        # Reject the whole response before any partial tool list can dispatch.
+        if not isinstance(raw, dict):
+            raise ProviderTransientError("invalid response: expected an object")
+        choices = raw.get("choices")
+        if (
+            not isinstance(choices, list)
+            or not choices
+            or not isinstance(choices[0], dict)
+        ):
+            raise ProviderTransientError("invalid response: missing completion choice")
+        choice = choices[0]
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise ProviderTransientError("invalid response: missing assistant message")
         finish_raw = choice.get("finish_reason") or "stop"
 
         content = message.get("content") or ""
@@ -214,29 +243,33 @@ class OpenAICompatibleProvider(BaseProvider):
             content = json.dumps(content, ensure_ascii=False)
 
         tool_calls: list[ToolCall] = []
-        for tc in message.get("tool_calls") or []:
-            try:
-                fn = tc.get("function") or {}
-                args_str = fn.get("arguments") or "{}"
-                try:
-                    args = (
-                        json.loads(args_str) if isinstance(args_str, str) else args_str
-                    )
-                    if not isinstance(args, dict):
-                        args = {"_raw": args}
-                except json.JSONDecodeError:
-                    # Principle 4/5: don't silently drop; pass malformed
-                    # args through so the validator flags it on dispatch.
-                    args = {"_malformed_json": args_str}
-                tool_calls.append(
-                    ToolCall(
-                        id=tc.get("id") or f"auto_{uuid.uuid4().hex[:8]}",
-                        name=fn.get("name") or "",
-                        arguments=args,
-                    )
+        calls = message.get("tool_calls")
+        if calls is None:
+            calls = []
+        if not isinstance(calls, list):
+            raise ProviderTransientError("invalid response: tool_calls must be a list")
+        for tc in calls:
+            if not isinstance(tc, dict) or not isinstance(tc.get("function"), dict):
+                raise ProviderTransientError("invalid response: malformed tool call")
+            fn = tc["function"]
+            name = fn.get("name", "")
+            ident = tc.get("id", "")
+            name = "" if name is None else name
+            ident = "" if ident is None else ident
+            if not isinstance(name, str) or not isinstance(ident, str):
+                raise ProviderTransientError(
+                    "invalid response: tool name and id must be strings"
                 )
-            except Exception:
-                log.exception("failed to parse tool_call: %s", tc)
+            ident = ident or f"auto_{uuid.uuid4().hex[:8]}"
+            args_str = fn.get("arguments", "{}")
+            try:
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                if not isinstance(args, dict):
+                    args = {"_raw": args}
+            except json.JSONDecodeError:
+                # Preserve malformed arguments for the dispatch validator.
+                args = {"_malformed_json": args_str}
+            tool_calls.append(ToolCall(id=ident, name=name, arguments=args))
 
         return AssistantMessage(
             content=content,
@@ -259,24 +292,26 @@ class OpenAICompatibleProvider(BaseProvider):
         them (standard OpenAI shapes carry no top-level key). Vendors
         whose shape differs beyond that override this method on the
         vendor class."""
-        u = (raw or {}).get("usage") or {}
-        details = u.get("prompt_tokens_details") or {}
-        cached = int(details.get("cached_tokens", 0) or 0)
+        u = (raw or {}).get("usage")
+        if not isinstance(u, dict):
+            return Usage()
+        details = u.get("prompt_tokens_details")
+        details = details if isinstance(details, dict) else {}
+        completion = u.get("completion_tokens_details")
+        completion = completion if isinstance(completion, dict) else {}
+        cached = token_count(details.get("cached_tokens"))
         if not cached:
-            cached = int(
-                u.get("cached_tokens", 0) or u.get("prompt_cache_hit_tokens", 0) or 0
+            cached = token_count(u.get("cached_tokens")) or token_count(
+                u.get("prompt_cache_hit_tokens")
             )
         return Usage(
-            prompt_tokens=int(u.get("prompt_tokens", 0) or 0),
-            completion_tokens=int(u.get("completion_tokens", 0) or 0),
+            prompt_tokens=token_count(u.get("prompt_tokens")),
+            completion_tokens=token_count(u.get("completion_tokens")),
             cached_tokens=cached,
-            cache_creation_tokens=int(
-                details.get("cache_creation_input_tokens", 0) or 0
+            cache_creation_tokens=token_count(
+                details.get("cache_creation_input_tokens")
             ),
-            reasoning_tokens=int(
-                (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
-                or 0
-            ),
+            reasoning_tokens=token_count(completion.get("reasoning_tokens")),
         )
 
 

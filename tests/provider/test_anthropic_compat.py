@@ -23,6 +23,7 @@ from anthropic import (
     APITimeoutError,
     RateLimitError,
 )
+from anthropic.types import Message as AnthropicMessage
 
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -871,21 +872,72 @@ def test_from_response_falls_back_to_dict_when_no_model_dump() -> None:
     assert isinstance(out.raw, dict)
 
 
-def test_from_response_generates_id_for_tool_use_block_with_no_id(mocker) -> None:
-    mocker.patch(
-        "physiclaw.provider.anthropic_compat.uuid.uuid4",
-        return_value=mocker.MagicMock(hex="abcdef1234567890"),
+@pytest.mark.parametrize(
+    "bad_block",
+    [
+        None,
+        {},
+        {"type": "text", "text": ["invalid"]},
+        {"type": "tool_use", "id": None, "name": "peek", "input": {}},
+        {"type": "tool_use", "id": "", "name": "peek", "input": {}},
+        {"type": "tool_use", "id": "t2", "name": "", "input": {}},
+        {"type": "tool_use", "id": "t2", "name": "peek", "input": []},
+    ],
+)
+async def test_chat_rejects_entire_malformed_signed_tool_response(
+    bad_block, respx_mock
+):
+    content = [
+        {"type": "thinking", "thinking": "private", "signature": "signed"},
+        bad_block,
+        {"type": "tool_use", "id": "t1", "name": "peek", "input": {}},
+    ]
+    respx_mock.post("https://api.anthropic.test/v1/messages").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "reply",
+                "type": "message",
+                "role": "assistant",
+                "model": "test",
+                "content": content,
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+            },
+        )
     )
-    resp = SimpleNamespace(
-        content=[SimpleNamespace(type="tool_use", id=None, name="tap", input={})],
-        stop_reason="tool_use",
-        usage=None,
-        model_dump=lambda: {},
+    provider = _TestAnthropic(model="test", base_url="https://api.anthropic.test")
+
+    try:
+        with pytest.raises(ProviderTransientError, match="invalid response"):
+            await provider.chat([UserMessage(content="look")], [], thinking="low")
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize("content", ["invalid", {"type": "text", "text": "invalid"}])
+async def test_chat_rejects_non_list_content(content, respx_mock):
+    respx_mock.post("https://api.anthropic.test/v1/messages").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "reply",
+                "type": "message",
+                "role": "assistant",
+                "model": "test",
+                "content": content,
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+            },
+        )
     )
+    provider = _TestAnthropic(model="test", base_url="https://api.anthropic.test")
 
-    out = _from_anthropic_response(resp)
-
-    assert out.tool_calls[0].id == "auto_abcdef12"
+    try:
+        with pytest.raises(ProviderTransientError, match="content must be a list"):
+            await provider.chat([UserMessage(content="hi")], [])
+    finally:
+        await provider.aclose()
 
 
 # ---------- _parse_anthropic_usage ----------
@@ -940,6 +992,49 @@ def test_parse_usage_handles_none_attribute_values_as_zero() -> None:
 # ---------- thinking: a budget, and room beyond it ----------
 
 
+@pytest.mark.parametrize(
+    "thinking_blocks",
+    [
+        [{"type": "thinking", "thinking": "private", "signature": "signed"}],
+        [{"type": "redacted_thinking", "data": "encrypted"}],
+        [
+            {"type": "thinking", "thinking": "", "signature": "signed"},
+            {"type": "redacted_thinking", "data": "encrypted"},
+        ],
+    ],
+)
+async def test_chat_preserves_signed_thinking_on_tool_continuation(
+    provider: _TestAnthropic, thinking_blocks: list[dict]
+) -> None:
+    reply = AnthropicMessage(
+        id="response-1",
+        type="message",
+        role="assistant",
+        model="claude-test",
+        content=[
+            *thinking_blocks,
+            {"type": "text", "text": "Checking"},
+            {"type": "tool_use", "id": "t1", "name": "peek", "input": {}},
+        ],
+        stop_reason="tool_use",
+        usage={"input_tokens": 1, "output_tokens": 2},
+    )
+    provider._client.messages.create.return_value = reply
+    history = [UserMessage(content="look")]
+
+    assistant = await provider.chat(history, [], thinking="low")
+    await provider.chat(
+        [*history, assistant, ToolResultMessage(tool_call_id="t1", content="screen")],
+        [],
+        thinking="low",
+    )
+
+    payload = provider._client.messages.create.call_args.kwargs
+    assert payload["messages"][1]["content"] == reply.model_dump()["content"]
+    assert assistant.content == "Checking"
+    assert assistant.tool_calls == [ToolCall(id="t1", name="peek", arguments={})]
+
+
 @pytest.mark.asyncio
 async def test_a_think_level_becomes_a_budget_with_room_for_the_answer(
     provider: _TestAnthropic, mocker
@@ -960,3 +1055,22 @@ async def test_a_think_level_becomes_a_budget_with_room_for_the_answer(
     assert medium["thinking"] == {"type": "enabled", "budget_tokens": 4096}
     assert medium["max_tokens"] == _DEFAULT_MAX_TOKENS + 4096
     assert "thinking" not in off and off["max_tokens"] == _DEFAULT_MAX_TOKENS
+
+
+def test_signed_history_serialization_does_not_mutate_retained_response():
+    content = [
+        {"type": "thinking", "thinking": "private", "signature": "signed"},
+        {"type": "tool_use", "id": "t1", "name": "peek", "input": {}},
+    ]
+    assistant = AssistantMessage(
+        content="",
+        tool_calls=[ToolCall(id="t1", name="peek", arguments={})],
+        finish_reason=FinishReason.TOOL_CALLS,
+        vendor_extra={"anthropic": {"content": content}},
+    )
+    provider = _TestAnthropic(model="test")
+
+    wire = provider.serialize_history([assistant])
+    wire[0]["content"][0]["signature"] = "changed outbound copy"
+
+    assert assistant.vendor_extra["anthropic"]["content"][0]["signature"] == "signed"

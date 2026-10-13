@@ -28,12 +28,12 @@ Auth: `GOOGLE_API_KEY` env, or `[provider] google_api_key` in
 Model ref examples:  `google/gemini-3.1-pro-preview`,
 `google/gemini-3-flash-preview`, `google/gemini-2.5-pro`.
 
-Thinking rides `google.thinking_config` in the body (the SDK's
-`extra_body`); the field follows the generation — Gemini 3 takes a
-`thinking_level` word, Gemini 2.5 a `thinking_budget` in tokens — and
-the shim's budget-based `reasoning_effort` is not used (reported
-ignored by Gemini 3). Written from the shim's reference: it rejects
-this network's region, so none of it is measured here.
+Thinking rides `extra_body.google.thinking_config` in the HTTP body;
+the field follows the generation — Gemini 3 takes a
+`thinking_level` word, Gemini 2.5 a `thinking_budget` in tokens.
+The native config preserves each model's supported floor. The HTTP body
+shape and tool continuations have been checked against Google's reference
+and live Gemini 2.5 / 3 Flash calls through a proxy.
 """
 
 from typing import Any
@@ -77,13 +77,15 @@ class GoogleProvider(OpenAICompatibleProvider):
                 level = "low"
             else:
                 level = thinking
-            return {"google": {"thinking_config": {"thinking_level": level}}}
-        if model.startswith("gemini-2.5"):
+            config: dict[str, str | int] = {"thinking_level": level}
+        elif model.startswith("gemini-2.5"):
             budget = _BUDGETS_25[thinking]
             if "pro" in model:
                 budget = max(budget, 128)
-            return {"google": {"thinking_config": {"thinking_budget": budget}}}
-        return {}
+            config = {"thinking_budget": budget}
+        else:
+            return {}
+        return {"extra_body": {"google": {"thinking_config": config}}}
 
     # Cache markers: disabled. Gemini's shim ignores Anthropic-style
     # `cache_control`. The bigger reason for stripping is that the stub

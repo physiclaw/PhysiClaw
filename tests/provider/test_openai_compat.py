@@ -497,6 +497,103 @@ async def test_list_models_maps_4xx_to_permanent(
         await provider.list_models()
 
 
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_list_models_retryable_status_is_transient(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, status: int
+) -> None:
+    respx_mock.get("https://api.openai.test/v1/models").respond(status)
+
+    with pytest.raises(ProviderTransientError, match=f"HTTP {status}"):
+        await provider.list_models()
+
+
+@pytest.mark.parametrize(
+    "payload", [[], {"data": "bad"}, {"data": [3]}, {"data": [{"id": []}]}]
+)
+async def test_list_models_malformed_data_is_transient(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, payload: object
+) -> None:
+    respx_mock.get("https://api.openai.test/v1/models").respond(json=payload)
+
+    with pytest.raises(ProviderTransientError, match="model list"):
+        await provider.list_models()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {},
+        {"choices": []},
+        {"choices": [None]},
+        {"choices": [{"message": []}]},
+        {"choices": [{"message": {"tool_calls": [3]}}]},
+        {"choices": [{"message": {"tool_calls": [{"function": []}]}}]},
+        {"choices": [{"message": {"tool_calls": [{"function": {"name": []}}]}}]},
+    ],
+)
+async def test_chat_malformed_completion_is_transient(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, payload: object
+) -> None:
+    import json
+
+    respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        text=json.dumps(payload), headers={"content-type": "application/json"}
+    )
+
+    with pytest.raises(ProviderTransientError, match="response"):
+        await provider.chat([UserMessage(content="hi")], [])
+
+
+@pytest.mark.parametrize("count", [None, "invalid", [], {}, True, -1, 1.5])
+async def test_chat_malformed_usage_does_not_discard_answer(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, count: object
+) -> None:
+    respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        json={
+            "choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": count,
+                "completion_tokens": 7,
+                "prompt_tokens_details": {"cached_tokens": count},
+                "completion_tokens_details": {"reasoning_tokens": count},
+            },
+        }
+    )
+
+    result = await provider.chat([], [])
+
+    assert result.content == "answer"
+    assert result.usage == Usage(completion_tokens=7)
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        [],
+        "bad",
+        42,
+        {"prompt_tokens_details": [1]},
+        {"completion_tokens_details": "bad"},
+    ],
+)
+async def test_chat_invalid_usage_shape_preserves_answer(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, usage: object
+) -> None:
+    respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        json={
+            "choices": [{"message": {"content": "answer"}}],
+            "usage": usage,
+        }
+    )
+
+    result = await provider.chat([], [])
+
+    assert result.content == "answer"
+    assert result.usage == Usage()
+
+
 # ---------- _parse_response ----------
 
 
@@ -673,48 +770,20 @@ def test_parse_response_generates_id_when_tool_call_id_missing(
     assert out.tool_calls[0].id == "auto_abcdef12"
 
 
-def test_parse_response_logs_exception_when_tool_call_parse_fails(
-    provider: _TestOpenAI, caplog: pytest.LogCaptureFixture, mocker
+async def test_chat_never_returns_a_partial_tool_list(
+    provider: _TestOpenAI, respx_mock: respx.MockRouter
 ) -> None:
-    import logging
-
-    # Make ToolCall constructor raise to hit the broad-except branch.
-    mocker.patch(
-        "physiclaw.provider.openai_compat.ToolCall",
-        side_effect=RuntimeError("boom"),
+    calls = [{"id": "valid", "function": {"name": "tap", "arguments": "{}"}}, 3]
+    respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
+        json={
+            "choices": [
+                {"message": {"tool_calls": calls}, "finish_reason": "tool_calls"}
+            ]
+        }
     )
-    raw = {
-        "choices": [
-            {
-                "message": {
-                    "tool_calls": [
-                        {
-                            "id": "c1",
-                            "function": {"name": "x", "arguments": "{}"},
-                        }
-                    ],
-                },
-                "finish_reason": "tool_calls",
-            }
-        ],
-    }
 
-    with caplog.at_level(logging.ERROR, logger="physiclaw.provider.openai_compat"):
-        out = provider._parse_response(raw)
-
-    # The bad tool call gets dropped; the log captures the exception.
-    assert out.tool_calls == []
-    assert any("failed to parse tool_call" in r.getMessage() for r in caplog.records)
-
-
-def test_parse_response_empty_choices_falls_back_to_defaults(
-    provider: _TestOpenAI,
-) -> None:
-    out = provider._parse_response({})
-
-    assert out.content == ""
-    assert out.tool_calls == []
-    assert out.finish_reason == FinishReason.STOP
+    with pytest.raises(ProviderTransientError, match="malformed tool call"):
+        await provider.chat([], [])
 
 
 # ---------- _parse_usage ----------
@@ -893,17 +962,15 @@ async def test_chat_non_json_200_maps_to_transient(
 
 
 @pytest.mark.asyncio
-async def test_chat_empty_choices_returns_empty_assistant_message(
+async def test_chat_empty_choices_is_retryable_instead_of_a_false_stop(
     provider: _TestOpenAI, respx_mock: respx.MockRouter
 ) -> None:
     respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
         json={"choices": [], "usage": {}}
     )
 
-    out = await provider.chat([UserMessage(content="x")], [])
-
-    assert out.content == ""
-    assert out.tool_calls == []
+    with pytest.raises(ProviderTransientError, match="missing completion choice"):
+        await provider.chat([UserMessage(content="x")], [])
 
 
 @pytest.mark.asyncio

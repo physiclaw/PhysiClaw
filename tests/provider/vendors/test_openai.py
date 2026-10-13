@@ -7,8 +7,12 @@ API field, not a prompt wrapper — so unlike Qwen, no declared
 
 from __future__ import annotations
 
+import json
+
+import httpx
 import pytest
 
+from physiclaw.contract.dto import UserMessage
 from physiclaw.provider.vendors.openai import OpenAIProvider
 
 
@@ -56,3 +60,44 @@ def test_gpt5_takes_minimal_for_off_and_the_o_series_floors_at_low():
 
 def test_a_non_reasoning_model_gets_no_field() -> None:
     assert OpenAIProvider(model="gpt-4o").thinking_params("off") == {}
+
+
+@pytest.mark.parametrize(
+    "model, effort",
+    [
+        ("gpt-5", "minimal"),
+        ("gpt-5-mini-2025-08-07", "minimal"),
+        ("gpt-5.1", "none"),
+        ("gpt-5.1-2025-11-13", "none"),
+        ("gpt-5.2", "none"),
+        ("gpt-5.4", "none"),
+        ("gpt-5.5", "none"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_chat_off_sends_effort_supported_by_model(model, effort, respx_mock):
+    route = respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+        )
+    )
+    provider = OpenAIProvider(model=model)
+
+    try:
+        await provider.chat([UserMessage(content="hi")], [], thinking="off")
+    finally:
+        await provider.aclose()
+
+    assert json.loads(route.calls.last.request.content)["reasoning_effort"] == effort
+
+
+@pytest.mark.parametrize(
+    "model", ["gpt-5.1-chat-latest", "gpt-5.2-pro", "gpt-5.1-codex", "gpt-5.99"]
+)
+def test_unknown_variant_keeps_its_api_default(model):
+    provider = OpenAIProvider(model=model)
+
+    params = provider.thinking_params("off")
+
+    assert params == {}

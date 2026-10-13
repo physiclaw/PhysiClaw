@@ -55,6 +55,23 @@ def test_save_creates_parent_directory_when_missing(_dir_fixture: Path) -> None:
     assert _dir_fixture.is_dir()
 
 
+def test_save_unwritable_parent_does_not_abort_discovery(_dir_fixture: Path) -> None:
+    _dir_fixture.write_text("a file blocks directory creation", encoding="utf-8")
+
+    discovered.save("openai", [{"id": "model"}])
+
+    assert _dir_fixture.is_file()
+
+
+@pytest.mark.parametrize("bad_id", [None, [], {}, 3, True, "", "   "])
+def test_model_ids_ignores_malformed_ids(_dir_fixture: Path, bad_id: object) -> None:
+    discovered.save("openai", [{"id": "valid"}, {"id": bad_id}])
+
+    result = discovered.model_ids("openai")
+
+    assert result == {"valid"}
+
+
 def test_save_creates_intermediate_parents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -74,7 +91,7 @@ def test_save_serializes_with_two_space_indent(_dir_fixture: Path) -> None:
     # mutation on the indent argument.
     import json as _json
 
-    expected = _json.dumps(_json.loads(text), indent=2)
+    expected = _json.dumps(_json.loads(text), indent=2) + "\n"
     assert text == expected
 
 
@@ -86,6 +103,15 @@ def test_save_is_idempotent_when_called_twice(_dir_fixture: Path) -> None:
     discovered.save("openai", [{"id": "second"}])  # must not raise
 
     assert discovered.load("openai") == [{"id": "second"}]
+
+
+def test_save_failed_replacement_preserves_previous_model_cache(mocker) -> None:
+    discovered.save("openai", [{"id": "previous"}])
+    mocker.patch.object(Path, "replace", side_effect=OSError("disk unavailable"))
+
+    discovered.save("openai", [{"id": "new"}])
+
+    assert discovered.load("openai") == [{"id": "previous"}]
 
 
 def test_save_swallows_oserror_and_logs_warning(

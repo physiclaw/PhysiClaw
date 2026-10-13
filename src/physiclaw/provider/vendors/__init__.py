@@ -1,10 +1,9 @@
 """Concrete provider implementations.
 
-One file per vendor. The trivial vendors (qwen, moonshot, openai,
-deepseek) are pure declarations — `PROVIDER_ID + BASE_URL` plus the
-declared knobs the bases consume (`API_KEY_ENV_VARS`,
-`SYSTEM_PROMPT_FRAGMENT`, `CACHE_MARKERS`) — with no method
-overrides. Vendors with real behavior document their quirks in place:
+One file per vendor. Qwen, Moonshot, OpenAI, and DeepSeek declare
+endpoints and capabilities, and translate the engine's thinking level
+into model-specific request fields. Other wire differences stay close
+to the vendor that requires them:
 
   - `google.py`    — `GoogleProvider` (Gemini via the OpenAI shim):
                      tool-result image splits, thought signatures,

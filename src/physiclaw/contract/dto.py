@@ -5,9 +5,9 @@ assistant content differently. These DTOs normalize that boundary: the
 engine deals only in DTOs; provider classes own translation to/from
 their native wire format (`AnthropicProvider` → `/v1/messages` blocks,
 `OpenAICompatibleProvider` → `/chat/completions` dicts, etc.). Provider-
-specific leakage (e.g. Qwen's `reasoning_content`, Anthropic's
-`thinking` blocks) is stripped before assistant content lands in
-history — those fields don't survive re-serialization.
+reasoning stays out of public assistant content. Opaque state needed
+for protocol continuity (such as signed Anthropic thinking blocks) lives
+in `vendor_extra` and is replayed only by the originating provider.
 
 The DTO hierarchy mirrors what every chat-completion API exposes — four
 message kinds and two content-block kinds — without committing to any

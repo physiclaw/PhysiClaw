@@ -472,7 +472,27 @@ def test_extract_signature_prefers_extra_content_over_function_fallback() -> Non
 
 
 def _cfg(**kw):
-    return {"google": {"thinking_config": kw}}
+    return {"extra_body": {"google": {"thinking_config": kw}}}
+
+
+async def test_chat_places_google_thinking_inside_http_extra_body(
+    provider: GoogleProvider, respx_mock: respx.MockRouter
+) -> None:
+    import json
+
+    route = respx_mock.post(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ).respond(
+        json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+    )
+
+    await provider.chat([UserMessage(content="hi")], [], thinking="low")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["extra_body"] == {
+        "google": {"thinking_config": {"thinking_level": "low"}}
+    }
+    assert "google" not in body
 
 
 def test_gemini_25_takes_a_budget_and_pro_cannot_go_below_its_floor():
