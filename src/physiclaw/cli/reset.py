@@ -13,6 +13,7 @@ from typing import Annotated
 
 import typer
 
+from physiclaw.cli._format import exit_error
 from physiclaw.common import paths
 
 
@@ -28,7 +29,11 @@ def reset(
 ) -> None:
     """Clear calibration and the learned screen layout so both are redone next run."""
     targets = [paths.calibration_dir(), paths.screen_layout_dir()]
-    present = [(d, _file_count(d)) for d in targets if _file_count(d)]
+    present: list[tuple[Path, int]] = []
+    for directory in targets:
+        count = _file_count(directory)
+        if count:
+            present.append((directory, count))
     if not present:
         typer.echo("Nothing to reset.")
         return
@@ -41,7 +46,10 @@ def reset(
         raise typer.Exit(1)
 
     for d, _ in present:
-        shutil.rmtree(d, ignore_errors=True)
+        try:
+            shutil.rmtree(d)
+        except OSError as error:
+            exit_error(f"could not remove {d}: {error}")
     typer.echo(
         "Cleared — PhysiClaw will re-calibrate and re-learn the layout on the next run."
     )
