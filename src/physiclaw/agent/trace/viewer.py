@@ -21,6 +21,7 @@ session dir with no server.
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,7 @@ from physiclaw.agent.trace.format import (
     note_text,
     summarize_event,
 )
-from physiclaw.agent.trace.store import load_summary, recent_sessions
+from physiclaw.agent.trace.store import recent_sessions
 from physiclaw.agent.trace.trace import WARNING_EVENTS, WARNING_WORDS
 from physiclaw.common.logger.session_artifacts import iso_now
 from physiclaw.common.text import json_span, read_text, write_text
@@ -62,7 +63,7 @@ def load(
     current: int | None = None
     for r in records:
         turn = r["rec"].get("turn")
-        if isinstance(turn, int):
+        if type(turn) is int:
             current = turn
         group = groups.setdefault(
             current, {"turn": current, "records": [], "t": r["at"]}
@@ -70,11 +71,18 @@ def load(
         group["records"].append(r)
         group["t_end"] = r["at"]
         del r["at"]
-        _stamp(r)
+        try:
+            _stamp(r)
+        except (TypeError, ValueError, AttributeError, KeyError, OverflowError):
+            # Formatting is optional; a damaged record must remain inspectable.
+            r["unformatted"] = True
+            r["warn"] = True
     narrative = {name: _read(session_dir / name) for name in _NARRATIVE}
     by_turn = _runtime_by_turn(narrative["runtime.log"])
-    summary = load_summary(session_dir)
+    summary = _json_object(narrative["summary.json"])
     usage = (summary or {}).get("usage") or {}
+    if not isinstance(usage, dict):
+        usage = {}
     return {
         "sid": session_dir.name,
         "generated_at": iso_now(),
@@ -109,7 +117,9 @@ def recent(sessions_root: Path, limit: int = 50) -> list[dict[str, Any]]:
 def render(model: dict[str, Any]) -> str:
     """The viewer page with `model` embedded — the JSON is escaped so no
     record text can close the script block."""
-    data = json.dumps(model, ensure_ascii=False).replace("<", "\\u003c")
+    # ASCII escapes also preserve lone surrogates from a damaged JSON string
+    # without making the HTML impossible to encode as UTF-8.
+    data = json.dumps(model, allow_nan=False).replace("<", "\\u003c")
     return read_text(_TEMPLATE).replace("__SESSION_JSON__", data)
 
 
@@ -130,10 +140,7 @@ def _stamp(r: dict[str, Any]) -> None:
         if name in WARNING_EVENTS:
             r["warn"] = True
             r["words"] = WARNING_WORDS[name]
-        try:
-            line = summarize_event({**rec, "turn": None})
-        except Exception:  # a malformed record still gets a row, wordless
-            line = None
+        line = summarize_event({**rec, "turn": None})
         if line:
             r["summary"] = line
         if name == "tool_result":
@@ -170,28 +177,44 @@ def _stamp(r: dict[str, Any]) -> None:
             r["reason"] = str(reason)
 
 
+def _finite_number(text: str) -> float:
+    number = float(text)
+    if not math.isfinite(number):
+        raise ValueError("non-finite JSON number")
+    return number
+
+
+def _json_object(text: str) -> dict[str, Any] | None:
+    """Only objects that can be embedded in the browser's strict JSON parser."""
+    try:
+        value = json.loads(
+            text, parse_float=_finite_number, parse_constant=_finite_number
+        )
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _records(path: Path, src: str) -> list[dict[str, Any]]:
     """Every line of one stream as `{src, line, rec}`; a line that is not
     JSON stays in as `{"unparsed": ...}` rather than vanishing. `at` is
     the sort key: the record's own stamp, or its predecessor's for a
     line without one, so it keeps its place in the file."""
     out: list[dict[str, Any]] = []
-    if not path.is_file():
-        return out
     at = ""
-    with path.open(encoding="utf-8") as f:
-        for n, line in enumerate(f, 1):
-            line = line.rstrip("\n")
-            if not line.strip():
-                continue
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                rec = None
-            if not isinstance(rec, dict):
-                rec = {"unparsed": line}
-            at = str(rec.get("t") or at)
-            out.append({"src": src, "line": n, "rec": rec, "at": at})
+    try:
+        with path.open(encoding="utf-8", errors="backslashreplace") as f:
+            for n, line in enumerate(f, 1):
+                line = line.rstrip("\n")
+                if not line.strip():
+                    continue
+                rec = _json_object(line)
+                if rec is None:
+                    rec = {"unparsed": line}
+                at = str(rec.get("t") or at)
+                out.append({"src": src, "line": n, "rec": rec, "at": at})
+    except OSError:  # missing, unreadable, or purged while the page was loading
+        pass
     return out
 
 
@@ -251,19 +274,22 @@ def _runtime_by_turn(text: str) -> dict[int | None, list[str]]:
 def _inventory(session_dir: Path) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     for p in sorted(session_dir.rglob("*")):
-        if p.is_file() and p.name != VIEWER_FILE:
-            files.append(
-                {
-                    "name": p.relative_to(session_dir).as_posix(),
-                    "bytes": p.stat().st_size,
-                }
-            )
+        try:
+            if p.is_file() and p.name != VIEWER_FILE:
+                files.append(
+                    {
+                        "name": p.relative_to(session_dir).as_posix(),
+                        "bytes": p.stat().st_size,
+                    }
+                )
+        except OSError:  # retention or a concurrent writer can remove a file
+            continue
     return files
 
 
 def _read(path: Path) -> str:
     try:
-        return read_text(path)
+        return path.read_text(encoding="utf-8", errors="backslashreplace")
     except OSError:
         return ""
 

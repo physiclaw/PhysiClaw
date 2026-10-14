@@ -1,6 +1,10 @@
 """Tests for `physiclaw.agent.trace.viewer` — the session viewer's model
 and page."""
 
+# Mutation review accepts three annotation-only edits, a 50-to-51 picker limit,
+# missing-tool/error wording, and broader dispatch for fields outside published
+# event/wire shapes (the raw data remains available in those cases).
+
 from __future__ import annotations
 
 import json
@@ -8,10 +12,25 @@ import os
 from pathlib import Path
 
 import pytest
+from freezegun import freeze_time
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from physiclaw.agent.trace import viewer
 
 JPEG = b"\xff\xd8\xff\xd9"
+
+JSON_VALUE = st.recursive(
+    st.none()
+    | st.booleans()
+    | st.integers()
+    | st.floats(allow_nan=False, allow_infinity=False)
+    | st.text(),
+    lambda values: (
+        st.lists(values, max_size=4) | st.dictionaries(st.text(), values, max_size=4)
+    ),
+    max_leaves=12,
+)
 
 
 def _lines(*records: dict) -> str:
@@ -394,3 +413,358 @@ def test_records_are_stamped_with_their_words(session_dir: Path) -> None:
         ("10:00:00", "10:00:00"),
         ("10:00:00", "10:00:01"),
     ]
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        {"event": []},
+        {"event": "tool_result", "name": "tap", "arguments": {"bbox": 1}},
+        {"event": "tool_result", "images": 1},
+    ],
+)
+def test_regression_malformed_record_keeps_raw_data_and_following_record(
+    tmp_path, record
+):
+    following = {"event": "done", "sentinel": "DONE", "recap": "still visible"}
+    (tmp_path / "events.jsonl").write_text(_lines(record, following), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    rows = _records(model, None)
+    assert [row["rec"] for row in rows] == [record, following]
+    assert rows[0]["unformatted"] is True
+    assert rows[0]["warn"] is True
+    assert rows[1]["summary"] == "OUTCOME: DONE — still visible"
+
+
+@given(
+    st.dictionaries(
+        st.sampled_from(
+            [
+                "event",
+                "kind",
+                "turn",
+                "t",
+                "name",
+                "arguments",
+                "images",
+                "raw",
+                "messages",
+                "request",
+            ]
+        ),
+        JSON_VALUE,
+        max_size=6,
+    )
+)
+@example({"event": "tool_result", "name": "tap", "arguments": {"bbox": 1}})
+@example({"kind": "request", "messages": [None, 7, {"content": [None]}]})
+def test_load_preserves_arbitrary_record_fields(record):
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        (directory / "events.jsonl").write_text(_lines(record), encoding="utf-8")
+        (directory / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+
+        model = viewer.load(directory)
+
+        rows = [row for group in model["groups"] for row in group["records"]]
+        assert [row["rec"] for row in rows] == [record, record]
+
+
+@pytest.mark.parametrize("filename", ["events.jsonl", "wire.jsonl"])
+def test_regression_torn_utf8_keeps_its_line_and_later_records(tmp_path, filename):
+    (tmp_path / filename).write_bytes(b'{"turn":0}\n\xff\n{"turn":1}\n')
+
+    model = viewer.load(tmp_path)
+
+    rows = [row for group in model["groups"] for row in group["records"]]
+    assert [row["line"] for row in rows] == [1, 2, 3]
+    assert rows[1]["rec"] == {"unparsed": r"\xff"}
+    assert rows[2]["rec"] == {"turn": 1}
+
+
+@pytest.mark.parametrize(
+    "filename", ["notes.md", "runtime.log", "mcp.log", "summary.json"]
+)
+def test_regression_invalid_narrative_utf8_is_still_readable(tmp_path, filename):
+    (tmp_path / filename).write_bytes(b"prefix \xff suffix")
+
+    model = viewer.load(tmp_path)
+
+    assert model["narrative"][filename] == r"prefix \xff suffix"
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999"])
+def test_regression_nonfinite_record_stays_visible_as_unparsed_text(tmp_path, number):
+    line = '{"event":"usage","input":' + number + "}"
+    (tmp_path / "events.jsonl").write_text(line + "\n", encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == {"unparsed": line}
+    assert json.loads(_embedded(viewer.render(model))) == model
+
+
+def _embedded(page):
+    return page.split('<script id="session-data" type="application/json">', 1)[1].split(
+        "</script>", 1
+    )[0]
+
+
+def test_regression_export_surrogate_text_keeps_valid_embedded_json(tmp_path):
+    record = {"event": "unknown", "text": "\ud800</script>中文"}
+    (tmp_path / "events.jsonl").write_text(_lines(record), encoding="utf-8")
+
+    page = viewer.write(tmp_path).read_text(encoding="utf-8")
+
+    model = json.loads(_embedded(page))
+    assert _records(model, None)[0]["rec"] == record
+    assert page.count("</script>") == 2
+
+
+@pytest.mark.parametrize("usage", [[1], "bad", 1, True])
+def test_regression_malformed_usage_does_not_hide_summary_or_records(tmp_path, usage):
+    summary = {"usage": usage, "outcome": {"sentinel": "DONE"}}
+    (tmp_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert model["summary"] == summary
+    assert model["words"]["tokens"] == {}
+
+
+def test_regression_nonfinite_summary_remains_in_narrative(tmp_path):
+    raw = '{"usage":{"input_tokens":NaN}}'
+    (tmp_path / "summary.json").write_text(raw, encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert model["summary"] is None
+    assert model["narrative"]["summary.json"] == raw
+
+
+def test_regression_unreadable_stream_does_not_hide_other_stream(tmp_path, mocker):
+    record = {"kind": "request", "messages": []}
+    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+    open_path = Path.open
+
+    def open_unless_events(path, *args, **kwargs):
+        if path == tmp_path / "events.jsonl":
+            raise PermissionError("unreadable events")
+        return open_path(path, *args, **kwargs)
+
+    mocker.patch.object(Path, "open", open_unless_events)
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == record
+
+
+def test_regression_unreadable_inventory_entry_does_not_hide_records(tmp_path, mocker):
+    record = {"event": "done", "sentinel": "DONE"}
+    (tmp_path / "events.jsonl").write_text(_lines(record), encoding="utf-8")
+    broken = tmp_path / "a-unreadable.jpg"
+    broken.write_bytes(b"frame")
+    stat_path = Path.stat
+
+    def stat_unless_broken(path, *args, **kwargs):
+        if path == broken:
+            raise PermissionError("unreadable metadata")
+        return stat_path(path, *args, **kwargs)
+
+    mocker.patch.object(Path, "stat", stat_unless_broken)
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == record
+    assert [item["name"] for item in model["files"]] == ["events.jsonl"]
+
+
+def test_load_preserves_unicode_line_separators_and_physical_line_numbers(tmp_path):
+    record = {"event": "other", "text": "one\u2028two\u2029three"}
+    (tmp_path / "events.jsonl").write_text(
+        "\n \n" + json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == record
+    assert _records(model, None)[0]["line"] == 3
+
+
+def test_load_boolean_turn_does_not_create_numbered_group(tmp_path):
+    (tmp_path / "events.jsonl").write_text(_lines({"turn": True}), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert [group["turn"] for group in model["groups"]] == [None]
+
+
+def test_load_micro_record_recovers_legacy_reason_and_frames(tmp_path):
+    record = {
+        "kind": "micro",
+        "request": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": "images/frame.jpg"}}
+                ],
+            }
+        ],
+        "raw": {"choices": [{"message": {"content": '{"reason":"legacy reason"}'}}]},
+    }
+    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    row = _records(model, None)[0]
+    assert row["reason"] == "legacy reason"
+    assert row["frames"] == ["images/frame.jpg"]
+
+
+def test_load_formats_valid_summary_tokens(tmp_path):
+    summary = {"usage": {"input_tokens": 1_200_000, "output_tokens": 9_800}}
+    (tmp_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert model["words"]["tokens"] == {"input_tokens": "1.2M", "output_tokens": "9.8k"}
+
+
+def test_load_exposes_generated_at_and_sentinel_words(tmp_path):
+    with freeze_time("2026-10-14 12:00:00"):
+        model = viewer.load(tmp_path)
+
+    assert model["generated_at"] == "2026-10-14T12:00:00.000"
+    assert model["words"]["sentinels"]["DONE"] == {"words": "finished", "tone": "ok"}
+
+
+def test_render_rejects_nonfinite_direct_model():
+    model = {"value": float("nan")}
+
+    with pytest.raises(ValueError, match="Out of range float values"):
+        viewer.render(model)
+
+
+def test_load_note_preserves_the_turn_narrative(tmp_path):
+    record = {
+        "event": "tool_result",
+        "name": "note",
+        "arguments": {"summary": "conductor: step finished"},
+    }
+    (tmp_path / "events.jsonl").write_text(_lines(record), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["note"] == "step finished"
+
+
+@pytest.mark.parametrize("kind", ["response", "micro"])
+def test_load_reply_gist_and_explicit_reason_remain_available(tmp_path, kind):
+    record = {
+        "kind": kind,
+        "raw": {"choices": [{"message": {"content": '{"reason":"legacy"}'}}]},
+        "reason": "recorded reason",
+    }
+    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    row = _records(model, None)[0]
+    assert row["gist"]["text"] == '{"reason":"legacy"}'
+    assert row["reason"] == "recorded reason"
+
+
+def test_load_deltas_stop_at_first_changed_message(tmp_path):
+    first = {
+        "kind": "request",
+        "messages": [
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "unchanged"},
+        ],
+    }
+    second = {
+        "kind": "request",
+        "messages": [{"role": "user", "content": "changed"}, first["messages"][1]],
+    }
+    (tmp_path / "wire.jsonl").write_text(_lines(first, second), encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[1]["new_from"] == 0
+    assert _records(model, None)[1]["carried"] == 2
+
+
+def test_load_deltas_skip_malformed_request_and_continue(tmp_path):
+    message = {"role": "user", "content": "first"}
+    first = {"kind": "request", "messages": [message]}
+    malformed = {"kind": "request", "messages": 1}
+    last = {
+        "kind": "request",
+        "messages": [message, {"role": "assistant", "content": "second"}],
+    }
+    (tmp_path / "wire.jsonl").write_text(
+        _lines(first, malformed, last), encoding="utf-8"
+    )
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[2]["new_from"] == 1
+    assert _records(model, None)[2]["carried"] == 1
+
+
+def test_load_deltas_ignore_message_fields_in_event_records(tmp_path):
+    message = {"role": "user", "content": "message"}
+    (tmp_path / "events.jsonl").write_text(
+        _lines({"event": "request", "messages": [message]}), encoding="utf-8"
+    )
+    (tmp_path / "wire.jsonl").write_text(
+        _lines({"kind": "request", "messages": [message]}), encoding="utf-8"
+    )
+
+    model = viewer.load(tmp_path)
+
+    assert "new_from" not in _records(model, None)[0]
+    assert _records(model, None)[1]["carried"] == 0
+
+
+def test_load_missing_timestamps_keep_prelude_and_file_order(tmp_path):
+    (tmp_path / "events.jsonl").write_text(
+        _lines(
+            {"event": "env"},
+            {"event": "request", "turn": 0, "t": "2026-10-14T12:00:00"},
+            {"event": "other"},
+        ),
+        encoding="utf-8",
+    )
+
+    model = viewer.load(tmp_path)
+
+    assert model["groups"][0]["t"] == ""
+    assert [row["line"] for group in model["groups"] for row in group["records"]] == [
+        1,
+        2,
+        3,
+    ]
+    assert model["groups"][1]["t_end"] == "2026-10-14T12:00:00"
+
+
+@pytest.mark.parametrize("line", ["unparsed lineX", "null", "[1]", '"a string"'])
+def test_load_keeps_non_object_lines_whole(tmp_path, line):
+    (tmp_path / "wire.jsonl").write_text(line + "\n", encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == {"unparsed": line}
+
+
+def test_load_inventory_reports_byte_sizes(tmp_path):
+    payload = "记录\n".encode("utf-8")
+    (tmp_path / "notes.md").write_bytes(payload)
+
+    model = viewer.load(tmp_path)
+
+    assert model["files"] == [{"name": "notes.md", "bytes": len(payload)}]

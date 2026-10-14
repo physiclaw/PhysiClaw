@@ -8,6 +8,7 @@ const {setImmediate} = require('node:timers/promises');
 class Element {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase();
+    this.nodeType = 1;
     this.children = [];
     this.dataset = {};
     this.style = {};
@@ -23,6 +24,7 @@ class Element {
         this.className = [...classes].join(' ');
       },
       add: name => this.classList.toggle(name, true),
+      remove: name => this.classList.toggle(name, false),
     };
   }
   set innerHTML(value) { this.children = []; this._text = value; }
@@ -39,6 +41,14 @@ class Element {
     return child;
   }
   append(...children) { children.forEach(child => this.appendChild(child)); }
+  replaceChildren(...children) { this.children = []; this._text = ''; this.append(...children); }
+  setAttribute(name, value) { this[name === 'class' ? 'className' : name] = String(value); }
+  getAttribute(name) { return this[name === 'class' ? 'className' : name]; }
+  closest(selector) {
+    for (let node = this; node; node = node.parentElement) if (matches(node, selector)) return node;
+    return null;
+  }
+  scrollIntoView() {}
   prepend(child) { this.appendChild(child); this.children.unshift(this.children.pop()); }
   remove() { this.parentElement.children = this.parentElement.children.filter(c => c !== this); }
   addEventListener(name, handler) { this.listeners.set(name, handler); }
@@ -63,7 +73,8 @@ function matches(el, selector) {
     return false;
   }
   if (selector.startsWith('#')) return el.id === selector.slice(1);
-  if (selector.startsWith('.')) return el.classList.contains(selector.slice(1));
+  if (selector.endsWith(':not([hidden])')) return !el.hidden && matches(el, selector.slice(0, -':not([hidden])'.length));
+  if (selector.startsWith('.')) return selector.slice(1).split('.').every(c => el.classList.contains(c));
   const match = selector.match(/^(\w+)?(?:\[data-(\w+)\])?$/);
   if (!match) throw new Error('Unsupported fixture selector: ' + selector);
   return (!match[1] || el.tagName === match[1].toUpperCase()) && (!match[2] || match[2] in el.dataset);
@@ -148,4 +159,4 @@ async function createUI() {
   };
 }
 
-module.exports = {createUI};
+module.exports = {createUI, documentFrom};

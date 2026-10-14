@@ -181,19 +181,20 @@
   data.remove();
 
   // ---- tiny DOM helpers -------------------------------------------------
+  const pretty = (v) => JSON.stringify(v, null, 2);
+  const shown = (v) => typeof v === 'string' ? v : JSON.stringify(v) ?? '';
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     if (attrs) for (const [k, v] of Object.entries(attrs)) {
       if (k === 'class') n.className = v;
-      else if (k === 'text') n.textContent = v;
+      else if (k === 'text') n.textContent = shown(v);
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
       else n.setAttribute(k, v);
     }
-    for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : String(k));
+    for (const k of kids.flat()) if (k != null) n.append(k instanceof Node ? k : shown(k));
     return n;
   }
   const tag = (text, cls) => el('span', { class: 'tag ' + (cls || ''), text });
-  const pretty = (v) => JSON.stringify(v, null, 2);
   const h3 = (text) => el('h3', { text });
   const omit = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.has(k)));
   // A two-state control: offText until clicked, onText after, `flip(on)` each time.
@@ -204,6 +205,7 @@
     return b;
   }
   function pre(text) {
+    text = shown(text);
     const p = el('pre', { text });
     const lines = (text.match(/\n/g) || []).length + 1;
     if (lines <= 25 && text.length <= 4000) return p;
@@ -217,15 +219,16 @@
     }
     return dl;
   }
-  const clip = (s, n) => (s = String(s == null ? '' : s)).length > n ? s.slice(0, n - 1) + '…' : s;
-  const ms = (n) => n == null ? '' : (n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms');
-  const secs = (n) => n == null ? '' : n >= 60 ? `${Math.floor(n / 60)} min ${Math.round(n % 60)} s` : `${Math.round(n)} s`;
+  const clip = (s, n) => (s = shown(s == null ? '' : s)).length > n ? s.slice(0, n - 1) + '…' : s;
+  const ms = (n) => !Number.isFinite(n) ? '' : (n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms');
+  const secs = (n) => !Number.isFinite(n) ? '' : n >= 60 ? `${Math.floor(n / 60)} min ${Math.round(n % 60)} s` : `${Math.round(n)} s`;
   // Time: the clock in a tooltip, the offset from the session's first record in the row.
   const t0 = S.groups.length ? Date.parse(S.groups[0].t) : null;
-  const clock = (t) => (t || '').slice(11, 19);
+  const clock = (t) => typeof t === 'string' ? t.slice(11, 19) : '';
   function since(t) {
-    if (!t || t0 == null) return '';
+    if (typeof t !== 'string' || t0 == null) return '';
     const d = Math.max(0, Math.round((Date.parse(t) - t0) / 1000));
+    if (!Number.isFinite(d)) return '';
     return `+${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`;
   }
   function frame(src) {
@@ -285,7 +288,14 @@
       if (newFrom < carried) wrap.append(el('p', { class: 'note', text: `The ${carried - newFrom} messages the previous request carried from here on were not sent as they were — a re-rendered plan or a compacted screen — so what follows is what the model saw in their place.` }));
     } else wrap.append(h3(n ? `${label || 'Every message'} (${n})` : 'No messages'));
     const list = el('div');
-    const draw = (start) => { list.replaceChildren(); msgs.forEach((m, i) => { if (i >= start) list.append(message(m, i, i >= from)); }); };
+    const draw = (start) => {
+      list.replaceChildren();
+      msgs.forEach((m, i) => {
+        if (i < start) return;
+        try { list.append(message(m, i, i >= from)); }
+        catch { list.append(rawDetail(m)); }
+      });
+    };
     draw(from);
     if (from > 0) wrap.append(toggle(`also show the ${from} carried from earlier turns`, 'hide the carried messages', (on) => draw(on ? 0 : from)));
     wrap.append(list);
@@ -334,7 +344,12 @@
     const show = (which) => {
       for (const b of tabs.children) b.classList.toggle('on', b.dataset.tab === which);
       content.replaceChildren();
-      const b = which === 'raw' ? el('div', null, h3('The stored record, as written'), pre(pretty(rec))) : body();
+      let b;
+      try {
+        b = which === 'raw' ? el('div', null, h3('The stored record, as written'), pre(pretty(rec))) : body();
+      } catch {
+        b = rawDetail(rec);
+      }
       if (b) content.append(b);
     };
     for (const [key, label] of [['read', 'Reading'], ['raw', 'Raw record']]) {
@@ -377,10 +392,21 @@
   }
 
   // ---- rows, kind by kind: the words come stamped on the record -------------
+  function rawDetail(rec) {
+    return el('div', null, el('p', { class: 'note', text: 'Could not format this record. The stored data is shown below.' }), pre(pretty(rec)));
+  }
+  function rawCard(r) {
+    return card(r, 'Unformatted record', 'stored data is available', () => rawDetail(r.rec), { warn: true, tag: 'raw data' });
+  }
   function render(r) {
     const rec = r.rec;
-    if (rec.unparsed !== undefined) return card(r, 'A line that is not JSON', clip(rec.unparsed, 120), () => pre(rec.unparsed), { warn: true, tag: 'unparsed' });
-    return r.src === 'wire' ? renderWire(r) : renderEvent(r);
+    if (r.unformatted) return rawCard(r);
+    try {
+      if (rec.unparsed !== undefined) return card(r, 'A line that is not JSON', clip(rec.unparsed, 120), () => pre(rec.unparsed), { warn: true, tag: 'unparsed' });
+      return r.src === 'wire' ? renderWire(r) : renderEvent(r);
+    } catch {
+      return rawCard(r);
+    }
   }
 
   function renderWire(r) {
@@ -478,17 +504,18 @@
       top.append(el('a', { href: '../../', text: '← studio', title: 'back to the studio' }));
       const pick = el('select', { title: 'review another session' });
       for (const row of S.sessions) {
-        const opt = el('option', { value: row.sid, text: `${row.sid}  ${row.outcome.sentinel || '?'}${row.outcome.recap ? '  — ' + row.outcome.recap.slice(0, 60) : ''}` });
+        const opt = el('option', { value: row.sid, text: `${row.sid}  ${shown(row.outcome?.sentinel) || '?'}${row.outcome?.recap ? '  — ' + clip(row.outcome.recap, 60) : ''}` });
         if (row.sid === S.sid) opt.selected = true;
         pick.append(opt);
       }
       pick.addEventListener('change', () => { location.href = `../${encodeURIComponent(pick.value)}/`; });
       top.append(pick);
     }
-    const said = S.words.sentinels[o.sentinel] || { words: '', tone: '' };
+    const status = typeof o.sentinel === 'string' ? o.sentinel : '';
+    const said = Object.hasOwn(S.words.sentinels, status) ? S.words.sentinels[status] : { words: '', tone: '' };
     top.append(el('h1', { text: S.sid }),
-      el('span', { class: 'pill ' + (o.crashed ? 'bad' : said.tone), text: o.sentinel ? `${o.sentinel} · ${said.words}${o.crashed ? ', crashed' : ''}` : 'no summary' }),
-      el('span', { class: 'muted', text: s.started_at ? s.started_at.replace('T', ' ').slice(0, 19) : '' }),
+      el('span', { class: 'pill ' + (o.crashed ? 'bad' : said.tone), text: status ? `${status} · ${said.words}${o.crashed ? ', crashed' : ''}` : 'no summary' }),
+      el('span', { class: 'muted', text: typeof s.started_at === 'string' ? s.started_at.replace('T', ' ').slice(0, 19) : '' }),
       el('span', { class: 'muted', text: s.model_ref || '' }),
       el('span', { class: 'spacer' }));
     h.append(top);
@@ -499,16 +526,17 @@
       const strip = el('div', { class: 'walks' });
       s.walks.forEach((w, i) => {
         if (i) strip.append(el('span', { class: 'arrow', text: '→' }));
+        if (w == null || typeof w !== 'object') { strip.append(el('span', { class: 'walk amber', text: shown(w) })); return; }
         strip.append(el('span', { class: 'walk ' + (w.outcome === 'completed' ? 'ok' : w.outcome === 'crashed' ? 'bad' : 'amber') },
-          el('b', { text: `${w.app}/${w.playbook}` }), ` ${w.outcome}${w.node && w.outcome !== 'completed' ? ' at ' + w.node : ''}`, w.reason ? el('small', { text: ' — ' + w.reason }) : null));
+          el('b', { text: `${shown(w.app)}/${shown(w.playbook)}` }), ` ${shown(w.outcome)}${w.node && w.outcome !== 'completed' ? ' at ' + shown(w.node) : ''}`, w.reason ? el('small', { text: ' — ' + shown(w.reason) }) : null));
       });
       left.append(strip);
     }
-    const chip = (label, value) => value == null || value === '' ? null : el('span', { class: 'chip' }, el('b', { text: String(value) }), label);
+    const chip = (label, value) => value == null || value === '' ? null : el('span', { class: 'chip' }, el('b', { text: value }), label);
     const stats = el('div', { class: 'stats' },
       chip('duration', secs(s.duration_s)), chip('turns', s.turns), chip('by the model', s.provider_calls), chip('by the playbook', s.conductor_turns || null),
       chip('quick decisions', s.micro_calls || null),
-      chip(`tokens in${u.cache_hit_pct != null ? ` · ${Math.round(u.cache_hit_pct)}% cached` : ''}`, S.words.tokens.input_tokens),
+      chip(`tokens in${Number.isFinite(u.cache_hit_pct) ? ` · ${Math.round(u.cache_hit_pct)}% cached` : ''}`, S.words.tokens.input_tokens),
       chip('tokens out', S.words.tokens.output_tokens),
       chip('screen frames', S.files.filter((f) => f.name.startsWith('images/')).length));
     story.append(left, stats);
@@ -557,7 +585,7 @@
     for (const r of g.records) {
       const rec = r.rec;
       if (r.note != null) note ||= r.note;
-      else if (r.src === 'events' && rec.event === 'tool_result') names.push(rec.name);
+      else if (r.src === 'events' && rec.event === 'tool_result') names.push(shown(rec.name));
       if (r.src === 'wire' && rec.kind === 'request') model = true;
       if (rec.synthesized) conductor = true;
       if (r.warn || (rec.event === 'walk' && rec.outcome === 'crashed')) warn = true;

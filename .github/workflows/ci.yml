@@ -49,8 +49,8 @@ jobs:
           node-version: "22"
           package-manager-cache: false
 
-      - name: Studio UI regressions
-        run: node --test tests/studio/test_studio_ui.cjs
+      - name: Studio and session viewer UI regressions
+        run: node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs
 
       # Mirrors `make lint`: ruff check on the packaged code, format check
       # everywhere (hardware/ is style-star-import CAD code, format-only).
