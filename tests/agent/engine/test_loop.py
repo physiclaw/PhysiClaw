@@ -773,6 +773,11 @@ async def test_loop_memory_gate_fails_open_after_one_retry(patched_loop_deps) ->
 
 # ---------- wall-clock budget ----------
 
+# The application budget is 5ms in the awaited-call cases. This outer guard
+# only detects hangs: under CI load a 200ms watchdog could expire in the same
+# event-loop iteration and turn the expected budget stop into external cancel.
+BUDGET_TEST_WATCHDOG = 5
+
 
 @pytest.fixture
 def budget_clock():
@@ -816,7 +821,7 @@ async def test_regression_budget_cancels_inflight_calls(stalled_run):
     run, call, cancelled = stalled_run
     session = Session()
 
-    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
@@ -840,7 +845,7 @@ async def test_regression_budget_interrupts_provider_retry_backoff(
     )
     session = Session()
 
-    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.budget_exhausted is True
     assert len(provider.calls) == 1
@@ -971,7 +976,7 @@ async def test_budget_trace_records_the_interrupted_turn(
     run.chat = chat
     session = Session()
 
-    await asyncio.wait_for(drive(run, session, []), timeout=0.2)
+    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.budget_exhausted is True
     run.tr.write.assert_any_call(
