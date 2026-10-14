@@ -33,16 +33,20 @@ so this command does not touch those.
 from __future__ import annotations
 
 import io
+import stat
 import subprocess
 import tempfile
 import zipfile
-from pathlib import Path
+import zlib
+from contextlib import suppress
+from http.client import HTTPException
+from pathlib import Path, PurePosixPath
 from typing import Annotated
-from urllib.error import URLError
+from urllib.error import HTTPError
 
 import typer
 
-from physiclaw.cli._format import next_hint, ok
+from physiclaw.cli._format import exit_error, next_hint, ok
 from physiclaw.cli._http import http_get, stream
 
 # Version-stable URL — the served bundle is whichever release the site last
@@ -75,39 +79,73 @@ _ESPTOOL_RUN = (
 )
 
 
-def _fetch_bundle(into: Path) -> list[tuple[str, Path]]:
-    """Download + unzip the firmware bundle. Returns [(offset, path), ...]."""
+def _bundle_members(zf: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
+    """Select one complete folder; never combine images from different builds."""
+    required = {name for _, name in FLASH_LAYOUT}
+    folders: dict[PurePosixPath, list[zipfile.ZipInfo]] = {}
+    for member in zf.infolist():
+        path = PurePosixPath(member.filename)
+        if path.name in required or path.name == "fluidnc_version.txt":
+            folders.setdefault(path.parent, []).append(member)
+
+    complete = [
+        members
+        for members in folders.values()
+        if required <= {PurePosixPath(member.filename).name for member in members}
+    ]
+    if len(complete) != 1:
+        present = {PurePosixPath(member.filename).name for member in zf.infolist()}
+        for _, name in FLASH_LAYOUT:
+            if name not in present:
+                raise ValueError(f"{name} missing from the firmware bundle.")
+        raise ValueError("Expected exactly one complete firmware bundle folder.")
+
+    selected = {}
+    for member in complete[0]:
+        name = PurePosixPath(member.filename).name
+        if name in selected:
+            raise ValueError(f"Duplicate {name} in the firmware bundle.")
+        mode = stat.S_IFMT(member.external_attr >> 16)
+        if member.is_dir() or (
+            member.create_system == 3 and mode not in (0, stat.S_IFREG)
+        ):
+            raise ValueError(f"{name} must be a regular file.")
+        selected[name] = member
+    return selected
+
+
+def _fetch_bundle(into: Path) -> tuple[list[tuple[str, Path]], str | None]:
+    """Prepare every image and its version before any board operation starts."""
     buf = io.BytesIO()
     try:
         with http_get(FIRMWARE_URL) as r:
             stream(r, buf.write, "  firmware")
-    except URLError as e:
-        typer.secho(f"Download failed: {e}\n  {FIRMWARE_URL}", fg="red")
-        raise typer.Exit(1)
+    except (OSError, HTTPException) as e:
+        if isinstance(e, HTTPError):
+            with suppress(OSError):
+                e.close()
+        exit_error(f"Download failed: {e}\n  {FIRMWARE_URL}")
 
-    with zipfile.ZipFile(buf) as zf:
-        zf.extractall(into)
-
-    files = []
-    for offset, name in FLASH_LAYOUT:
-        p: Path | None
-        p = into / name
-        if not p.exists():  # tolerate a single wrapper folder inside the zip
-            p = next(into.rglob(name), None)
-        if p is None:
-            typer.secho(f"{name} missing from the firmware bundle.", fg="red")
-            raise typer.Exit(1)
-        files.append((offset, p))
-    return files
-
-
-def _bundle_version(into: Path) -> str | None:
-    """FluidNC version recorded in the bundle (``fluidnc_version.txt``)."""
-    p: Path | None
-    p = into / "fluidnc_version.txt"
-    if not p.exists():  # tolerate a single wrapper folder inside the zip
-        p = next(into.rglob("fluidnc_version.txt"), None)
-    return p.read_text().strip() if p else None
+    try:
+        with zipfile.ZipFile(buf) as zf:
+            members = _bundle_members(zf)
+            files = []
+            for offset, name in FLASH_LAYOUT:
+                data = zf.read(members[name])
+                if not data:
+                    raise ValueError(f"{name} is empty.")
+                path = into / name
+                path.write_bytes(data)
+                files.append((offset, path))
+            version_member = members.get("fluidnc_version.txt")
+            version = (
+                zf.read(version_member).decode("utf-8").strip()
+                if version_member is not None
+                else None
+            )
+        return files, version
+    except (OSError, ValueError, zipfile.BadZipFile, RuntimeError, zlib.error) as e:
+        exit_error(f"Could not prepare firmware bundle: {e}")
 
 
 def _detect_port() -> str | None:
@@ -170,8 +208,7 @@ def flash(
 
     with tempfile.TemporaryDirectory(prefix="physiclaw-fw-") as td:
         typer.echo("→ Downloading firmware …")
-        files = _fetch_bundle(Path(td))
-        version = _bundle_version(Path(td))
+        files, version = _fetch_bundle(Path(td))
         if version:
             typer.echo(f"→ Firmware: FluidNC {version}")
 
@@ -219,5 +256,5 @@ def flash(
 
     typer.echo("")
     typer.echo(ok("Done — the board now runs as a PhysiClaw machine."))
-    typer.echo("  FluidNC firmware and the config.yml are both on the board.\n")
+    typer.echo("  FluidNC firmware and config.yaml are both on the board.\n")
     typer.echo(next_hint("physiclaw testdrive — take the board for a spin.\n"))
