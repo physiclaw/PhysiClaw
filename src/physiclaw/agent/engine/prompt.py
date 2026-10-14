@@ -3,13 +3,11 @@
 Each section is a `list[str]` builder; the final prompt is `"\\n".join(lines)`.
 Disabled sections return `[]` so their absence costs nothing.
 
-Cache layout: the system message is entirely session-stable, so it
-caches once and hits on every subsequent turn — and on the first turn
-of every later wake within the 5-min TTL. Wake-volatile content (the
-cron-fired jobs block, the trigger stamps) lives in the wake-trigger
-user message that follows, keeping the system bytes identical across
-wakes. DashScope caches at message granularity, so this is the only
-structure that gets cross-session hits.
+Cache layout: the system message is stable within a session. Later wakes
+can reuse the same prefix while its inputs stay unchanged, subject to the
+provider's cache policy. Wake-volatile content (the cron-fired jobs block,
+the trigger stamps) lives in the wake-trigger user message that follows,
+so those changes do not invalidate the system prefix.
 
 The inline `## Tooling` index card duplicates the schema sent via the
 provider's `tools=` API — open-weight models often miss tools that appear
@@ -19,15 +17,12 @@ models read the schema reliably opt out via `INLINE_TOOL_INDEX = False`
 """
 
 import hashlib
-import logging
 from pathlib import Path
 
 from physiclaw.agent import layout
 from physiclaw.agent.engine import mcp_inventory, memory
 from physiclaw.common.doctrine import fill_tokens
 from physiclaw.common.text import read_text
-
-log = logging.getLogger(__name__)
 
 CONTEXT_DIR = Path(__file__).resolve().parent.parent / "context"
 
@@ -71,7 +66,7 @@ def render_system_prompts(
     Order (above → below):
       # Doctrine           file-loop over DOCTRINE_FILE_ORDER. Slots:
                            IDENTITY, USER, SOUL, AGENT, PHYSICLAW, TOOLS,
-                           PERSISTENCE, JOBS, CONVENTION — each rendered as a
+                           PERSISTENCE, JOBS, MACRO, CONVENTION — each rendered as a
                            `## <name>` block; missing = skipped. USER reads
                            from memory/.
       ## Tooling           inline tool index card — a redundant anchor for
@@ -173,12 +168,11 @@ def _render_tooling(local_tool_schemas: list[dict], provider_id: str = "") -> li
 
     Why the inline card at all: open-weight models (Qwen, Moonshot)
     routinely forget tools that appear only in the native `tools=` payload.
-    Providers that don't need the anchor (`INLINE_TOOL_INDEX = False`, e.g.
-    Anthropic) skip the whole card; unknown/empty provider keeps it — the
-    safe default for dumps and new vendors."""
+    A provider can skip the card with `INLINE_TOOL_INDEX = False`.
+    Unknown/empty provider keeps it, as do the current built-in providers."""
     if not _wants_tool_index(provider_id):
         return []
-    all_tools = mcp_inventory.discover_mcp_tools() + (local_tool_schemas or [])
+    all_tools = mcp_inventory.discover_mcp_tools() + local_tool_schemas
     if not all_tools:
         return []
     out: list[str] = [
@@ -289,11 +283,12 @@ def _render_memory(memory_ctx: str) -> list[str]:
 def _first_sentence(text: str) -> str:
     """First sentence (or first line) of a tool description. Used to
     keep the inline tooling card to one line per tool."""
-    line = (text or "").strip().split("\n", 1)[0].strip()
-    if not line:
+    text = text.strip()
+    if not text:
         return ""
-    # Crude but predictable: cut at the first period followed by a space
-    # (so "e.g. foo" inside a sentence doesn't get truncated).
+    line = text.splitlines()[0].strip()
+    # Prefer a period-space cutoff, then a semicolon-space cutoff. This
+    # intentionally simple heuristic does not recognize abbreviations.
     for sep in (". ", "; "):
         idx = line.find(sep)
         if 0 < idx < 200:

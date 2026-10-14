@@ -1,0 +1,20 @@
+{
+  "doctrine": {
+    "IDENTITY.md": "Identity instructions.",
+    "AGENT.md": "Agent instructions.",
+    "MACRO.md": "Macro instructions."
+  },
+  "user_profile": "User profile.",
+  "screen_layout": "Learned screen coordinates.",
+  "reasoning": "Reasoning instructions.",
+  "mcp_tools": [{"name": "remote", "description": "Remote inspection. Further detail."}],
+  "inputs": {
+    "local_tool_schemas": [{"name": "local", "description": "Local operation. Further detail."}],
+    "memory_ctx": "Persistent facts.",
+    "builtin_skills_ctx": "## Built-in Skills\n\nBuilt-in workflow.",
+    "user_skills_ctx": "## Available skills\n\nOn-demand skill index.",
+    "macros_ctx": "## Available Macros\n\nEnabled macro index.",
+    "pitfalls_ctx": "## Learned pitfalls\n\nRemember this pitfall.",
+    "provider_id": "snapshot-provider"
+  }
+}

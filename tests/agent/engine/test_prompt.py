@@ -3,20 +3,36 @@
 Module-level `CONTEXT_DIR` points at `agent/context/` in the repo;
 tests redirect it to a per-test tmp dir so doctrine slot rendering
 is deterministic.
+
+Accepted mutation survivors change unknown-provider defaults or placeholder
+wording, or include a separator space that is immediately stripped. Public
+snapshots and boundary tests cover the prompt bytes that carry behavior.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, example, given, settings
+from hypothesis import strategies as st
 
 from physiclaw.agent import layout
 from physiclaw.agent.engine import memory, prompt
 
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "agent"
+
+
+@pytest.fixture
+def doctrine_default_dir() -> Path:
+    return prompt.CONTEXT_DIR
+
 
 @pytest.fixture(autouse=True)
-def _isolate_context_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def _isolate_context_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, doctrine_default_dir
+) -> Path:
     ctx = tmp_path / "context"
     ctx.mkdir()
     monkeypatch.setattr(prompt, "CONTEXT_DIR", ctx)
@@ -46,7 +62,198 @@ def _stub_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(layout, "load_layout_md", lambda: "")
 
 
+@pytest.fixture
+def full_prompt_case(_isolate_context_dir, monkeypatch):
+    from physiclaw import provider
+    from physiclaw.agent.engine import mcp_inventory
+
+    case = json.loads((_DATA_DIR / "prompt_case.json").read_text(encoding="utf-8"))
+    for name, body in case["doctrine"].items():
+        (_isolate_context_dir / name).write_text(body, encoding="utf-8")
+
+    class ProviderMetadata:
+        INLINE_TOOL_INDEX = True
+
+        @classmethod
+        def system_prompt_fragment(cls):
+            return case["reasoning"]
+
+    monkeypatch.setattr(
+        provider, "provider_class", lambda provider_id: ProviderMetadata
+    )
+    monkeypatch.setattr(memory, "load_user", lambda: case["user_profile"])
+    monkeypatch.setattr(mcp_inventory, "discover_mcp_tools", lambda: case["mcp_tools"])
+    monkeypatch.setattr(layout, "is_learned", lambda: True)
+    monkeypatch.setattr(layout, "load_layout_md", lambda: case["screen_layout"])
+    return case["inputs"]
+
+
+@pytest.mark.parametrize("render", [prompt.render_system_prompts, prompt.dump])
+def test_complete_prompt_matches_reviewed_snapshot(full_prompt_case, render) -> None:
+    # Full layout/text changes alter the cache prefix and should be deliberate.
+    expected = (
+        (_DATA_DIR / "prompt_system.txt").read_text(encoding="utf-8").removesuffix("\n")
+    )
+
+    rendered = render(**full_prompt_case)
+
+    assert rendered == expected
+
+
 # ---------- DOCTRINE_FILE_ORDER ----------
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r", "\r\n", "\u2028", "\u2029"])
+def test_regression_tool_index_keeps_only_first_description_line(separator) -> None:
+    schemas = [
+        {"name": "probe", "description": f"First line{separator}SECOND_LINE_SENTINEL"}
+    ]
+
+    rendered = prompt.dump(local_tool_schemas=schemas)
+
+    assert "- **probe** — First line\n" in rendered
+    assert "SECOND_LINE_SENTINEL" not in rendered
+
+
+@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    text=st.text(
+        alphabet=st.characters(whitelist_categories=("L", "N")),
+        min_size=1,
+        max_size=100,
+    ),
+    separator=st.sampled_from(["\n", "\r", "\r\n", "\u2028", "\u2029"]),
+)
+def test_tool_index_preserves_unicode_first_line_without_following_lines(
+    text, separator
+) -> None:
+    schemas = [
+        {"name": "probe", "description": f"{text}{separator}SECOND_LINE_SENTINEL"}
+    ]
+
+    rendered = prompt.render_system_prompts(local_tool_schemas=schemas)
+
+    assert f"- **probe** — {text}\n" in rendered
+    assert "SECOND_LINE_SENTINEL" not in rendered
+
+
+@pytest.mark.parametrize("inline_index", [False, True])
+def test_public_render_includes_provider_fragment_before_memory(
+    monkeypatch, inline_index
+) -> None:
+    from physiclaw import provider
+
+    class ProviderMetadata:
+        INLINE_TOOL_INDEX = inline_index
+
+        @classmethod
+        def system_prompt_fragment(cls):
+            return "Use <thought>reasoning</thought> before answering."
+
+    monkeypatch.setattr(
+        provider, "provider_class", lambda provider_id: ProviderMetadata
+    )
+
+    rendered = prompt.dump(
+        local_tool_schemas=[{"name": "probe", "description": "Probe data."}],
+        memory_ctx="fixed memory",
+        provider_id="test-provider",
+    )
+
+    assert ("## Tooling" in rendered) is inline_index
+    assert rendered.endswith(
+        "## Reasoning Format\nUse <thought>reasoning</thought> before answering.\n\n"
+        "## memory.md\n\nfixed memory"
+    )
+
+
+def test_public_render_rereads_doctrine_between_sessions(_isolate_context_dir) -> None:
+    identity = _isolate_context_dir / "IDENTITY.md"
+    identity.write_text("Original identity")
+    first = prompt.dump()
+    identity.write_text("Updated identity")
+
+    second = prompt.dump()
+
+    assert "Original identity" in first
+    assert "Original identity" not in second
+    assert "Updated identity" in second
+    assert prompt.prefix_hash(first) != prompt.prefix_hash(second)
+
+
+@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    memory=st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=250)
+)
+@example(memory="")
+@example(memory="\n")
+@example(memory="X\n")
+def test_public_render_preserves_memory_and_stable_cache_prefix(memory) -> None:
+    memory_ctx = "MEMORY_MARKER: " + memory
+
+    rendered = prompt.render_system_prompts(memory_ctx=memory_ctx)
+    dumped = prompt.dump(memory_ctx=memory_ctx)
+
+    assert rendered == dumped
+    assert rendered.endswith(memory_ctx.rstrip("\n"))
+    assert not rendered.endswith("\n")
+    assert prompt.prefix_hash(rendered) == prompt.prefix_hash(dumped)
+
+
+def test_prefix_hash_matches_sha256_utf8_vector() -> None:
+    hashed = prompt.prefix_hash("abc")
+
+    assert hashed == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_disabled_macro_doctrine_keeps_later_convention_slot(
+    _isolate_context_dir,
+) -> None:
+    (_isolate_context_dir / "MACRO.md").write_text("Macro instructions")
+    (_isolate_context_dir / "CONVENTION.md").write_text("Always follow the convention")
+
+    rendered = prompt.dump()
+
+    assert "## MACRO.md" not in rendered
+    assert "## CONVENTION.md\n\nAlways follow the convention" in rendered
+
+
+@pytest.mark.parametrize("unnamed", [{}, {"name": ""}, {"name": None}])
+def test_tool_index_keeps_named_tools_after_unnamed_entry(unnamed) -> None:
+    schemas = [unnamed, {"name": "healthy"}]
+
+    rendered = prompt.dump(local_tool_schemas=schemas)
+
+    assert "- **healthy**" in rendered.splitlines()
+
+
+@pytest.mark.parametrize(
+    ("description", "summary"),
+    [
+        ("A. Next sentence.", "A."),
+        (". Leading punctuation", ". Leading punctuation"),
+        ("x" * 199 + ". Next sentence.", "x" * 199 + "."),
+        ("x" * 200 + ". Next sentence.", "x" * 200),
+        ("x" * 201 + ". Next sentence.", "x" * 200),
+    ],
+)
+def test_tool_index_respects_sentence_and_length_boundaries(
+    description, summary
+) -> None:
+    schemas = [{"name": "probe", "description": description}]
+
+    rendered = prompt.dump(local_tool_schemas=schemas)
+
+    assert f"- **probe** — {summary}" in rendered.splitlines()
+
+
+def test_dump_defaults_match_render_defaults_without_memory() -> None:
+    rendered = prompt.render_system_prompts()
+
+    dumped = prompt.dump()
+
+    assert dumped == rendered
+    assert "## memory.md" not in dumped
 
 
 def test_doctrine_file_order_pinned() -> None:
@@ -131,6 +338,7 @@ def test_render_doctrine_substitutes_config_tokens(
 
 def test_shipped_doctrine_has_no_unresolved_tokens(
     monkeypatch: pytest.MonkeyPatch,
+    doctrine_default_dir,
 ) -> None:
     # Integration guard against the REAL context/ files (undoing the
     # autouse isolation): a typo'd {{token}} in shipped doctrine must
@@ -138,10 +346,9 @@ def test_shipped_doctrine_has_no_unresolved_tokens(
     # thresholds actually appear where doctrine quotes them.
     from physiclaw.common.config import CONFIG
 
-    real_ctx = Path(prompt.__file__).resolve().parent.parent / "context"
-    monkeypatch.setattr(prompt, "CONTEXT_DIR", real_ctx)
+    monkeypatch.setattr(prompt, "CONTEXT_DIR", doctrine_default_dir)
 
-    out = "\n".join(prompt._render_doctrine())
+    out = prompt.dump()
 
     assert "{{" not in out
     assert f"press #{CONFIG.engine.same_target_block}" in out
