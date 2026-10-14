@@ -137,17 +137,19 @@ class Trace:
             summary = self._summary.finalize(
                 images=_count_images(self.session_id),
             )
-            write_json_atomic(
-                store._session_dir(self.session_id) / "summary.json", summary
-            )
+            try:
+                write_json_atomic(
+                    store._session_dir(self.session_id) / "summary.json", summary
+                )
+            except OSError:
+                # The durable stats and daily footer have independent sinks;
+                # losing this session's summary must not suppress them too.
+                log.warning("session summary write failed", exc_info=True)
             append_stats(paths.LOG_DIR, summary)
             self._daily.line(_end_footer(summary))
-        except OSError:
-            log.warning("session summary write failed", exc_info=True)
         finally:
-            # Consolidate the MCP-server log window + detach the runtime
-            # mirror (ordering owned by SessionLogSidecars) before closing
-            # the trace files below.
+            # Stop routing MCP logs here and detach the runtime mirror
+            # before closing this session's trace files.
             self._sidecars.close()
             self._daily.close()
             for f in (self._events, self._notes):
@@ -227,6 +229,7 @@ WARNING_WORDS: dict[str, str] = {
     "tool_blocked_no_plan": "A tool call was blocked: no plan yet",
     "tool_blocked_layout": "A tool call was blocked: layout guard",
     "tool_blocked_stuck": "A tool call was blocked: stuck guard",
+    "tool_blocked_burned_macro": "A tool call was blocked: this macro already failed",
     "tool_error": "A tool failed",
     "tool_invalid_args": "A tool was called with invalid arguments",
     "tool_unknown": "An unknown tool was called",

@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from physiclaw.agent.runtime import sentinel
 from physiclaw.common import gesture_vocab
+from physiclaw.common.text import clip
 
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
@@ -22,9 +23,9 @@ _SILENT_EVENTS = frozenset({"prefix_pinned", "finish_length_warning", "walk_read
 
 
 def brief(value: Any, limit: int = 80) -> str:
-    """One-line truncated repr for log output."""
+    """Truncated text (or repr for other values) for log output."""
     s = value if isinstance(value, str) else repr(value)
-    return s if len(s) <= limit else s[: limit - 1] + "…"
+    return clip(s, limit)
 
 
 def brief_args(args: dict[str, Any]) -> str:
