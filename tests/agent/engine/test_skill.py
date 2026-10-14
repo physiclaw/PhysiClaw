@@ -26,11 +26,11 @@ from physiclaw.agent.engine import skill as skill_mod
 from physiclaw.agent.engine.skill import (
     Skill,
     _load_reference,
-    _split_frontmatter,
     discover,
     discover_builtin_skills,
     discover_user_skills,
     dispatch,
+    parse_frontmatter,
     render_builtin,
     render_section,
 )
@@ -820,24 +820,24 @@ def test_load_reference_raises_when_target_missing(_skill_roots) -> None:
         _load_reference(skills["foo"], "gone.md")
 
 
-# ---------- _split_frontmatter ----------
+# ---------- parse_frontmatter ----------
 
 
-def test_split_frontmatter_returns_empty_when_no_leading_dashes() -> None:
-    fm, body = _split_frontmatter("hello world\n")
+def test_parse_frontmatter_returns_empty_when_no_leading_dashes() -> None:
+    fm, body = parse_frontmatter("hello world\n")
 
     assert fm == {}
     assert body == "hello world\n"
 
 
-def test_split_frontmatter_returns_empty_when_end_marker_missing() -> None:
-    fm, body = _split_frontmatter("---\nname: foo\nno end here\n")
+def test_parse_frontmatter_returns_empty_when_end_marker_missing() -> None:
+    fm, body = parse_frontmatter("---\nname: foo\nno end here\n")
 
     assert fm == {}
 
 
-def test_split_frontmatter_parses_scalar_keys() -> None:
-    fm, body = _split_frontmatter(
+def test_parse_frontmatter_parses_scalar_keys() -> None:
+    fm, body = parse_frontmatter(
         "---\nname: foo\ndescription: do thing\n---\nbody text\n"
     )
 
@@ -845,22 +845,22 @@ def test_split_frontmatter_parses_scalar_keys() -> None:
     assert body == "body text\n"
 
 
-def test_split_frontmatter_skips_lines_without_colon() -> None:
-    fm, _ = _split_frontmatter(
+def test_parse_frontmatter_skips_lines_without_colon() -> None:
+    fm, _ = parse_frontmatter(
         "---\nname: foo\nrandom-no-colon\ndescription: x\n---\nbody\n"
     )
 
     assert fm == {"name": "foo", "description": "x"}
 
 
-def test_split_frontmatter_handles_value_containing_colons() -> None:
-    fm, _ = _split_frontmatter("---\nurl: https://example.com:443\n---\nbody\n")
+def test_parse_frontmatter_handles_value_containing_colons() -> None:
+    fm, _ = parse_frontmatter("---\nurl: https://example.com:443\n---\nbody\n")
 
     assert fm == {"url": "https://example.com:443"}
 
 
-def test_split_frontmatter_strips_leading_newlines_from_body() -> None:
-    fm, body = _split_frontmatter("---\nname: foo\n---\n\n\nbody\n")
+def test_parse_frontmatter_strips_leading_newlines_from_body() -> None:
+    fm, body = parse_frontmatter("---\nname: foo\n---\n\n\nbody\n")
 
     assert body == "body\n"
 
@@ -951,3 +951,23 @@ def test_dispatch_resolves_by_exact_name() -> None:
     assert dispatch(m, {"name": "jd"}) == "BODY"
     with pytest.raises(ValueError, match="unknown skill"):
         dispatch(m, {"name": "nope"})
+
+
+@given(
+    name=st.from_regex(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,30}", fullmatch=True),
+    quote=st.sampled_from(["", "'", '"']),
+)
+def test_frontmatter_balanced_quotes_preserve_scalar_and_body(name, quote):
+    text = f"---\nname: {quote}{name}{quote}\n---\nbody\n"
+
+    metadata, body = parse_frontmatter(text)
+
+    assert metadata == {"name": name}
+    assert body == "body\n"
+
+
+@pytest.mark.parametrize("value", ["'", '"', "'mismatched\"", "'open", 'open"'])
+def test_frontmatter_unbalanced_quotes_are_not_silently_repaired(value):
+    metadata, _ = parse_frontmatter(f"---\nname: {value}\n---\nbody\n")
+
+    assert metadata["name"] == value

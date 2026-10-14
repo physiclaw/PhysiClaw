@@ -207,7 +207,7 @@ def _read_skill(
         if not directory.is_relative_to(root) or not resolved.is_relative_to(root):
             log.warning("skill %s resolves outside %s; skipping", md, root)
             return None
-        fm, body = _split_frontmatter(read_text(resolved))
+        fm, body = parse_frontmatter(read_text(resolved))
     except (OSError, UnicodeError, RuntimeError) as exc:
         log.warning("cannot read skill %s; skipping: %s", md, exc)
         return None
@@ -276,9 +276,10 @@ def _load_reference(skill: Skill, ref_path: str) -> str:
     return read_text(target)
 
 
-def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
+def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """Parse `---\\nkey: value\\n...\\n---\\n<body>`. Simple scalar-only
-    format; missing or malformed frontmatter returns ({}, text)."""
+    format with optional balanced quotes; missing or malformed frontmatter
+    returns ({}, text)."""
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---", 4)
@@ -290,7 +291,10 @@ def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
     for line in fm_text.splitlines():
         if ":" in line:
             k, v = line.split(":", 1)
-            fm[k.strip()] = v.strip()
+            value = v.strip()
+            if len(value) >= 2 and value[0] in ("'", '"') and value[-1] == value[0]:
+                value = value[1:-1]
+            fm[k.strip()] = value
     return fm, body
 
 
