@@ -1024,22 +1024,22 @@
   },
   {
     "part_id": "threadlocker",
-    "ref": "¥6",
+    "ref": "¥3",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "243 (blue, 50 ml)",
-        "url": "https://detail.tmall.com/item.htm?id=815495429995&skuId=5920702171814"
+        "name": "LOOLIFL",
+        "product": "243-10ml-1pc",
+        "url": "https://www.aliexpress.us/item/3256808594980015.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Blue 243, 50 ml, 1 tube",
-        "url": "https://detail.tmall.com/item.htm?id=1053791122137&skuId=6094068880617"
+        "name": "TOP-H",
+        "product": "10ml 243",
+        "url": "https://www.aliexpress.us/item/3256807660387582.html"
       },
       {
-        "name": "LOCTITE",
-        "product": "LOCTITE 243 threadlocker, 10 ml",
-        "url": "https://detail.tmall.com/item.htm?id=652235448903&skuId=5855300089874"
+        "name": "Songsen",
+        "product": "Loctite 243 50ml",
+        "url": "https://www.aliexpress.us/item/3256808479460723.html"
       }
     ]
   },
