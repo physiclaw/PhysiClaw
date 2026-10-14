@@ -116,6 +116,9 @@ def prepare_plugin_dir(
 
     already = set(linked)
     for name, sk in skills.items():
+        if not skill.is_safe_skill_name(name):
+            skipped.append((name, "unsafe skill name"))
+            continue
         if name in already:
             continue
         dest = skills_dir / name

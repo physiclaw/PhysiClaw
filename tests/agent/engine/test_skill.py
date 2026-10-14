@@ -6,13 +6,21 @@ paths.official_skills_dir()), and the user home root (`HOME_SKILLS_DIR` =
 paths.skills_dir()), both folder `SKILL.md`. The autouse `_skill_roots`
 fixture re-points all three at per-test tmp dirs. The cwd is NOT a discovery
 root; the fixture still chdirs to an empty tmp for hygiene.
+
+Accepted mutation survivors decorate diagnostic/prose strings, change the
+default falsey flat flag, or are equivalent for the documented newline-delimited
+frontmatter. Assertions cover dispatch, source grouping, path boundaries, and
+workflow bodies rather than freezing explanatory prose.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from physiclaw.agent.engine import skill as skill_mod
 from physiclaw.agent.engine.skill import (
@@ -28,8 +36,19 @@ from physiclaw.agent.engine.skill import (
 )
 
 
+@pytest.fixture
+def discovery_defaults() -> tuple[Path, Path, Path]:
+    return (
+        skill_mod.BUILTIN_SKILLS_DIR,
+        skill_mod.OFFICIAL_SKILLS_DIR,
+        skill_mod.HOME_SKILLS_DIR,
+    )
+
+
 @pytest.fixture(autouse=True)
-def _skill_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def _skill_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, discovery_defaults
+) -> tuple[Path, Path]:
     """Per-test builtin + official + home + cwd skill roots.
 
     Re-points all three real roots at empty tmp dirs so the shipped
@@ -47,7 +66,6 @@ def _skill_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
     monkeypatch.setattr(skill_mod, "OFFICIAL_SKILLS_DIR", official)
     monkeypatch.setattr(skill_mod, "HOME_SKILLS_DIR", home)
     monkeypatch.chdir(cwd)
-    # CWD_SKILLS_DIR is `Path("skills")` — relative to cwd.
     return home, cwd
 
 
@@ -73,6 +91,343 @@ def _write_skill(
 
 
 # ---------- discover ----------
+
+
+def test_discover_defaults_load_packaged_skills_and_empty_isolated_home(
+    discovery_defaults, monkeypatch
+) -> None:
+    builtin, official, home = discovery_defaults
+    monkeypatch.setattr(skill_mod, "BUILTIN_SKILLS_DIR", builtin)
+    monkeypatch.setattr(skill_mod, "OFFICIAL_SKILLS_DIR", official)
+    monkeypatch.setattr(skill_mod, "HOME_SKILLS_DIR", home)
+
+    builtins = discover_builtin_skills()
+    on_demand = discover_user_skills()
+
+    assert builtins
+    assert {sk.source for sk in builtins.values()} == {"built-in"}
+    assert all(sk.flat for sk in builtins.values())
+    assert on_demand == {}
+
+
+def test_discover_alias_uses_first_available_numeric_suffix(_skill_roots) -> None:
+    home, _ = _skill_roots
+    _write_skill(skill_mod.OFFICIAL_SKILLS_DIR, "foo")
+    _write_skill(skill_mod.OFFICIAL_SKILLS_DIR, "foo-user")
+    _write_skill(home, "foo", body="user body")
+
+    found = discover_user_skills()
+
+    assert dispatch(found, {"name": "foo-user-2"}) == "user body"
+
+
+def test_regression_generated_alias_preserves_existing_skill(_skill_roots) -> None:
+    home, _ = _skill_roots
+    _write_skill(skill_mod.OFFICIAL_SKILLS_DIR, "foo", body="official base")
+    _write_skill(skill_mod.OFFICIAL_SKILLS_DIR, "foo-user", body="original suffix")
+    _write_skill(home, "foo", body="user base")
+    _write_skill(home, "foo-user-2", body="original numbered suffix")
+
+    found = discover_user_skills()
+
+    assert list(found) == ["foo-official", "foo-user", "foo-user-3", "foo-user-2"]
+    assert {name: dispatch(found, {"name": name}) for name in found} == {
+        "foo-official": "official base",
+        "foo-user": "original suffix",
+        "foo-user-3": "user base",
+        "foo-user-2": "original numbered suffix",
+    }
+    assert {name: sk.name for name, sk in found.items()} == {
+        name: name for name in found
+    }
+
+
+_COLLIDING_NAMES = st.lists(
+    st.sampled_from(
+        ["foo", "foo-user", "foo-official", "foo-user-2", "foo-official-2", "bar"]
+    ),
+    unique=True,
+    max_size=6,
+)
+
+
+@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(official_names=_COLLIDING_NAMES, user_names=_COLLIDING_NAMES)
+def test_discover_preserves_each_origin_and_stable_names(
+    tmp_path, monkeypatch, official_names, user_names
+) -> None:
+    with TemporaryDirectory(dir=tmp_path) as workspace:
+        official = Path(workspace) / "official"
+        user = Path(workspace) / "user"
+        monkeypatch.setattr(skill_mod, "OFFICIAL_SKILLS_DIR", official)
+        monkeypatch.setattr(skill_mod, "HOME_SKILLS_DIR", user)
+        official_dirs = {_write_skill(official, name) for name in official_names}
+        user_dirs = {_write_skill(user, name) for name in user_names}
+
+        found = discover_user_skills()
+
+        assert len(found) == len(official_names) + len(user_names)
+        assert {sk.dir for sk in found.values()} == official_dirs | user_dirs
+        assert {(sk.dir, sk.source) for sk in found.values()} == {
+            (directory, "official") for directory in official_dirs
+        } | {(directory, "user") for directory in user_dirs}
+        assert {name: sk.name for name, sk in found.items()} == {
+            name: name for name in found
+        }
+        assert set(official_names) ^ set(user_names) <= found.keys()
+        assert found == discover_user_skills()
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_regression_invalid_utf8_does_not_hide_healthy_skills(
+    _skill_roots, flat
+) -> None:
+    home, _ = _skill_roots
+    bad_dir = _write_skill(home, "bad")
+    _write_skill(home, "healthy", body="healthy body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "bad.md").write_bytes(b"\xff")
+    (bad_dir / "SKILL.md").write_bytes(b"\xff")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy.md").write_text("healthy body")
+    discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
+
+    found = discover_skills()
+
+    assert list(found) == ["healthy"]
+    assert found["healthy"].body == "healthy body"
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_regression_skill_file_symlink_cannot_escape_root(
+    tmp_path, _skill_roots, flat
+) -> None:
+    home, _ = _skill_roots
+    folder = _write_skill(home, "escape")
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside contents")
+    (folder / "SKILL.md").unlink()
+    (folder / "SKILL.md").symlink_to(outside)
+    (skill_mod.BUILTIN_SKILLS_DIR / "escape.md").symlink_to(outside)
+    discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
+
+    found = discover_skills()
+
+    assert found == {}
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_discover_accepts_skill_file_symlink_inside_root(_skill_roots, flat) -> None:
+    home, _ = _skill_roots
+    folder = _write_skill(home, "linked")
+    (folder / "SKILL.md").rename(folder / "body.txt")
+    (folder / "SKILL.md").symlink_to(folder / "body.txt")
+    (skill_mod.BUILTIN_SKILLS_DIR / "body.txt").write_text("built-in body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "linked.md").symlink_to(
+        skill_mod.BUILTIN_SKILLS_DIR / "body.txt"
+    )
+    discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
+
+    found = discover_skills()
+
+    assert list(found) == ["linked"]
+    assert (
+        found["linked"].body
+        == {False: "Workflow steps here.", True: "built-in body"}[flat]
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["/tmp/outside", "../escape", "a/b", r"a\b", "C:drive", ".", ".."]
+)
+def test_discover_rejects_unsafe_frontmatter_name(_skill_roots, name) -> None:
+    home, _ = _skill_roots
+    folder = _write_skill(home, "normal")
+    (folder / "SKILL.md").write_text(f"---\nname: {name}\n---\nbody")
+    (skill_mod.BUILTIN_SKILLS_DIR / "normal.md").write_text(
+        f"---\nname: {name}\n---\nbody"
+    )
+
+    found = discover()
+
+    assert found == {}
+
+
+def test_discover_accepts_installer_name_characters(_skill_roots) -> None:
+    home, _ = _skill_roots
+    _write_skill(home, "A0-b_c.d")
+
+    found = discover_user_skills()
+
+    assert list(found) == ["A0-b_c.d"]
+
+
+def test_discover_ignores_private_paths_even_with_public_frontmatter(
+    _skill_roots,
+) -> None:
+    home, _ = _skill_roots
+    hidden = _write_skill(home, "_hidden")
+    (hidden / "SKILL.md").write_text("---\nname: public\n---\nhidden body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "_hidden.md").write_text(
+        "---\nname: public\n---\nhidden body"
+    )
+    _write_skill(home, "healthy")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text("body")
+
+    found = discover()
+
+    assert list(found) == ["healthy-flat", "healthy"]
+
+
+@pytest.mark.parametrize(
+    "text", ["X body", "---\n\n---\nX body", "---\nname: plain\n---\nX body"]
+)
+def test_discover_optional_metadata_preserves_body(_skill_roots, text) -> None:
+    home, _ = _skill_roots
+    folder = _write_skill(home, "plain")
+    (folder / "SKILL.md").write_text(text)
+
+    found = discover_user_skills()
+
+    assert found["plain"].description == ""
+    assert dispatch(found, {"name": "plain"}) == "X body"
+
+
+def test_render_section_orders_sources_and_keeps_one_bullet_per_skill() -> None:
+    skills = {
+        "shared": Skill(
+            name="shared", description="", body="", dir=Path("."), source="community"
+        ),
+        "alpha": Skill(name="alpha", description="first", body="", dir=Path(".")),
+        "beta": Skill(name="beta", description="second", body="", dir=Path(".")),
+    }
+
+    rendered = render_section(skills)
+
+    assert rendered.split("\n\n") == [
+        "## Available skills",
+        "### user skills",
+        "- **alpha** — first\n- **beta** — second",
+        "### community skills",
+        "- **shared** — (no description)",
+    ]
+
+
+def test_render_builtin_separates_header_and_workflow_body() -> None:
+    skills = {
+        "workflow": Skill(
+            name="workflow", description="", body="Exact steps", dir=Path(".")
+        )
+    }
+
+    rendered = render_builtin(skills)
+
+    assert rendered.startswith("## Built-in Skills\n\n")
+    assert rendered.endswith("\n\n### workflow\n\nExact steps")
+
+
+@pytest.mark.parametrize("error", [PermissionError("denied"), OSError("read failed")])
+def test_discover_read_error_does_not_hide_healthy_skills(
+    _skill_roots, monkeypatch, error
+) -> None:
+    home, _ = _skill_roots
+    _write_skill(home, "bad")
+    _write_skill(home, "healthy")
+    read_text = skill_mod.read_text
+
+    def read_or_fail(path):
+        if path.parent.name == "bad":
+            raise error
+        return read_text(path)
+
+    monkeypatch.setattr(skill_mod, "read_text", read_or_fail)
+
+    found = discover_user_skills()
+
+    assert list(found) == ["healthy"]
+
+
+def test_discover_stat_error_does_not_hide_healthy_skills(
+    _skill_roots, monkeypatch
+) -> None:
+    home, _ = _skill_roots
+    bad = _write_skill(home, "bad") / "SKILL.md"
+    _write_skill(home, "healthy")
+    bad_flat = skill_mod.BUILTIN_SKILLS_DIR / "bad.md"
+    bad_flat.write_text("body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text("body")
+    is_file = Path.is_file
+
+    def is_file_or_deny(path):
+        if path in {bad, bad_flat}:
+            raise PermissionError("cannot stat skill file")
+        return is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", is_file_or_deny)
+
+    found = discover()
+
+    assert list(found) == ["healthy-flat", "healthy"]
+
+
+def test_discover_rejects_outside_directory_even_with_inside_skill_file(
+    tmp_path, _skill_roots
+) -> None:
+    home, _ = _skill_roots
+    home.mkdir()
+    (home / "body.txt").write_text("body")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "SKILL.md").symlink_to(home / "body.txt")
+    (home / "escape").symlink_to(outside, target_is_directory=True)
+
+    found = discover_user_skills()
+
+    assert found == {}
+
+
+def test_discover_inside_directory_symlink_keeps_references_scoped(
+    _skill_roots,
+) -> None:
+    home, _ = _skill_roots
+    target = _write_skill(
+        home, "_storage", extra_files={"references/guide.txt": "guide"}
+    )
+    (target / "SKILL.md").write_text("body without frontmatter")
+    (home / "linked").symlink_to(target, target_is_directory=True)
+
+    found = discover_user_skills()
+    guide = dispatch(found, {"name": "linked", "reference": "guide.txt"})
+
+    assert list(found) == ["linked"]
+    assert found["linked"].dir == target.resolve()
+    assert guide == "guide"
+
+
+def test_discover_ignores_non_directory_roots(_skill_roots) -> None:
+    home, _ = _skill_roots
+    home.write_text("not a directory")
+    skill_mod.OFFICIAL_SKILLS_DIR.write_text("not a directory")
+    skill_mod.BUILTIN_SKILLS_DIR.rmdir()
+    skill_mod.BUILTIN_SKILLS_DIR.write_text("not a directory")
+
+    found = discover()
+
+    assert found == {}
+
+
+def test_discover_skips_directory_named_like_flat_file() -> None:
+    (skill_mod.BUILTIN_SKILLS_DIR / "directory.md").mkdir()
+
+    found = discover_builtin_skills()
+
+    assert found == {}
+
+
+def test_render_builtin_retains_empty_skill_heading() -> None:
+    skills = {"empty": Skill(name="empty", description="", body="", dir=Path("."))}
+
+    rendered = render_builtin(skills)
+
+    assert rendered.endswith("### empty")
 
 
 def test_discover_empty_when_no_roots_exist() -> None:

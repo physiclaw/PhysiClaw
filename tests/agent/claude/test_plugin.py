@@ -1,4 +1,8 @@
-"""Tests for `physiclaw.agent.claude.plugin`."""
+"""Tests for `physiclaw.agent.claude.plugin`.
+
+Accepted mutation survivors alter JSON indentation or decorate diagnostic text;
+the parsed manifest, linked skills, rejection behavior, and references are checked.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +34,48 @@ def _skill(name: str, dir_: Path) -> Skill:
 
 
 # ---------- _has_context_pollution ----------
+
+
+@pytest.mark.parametrize("flat", [False, True])
+@pytest.mark.parametrize(
+    "unsafe_name", ["../escaped", ".", "..", r"a\b", "C:drive", ""]
+)
+def test_regression_plugin_skips_unsafe_skill_keys(
+    tmp_path, monkeypatch, flat, unsafe_name
+) -> None:
+    monkeypatch.setattr(plugin, "_CLAUDE_ONLY_SKILLS_DIR", tmp_path / "absent")
+    source = _make_skill_dir(tmp_path, "source")
+    bad = Skill(
+        name="safe-metadata", description="", body="body", dir=source, flat=flat
+    )
+
+    root = prepare_plugin_dir(
+        "unsafe", skills={unsafe_name: bad, "healthy": _skill("healthy", source)}
+    )
+
+    try:
+        assert {path.name for path in (root / "skills").iterdir()} == {"healthy"}
+        assert not (root / "escaped").exists()
+    finally:
+        shutil.rmtree(root)
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_regression_plugin_absolute_name_cannot_create_outside_path(
+    tmp_path, monkeypatch, flat
+) -> None:
+    monkeypatch.setattr(plugin, "_CLAUDE_ONLY_SKILLS_DIR", tmp_path / "absent")
+    source = _make_skill_dir(tmp_path, "source")
+    outside = tmp_path / "outside-plugin"
+    bad = Skill(name=str(outside), description="", body="body", dir=source, flat=flat)
+
+    root = prepare_plugin_dir("absolute", skills={str(outside): bad})
+
+    try:
+        assert not outside.exists()
+        assert list((root / "skills").iterdir()) == []
+    finally:
+        shutil.rmtree(root)
 
 
 def test_has_context_pollution_clean_dir(tmp_path: Path) -> None:
@@ -125,6 +171,40 @@ def test_prepare_plugin_dir_writes_plugin_json_with_session_name(
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_prepare_plugin_dir_loads_packaged_claude_skills() -> None:
+    root = prepare_plugin_dir("packaged", skills={})
+
+    try:
+        assert (root / "skills" / "jobs" / "SKILL.md").is_file()
+    finally:
+        shutil.rmtree(root)
+
+
+def test_prepare_plugin_dir_copy_fallback_preserves_live_reference_symlink(
+    tmp_path, _isolate_claude_only, monkeypatch
+) -> None:
+    source = _make_skill_dir(tmp_path, "source")
+    reference = source / "reference.txt"
+    reference.write_text("original reference")
+    (source / "references").mkdir()
+    (source / "references" / "live.txt").symlink_to(reference)
+
+    def deny_symlink(*args, **kwargs):
+        raise OSError("symlinks unavailable")
+
+    monkeypatch.setattr(Path, "symlink_to", deny_symlink)
+
+    root = prepare_plugin_dir("copy", skills={"source": _skill("source", source)})
+    reference.write_text("updated reference")
+
+    try:
+        copied = root / "skills" / "source" / "references" / "live.txt"
+        assert copied.is_symlink()
+        assert copied.read_text() == "updated reference"
+    finally:
+        shutil.rmtree(root)
+
+
 def test_prepare_plugin_dir_links_user_skills(
     tmp_path: Path,
     _isolate_claude_only: Path,
@@ -165,9 +245,7 @@ def test_prepare_plugin_dir_materializes_flat_builtin_skill(
         md = root / "skills" / "im" / "SKILL.md"
         assert md.exists()
         text = md.read_text()
-        assert "name: im" in text
-        assert "description: messaging" in text
-        assert "im steps" in text
+        assert text == "---\nname: im\ndescription: messaging\n---\n\nim steps\n"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -194,7 +272,8 @@ def test_prepare_plugin_dir_claude_only_wins_on_collision(
     # User skill also named "jobs"
     user_root = tmp_path / "user"
     user_jobs = _make_skill_dir(user_root, "jobs", body="user version")
-    skills = {"jobs": _skill("jobs", user_jobs)}
+    other = _make_skill_dir(user_root, "other")
+    skills = {"jobs": _skill("jobs", user_jobs), "other": _skill("other", other)}
 
     root = prepare_plugin_dir("s3", skills=skills)
 
@@ -203,6 +282,7 @@ def test_prepare_plugin_dir_claude_only_wins_on_collision(
         # Should resolve to claude-only dir, not user dir.
         assert linked.resolve() == co_jobs.resolve()
         assert "claude version" in (linked / "SKILL.md").read_text()
+        assert (root / "skills" / "other").resolve() == other.resolve()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -214,11 +294,13 @@ def test_prepare_plugin_dir_skips_dirs_without_skill_md(
     bad = _isolate_claude_only / "no-skill-md"
     bad.mkdir()
     (bad / "README.md").write_text("not a skill")
+    _make_skill_dir(_isolate_claude_only, "z-healthy")
 
     root = prepare_plugin_dir("s4", skills={})
 
     try:
         assert not (root / "skills" / "no-skill-md").exists()
+        assert (root / "skills" / "z-healthy" / "SKILL.md").is_file()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -244,16 +326,18 @@ def test_prepare_plugin_dir_skips_polluted_claude_only_skill_and_logs(
 ) -> None:
     polluted = _make_skill_dir(_isolate_claude_only, "polluted")
     (polluted / "CLAUDE.md").write_text("stray")
+    _make_skill_dir(_isolate_claude_only, "z-healthy")
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.agent.claude.plugin"):
         root = prepare_plugin_dir("s6", skills={})
 
     try:
         assert not (root / "skills" / "polluted").exists()
-        assert any(
-            "polluted" in r.getMessage() and "skipped" in r.getMessage()
-            for r in caplog.records
-        )
+        assert (root / "skills" / "z-healthy" / "SKILL.md").is_file()
+        assert caplog.messages == [
+            "skill polluted skipped: contains stray CLAUDE.md or .claude/ "
+            "— clean it up or delete it"
+        ]
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -265,12 +349,14 @@ def test_prepare_plugin_dir_skips_polluted_user_skill(
     user_root = tmp_path / "user"
     sk_dir = _make_skill_dir(user_root, "bad")
     (sk_dir / ".claude").mkdir()
-    skills = {"bad": _skill("bad", sk_dir)}
+    healthy = _make_skill_dir(user_root, "healthy")
+    skills = {"bad": _skill("bad", sk_dir), "healthy": _skill("healthy", healthy)}
 
     root = prepare_plugin_dir("s7", skills=skills)
 
     try:
         assert not (root / "skills" / "bad").exists()
+        assert (root / "skills" / "healthy").resolve() == healthy.resolve()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -343,6 +429,6 @@ def test_prepare_plugin_dir_session_id_in_dir_prefix(
     root = prepare_plugin_dir("session42", skills={})
 
     try:
-        assert "physiclaw-plugin-session42-" in root.name
+        assert root.name.startswith("physiclaw-plugin-session42-")
     finally:
         shutil.rmtree(root, ignore_errors=True)

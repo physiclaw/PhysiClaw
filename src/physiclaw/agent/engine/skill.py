@@ -28,10 +28,10 @@ Three roots are scanned:
 
 Official and user are the on-demand set (``## Available skills``) and do NOT
 shadow each other: on a name clash both are kept, disambiguated as
-``<name>-official`` / ``<name>-user`` (see ``_merge_disambiguated``); an
-unclashed name passes through unchanged. Built-ins are separate and always
-on. The cwd is deliberately not a root — discovery must not depend on where
-the server was launched.
+``<name>-official`` / ``<name>-user``, with a numeric suffix when that alias
+is already taken; an unclashed name passes through unchanged. Built-ins are
+separate and always on. The cwd is deliberately not a root — discovery must
+not depend on where the server was launched.
 
 Loading differs by kind — the two render into SEPARATE prompt sections, so
 they never merge or override each other:
@@ -53,6 +53,7 @@ its root is rejected so third-party skill installs can't path-traverse.
 """
 
 import logging
+import re
 from dataclasses import dataclass, replace
 from importlib.resources import files as _pkg_files
 from pathlib import Path
@@ -61,12 +62,14 @@ from physiclaw.common import paths
 from physiclaw.common.text import read_text
 
 log = logging.getLogger(__name__)
+# Same single-component names accepted by `physiclaw skills install`.
+_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-]*")
 
 
 def _builtin_skills_dir() -> Path:
     """Flat-``.md`` skills shipped inside the wheel — the out-of-the-box
-    baseline every install gets. Discovery layers the home dir (user)
-    on top, so a home skill of the same name overrides a built-in one.
+    baseline every install gets. The engine inlines these separately from
+    on-demand skills; the Claude plugin uses the merged `discover()` view.
 
     Lives here (sole consumer), not in `common.paths`: resolving it
     imports `physiclaw.agent` via the import system, an agent-layer
@@ -95,6 +98,11 @@ class Skill:
     )
 
 
+def is_safe_skill_name(name: str) -> bool:
+    """Whether a name follows the installer's path-component character rules."""
+    return _NAME_RE.fullmatch(name) is not None
+
+
 def discover_builtin_skills() -> dict[str, Skill]:
     """Built-in flat-`.md` skills shipped in the package. Their full body is
     always inlined into the SYSTEM prompt, so they need no Skill() call."""
@@ -109,7 +117,8 @@ def discover_user_skills() -> dict[str, Skill]:
     name+description go in the SYSTEM prompt; the body loads on demand via the
     Skill() tool. Built-in skills are separate (always-on, inlined) and never
     appear here. Official and user do NOT shadow each other — a name clash keeps
-    both, disambiguated ``<name>-official`` / ``<name>-user``."""
+    both, disambiguated ``<name>-official`` / ``<name>-user`` with numeric
+    suffixes if those names are already taken."""
     official: dict[str, Skill] = {}
     _scan_root(OFFICIAL_SKILLS_DIR, official, source="official")
     user: dict[str, Skill] = {}
@@ -124,13 +133,22 @@ def _merge_disambiguated(
     clash both are kept, renamed ``<name>-official`` / ``<name>-user`` — on the
     dict key AND ``Skill.name``, so the index bullet (uses ``.name``), the
     Skill-tool name list + dispatch (use the key) all agree. Unclashed names
-    pass through unchanged. Official is emitted first so it sorts ahead of its
-    user counterpart in the tool list."""
+    pass through unchanged. Reserve all original names before allocating aliases
+    so a generated name cannot hide another skill. Official is emitted first."""
     clashes = official.keys() & user.keys()
+    reserved = official.keys() | user.keys()
     out: dict[str, Skill] = {}
     for suffix, group in (("official", official), ("user", user)):
         for name, sk in group.items():
-            key = f"{name}-{suffix}" if name in clashes else name
+            key = name
+            if name in clashes:
+                base = f"{name}-{suffix}"
+                key = base
+                number = 2
+                while key in reserved:
+                    key = f"{base}-{number}"
+                    number += 1
+                reserved.add(key)
             out[key] = replace(sk, name=key)
     return out
 
@@ -139,8 +157,8 @@ def discover() -> dict[str, Skill]:
     """Merged view — built-in (always on), then the disambiguated official+user
     on-demand set layered on top. Used by the Claude-provider plugin dir, which
     materializes every skill as a Claude Code skill; the engine keeps built-in
-    (inlined) and on-demand (Skill()) separate instead. One bad skill skips
-    silently rather than taking down the session."""
+    (inlined) and on-demand (Skill()) separate instead. Unreadable or unsafe
+    skills are logged and skipped rather than taking down the session."""
     out = discover_builtin_skills()
     out.update(discover_user_skills())
     return out
@@ -149,53 +167,62 @@ def discover() -> dict[str, Skill]:
 def _scan_flat_root(root: Path, out: dict[str, Skill]) -> None:
     """Scan a built-in root of flat ``<name>.md`` files. The frontmatter
     `name` wins; otherwise the filename stem is the skill name. `dir` is
-    the root itself — built-in skills have no `references/`, so any tier-3
-    load resolves under (and fails inside) this shared dir, which is fine.
+    the root itself; built-in skills reject reference loads.
     """
-    if not root.exists():
+    if not root.is_dir():
         return
+    root_real = root.resolve()
     for md in sorted(root.glob("*.md")):
-        if md.name.startswith("_") or not md.is_file():
+        if md.name.startswith("_"):
             continue
-        fm, body = _split_frontmatter(read_text(md))
-        name = fm.get("name") or md.stem
-        out[name] = Skill(
-            name=name,
-            description=(fm.get("description") or "").strip(),
-            body=body.strip(),
-            dir=root.resolve(),
-            flat=True,
-            source="built-in",
+        sk = _read_skill(
+            md, root_real, fallback_name=md.stem, flat=True, source="built-in"
         )
+        if sk is not None:
+            out[sk.name] = sk
 
 
-def _scan_root(root: Path, out: dict[str, Skill], *, source: str = "user") -> None:
-    if not root.exists():
+def _scan_root(root: Path, out: dict[str, Skill], *, source: str) -> None:
+    if not root.is_dir():
         return
     root_real = root.resolve()
     for d in sorted(root.iterdir()):
-        if not d.is_dir() or d.name.startswith("_"):
+        if d.name.startswith("_"):
             continue
-        real = d.resolve()
-        if not real.is_relative_to(root_real):
-            log.warning(
-                "skill %s resolves outside %s; skipping (path traversal guard)",
-                d.name,
-                root,
-            )
-            continue
-        md = real / "SKILL.md"
-        if not md.exists():
-            continue
-        fm, body = _split_frontmatter(read_text(md))
-        name = fm.get("name") or d.name
-        out[name] = Skill(
-            name=name,
-            description=(fm.get("description") or "").strip(),
-            body=body.strip(),
-            dir=real,
-            source=source,
-        )
+        md = d / "SKILL.md"
+        sk = _read_skill(md, root_real, fallback_name=d.name, flat=False, source=source)
+        if sk is not None:
+            out[sk.name] = sk
+
+
+def _read_skill(
+    md: Path, root: Path, *, fallback_name: str, flat: bool, source: str
+) -> Skill | None:
+    """Read one candidate, keeping both its directory and file inside the root."""
+    try:
+        if not md.is_file():
+            return None
+        directory = md.parent.resolve()
+        resolved = md.resolve()
+        if not directory.is_relative_to(root) or not resolved.is_relative_to(root):
+            log.warning("skill %s resolves outside %s; skipping", md, root)
+            return None
+        fm, body = _split_frontmatter(read_text(resolved))
+    except (OSError, UnicodeError, RuntimeError) as exc:
+        log.warning("cannot read skill %s; skipping: %s", md, exc)
+        return None
+    name = fm.get("name") or fallback_name
+    if not is_safe_skill_name(name):
+        log.warning("unsafe skill name %r in %s; skipping", name, md)
+        return None
+    return Skill(
+        name=name,
+        description=(fm.get("description") or "").strip(),
+        body=body.strip(),
+        dir=directory,
+        flat=flat,
+        source=source,
+    )
 
 
 def dispatch(skills: dict[str, Skill], args: dict) -> str:
