@@ -937,44 +937,44 @@
   },
   {
     "part_id": "spacer-6x12x8",
-    "ref": "¥5",
+    "ref": "$1",
     "suppliers": [
       {
-        "name": "OPPU",
-        "product": "6.2×12×8 mm (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=719279682169&skuId=5151398852266"
+        "name": "ZONSANTA",
+        "product": "OD12xM6 (5pcs), L 8mm",
+        "url": "https://www.aliexpress.us/item/3256809618948037.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø6×12×8 mm (20-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=914092442727&skuId=5947803851139"
+        "name": "Canrich",
+        "product": "OD12xM6 (5pcs), L 8mm",
+        "url": "https://www.aliexpress.us/item/3256809732112359.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø6×12×8 mm (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=851546806052&skuId=5815653223616"
+        "name": "LOOZI",
+        "product": "OD12xM6 (5pcs), L 8mm",
+        "url": "https://www.aliexpress.us/item/3256809625412677.html"
       }
     ],
     "note": "Height must match the listed spec. The ID and OD can vary: any ID > 5 mm and OD < 20 mm works."
   },
   {
     "part_id": "spacer-6x12x12",
-    "ref": "¥5",
+    "ref": "$1",
     "suppliers": [
       {
-        "name": "OPPU",
-        "product": "6.2×12×12 mm (5-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=719279682169&skuId=5151398852268"
+        "name": "ZONSANTA",
+        "product": "OD12xM6 (5pcs), L 12mm",
+        "url": "https://www.aliexpress.us/item/3256809618948037.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø6×12×12 mm (10-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=914092442727&skuId=5947803851143"
+        "name": "Canrich",
+        "product": "OD12xM6 (5pcs), L 12mm",
+        "url": "https://www.aliexpress.us/item/3256809732112359.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "Ø6×12×12 mm (2-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=851546806052&skuId=5815653223620"
+        "name": "LOOZI",
+        "product": "OD12xM6 (5pcs), L 12mm",
+        "url": "https://www.aliexpress.us/item/3256809625412677.html"
       }
     ],
     "note": "Ditto"
