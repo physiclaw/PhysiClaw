@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -43,6 +44,7 @@ from starlette.routing import Route
 from physiclaw.agent.trace import viewer
 from physiclaw.agent.trace.store import recent_sessions, resolve_session
 from physiclaw.common import gesture_vocab, paths
+from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.ready import START_HINT
 from physiclaw.common.text import read_text
 from physiclaw.conductor.spec.pack import split_ref
@@ -170,6 +172,9 @@ class Job:
 
         try:
             self.result = await session.drive(lent)
+        except asyncio.CancelledError:
+            self.error = f"{self.kind} cancelled"
+            raise
         except ConnectionError as e:
             self.error = f"{e}. {START_HINT}"
         except (SpecError, MacroError, RuntimeError, ValueError) as e:
@@ -234,7 +239,8 @@ async def handle_page(request: Request) -> HTMLResponse:
 
 def _not_found(why: str) -> HTMLResponse:
     return HTMLResponse(
-        f"<p>{why}. <a href='/sessions/'>The newest session.</a></p>", status_code=404
+        f"<p>{escape(why)}. <a href='/sessions/'>The newest session.</a></p>",
+        status_code=404,
     )
 
 
@@ -267,16 +273,19 @@ def handle_session_page(request: Request) -> Response:
 
 
 def handle_session_image(request: Request) -> Response:
-    """GET /sessions/{sid}/images/{name} — one frame from the session's
-    `images/`; the name is one path segment, so it cannot leave the dir."""
+    """GET /sessions/{sid}/images/{name} — one frame confined to `images/`."""
     try:
         d = resolve_session(paths.engine_sessions_dir(), request.path_params["sid"])
     except LookupError:
         return Response("no such frame", status_code=404)
-    name = request.path_params["name"]
-    if "/" in name or not (d / "images" / name).is_file():
+    image = resolve_image(d, f"images/{request.path_params['name']}")
+    if image is None:
         return Response("no such frame", status_code=404)
-    return FileResponse(d / "images" / name)
+    return FileResponse(
+        image,
+        media_type=mime_for(image.name),
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 async def handle_state(request: Request, session: Session) -> JSONResponse:
@@ -302,7 +311,9 @@ async def handle_act(request: Request, session: Session) -> JSONResponse:
     try:
         body = await _json_body(request)
         tool = body.get("tool")
-        args = body.get("args") or {}
+        args = body.get("args")
+        if args is None:
+            args = {}
         if not isinstance(tool, str) or not isinstance(args, dict):
             return _error(400, "`tool` is a string, `args` a mapping")
         if session.busy:

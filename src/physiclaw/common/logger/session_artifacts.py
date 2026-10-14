@@ -12,6 +12,7 @@ owns the pieces that must stay identical between the two writers:
   - `iso_now` / `env_snapshot` / `write_json_atomic` / `image_filename`
     / `save_image` / `ensure_readme` — the helpers both artifact dirs
     are built from.
+  - `mime_for` / `resolve_image` — readers of the recorded image format.
 
 Each engine keeps its own event accumulation (their event streams are
 genuinely different); only the on-disk shape is centralized, so a schema
@@ -142,6 +143,25 @@ def mime_for(name: str) -> str:
     return next(
         (m for m, e in _MIME_EXT.items() if e == ext), "application/octet-stream"
     )
+
+
+def resolve_image(session_dir: Path, ref: object) -> Path | None:
+    """Resolve a recorded ``images/<filename>`` to a regular file in that
+    session's image directory. Logs and URL segments can be untrusted; reject
+    traversal, Windows path syntax and symlinks escaping the image directory.
+    Missing, malformed or unreadable references are not frames.
+    """
+    if not isinstance(ref, str) or not ref.startswith("images/"):
+        return None
+    name = ref.removeprefix("images/")
+    if not name or name in {".", ".."} or any(c in name for c in "/\\:\0"):
+        return None
+    try:
+        images = session_dir.resolve() / "images"
+        image = (images / name).resolve()
+        return image if image.is_relative_to(images) and image.is_file() else None
+    except (OSError, ValueError, RuntimeError):  # includes invalid paths/symlink loops
+        return None
 
 
 def image_filename(turn: int, mime: str) -> str:

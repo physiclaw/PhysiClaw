@@ -3,6 +3,7 @@ wire log, and the mock session's act door."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -229,3 +230,137 @@ def test_session_frames_prefer_the_tool_results_own_record(tmp_path) -> None:
 
     assert [f.image.name for f in frames] == ["a_t1.jpg", "c_t3.jpg"]
     assert frames[1].listing.startswith("Tapped | screen: changed")
+
+
+def _events(directory, records):
+    (directory / "events.jsonl").write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8"
+    )
+
+
+def _event(ref, listing):
+    return {"event": "tool_result", "text": listing, "images": [ref]}
+
+
+@pytest.mark.parametrize(
+    "refs", ["images/a.jpg", 42, {"file": "images/a.jpg"}, [None], [{}]]
+)
+def test_regression_malformed_image_fields_do_not_hide_later_frames(tmp_path, refs):
+    directory = _session_dir(tmp_path, [], ["a.jpg"])
+    broken = {"event": "tool_result", "text": _listing("bad"), "images": refs}
+    _events(directory, [broken, _event("images/a.jpg", _listing("good"))])
+
+    frames = mock.session_frames(directory)
+
+    assert [frame.listing for frame in frames] == [_listing("good")]
+
+
+@pytest.mark.parametrize("text", [None, 42, "", "ordinary tool output"])
+def test_malformed_listing_text_does_not_hide_later_frames(tmp_path, text):
+    directory = _session_dir(tmp_path, [], ["a.jpg"])
+    _events(
+        directory,
+        [_event("images/a.jpg", text), _event("images/a.jpg", _listing("good"))],
+    )
+
+    frames = mock.session_frames(directory)
+
+    assert [frame.listing for frame in frames] == [_listing("good")]
+
+
+@pytest.fixture(params=["events", "wire"])
+def recorded_views(tmp_path, request):
+    directory = _session_dir(tmp_path, [], ["a.jpg", "b.jpg", "c.jpg"])
+
+    def record(views):
+        if request.param == "events":
+            _events(directory, [_event(ref, listing) for ref, listing in views])
+        else:
+            records = [_request(_openai_view(ref, listing)) for ref, listing in views]
+            (directory / "wire.jsonl").write_text(
+                "\n".join(json.dumps(rec) for rec in records), encoding="utf-8"
+            )
+        return directory
+
+    return record
+
+
+def test_regression_replay_preserves_a_return_to_an_earlier_screen(recorded_views):
+    home, detail = _listing("home"), _listing("detail")
+    directory = recorded_views(
+        [
+            ("images/a.jpg", home),
+            ("images/a.jpg", home),
+            ("images/b.jpg", detail),
+            ("images/c.jpg", home),
+        ]
+    )
+
+    frames = mock.session_frames(directory)
+
+    assert [frame.listing for frame in frames] == [home, detail, home]
+    assert [frame.image.name for frame in frames] == ["a.jpg", "b.jpg", "c.jpg"]
+
+
+@pytest.mark.parametrize(
+    "ref", ["../private.jpg", "images/../private.jpg", "images", "images/subdir"]
+)
+def test_regression_replay_skips_paths_outside_image_files(recorded_views, ref):
+    directory = recorded_views(
+        [(ref, _listing("bad")), ("images/a.jpg", _listing("good"))]
+    )
+    (directory.parent / "private.jpg").write_bytes(b"private")
+    (directory / "private.jpg").write_bytes(b"private")
+    (directory / "images" / "subdir").mkdir()
+
+    frames = mock.session_frames(directory)
+
+    assert [frame.image.name for frame in frames] == ["a.jpg"]
+
+
+def test_regression_replay_skips_external_image_symlinks(recorded_views, tmp_path):
+    directory = recorded_views(
+        [("images/link.jpg", _listing("bad")), ("images/a.jpg", _listing("good"))]
+    )
+    external = tmp_path / "private.jpg"
+    external.write_bytes(b"private")
+    (directory / "images" / "link.jpg").symlink_to(external)
+
+    frames = mock.session_frames(directory)
+
+    assert [frame.image.name for frame in frames] == ["a.jpg"]
+
+
+@pytest.mark.parametrize(
+    ("suffix", "mime"),
+    [(".jpg", "image/jpeg"), (".png", "image/png"), (".webp", "image/webp")],
+)
+async def test_regression_replay_preserves_recorded_image_mime(tmp_path, suffix, mime):
+    image = tmp_path / ("frame" + suffix)
+    image.write_bytes(JPEG)
+    session = mock.MockSession([mock.Frame(image, _listing("screen"))], "recorded")
+
+    response = await session.act("peek", {})
+
+    assert response["image"]["mime_type"] == mime
+
+
+async def test_regression_mock_serializes_manual_actions_with_driver(tmp_path):
+    session = mock.MockSession(_frames(tmp_path, 2), "recorded")
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def driver(client):
+        started.set()
+        await release.wait()
+
+    driving = asyncio.create_task(session.drive(driver))
+    await started.wait()
+
+    action = asyncio.create_task(session.act("tap", {}))
+    await asyncio.sleep(0)
+    completed_while_driving = action.done()
+    release.set()
+    await asyncio.gather(driving, action)
+
+    assert completed_while_driving is False
+    assert session.busy is False

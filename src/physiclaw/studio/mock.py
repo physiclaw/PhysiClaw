@@ -11,6 +11,7 @@ shows the current frame; a gesture advances to the next one, so
 tapping through the page walks the recorded session in order.
 """
 
+import asyncio
 import base64
 import json
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from physiclaw.common import gesture_vocab
 from physiclaw.common.listing import is_screen
+from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.text import iter_jsonl
 from physiclaw.contract.wire import image_ref, iter_request_messages
 from physiclaw.studio.session import unpublished, view_reply
@@ -44,19 +46,19 @@ class Frame:
 
 
 def session_frames(session_dir: Path) -> list[Frame]:
-    """Every distinct screen view in a recorded session, in order: the
+    """The screen views in a recorded session, in order: the
     image a tool reply attached and the full listing beside it — the
     tool results' own record when the session kept it, else the wire
     log's requests (older views there are superseded to labels-only
     stubs, so each request contributes its latest view; the same view
-    carried into the next request is not a second frame)."""
+    carried into the next request is not a second frame). Consecutive
+    copies of a listing collapse; returning to a previous screen is kept."""
     frames = _event_frames(session_dir)
     if frames:
         return frames
     wire = session_dir / "wire.jsonl"
     if not wire.exists():
         raise FileNotFoundError(f"no events.jsonl views or wire.jsonl in {session_dir}")
-    seen: set[str] = set()
     for role, blocks in iter_request_messages(wire):
         if role == "system":  # doctrine quotes the header; never a view
             continue
@@ -69,10 +71,7 @@ def session_frames(session_dir: Path) -> list[Frame]:
             if b.get("type") == "text" and is_screen(b["text"])
         ]
         for ref, listing in zip(refs, screens):
-            image = session_dir / ref
-            if listing not in seen and image.exists():
-                seen.add(listing)
-                frames.append(Frame(image=image, listing=listing))
+            _append_frame(frames, session_dir, ref, listing)
     return frames
 
 
@@ -80,18 +79,24 @@ def _event_frames(session_dir: Path) -> list[Frame]:
     """The views the session's `tool_result` events carry: the result's
     text whole (a screen) beside the frame it filed."""
     frames: list[Frame] = []
-    seen: set[str] = set()
     for rec in iter_jsonl(session_dir / "events.jsonl", '"tool_result"'):
-        text, refs = rec.get("text"), rec.get("images") or []
-        if rec.get("event") != "tool_result" or not refs:
+        text, refs = rec.get("text"), rec.get("images")
+        if rec.get("event") != "tool_result" or not isinstance(refs, list) or not refs:
             continue
-        if not isinstance(text, str) or text in seen or not is_screen(text):
+        if not isinstance(text, str) or not is_screen(text):
             continue
-        image = session_dir / refs[0]
-        if image.exists():
-            seen.add(text)
-            frames.append(Frame(image=image, listing=text))
+        _append_frame(frames, session_dir, refs[0], text)
     return frames
+
+
+def _append_frame(
+    frames: list[Frame], session_dir: Path, ref: object, listing: str
+) -> None:
+    if frames and frames[-1].listing == listing:
+        return
+    image = resolve_image(session_dir, ref)
+    if image is not None:
+        frames.append(Frame(image=image, listing=listing))
 
 
 class MockSession:
@@ -108,7 +113,11 @@ class MockSession:
         self.idx = 0
         # Lent to a driver: manual gestures answer busy meanwhile, the
         # one-rig rule the real session keeps with its lock.
-        self.busy = False
+        self._lock = asyncio.Lock()
+
+    @property
+    def busy(self) -> bool:
+        return self._lock.locked()
 
     @property
     def mcp_url(self) -> str:
@@ -118,14 +127,12 @@ class MockSession:
         return {"connected": True, "mcp_url": self.mcp_url, "tools": sorted(MOCK_TOOLS)}
 
     async def act(self, tool: str, args: dict) -> dict:
-        return view_reply(await self.call_tool(tool, args))
+        async with self._lock:
+            return view_reply(await self.call_tool(tool, args))
 
     async def drive(self, job):
-        self.busy = True
-        try:
+        async with self._lock:
             return await job(self)
-        finally:
-            self.busy = False
 
     async def call_tool(self, tool: str, args: dict | None = None) -> list[dict]:
         args = args or {}
@@ -146,7 +153,7 @@ class MockSession:
         frame = self.frames[self.idx]
         data = base64.b64encode(frame.image.read_bytes()).decode()
         return [
-            {"type": "image", "mime_type": "image/jpeg", "data": data},
+            {"type": "image", "mime_type": mime_for(frame.image.name), "data": data},
             {"type": "text", "text": frame.listing},
         ]
 

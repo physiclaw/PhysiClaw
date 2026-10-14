@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from html import escape
 from types import SimpleNamespace
 
 import httpx
@@ -101,6 +102,28 @@ async def test_act_rejects_malformed_bodies(body, match) -> None:
 
     assert resp.status_code == 400
     assert match in _payload(resp)["message"]
+
+
+@pytest.mark.parametrize("args", [False, 0, "", [], [1], "text"])
+async def test_regression_non_mapping_args_never_execute_a_tool(args):
+    session = FakeSession()
+
+    response = await server.handle_act(_request({"tool": "tap", "args": args}), session)
+
+    assert response.status_code == 400
+    assert session.acted == []
+
+
+@pytest.mark.parametrize("args", [None, {}])
+async def test_act_null_or_empty_args_remain_valid(args):
+    session = FakeSession()
+
+    response = await server.handle_act(
+        _request({"tool": "peek", "args": args}), session
+    )
+
+    assert response.status_code == 200
+    assert session.acted == [("peek", {})]
 
 
 @pytest.mark.parametrize(
@@ -561,6 +584,65 @@ async def test_session_page_unknown_or_ambiguous_sid_is_404(physiclaw_home) -> N
 
     assert resp.status_code == 404
     assert b"ambiguous session" in bytes(resp.body)
+
+
+@pytest.mark.parametrize("sid", ["<img src=x onerror=alert(1)>", "\"<&'>"])
+def test_regression_missing_session_ref_is_html_text(physiclaw_home, sid):
+    response = server.handle_session_page(_path_request(sid=sid))
+
+    body = bytes(response.body).decode()
+    assert response.status_code == 404
+    assert sid not in body
+    assert escape(repr(sid)) in body
+
+
+def test_regression_session_image_cannot_follow_external_symlink(
+    physiclaw_home, tmp_path
+):
+    recorded = _recorded()
+    external = tmp_path / "private.jpg"
+    external.write_bytes(b"private bytes")
+    (recorded / "images" / "linked.jpg").symlink_to(external)
+
+    response = server.handle_session_image(
+        _path_request(sid="abc123", name="linked.jpg")
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("name", ["page.html", "frame.svg", "unknown.bin"])
+def test_regression_recorded_non_raster_files_are_not_served_as_active_content(
+    physiclaw_home, name
+):
+    recorded = _recorded()
+    (recorded / "images" / name).write_text(
+        "<script>alert(1)</script>", encoding="utf-8"
+    )
+
+    response = server.handle_session_image(_path_request(sid="abc123", name=name))
+
+    assert response.media_type == "application/octet-stream"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_regression_cancelled_job_reports_why_it_stopped():
+    job = server.Job()
+    started = asyncio.Event()
+
+    async def driver(*args):
+        started.set()
+        await asyncio.Event().wait()
+
+    job.start(FakeSession(), server.KIND_STEP, "demo/flow", driver)
+    await started.wait()
+
+    job.task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await job.task
+
+    assert job.snapshot(0)["error"] == "step cancelled"
+    assert job.running is False
 
 
 @pytest.mark.asyncio

@@ -231,6 +231,127 @@ def test_image_filename_stamps_time_and_turn() -> None:
         assert image_filename(3, "application/x-unknown") == "104542_123_t3.bin"
 
 
+@pytest.mark.parametrize("name", ["frame.jpg", "frame.png", "截图.webp"])
+def test_resolve_image_accepts_recorded_regular_files(tmp_path, name):
+    images = tmp_path / "images"
+    images.mkdir()
+    path = images / name
+    path.write_bytes(b"frame")
+
+    result = artifacts.resolve_image(tmp_path, f"images/{name}")
+
+    assert result == path.resolve()
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        None,
+        1,
+        {},
+        [],
+        "",
+        "frame.jpg",
+        "../frame.jpg",
+        "/tmp/frame.jpg",
+        "C:/frame.jpg",
+        "images/",
+        "images/.",
+        "images/..",
+        "images/../private.jpg",
+        "images/sub/frame.jpg",
+        "images/..\\private.jpg",
+        "images/C:frame.jpg",
+        "images/frame.jpg:stream",
+        "images/null\0.jpg",
+    ],
+)
+def test_resolve_image_rejects_nonportable_or_escaping_references(tmp_path, ref):
+    result = artifacts.resolve_image(tmp_path, ref)
+
+    assert result is None
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["missing", "directory", "symlink_loop", "external_symlink", "images_symlink"],
+)
+def test_resolve_image_requires_a_contained_regular_file(tmp_path, kind):
+    session = tmp_path / "session"
+    images = session / "images"
+    images.mkdir(parents=True)
+    target = images / "frame.jpg"
+    _prepare_image_boundary(tmp_path, images, target, kind)
+
+    result = artifacts.resolve_image(session, "images/frame.jpg")
+
+    assert result is None
+
+
+def _prepare_image_boundary(root, images, target, kind):
+    if kind == "directory":
+        target.mkdir()
+    elif kind == "symlink_loop":
+        target.symlink_to(target)
+    elif kind == "external_symlink":
+        outside = root / "private.jpg"
+        outside.write_bytes(b"private")
+        target.symlink_to(outside)
+    elif kind == "images_symlink":
+        outside = root / "other"
+        outside.mkdir()
+        (outside / "frame.jpg").write_bytes(b"private")
+        images.rmdir()
+        images.symlink_to(outside, target_is_directory=True)
+
+
+@pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
+def test_resolve_image_filesystem_errors_are_unavailable_frames(
+    tmp_path, mocker, error_type
+):
+    mocker.patch.object(Path, "resolve", side_effect=error_type("unavailable"))
+
+    result = artifacts.resolve_image(tmp_path, "images/frame.jpg")
+
+    assert result is None
+
+
+@pytest.mark.parametrize("ref", ["images/frame.jpg:stream", "images/..\\private.jpg"])
+def test_resolve_image_forbids_windows_path_syntax_even_if_the_file_exists(
+    tmp_path, mocker, ref
+):
+    mocker.patch.object(Path, "is_file", return_value=True)
+
+    result = artifacts.resolve_image(tmp_path, ref)
+
+    assert result is None
+
+
+@pytest.fixture
+def image_directory(tmp_path):
+    directory = tmp_path / "images"
+    directory.mkdir()
+    (directory / "frame.jpg").write_bytes(b"frame")
+    return tmp_path
+
+
+# Each example only reads the same fixture directory.
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    st.one_of(
+        st.just("images/frame.jpg"),
+        st.text(max_size=150),
+        st.text(max_size=150).map(lambda s: "images/" + s),
+    )
+)
+def test_resolve_image_arbitrary_references_cannot_return_outside_files(
+    image_directory, ref
+):
+    result = artifacts.resolve_image(image_directory, ref)
+
+    assert result in (None, (image_directory / "images" / "frame.jpg").resolve())
+
+
 # ---------- summary schema v1 parity ----------
 
 
