@@ -803,6 +803,7 @@ async def test_run_and_record_success_folds_into_stats() -> None:
     result = await run_and_record(_spec(TWO_STEPS), {"msg": "x"}, mcp)
 
     assert result.ok is True
+    assert result.blocks[0]["_meta"] == {"physiclaw/macro_ok": True}
     assert macro_stats.load()["demo"]["total_successes"] == 1
 
 
@@ -829,6 +830,7 @@ async def test_run_and_record_abort_folds_into_stats() -> None:
     result = await run_and_record(_spec(TWO_STEPS), {"msg": "x"}, mcp)
 
     assert result.ok is False
+    assert result.blocks[0]["_meta"] == {"physiclaw/macro_ok": False}
     assert macro_stats.load()["demo"]["last_abort"]["reason"] == REASON_TOOL_ERROR
 
 

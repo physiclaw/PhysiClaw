@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import write_channel_pages
+from debug_fakes import write_channel_pages
 
 from physiclaw.common import paths
 from physiclaw.common.bbox import center_of

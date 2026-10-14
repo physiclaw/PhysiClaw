@@ -182,6 +182,11 @@ WITH = "with"
 # THIS marker off the transcript text (its only channel).
 NO_GESTURES_NOTE = "stopped before any gesture ran"
 
+# The recorded result's first text block carries this structural outcome in
+# MCP `_meta`. Debug consumers must not infer success from header wording or
+# screen-change verdicts: an aborted macro may still have moved the phone.
+MACRO_OK_META = "physiclaw/macro_ok"
+
 # The gesture/perception surface a step may call — rehearsable physical
 # actions only, composed from the shared tool-name vocabulary (no private
 # name copies). Session control, memory, jobs (local tools) and

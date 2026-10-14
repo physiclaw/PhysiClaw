@@ -72,7 +72,11 @@ def pack(mocker):
             return_value=mocker.Mock(
                 ok=True,
                 blocks=[
-                    {"type": "text", "text": "ran"},
+                    {
+                        "type": "text",
+                        "text": "ran",
+                        "_meta": {"physiclaw/macro_ok": True},
+                    },
                     {"type": "text", "text": HOME},
                 ],
             )

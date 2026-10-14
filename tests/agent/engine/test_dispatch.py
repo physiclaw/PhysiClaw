@@ -19,6 +19,54 @@ from physiclaw.agent.engine.dispatch import dispatch
 from physiclaw.agent.engine.session import Session
 from physiclaw.common.config import CONFIG
 
+
+async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
+    from physiclaw.agent.engine import builtin_tool
+    from physiclaw.contract.dto import TextBlock
+    from physiclaw.debug import thread as vthread
+    from physiclaw.debug.interceptor import build
+    from physiclaw.macros.parse import parse_macro
+
+    spec = parse_macro(
+        "kind: macro\nschema: 1\nname: send\ndescription: fixture\n"
+        "inputs:\n  message:\n    description: text\nsteps:\n  - home_screen\n",
+        "send",
+    )
+    view = vthread.view_blocks('0 [text] "Error screen" [0.1,0.1,0.2,0.2] 0.99')
+    mcp = mocker.Mock(
+        call_tool=mocker.AsyncMock(side_effect=[RuntimeError("arm busy"), view])
+    )
+    mocker.patch(
+        "physiclaw.agent.engine.mcp_tool.get_mcp",
+        new=mocker.AsyncMock(return_value=mcp),
+    )
+    registry = builtin_tool.build_registry({}, pack_macros={"channel/send": spec})
+    run = _mk_run(local_registry=registry, tool_schemas=builtin_tool.schemas(registry))
+    run.debug_intercept = build().intercept
+    session = Session()
+    session.synthesized_turn = True
+    vthread.seed("buy milk", ["ok"])
+
+    result = await dispatch(
+        run,
+        session,
+        _tc(
+            "run_macro", {"name": "channel/send", "inputs": {"message": "Confirm now"}}
+        ),
+        0,
+    )
+
+    assert result.is_error is False
+    assert isinstance(result.content[0], TextBlock)
+    text = result.content[0].text
+    assert "ABORTED" in text and "arm busy" in text
+    assert "debug:" not in text
+    assert vthread.load() == vthread.Thread(
+        bubbles=[vthread.Bubble(vthread.USER, "buy milk")], staged=["ok"]
+    )
+    assert "channel/send" in session.failed_macros
+
+
 # ---------- dispatch basics ----------
 
 

@@ -49,6 +49,7 @@ from physiclaw.common import gesture_vocab, verdict
 from physiclaw.macros import runlog, stats, store
 from physiclaw.macros.inputs import resolve_inputs
 from physiclaw.macros.model import (
+    MACRO_OK_META,
     MAX_RUN_SECONDS,
     NO_GESTURES_NOTE,
     REASON_BAD_INPUT,
@@ -147,7 +148,14 @@ async def run_and_record(
         reason=result.reason,
         detail=result.detail,
     )
-    return replace(result, run_id=rlog.run_id)
+    # The debug seam receives raw blocks, without MacroRunResult. Carry the
+    # outcome on our composed header so a failed send cannot become a virtual
+    # success. Copy the header rather than modifying the replay's result.
+    blocks = [
+        {**result.blocks[0], "_meta": {MACRO_OK_META: result.ok}},
+        *result.blocks[1:],
+    ]
+    return replace(result, run_id=rlog.run_id, blocks=blocks)
 
 
 async def run(

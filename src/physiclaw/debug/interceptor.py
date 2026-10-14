@@ -1,43 +1,20 @@
-"""The fake-channel interceptor — the dispatch seam's debug half.
+"""Virtualize conductor channel observations after real execution.
 
-A result TRANSFORMER, not a bypass: every call dispatches for real —
-the gate's `channel/send` genuinely drives the phone and the ask really
-lands in the IM thread — and only the OBSERVATION of conductor channel
-actions is rewritten, so the conversation the walk reads stays the
-scripted one. One rule set, three lines of truth:
+Channel macros always run on the phone. Only a confirmed success, carried
+in the runner's header metadata, can replace the observation with the
+scripted thread. A successful send appends the agent's virtual bubble.
+An aborted or unconfirmed macro keeps its real result and clears the
+on-thread state; header wording and screen-change verdicts are not success.
 
-  - A conductor-minted `run_macro` naming a `channel/*` macro ran for
-    real; its result is replaced with a gesture-shaped reply whose
-    listing is the virtual thread render. A `channel/send` also appends
-    the agent's bubble to the virtual thread. The conductor is now "on
-    the thread".
-  - A conductor-minted `peek` while on the thread ran for real too; its
-    listing is replaced with the same render — the read that also
-    releases a staged user reply when an ask is outstanding
-    (`thread.py` owns the timing rule).
-  - Everything else passes through untouched — and any phone-moving
-    tool drops the on-thread state, so the next thread action must
-    re-enter through `channel/open` exactly as the walk already does
-    (`tried_open` self-heals a mismatch, in debug as in production).
+While on the thread, conductor peeks render the virtual conversation and
+release staged replies through `thread.peek_bubbles`. A real peek matching
+the channel fingerprint can also enter this state after a session resumes.
+Other phone-moving tools leave it. Model-authored calls are never rewritten;
+dispatch supplies the session's synthesized-turn bit as provenance.
 
-Errors stay real: dispatch transforms only successful block results, so
-a failed send propagates and the walk hands over exactly as it would in
-production. Model-minted calls are never touched: hidden channel macros
-already error for model turns, and the model's own navigation stays
-real. Provenance is structural — dispatch passes the session's
-`synthesized_turn` bit, the same one the phone-protection policies key
-on — never inferred from call-id strings.
-
-State is per-session and deliberately minimal: a fresh interceptor
-starts off-thread until a conductor peek reads as the thread, so a
-resumed suspension's first gate-peek reads the real phone and, unless
-the IM app is already showing the thread, mismatches and re-enters via
-the open macro — no cross-wake state to corrupt. A REAL listing that
-already reads as the channel thread (the previous session's wrap-up
-left the IM app open on it) is virtualized on that peek, or the boot
-would parse the real thread — where the last word is the assistant's
-own completion report — instead of the scripted one. The thread file is re-read on every render; only the
-channel fingerprint is cached (it cannot change mid-session).
+State belongs to one session. The channel fingerprint is cached, while the
+thread file is re-read on each render. Harness errors clear the state and
+keep the real observation so a subsequent peek must identify the thread again.
 """
 
 import logging
@@ -52,6 +29,7 @@ from physiclaw.conductor.spec.pack import macro_app, qualified_macro
 from physiclaw.conductor.spec.pages import PagePrint
 from physiclaw.contract.dto import ToolCall
 from physiclaw.debug import thread as vthread
+from physiclaw.macros.model import MACRO_OK_META
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +79,7 @@ class FakeChannel:
         try:
             return self._intercept(call, synthesized, blocks)
         except Exception:
+            self._on_thread = False
             log.exception("debug fake-channel crashed — keeping the real result")
             return None
 
@@ -117,6 +96,13 @@ class FakeChannel:
             and call.name == gesture_vocab.RUN_MACRO
             and macro_app(macro) == CHANNEL_APP
         ):
+            metadata = blocks[0].get("_meta") if blocks else None
+            if (
+                not isinstance(metadata, dict)
+                or metadata.get(MACRO_OK_META) is not True
+            ):
+                self._on_thread = False
+                return None
             if macro == qualified_macro(CHANNEL_APP, SEND_MACRO):
                 message = str((args.get("inputs") or {}).get("message") or "")
                 bubbles = vthread.record_send(message)
