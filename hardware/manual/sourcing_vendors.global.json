@@ -1045,22 +1045,22 @@
   },
   {
     "part_id": "heat-shrink",
-    "ref": "¥4",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "Niuxiang",
-        "product": "Assorted colors, 164 pcs (bag), 3:1 shrink",
-        "url": "https://detail.tmall.com/item.htm?id=653659815504&skuId=4887481207761"
+        "name": "Ammax",
+        "product": "164pcs bag",
+        "url": "https://www.aliexpress.us/item/3256801382779252.html"
       },
       {
-        "name": "Xinjia",
-        "product": "8 colors, 164 pcs",
-        "url": "https://item.taobao.com/item.htm?id=652182822333&skuId=4873785482841"
+        "name": "TonKing",
+        "product": "164PCS NO BOX",
+        "url": "https://www.aliexpress.us/item/3256807310376739.html"
       },
       {
-        "name": "Xinxin",
-        "product": "5:1 shrink, 164 pcs (bag), flame-retardant",
-        "url": "https://item.taobao.com/item.htm?id=904644065796&skuId=5931489415648"
+        "name": "YOBO",
+        "product": "164 bagged",
+        "url": "https://www.aliexpress.us/item/3256812519493882.html"
       }
     ]
   }
