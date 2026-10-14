@@ -27,6 +27,7 @@ from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
     Message,
+    ToolCall,
     UserMessage,
 )
 from physiclaw.provider import ProviderError, ProviderTransientError
@@ -159,14 +160,14 @@ async def _drive(
         # record of the producer is set, so the two cannot disagree.
         set_tag_accent(PLAYBOOK_ACCENT if asst.synthesized else None)
         try:
-            await _dispatch_turn(run, session, messages, asst, turn)
+            successful_calls = await _dispatch_turn(run, session, messages, asst, turn)
         finally:
             session.synthesized_turn = False
         if session.budget_exhausted:
             return
         if session.sentinel_status is None and _stop_if_expired(run, session, turn):
             return
-        _finalize_turn(run, session, messages, asst, called, turn)
+        _finalize_turn(run, session, messages, successful_calls, turn)
 
         if session.sentinel_status:
             return
@@ -508,50 +509,49 @@ async def _dispatch_turn(
     messages: list[Message],
     asst: AssistantMessage,
     turn: int,
-) -> None:
+) -> list[ToolCall]:
     """Run the turn's tool_calls — principle 6: exactly one ToolResult per
     ToolCall, in order, in the very next messages. Flags a length-truncation
     warning first: if finish=length the final tool_call's arguments may be cut
     off — the validator catches it and pairs an error result, same path as any
-    bad args."""
+    bad args. Returns the calls that succeeded for trajectory bookkeeping."""
     if asst.finish_reason == FinishReason.LENGTH:
         log.warning(
             "turn %d: finish=length; last tool_call args may be truncated", turn
         )
         run.tr.write({"event": "finish_length_warning", "turn": turn})
 
+    successful_calls: list[ToolCall] = []
     for call in asst.tool_calls:
         if _stop_if_expired(run, session, turn):
-            return
+            return successful_calls
         result = await dispatch(run, session, call, turn)
         messages.append(result)
+        if not result.is_error:
+            successful_calls.append(call)
+    return successful_calls
 
 
 def _finalize_turn(
     run: EngineRun,
     session: Session,
     messages: list[Message],
-    asst: AssistantMessage,
-    called: list[str],
+    successful_calls: list[ToolCall],
     turn: int,
 ) -> None:
-    """Post-dispatch bookkeeping. Snapshot this turn's plan/scratchpad so a hard
-    close can reflect on the whole run's evolution, not just the final state —
-    the plan on every update_progress and the scratchpad on every
-    note(scratchpad=...) write (each explicit act is its own turn-tagged
-    entry). Then compact (drop stale screens, collapse old turns) and tell the
-    gates the turn completed so per-event one-shot state renews."""
-    note_call = next((tc for tc in asst.tool_calls if tc.name == "note"), None)
-    scratchpad_written = bool(
-        note_call
-        and isinstance(note_call.arguments, dict)
-        and note_call.arguments.get("scratchpad") is not None
-    )
+    """Record successful writes, compact history, and reset per-turn gates.
+
+    Successful rewrites count even when the content is unchanged. Failed
+    calls must not repeat old snapshots and evict useful trajectory history.
+    """
     trajectory.record(
         session,
         turn,
-        plan_updated="update_progress" in called,
-        scratchpad_written=scratchpad_written,
+        plan_updated=any(call.name == "update_progress" for call in successful_calls),
+        scratchpad_written=any(
+            call.name == "note" and call.arguments.get("scratchpad") is not None
+            for call in successful_calls
+        ),
     )
     compact.drop_stale_screens(messages)
     if compact.collapse_old_turns(

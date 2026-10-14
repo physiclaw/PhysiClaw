@@ -1,13 +1,14 @@
 """Session trajectory — the turn-tagged history of plan + scratchpad states.
 
 The plan and scratchpad tails only ever hold the CURRENT value; a rewrite
-overwrites the old one. But reflection (`reflect.py`) wants the *evolution* —
+overwrites the old one. But the pre-close pitfall checkpoint wants the *evolution* —
 how the plan churned, which scratchpad approaches were tried and abandoned —
 because that churn IS the turn-wasting-trap signal the agent should bank.
 
 So the engine calls `record(session, turn, plan_updated=..., scratchpad_written=...)`
-once per turn (after dispatch): the plan is snapshotted on EVERY `update_progress`
-call and the scratchpad on EVERY `note(scratchpad=...)` write — each is an
+once per turn (after dispatch): the plan is snapshotted on every successful
+`update_progress` call and the scratchpad on every successful
+`note(scratchpad=...)` write — each is an
 explicit agent act (a re-plan, a re-write), even one that repeats the prior
 content, and worth its own turn-tagged entry. A safety net also logs a drafted
 plan / non-blank scratchpad that changed without the corresponding call (e.g.
@@ -33,11 +34,11 @@ def record(
     session, turn: int, *, plan_updated: bool = False, scratchpad_written: bool = False
 ) -> None:
     """Snapshot the plan + scratchpad onto the session's turn-tagged logs.
-    `turn` is 0-based; stored 1-based to match the human/agent turn count. Each
+    `turn` is stored 0-based, matching the engine trace and rendered `[tN]`. Each
     log is capped to the newest `trajectory_max_snapshots` (evict oldest).
 
-    Plan: logged on EVERY `update_progress` (`plan_updated`); scratchpad on
-    EVERY `note(scratchpad=...)` write (`scratchpad_written`) — each is an
+    Plan: logged on every successful `update_progress` (`plan_updated`); scratchpad
+    on every successful `note(scratchpad=...)` write (`scratchpad_written`) — each is an
     explicit agent act worth capturing, even one that repeats the prior content.
     As a safety net, a drafted plan / non-blank scratchpad that changed WITHOUT
     the corresponding call (e.g. the closing turn) is logged once, deduped. A

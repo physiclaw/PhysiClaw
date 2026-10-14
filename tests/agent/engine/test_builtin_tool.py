@@ -1,11 +1,15 @@
 """Tests for `physiclaw.agent.engine.builtin_tool` — local tool handlers.
 
-The engine's local tools call out to memory/jobs/scratchpad/skill —
-those modules are mocked so handler tests stay focused on the tool
-surface (input parsing, return strings, session mutation).
+Handler tests cover input parsing, return strings, and session mutation.
+Persistence regressions use real temporary files and dispatch to verify
+model-facing errors; external dependencies are mocked where appropriate.
 
 `schemas()` and `build_registry()` are exercised at the bottom for
 the wire-format and ordering contract.
+
+The changed-line mutation pass accepts 11 description/wording survivors.
+Tests enforce validation, writes, state flags, and error results without
+pinning every character of the model-facing descriptions and diagnostics.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from engine_fakes import _mk_run, _tc
 
 from physiclaw.agent.engine import memory, scratchpad
 from physiclaw.agent.engine.builtin_tool import (
@@ -36,6 +41,7 @@ from physiclaw.agent.engine.builtin_tool import (
     build_registry,
     schemas,
 )
+from physiclaw.agent.engine.dispatch import dispatch
 from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.skill import Skill
 
@@ -76,22 +82,25 @@ async def test_note_handler_returns_summary_message() -> None:
 @pytest.mark.asyncio
 async def test_note_handler_writes_scratchpad_when_provided() -> None:
     s = Session()
+    handler = build_registry({})["note"].handler
 
-    out = await _handle_note(s, {"summary": "x", "scratchpad": "remember this"})
+    out = await handler(s, {"summary": "x", "scratchpad": "remember this"})
 
+    assert out.startswith("noted: x")
     assert "scratchpad updated" in out
     assert s.scratchpad == "remember this"
 
 
 @pytest.mark.asyncio
-async def test_note_handler_records_scratchpad_rejection_on_oversize() -> None:
-    s = Session()
+async def test_note_handler_rejects_oversize_scratchpad_without_mutation() -> None:
+    s = Session(scratchpad="previous")
     too_big = "x" * (scratchpad.MAX_CHARS + 1)
+    handler = build_registry({})["note"].handler
 
-    out = await _handle_note(s, {"summary": "x", "scratchpad": too_big})
+    with pytest.raises(ValueError, match="Summarize before writing"):
+        await handler(s, {"summary": "x", "scratchpad": too_big})
 
-    assert "scratchpad rejected" in out
-    assert "Summarize before writing" in out
+    assert s.scratchpad == "previous"
 
 
 @pytest.mark.asyncio
@@ -117,12 +126,15 @@ async def test_update_progress_calls_plan_update() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_progress_returns_rejected_message_on_validation_error() -> None:
+async def test_update_progress_rejects_empty_update_without_mutation() -> None:
     s = Session()
+    before = s.plan.snapshot()
+    handler = build_registry({})["update_progress"].handler
 
-    out = await _handle_update_progress(s, {})  # no args raises ValueError
+    with pytest.raises(ValueError, match="update needs at least one"):
+        await handler(s, {})
 
-    assert out.startswith("update_progress rejected:")
+    assert s.plan.snapshot() == before
 
 
 # ---------- _handle_append_log / _handle_save_memory ----------
@@ -181,6 +193,107 @@ async def test_save_memory_nudges_to_consolidate_over_soft_cap(
     out = await _handle_save_memory(Session(), {"text": "x" * 2500})
 
     assert "update_memory" in out and "2500" in out  # curation nudge surfaced
+
+
+@pytest.mark.parametrize("text", ["", " ", "\n\t", "\u2000\u2028"])
+async def test_regression_save_memory_blank_text_does_not_satisfy_checkpoint(
+    mem_paths, text
+) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+    session = Session(memory_cues=["remember: use metric units"])
+
+    result = await dispatch(run, session, _tc("save_memory", {"text": text}), 0)
+
+    assert result.is_error is True
+    assert session.saved_memory is False
+    assert not memory.MEMORY_FILE.exists()
+
+
+@pytest.mark.parametrize("text", ["", " ", "\n\t", "\u2000\u2028"])
+async def test_regression_append_log_blank_entry_returns_error(mem_paths, text) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+
+    result = await dispatch(run, Session(), _tc("append_log", {"entry": text}), 0)
+
+    assert result.is_error is True
+    assert list(mem_paths.glob("*.md")) == []
+
+
+@pytest.mark.parametrize(
+    "name, field", [("save_memory", "text"), ("append_log", "entry")]
+)
+@pytest.mark.parametrize("text", ["", " \n\t"])
+async def test_blank_persistence_handlers_raise_without_writing(
+    mem_paths, name, field, text
+) -> None:
+    session = Session(saved_memory=True)
+    handler = build_registry({})[name].handler
+
+    with pytest.raises(ValueError, match=f"{field} must not be blank"):
+        await handler(session, {field: text})
+
+    assert session.saved_memory is True
+    assert list(mem_paths.glob("*.md")) == []
+
+
+async def test_save_memory_storage_failure_does_not_mark_fact_saved(
+    mem_paths, mocker
+) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+    session = Session()
+    mocker.patch.object(memory, "save_fact", side_effect=OSError("disk full"))
+
+    result = await dispatch(
+        run, session, _tc("save_memory", {"text": "use metric units"}), 0
+    )
+
+    assert result.is_error is True
+    assert "disk full" in str(result.content)
+    assert session.saved_memory is False
+
+
+@pytest.mark.parametrize("text", ["x", "界"])
+async def test_save_memory_accepts_single_character_fact(mem_paths, text) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+    session = Session()
+
+    result = await dispatch(run, session, _tc("save_memory", {"text": text}), 0)
+
+    assert result.is_error is False
+    assert session.saved_memory is True
+    assert memory.MEMORY_FILE.read_text() == text + "\n"
+
+
+@pytest.mark.parametrize("text", ["x", "界"])
+async def test_append_log_accepts_single_character_entry(mem_paths, text) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+
+    result = await dispatch(run, Session(), _tc("append_log", {"entry": text}), 0)
+
+    assert result.is_error is False
+    assert memory.load_recent_entries(1) == text
+
+
+@pytest.mark.parametrize(
+    "name, field", [("save_memory", "text"), ("append_log", "entry")]
+)
+@pytest.mark.parametrize("value", [None, True, 1, [], {}, ""])
+async def test_persistence_tool_schema_rejects_invalid_text_before_handler(
+    mem_paths, name, field, value
+) -> None:
+    registry = build_registry({})
+    run = _mk_run(local_registry=registry, tool_schemas=schemas(registry))
+
+    result = await dispatch(run, Session(), _tc(name, {field: value}), 0)
+
+    assert result.is_error is True
+    assert str(result.content).startswith(f"invalid arguments for {name}:")
+    assert list(mem_paths.glob("*.md")) == []
 
 
 # ---------- _handle_create_job ----------

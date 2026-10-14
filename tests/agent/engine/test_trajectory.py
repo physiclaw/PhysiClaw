@@ -1,10 +1,18 @@
 """Tests for `physiclaw.agent.engine.trajectory` — the turn-tagged history of
 plan + scratchpad states that the reflect corrective feeds the agent.
+
+The mutation pass accepts two cosmetic survivors that wrap reader guidance
+or the elision notice in `XX`; ordering, retained entries, and size/count
+boundaries are checked independently of those strings.
 """
 
 from __future__ import annotations
 
+import re
+
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.agent.engine import trajectory
 from physiclaw.agent.engine.session import Session
@@ -174,3 +182,76 @@ def test_render_edge_entry_is_never_trimmed() -> None:
     # Budget fits both — the edge (oldest) entry appears in full, not sliced.
     out = trajectory.render(s, budget=10**9, max_count=300)
     assert "A" * 300 in out and "B" * 300 in out
+
+
+@pytest.mark.parametrize("budget, expected_turns", [(42, [1]), (43, [0, 1])])
+def test_render_counts_entry_headers_at_exact_budget_boundary(
+    budget, expected_turns
+) -> None:
+    # Each [tN] scratchpad header is 16 characters, plus five/six for the body.
+    session = Session(scratchpad_log=[(0, "first"), (1, "second")])
+
+    text = trajectory.render(session, budget=budget, max_count=10)
+
+    turns = [int(t) for t in re.findall(r"^\[t(\d+)\] scratchpad$", text, re.MULTILINE)]
+    assert turns == expected_turns
+
+
+def test_render_stops_at_oversize_entry_without_skipping_to_older_history() -> None:
+    session = Session(scratchpad_log=[(0, "old"), (1, "x" * 100), (2, "new")])
+
+    text = trajectory.render(session, budget=60, max_count=10)
+
+    assert re.findall(r"\[t(\d+)\]", text) == ["2"]
+    assert "(2 earlier entries elided to fit)" in text
+
+
+def test_render_charges_cumulative_size_across_three_entries() -> None:
+    session = Session(scratchpad_log=[(0, "a"), (1, "b"), (2, "c")])
+
+    text = trajectory.render(session, budget=34, max_count=10)
+
+    assert re.findall(r"\[t(\d+)\]", text) == ["1", "2"]
+
+
+@pytest.mark.parametrize("max_count, expected_turns", [(2, [2, 3]), (4, [0, 1, 2, 3])])
+def test_render_orders_interleaved_plan_and_scratchpad_history(
+    max_count, expected_turns
+) -> None:
+    session = Session(
+        plan_log=[(1, "first plan"), (3, "later plan")],
+        scratchpad_log=[(0, "old notes"), (2, "new notes")],
+    )
+
+    text = trajectory.render(session, budget=1000, max_count=max_count)
+
+    assert [int(t) for t in re.findall(r"\[t(\d+)\]", text)] == expected_turns
+
+
+def test_render_describes_one_elided_entry_in_singular() -> None:
+    session = Session(scratchpad_log=[(0, "old"), (1, "new")])
+
+    text = trajectory.render(session, budget=1000, max_count=1)
+
+    assert "(1 earlier entry elided to fit)" in text
+
+
+@given(
+    values=st.lists(
+        st.text(alphabet="abcdefgh", min_size=1, max_size=100), min_size=1, max_size=30
+    ),
+    max_count=st.integers(min_value=1, max_value=30),
+    budget=st.integers(min_value=0, max_value=1000),
+)
+def test_render_keeps_ordered_newest_suffix_and_full_latest_entry(
+    values, max_count, budget
+) -> None:
+    session = Session(scratchpad_log=list(enumerate(values)))
+
+    text = trajectory.render(session, budget=budget, max_count=max_count)
+
+    turns = [int(t) for t in re.findall(r"^\[t(\d+)\] scratchpad$", text, re.MULTILINE)]
+    assert 1 <= len(turns) <= min(max_count, len(values))
+    assert turns == list(range(len(values) - len(turns), len(values)))
+    assert f"[t{len(values) - 1}] scratchpad\n{values[-1]}\n" in text
+    assert ("elided" in text) == (len(turns) < len(values))

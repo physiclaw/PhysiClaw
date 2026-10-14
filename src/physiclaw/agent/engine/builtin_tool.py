@@ -95,30 +95,29 @@ async def _handle_note(session: Session, args: dict) -> str:
     msg = f"noted: {summary}"
     sp_arg = args.get("scratchpad")
     if sp_arg is not None:
-        try:
-            msg += f" | {scratchpad.write(session, sp_arg)}"
-        except ValueError as e:
-            msg += f" | scratchpad rejected: {e}"
+        msg += f" | {scratchpad.write(session, sp_arg)}"
     return msg
 
 
 async def _handle_update_progress(session: Session, args: dict) -> str:
-    try:
-        session.plan.update(**args)
-    except ValueError as e:
-        return f"update_progress rejected: {e}"
+    session.plan.update(**args)
     return "progress updated"
 
 
 async def _handle_append_log(_session: Session, args: dict) -> str:
+    if not args["entry"].strip():
+        raise ValueError("entry must not be blank")
     memory.append_log(args["entry"])
     return "log appended"
 
 
 async def _handle_save_memory(session: Session, args: dict) -> str:
-    memory.save_fact(args["text"])
+    text = args["text"].strip()
+    if not text:
+        raise ValueError("text must not be blank")
+    memory.save_fact(text)
     session.saved_memory = True  # satisfies the pre-close memory-cue gate
-    return memory.render_result(f"saved: {args['text'].strip()!r}")
+    return memory.render_result(f"saved: {text!r}")
 
 
 async def _handle_create_job(session: Session, args: dict) -> str:
@@ -313,11 +312,10 @@ _NOTE = LocalTool(
         "MUST be called every turn alongside whatever other tool you call. "
         "`summary` is one line (≤20 words): the LAST result + this turn's "
         "action (`qty still 2 after retry — opening product page`), never "
-        "intent alone. **It is the ONLY part of the turn that survives "
-        "compaction** — once a turn ages out, the screen, the tap, every "
-        "other tool_result is gone; your `summary` alone represents that "
-        "turn, and intent-only summaries hide a retry loop from your future "
-        "self.\n"
+        "intent alone. Your `summary` represents that turn after compaction: "
+        "screens and ordinary tool results are erased; loaded memory and "
+        "skills are preserved separately. Intent-only summaries hide a retry "
+        "loop from your future self.\n"
         "\n"
         "Optional `scratchpad` field — see CONVENTION § Scratchpad. "
         "REQUIRED on a ⚠ pre-compression checkpoint turn (a tail notice "
@@ -421,6 +419,7 @@ _APPEND_LOG = LocalTool(
         "properties": {
             "entry": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Format: `[HH:MM] app: page -> page - what you did`",
             },
         },
@@ -440,7 +439,11 @@ _SAVE_MEMORY = LocalTool(
     input_schema={
         "type": "object",
         "properties": {
-            "text": {"type": "string"},
+            "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "A nonblank durable fact or preference.",
+            },
         },
         "required": ["text"],
     },
@@ -844,8 +847,8 @@ def build_registry(
                 "trips. Aborts safely the moment the screen stops matching "
                 "the rehearsed path; the result shows the completed steps "
                 "plus the current screen, so you can continue manually. A "
-                "macro that aborted this session cannot be called again, "
-                "with or without `start_at`."
+                "macro that aborted after executing a gesture this session "
+                "cannot be called again, with or without `start_at`."
             ),
             input_schema=_RUN_MACRO_SCHEMA,
             handler=_handle_run_macro_factory(macro_registry or {}, pack_macros),

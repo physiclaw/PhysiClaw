@@ -159,6 +159,142 @@ async def test_loop_stucks_after_consecutive_correctives(patched_loop_deps) -> N
     assert len(provider.calls) == CORRECTIVE_LIMIT
 
 
+# ---------- successful state writes ----------
+
+
+def _state_write_turn() -> AssistantMessage:
+    return _asst(
+        tool_calls=[
+            _tc("note", {"summary": "state saved", "scratchpad": "saved notes"}),
+            _tc(
+                "update_progress",
+                {"steps": [{"content": "old step", "status": "pending"}]},
+            ),
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "note_args, progress_args",
+    [
+        ({"summary": "old step", "scratchpad": "x" * (scratchpad.MAX_CHARS + 1)}, {}),
+        ({"summary": 123, "scratchpad": "new notes"}, {"steps": "invalid"}),
+        ({"summary": "old step"}, {"user_said": " \t"}),
+        (
+            {"summary": "old step"},
+            {
+                "steps": [
+                    {"content": "one", "status": "in_progress"},
+                    {"content": "two", "status": "in_progress"},
+                ]
+            },
+        ),
+    ],
+)
+async def test_regression_failed_writes_do_not_replace_trajectory_history(
+    note_args, progress_args
+) -> None:
+    registry = build_registry({})
+    provider = FakeProvider(
+        [
+            _state_write_turn(),
+            _asst(
+                tool_calls=[
+                    _tc("note", note_args),
+                    _tc("update_progress", progress_args),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "done"}),
+                ]
+            ),
+        ]
+    )
+    session = Session()
+    messages = _scaffold_messages()
+
+    await drive(_loop_run(provider, registry), session, messages)
+
+    assert session.sentinel_status == DONE
+    assert session.plan_log == [(0, session.plan.snapshot())]
+    assert session.scratchpad_log == [(0, "saved notes")]
+    assert any(isinstance(m, ToolResultMessage) and m.is_error for m in messages)
+
+
+async def test_loop_records_successful_rewrites_even_when_content_is_unchanged() -> (
+    None
+):
+    registry = build_registry({})
+    provider = FakeProvider(
+        [
+            _state_write_turn(),
+            _state_write_turn(),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "done"}),
+                ]
+            ),
+        ]
+    )
+    session = Session()
+    messages = _scaffold_messages()
+
+    await drive(_loop_run(provider, registry), session, messages)
+
+    assert session.sentinel_status == DONE
+    assert [t for t, _ in session.plan_log] == [0, 1]
+    assert session.scratchpad_log == [(0, "saved notes"), (1, "saved notes")]
+
+
+async def test_regression_blank_memory_save_keeps_close_checkpoint_active(
+    mem_paths,
+) -> None:
+    registry = build_registry({})
+    provider = FakeProvider(
+        [
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "remember: use metric units"}),
+                    _tc("save_memory", {"text": " \n"}),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "premature"}),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "saving"}),
+                    _tc("save_memory", {"text": "use metric units"}),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "saved"}),
+                ]
+            ),
+        ]
+    )
+    session = Session()
+    messages = _scaffold_messages()
+
+    await drive(_loop_run(provider, registry), session, messages)
+
+    assert len(provider.calls) == 4
+    assert session.sentinel_recap == "saved"
+    assert memory_mod.MEMORY_FILE.read_text() == "use metric units\n"
+    assert any(
+        isinstance(m, UserMessage) and "haven't saved it" in str(m.content)
+        for m in messages
+    )
+
+
 # ---------- pre-compression checkpoint ----------
 
 
@@ -287,7 +423,9 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
         provider.requests[3][2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
     )
     assert any(
-        isinstance(m, ToolResultMessage) and "scratchpad rejected" in str(m.content)
+        isinstance(m, ToolResultMessage)
+        and m.is_error
+        and "Summarize before writing" in str(m.content)
         for m in provider.requests[3]
     )
     assert session.scratchpad == "previous"
