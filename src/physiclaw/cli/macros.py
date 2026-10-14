@@ -14,6 +14,7 @@ successful rehearsal is evidence the path works and resets
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -29,7 +30,7 @@ from physiclaw.cli._format import (
 from physiclaw.common import paths, verdict
 from physiclaw.common.config import CONFIG
 from physiclaw.common.ready import START_HINT
-from physiclaw.common.text import read_text
+from physiclaw.common.text import clip, iter_jsonl
 from physiclaw.macros import runlog as macro_runlog
 from physiclaw.macros import runner as macro_runner
 from physiclaw.macros import stats as macro_stats
@@ -67,7 +68,7 @@ def init(
     with --app a pack's or a playbook's recorded hand."""
     try:
         path = macro_store.init_macro(name, root=_pack_macros_root(app))
-    except MacroError as e:
+    except (MacroError, OSError) as e:
         exit_error(str(e))
     typer.echo(ok(str(path)))
     typer.echo("Next:")
@@ -84,7 +85,7 @@ def init(
     )
 
 
-def _pack_macros_root(app: str | None):
+def _pack_macros_root(app: str | None) -> Path | None:
     """Where `--app` puts a macro — `pack.macros_root`, the layout rule's
     one home; None for the user macros dir."""
     if app is None:
@@ -222,7 +223,9 @@ def run(
         exit_error(str(e))
     values = parse_inputs(inputs)
     try:
-        result = asyncio.run(_run_live(spec, values, start_at, stop_after))
+        result = asyncio.run(
+            _run_live(spec, values, start_at, stop_after, record_as=name)
+        )
     except MacroError as e:
         # Already recorded as bad_input by run_and_record.
         exit_error(str(e))
@@ -262,7 +265,7 @@ def runs_cmd(
             "omit to list recent runs."
         ),
     ] = "",
-    n: Annotated[int, typer.Option("-n", help="Runs to list.")] = 10,
+    n: Annotated[int, typer.Option("-n", min=1, help="Runs to list.")] = 10,
 ) -> None:
     """List recent macro runs, or replay one run's per-step log."""
     if not run_id:
@@ -311,7 +314,8 @@ def runs_cmd(
                 if e.get("screen_text"):
                     typer.echo(_field("screen", e["screen_text"], _SCREEN_CHARS))
             elif e["event"] == "end" and e.get("detail"):
-                typer.echo(f"  end: {e.get('reason')} — {e['detail']}")
+                reason = e.get("reason") or ("ok" if e["ok"] else "aborted")
+                typer.echo(f"  end: {reason} — {e['detail']}")
 
 
 def _field(label: str, value: str, limit: int) -> str:
@@ -323,15 +327,8 @@ def _field(label: str, value: str, limit: int) -> str:
     embedded newlines, and left as-is those rows restart at column 0, which
     stops the block reading as one field of the step above it."""
     pad = _STEP_INDENT + " " * (len(label) + 2)
-    body = _clip(value, limit).replace("\n", "\n" + pad)
+    body = clip(value, limit).replace("\n", "\n" + pad)
     return f"{_STEP_INDENT}{label}: {body}"
-
-
-def _clip(text: str, limit: int) -> str:
-    """Bound one rendered field, marking the cut. Truncating silently would
-    read as a short value rather than a long one — the same reason
-    `runlog` marks its own clips."""
-    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _fmt_args(args: dict) -> str:
@@ -349,40 +346,82 @@ def _fmt_args(args: dict) -> str:
 def _collect_runs(*, limit: int | None = None, tail: str = "") -> list[list[dict]]:
     """Recent runs, newest first — each a list of that run's event lines,
     read from the per-run dirs (`macro-run-<hex6>/events.jsonl`). `tail`
-    keeps only ids starting with that hex fragment and `limit` caps how many
-    are read: both filter on the DIRECTORY NAME, so we never open, let alone
-    JSON-parse, a run the caller is not going to show."""
+    filters directory names before reading. `limit` counts readable runs,
+    so an empty or damaged log cannot hide older history."""
     root = paths.macros_log_dir()
-    if not root.exists():
+    try:
+        dirs = sorted(
+            (
+                d
+                for d in root.iterdir()
+                if d.name.startswith(macro_runlog.RUN_ID_PREFIX)
+                and d.name[len(macro_runlog.RUN_ID_PREFIX) :].startswith(tail)
+            ),
+            key=_mtime,
+            reverse=True,
+        )
+    except FileNotFoundError:
         return []
-    dirs = sorted(
-        (
-            d
-            for d in root.iterdir()
-            if d.name.startswith(macro_runlog.RUN_ID_PREFIX)
-            and d.name[len(macro_runlog.RUN_ID_PREFIX) :].startswith(tail)
-        ),
-        key=_mtime,
-        reverse=True,
-    )
+    except OSError as e:
+        exit_error(f"cannot read macro history: {e}")
     out: list[list[dict]] = []
-    for d in dirs if limit is None else dirs[:limit]:
+    for d in dirs:
         try:
-            lines = read_text(d / "events.jsonl").splitlines()
+            events = [
+                e for e in iter_jsonl(d / "events.jsonl") if _valid_event(e, d.name)
+            ]
         except OSError:
             continue
-        events = []
-        for raw in lines:
-            try:
-                events.append(json.loads(raw))
-            except ValueError:
-                continue
         if events:
             out.append(events)
+            if limit is not None and len(out) >= limit:
+                break
     return out
 
 
-def _mtime(d) -> float:
+def _valid_event(event: dict, run_id: str) -> bool:
+    """Validate the fields the history renderer uses, not the whole log schema.
+
+    Logging is fail-open: keep useful steps even when the start record is
+    missing, and tolerate absent/null optional fields from older writers.
+    """
+    if event.get("run") != run_id or not isinstance(event.get("macro"), str):
+        return False
+    if not event["macro"]:
+        return False
+    text_fields = (
+        "ts",
+        "caller",
+        "start_at",
+        "at",
+        "name",
+        "verdict",
+        "detail",
+        "image",
+        "screen_text",
+        "reason",
+    )
+    if any(
+        event.get(k) is not None and not isinstance(event[k], str) for k in text_fields
+    ):
+        return False
+    kind = event.get("event")
+    if kind == "step":
+        return (
+            type(event.get("i")) is int
+            and event["i"] > 0
+            and isinstance(event.get("tool"), str)
+            and bool(event["tool"])
+            and isinstance(event.get("outcome"), str)
+            and bool(event["outcome"])
+            and (event.get("args") is None or isinstance(event["args"], dict))
+        )
+    if kind == "end":
+        return type(event.get("ok")) is bool
+    return kind == "start"
+
+
+def _mtime(d: Path) -> float:
     """Sort key that survives a dir vanishing mid-listing (retention purge)."""
     try:
         return d.stat().st_mtime
@@ -393,14 +432,15 @@ def _mtime(d) -> float:
 def _run_row(events: list[dict]) -> str:
     first, last = events[0], events[-1]
     end = last if last.get("event") == "end" else {}
-    state = ok("ok") if end.get("ok") else step_fail(end.get("reason", "incomplete"))
+    reason = (end.get("reason") or "aborted") if end else "incomplete"
+    state = ok("ok") if end.get("ok") else step_fail(reason)
     steps = sum(1 for e in events if e.get("event") == "step")
     # A start_at run replayed only part of the macro — without this the row
     # reads like a full run that happens to have fewer steps.
     resumed = f"  from {first['start_at']!r}" if first.get("start_at") else ""
     return (
-        f"{first['run']}  {first.get('ts', '')[:16]}  {first['macro']}  "
-        f"{first.get('caller', '?')}  {state}  {steps} step(s){resumed}"
+        f"{first['run']}  {(first.get('ts') or '')[:16]}  {first['macro']}  "
+        f"{first.get('caller') or '?'}  {state}  {steps} step(s){resumed}"
     )
 
 
@@ -431,7 +471,12 @@ def stats_cmd() -> None:
 
 
 async def _run_live(
-    spec: Macro, values: dict[str, str], start_at: str = "", stop_after: str = ""
+    spec: Macro,
+    values: dict[str, str],
+    start_at: str = "",
+    stop_after: str = "",
+    *,
+    record_as: str,
 ) -> macro_runner.MacroRunResult:
     # Local import: the mcp SDK only loads when actually rehearsing.
     from physiclaw.agent.engine.mcp_tool import McpClient
@@ -444,4 +489,5 @@ async def _run_live(
             caller="cli",
             start_at=start_at,
             stop_after=stop_after,
+            record_as=record_as,
         )
