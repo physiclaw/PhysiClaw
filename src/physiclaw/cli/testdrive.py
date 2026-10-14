@@ -17,7 +17,7 @@ diagram defines them; the screen mapping comes later in
 from __future__ import annotations
 
 import re
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -81,7 +81,7 @@ def _parse_move(cmd: str) -> tuple[float, float] | None:
 
 def testdrive(
     port: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--port", help="Serial port (default: auto-detect)."),
     ] = None,
 ) -> None:
@@ -105,7 +105,7 @@ def testdrive(
     # which pulls in the camera stack (cv2) — too heavy for CLI import
     # time. Same rule as `flash` and `server`.
     from physiclaw.core.hardware.arm import StylusArm
-    from physiclaw.core.hardware.device import DeviceNotFound, HardwareError
+    from physiclaw.core.hardware.device import HardwareError
 
     # ↑/↓ recall in the command loop: importing readline swaps input()'s
     # line reader for the line editor (libedit on macOS) — jog commands
@@ -122,9 +122,10 @@ def testdrive(
     typer.echo("→ Looking for the control board …")
     try:
         arm = StylusArm(port)
-    except DeviceNotFound as e:
+    except (HardwareError, OSError) as e:
         exit_error(str(e))
 
+    completed = False
     try:
         arm.setup()
         typer.echo(ok(f"Board answered on {arm.port} — the firmware is alive.\n"))
@@ -166,10 +167,18 @@ def testdrive(
                 )
                 continue
             arm.jog(dx, dy)
-    except HardwareError as e:
+        completed = True
+    except (HardwareError, OSError) as e:
         # Board answered at connect but died mid-run (cable yanked, alarm,
         # serial silence) — a plain exit, not a traceback.
         exit_error(f"the board stopped responding mid-run: {e}")
     finally:
-        # Coil released and port freed on every path, including Ctrl-C.
-        arm.close()
+        # Always attempt release; a cleanup failure must not replace an
+        # operation's exception or cancellation already leaving the try block.
+        try:
+            arm.close()
+        except (HardwareError, OSError) as e:
+            message = f"could not close the board connection: {e}"
+            if completed:
+                exit_error(message)
+            typer.echo(f"error: {message}", err=True)
