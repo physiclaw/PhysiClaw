@@ -5,6 +5,14 @@ The network is mocked at the module's `http_get` seam: a routing fake maps
 each URL to canned bytes (or raises a 404 HTTPError for anything unmapped),
 so no test hits the wire. Packs are built in-memory as real STORED zips so
 extraction, zip-slip, and checksum paths run for real.
+
+Mutation review accepts diagnostic/progress formatting, abbreviated hashes,
+private scratch/lock names and contents, JSON indentation, and debug traceback
+verbosity. missing_ok variants are equivalent under suppress(OSError); an
+unknown default CI value still enables sync. Adding uppercase X to the hex
+alphabet is equivalent because the input is lowercased first. Windows locks
+can extend past EOF, so lock-file initialization variants do not change the
+byte-zero lock (https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/locking).
 """
 
 from __future__ import annotations
@@ -14,6 +22,9 @@ import importlib
 import io
 import json
 import logging
+import os
+import sys
+import threading
 import urllib.error
 import zipfile
 from pathlib import Path
@@ -21,6 +32,9 @@ from types import SimpleNamespace
 
 import pytest
 import typer
+from freezegun import freeze_time
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 osk = importlib.import_module("physiclaw.cli.sync_official_skills")
@@ -129,9 +143,9 @@ def _build_pack(
     }
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        zf.writestr("source.json", json.dumps(src))
+        zf.writestr(zipfile.ZipInfo("source.json"), json.dumps(src))
         for n in skill_names:
-            zf.writestr(f"skills/{n}/SKILL.md", contents[n])
+            zf.writestr(zipfile.ZipInfo(f"skills/{n}/SKILL.md"), contents[n])
     data = buf.getvalue()
     return data, hashlib.sha256(data).hexdigest()
 
@@ -197,6 +211,7 @@ def test_latest_missing_commit_errors(official_home: Path, mocker, capsys) -> No
 # ---------- fresh install ----------
 
 
+@freeze_time("2026-10-15 08:09:10")
 def test_fresh_install_mounts_and_records_state(
     official_home: Path, mocker, capsys
 ) -> None:
@@ -214,7 +229,8 @@ def test_fresh_install_mounts_and_records_state(
     assert state["skillCount"] == 2
     assert state["zipHash"] == f"sha256:{hexd}"
     assert state["url"] == ZIP_URL
-    assert state["syncedAt"].endswith("Z")
+    assert state["schemaVersion"] == 1
+    assert state["syncedAt"] == "2026-10-15T08:09:10Z"
     # No staging dir left behind.
     assert not (official_home / osk.STAGING_DIR).exists()
     assert "synced 2 official skill(s)" in capsys.readouterr().out
@@ -225,6 +241,8 @@ def test_fresh_install_mounts_and_records_state(
 
 def test_up_to_date_skips_download(official_home: Path, mocker, capsys) -> None:
     official_home.mkdir(parents=True)
+    (official_home / "skills").mkdir()
+    (official_home / "source.json").write_text("{}")
     (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "a" * 40}))
     calls: list[str] = []
     _patch_net(mocker, _routes("a" * 40, ["jd"]), calls)
@@ -410,6 +428,7 @@ def test_skill_hash_matches_no_warning(official_home: Path, mocker, capsys) -> N
 
     out = capsys.readouterr().out
     assert "skill hash mismatch" not in out
+    assert "manifest lists" not in out
     assert (official_home / "skills" / "jd").is_dir()
 
 
@@ -472,6 +491,8 @@ def test_dry_run_reports_install_without_downloading(
 
 def test_dry_run_reports_up_to_date(official_home: Path, mocker, capsys) -> None:
     official_home.mkdir(parents=True)
+    (official_home / "skills").mkdir()
+    (official_home / "source.json").write_text("{}")
     (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "a" * 40}))
     _patch_net(mocker, _routes("a" * 40, ["jd"]))
 
@@ -539,8 +560,9 @@ def test_auto_sync_skipped_when_disabled(mocker, monkeypatch) -> None:
     thread.assert_not_called()
 
 
-def test_auto_sync_skipped_under_ci(auto_env, monkeypatch) -> None:
-    monkeypatch.setenv("CI", "true")
+@pytest.mark.parametrize("value", ["true", "1", "yes", " TRUE "])
+def test_auto_sync_skipped_under_ci(auto_env, monkeypatch, value) -> None:
+    monkeypatch.setenv("CI", value)
 
     osk.maybe_auto_sync()
 
@@ -591,3 +613,702 @@ def test_run_sync_quiet_logs_sync_error_at_debug(mocker, caplog) -> None:
 def test_run_sync_quiet_swallows_unexpected_error(mocker) -> None:
     mocker.patch.object(osk, "sync", side_effect=RuntimeError("boom"))
     osk._run_sync_quiet()  # any error is non-fatal
+
+
+def _snapshot(official: Path) -> dict[str, bytes]:
+    owned = [
+        official / "skills",
+        official / "source.json",
+        official / osk.SYNC_STATE_FILE,
+    ]
+    files = [
+        p
+        for root in owned
+        for p in ([root] if root.is_file() else root.rglob("*"))
+        if p.is_file()
+    ]
+    return {p.relative_to(official).as_posix(): p.read_bytes() for p in files}
+
+
+@pytest.fixture
+def installed(official_home, mocker):
+    _patch_net(mocker, _routes("old", ["old"]))
+    osk.sync(emit=lambda _: None)
+    before = _snapshot(official_home)
+    _patch_net(mocker, _routes("new", ["new"]))
+    return before
+
+
+def _fail_replace(mocker, official, step, error):
+    replace = osk.os.replace
+    action, name = step.split(":")
+
+    def replace_once(source, destination):
+        source, destination = Path(source), Path(destination)
+        matches = (
+            source == official / name
+            if action == "park"
+            else destination == official / name
+            and source.parent.name.startswith(osk.STAGING_DIR)
+        )
+        if matches:
+            raise error
+        return replace(source, destination)
+
+    mocker.patch.object(osk.os, "replace", side_effect=replace_once)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "park:skills",
+        "install:skills",
+        "park:source.json",
+        "install:source.json",
+        "park:.sync-state.json",
+        "install:.sync-state.json",
+    ],
+)
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        (PermissionError("synthetic rename failure"), osk.SyncError),
+        (KeyboardInterrupt("operator stop"), KeyboardInterrupt),
+    ],
+)
+def test_regression_failed_swap_restores_installed_pack(
+    official_home, installed, mocker, step, error, expected
+):
+    _fail_replace(mocker, official_home, step, error)
+
+    with pytest.raises(expected, match=str(error)):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+    assert not list(official_home.glob(".sync-backup-*"))
+    assert not list(official_home.glob(".sync-staging*"))
+
+
+def test_regression_state_write_failure_leaves_install_unchanged(
+    official_home, installed, mocker
+):
+    mocker.patch.object(osk, "write_text", side_effect=OSError("synthetic disk full"))
+
+    with pytest.raises(osk.SyncError, match="disk full"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+def test_regression_missing_tree_is_reinstalled_despite_current_marker(
+    official_home, mocker
+):
+    official_home.mkdir(parents=True)
+    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "same"}))
+    _patch_net(mocker, _routes("same", ["jd"]))
+
+    osk.sync()
+
+    assert (official_home / "skills" / "jd" / "SKILL.md").is_file()
+
+
+@pytest.mark.parametrize("commit", [None, "", "   ", 12, [], {}, True])
+def test_regression_latest_commit_requires_nonempty_string(
+    official_home, mocker, commit
+):
+    _patch_net(mocker, {LATEST_URL: json.dumps({"commit": commit}).encode()})
+
+    with pytest.raises(osk.SyncError, match="commit"):
+        osk.sync()
+
+    assert not (official_home / "skills").exists()
+
+
+def test_regression_pack_commit_mismatch_preserves_installed_pack(
+    official_home, installed, mocker
+):
+    routes = _routes("wrong", ["new"])
+    routes[LATEST_URL] = json.dumps({"commit": "expected"}).encode()
+    _patch_net(mocker, routes)
+
+    with pytest.raises(osk.SyncError, match="commit"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+def _replace_manifest(routes, source):
+    original = zipfile.ZipFile(io.BytesIO(routes[ZIP_URL]))
+    result = io.BytesIO()
+    with original, zipfile.ZipFile(result, "w") as updated:
+        for item in original.infolist():
+            updated.writestr(
+                item.filename,
+                json.dumps(source)
+                if item.filename == "source.json"
+                else original.read(item.filename),
+            )
+    data = result.getvalue()
+    return {**routes, ZIP_URL: data, SHA_URL: hashlib.sha256(data).hexdigest().encode()}
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        12,
+        "invalid",
+        {"name": "jd"},
+        [None],
+        [{"name": 12, "hash": "digest"}],
+        [{"name": "../outside", "hash": "digest"}],
+        [{"name": "/outside", "hash": "digest"}],
+        [{"name": "jd", "hash": 42}],
+    ],
+)
+def test_regression_invalid_hash_metadata_warns_without_aborting(
+    official_home, mocker, capsys, entries
+):
+    routes = _replace_manifest(
+        _routes("new", ["jd"]), {"commit": "new", "skills": entries}
+    )
+    _patch_net(mocker, routes)
+
+    osk.sync()
+
+    assert (official_home / "skills" / "jd" / "SKILL.md").is_file()
+    assert "manifest" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "url, code, expected",
+    [(LATEST_URL, 404, 0), (LATEST_URL, 500, 1), (ZIP_URL, 404, 1), (SHA_URL, 404, 1)],
+)
+def test_regression_http_errors_close_response_body(
+    official_home, mocker, url, code, expected
+):
+    body = io.BytesIO(b"error response")
+    routes = _routes("new", ["jd"])
+    http_get = _make_http_get(routes)
+
+    def get(request, **kwargs):
+        if request == url:
+            raise urllib.error.HTTPError(url, code, "fixture", {}, body)
+        return http_get(request, **kwargs)
+
+    mocker.patch.object(osk, "http_get", side_effect=get)
+
+    result = runner.invoke(skills_mod.skills_app, ["sync", "official"])
+
+    assert result.exit_code == expected
+    assert body.closed
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_regression_thread_start_failure_is_nonfatal(auto_env, caplog):
+    auto_env.return_value.start.side_effect = RuntimeError("cannot start thread")
+
+    with caplog.at_level(logging.DEBUG, logger=osk.__name__):
+        osk.maybe_auto_sync()
+
+    assert "cannot start thread" in caplog.text
+
+
+def test_regression_overlapping_sync_cannot_replace_another_staging_tree(
+    official_home, mocker
+):
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    routes = _routes("new", ["jd"])
+    real_get = _make_http_get(routes)
+
+    def get(url, **kwargs):
+        if url == ZIP_URL:
+            entered.set()
+            assert release.wait(5)
+        return real_get(url, **kwargs)
+
+    def first_sync():
+        try:
+            osk.sync(emit=lambda _: None)
+        except BaseException as exc:
+            errors.append(exc)
+
+    mocker.patch.object(osk, "http_get", side_effect=get)
+    worker = threading.Thread(target=first_sync)
+    worker.start()
+    assert entered.wait(5)
+
+    try:
+        with pytest.raises(osk.SyncError, match="already running"):
+            osk.sync()
+    finally:
+        release.set()
+        worker.join(5)
+
+    assert not worker.is_alive()
+    assert errors == []
+    assert (official_home / "skills" / "jd" / "SKILL.md").is_file()
+
+
+@given(st.text(alphabet="0123456789abcdef", min_size=64, max_size=64))
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_checksum_mismatch_never_modifies_installed_pack(
+    official_home, installed, mocker, checksum
+):
+    routes = _routes("new", ["new"])
+    assume(checksum != routes[SHA_URL].decode().split()[0])
+    routes[SHA_URL] = checksum.encode()
+    _patch_net(mocker, routes)
+
+    with pytest.raises(osk.SyncError, match="checksum mismatch"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        (OSError("install blocked"), osk.SyncError),
+        (KeyboardInterrupt("operator stop"), KeyboardInterrupt),
+    ],
+)
+def test_failed_rollback_retains_backup_and_failure(
+    official_home, installed, mocker, caplog, error, expected
+):
+    replace = osk.os.replace
+
+    def fail(source, destination):
+        source = Path(source)
+        if source.name == "skills" and source.parent.name.startswith(osk.STAGING_DIR):
+            raise error
+        if source.parent.name.startswith(".sync-backup-"):
+            raise PermissionError("restore blocked")
+        return replace(source, destination)
+
+    mocker.patch.object(osk.os, "replace", side_effect=fail)
+
+    with pytest.raises(expected, match=str(error)) as caught:
+        osk.sync()
+
+    backups = list(official_home.glob(".sync-backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "skills" / "old" / "SKILL.md").read_bytes() == installed[
+        "skills/old/SKILL.md"
+    ]
+    assert "backups kept at" in str(caught.value) + caplog.text
+
+
+@pytest.mark.parametrize("body", [b"not json", b"\xff", b"[]", b"null"])
+def test_invalid_latest_json_is_clean_cli_error(official_home, mocker, body):
+    _patch_net(mocker, {LATEST_URL: body})
+
+    result = runner.invoke(skills_mod.skills_app, ["sync", "official"])
+
+    assert result.exit_code == 1
+    assert "JSON" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_insecure_base_url_is_refused_without_request(official_home, mocker):
+    osk._load_config.return_value.skills.official_base_url = "http://site.test/skills"
+    get = mocker.patch.object(osk, "http_get")
+
+    with pytest.raises(osk.SyncError, match="non-HTTPS"):
+        osk.sync()
+
+    get.assert_not_called()
+
+
+@pytest.mark.parametrize("url", [LATEST_URL, ZIP_URL])
+@pytest.mark.parametrize(
+    "error, expected, message",
+    [
+        (urllib.error.URLError("fixture offline"), osk.SyncError, "fixture offline"),
+        (OSError("fixture disk"), osk.SyncError, "fixture disk"),
+        (KeyboardInterrupt("stop"), KeyboardInterrupt, "stop"),
+    ],
+)
+def test_transport_failure_cleans_download_and_preserves_install(
+    official_home, installed, mocker, tmp_path, url, error, expected, message
+):
+    http_get = _make_http_get(_routes("new", ["new"]))
+
+    def get(request, **kwargs):
+        if request == url:
+            raise error
+        return http_get(request, **kwargs)
+
+    mocker.patch.object(osk, "http_get", side_effect=get)
+    mocker.patch.object(osk.tempfile, "tempdir", str(tmp_path))
+
+    with pytest.raises(expected, match=message):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+    assert not list(tmp_path.glob("physiclaw-official-*.zip"))
+
+
+@pytest.mark.parametrize("body", [b"", b"G" * 64, b"0" * 63, b"\xff"])
+def test_invalid_checksum_keeps_install(official_home, installed, mocker, body):
+    routes = _routes("new", ["new"])
+    routes[SHA_URL] = body
+    _patch_net(mocker, routes)
+
+    with pytest.raises(osk.SyncError, match="valid sha256sum"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+def test_corrupt_zip_is_reported_before_replacing_install(
+    official_home, installed, mocker
+):
+    data = b"not a zip"
+    _patch_net(
+        mocker,
+        {
+            LATEST_URL: b'{"commit":"new"}',
+            ZIP_URL: data,
+            SHA_URL: hashlib.sha256(data).hexdigest().encode(),
+        },
+    )
+
+    with pytest.raises(osk.SyncError, match="not a valid zip"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+@pytest.mark.parametrize("body", [b"not-json", b"[]", b"\xff"])
+def test_corrupt_local_state_does_not_block_reinstall(official_home, installed, body):
+    (official_home / osk.SYNC_STATE_FILE).write_bytes(body)
+
+    osk.sync()
+
+    assert (official_home / "skills" / "new" / "SKILL.md").is_file()
+
+
+@pytest.mark.parametrize("source", [None, [], "invalid"])
+def test_nonobject_source_metadata_uses_latest_commit(official_home, mocker, source):
+    _patch_net(mocker, _replace_manifest(_routes("new", ["jd"]), source))
+
+    osk.sync()
+
+    assert (
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["commit"] == "new"
+    )
+
+
+def test_malformed_source_json_uses_latest_commit(official_home, mocker):
+    read = osk.read_text
+
+    def read_source(path):
+        if path.name == "source.json":
+            return "not-json"
+        return read(path)
+
+    mocker.patch.object(osk, "read_text", side_effect=read_source)
+    _patch_net(mocker, _routes("new", ["jd"]))
+
+    osk.sync()
+
+    assert (
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["commit"] == "new"
+    )
+
+
+@pytest.mark.parametrize(
+    "force, expected", [(False, "no sync needed"), (True, "--force would re-sync")]
+)
+def test_dry_run_current_pack_does_not_write_or_download(
+    official_home, installed, mocker, capsys, force, expected
+):
+    calls = []
+    _patch_net(mocker, _routes("old", ["old"]), calls)
+
+    osk.sync(dry_run=True, force=force)
+
+    assert expected in capsys.readouterr().out
+    assert calls == [LATEST_URL]
+    assert _snapshot(official_home) == installed
+
+
+def test_dry_run_changed_commit_reports_update_without_writing(
+    official_home, installed, capsys
+):
+    osk.sync(dry_run=True)
+
+    assert "update old → new" in capsys.readouterr().out
+    assert _snapshot(official_home) == installed
+
+
+@pytest.mark.parametrize("existing", [b"", b"\0"])
+def test_windows_lock_uses_byte_zero_and_closes_handle(
+    official_home, monkeypatch, mocker, existing
+):
+    official_home.mkdir(parents=True)
+    (official_home / ".sync.lock").write_bytes(existing)
+    observed = []
+
+    def locking(fd, mode, size):
+        observed.append((fd, mode, size, os.lseek(fd, 0, os.SEEK_CUR)))
+
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(locking=locking, LK_NBLCK=2)
+    )
+    _patch_net(mocker, {})
+
+    osk.sync()
+
+    assert len(observed) == 1
+    assert observed[0][1:] == (2, 1, 0)
+    with pytest.raises(OSError):
+        os.fstat(observed[0][0])
+
+
+def test_windows_lock_contention_prevents_fetch(official_home, monkeypatch, mocker):
+    locking = mocker.Mock(side_effect=OSError("locked"))
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(locking=locking, LK_NBLCK=2)
+    )
+    get = mocker.patch.object(osk, "http_get")
+
+    with pytest.raises(osk.SyncError, match="already running"):
+        osk.sync()
+
+    get.assert_not_called()
+
+
+def test_manifest_missing_skill_warns_but_installs_valid_tree(
+    official_home, mocker, capsys
+):
+    source = {"commit": "new", "skills": [{"name": "ghost", "hash": "sha256:absent"}]}
+    _patch_net(mocker, _replace_manifest(_routes("new", ["jd"]), source))
+
+    osk.sync()
+
+    assert "ghost: in manifest but not extracted" in capsys.readouterr().out
+    assert (official_home / "skills" / "jd" / "SKILL.md").is_file()
+
+
+def test_directory_instead_of_manifest_is_rejected_before_swap(
+    official_home, installed, mocker
+):
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, "w") as archive:
+        archive.writestr("source.json/", "")
+        archive.writestr("skills/new/SKILL.md", "new")
+    raw = data.getvalue()
+    _patch_net(
+        mocker,
+        {
+            LATEST_URL: b'{"commit":"new"}',
+            ZIP_URL: raw,
+            SHA_URL: hashlib.sha256(raw).hexdigest().encode(),
+        },
+    )
+
+    with pytest.raises(osk.SyncError, match="unexpected package layout"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+def test_missing_installed_manifest_triggers_repair(official_home, installed, mocker):
+    (official_home / "source.json").unlink()
+    _patch_net(mocker, _routes("old", ["old"]))
+
+    osk.sync()
+
+    assert json.loads((official_home / "source.json").read_text())["commit"] == "old"
+
+
+def test_first_install_failure_leaves_no_partial_install(official_home, mocker):
+    _patch_net(mocker, _routes("new", ["jd"]))
+    _fail_replace(
+        mocker, official_home, "install:source.json", OSError("install blocked")
+    )
+
+    with pytest.raises(osk.SyncError, match="install blocked"):
+        osk.sync()
+
+    assert _snapshot(official_home) == {}
+    assert not list(official_home.glob(".sync-backup-*"))
+
+
+def test_download_cleanup_failure_preserves_checksum_diagnostic(
+    official_home, installed, mocker, tmp_path
+):
+    routes = _routes("new", ["new"])
+    routes[SHA_URL] = b"0" * 64
+    _patch_net(mocker, routes)
+    unlink = Path.unlink
+
+    def fail_download_unlink(path, **kwargs):
+        if path.name.startswith("physiclaw-official-"):
+            raise PermissionError("cleanup blocked")
+        return unlink(path, **kwargs)
+
+    mocker.patch.object(Path, "unlink", fail_download_unlink)
+    mocker.patch.object(osk.tempfile, "tempdir", str(tmp_path))
+
+    with pytest.raises(osk.SyncError, match="checksum mismatch"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("config inaccessible"), ValueError("bad config")]
+)
+def test_optional_sync_guard_failure_is_nonfatal(auto_env, mocker, caplog, error):
+    mocker.patch.object(osk, "_load_config", side_effect=error)
+
+    with caplog.at_level(logging.DEBUG, logger=osk.__name__):
+        osk.maybe_auto_sync()
+
+    auto_env.assert_not_called()
+    assert str(error) in caplog.text
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        None,
+        {"name": "../invalid", "hash": "bad"},
+        {"name": "legacy"},
+        {"name": "jd", "hash": 12},
+        {"name": "ghost", "hash": "bad"},
+    ],
+)
+def test_hash_verification_continues_after_unusable_entry(
+    official_home, mocker, capsys, first
+):
+    source = {"commit": "new", "skills": [first, {"name": "jd", "hash": "sha256:bad"}]}
+    _patch_net(mocker, _replace_manifest(_routes("new", ["jd"]), source))
+
+    osk.sync()
+
+    assert "jd: sha256:" in capsys.readouterr().out
+
+
+def _add_entry(routes, name, content):
+    data = io.BytesIO(routes[ZIP_URL])
+    with zipfile.ZipFile(data, "a") as archive:
+        archive.writestr(name, content)
+    raw = data.getvalue()
+    return {**routes, ZIP_URL: raw, SHA_URL: hashlib.sha256(raw).hexdigest().encode()}
+
+
+def test_extra_top_level_file_is_rejected_with_other_required_entries_present(
+    official_home, installed, mocker
+):
+    _patch_net(mocker, _add_entry(_routes("new", ["jd"]), "README.txt", "stray"))
+
+    with pytest.raises(osk.SyncError, match="unexpected package layout"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+def test_landed_count_ignores_hidden_directories_and_plain_files(official_home, mocker):
+    routes = _add_entry(_routes("new", ["jd"]), "skills/.hidden/SKILL.md", "hidden")
+    _patch_net(mocker, _add_entry(routes, "skills/readme.txt", "not a skill"))
+
+    osk.sync()
+
+    assert (
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["skillCount"] == 1
+    )
+
+
+def test_first_sync_creates_missing_home_parents(tmp_path, mocker):
+    official = tmp_path / "missing" / "nested" / "official"
+    mocker.patch.object(osk.paths, "official_dir", return_value=official)
+    mocker.patch.object(
+        osk,
+        "_load_config",
+        return_value=SimpleNamespace(skills=SimpleNamespace(official_base_url=BASE)),
+    )
+    _patch_net(mocker, _routes("new", ["jd"]))
+
+    osk.sync()
+
+    assert (official / "skills" / "jd" / "SKILL.md").is_file()
+
+
+@pytest.mark.parametrize("prefix", [".sync-backup-", osk.STAGING_DIR])
+def test_cleanup_failure_after_success_does_not_report_failed_install(
+    official_home, installed, mocker, capsys, prefix
+):
+    rmdir = osk.os.rmdir
+
+    def blocked(path, *args, **kwargs):
+        if Path(path).name.startswith(prefix):
+            raise PermissionError("cleanup blocked")
+        return rmdir(path, *args, **kwargs)
+
+    mocker.patch.object(osk.os, "rmdir", side_effect=blocked)
+
+    osk.sync()
+
+    assert "synced 1" in capsys.readouterr().out
+    assert (official_home / "skills" / "new" / "SKILL.md").is_file()
+
+
+def test_backup_cleanup_failure_does_not_replace_original_install_error(
+    official_home, installed, mocker
+):
+    _fail_replace(mocker, official_home, "install:skills", OSError("install blocked"))
+    rmdir = osk.os.rmdir
+
+    def blocked(path, *args, **kwargs):
+        if Path(path).name.startswith(".sync-backup-"):
+            raise PermissionError("cleanup blocked")
+        return rmdir(path, *args, **kwargs)
+
+    mocker.patch.object(osk.os, "rmdir", side_effect=blocked)
+
+    with pytest.raises(osk.SyncError, match="install blocked"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
+@pytest.mark.parametrize("commit", [12, True, [], {}])
+def test_dry_run_invalid_cached_commit_reports_install(
+    official_home, mocker, capsys, commit
+):
+    official_home.mkdir(parents=True)
+    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": commit}))
+    _patch_net(mocker, _routes("new", ["jd"]))
+
+    osk.sync(dry_run=True)
+
+    assert "install new" in capsys.readouterr().out
+
+
+def test_missing_manifest_count_does_not_report_count_drift(
+    official_home, mocker, capsys
+):
+    _patch_net(mocker, _replace_manifest(_routes("new", ["jd", "wechat"]), {}))
+
+    osk.sync()
+
+    assert "manifest lists" not in capsys.readouterr().out
+
+
+def test_base_url_trimming_preserves_last_path_component(official_home, mocker):
+    base = BASE + "X"
+    osk._load_config.return_value.skills.official_base_url = base + "///"
+    routes = {
+        url.replace(BASE, base): body for url, body in _routes("new", ["jd"]).items()
+    }
+    _patch_net(mocker, routes)
+
+    osk.sync()
+
+    assert (official_home / "skills" / "jd" / "SKILL.md").is_file()

@@ -1,35 +1,17 @@
-"""``physiclaw skills sync official`` — pull the curated official skill pack
-from the site and mount it at ``~/.physiclaw/official/``.
+"""Download and install the official skill pack.
 
-Two identities, never conflated:
-
-  * ``commit`` — the version + freshness key. We compare ``latest.json``'s
-    commit to the stored one; equal → up to date, no download. It's stable
-    across site rebuilds (a rebuild of the same source doesn't churn it), so
-    an unchanged pack never re-downloads.
-  * ``zipHash`` — integrity only, computed *here* over the downloaded bytes
-    and checked against the published ``.sha256`` before anything on disk is
-    touched. The per-skill ``hash`` in ``source.json`` is change-detection,
-    not integrity (a hash shipped inside the zip can't prove the zip wasn't
-    tampered — the ``.sha256`` compare is what does).
-
-The swap is package-owned and same-filesystem: staging lives under
-``official/`` so the final ``os.replace`` is atomic, and only ``official/skills``
-+ ``official/source.json`` are replaced. The zip is the authoritative full
-set, so a skill dropped upstream disappears here automatically.
-
-Integrity here guards corruption, not a coordinated MITM — the checksum
-travels the same channel as the zip. Signature verification (the site
-publishing a signature) would be the next step for tamper-proofing.
-
-Skill discovery snapshots per agent session (in the separate runtime process),
-so the mount takes effect at the next session/wake — a running server picks up
-a change without a restart, and the atomic swap means a session always reads
-either the whole old or whole new tree.
+The remote commit identifies the release; the downloaded ZIP's SHA-256
+checks transport integrity. Per-skill hashes diagnose manifest drift only.
+Syncs are serialized across processes. Installation uses same-filesystem
+renames and restores the previous tree and metadata on failure. Readers
+can briefly see a missing path during a swap; existing session snapshots
+remain unchanged.
 """
 
 import datetime as dt
 import hashlib
+import http.client
+import importlib
 import json
 import logging
 import os
@@ -38,6 +20,8 @@ import tempfile
 import threading
 import urllib.error
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Callable
 
@@ -59,8 +43,7 @@ SCHEMA_VERSION = 1
 
 
 class _NotPublished(Exception):
-    """``latest.json`` (or the pack) 404s — nothing published yet, not an
-    error the caller should surface as a failure."""
+    """A metadata URL returned 404; only a missing latest.json is a no-op."""
 
 
 class SyncError(RuntimeError):
@@ -85,13 +68,14 @@ def _urls(base: str) -> dict[str, str]:
 
 
 def _fetch_bytes(url: str) -> bytes:
-    """GET ``url`` over HTTPS, returning the raw body. 404 → ``_NotPublished``;
-    any other transport/HTTP error is a clean ``Exit(1)`` (no traceback)."""
+    """Read metadata; distinguish unpublished files from transport errors."""
     _require_https(url)
     try:
         with http_get(url) as resp:
             return resp.read()
     except urllib.error.HTTPError as e:
+        with suppress(OSError):
+            e.close()
         if e.code == 404:
             raise _NotPublished from e
         raise SyncError(f"GET {url} failed: HTTP {e.code}") from e
@@ -102,24 +86,20 @@ def _fetch_bytes(url: str) -> bytes:
 def _fetch_json(url: str) -> dict:
     try:
         data = json.loads(_fetch_bytes(url).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError) as e:
+    except ValueError as e:
         raise SyncError(f"{url} did not return valid JSON: {e}") from e
     if not isinstance(data, dict):
         raise SyncError(f"{url} did not return a JSON object.")
     return data
 
 
-def _read_sync_state() -> dict | None:
-    """Parse ``official/.sync-state.json``; None on missing/corrupt (a corrupt
-    state just forces a re-sync, never a crash)."""
-    p = paths.official_dir() / SYNC_STATE_FILE
-    if not p.exists():
-        return None
+def _read_json_object(path: Path) -> dict:
+    """Read optional local metadata; missing or corrupt data is an empty object."""
     try:
-        data = json.loads(read_text(p))
+        data = json.loads(read_text(path))
     except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _parse_sha256(text: str) -> str | None:
@@ -154,12 +134,15 @@ def _download_to_temp(url: str) -> tuple[Path, str]:
                 digest.update(chunk)
 
             stream(resp, _write, "  official skills", progress=False)
-    except urllib.error.URLError as e:
-        tmp.unlink(missing_ok=True)
-        reason = f"HTTP {e.code}" if isinstance(e, urllib.error.HTTPError) else e.reason
-        raise SyncError(f"GET {url} failed: {reason}") from e
-    except BaseException:
-        tmp.unlink(missing_ok=True)
+    except BaseException as e:
+        with suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        if isinstance(e, urllib.error.HTTPError):
+            with suppress(OSError):
+                e.close()
+            raise SyncError(f"GET {url} failed: HTTP {e.code}") from e
+        if isinstance(e, urllib.error.URLError):
+            raise SyncError(f"GET {url} failed: {e.reason}") from e
         raise
     return tmp, digest.hexdigest()
 
@@ -179,7 +162,7 @@ def _extract_zip(zip_path: Path, dest: Path) -> None:
                         "aborting (possible zip-slip)."
                     )
             zf.extractall(dest)
-    except zipfile.BadZipFile as e:
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError) as e:
         raise SyncError(f"downloaded pack is not a valid zip: {e}") from e
 
 
@@ -188,7 +171,11 @@ def _sanity_check_layout(staging: Path) -> None:
     Anything else (stray files, ``__MACOSX``, a missing half) means a
     malformed pack — refuse rather than mount it."""
     entries = {p.name for p in staging.iterdir()}
-    if entries != {"source.json", "skills"} or not (staging / "skills").is_dir():
+    if (
+        entries != {"source.json", "skills"}
+        or not (staging / "skills").is_dir()
+        or not (staging / "source.json").is_file()
+    ):
         raise SyncError(
             f"unexpected package layout {sorted(entries)} — expected "
             "exactly source.json + skills/."
@@ -196,9 +183,7 @@ def _sanity_check_layout(staging: Path) -> None:
 
 
 def _count_skills(skills_dir: Path) -> int:
-    """Landed skill count — direct ``<name>/`` subdirs, dot-dirs excluded."""
-    if not skills_dir.is_dir():
-        return 0
+    """Count visible skill directories in a validated pack."""
     return sum(
         1 for d in skills_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
     )
@@ -221,19 +206,25 @@ def _hash_skill(skill_dir: Path) -> str:
     return f"sha256:{h.hexdigest()}"
 
 
-def _verify_skill_hashes(skills_root: Path, manifest_skills: list) -> list[str]:
-    """Recompute each manifest skill's digest from the extracted dir and compare
-    to its declared ``hash``. Returns human-readable mismatch notes ([] = all
-    consistent). Per-skill hash is change-detection, NOT integrity (the zip
-    ``.sha256`` is integrity, checked earlier) — so the caller WARNS on a
-    mismatch rather than aborting: the bytes already passed the zip checksum, so
-    a divergence means an internally-inconsistent manifest, not a bad download."""
+def _verify_skill_hashes(skills_root: Path, manifest_skills: object) -> list[str]:
+    """Warn about malformed entries and drift; never follow a manifest path out."""
+    from physiclaw.agent.engine.skill import is_safe_skill_name
+
+    if not isinstance(manifest_skills, list):
+        return ["manifest skills must be a list"]
     notes: list[str] = []
     for entry in manifest_skills:
         if not isinstance(entry, dict):
+            notes.append("manifest skill entry must be an object")
             continue
         name, declared = entry.get("name"), entry.get("hash")
-        if not name or not declared:
+        if not isinstance(name, str) or not is_safe_skill_name(name):
+            notes.append(f"invalid manifest skill name: {name!r}")
+            continue
+        if declared is None:
+            continue  # Older manifests may omit per-skill hashes.
+        if not isinstance(declared, str) or not declared:
+            notes.append(f"{name}: invalid manifest hash")
             continue
         d = skills_root / name
         if not d.is_dir():
@@ -241,11 +232,13 @@ def _verify_skill_hashes(skills_root: Path, manifest_skills: list) -> list[str]:
             continue
         actual = _hash_skill(d)
         if actual != declared:
-            notes.append(f"{name}: {actual[:19]}… ≠ manifest {str(declared)[:19]}…")
+            notes.append(f"{name}: {actual[:19]}… ≠ manifest {declared[:19]}…")
     return notes
 
 
-def _write_sync_state(url: str, zip_hex: str, commit: str, count: int) -> None:
+def _write_sync_state(
+    staging: Path, url: str, zip_hex: str, commit: str, count: int
+) -> None:
     payload = {
         "schemaVersion": SCHEMA_VERSION,
         "url": url,
@@ -254,9 +247,76 @@ def _write_sync_state(url: str, zip_hex: str, commit: str, count: int) -> None:
         "skillCount": count,
         "syncedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    write_text(
-        paths.official_dir() / SYNC_STATE_FILE, json.dumps(payload, indent=2) + "\n"
-    )
+    write_text(staging / SYNC_STATE_FILE, json.dumps(payload, indent=2) + "\n")
+
+
+@contextmanager
+def _sync_lock(official: Path) -> Iterator[None]:
+    """Fail fast if another sync owns the install; closing releases the lock.
+
+    Keep the lock file: unlinking it would let another process lock a different
+    inode while this one still owns the old inode. The OS releases crash locks.
+    """
+    official.mkdir(parents=True, exist_ok=True)
+    with (official / ".sync.lock").open("a+b") as lock:
+        try:
+            import fcntl
+        except ImportError:  # Windows
+            msvcrt = importlib.import_module("msvcrt")
+
+            if lock.tell() == 0:
+                lock.write(b"\0")
+                lock.flush()
+            lock.seek(0)
+            try:
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as e:
+                raise SyncError("official skills sync is already running") from e
+        else:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as e:
+                raise SyncError("official skills sync is already running") from e
+        yield
+
+
+def _install(staging: Path, official: Path) -> None:
+    """Replace owned paths; keep backups until every replacement succeeds."""
+    backup = Path(tempfile.mkdtemp(prefix=".sync-backup-", dir=official))
+    parked: list[str] = []
+    installed: list[str] = []
+    names = ("skills", "source.json", SYNC_STATE_FILE)
+    try:
+        for name in names:
+            live = official / name
+            if live.exists() or live.is_symlink():
+                os.replace(live, backup / name)
+                parked.append(name)
+            os.replace(staging / name, live)
+            installed.append(name)
+    except BaseException as error:
+        failures: list[str] = []
+        for name in reversed(names):
+            try:
+                if name in installed:
+                    os.replace(official / name, staging / name)
+                if name in parked:
+                    os.replace(backup / name, official / name)
+            except OSError as e:
+                failures.append(f"{name}: {e}")
+        if failures:
+            detail = f"restore failed ({'; '.join(failures)}); backups kept at {backup}"
+            if isinstance(error, Exception):
+                raise SyncError(f"{error}; {detail}") from error
+            log.error("%s", detail)
+        else:
+            shutil.rmtree(backup, ignore_errors=True)
+        raise
+    else:
+        shutil.rmtree(backup, ignore_errors=True)
+        # Reclaim the old implementation's scratch directories only after success.
+        shutil.rmtree(official / ".sync-trash", ignore_errors=True)
+        shutil.rmtree(official / STAGING_DIR, ignore_errors=True)
 
 
 def sync(
@@ -265,36 +325,46 @@ def sync(
     dry_run: bool = False,
     emit: Callable[[str], None] = typer.echo,
 ) -> None:
-    """Sync the official skill pack. Idempotent: a matching commit is a no-op
-    unless ``--force``. ``--dry-run`` does the freshness check only and downloads
-    nothing.
+    """Install a changed release; dry-run checks freshness without writing.
 
-    ``emit`` is the outcome printer: the interactive CLI keeps the default
-    (styled ``✓``/``i`` lines on stdout); the server's background auto-sync
-    passes a logger-backed emitter so its lines land in the timestamped
-    ``[physiclaw]`` stream instead of interleaving raw mid-log."""
-    base = _load_config().skills.official_base_url
-    urls = _urls(base)
+    Expected input, filesystem, and transport failures raise SyncError for the
+    CLI or background logger. Cancellation and operator interrupts propagate.
+    """
+    try:
+        if dry_run:
+            _sync(force=force, dry_run=True, emit=emit)
+        else:
+            with _sync_lock(paths.official_dir()):
+                _sync(force=force, dry_run=False, emit=emit)
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise SyncError(f"official skills sync failed: {e}") from e
 
-    # 1. Freshness — one small GET; 404 means nothing's published.
+
+def _sync(*, force: bool, dry_run: bool, emit: Callable[[str], None]) -> None:
+    urls = _urls(_load_config().skills.official_base_url)
     try:
         latest = _fetch_json(urls["latest"])
     except _NotPublished:
         emit(info("no official skills published yet — nothing to sync."))
         return
+    remote_commit = latest.get("commit")
+    if not isinstance(remote_commit, str) or not remote_commit.strip():
+        raise SyncError(
+            f"{urls['latest']} is missing 'commit' or it is not a non-empty string."
+        )
 
-    remote_commit = str(latest.get("commit") or "")
-    if not remote_commit:
-        raise SyncError(f"{urls['latest']} is missing 'commit'.")
-
-    local_commit = str((_read_sync_state() or {}).get("commit") or "")
-    up_to_date = bool(local_commit) and local_commit == remote_commit
-
+    official = paths.official_dir()
+    local_commit = _read_json_object(official / SYNC_STATE_FILE).get("commit")
+    up_to_date = (
+        local_commit == remote_commit
+        and (official / "skills").is_dir()
+        and (official / "source.json").is_file()
+    )
     if dry_run:
         if up_to_date:
             tail = "; --force would re-sync." if force else " — no sync needed."
             emit(info(f"up to date at {remote_commit[:7]}{tail}"))
-        elif local_commit:
+        elif isinstance(local_commit, str) and local_commit:
             emit(
                 info(
                     f"sync would run: update {local_commit[:7]} → {remote_commit[:7]}."
@@ -303,29 +373,15 @@ def sync(
         else:
             emit(info(f"sync would run: install {remote_commit[:7]} (none installed)."))
         return
-
     if up_to_date and not force:
         emit(ok(f"official skills already up to date ({remote_commit[:7]})."))
         return
 
-    official = paths.official_dir()
-    official.mkdir(parents=True, exist_ok=True)
-
-    # 2. Download the pack to a temp file (/tmp), hashing as we stream so the
-    #    whole pack never sits in memory. Quiet (no progress bar / announce
-    #    line) — the pack is small; only the final synced result is shown.
     zip_path, actual = _download_to_temp(urls["zip"])
-    src: dict = {}  # the pack's manifest, parsed once from staging
-    hash_notes: list[str] = []
     try:
-        # 3. Integrity — compare our digest to the published .sha256 BEFORE we
-        #    touch the install. Mismatch = corrupt/tampered → abort untouched.
         try:
             sha_body = _fetch_bytes(urls["sha256"])
         except _NotPublished as e:
-            # Only the latest.json fetch has a _NotPublished catch; the
-            # CLI guards `except SyncError`, so a mid-publish 404 here
-            # was a raw traceback.
             raise SyncError(
                 f"{urls['sha256']} is not published yet — the pack may be "
                 "mid-publish; retry shortly."
@@ -338,108 +394,54 @@ def sync(
                 f"checksum mismatch — expected {expected[:12]}…, got "
                 f"{actual[:12]}…. Aborting; the install was not touched."
             )
-
-        # 4. Extract to staging (same filesystem as the target) with zip-slip
-        #    guard, then verify the shape.
-        staging = official / STAGING_DIR
-        if staging.exists():
-            shutil.rmtree(staging)
-        staging.mkdir(parents=True)
-        try:
+        with tempfile.TemporaryDirectory(
+            prefix=STAGING_DIR + "-", dir=official, ignore_cleanup_errors=True
+        ) as directory:
+            staging = Path(directory)
             _extract_zip(zip_path, staging)
             _sanity_check_layout(staging)
-
-            # 5. Per-skill hash check — each extracted skill dir must match the
-            #    digest the manifest declares. Change-detection, not integrity
-            #    (the zip .sha256 already vouched for the bytes), so we collect
-            #    mismatches and warn below rather than abort. Parse source.json
-            #    once here (pre-swap) and reuse it for the reconcile in step 6.
-            src = _read_source_json(staging / "source.json")
-            hash_notes = _verify_skill_hashes(
-                staging / "skills", src.get("skills") or []
-            )
-
-            # 6. Atomic swap of package-owned paths only, on the same
-            #    filesystem; the full zip is the set, so removed skills drop.
-            #    os.replace (NOT Path.rename): Windows' os.rename refuses to
-            #    overwrite an existing target (WinError 183), so source.json —
-            #    renamed straight onto the prior file — threw on every re-sync,
-            #    leaving source.json + .sync-state.json stale (the state write
-            #    below never ran) and re-syncing on every startup. os.replace
-            #    overwrites atomically on Windows and POSIX alike.
-            dst_skills = paths.official_skills_dir()
-            # Two-rename swap: park the live tree at a session-unique
-            # trash path, rename staging in, THEN delete the trash
-            # (best-effort). rmtree(live)-then-replace left a
-            # multi-second window where a concurrent session snapshot
-            # saw an empty/partial tree; now the gap is two renames.
-            # Fixed name, same pattern as STAGING_DIR above: a crash
-            # between the two renames leaves the parked tree here, and
-            # the next run reclaims it by name — nothing accumulates.
-            trash = official / ".sync-trash"
-            shutil.rmtree(trash, ignore_errors=True)
-            if dst_skills.exists():
-                os.replace(dst_skills, trash)
-            os.replace(staging / "skills", dst_skills)
-            os.replace(staging / "source.json", official / "source.json")
-            shutil.rmtree(trash, ignore_errors=True)
-        finally:
-            if staging.exists():
-                shutil.rmtree(staging)
+            src = _read_json_object(staging / "source.json")
+            declared_commit = src.get("commit")
+            if declared_commit and declared_commit != remote_commit:
+                raise SyncError(
+                    "pack commit does not match latest.json; retry after publishing finishes"
+                )
+            hash_notes = _verify_skill_hashes(staging / "skills", src.get("skills", []))
+            landed = _count_skills(staging / "skills")
+            _write_sync_state(staging, urls["zip"], actual, remote_commit, landed)
+            _install(staging, official)
     finally:
-        zip_path.unlink(missing_ok=True)
+        with suppress(OSError):
+            zip_path.unlink(missing_ok=True)
 
-    # 7. Record state + reconcile the manifest against what actually landed.
-    commit = str(src.get("commit") or remote_commit)
-    landed = _count_skills(paths.official_skills_dir())
-    _write_sync_state(urls["zip"], actual, commit, landed)
-
-    emit(ok(f"synced {landed} official skill(s) @ {commit[:7]}."))
+    emit(ok(f"synced {landed} official skill(s) @ {remote_commit[:7]}."))
     for note in hash_notes:
         emit(warn(f"skill hash mismatch — {note}"))
-    declared = len(src.get("skills", [])) if isinstance(src.get("skills"), list) else 0
+    declared = len(src["skills"]) if isinstance(src.get("skills"), list) else 0
     if declared and declared != landed:
         emit(warn(f"manifest lists {declared} skill(s) but {landed} landed on disk."))
 
 
-def _read_source_json(p: Path) -> dict:
-    """Parse the extracted ``source.json``; {} if unreadable (state/reconcile
-    then fall back to the ``latest.json`` commit and an on-disk count)."""
-    try:
-        data = json.loads(read_text(p))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def maybe_auto_sync() -> None:
-    """Kick off a best-effort official-skills sync at ``physiclaw server``
-    startup, in a background daemon thread so it NEVER blocks startup — the
-    network I/O happens off the critical path while the server begins serving.
+    """Start an optional daemon sync when enabled, outside CI, and alone.
 
-    The cheap guards run synchronously here (so ``read_live`` sees only OTHER
-    servers, before this one records itself live); only the sync itself is
-    backgrounded. Silent no-op when disabled (``[skills] sync_auto = false``),
-    under CI (unattended network work a pipeline never asked for), or another
-    live server exists (its concurrent sync would race the ``official/skills``
-    swap). Idempotent: an unchanged commit is a no-op with no download.
-
-    Mutating ``official/skills`` mid-run is safe: the swap is an atomic
-    ``os.replace`` and skill discovery snapshots per session (in the separate
-    runtime process), so a session sees either the whole old or whole new tree
-    and picks up the change at its next wake."""
-    if not _load_config().skills.sync_auto:
-        return
-    if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):
-        return
-    # Imported lazily — keeps this module import-light for the plain CLI path.
+    Read guards synchronously, before this server records itself as live.
+    The install lock also excludes an overlapping manual sync.
+    """
     from physiclaw.common import runtime_state
 
-    if runtime_state.read_live():
-        return  # another instance owns official/ — don't race its swap
-    threading.Thread(
-        target=_run_sync_quiet, name="physiclaw-auto-sync", daemon=True
-    ).start()
+    try:
+        if not _load_config().skills.sync_auto:
+            return
+        if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):
+            return
+        if runtime_state.read_live():
+            return
+        threading.Thread(
+            target=_run_sync_quiet, name="physiclaw-auto-sync", daemon=True
+        ).start()
+    except (OSError, ValueError, RuntimeError) as e:
+        log.debug("auto-sync: could not start (non-fatal): %s", e)
 
 
 def _run_sync_quiet() -> None:
