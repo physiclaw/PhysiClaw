@@ -13,6 +13,7 @@ runtime.
 
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -21,28 +22,40 @@ from physiclaw.cli._sessions import resolve_sid
 from physiclaw.common.ready import START_HINT
 from physiclaw.common.text import read_text
 
+if TYPE_CHECKING:
+    from physiclaw.common.listing import Screen
+    from physiclaw.conductor.bench.capture import CaptureReport
+
 pages_app = typer.Typer(no_args_is_help=True)
 
 
-def _input_screens(session: str | None, listing: Path | None, live: bool) -> list:
+def _input_screens(
+    session: str | None, listing: Path | None, live: bool
+) -> list["Screen"]:
     """Screens from exactly one input source: a recorded session (suffix
     resolved via the shared `logs <suffix>` convention), a listing file,
     or one live peek."""
     from physiclaw.common.listing import Screen
     from physiclaw.conductor.bench import corpus
 
-    if live:
-        listings = [asyncio.run(_live_listing())]
-    elif listing is not None:
-        listings = [read_text(listing)]
-    elif session is not None:
-        listings = corpus.session_listings(resolve_sid(session))
-    else:
-        exit_error("need one of --session / --listing / --live", code=2)
+    if sum((session is not None, listing is not None, live)) != 1:
+        exit_error("need exactly one of --session / --listing / --live", code=2)
+    try:
+        if live:
+            listings = [asyncio.run(_live_listing())]
+        elif listing is not None:
+            listings = [read_text(listing)]
+        else:
+            assert session is not None
+            listings = corpus.session_listings(resolve_sid(session))
+    except (OSError, ValueError) as e:
+        exit_error(str(e))
     return [Screen.read(t) for t in listings]
 
 
 async def _live_listing() -> str:
+    from mcp import MCPError
+
     from physiclaw.agent.engine.mcp_tool import McpClient
     from physiclaw.common import verdict
 
@@ -52,6 +65,8 @@ async def _live_listing() -> str:
     except ConnectionError as e:
         # Same arm as macro rehearsal: --live needs `physiclaw mcp` running.
         exit_error(f"{e}. {START_HINT}")
+    except (OSError, RuntimeError, MCPError) as e:
+        exit_error(f"could not peek: {e}")
     return verdict.screen_text(blocks)
 
 
@@ -63,18 +78,24 @@ def extract(
     """Dump a session's listings to a corpus file with '?' labels to edit."""
     from physiclaw.conductor.bench import corpus
 
-    listings = corpus.session_listings(resolve_sid(session))
-    corpus.write_corpus(
-        out, [corpus.CorpusItem(label=corpus.UNLABELED, listing=t) for t in listings]
-    )
+    try:
+        listings = corpus.session_listings(resolve_sid(session))
+        corpus.write_corpus(
+            out,
+            [corpus.CorpusItem(label=corpus.UNLABELED, listing=t) for t in listings],
+        )
+    except (OSError, ValueError) as e:
+        exit_error(str(e))
     typer.echo(f"wrote {len(listings)} listings → {out} (edit the '?' labels)")
 
 
 @pages_app.command()
 def match(
     app: str = typer.Argument(help="app pack whose pages to match against"),
-    session: str = typer.Option(None, "--session", help="replay a recorded session"),
-    listing: Path = typer.Option(None, "--listing", help="a listing text file"),
+    session: str | None = typer.Option(
+        None, "--session", help="replay a recorded session"
+    ),
+    listing: Path | None = typer.Option(None, "--listing", help="a listing text file"),
     live: bool = typer.Option(False, "--live", help="one peek via `physiclaw mcp`"),
 ) -> None:
     """Print the matcher's verdict for each input screen."""
@@ -82,7 +103,10 @@ def match(
     from physiclaw.conductor.load import prints
     from physiclaw.conductor.spec.match import match_screen
 
-    found = prints.prints_for_app(app)
+    try:
+        found = prints.prints_for_app(app)
+    except (OSError, ValueError) as e:
+        exit_error(str(e))
     if not found:
         exit_error(
             f"no pages declared for app {app!r} (playbooks/{app}/{PACK_FILENAME} `pages:`)"
@@ -104,12 +128,12 @@ GUIDED_SHOTS = 4
 @pages_app.command()
 def calibrate(
     app: str = typer.Argument(help="app pack to calibrate"),
-    corpus_file: Path = typer.Argument(None, help="labeled corpus JSONL"),
+    corpus_file: Path | None = typer.Argument(None, help="labeled corpus JSONL"),
     guided: bool = typer.Option(
         False, "--guided", help="capture live, page by page, with prompts"
     ),
     shots: int = typer.Option(
-        GUIDED_SHOTS, "--shots", help="live peeks per page (--guided)"
+        GUIDED_SHOTS, "--shots", min=1, help="live peeks per page (--guided)"
     ),
 ) -> None:
     """Capture geometry + OCR variants for an app.
@@ -126,20 +150,26 @@ def calibrate(
     from physiclaw.conductor.bench import capture, corpus
     from physiclaw.conductor.load import prints
 
-    decls = prints.scan_app_decls(app)
+    try:
+        decls = prints.scan_app_decls(app)
+    except (OSError, ValueError) as e:
+        exit_error(str(e))
     if not decls:
         exit_error(f"no pages declared for app {app!r}")
     if guided:
         if corpus_file is not None:
             exit_error("--guided captures live; drop the corpus argument", code=2)
-        negatives: list = []
+        negatives: list[Screen] = []
         by_page = _guided_capture(app, sorted(decls), shots)
         if not by_page:
             exit_error("no pages captured")
     else:
         if corpus_file is None:
             exit_error("need a corpus file, or --guided", code=2)
-        items = corpus.read_corpus(corpus_file)
+        try:
+            items = corpus.read_corpus(corpus_file)
+        except (OSError, ValueError) as e:
+            exit_error(str(e))
         by_page, negatives = corpus.partition(items, app, set(decls))
 
     mined, reports, warnings = capture.capture_app(app, decls, by_page, negatives)
@@ -148,19 +178,20 @@ def calibrate(
     for r in reports:
         typer.echo(_report_line(r))
     if mined:
-        prints.save_learned(app, mined)
+        try:
+            prints.save_learned(app, mined)
+        except (OSError, ValueError) as e:
+            exit_error(str(e))
         typer.echo(
             f"saved learned/pages/{prints.learned_file(app).name} ({len(mined)} pages)"
         )
 
 
-def _guided_capture(app: str, page_names: list[str], shots: int) -> dict[str, list]:
-    """Walk the operator through each declared page, peeking `shots`
-    times per page. A page can be skipped (an OS state you can't stage
-    right now) — capture treats absent observations as "not calibrated",
-    which is exactly right, so a partial run is useful rather than
-    broken."""
-    by_page: dict[str, list] = {}
+def _guided_capture(
+    app: str, page_names: list[str], shots: int
+) -> dict[str, list["Screen"]]:
+    """Capture each page, omitting skipped pages and unreadable peeks."""
+    by_page: dict[str, list[Screen]] = {}
     typer.echo(f"Guided capture for {app!r} — {shots} peeks per page.")
     for name in page_names:
         typer.echo(f"\n{app}.{name}")
@@ -185,7 +216,7 @@ def _guided_capture(app: str, page_names: list[str], shots: int) -> dict[str, li
     return by_page
 
 
-def _report_line(r) -> str:
+def _report_line(r: "CaptureReport") -> str:
     impostors = "-" if r.impostor_pass is None else str(r.impostor_pass)
     flag = "" if r.separable else "  ⚠ INSEPARABLE"
     return (
@@ -196,8 +227,10 @@ def _report_line(r) -> str:
 
 @pages_app.command()
 def propose(
-    session: str = typer.Option(None, "--session", help="replay a recorded session"),
-    listing: Path = typer.Option(None, "--listing", help="a listing text file"),
+    session: str | None = typer.Option(
+        None, "--session", help="replay a recorded session"
+    ),
+    listing: Path | None = typer.Option(None, "--listing", help="a listing text file"),
     live: bool = typer.Option(False, "--live", help="one peek via `physiclaw mcp`"),
 ) -> None:
     """Suggest anchor declarations from screens — prune by eye into
