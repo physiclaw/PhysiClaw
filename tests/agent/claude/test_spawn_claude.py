@@ -15,6 +15,11 @@ import pytest
 from physiclaw.agent.claude import spawn as spawn_mod
 from physiclaw.agent.runtime.hook import Trigger
 
+# Mutation audit: accept prompt/log wording, diagnostic labels and traceback
+# detail, a 30s -> 31s exit grace, equivalent first-line splitting and overwritten
+# initial status. Both "killed" labels remain nonzero exits. CLI permissions,
+# metadata, cleanup, finite waits and session outcomes are checked independently.
+
 # ---------- Fakes ----------
 
 
@@ -31,19 +36,23 @@ class _FakeStdout:
 class _FakeProc:
     def __init__(self, *, lines: list[bytes], returncode: int = 0):
         self.stdout = _FakeStdout(lines)
-        self.returncode = returncode
+        self.returncode = None
+        self._exitcode = returncode
         self.killed = False
 
     async def wait(self) -> int:
+        if self.returncode is None:
+            self.returncode = self._exitcode
         return self.returncode
 
     def kill(self) -> None:
         self.killed = True
+        self.returncode = -9
 
 
 def _result_line(
     status_line: str = ">> DONE - all good", *, num_turns: int = 5
-) -> bytes:
+) -> list[bytes]:
     """Build a fake stream-json sequence ending in a result event with
     a final assistant text containing the sentinel."""
     asst = {
@@ -559,3 +568,244 @@ async def test_spawn_claude_bounds_post_eof_wait(
         await spawn_mod.spawn_claude([Trigger(description="t")], model_id="opus")
 
     assert proc.killed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "usage",
+    [
+        ["unexpected"],
+        "unexpected",
+        12,
+        {"input_tokens": "invalid"},
+        {"output_tokens": float("nan")},
+        {"cache_read_input_tokens": float("inf")},
+    ],
+)
+async def test_regression_bad_usage_metadata_cannot_crash_a_done_session(
+    mocker, patch_environment, usage
+):
+    lines = _result_line(">> DONE - task complete")
+    lines[1] = json.dumps({"type": "result", "usage": usage}).encode() + b"\n"
+    proc = _FakeProc(lines=lines)
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status == "DONE"
+    assert not patch_environment["plugin"].exists()
+
+
+class _ExitedDuringKill(_FakeProc):
+    def kill(self):
+        self.returncode = 0
+        raise ProcessLookupError("already exited")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [asyncio.TimeoutError, ValueError("line too long")])
+async def test_regression_exit_race_during_kill_preserves_undone_outcome(
+    mocker, patch_environment, error
+):
+    proc = _ExitedDuringKill(lines=[])
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+    mocker.patch.object(proc.stdout, "readline", side_effect=error)
+    mocker.patch.object(spawn_mod, "MAX_ATTEMPTS", 1)
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status is None
+    assert not patch_environment["plugin"].exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", [RuntimeError("stream failed"), asyncio.CancelledError("cancelled")]
+)
+async def test_regression_cleanup_exit_race_keeps_original_exception_and_closes_log(
+    mocker, patch_environment, error
+):
+    proc = _ExitedDuringKill(lines=[])
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+    mocker.patch.object(proc.stdout, "readline", side_effect=error)
+    close = mocker.spy(spawn_mod._SessionLog, "close")
+
+    with pytest.raises(type(error), match=str(error)):
+        await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    close.assert_called_once()
+    assert not patch_environment["plugin"].exists()
+
+
+@pytest.mark.asyncio
+async def test_regression_cancelled_cleanup_still_closes_log(mocker, patch_environment):
+    proc = _FakeProc(lines=[])
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+    mocker.patch.object(
+        proc.stdout, "readline", side_effect=RuntimeError("stream failed")
+    )
+    mocker.patch.object(proc, "wait", side_effect=asyncio.CancelledError)
+    close = mocker.spy(spawn_mod._SessionLog, "close")
+
+    with pytest.raises(asyncio.CancelledError):
+        await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    close.assert_called_once()
+    assert proc.killed
+    assert not patch_environment["plugin"].exists()
+
+
+@pytest.mark.asyncio
+async def test_regression_command_setup_failure_removes_plugin(
+    mocker, patch_environment
+):
+    spawn_mod.CLAUDE_MD.unlink()
+    start = mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec")
+
+    with pytest.raises(FileNotFoundError, match="CLAUDE.md not found"):
+        await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    start.assert_not_called()
+    assert not patch_environment["plugin"].exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [asyncio.TimeoutError, ValueError("invalid startup")])
+async def test_start_failure_closes_log_and_plugin(mocker, patch_environment, error):
+    from physiclaw.common import paths
+
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", side_effect=error)
+    mocker.patch.object(spawn_mod, "MAX_ATTEMPTS", 1)
+    close = mocker.spy(spawn_mod._SessionLog, "close")
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status is None
+    close.assert_called_once()
+    assert not patch_environment["plugin"].exists()
+    summary = json.loads(
+        next(paths.claude_sessions_dir().glob("*/summary.json")).read_text()
+    )
+    assert summary["outcome"]["crashed"] is True
+
+
+@pytest.mark.asyncio
+async def test_already_removed_plugin_does_not_fail_a_done_session(
+    mocker, patch_environment
+):
+    import shutil
+
+    async def start(*args, **kwargs):
+        shutil.rmtree(patch_environment["plugin"])
+        return _FakeProc(lines=_result_line())
+
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", side_effect=start)
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status == "DONE"
+
+
+@pytest.mark.asyncio
+async def test_stream_error_after_child_exit_reaps_without_killing(
+    mocker, patch_environment
+):
+    proc = _FakeProc(lines=[])
+    proc.returncode = 0
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+    mocker.patch.object(
+        proc.stdout, "readline", side_effect=ValueError("line too long")
+    )
+    mocker.patch.object(spawn_mod, "MAX_ATTEMPTS", 1)
+    wait = mocker.spy(proc, "wait")
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status is None
+    assert not proc.killed
+    wait.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_invalid_utf8_preserves_later_done(mocker, patch_environment):
+    proc = _FakeProc(
+        lines=[b"invalid utf8: \xff\n", *_result_line(">> DONE - recovered")]
+    )
+    mocker.patch.object(spawn_mod.asyncio, "create_subprocess_exec", return_value=proc)
+    raw = mocker.spy(spawn_mod._SessionLog, "raw")
+
+    outcome = await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    assert outcome.status == "DONE"
+    raw.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_spawn_passes_cli_permissions_environment_and_buffer(
+    mocker, patch_environment
+):
+    import hashlib
+    import math
+
+    from physiclaw.common import paths
+
+    proc = _FakeProc(lines=_result_line())
+    start = mocker.patch.object(
+        spawn_mod.asyncio, "create_subprocess_exec", return_value=proc
+    )
+    prepare = mocker.spy(spawn_mod, "prepare_plugin_dir")
+    wait_for = mocker.spy(spawn_mod.asyncio, "wait_for")
+
+    await spawn_mod.spawn_claude([Trigger("check")], model_id="opus")
+
+    argv = start.call_args.args
+    flags = {
+        flag: argv[argv.index(flag) + 1]
+        for flag in [
+            "--model",
+            "--append-system-prompt",
+            "--plugin-dir",
+            "--setting-sources",
+            "--permission-mode",
+            "--output-format",
+            "--mcp-config",
+        ]
+    }
+    assert argv[:2] == ("claude", "-p")
+    assert flags == {
+        "--model": "opus",
+        "--append-system-prompt": "SYSTEM",
+        "--plugin-dir": str(patch_environment["plugin"]),
+        "--setting-sources": "user",
+        "--permission-mode": "acceptEdits",
+        "--output-format": "stream-json",
+        "--mcp-config": "{}",
+    }
+    assert {"--verbose", "--no-session-persistence", "--strict-mcp-config"} <= set(argv)
+    assert set(argv[argv.index("--allowedTools") + 1].split(",")) == {
+        "Read(memory/**)",
+        "Glob(memory/**)",
+        "Grep(memory/**)",
+        "Write(memory/**)",
+        "Edit(memory/**)",
+        "Bash(uv run:*)",
+        "Skill",
+    }
+    assert set(argv[argv.index("--disallowedTools") + 1].split(",")) == {
+        "Write(jobs/**)",
+        "Edit(jobs/**)",
+    }
+    assert start.call_args.kwargs == {
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.STDOUT,
+        "cwd": str(spawn_mod.PROJECT_ROOT),
+        "env": {},
+        "limit": spawn_mod.CONFIG.claude.stream_buffer_mb * 1024**2,
+    }
+    assert prepare.call_args.kwargs == {"skills": {}}
+    exit_timeout = wait_for.call_args.kwargs["timeout"]
+    assert math.isfinite(exit_timeout) and exit_timeout > 0
+    summary_path = next(paths.claude_sessions_dir().glob("*/summary.json"))
+    summary = json.loads(summary_path.read_text())
+    assert summary["model_ref"] == "claude-code/opus"
+    assert summary["prompt_hash"] == hashlib.sha256(b"SYSTEM").hexdigest()

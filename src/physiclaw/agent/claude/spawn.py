@@ -19,6 +19,7 @@ import logging
 import os
 import shutil
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 from physiclaw.agent import layout
@@ -63,7 +64,7 @@ EXIT_WAIT_SECONDS = 30
 #
 # Filesystem scope for the child is deliberately narrow: read/write/edit
 # restricted to `memory/**` (with `jobs/**` readable only via the jobs
-# skill scripts, not Claude's Read tool). Bash is narrowed to `python*`
+# skill scripts, not Claude's Read tool). Bash is narrowed to `uv run`
 # so the jobs skill's CLI wrappers can run, without handing the child a
 # general shell — no `curl`, no `rm`, no `ssh`, no `cat /etc/...`.
 #
@@ -342,6 +343,14 @@ async def _stream(proc, slog: _SessionLog) -> dict | None:
     return result_data
 
 
+async def _kill_and_wait(proc) -> None:
+    """Reap the child even if it exits between the status check and kill."""
+    if proc.returncode is None:
+        with suppress(ProcessLookupError):
+            proc.kill()
+    await proc.wait()
+
+
 async def spawn_claude(
     triggers: list[Trigger], *, model_id: str
 ) -> contract.SessionOutcome:
@@ -380,25 +389,24 @@ async def spawn_claude(
         # the tmp dir is uniquely labelled.
         sid = new_sid()
         plugin_dir = prepare_plugin_dir(sid, skills=skills)
-        cmd = _build_cmd(
-            trigs,
-            plugin_dir=plugin_dir,
-            system_prompt=system_prompt,
-            mcp_tools=mcp_tools,
-            model_id=model_id,
-        )
-
-        log.info(
-            "spawning claude (session=%s attempt=%d/%d, triggers=%s) — detail log: %s",
-            sid,
-            n,
-            MAX_ATTEMPTS,
-            sources,
-            LOG_DIR / f"claude-{dt.datetime.now():%Y-%m-%d}.log",
-        )
-        status = "UNDONE"
-        proc = None
         try:
+            cmd = _build_cmd(
+                trigs,
+                plugin_dir=plugin_dir,
+                system_prompt=system_prompt,
+                mcp_tools=mcp_tools,
+                model_id=model_id,
+            )
+            log.info(
+                "spawning claude (session=%s attempt=%d/%d, triggers=%s) — detail log: %s",
+                sid,
+                n,
+                MAX_ATTEMPTS,
+                sources,
+                LOG_DIR / f"claude-{dt.datetime.now():%Y-%m-%d}.log",
+            )
+            status = "UNDONE"
+            proc = None
             # Log construction BEFORE the spawn: if it raises, there is
             # no live claude subprocess left driving the phone unwatched.
             slog = _SessionLog(sid, trigs, model_ref=model_ref, prompt_hash=prompt_hash)
@@ -434,16 +442,14 @@ async def spawn_claude(
                 status = slog.done(returncode)
             except asyncio.TimeoutError:
                 if proc is not None:
-                    proc.kill()
-                    await proc.wait()
+                    await _kill_and_wait(proc)
                 status = slog.done("killed")
                 log.error("claude killed after %ds timeout", TIMEOUT)
             except ValueError:
                 # readline raises ValueError when one stream-json line
                 # exceeds the buffer limit — kill rather than orphan.
                 if proc is not None:
-                    proc.kill()
-                    await proc.wait()
+                    await _kill_and_wait(proc)
                 status = slog.done("killed")
                 log.error(
                     "claude killed — output line exceeded the %dMB stream buffer",
@@ -452,10 +458,11 @@ async def spawn_claude(
             finally:
                 # Any OTHER escape route (unexpected error, cancellation):
                 # never leave a live claude with nobody reading it.
-                if proc is not None and proc.returncode is None:
-                    proc.kill()
-                    await proc.wait()
-                slog.close()
+                try:
+                    if proc is not None and proc.returncode is None:
+                        await _kill_and_wait(proc)
+                finally:
+                    slog.close()
         finally:
             # Plugin dir holds only symlinks + one JSON file — no user
             # data worth keeping for post-mortem. Clean up regardless of

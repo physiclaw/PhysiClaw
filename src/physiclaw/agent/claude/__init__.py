@@ -14,8 +14,7 @@ not a selectable engine. No dead code elsewhere.
 
 from physiclaw.agent.claude.spawn import spawn_claude
 
-# User-facing engine name for PHYSICLAW_PROVIDER and [provider] name.
-# Sole definition — the launcher and config import from here.
+# Public compatibility label. Model-ref routing uses provider.registry.CLAUDE_CODE_ID.
 ENGINE_NAME = "claude-code"
 
 __all__ = ["spawn_claude", "ENGINE_NAME"]

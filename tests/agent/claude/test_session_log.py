@@ -6,13 +6,22 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from physiclaw.agent.claude import session_log
 from physiclaw.agent.claude.session_log import _redact_images, _SessionLog
 from physiclaw.agent.runtime.hook import Trigger
+
+# Mutation audit: accept narrative wording, missing-field placeholders, diagnostic
+# traceback detail and one-character truncation changes. Also equivalent: zero
+# cost comparisons, falsy initial state, overwritten fallback recap, unknown MIME
+# falling back to JPEG, unknown event defaults, and unevaluated annotations.
+# Persisted metrics, actual event content, image tags and outcomes are asserted.
 
 # ---------- _redact_images ----------
 
@@ -64,6 +73,213 @@ def _slog(sources: list[str]) -> _SessionLog:
         model_ref="claude-code/test-model",
         prompt_hash="0" * 64,
     )
+
+
+def _read_summary():
+    from physiclaw.common import paths
+
+    return json.loads(
+        (
+            paths.claude_sessions_dir() / "20260101_120000_test00" / "summary.json"
+        ).read_text()
+    )
+
+
+def _feed(slog, events):
+    try:
+        for event in events:
+            slog.event(event)
+    finally:
+        slog.close()
+
+
+def _tool_result(content, **fields):
+    return {"type": "tool_result", "content": content, **fields}
+
+
+def _image_source(mime):
+    return {"type": "base64", "media_type": mime, "data": "YQ=="}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, True, False, -1, [], {}, "bad", float("nan"), float("inf"), -float("inf")],
+)
+def test_invalid_usage_and_cost_default_to_zero(_isolated_log_dir, value):
+    slog = _slog([])
+    fields = [
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ]
+
+    _feed(
+        slog,
+        [
+            {
+                "type": "result",
+                "usage": dict.fromkeys(fields, value),
+                "total_cost_usd": value,
+                "duration_api_ms": value,
+            }
+        ],
+    )
+
+    summary = _read_summary()
+    assert summary["usage"] == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cache_hit_pct": 0,
+        "new_tokens": 0,
+    }
+    assert summary["cost_usd"] == 0.0
+    assert summary["provider_time_ms"] == 0
+
+
+def test_summary_before_result_keeps_session_identity_and_zero_counters(
+    _isolated_log_dir,
+):
+    from freezegun import freeze_time
+
+    from physiclaw.common import paths
+
+    with freeze_time("2026-01-01 12:00:00") as clock:
+        slog = _slog(["phone"])
+        clock.tick(2.5)
+
+        slog.close()
+
+    summary = _read_summary()
+    assert summary["prompt_hash"] == "0" * 64
+    assert summary["started_at"].startswith("2026-01-01T12:00:00")
+    assert summary["duration_s"] == 2.5
+    assert summary["triggers"] == [{"source": "phone", "description": "phone"}]
+    assert summary["outcome"] == {"sentinel": None, "recap": "", "crashed": False}
+    assert (
+        summary["provider_time_ms"]
+        == summary["cost_usd"]
+        == summary["stuck_events"]
+        == 0
+    )
+    assert summary["errors"]["tool_errors"] == 0
+    assert isinstance(summary["env"], dict)
+    assert (paths.claude_sessions_dir() / "README.md").is_file()
+
+
+def test_summary_counts_repeated_tools_errors_and_cache_creation(_isolated_log_dir):
+    slog = _slog([])
+    calls = [{"type": "tool_use", "name": []}] * 2
+    results = [_tool_result("failed", is_error=True)] * 2
+    results += [_tool_result("ok"), {"type": "text", "is_error": True}]
+
+    _feed(
+        slog,
+        [
+            {"type": "assistant", "message": {"content": calls}},
+            {"type": "user", "message": {"content": results}},
+            {
+                "type": "result",
+                "usage": {"input_tokens": 10, "cache_creation_input_tokens": 20},
+            },
+        ],
+    )
+
+    summary = _read_summary()
+    assert summary["tool_calls"] == {"?": 2}
+    assert summary["errors"]["tool_errors"] == 2
+    assert summary["usage"]["cache_creation_tokens"] == 20
+    assert summary["usage"]["input_tokens"] == 30
+
+
+@pytest.mark.parametrize("with_ids", [True, False])
+def test_images_skip_unrelated_blocks_and_advance_turn_tags(
+    _isolated_log_dir, with_ids
+):
+    from physiclaw.common import paths
+
+    slog = _slog([])
+    assistant = [
+        {"type": "assistant", "message": {"id": str(n) if with_ids else None}}
+        for n in range(3)
+    ]
+    content = [
+        "noise",
+        {"type": "text", "text": "noise"},
+        {"type": "image", "source": _image_source("image/png")},
+        {"type": "image", "source": _image_source("image/jpeg")},
+        {"type": "image", "source": {"type": "url", "data": "YQ=="}},
+    ]
+    user = {
+        "type": "user",
+        "message": {
+            "content": [
+                {"type": "text"},
+                _tool_result("not a list"),
+                _tool_result(content),
+            ]
+        },
+    }
+
+    _feed(slog, [*assistant, user])
+
+    images = paths.claude_sessions_dir() / "20260101_120000_test00" / "images"
+    assert _read_summary()["images"] == 2
+    assert {p.suffix for p in images.iterdir()} == {".png", ".jpg"}
+    assert all("_t3" in p.name for p in images.iterdir())
+
+
+def test_daily_narrative_preserves_content_for_each_event_kind(_isolated_log_dir):
+    slog = _slog([])
+    blocks = [
+        {"type": "text", "text": "block-message"},
+        {"type": "thinking", "thinking": "thought-message"},
+        {"type": "tool_use", "name": "peek", "input": {"note": "tool-input-needle"}},
+        {"type": "unknown", "text": "wrong-text", "thinking": "wrong-thought"},
+    ]
+
+    _feed(
+        slog,
+        [
+            {"type": "assistant", "message": {"content": "plain-message"}},
+            {"type": "assistant", "message": {"content": blocks}},
+            {"type": "user", "message": {"content": [_tool_result("result-needle")]}},
+        ],
+    )
+
+    text = next(_isolated_log_dir.glob("claude-*.log")).read_text()
+    assert all(
+        value in text
+        for value in [
+            "plain-message",
+            "block-message",
+            "thought-message",
+            "tool-input-needle",
+            "result-needle",
+        ]
+    )
+    assert "wrong-text" not in text and "wrong-thought" not in text
+
+
+def test_session_start_purges_only_expired_claude_logs(_isolated_log_dir, mocker):
+    import os
+
+    _isolated_log_dir.mkdir()
+    old = _isolated_log_dir / "claude-2000-01-01.log"
+    other = _isolated_log_dir / "engine-2000-01-01.log"
+    old.write_text("old")
+    other.write_text("other")
+    os.utime(old, (0, 0))
+    os.utime(other, (0, 0))
+    mocker.patch.object(session_log.CONFIG.retention, "log_days", 7)
+
+    slog = _slog([])
+    slog.close()
+
+    assert not old.exists()
+    assert other.read_text() == "other"
 
 
 def test_session_log_survives_hostile_event_shapes(_isolated_log_dir: Path) -> None:
@@ -530,3 +746,192 @@ def test_session_log_rollover_at_midnight(_isolated_log_dir: Path) -> None:
     assert len(files) == 2
     today_text = (_isolated_log_dir / "claude-2026-04-29.log").read_text()
     assert "result: turns=1" in today_text
+
+
+@pytest.mark.parametrize("value", [None, True, 12, ["unexpected"], {"bad": "shape"}])
+def test_regression_malformed_assistant_fields_preserve_valid_text(
+    _isolated_log_dir, value
+):
+    slog = _slog([])
+    data = {
+        "type": "assistant",
+        "message": {
+            "id": value,
+            "content": [
+                {"type": "text", "text": ">> DONE - complete"},
+                {"type": "text", "text": value},
+                {"type": "thinking", "thinking": value},
+                {"type": "tool_use", "name": value},
+            ],
+        },
+    }
+
+    try:
+        slog.event(data)
+        result = slog.done(0)
+    finally:
+        slog.close()
+
+    assert result == "DONE"
+
+
+@pytest.mark.parametrize("source", [None, True, 12, ["unexpected"], "unexpected"])
+def test_regression_malformed_image_sources_do_not_break_logging(
+    _isolated_log_dir, source
+):
+    slog = _slog([])
+    data = {
+        "type": "user",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "content": [{"type": "image", "source": source}],
+                }
+            ]
+        },
+    }
+
+    try:
+        result = slog.event(data)
+    finally:
+        slog.close()
+
+    assert result is None
+
+
+_METADATA = st.recursive(
+    st.none()
+    | st.booleans()
+    | st.integers(min_value=-(10**30), max_value=10**30)
+    | st.floats()
+    | st.text(max_size=30),
+    lambda values: (
+        st.lists(values, max_size=3)
+        | st.dictionaries(st.text(max_size=10), values, max_size=3)
+    ),
+    max_leaves=8,
+)
+
+
+@pytest.mark.parametrize("data", [None, [], ["event"], True, 1, "event"])
+def test_non_object_events_are_ignored(_isolated_log_dir, data):
+    slog = _slog([])
+
+    try:
+        result = slog.event(data)
+    finally:
+        slog.close()
+
+    assert result is None
+
+
+def test_summary_write_failure_closes_resources_once(_isolated_log_dir, mocker, caplog):
+    slog = _slog([])
+    mocker.patch.object(
+        session_log, "write_json_atomic", side_effect=OSError("disk full")
+    )
+    daily_close = mocker.spy(session_log.DailyLogWriter, "close")
+    sidecars_close = mocker.spy(session_log.SessionLogSidecars, "close")
+
+    slog.close()
+    slog.close()
+
+    daily_close.assert_called_once()
+    sidecars_close.assert_called_once()
+    assert "summary write failed" in caplog.text
+
+
+@pytest.mark.parametrize("error", [None, OSError("disk full")])
+def test_failed_image_save_does_not_count_an_image(_isolated_log_dir, mocker, error):
+    from physiclaw.common import paths
+
+    slog = _slog([])
+    save = mocker.patch.object(
+        session_log, "save_image", return_value=None, side_effect=error
+    )
+    event = {
+        "type": "user",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "data": "AAAA"},
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    try:
+        slog.event(event)
+    finally:
+        slog.close()
+
+    save.assert_called_once()
+    summary = json.loads(
+        (
+            paths.claude_sessions_dir() / "20260101_120000_test00" / "summary.json"
+        ).read_text()
+    )
+    assert summary["images"] == 0
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(value=_METADATA)
+def test_external_metadata_keeps_summary_finite_and_preserves_done(
+    _isolated_log_dir, value
+):
+    from physiclaw.common import paths
+
+    # Each example owns a new logger and replaces this sid's summary; no
+    # assertions depend on earlier examples or accumulated daily/stats lines.
+    slog = _slog([])
+    usage = dict.fromkeys(
+        [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ],
+        value,
+    )
+    event = {
+        "type": "result",
+        "usage": usage,
+        "duration_api_ms": value,
+        "total_cost_usd": value,
+    }
+
+    try:
+        slog.event(
+            {
+                "type": "assistant",
+                "message": {"id": value, "content": ">> DONE - complete"},
+            }
+        )
+        slog.event(event)
+        status = slog.done(0)
+    finally:
+        slog.close()
+    summary = json.loads(
+        (
+            paths.claude_sessions_dir() / "20260101_120000_test00" / "summary.json"
+        ).read_text()
+    )
+
+    assert status == "DONE" and summary["outcome"]["sentinel"] == "DONE"
+    assert math.isfinite(summary["cost_usd"]) and summary["cost_usd"] >= 0
+    assert all(
+        isinstance(v, int) and v >= 0
+        for k, v in summary["usage"].items()
+        if k != "cache_hit_pct"
+    )
+    assert (
+        isinstance(summary["provider_time_ms"], int)
+        and summary["provider_time_ms"] >= 0
+    )

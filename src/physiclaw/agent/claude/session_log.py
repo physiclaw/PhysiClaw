@@ -12,6 +12,7 @@ this module owns everything written to disk about a wake.
 """
 
 import logging
+import math
 import time
 from collections import Counter
 
@@ -42,13 +43,41 @@ log = logging.getLogger(__name__)
 LOG_DIR = paths.claude_log_dir()
 
 
+def _as_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _text(block: dict, key: str) -> str:
+    value = block.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _count(value) -> int:
+    """Missing or malformed telemetry must not invalidate a session close."""
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _cost(value) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return number if math.isfinite(number) and number >= 0 else 0.0
+
+
 def _message(data: dict) -> dict:
     """The event's `message` as a dict — {} for null/absent/non-dict.
     The `claude` CLI is external and unpinned; a shape deviation must
     cost a log line, never the wake (spawn._stream's catch is the last
     resort, this is the first)."""
-    msg = data.get("message")
-    return msg if isinstance(msg, dict) else {}
+    return _as_dict(data.get("message"))
 
 
 def _blocks(msg: dict) -> list[dict]:
@@ -68,8 +97,8 @@ def _redact_images(content):
     out = []
     for item in content:
         if isinstance(item, dict) and item.get("type") == "image":
-            src = item.get("source") or {}
-            data = src.get("data", "")
+            src = _as_dict(item.get("source"))
+            data = _text(src, "data")
             out.append({**item, "source": {**src, "data": f"<{len(data)}b elided>"}})
         else:
             out.append(item)
@@ -118,8 +147,8 @@ Privacy: images/ are phone screenshots. Treat a session dir as sensitive.
 class _ClaudeSummary:
     """Accumulate a wake's metrics from the stream-json into the engine's
     summary.json schema (v1), so both engines' sessions read with one tool.
-    Token fields sum the per-assistant `usage` — matching the engine's
-    per-turn accumulation — and `cost_usd` (claude-only) rides along."""
+    Tokens, timing and cost come from the cumulative result event;
+    assistant events supply distinct message ids and tool counts."""
 
     def __init__(
         self,
@@ -156,27 +185,27 @@ class _ClaudeSummary:
         t = data.get("type")
         if t == "assistant":
             msg = _message(data)
-            mid = msg.get("id")
+            mid = _text(msg, "id")
             if mid:
                 self._msg_ids.add(mid)
             # Each content block appears in exactly one assistant event, so
             # counting tool_use across events doesn't double-count.
             for b in _blocks(msg):
                 if b.get("type") == "tool_use":
-                    self.tool_calls[b.get("name") or "?"] += 1
+                    self.tool_calls[_text(b, "name") or "?"] += 1
         elif t == "user":
             for b in _blocks(_message(data)):
                 if b.get("type") == "tool_result" and b.get("is_error"):
                     self.tool_errors += 1
         elif t == "result":
-            self.provider_time_ms = int(data.get("duration_api_ms") or 0)
-            self.cost_usd = float(data.get("total_cost_usd") or 0.0)
-            self.usage = data.get("usage") or {}
+            self.provider_time_ms = _count(data.get("duration_api_ms"))
+            self.cost_usd = _cost(data.get("total_cost_usd"))
+            self.usage = _as_dict(data.get("usage"))
 
     def finalize(self, *, images: int) -> dict:
         u = self.usage
-        cr = int(u.get("cache_read_input_tokens") or 0)
-        cc = int(u.get("cache_creation_input_tokens") or 0)
+        cr = _count(u.get("cache_read_input_tokens"))
+        cc = _count(u.get("cache_creation_input_tokens"))
         calls = len(self._msg_ids)
         return build_summary(
             sid=self.sid,
@@ -194,8 +223,8 @@ class _ClaudeSummary:
             turns=calls,
             provider_calls=calls,
             provider_time_ms=self.provider_time_ms,
-            input_tokens=int(u.get("input_tokens") or 0) + cr + cc,
-            output_tokens=int(u.get("output_tokens") or 0),
+            input_tokens=_count(u.get("input_tokens")) + cr + cc,
+            output_tokens=_count(u.get("output_tokens")),
             cache_read_tokens=cr,
             cache_creation_tokens=cc,
             cost_usd=self.cost_usd,
@@ -258,6 +287,8 @@ class _SessionLog:
         summary, and (for tool-result screenshots) is extracted to
         images/. Assistant text additionally narrates to the runtime log.
         """
+        if not isinstance(data, dict):
+            return None
         if data.get("type") == "assistant":
             # One assistant MESSAGE streams as several assistant EVENTS
             # sharing message.id; advance the turn only on a new message,
@@ -266,7 +297,7 @@ class _SessionLog:
             # Fall back to per-event advance only when there is no id to
             # dedup on (never in a real Claude stream).
             msg = _message(data)
-            mid = msg.get("id")
+            mid = _text(msg, "id")
             if not mid:
                 self._turn += 1
             elif mid not in self._seen_msg_ids:
@@ -280,8 +311,9 @@ class _SessionLog:
             if isinstance(content, str) and content.strip():
                 self._last_text = content
             for b in _blocks(msg):
-                if b.get("type") == "text" and b.get("text", "").strip():
-                    self._last_text = b["text"]
+                text = _text(b, "text")
+                if b.get("type") == "text" and text.strip():
+                    self._last_text = text
         summary = self._summarize(data)
         if summary:
             self._daily.line(summary)
@@ -347,9 +379,10 @@ class _SessionLog:
             for c in content:
                 if not isinstance(c, dict) or c.get("type") != "image":
                     continue
-                src = c.get("source") or {}
-                if src.get("type") == "base64" and src.get("data"):
-                    self._save_image(src.get("media_type") or "image/jpeg", src["data"])
+                src = _as_dict(c.get("source"))
+                b64 = _text(src, "data")
+                if src.get("type") == "base64" and b64:
+                    self._save_image(_text(src, "media_type") or "image/jpeg", b64)
 
     def _save_image(self, mime: str, b64: str) -> None:
         try:
@@ -370,8 +403,9 @@ class _SessionLog:
         if data.get("type") != "assistant":
             return
         for b in _blocks(_message(data)):
-            if b.get("type") == "text" and b.get("text", "").strip():
-                first = b["text"].strip().splitlines()[0][:200]
+            text = _text(b, "text")
+            if b.get("type") == "text" and text.strip():
+                first = text.strip().splitlines()[0][:200]
                 log.info("claude: %s", first)
                 return
 
@@ -391,10 +425,10 @@ class _SessionLog:
                     parts.append(
                         f"tool_use: {b.get('name', '?')} {str(b.get('input', ''))[:1000]}"
                     )
-                elif b.get("type") == "text" and b.get("text", "").strip():
-                    parts.append(f"text: {b['text'][:1000]}")
-                elif b.get("type") == "thinking" and b.get("thinking", "").strip():
-                    parts.append(f"thinking: {b['thinking'][:2000]}")
+                elif b.get("type") == "text" and _text(b, "text").strip():
+                    parts.append(f"text: {_text(b, 'text')[:1000]}")
+                elif b.get("type") == "thinking" and _text(b, "thinking").strip():
+                    parts.append(f"thinking: {_text(b, 'thinking')[:2000]}")
             return " | ".join(parts) if parts else None
 
         if t == "user":
