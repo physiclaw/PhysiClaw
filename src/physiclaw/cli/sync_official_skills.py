@@ -11,7 +11,6 @@ remain unchanged.
 import datetime as dt
 import hashlib
 import http.client
-import importlib
 import json
 import logging
 import os
@@ -20,8 +19,7 @@ import tempfile
 import threading
 import urllib.error
 import zipfile
-from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from pathlib import Path
 from typing import Callable
 
@@ -32,6 +30,7 @@ from physiclaw.cli._format import info, ok, warn
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.text import read_text, write_text
 
 log = logging.getLogger(__name__)
@@ -250,36 +249,6 @@ def _write_sync_state(
     write_text(staging / SYNC_STATE_FILE, json.dumps(payload, indent=2) + "\n")
 
 
-@contextmanager
-def _sync_lock(official: Path) -> Iterator[None]:
-    """Fail fast if another sync owns the install; closing releases the lock.
-
-    Keep the lock file: unlinking it would let another process lock a different
-    inode while this one still owns the old inode. The OS releases crash locks.
-    """
-    official.mkdir(parents=True, exist_ok=True)
-    with (official / ".sync.lock").open("a+b") as lock:
-        try:
-            import fcntl
-        except ImportError:  # Windows
-            msvcrt = importlib.import_module("msvcrt")
-
-            if lock.tell() == 0:
-                lock.write(b"\0")
-                lock.flush()
-            lock.seek(0)
-            try:
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as e:
-                raise SyncError("official skills sync is already running") from e
-        else:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as e:
-                raise SyncError("official skills sync is already running") from e
-        yield
-
-
 def _install(staging: Path, official: Path) -> None:
     """Replace owned paths; keep backups until every replacement succeeds."""
     backup = Path(tempfile.mkdtemp(prefix=".sync-backup-", dir=official))
@@ -334,8 +303,10 @@ def sync(
         if dry_run:
             _sync(force=force, dry_run=True, emit=emit)
         else:
-            with _sync_lock(paths.official_dir()):
+            with exclusive_file_lock(paths.official_dir() / ".sync.lock"):
                 _sync(force=force, dry_run=False, emit=emit)
+    except FileLockBusy as e:
+        raise SyncError("official skills sync is already running") from e
     except (OSError, ValueError, http.client.HTTPException) as e:
         raise SyncError(f"official skills sync failed: {e}") from e
 
