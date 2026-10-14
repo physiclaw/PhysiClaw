@@ -9,7 +9,7 @@ it never writes a how-to, and never edits or prunes.
 Shape: one flat file `learned/pitfalls/pitfalls.md`, one `- item` per line,
 **newest on top**. Always injected into SYSTEM right after user skills
 (`render_section`), so there is no `Skill()` load to forget. Three bounds keep
-it prompt-lean: ≤3 per session (the tool), ≤`max_item_chars` per line (clamped
+it prompt-lean: ≤3 per call (the tool), ≤`max_item_chars` per line (clamped
 here), ≤`max_items` total (the curator consolidates toward it; `add`/`replace`
 hard-cut from the bottom/oldest as a backstop). Every write appends a full
 snapshot to `history.jsonl`, so a curator prune is always recoverable.
@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 from physiclaw.agent.runtime.sentinel import DONE
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
-from physiclaw.common.text import append_text, read_text, write_text
+from physiclaw.common.text import append_line, read_text, write_text
 
 if TYPE_CHECKING:
     from physiclaw.agent.engine.session import Session
@@ -66,9 +66,10 @@ def _dedup(items: list[str]) -> list[str]:
     seen: set[str] = set()
     for raw in items:
         s = _clean(raw)
-        if not s or _norm(s) in seen:
+        key = _norm(s)
+        if not s or key in seen:
             continue
-        seen.add(_norm(s))
+        seen.add(key)
         out.append(s)
     return out
 
@@ -88,13 +89,12 @@ def read() -> list[str]:
 
 def _append_history(op: str, items: list[str]) -> None:
     path = paths.pitfalls_dir() / _HISTORY
-    path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "ts": dt.datetime.now().isoformat(timespec="seconds"),
         "op": op,
         "items": items,
     }
-    append_text(path, json.dumps(record, ensure_ascii=False) + "\n")
+    append_line(path, json.dumps(record, ensure_ascii=False))
 
 
 def _commit(op: str, items: list[str]) -> None:
@@ -109,8 +109,8 @@ def add(items: list[str]) -> dict:
     """Prepend up to 3 new pitfalls (newest on top), deduped against the batch
     and the existing list, each clamped. Hard-cut to `max_items` from the
     bottom (oldest) as a backstop — the curator does the real consolidation.
-    Append-only for the agent: it can never edit or drop an existing item.
-    Returns {added, total}."""
+    Surviving existing items retain their text and order. Returns {added, total},
+    counting only new items that remain after enforcing the cap."""
     fresh = _dedup(items or [])[:3]
     existing = read()
     existing_keys = {_norm(x) for x in existing}
@@ -119,7 +119,7 @@ def add(items: list[str]) -> dict:
         return {"added": 0, "total": len(existing)}
     merged = (fresh + existing)[: CONFIG.pitfalls.max_items]
     _commit("add", merged)
-    return {"added": len(fresh), "total": len(merged)}
+    return {"added": min(len(fresh), len(merged)), "total": len(merged)}
 
 
 def replace(items: list[str]) -> dict:
@@ -149,7 +149,7 @@ def render_section(items: list[str] | None = None) -> str:
 # --- Pre-close gate: force `add_pitfall(...)` before a long DONE ------------
 #
 # A pitfall is `trap → fix`, and you can only write the fix if you actually got
-# PAST the trap — so we capture only on a long DONE (over `capture_turn_floor`
+# PAST the trap — so we capture only on a long DONE (at least `capture_turn_floor`
 # turns): the task succeeded, and a run that long almost always stumbled over
 # something worth banking. The agent judges what (it may add 0). A STUCK / FAIL
 # session never escaped the trap (the "fix" would be a guess) and a short DONE
@@ -159,7 +159,7 @@ def render_section(items: list[str] | None = None) -> str:
 
 def should_capture(status: str, turn: int, session: "Session") -> tuple[bool, str]:
     """Whether to force `add_pitfall(...)` before this close, plus a diagnostic
-    seed. Capture only on a DONE that ran past `capture_turn_floor` turns — the
+    seed. Capture only on a DONE with at least `capture_turn_floor` turns — the
     task succeeded and the length says it hit friction; the agent decides what
     (0–3 traps). STUCK / FAIL never escaped the trap; a short DONE sailed
     through; IDLE / WAIT wakes never do."""
