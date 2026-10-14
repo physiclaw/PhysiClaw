@@ -65,6 +65,21 @@ def test_scan_missing_root_returns_empty() -> None:
     assert scan() == []
 
 
+def test_scan_default_search_path_preserves_explicit_placeholder_values() -> None:
+    from physiclaw.common.placeholders import write_placeholder_values
+
+    write_placeholder_values({"CONTACT": "Installed"})
+    _write(
+        "demo",
+        VALID.format(name="demo", enabled="false").replace("{message}", "<<CONTACT>>"),
+    )
+
+    (entry,) = scan(values={"CONTACT": "Staged"})
+
+    assert entry.spec is not None
+    assert entry.spec.steps[1].args == {"text": "Staged"}
+
+
 def test_scan_valid_macro_returns_spec() -> None:
     _write("demo")
 
@@ -297,10 +312,10 @@ def test_a_file_the_loader_cannot_survive_is_excluded_not_fatal(mocker) -> None:
     _write("boom")
     real = store_mod.parse_macro
 
-    def _explode(text: str, stem: str, pages=None, macros=None):
+    def _explode(text: str, stem: str, pages=None, macros=None, *, values=None):
         if stem == "boom":
             raise RecursionError("maximum recursion depth exceeded")
-        return real(text, stem, pages, macros)
+        return real(text, stem, pages, macros, values=values)
 
     mocker.patch.object(store_mod, "parse_macro", side_effect=_explode)
 

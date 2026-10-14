@@ -104,8 +104,13 @@ def test_install_keeps_an_im_folder_under_channel(tmp_path: Path) -> None:
     src = tmp_path / "playbooks" / "channel" / "whatsapp"
     (src / "macros").mkdir(parents=True)
     (src / "APP.yml").write_text(
-        "app: whatsapp\ndescription: WhatsApp channel\n"
+        "kind: manifest\nschema: 1\napp: whatsapp\ndescription: WhatsApp channel\n"
         "pages:\n  thread:\n    description: the thread\n    anchors: ['Alice']\n",
+        encoding="utf-8",
+    )
+    (src / "macros" / "open.yml").write_text(
+        "kind: macro\nschema: 1\nname: open\ndescription: open the channel\n"
+        "enabled: false\nsteps:\n  - home_screen\n",
         encoding="utf-8",
     )
 

@@ -1,21 +1,14 @@
-"""`physiclaw playbooks` — the agent's door to app packs: scaffold,
-validate, rehearse, and step them; `pages` for their fingerprints.
+"""Commands for authoring and rehearsing app packs.
 
-The CLI is a skin. Every command is typer around one driver — the
-rehearsal core (`conductor/rehearsal.py`), the stepping driver
-(`debug/stepping.py`), the replay (`conductor/replay.py`), the page
-tools (`cli/pages.py` over `conductor/bench/capture.py`) — and the studio
-puts a browser UI over the same drivers for a person. Mirrors the
-macros CLI's shapes throughout: `init` prints the next steps, `check`
-is the all-or-nothing gate with valid-is-not-live warnings, and `run`
-rehearses one playbook against the live server the way `macros run`
-rehearses one macro — the test you do BEFORE enabling. The scaffolding
-itself lives in `conductor/load/scaffold.py` (the `store.init_macro` split:
-the CLI only prints).
+`init` scaffolds a disabled pack; `install` validates a staged template before
+replacing files. `list` and `check` share a catalogue, with validity and live
+readiness reported separately. `run`, `step`, and `replay` wrap the rehearsal,
+stepping, and replay drivers also used by the studio. `stats`, `propose`, and
+`micro` turn recorded runs into authoring feedback.
 
-Nothing here writes cross-wake state. A rehearsal drives the phone now
-and stops; the conductor's own doors at wake are the suspension file and
-the channel pack's boot."""
+Rehearsals drive the phone immediately without saving a cross-wake suspension.
+Stepping keeps only its debugger position; replay uses recorded screens.
+"""
 
 import asyncio
 import json
@@ -38,7 +31,6 @@ from physiclaw.common.paths import PACK_FILENAME
 from physiclaw.common.ready import START_HINT
 from physiclaw.conductor.bench import runs
 from physiclaw.conductor.drive import rehearsal, setup
-from physiclaw.conductor.load.files import read_template_manifest
 from physiclaw.conductor.spec.model import PlaybookError
 
 if TYPE_CHECKING:
@@ -95,7 +87,7 @@ def init(
 
     try:
         root = scaffold.init_pack(app)
-    except SpecError as e:
+    except (SpecError, OSError, UnicodeError) as e:
         exit_error(str(e))
     typer.echo(ok(str(root)))
     typer.echo("Next:")
@@ -104,8 +96,8 @@ def init(
             f"  1. anchor the `{THREAD_PAGE}` page on YOUR chat header in {PACK_FILENAME}"
         )
         typer.echo("  2. record the send/open gesture paths in macros/*.yml")
-        typer.echo("  3. rehearse both, then enable (physiclaw macros run is")
-        typer.echo("     per-user-macro; drive a pack's via physiclaw playbooks run);")
+        typer.echo("  3. rehearse both with `physiclaw macros run channel/<macro>`")
+        typer.echo("     and then enable them;")
         typer.echo(
             f"     the boot ({BOOT_PLAYBOOK}/PLAYBOOK.yml) goes live with `open`"
         )
@@ -154,92 +146,41 @@ def install(
     verbatim — `<<PLACEHOLDER>>` tokens stay in the files (diffable
     against the template); their values — per-installation constants
     like the IM contact name — go to playbooks/placeholders.yml, where
-    every parser fills them at load. Everything lands disabled:
-    rehearse, then enable."""
-    import shutil
-
-    from physiclaw.common import paths
+    every parser fills them at load. Shared templates ship disabled:
+    rehearse, then enable. Each file's enabled flag is preserved."""
+    from physiclaw.common.file_lock import FileLockBusy
     from physiclaw.common.placeholders import (
         PLACEHOLDER_VALUES_FILENAME,
-        find_placeholders,
         placeholder_values,
-        write_placeholder_values,
     )
-    from physiclaw.common.text import read_text, write_text
-    from physiclaw.conductor.spec.specfile import SpecError
+    from physiclaw.conductor.load.install import install_template, read_template
 
-    if not src.is_dir():
-        exit_error(f"{src} is not a directory")
-    # A channel IM folder (`channel/wechat`) keeps its place under
-    # `channel/`, beside any other IM already installed there — and the
-    # pack it installs is `channel`, whatever the folder is called.
-    under_channel = src.parent.name == paths.CHANNEL_DIRNAME
-    app = paths.CHANNEL_DIRNAME if under_channel else src.name
-    dest = (
-        paths.playbooks_dir() / paths.CHANNEL_DIRNAME / src.name
-        if under_channel
-        else paths.playbooks_dir() / app
-    )
-
-    # Every declaration and every note travels: the yml files the
-    # parsers read, the prompts and READMEs beside them.
-    files = sorted(
-        f
-        for f in src.rglob("*")
-        if f.is_file()
-        and f.suffix in {".yml", ".md"}
-        and not any(paths.is_skipped(part) for part in f.relative_to(src).parts)
-    )
-    if not any(f.suffix == ".yml" for f in files):
-        exit_error(f"{src} contains no pack files")
-    texts = {f: read_text(f) for f in files}
-    # APP.yml is the pack manifest — the `action.yml` analog:
-    # `name`/`description` plus the `placeholders:` map that drives the
-    # prompts below. It installs WITH the pack, tokens intact.
     try:
-        meta = read_template_manifest(src)
-    except SpecError as e:
+        template = read_template(src)
+        template.destination(force=force)
+        if template.metadata.get("description"):
+            typer.echo(template.metadata["description"])
+        new_values = _gather_values(
+            template.tokens,
+            template.metadata.get("placeholders") or {},
+            set_values,
+            placeholder_values(),
+        )
+        dest, pack = install_template(template, new_values, force=force)
+    except FileLockBusy:
+        exit_error("another playbook install is already running")
+    except (OSError, ValueError) as e:
         exit_error(str(e))
-    if meta.get("description"):
-        typer.echo(meta["description"])
-    tokens = list(
-        dict.fromkeys(t for text in texts.values() for t in find_placeholders(text))
-    )
-    try:
-        existing = placeholder_values()
-    except ValueError as e:
-        exit_error(str(e))
-    new_values = _gather_values(
-        tokens, meta.get("placeholders") or {}, set_values, existing
-    )
-
-    if dest.exists():
-        if not force:
-            exit_error(
-                f"{dest} already exists — remove it or pass --force to replace it"
-            )
-        shutil.rmtree(dest)
     if new_values:
-        write_placeholder_values({**existing, **new_values})
         typer.echo(
             f"values recorded in playbooks/{PLACEHOLDER_VALUES_FILENAME}: "
             + ", ".join(sorted(new_values))
         )
-    for f in files:
-        # Tokens stay in the copied files: the parsers fill them from
-        # placeholders.yml at load (and `_check_app` below proves it).
-        out = dest / f.relative_to(src)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        write_text(out, texts[f])
-    typer.echo(f"installed {app} → {dest} ({len(files)} file(s))")
-
-    # The check's own output surfaces real errors; its disabled-state
-    # warnings are a fresh install's EXPECTED shape, so the next steps
-    # print unconditionally.
-    _check_app(app)
+    typer.echo(f"installed {template.app} → {dest} ({len(template.files)} file(s))")
+    _check_app(template.app, pack)
     typer.echo(
         "next: rehearse (`physiclaw playbooks run`), capture pages "
-        f"(`physiclaw playbooks pages calibrate {app}`), then set `enabled: true`."
+        f"(`physiclaw playbooks pages calibrate {template.app}`), then set `enabled: true`."
     )
 
 
@@ -288,15 +229,25 @@ def _warn_strays() -> None:
         )
 
 
+def _installed_apps() -> list[str]:
+    """Prepare the catalogue's README and report expected filesystem failures."""
+    from physiclaw.conductor.load import pack as pb
+    from physiclaw.conductor.load import scaffold
+
+    try:
+        scaffold.ensure_format_readme()
+        _warn_strays()
+        return pb.list_apps()
+    except (OSError, UnicodeError) as e:
+        exit_error(str(e))
+
+
 @playbooks_app.command("list")
 def list_cmd() -> None:
     """List every pack and its playbooks: enabled, disabled, or invalid."""
     from physiclaw.conductor.load import pack as pb
-    from physiclaw.conductor.load import scaffold
 
-    scaffold.ensure_format_readme()
-    _warn_strays()
-    apps = pb.list_apps()
+    apps = _installed_apps()
     if not apps:
         typer.echo(
             "No app packs found. Scaffold one (physiclaw playbooks init "
@@ -308,7 +259,7 @@ def list_cmd() -> None:
         typer.echo(f"{_pack_label(app)}/")
         try:
             entries = pb.scan_playbooks(app)
-        except pb.PlaybookError as e:
+        except (pb.PlaybookError, OSError, UnicodeError) as e:
             typer.echo(f"  {step_fail(str(e))}")
             continue
         for entry in entries:
@@ -359,7 +310,7 @@ def run(
     except ConnectionError as e:
         # Same branch as `macros run` (`START_HINT` says why `mcp`).
         exit_error(f"{e}. {START_HINT}")
-    except RuntimeError as e:
+    except (RuntimeError, OSError, UnicodeError) as e:
         # `rehearsal.micro_caller` — an agent step fired with no model configured.
         exit_error(str(e))
     typer.echo(outcome)
@@ -461,13 +412,26 @@ def step(
     from physiclaw.debug import stepping
 
     app, name = _split_ref(ref)
+    if reset and status:
+        exit_error("--reset and --status cannot be used together", code=2)
     if reset:
-        typer.echo(stepping.reset(app, name))
+        try:
+            message = stepping.reset(app, name)
+        except (SpecError, OSError, UnicodeError) as e:
+            exit_error(str(e))
+        typer.echo(
+            json.dumps(
+                stepping.StepResult("reset", message, None).to_dict(),
+                ensure_ascii=False,
+            )
+            if as_json
+            else message
+        )
         return
     if status:
         try:
             pos = stepping.status(app, name)
-        except SpecError as e:
+        except (SpecError, OSError, UnicodeError) as e:
             exit_error(str(e))
         if as_json:
             typer.echo(json.dumps(pos.to_dict() if pos else None, ensure_ascii=False))
@@ -501,7 +465,7 @@ def step(
         exit_error(str(e))
     except ConnectionError as e:
         exit_error(f"{e}. {START_HINT}")
-    except RuntimeError as e:
+    except (RuntimeError, OSError, UnicodeError) as e:
         exit_error(str(e))
     typer.echo(
         json.dumps(result.to_dict(), ensure_ascii=False) if as_json else result.message
@@ -558,7 +522,7 @@ def replay(
             emit_warn=lambda s: typer.echo(warn(s)),
             dry=True,
         )
-    except (OSError, PlaybookError) as e:
+    except (OSError, UnicodeError, PlaybookError) as e:
         exit_error(str(e))
     result = replay_mod.replay(
         program, screens, parse_inputs(outputs or [], flag="--output")
@@ -574,7 +538,7 @@ def replay(
 def stats(
     last: Annotated[
         int,
-        typer.Option("--last", help="How many recent runs to list (0 = none)."),
+        typer.Option("--last", min=0, help="How many recent runs to list (0 = none)."),
     ] = 10,
 ) -> None:
     """Per-playbook walk outcomes from playbooks/runs.jsonl — the
@@ -789,7 +753,7 @@ def micro(
 def propose(
     top: Annotated[
         int,
-        typer.Option("--top", help="How many escalation sites to triage."),
+        typer.Option("--top", min=1, help="How many escalation sites to triage."),
     ] = 3,
 ) -> None:
     """Turn the hottest escalation sites into concrete authoring work:
@@ -823,13 +787,9 @@ def propose(
 def check() -> None:
     """Validate every pack: pages, pack macros, playbooks. Exit 1 if any
     is invalid."""
-    from physiclaw.conductor.load import pack as pb
-    from physiclaw.conductor.load import scaffold
     from physiclaw.conductor.route import lints
 
-    scaffold.ensure_format_readme()
-    _warn_strays()
-    apps = pb.list_apps()
+    apps = _installed_apps()
     if not apps:
         typer.echo("No app packs found.")
         return
@@ -854,22 +814,25 @@ def _pack_label(app: str) -> str:
     return app if folder == app else f"{app} ({folder})"
 
 
-def _check_app(app: str) -> "tuple[bool, dict[str, Playbook]]":
+def _check_app(
+    app: str, pack: "Pack | None" = None
+) -> "tuple[bool, dict[str, Playbook]]":
     """Report one pack: (anything invalid, the valid playbooks by ref —
     what the cross-pack advisory reads, so nothing loads twice)."""
     from physiclaw.conductor.load import pack as pb
     from physiclaw.conductor.route import lints
 
     try:
-        pack = pb.load_pack(app)
-    except pb.PlaybookError as e:
+        if pack is None:
+            pack = pb.load_pack(app)
+        entries = pb.scan_playbooks(app, pack)
+    except (pb.PlaybookError, OSError, UnicodeError) as e:
         typer.echo(step_fail(str(e)))
         return True, {}
     bad = False
     for rel, err in pack.file_errors():
         typer.echo(step_fail(f"{app}/{rel}: {err}"))
         bad = True
-    entries = pb.scan_playbooks(app, pack)
     for line in lints.pack_warnings(pack, [e.spec for e in entries if e.spec]):
         typer.echo(warn(f"{app}/{line}"))
     for entry in entries:

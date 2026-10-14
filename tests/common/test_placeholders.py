@@ -4,7 +4,7 @@ and the local `playbooks/placeholders.yml` values file it fills from."""
 from __future__ import annotations
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from physiclaw.common import paths
@@ -67,6 +67,20 @@ def test_write_placeholder_values_round_trips() -> None:
     write_placeholder_values({"CONTACT": "小乔", "CITY": "Hangzhou"})
 
     assert placeholder_values() == {"CONTACT": "小乔", "CITY": "Hangzhou"}
+
+
+def test_regression_write_placeholder_question_prefix_round_trips() -> None:
+    write_placeholder_values({"CONTACT": "?Alice"})
+
+    assert placeholder_values() == {"CONTACT": "?Alice"}
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(st.dictionaries(st.text(), st.text(), max_size=5))
+def test_write_placeholder_values_preserves_string_keys_and_values(values) -> None:
+    write_placeholder_values(values)
+
+    assert placeholder_values() == values
 
 
 @pytest.mark.parametrize(

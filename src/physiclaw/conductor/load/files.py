@@ -16,7 +16,13 @@ from physiclaw.conductor.spec.model import PlaybookError
 from physiclaw.conductor.spec.specfile import bind, load_yaml, yaml_loader
 
 
-def load_pack_doc(app: str, error_cls: type[ValueError]) -> dict | None:
+def load_pack_doc(
+    app: str,
+    error_cls: type[ValueError],
+    *,
+    root: Path | None = None,
+    values: dict[str, str] | None = None,
+) -> dict | None:
     """`playbooks/<app>/APP.yml`, the manifest, loaded and
     top-checked: a mapping with only the known sections, no unpopulated
     template placeholders — or empty, which is a valid manifest (the
@@ -24,10 +30,12 @@ def load_pack_doc(app: str, error_cls: type[ValueError]) -> dict | None:
     file doesn't exist (not a pack). Section contents are validated by
     their owners (`pages.py`, `model.py`) — this is just the shared
     front door."""
-    path = paths.pack_root(app) / PACK_FILENAME
+    path = (paths.pack_root(app) if root is None else root) / PACK_FILENAME
     if not path.exists():
         return None
-    data = load_yaml(read_text(path), error_cls, where=f"{app}/{PACK_FILENAME}")
+    data = load_yaml(
+        read_text(path), error_cls, where=f"{app}/{PACK_FILENAME}", values=values
+    )
     if data is None:
         return {}
     if not isinstance(data, dict):
@@ -125,7 +133,7 @@ def load_playbook_docs(
 
 
 def read_template_manifest(src: Path) -> dict:
-    """A template pack's PLAYBOOK.yml, loaded RAW (its `<<TOKEN>>`s still
+    """A template pack's APP.yml, loaded RAW (its `<<TOKEN>>`s still
     in place) for `playbooks install` — name/description plus the
     `placeholders:` spec map that drives the prompts. {} when absent;
     loud PlaybookError on bad YAML or a malformed `placeholders:`
@@ -137,6 +145,8 @@ def read_template_manifest(src: Path) -> dict:
         data = yaml_loader.load(read_text(path))
     except Exception as e:  # loader errors are not confined to YAMLError
         raise PlaybookError(f"{path}: invalid YAML: {e or type(e).__name__}") from e
+    if data is None:
+        return {}
     if not isinstance(data, dict):
         raise PlaybookError(f"{path} must be a YAML mapping")
     spec = data.get("placeholders") or {}

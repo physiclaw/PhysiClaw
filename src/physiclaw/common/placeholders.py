@@ -12,6 +12,7 @@ string "<<CONTACT>>".
 
 import io
 import re
+from pathlib import Path
 from typing import Any
 
 from physiclaw.common import paths
@@ -28,6 +29,9 @@ PLACEHOLDER_VALUES_FILENAME = "placeholders.yml"
 # YAML 1.2 safe handler for the values file — this module's one
 # instance (the `specfile.yaml_loader` pattern, one layer down).
 _yaml = safe_yaml()
+# Every key/value is literal text. Quoting also avoids the emitter's invalid
+# flow scalars for values such as `?Alice`.
+_yaml.default_style = '"'  # type: ignore[assignment]  # ruamel infers this as None
 
 
 def find_placeholders(text: str) -> list[str]:
@@ -75,12 +79,15 @@ def placeholder_values() -> dict[str, str]:
     return data
 
 
-def write_placeholder_values(values: dict[str, str]) -> None:
+def write_placeholder_values(
+    values: dict[str, str], *, path: Path | None = None
+) -> None:
     """Write the full `playbooks/placeholders.yml` map — the reader
-    above's one counterpart, so the file shape never drifts."""
+    above's one counterpart, so the file shape never drifts. Installers
+    may supply a private staging `path` before committing the file."""
     buf = io.StringIO()
     _yaml.dump(dict(sorted(values.items())), buf)
-    path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME if path is None else path
     path.parent.mkdir(parents=True, exist_ok=True)
     write_text(
         path,

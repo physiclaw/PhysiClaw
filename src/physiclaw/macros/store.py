@@ -92,6 +92,8 @@ def scan(
     root: Path | None = None,
     pages: "PageResolver | None" = None,
     fallback: "MacroResolver | None" = None,
+    *,
+    values: dict[str, str] | None = None,
 ) -> list[ScanEntry]:
     """Every macro file, sorted by name — valid or not. With no ``root``,
     unions the search path (first dir wins per name — the
@@ -100,12 +102,13 @@ def scan(
     ``macros/`` roots, with ``pages`` the pack's page resolver a jump
     reads through and ``fallback`` where a `run` step's `app.macros.<name>`
     goes (`parse_folder`) — one scanner, one
-    traversal guard, one broad-except lesson."""
+    traversal guard, one broad-except lesson. `values` optionally pins the
+    installation constants used by every file."""
     if root is None:
         seen: set[str] = set()
         merged: list[ScanEntry] = []
         for r in paths.macros_dirs():
-            for e in scan(r):
+            for e in scan(r, values=values):
                 if e.name not in seen:
                     seen.add(e.name)
                     merged.append(e)
@@ -132,7 +135,7 @@ def scan(
             texts[md.stem] = read_text(real)
         except (OSError, UnicodeError) as e:
             unread[md.stem] = ScanEntry(md.stem, error=str(e) or type(e).__name__)
-    parsed = parse_folder(texts, pages, fallback)
+    parsed = parse_folder(texts, pages, fallback, values=values)
     return [unread.get(md.stem) or parsed[md.stem] for md in files]
 
 
@@ -140,6 +143,8 @@ def parse_folder(
     texts: Mapping[str, str],
     pages: "PageResolver | None" = None,
     fallback: "MacroResolver | None" = None,
+    *,
+    values: dict[str, str] | None = None,
 ) -> dict[str, ScanEntry]:
     """One folder's macro files (stem → text) parsed together, in the
     order given: each an entry with its spec or its reason. A `run`
@@ -150,7 +155,8 @@ def parse_folder(
     resolver; a file that reaches itself
     through its callees is a cycle, refused with the chain. The
     folder's whole rule, so `scan`, a pack's loader and a test over
-    texts in memory cannot drift."""
+    texts in memory cannot drift. `values` pins installation constants for
+    the folder and all sibling calls."""
     done: dict[str, ScanEntry] = {}
     parsing: list[str] = []  # the chain of files being parsed, for a cycle
 
@@ -160,7 +166,7 @@ def parse_folder(
         parsing.append(stem)
         try:
             done[stem] = ScanEntry(
-                stem, spec=parse_macro(texts[stem], stem, pages, resolve)
+                stem, spec=parse_macro(texts[stem], stem, pages, resolve, values=values)
             )
         except Exception as e:
             # Deliberately broad: a malformed file must be excluded WHOLE, per

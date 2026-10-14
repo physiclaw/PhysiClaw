@@ -31,7 +31,7 @@ PAGES = (
 )
 MACRO = 'kind: macro\nschema: 1\nname: open\ndescription: open the <<CONTACT>> thread\nenabled: false\nsteps:\n  - send_to_clipboard: "<<CONTACT>>"\n'
 MANIFEST = (
-    "app: wechat\ndescription: reach the user thread\n"
+    "kind: manifest\nschema: 1\napp: wechat\ndescription: reach the user thread\n"
     "placeholders:\n  CONTACT:\n    description: the contact\n"
     "    example: SomeOne\n"
     "pages:\n" + "\n".join("  " + line for line in PAGES.splitlines()) + "\n"
@@ -130,3 +130,119 @@ def test_install_rejects_a_placeholder_valued_value(template: Path) -> None:
     result = _install(template, "--set", "CONTACT=<<X>>")
 
     assert result.exit_code != 0
+
+
+def _destination() -> Path:
+    return paths.playbooks_dir() / "channel" / "wechat"
+
+
+def _installed(template):
+    result = _install(template, "--set", "CONTACT=Original")
+    assert result.exit_code == 0, result.output
+    marker = _destination() / "local-only.md"
+    marker.write_text("keep local work", encoding="utf-8")
+    return marker
+
+
+@pytest.mark.parametrize(("cwd_suffix", "source"), [("", "."), ("nested", "..")])
+def test_regression_relative_source_never_replaces_playbooks_root(
+    template, monkeypatch, cwd_suffix, source
+):
+    unrelated = paths.playbooks_dir() / "other" / "keep.md"
+    unrelated.parent.mkdir(parents=True)
+    unrelated.write_text("other pack", encoding="utf-8")
+    cwd = template / cwd_suffix
+    cwd.mkdir(exist_ok=True)
+    monkeypatch.chdir(cwd)
+
+    result = _install(Path(source), "--force", "--set", "CONTACT=Alice")
+
+    assert result.exit_code == 0, result.output
+    assert unrelated.read_text(encoding="utf-8") == "other pack"
+    assert (_destination() / "APP.yml").is_file()
+
+
+def test_regression_invalid_pack_cannot_replace_previous_install(template):
+    marker = _installed(template)
+    values_path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    original_values = values_path.read_bytes()
+    (template / "macros" / "open.yml").write_text("steps: [invalid", encoding="utf-8")
+
+    result = _install(template, "--force", "--set", "CONTACT=Replacement")
+
+    assert result.exit_code == 1
+    assert "invalid YAML" in result.output
+    assert marker.read_text(encoding="utf-8") == "keep local work"
+    assert values_path.read_bytes() == original_values
+
+
+def test_regression_copy_failure_preserves_pack_and_placeholder_values(
+    template, mocker
+):
+    from physiclaw.common import text
+
+    marker = _installed(template)
+    values_path = paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME
+    original_values = values_path.read_bytes()
+    write = text.write_text
+
+    def fail_macro(path, body):
+        if path.name == "open.yml":
+            raise OSError("simulated copy failure")
+        return write(path, body)
+
+    mocker.patch.object(text, "write_text", fail_macro)
+
+    result = _install(template, "--force", "--set", "CONTACT=Replacement")
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "simulated copy failure" in result.output
+    assert marker.read_text(encoding="utf-8") == "keep local work"
+    assert values_path.read_bytes() == original_values
+
+
+def test_regression_invalid_inactive_channel_is_checked_instead_of_active_one(template):
+    import shutil
+
+    marker = _installed(template)
+    (paths.playbooks_dir() / "channel" / "ACTIVE.txt").write_text(
+        "wechat\n", encoding="utf-8"
+    )
+    other = template.with_name("whatsapp")
+    shutil.copytree(template, other)
+    (other / "APP.yml").write_text(
+        MANIFEST.replace("app: wechat", "app: whatsapp"), encoding="utf-8"
+    )
+    (other / "macros" / "open.yml").write_text("steps: [broken", encoding="utf-8")
+
+    result = _install(other)
+
+    assert result.exit_code == 1
+    assert "invalid YAML" in result.output
+    assert not (paths.playbooks_dir() / "channel" / "whatsapp").exists()
+    assert marker.exists()
+
+
+def test_install_rejects_file_symlink_outside_template(template, tmp_path):
+    outside = tmp_path / "private.md"
+    outside.write_text("private contents", encoding="utf-8")
+    (template / "leaked.md").symlink_to(outside)
+
+    result = _install(template, "--set", "CONTACT=Alice")
+
+    assert result.exit_code == 1
+    assert "outside" in result.output
+    assert not _destination().exists()
+
+
+def test_install_refuses_existing_destination_before_prompting(template):
+    marker = _installed(template)
+    (paths.playbooks_dir() / PLACEHOLDER_VALUES_FILENAME).unlink()
+
+    result = _install(template)
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert "CONTACT —" not in result.output
+    assert marker.exists()

@@ -233,12 +233,15 @@ def parse_macro(
     stem: str,
     pages: PageResolver | None = None,
     macros: MacroResolver | None = None,
+    *,
+    values: dict[str, str] | None = None,
 ) -> Macro:
     """Parse + validate one macro file; `stem` is its file name without
     the suffix, which `name:` must equal, under `kind: macro`. `pages` is the pack's page
     resolver (`PageResolver`), which a jump's `if_page` needs; `macros`
     the folder's macro resolver (`MacroResolver`), which a `run` step
-    needs. Raises MacroError with a message that names the offending
+    needs. `values` supplies installation constants; None reads the local
+    placeholders file. Raises MacroError with a message that names the offending
     field — never a partially-valid spec."""
     try:
         data = _yaml.load(io.StringIO(text))
@@ -247,7 +250,7 @@ def parse_macro(
     if not isinstance(data, dict):
         raise MacroError("a macro file must be a YAML mapping (key: value pairs)")
 
-    data = resolve_data_placeholders(data, MacroError)
+    data = resolve_data_placeholders(data, MacroError, values)
 
     # The header before any other key, so a file in the wrong folder or
     # the wrong grammar is named for what it IS rather than refused for

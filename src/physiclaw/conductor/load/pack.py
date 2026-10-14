@@ -43,6 +43,7 @@ from physiclaw.conductor.spec.pack import (
     qualified_pack,
 )
 from physiclaw.conductor.spec.pages import (
+    PagePrint,
     PagesError,
     collect_page_recovers,
     pack_landmarks,
@@ -79,17 +80,33 @@ class PlaybookEntry:
     error: str | None = None
 
 
-def load_pack(app: str) -> Pack:
+def load_pack(
+    app: str,
+    *,
+    root: Path | None = None,
+    values: dict[str, str] | None = None,
+    learned: bool = True,
+) -> Pack:
     """The app pack, whole: the manifest (`APP.yml` — what the app
     is and what its routes share: meta, placeholders, landmarks,
     pages), the playbook files beside it (raw, parsed per entry by
     `scan_playbooks`), and the recorded macros. A broken pack macro is
     carried as its error string so the playbook referencing it fails
-    with the cause; a broken playbook file rides the same way."""
-    doc = load_pack_doc(app, PlaybookError)
+    with the cause; a broken playbook file rides the same way.
+
+    Installers supply a staged `root` and placeholder `values`, with
+    `learned=False`, to validate the template without changing the user's
+    installed files or borrowing the active channel's calibration.
+    """
+    root = paths.pack_root(app) if root is None else root
+    if values is None:
+        try:
+            values = placeholder_values()  # one snapshot for every pack file
+        except ValueError as e:
+            raise PlaybookError(str(e)) from e
+    doc = load_pack_doc(app, PlaybookError, root=root, values=values)
     if doc is None:
         raise PlaybookError(paths.pack_gap(app))
-    root = paths.pack_root(app)
     if app == CHANNEL_APP:
         # The boot file is a template the user owns, materialized beside
         # an existing channel pack on first look (the ios pack's
@@ -97,10 +114,6 @@ def load_pack(app: str) -> Pack:
         # its wake, and every door — wake, step, run, check — sees the
         # same pack.
         scaffold.ensure_channel_boot(root)
-    try:
-        values = placeholder_values()  # read once for every file of the pack
-    except ValueError as e:
-        raise PlaybookError(str(e)) from e
     docs, pb_errors = load_playbook_docs(app, PlaybookError, root, values)
     try:
         # Appendix + every route's own declarations across every
@@ -128,9 +141,13 @@ def load_pack(app: str) -> Pack:
     # lesson live in `store.scan` and `paths.leaf_files`. A macro's jump
     # reads a page of THIS pack, through the one resolver over the one
     # candidate set the walk will match against.
-    prints = tuple(prints_for_app(app, decls=pages))
+    prints = tuple(
+        prints_for_app(app, decls=pages)
+        if learned
+        else [PagePrint(app=app, decl=decl) for decl in pages.values()]
+    )
     page_of = page_resolver(app, pages, prints)
-    macros = _scan_macros(root / PACK_MACROS_DIRNAME, page_of)
+    macros = _scan_macros(root / PACK_MACROS_DIRNAME, page_of, values=values)
     shared = macro_resolver(macros.ok, macros.errors)
     pack = Pack(
         app=app,
@@ -143,7 +160,9 @@ def load_pack(app: str) -> Pack:
         prompts=_scan_prompts(root / PACK_PROMPTS_DIRNAME, values),
         local={
             name: Files(
-                macros=_scan_macros(root / name / PACK_MACROS_DIRNAME, page_of, shared),
+                macros=_scan_macros(
+                    root / name / PACK_MACROS_DIRNAME, page_of, shared, values=values
+                ),
                 prompts=_scan_prompts(root / name / PACK_PROMPTS_DIRNAME, values),
             )
             for name in {paths.entry_of(n) for n in docs}  # an entry's serve its own
@@ -161,10 +180,12 @@ def _scan_macros(
     root: Path,
     pages: macro_parse.PageResolver,
     fallback: macro_parse.MacroResolver | None = None,
+    *,
+    values: dict[str, str] | None = None,
 ) -> Scanned[Macro]:
     """The macro files under one `macros/` root, folded from `store.scan`."""
     out: Scanned[Macro] = Scanned()
-    for entry in macro_store.scan(root, pages, fallback):
+    for entry in macro_store.scan(root, pages, fallback, values=values):
         if entry.spec is not None:
             out.ok[entry.name] = entry.spec
         else:
