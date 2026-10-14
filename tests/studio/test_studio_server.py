@@ -196,6 +196,61 @@ async def test_build_app_routes_and_closes_the_session_on_shutdown() -> None:
     assert session.closed is True
 
 
+async def test_selected_review_does_not_expose_siblings_or_external_frame_links(
+    tmp_path,
+):
+    selected = tmp_path / "selected"
+    (selected / "images").mkdir(parents=True)
+    (selected / "summary.json").write_text('{"outcome":{"sentinel":"CHOSEN"}}')
+    secret = tmp_path / "private.jpg"
+    secret.write_bytes(b"private frame")
+    (selected / "images" / "linked.jpg").symlink_to(secret)
+    app = server.build_app(FakeSession(), review_dir=selected)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://studio"
+    ) as client:
+        page = await client.get("/review/")
+        linked = await client.get("/review/images/linked.jpg")
+        sibling = await client.get("/review/private.jpg")
+        other = await client.get("/review/another/")
+
+    assert page.status_code == 200
+    assert '"sentinel": "CHOSEN"' in page.text
+    assert linked.status_code == sibling.status_code == other.status_code == 404
+    assert b"private frame" not in linked.content
+    assert page.headers["cache-control"] == "no-store"
+
+
+async def test_selected_review_routes_belong_to_one_app_only(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "summary.json").write_text('{"outcome":{"sentinel":"FIRST"}}')
+    (second / "summary.json").write_text('{"outcome":{"sentinel":"SECOND"}}')
+    first_app = server.build_app(FakeSession(), review_dir=first)
+    second_app = server.build_app(FakeSession(), review_dir=second)
+    ordinary_app = server.build_app(FakeSession())
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=first_app), base_url="http://studio"
+    ) as client:
+        first_page = await client.get("/review/")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=second_app), base_url="http://studio"
+    ) as client:
+        second_page = await client.get("/review/")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=ordinary_app), base_url="http://studio"
+    ) as client:
+        absent = await client.get("/review/")
+
+    assert '"sentinel": "FIRST"' in first_page.text
+    assert '"sentinel": "SECOND"' in second_page.text
+    assert absent.status_code == 404
+
+
 async def test_regression_lifespan_failure_still_closes_session(mocker):
     session = FakeSession()
     session.close = mocker.AsyncMock()

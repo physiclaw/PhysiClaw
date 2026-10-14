@@ -56,6 +56,7 @@ from physiclaw.studio.session import Session, view_reply
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent
+REVIEW_PATH = "/review/"
 
 BUSY_MSG = "a call is already in flight — one rig"
 STEPPING_MSG = "a step is already running — one rig"
@@ -268,7 +269,13 @@ def handle_session_page(request: Request) -> Response:
         # The canonical address, so the page's relative frame paths
         # resolve by exact name rather than a directory scan each.
         return RedirectResponse(f"/sessions/{d.name}/")
-    model = viewer.load(d, sessions=viewer.recent(paths.engine_sessions_dir()))
+    return _session_page(d)
+
+
+def _session_page(directory: Path, *, selected: bool = False) -> HTMLResponse:
+    model = viewer.load(directory, sessions=viewer.recent(paths.engine_sessions_dir()))
+    if selected:
+        model["review_url"] = REVIEW_PATH
     return HTMLResponse(viewer.render(model), headers={"Cache-Control": "no-store"})
 
 
@@ -278,7 +285,11 @@ def handle_session_image(request: Request) -> Response:
         d = resolve_session(paths.engine_sessions_dir(), request.path_params["sid"])
     except LookupError:
         return Response("no such frame", status_code=404)
-    image = resolve_image(d, f"images/{request.path_params['name']}")
+    return _session_image(d, request.path_params["name"])
+
+
+def _session_image(directory: Path, name: str) -> Response:
+    image = resolve_image(directory, f"images/{name}")
     if image is None:
         return Response("no such frame", status_code=404)
     return FileResponse(
@@ -426,8 +437,25 @@ async def handle_step_reset(request: Request, job: Job) -> JSONResponse:
     return JSONResponse({"status": "ok", "message": message})
 
 
-def build_app(session: Session) -> Starlette:
+def build_app(session: Session, *, review_dir: Path | None = None) -> Starlette:
+    """Serve the driver and, optionally, one explicitly selected recording."""
     job = Job()
+    review_routes = []
+    if review_dir is not None:
+        selected_dir = review_dir.resolve()
+
+        def review_page(request: Request) -> Response:
+            return _session_page(selected_dir, selected=True)
+
+        def review_image(request: Request) -> Response:
+            return _session_image(selected_dir, request.path_params["name"])
+
+        # Bind exactly this directory, without exposing its siblings or
+        # changing how ordinary /sessions/ names are resolved.
+        review_routes = [
+            Route(REVIEW_PATH, review_page),
+            Route(f"{REVIEW_PATH}images/{{name}}", review_image),
+        ]
 
     def bind(handler, *deps):
         async def route(request: Request):
@@ -449,6 +477,7 @@ def build_app(session: Session) -> Starlette:
 
     return Starlette(
         routes=[
+            *review_routes,
             Route("/", handle_page),
             Route("/sessions/", handle_sessions),
             Route("/sessions/{sid}/", handle_session_page),

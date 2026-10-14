@@ -503,12 +503,17 @@
     if (S.sessions) {
       top.append(el('a', { href: '../../', text: '← studio', title: 'back to the studio' }));
       const pick = el('select', { title: 'review another session' });
+      if (S.review_url) {
+        const chosen = el('option', { value: S.review_url, text: `${S.sid}  (selected recording)` });
+        chosen.selected = true;
+        pick.append(chosen);
+      }
       for (const row of S.sessions) {
-        const opt = el('option', { value: row.sid, text: `${row.sid}  ${shown(row.outcome?.sentinel) || '?'}${row.outcome?.recap ? '  — ' + clip(row.outcome.recap, 60) : ''}` });
-        if (row.sid === S.sid) opt.selected = true;
+        const opt = el('option', { value: `/sessions/${encodeURIComponent(row.sid)}/`, text: `${row.sid}  ${shown(row.outcome?.sentinel) || '?'}${row.outcome?.recap ? '  — ' + clip(row.outcome.recap, 60) : ''}` });
+        if (!S.review_url && row.sid === S.sid) opt.selected = true;
         pick.append(opt);
       }
-      pick.addEventListener('change', () => { location.href = `../${encodeURIComponent(pick.value)}/`; });
+      pick.addEventListener('change', () => { location.href = pick.value; });
       top.append(pick);
     }
     const status = typeof o.sentinel === 'string' ? o.sentinel : '';

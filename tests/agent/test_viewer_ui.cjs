@@ -4,6 +4,30 @@ const {createViewer} = require('./viewer_ui_fixture.cjs');
 
 const row = (rec, src = 'events', extra = {}) => ({src, line: 1, rec, ...extra});
 
+test('test_selected_recording_can_navigate_to_internal_session_with_same_name', () => {
+  const ui = createViewer([], {sid: 'same name', review_url: '/review/', sessions: [{sid: 'same name', outcome: {}}]});
+  const pick = ui.document.querySelector('#hdr select');
+  const initialOptions = ui.document.querySelectorAll('#hdr option').map(o => [o.value, !!o.selected]);
+
+  pick.value = '/sessions/same%20name/';
+  pick.listeners.get('change')();
+
+  assert.equal(ui.href, '/sessions/same%20name/');
+  assert.deepEqual(initialOptions, [['/review/', true], ['/sessions/same%20name/', false]]);
+});
+
+test('test_normal_session_picker_preserves_encoded_navigation', () => {
+  const ui = createViewer([], {sid: 'one', sessions: [{sid: 'one', outcome: {}}, {sid: '记录 #?', outcome: {}}]});
+  const options = ui.document.querySelectorAll('#hdr option');
+  const pick = ui.document.querySelector('#hdr select');
+
+  pick.value = options[1].value;
+  pick.listeners.get('change')();
+
+  assert.equal(options[0].selected, true);
+  assert.equal(ui.href, `/sessions/${encodeURIComponent('记录 #?')}/`);
+});
+
 for (const rec of [
   {event: 'wake', triggers: [null]},
   {event: 'wake', triggers: 1},

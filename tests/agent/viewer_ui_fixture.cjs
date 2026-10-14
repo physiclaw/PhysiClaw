@@ -31,6 +31,7 @@ function createViewer(records, overrides = {}) {
       document.querySelectorAll('#detail button').find(b => b.dataset.tab === name).listeners.get('click')();
     },
     get detail() { return document.getElementById('detail').textContent; },
+    get href() { return context.location.href; },
   };
 }
 

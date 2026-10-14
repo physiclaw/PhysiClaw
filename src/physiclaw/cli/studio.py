@@ -12,7 +12,7 @@ session's frames behind the same page instead of hardware.
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -23,7 +23,7 @@ from physiclaw.studio.session import Session
 
 def studio(
     mcp_url: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--mcp-url",
             help="MCP server to drive. Default: the live server, else the "
@@ -31,13 +31,14 @@ def studio(
         ),
     ] = None,
     port: Annotated[
-        int, typer.Option("--port", help="Studio port (loopback only).")
+        int,
+        typer.Option("--port", min=1, max=65535, help="Studio port (loopback only)."),
     ] = 8058,
     open_browser: Annotated[
         bool, typer.Option("--open/--no-open", help="Open the browser.")
     ] = True,
     session: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--session",
             help="Drive a recorded session's frames instead of hardware "
@@ -68,20 +69,19 @@ def studio(
     """
     import uvicorn
 
-    from physiclaw.studio.server import build_app
+    from physiclaw.studio.server import REVIEW_PATH, build_app
     from physiclaw.studio.session import StudioSession
 
     driven: Session
+    review_dir = None
     url = f"http://127.0.0.1:{port}/"
     if review:
         # The viewer reads the session dir; the driver behind the page's
         # studio link dials the rig only when used, so no probe here.
         driven = StudioSession(mcp_url or _server_address()[0])
-        url += (
-            "sessions/"
-            if session is None
-            else f"sessions/{_session_dir(session).name}/"
-        )
+        if session is not None:
+            review_dir = _session_dir(session)
+        url += REVIEW_PATH.lstrip("/") if review_dir is not None else "sessions/"
     elif session is not None:
         recorded = _recorded_session(session)
         typer.echo(f"studio: recorded {recorded.label} ({len(recorded.frames)} frames)")
@@ -90,13 +90,37 @@ def studio(
         driven = StudioSession(mcp_url or _server_base())
         typer.echo(f"studio: hardware via {driven.mcp_url}")
     typer.echo(f"studio: {url}")
-    if open_browser:
-        threading.Timer(0.8, webbrowser.open, args=(url,)).start()
-    uvicorn.Server(
+    server = uvicorn.Server(
         uvicorn.Config(
-            build_app(driven), host="127.0.0.1", port=port, log_level="warning"
+            build_app(driven, review_dir=review_dir),
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
         )
-    ).run()
+    )
+    stopped = threading.Event()
+
+    def open_when_ready() -> None:
+        while not stopped.wait(0.05):
+            if server.started:
+                try:
+                    webbrowser.open(url)
+                except (OSError, webbrowser.Error) as e:
+                    typer.echo(f"studio: could not open browser: {e}", err=True)
+                return
+
+    opener = None
+    if open_browser:
+        opener = threading.Thread(target=open_when_ready, daemon=True)
+        opener.start()
+    try:
+        server.run()
+    except OSError as e:
+        exit_error(f"could not start Studio: {e}")
+    finally:
+        stopped.set()
+        if opener is not None:
+            opener.join(timeout=1)
 
 
 def _session_dir(ref: str) -> Path:
@@ -105,8 +129,13 @@ def _session_dir(ref: str) -> Path:
     from physiclaw.cli._sessions import resolve_sid
     from physiclaw.common import paths
 
-    d = Path(ref).expanduser()
-    return d if d.is_dir() else paths.engine_sessions_dir() / resolve_sid(ref)
+    try:
+        d = Path(ref).expanduser()
+        if d.is_dir():
+            return d.resolve()
+    except (OSError, RuntimeError, ValueError) as e:
+        raise typer.BadParameter(str(e), param_hint="--session") from e
+    return paths.engine_sessions_dir() / resolve_sid(ref)
 
 
 def _recorded_session(ref: str):
@@ -116,7 +145,7 @@ def _recorded_session(ref: str):
     d = _session_dir(ref)
     try:
         return MockSession(session_frames(d), d.name)
-    except (FileNotFoundError, ValueError) as e:
+    except (OSError, ValueError) as e:
         raise typer.BadParameter(str(e), param_hint="--session") from e
 
 
