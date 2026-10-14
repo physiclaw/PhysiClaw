@@ -13,7 +13,8 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
-from mcp.types import ImageContent, TextContent
+from mcp import MCPError
+from mcp.types import INTERNAL_ERROR, INVALID_REQUEST, ImageContent, TextContent
 
 from physiclaw.agent.engine import mcp_tool
 
@@ -77,6 +78,7 @@ def fake_session(mocker):
     )
     sess.list_tools = mocker.AsyncMock()
     sess.call_tool = mocker.AsyncMock()
+    sess.aclose = mocker.AsyncMock()
     return sess
 
 
@@ -94,7 +96,10 @@ def patched_transport(mocker, fake_session):
     @asynccontextmanager
     async def fake_http(url: str, *, http_client=None):
         captured["http_client"] = http_client
-        yield ("read", "write")
+        try:
+            yield ("read", "write")
+        finally:
+            captured["transport_closed"] = True
 
     mocker.patch.object(mcp_tool, "streamable_http_client", fake_http)
     # The connect pre-flight opens a real socket; a faked transport means
@@ -103,7 +108,11 @@ def patched_transport(mocker, fake_session):
 
     @asynccontextmanager
     async def fake_session_ctx(read, write):
-        yield fake_session
+        try:
+            yield fake_session
+        finally:
+            captured["session_closed"] = True
+            await fake_session.aclose()
 
     mocker.patch.object(mcp_tool, "ClientSession", side_effect=fake_session_ctx)
     fake_session.captured = captured
@@ -454,8 +463,10 @@ def test_probe_targets_the_url_host_and_port() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["Session not found", "Session terminated"])
 async def test_call_tool_reconnects_once_when_the_server_lost_the_session(
     patched_transport,
+    message,
 ) -> None:
     # A runtime that outlived its server keeps a session id the new
     # server never issued: the first call fails "Session not found". One
@@ -464,7 +475,7 @@ async def test_call_tool_reconnects_once_when_the_server_lost_the_session(
     ok = SimpleNamespace(
         content=[TextContent(type="text", text="hello")], is_error=False
     )
-    patched_transport.call_tool.side_effect = [Exception("Session not found"), ok]
+    patched_transport.call_tool.side_effect = [MCPError(INVALID_REQUEST, message), ok]
 
     async with mcp_tool.McpClient() as c:
         out = await c.call_tool("peek")
@@ -492,7 +503,10 @@ async def test_list_tools_reconnects_once_when_the_server_lost_the_session(
     # The wake's first session call is the tool listing; a lost session
     # shows there first, and the same one-handshake repair covers it.
     tools = SimpleNamespace(tools=[])
-    patched_transport.list_tools.side_effect = [Exception("Session not found"), tools]
+    patched_transport.list_tools.side_effect = [
+        MCPError(INVALID_REQUEST, "Session not found"),
+        tools,
+    ]
 
     async with mcp_tool.McpClient() as c:
         out = await c.list_tools()
@@ -500,3 +514,202 @@ async def test_list_tools_reconnects_once_when_the_server_lost_the_session(
     assert out == []
     assert patched_transport.initialize.await_count == 2
     assert patched_transport.list_tools.await_count == 2
+
+
+async def test_regression_cancelled_handshake_releases_all_opened_resources(
+    patched_transport,
+):
+    client = mcp_tool.McpClient()
+
+    async def cancel_initialize():
+        asyncio.current_task().cancel("handshake cancelled")
+        await asyncio.sleep(0)
+
+    patched_transport.initialize.side_effect = cancel_initialize
+
+    with pytest.raises(asyncio.CancelledError, match="handshake cancelled"):
+        await asyncio.create_task(client.__aenter__())
+
+    assert patched_transport.captured.get("session_closed") is True
+    assert patched_transport.captured.get("transport_closed") is True
+    assert patched_transport.captured["http_client"].is_closed
+
+
+async def test_regression_failed_handshake_cannot_use_partially_initialized_session(
+    patched_transport,
+):
+    client = mcp_tool.McpClient()
+    patched_transport.initialize.side_effect = RuntimeError("bad handshake")
+
+    with pytest.raises(ConnectionError, match="bad handshake"):
+        await client.__aenter__()
+
+    with pytest.raises(AssertionError, match="McpClient not entered"):
+        await client.list_tools()
+    patched_transport.list_tools.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (RuntimeError("handshake failed"), ConnectionError),
+        (asyncio.CancelledError("handshake failed"), asyncio.CancelledError),
+    ],
+)
+@pytest.mark.parametrize(
+    "close_error",
+    [OSError("cleanup failed"), asyncio.CancelledError("cleanup cancelled")],
+)
+async def test_failed_connect_cleanup_error_preserves_original_failure(
+    patched_transport,
+    failure,
+    expected,
+    close_error,
+):
+    patched_transport.initialize.side_effect = failure
+    patched_transport.aclose.side_effect = close_error
+
+    with pytest.raises(expected, match="handshake failed"):
+        await mcp_tool.get_mcp()
+
+    assert patched_transport.captured["http_client"].is_closed
+    assert patched_transport.captured["transport_closed"] is True
+    assert mcp_tool._mcp is None
+    assert mcp_tool._stack is None
+
+
+async def test_reconnect_retries_rejected_request_only_once(patched_transport):
+    patched_transport.call_tool.side_effect = MCPError(
+        INVALID_REQUEST, "Session not found"
+    )
+
+    async with mcp_tool.McpClient() as client:
+        with pytest.raises(MCPError, match="Session not found"):
+            await client.call_tool("tap")
+
+    assert patched_transport.initialize.await_count == 2
+    assert patched_transport.call_tool.await_count == 2
+
+
+async def test_reconnect_keeps_replacement_session_for_later_calls(patched_transport):
+    ok = SimpleNamespace(content=[], is_error=False)
+    patched_transport.call_tool.side_effect = [
+        MCPError(INVALID_REQUEST, "Session not found"),
+        ok,
+        ok,
+    ]
+
+    async with mcp_tool.McpClient() as client:
+        await client.call_tool("peek")
+        await client.call_tool("peek")
+
+    assert patched_transport.initialize.await_count == 2
+    assert patched_transport.call_tool.await_count == 3
+
+
+async def test_explicit_close_after_failed_reconnect_disables_automatic_reopen(
+    patched_transport,
+):
+    patched_transport.call_tool.side_effect = MCPError(
+        INVALID_REQUEST, "Session not found"
+    )
+    patched_transport.initialize.side_effect = [
+        SimpleNamespace(instructions="hello"),
+        OSError("offline"),
+    ]
+
+    async with mcp_tool.McpClient() as client:
+        with pytest.raises(ConnectionError, match="offline"):
+            await client.call_tool("peek")
+
+    with pytest.raises(AssertionError, match="McpClient not entered"):
+        await client.call_tool("peek")
+    assert patched_transport.initialize.await_count == 2
+    assert client.server_instructions == ""
+    assert patched_transport.captured["http_client"].is_closed
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Invalid structured content: Session not found"),
+        MCPError(INTERNAL_ERROR, "Session not found"),
+        MCPError(INVALID_REQUEST, "tool failed: Session not found"),
+    ],
+)
+async def test_regression_tool_error_text_does_not_replay_an_executed_action(
+    patched_transport,
+    error,
+):
+    patched_transport.call_tool.side_effect = error
+
+    async with mcp_tool.McpClient() as client:
+        with pytest.raises(type(error)) as raised:
+            await client.call_tool("tap")
+
+    assert raised.value is error
+    patched_transport.call_tool.assert_awaited_once()
+    patched_transport.initialize.assert_awaited_once()
+
+
+async def test_regression_next_call_recovers_after_reconnect_handshake_failed(
+    patched_transport,
+):
+    ok = SimpleNamespace(
+        content=[TextContent(type="text", text="ready")], is_error=False
+    )
+    patched_transport.call_tool.side_effect = [
+        MCPError(INVALID_REQUEST, "Session not found"),
+        ok,
+    ]
+    initialized = SimpleNamespace(instructions="fixture")
+    patched_transport.initialize.side_effect = [
+        initialized,
+        OSError("server offline"),
+        initialized,
+    ]
+
+    async with mcp_tool.McpClient() as client:
+        with pytest.raises(ConnectionError, match="server offline"):
+            await client.call_tool("peek")
+        result = await client.call_tool("peek")
+
+    assert result == [{"type": "text", "text": "ready"}]
+    assert patched_transport.initialize.await_count == 3
+    assert patched_transport.call_tool.await_count == 2
+
+
+async def test_regression_cancellation_during_reconnect_close_does_not_replay(
+    patched_transport,
+):
+    patched_transport.call_tool.side_effect = [
+        MCPError(INVALID_REQUEST, "Session not found"),
+        SimpleNamespace(content=[], is_error=False),
+    ]
+
+    async with mcp_tool.McpClient() as client:
+        patched_transport.aclose.side_effect = asyncio.CancelledError("stop")
+        with pytest.raises(asyncio.CancelledError, match="stop"):
+            await client.call_tool("peek")
+        patched_transport.aclose.side_effect = None
+
+    patched_transport.initialize.assert_awaited_once()
+    patched_transport.call_tool.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("close failed"), asyncio.CancelledError("stop")]
+)
+async def test_regression_close_failure_clears_live_session(
+    patched_transport,
+    error,
+):
+    client = await mcp_tool.McpClient().__aenter__()
+    patched_transport.aclose.side_effect = error
+
+    with pytest.raises(type(error)):
+        await client.__aexit__(None, None, None)
+
+    with pytest.raises(AssertionError, match="McpClient not entered"):
+        await client.list_tools()
+    patched_transport.list_tools.assert_not_awaited()

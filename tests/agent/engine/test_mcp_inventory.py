@@ -34,6 +34,31 @@ def test_discover_returns_empty_when_tools_file_missing(
     assert mcp_inventory.discover_mcp_tools() == []
 
 
+def test_regression_discover_invalid_utf8_is_nonfatal(tmp_path, monkeypatch):
+    path = tmp_path / "tools.py"
+    path.write_bytes(b"\xff")
+    monkeypatch.setattr(mcp_inventory, "_TOOLS_PY", path)
+
+    result = mcp_inventory.discover_mcp_tools()
+
+    assert result == []
+
+
+@pytest.mark.parametrize(
+    "error", [PermissionError("denied"), FileNotFoundError("gone")]
+)
+def test_regression_discover_unreadable_file_is_nonfatal(
+    tmp_path, monkeypatch, mocker, error
+):
+    path = _write(tmp_path, "tools.py", "")
+    monkeypatch.setattr(mcp_inventory, "_TOOLS_PY", path)
+    mocker.patch.object(mcp_inventory, "read_text", side_effect=error)
+
+    result = mcp_inventory.discover_mcp_tools()
+
+    assert result == []
+
+
 def test_discover_returns_empty_and_logs_on_syntax_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

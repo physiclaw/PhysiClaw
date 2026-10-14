@@ -43,9 +43,9 @@ async def dispatch(
     call: ToolCall,
     turn: int,
 ) -> ToolResultMessage:
-    """Guards, validate, execute, observe. Always returns a ToolResultMessage —
-    never raises (principle 5 + principle 6 require that every ToolCall is
-    paired with a ToolResult even on failure)."""
+    """Guards, validate, execute, observe. Pair successful calls and tool
+    errors with a ToolResultMessage. Cancellation propagates so the loop
+    can enforce its time budget and the runtime can stop."""
     log.info("  → %s(%s)", call.name, format_call_args(call.name, call.arguments))
 
     blocked = _run_guards(run, session, call, turn, run.policies.pre_validation_guards)

@@ -14,9 +14,9 @@ from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
 import httpx2
-from mcp import ClientSession
+from mcp import ClientSession, MCPError
 from mcp.client.streamable_http import streamable_http_client
-from mcp.types import ImageContent, TextContent
+from mcp.types import INVALID_REQUEST, ImageContent, TextContent
 
 from physiclaw.common import platform
 from physiclaw.common.config import server_url
@@ -33,7 +33,8 @@ class McpClient:
 
     `server_instructions` is the `instructions` field the server sent back
     in its initialize response — empty string if the server set nothing.
-    Caller injects it into the system prompt.
+    Connect, reconnect and close in the same task: the SDK transport keeps
+    its anyio cancellation scopes in the task that entered the context.
     """
 
     def __init__(self, base_url: str | None = None):
@@ -41,38 +42,26 @@ class McpClient:
         self._url = base.rstrip("/") + "/mcp"
         self._stack = AsyncExitStack()
         self._session: ClientSession | None = None
+        # A failed reconnect may resume; an explicitly closed client may not.
+        self._reconnect_pending = False
         self.server_instructions: str = ""
 
     async def __aenter__(self) -> "McpClient":
-        """Connect, or raise ConnectionError naming the URL.
-
-        The transport runs the handshake inside an anyio task group, so a
-        refused connection surfaces as `CancelledError` — a BaseException.
-        Left alone it sails past every `except Exception` in the stack: the
-        CLI's "cannot reach the server" message never fires and the user
-        gets a raw anyio traceback, `dispatch` breaks its documented "never
-        raises" contract, and `engine` — which catches CancelledError to log
-        an operator stop — records a dead server as a deliberate kill.
-
-        `_probe` is the answer: it settles reachability BEFORE the transport
-        can bury it. It is a pre-flight, not a guarantee — a server dying
-        between the probe and the handshake reproduces the illegible
-        CancelledError, so the `except Exception` below stays even though
-        the probe catches the common case. A CancelledError from here on is
-        deliberately left alone — it cannot be told apart from a real
-        shutdown (anyio cancels the host task either way, so `cancelling()`
-        is non-zero for both), and swallowing a genuine cancellation is the
-        worse mistake."""
+        """Connect, or raise ConnectionError naming the URL. Unwind partial
+        setup on every failure, including cancellation. Cancellation keeps
+        its original type: the transport's anyio scopes can cancel the host
+        task too, and that cannot be distinguished from an operator stop."""
         try:
-            return await self._connect()
-        except ConnectionError:
+            await self._connect()
+            self._reconnect_pending = False
+            return self
+        except BaseException as e:
             await self._safe_close()
-            raise  # already named the URL; don't wrap it twice
-        except Exception as e:
-            await self._safe_close()
-            raise ConnectionError(
-                f"cannot reach the MCP server at {self._url}: {e}"
-            ) from e
+            if isinstance(e, Exception) and not isinstance(e, ConnectionError):
+                raise ConnectionError(
+                    f"cannot reach the MCP server at {self._url}: {e}"
+                ) from e
+            raise
 
     async def _probe(self) -> None:
         """Fail fast, and legibly, when nothing is listening.
@@ -111,7 +100,7 @@ class McpClient:
         """Unwind a half-open stack. A teardown error must not mask the
         connect error we are about to raise."""
         try:
-            await self._stack.aclose()
+            await self.__aexit__(None, None, None)
         except BaseException:
             log.debug("MCP teardown after failed connect", exc_info=True)
 
@@ -121,10 +110,18 @@ class McpClient:
         fresh handshake, then the same call — every later call would
         fail the same way, and the model cannot repair a transport from
         inside a turn."""
+        if self._reconnect_pending:
+            await self._reconnect()
         try:
             return await op()
-        except Exception as e:
-            if "session not found" not in str(e).lower():
+        except MCPError as e:
+            # These are the SDK's two expired-session responses, both sent
+            # before tool execution. Similar text in an application error
+            # is not permission to repeat a physical action.
+            if e.code != INVALID_REQUEST or e.message not in {
+                "Session not found",
+                "Session terminated",
+            }:
                 raise
             log.warning("MCP session lost (%s) — reconnecting once", e)
             await self._reconnect()
@@ -135,15 +132,15 @@ class McpClient:
         return self._session
 
     async def _reconnect(self) -> None:
-        """Drop the dead transport and session and open fresh ones —
-        through `__aenter__`, not `_connect`, so a server that is still
-        down raises the ConnectionError naming the URL instead of the
-        illegible CancelledError that contract exists to prevent, and
-        the half-open stack is unwound rather than leaked."""
-        await self._safe_close()
-        self._stack = AsyncExitStack()
-        self._session = None
-        await self.__aenter__()
+        """Replace a lost session in its owning task. If the server is still
+        down, the next call retries the handshake before sending its request.
+        Cancellation during close propagates without starting new work."""
+        try:
+            await self.__aexit__(None, None, None)
+            self._stack = AsyncExitStack()
+            await self.__aenter__()
+        finally:
+            self._reconnect_pending = self._session is None
 
     async def _connect(self) -> "McpClient":
         # Hand the transport our own httpx2 client so `trust_env` follows the
@@ -175,8 +172,12 @@ class McpClient:
         return self
 
     async def __aexit__(self, *exc) -> None:
-        await self._stack.aclose()
-        self._session = None
+        self._reconnect_pending = False
+        try:
+            await self._stack.aclose()
+        finally:
+            self._session = None
+            self.server_instructions = ""
 
     async def list_tools(self) -> list[dict]:
         """Return tool schemas as plain dicts: {name, description, input_schema}."""

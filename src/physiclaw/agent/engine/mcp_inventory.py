@@ -22,15 +22,15 @@ _TOOLS_PY = Path(__file__).resolve().parents[2] / "core" / "server" / "tools.py"
 def discover_mcp_tools() -> list[dict]:
     """Return `[{"name", "description"}]` for every `@mcp.tool()`-decorated
     function inside `src/physiclaw/core/server/tools.py`. No import, no MCP
-    connection. Returns `[]` if the file is missing or unparseable —
+    connection. Returns `[]` if the file is unreadable or unparseable —
     rendering still succeeds, just with engine-local tools only."""
     if not _TOOLS_PY.exists():
         log.debug("mcp_inventory: %s missing; skipping static MCP tools", _TOOLS_PY)
         return []
     try:
         tree = ast.parse(read_text(_TOOLS_PY))
-    except SyntaxError:
-        log.exception("mcp_inventory: failed to parse %s", _TOOLS_PY)
+    except (OSError, UnicodeError, SyntaxError):
+        log.exception("mcp_inventory: failed to parse or read %s", _TOOLS_PY)
         return []
 
     out: list[dict] = []
