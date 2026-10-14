@@ -8,10 +8,12 @@ save. Calibration, memory, models, and config are left untouched (use
 """
 
 import shutil
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from physiclaw.cli._format import exit_error
 from physiclaw.common import paths
 
 
@@ -29,7 +31,7 @@ def clear(
         paths.raw_camera_dir(),
     ]
 
-    present: list[tuple] = []
+    present: list[tuple[Path, int]] = []
     total = 0
     size = 0
     for d in dirs:
@@ -55,5 +57,8 @@ def clear(
         raise typer.Exit(1)
 
     for d, _ in present:
-        shutil.rmtree(d, ignore_errors=True)
+        try:
+            shutil.rmtree(d)
+        except OSError as error:
+            exit_error(f"could not remove {d}: {error}")
     typer.echo(f"Cleared {total} file(s).")
