@@ -1,41 +1,14 @@
-"""Startup update check for ``physiclaw server`` — two phases so no network or
-heavy download ever sits on the startup critical path.
+"""Optional update notices and cache warming for server startup.
 
-physiclaw installs as a ``uv tool`` (install.sh / install.ps1 run
-``uv tool install physiclaw --python 3.12 --force --refresh``, an UNPINNED
-spec). We deliberately do NOT self-install: a process can't safely reinstall
-its own venv while running — on Windows the running interpreter's ``python`` +
-native-extension DLLs are LOCKED, so a reinstall dies mid-swap and corrupts the
-env. So updates run through uv, not physiclaw: ``physiclaw update`` just PRINTS
-the ``uv tool upgrade physiclaw`` command (:func:`update`), and the server only
-CHECKS + NOTIFIES — the user runs the upgrade themselves once the server is
-stopped.
+``physiclaw update`` prints the manual upgrade command. Startup notification
+reads a marker left by a previous background check; staging probes PyPI,
+warms uv's cache in a separate environment, and records the newer version.
+Neither phase reinstalls the running tool, which could corrupt a live
+installation on Windows while Python and native libraries are locked.
 
-``uv tool upgrade`` is the right command: it syncs the latest release INTO the
-existing environment without recreating it (uv docs: "the upgrade operates on
-this existing environment rather than requiring you to recreate it"), so it
-never deletes the running interpreter — like ``npm install -g``: replace the
-package, keep the interpreter. (A ``uv tool install --force`` recreates the env
-and fails on Windows removing the locked ``Scripts`` dir — ``os error 5``.)
-
-The two phases:
-
-  - Phase B (:func:`maybe_stage_update`) — a background daemon thread after
-    serving starts: probe PyPI and, if newer, WARM uv's cache for that version
-    (so the user's later ``uv tool upgrade`` links from cache in ms) and drop a
-    ``cache/update.json`` marker.
-  - Phase A (:func:`notify_staged_update`) — synchronous at startup: if the
-    marker names a newer version, log a one-line "run ``uv tool upgrade
-    physiclaw``" notice and keep serving. No install.
-
-A notice thus appears one boot after a release is published (stage on boot N,
-notify on boot N+1). Every step is fail-soft — an unreachable PyPI or a failed
-warm never blocks the server, and nothing the server does can corrupt the
-install, because the server never touches it.
-
-Kill switches: ``physiclaw config set update.check false``, or
-``PHYSICLAW_DISABLE_UPDATE_CHECK=1`` (also silences the doctor/status banner),
-and CI environments are always skipped.
+Config ``update.check = false``, ``PHYSICLAW_DISABLE_UPDATE_CHECK=1``, and CI
+skip both phases. Filesystem, subprocess, and worker-start failures must not
+prevent the server from starting.
 """
 
 import json
@@ -56,36 +29,27 @@ from physiclaw.cli._update_check import (
     _is_newer,
     _write_cache,
 )
-from physiclaw.common import paths
-from physiclaw.common.config import CONFIG
+from physiclaw.common import config, paths
 from physiclaw.common.text import read_text, write_text
 
 log = logging.getLogger(__name__)
 
-# uv resolve+download on a cold cache is normally seconds; the ceiling
-# only exists so a wedged network can't hang the server start forever.
-_UV_INSTALL_TIMEOUT = 600
+# Bound the background cache warm and the synchronous installed-tool query.
+_UV_WARM_TIMEOUT = 600
 _UV_QUERY_TIMEOUT = 30
 
 
-def _uv() -> str | None:
-    return shutil.which("uv")
-
-
 def _update_check_disabled() -> bool:
-    """The shared kill-switch gate for both startup phases: off via
-    ``[update] check = false`` / ``PHYSICLAW_DISABLE_UPDATE_CHECK=1``, or running
-    under CI (an unattended mid-job version jump is never what a pipeline
-    wants)."""
+    """Skip optional update work when disabled by config, environment, or CI."""
     return (
         _disabled_via_env()
         or os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
-        or not CONFIG.update.check
+        or not config.CONFIG.update.check
     )
 
 
 def _run(
-    cmd: list[str], *, timeout: int = _UV_INSTALL_TIMEOUT
+    cmd: list[str], *, timeout: int = _UV_WARM_TIMEOUT
 ) -> subprocess.CompletedProcess | None:
     """Run a uv subcommand, capturing UTF-8 output; None if it couldn't run at
     all (missing exe, timeout). Explicit UTF-8 because uv emits UTF-8 regardless
@@ -104,48 +68,24 @@ def _run(
         return None
 
 
-def _tool_version(uv: str) -> str | None:
-    """Version of the ``uv tool``-managed physiclaw, or None if there
-    isn't one (or uv itself fails). Parses ``uv tool list`` lines shaped
-    ``physiclaw v0.1.13`` — entry-point lines start with ``- `` and are
-    skipped by the first-token match."""
+def _has_tool_install(uv: str) -> bool:
+    """Look for ``physiclaw v...`` in ``uv tool list``.
+
+    Entry-point rows start with ``-`` and do not identify an installed tool.
+    """
     out = _run([uv, "tool", "list"], timeout=_UV_QUERY_TIMEOUT)
     if out is None or out.returncode != 0:
-        return None
+        return False
     for line in out.stdout.splitlines():
         parts = line.split()
         if len(parts) >= 2 and parts[0] == "physiclaw" and parts[1].startswith("v"):
-            return parts[1][1:]
-    return None
+            return True
+    return False
 
 
 def update() -> None:
     """Show how to update physiclaw (it's a uv tool — update it with uv)."""
-    # We don't self-install — see the module docstring (a reinstall from inside
-    # a running physiclaw locks its own files on Windows). So `physiclaw update`
-    # is just a signpost to the real command, since it's the intuitive thing to
-    # type. `uv tool upgrade` upgrades in place, but the server maps the native
-    # DLLs, so it must be stopped first.
     typer.echo("To update, stop the server and run:\n\n    uv tool upgrade physiclaw")
-
-
-# ── Two-phase update check ─────────────────────────────────────────────
-#
-# The server never installs (the locked-file invariant), so its job is only to
-# find out an update exists and tell the user. Split in two so no network sits
-# on the startup critical path:
-#
-#   Phase B (`maybe_stage_update`) — background daemon thread, after serving
-#       starts: probe PyPI and, if newer, WARM uv's cache for that version (so
-#       the user's later `uv tool upgrade` links from cache in ms) and drop a
-#       `cache/update.json` marker. No install; touches only the shared uv cache
-#       + the marker, so it's safe mid-serve.
-#   Phase A (`notify_staged_update`) — synchronous, at startup: if the marker
-#       names a newer version, log a "run `uv tool upgrade physiclaw`" notice
-#       and keep serving. No install.
-#
-# Net: a notice appears one boot after a release is published (stage on boot N,
-# notify on boot N+1), with no network or heavy download on any startup path.
 
 
 def _stage_file() -> Path:
@@ -156,8 +96,6 @@ def _read_staged() -> str | None:
     """The newer version a prior background stage flagged as ready, or None
     (missing / unreadable / malformed marker)."""
     p = _stage_file()
-    if not p.exists():
-        return None
     try:
         data = json.loads(read_text(p))
     except (OSError, ValueError):
@@ -166,7 +104,7 @@ def _read_staged() -> str | None:
     return v if isinstance(v, str) and v else None
 
 
-def _write_staged(version: str) -> None:
+def _write_staged(version: str) -> bool:
     try:
         p = _stage_file()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -180,7 +118,8 @@ def _write_staged(version: str) -> None:
             ),
         )
     except OSError:
-        pass  # non-fatal — Phase B just re-stages next cycle
+        return False  # Phase B retries next cycle.
+    return True
 
 
 def _clear_staged() -> None:
@@ -210,18 +149,10 @@ def _warm_cmd(uv: str, version: str) -> list[str]:
 
 
 def notify_staged_update() -> None:
-    """Phase A — at ``physiclaw server`` startup, NOTIFY that a newer version is
-    staged and ready, without touching the install.
+    """Log an available update from a prior stage, without installing it.
 
-    The server never self-installs (reinstalling the venv under a live physiclaw
-    corrupts it on Windows — see the module docstring), so we log a one-line
-    notice and keep serving. The user applies it with ``uv tool upgrade
-    physiclaw`` once the server is stopped (the server has the native-extension
-    DLLs mapped, so the upgrade must run with it stopped).
-
-    Silent no-op when: disabled (``[update] check = false`` / env), under CI,
-    nothing staged (or the stage isn't actually newer), or not a ``uv tool``
-    install (a dev checkout / pip install has nothing we'd tell them to update)."""
+    Skip missing/stale markers, disabled checks, or absent uv tool installs.
+    """
     if _update_check_disabled():
         return
     staged = _read_staged()
@@ -230,13 +161,11 @@ def notify_staged_update() -> None:
     if not _is_newer(_pkg_version, staged):
         _clear_staged()  # already at/past it — drop the stale marker
         return
-    uv = _uv()
-    if uv is None or _tool_version(uv) is None:
-        return  # dev checkout / pip install — nothing to point them at
+    uv = shutil.which("uv")
+    if uv is None or not _has_tool_install(uv):
+        return  # no managed tool to upgrade
 
-    # Logged, not echoed: this runs inside `physiclaw server` startup, where
-    # every line rides the timestamped `[physiclaw]` stream (a bare echo
-    # would break the voice — and skip the daily log file).
+    # Use the server's log stream, including its daily log file.
     log.info(
         "physiclaw %s available (you're on %s) — "
         "stop the server and run `uv tool upgrade physiclaw`.",
@@ -246,24 +175,18 @@ def notify_staged_update() -> None:
 
 
 def maybe_stage_update() -> None:
-    """Phase B — background staging for the next startup's notice.
+    """Warm the newest release in uv's cache, then record it for the next boot.
 
-    Probes PyPI and, if a newer release exists, WARMS uv's cache for it (a heavy
-    download — physiclaw's opencv/onnxruntime deps — hence background) and drops
-    a stage marker (:func:`_write_staged`). No install: it never touches the
-    installed tool, only the shared uv cache and the marker file, so it is safe
-    to run mid-serve and alongside other servers. Fully fail-soft; meant to run
-    in a daemon thread.
-
-    Skips the same kill switches as Phase A. When already at the latest, clears
-    any stale marker; when the target is already staged, does nothing."""
+    Runs in the background; never modifies the installed tool. A failed warm
+    keeps the prior marker, and an already-staged release needs no new warm.
+    """
     if _update_check_disabled():
         return
-    uv = _uv()
+    uv = shutil.which("uv")
     if uv is None:
         return
-    if _tool_version(uv) is None:
-        return  # dev checkout / pip install — never stage
+    if not _has_tool_install(uv):
+        return
     latest = _fetch_pypi_version()
     if latest is None:
         return
@@ -277,14 +200,19 @@ def maybe_stage_update() -> None:
     if proc is None or proc.returncode != 0:
         log.info("stage-update: warming cache for %s failed — will retry", latest)
         return  # warm failed — don't mark; retry next cycle
-    _write_staged(latest)
-    log.info("stage-update: physiclaw %s staged for the next startup's notice", latest)
+    if _write_staged(latest):
+        log.info(
+            "stage-update: physiclaw %s staged for the next startup's notice", latest
+        )
 
 
 def start_stage_update_thread() -> None:
-    """Run Phase B (:func:`maybe_stage_update`) in a background daemon thread so
-    the heavy cache warm never blocks startup. Spawned from here (not the caller)
-    so ``server``'s own thread wiring stays untouched."""
-    threading.Thread(
-        target=maybe_stage_update, name="physiclaw-stage-update", daemon=True
-    ).start()
+    """Start staging as a daemon, without making update checks a startup gate."""
+    if _update_check_disabled():
+        return
+    try:
+        threading.Thread(
+            target=maybe_stage_update, name="physiclaw-stage-update", daemon=True
+        ).start()
+    except RuntimeError as e:
+        log.warning("could not start background update check: %s", e)

@@ -1,310 +1,505 @@
-"""Tests for `physiclaw.cli.update` — the two-phase startup update check
-(Phase B stages/warms, Phase A notifies) plus the `_tool_version` parser.
+"""Public update hooks with real marker files and fake process/HTTP boundaries.
 
-Everything that touches uv / PyPI is patched at the module seams (`_uv`,
-`_tool_version`, `_run`, `_fetch_pypi_version`) so no test shells out or hits
-the network. The autouse `physiclaw_home` fixture isolates the version-check
-cache per test.
+Mutation review accepts log-only edits and three equivalent variants: an
+unrecognized default CI value remains false, the version-cache write already
+creates HOME before marker creation, and missing-marker unlink errors are
+already swallowed. All other variants must fail through public behavior.
 """
 
 from __future__ import annotations
 
 import importlib
+import io
 import json
 import logging
-import os
 import subprocess
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from freezegun import freeze_time
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
+
+from physiclaw.common import config, paths
 
 up = importlib.import_module("physiclaw.cli.update")
 
 
-def _proc(returncode: int = 0, stderr: str = "") -> subprocess.CompletedProcess:
-    return subprocess.CompletedProcess(
-        args=[], returncode=returncode, stdout="", stderr=stderr
+@pytest.fixture(autouse=True)
+def update_env(monkeypatch):
+    monkeypatch.delenv("PHYSICLAW_DISABLE_UPDATE_CHECK", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr(config, "CONFIG", config.Config())
+    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
+
+
+@pytest.fixture
+def boundary(mocker):
+    state = SimpleNamespace(
+        stdout="physiclaw v1.0.0\n- physiclaw\n",
+        query_code=0,
+        query_error=None,
+        warm_code=0,
+        warm_error=None,
+        response={"info": {"version": "1.1.0"}},
+        network_error=None,
+        calls=[],
     )
 
+    def run(command, **kwargs):
+        state.calls.append((command, kwargs))
+        if command == ["/fake/uv", "tool", "list"]:
+            if state.query_error is not None:
+                raise state.query_error
+            return subprocess.CompletedProcess(
+                command, state.query_code, state.stdout, ""
+            )
+        if command[:3] == ["/fake/uv", "tool", "run"]:
+            if state.warm_error is not None:
+                raise state.warm_error
+            return subprocess.CompletedProcess(command, state.warm_code, "", "")
+        raise AssertionError(f"unexpected subprocess: {command}")
 
-def _cached_version(home: Path) -> str | None:
-    p = home / "run" / "version-check.json"
-    if not p.exists():
-        return None
-    return json.loads(p.read_text())["latest_version"]
+    def fetch(*args, **kwargs):
+        if state.network_error is not None:
+            raise state.network_error
+        return io.BytesIO(json.dumps(state.response).encode())
+
+    state.which = mocker.patch(
+        "physiclaw.cli.update.shutil.which", return_value="/fake/uv"
+    )
+    state.process = mocker.patch("physiclaw.cli.update.subprocess.run", side_effect=run)
+    state.http = mocker.patch(
+        "physiclaw.cli._update_check.urllib.request.urlopen", side_effect=fetch
+    )
+    return state
 
 
-# ---------- `physiclaw update` (print-only signpost) ----------
+def _marker(version="1.1.0"):
+    path = paths.cache_dir() / "update.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": version}))
+    return path
 
 
-def test_update_command_points_at_uv(capsys) -> None:
-    # We don't self-install; `physiclaw update` just shows the uv command.
+def _version_cache():
+    return json.loads((paths.HOME / "run" / "version-check.json").read_text())
+
+
+def _deny_marker_stat(marker):
+    original_stat = type(marker).stat
+
+    def stat(path, *args, **kwargs):
+        if path == marker:
+            raise PermissionError("marker inaccessible")
+        return original_stat(path, *args, **kwargs)
+
+    return stat
+
+
+@pytest.fixture
+def threads(mocker):
+    instances = []
+
+    class Thread:
+        def __init__(self, *, target, name, daemon):
+            self.target, self.name, self.daemon = target, name, daemon
+            self.started = False
+            instances.append(self)
+
+        def start(self):
+            self.started = True
+            self.target()
+
+    mocker.patch("physiclaw.cli.update.threading.Thread", Thread)
+    return instances
+
+
+def test_update_command_only_prints_manual_upgrade_instructions(boundary, capsys):
     up.update()
 
-    out = capsys.readouterr().out
-    assert "uv tool upgrade physiclaw" in out
-    assert "stop" in out.lower()  # server must be stopped first
+    assert (
+        capsys.readouterr().out
+        == "To update, stop the server and run:\n\n    uv tool upgrade physiclaw\n"
+    )
+    boundary.process.assert_not_called()
+    boundary.http.assert_not_called()
 
 
-# ---------- _tool_version parsing ----------
+@pytest.mark.parametrize(
+    "hook",
+    [up.notify_staged_update, up.maybe_stage_update, up.start_stage_update_thread],
+)
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("CI", "1"),
+        ("CI", " TRUE "),
+        ("CI", "yes"),
+        ("PHYSICLAW_DISABLE_UPDATE_CHECK", "1"),
+        ("PHYSICLAW_DISABLE_UPDATE_CHECK", " TRUE "),
+        ("PHYSICLAW_DISABLE_UPDATE_CHECK", "yes"),
+    ],
+)
+def test_disabled_hooks_do_not_start_work(
+    boundary, threads, monkeypatch, hook, name, value
+):
+    marker = _marker()
+    monkeypatch.setenv(name, value)
+
+    hook()
+
+    assert threads == []
+    boundary.which.assert_not_called()
+    boundary.http.assert_not_called()
+    assert marker.exists()
 
 
-def test_tool_version_parses_uv_tool_list(mocker) -> None:
-    out = _proc(0)
-    out.stdout = "physiclaw v0.1.13\n- physiclaw\nruff v0.15.9\n- ruff\n"
-    mocker.patch.object(up.subprocess, "run", return_value=out)
+@pytest.mark.parametrize(
+    "hook",
+    [up.notify_staged_update, up.maybe_stage_update, up.start_stage_update_thread],
+)
+def test_regression_hooks_observe_config_updates_in_same_process(
+    boundary, threads, hook
+):
+    marker = _marker()
+    config.set_dotted("update.check", "false")
 
-    assert up._tool_version("uv") == "0.1.13"
+    hook()
 
-
-def test_tool_version_none_when_absent(mocker) -> None:
-    out = _proc(0)
-    out.stdout = "ruff v0.15.9\n- ruff\n"
-    mocker.patch.object(up.subprocess, "run", return_value=out)
-
-    assert up._tool_version("uv") is None
-
-
-def test_tool_version_none_on_uv_failure(mocker) -> None:
-    mocker.patch.object(up.subprocess, "run", return_value=_proc(2))
-    assert up._tool_version("uv") is None
-
-    mocker.patch.object(up.subprocess, "run", side_effect=OSError("gone"))
-    assert up._tool_version("uv") is None
+    boundary.which.assert_not_called()
+    boundary.http.assert_not_called()
+    assert threads == []
+    assert marker.exists()
 
 
-# ---------- notify_staged_update / maybe_stage_update ----------
-
-
-@pytest.fixture
-def auto_env(monkeypatch: pytest.MonkeyPatch, mocker):
-    """Clean slate for the startup update hooks: kill switches off, os.environ
-    restored after the test, CONFIG.update.check on."""
-    monkeypatch.delenv("PHYSICLAW_DISABLE_UPDATE_CHECK", raising=False)
-    monkeypatch.delenv("CI", raising=False)  # the suite itself may run in CI
-    mocker.patch.dict(os.environ)
-    monkeypatch.setattr(up.CONFIG.update, "check", True)
-
-
-# --- Phase A: notify_staged_update (notice only — never installs) ---
-
-
-@pytest.fixture
-def staged_ready(auto_env, monkeypatch, mocker):
-    """A valid stage-and-notify setup: current 1.0.0, a 1.1.0 marker, uv present.
-    Tests override `_tool_version` for their specific branch."""
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    up._write_staged("1.1.0")
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-
-
-def test_notify_noop_when_nothing_staged(auto_env, mocker) -> None:
-    # No marker → return before touching uv at all.
-    run = mocker.patch.object(up, "_run")
-
-    up.notify_staged_update()
-
-    run.assert_not_called()
-
-
-def test_notify_skips_when_config_off(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setattr(up.CONFIG.update, "check", False)
-    up._write_staged("1.1.0")
-    run = mocker.patch.object(up, "_run")
-
-    up.notify_staged_update()
-
-    run.assert_not_called()
-
-
-def test_notify_skips_when_env_disabled(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setenv("PHYSICLAW_DISABLE_UPDATE_CHECK", "1")
-    up._write_staged("1.1.0")
-    run = mocker.patch.object(up, "_run")
-
-    up.notify_staged_update()
-
-    run.assert_not_called()
-
-
-def test_notify_skips_in_ci(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setenv("CI", "true")
-    up._write_staged("1.1.0")
-    run = mocker.patch.object(up, "_run")
-
-    up.notify_staged_update()
-
-    run.assert_not_called()
-
-
-def test_notify_clears_stale_marker_when_not_newer(
-    auto_env,
-    monkeypatch,
-    mocker,
-) -> None:
-    # Staged version is not newer than current (we already updated past it).
-    monkeypatch.setattr(up, "_pkg_version", "1.1.0")
-    up._write_staged("1.1.0")
-    uv = mocker.patch.object(up, "_uv")
-
-    up.notify_staged_update()
-
-    assert up._read_staged() is None  # stale marker cleared
-    uv.assert_not_called()  # returned before the uv check
-
-
-def test_notify_stays_silent_for_dev_and_pip_installs(
-    staged_ready,
-    mocker,
-    caplog,
-) -> None:
-    # Not a uv-tool install → nothing to point the user at; say nothing, and
-    # leave the marker (a real uv-tool run elsewhere may still want it).
-    mocker.patch.object(up, "_tool_version", return_value=None)
+@pytest.mark.parametrize("value", ["0", "false", "no", ""])
+def test_false_environment_switch_does_not_disable_notification(
+    boundary, monkeypatch, caplog, value
+):
+    _marker()
+    monkeypatch.setenv("CI", value)
+    monkeypatch.setenv("PHYSICLAW_DISABLE_UPDATE_CHECK", value)
 
     with caplog.at_level(logging.INFO, logger=up.__name__):
         up.notify_staged_update()
 
-    assert caplog.records == []
-    assert up._read_staged() == "1.1.0"
+    assert "1.1.0 available" in caplog.text
+    boundary.process.assert_called_once()
 
 
-def test_notify_logs_ready_notice_and_keeps_marker(
-    staged_ready,
-    mocker,
-    caplog,
-) -> None:
-    # The real case: a newer version is staged and we're a uv-tool install.
-    # Log a one-line notice pointing at `uv tool upgrade physiclaw` (logged,
-    # not echoed — it rides the server's timestamped stream); install nothing,
-    # raise nothing, and keep the marker so it repeats until applied.
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
+def test_notify_missing_marker_does_not_query_uv(boundary):
+    up.notify_staged_update()
+
+    boundary.which.assert_not_called()
+    boundary.process.assert_not_called()
+    boundary.http.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"not JSON",
+        b"\xff",
+        b"null",
+        b"[]",
+        b"{}",
+        b'{"version": 1}',
+        b'{"version": ""}',
+        b'{"version": false}',
+    ],
+)
+def test_notify_ignores_malformed_marker(boundary, content):
+    marker = _marker()
+    marker.write_bytes(content)
+
+    up.notify_staged_update()
+
+    assert marker.read_bytes() == content
+    boundary.which.assert_not_called()
+    boundary.http.assert_not_called()
+
+
+def test_regression_notify_unreadable_marker_cannot_abort_startup(boundary, mocker):
+    marker = _marker()
+    mocker.patch("pathlib.Path.stat", _deny_marker_stat(marker))
+    mocker.patch(
+        "physiclaw.cli.update.read_text",
+        side_effect=PermissionError("marker inaccessible"),
+    )
+
+    up.notify_staged_update()
+
+    boundary.which.assert_not_called()
+    boundary.http.assert_not_called()
+
+
+@pytest.mark.parametrize("version", ["0.9.0", "1.0.0", "bad-version"])
+def test_notify_removes_stale_marker_before_any_uv_query(boundary, version):
+    marker = _marker(version)
+
+    up.notify_staged_update()
+
+    assert not marker.exists()
+    boundary.which.assert_not_called()
+
+
+def test_notify_stale_marker_cleanup_failure_is_ignored(boundary, mocker):
+    marker = _marker("0.9.0")
+    mocker.patch("pathlib.Path.unlink", side_effect=PermissionError("read only"))
+
+    up.notify_staged_update()
+
+    assert marker.exists()
+    boundary.which.assert_not_called()
+
+
+@pytest.mark.parametrize("hook", [up.notify_staged_update, up.maybe_stage_update])
+def test_missing_uv_keeps_marker_and_skips_network(boundary, hook):
+    marker = _marker()
+    boundary.which.return_value = None
+
+    hook()
+
+    assert marker.exists()
+    boundary.process.assert_not_called()
+    boundary.http.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        "ruff v1.0\n- ruff\n",
+        "physiclaw\n",
+        "physiclaw 1.0.0\n",
+        "physiclaw-other v1.0.0\n",
+        "- physiclaw\n",
+    ],
+)
+@pytest.mark.parametrize("hook", [up.notify_staged_update, up.maybe_stage_update])
+def test_absent_tool_install_skips_notice_and_download(boundary, caplog, output, hook):
+    marker = _marker()
+    boundary.stdout = output
 
     with caplog.at_level(logging.INFO, logger=up.__name__):
-        up.notify_staged_update()  # must NOT raise
+        hook()
 
-    out = " ".join(r.getMessage() for r in caplog.records)
-    assert "1.1.0" in out
-    assert "uv tool upgrade physiclaw" in out
-    assert up._read_staged() == "1.1.0"
-
-
-# --- Phase B: maybe_stage_update (background probe + warm + mark) ---
+    assert caplog.records == []
+    assert marker.exists()
+    boundary.process.assert_called_once()
+    boundary.http.assert_not_called()
 
 
-def test_stage_skips_when_config_off(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setattr(up.CONFIG.update, "check", False)
-    fetch = mocker.patch.object(up, "_fetch_pypi_version")
+@pytest.mark.parametrize("hook", [up.notify_staged_update, up.maybe_stage_update])
+@pytest.mark.parametrize(
+    "error", [OSError("uv missing"), subprocess.TimeoutExpired("uv", 30)]
+)
+def test_uv_query_failure_cannot_abort_startup(boundary, hook, error):
+    marker = _marker()
+    boundary.query_error = error
 
-    up.maybe_stage_update()
+    hook()
 
-    fetch.assert_not_called()
-
-
-def test_stage_skips_when_env_disabled(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setenv("PHYSICLAW_DISABLE_UPDATE_CHECK", "1")
-    fetch = mocker.patch.object(up, "_fetch_pypi_version")
-
-    up.maybe_stage_update()
-
-    fetch.assert_not_called()
+    assert marker.exists()
+    boundary.http.assert_not_called()
 
 
-def test_stage_skips_in_ci(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setenv("CI", "1")
-    fetch = mocker.patch.object(up, "_fetch_pypi_version")
+def test_failed_uv_list_does_not_trust_stdout(boundary):
+    boundary.query_code = 1
 
     up.maybe_stage_update()
 
-    fetch.assert_not_called()
+    boundary.http.assert_not_called()
+    assert len(boundary.calls) == 1
 
 
-def test_stage_skips_dev_and_pip_installs(auto_env, mocker) -> None:
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value=None)
-    fetch = mocker.patch.object(up, "_fetch_pypi_version")
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    spaces=st.sampled_from([" ", "  ", "\t"]),
+    version=st.tuples(st.integers(0, 99), st.integers(0, 99), st.integers(0, 99)),
+)
+def test_notify_accepts_uv_tool_lines_with_whitespace(
+    boundary, caplog, spaces, version
+):
+    marker = _marker()
+    boundary.stdout = f"ruff v1.0\n{spaces}physiclaw{spaces}v{'.'.join(map(str, version))}{spaces}\n- physiclaw\n"
+    boundary.calls.clear()
+    caplog.clear()
 
-    up.maybe_stage_update()
+    with caplog.at_level(logging.INFO, logger=up.__name__):
+        up.notify_staged_update()
 
-    fetch.assert_not_called()
-
-
-def test_stage_up_to_date_clears_marker(
-    auto_env,
-    physiclaw_home: Path,
-    monkeypatch,
-    mocker,
-) -> None:
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    up._write_staged("0.9.0")  # a stale marker
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
-    mocker.patch.object(up, "_fetch_pypi_version", return_value="1.0.0")
-    run = mocker.patch.object(up, "_run")
-
-    up.maybe_stage_update()
-
-    run.assert_not_called()  # no warm
-    assert up._read_staged() is None  # stale marker cleared
-    assert _cached_version(physiclaw_home) == "1.0.0"
-
-
-def test_stage_already_staged_skips_warm(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    up._write_staged("1.1.0")
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
-    mocker.patch.object(up, "_fetch_pypi_version", return_value="1.1.0")
-    run = mocker.patch.object(up, "_run")
-
-    up.maybe_stage_update()
-
-    run.assert_not_called()  # already staged this version — don't re-download
+    assert "physiclaw 1.1.0 available (you're on 1.0.0)" in caplog.text
+    assert "stop the server and run `uv tool upgrade physiclaw`" in caplog.text
+    assert marker.exists()
+    boundary.which.assert_called_with("uv")
+    assert boundary.calls == [
+        (
+            ["/fake/uv", "tool", "list"],
+            {
+                "capture_output": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "timeout": 30,
+            },
+        )
+    ]
+    boundary.http.assert_not_called()
 
 
-def test_stage_restages_when_a_newer_version_appears(
-    auto_env, monkeypatch, mocker
-) -> None:
-    # An older version is already staged; PyPI now advertises a newer one.
-    # Must warm + advance the marker to the NEWEST, not stay pinned to the
-    # stale stage — this is the "stage the newest whenever available" contract.
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    up._write_staged("1.1.0")  # previously staged
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
-    mocker.patch.object(
-        up, "_fetch_pypi_version", return_value="1.2.0"
-    )  # newer release
-    run = mocker.patch.object(up, "_run", return_value=_proc(0))
+@pytest.mark.parametrize("error", [OSError("offline"), TimeoutError("timeout")])
+def test_stage_network_failure_preserves_existing_marker(boundary, error):
+    marker = _marker()
+    boundary.network_error = error
 
     up.maybe_stage_update()
 
-    cmd = run.call_args.args[0]
-    assert "physiclaw==1.2.0" in cmd  # warmed the NEW version, not 1.1.0
-    assert up._read_staged() == "1.2.0"  # marker advanced to the newest
+    assert json.loads(marker.read_text())["version"] == "1.1.0"
+    assert len(boundary.calls) == 1
 
 
-def test_stage_warms_cache_and_writes_marker(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
-    mocker.patch.object(up, "_fetch_pypi_version", return_value="1.1.0")
-    run = mocker.patch.object(up, "_run", return_value=_proc(0))
+@pytest.mark.parametrize("response", [{}, {"info": {}}, {"info": {"version": None}}])
+def test_stage_without_latest_version_does_not_warm(boundary, response):
+    boundary.response = response
 
     up.maybe_stage_update()
 
-    cmd = run.call_args.args[0]
-    assert "run" in cmd and "physiclaw==1.1.0" in cmd  # the warm command
-    assert up._read_staged() == "1.1.0"
+    assert len(boundary.calls) == 1
+    assert not (paths.cache_dir() / "update.json").exists()
 
 
-def test_stage_warm_failure_leaves_no_marker(auto_env, monkeypatch, mocker) -> None:
-    monkeypatch.setattr(up, "_pkg_version", "1.0.0")
-    mocker.patch.object(up, "_uv", return_value="/usr/bin/uv")
-    mocker.patch.object(up, "_tool_version", return_value="1.0.0")
-    mocker.patch.object(up, "_fetch_pypi_version", return_value="1.1.0")
-    mocker.patch.object(up, "_run", return_value=_proc(1))
+def test_stage_current_release_clears_stale_marker_and_caches_version(boundary):
+    marker = _marker("0.9.0")
+    boundary.response = {"info": {"version": "1.0.0"}}
 
     up.maybe_stage_update()
 
-    assert up._read_staged() is None  # warm failed → don't mark
+    assert not marker.exists()
+    assert _version_cache()["latest_version"] == "1.0.0"
+    assert len(boundary.calls) == 1
+
+
+def test_stage_same_release_skips_redundant_warm(boundary):
+    marker = _marker()
+
+    up.maybe_stage_update()
+
+    assert json.loads(marker.read_text())["version"] == "1.1.0"
+    assert _version_cache()["latest_version"] == "1.1.0"
+    assert len(boundary.calls) == 1
+
+
+@freeze_time("2026-10-15 01:00:00")
+def test_stage_new_release_warms_separate_environment_then_records_it(boundary, caplog):
+    marker = _marker("1.0.1")
+
+    with caplog.at_level(logging.INFO, logger=up.__name__):
+        up.maybe_stage_update()
+
+    boundary.which.assert_called_once_with("uv")
+    assert boundary.calls == [
+        (
+            ["/fake/uv", "tool", "list"],
+            {
+                "capture_output": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "timeout": 30,
+            },
+        ),
+        (
+            [
+                "/fake/uv",
+                "tool",
+                "run",
+                "--refresh",
+                "--from",
+                "physiclaw==1.1.0",
+                "python",
+                "-c",
+                "pass",
+            ],
+            {
+                "capture_output": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "timeout": 600,
+            },
+        ),
+    ]
+    assert json.loads(marker.read_text()) == {
+        "version": "1.1.0",
+        "staged_at": "2026-10-15T01:00:00+00:00",
+    }
+    assert _version_cache()["latest_version"] == "1.1.0"
+    assert "physiclaw 1.1.0 staged for the next startup's notice" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("gone"), subprocess.TimeoutExpired("uv", 600)]
+)
+def test_stage_warm_exception_preserves_previous_marker(boundary, caplog, error):
+    marker = _marker("1.0.1")
+    boundary.warm_error = error
+
+    with caplog.at_level(logging.INFO, logger=up.__name__):
+        up.maybe_stage_update()
+
+    assert json.loads(marker.read_text())["version"] == "1.0.1"
+    assert "will retry" in caplog.text
+    assert "staged for" not in caplog.text
+
+
+def test_stage_failed_warm_leaves_no_marker(boundary, caplog):
+    boundary.warm_code = 1
+
+    with caplog.at_level(logging.INFO, logger=up.__name__):
+        up.maybe_stage_update()
+
+    assert not (paths.cache_dir() / "update.json").exists()
+    assert "will retry" in caplog.text
+    assert "staged for" not in caplog.text
+
+
+def test_regression_stage_does_not_claim_success_when_marker_cannot_be_written(
+    boundary, caplog
+):
+    marker = paths.cache_dir() / "update.json"
+    marker.mkdir(parents=True)
+
+    with caplog.at_level(logging.INFO, logger=up.__name__):
+        up.maybe_stage_update()
+
+    assert marker.is_dir()
+    assert len(boundary.calls) == 2
+    assert "staged for" not in caplog.text
+
+
+def test_background_stage_runs_as_named_daemon(boundary, threads):
+    up.start_stage_update_thread()
+
+    assert len(threads) == 1
+    assert threads[0].started is True
+    assert threads[0].daemon is True
+    assert threads[0].name == "physiclaw-stage-update"
+    assert (
+        json.loads((paths.cache_dir() / "update.json").read_text())["version"]
+        == "1.1.0"
+    )
+    assert len(boundary.calls) == 2
+
+
+def test_regression_thread_start_failure_does_not_abort_server(
+    boundary, mocker, caplog
+):
+    mocker.patch(
+        "physiclaw.cli.update.threading.Thread.start",
+        side_effect=RuntimeError("can't start new thread"),
+    )
+
+    up.start_stage_update_thread()
+
+    assert "could not start background update check" in caplog.text
+    boundary.which.assert_not_called()
+    boundary.http.assert_not_called()
