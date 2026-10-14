@@ -3,6 +3,11 @@
 Network is mocked at the ``urllib.request.urlopen`` boundary; the
 ``physiclaw_home`` autouse fixture (see ``tests/conftest.py``) gives
 each test a clean ``paths.HOME`` so the cache file is per-test.
+
+Mutation review: accepted survivors change invalid fallback strings to other
+invalid strings, add cosmetic text around the banner, or disable its explicit
+flush (TTY output already ends in a newline). Cache creation, validity and
+expiration are asserted through the public banner entry point below.
 """
 
 from __future__ import annotations
@@ -10,11 +15,16 @@ from __future__ import annotations
 import io
 import json
 import sys
+import urllib.error
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from freezegun import freeze_time
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from physiclaw.cli import _update_check as uc
 
@@ -256,13 +266,7 @@ def test_fetch_pypi_version_returns_none_on_unexpected_payload(mocker) -> None:
     assert uc._fetch_pypi_version() is None
 
 
-# ---------- end-to-end maybe_print_update_banner ----------
-#
-# We patch ``sys.stdout.isatty`` and ``builtins.print`` directly because
-# pytest's default fd-level output capture intercepts real print() calls
-# even when ``sys.stdout`` is monkeypatched at the Python level — there's
-# no clean way to verify a print's content from the captured side
-# without disabling capture (-s).
+# ---------- banner formatting ----------
 
 
 @pytest.fixture
@@ -325,3 +329,252 @@ def test_banner_silent_when_local_is_newer_than_pypi(
     uc.maybe_print_update_banner()
 
     banner_env.assert_not_called()
+
+
+class _TTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+@pytest.fixture
+def public_banner(monkeypatch, mocker):
+    monkeypatch.delenv("PHYSICLAW_DISABLE_UPDATE_CHECK", raising=False)
+    terminal = _TTY()
+    fetch = mocker.patch(
+        "physiclaw.cli._update_check.urllib.request.urlopen",
+        side_effect=lambda *a, **kw: io.BytesIO(b'{"info":{"version":"999.0.0"}}'),
+    )
+    return terminal, fetch
+
+
+def _plant_cache(home, checked_at, latest="998.0.0"):
+    path = home / "run" / "version-check.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"checked_at": checked_at, "latest_version": latest}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_regression_banner_rechecks_future_dated_cache(physiclaw_home, public_banner):
+    terminal, fetch = public_banner
+    _plant_cache(physiclaw_home, "2027-01-01T00:00:00+00:00")
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_count == 1
+    assert "999.0.0 available" in terminal.getvalue()
+
+
+def test_regression_banner_reads_cache_without_fallible_stat_probe(
+    physiclaw_home, public_banner, mocker
+):
+    terminal, fetch = public_banner
+    _plant_cache(physiclaw_home, "2026-10-14T12:00:00+00:00")
+    mocker.patch.object(Path, "exists", side_effect=PermissionError("stat denied"))
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert "998.0.0 available" in terminal.getvalue()
+    fetch.assert_not_called()
+
+
+class _BrokenOutput(_TTY):
+    def __init__(self, failure):
+        super().__init__()
+        self.failure = failure
+        self.attempts = 0
+
+    def isatty(self):
+        if self.failure == "isatty":
+            self.attempts += 1
+            raise ValueError("closed stream")
+        return True
+
+    def write(self, text):
+        self.attempts += 1
+        raise BrokenPipeError("closed pipe")
+
+
+@pytest.mark.parametrize("failure", ["isatty", "write"])
+def test_regression_optional_banner_contains_output_failure(
+    physiclaw_home, public_banner, failure
+):
+    _plant_cache(physiclaw_home, "2026-10-14T12:00:00+00:00")
+    terminal = _BrokenOutput(failure)
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert terminal.attempts == 1
+
+
+def test_banner_without_stdout_skips_network(public_banner):
+    _, fetch = public_banner
+
+    with redirect_stdout(None):
+        uc.maybe_print_update_banner()
+
+    fetch.assert_not_called()
+
+
+@given(
+    age=st.integers(min_value=-86400, max_value=864000),
+    offset=st.integers(min_value=-23, max_value=23),
+)
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_banner_cache_ttl_depends_on_instant_not_timezone(
+    physiclaw_home, public_banner, age, offset
+):
+    terminal, fetch = public_banner
+    fetch.reset_mock()
+    terminal.seek(0)
+    terminal.truncate()
+    now = datetime(2026, 10, 14, 12, tzinfo=timezone.utc)
+    checked = (now - timedelta(seconds=age)).astimezone(
+        timezone(timedelta(hours=offset))
+    )
+    _plant_cache(physiclaw_home, checked.isoformat())
+
+    with freeze_time(now), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_count == int(not 0 <= age < 7 * 86400)
+
+
+@pytest.mark.parametrize("latest", [None, "", [], 123])
+def test_banner_rechecks_fresh_cache_with_invalid_version(
+    physiclaw_home, public_banner, latest
+):
+    terminal, fetch = public_banner
+    _plant_cache(physiclaw_home, "2026-10-14T12:00:00+00:00", latest)
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_count == 1
+    assert "999.0.0 available" in terminal.getvalue()
+
+
+def test_regression_banner_closes_unconsumed_http_error_response(public_banner):
+    terminal, fetch = public_banner
+    body = io.BytesIO(b"unavailable")
+    fetch.side_effect = urllib.error.HTTPError(
+        "https://pypi.org", 503, "unavailable", None, body
+    )
+
+    with redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert terminal.getvalue() == ""
+    assert body.closed
+
+
+class _AsciiTTY(io.TextIOWrapper):
+    def isatty(self):
+        return True
+
+
+def test_banner_with_ascii_output_does_not_fail_diagnostics(
+    physiclaw_home, public_banner
+):
+    _plant_cache(physiclaw_home, "2026-10-14T12:00:00+00:00")
+    buffer = io.BytesIO()
+
+    with _AsciiTTY(buffer, encoding="ascii") as terminal:
+        with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+            uc.maybe_print_update_banner()
+
+        assert buffer.getvalue() == b""
+
+
+@pytest.mark.parametrize(
+    "checked_at, fetch_count",
+    [
+        ("2026-10-14T12:00:00+00:00", 0),
+        ("2026-10-07T12:00:00.000001+00:00", 0),
+        ("2026-10-07T12:00:00+00:00", 1),
+        ("2026-10-14T12:00:00.000001+00:00", 1),
+        ("2026-10-14T12:00:00", 0),
+    ],
+)
+def test_banner_cache_expiration_boundaries(
+    physiclaw_home, public_banner, checked_at, fetch_count
+):
+    terminal, fetch = public_banner
+    _plant_cache(physiclaw_home, checked_at)
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_count == fetch_count
+
+
+def test_banner_unusable_cache_path_still_displays_available_update(
+    physiclaw_home, public_banner
+):
+    terminal, fetch = public_banner
+    (physiclaw_home / "run" / "version-check.json").mkdir(parents=True)
+
+    with redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_count == 1
+    assert "999.0.0 available" in terminal.getvalue()
+
+
+@pytest.mark.parametrize(
+    "payload", [b"broken", b"[]", b'{"info":null}', b'{"info":{"version":123}}']
+)
+def test_banner_bad_response_is_silent_and_closed(
+    physiclaw_home, public_banner, payload
+):
+    terminal, fetch = public_banner
+    response = io.BytesIO(payload)
+    fetch.side_effect = None
+    fetch.return_value = response
+
+    with redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert terminal.getvalue() == ""
+    assert response.closed
+    assert not (physiclaw_home / "run" / "version-check.json").exists()
+
+
+def test_banner_first_lookup_creates_missing_home_and_reuses_cache(
+    physiclaw_home, public_banner
+):
+    terminal, fetch = public_banner
+    physiclaw_home.rmdir()
+
+    with freeze_time("2026-10-14T12:00:00+00:00"), redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+        uc.maybe_print_update_banner()
+
+    fetch.assert_called_once()
+    assert json.loads(
+        (physiclaw_home / "run" / "version-check.json").read_text(encoding="utf-8")
+    ) == {"checked_at": "2026-10-14T12:00:00+00:00", "latest_version": "999.0.0"}
+
+
+def test_banner_fetch_uses_pypi_with_short_timeout(public_banner):
+    terminal, fetch = public_banner
+
+    with redirect_stdout(terminal):
+        uc.maybe_print_update_banner()
+
+    assert fetch.call_args.args == ("https://pypi.org/pypi/physiclaw/json",)
+    assert fetch.call_args.kwargs["timeout"] == 2.0
+    assert "999.0.0 available" in terminal.getvalue()
+
+
+def test_banner_network_interrupt_is_not_swallowed(public_banner):
+    terminal, fetch = public_banner
+    fetch.side_effect = KeyboardInterrupt
+
+    with redirect_stdout(terminal), pytest.raises(KeyboardInterrupt):
+        uc.maybe_print_update_banner()

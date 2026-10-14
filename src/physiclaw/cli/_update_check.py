@@ -1,10 +1,10 @@
 """Soft check for a newer ``physiclaw`` on PyPI.
 
 Prints a single-line nudge after a diagnostic command (``doctor`` /
-``status``) if a newer version is available. Never blocks the command;
-fails silently on any error. Cache lives at
-``~/.physiclaw/run/version-check.json`` with a 7-day TTL so we don't hit
-PyPI more than weekly.
+``status``) if a newer version is available. A cache miss performs a
+synchronous lookup with a short socket timeout; network, cache and output
+failures never fail the diagnostic command. Successful lookups are cached
+at ``~/.physiclaw/run/version-check.json`` for seven days.
 
 Disabled by setting ``PHYSICLAW_DISABLE_UPDATE_CHECK=1`` (matches Claude
 Code's ``DISABLE_UPDATES`` convention). Skipped when stdout is not a TTY
@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -36,8 +37,6 @@ def _cache_file() -> Path:
 
 def _read_cache() -> dict | None:
     p = _cache_file()
-    if not p.exists():
-        return None
     try:
         data = json.loads(read_text(p))
         return data if isinstance(data, dict) else None
@@ -69,7 +68,8 @@ def _cache_is_fresh(checked_at: str) -> bool:
         return False
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - ts < timedelta(days=_CACHE_TTL_DAYS)
+    age = datetime.now(timezone.utc) - ts
+    return timedelta(0) <= age < timedelta(days=_CACHE_TTL_DAYS)
 
 
 def _fetch_pypi_version() -> str | None:
@@ -78,6 +78,9 @@ def _fetch_pypi_version() -> str | None:
             data = json.loads(r.read())
         v = data.get("info", {}).get("version")
         return v if isinstance(v, str) and v else None
+    except urllib.error.HTTPError as error:
+        error.close()
+        return None
     except Exception:
         return None
 
@@ -127,15 +130,17 @@ def maybe_print_update_banner() -> None:
     """
     if _disabled_via_env():
         return
-    if not sys.stdout.isatty():
+    try:
+        if sys.stdout is None or not sys.stdout.isatty():
+            return
+        latest = _resolve_latest()
+        if latest and _is_newer(_pkg_version, latest):
+            print(
+                f"\n! physiclaw {_pkg_version} → {latest} available. "
+                "Update with: uv tool upgrade physiclaw",
+                flush=True,
+            )
+    except (OSError, ValueError):
+        # Closed streams and unsupported encodings are optional-banner failures,
+        # not failures of the diagnostic command that already finished.
         return
-    latest = _resolve_latest()
-    if not latest:
-        return
-    if not _is_newer(_pkg_version, latest):
-        return
-    print(
-        f"\n! physiclaw {_pkg_version} → {latest} available. "
-        "Update with: uv tool upgrade physiclaw",
-        flush=True,
-    )
