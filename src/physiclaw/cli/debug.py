@@ -35,6 +35,7 @@ import typer
 from physiclaw.agent.hooks.debug import wake_path
 from physiclaw.cli._format import exit_error
 from physiclaw.common.config import DEBUG_ENV_VAR, MACRO_FAILURE_ENV_VAR
+from physiclaw.common.file_lock import FileLockBusy
 from physiclaw.common.logger import write_json_atomic
 
 
@@ -79,8 +80,14 @@ def debug(
     if task is None and not reply:
         exit_error("nothing to do — pass --task (and --reply), or --status/--clear")
     replies = list(reply or [])
+    try:
+        if task is not None:
+            vthread.seed(task, replies)
+        else:
+            vthread.stage(replies)
+    except (OSError, FileLockBusy) as e:
+        exit_error(f"could not update debug thread: {e}")
     if task is not None:
-        vthread.seed(task, replies)
         typer.echo(f"thread reset: user: {task!r}, {len(replies)} staged reply(ies)")
         if wake:
             _arm_wake(f"debug: user sent a message: {task!r}")
@@ -88,7 +95,6 @@ def debug(
     else:
         from physiclaw.conductor.walk.suspension import suspended_ref
 
-        vthread.stage(replies)
         typer.echo(f"staged {len(replies)} reply(ies) onto the running script")
         # A reply for a suspended walk needs the wake that resumes it;
         # in-session staging (gate still polling) needs none.
@@ -150,10 +156,13 @@ def _clear() -> None:
     removed = []
     for p in (vthread.thread_path(), wake_path()):
         try:
-            p.unlink()
+            if p == vthread.thread_path():
+                vthread.clear()
+            else:
+                p.unlink()
         except FileNotFoundError:
             continue  # absent already, or consumed by the running wake hook
-        except OSError as e:
+        except (OSError, FileLockBusy) as e:
             exit_error(f"could not remove {p}: {e}")
         removed.append(p.name)
     typer.echo(f"cleared: {', '.join(removed) or '(nothing to clear)'}")

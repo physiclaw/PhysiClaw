@@ -1,40 +1,31 @@
-"""The virtual thread — `debug/thread.json` and its listing renderer.
+"""Persist and render the scripted conversation in `debug/thread.json`.
 
-The file is one scripted conversation: the bubbles so far, plus the
-user's `staged` replies waiting for their moment. `physiclaw debug
---task --reply` seeds both; the interceptor appends the agent's own
-sends (`record_send`) and reads the thread per peek (`peek_bubbles`),
-which is where timing lives: a staged reply enters the thread only when
-the newest bubble is the agent's — after an ask, never before one, and
-never into the ask's own baseline snapshot (the gate baselines the SEND
-result; the release happens on the following peek). One rule covers the
-in-session poll, the suspended resume, and multi-ask scripts alike.
+Writers hold one process lock across read, update, and atomic publication.
+`load` returns a snapshot; use `stage`, `record_send`, or `peek_bubbles` to
+update it. `save` and `seed` replace the entire script.
 
-`render_listing` draws the thread in the element-listing grammar the
-whole system reads, against the REAL channel pack's fingerprint: every
-declared anchor of the `thread` page is rendered at its learned position
-(else its region band, else spread across the top), so `match_screen`
-scores the render like a genuine reading rather than being bypassed.
-Bubble geometry carries the semantics `reply.read_incoming` keys on:
-incoming bubbles hang from the IM's `incoming_box` side, our own from
-the other, newest at the bottom, long texts split into wrapped-line
-rows — and a line is as wide as its text, up to the width of a bubble,
-so a long line's center drifts toward the middle of the screen exactly
-as a real one does (the reader must not lean on a line's center).
+A staged reply is released only on a peek after an agent send. The send's
+own result stays the gate's baseline, so it cannot consume its own reply.
 
-Block builders mirror the server's wire shapes (`core/server/tools.py`):
-a view reply is `[image, listing]` — block 0 must NOT be text, or
-`verdict.action_text` would misread the listing as composed action text
-— and a gesture reply is `[action text, image, listing]`.
+Listings use the real channel fingerprint: learned anchor positions, then
+declared region centers, then default chrome positions. Incoming bubbles
+occupy the configured IM side; agent bubbles occupy the other. The listing
+therefore passes through the ordinary page matcher and reply reader.
+
+Wire blocks mirror the server: `[image, listing]` for views and
+`[action text, image, listing]` for gestures. A view must start with an
+image so `verdict.action_text` cannot mistake the listing for action text.
 """
 
 import json
 import logging
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from physiclaw.common import paths
 from physiclaw.common.bbox import Bbox
+from physiclaw.common.file_lock import exclusive_file_lock
 from physiclaw.common.listing import Element, format_elements
 from physiclaw.common.logger import write_json_atomic
 from physiclaw.common.text import read_text
@@ -122,7 +113,25 @@ def load() -> Thread:
 
 
 def save(thread: Thread) -> None:
-    paths.debug_dir().mkdir(parents=True, exist_ok=True)
+    """Replace the script, waiting for any in-flight update to finish."""
+    with _thread_lock():
+        _write(thread)
+
+
+def clear() -> None:
+    """Remove the script under the writer lock; missing files raise as usual."""
+    with _thread_lock():
+        thread_path().unlink()
+
+
+def _thread_lock() -> AbstractContextManager[None]:
+    # Stable inode, shared by CLI and runtime processes. No phone or model work
+    # runs under this lock; five seconds bounds a stalled filesystem update.
+    return exclusive_file_lock(thread_path().with_suffix(".lock"), timeout=5)
+
+
+def _write(thread: Thread) -> None:
+    """Publish while the caller holds the lock across the entire update."""
     write_json_atomic(
         thread_path(),
         {
@@ -142,9 +151,10 @@ def seed(task: str, replies: list[str]) -> None:
 def stage(replies: list[str]) -> None:
     """Append staged replies to the running script (`--reply` without
     `--task`) — released by the same ask-then-peek rule."""
-    thread = load()
-    thread.staged.extend(replies)
-    save(thread)
+    with _thread_lock():
+        thread = load()
+        thread.staged.extend(replies)
+        _write(thread)
 
 
 def record_send(message: str) -> list[Bubble]:
@@ -153,10 +163,11 @@ def record_send(message: str) -> list[Bubble]:
     like a real sent message. Deliberately releases nothing: the send's
     result screen is the gate's baseline snapshot, and a reply released
     into it would be baselined away."""
-    thread = load()
-    thread.bubbles.append(Bubble(sender=AGENT, text=message))
-    save(thread)
-    return thread.bubbles
+    with _thread_lock():
+        thread = load()
+        thread.bubbles.append(Bubble(sender=AGENT, text=message))
+        _write(thread)
+        return thread.bubbles
 
 
 def peek_bubbles() -> list[Bubble]:
@@ -166,13 +177,14 @@ def peek_bubbles() -> list[Bubble]:
     baseline, on this read. Covers the in-session poll, the suspended
     resume, and replies staged mid-run alike; with no ask outstanding,
     staged replies wait."""
-    thread = load()
-    if thread.staged and thread.bubbles and thread.bubbles[-1].sender == AGENT:
-        released = thread.staged.pop(0)
-        thread.bubbles.append(Bubble(sender=USER, text=released))
-        save(thread)
-        log.info("debug thread: released staged reply %r", released)
-    return thread.bubbles
+    with _thread_lock():
+        thread = load()
+        if thread.staged and thread.bubbles and thread.bubbles[-1].sender == AGENT:
+            released = thread.staged.pop(0)
+            thread.bubbles.append(Bubble(sender=USER, text=released))
+            _write(thread)
+            log.info("debug thread: released staged reply %r", released)
+        return thread.bubbles
 
 
 # ---------- rendering ----------

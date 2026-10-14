@@ -22,6 +22,7 @@ from physiclaw.agent.hooks.debug import wake_path
 from physiclaw.cli import app
 from physiclaw.common import runtime_state
 from physiclaw.common.config import DEBUG_ENV_VAR, MACRO_FAILURE_ENV_VAR
+from physiclaw.common.file_lock import FileLockBusy
 from physiclaw.debug import thread as vthread
 
 runner = CliRunner()
@@ -293,3 +294,25 @@ def test_reply_appends_without_resetting_existing_thread():
     assert vthread.load() == vthread.Thread(
         [vthread.Bubble(vthread.USER, "initial task")], ["first", "second", "third"]
     )
+
+
+@pytest.mark.parametrize(
+    "arguments", [["--task", "new task"], ["--reply", "reply"], ["--clear"]]
+)
+@pytest.mark.parametrize(
+    "error", [FileLockBusy("lock is held"), PermissionError("denied")]
+)
+def test_busy_or_unwritable_thread_is_reported_without_waking(mocker, arguments, error):
+    vthread.seed("existing", ["keep"])
+    mocker.patch.object(vthread, "exclusive_file_lock", side_effect=error)
+    server = mocker.patch("physiclaw.cli.server.server")
+
+    result = runner.invoke(app, ["debug", *arguments])
+
+    assert result.exit_code == 1
+    assert str(error) in result.stderr
+    assert vthread.load() == vthread.Thread(
+        [vthread.Bubble(vthread.USER, "existing")], ["keep"]
+    )
+    assert not wake_path().exists()
+    server.assert_not_called()
