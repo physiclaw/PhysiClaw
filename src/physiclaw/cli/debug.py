@@ -113,6 +113,8 @@ def _run_server_if_none(macro_failure: bool) -> None:
     os.environ[DEBUG_ENV_VAR] = "1"
     if macro_failure:
         os.environ[MACRO_FAILURE_ENV_VAR] = "1"
+    else:
+        os.environ.pop(MACRO_FAILURE_ENV_VAR, None)
     typer.echo(
         "no live server — starting one in debug mode (hot start"
         + (", halt on macro failure" if macro_failure else "")
@@ -147,7 +149,11 @@ def _clear() -> None:
 
     removed = []
     for p in (vthread.thread_path(), wake_path()):
-        if p.exists():
+        try:
             p.unlink()
-            removed.append(p.name)
+        except FileNotFoundError:
+            continue  # absent already, or consumed by the running wake hook
+        except OSError as e:
+            exit_error(f"could not remove {p}: {e}")
+        removed.append(p.name)
     typer.echo(f"cleared: {', '.join(removed) or '(nothing to clear)'}")
