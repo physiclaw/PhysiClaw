@@ -872,22 +872,22 @@
   },
   {
     "part_id": "hexnut-unc14",
-    "ref": "¥3",
+    "ref": "$1",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "1/4-20 UNC, imperial (50-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=20955552239&skuId=5664372939211"
+        "name": "TINGGOO",
+        "product": "1/4-20 UNC, 10pcs",
+        "url": "https://www.aliexpress.us/item/3256812725991407.html"
       },
       {
-        "name": "Guwanji",
-        "product": "1/4-20 UNC (20-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=642493938891&skuId=5094407607810"
+        "name": "HZYUEGOU",
+        "product": "UNC 1/4-20 (10 pcs)",
+        "url": "https://www.aliexpress.us/item/3256801731534935.html"
       },
       {
-        "name": "Tianzhuo",
-        "product": "1/4-20 UNC, imperial (20-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=601243664282&skuId=5709263519067"
+        "name": "YMAX",
+        "product": "20pcs 1/4-20",
+        "url": "https://www.aliexpress.us/item/3256809588034255.html"
       }
     ],
     "note": "Tighten with an 11 mm open-end wrench."
