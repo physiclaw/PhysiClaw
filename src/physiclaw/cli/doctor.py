@@ -11,6 +11,8 @@ import logging
 import platform
 import shutil
 import sys
+import urllib.error
+from collections.abc import Iterator
 from typing import Annotated
 
 import typer
@@ -57,18 +59,81 @@ def _list_cameras(max_index: int = 4) -> list[int]:
     with silenced_stderr():
         for i in range(max_index + 1):
             cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                found.append(i)
-                misses = 0
-            else:
-                misses += 1
-            cap.release()
+            try:
+                if cap.isOpened():
+                    found.append(i)
+                    misses = 0
+                else:
+                    misses += 1
+            finally:
+                cap.release()
             if misses >= 2:
                 break
     return found
 
 
-def _probe_server(live: dict | None) -> tuple[str, int, bool, dict | None]:
+def _offline_hardware_lines(deep: bool) -> Iterator[str]:
+    """Probe devices only after the caller has ruled out a live server.
+
+    Yield the progress line before touching hardware; isolate serial and
+    camera failures so one unavailable device does not hide later checks.
+    """
+    from physiclaw.common import platform as os_platform
+    from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
+
+    yield _fmt_warn("server: not running")
+    yield "  Probing serial ports for GRBL (active $I query, ~2s/port)…"
+    grbl_logger = logging.getLogger("physiclaw.core.hardware.grbl")
+    prev_level = grbl_logger.level
+    grbl_logger.setLevel(logging.CRITICAL)
+    try:
+        try:
+            grbl_port = detect_grbl()
+        finally:
+            grbl_logger.setLevel(prev_level)
+        if grbl_port:
+            yield _fmt_ok(f"GRBL arm: {grbl_port}")
+        else:
+            relevant = candidate_ports()
+            if relevant:
+                yield _fmt_warn(
+                    f"no GRBL detected (saw {len(relevant)} candidate port(s): "
+                    f"{', '.join(relevant)})"
+                )
+            else:
+                yield _fmt_warn(
+                    "no serial ports detected — is the control board "
+                    "plugged into USB and its 12V power on?"
+                )
+    except Exception as e:
+        yield _fmt_warn(f"GRBL arm: {type(e).__name__}: {e}")
+
+    cv2_err = _opencv_import_error()
+    if cv2_err is not None:
+        yield cv2_err
+    else:
+        try:
+            cams = _list_cameras()
+        except Exception as e:
+            yield _fmt_warn(f"cameras: {type(e).__name__}: {e}")
+        else:
+            if cams:
+                yield _fmt_ok(f"cameras: {len(cams)} detected")
+                if deep:
+                    for idx in cams:
+                        try:
+                            yield _probe_camera_frame(idx)
+                        except Exception as e:
+                            yield _fmt_warn(f"camera {idx}: {type(e).__name__}: {e}")
+            else:
+                yield _fmt_warn(
+                    f"cameras: none detected ({os_platform.camera_denied_hint()})"
+                )
+    for hint in os_platform.hardware_permission_hints():
+        yield _fmt_warn(hint)
+
+
+def _probe_server(live: dict | None) -> tuple[str, int, bool, object]:
     """GET /api/status from the server at ``live['host']:live['port']``,
     falling back to ``config.toml`` when no live state is passed.
 
@@ -115,7 +180,9 @@ def _probe_vision_model_deep() -> str:
         )
         shape = sess.get_inputs()[0].shape
         return _fmt_ok(f"vision model: loads OK (input {shape})")
-    except (OSError, RuntimeError, ValueError, ImportError) as e:
+    except Exception as e:
+        # ONNX Runtime's native errors (e.g. InvalidProtobuf) do not share
+        # a narrower base class. A failed model must not abort diagnostics.
         return _fmt_warn(f"vision model: load failed — {type(e).__name__}: {e}")
 
 
@@ -197,6 +264,8 @@ def _frame_quality_verdict(frame) -> tuple[bool, str]:
     )
     if r.blown:
         return False, f"quality BLOWN — overexposed/glare: {stats}"
+    if r.dark:
+        return False, f"quality DARK — check lighting/exposure: {stats}"
     if r.blurry:
         return False, f"quality BLURRY — check focus: {stats}"
     return True, f"quality ok: {stats}"
@@ -230,13 +299,23 @@ def _probe_bridge_deep(host: str, port: int) -> str:
     """``port`` is the control port; the bridge listens on port+1 (see
     ``core/bridge/lan.bridge_port``). The bridge plane is ungated, so a
     plain loopback GET works here."""
+    from physiclaw.common.config import url_host
     from physiclaw.core.bridge.lan import bridge_port
 
     try:
-        state = _http.fetch_json(
-            f"http://{host}:{bridge_port(port)}/api/bridge/state", timeout=1.0
-        )
+        try:
+            state = _http.fetch_json(
+                f"http://{url_host(host)}:{bridge_port(port)}/api/bridge/state",
+                timeout=1.0,
+            )
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise
+        if not isinstance(state, dict):
+            raise ValueError("invalid bridge state: expected a JSON object")
         connected = state.get("connected", False)
+        if not isinstance(connected, bool):
+            raise ValueError("invalid bridge state: connected must be a boolean")
     except (OSError, ValueError) as e:
         # Network/parse failure is a real problem — keep the warn.
         return _fmt_warn(f"bridge: {type(e).__name__}: {e}")
@@ -263,7 +342,10 @@ def _skills_lines() -> list[str]:
     out: list[str] = []
     for d in entries:
         prov = read_provenance(d)
-        if prov is not None:
+        if isinstance(prov, dict) and all(
+            prov.get(key) is None or isinstance(prov[key], str)
+            for key in ("source", "ref", "sha")
+        ):
             ref = prov.get("ref") or (prov.get("sha", "") or "")[:7] or "?"
             out.append(_fmt_ok(f"{d.name}  ← {prov.get('source', '?')} @ {ref}"))
         elif (d / PROVENANCE_FILE).exists():
@@ -455,7 +537,16 @@ def doctor(
     # Provider section below.
     live = runtime_state.read_live()
     host, port, bind_all, status = _probe_server(live)
-    if status is not None:
+    status_problem = None
+    if status is None and live:
+        status_problem = "live process found, status unavailable"
+    elif status is not None and not isinstance(status, dict):
+        status_problem = "invalid status response"
+    if status_problem:
+        typer.echo(
+            _fmt_warn(f"server: {status_problem}; skipping local hardware probes")
+        )
+    elif isinstance(status, dict):
         # Server is up — its view of arm/camera/calibration is authoritative.
         typer.echo(_fmt_ok(f"server: running on {host}:{port}"))
         if bind_all:
@@ -471,64 +562,15 @@ def doctor(
                 )
             )
         for label in ("arm", "camera", "calibrated", "ready"):
-            if status.get(label):
+            if status.get(label) is True:
                 typer.echo(_fmt_ok(f"{label}: yes"))
             else:
                 typer.echo(_fmt_warn(f"{label}: no"))
         if deep:
             typer.echo(_probe_bridge_deep(host, port))
     else:
-        # Server offline — safe to probe hardware ourselves.
-        typer.echo(_fmt_warn("server: not running"))
-        typer.echo("  Probing serial ports for GRBL (active $I query, ~2s/port)…")
-        from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
-
-        # detect_grbl logs its own narration; doctor speaks for itself.
-        grbl_logger = logging.getLogger("physiclaw.core.hardware.grbl")
-        prev_level = grbl_logger.level
-        grbl_logger.setLevel(logging.CRITICAL)
-        try:
-            grbl_port = detect_grbl()
-        finally:
-            grbl_logger.setLevel(prev_level)
-        if grbl_port:
-            typer.echo(_fmt_ok(f"GRBL arm: {grbl_port}"))
-        else:
-            relevant = candidate_ports()
-            if relevant:
-                typer.echo(
-                    _fmt_warn(
-                        f"no GRBL detected (saw {len(relevant)} candidate port(s): "
-                        f"{', '.join(relevant)})"
-                    )
-                )
-            else:
-                typer.echo(
-                    _fmt_warn(
-                        "no serial ports detected — is the control board "
-                        "plugged into USB and its 12V power on?"
-                    )
-                )
-        from physiclaw.common import platform as os_platform
-
-        cv2_err = _opencv_import_error()
-        if cv2_err is not None:
-            typer.echo(cv2_err)
-        else:
-            cams = _list_cameras()
-            if cams:
-                typer.echo(_fmt_ok(f"cameras: {len(cams)} detected"))
-                if deep:
-                    for idx in cams:
-                        typer.echo(_probe_camera_frame(idx))
-            else:
-                typer.echo(
-                    _fmt_warn(
-                        f"cameras: none detected ({os_platform.camera_denied_hint()})"
-                    )
-                )
-        for hint in os_platform.hardware_permission_hints():
-            typer.echo(_fmt_warn(hint))
+        for line in _offline_hardware_lines(deep):
+            typer.echo(line)
 
     typer.echo()
     typer.echo(_fmt_section("Calibration"))
@@ -557,24 +599,22 @@ def doctor(
 
     live_ref = live.get("model_ref") if live else None
     live_src = live.get("model_source") if live else None
-    active_ref: str | None = None
-    if live_ref:
-        active_ref = live_ref
-        ref_source = f"live server, {live_src or '?'}"
-        typer.echo(_fmt_ok(f"{engine_label(active_ref)} ({ref_source})"))
-    else:
-        try:
-            active_ref, ref_source = resolve()
-            typer.echo(_fmt_ok(f"{engine_label(active_ref)} (from {ref_source})"))
-        except RuntimeError as e:
-            typer.echo(_fmt_warn(f"engine: invalid — {e}"))
-
     active_provider, active_model = (None, None)
-    if active_ref:
-        try:
-            active_provider, active_model = parse_model_ref(active_ref)
-        except ValueError:
-            pass
+    try:
+        if live_ref:
+            active_ref = live_ref
+            ref_source = f"live server, {live_src or '?'}"
+        else:
+            active_ref, ref_source = resolve()
+            ref_source = f"from {ref_source}"
+        if not isinstance(active_ref, str):
+            raise ValueError("model ref must be a string")
+        label = engine_label(active_ref)
+        active_provider, active_model = parse_model_ref(active_ref)
+    except (RuntimeError, ValueError) as e:
+        typer.echo(_fmt_warn(f"engine: invalid — {e}"))
+    else:
+        typer.echo(_fmt_ok(f"{label} ({ref_source})"))
 
     # Surface the active provider's key status. In `--deep` mode, send a
     # real `chat()` round-trip on the active provider (proves network +
@@ -605,7 +645,9 @@ def doctor(
     steps = []
     if not model.exists():
         steps.append("physiclaw setup local-vision-model")
-    if not (status and ready_from_status(status)):
+    if status_problem:
+        steps.append("check the running server logs and /api/status response")
+    elif not ready_from_status(status):
         if status is None:
             steps.append(
                 "physiclaw   (starts the server and opens the hardware-setup wizard)"
@@ -617,6 +659,8 @@ def doctor(
     for i, step in enumerate(steps, 1):
         typer.echo(f"  {i}. {step}")
     if not steps:
-        typer.echo("  All set.")
+        # Setup hints are not a health verdict: a deep probe above may fail
+        # even when model files exist and the server reports ready.
+        typer.echo("  Checks complete.")
 
     maybe_print_update_banner()
