@@ -50,6 +50,56 @@ from physiclaw.contract.dto import UserMessage
 # ---------- _run_session ----------
 
 
+async def test_regression_private_macro_dispatch_survives_hidden_schema(
+    private_macro_run,
+):
+    state = private_macro_run
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    assert ("home_screen", {}) in state.mcp.tool_calls
+    assert "run_macro" not in {s["name"] for s in state.chat.call_args.args[1]}
+    assert "run_macro" not in state.chat.call_args.args[0][0].content
+    assert state.provider.closed
+    state.plugin.aclose.assert_awaited_once()
+
+
+async def test_private_macro_hidden_schema_still_validates_arguments(private_macro_run):
+    state = private_macro_run
+    hand = _asst(tool_calls=[_tc("run_macro", {"name": 123})])
+    hand.synthesized = True
+    state.plugin.advance.side_effect = [hand, None]
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    assert state.mcp.tool_calls == []
+    results = [getattr(m, "content", "") for m in state.chat.call_args.args[0]]
+    assert (
+        "invalid arguments for run_macro: name: expected string, got int (123)"
+        in results
+    )
+
+
+async def test_private_macro_setup_preserves_remote_tool_dispatch(private_macro_run):
+    state = private_macro_run
+    state.provider._responses.insert(
+        0,
+        _asst(
+            tool_calls=[
+                _tc("note", {"summary": "remote check"}),
+                _tc("remote_probe", {"value": 5}),
+            ]
+        ),
+    )
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    assert ("remote_probe", {"value": 5}) in state.mcp.tool_calls
+
+
 def _async_returning(value):
     async def _coro(*a, **kw):
         return value

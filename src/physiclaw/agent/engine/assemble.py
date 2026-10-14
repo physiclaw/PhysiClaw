@@ -26,17 +26,20 @@ from physiclaw.agent.engine import (
 from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
+from physiclaw.common import gesture_vocab
 from physiclaw.contract.dto import Message, SystemMessage, UserMessage
 from physiclaw.macros import store as macro_store
+from physiclaw.macros.model import Macro
 
 
 @dataclass(slots=True)
 class PromptBundle:
     """The turn-0 request pieces assembled offline — no MCP or provider needed.
     Shared by `engine._run_session` and the `physiclaw prompt` dump so the dump
-    matches the real request. `local_registry`/`local_schemas` are the engine's
-    local tools; `layout_incomplete` gates the first-run reminder; the skill
-    counts are for the session's tools-loaded log line."""
+    matches the real request. `local_registry` contains all dispatchable local
+    tools; `local_schemas` advertises only the model-visible ones.
+    `layout_incomplete` gates the first-run reminder; the skill counts are for
+    the session's tools-loaded log line."""
 
     system_prompt: str
     local_registry: dict[str, LocalTool]
@@ -50,7 +53,7 @@ class PromptBundle:
 
 def build_prompt_bundle(
     provider_id: str,
-    pack_macros: dict | None = None,
+    pack_macros: dict[str, Macro] | None = None,
 ) -> PromptBundle:
     """Discover skills, build the local tool registry, and render the SYSTEM
     prompt for a session — the offline half of `engine._run_session`'s setup.
@@ -67,7 +70,13 @@ def build_prompt_bundle(
     user_skills = skill.discover_user_skills()
     macros = macro_store.discover_enabled()
     local_registry = builtin_tool.build_registry(user_skills, macros, pack_macros)
-    local_schemas = builtin_tool.schemas(local_registry)
+    # A private hand still needs run_macro for dispatch, but without public
+    # macros the model has nothing it can call through that tool.
+    local_schemas = [
+        schema
+        for schema in builtin_tool.schemas(local_registry)
+        if macros or schema["name"] != gesture_vocab.RUN_MACRO
+    ]
     pitfall_items = pitfalls.read()  # read once; render + count both use it
     system_prompt = prompt.render_system_prompts(
         local_tool_schemas=local_schemas,

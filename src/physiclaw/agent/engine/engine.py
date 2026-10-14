@@ -27,7 +27,7 @@ import asyncio
 import logging
 import time
 
-from physiclaw.agent.engine import assemble, curate, loop, prompt
+from physiclaw.agent.engine import assemble, builtin_tool, curate, loop, prompt
 from physiclaw.agent.engine import plugins as plugin_loader
 from physiclaw.agent.engine.mcp_tool import get_mcp, list_tools_cached
 from physiclaw.agent.engine.policy import default_policies
@@ -186,7 +186,12 @@ async def _run_session(
         # call; the inline `## Tooling` card pulls MCP names from AST so
         # it stays complete even offline. Each source has one consumer.
         tool_schemas = list(mcp_tools) + bundle.local_schemas
-        schema_by_name = {s["name"]: s for s in tool_schemas}
+        # Dispatch also validates plugin-only tools that aren't advertised to
+        # the model. Local handlers take precedence over MCP names here too.
+        schema_by_name = {
+            s["name"]: s
+            for s in [*mcp_tools, *builtin_tool.schemas(bundle.local_registry)]
+        }
         tr.write(
             {
                 "event": "tools_loaded",
