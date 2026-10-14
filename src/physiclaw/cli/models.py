@@ -1,6 +1,6 @@
 """``physiclaw models`` — list, inspect, and switch the active model.
 
-Sugar over the generic ``physiclaw config`` interface for the three
+Sugar over the generic ``physiclaw config`` interface for the
 model-relevant TOML fields:
 
   - ``[agent] model``           → ``physiclaw models use <ref>``
@@ -76,12 +76,6 @@ models_app = typer.Typer(
     invoke_without_command=True,
     add_completion=False,
 )
-
-
-def _key_config_path(provider_id: str) -> str:
-    """Dotted config path for one provider's API key — single source of
-    truth so callers don't reconstruct `f"provider.{x}_api_key"` ad-hoc."""
-    return f"provider.{provider_id}_api_key"
 
 
 def _format_key_row(provider_id: str, *, indent: int = 2) -> str:
@@ -164,7 +158,16 @@ def _list(
         typer.echo()
 
 
-def _use_impl(ref: str) -> None:
+@models_app.command("use")
+def _use(
+    ref: Annotated[
+        str,
+        typer.Argument(
+            help="Exact `provider/model` ref, e.g. `openai/gpt-5.4` "
+            "or `claude-code/claude-sonnet-4-6`.",
+        ),
+    ],
+) -> None:
     """Switch the active model — validates the `provider/model` ref
     against the discovery cache and writes to `[agent] model`. Run
     `physiclaw models discover <provider>` first if the cache is empty."""
@@ -201,26 +204,11 @@ def _use_impl(ref: str) -> None:
 
     try:
         _config.set_dotted("agent.model", ref)
-    except _config.ConfigError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     typer.echo(ok(f"agent.model = {ref}"))
     typer.echo(f"  {provider_id}/{model_id}")
     typer.echo("Restart `physiclaw server` to apply.")
-
-
-@models_app.command("use")
-def _use(
-    ref: Annotated[
-        str,
-        typer.Argument(
-            help="Exact `provider/model` ref, e.g. `openai/gpt-5.4` "
-            "or `claude-code/claude-sonnet-4-6`.",
-        ),
-    ],
-) -> None:
-    """Switch the active model. Pass an exact `provider/model` ref. Run
-    `physiclaw models list` to see candidates."""
-    _use_impl(ref)
 
 
 models_app.command("set", hidden=True)(_use)
@@ -256,10 +244,10 @@ def _key(
         exit_error(f"unknown provider {provider!r} (known: {', '.join(known_all)})")
     if value is None:
         value = typer.prompt(f"{provider} api key", hide_input=True)
-    path = _key_config_path(provider)
+    path = f"provider.{provider}_api_key"
     try:
         _config.set_dotted(path, value)
-    except _config.ConfigError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     typer.echo(ok(f"{path} set"))
     typer.echo()
@@ -273,8 +261,8 @@ def _key(
 
 
 def _fetch_live_models(provider: str) -> list[dict]:
-    """Build a provider client and fetch its `/v1/models` list. Raises
-    on any failure (caller decides whether fatal)."""
+    """Fetch the live catalog and close its client. Fetch errors propagate;
+    ordinary cleanup errors warn without replacing the discovery outcome."""
     import asyncio
 
     from physiclaw.provider import provider_class
@@ -288,7 +276,13 @@ def _fetch_live_models(provider: str) -> list[dict]:
         try:
             return await p.list_models()
         finally:
-            await p.aclose()
+            try:
+                await p.aclose()
+            except Exception as e:
+                typer.echo(
+                    warn(f"couldn't close provider client — {type(e).__name__}: {e}"),
+                    err=True,
+                )
 
     return asyncio.run(_run())
 
