@@ -129,8 +129,9 @@ def daily_log_path(log_dir: Path, prefix: str, date: str) -> Path:
 
 def _open_log_file(path: Path) -> TextIO:
     """Append-open a log file as UTF-8 with LF newlines — the one open every
-    file-backed handler here shares."""
-    return open(path, "a", encoding="utf-8", newline="\n")
+    file-backed handler here shares. Escape unpaired surrogates so one
+    model/subprocess string cannot discard a whole log record."""
+    return open(path, "a", encoding="utf-8", errors="backslashreplace", newline="\n")
 
 
 class _DailyFileHandler(logging.Handler):

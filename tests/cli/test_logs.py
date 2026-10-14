@@ -384,3 +384,48 @@ def test_logs_usage_without_events_says_so(sessions: Path) -> None:
     result = runner.invoke(app, ["logs", "20260710_090000", "--usage"])
 
     assert result.exit_code == 0 and "no usage events" in result.output
+
+
+@pytest.fixture
+def surrogate_session(sessions):
+    directory = _write_session(sessions, "unicode-abc123", recap="你好\ud800")
+    events = [
+        {"event": "done", "sentinel": "DONE", "recap": "你好\ud800"},
+        {
+            "event": "usage",
+            "call": "turn",
+            "model": "test/model",
+            "error": "你好\ud800",
+        },
+    ]
+    (directory / "events.jsonl").write_text(
+        "\n".join(map(json.dumps, events)), encoding="utf-8"
+    )
+    return directory
+
+
+@pytest.mark.parametrize("arguments", [[], ["abc123"], ["abc123", "--usage"]])
+def test_regression_logs_text_modes_escape_unpaired_surrogates(
+    surrogate_session, arguments
+):
+    result = runner.invoke(app, ["logs", *arguments])
+
+    assert result.exit_code == 0, result.output
+    assert "你好\\ud800" in result.output
+
+
+@pytest.mark.parametrize(
+    "arguments, extract",
+    [
+        ([], lambda data: data[0]["outcome"]["recap"]),
+        (["abc123"], lambda data: data["outcome"]["recap"]),
+        (["abc123", "--usage"], lambda data: data[0]["error"]),
+    ],
+)
+def test_regression_logs_json_modes_preserve_unpaired_surrogates(
+    surrogate_session, arguments, extract
+):
+    result = runner.invoke(app, ["logs", *arguments, "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert extract(json.loads(result.output)) == "你好\ud800"

@@ -169,6 +169,19 @@ def test_atomic_json_roundtrips_unicode_objects(tmp_path, payload) -> None:
     assert json.loads(path.read_text(encoding="utf-8")) == payload
 
 
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(st.integers(min_value=0xD800, max_value=0xDFFF), st.text())
+def test_regression_atomic_json_roundtrips_unpaired_surrogates(
+    tmp_path, codepoint, suffix
+):
+    path = tmp_path / "surrogate.json"
+    payload = {"recap": chr(codepoint) + " " + suffix}
+
+    write_json_atomic(path, payload)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == payload
+
+
 def test_regression_concurrent_image_saves_keep_both_frames(tmp_path, mocker) -> None:
     rendezvous = Barrier(2)
     open_file = Path.open
@@ -211,12 +224,23 @@ def test_regression_daily_log_retries_after_failed_rollover(tmp_path, mocker) ->
     assert "after recovery" in (tmp_path / "engine-2026-04-29.log").read_text()
 
 
-def test_append_stats_invalid_utf8_is_nonfatal(tmp_path, caplog) -> None:
+def test_regression_append_stats_preserves_unpaired_surrogate(tmp_path) -> None:
     summary = {"recap": "unencodable \ud800"}
 
     append_stats(tmp_path, summary)
 
-    assert "stats.jsonl append failed" in caplog.text
+    assert json.loads((tmp_path / "stats.jsonl").read_text(encoding="utf-8")) == summary
+
+
+def test_regression_daily_log_preserves_unpaired_surrogate(tmp_path) -> None:
+    writer = DailyLogWriter(tmp_path, "engine")
+
+    writer.line("你好\ud800")
+    writer.close()
+
+    assert "你好\\ud800\n" in next(tmp_path.glob("engine-*.log")).read_text(
+        encoding="utf-8"
+    )
 
 
 def test_regression_ensure_readme_repairs_invalid_utf8(tmp_path) -> None:

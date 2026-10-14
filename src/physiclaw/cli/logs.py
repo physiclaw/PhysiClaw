@@ -29,6 +29,11 @@ from physiclaw.agent.trace.store import (
 from physiclaw.cli._format import info, section, warn
 
 
+def _echo(text: str) -> None:
+    """Keep model text printable without changing valid Unicode or JSON values."""
+    typer.echo(text.encode("utf-8", "backslashreplace").decode("utf-8"))
+
+
 def logs(
     sid: Annotated[
         str | None,
@@ -73,7 +78,7 @@ def logs(
     sessions_dir = paths.engine_sessions_dir()
     if sid is None:
         if save or usage:
-            typer.echo(
+            _echo(
                 warn("that flag needs a session: physiclaw logs <sid> --save|--usage")
             )
             raise typer.Exit(1)
@@ -85,9 +90,7 @@ def logs(
     elif dest is not None:
         # A destination without --save is a forgotten flag, not a request
         # for the detail view — refuse rather than silently ignore it.
-        typer.echo(
-            warn(f"a destination needs --save: physiclaw logs {sid} --save {dest}")
-        )
+        _echo(warn(f"a destination needs --save: physiclaw logs {sid} --save {dest}"))
         raise typer.Exit(1)
     else:
         _show_session(_resolve(sessions_dir, sid), n=n, as_json=as_json)
@@ -110,23 +113,23 @@ def _resolve(sessions_dir: Path, query: str) -> Path:
 def _list_sessions(sessions_dir: Path, *, n: int, as_json: bool) -> None:
     summaries = recent_sessions(sessions_dir, n)
     if as_json:
-        typer.echo(json.dumps(summaries, ensure_ascii=False, indent=2))
+        _echo(json.dumps(summaries, ensure_ascii=False, indent=2))
         return
     if not summaries:
-        typer.echo(
+        _echo(
             info(
                 "no sessions yet — logs appear under "
                 f"{sessions_dir} after the first agent wake"
             )
         )
         return
-    typer.echo(section(f"Sessions ({len(summaries)} most recent)"))
-    typer.echo(
+    _echo(section(f"Sessions ({len(summaries)} most recent)"))
+    _echo(
         f"  {'SID':<22} {'OUTCOME':<7} {'TURNS':>5} {'DUR':>6} "
         f"{'TOKENS':>12} {'CACHE':>5}  RECAP"
     )
     for s in summaries:
-        typer.echo("  " + _row(s))
+        _echo("  " + _row(s))
 
 
 def _row(s: dict[str, Any]) -> str:
@@ -162,7 +165,7 @@ def _save_session(d: Path, dest: Path | None) -> None:
     import zipfile
 
     if not d.is_dir():
-        typer.echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
+        _echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
         raise typer.Exit(1)
 
     viewer.write(d)  # the zip's reader gets the viewer page, not just the streams
@@ -187,13 +190,13 @@ def _save_session(d: Path, dest: Path | None) -> None:
 
     from physiclaw.cli._format import ok
 
-    typer.echo(
+    _echo(
         ok(
             f"saved {len(files)} file(s) ({images} screenshots, "
             f"{size_kb:.0f} KB) → {out}"
         )
     )
-    typer.echo(
+    _echo(
         warn("PRIVATE: phone screenshots + full prompts inside — review before sharing")
     )
 
@@ -203,27 +206,25 @@ def _save_session(d: Path, dest: Path | None) -> None:
 
 def _show_session(d: Path, *, n: int, as_json: bool) -> None:
     if not d.is_dir():
-        typer.echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
+        _echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
         raise typer.Exit(1)
     summary = load_summary(d)
     if as_json:
-        typer.echo(json.dumps(summary or stub_summary(d), ensure_ascii=False, indent=2))
+        _echo(json.dumps(summary or stub_summary(d), ensure_ascii=False, indent=2))
         return
     if summary is not None:
-        typer.echo(section(f"Session {d.name}"))
-        typer.echo(json.dumps(summary, ensure_ascii=False, indent=2))
+        _echo(section(f"Session {d.name}"))
+        _echo(json.dumps(summary, ensure_ascii=False, indent=2))
     else:
-        typer.echo(warn("no summary.json — session was killed or is still running"))
+        _echo(warn("no summary.json — session was killed or is still running"))
     _echo_narrative(d / "events.jsonl", n)
-    typer.echo("")
-    typer.echo(info(f"wire log:  {d / 'wire.jsonl'}"))
-    typer.echo(info(f"images:    {d / 'images'}"))
+    _echo("")
+    _echo(info(f"wire log:  {d / 'wire.jsonl'}"))
+    _echo(info(f"images:    {d / 'images'}"))
     # Suffix handle = the trailing 6 hex chars — true regardless of the
     # id's separator style, and all `_resolve` matches via `endswith`.
-    typer.echo(
-        info(f"review it whole: physiclaw studio --review --session {d.name[-6:]}")
-    )
-    typer.echo(info(f"save a copy: physiclaw logs {d.name[-6:]} --save"))
+    _echo(info(f"review it whole: physiclaw studio --review --session {d.name[-6:]}"))
+    _echo(info(f"save a copy: physiclaw logs {d.name[-6:]} --save"))
 
 
 def _events(events_path: Path) -> list[dict[str, Any]] | None:
@@ -250,15 +251,15 @@ def _echo_narrative(events_path: Path, n: int) -> None:
 
     events = _events(events_path)
     if events is None:
-        typer.echo(warn("no events.jsonl"))
+        _echo(warn("no events.jsonl"))
         return
-    typer.echo("")
-    typer.echo(section(f"Last {min(n, len(events))} of {len(events)} events"))
+    _echo("")
+    _echo(section(f"Last {min(n, len(events))} of {len(events)} events"))
     for event in events[-n:]:
         stamp = str(event.pop("t", ""))[11:19]  # popped: the line carries it,
         msg = summarize_event(event)  # and fallback repr would echo it
         if msg is not None:
-            typer.echo(f"  [{stamp}] {msg}")
+            _echo(f"  [{stamp}] {msg}")
 
 
 # ---------- usage mode ----------
@@ -279,10 +280,10 @@ def _show_usage(d: Path, *, as_json: bool) -> None:
     model's rate, summed, is the cost."""
     rows = _usage_rows(d / "events.jsonl")
     if as_json:
-        typer.echo(json.dumps(rows, ensure_ascii=False, indent=2))
+        _echo(json.dumps(rows, ensure_ascii=False, indent=2))
         return
     if not rows:
-        typer.echo(warn("no usage events — the provider reported no token counts"))
+        _echo(warn("no usage events — the provider reported no token counts"))
         return
     from collections import Counter, defaultdict
 
@@ -290,15 +291,15 @@ def _show_usage(d: Path, *, as_json: bool) -> None:
     from physiclaw.agent.trace.trace import fold_usage
     from physiclaw.contract.dto import USAGE_BUCKETS
 
-    typer.echo(section(f"Model calls — {d.name}"))
-    typer.echo(
+    _echo(section(f"Model calls — {d.name}"))
+    _echo(
         f"{'turn':>4} {'call':<7} {'model':<28}{'time':>7}"
         + "".join(f"{c:>12}" for c in USAGE_BUCKETS)
     )
     totals: defaultdict[str, Counter[str]] = defaultdict(Counter)
     for r in rows:
         turn = r.get("turn")
-        typer.echo(
+        _echo(
             f"{'-' if turn is None else turn:>4} {str(r.get('call') or '?'):<7} "
             f"{str(r.get('model') or '?'):<28}"
             f"{int(r.get('elapsed_ms') or 0) / 1000:>6.1f}s"
@@ -306,13 +307,11 @@ def _show_usage(d: Path, *, as_json: bool) -> None:
             + (f"  error={r['error']}" if r.get("error") else "")
         )
         fold_usage(totals, r)
-    typer.echo("")
-    typer.echo(section("Totals per model (exact counts)"))
+    _echo("")
+    _echo(section("Totals per model (exact counts)"))
     for model, per in totals.items():
-        typer.echo(f"  {model}  ({per['calls']} calls, {per['failed']} failed)")
+        _echo(f"  {model}  ({per['calls']} calls, {per['failed']} failed)")
         for c in USAGE_BUCKETS:
-            typer.echo(f"    {c:<12}{per[c]:>14,}")
-    typer.echo("")
-    typer.echo(
-        info("cost = Σ bucket × your model's rate per token; --json for the rows")
-    )
+            _echo(f"    {c:<12}{per[c]:>14,}")
+    _echo("")
+    _echo(info("cost = Σ bucket × your model's rate per token; --json for the rows"))

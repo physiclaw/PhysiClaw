@@ -79,7 +79,8 @@ def write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
     Each writer owns a sibling temporary file; the last rename wins.
     A failed write/rename leaves the previous document intact.
     """
-    text = json.dumps(obj, ensure_ascii=False, indent=2, default=repr) + "\n"
+    # ASCII JSON escapes preserve every code point, including lone surrogates.
+    text = json.dumps(obj, indent=2, default=repr) + "\n"
     with tempfile.NamedTemporaryFile(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
     ) as f:
@@ -99,7 +100,7 @@ def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:
     Fail-open: losing a stats line must never cost the session close."""
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(summary, ensure_ascii=False, default=repr)
+        line = json.dumps(summary, default=repr)
         with _open_log_file(log_dir / "stats.jsonl") as f:
             f.write(line + "\n")
     except (OSError, UnicodeError):

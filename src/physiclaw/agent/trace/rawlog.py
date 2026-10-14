@@ -105,7 +105,8 @@ class RawLog:
         costs the wire record, never the session."""
         obj = {"t": iso_now(), "kind": kind, **data}
         try:
-            self._f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            # JSON escapes retain even unpaired surrogates from model text.
+            self._f.write(json.dumps(obj) + "\n")
             self._f.flush()
         except (OSError, TypeError, ValueError):
             log.warning("wire.jsonl write failed", exc_info=True)

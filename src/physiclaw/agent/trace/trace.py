@@ -77,7 +77,9 @@ class Trace:
         Fail-open (returns None) — a note-log failure must never sink a
         session."""
         try:
-            f = open(path, "a", encoding="utf-8", newline="\n")
+            f = open(
+                path, "a", encoding="utf-8", errors="backslashreplace", newline="\n"
+            )
             f.write(f"# Session {self.session_id} — note history\n\n")
             f.flush()
             return f
@@ -168,7 +170,7 @@ class Trace:
             if images:
                 obj["images"] = images
         try:
-            line = json.dumps(obj, ensure_ascii=False, default=repr)
+            line = json.dumps(obj, default=repr)
             self._events.write(line + "\n")
             self._events.flush()
         except (OSError, TypeError, ValueError):
