@@ -22,14 +22,18 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import unquote, urlsplit
 
 import typer
 
 from physiclaw.cli._format import exit_error, ok, warn
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.text import read_text, write_text
 
 skills_app = typer.Typer(
@@ -42,11 +46,6 @@ skills_app = typer.Typer(
 
 
 PROVENANCE_FILE = ".installed-from"
-
-# Skill names share disk paths with the user's skills dir, so we refuse
-# anything that could traverse or shadow. Matches SKILL.md frontmatter
-# `name:` handling in agent/engine/skill.py.
-_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 
 
 def installed_skill_dirs() -> list[Path]:
@@ -63,18 +62,26 @@ def installed_skill_dirs() -> list[Path]:
     )
 
 
-def read_provenance(skill_dir: Path) -> dict | None:
-    """Parse the ``.installed-from`` JSON marker, or None if absent OR
-    corrupt. Callers that need to distinguish those cases can check
-    ``(skill_dir / PROVENANCE_FILE).exists()`` separately — a rare
-    enough corner that folding them here is the cleaner default."""
+def read_provenance(skill_dir: Path) -> dict[str, str] | None:
+    """Read a CLI marker; missing, linked, or malformed markers are untrusted."""
     p = skill_dir / PROVENANCE_FILE
-    if not p.exists():
-        return None
     try:
-        return json.loads(read_text(p))
+        if skill_dir.is_symlink() or p.is_symlink():
+            return None
+        data = json.loads(read_text(p))
     except (OSError, ValueError):
         return None
+    if not isinstance(data, dict):
+        return None
+    # Older markers use null for optional fields such as ref and sha.
+    data = {key: value for key, value in data.items() if value is not None}
+    if (
+        not isinstance(data.get("source"), str)
+        or not data["source"].strip()
+        or any(not isinstance(value, str) for value in data.values())
+    ):
+        return None
+    return data
 
 
 def _normalize_source(source: str) -> str:
@@ -95,7 +102,10 @@ def _normalize_source(source: str) -> str:
     if "://" in s or s.startswith("git@"):
         return s
     if s.startswith(("/", "./", "../", "~")):
-        return str(Path(s).expanduser())
+        try:
+            return str(Path(s).expanduser())
+        except RuntimeError as e:
+            raise ValueError(f"invalid local skill source: {s}") from e
     if re.fullmatch(r"[A-Za-z0-9._\-]+/[A-Za-z0-9._\-]+(\.git)?", s):
         if not s.endswith(".git"):
             s += ".git"
@@ -122,25 +132,24 @@ def _resolve_source(from_flag: str | None) -> str:
                 "  • Repo convention: top-level skills/<name>/SKILL.md."
             )
         source = _normalize_source(cfg.skills.default_source)
+    if not source:
+        exit_error("skill source must not be empty")
     _reject_physiclaw_home_source(source)
     return source
 
 
 def _reject_physiclaw_home_source(source: str) -> None:
-    """Refuse ``--from`` / ``default_source`` that resolves inside
-    ``paths.HOME``. A self-copy would create weird provenance and
-    briefly copy agent state (memory/, logs, calibration) through
-    $TMPDIR. URLs and SSH forms skip this check — only local paths
-    can land inside HOME."""
-    if "://" in source or source.startswith("git@"):
+    """Keep local paths and file:// sources outside PhysiClaw's state directory."""
+    if source.startswith("file://"):
+        # Git's local file transport ignores the URL hostname.
+        source = unquote(urlsplit(source).path)
+    elif "://" in source or source.startswith("git@"):
         return
     try:
-        src_path = Path(source).resolve()
-    except (OSError, ValueError):
-        return
-    try:
-        src_path.relative_to(paths.HOME.resolve())
-    except ValueError:
+        inside = Path(source).resolve().is_relative_to(paths.HOME.resolve())
+    except RuntimeError as e:
+        raise ValueError(f"invalid local skill source: {source}") from e
+    if not inside:
         return
     exit_error(
         f"--from {source!r} resolves inside {paths.HOME} "
@@ -151,7 +160,9 @@ def _reject_physiclaw_home_source(source: str) -> None:
 
 
 def _validate_name(name: str) -> None:
-    if not _NAME_RE.fullmatch(name):
+    from physiclaw.agent.engine.skill import is_safe_skill_name
+
+    if not is_safe_skill_name(name):
         exit_error(
             f"invalid skill name {name!r}. Allowed: letters, digits, '.', '_', '-'."
         )
@@ -187,28 +198,18 @@ def _clone(source: str, ref: str | None, dest: Path) -> str:
     clone_args = ["clone", "--depth=1"]
     if ref:
         clone_args += ["--branch", ref]
-    clone_args += [source, str(dest)]
+    clone_args += ["--", source, str(dest)]
     _git(*clone_args)
     sha = _git("rev-parse", "HEAD", cwd=dest).stdout.strip()
     return sha
 
 
 def _read_skill_name(skill_md: Path, fallback: str) -> str:
-    """Pull ``name:`` from SKILL.md frontmatter; fall back to the directory
-    name if the frontmatter omits it."""
-    text = read_text(skill_md)
-    if not text.startswith("---"):
-        return fallback
-    _, _, rest = text[3:].partition("---")
-    if not rest:
-        return fallback
-    header = text[3:].split("---", 1)[0]
-    for line in header.splitlines():
-        if ":" in line:
-            k, _, v = line.partition(":")
-            if k.strip() == "name":
-                return v.strip().strip('"').strip("'") or fallback
-    return fallback
+    """Use the runtime's parser so installed names match discovery."""
+    from physiclaw.agent.engine.skill import parse_frontmatter
+
+    frontmatter, _ = parse_frontmatter(read_text(skill_md))
+    return frontmatter.get("name") or fallback
 
 
 def _write_provenance(dest: Path, source: str, ref: str | None, sha: str) -> None:
@@ -221,16 +222,80 @@ def _write_provenance(dest: Path, source: str, ref: str | None, sha: str) -> Non
     write_text(dest / PROVENANCE_FILE, json.dumps(payload, indent=2) + "\n")
 
 
-def _atomic_replace(src: Path, dst: Path) -> None:
-    """Move ``src`` into ``dst``, replacing any existing ``dst`` directory.
-    Caller must have already obtained user consent for overwrite (via
-    ``--force``). ``src`` and ``dst`` MUST be on the same filesystem."""
-    if dst.exists():
-        shutil.rmtree(dst)
-    # os.replace, not Path.rename: the cross-platform atomic move — matches
-    # this function's name and stays consistent with the official-skills sync
-    # swap. (dst is already removed above, so the move targets an absent path.)
-    os.replace(src, dst)
+@contextmanager
+def _mutation() -> Iterator[None]:
+    """Serialize CLI writers and give expected failures a useful CLI error."""
+    try:
+        with exclusive_file_lock(paths.skills_dir() / ".install.lock"):
+            yield
+    except FileLockBusy:
+        exit_error("another skills install or uninstall is already running")
+    except (OSError, ValueError) as e:
+        exit_error(f"cannot update skills: {e}")
+
+
+def _check_existing(target: Path, force: bool) -> None:
+    if force or not (target.exists() or target.is_symlink()):
+        return
+    prov = read_provenance(target)
+    if prov is None:
+        exit_error(
+            f"{target} exists without a valid {PROVENANCE_FILE} marker. "
+            "Refusing to touch user-authored skills. Pass --force to overwrite."
+        )
+    revision = prov.get("ref") or prov.get("sha", "")[:7] or "?"
+    exit_error(
+        f"{target.name} is already installed (from {prov['source']} @ {revision}). "
+        "Pass --force to reinstall."
+    )
+
+
+def _validate_tree(
+    path: Path, root: Path, ancestors: frozenset[Path] = frozenset()
+) -> None:
+    """Check every dereferenced copy source, including directory symlinks."""
+    try:
+        resolved = path.resolve(strict=True)
+    except RuntimeError as e:
+        raise ValueError(f"symlink cycle at {path}") from e
+    if not resolved.is_relative_to(root):
+        exit_error(f"skill path resolves outside source checkout: {path}")
+    if resolved in ancestors:
+        exit_error(f"symlink cycle at {path}")
+    if resolved.is_dir():
+        for child in resolved.iterdir():
+            _validate_tree(child, root, ancestors | {resolved})
+    elif not resolved.is_file():
+        exit_error(f"unsupported skill file: {path}")
+
+
+def _replace_skill(src: Path, dst: Path) -> None:
+    """Replace on the same filesystem; restore the old install on failure.
+
+    Readers may briefly see no target during the swap. If restoration fails,
+    leave the backup outside staging and report its path for recovery.
+    """
+    backup_dir = Path(tempfile.mkdtemp(prefix=f".{dst.name}.backup-", dir=dst.parent))
+    backup = backup_dir / "skill"
+    parked = preserve = False
+    try:
+        if dst.exists() or dst.is_symlink():
+            os.replace(dst, backup)
+            parked = True
+        os.replace(src, dst)
+    except BaseException:
+        if parked:
+            try:
+                os.replace(backup, dst)
+            except OSError as e:
+                preserve = True
+                typer.echo(
+                    warn(f"restore failed: {e}; backup kept at {backup}"), err=True
+                )
+        raise
+    finally:
+        if not preserve:
+            shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 @skills_app.command(
@@ -267,82 +332,40 @@ def _install(
         ),
     ] = False,
 ) -> None:
-    """Install a skill by copying ``skills/<name>/`` from the source repo
-    into ``~/.physiclaw/skills/<name>/``."""
+    """Install ``skills/<name>/`` from a Git repo into the user's skills directory."""
     _validate_name(name)
-    source = _resolve_source(from_)
-
-    home = paths.skills_dir()
-    target = home / name
-
-    if target.exists() and not force:
-        prov = read_provenance(target)
-        if prov is None:
-            exit_error(
-                f"~/.physiclaw/skills/{name}/ exists and was not installed "
-                f"by this CLI (no {PROVENANCE_FILE!s} marker). Refusing to touch "
-                f"user-authored skills. Pass --force to overwrite anyway."
-            )
-        exit_error(
-            f"{name} is already installed (from {prov.get('source')!s} "
-            f"@ {prov.get('ref') or prov.get('sha', '')[:7]}). "
-            f"Pass --force to reinstall."
-        )
-
-    home.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.TemporaryDirectory(prefix="physiclaw-skills-") as tmp:
-        clone_dir = Path(tmp) / "repo"
-        typer.echo(f"  cloning {source}" + (f" @ {ref}" if ref else "") + " …")
-        sha = _clone(source, ref, clone_dir)
-
-        src_skill = clone_dir / "skills" / name
-        if not src_skill.is_dir():
-            exit_error(
-                f"{source} does not contain skills/{name}/ "
-                f"(convention: top-level skills/<name>/SKILL.md)."
-            )
-
-        skill_md = src_skill / "SKILL.md"
-        if not skill_md.is_file():
-            exit_error(f"skills/{name}/ is missing SKILL.md — not a valid skill.")
-
-        declared_name = _read_skill_name(skill_md, fallback=name)
-        if declared_name != name:
-            # Hard reject: runtime discovery (agent/engine/skill.py) keys by
-            # SKILL.md frontmatter, not by dir name. Installing `foo` when
-            # the source declares `bar` leaves `Skill(name="foo")` broken at
-            # runtime and `uninstall` orphaned from the discovered name.
-            # Source must be reconciled — the installer can't fix it here.
-            alt_dir_exists = (clone_dir / "skills" / declared_name).is_dir()
-            lines = [
-                f"source skills/{name}/SKILL.md declares "
-                f"name={declared_name!r} — inconsistent with its directory "
-                f"name. Runtime would key this skill as {declared_name!r}, "
-                f"so `Skill(name={name!r})` would fail after install.",
-                "",
-                "Fix the source repo (one of):",
-                f"  • rename skills/{name}/ → skills/{declared_name}/",
-                f"  • or edit skills/{name}/SKILL.md frontmatter: name: {name}",
-            ]
-            if alt_dir_exists:
-                lines += [
-                    "",
-                    f"Or, if you meant the other one: "
-                    f"`physiclaw skills install {declared_name}` — that dir "
-                    f"also exists in the source.",
-                ]
-            exit_error("\n".join(lines))
-
-        # Copy to a sibling of target, then atomic-rename — leaves the old
-        # install intact on any copy failure.
-        staging = home / f".{name}.installing"
-        if staging.exists():
-            shutil.rmtree(staging)
-        shutil.copytree(src_skill, staging, symlinks=False)
-        _write_provenance(staging, source, ref, sha)
-
-        _atomic_replace(staging, target)
+    with _mutation():
+        source = _resolve_source(from_)
+        home = paths.skills_dir()
+        target = home / name
+        _check_existing(target, force)
+        scratch = Path(tempfile.mkdtemp(prefix=f".{name}.installing-", dir=home))
+        try:
+            clone_dir = scratch / "repo"
+            typer.echo(f"  cloning {source}" + (f" @ {ref}" if ref else "") + " …")
+            sha = _clone(source, ref, clone_dir)
+            src_skill = clone_dir / "skills" / name
+            if not src_skill.is_dir():
+                exit_error(f"{source} does not contain skills/{name}/.")
+            _validate_tree(src_skill, clone_dir.resolve())
+            skill_md = src_skill / "SKILL.md"
+            if not skill_md.is_file():
+                exit_error(f"skills/{name}/ is missing SKILL.md — not a valid skill.")
+            declared_name = _read_skill_name(skill_md, fallback=name)
+            if declared_name != name:
+                exit_error(
+                    f"source skills/{name}/SKILL.md declares name={declared_name!r}, "
+                    f"but its directory is {name!r}. Correct the name or rename the "
+                    "source directory so runtime discovery and installation agree."
+                )
+            staging = scratch / "skill"
+            shutil.copytree(src_skill, staging, symlinks=False)
+            _write_provenance(staging, source, ref, sha)
+            # A user may have created a skill manually while Git was cloning.
+            _check_existing(target, force)
+            _replace_skill(staging, target)
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
 
     typer.echo(
         ok(
@@ -404,7 +427,10 @@ skills_app.add_typer(sync_app, name="sync")
 )
 def _list() -> None:
     """List skills installed in ``~/.physiclaw/skills/``."""
-    entries = installed_skill_dirs()
+    try:
+        entries = installed_skill_dirs()
+    except OSError as e:
+        exit_error(f"cannot list skills: {e}")
     if not entries:
         typer.echo(f"(no skills installed in {paths.skills_dir()})")
         return
@@ -439,19 +465,20 @@ def _uninstall(
     user-authored skills (no ``.installed-from`` marker) unless ``--force``
     is set."""
     _validate_name(name)
-    target = paths.skills_dir() / name
-    if not target.exists():
-        exit_error(f"{name} is not installed (no {target}).")
-
-    prov = read_provenance(target)
-    if prov is None and not force:
-        exit_error(
-            f"{name} has no {PROVENANCE_FILE} marker — looks user-authored. "
-            f"Pass --force to remove it anyway, or delete manually:\n"
-            f"    rm -rf {target}"
-        )
-
-    shutil.rmtree(target)
+    with _mutation():
+        target = paths.skills_dir() / name
+        if not (target.exists() or target.is_symlink()):
+            exit_error(f"{name} is not installed (no {target}).")
+        prov = read_provenance(target)
+        if prov is None and not force:
+            exit_error(
+                f"{name} has no valid {PROVENANCE_FILE} marker — looks user-authored. "
+                "Pass --force to remove it anyway."
+            )
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        else:
+            shutil.rmtree(target)
     typer.echo(ok(f"removed {name}"))
     if prov is None:
         typer.echo(warn("no provenance marker — removed user-authored skill."))

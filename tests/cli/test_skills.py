@@ -1,14 +1,27 @@
-"""Tests for `physiclaw.cli.skills` — install/list/uninstall CLI."""
+"""Tests for `physiclaw.cli.skills` — install/list/uninstall CLI.
+
+Mutation review accepts help/example text, completion toggles, diagnostic
+wording, revision abbreviation lengths, JSON indentation, and private names
+inside hidden staging. Redundant URL-normalization guards preserve Git's
+input; strict=False still rejects missing copy sources as unsupported files.
+Initializing rollback flags to None instead of False is truth-value equivalent.
+Behavioral survivors cover Git transport results, revision information,
+prompt cycle rejection, stderr recovery guidance, hidden staging, and sync flags.
+"""
 
 from __future__ import annotations
 
 import importlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from freezegun import freeze_time
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 skills_mod = importlib.import_module("physiclaw.cli.skills")
@@ -578,3 +591,585 @@ def test_sync_official_converts_sync_error_to_exit_1(mocker) -> None:
     assert result.exit_code == 1
     assert "checksum mismatch" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+@pytest.fixture
+def source_repo(tmp_path, mocker):
+    """Replace only the Git subprocess boundary; use a real copied skill tree."""
+    source = tmp_path / "source"
+    _populate_clone(source)
+
+    def git(args, **kwargs):
+        if args[1] == "clone":
+            shutil.copytree(source, args[-1], symlinks=True)
+            return _git_completed()
+        if args[1:] != ["rev-parse", "HEAD"]:
+            return _git_completed(returncode=1, stderr="unknown Git command")
+        stdout = "abcdef0123456789\n" if kwargs.get("text") else b"abcdef0123456789\n"
+        return _git_completed(stdout=stdout if kwargs.get("capture_output") else None)
+
+    mocker.patch.object(skills_mod.subprocess, "run", side_effect=git)
+    return source
+
+
+@pytest.fixture
+def previous_skill(fake_home):
+    target = fake_home / "myskill"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text("previous skill")
+    (target / skills_mod.PROVENANCE_FILE).write_text('{"source":"old"}')
+    return target
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        [],
+        1,
+        True,
+        "bad",
+        {},
+        {"source": "x", "sha": 42},
+        {"source": None},
+        {"source": "x", "ref": []},
+    ],
+)
+def test_regression_corrupt_provenance_does_not_allow_uninstall(previous_skill, marker):
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(json.dumps(marker))
+
+    result = runner.invoke(skills_app, ["uninstall", "myskill"])
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        [],
+        {"source": "x", "sha": 42},
+        {"source": "x", "sha": None},
+        {"source": "x", "ref": []},
+    ],
+)
+def test_regression_corrupt_provenance_does_not_crash_list(previous_skill, marker):
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(json.dumps(marker))
+
+    result = runner.invoke(skills_app, ["list"])
+
+    assert result.exit_code == 0
+    assert "myskill" in result.output
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("install blocked"), KeyboardInterrupt("cancel")]
+)
+def test_regression_failed_replacement_preserves_previous_skill(
+    previous_skill, source_repo, mocker, error
+):
+    replace = skills_mod.os.replace
+
+    def fail(source, destination):
+        if Path(destination) == previous_skill and ".backup-" not in str(source):
+            raise error
+        return replace(source, destination)
+
+    mocker.patch.object(skills_mod.os, "replace", side_effect=fail)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo), "--force"]
+    )
+
+    assert result.exit_code != 0
+    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+    assert not list(previous_skill.parent.glob("*.installing*"))
+
+
+def test_regression_target_created_during_clone_requires_force(
+    fake_home, source_repo, mocker
+):
+    git = skills_mod.subprocess.run.side_effect
+    target = fake_home / "myskill"
+
+    def competing_install(args, **kwargs):
+        result = git(args, **kwargs)
+        if args[1] == "clone":
+            target.mkdir(parents=True)
+            (target / "SKILL.md").write_text("competing skill")
+        return result
+
+    mocker.patch.object(skills_mod.subprocess, "run", side_effect=competing_install)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert (target / "SKILL.md").read_text() == "competing skill"
+
+
+@pytest.mark.parametrize("entry", ["outside.txt", "SKILL.md", "references"])
+def test_regression_source_symlink_cannot_copy_outside_clone(
+    fake_home, source_repo, tmp_path, entry
+):
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "SKILL.md").write_text("synthetic private contents")
+    link = source_repo / "skills" / "myskill" / entry
+    link.unlink(missing_ok=True)
+    link.symlink_to(external)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 1
+    assert "outside" in result.output
+    assert not (fake_home / "myskill").exists()
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "name: 'myskill'",
+        'name: "myskill"',
+        "name: other\nname: myskill",
+        "name: ''",
+        'name: ""',
+    ],
+)
+def test_regression_installed_frontmatter_name_matches_runtime(
+    fake_home, source_repo, mocker, header
+):
+    from physiclaw.agent.engine import skill
+
+    (source_repo / "skills/myskill/SKILL.md").write_text(f"---\n{header}\n---\nbody\n")
+    mocker.patch.object(skill, "HOME_SKILLS_DIR", fake_home)
+    mocker.patch.object(skill, "OFFICIAL_SKILLS_DIR", source_repo / "absent")
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 0
+    assert skill.discover_user_skills()["myskill"].body == "body"
+
+
+def test_install_copy_failure_is_clean_error_and_keeps_previous_skill(
+    previous_skill, source_repo, mocker
+):
+    copy = skills_mod.shutil.copyfile
+
+    def fail(source, dest, **kwargs):
+        if ".installing-" in str(dest) and "repo" not in Path(dest).parts:
+            raise OSError("copy blocked")
+        return copy(source, dest, **kwargs)
+
+    mocker.patch.object(skills_mod.shutil, "copyfile", side_effect=fail)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo), "--force"]
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+
+
+def _link_skill(target, external, marker_only):
+    if marker_only:
+        target.mkdir()
+        (target / skills_mod.PROVENANCE_FILE).symlink_to(
+            external / skills_mod.PROVENANCE_FILE
+        )
+    else:
+        target.symlink_to(external, target_is_directory=True)
+
+
+@pytest.mark.parametrize("marker_link", [False, True])
+def test_linked_provenance_does_not_authorize_removal(fake_home, tmp_path, marker_link):
+    external = tmp_path / "external-skill"
+    external.mkdir()
+    (external / skills_mod.PROVENANCE_FILE).write_text('{"source":"outside"}')
+    target = fake_home / "myskill"
+    fake_home.mkdir()
+    _link_skill(target, external, marker_link)
+
+    result = runner.invoke(skills_app, ["uninstall", "myskill"])
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert target.exists()
+    assert external.exists()
+
+
+@pytest.mark.parametrize("source", ["   ", "\t"])
+def test_blank_source_is_a_clean_error(fake_home, source):
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", source])
+
+    assert result.exit_code == 1
+    assert "source must not be empty" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+@pytest.mark.parametrize("authority", ["", "localhost", "server"])
+def test_local_file_uri_inside_state_directory_is_refused(fake_home, authority):
+    source = f"file://{authority}{skills_mod.paths.HOME}/source"
+
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", source])
+
+    assert result.exit_code == 1
+    assert "own home" in result.output
+
+
+@pytest.mark.parametrize(
+    "command",
+    [["install", "myskill", "--from", "o/r"], ["uninstall", "myskill", "--force"]],
+)
+def test_overlapping_mutation_is_refused_before_changing_skill(previous_skill, command):
+    from physiclaw.common.file_lock import exclusive_file_lock
+
+    with exclusive_file_lock(previous_skill.parent / ".install.lock"):
+        result = runner.invoke(skills_app, command)
+
+    assert result.exit_code == 1
+    assert "already running" in result.output
+    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("install blocked"), KeyboardInterrupt("cancel")]
+)
+def test_failed_restoration_keeps_recoverable_backup(
+    previous_skill, source_repo, mocker, error
+):
+    replace = skills_mod.os.replace
+
+    def fail(source, destination):
+        if Path(destination) == previous_skill:
+            if ".backup-" in str(source):
+                raise PermissionError("restore blocked")
+            raise error
+        return replace(source, destination)
+
+    mocker.patch.object(skills_mod.os, "replace", side_effect=fail)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo), "--force"]
+    )
+
+    backups = list(previous_skill.parent.glob(".myskill.backup-*/skill"))
+    assert result.exit_code != 0
+    assert len(backups) == 1
+    assert (backups[0] / "SKILL.md").read_text() == "previous skill"
+    assert str(backups[0]) in result.stderr
+    assert "restore blocked" in result.output
+
+
+@pytest.mark.parametrize("target", [".", "cycle"])
+def test_source_symlink_cycle_is_refused(fake_home, source_repo, target, mocker):
+    (source_repo / "skills/myskill/cycle").symlink_to(target)
+    walk = mocker.spy(Path, "iterdir")
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 1
+    assert "cycle" in result.output
+    assert not (fake_home / "myskill").exists()
+    assert walk.call_count <= 2
+
+
+def test_internal_symlink_is_copied_as_an_independent_file(fake_home, source_repo):
+    skill = source_repo / "skills/myskill"
+    (skill / "reference.txt").write_text("reference")
+    (skill / "alias.txt").symlink_to("reference.txt")
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 0
+    assert (fake_home / "myskill/alias.txt").read_text() == "reference"
+    assert not (fake_home / "myskill/alias.txt").is_symlink()
+
+
+def test_first_install_rename_failure_leaves_no_partial_skill(
+    fake_home, source_repo, mocker
+):
+    mocker.patch.object(skills_mod.os, "replace", side_effect=OSError("rename blocked"))
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 1
+    assert "rename blocked" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert not (fake_home / "myskill").exists()
+    assert list(fake_home.iterdir()) == [fake_home / ".install.lock"]
+
+
+def test_listing_permission_failure_is_a_clean_cli_error(fake_home, mocker):
+    fake_home.mkdir()
+    mocker.patch.object(Path, "iterdir", side_effect=PermissionError("listing blocked"))
+
+    result = runner.invoke(skills_app, ["list"])
+
+    assert result.exit_code == 1
+    assert "listing blocked" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_forced_uninstall_of_link_keeps_external_tree(fake_home, tmp_path):
+    external = tmp_path / "external"
+    external.mkdir()
+    fake_home.mkdir()
+    (fake_home / "myskill").symlink_to(external, target_is_directory=True)
+
+    result = runner.invoke(skills_app, ["uninstall", "myskill", "--force"])
+
+    assert result.exit_code == 0
+    assert external.is_dir()
+    assert not (fake_home / "myskill").is_symlink()
+
+
+def test_successful_install_cleanup_failure_does_not_report_failure(
+    fake_home, source_repo, mocker
+):
+    rmdir = skills_mod.os.rmdir
+
+    def blocked(path, *args, **kwargs):
+        if ".installing-" in str(path) or ".backup-" in str(path):
+            raise PermissionError("cleanup blocked")
+        return rmdir(path, *args, **kwargs)
+
+    mocker.patch.object(skills_mod.os, "rmdir", side_effect=blocked)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 0
+    assert (fake_home / "myskill/SKILL.md").is_file()
+
+
+def test_source_starting_with_dash_is_after_git_option_terminator(
+    fake_home, source_repo
+):
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", "--unwanted"])
+
+    assert result.exit_code == 0
+    assert skills_mod.subprocess.run.call_args_list[0].args[0][-3:-1] == [
+        "--",
+        "--unwanted",
+    ]
+
+
+@given(
+    source=st.from_regex(r"[A-Za-z][A-Za-z0-9/_.-]{0,40}", fullmatch=True),
+    ref=st.text(),
+    sha=st.text(),
+)
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_provenance_roundtrips_string_metadata(tmp_path, source, ref, sha):
+    data = {"source": source, "ref": ref, "sha": sha}
+    (tmp_path / skills_mod.PROVENANCE_FILE).write_text(json.dumps(data))
+
+    result = skills_mod.read_provenance(tmp_path)
+
+    assert result == data
+
+
+@freeze_time("2026-10-15 12:34:56")
+def test_install_records_selected_source_ref_commit_and_time(fake_home, source_repo):
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo), "--ref", "v1"]
+    )
+
+    assert result.exit_code == 0
+    assert skills_mod.read_provenance(fake_home / "myskill") == {
+        "source": str(source_repo),
+        "ref": "v1",
+        "sha": "abcdef0123456789",
+        "installed_at": "2026-10-15T12:34:56",
+    }
+
+
+def test_network_file_uri_is_preserved_for_git(fake_home, source_repo):
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", "file://server/share/repo"]
+    )
+
+    assert result.exit_code == 0
+    assert (
+        skills_mod.read_provenance(fake_home / "myskill")["source"]
+        == "file://server/share/repo"
+    )
+
+
+def test_nonregular_source_entry_is_refused(fake_home, source_repo, mocker):
+    is_file = Path.is_file
+
+    def special(path):
+        return False if path.name == "special" else is_file(path)
+
+    (source_repo / "skills/myskill/special").write_text("fixture")
+    mocker.patch.object(Path, "is_file", special)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 1
+    assert "unsupported skill file" in result.output
+    assert not (fake_home / "myskill").exists()
+
+
+@pytest.mark.parametrize("operation", ["expanduser", "resolve"])
+def test_unresolvable_source_is_clean_cli_error(fake_home, mocker, operation):
+    mocker.patch.object(Path, operation, side_effect=RuntimeError("invalid path"))
+
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", "~/source"])
+
+    assert result.exit_code == 1
+    assert "invalid local skill source" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_legacy_null_optional_provenance_is_treated_as_missing(tmp_path):
+    (tmp_path / skills_mod.PROVENANCE_FILE).write_text(
+        '{"source":"owner/repo","ref":null,"sha":null}'
+    )
+
+    provenance = skills_mod.read_provenance(tmp_path)
+
+    assert provenance == {"source": "owner/repo"}
+
+
+@pytest.mark.parametrize("source", ["", "  ", "\t\n"])
+def test_blank_provenance_source_does_not_authorize_uninstall(previous_skill, source):
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps({"source": source})
+    )
+
+    result = runner.invoke(skills_app, ["uninstall", "myskill"])
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert previous_skill.exists()
+
+
+@pytest.mark.parametrize("where", ["stderr", "stdout"])
+def test_git_failure_reports_operation_and_diagnostic(fake_home, mocker, where):
+    result = _git_completed(returncode=1, **{where: "requested ref not found"})
+    mocker.patch.object(skills_mod.subprocess, "run", return_value=result)
+
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", "o/r"])
+
+    assert result.exit_code == 1
+    assert "git clone failed: requested ref not found" in result.output
+
+
+def test_parent_relative_source_is_not_rewritten_as_github_shorthand(
+    fake_home, source_repo
+):
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", "../repo"])
+
+    assert result.exit_code == 0
+    assert skills_mod.read_provenance(fake_home / "myskill")["source"] == "../repo"
+
+
+def test_install_without_ref_records_empty_ref(fake_home, source_repo):
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 0
+    assert skills_mod.read_provenance(fake_home / "myskill")["ref"] == ""
+
+
+@pytest.mark.parametrize("command", [["list"], ["install", "myskill", "--from", "o/r"]])
+@pytest.mark.parametrize(
+    "metadata,revision",
+    [
+        ({"ref": "stable", "sha": "abcdef01234"}, "stable"),
+        ({"sha": "abcdef01234"}, "abcdef0"),
+        ({}, "?"),
+    ],
+)
+def test_installed_revision_is_shown_to_user(
+    previous_skill, command, metadata, revision
+):
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps({"source": "owner/repo", **metadata})
+    )
+
+    result = runner.invoke(skills_app, command)
+
+    assert f"@ {revision}" in result.output
+
+
+def test_staging_is_hidden_from_installed_skill_listing(fake_home, source_repo, mocker):
+    git = skills_mod.subprocess.run.side_effect
+    observed = []
+
+    def clone(args, **kwargs):
+        observed.extend(skills_mod.installed_skill_dirs())
+        return git(args, **kwargs)
+
+    mocker.patch.object(skills_mod.subprocess, "run", side_effect=clone)
+
+    result = runner.invoke(
+        skills_app, ["install", "myskill", "--from", str(source_repo)]
+    )
+
+    assert result.exit_code == 0
+    assert observed == []
+
+
+@pytest.mark.parametrize(
+    "flags,dry_run,force",
+    [
+        ([], False, False),
+        (["--dry-run"], True, False),
+        (["--force"], False, True),
+        (["--dry-run", "--force"], True, True),
+    ],
+)
+def test_sync_cli_passes_selected_flags(flags, dry_run, force, mocker):
+    from physiclaw.cli import sync_official_skills
+
+    sync = mocker.patch.object(sync_official_skills, "sync")
+
+    result = runner.invoke(skills_app, ["sync", "official", *flags])
+
+    assert result.exit_code == 0
+    sync.assert_called_once_with(dry_run=dry_run, force=force)
+
+
+@pytest.mark.parametrize("command", [[], ["install"], ["uninstall"], ["sync"]])
+def test_command_without_required_input_displays_help(command):
+    result = runner.invoke(skills_app, command)
+
+    assert result.exit_code == 2
+    assert "Usage:" in result.output
+    assert "Options" in result.output
+
+
+@pytest.mark.parametrize(
+    "source", ["https://example.test/owner/repo.git", "git@example.test:owner/repo.git"]
+)
+def test_remote_source_is_not_resolved_against_state_directory(
+    fake_home, source_repo, monkeypatch, source
+):
+    skills_mod.paths.HOME.mkdir()
+    monkeypatch.chdir(skills_mod.paths.HOME)
+
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", source])
+
+    assert result.exit_code == 0
+    assert skills_mod.read_provenance(fake_home / "myskill")["source"] == source
