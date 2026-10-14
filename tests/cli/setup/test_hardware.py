@@ -1,10 +1,10 @@
-"""Tests for `physiclaw.cli.setup.hardware` — interactive setup helpers.
+"""Hardware setup through its CLI, automatic worker, and helper APIs.
 
-The full `run()` flow is interactive and 10 steps deep; we cover the
-testable helpers (api / ok / lan_ip / calibrate / calibrate_retry /
-ask / _done / _fail / _camera_aim_adjust) and the early-exit
-branches of `run` (server down, already ready, already calibrated)
-plus the `hardware` typer entry point.
+The wizard fixture models HTTP responses and elapsed time while isolating
+hardware and desktop apps. Mutation review accepts cosmetic wording/borders,
+one-second changes to individual operation timeouts, diagnostic fallbacks,
+and equivalent nonnegative elapsed-time arithmetic. Required acknowledgments,
+polling deadlines, request bodies, and resource cleanup remain asserted.
 """
 
 from __future__ import annotations
@@ -60,15 +60,20 @@ def test_ok_returns_false_for_other_status() -> None:
 
 
 def test_lan_ip_returns_resolved(mocker) -> None:
+    from physiclaw.core.bridge import lan
+
     fake_sock = MagicMock()
+    fake_sock.__enter__.return_value = fake_sock
     fake_sock.getsockname.return_value = ("192.168.1.5", 0)
-    mocker.patch.object(hw_mod.socket, "socket", return_value=fake_sock)
+    mocker.patch.object(lan.socket, "socket", return_value=fake_sock)
 
     assert hw_mod.lan_ip() == "192.168.1.5"
 
 
 def test_lan_ip_falls_back_on_failure(mocker) -> None:
-    mocker.patch.object(hw_mod.socket, "socket", side_effect=OSError("offline"))
+    from physiclaw.core.bridge import lan
+
+    mocker.patch.object(lan.socket, "socket", side_effect=OSError("offline"))
 
     assert hw_mod.lan_ip() == "127.0.0.1"
 
@@ -166,7 +171,7 @@ def test_calibrate_retry_manual_q_exits(mocker) -> None:
         "calibrate",
         return_value={"status": "error"},
     )
-    mocker.patch.object(hw_mod, "ask", return_value=False)
+    mocker.patch("builtins.input", return_value="q")
 
     with pytest.raises(SystemExit):
         hw_mod.calibrate_retry("arm", "fail", "retry?", auto=False)
@@ -286,9 +291,11 @@ def test_step_connect_camera_manual_prompt_picks_index(mocker, tmp_path) -> None
     cam = hw_mod._step_connect_camera(auto=False)
 
     assert cam == 2
-    written = sorted(p.name for p in tmp_path.glob("physiclaw_cam*.jpg"))
-    assert written == [f"physiclaw_cam{i}.jpg" for i in range(4)]
-    open_spy.assert_called_once_with([str(tmp_path / f) for f in written])
+    from pathlib import Path
+
+    opened = open_spy.call_args.args[0]
+    assert [Path(path).name for path in opened] == [f"camera{i}.jpg" for i in range(4)]
+    assert not any(Path(path).exists() for path in opened)
 
 
 def test_step_connect_camera_manual_invalid_input_defaults_to_zero(
@@ -313,8 +320,7 @@ def test_step_connect_camera_manual_invalid_input_defaults_to_zero(
 
 
 def test_step_connect_camera_fallback_connect_failure_exits(mocker, tmp_path) -> None:
-    """When the by-index connect also fails, the wizard aborts — and stale
-    previews from a previous run are cleaned up first."""
+    """A failed automatic fallback leaves other sessions' previews alone."""
     stale = tmp_path / "physiclaw_cam9.jpg"
     stale.write_bytes(b"old")
     _patch_camera_fallback_api(
@@ -327,7 +333,7 @@ def test_step_connect_camera_fallback_connect_failure_exits(mocker, tmp_path) ->
     with pytest.raises(SystemExit):
         hw_mod._step_connect_camera(auto=True)
 
-    assert not stale.exists()
+    assert stale.read_bytes() == b"old"
 
 
 # ---------- run() early-exit branches ----------
@@ -360,8 +366,8 @@ def test_run_finalizes_when_already_calibrated(
         "api",
         side_effect=[
             {"ready": False, "calibrated": True},  # GET /api/status
-            {"status": "ok"},  # POST /api/phone/home
-            {"status": "ok"},  # POST /api/ready
+            {"ok": True},  # POST /api/phone/home
+            {"ok": True},  # POST /api/ready
             {"ready": False},  # ready poll: settle still running
             {"ready": True},  # ready poll: flipped
         ],
@@ -381,9 +387,10 @@ def test_run_finalizes_when_already_calibrated(
 @pytest.mark.parametrize(
     "responses",
     [
-        [{"ready": False, "calibrated": True}, {}, None],
-        [{"ready": False, "calibrated": True}, {}, {}, None],
-        [{"ready": False, "calibrated": True}] * 48,
+        [{"ready": False, "calibrated": True}, {"ok": True}, None],
+        [{"ready": False, "calibrated": True}, {"ok": True}, {"ok": True}, None],
+        [{"ready": False, "calibrated": True}, {"ok": True}, {"ok": True}]
+        + [{"ready": False}] * 48,
     ],
     ids=["ready-request-fails", "server-disappears", "readiness-times-out"],
 )
@@ -392,6 +399,7 @@ def test_regression_setup_does_not_report_unconfirmed_readiness(
 ):
     mocker.patch.object(hw_mod, "api", side_effect=responses)
     mocker.patch.object(hw_mod.time, "sleep")
+    mocker.patch.object(hw_mod.time, "monotonic", side_effect=iter(range(1000)))
 
     with pytest.raises(SystemExit, match="Readiness was not confirmed"):
         hw_mod.run(auto=True)
@@ -453,7 +461,9 @@ def _ready_after_request(api):
     def request(method, path, *args, **kwargs):
         nonlocal ready
         response = api(method, path, *args, **kwargs)
-        if method == "POST" and path == "/api/ready" and response is not None:
+        if path in {"/api/phone/home", "/api/ready"}:
+            response = {"ok": True}
+        if method == "POST" and path == "/api/ready":
             ready = True
         if path == "/api/status" and response is not None:
             return {**response, "ready": ready}
@@ -739,7 +749,7 @@ def test_await_bridge_and_calibrate_runs_when_bridge_connects(mocker) -> None:
 
     hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
 
-    assert hw_mod.BASE == "http://localhost:8048"
+    assert hw_mod.BASE == "http://127.0.0.1:8048"
     m["run"].assert_called_once_with(auto=True)
 
 
@@ -797,3 +807,648 @@ def test_await_bridge_and_calibrate_routes_wizard_output_through_logger(mocker) 
     hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
 
     assert "  ✓ Phone connected" in lines
+
+
+class WizardServer:
+    """Owned HTTP boundary with a deterministic clock and route-shaped replies."""
+
+    def __init__(self):
+        self.calls = []
+        self.overrides = {}
+        self.initial = {"ready": False, "calibrated": False, "bridge": True}
+        self.ready = False
+        self.clock = 0.0
+        self.poll_delay = 0.0
+        self.ready_delay = 0.0
+
+    def sleep(self, seconds):
+        self.clock += seconds
+
+    def request(self, base, method, path, *, body=None, timeout=60):
+        self.calls.append((method, path, body, timeout, base))
+        expected_method = (
+            "GET"
+            if path == "/api/status" or path.startswith("/api/camera-preview/")
+            else "POST"
+        )
+        assert method == expected_method, f"wrong method for {path}: {method}"
+        if path in self.overrides:
+            response = self.overrides[path]
+            if isinstance(response, BaseException):
+                raise response
+            if callable(response):
+                return response(method, path, body, timeout)
+            return response
+        if path == "/api/status":
+            if self.ready:
+                self.clock += min(timeout, self.poll_delay)
+                return {"ready": self.poll_delay == 0}
+            return dict(self.initial)
+        if path == "/api/ready":
+            self.clock += min(timeout, self.ready_delay)
+            self.ready = True
+            return {"ok": True}
+        if path in {"/api/phone/home", "/api/bridge/switch"}:
+            return {"ok": True}
+        if path == "/api/connect-camera":
+            return {"status": "ok", "index": 2}
+        if path == "/api/calibrate/arm":
+            return {"status": "ok", "pairs": 18, "aligned": True}
+        if path == "/api/calibrate/camera":
+            return {"status": "ok", "rotation_name": "0°", "coverage": 0.95}
+        if path == "/api/calibrate/validate":
+            return {"status": "ok", "calibrated": True, "passed": 9, "total": 9}
+        if path == "/api/calibrate/assistive-touch/verify":
+            return {"status": "ok", "passed": True, "clipboard": {"fetched": False}}
+        return {"status": "ok"}
+
+    def paths(self):
+        return [call[1] for call in self.calls]
+
+
+@pytest.fixture
+def wizard_server(mocker):
+    server = WizardServer()
+    mocker.patch.object(hw_mod, "BASE", "http://127.0.0.1:8048")
+    mocker.patch.object(hw_mod._http, "api", side_effect=server.request)
+    mocker.patch.object(hw_mod.time, "monotonic", side_effect=lambda: server.clock)
+    mocker.patch.object(hw_mod.time, "time", side_effect=lambda: server.clock)
+    mocker.patch.object(hw_mod.time, "sleep", side_effect=server.sleep)
+    mocker.patch.object(hw_mod.platform, "open_camera_aim_app")
+    mocker.patch.object(hw_mod.platform, "quit_camera_aim_app")
+    mocker.patch.object(hw_mod.platform, "open_image_files")
+    mocker.patch.object(hw_mod.platform, "camera_aim_hint", return_value="")
+    mocker.patch.object(hw_mod.webbrowser, "open")
+    mocker.patch("builtins.input", return_value="")
+    return server
+
+
+@pytest.mark.parametrize(
+    "host,expected",
+    [("192.0.2.10", "192.0.2.10"), ("::1", "[::1]"), ("0.0.0.0", "127.0.0.1")],
+)
+def test_regression_auto_setup_dials_configured_host(
+    host, expected, wizard_server, mocker
+):
+    import types
+
+    fake_net = types.ModuleType("physiclaw.core.server.net")
+    fake_net.wait_for_port = lambda *_: True
+    mocker.patch.dict("sys.modules", {fake_net.__name__: fake_net})
+    wizard_server.initial = {"ready": True}
+
+    hw_mod.await_bridge_and_calibrate(host, 9000)
+
+    assert {call[4] for call in wizard_server.calls} == {f"http://{expected}:9000"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/phone/home",
+        "/api/calibrate/trace-edge",
+        "/api/calibrate/assistive-touch/show",
+    ],
+)
+def test_regression_setup_stops_on_failed_required_request(path, wizard_server):
+    wizard_server.overrides[path] = {
+        "status": "error",
+        "message": "operation failed",
+        "error": "operation failed",
+    }
+
+    result = runner.invoke(app, ["--auto", "--trace"])
+
+    assert result.exit_code == 1
+    assert "operation failed" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert "/api/ready" not in wizard_server.paths()
+    assert "PhysiClaw is ready" not in result.output
+
+
+def test_regression_failed_ready_request_never_polls_stale_ready(wizard_server):
+    wizard_server.initial = {"calibrated": True}
+    wizard_server.overrides["/api/ready"] = {"error": "not accepted"}
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert wizard_server.paths() == ["/api/status", "/api/phone/home", "/api/ready"]
+
+
+@pytest.mark.parametrize("poll_delay", [0.1, 1, 5, 1000])
+def test_regression_readiness_timeout_bounds_http_polling(poll_delay, wizard_server):
+    wizard_server.initial = {"calibrated": True}
+    wizard_server.poll_delay = poll_delay
+    wizard_server.ready_delay = 4
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert (
+        wizard_server.clock <= 48
+    )  # Three-second home settle plus 45-second readiness.
+    assert "Readiness was not confirmed" in result.output
+
+
+def test_regression_camera_aim_app_closes_when_operator_interrupts(
+    wizard_server, mocker
+):
+    def answer(prompt):
+        if "Adjust the camera" in prompt:
+            raise KeyboardInterrupt
+        return ""
+
+    mocker.patch("builtins.input", side_effect=answer)
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 130
+    hw_mod.platform.open_camera_aim_app.assert_called_once()
+    hw_mod.platform.quit_camera_aim_app.assert_called_once()
+    assert "/api/ready" not in wizard_server.paths()
+
+
+def test_regression_camera_aim_does_not_open_when_disconnect_fails(wizard_server):
+    wizard_server.overrides["/api/disconnect-camera"] = {
+        "status": "error",
+        "message": "camera busy",
+    }
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 1
+    assert "camera busy" in result.output
+    hw_mod.platform.open_camera_aim_app.assert_not_called()
+
+
+def test_regression_auto_setup_stops_before_arm_when_phone_absent(
+    wizard_server, mocker
+):
+    wizard_server.initial["bridge"] = False
+    mocker.patch.object(hw_mod, "lan_ip", return_value="192.0.2.10")
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert "/api/connect-arm" not in wizard_server.paths()
+
+
+def test_regression_camera_preview_uses_owned_temporary_directory(
+    wizard_server, mocker, tmp_path
+):
+    stale = tmp_path / "physiclaw_cam0.jpg"
+    stale.write_bytes(b"another setup session")
+    mocker.patch.object(hw_mod.tempfile, "gettempdir", return_value=str(tmp_path))
+    wizard_server.overrides["/api/connect-camera"] = {"status": "error"}
+    wizard_server.overrides["/api/camera-preview/0?watermark=1"] = {"image": "Zg=="}
+    previews = []
+
+    def inspect(paths):
+        from pathlib import Path
+
+        previews.extend(Path(path) for path in paths)
+        assert previews[0].read_bytes() == b"f"
+
+    hw_mod.platform.open_image_files.side_effect = inspect
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 1
+    assert stale.read_bytes() == b"another setup session"
+    assert len(previews) == 1
+    assert not previews[0].exists()
+
+
+def test_regression_cli_server_url_normalizes_trailing_slash(wizard_server):
+    wizard_server.initial = {"ready": True}
+
+    result = runner.invoke(app, ["--server-url", "http://server:9000/"])
+
+    assert result.exit_code == 0
+    assert wizard_server.calls[0][4] == "http://server:9000"
+
+
+def test_setup_interactive_happy_path_uses_verified_steps(
+    wizard_server, mocker, tmp_path
+):
+    cache = tmp_path / "viewport.img"
+    cache.write_bytes(b"cached")
+    mocker.patch.object(hw_mod.paths, "calibration_cache_dir", return_value=tmp_path)
+    hw_mod.platform.camera_aim_hint.return_value = "Use the OS camera preview."
+    wizard_server.overrides["/api/calibrate/assistive-touch/verify"] = {
+        "status": "ok",
+        "passed": True,
+        "clipboard": {"fetched": True, "text": "match"},
+    }
+
+    result = runner.invoke(app, ["--trace"])
+
+    assert result.exit_code == 0, result.output
+    assert wizard_server.paths() == [
+        "/api/status",
+        "/api/connect-arm",
+        "/api/connect-camera",
+        "/api/calibrate/viewport-shift",
+        "/api/bridge/switch",
+        "/api/calibrate/arm",
+        "/api/disconnect-camera",
+        "/api/connect-camera",
+        "/api/calibrate/camera",
+        "/api/calibrate/camera-mapping",
+        "/api/calibrate/validate",
+        "/api/calibrate/assistive-touch/show",
+        "/api/calibrate/assistive-touch/verify",
+        "/api/calibrate/trace-edge",
+        "/api/phone/home",
+        "/api/ready",
+        "/api/status",
+    ]
+    assert "ignored (interactive: fresh measurement)" in result.output
+    assert "Use the OS camera preview." in result.output
+    assert "Clipboard text: match" in result.output
+    assert "Arm calibrated — mapped 18 points" in result.output
+    assert "Validated — 9/9 taps on target" in result.output
+    assert "Camera calibrated — found all 15 dots" in result.output
+    assert "PhysiClaw is ready" in result.output
+    hw_mod.platform.quit_camera_aim_app.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "path,message",
+    [
+        ("/api/bridge/switch", ("Couldn't show the center circle",)),
+        ("/api/connect-arm", ("Couldn't connect",)),
+        ("/api/calibrate/arm", ("Couldn't calibrate: failed",)),
+        ("/api/calibrate/camera", ("Couldn't read the camera: failed",)),
+        ("/api/calibrate/camera-mapping", ("Couldn't map the dots: failed",)),
+        ("/api/calibrate/validate", ("Validation failed",)),
+        (
+            "/api/calibrate/assistive-touch/verify",
+            ("Couldn't verify", "clipboard fetched: 'stale'"),
+        ),
+    ],
+)
+def test_setup_calibration_failure_stops_before_readiness(path, message, wizard_server):
+    wizard_server.overrides[path] = {
+        "status": "error",
+        "message": "failed",
+        "clipboard": {"fetched": True, "text": "stale"},
+    }
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert all(fragment in result.output for fragment in message)
+    assert "/api/ready" not in wizard_server.paths()
+    assert "PhysiClaw is ready" not in result.output
+
+
+@pytest.mark.parametrize(
+    "path,field",
+    [
+        ("/api/bridge/switch", "ok"),
+        ("/api/calibrate/validate", "calibrated"),
+        ("/api/calibrate/assistive-touch/verify", "passed"),
+    ],
+)
+def test_setup_requires_boolean_confirmation(path, field, wizard_server):
+    wizard_server.overrides[path] = {"status": "ok", field: "false"}
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert "/api/ready" not in wizard_server.paths()
+
+
+def test_setup_stops_if_camera_cannot_reopen(wizard_server):
+    calls = iter(
+        [{"status": "ok", "index": 2}, {"status": "error", "message": "still in use"}]
+    )
+    wizard_server.overrides["/api/connect-camera"] = lambda *_: next(calls)
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 1
+    assert "Couldn't reopen the camera: still in use" in result.output
+    assert "/api/calibrate/camera" not in wizard_server.paths()
+
+
+def test_setup_phone_qr_waits_for_connection(wizard_server, mocker):
+    statuses = iter([{"bridge": False}, {"bridge": True}, {"ready": True}])
+    wizard_server.overrides["/api/status"] = lambda *_: next(statuses)
+    mocker.patch.object(hw_mod, "lan_ip", return_value="192.0.2.10")
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    hw_mod.webbrowser.open.assert_called_once_with(
+        "http://127.0.0.1:8048/api/bridge/qr"
+    )
+    assert "http://192.0.2.10:8049/bridge" in result.output
+
+
+def test_setup_operator_can_abort_phone_retry(wizard_server, mocker):
+    wizard_server.initial["bridge"] = False
+    mocker.patch.object(hw_mod, "lan_ip", return_value="192.0.2.10")
+    mocker.patch("builtins.input", side_effect=["", "q"])
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 1
+    assert "Setup aborted" in result.output
+    assert "/api/connect-arm" not in wizard_server.paths()
+
+
+@pytest.mark.parametrize("payload", [[], True, "ready", 3])
+def test_setup_rejects_non_object_api_status(payload, wizard_server):
+    wizard_server.overrides["/api/status"] = payload
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert "Server not running" in result.output
+    assert wizard_server.paths() == ["/api/status"]
+
+
+@pytest.mark.parametrize("preview", ["invalid!", "Zg==!", {"bad": "image"}])
+def test_setup_invalid_preview_is_reported_and_manual_selection_continues(
+    preview, wizard_server
+):
+    calls = iter(
+        [
+            {"status": "error"},
+            {"status": "ok", "index": 0},
+            {"status": "ok", "index": 0},
+        ]
+    )
+    wizard_server.overrides["/api/connect-camera"] = lambda *_: next(calls)
+    wizard_server.overrides["/api/camera-preview/0?watermark=1"] = {"image": preview}
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert "Camera 0 preview unavailable" in result.output
+    hw_mod.platform.open_image_files.assert_called_once_with([])
+
+
+def test_auto_setup_does_not_fetch_unused_camera_previews(wizard_server):
+    calls = iter([{"status": "error"}, {"status": "ok", "index": 0}])
+    wizard_server.overrides["/api/connect-camera"] = lambda *_: next(calls)
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert not any("camera-preview" in path for path in wizard_server.paths())
+    assert [c[2] for c in wizard_server.calls if c[1] == "/api/connect-camera"] == [
+        {"index": "auto"},
+        {"index": 0},
+    ]
+    hw_mod.platform.open_image_files.assert_not_called()
+
+
+def test_auto_worker_reports_unexpected_calibration_exception(
+    wizard_server, mocker, caplog
+):
+    import types
+
+    fake_net = types.ModuleType("physiclaw.core.server.net")
+    fake_net.wait_for_port = lambda *_: True
+    mocker.patch.dict("sys.modules", {fake_net.__name__: fake_net})
+    wizard_server.overrides["/api/connect-arm"] = OSError("transport broke")
+
+    hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
+
+    assert "auto-calibration failed" in caplog.text
+    assert "transport broke" in caplog.text
+
+
+def test_setup_does_not_treat_text_calibration_flag_as_success(wizard_server):
+    wizard_server.initial["calibrated"] = "false"
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert "/api/connect-arm" in wizard_server.paths()
+    assert "/api/calibrate/validate" in wizard_server.paths()
+
+
+def test_auto_worker_waits_for_boolean_bridge_confirmation(wizard_server, mocker):
+    import types
+
+    fake_net = types.ModuleType("physiclaw.core.server.net")
+    fake_net.wait_for_port = lambda *_: True
+    mocker.patch.dict("sys.modules", {fake_net.__name__: fake_net})
+    statuses = iter([{"bridge": "false"}, {"bridge": True}, {"ready": True}])
+    wizard_server.overrides["/api/status"] = lambda *_: next(statuses)
+
+    hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
+
+    assert wizard_server.clock == 1
+    assert wizard_server.paths() == ["/api/status", "/api/status", "/api/status"]
+
+
+@pytest.mark.parametrize(
+    "args,arm_body,viewport_body,camera_bodies",
+    [
+        (["--auto"], {"from_park": True}, {"fresh": False}, [{"index": "auto"}]),
+        ([], None, {"fresh": True}, [{"index": "auto"}, {"index": 2}]),
+    ],
+)
+def test_setup_sends_mode_specific_calibration_requests(
+    args, arm_body, viewport_body, camera_bodies, wizard_server
+):
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert [c[2] for c in wizard_server.calls if c[1] == "/api/calibrate/arm"] == [
+        arm_body
+    ]
+    assert [
+        c[2] for c in wizard_server.calls if c[1] == "/api/calibrate/viewport-shift"
+    ] == [viewport_body]
+    assert [
+        c[2] for c in wizard_server.calls if c[1] == "/api/connect-camera"
+    ] == camera_bodies
+    assert [c[2] for c in wizard_server.calls if c[1] == "/api/bridge/switch"] == [
+        {"mode": "calibrate", "phase": "center"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "response,message", [(None, "no response"), ({"error": "offline"}, "offline")]
+)
+def test_setup_home_failure_has_actionable_diagnosis(response, message, wizard_server):
+    wizard_server.initial = {"calibrated": True}
+    wizard_server.overrides["/api/phone/home"] = response
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert f"Couldn't return the phone home: {message}" in result.output
+
+
+@pytest.mark.parametrize("first_preview", [None, {"image": "invalid!"}])
+def test_setup_skips_missing_or_bad_preview_and_opens_later_camera(
+    first_preview, wizard_server
+):
+    from pathlib import Path
+
+    cameras = iter([{"status": "error"}, {"status": "ok"}, {"status": "ok"}])
+    wizard_server.overrides["/api/connect-camera"] = lambda *_: next(cameras)
+    wizard_server.overrides["/api/camera-preview/0?watermark=1"] = first_preview
+    wizard_server.overrides["/api/camera-preview/1?watermark=1"] = {"image": "Zg=="}
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert [
+        Path(p).name for p in hw_mod.platform.open_image_files.call_args.args[0]
+    ] == ["camera1.jpg"]
+
+
+def test_setup_missing_camera_index_defaults_to_zero_on_reopen(wizard_server):
+    wizard_server.overrides["/api/connect-camera"] = {"status": "ok"}
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert [c[2] for c in wizard_server.calls if c[1] == "/api/connect-camera"] == [
+        {"index": "auto"},
+        {"index": 0},
+    ]
+
+
+@pytest.mark.parametrize("aligned", [True, False])
+def test_setup_reports_rotation_only_when_alignment_failed(aligned, wizard_server):
+    wizard_server.overrides["/api/calibrate/arm"] = {
+        "status": "ok",
+        "pairs": 18,
+        "tilt_ratio": 0.15,
+        "aligned": aligned,
+    }
+    wizard_server.overrides["/api/calibrate/camera"] = {
+        "status": "ok",
+        "rotation_name": "90°",
+        "coverage": 0.8,
+        "issues": ["phone partly outside frame"],
+    }
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert ("Phone looks slightly rotated" in result.output) is not aligned
+    assert ("(15.0%)" in result.output) is not aligned
+    assert "phone partly outside frame" in result.output
+    assert "rotation 90°" in result.output
+
+
+def test_setup_elapsed_time_is_measured_from_run_start(wizard_server):
+    wizard_server.clock = 120
+
+    def calibrate(*_):
+        wizard_server.clock += 57
+        return {"status": "ok", "pairs": 18, "aligned": True}
+
+    wizard_server.overrides["/api/calibrate/arm"] = calibrate
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert "set up in 1m 0s" in result.output
+
+
+def test_setup_run_defaults_to_interactive_without_edge_trace(wizard_server):
+    hw_mod.run()
+
+    hw_mod.platform.open_camera_aim_app.assert_called_once()
+    assert "/api/calibrate/trace-edge" not in wizard_server.paths()
+
+
+def test_setup_phone_timeout_caps_last_sleep(wizard_server, mocker):
+    calls = 0
+
+    def status(method, path, body, timeout):
+        nonlocal calls
+        calls += 1
+        wizard_server.clock += 0 if calls == 1 else min(0.3, timeout)
+        return {"bridge": False}
+
+    wizard_server.overrides["/api/status"] = status
+    mocker.patch.object(hw_mod, "lan_ip", return_value="192.0.2.10")
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 1
+    assert wizard_server.clock <= 15
+    assert "/api/connect-arm" not in wizard_server.paths()
+
+
+def test_setup_phone_can_connect_in_final_fraction_of_wait(wizard_server, mocker):
+    replies = iter(
+        [
+            (0, {"bridge": False}),
+            (4.5, {"bridge": False}),
+            (4.5, {"bridge": False}),
+            (2.5, {"bridge": False}),
+            (0, {"bridge": True}),
+            (0, {"ready": True}),
+        ]
+    )
+
+    def status(method, path, body, timeout):
+        delay, response = next(replies)
+        assert delay <= timeout
+        wizard_server.clock += delay
+        return response
+
+    wizard_server.overrides["/api/status"] = status
+    mocker.patch.object(hw_mod, "lan_ip", return_value="192.0.2.10")
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert "Phone connected" in result.output
+
+
+def test_setup_accepts_readiness_in_final_fraction_of_timeout(wizard_server):
+    replies = iter(
+        [
+            (0, {"calibrated": True}),
+            *[(5, {"ready": False})] * 7,
+            (1.5, {"ready": False}),
+            (0, {"ready": True}),
+        ]
+    )
+
+    def status(method, path, body, timeout):
+        delay, response = next(replies)
+        assert delay <= timeout
+        wizard_server.clock += delay
+        return response
+
+    wizard_server.overrides["/api/status"] = status
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == 0, result.output
+    assert wizard_server.clock == 47.5
+
+
+@pytest.mark.parametrize(
+    "url", ["http://serverX", "http://serverX/", "http://serverX///"]
+)
+def test_setup_normalization_preserves_hostname_from_config(url, wizard_server, mocker):
+    import importlib.util
+
+    mocker.patch.object(hw_mod.config, "server_url", return_value=url)
+    wizard_server.initial = {"ready": True}
+    spec = importlib.util.spec_from_file_location("hardware_fresh", hw_mod.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+
+    fresh.hardware(auto=True)
+
+    assert wizard_server.calls[0][4] == "http://serverX"

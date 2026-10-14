@@ -6,7 +6,6 @@ Talks to a running ``physiclaw server`` over HTTP.
 import base64
 import contextlib
 import logging
-import socket
 import sys
 import tempfile
 import time
@@ -22,7 +21,7 @@ from physiclaw.cli._format import step_fail, step_ok, step_warn
 from physiclaw.common import config, paths, platform
 from physiclaw.common.ready import STATUS_PATH, ready_from_status
 
-BASE = config.server_url()
+BASE = config.server_url().rstrip("/")
 
 
 def _viewport_cache_candidates() -> list:
@@ -31,9 +30,9 @@ def _viewport_cache_candidates() -> list:
 
 
 def api(method, path, body=None, timeout=60):
-    """This wizard's server call — `_http.api` bound to the (mutable)
-    module-global BASE."""
-    return _http.api(BASE, method, path, body=body, timeout=timeout)
+    """Call this wizard's server; return a JSON object or None on failure."""
+    response = _http.api(BASE, method, path, body=body, timeout=timeout)
+    return response if isinstance(response, dict) else None
 
 
 def _base_port() -> int:
@@ -43,24 +42,18 @@ def _base_port() -> int:
 
 
 def ok(r):
-    return r is not None and r.get("status") == "ok"
+    return isinstance(r, dict) and r.get("status") == "ok"
 
 
 def _msg(r, fallback="no response"):
     """Server error string from a response, with a fallback when absent."""
-    return (r or {}).get("message", fallback)
+    return (r or {}).get("message") or (r or {}).get("error") or fallback
 
 
 def lan_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(1)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
+    from physiclaw.core.bridge.lan import get_lan_ip
+
+    return get_lan_ip()
 
 
 def wait(msg):
@@ -79,15 +72,18 @@ def _camera_aim_adjust(prompt: str) -> None:
     enforces exclusive access, so without it the OS Camera app shows
     "another app is using the camera". It's idempotent if no camera is
     connected (the server returns ``released=False``)."""
-    api("POST", "/api/disconnect-camera")
-    platform.open_camera_aim_app()
-    # The aim-app launch is best-effort on some platforms (e.g. Linux); the
-    # backend supplies a fallback instruction when one is warranted.
-    aim_hint = platform.camera_aim_hint()
-    if aim_hint:
-        print(f"  {aim_hint}")
-    wait(prompt)
-    platform.quit_camera_aim_app()
+    response = api("POST", "/api/disconnect-camera")
+    if not ok(response):
+        sys.exit(f"Couldn't release the camera: {_msg(response)}")
+    try:
+        platform.open_camera_aim_app()
+        # Some backends offer manual instructions when no preview app exists.
+        aim_hint = platform.camera_aim_hint()
+        if aim_hint:
+            print(f"  {aim_hint}")
+        wait(prompt)
+    finally:
+        platform.quit_camera_aim_app()
 
 
 def ask(msg, auto):
@@ -117,8 +113,9 @@ def calibrate_retry(
             return r
         msg = fail_msg(r) if callable(fail_msg) else fail_msg
         _fail(msg)
-        if auto or not ask(retry_prompt, auto=False):
+        if auto:
             sys.exit(1)
+        ask(retry_prompt, auto=False)
 
 
 def _done(msg="OK"):
@@ -138,17 +135,17 @@ def _poll_bridge(seconds: float = 15.0) -> bool:
     to `seconds`. The wizard must verify, not assume — a checkmark on a
     stale status surfaces as a confusing failure steps later."""
     deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        status = api("GET", STATUS_PATH, timeout=5) or {}
-        if status.get("bridge"):
+    while (remaining := deadline - time.monotonic()) > 0:
+        status = api("GET", STATUS_PATH, timeout=min(5, remaining)) or {}
+        if status.get("bridge") is True:
             return True
-        time.sleep(1)
+        time.sleep(min(1, max(0, deadline - time.monotonic())))
     return False
 
 
 def _step_connect_phone(status, auto: bool) -> None:
     print("\n── 1. Connect phone ──")
-    if status.get("bridge"):
+    if status.get("bridge") is True:
         _done("Phone connected")
         return
     from physiclaw.core.bridge.lan import bridge_port
@@ -163,11 +160,9 @@ def _step_connect_phone(status, auto: bool) -> None:
         if _poll_bridge():
             _done("Phone connected")
             return
-        if auto or not ask(
-            "Phone not seen yet — retry after opening the page?", auto=False
-        ):
-            _warn(f"Phone not connected — keep {phone_url} open and foregrounded")
-            return
+        if auto:
+            sys.exit(f"Phone not connected — keep {phone_url} open and foregrounded")
+        ask("Phone not seen yet — retry after opening the page?", auto=False)
 
 
 def _step_position_rig(auto: bool) -> None:
@@ -188,10 +183,10 @@ def _step_connect_arm(auto: bool) -> None:
     print("\n── 3. Connect the arm ──")
     print("  Control board connected over USB with its 12 V power on — PhysiClaw")
     print("  scans the computer's serial ports to find it (FluidNC firmware).")
-    if ask("Ready?", auto):
-        if not ok(api("POST", "/api/connect-arm")):
-            _fail("Couldn't connect — check the USB cable and 12 V power")
-            sys.exit(1)
+    ask("Ready?", auto)
+    if not ok(api("POST", "/api/connect-arm")):
+        _fail("Couldn't connect — check the USB cable and 12 V power")
+        sys.exit(1)
     _done("Arm connected")
 
 
@@ -207,33 +202,40 @@ def _step_connect_camera(auto: bool) -> int:
         cam = r.get("index", 0)
         _done(f"Camera {cam} connected")
     else:
-        tmp_dir = Path(tempfile.gettempdir())
-        for stale in tmp_dir.glob("physiclaw_cam*.jpg"):
-            stale.unlink(missing_ok=True)
-        preview_paths: list[str] = []
-        for i in range(4):
-            rr = api("GET", f"/api/camera-preview/{i}?watermark=1", timeout=10)
-            if rr and rr.get("image"):
-                p = tmp_dir / f"physiclaw_cam{i}.jpg"
-                p.write_bytes(base64.b64decode(rr["image"]))
-                preview_paths.append(str(p))
-        if auto:
-            cam = 0
-        else:
-            platform.open_image_files(preview_paths)
-            try:
-                cam = int(
-                    input(
-                        "  Couldn't auto-detect. Which camera? [0-3, default=0]: "
-                    ).strip()
-                )
-            except ValueError:
-                cam = 0
+        cam = 0 if auto else _choose_camera()
         if not ok(api("POST", "/api/connect-camera", {"index": cam})):
             _fail("Couldn't find the camera — make sure /bridge is open and awake")
             sys.exit(1)
         _done(f"Camera {cam} connected")
     return cam
+
+
+def _choose_camera() -> int:
+    """Keep manual previews private to this setup attempt, until selection ends."""
+    with tempfile.TemporaryDirectory(prefix="physiclaw-cameras-") as directory:
+        previews: list[str] = []
+        for index in range(4):
+            response = api(
+                "GET", f"/api/camera-preview/{index}?watermark=1", timeout=10
+            )
+            if not response or not response.get("image"):
+                continue
+            path = Path(directory) / f"camera{index}.jpg"
+            try:
+                path.write_bytes(base64.b64decode(response["image"], validate=True))
+            except (OSError, ValueError, TypeError) as e:
+                _warn(f"Camera {index} preview unavailable: {e}")
+                continue
+            previews.append(str(path))
+        platform.open_image_files(previews)
+        try:
+            return int(
+                input(
+                    "  Couldn't auto-detect. Which camera? [0-3, default=0]: "
+                ).strip()
+            )
+        except ValueError:
+            return 0
 
 
 def _step_locate_screen(auto: bool) -> None:
@@ -272,7 +274,7 @@ def _step_calibrate_arm(auto: bool) -> None:
     # Position stylus, then tap 18 points.
     print("\n── 6. Calibrate the arm ──")
     r = api("POST", "/api/bridge/switch", {"mode": "calibrate", "phase": "center"})
-    if not r or not r.get("ok"):
+    if not r or r.get("ok") is not True:
         _fail("Couldn't show the center circle — is the bridge page open and awake?")
         sys.exit(1)
     time.sleep(0.5)
@@ -280,32 +282,32 @@ def _step_calibrate_arm(auto: bool) -> None:
     if not auto:
         wait("Move the stylus tip over the orange circle, then continue")
     print("  The arm taps 18 points to learn how its motion lines up with the screen.")
-    if ask("Don't touch the rig. Ready?", auto):
+    ask("Don't touch the rig. Ready?", auto)
 
-        def _arm_fail(resp):
-            return (
-                "Couldn't calibrate: "
-                f"{_msg(resp)} — "
-                "make sure the stylus tip is over the center circle"
-            )
-
-        # In auto mode the stylus is parked off-screen — tell the server to
-        # drive it onto the screen center first (mirrors the wizard's auto).
-        r = calibrate_retry(
-            "arm",
-            _arm_fail,
-            "Retry?",
-            auto,
-            timeout=120,
-            body={"from_park": True} if auto else None,
+    def _arm_fail(resp):
+        return (
+            "Couldn't calibrate: "
+            f"{_msg(resp)} — "
+            "make sure the stylus tip is over the center circle"
         )
-        tilt = r.get("tilt_ratio", 0)
-        if not r.get("aligned"):
-            _warn(
-                f"Phone looks slightly rotated relative to the arm ({tilt * 100:.1f}%) — "
-                "straighten it and rerun if validation fails later"
-            )
-        _done(f"Arm calibrated — mapped {r.get('pairs')} points")
+
+    # In auto mode the stylus is parked off-screen — tell the server to
+    # drive it onto the screen center first (mirrors the wizard's auto).
+    r = calibrate_retry(
+        "arm",
+        _arm_fail,
+        "Retry?",
+        auto,
+        timeout=120,
+        body={"from_park": True} if auto else None,
+    )
+    tilt = r.get("tilt_ratio", 0)
+    if not r.get("aligned"):
+        _warn(
+            f"Phone looks slightly rotated relative to the arm ({tilt * 100:.1f}%) — "
+            "straighten it and rerun if validation fails later"
+        )
+    _done(f"Arm calibrated — mapped {r.get('pairs')} points")
 
 
 def _step_calibrate_camera(auto: bool, cam: int) -> None:
@@ -346,24 +348,26 @@ def _step_validate(auto: bool) -> None:
     print("\n── 8. Validate ──")
     print("  For each dot: find it with the camera, tap it with the arm, and compare")
     print("  the tap to where the dot was drawn. Passing saves the calibration.")
-    if ask("Ready?", auto):
-        r = calibrate("validate", 60)
-        if not (r and r.get("calibrated")):
-            _fail(
-                "Validation failed — check the lighting, or redo the camera or arm "
-                "calibration"
-            )
-            sys.exit(1)
-        _done(
-            f"Validated — {r.get('passed')}/{r.get('total')} taps on target. "
-            "Calibration saved."
+    ask("Ready?", auto)
+    r = calibrate("validate", 60)
+    if not (r and r.get("calibrated") is True):
+        _fail(
+            "Validation failed — check the lighting, or redo the camera or arm "
+            "calibration"
         )
+        sys.exit(1)
+    _done(
+        f"Validated — {r.get('passed')}/{r.get('total')} taps on target. "
+        "Calibration saved."
+    )
 
 
 def _step_verify_assistive_touch(auto: bool) -> None:
     print("\n── 9. Verify AssistiveTouch ──")
     print("  Confirms the screenshot + clipboard pipeline works.")
-    calibrate("assistive-touch/show")
+    response = calibrate("assistive-touch/show")
+    if not ok(response):
+        sys.exit(f"Couldn't show the AssistiveTouch target: {_msg(response)}")
     if not auto:
         wait("Drag the AssistiveTouch button over the orange circle")
 
@@ -382,7 +386,7 @@ def _step_verify_assistive_touch(auto: bool) -> None:
         _at_fail,
         "Adjust AT position. Retry?",
         auto,
-        predicate=lambda resp: resp and resp.get("passed"),
+        predicate=lambda resp: resp and resp.get("passed") is True,
         timeout=20,
     )
     if r.get("clipboard", {}).get("fetched"):
@@ -396,8 +400,10 @@ def _step_edge_trace(auto: bool) -> None:
     # Optional (--trace); unnumbered in both surfaces.
     print("\n── Edge trace ──")
     print("  Arm traces phone screen border clockwise, pausing at 8 points.")
-    if ask("Watch for accuracy. Ready?", auto):
-        calibrate("trace-edge", 60)
+    ask("Watch for accuracy. Ready?", auto)
+    response = calibrate("trace-edge", 60)
+    if not ok(response):
+        sys.exit(f"Edge trace failed: {_msg(response)}")
     _done("Edge trace complete")
 
 
@@ -410,25 +416,34 @@ def _mark_ready_and_wait(timeout: float = 45.0) -> None:
     command would otherwise race the settle window. Stop setup on failure
     or timeout so callers only report success after readiness is confirmed.
     """
-    if api("POST", "/api/ready") is not None:
-        for _ in range(int(timeout)):
-            status = api("GET", STATUS_PATH)
+    deadline = time.monotonic() + timeout
+    response = api("POST", "/api/ready", timeout=min(5, timeout))
+    if response and response.get("ok") is True:
+        while (remaining := deadline - time.monotonic()) > 0:
+            status = api("GET", STATUS_PATH, timeout=min(5, remaining))
             if status is None:
                 break
             if ready_from_status(status):
                 return
-            time.sleep(1)
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
     sys.exit(
         "Readiness was not confirmed. Check the server and retry setup "
         "once hardware is idle."
     )
 
 
-def _step_finish(t0: float) -> None:
-    print("\n── 10. Finish ──")
-    api("POST", "/api/phone/home")
+def _return_home_and_ready() -> None:
+    """Reach the home-screen scene before exposure settling and readiness."""
+    response = api("POST", "/api/phone/home")
+    if not response or response.get("ok") is not True:
+        sys.exit(f"Couldn't return the phone home: {_msg(response)}")
     time.sleep(3)
     _mark_ready_and_wait()
+
+
+def _step_finish(t0: float) -> None:
+    print("\n── 10. Finish ──")
+    _return_home_and_ready()
 
     elapsed = time.time() - t0
     mins, secs = int(elapsed // 60), int(elapsed % 60)
@@ -450,11 +465,9 @@ def run(auto: bool = False, trace: bool = False) -> None:
     if ready_from_status(status):
         print("PhysiClaw is already ready.")
         return
-    if status.get("calibrated"):
+    if status.get("calibrated") is True:
         print("Already calibrated, finalizing...")
-        api("POST", "/api/phone/home")
-        time.sleep(3)
-        _mark_ready_and_wait()
+        _return_home_and_ready()
         _done("PhysiClaw is ready")
         return
 
@@ -496,13 +509,13 @@ def await_bridge_and_calibrate(host: str, port: int) -> None:
         )
         return
 
-    BASE = f"http://localhost:{port}"
+    BASE = f"http://{config.url_host(host)}:{port}"
     log.info("auto: waiting for the phone bridge to connect…")
     while True:
         status = api("GET", STATUS_PATH)
         if status and (
-            status.get("bridge")
-            or status.get("calibrated")
+            status.get("bridge") is True
+            or status.get("calibrated") is True
             or ready_from_status(status)
         ):
             break
@@ -541,5 +554,5 @@ def hardware(
 ) -> None:
     """Calibrate the robotic arm + camera (server must be running)."""
     global BASE
-    BASE = server_url
+    BASE = server_url.rstrip("/")
     run(auto=auto, trace=trace)
