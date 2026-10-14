@@ -390,22 +390,40 @@ function setBusy(what) {
   $("busy").style.display = what ? "flex" : "none";
   $("busy-what").textContent = what || "";
   $("dot").classList.toggle("busy", state.busy);
-  document.querySelectorAll("button:not(.tabs button)").forEach(b => b.disabled = state.busy || b.dataset.unpublished === "1");
+  document.querySelectorAll("button:not(.tabs button), input, select").forEach(b => b.disabled = state.busy || b.dataset.unpublished === "1");
   renderActbar();
 }
 
-let connectedOnce = false;
 function setConnected(on) {
   $("dot").classList.toggle("on", on);
   $("conn-label").textContent = on ? "connected" : "not connected";
 }
 
 async function api(path, body) {
-  const resp = await fetch(path, body === undefined ? undefined : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  const data = await resp.json().catch(() => ({ status: "error", message: "unreadable reply" }));
-  return data;
+  try {
+    const resp = await fetch(path, body === undefined ? undefined : {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!data || typeof data !== "object" || Array.isArray(data))
+      return { status: "error", message: "unreadable reply" };
+    if (!resp.ok) return { status: "error", message: data.message || "HTTP " + resp.status };
+    return data;
+  } catch (e) {
+    return { status: "error", message: "studio server unreachable: " + e.message };
+  }
+}
+
+// Lock before sending: the server may finish a short job before the
+// launch response arrives. Keep the lock until its watcher takes over.
+async function submit(path, body, what) {
+  setBusy(what);
+  banner("");
+  const data = await api(path, body);
+  if (data.status === "ok") return data;
+  banner(data.message || "request refused");
+  setBusy(null);
+  return null;
 }
 
 // ---------- acting on the phone ----------
@@ -419,10 +437,10 @@ async function act(tool, args, label) {
     if (data.status !== "ok") {
       banner(data.message || "request failed");
       logEntry((label || tool) + " — " + (data.message || "failed"), "err");
-      refreshState();
+      await refreshState();
       return;
     }
-    if (!connectedOnce) { connectedOnce = true; refreshState(); }
+    await refreshState();
     logEntry(data.text || (label || tool), data.text ? "" : "dim");
     // A gesture acted on the selection; the new screen starts clean. A
     // view (peek, screenshot) re-reads the same screen and keeps it.
@@ -655,14 +673,15 @@ for (const [key, pane] of Object.entries(PANES)) {
   const wrap = pane.wrap;
   wrap.addEventListener("dragstart", ev => ev.preventDefault());
   wrap.addEventListener("pointerdown", ev => {
-    if (state.busy || ev.button !== 0) return;
+    if (state.busy || drag || ev.button !== 0 || !ev.isPrimary) return;
     ev.preventDefault();
     // With Swipe armed the drag is the stroke (from the selected box);
     // otherwise it draws a new box.
-    drag = { pane: key, start: pointOf(ev, wrap), moved: false, swipe: state.swipeArmed };
+    drag = { pane: key, pointerId: ev.pointerId, start: pointOf(ev, wrap), moved: false, swipe: state.swipeArmed };
     wrap.setPointerCapture(ev.pointerId);
   });
   wrap.addEventListener("pointermove", ev => {
+    if (drag && drag.pointerId !== ev.pointerId) return;
     const p = pointOf(ev, wrap);
     if (drag && drag.pane === key) {
       if (!drag.moved && Math.hypot(p.px - drag.start.px, p.py - drag.start.py) < 6) return;
@@ -680,7 +699,7 @@ for (const [key, pane] of Object.entries(PANES)) {
     if (state.hover !== null) { state.hover = null; renderHover(); }
   });
   wrap.addEventListener("pointerup", ev => {
-    if (!drag || drag.pane !== key) return;
+    if (!drag || drag.pane !== key || drag.pointerId !== ev.pointerId) return;
     const d = drag; drag = null;
     hideDragFeedback();
     if (state.busy) return;
@@ -700,6 +719,13 @@ for (const [key, pane] of Object.entries(PANES)) {
     if (i !== null) select(state.rows[i].bbox, state.rows[i].label);
     else clearSelection();
   });
+  const cancelDrag = ev => {
+    if (!drag || drag.pane !== key || drag.pointerId !== ev.pointerId) return;
+    drag = null;
+    hideDragFeedback();
+  };
+  wrap.addEventListener("pointercancel", cancelDrag);
+  wrap.addEventListener("lostpointercapture", cancelDrag);
 }
 
 // ---------- the action bar ----------
@@ -779,7 +805,11 @@ function fillSelect(sel, items, keep, empty) {
   if (!sel.options.length) sel.appendChild(new Option(empty, ""));
   return sel.value;
 }
-function renderInputs(container, inputs) {
+function renderInputs(container, inputs, item) {
+  const values = new Map();
+  if (container.dataset.item === item)
+    container.querySelectorAll("input[data-input]").forEach(b => values.set(b.dataset.input, b.value));
+  container.dataset.item = item;
   container.innerHTML = "";
   for (const inp of inputs || []) {
     const lab = document.createElement("label");
@@ -787,7 +817,8 @@ function renderInputs(container, inputs) {
     const box = document.createElement("input");
     box.type = "text"; box.dataset.input = inp.name;
     box.placeholder = inp.example || inp.default || "";
-    if (inp.default !== null && inp.default !== undefined) box.value = inp.default;
+    box.value = values.has(inp.name) ? values.get(inp.name) : (inp.default ?? "");
+    box.disabled = state.busy;
     lab.appendChild(box); container.appendChild(lab);
   }
 }
@@ -819,7 +850,7 @@ function renderPlaybook() {
   const desc = $("pb-desc"), route = $("route"), pos = $("pb-pos");
   route.innerHTML = ""; pos.innerHTML = "";
   desc.textContent = p ? (p.description || "") : "scaffold a pack: physiclaw playbooks init <app>";
-  renderInputs($("pb-inputs"), p && !p.position ? p.inputs : []);
+  renderInputs($("pb-inputs"), p && !p.position ? p.inputs : [], pb.ref);
   if (!p) return;
   const cur = p.position ? p.position.idx : 0;
   (p.nodes || []).forEach((n, i) => {
@@ -838,7 +869,11 @@ function renderPlaybook() {
       g.onclick = ev => { ev.stopPropagation(); showMacro(n.macro); };
       li.appendChild(g);
     }
-    li.onclick = () => { pb.at = pb.at === n.id ? null : n.id; renderPlaybook(); };
+    li.onclick = () => {
+      if (state.busy) return;
+      pb.at = pb.at === n.id ? null : n.id;
+      renderPlaybook();
+    };
     route.appendChild(li);
   });
   const g = p.position;
@@ -846,8 +881,8 @@ function renderPlaybook() {
     ? "at <b>" + g.node + "</b>" + (pb.at ? " · next step at <b>" + pb.at + "</b>" : "")
       + (g.awaiting ? " · <b>awaiting a reply</b>" : "")
       + (g.quoted !== null ? " · quoted ¥" + g.quoted : "") + (g.consented !== null ? " · consented ¥" + g.consented : "")
-      + (g.staged.length ? " · staged: " + g.staged.join(" / ") : "")
     : "fresh walk — the first step opens the route" + (pb.at ? " at <b>" + pb.at + "</b>" : "");
+  if (g && g.staged.length) pos.append(" · staged: " + g.staged.join(" / "));
 }
 
 function pbNextNode(p) {
@@ -873,12 +908,11 @@ async function stepPlaybook(toEnd) {
   const out = $("pb-output").value, eq = out.indexOf("=");
   if (out && eq > 0) body.outputs[out.slice(0, eq).trim()] = out.slice(eq + 1);
   else if (out) { banner("output is node.field=value"); return; }
-  banner("");
-  const data = await api("/api/step", body);
-  if (data.status !== "ok") { banner(data.message || "step refused"); return; }
+  const what = "stepping " + pb.ref + (next ? " · " + next.id : "");
+  if (!(await submit("/api/step", body, what))) return;
   for (const id of ["pb-reply", "pb-start", "pb-stop", "pb-output"]) $(id).value = "";
   pb.at = null;
-  watchJob("stepping " + pb.ref + (next ? " · " + next.id : ""), () => loadPlaybooks());
+  watchJob(what, () => loadPlaybooks());
 }
 
 // A model round-trip, folded: the decision reads on the summary line;
@@ -903,12 +937,19 @@ function watchJob(what, onDone) {
   if (job.polling) return;
   setBusy(what);
   job.lines = 0; job.exchanges = 0;
+  let retrying = false;
   const tick = async () => {
     if (job.ticking) return;  // a slow poll must not overlap the next one
     job.ticking = true;
     try {
       const s = await api("/api/step?since=" + job.seq + "&lines=" + job.lines + "&exchanges=" + job.exchanges);
-      if (s.status !== "ok") { banner(s.message || "job lost"); stopWatch(); return; }
+      // A failed poll does not establish that the phone has stopped.
+      if (s.status !== "ok") {
+        banner((s.message || "cannot read job") + " — retrying");
+        retrying = true;
+        return;
+      }
+      if (retrying) { banner(""); retrying = false; }
       for (const line of s.lines || []) logEntry(line, line.startsWith("  ") ? "dim" : "");
       job.lines += (s.lines || []).length;
       for (const x of s.exchanges || []) logExchange(x);
@@ -939,11 +980,12 @@ $("pb-step").onclick = () => stepPlaybook(false);
 $("pb-end").onclick = () => stepPlaybook(true);
 $("pb-reset").onclick = async () => {
   if (!pb.ref || state.busy) return;
-  const data = await api("/api/step/reset", { ref: pb.ref });
-  if (data.status !== "ok") { banner(data.message || "reset refused"); return; }
+  const data = await submit("/api/step/reset", { ref: pb.ref }, "resetting " + pb.ref);
+  if (!data) return;
   logEntry(data.message, "dim");
   pb.at = null;
-  loadPlaybooks();
+  await loadPlaybooks();
+  setBusy(null);
 };
 
 // A job already running when the page opens (a reload mid-step) is
@@ -980,7 +1022,7 @@ function renderMacro() {
   const desc = $("mc-desc"), steps = $("steps"), pos = $("mc-pos");
   steps.innerHTML = ""; pos.innerHTML = "";
   desc.textContent = m ? (m.source === "user" ? "" : "pack " + m.source + " · ") + (m.description || "") : "";
-  renderInputs($("mc-inputs"), m ? m.inputs : []);
+  renderInputs($("mc-inputs"), m ? m.inputs : [], mc.name);
   if (!m) return;
   const total = (m.steps || []).length;
   mc.cursor = Math.min(mc.cursor, Math.max(0, total - 1));
@@ -992,7 +1034,11 @@ function renderMacro() {
     const name = document.createElement("span"); name.className = "n"; name.textContent = st.name;
     const d = document.createElement("span"); d.className = "p"; d.textContent = st.detail || "";
     li.append(k, name, d);
-    li.onclick = () => { mc.cursor = i; renderMacro(); };
+    li.onclick = () => {
+      if (state.busy) return;
+      mc.cursor = i;
+      renderMacro();
+    };
     steps.appendChild(li);
   });
   pos.innerHTML = total
@@ -1001,6 +1047,7 @@ function renderMacro() {
 }
 
 function showMacro(name) {
+  if (state.busy) return;
   mc.name = name; mc.cursor = 0;
   showTab("mc");
   if (mcEntry()) { $("mc-select").value = name; renderMacro(); }
@@ -1012,10 +1059,8 @@ async function runMacro(toEnd) {
   if (!m || state.busy || !(m.steps || []).length) return;
   const step = m.steps[mc.cursor];
   const body = { name: m.name, inputs: readInputs($("mc-inputs")), start_at: step.name, stop_after: toEnd ? "" : step.name };
-  banner("");
-  const data = await api("/api/macro", body);
-  if (data.status !== "ok") { banner(data.message || "macro refused"); return; }
   const from = mc.cursor;
+  if (!(await submit("/api/macro", body, "running " + m.name))) return;
   watchJob("running " + m.name + " · " + step.name + (toEnd ? " → end" : ""), r => {
     // The cursor moves only past gestures that ran clean.
     if (r && r.ok) mc.cursor = toEnd ? 0 : Math.min(from + 1, m.steps.length - 1);
@@ -1045,6 +1090,7 @@ $("mc-rewind").onclick = () => { mc.cursor = 0; renderMacro(); };
 async function refreshState() {
   try {
     const s = await api("/api/state");
+    if (s.status !== "ok") { setConnected(false); return; }
     setConnected(s.connected);
     $("conn").title = s.mcp_url;
     if (s.swipe) {
@@ -1058,7 +1104,7 @@ async function refreshState() {
       document.querySelectorAll("header [data-tool]").forEach(b => {
         const off = !s.tools.includes(b.dataset.tool);
         b.dataset.unpublished = off ? "1" : "0";
-        b.disabled = off;
+        b.disabled = state.busy || off;
         b.title = off ? "not published by this session" : b.title;
       });
   } catch (e) {

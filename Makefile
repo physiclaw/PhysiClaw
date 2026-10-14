@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-slow test-integration test-all mutate lint fmt typecheck help bump build publish release docs-deploy \
+.PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help bump build publish release docs-deploy \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-deploy hw-release _hw-package
 
 PY ?= uv run
@@ -32,6 +32,7 @@ help:
 	@echo "  test-slow             — only @pytest.mark.slow"
 	@echo "  test-integration      — only @pytest.mark.integration"
 	@echo "  test-all              — every test, including slow and integration"
+	@echo "  test-studio-ui        — Studio JavaScript regressions (Node 22+)"
 	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
 	@echo "  lint                  — ruff check + format check"
 	@echo "  fmt                   — ruff format (src, tests, hardware, scripts)"
@@ -80,6 +81,9 @@ test-integration:
 
 test-all:
 	$(PY) pytest -m ""
+
+test-studio-ui:
+	node --test tests/studio/test_studio_ui.cjs
 
 mutate:
 	@if [ -z "$(MOD)" ]; then echo "usage: make mutate MOD=src/physiclaw/<path>"; exit 2; fi

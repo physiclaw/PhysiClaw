@@ -42,6 +42,15 @@ jobs:
       - name: Sync dependencies
         run: uv sync --group dev
 
+      # Studio's inline JavaScript uses Node's built-in test runner; no npm
+      # packages or Node runtime are needed by the Python application.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Studio UI regressions
+        run: node --test tests/studio/test_studio_ui.cjs
+
       # Mirrors `make lint`: ruff check on the packaged code, format check
       # everywhere (hardware/ is style-star-import CAD code, format-only).
       - name: Lint

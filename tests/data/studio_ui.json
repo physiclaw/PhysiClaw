@@ -1,0 +1,29 @@
+{
+  "macros": [
+    {
+      "name": "first", "source": "user", "enabled": true,
+      "inputs": [{"name": "query", "description": "Query text", "default": "first default"}],
+      "steps": [{"name": "idx1-tap-first", "tool": "tap"}, {"name": "idx2-tap-second", "tool": "tap"}]
+    },
+    {
+      "name": "second", "source": "user", "enabled": true,
+      "inputs": [{"name": "query", "description": "Query text", "default": "second default"}],
+      "steps": [{"name": "idx1-tap-other", "tool": "tap"}]
+    }
+  ],
+  "packs": [{
+    "app": "fixture",
+    "playbooks": [
+      {
+        "name": "first", "enabled": true, "position": null,
+        "inputs": [{"name": "query", "description": "Query text", "default": "first default"}],
+        "nodes": [{"id": "open", "kind": "move", "macro": "first"}, {"id": "finish", "kind": "move"}]
+      },
+      {
+        "name": "second", "enabled": true, "position": null,
+        "inputs": [{"name": "query", "description": "Query text", "default": "second default"}],
+        "nodes": [{"id": "open", "kind": "move"}]
+      }
+    ]
+  }]
+}
