@@ -82,6 +82,24 @@ def test_logs_shows_summaryless_dir_as_unknown(sessions: Path) -> None:
     assert "?" in result.output
 
 
+def test_regression_logs_lists_non_object_summary_as_unknown(sessions: Path) -> None:
+    directory = _write_session(sessions, "20261014-100000-abc123")
+    (directory / "summary.json").write_text('["broken"]', encoding="utf-8")
+
+    result = runner.invoke(app, ["logs"])
+
+    assert result.exit_code == 0, result.output
+    assert "20261014-100000-abc123" in result.output
+    assert "?" in result.output
+
+
+def test_regression_logs_rejects_parent_directory(sessions: Path) -> None:
+    result = runner.invoke(app, ["logs", "..", "--json"])
+
+    assert result.exit_code == 1
+    assert "no session matches" in result.output
+
+
 def test_logs_empty_state(sessions: Path) -> None:
     result = runner.invoke(app, ["logs"])
 

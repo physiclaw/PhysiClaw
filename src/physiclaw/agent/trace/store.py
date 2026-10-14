@@ -284,11 +284,12 @@ sensitive.
 
 def load_summary(d: Path) -> dict[str, Any] | None:
     """A session dir's summary.json, or None when it has none (killed or
-    still running) or it does not parse."""
+    still running) or it is not a JSON object."""
     try:
-        return json.loads((d / "summary.json").read_text(encoding="utf-8"))
+        summary = json.loads((d / "summary.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
         return None
+    return summary if isinstance(summary, dict) else None
 
 
 def stub_summary(d: Path) -> dict[str, Any]:
@@ -298,6 +299,14 @@ def stub_summary(d: Path) -> dict[str, Any]:
         "sid": d.name,
         "outcome": {"sentinel": "?", "recap": "(no summary — killed or still running)"},
     }
+
+
+def _is_session_dir(d: Path, root: Path) -> bool:
+    """Only immediate children of the session root, including resolved aliases."""
+    try:
+        return d.resolve().parent == root.resolve() and d.is_dir()
+    except (OSError, ValueError, RuntimeError):  # unreadable paths or symlink loops
+        return False
 
 
 def recent_sessions(root: Path, n: int) -> list[dict[str, Any]]:
@@ -316,7 +325,9 @@ def recent_sessions(root: Path, n: int) -> list[dict[str, Any]]:
 
     try:
         dirs = sorted(
-            (d for d in root.iterdir() if d.is_dir()), key=newest, reverse=True
+            (d for d in root.iterdir() if _is_session_dir(d, root)),
+            key=newest,
+            reverse=True,
         )
     except OSError:
         return []
@@ -341,13 +352,18 @@ def find_session_dirs(root: Path, query: str) -> list[Path]:
     """Session dirs matching a full id or any trailing fragment — the
     `physiclaw logs <suffix>` short-handle convention (the sid's 6-hex
     random suffix is the intended handle), shared by every CLI consumer
-    so the resolution rule exists once. Exact hit wins outright."""
+    so the resolution rule exists once. Exact hit wins outright. A reference
+    is a name, never a path; directory aliases must stay inside the root."""
+    if not query or query in {".", ".."} or any(c in query for c in "/\\:\0"):
+        return []
     exact = root / query
-    if exact.is_dir():
+    if _is_session_dir(exact, root):
         return [exact]
     try:
         return sorted(
-            d for d in root.iterdir() if d.is_dir() and d.name.endswith(query)
+            d
+            for d in root.iterdir()
+            if d.name.endswith(query) and _is_session_dir(d, root)
         )
     except OSError:
         return []

@@ -611,6 +611,31 @@ def test_regression_session_image_cannot_follow_external_symlink(
     assert response.status_code == 404
 
 
+def test_regression_session_page_tolerates_non_object_summary(physiclaw_home):
+    recorded = _recorded()
+    (recorded / "summary.json").write_text('["broken"]', encoding="utf-8")
+
+    response = server.handle_session_page(_path_request(sid=recorded.name))
+
+    assert response.status_code == 200
+    assert b'"summary": null' in bytes(response.body)
+
+
+def test_regression_session_page_rejects_external_directory_alias(
+    physiclaw_home, tmp_path
+):
+    recorded = _recorded()
+    external = tmp_path / "private"
+    external.mkdir()
+    (external / "notes.md").write_text("private notes", encoding="utf-8")
+    (recorded.parent / "linked").symlink_to(external, target_is_directory=True)
+
+    response = server.handle_session_page(_path_request(sid="linked"))
+
+    assert response.status_code == 404
+    assert b"private notes" not in bytes(response.body)
+
+
 @pytest.mark.parametrize("name", ["page.html", "frame.svg", "unknown.bin"])
 def test_regression_recorded_non_raster_files_are_not_served_as_active_content(
     physiclaw_home, name
