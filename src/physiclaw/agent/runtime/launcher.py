@@ -30,6 +30,7 @@ fails loudly if missing.
 import argparse
 import asyncio
 import logging
+import math
 import os
 import sys
 from functools import partial
@@ -124,6 +125,8 @@ def launch() -> None:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
+    if not math.isfinite(args.interval) or args.interval < 0:
+        parser.error("interval must be finite and non-negative")
     try:
         ref, source = resolve()
     except RuntimeError as e:

@@ -16,6 +16,7 @@ while a reaction is in progress.
 import asyncio
 import inspect
 import logging
+import math
 from typing import Awaitable, Callable, Union
 
 import httpx
@@ -76,12 +77,14 @@ class Runtime:
             returns a non-empty list. Sync or async. Typical wiring is
             `physiclaw.agent.claude.spawn_claude`, but tests can pass
             any callable.
-        interval: Seconds to sleep between hook checks. Not a rate limit
-            while `react` is running — sleep only happens after it
-            returns, so a slow reaction naturally throttles the loop.
+        interval: Finite, non-negative seconds to sleep between hook checks.
+            Sleep happens after `react` returns, so a slow reaction
+            naturally throttles the loop.
     """
 
     def __init__(self, react: React, *, interval: float = 1.0, label: str = ""):
+        if not math.isfinite(interval) or interval < 0:
+            raise ValueError("interval must be finite and non-negative")
         self.react = react
         self.interval = interval
         # human-readable engine/provider tag, surfaced in ready logs so the
@@ -145,7 +148,12 @@ class Runtime:
                 self._streak += 1
         cooldown = CONFIG.engine.react_cooldown_seconds
         if self._streak:
-            cooldown = min(cooldown * (2**self._streak), BACKOFF_CAP_SECONDS)
+            try:
+                # Scale the float directly: constructing 2**streak first
+                # eventually overflows its conversion before the cap applies.
+                cooldown = min(math.ldexp(cooldown, self._streak), BACKOFF_CAP_SECONDS)
+            except OverflowError:
+                cooldown = BACKOFF_CAP_SECONDS
             log.warning(
                 "%d unproductive session(s) in a row (last: %s) — backing off %.0fs",
                 self._streak,

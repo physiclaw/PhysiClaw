@@ -1,13 +1,15 @@
-"""Tests for `physiclaw.agent.runtime.runtime`.
+"""Runtime polling, readiness gating, hook isolation, and wake backoff.
 
-Runtime.start tests are integration-leaning (intricate event-loop +
-hooks side effects); covered with one happy-path-and-stop scenario,
-the rest deferred.
+Accepted mutation variants: log/error wording, type-only aliases/annotations,
+equivalent falsy readiness/blip initialization, and a 5→6-second HTTP timeout
+(the contract needs a bounded poll, not that exact deadline).
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
+from types import SimpleNamespace
 
 import pytest
 import respx
@@ -230,6 +232,8 @@ async def test_start_cancellation_propagates(mocker) -> None:
     with pytest.raises(asyncio.CancelledError):
         await rt.start()
 
+    assert rt._running is False
+
 
 def _async_returning(value):
     async def _coro(*a, **kw):
@@ -320,3 +324,136 @@ async def test_legacy_none_react_stays_flat(mocker) -> None:
 
     assert rt._streak == 0
     assert max(sleeps) == runtime.CONFIG.engine.react_cooldown_seconds
+
+
+async def _run_failures(mocker, count, cooldown):
+    from physiclaw.agent.runtime.contract import SessionOutcome
+
+    remaining = count
+    sleeps = []
+
+    def react(triggers):
+        nonlocal remaining
+        remaining -= 1
+        if not remaining:
+            rt.stop()
+        return SessionOutcome(status="FAIL")
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+
+    async def ready(client):
+        return True
+
+    hook.register(lambda: Trigger(description="retry", source="test"))
+    rt = Runtime(react, interval=0.01)
+    mocker.patch.object(runtime, "load_hooks")
+    mocker.patch.object(runtime, "check_ready", side_effect=ready)
+    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep)
+    mocker.patch.object(runtime.CONFIG.engine, "react_cooldown_seconds", cooldown)
+    try:
+        await rt.start()
+    finally:
+        await runtime._client.aclose()
+    return sleeps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "base, expected", [(0.0, 0.0), (6.0, 600.0), (1e-320, 600.0), (1e308, 600.0)]
+)
+async def test_regression_long_failure_streak_keeps_every_cooldown(
+    mocker, caplog, base, expected
+):
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="physiclaw.agent.runtime.runtime"):
+        sleeps = await _run_failures(mocker, 1100, base)
+
+    assert len(sleeps) == 2200
+    assert sleeps[-2] == expected
+    assert not caplog.records
+
+
+@pytest.mark.asyncio
+async def test_regression_invalid_hook_result_cannot_starve_a_valid_trigger(mocker):
+    received = []
+    hook.register(lambda: False)
+    hook.register(lambda: Trigger(description="valid", source="test"))
+    rt = Runtime(lambda triggers: received.extend(triggers), interval=0.01)
+    sleeper, _ = _stop_after_n(rt, 1)
+    mocker.patch.object(runtime, "load_hooks")
+    mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
+    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleeper)
+
+    await rt.start()
+
+    assert received == [Trigger(description="valid", source="test")]
+
+
+@pytest.mark.parametrize("interval", [-1.0, float("nan"), float("inf"), -float("inf")])
+def test_runtime_rejects_invalid_poll_interval(interval):
+    with pytest.raises(ValueError, match="interval must be finite and non-negative"):
+        Runtime(lambda triggers: None, interval=interval)
+
+
+@pytest.mark.parametrize("interval", [0.0, 1e-320, 0.125, 1e308])
+def test_runtime_accepts_finite_non_negative_poll_interval(interval):
+    instance = Runtime(lambda triggers: None, interval=interval)
+
+    assert instance.interval == interval
+
+
+@pytest.mark.asyncio
+async def test_start_preserves_readiness_across_blips_and_resumes(mocker, caplog):
+    polls = [False, True, OSError("offline"), OSError("still offline"), True]
+    received = []
+    hook.register(lambda: Trigger(description="wake", source="phone"))
+    rt = Runtime(lambda triggers: received.extend(triggers), interval=0.125)
+    sleeper, _ = _stop_after_n(rt, 7)
+    mocker.patch.object(runtime, "load_hooks")
+    ready = mocker.patch.object(runtime, "check_ready", side_effect=polls)
+    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleeper)
+
+    with caplog.at_level(logging.INFO, logger=runtime.__name__):
+        await rt.start()
+    await runtime._client.aclose()
+
+    assert ready.call_count == 5
+    assert received == [Trigger(description="wake", source="phone")] * 2
+    assert [r.args[0] for r in caplog.records if "physiclaw ready=" in r.msg] == [
+        False,
+        True,
+    ]
+    assert [r.args[0] for r in caplog.records if "triggers fired:" in r.msg] == [
+        ["phone"],
+        ["phone"],
+    ]
+    assert sum("status poll failed:" in r.msg for r in caplog.records) == 1
+
+
+@pytest.mark.asyncio
+async def test_fresh_runtime_polls_with_its_cached_http_client(
+    fresh_runtime_module, monkeypatch, respx_mock, caplog
+):
+    state = fresh_runtime_module(runtime, "_check_ready")
+    route = respx_mock.get("http://test.host:8048/api/status").respond(
+        json={"ready": True}
+    )
+    received = []
+    hook.register(lambda: Trigger(description="wake", source="phone"))
+    rt = state["Runtime"](lambda triggers: received.extend(triggers), interval=0.125)
+    sleeper, _ = _stop_after_n(rt, 4)
+    monkeypatch.setitem(state, "load_hooks", lambda: None)
+    monkeypatch.setitem(
+        state,
+        "asyncio",
+        SimpleNamespace(sleep=sleeper, CancelledError=asyncio.CancelledError),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await rt.start()
+
+    assert route.call_count == 2
+    assert received == [Trigger(description="wake", source="phone")] * 2
+    assert not caplog.records

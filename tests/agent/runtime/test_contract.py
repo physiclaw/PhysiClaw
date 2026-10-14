@@ -5,12 +5,16 @@ layer only: retry selection, the setup restart, the jobless-WAIT
 follow-up, and backoff. Engine-side reporting (which Session fields
 feed which SessionOutcome fields) is covered by the engine and claude
 suites.
+
+Accepted mutation variants: log wording, type-only aliases, dataclass slot
+storage, and False→None flags that remain falsy in the close-policy branches.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import logging
+from dataclasses import FrozenInstanceError
 
 import pytest
 from freezegun import freeze_time
@@ -21,6 +25,33 @@ from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, IDLE, STUCK, WAIT
 
 _TRIGGERS = [Trigger(description="t", source="phone")]
+
+
+def test_outcome_is_immutable_after_session_reports_it():
+    outcome = SessionOutcome(status=DONE)
+
+    with pytest.raises(FrozenInstanceError):
+        outcome.status = STUCK
+
+
+@pytest.mark.parametrize(
+    "status, earned",
+    [
+        (DONE, True),
+        (WAIT, True),
+        (STUCK, False),
+        ("FAIL", False),
+        (IDLE, False),
+        (None, False),
+    ],
+)
+@pytest.mark.parametrize("restart", [False, True])
+def test_productive_outcomes_match_close_policy(status, earned, restart):
+    outcome = SessionOutcome(status=status, restart_requested=restart)
+
+    result = contract.productive(outcome)
+
+    assert result is (earned or restart)
 
 
 def _attempts(*outcomes: SessionOutcome):
@@ -254,7 +285,7 @@ async def test_setup_restart_fires_at_most_once(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wait_without_created_job_schedules_followup(mocker) -> None:
+async def test_wait_without_created_job_schedules_followup(mocker, caplog) -> None:
     upsert = _no_upsert(mocker)
     attempt, _ = _attempts(SessionOutcome(status=WAIT))
 
@@ -272,6 +303,7 @@ async def test_wait_without_created_job_schedules_followup(mocker) -> None:
     assert isinstance(target, dt.datetime)
     # Target time = now + wait_default_minutes.
     assert (target.hour, target.minute) == (14, 15)
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 @pytest.mark.asyncio
@@ -310,6 +342,26 @@ async def test_wait_followup_failure_is_swallowed(
 
 
 @pytest.mark.asyncio
+async def test_regression_wait_followup_date_overflow_preserves_outcome(mocker, caplog):
+    upsert = _no_upsert(mocker)
+    outcome = SessionOutcome(status=WAIT, recap="resume later")
+    attempt, _ = _attempts(outcome)
+
+    with freeze_time("2026-04-28T14:00:00"), caplog.at_level(logging.ERROR):
+        result = await contract.drive(
+            attempt,
+            _TRIGGERS,
+            max_attempts=1,
+            wait_default_minutes=10**12,
+            retry_on=(STUCK,),
+        )
+
+    assert result is outcome
+    upsert.assert_not_called()
+    assert any("failed to auto-schedule" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_done_never_schedules_followup(mocker) -> None:
     upsert = _no_upsert(mocker)
     attempt, _ = _attempts(SessionOutcome(status=DONE))
@@ -319,3 +371,51 @@ async def test_done_never_schedules_followup(mocker) -> None:
     )
 
     upsert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_default_outcome_is_undone_and_retries_without_default_delay(mocker):
+    sleep = mocker.patch.object(contract.asyncio, "sleep")
+    attempt, calls = _attempts(SessionOutcome(), SessionOutcome(status=DONE))
+
+    result = await contract.drive(
+        attempt, _TRIGGERS, max_attempts=2, wait_default_minutes=15, retry_on=(None,)
+    )
+
+    assert calls == [1, 2]
+    assert result.status == DONE and result.recap == ""
+    sleep.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "delay, expected", [(0.0, []), (0.25, [0.25, 0.25]), (5.0, [5.0, 5.0])]
+)
+async def test_retry_exhaustion_only_sleeps_between_attempts(mocker, delay, expected):
+    sleep = mocker.patch.object(contract.asyncio, "sleep")
+    outcome = SessionOutcome(status=STUCK)
+    attempt, calls = _attempts(outcome, outcome, outcome)
+
+    result = await contract.drive(
+        attempt,
+        _TRIGGERS,
+        max_attempts=3,
+        wait_default_minutes=15,
+        retry_on=(STUCK,),
+        retry_backoff_seconds=delay,
+    )
+
+    assert result is outcome and calls == [1, 2, 3]
+    assert [call.args[0] for call in sleep.call_args_list] == expected
+
+
+@pytest.mark.asyncio
+async def test_zero_attempt_budget_returns_undone_without_calling_engine(mocker):
+    attempt = mocker.AsyncMock()
+
+    result = await contract.drive(
+        attempt, _TRIGGERS, max_attempts=0, wait_default_minutes=15, retry_on=(STUCK,)
+    )
+
+    assert result.status is None
+    attempt.assert_not_called()

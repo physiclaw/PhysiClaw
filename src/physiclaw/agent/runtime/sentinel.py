@@ -15,7 +15,8 @@ WAIT = "WAIT"
 STATUSES: frozenset[str] = frozenset({DONE, STUCK, FAIL, IDLE, WAIT})
 
 _SENTINEL_RE = re.compile(
-    r">+\s*(DONE|STUCK|FAIL|IDLE|WAIT)\b\s*-?\s*(.*)", re.IGNORECASE
+    r"^[ \t]*>+[ \t]*(DONE|STUCK|FAIL|IDLE|WAIT)\b[ \t]*-?[ \t]*(.*)",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -23,6 +24,7 @@ def parse_sentinel(text: str | None) -> tuple[str | None, str]:
     """Return (status, recap) parsed from `text`, or (None, original) if no match.
 
     Accepts `>> DONE - recap`, bare `DONE`, lowercase, missing hyphen.
+    A marked status must start its line; quoted/inline statuses are prose.
     """
     if not text:
         return None, ""

@@ -79,6 +79,14 @@ async def check_hooks() -> list[Trigger]:
             if inspect.isawaitable(result):
                 result = await result
             if result is not None:
+                if (
+                    not isinstance(result, Trigger)
+                    or not isinstance(result.description, str)
+                    or not isinstance(result.source, str)
+                ):
+                    raise TypeError(
+                        "hook must return None or a Trigger with string description and source"
+                    )
                 triggers.append(result)
         except Exception:
             name = getattr(fn, "__name__", repr(fn))

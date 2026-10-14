@@ -1,6 +1,12 @@
-"""Tests for `physiclaw.agent.runtime.hook` — hook registry."""
+"""Tests for `physiclaw.agent.runtime.hook` — hook registry.
+
+Accepted mutation variants: type-only aliases, diagnostic wording, a falsy
+loaded flag, and equivalent final-component indexing on qualified names.
+"""
 
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -246,3 +252,57 @@ def test_load_hooks_logs_but_continues_on_module_import_failure(
 
     expected = f"failed to load hook module: {hook.HOOKS_PACKAGE}.broken"
     assert any(r.getMessage() == expected for r in caplog.records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        False,
+        "wake",
+        1,
+        {},
+        [],
+        Trigger(description=None),
+        Trigger(description="bad", source=1),
+    ],
+)
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_regression_invalid_hook_result_is_isolated(
+    invalid, asynchronous, caplog
+):
+    register(_returning(invalid, asynchronous))
+    register(lambda: Trigger(description="still works", source="valid"))
+
+    triggers = await check_hooks()
+
+    assert triggers == [Trigger(description="still works", source="valid")]
+    assert "hook failed" in caplog.text
+
+
+def _returning(result, asynchronous):
+    async def async_hook():
+        return result
+
+    return async_hook if asynchronous else lambda: result
+
+
+def test_fresh_hook_loader_discovers_public_modules_once(
+    fresh_runtime_module, tmp_path, mocker
+):
+    state = fresh_runtime_module(hook, "load_hooks")
+    (tmp_path / "_hidden.py").write_text("")
+    (tmp_path / "visible.py").write_text("")
+    imported = mocker.patch.object(
+        hook.importlib,
+        "import_module",
+        return_value=SimpleNamespace(__path__=[str(tmp_path)]),
+    )
+
+    state["load_hooks"]()
+    state["load_hooks"]()
+
+    assert [call.args[0] for call in imported.call_args_list] == [
+        "physiclaw.agent.hooks",
+        "physiclaw.agent.hooks.visible",
+    ]

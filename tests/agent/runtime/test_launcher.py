@@ -1,4 +1,7 @@
-"""Tests for `physiclaw.agent.runtime.launcher`."""
+"""Tests for `physiclaw.agent.runtime.launcher`.
+
+Accepted mutation variants only change help, error, or log wording.
+"""
 
 from __future__ import annotations
 
@@ -60,8 +63,10 @@ def test_resolve_raises_for_unknown_provider(
 ) -> None:
     monkeypatch.setenv("PHYSICLAW_MODEL", "mystery/x")
 
-    with pytest.raises(RuntimeError, match=r"^unknown provider 'mystery'"):
+    with pytest.raises(RuntimeError, match=r"^unknown provider 'mystery'") as error:
         resolve()
+
+    assert "qwen" in str(error.value)
 
 
 def test_resolve_raises_runtime_error_for_slashless_ref(
@@ -103,12 +108,29 @@ def test_resolve_succeeds_for_claude_code_when_available(
 # ---------- launch() ----------
 
 
+@pytest.mark.parametrize("interval", ["-1", "nan", "inf", "-inf"])
+def test_launch_rejects_invalid_interval_before_startup(monkeypatch, capsys, interval):
+    monkeypatch.setattr("sys.argv", ["runtime", f"--interval={interval}"])
+    monkeypatch.delenv("PHYSICLAW_MODEL", raising=False)
+
+    with pytest.raises(SystemExit) as error:
+        launcher.launch()
+
+    assert error.value.code == 2
+    assert "interval must be finite and non-negative" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("interval", [0.0, 0.125, 1.0])
 def test_launch_runs_engine_path_for_in_process_provider(
     mocker,
     monkeypatch: pytest.MonkeyPatch,
+    interval,
 ) -> None:
     monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
-    monkeypatch.setattr("sys.argv", ["runtime", "--server", "http://x:9000"])
+    monkeypatch.setattr(
+        "sys.argv",
+        ["runtime", "--server", "http://x:9000", "--interval", str(interval)],
+    )
     mocker.patch.object(launcher, "setup_logging")
 
     fake_runtime = mocker.MagicMock()
@@ -139,8 +161,10 @@ def test_launch_runs_engine_path_for_in_process_provider(
 
     runtime_cls.assert_called_once()
     kwargs = runtime_cls.call_args.kwargs
-    assert kwargs["interval"] == 1.0
+    assert kwargs["interval"] == interval
     assert kwargs["label"].startswith("engine=physiclaw")
+    assert kwargs["react"].func is fake_engine_run
+    assert kwargs["react"].keywords == {"model_ref": "qwen/qwen3-plus"}
 
 
 def test_launch_runs_claude_path_for_claude_code(
@@ -179,6 +203,10 @@ def test_launch_runs_claude_path_for_claude_code(
 
     runtime_cls.assert_called_once()
     assert runtime_cls.call_args.kwargs["label"].startswith("engine=claude-code")
+    assert runtime_cls.call_args.kwargs["interval"] == 1.0
+    react = runtime_cls.call_args.kwargs["react"]
+    assert react.func is fake_spawn
+    assert react.keywords == {"model_id": "claude-test"}
 
 
 def test_launch_normalizes_proxy_env_first(

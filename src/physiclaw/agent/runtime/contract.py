@@ -158,10 +158,10 @@ def _schedule_wait_followup(*, minutes: int) -> None:
     either way. Imported lazily so this module stays importable without
     pulling the engine package's dependency tree.
     """
-    from physiclaw.agent.engine import jobs
-
-    at = dt.datetime.now() + dt.timedelta(minutes=minutes)
     try:
+        from physiclaw.agent.engine import jobs
+
+        at = dt.datetime.now() + dt.timedelta(minutes=minutes)
         jobs.upsert_auto_wait_check(at)
         log.info(
             "auto-WAIT follow-up scheduled at %s", at.isoformat(timespec="minutes")
