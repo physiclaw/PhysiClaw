@@ -2,7 +2,7 @@
 
 from physiclaw.agent.layout import store
 from physiclaw.agent.layout.store import inside_learned
-from physiclaw.common.bbox import center_of
+from physiclaw.common.bbox import center_of, validate_bbox
 from physiclaw.common.gesture_vocab import (
     SEQUENCE,
     STEP_ACTIONS,
@@ -15,14 +15,21 @@ def _step_center(step, tool: str) -> tuple[float, float] | None:
     """Center of a sequence step's bbox if it's the given press tool."""
     if not isinstance(step, dict) or step.get(STEP_TOOL) != tool:
         return None
-    return center_of(step.get(STEP_ARG) or [])
+    box = step.get(STEP_ARG) or []
+    try:
+        validate_bbox(box)
+    except ValueError:
+        return None
+    return center_of(box)
 
 
 def _taps_box(steps, box) -> bool:
-    """True if any step is a tap landing inside `box` (None/garbage → False)."""
+    """A tap reaches `box` before another long-press opens a different menu."""
     if not isinstance(box, list):
         return False
     for s in steps:
+        if isinstance(s, dict) and s.get(STEP_TOOL) == "long_press":
+            return False
         c = _step_center(s, "tap")
         if c is not None and inside_learned(c, box):
             return True
@@ -122,10 +129,21 @@ def lint_sequence(actions, *, keyboard_up: bool = False) -> str | None:
     # on empty screen and the paste silently no-ops — the batch still "ok"s and
     # the agent loops. The correct im template long-presses chat_input_kb_visible,
     # so it never trips this.
-    if isinstance(paste, list) and _taps_box(actions, paste):
+    if isinstance(paste, list):
+        last_long_press = None
         for step in actions:
-            c = _step_center(step, "long_press")
-            if c is not None and not inside_learned(c, visible):
+            if isinstance(step, dict) and step.get(STEP_TOOL) == "long_press":
+                # Even an invalid later press makes the earlier menu an
+                # unsafe assumption; the tool will diagnose its arguments.
+                last_long_press = _step_center(step, "long_press")
+                continue
+            tap_c = _step_center(step, "tap")
+            if (
+                tap_c is not None
+                and inside_learned(tap_c, paste)
+                and last_long_press is not None
+                and not inside_learned(last_long_press, visible)
+            ):
                 return (
                     f"BLOCKED — no step ran (clipboard unchanged): reuses IM "
                     f"chat Paste box {paste} after long-pressing a different "

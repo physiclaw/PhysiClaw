@@ -17,6 +17,7 @@ or re-exports into its own error surface (`agent.engine.validator`
 converts to ValidationError; `core.vision.util` re-exports as-is).
 """
 
+import math
 from collections.abc import Sequence
 
 # The canonical 4-tuple spelling of the same box — element rows
@@ -86,12 +87,20 @@ def parse_within(value) -> Bbox:
 
 
 def center_of(bbox) -> tuple[float, float] | None:
-    """Center of a [left, top, right, bottom] bbox; None on garbage."""
+    """Center of four finite coordinates; None on malformed input."""
     try:
         left, top, right, bottom = (float(v) for v in bbox)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
-    return (left + right) / 2, (top + bottom) / 2
+    if not all(math.isfinite(v) for v in (left, top, right, bottom)):
+        return None
+    x_sum, y_sum = left + right, top + bottom
+    # Halve first only when the sum overflows; always halving first would
+    # instead lose the smallest subnormal coordinates to underflow.
+    return (
+        x_sum / 2 if math.isfinite(x_sum) else left / 2 + right / 2,
+        y_sum / 2 if math.isfinite(y_sum) else top / 2 + bottom / 2,
+    )
 
 
 def near(a: tuple[float, float], b: tuple[float, float], *, tolerance: float) -> bool:

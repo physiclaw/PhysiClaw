@@ -13,12 +13,14 @@ from physiclaw.common.gesture_vocab import (
     STEP_ACTIONS,
     STEP_TOOL,
     SWIPE,
+    UNLOCK_PHONE,
 )
 
 # Calls whose effect on the keyboard cannot be attributed: a swipe may or
-# may not dismiss it, and `run_macro` hides a whole rehearsed sequence
-# behind one result. Both decay the belief to "unknown" rather than guess.
-KEYBOARD_OPAQUE = frozenset({SWIPE, RUN_MACRO})
+# may not dismiss it, `run_macro` hides a whole rehearsed sequence, and
+# unlocking may resume an app or land elsewhere. Their final keyboard
+# state is unproven, so discard the previous belief.
+KEYBOARD_OPAQUE = frozenset({SWIPE, RUN_MACRO, UNLOCK_PHONE})
 
 # Boxes that are only ever pressed while typing/pasting — a press there
 # neither raises nor dismisses the keyboard.
@@ -43,7 +45,7 @@ class KeyboardTracker:
     every gesture since provably preserves it (typing/pasting boxes).
     Nav gestures mean "down" — except a camera-verified no-change nav
     (a missed edge swipe: the stuck guard's nav-miss case), which left
-    the screen, keyboard included, exactly as it was. Swipes, batches
+    the screen, keyboard included, exactly as it was. Swipes, unlocking, batches
     with presses, and presses outside the keyboard region decay to
     "unknown", as does `run_macro` — the one local tool that replays real
     gestures, and so the exception to the rule below. Every OTHER local

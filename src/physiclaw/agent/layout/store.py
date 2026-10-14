@@ -16,7 +16,7 @@ writes
                plus a `layout_learned` bool so out-of-module readers (the core
                orchestrator's /api/status) can tell setup is done without
                importing this module or knowing its page/field schema
-  layout.md    the rendered card that `prompt._render_screen_layout` injects
+  layout.md    a convenience copy of the card rendered from layout.json
 
 `is_learned()` (all pages captured) / `missing_pages()` / `load_layout_md()`
 are the read side the prompt builder uses to decide first-run setup vs.
@@ -28,7 +28,8 @@ import logging
 from typing import NotRequired, TypedDict
 
 from physiclaw.common import paths
-from physiclaw.common.bbox import inside
+from physiclaw.common.bbox import inside, validate_bbox
+from physiclaw.common.logger import write_json_atomic
 from physiclaw.common.text import read_text, write_text
 from physiclaw.contract.dto import Message, UserMessage
 
@@ -92,13 +93,23 @@ def _is_chat_page(page: str) -> bool:
 def _load() -> dict:
     """Read the accumulated layout, or {} if none/unreadable yet."""
     p = paths.screen_layout_json()
-    if not p.exists():
-        return {}
     try:
+        if not p.exists():
+            return {}
         data = json.loads(read_text(p))
     except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    # A present but malformed box cannot complete setup or reach the geometry
+    # consumers. Preserve valid fields so capture can repair only what's missing.
+    for field in ALL_FIELDS:
+        if field in data:
+            try:
+                validate_bbox(data[field])
+            except ValueError:
+                del data[field]
+    return data
 
 
 def missing_pages() -> list[str]:
@@ -121,15 +132,25 @@ REPEATABLE_KEY_FIELDS = ("backspace", "space", "return")
 
 def repeatable_key_boxes() -> list[list[float]]:
     """Bboxes of the learned keyboard keys that are safe to press
-    repeatedly. Empty while the layout is unlearned."""
+    repeatedly. Includes only the valid keys captured so far."""
     d = _load()
     return [d[f] for f in REPEATABLE_KEY_FIELDS if isinstance(d.get(f), list)]
 
 
 def load_layout_md() -> str:
-    """The rendered layout card, or '' if nothing captured yet."""
-    p = paths.screen_layout_md()
-    return read_text(p).strip() if p.exists() else ""
+    """Render the JSON source of truth; accept legacy Markdown-only layouts.
+
+    The on-disk Markdown card is a convenience copy. It may be stale or
+    missing after a failed write, so it must not override captured JSON.
+    """
+    try:
+        if paths.screen_layout_json().exists():
+            data = _load()
+            return _render_md(data) if any(f in data for f in ALL_FIELDS) else ""
+        p = paths.screen_layout_md()
+        return read_text(p).strip() if p.exists() else ""
+    except (OSError, UnicodeError):
+        return ""
 
 
 # ─── First-run tail reminder ──────────────────────────────────
@@ -218,7 +239,7 @@ def _validate_box(field: str, raw) -> str | None:
     else None. Checks geometry then the field's rough region."""
     try:
         bbox = [float(v) for v in raw]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return f"{field}: bbox must be four numbers [left, top, right, bottom]."
     if len(bbox) != 4:
         return f"{field}: expected 4 numbers, got {len(bbox)}."
@@ -313,6 +334,11 @@ def record(page: str, field: str, bbox, app: str | None = None) -> str:
             "labelled with their app."
         )
     err = _validate_box(field, bbox)
+    if not err:
+        bbox = [round(float(v), 3) for v in bbox]
+        # Validate what will actually be persisted: rounding a narrow button
+        # can collapse its left/right edges or move it outside its region.
+        err = _validate_box(field, bbox)
     if err:
         return (
             f"Layout not saved — {err} Re-read the box off the screenshot "
@@ -324,9 +350,21 @@ def record(page: str, field: str, bbox, app: str | None = None) -> str:
     # correction path). `was_complete` distinguishes the call that finishes
     # setup (→ restart) from a later correction to an already-complete layout.
     was_complete = not any(f not in layout for f in ALL_FIELDS)
-    layout[field] = [round(float(v), 3) for v in bbox]
-    if _is_chat_page(page) and app and app.strip():
-        layout["im_app"] = _app_label(app)
+    chat_app = _app_label(app) if _is_chat_page(page) and app else None
+    previous_app = layout.get("im_app")
+    changed_app = (
+        chat_app is not None
+        and isinstance(previous_app, str)
+        and previous_app.casefold() != chat_app.casefold()
+    )
+    if changed_app:
+        for chat_page in PAGES:
+            if _is_chat_page(chat_page):
+                for chat_field in _PAGE_FIELDS[chat_page]:
+                    layout.pop(chat_field, None)
+    layout[field] = bbox
+    if chat_app is not None:
+        layout["im_app"] = chat_app
     still = [f for f in ALL_FIELDS if f not in layout]
     # Persist a plain `learned` flag alongside the boxes so readers outside
     # this module (e.g. the core orchestrator's /api/status) can tell setup is
@@ -335,13 +373,24 @@ def record(page: str, field: str, bbox, app: str | None = None) -> str:
     layout["layout_learned"] = not still
     md = _render_md(layout)
     paths.screen_layout_dir().mkdir(parents=True, exist_ok=True)
-    write_text(paths.screen_layout_json(), json.dumps(layout, indent=2))
-    write_text(paths.screen_layout_md(), md + "\n")
+    # Commit the source of truth before its convenience copy. A failed JSON
+    # replacement leaves both old files intact; a failed card write cannot
+    # undo a successful save, and readers render the committed JSON anyway.
+    write_json_atomic(paths.screen_layout_json(), layout)
+    try:
+        write_text(paths.screen_layout_md(), md + "\n")
+    except OSError as exc:
+        log.warning("Layout saved, but could not update its Markdown copy: %s", exc)
 
     if still:
         # The per-turn first-run notice (tail_reminder) already lists which
         # fields remain and points at the skill — don't repeat it here.
         note = f"{len(still)} box(es) still to capture — see the first-run notice."
+        if changed_app:
+            note = (
+                f"Chat app changed to {chat_app}; recapture its remaining boxes: "
+                f"{', '.join(still)}. Spotlight and keyboard keys were kept."
+            )
     elif not was_complete:
         note = (
             "All boxes captured — setup is done. If you woke for a task, the "
