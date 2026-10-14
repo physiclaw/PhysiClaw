@@ -1,4 +1,9 @@
-"""Tests for `physiclaw.agent.hooks.cron`."""
+"""Tests for `physiclaw.agent.hooks.cron`.
+
+Accepted mutation survivors: 47 presentation-only changes to diagnostic,
+prompt and CLI text. Tests assert meaningful timestamps, job ids, stored
+results, exit codes and rearming guidance without freezing all prose.
+"""
 
 from __future__ import annotations
 
@@ -583,3 +588,154 @@ def test_cli_unknown_command_returns_2(
 
     assert rc == 2
     assert "usage:" in capsys.readouterr().out
+
+
+def _run_module(monkeypatch, *args):
+    import runpy
+    import sys
+
+    from physiclaw.agent.runtime import hook
+
+    # Exercise the module entry point without leaving its decorator registered.
+    with monkeypatch.context() as patcher:
+        patcher.setattr(hook, "_hooks", [])
+        patcher.setattr(sys, "argv", ["cron", *args])
+        with pytest.raises(SystemExit) as stopped:
+            runpy.run_path(cron.__file__, run_name="__main__")
+    return stopped.value.code
+
+
+def test_regression_purge_reports_malformed_jobs_without_a_traceback(
+    _jobs_path, monkeypatch, capsys
+):
+    _jobs_path.write_text("## invalid\n- Type: unknown\n")
+    before = _jobs_path.read_bytes()
+
+    status = _run_module(monkeypatch, "purge")
+
+    assert status == 1
+    assert "PARSE ERROR" in capsys.readouterr().out
+    assert _jobs_path.read_bytes() == before
+
+
+def test_regression_purge_reports_io_failure_without_a_traceback(
+    _jobs_path, monkeypatch, mocker, capsys
+):
+    _jobs_path.write_text(_job_text(job_id="closed", kind="one-time", status="done"))
+    before = _jobs_path.read_bytes()
+    mocker.patch.object(job_store, "write_text", side_effect=OSError("disk full"))
+
+    status = _run_module(monkeypatch, "purge")
+
+    assert status == 1
+    assert "WRITE ERROR: disk full" in capsys.readouterr().out
+    assert _jobs_path.read_bytes() == before
+
+
+def test_closing_an_already_terminal_job_reports_error_without_mutating_it(
+    _jobs_path, monkeypatch, capsys
+):
+    _jobs_path.write_text(_job_text(job_id="closed", kind="one-time", status="done"))
+    before = _jobs_path.read_bytes()
+
+    status = _run_module(monkeypatch, "done", "closed", "again")
+
+    assert status == 1
+    assert "already in terminal status" in capsys.readouterr().out
+    assert _jobs_path.read_bytes() == before
+
+
+@pytest.mark.asyncio
+async def test_expiration_failure_does_not_starve_an_independent_due_job(
+    _jobs_path, mocker, caplog
+):
+    _jobs_path.write_text(_job_text(job_id="due", next_fire_time="2026-04-28T07:00"))
+    mocker.patch.object(
+        cron, "expire_stale_fired", side_effect=OSError("expire denied")
+    )
+
+    with freeze_time("2026-04-28T07:00:00"):
+        trigger = await cron_hook()
+
+    assert trigger is not None and trigger.source == "cron:due"
+    assert "- Status: fired" in _jobs_path.read_text()
+    assert "expire_stale_fired failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stale_periodic_job_is_rearmed_then_fired_once(_jobs_path):
+    _jobs_path.write_text(
+        _job_text(
+            job_id="stale", status="fired", next_fire_time="2026-04-28T07:00"
+        ).replace("- Last fire time: (never)", "- Last fire time: 2026-04-27T07:00")
+    )
+
+    with freeze_time("2026-04-29T07:00:00"):
+        first = await cron_hook()
+        second = await cron_hook()
+        third = await cron_hook()
+
+    assert first is None and third is None
+    assert second is not None and second.source == "cron:stale"
+    assert "- Next fire time: 2026-04-30T07:00" in _jobs_path.read_text()
+
+
+@pytest.mark.asyncio
+async def test_missing_next_occurrence_does_not_mark_a_due_job_fired(
+    _jobs_path, mocker
+):
+    _jobs_path.write_text(_job_text(job_id="due", next_fire_time="2026-04-28T07:00"))
+    before = _jobs_path.read_bytes()
+    mocker.patch.object(cron, "next_fire", return_value=None)
+
+    with freeze_time("2026-04-28T07:00:00"):
+        with pytest.raises(RuntimeError, match="no next fire for due"):
+            await cron_hook()
+
+    assert _jobs_path.read_bytes() == before
+
+
+@pytest.mark.asyncio
+async def test_cron_registers_and_dispatches_due_jobs(fresh_hook_module, _jobs_path):
+    from physiclaw.agent.runtime.hook import check_hooks
+
+    _jobs_path.write_text(_job_text(job_id="due", next_fire_time="2026-04-28T07:00"))
+    fresh_hook_module(cron, "cron")
+
+    with freeze_time("2026-04-28T07:00:00"):
+        triggers = await check_hooks()
+
+    assert len(triggers) == 1 and triggers[0].source == "cron:due"
+    assert "- Status: fired" in _jobs_path.read_text()
+
+
+@pytest.mark.parametrize("command", ["done", "fail"])
+def test_periodic_close_preserves_one_word_recap_and_explains_rearming(
+    command, _jobs_path, monkeypatch, capsys
+):
+    _jobs_path.write_text(_job_text(job_id="periodic", status="fired"))
+
+    status = _run_module(monkeypatch, command, "periodic", "completed")
+
+    assert status == 0
+    assert "- Execution result: completed" in _jobs_path.read_text()
+    output = capsys.readouterr().out
+    assert "PERIODIC" in output and "2026-04-29T07:00" in output
+
+
+def test_verify_reports_saved_times_and_result(_jobs_path, monkeypatch, capsys):
+    _jobs_path.write_text(
+        _job_text(job_id="reported", status="fired")
+        .replace("- Last fire time: (never)", "- Last fire time: 2026-04-28T07:00")
+        .replace("- Execution time: (never)", "- Execution time: 2026-04-28T07:05")
+        .replace("- Execution result: (never)", "- Execution result: prior result")
+    )
+
+    status = _run_module(monkeypatch, "verify")
+
+    assert status == 0
+    output = capsys.readouterr().out
+    assert "next: 2026-04-29T07:00" in output
+    assert "last: 2026-04-28T07:00" in output
+    assert "exec: 2026-04-28T07:05" in output
+    assert "result: prior result" in output

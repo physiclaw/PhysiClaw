@@ -83,10 +83,10 @@ async def cron() -> Trigger | None:
     except Exception:
         log.exception("cron: purge_stale failed")
 
-    # Zombie sweep: auto-fail jobs stuck in `fired` for 24h+ — no session
-    # ever closed them, and they're invisible to both find_due (not pend)
-    # and purge_stale (not terminal). Purge targets terminal statuses,
-    # expire targets fired — disjoint, so sharing the loaded list is safe.
+    # Close firings left unfinished for 24h+: fail one-time jobs and re-arm
+    # periodic jobs. Purge targets terminal statuses; expiry targets fired,
+    # so both can share this snapshot. Re-armed jobs fire on the next tick,
+    # when load_jobs sees their new pending status.
     try:
         expire_stale_fired(now=now, jobs=jobs)
     except Exception:
@@ -121,10 +121,7 @@ async def cron() -> Trigger | None:
         # Still fire — better to double-fire next tick than to miss entirely.
 
     description = _build_trigger_description(due)
-    if len(due) == 1:
-        source = f"cron:{due[0].id}"
-    else:
-        source = "cron:" + ",".join(j.id for j in due)
+    source = "cron:" + ",".join(j.id for j in due)
     return Trigger(description=description, source=source)
 
 
@@ -195,7 +192,7 @@ def _cli() -> int:
         # The status/reset/stamp policy is single-sourced in
         # engine.jobs.finish_job — this CLI only owns argv parsing and
         # its pinned printed surface.
-        result_desc = " ".join(args[2:]) if len(args) > 2 else ""
+        result_desc = " ".join(args[2:])
         try:
             engine_jobs.finish_job(id=job_id, status=cmd, recap=result_desc)
         except ValueError as e:
@@ -218,7 +215,18 @@ def _cli() -> int:
         return 0
 
     if cmd == "purge":
-        purged = purge_stale()
+        try:
+            jobs = load_jobs()
+        except Exception as e:
+            print(f"PARSE ERROR: {e}")
+            return 1
+        try:
+            # Background housekeeping tolerates unreadable job files. The
+            # CLI must report them instead of claiming there is nothing to do.
+            purged = purge_stale(jobs=jobs)
+        except Exception as e:
+            print(f"WRITE ERROR: {e}")
+            return 1
         if not purged:
             print("nothing to purge")
         else:

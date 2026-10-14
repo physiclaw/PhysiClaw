@@ -38,17 +38,20 @@ async def phone_watch() -> Trigger | None:
     try:
         r = await _get_client().get("/api/phone/watch")
         r.raise_for_status()
-        # Parse inside the try: a 200 with a non-JSON body (server
-        # mid-restart, proxy page) is a blip, not a crash per tick.
+        # Malformed JSON or an invalid watch envelope is the same blip as
+        # a failed request. Only a real boolean can report a wake event.
         data = r.json()
+        if not isinstance(data, dict) or not isinstance(data.get("wake"), bool):
+            raise ValueError("expected a watch object with a boolean wake field")
         _in_blip = False
     except Exception as e:
         if not _in_blip:
             log.warning("phone watch poll failed: %s", e)
         _in_blip = True
         return None
-    if not data.get("wake"):
+    if not data["wake"]:
         return None
-    return Trigger(
-        description=data.get("reason", "phone screen changed"), source="phone"
-    )
+    reason = data.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        reason = "phone screen changed"
+    return Trigger(description=reason, source="phone")
