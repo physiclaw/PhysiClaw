@@ -1,6 +1,6 @@
 """One HTTP layer for the ``physiclaw`` CLI — two policies, one module.
 
-LOCAL SERVER (loopback proxy policy, no User-Agent):
+LOCAL SERVER (loopback proxy policy, urllib's default User-Agent):
   ``api()`` — fail-soft JSON exchange with the local PhysiClaw server
   (None on any failure); ``fetch_json()`` — the raising flavor, for
   probes that surface the failure detail. Local-server only: both route
@@ -18,8 +18,10 @@ folding it in.
 """
 
 import json
+import sys
 import urllib.error
 import urllib.request
+from contextlib import nullcontext
 
 import typer
 
@@ -45,17 +47,23 @@ def api(base: str, method: str, path: str, body=None, timeout=60):
     Fail-soft: returns the parsed JSON reply, or None on any failure
     (connection refused, timeout, non-JSON body). An HTTP error's body
     is parsed too — the server sends structured error responses."""
-    data = json.dumps(body).encode() if body else (b"" if method == "POST" else None)
-    hdrs = {"Content-Type": "application/json"} if body else {}
-    req = urllib.request.Request(base + path, data=data, method=method, headers=hdrs)
     try:
-        with _OPENER.open(req, timeout=timeout) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
+        data = (
+            json.dumps(body).encode("utf-8")
+            if body is not None
+            else (b"" if method == "POST" else None)
+        )
+        hdrs = {"Content-Type": "application/json"} if body is not None else {}
+        req = urllib.request.Request(
+            base + path, data=data, method=method, headers=hdrs
+        )
         try:
-            return json.loads(e.read())
-        except Exception:
-            return None
+            response = _OPENER.open(req, timeout=timeout)
+        except urllib.error.HTTPError as error:
+            response = error
+        # HTTPError is also a response: parse and close it through the same path.
+        with response:
+            return json.loads(response.read())
     except Exception:
         return None
 
@@ -65,8 +73,8 @@ def fetch_json(url: str, timeout: float = 60):
     as ``api`` and parse the JSON body. Raises (``OSError`` for
     transport, ``ValueError`` for bad JSON) — for probes that report the
     failure detail rather than failing soft. Not for internet URLs:
-    the opener bypasses env proxies on most platforms and sets no
-    User-Agent — use ``http_get`` for public fetches."""
+    the opener bypasses env proxies on most platforms and keeps urllib's
+    default User-Agent — use ``http_get`` for public fetches."""
     with _OPENER.open(urllib.request.Request(url), timeout=timeout) as r:
         return json.loads(r.read())
 
@@ -89,25 +97,28 @@ def stream(resp, write, label: str, *, progress: bool = True) -> None:
     declared Content-Length: a CDN dropping the connection mid-transfer just
     makes ``read()`` return early with NO error, and the truncated bytes
     would otherwise flow on into decoding/extraction as if complete."""
-    raw = resp.getheader("Content-Length")
-    total = int(raw) if raw and raw.isdigit() else None
+    raw = (resp.getheader("Content-Length") or "").strip()
+    try:
+        total = int(raw) if raw.isascii() and raw.isdigit() else None
+    except ValueError as e:
+        # A numeric length we cannot represent must not silently disable
+        # truncation detection. Let the caller's transport fallback handle it.
+        raise urllib.error.URLError("invalid Content-Length header") from e
     received = 0
-    if not progress or total is None:
+    # width=0 keeps the bar within the terminal. Absurd declared sizes still
+    # undergo the truncation check, but must not overflow the progress display.
+    progress_context = (
+        typer.progressbar(
+            length=total, label=f"{label} ({total / 1048576:.1f} MiB)", width=0
+        )
+        if progress and total is not None and total <= sys.maxsize
+        else nullcontext()
+    )
+    with progress_context as bar:
         for chunk in iter(lambda: resp.read(1 << 16), b""):
             write(chunk)
             received += len(chunk)
-    else:
-        # width=0 auto-fits the bar to the terminal. The default fixed width
-        # (36) plus the label and percent renders an ~80-column line, which
-        # wraps on a default-width window (iTerm2, Terminal); once wrapped,
-        # the redraw's \r only returns to the start of the wrapped row, so
-        # every update spills onto a new line instead of overwriting in place.
-        with typer.progressbar(
-            length=total, label=f"{label} ({total / 1048576:.1f} MiB)", width=0
-        ) as bar:
-            for chunk in iter(lambda: resp.read(1 << 16), b""):
-                write(chunk)
-                received += len(chunk)
+            if bar is not None:
                 bar.update(len(chunk))
     if total is not None and received < total:
         raise urllib.error.ContentTooShortError(

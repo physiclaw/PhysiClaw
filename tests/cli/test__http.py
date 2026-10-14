@@ -3,6 +3,11 @@
 `api`/`fetch_json` are tested at the `_OPENER` seam; `http_get`/`stream`
 directly here (and end-to-end by the download-path tests in
 setup/test_vision and test_sync_official_skills).
+
+Accepted mutation survivors: one-second default timeout changes, diagnostic
+wording/progress style, the approximate MiB display divisor, and hiding the
+bar at exactly sys.maxsize (truncation detection is unchanged). Replacing the
+missing length fallback with nonnumeric text still means unknown length.
 """
 
 from __future__ import annotations
@@ -10,23 +15,20 @@ from __future__ import annotations
 import io
 import json
 import urllib.error
-from unittest.mock import MagicMock
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.cli import _http
 
 BASE = "http://localhost:8048"
 
 
-def _resp(payload: dict | bytes) -> MagicMock:
+def _resp(payload: dict | bytes) -> io.BytesIO:
     """Build a context-manager-compatible urllib response."""
     body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
-    resp = MagicMock()
-    resp.read.return_value = body
-    resp.__enter__ = lambda s: s
-    resp.__exit__ = lambda s, *a: None
-    return resp
+    return io.BytesIO(body)
 
 
 # ---------- api ----------
@@ -157,9 +159,14 @@ class _StreamResp:
     def __init__(self, data: bytes, content_length: str | None = None) -> None:
         self._buf = io.BytesIO(data)
         self._len = content_length
+        self._eof = False
 
     def read(self, n: int = -1) -> bytes:
-        return self._buf.read(n)
+        # Fail immediately if a caller spins on EOF, rather than timing out.
+        assert not self._eof, "read again after EOF"
+        chunk = self._buf.read(n)
+        self._eof = not chunk
+        return chunk
 
     def getheader(self, name: str, default=None):
         if name.lower() == "content-length" and self._len is not None:
@@ -175,7 +182,7 @@ def test_http_get_sets_user_agent(mocker) -> None:
     _http.http_get("https://example.com/x")
 
     req = spy.call_args.args[0]
-    assert req.get_header("User-agent") == _http.USER_AGENT
+    assert req.get_header("User-agent") == "physiclaw"
 
 
 def test_stream_writes_all_bytes_with_known_length() -> None:
@@ -216,3 +223,177 @@ def test_stream_raises_on_truncation_in_quiet_mode_too() -> None:
             "test",
             progress=False,
         )
+
+
+@pytest.mark.parametrize("body", [{}, [], False, 0, ""])
+def test_regression_api_preserves_explicit_empty_json_body(mocker, body):
+    spy = mocker.patch.object(_http._OPENER, "open", return_value=_resp({"ok": True}))
+
+    result = _http.api(BASE, "POST", "/api/x", body=body)
+
+    assert result == {"ok": True}
+    request = spy.call_args.args[0]
+    assert json.loads(request.data) == body
+    assert request.get_header("Content-type") == "application/json"
+
+
+def test_regression_api_malformed_url_fails_softly():
+    result = _http.api("invalid", "GET", "/api/x")
+
+    assert result is None
+
+
+def test_regression_api_unserializable_body_fails_softly(mocker):
+    spy = mocker.patch.object(_http._OPENER, "open")
+
+    result = _http.api(BASE, "POST", "/api/x", body={"bad": object()})
+
+    assert result is None
+    spy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "payload, expected",
+    [(b'{"error":"failed"}', {"error": "failed"}), (b"broken", None)],
+)
+def test_regression_api_closes_http_error_response(mocker, payload, expected):
+    body = io.BytesIO(payload)
+    error = urllib.error.HTTPError(BASE, 500, "failed", None, body)
+    mocker.patch.object(_http._OPENER, "open", side_effect=error)
+
+    result = _http.api(BASE, "GET", "/api/x")
+
+    assert result == expected
+    assert body.closed
+
+
+@pytest.mark.parametrize("progress", [False, True])
+def test_regression_stream_nonnumeric_length_does_not_abort_download(progress):
+    out = bytearray()
+
+    _http.stream(_StreamResp(b"payload", "²"), out.extend, "test", progress=progress)
+
+    assert out == b"payload"
+
+
+@pytest.mark.parametrize("progress", [False, True])
+def test_regression_stream_oversized_integer_raises_transport_error(progress):
+    out = bytearray()
+
+    with pytest.raises(urllib.error.URLError, match="invalid Content-Length"):
+        _http.stream(
+            _StreamResp(b"payload", "9" * 5000), out.extend, "test", progress=progress
+        )
+
+    assert out == b""
+
+
+def test_regression_stream_huge_length_raises_transport_error_after_reading():
+    out = bytearray()
+
+    with pytest.raises(urllib.error.ContentTooShortError, match="retrieval incomplete"):
+        _http.stream(_StreamResp(b"payload", str(10**400)), out.extend, "test")
+
+    assert out == b"payload"
+
+
+@pytest.mark.parametrize(
+    "payload, expected",
+    [(b'{"ok":true}', {"ok": True}), (b"broken", None), (b"\xff", None)],
+)
+def test_api_closes_success_response_even_when_json_is_invalid(
+    mocker, payload, expected
+):
+    response = _resp(payload)
+    spy = mocker.patch.object(_http._OPENER, "open", return_value=response)
+
+    result = _http.api(BASE, "GET", "/api/x", timeout=3.5)
+
+    assert result == expected
+    assert response.closed
+    assert spy.call_args.kwargs["timeout"] == 3.5
+
+
+@pytest.mark.parametrize("exception", [KeyboardInterrupt, SystemExit])
+def test_api_does_not_swallow_process_interruptions(mocker, exception):
+    mocker.patch.object(_http._OPENER, "open", side_effect=exception)
+
+    with pytest.raises(exception):
+        _http.api(BASE, "GET", "/api/x")
+
+
+@pytest.mark.parametrize("size", [0, 1, 65535, 65536, 65537, 131073])
+@pytest.mark.parametrize("progress", [False, True])
+def test_stream_chunk_boundaries_preserve_bytes(size, progress):
+    data = (b"\x00\xff\x01" * size)[:size]
+    chunks = []
+
+    _http.stream(_StreamResp(data, str(size)), chunks.append, "test", progress=progress)
+
+    assert b"".join(chunks) == data
+    assert all(0 < len(chunk) <= 65536 for chunk in chunks)
+
+
+@given(
+    data=st.binary(max_size=3000),
+    missing=st.integers(min_value=1, max_value=100_000),
+    progress=st.booleans(),
+)
+def test_stream_truncation_preserves_received_prefix_and_raises(
+    data, missing, progress
+):
+    out = bytearray()
+    response = _StreamResp(data, str(len(data) + missing))
+
+    with pytest.raises(urllib.error.ContentTooShortError, match="retrieval incomplete"):
+        _http.stream(response, out.extend, "test", progress=progress)
+
+    assert out == data
+
+
+@pytest.mark.parametrize("header", [None, "", "n/a", "-10", "1.5", "١٢"])
+def test_stream_unknown_length_stays_quiet_and_preserves_data(header, capsys):
+    out = bytearray()
+
+    _http.stream(_StreamResp(b"payload", header), out.extend, "download")
+
+    assert out == b"payload"
+    assert capsys.readouterr().out == ""
+
+
+def test_stream_whitespace_length_still_detects_truncation():
+    with pytest.raises(urllib.error.ContentTooShortError, match="7 out of 8 bytes"):
+        _http.stream(_StreamResp(b"payload", " 8 \t"), bytearray().extend, "test")
+
+
+def test_stream_progress_can_be_disabled(capsys):
+    _http.stream(
+        _StreamResp(b"data", "4"), bytearray().extend, "download", progress=False
+    )
+
+    assert capsys.readouterr().out == ""
+
+
+def test_stream_known_length_displays_progress_label(capsys):
+    _http.stream(_StreamResp(b"data", "4"), bytearray().extend, "download")
+
+    assert "download (0.0 MiB)" in capsys.readouterr().out
+
+
+def test_stream_write_failure_reaches_caller():
+    def fail_write(chunk):
+        raise OSError("disk full")
+
+    with pytest.raises(OSError, match="disk full"):
+        _http.stream(_StreamResp(b"data", "4"), fail_write, "download")
+
+
+def test_fetch_json_closes_response_when_parsing_fails(mocker):
+    response = _resp(b"broken")
+    spy = mocker.patch.object(_http._OPENER, "open", return_value=response)
+
+    with pytest.raises(ValueError):
+        _http.fetch_json(BASE, timeout=4.5)
+
+    assert response.closed
+    assert spy.call_args.kwargs["timeout"] == 4.5
