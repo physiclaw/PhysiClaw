@@ -41,6 +41,31 @@ def test_write_text_pins_lf_newlines(tmp_path: Path) -> None:
     assert raw == b"line1\nline2\n"
 
 
+@pytest.mark.parametrize("invalid", ["\ud800", "\udfff", "valid prefix\udc00"])
+def test_regression_write_text_invalid_unicode_preserves_existing_file(
+    tmp_path: Path, invalid: str
+) -> None:
+    path = tmp_path / "state.md"
+    path.write_bytes("保留已有内容\r\n".encode())
+    before = path.read_bytes()
+
+    with pytest.raises(UnicodeEncodeError):
+        write_text(path, invalid)
+
+    assert path.read_bytes() == before
+
+
+def test_regression_write_text_invalid_unicode_does_not_create_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state.md"
+
+    with pytest.raises(UnicodeEncodeError):
+        write_text(path, "\ud800")
+
+    assert not path.exists()
+
+
 @pytest.mark.parametrize("needle", [None, "keep"])
 def test_regression_iter_jsonl_recovers_after_invalid_utf8(tmp_path, needle) -> None:
     path = tmp_path / "events.jsonl"

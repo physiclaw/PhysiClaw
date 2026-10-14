@@ -519,6 +519,26 @@ def test_finish_job_unknown_id_raises(_jobs_path: Path) -> None:
         jobs.finish_job(id="missing", status=STATUS_DONE, recap="r")
 
 
+def test_regression_finish_job_invalid_unicode_preserves_all_jobs(
+    _jobs_path: Path,
+) -> None:
+    _write_jobs(
+        _jobs_path,
+        _job_text(job_id="fired", kind="one-time", status="fired"),
+        _job_text(job_id="pending"),
+    )
+    before = _jobs_path.read_bytes()
+
+    with pytest.raises(UnicodeEncodeError):
+        jobs.finish_job(id="fired", status=STATUS_DONE, recap="invalid \ud800")
+
+    assert _jobs_path.read_bytes() == before
+    assert [(job.id, job.status) for job in job_store.load_jobs()] == [
+        ("fired", "fired"),
+        ("pending", "pend"),
+    ]
+
+
 def test_finish_job_already_terminal_raises(_jobs_path: Path) -> None:
     _write_jobs(
         _jobs_path,

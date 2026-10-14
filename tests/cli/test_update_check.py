@@ -159,9 +159,11 @@ def test_write_cache_swallows_oserror(
     physiclaw_home: Path,
     mocker,
 ) -> None:
-    mocker.patch.object(Path, "write_text", side_effect=OSError("read-only"))
-    # Must not raise.
+    write = mocker.patch.object(uc, "write_text", side_effect=OSError("read-only"))
+
     uc._write_cache("9.9.9")
+
+    write.assert_called_once()
 
 
 # ---------- _resolve_latest: cache vs. network ----------

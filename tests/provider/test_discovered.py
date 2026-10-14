@@ -119,7 +119,9 @@ def test_save_swallows_oserror_and_logs_warning(
     mocker,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    mocker.patch.object(Path, "write_text", side_effect=OSError("disk full"))
+    mocker.patch.object(
+        discovered, "write_json_atomic", side_effect=OSError("disk full")
+    )
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.provider.discovered"):
         # Must not raise.

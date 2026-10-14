@@ -240,12 +240,24 @@ def test_regression_dump_directory_failure_does_not_escape(
     mkdir.assert_called_once()
 
 
-@pytest.mark.parametrize("operation", ["write_text", "write_bytes"])
-def test_dump_tool_pair_write_failure_is_nonfatal(
-    operation, fake_dirs, monkeypatch, mocker
+def test_dump_tool_pair_text_failure_is_nonfatal(
+    fake_dirs, monkeypatch, mocker
 ) -> None:
     monkeypatch.setenv("PHYSICLAW_SAVE_TOOL_CALLS", "1")
-    write = mocker.patch.object(Path, operation, side_effect=OSError("disk full"))
+    write = mocker.patch.object(dumps, "write_text", side_effect=OSError("disk full"))
+
+    dumps.save_tool_call("peek", "text", b"image")
+
+    write.assert_called_once()
+
+
+def test_dump_tool_pair_image_failure_is_nonfatal(
+    fake_dirs, monkeypatch, mocker
+) -> None:
+    monkeypatch.setenv("PHYSICLAW_SAVE_TOOL_CALLS", "1")
+    # Let the text phase succeed so the failure exercises the image write.
+    mocker.patch.object(dumps, "write_text")
+    write = mocker.patch.object(Path, "write_bytes", side_effect=OSError("disk full"))
 
     dumps.save_tool_call("peek", "text", b"image")
 
