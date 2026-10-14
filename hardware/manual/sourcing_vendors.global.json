@@ -981,32 +981,32 @@
   },
   {
     "part_id": "hex-key",
-    "ref": "¥10",
+    "ref": "$5",
     "suppliers": [
       {
-        "name": "SATA",
-        "product": "Short flat-end, 2/3/5 mm",
-        "url": "https://detail.tmall.com/item.htm?id=718483830822&skuId=5976740613168"
+        "name": "LAOA",
+        "product": "Flat head hex, 2/3/5 mm",
+        "url": "https://www.aliexpress.us/item/3256806007023572.html"
       },
       {
-        "name": "Greener",
-        "product": "T-handle flat-end, 2/3/5 mm",
-        "url": "https://detail.tmall.com/item.htm?id=557514119321&skuId=4614839901621"
+        "name": "Ehomedreams",
+        "product": "2/3/5 mm",
+        "url": "https://www.aliexpress.us/item/3256804987807378.html"
       },
       {
-        "name": "EIGHT",
-        "product": "Standard length, 2/3/5 mm",
-        "url": "https://detail.tmall.com/item.htm?id=605719869164&skuId=4417109167397"
+        "name": "BL Tools",
+        "product": "2/3/5 mm",
+        "url": "https://www.aliexpress.us/item/3256809943537745.html"
       }
     ],
     "note": "You need 3 hex keys. Buy good-quality 2 mm and 3 mm keys, which you use most. A basic 5 mm key is enough."
   },
   {
     "part_id": "grease",
-    "ref": "¥10",
+    "ref": "$2",
     "suppliers": [
       {
-        "name": "BKD",
+        "name": "TGCF",
         "product": "White, 268 °C, 350 g (buy 3 get 1 free)",
         "url": "https://detail.tmall.com/item.htm?id=535528431778&skuId=3246189537196"
       },
