@@ -201,6 +201,8 @@ def _records(path: Path, src: str) -> list[dict[str, Any]]:
     the sort key: the record's own stamp, or its predecessor's for a
     line without one, so it keeps its place in the file."""
     out: list[dict[str, Any]] = []
+    if not _session_file(path, path.parent):
+        return out
     at = ""
     try:
         with path.open(encoding="utf-8", errors="backslashreplace") as f:
@@ -275,7 +277,7 @@ def _inventory(session_dir: Path) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     for p in sorted(session_dir.rglob("*")):
         try:
-            if p.is_file() and p.name != VIEWER_FILE:
+            if p.name != VIEWER_FILE and _session_file(p, session_dir):
                 files.append(
                     {
                         "name": p.relative_to(session_dir).as_posix(),
@@ -288,10 +290,20 @@ def _inventory(session_dir: Path) -> list[dict[str, Any]]:
 
 
 def _read(path: Path) -> str:
+    if not _session_file(path, path.parent):
+        return ""
     try:
         return path.read_text(encoding="utf-8", errors="backslashreplace")
     except OSError:
         return ""
+
+
+def _session_file(path: Path, directory: Path) -> bool:
+    """Keep recorded content inside its directory, including resolved aliases."""
+    try:
+        return path.resolve().is_relative_to(directory.resolve()) and path.is_file()
+    except (OSError, ValueError, RuntimeError):
+        return False
 
 
 __all__ = ["VIEWER_FILE", "load", "recent", "render", "write"]

@@ -497,6 +497,66 @@ def test_regression_invalid_narrative_utf8_is_still_readable(tmp_path, filename)
     assert model["narrative"][filename] == r"prefix \xff suffix"
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "events.jsonl",
+        "wire.jsonl",
+        "notes.md",
+        "runtime.log",
+        "mcp.log",
+        "summary.json",
+    ],
+)
+def test_regression_viewer_does_not_read_artifact_links_outside_session(
+    tmp_path, filename
+):
+    session = tmp_path / "recording"
+    session.mkdir()
+    outside = tmp_path / "private.txt"
+    outside.write_text('{"event":"other","secret":"PRIVATE_MARKER"}\n')
+    (session / filename).symlink_to(outside)
+
+    model = viewer.load(session)
+
+    assert "PRIVATE_MARKER" not in json.dumps(model)
+    assert model["files"] == []
+
+
+def test_viewer_keeps_artifact_links_within_the_selected_session(tmp_path):
+    (tmp_path / "actual.txt").write_text("retained narrative")
+    (tmp_path / "notes.md").symlink_to("actual.txt")
+
+    model = viewer.load(tmp_path)
+
+    assert model["narrative"]["notes.md"] == "retained narrative"
+    assert {row["name"] for row in model["files"]} == {"actual.txt", "notes.md"}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("unreadable path"),
+        RuntimeError("symlink loop"),
+        ValueError("invalid path"),
+    ],
+)
+def test_viewer_skips_files_when_their_location_cannot_be_verified(
+    tmp_path, mocker, error
+):
+    (tmp_path / "events.jsonl").write_text(
+        '{"event":"other","secret":"PRIVATE_MARKER"}\n'
+    )
+    (tmp_path / "notes.md").write_text("PRIVATE_MARKER")
+    mocker.patch.object(Path, "resolve", side_effect=error)
+
+    model = viewer.load(tmp_path)
+
+    assert "PRIVATE_MARKER" not in json.dumps(model)
+    assert model["groups"] == []
+    assert model["files"] == []
+
+
 @pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_regression_nonfinite_record_stays_visible_as_unparsed_text(tmp_path, number):
     line = '{"event":"usage","input":' + number + "}"
