@@ -894,22 +894,22 @@
   },
   {
     "part_id": "shim-5x8x0_5",
-    "ref": "¥3",
+    "ref": "$1",
     "suppliers": [
       {
-        "name": "Bairuite",
-        "product": "Ø5×8×0.5 mm (200-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=941703196459&skuId=5839868929269"
+        "name": "TINGGOO",
+        "product": "100pcs M5x8, 0.5mm thick",
+        "url": "https://www.aliexpress.us/item/3256804251858880.html"
       },
       {
-        "name": "Guwanji",
-        "product": "Ø5×8×0.5 mm (100-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=867766340538&skuId=5863163199025"
+        "name": "HZYUEGOU",
+        "product": "50pcs M5x8xThick, thick 0.5mm",
+        "url": "https://www.aliexpress.us/item/3256801859874107.html"
       },
       {
-        "name": "Jianaite",
-        "product": "Ø5×8×0.5 mm (100-pack)",
-        "url": "https://detail.tmall.com/item.htm?id=597917653553&skuId=5919206455674"
+        "name": "Michastu",
+        "product": "100pcs M5x8xThick, thick 0.5mm",
+        "url": "https://www.aliexpress.us/item/3256801735954243.html"
       }
     ]
   },
