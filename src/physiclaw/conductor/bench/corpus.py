@@ -100,12 +100,19 @@ def write_corpus(path: Path, items: list[CorpusItem]) -> None:
 
 def read_corpus(path: Path) -> list[CorpusItem]:
     out: list[CorpusItem] = []
-    for n, line in enumerate(read_text(path).splitlines(), 1):
+    # JSON strings may contain Unicode line separators; only LF ends a record.
+    for n, line in enumerate(read_text(path).split("\n"), 1):
         if not line.strip():
             continue
         try:
             rec = json.loads(line)
-            out.append(CorpusItem(label=str(rec["label"]), listing=str(rec["listing"])))
-        except (ValueError, KeyError) as e:
+            if (
+                not isinstance(rec, dict)
+                or not isinstance(rec.get("label"), str)
+                or not isinstance(rec.get("listing"), str)
+            ):
+                raise ValueError("expected an object with string label and listing")
+            out.append(CorpusItem(label=rec["label"], listing=rec["listing"]))
+        except ValueError as e:
             raise ValueError(f"{path}:{n}: bad corpus line ({e})") from e
     return out
