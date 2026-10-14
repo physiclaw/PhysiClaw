@@ -7,8 +7,8 @@ module:
   - creates new jobs when the model's response includes `create_job`.
 
 Outcome marking is the agent's responsibility via `finish_job` — there
-is no engine-side fallback. Jobs forgotten in `fired` status remain
-there until the agent explicitly closes them.
+is no engine-side fallback. The cron hook expires forgotten `fired`
+jobs after the configured timeout: one-time jobs fail; periodic jobs re-arm.
 
 Data model + jobs.md I/O lives in `physiclaw.agent.engine.job_store`. The hook
 that actually ticks and fires is `physiclaw.agent.hooks.cron`.
@@ -107,7 +107,7 @@ def create_job(
     shorter than 10 chars. Multi-line description/context/schedule are
     folded to one line (see `job_store.one_line`) rather than rejected.
     """
-    if not ID_RE.match(id):
+    if not ID_RE.fullmatch(id):
         raise ValueError(f"invalid job id {id!r} (lowercase + digits + hyphens)")
     if kind not in (KIND_ONE_TIME, KIND_PERIODIC):
         raise ValueError(f"kind must be one-time or periodic, got {kind!r}")

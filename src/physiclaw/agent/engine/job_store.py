@@ -9,11 +9,12 @@ outcomes). This module holds:
 - `validate_schedule` / `matches_now` / `next_fire` / `find_due` — cron helpers
 - `purge_stale` — housekeeping for terminal jobs older than `[retention] trace_days`
 
-See `.claude/skills/cron/SKILL.md` for the full format spec and workflows.
+See `src/physiclaw/agent/claude/skills/jobs/SKILL.md` for the job workflows.
 
 Schedule syntax: standard 5-field cron (min hour dom mon dow). Supports `*`,
 `N`, `N,M`, `*/N`, `A-B`. Day-of-week: 0=Sun, 6=Sat. All times are naive
-local time, ISO 8601 truncated to minute.
+local time, ISO 8601 truncated to minute. Existing timestamps with explicit
+UTC offsets are converted to local time for validation and comparisons.
 """
 
 import datetime as dt
@@ -22,7 +23,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from croniter import croniter
+from croniter import CroniterError, croniter
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
@@ -42,7 +43,7 @@ _HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 # required so a description line that happens to contain a colon is
 # never confused with a field.
 _FIELD_RE = re.compile(r"^\s*-\s+([A-Z][A-Za-z ]*?)\s*:\s*(.*)$")
-_KNOWN_FIELDS = {
+_REQUIRED_FIELDS = {
     "Type",
     "Status",
     "Schedule",
@@ -104,8 +105,8 @@ def load_jobs(path: Path | None = None) -> list[Job]:
 
     for i in range(1, len(parts), 2):
         heading = parts[i].strip()
-        body = parts[i + 1] if i + 1 < len(parts) else ""
-        if not ID_RE.match(heading):
+        body = parts[i + 1]
+        if not ID_RE.fullmatch(heading):
             continue  # documentation section
         description, fields = _parse_section(heading, body)
         if not fields:
@@ -148,30 +149,20 @@ def load_jobs(path: Path | None = None) -> list[Job]:
         next_raw = fields["Next fire time"].strip()
         next_fire_time = "" if next_raw in _NEVER_VALUES else next_raw
 
-        # Validate Next fire time based on status.
-        if status == STATUS_PEND:
-            if not next_fire_time:
-                raise ValueError(f"{heading}: Next fire time is required for pend jobs")
-            try:
-                nft = dt.datetime.fromisoformat(next_fire_time)
-            except (ValueError, TypeError) as e:
+        if status == STATUS_PEND and not next_fire_time:
+            raise ValueError(f"{heading}: Next fire time is required for pend jobs")
+        if next_fire_time:
+            nft = _parse_minute(next_fire_time)
+            if nft is None:
                 raise ValueError(
                     f"{heading}: Next fire time {next_raw!r} is not a "
                     f"valid ISO timestamp"
-                ) from e
-            if not matches_now(schedule, nft):
+                )
+            if status == STATUS_PEND and not matches_now(schedule, nft):
                 raise ValueError(
                     f"{heading}: Next fire time {next_fire_time} does "
                     f"not match Schedule {schedule!r}"
                 )
-        elif next_fire_time:
-            try:
-                dt.datetime.fromisoformat(next_fire_time)
-            except (ValueError, TypeError) as e:
-                raise ValueError(
-                    f"{heading}: Next fire time {next_raw!r} is not a valid "
-                    f"ISO timestamp"
-                ) from e
 
         seen_ids.add(heading)
         jobs.append(
@@ -191,19 +182,6 @@ def load_jobs(path: Path | None = None) -> list[Job]:
     return jobs
 
 
-_REQUIRED_FIELDS = {
-    "Type",
-    "Schedule",
-    "Context",
-    "Create time",
-    "Next fire time",
-    "Last fire time",
-    "Execution time",
-    "Execution result",
-    "Status",
-}
-
-
 def _parse_section(heading: str, body: str) -> tuple[str, dict[str, str]]:
     """Parse a job section: description line + field list.
 
@@ -220,7 +198,7 @@ def _parse_section(heading: str, body: str) -> tuple[str, dict[str, str]]:
     start = 0
     first = lines[0].strip()
     m = _FIELD_RE.match(first)
-    if not m or m.group(1).strip() not in _KNOWN_FIELDS:
+    if not m or m.group(1).strip() not in _REQUIRED_FIELDS:
         description = first
         start = 1
 
@@ -228,7 +206,7 @@ def _parse_section(heading: str, body: str) -> tuple[str, dict[str, str]]:
     unexpected: list[str] = []
     for line in lines[start:]:
         m = _FIELD_RE.match(line.rstrip())
-        if m and m.group(1).strip() in _KNOWN_FIELDS:
+        if m and m.group(1).strip() in _REQUIRED_FIELDS:
             fields.setdefault(m.group(1).strip(), m.group(2).strip())
         else:
             unexpected.append(line.strip())
@@ -252,8 +230,19 @@ def _parse_section(heading: str, body: str) -> tuple[str, dict[str, str]]:
 
 
 def validate_schedule(schedule: str) -> None:
-    if not croniter.is_valid(schedule):
-        raise ValueError(f"invalid cron expression: {schedule!r}")
+    """Require a deterministic five-field schedule that survives a reload."""
+    error = (
+        f"invalid cron expression: {schedule!r} "
+        "(expected a deterministic 5-field schedule)"
+    )
+    # Expand aliases such as @daily before counting fields. Extra fields
+    # exceed the five-field contract; random R fields change on reload.
+    try:
+        fields, _ = croniter.expand(schedule)
+    except CroniterError as exc:
+        raise ValueError(error) from exc
+    if len(fields) != 5 or re.search(r"\br\b", schedule, re.IGNORECASE):
+        raise ValueError(error)
 
 
 def matches_now(schedule: str, now: dt.datetime) -> bool:
@@ -293,12 +282,15 @@ def min_fire_gap(
 
 
 def _parse_minute(ts_str: str) -> dt.datetime | None:
-    """ISO-minute timestamp → datetime, or None on empty / garbage."""
+    """ISO timestamp → naive local datetime, or None on empty / garbage."""
     if not ts_str:
         return None
     try:
-        return dt.datetime.fromisoformat(ts_str)
-    except ValueError:
+        timestamp = dt.datetime.fromisoformat(ts_str)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.astimezone().replace(tzinfo=None)
+        return timestamp
+    except (ValueError, OverflowError):
         return None
 
 
@@ -352,7 +344,7 @@ def parses_as_field(line: str) -> bool:
     the first occurrence), poisoning e.g. Status for the whole section.
     `create_job` rejects such descriptions instead of rewriting them."""
     m = _FIELD_RE.match(line)
-    return bool(m and m.group(1).strip() in _KNOWN_FIELDS)
+    return bool(m and m.group(1).strip() in _REQUIRED_FIELDS)
 
 
 # ---------- in-place field updates ----------
@@ -370,7 +362,7 @@ def _update_field(text: str, job_id: str, field_name: str, value: str) -> str:
     # `[^\n]*` for the trailing line — `.*` would be greedy across
     # newlines under DOTALL and eat the rest of the file.
     pattern = re.compile(
-        rf"(^##\s+{re.escape(job_id)}\s*$\n(?:(?!^##\s).)*?)^(\s*-\s+){re.escape(field_name)}:[^\n]*",
+        rf"(^##\s+{re.escape(job_id)}\s*$\n(?:(?!^##\s).)*?)^(\s*-\s+){re.escape(field_name)}[^\S\n]*:[^\n]*",
         re.MULTILINE | re.DOTALL,
     )
     new_text, count = pattern.subn(

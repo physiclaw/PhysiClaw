@@ -18,13 +18,8 @@ boundary monkeypatch the module attribute to a known value.
 Accepted equivalent / unreachable mutants (cannot be killed by
 behavior tests at the module's public surface):
 
-  - `_NEVER_VALUES = {"", …}` ↔ `{"XXXX", …}` — the empty-string member
-    is unreachable: post-strip field values are either nonempty or
-    one of the (never)-ish literals; "" never appears in input.
-  - `body = parts[i+1] if i+1 < len(parts) else ""` mutations
-    (i+1<len → i-1<len, i+1<=len, else "XXXX") — the else branch is
-    dead code because `re.split` with a capturing group always returns
-    a list of length 2n+1; the loop's last `i+1` is `len-1 < len`.
+  - `_NEVER_VALUES = {"", …}` ↔ `{"XXXX", …}` — an empty field stays
+    empty whether it matches this member or passes through unchanged.
   - `description = ""` ↔ `None` / `start = 0` ↔ `None` — both are
     overwritten before use along every code path that depends on them.
   - `return "", {}` ↔ `return "XXXX", {}` — caller checks
@@ -34,9 +29,6 @@ behavior tests at the module's public surface):
     match for any field name; both produce the same output.
   - `strip("`")` ↔ `strip("XX`XX")` — schedule values don't contain
     X characters at the edges.
-  - `_latest_timestamp` ValueError `continue` ↔ `break` — only two
-    fields are tried; both control flows reach the post-loop
-    `return None` with identical state.
   - `now.replace(second=0, microsecond=0)` ↔ `second=1` /
     `microsecond=1` (matches_now) — `croniter.match` operates at
     minute granularity and ignores sub-minute fields entirely.
@@ -48,6 +40,10 @@ behavior tests at the module's public surface):
     inter-section whitespace up to the next heading, so post-removal
     text never actually contains triple+ blank lines and the cleanup
     is defensive only.
+
+The scheduled-job hardening mutation pass accepts decorations around the
+new "expected a deterministic 5-field schedule" error hint. Rejection
+and the actionable error prefix are covered without pinning cosmetic text.
 """
 
 from __future__ import annotations
@@ -59,6 +55,8 @@ from textwrap import dedent
 
 import pytest
 from freezegun import freeze_time
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.agent.engine import job_store
 from physiclaw.agent.engine.job_store import (
@@ -708,6 +706,109 @@ def test_update_fields_replaces_named_field_value(tmp_path: Path) -> None:
     assert re.search(r"^- Status: fired$", text, re.MULTILINE)
     # Other fields untouched.
     assert "- Type: periodic" in text
+
+
+@pytest.mark.parametrize("spacing", [" ", "\t", " \t "])
+def test_regression_update_fields_accepts_parser_field_spacing(
+    tmp_path: Path, spacing: str
+) -> None:
+    section = _job_section(job_id="target").replace("- Status:", f"- Status{spacing}:")
+    other = _job_section(job_id="untouched")
+    p = _write_jobs(tmp_path, section, other)
+    assert load_jobs(p)[0].status == STATUS_PEND
+
+    update_fields(p, {"target": {"Status": STATUS_DONE}})
+
+    assert load_jobs(p)[0].status == STATUS_DONE
+    assert p.read_text().endswith(other)
+
+
+@pytest.mark.parametrize("offset_hours", [-12, 14])
+def test_regression_offset_next_fire_matches_local_schedule_and_due_time(
+    tmp_path: Path, offset_hours: int
+) -> None:
+    local_fire = dt.datetime(2026, 4, 29, 7)
+    offset = dt.timezone(dt.timedelta(hours=offset_hours))
+    stamp = local_fire.astimezone(offset).isoformat(timespec="minutes")
+    p = _write_jobs(tmp_path, _job_section(next_fire_time=stamp))
+
+    loaded = load_jobs(p)
+
+    assert find_due(loaded, local_fire - dt.timedelta(minutes=1)) == []
+    assert find_due(loaded, local_fire) == loaded
+
+
+@pytest.mark.parametrize("status", [STATUS_FIRED, STATUS_DONE])
+def test_regression_offset_next_fire_is_readable_for_nonpending_jobs(
+    tmp_path: Path, status: str
+) -> None:
+    p = _write_jobs(
+        tmp_path, _job_section(status=status, next_fire_time="2026-04-29T07:00Z")
+    )
+
+    loaded = load_jobs(p)
+
+    assert loaded[0].status == status
+    assert find_due(loaded, dt.datetime(2026, 4, 30)) == []
+
+
+@pytest.mark.parametrize("age_minutes, expected", [(1439, []), (1440, ["fired"])])
+def test_regression_expire_fired_jobs_with_offset_timestamps(
+    tmp_path: Path, age_minutes: int, expected: list[str]
+) -> None:
+    now = dt.datetime(2026, 4, 29, 7)
+    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.timezone.utc)
+    p = _write_jobs(
+        tmp_path,
+        _job_section(
+            job_id="fired",
+            kind="one-time",
+            status=STATUS_FIRED,
+            next_fire_time=NEVER,
+            last_fire_time=stamp.isoformat(timespec="minutes"),
+        ),
+    )
+
+    expired = expire_stale_fired(now=now, path=p)
+
+    assert expired == expected
+
+
+@pytest.mark.parametrize("field", ["execution_time", "last_fire_time"])
+@pytest.mark.parametrize("age_minutes, expected", [(43199, []), (43200, ["terminal"])])
+def test_regression_purge_respects_age_of_offset_activity_timestamps(
+    tmp_path: Path, field: str, age_minutes: int, expected: list[str]
+) -> None:
+    now = dt.datetime(2026, 4, 29, 7)
+    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.timezone.utc)
+    p = _write_jobs(
+        tmp_path,
+        _job_section(
+            job_id="terminal",
+            status=STATUS_DONE,
+            **{field: stamp.isoformat(timespec="minutes")},
+        ),
+    )
+
+    purged = purge_stale(p, now=now)
+
+    assert purged == expected
+
+
+@given(minute=st.integers(0, 59), hour=st.integers(0, 23))
+def test_daily_schedule_next_fire_survives_minute_serialization(
+    minute: int, hour: int
+) -> None:
+    schedule = f"{minute} {hour} * * *"
+    now = dt.datetime(2026, 4, 29, 7, 23, 42)
+
+    validate_schedule(schedule)
+    firing = next_fire(schedule, now)
+    restored = dt.datetime.fromisoformat(format_minute(firing))
+
+    assert restored > now
+    assert matches_now(schedule, restored)
+    assert restored == firing
 
 
 def test_update_fields_with_empty_dict_is_noop(tmp_path: Path) -> None:

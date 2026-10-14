@@ -197,6 +197,64 @@ def test_create_job_invalid_schedule_raises() -> None:
         )
 
 
+@pytest.mark.parametrize("job_id", ["x\n", "x\r\n", "x\u2028", " x", "x "])
+def test_regression_create_job_rejects_ids_that_change_on_reload(
+    _jobs_path: Path, job_id: str
+) -> None:
+    _write_jobs(_jobs_path, _job_text(job_id="x"))
+    before = _jobs_path.read_bytes()
+
+    with pytest.raises(ValueError, match="invalid job id"):
+        jobs.create_job(
+            id=job_id,
+            description="Reject a noncanonical id",
+            schedule="0 9 * * *",
+            context="Keep the existing job readable",
+        )
+
+    assert _jobs_path.read_bytes() == before
+    assert [job.id for job in job_store.load_jobs()] == ["x"]
+
+
+@pytest.mark.parametrize(
+    "schedule",
+    ["* * * * * 30", "0 9 * * * 0 2027", "R 9 * * *", "0 9 * * r", "r(0-15) 9 * * *"],
+)
+def test_regression_create_job_rejects_unsupported_cron_before_writing(
+    _jobs_path: Path, schedule: str
+) -> None:
+    with pytest.raises(ValueError, match="invalid cron expression"):
+        jobs.create_job(
+            id="unsupported",
+            description="Reject schedules that cannot round trip",
+            schedule=schedule,
+            context="Use deterministic minute-based schedules",
+        )
+
+    assert not _jobs_path.exists()
+
+
+@pytest.mark.parametrize("schedule", ["@daily", "@hourly", "0 7 * MAR THU"])
+def test_create_job_preserves_deterministic_aliases_and_named_fields(
+    _jobs_path: Path, schedule: str
+) -> None:
+    with freeze_time("2026-04-28T14:30:00"):
+        jobs.create_job(
+            id="compatible",
+            description="Keep supported cron syntax",
+            schedule=schedule,
+            context="Existing deterministic schedules stay readable",
+        )
+
+    loaded = job_store.load_jobs()
+
+    assert len(loaded) == 1
+    assert loaded[0].schedule == schedule
+    assert job_store.matches_now(
+        schedule, dt.datetime.fromisoformat(loaded[0].next_fire_time)
+    )
+
+
 def test_create_job_short_context_raises() -> None:
     with pytest.raises(ValueError, match=r"^context must be at least 10 characters$"):
         jobs.create_job(
