@@ -228,7 +228,7 @@ def test_studio_rejects_invalid_listening_ports(launched, port):
     result = runner.invoke(app, ["--review", "--port", port, "--no-open"])
 
     assert result.exit_code == 2
-    assert "--port" in result.output
+    assert "--port" in typer.unstyle(result.output)
     assert launched == []
 
 
