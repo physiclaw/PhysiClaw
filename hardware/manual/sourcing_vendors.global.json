@@ -74,15 +74,153 @@
     "suppliers": [
       {
         "name": "JLC3DP",
-        "url": "https://jlc3dp.com/3d-printing-quote"
+        "url": "https://jlc3dp.com/3d-printing-quote",
+        "product": "MJF · PA12-HP Nylon",
+        "details": {
+          "label": "Ordering details",
+          "heading": "Ordering from JLC3DP",
+          "steps": [
+            {
+              "title": "Specifications",
+              "text": "Select all parts and click <strong>Batch Edit</strong>.",
+              "settings": [
+                {
+                  "label": "3D Technology",
+                  "value": "MJF (Nylon)"
+                },
+                {
+                  "label": "Material",
+                  "value": "PA12-HP Nylon"
+                },
+                {
+                  "label": "Color",
+                  "value": "Natural Gray"
+                },
+                {
+                  "label": "Surface Finish",
+                  "value": "No"
+                },
+                {
+                  "label": "Thread",
+                  "value": "No"
+                },
+                {
+                  "label": "Product Desc",
+                  "value": "Connectors、Brackets、fasteners Category -> Plastic Connectors - HS Code 392690"
+                }
+              ]
+            },
+            {
+              "title": "Quantities",
+              "text": "Order 2 of each part with the filename suffix _x2 and 1 of each remaining part: 11 parts total."
+            }
+          ],
+          "title": "Ordering from JLC3DP"
+        }
       },
       {
         "name": "PCBWay",
-        "url": "https://www.pcbway.com/rapid-prototyping/"
+        "url": "https://www.pcbway.com/rapid-prototyping/",
+        "product": "MJF · HP-PA-12",
+        "details": {
+          "label": "Ordering details",
+          "title": "Ordering from PCBWay",
+          "heading": "Ordering from PCBWay",
+          "steps": [
+            {
+              "title": "Specifications",
+              "text": "Apply these settings to all parts.",
+              "settings": [
+                {
+                  "label": "Design Units",
+                  "value": "mm"
+                },
+                {
+                  "label": "Material",
+                  "value": "Nylon"
+                },
+                {
+                  "label": "Type of Nylon",
+                  "value": "HP-PA-12"
+                },
+                {
+                  "label": "Material Color",
+                  "value": "Dark black (spray paint)"
+                },
+                {
+                  "label": "Process",
+                  "value": "MJF"
+                },
+                {
+                  "label": "Surface finish",
+                  "value": "Leave blank"
+                },
+                {
+                  "label": "Threads and Tapped Holes / Inserts / Parts assembly",
+                  "value": "No"
+                },
+                {
+                  "label": "Product Desc",
+                  "value": "Irregular Shape Category → Plastic Bracket (HSCode:392690)"
+                }
+              ]
+            },
+            {
+              "title": "Quantities",
+              "text": "Order 2 of each part with the filename suffix _x2 and 1 of each remaining part: 11 parts total."
+            }
+          ]
+        }
       },
       {
         "name": "Xometry",
-        "url": "https://www.xometry.com/capabilities/3d-printing-service/"
+        "url": "https://www.xometry.com/capabilities/3d-printing-service/",
+        "product": "MJF · Nylon 12",
+        "details": {
+          "label": "Ordering details",
+          "title": "Ordering from Xometry",
+          "heading": "Ordering from Xometry",
+          "steps": [
+            {
+              "title": "Specifications",
+              "text": "Open <strong>Edit Configuration</strong> for each part.",
+              "settings": [
+                {
+                  "label": "Process",
+                  "value": "Plastic 3D Printing"
+                },
+                {
+                  "label": "Technology",
+                  "value": "HP Multi Jet Fusion (MJF)"
+                },
+                {
+                  "label": "Material",
+                  "value": "Nylon 12, Gray"
+                },
+                {
+                  "label": "Color",
+                  "value": "As Printed, Grey (Natural)"
+                },
+                {
+                  "label": "Finish",
+                  "value": "Standard"
+                },
+                {
+                  "label": "Inspection",
+                  "value": "Standard Inspection"
+                },
+                {
+                  "label": "Threads and Tapped Holes / Inserts",
+                  "value": "Unchecked"
+                }
+              ]
+            },
+            {
+              "title": "Quantities",
+              "text": "Order 2 of each part with the filename suffix _x2 and 1 of each remaining part: 11 parts total."
+            }
+          ]
+        }
       }
     ],
     "note": "<a href=\"https://github.com/physiclaw/PhysiClaw/releases/latest/download/physiclaw_custom_parts.zip\">Download the STEP files</a> and unzip. Upload the STEP files for an online quote. Follow the included print guide."

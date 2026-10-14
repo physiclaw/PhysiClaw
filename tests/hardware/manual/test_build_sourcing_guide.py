@@ -323,6 +323,27 @@ def test_supplier_without_details_has_no_dialog_action():
     )
 
 
+def test_supplier_steps_render_settings_without_a_parts_table():
+    details = {
+        "heading": "Order parts",
+        "steps": [
+            {
+                "title": {"en": "Set <options>", "zh": "设置"},
+                "text": "Click <strong>Batch Edit</strong>.",
+                "settings": [{"label": "Material & color", "value": "PA12 <gray>"}],
+            }
+        ],
+    }
+    rendered = bsg.render_supplier_guide_body(details, "en")
+    assert '<ol class="guide-steps">' in rendered
+    assert "Set &lt;options&gt;" in rendered
+    assert '<th scope="row">Material &amp; color</th>' in rendered
+    assert "PA12 &lt;gray&gt;" in rendered
+    assert "Click <strong>Batch Edit</strong>." in rendered
+    assert "guide-parts" not in rendered
+    assert "设置" in bsg.render_supplier_guide_body(details, "zh")
+
+
 @pytest.mark.parametrize("guide_lang", ["en", "zh"])
 @pytest.mark.parametrize("ditto", ["Ditto", ["Ditto", "Ditto"]])
 @pytest.mark.parametrize(

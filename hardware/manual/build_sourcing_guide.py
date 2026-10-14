@@ -27,8 +27,10 @@ adds the sourcing columns of the table — all optional:
   Localizable values take ``{"en":…,"zh":…}``; plain strings show in both
   languages. Optional ``details`` opens a dialog with ``label`` (trigger),
   ``title`` (accessible name), ``heading``, ``instructions`` (trusted inline
-  HTML, like notes), and ``parts``. Each part has ``part_number``, ``qty`` and
-  ``description``; the renderer builds the table and part-number copy controls;
+  HTML, like notes), and optional ``parts`` or ``steps``. Each part has
+  ``part_number``, ``qty`` and ``description``; the renderer builds the table
+  and part-number copy controls. Steps have ``title``, inline-HTML ``text``,
+  and optional ``settings`` (``label`` / ``value`` pairs);
 - ``note`` — 备注: a free remark column at the table's end (missing -> em
   dash). Notes are prose and emitted as trusted HTML, the manual's
   convention for content strings (inline ``<a>`` is fine); data fields
@@ -413,8 +415,27 @@ def render_supplier_cell(
 
 def render_supplier_guide_body(details: dict, lang: str) -> str:
     """Render structured ordering details, escaping data and preserving inline prose."""
+    body = f"<h3>{html.escape(loc(details['heading'], lang))}</h3>\n"
+    if details.get("instructions"):
+        body += f"<p>{loc(details['instructions'], lang)}</p>\n"
+    if details.get("steps"):
+        body += '<ol class="guide-steps">'
+        for step in details["steps"]:
+            body += (
+                f"<li><h4>{html.escape(loc(step['title'], lang))}</h4>"
+                f"<p>{loc(step['text'], lang)}</p>"
+            )
+            settings_rows = "".join(
+                f'<tr><th scope="row">{html.escape(loc(setting["label"], lang))}</th>'
+                f"<td>{html.escape(loc(setting['value'], lang))}</td></tr>"
+                for setting in step.get("settings", [])
+            )
+            if settings_rows:
+                body += f'<table class="guide-settings"><tbody>{settings_rows}</tbody></table>'
+            body += "</li>"
+        body += "</ol>"
     rows = []
-    for part in details["parts"]:
+    for part in details.get("parts", []):
         number = part["part_number"]
         description = html.escape(loc(part["description"], lang))
         qty = html.escape(str(part["qty"]))
@@ -425,9 +446,9 @@ def render_supplier_guide_body(details: dict, lang: str) -> str:
             f'<div class="guide-spec">{description}</div></td>'
             f'<td><span class="guide-qty">{qty}</span></td></tr>'
         )
-    return (
-        f"<h3>{html.escape(loc(details['heading'], lang))}</h3>\n"
-        f"<p>{loc(details['instructions'], lang)}</p>\n"
+    if not rows:
+        return body
+    return body + (
         '<table class="guide-parts"><thead><tr>'
         f'<th scope="col">{ui("th_guide_part", lang)}</th>'
         f'<th scope="col">{ui("th_qty", lang)}</th></tr></thead><tbody>\n'
