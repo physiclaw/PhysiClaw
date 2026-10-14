@@ -1,11 +1,21 @@
-"""Tests for `physiclaw.cli.status`."""
+"""Status snapshot tests through the public command.
+
+Mutation review accepts display prose/decoration variants; readiness colors,
+metadata errors, file types, reported sizes and continuation are asserted.
+"""
 
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, example, given, settings
+from hypothesis import strategies as st
+from typer.testing import CliRunner
+
+from physiclaw.cli import app
 
 status_mod = importlib.import_module("physiclaw.cli.status")
 status = status_mod.status
@@ -259,3 +269,159 @@ def test_status_suppresses_doctor_hint_on_pipe(
     out = capsys.readouterr().out
 
     assert "physiclaw doctor" not in out
+
+
+@pytest.mark.parametrize("resource", ["omniparser_onnx", "jobs_file"])
+def test_regression_status_rejects_directories(resource, capsys):
+    path = getattr(status_mod.paths, resource)()
+    path.mkdir(parents=True)
+
+    status()
+
+    output = capsys.readouterr().out
+    assert "not a file" in output
+    assert "vision model" in output
+    assert "calibration" in output
+    assert "jobs file" in output
+    assert "ok  (0 MB)" not in output
+
+
+@pytest.mark.parametrize(
+    "resource", ["omniparser_onnx", "jobs_file", "calibration_bundle"]
+)
+def test_regression_status_continues_after_metadata_error(resource, mocker, capsys):
+    target = getattr(status_mod.paths, resource)()
+    stat = Path.stat
+
+    def denied(path, *args, **kwargs):
+        if path == target:
+            raise PermissionError("access denied")
+        return stat(path, *args, **kwargs)
+
+    mocker.patch.object(Path, "stat", denied)
+
+    status()
+
+    output = capsys.readouterr().out
+    assert "access denied" in output
+    assert "vision model" in output
+    assert "calibration" in output
+    assert "jobs file" in output
+
+
+def test_regression_status_reads_model_metadata_once(mocker, capsys):
+    target = status_mod.paths.omniparser_onnx()
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"model")
+    stat = Path.stat
+    reads = []
+
+    def disappear_after_first_stat(path, *args, **kwargs):
+        if path == target:
+            reads.append(path)
+            if len(reads) > 1:
+                raise FileNotFoundError("model removed")
+        return stat(path, *args, **kwargs)
+
+    mocker.patch.object(Path, "stat", disappear_after_first_stat)
+
+    status()
+
+    assert "vision model  ok" in capsys.readouterr().out
+    assert reads == [target]
+
+
+@pytest.mark.parametrize("resource", ["omniparser_onnx", "jobs_file"])
+def test_status_accepts_symlink_to_regular_file(resource, tmp_path, capsys):
+    target = tmp_path / "actual-file"
+    target.write_bytes(b"data")
+    path = getattr(status_mod.paths, resource)()
+    path.parent.mkdir(parents=True)
+    path.symlink_to(target)
+
+    status()
+
+    output = capsys.readouterr().out
+    assert "not a file" not in output
+    assert str(path) in output or "vision model  ok" in output
+
+
+@pytest.mark.parametrize("resource", ["omniparser_onnx", "jobs_file"])
+def test_status_dangling_symlink_is_missing(resource, tmp_path, capsys):
+    path = getattr(status_mod.paths, resource)()
+    path.parent.mkdir(parents=True)
+    path.symlink_to(tmp_path / "missing")
+
+    status()
+
+    output = capsys.readouterr().out
+    assert "vision model  missing" in output
+    assert "jobs file     none yet" in output
+
+
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(size=st.integers(min_value=0, max_value=128 * 1024 * 1024))
+@example(size=3 * 1024 * 1024 // 2 + 1)
+def test_status_formats_regular_model_size(size, capsys):
+    model = status_mod.paths.omniparser_onnx()
+    model.parent.mkdir(parents=True, exist_ok=True)
+    with model.open("wb") as stream:
+        stream.truncate(size)
+
+    status()
+
+    assert (
+        f"vision model  ok  ({size / (1024 * 1024):.0f} MB)" in capsys.readouterr().out
+    )
+
+
+@pytest.mark.parametrize("contents", [b"{", b"[]", b"\xff", b'{"version":99}'])
+def test_status_reports_malformed_calibration_without_aborting(contents, capsys):
+    bundle = status_mod.paths.calibration_bundle()
+    bundle.parent.mkdir(parents=True)
+    bundle.write_bytes(contents)
+
+    status()
+
+    output = capsys.readouterr().out
+    assert "calibration" in output
+    assert "complete" not in output
+    assert "jobs file" in output
+
+
+@pytest.mark.parametrize("label", ["vision model", "calibration", "jobs file"])
+def test_status_marks_missing_rows_yellow(label):
+    result = CliRunner().invoke(app, ["status"], color=True)
+
+    assert result.exit_code == 0
+    assert f"\x1b[33m  {label:<14}\x1b[0m" in result.output
+
+
+@pytest.mark.parametrize("label", ["vision model", "calibration", "jobs file"])
+def test_status_marks_healthy_rows_green(label):
+    model = status_mod.paths.omniparser_onnx()
+    model.parent.mkdir(parents=True)
+    model.write_bytes(b"model")
+    jobs = status_mod.paths.jobs_file()
+    jobs.parent.mkdir(parents=True)
+    jobs.write_text("", encoding="utf-8")
+    bundle = status_mod.paths.calibration_bundle()
+    bundle.parent.mkdir(parents=True)
+    bundle.write_text(json.dumps(_bundle()), encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["status"], color=True)
+
+    assert result.exit_code == 0
+    assert f"\x1b[32m  {label:<14}\x1b[0m" in result.output
+
+
+@pytest.mark.parametrize("bundle", [_bundle(pct_to_cam=None), _bundle(version=99)])
+def test_status_marks_partial_calibration_yellow(bundle):
+    path = status_mod.paths.calibration_bundle()
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["status"], color=True)
+
+    assert result.exit_code == 0
+    assert "\x1b[33m  calibration   \x1b[0mpartial" in result.output
