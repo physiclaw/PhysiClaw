@@ -1,11 +1,23 @@
-"""Tests for `physiclaw logs` — session listing and inspection."""
+"""Tests for `physiclaw logs` — session listing and inspection.
+
+Accepted mutation survivors change wording, indentation/Unicode escaping,
+missing-field placeholders, or display truncation by one character. Temporary
+archive names are private; either nonzero status rejects a session removed
+after lookup. A 1024→1025 divisor only changes approximate archive-size output;
+the 0→1 ms fallback still displays 0.0s. The missing timestamp fallback remains
+empty after slicing, and discovered summaries always have a session ID.
+"""
 
 from __future__ import annotations
 
 import json
+import re
+import zipfile
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 from physiclaw.cli import app
@@ -429,3 +441,362 @@ def test_regression_logs_json_modes_preserve_unpaired_surrogates(
 
     assert result.exit_code == 0, result.output
     assert extract(json.loads(result.output)) == "你好\ud800"
+
+
+@pytest.mark.parametrize(
+    "broken", [b"[]", b"null", b'"text"', b"17", b"{torn", b"\xff"]
+)
+@pytest.mark.parametrize("mode", [[], ["--usage"], ["--usage", "--json"]])
+def test_regression_logs_damaged_line_keeps_healthy_neighbors(sessions, broken, mode):
+    directory = _write_session(sessions, "damaged-abc123")
+    healthy = _usage_event(2, "turn", "test/model", 123, 100, 23, 0, 11).encode()
+    (directory / "events.jsonl").write_bytes(
+        healthy + b"\n" + broken + b"\n" + healthy + b"\n"
+    )
+
+    result = runner.invoke(app, ["logs", "abc123", *mode])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count("test/model") >= 2
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"event": "usage", "input": "not-a-number"},
+        {"event": "wake", "triggers": [None]},
+        {"event": "tool_result", "arguments": [1]},
+        {"event": []},
+    ],
+)
+def test_regression_logs_bad_event_format_keeps_later_events(sessions, event):
+    directory = _write_session(sessions, "format-abc123")
+    (directory / "events.jsonl").write_text(
+        json.dumps(event)
+        + '\n{"event":"done","sentinel":"DONE","recap":"healthy tail"}\n',
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["logs", "abc123"])
+
+    assert result.exit_code == 0, result.output
+    assert "unformatted event" in result.output
+    assert "healthy tail" in result.output
+
+
+@pytest.mark.parametrize("bad", ["not-a-number", [1], {"a": 2}, float("inf")])
+def test_regression_logs_bad_usage_does_not_abort_or_partially_bill(sessions, bad):
+    directory = _write_session(sessions, "usage-abc123")
+    damaged = {"event": "usage", "model": "test/model", "input": 999, "output": bad}
+    healthy = _usage_event(1, "turn", "test/model", 123, 100, 23, 0, 11)
+    (directory / "events.jsonl").write_text(
+        json.dumps(damaged) + "\n" + healthy + "\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["logs", "abc123", "--usage"])
+
+    assert result.exit_code == 0, result.output
+    assert "excluded from totals" in result.output
+    assert "test/model  (1 calls, 0 failed)" in result.output
+    assert "1,122" not in result.output
+    assert "123" in result.output
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"outcome": [1]},
+        {"outcome": {"sentinel": [1]}},
+        {"usage": {"input_tokens": "bad"}},
+        {"duration_s": "bad"},
+        {"turns": [1]},
+    ],
+)
+def test_regression_logs_bad_summary_does_not_hide_other_sessions(sessions, patch):
+    bad = _write_session(sessions, "damaged-abc123")
+    (bad / "summary.json").write_text(
+        json.dumps({**_summary(bad.name), **patch}), encoding="utf-8"
+    )
+    _write_session(sessions, "healthy-def456")
+
+    result = runner.invoke(app, ["logs"])
+
+    assert result.exit_code == 0, result.output
+    assert "damaged-abc123" in result.output and "unformatted summary" in result.output
+    assert "healthy-def456" in result.output and "DONE" in result.output
+
+
+@pytest.mark.parametrize("n", ["0", "-1"])
+@pytest.mark.parametrize("mode", [[], ["abc123"]])
+def test_logs_rejects_nonpositive_limit(sessions, n, mode):
+    _write_session(sessions, "limit-abc123")
+
+    result = runner.invoke(app, ["logs", *mode, "-n", n])
+
+    assert result.exit_code == 2
+    assert "Invalid value" in result.output
+
+
+def test_regression_save_inside_session_excludes_previous_archive(sessions):
+    directory = _write_session(sessions, "save-abc123")
+    _populate(directory)
+    out = directory / "backup.zip"
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("old.txt", "previous backup")
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 0, result.output
+    with zipfile.ZipFile(out) as z:
+        names = set(z.namelist())
+        assert z.testzip() is None
+    assert "save-abc123/backup.zip" not in names
+    assert "save-abc123/events.jsonl" in names
+    assert not any(".physiclaw-session-" in name for name in names)
+    assert not list(directory.glob(".physiclaw-session-*"))
+
+
+def test_regression_save_refuses_to_replace_session_source(sessions):
+    directory = _write_session(sessions, "save-abc123")
+    _populate(directory)
+    source = directory / "events.jsonl"
+    original = source.read_bytes()
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(source)])
+
+    assert result.exit_code == 1
+    assert "directory or a .zip file" in result.output
+    assert source.read_bytes() == original
+
+
+@pytest.mark.parametrize("operation", ["read", "replace"])
+def test_regression_save_failure_preserves_previous_archive(
+    sessions, tmp_path, mocker, operation
+):
+    directory = _write_session(sessions, "save-abc123")
+    _populate(directory)
+    out = tmp_path / "backup.zip"
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("old.txt", "previous backup")
+    original = out.read_bytes()
+    target = {"read": "zipfile.ZipFile.write", "replace": "pathlib.Path.replace"}[
+        operation
+    ]
+    mocker.patch(target, side_effect=OSError("simulated export failure"))
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 1
+    assert "could not save session" in result.output
+    assert out.read_bytes() == original
+    assert not list(tmp_path.glob(".physiclaw-session-*"))
+
+
+@pytest.mark.parametrize(
+    "flags", [["--save", "--usage"], ["--save", "--json"], ["--usage", "out.zip"]]
+)
+def test_logs_rejects_conflicting_modes(sessions, flags):
+    _write_session(sessions, "mode-abc123")
+
+    result = runner.invoke(app, ["logs", "abc123", *flags])
+
+    assert result.exit_code == 1
+    assert "--save" in result.output
+
+
+@pytest.mark.parametrize("mode", [[], ["abc123"], ["abc123", "--usage"]])
+def test_logs_json_rejects_nonfinite_data_without_partial_stdout(sessions, mode):
+    directory = _write_session(sessions, "finite-abc123")
+    (directory / "summary.json").write_text(
+        '{"duration_s": Infinity}', encoding="utf-8"
+    )
+    (directory / "events.jsonl").write_text(
+        '{"event":"usage","input":NaN}\n', encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["logs", *mode, "--json"])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "cannot render log data as JSON" in result.stderr
+
+
+def test_save_includes_one_current_format_readme(sessions, tmp_path):
+    directory = _write_session(sessions, "readme-abc123")
+    (directory / "README.md").write_text("old format", encoding="utf-8")
+    out = tmp_path / "session.zip"
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 0, result.output
+    with zipfile.ZipFile(out) as z:
+        assert z.namelist().count("readme-abc123/README.md") == 1
+        assert "events.jsonl" in z.read("readme-abc123/README.md").decode("utf-8")
+
+
+@given(
+    st.lists(
+        st.fixed_dictionaries(
+            {
+                "turn": st.one_of(st.none(), st.integers(min_value=0, max_value=50)),
+                "model": st.sampled_from(["test/first", "test/second"]),
+                "input": st.integers(min_value=0, max_value=1_000_000),
+                "output": st.integers(min_value=0, max_value=1_000_000),
+            }
+        ),
+        max_size=12,
+    )
+)
+@settings(max_examples=25, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_usage_json_preserves_generated_rows_around_damaged_lines(sessions, rows):
+    directory = _write_session(sessions, "property-abc123")
+    records = [
+        json.dumps({"event": "usage", "t": "stamp", **row}).encode() for row in rows
+    ]
+    (directory / "events.jsonl").write_bytes(
+        b"\xff\n[]\n" + b"\nnull\n".join(records) + b"\n"
+    )
+
+    result = runner.invoke(app, ["logs", "abc123", "--usage", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == rows
+
+
+def test_logs_crashed_session_is_distinct_from_terminal_sentinel(sessions):
+    directory = _write_session(sessions, "crashed-abc123")
+    summary = _summary(directory.name)
+    summary["outcome"]["crashed"] = True
+    (directory / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    result = runner.invoke(app, ["logs"])
+
+    assert result.exit_code == 0
+    assert "CRASH" in result.output and "DONE" not in result.output
+
+
+@pytest.mark.parametrize("mode", [[], ["--json"]])
+def test_logs_detail_of_unfinished_session_keeps_session_id(sessions, mode):
+    (sessions / "unfinished-abc123").mkdir()
+
+    result = runner.invoke(app, ["logs", "abc123", *mode])
+
+    assert result.exit_code == 0
+    assert "summary" in result.output
+    assert "abc123" in result.output
+
+
+def test_logs_unreadable_event_stream_keeps_summary(sessions):
+    directory = _write_session(sessions, "unreadable-abc123")
+    (directory / "events.jsonl").mkdir()
+
+    result = runner.invoke(app, ["logs", "abc123"])
+
+    assert result.exit_code == 0
+    assert "unreadable-abc123" in result.output
+    assert "no events.jsonl" in result.output
+
+
+def test_logs_narrative_limit_uses_only_the_tail_and_keeps_silent_events_silent(
+    sessions,
+):
+    directory = _write_session(sessions, "tail-abc123")
+    events = [
+        {"event": "log_append", "entry": "old story"},
+        {"event": "prefix_pinned", "hash": "secret hash"},
+        {"event": "log_append", "entry": "new story"},
+    ]
+    (directory / "events.jsonl").write_text(
+        "\n".join(map(json.dumps, events)), encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["logs", "abc123", "-n", "2"])
+
+    assert result.exit_code == 0
+    assert "Last 2 of 3 events" in result.output
+    assert "new story" in result.output
+    assert "old story" not in result.output and "secret hash" not in result.output
+
+
+def test_logs_default_list_limit_is_twenty_sessions(sessions):
+    directories = [
+        _write_session(sessions, f"session-{index:06}") for index in range(21)
+    ]
+
+    result = runner.invoke(app, ["logs", "--json"])
+
+    assert result.exit_code == 0
+    assert len(json.loads(result.output)) == 20
+    assert len(directories) == 21
+
+
+def test_save_creates_missing_destination_ancestors(sessions, tmp_path):
+    _write_session(sessions, "nested-abc123")
+    out = tmp_path / "first" / "second" / "session.zip"
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert zipfile.is_zipfile(out)
+
+
+def test_save_reports_screenshot_count_and_rounded_archive_size(sessions, tmp_path):
+    directory = _write_session(sessions, "metrics-abc123")
+    _populate(directory)
+    out = tmp_path / "session.zip"
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert "(1 screenshots," in result.output
+    match = re.search(r"(\d+) KB\)", result.output)
+    assert match is not None
+    assert abs(int(match[1]) * 1024 - out.stat().st_size) <= 512
+
+
+def test_logs_detail_links_actual_artifact_paths(sessions):
+    directory = _write_session(sessions, "paths-abc123")
+    _populate(directory)
+
+    result = runner.invoke(app, ["logs", "abc123"])
+
+    assert result.exit_code == 0
+    assert str(directory / "wire.jsonl") in result.output
+    assert str(directory / "images") in result.output
+
+
+@pytest.mark.parametrize("turn, displayed", [(None, "-"), (0, "0"), (3, "3")])
+def test_usage_table_keeps_turn_zero_buckets_timing_and_failure(
+    sessions, turn, displayed
+):
+    directory = _write_session(sessions, "columns-abc123")
+    event = {
+        "event": "usage",
+        "turn": turn,
+        "call": "turn",
+        "model": "test/model",
+        "elapsed_ms": 1350,
+        "error": "TimeoutError",
+    }
+    (directory / "events.jsonl").write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["logs", "abc123", "--usage"])
+
+    assert result.exit_code == 0, result.output
+    row = next(
+        line for line in result.output.splitlines() if "error=TimeoutError" in line
+    )
+    assert row.split() == [
+        displayed,
+        "turn",
+        "test/model",
+        "1.4s",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "error=TimeoutError",
+    ]
+    assert "test/model  (1 calls, 1 failed)" in result.output

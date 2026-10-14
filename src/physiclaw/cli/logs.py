@@ -26,12 +26,26 @@ from physiclaw.agent.trace.store import (
     resolve_session,
     stub_summary,
 )
-from physiclaw.cli._format import info, section, warn
+from physiclaw.cli._format import exit_error, info, section, warn
+from physiclaw.common.text import iter_jsonl
+
+# Stored artifacts may be truncated or have fields from an older schema.
+# A failed human rendering must not hide the neighboring sessions/events.
+_FORMAT_ERRORS = (TypeError, ValueError, AttributeError, KeyError, OverflowError)
 
 
 def _echo(text: str) -> None:
     """Keep model text printable without changing valid Unicode or JSON values."""
     typer.echo(text.encode("utf-8", "backslashreplace").decode("utf-8"))
+
+
+def _echo_json(value: Any) -> None:
+    """Machine output must be valid JSON, even when stored data is damaged."""
+    try:
+        text = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
+    except ValueError as e:
+        exit_error(f"cannot render log data as JSON: {e}")
+    _echo(text)
 
 
 def logs(
@@ -43,7 +57,7 @@ def logs(
     ] = None,
     n: Annotated[
         int,
-        typer.Option("-n", help="Sessions to list / narrative lines to show."),
+        typer.Option("-n", min=1, help="Sessions to list / narrative lines to show."),
     ] = 20,
     as_json: Annotated[
         bool,
@@ -75,6 +89,10 @@ def logs(
     """List recent agent sessions, or inspect one session's log artifacts."""
     from physiclaw.common import paths
 
+    if save and (usage or as_json):
+        exit_error("--save cannot be combined with --usage or --json")
+    if dest is not None and not save:
+        exit_error(f"a destination needs --save: physiclaw logs {sid} --save {dest}")
     sessions_dir = paths.engine_sessions_dir()
     if sid is None:
         if save or usage:
@@ -87,11 +105,6 @@ def logs(
         _show_usage(_resolve(sessions_dir, sid), as_json=as_json)
     elif save:
         _save_session(_resolve(sessions_dir, sid), dest)
-    elif dest is not None:
-        # A destination without --save is a forgotten flag, not a request
-        # for the detail view — refuse rather than silently ignore it.
-        _echo(warn(f"a destination needs --save: physiclaw logs {sid} --save {dest}"))
-        raise typer.Exit(1)
     else:
         _show_session(_resolve(sessions_dir, sid), n=n, as_json=as_json)
 
@@ -99,8 +112,6 @@ def logs(
 def _resolve(sessions_dir: Path, query: str) -> Path:
     """Resolve a session by full id, or by any unique trailing fragment
     (`trace.store.resolve_session` owns the convention and the wording)."""
-    from physiclaw.cli._format import exit_error
-
     try:
         return resolve_session(sessions_dir, query)
     except LookupError as e:
@@ -113,7 +124,7 @@ def _resolve(sessions_dir: Path, query: str) -> Path:
 def _list_sessions(sessions_dir: Path, *, n: int, as_json: bool) -> None:
     summaries = recent_sessions(sessions_dir, n)
     if as_json:
-        _echo(json.dumps(summaries, ensure_ascii=False, indent=2))
+        _echo_json(summaries)
         return
     if not summaries:
         _echo(
@@ -129,7 +140,11 @@ def _list_sessions(sessions_dir: Path, *, n: int, as_json: bool) -> None:
         f"{'TOKENS':>12} {'CACHE':>5}  RECAP"
     )
     for s in summaries:
-        _echo("  " + _row(s))
+        try:
+            row = _row(s)
+        except _FORMAT_ERRORS:
+            row = f"{s['sid']} (unformatted summary; use --json to inspect)"
+        _echo("  " + row)
 
 
 def _row(s: dict[str, Any]) -> str:
@@ -162,31 +177,47 @@ def _save_session(d: Path, dest: Path | None) -> None:
     """Zip the session dir to `dest` (dir or .zip path; default cwd).
     The zip stays local — whether it leaves the machine is the user's
     call."""
+    import tempfile
     import zipfile
+
+    from physiclaw.agent.trace import SESSIONS_README
 
     if not d.is_dir():
         _echo(warn(f"no such session: {d.name} (looked in {d.parent})"))
         raise typer.Exit(1)
 
-    viewer.write(d)  # the zip's reader gets the viewer page, not just the streams
     default_name = f"physiclaw-session-{d.name}.zip"
     out = (dest or Path.cwd()).expanduser()
     if out.is_dir() or not out.suffix:
         out = out / default_name
-    out.parent.mkdir(parents=True, exist_ok=True)
-    files = sorted(p for p in d.rglob("*") if p.is_file())
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in files:
-            # Forward slashes explicitly — zip arcnames must not carry
-            # Windows backslashes or extractors mis-nest the tree.
-            z.write(p, arcname=f"{d.name}/{p.relative_to(d).as_posix()}")
-        # Ship the format doc with the data so any analyst — human or
-        # AI agent — can bootstrap from the zip alone.
-        from physiclaw.agent.trace import SESSIONS_README
-
-        z.writestr(f"{d.name}/README.md", SESSIONS_README)
+    if out.suffix.lower() != ".zip":
+        exit_error("the destination must be a directory or a .zip file")
+    try:
+        viewer.write(d)  # the archive reviews itself, beside its frames
+        out.parent.mkdir(parents=True, exist_ok=True)
+        resolved_out = out.resolve()
+        files = sorted(
+            p
+            for p in d.rglob("*")
+            if p.is_file() and p.resolve() != resolved_out and p != d / "README.md"
+        )
+        # Snapshot inputs before creating the temporary archive. Re-exporting
+        # inside the session must not include the archive in itself, and a
+        # failed write must leave an existing backup intact.
+        with tempfile.TemporaryDirectory(
+            prefix=".physiclaw-session-", dir=out.parent
+        ) as tmp:
+            archive = Path(tmp) / "session.zip"
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+                for p in files:
+                    # Explicit forward slashes keep Windows exports portable.
+                    z.write(p, arcname=f"{d.name}/{p.relative_to(d).as_posix()}")
+                z.writestr(f"{d.name}/README.md", SESSIONS_README)
+            archive.replace(out)
+        size_kb = out.stat().st_size / 1024
+    except OSError as e:
+        exit_error(f"could not save session: {e}")
     images = sum(1 for p in files if p.parent.name == "images")
-    size_kb = out.stat().st_size / 1024
 
     from physiclaw.cli._format import ok
 
@@ -210,7 +241,7 @@ def _show_session(d: Path, *, n: int, as_json: bool) -> None:
         raise typer.Exit(1)
     summary = load_summary(d)
     if as_json:
-        _echo(json.dumps(summary or stub_summary(d), ensure_ascii=False, indent=2))
+        _echo_json(summary or stub_summary(d))
         return
     if summary is not None:
         _echo(section(f"Session {d.name}"))
@@ -231,23 +262,16 @@ def _events(events_path: Path) -> list[dict[str, Any]] | None:
     """The session's events.jsonl as dicts, skipping torn lines; None
     when the file is unreadable."""
     try:
-        lines = events_path.read_text(encoding="utf-8").splitlines()
+        return list(iter_jsonl(events_path)) if events_path.exists() else None
     except OSError:
         return None
-    out: list[dict[str, Any]] = []
-    for line in lines:
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return out
 
 
 def _echo_narrative(events_path: Path, n: int) -> None:
     """Re-render the last `n` events with the daily log's formatter — the
     per-session equivalent of the day file's narrative, without the other
     sessions interleaved."""
-    from physiclaw.agent.trace import summarize_event
+    from physiclaw.agent.trace import brief, summarize_event
 
     events = _events(events_path)
     if events is None:
@@ -257,7 +281,10 @@ def _echo_narrative(events_path: Path, n: int) -> None:
     _echo(section(f"Last {min(n, len(events))} of {len(events)} events"))
     for event in events[-n:]:
         stamp = str(event.pop("t", ""))[11:19]  # popped: the line carries it,
-        msg = summarize_event(event)  # and fallback repr would echo it
+        try:
+            msg = summarize_event(event)  # and fallback repr would echo it
+        except _FORMAT_ERRORS:
+            msg = f"unformatted event: {brief(event, 200)}"
         if msg is not None:
             _echo(f"  [{stamp}] {msg}")
 
@@ -280,14 +307,14 @@ def _show_usage(d: Path, *, as_json: bool) -> None:
     model's rate, summed, is the cost."""
     rows = _usage_rows(d / "events.jsonl")
     if as_json:
-        _echo(json.dumps(rows, ensure_ascii=False, indent=2))
+        _echo_json(rows)
         return
     if not rows:
         _echo(warn("no usage events — the provider reported no token counts"))
         return
     from collections import Counter, defaultdict
 
-    from physiclaw.agent.trace import fmt_tokens
+    from physiclaw.agent.trace import brief, fmt_tokens
     from physiclaw.agent.trace.trace import fold_usage
     from physiclaw.contract.dto import USAGE_BUCKETS
 
@@ -298,14 +325,22 @@ def _show_usage(d: Path, *, as_json: bool) -> None:
     )
     totals: defaultdict[str, Counter[str]] = defaultdict(Counter)
     for r in rows:
-        turn = r.get("turn")
-        _echo(
-            f"{'-' if turn is None else turn:>4} {str(r.get('call') or '?'):<7} "
-            f"{str(r.get('model') or '?'):<28}"
-            f"{int(r.get('elapsed_ms') or 0) / 1000:>6.1f}s"
-            + "".join(f"{fmt_tokens(int(r.get(c) or 0)):>12}" for c in USAGE_BUCKETS)
-            + (f"  error={r['error']}" if r.get("error") else "")
-        )
+        try:
+            turn = r.get("turn")
+            line = (
+                f"{'-' if turn is None else str(turn):>4} {str(r.get('call') or '?'):<7} "
+                f"{str(r.get('model') or '?'):<28}"
+                f"{int(r.get('elapsed_ms') or 0) / 1000:>6.1f}s"
+                + "".join(
+                    f"{fmt_tokens(int(r.get(c) or 0)):>12}" for c in USAGE_BUCKETS
+                )
+                + (f"  error={r['error']}" if r.get("error") else "")
+            )
+        except _FORMAT_ERRORS:
+            _echo(warn(f"unformatted usage (excluded from totals): {brief(r, 200)}"))
+            continue
+        _echo(line)
+        # Rendering converted every bucket before the fold can change totals.
         fold_usage(totals, r)
     _echo("")
     _echo(section("Totals per model (exact counts)"))
