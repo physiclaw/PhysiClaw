@@ -1,8 +1,21 @@
-"""Tests for `physiclaw.agent.engine.stuck` — the engine's loop detectors."""
+"""Tests for `physiclaw.agent.engine.stuck` — the engine's loop detectors.
+
+Accepted mutation survivors: 42 presentation-only changes to warning prose
+or separators; 15 equivalents within the engine lifecycle: bounded history
+sizes still sufficient for period-3 blocking (20/22/23), unchanged zero or
+invalid-coordinate signatures (34/36), cycle counts below both thresholds
+and redundant lookback skips (39/43-46/51), the initially empty step reset
+(76), absent-count defaults still below blocking (95/110), and break versus
+continue after a standalone press's only center (152). Warning counts,
+blocking thresholds, jitter, exemptions, sequence identity and resets are
+asserted through the public guard API rather than exact prose snapshots.
+"""
 
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.agent.engine import stuck
 from physiclaw.agent.engine.stuck import BLOCK_AT, WARN_AT, StuckGuard
@@ -209,7 +222,7 @@ def test_malformed_bbox_ignored() -> None:
 # ---------- sequence steps ----------
 
 
-def test_sequence_press_steps_counted() -> None:
+def test_sequence_cannot_hide_a_target_exhausted_by_standalone_presses() -> None:
     g = _guard()
     args = {
         "actions": [
@@ -217,10 +230,12 @@ def test_sequence_press_steps_counted() -> None:
             {"tool_name": "send_to_clipboard", "arg": "hello"},
         ]
     }
-    for _ in range(BLOCK_AT - 1):
-        g.record("sequence", args, False)
+    [_press(g, BOX) for _ in range(BLOCK_AT - 1)]
+
+    blocked = g.should_block("sequence", args)
+
     # The exhausted target blocks the whole batch that includes it...
-    assert g.should_block("sequence", args) is not None
+    assert blocked is not None
     # ...and blocks the bare press too.
     assert g.should_block("tap", {"bbox": NEAR_BOX}) is not None
 
@@ -562,3 +577,340 @@ def test_standalone_changed_press_still_resets_target() -> None:
     _press(g, BOX, changed=True)  # single press owns its verdict
 
     assert g.should_block("tap", {"bbox": BOX}) is None
+
+
+# ---------- sequence identity and evidence regressions ----------
+
+
+@pytest.fixture
+def public_guard(mocker) -> StuckGuard:
+    mocker.patch.object(stuck.layout, "repeatable_key_boxes", return_value=[])
+    return StuckGuard()
+
+
+def _batch(*steps: tuple[str, object]) -> dict:
+    return {"actions": [{"tool_name": name, "arg": arg} for name, arg in steps]}
+
+
+@pytest.mark.parametrize(
+    ("old_step", "new_step"),
+    [
+        (("tap", BOX_A), ("tap", BOX_B)),
+        (("tap", BOX_A), ("long_press", BOX_A)),
+        (("send_to_clipboard", "old"), ("send_to_clipboard", "corrected")),
+        (
+            ("swipe", {"direction": "up", "bbox": BOX_A}),
+            ("swipe", {"direction": "down", "bbox": BOX_A}),
+        ),
+    ],
+)
+def test_regression_sequence_error_allows_corrected_later_step(
+    public_guard, old_step, new_step
+) -> None:
+    old = _batch(("tap", BOX), old_step)
+    corrected = _batch(("tap", BOX), new_step)
+    [public_guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    retry = public_guard.should_block("sequence", old)
+    correction = public_guard.should_block("sequence", corrected)
+
+    assert retry is not None and "failed" in retry
+    assert correction is None
+
+
+def test_sequence_errors_distinguish_action_order(public_guard) -> None:
+    old = _batch(("tap", BOX), ("tap", BOX_A), ("tap", BOX_B))
+    reordered = _batch(("tap", BOX), ("tap", BOX_B), ("tap", BOX_A))
+    [public_guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", reordered)
+
+    assert blocked is None
+
+
+@pytest.mark.parametrize("changed", [False, True, None])
+def test_regression_batch_verdict_never_exhausts_individual_targets(
+    public_guard, changed
+) -> None:
+    # Two taps can toggle a control on then off: the batch's final screen
+    # matches its starting frame, even though both presses worked.
+    args = _batch(("tap", BOX), ("tap", BOX))
+    [public_guard.record("sequence", args, changed) for _ in range(BLOCK_AT)]
+
+    blocked = public_guard.should_block("tap", {"bbox": BOX})
+
+    assert blocked is None
+
+
+@pytest.mark.parametrize("changed", [False, True, None])
+def test_batch_verdict_preserves_existing_standalone_misses(
+    public_guard, changed
+) -> None:
+    [_press(public_guard, BOX) for _ in range(BLOCK_AT - 2)]
+    public_guard.record("sequence", _batch(("tap", BOX), ("tap", BOX_A)), changed)
+
+    before = public_guard.should_block("tap", {"bbox": BOX})
+    _press(public_guard, BOX)
+    after = public_guard.should_block("tap", {"bbox": BOX})
+
+    assert before is None
+    assert after is not None and "camera-verified" in after
+
+
+_BACKSPACE = [0.864, 0.804, 0.986, 0.856]
+_SPACE = [0.256, 0.865, 0.742, 0.916]
+
+
+def _feed_calls(guard, calls, *, failed=False, changed=True):
+    """Exercise the public pre-dispatch/record lifecycle in order."""
+    results = []
+    for name, arguments in calls:
+        blocked = guard.should_block(name, arguments)
+        warning = None
+        if blocked is None:
+            warning = (
+                guard.record_error(name, arguments)
+                if failed
+                else guard.record(name, arguments, changed)
+            )
+        results.append((blocked, warning))
+    return results
+
+
+@pytest.mark.parametrize("failed", [False, True])
+@pytest.mark.parametrize("changed", [False, True, None])
+def test_regression_repeatable_key_batches_are_exempt_everywhere(
+    mocker, failed, changed
+):
+    mocker.patch.object(
+        stuck.layout, "repeatable_key_boxes", return_value=[_BACKSPACE, _SPACE]
+    )
+    guard = StuckGuard()
+    batches = [
+        _batch(("tap", _BACKSPACE), ("tap", _SPACE)),
+        _batch(("tap", _SPACE), ("tap", _BACKSPACE)),
+    ]
+    calls = [("sequence", args) for args in batches * BLOCK_AT]
+
+    results = _feed_calls(guard, calls, failed=failed, changed=changed)
+
+    assert results == [(None, None)] * len(calls)
+
+
+def test_mixed_key_batches_cannot_hide_repeated_nonexempt_errors(mocker):
+    mocker.patch.object(
+        stuck.layout, "repeatable_key_boxes", return_value=[_BACKSPACE, _SPACE]
+    )
+    guard = StuckGuard()
+    old = _batch(("tap", _BACKSPACE), ("tap", BOX_A))
+    same_target = _batch(("tap", _SPACE), ("tap", BOX_A))
+    [guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    blocked = guard.should_block("sequence", same_target)
+
+    assert blocked is not None and "failed" in blocked
+
+
+def test_sequence_cycles_detect_different_tails_with_shared_first_target(public_guard):
+    batches = [
+        _batch(("tap", BOX), ("tap", BOX_A)),
+        _batch(("tap", BOX), ("tap", BOX_B)),
+    ]
+    calls = [("sequence", args) for args in batches * BLOCK_AT]
+
+    results = _feed_calls(public_guard, calls)
+
+    assert [blocked for blocked, _ in results[:-1]] == [None] * (len(calls) - 1)
+    assert results[-1][0] is not None and "action cycle" in results[-1][0]
+    assert any(warning and "action cycle" in warning for _, warning in results)
+
+
+def test_sequence_error_identity_keeps_press_jitter_tolerance(public_guard):
+    args = _batch(("long_press", BOX), ("tap", BOX_A))
+    jittered = _batch(("long_press", NEAR_BOX), ("tap", BOX_A))
+    [public_guard.record_error("sequence", args) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", jittered)
+
+    assert blocked is not None and "failed" in blocked
+
+
+def test_sequence_skips_unusable_entries_without_losing_valid_presses(public_guard):
+    args = {
+        "actions": [
+            None,
+            {"tool_name": "tap", "arg": []},
+            {"tool_name": "tap", "arg": BOX_A},
+        ]
+    }
+    [public_guard.record_error("sequence", args) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", args)
+
+    assert blocked is not None and "failed" in blocked
+
+
+@pytest.mark.parametrize(
+    "other_box",
+    [[0.7, 0.1, 0.8, 0.2], [0.1, 0.7, 0.2, 0.8]],
+)
+def test_error_identity_distinguishes_each_coordinate_axis(public_guard, other_box):
+    [public_guard.record_error("tap", {"bbox": BOX_A}) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("tap", {"bbox": other_box})
+
+    assert blocked is None
+
+
+def test_sequence_swipe_errors_distinguish_regions_with_the_same_direction(
+    public_guard,
+):
+    fixed = ("swipe", {"bbox": BOX, "direction": "down"})
+    old = _batch(fixed, ("swipe", {"bbox": BOX_A, "direction": "up"}))
+    corrected = _batch(fixed, ("swipe", {"bbox": BOX_B, "direction": "up"}))
+    [public_guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", corrected)
+
+    assert blocked is None
+
+
+def test_sequence_checks_exhausted_targets_after_nonpress_steps(public_guard):
+    [_press(public_guard, BOX_A) for _ in range(BLOCK_AT - 1)]
+    args = _batch(("send_to_clipboard", "message"), ("tap", BOX_A))
+
+    blocked = public_guard.should_block("sequence", args)
+
+    assert blocked is not None and f"press #{BLOCK_AT}" in blocked
+
+
+def test_sequence_skips_nondict_steps_before_an_exhausted_target(public_guard):
+    [_press(public_guard, BOX_A) for _ in range(BLOCK_AT - 1)]
+    args = {"actions": [None, {"tool_name": "tap", "arg": BOX_A}]}
+
+    blocked = public_guard.should_block("sequence", args)
+
+    assert blocked is not None and "camera-verified" in blocked
+
+
+@pytest.mark.parametrize("changed", [True, False, None])
+def test_sequence_tracks_orbit_for_later_presses(public_guard, changed):
+    [_press(public_guard, BOX_B, changed=True) for _ in range(BLOCK_AT - 1)]
+
+    warning = public_guard.record(
+        "sequence", _batch(("tap", BOX_A), ("tap", BOX_B)), changed
+    )
+
+    assert warning is not None and f"{BLOCK_AT} of your last" in warning
+
+
+def test_error_repeat_allows_attempts_before_block_and_reports_actual_failures(
+    public_guard,
+):
+    calls = [("tap", {"bbox": BOX_A})] * BLOCK_AT
+
+    results = _feed_calls(public_guard, calls, failed=True)
+
+    assert [blocked for blocked, _ in results[:-1]] == [None] * (BLOCK_AT - 1)
+    assert f"failed {BLOCK_AT - 1}×" in results[-1][0]
+
+
+def test_nav_block_reports_the_attempt_that_would_execute(public_guard):
+    [public_guard.record("go_back", {}, False) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("go_back", {})
+
+    assert f"`go_back` #{BLOCK_AT}" in blocked
+
+
+@pytest.mark.parametrize("bad_name", [[], {}, ["tap"]])
+def test_regression_malformed_sequence_tool_names_do_not_crash_guard(
+    public_guard, bad_name
+):
+    args = _batch((bad_name, BOX_A), ("tap", BOX_B))
+
+    results = _feed_calls(public_guard, [("sequence", args)])
+
+    assert results == [(None, None)]
+
+
+@pytest.mark.parametrize("bad_box", [["nan", 0, 1, 1], ["Infinity", 0, 1, 1]])
+def test_regression_nonfinite_string_sequence_boxes_do_not_crash_guard(
+    public_guard, bad_box
+):
+    args = _batch(("tap", bad_box), ("tap", BOX_B))
+
+    results = _feed_calls(public_guard, [("sequence", args)])
+
+    assert results == [(None, None)]
+
+
+def test_regression_sequence_swipe_identity_preserves_equivalent_numeric_boxes(
+    public_guard,
+):
+    old = _batch(
+        ("swipe", {"bbox": [0, 0, 1, 1], "direction": "up"}),
+        ("swipe", {"bbox": BOX_A, "direction": "down"}),
+    )
+    same = _batch(
+        ("swipe", {"bbox": [0.0, 0.0, 1.0, 1.0], "direction": "up"}),
+        ("swipe", {"bbox": BOX_A, "direction": "down"}),
+    )
+    [public_guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", same)
+
+    assert blocked is not None and "failed" in blocked
+
+
+@pytest.mark.parametrize(
+    ("original_box", "jittered_box"),
+    [
+        ([0.1, 0.1, 0.2, 0.2], [0.101, 0.101, 0.201, 0.201]),
+        ([0, 0, 1, 1], [0.001, 0.001, 0.999, 0.999]),
+    ],
+)
+def test_sequence_swipe_error_identity_preserves_coordinate_jitter(
+    public_guard, original_box, jittered_box
+):
+    fixed = ("tap", BOX_B)
+    old = _batch(("swipe", {"bbox": original_box, "direction": "up"}), fixed)
+    same = _batch(("swipe", {"bbox": jittered_box, "direction": "up"}), fixed)
+    [public_guard.record_error("sequence", old) for _ in range(BLOCK_AT - 1)]
+
+    blocked = public_guard.should_block("sequence", same)
+
+    assert blocked is not None and "failed" in blocked
+
+
+@pytest.mark.parametrize("invalid_coord", [1e308, 10**400])
+def test_regression_oversized_sequence_swipe_coordinate_does_not_crash_guard(
+    public_guard, invalid_coord
+):
+    args = _batch(
+        ("swipe", {"bbox": [0, 0, invalid_coord, 1], "direction": "up"}), ("tap", BOX_A)
+    )
+
+    results = _feed_calls(public_guard, [("sequence", args)])
+
+    assert results == [(None, None)]
+
+
+@given(
+    tails=st.lists(
+        st.text(min_size=1, max_size=20), min_size=2, max_size=5, unique=True
+    )
+)
+def test_sequence_error_identity_preserves_distinct_clipboard_content(tails):
+    guard = _guard()
+    original = _batch(("tap", BOX), ("send_to_clipboard", tails[0]))
+    [guard.record_error("sequence", original) for _ in range(BLOCK_AT - 1)]
+
+    blocks = [
+        guard.should_block(
+            "sequence", _batch(("tap", BOX), ("send_to_clipboard", tail))
+        )
+        for tail in tails[1:]
+    ]
+
+    assert blocks == [None] * (len(tails) - 1)

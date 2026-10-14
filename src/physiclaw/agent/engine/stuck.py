@@ -3,8 +3,7 @@
 The failure class: the model repeats itself for half an hour because a
 prompt rule ("stop after N attempts") cannot work — compaction erases
 the evidence the model would need to count. So the ENGINE counts.
-Three detectors, one shared pair of tiers (production norms per
-OpenHands / browser-use):
+Three blocking detectors share a pair of tiers; a fourth only warns:
 
   tier 1 (warn)   the WARN_AT-th occurrence appends a ⚠ to the tool
                   result — the highest-adherence channel.
@@ -36,25 +35,25 @@ The detectors, by the loop they catch:
      "press + five times" task looks like, so the model judges from the
      warning; blocking stays with the evidence-based detectors.
 
-What never counts: `screen: changed` presses (a qty stepper that works
-RESETS its target — though a batch's changed verdict is unattributable,
-so it neither counts nor resets its steps), missing verdicts (camera
-hiccup → fail open),
-swipes in detector 1 (repeated scrolls are normal; direction-alternating
-swipes are caught by detector 2), and learned keyboard keys everywhere
-(backspace-clearing a field is 10–20 legitimate presses).
+Detector 1 only uses standalone verdicts: a changed press resets its
+target, and a missing verdict fails open. A sequence's before/after
+comparison cannot attribute change or no-change to individual steps,
+so it neither increments nor resets their misses. It still cannot
+dispatch a target exhausted by standalone presses. Swipes are absent
+from detector 1 (repeated scrolls are normal; direction-alternating
+swipes are caught by detector 2). Learned repeatable keyboard keys
+are exempt everywhere (clearing a field takes 10–20 backspaces).
 
 Counters are per-step: they reset when the plan's `in_progress` step
 changes, so a new objective gets a clean slate on the same coordinates.
-False positives stay cheap by design (SWE-agent abandoned stuck
-detection over them): tier 1 is advisory, and tier 2 needs four
-camera-verified no-ops / four full cycles / four identical errors.
+Tier 1 is advisory. Tier 2 blocks the configured BLOCK_AT-th attempt
+after no-ops, repeated cycles, or failing calls supply the evidence.
 """
 
 from dataclasses import dataclass, field
 
 from physiclaw.agent import layout
-from physiclaw.common.bbox import center_of, near
+from physiclaw.common.bbox import center_of, near, validate_bbox
 from physiclaw.common.config import CONFIG
 
 # Presses count toward same-target tiers by bbox center, nav gestures
@@ -90,7 +89,13 @@ def _press_centers(name: str, arguments: dict) -> list[tuple[float, float]]:
     batch); anything else yields none.
     """
     if name in PRESS_TOOLS:
-        c = center_of(arguments.get("bbox") or [])
+        # Sequence steps have only a dict schema. Leave malformed boxes to
+        # the tool's validation rather than quantizing NaN/string coordinates.
+        try:
+            bbox = validate_bbox(arguments.get("bbox") or [])
+        except ValueError:
+            return []
+        c = center_of(bbox)
         return [c] if c else []
     if name == SEQUENCE:
         actions = arguments.get(STEP_ACTIONS)
@@ -98,11 +103,11 @@ def _press_centers(name: str, arguments: dict) -> list[tuple[float, float]]:
             return []
         centers = []
         for step in actions:
-            if not isinstance(step, dict) or step.get(STEP_TOOL) not in PRESS_TOOLS:
+            if not isinstance(step, dict):
                 continue
-            c = center_of(step.get(STEP_ARG) or [])
-            if c:
-                centers.append(c)
+            tool = step.get(STEP_TOOL)
+            if isinstance(tool, str) and tool in PRESS_TOOLS:
+                centers.extend(_press_centers(tool, {"bbox": step.get(STEP_ARG)}))
         return centers
     return []
 
@@ -129,16 +134,16 @@ def _quant(center: tuple[float, float]) -> tuple[int, int]:
 
 
 def _hashable(v: object) -> object:
-    """Stable, hashable, jitter-tolerant form of a tool argument — for
-    signing press-less `sequence` batches by their action shape so two
-    genuinely different batches aren't conflated. Floats quantize to
-    MATCH_TOLERANCE cells — the same mechanism as `_quant`, so the two
-    signature paths share one jitter tolerance and can't drift."""
+    """Stable, hashable form of a non-press step's argument so different
+    sequence actions aren't conflated. Normalized coordinates quantize
+    to MATCH_TOLERANCE cells, whether JSON spells them as ints or floats.
+    Out-of-range numbers stay unchanged: the tool rejects them, and
+    scaling a huge malformed coordinate here could overflow."""
     if isinstance(v, dict):
         return tuple(sorted((k, _hashable(x)) for k, x in v.items()))
     if isinstance(v, (list, tuple)):
         return tuple(_hashable(x) for x in v)
-    if isinstance(v, float):
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1:
         return round(v / MATCH_TOLERANCE)
     return v
 
@@ -281,24 +286,22 @@ class StuckGuard:
 
         Verdict attribution: a STANDALONE press owns its verdict — changed
         proves the target works (reset), no-change is a miss. A `sequence`
-        verdict covers the whole batch: no-change means NO step changed
-        anything (every press is a miss — strictly true), but changed can
-        come from ANY step, so it neither counts nor resets the others
-        (a keyboard rising for step 1 must not launder step 3's dead
-        long-press)."""
+        verdict covers the whole batch: steps may change the screen then
+        restore it, or an early failure may leave later steps unexecuted.
+        Neither verdict proves an individual press worked or failed, so
+        batch presses only contribute to the warn-only orbit detector."""
         warnings: list[str] = []
-        single = name in PRESS_TOOLS
         for center in self._press_centers_counted(name, arguments):
             orbit = self._track_orbit(center)
             if orbit:
                 warnings.append(orbit)
+            if name not in PRESS_TOOLS or changed is None:
+                continue  # no attributable verdict → fail open
             t = self._find(center)
             if changed is True:
-                if single and t is not None:
+                if t is not None:
                     self._targets.remove(t)
                 continue
-            if changed is None:
-                continue  # no verdict → fail open
             if t is None:
                 t = _Target(center=center)
                 self._targets.append(t)
@@ -393,21 +396,24 @@ class StuckGuard:
         if name in NAV_TOOLS:
             return (name,)
         if name == SEQUENCE:
-            counted = self._press_centers_counted(name, arguments)
-            if counted:
-                return (SEQUENCE, _quant(counted[0]))
-            # No repeatable press to anchor on (e.g. an all-swipe batch):
-            # sign by the action shape so two DIFFERENT press-less
-            # sequences don't collapse to one (SEQUENCE, None) — which
-            # would pre-block the very method change a corrective just
-            # asked for. An identical retried batch still self-matches.
-            actions = arguments.get(STEP_ACTIONS) or []
-            shape = tuple(
-                (a.get(STEP_TOOL), _hashable(a.get(STEP_ARG)))
-                for a in actions
-                if isinstance(a, dict)
-            )
-            return (SEQUENCE, shape) if shape else None
+            actions = arguments.get(STEP_ACTIONS)
+            if not isinstance(actions, list):
+                return None
+            # Preserve every step and its order: correcting a later action
+            # must not inherit the first press's failing-call identity.
+            # Presses share standalone jitter matching and key exemptions.
+            shape = []
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                tool, arg = action.get(STEP_TOOL), action.get(STEP_ARG)
+                if isinstance(tool, str) and tool in PRESS_TOOLS:
+                    sig = self._signature(tool, {"bbox": arg})
+                    if sig is not None:
+                        shape.append(sig)
+                else:
+                    shape.append((_hashable(tool), _hashable(arg)))
+            return (SEQUENCE, tuple(shape)) if shape else None
         return None
 
     def _find(self, center: tuple[float, float]) -> _Target | None:
