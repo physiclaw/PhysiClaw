@@ -37,6 +37,7 @@ from physiclaw.agent import layout, trace
 from physiclaw.agent.engine import (
     memory,
     pitfalls,
+    scratchpad,
     trajectory,
 )
 from physiclaw.common.config import CONFIG
@@ -163,8 +164,9 @@ _CHECKPOINT_CORRECTIVE = (
     "Rejected — context compresses after this turn: older turns keep "
     "only their note summaries (scratchpad and plan survive in full). "
     "Re-issue the SAME turn with `note` carrying BOTH `summary` and "
-    "`scratchpad` — rewrite the scratchpad with the facts and values "
-    "collected, the current situation, and what remains."
+    "`scratchpad` — both strings. Rewrite the scratchpad with the facts and "
+    "values collected, the current situation, and what remains. "
+    f"Use nonblank text of at most {scratchpad.MAX_CHARS} characters."
 )
 
 
@@ -186,13 +188,21 @@ class CompactionCheckpoint(TurnGate):
             None,
         )
         sp = note_args.get("scratchpad") if isinstance(note_args, dict) else None
-        if isinstance(sp, str) and sp.strip():
+        # Gates run before argument validation. A missing/invalid summary
+        # rejects the whole note, and an oversize scratchpad cannot be saved.
+        if (
+            isinstance(note_args, dict)
+            and isinstance(note_args.get("summary"), str)
+            and isinstance(sp, str)
+            and len(sp) <= scratchpad.MAX_CHARS
+            and sp.strip()
+        ):
             return None
         self._retried = True
         return Rejection(
             corrective=_CHECKPOINT_CORRECTIVE,
             event="checkpoint_corrective",
-            log_msg="checkpoint note lacks scratchpad — corrective",
+            log_msg="checkpoint note cannot save scratchpad — corrective",
         )
 
     def on_turn_complete(self) -> None:
@@ -339,19 +349,19 @@ def _cue_text(asst: AssistantMessage) -> str:
     summary + scratchpad, plus any `update_progress` plan text. These are
     exactly the fields that survive compaction, so a cue banked here isn't
     lost when the turn folds away."""
-    parts: list[str] = []
+    # Observation precedes dispatch validation; malformed fields must reach
+    # the model as tool errors rather than crashing this advisory scan.
+    parts: list[object] = []
     for tc in asst.tool_calls:
         args = tc.arguments if isinstance(tc.arguments, dict) else {}
         if tc.name == "note":
-            parts.append(args.get("summary") or "")
-            parts.append(args.get("scratchpad") or "")
+            parts.extend((args.get("summary"), args.get("scratchpad")))
         elif tc.name == "update_progress":
-            parts.append(args.get("user_said") or "")
-            parts.append(args.get("understanding") or "")
-            for s in args.get("steps") or []:
-                if isinstance(s, dict):
-                    parts.append(s.get("content") or "")
-    return "\n".join(p for p in parts if p)
+            parts.extend((args.get("user_said"), args.get("understanding")))
+            steps = args.get("steps")
+            if isinstance(steps, list):
+                parts.extend(s.get("content") for s in steps if isinstance(s, dict))
+    return "\n".join(p for p in parts if isinstance(p, str) and p)
 
 
 # ---------- dispatch guards ----------

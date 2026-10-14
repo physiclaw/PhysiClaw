@@ -275,9 +275,18 @@ def collapse_old_turns(
             continue
         for tc in m.tool_calls:
             if tc.name == "note":
-                s = (tc.arguments.get("summary") or "").replace("\n", " ").strip()
-                if s:
-                    summary_lines.append(f"- {s}")
+                # Rejected calls remain in history. Salvage a string summary
+                # even when another argument failed validation; never coerce
+                # malformed summaries into permanent history.
+                summary = (
+                    tc.arguments.get("summary")
+                    if isinstance(tc.arguments, dict)
+                    else None
+                )
+                if isinstance(summary, str):
+                    summary = summary.replace("\n", " ").strip()
+                    if summary:
+                        summary_lines.append(f"- {summary}")
             elif tc.name in MEMORY_TOOL_NAMES:
                 entry = _format_artifact(tc, result_by_id.get(tc.id))
                 if entry:

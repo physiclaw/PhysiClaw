@@ -2,12 +2,19 @@
 isolation. Their loop-visible behavior (rejection mechanics, blocked
 ToolResults, appended advisories) is covered through `test_loop.py` and
 `test_dispatch.py`; this file owns the judgment edges that don't need a loop.
+
+The compaction mutation pass accepts four cosmetic survivors that add `XX`
+around corrective prose or log text. Tests assert the retry, preserved history,
+and reported size limit without pinning the complete wording.
 """
 
 from __future__ import annotations
 
+import pytest
+
 from physiclaw.agent import layout
 from physiclaw.agent.engine import policy as policy_mod
+from physiclaw.agent.engine import scratchpad
 from physiclaw.agent.engine.session import Session
 from physiclaw.common.config import CONFIG
 from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall, Usage
@@ -102,6 +109,55 @@ def test_compaction_checkpoint_rejects_once_then_renews_on_turn_complete() -> No
         Session(), bare, ["note", "peek"], turn=6, compaction_imminent=True
     )
     assert third is not None  # renewed for the next collapse event
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        None,
+        [],
+        123,
+        "bad",
+        {},
+        {"summary": "x"},
+        {"summary": "x", "scratchpad": " \n"},
+        {"summary": "x", "scratchpad": 123},
+        {"summary": "x", "scratchpad": "x" * (scratchpad.MAX_CHARS + 1)},
+        {"scratchpad": "cart=3"},
+        {"summary": 123, "scratchpad": "cart=3"},
+    ],
+)
+def test_regression_checkpoint_retries_unwritable_note_once(arguments) -> None:
+    gate = policy_mod.CompactionCheckpoint()
+    session = Session(scratchpad="previous")
+    asst = _asst([ToolCall(id="note", name="note", arguments=arguments), _tc("peek")])
+
+    rejected = gate.check(
+        session, asst, ["note", "peek"], turn=1, compaction_imminent=True
+    )
+    retry = gate.check(
+        session, asst, ["note", "peek"], turn=2, compaction_imminent=True
+    )
+
+    assert rejected is not None
+    assert rejected.event == "checkpoint_corrective"
+    assert str(scratchpad.MAX_CHARS) in rejected.corrective
+    assert retry is None
+    assert session.scratchpad == "previous"
+
+
+@pytest.mark.parametrize("content", ["cart=3", "界" * scratchpad.MAX_CHARS])
+def test_checkpoint_allows_writable_note_without_changing_scratchpad(content) -> None:
+    gate = policy_mod.CompactionCheckpoint()
+    session = Session(scratchpad="previous")
+    asst = _asst([_tc("note", {"summary": "", "scratchpad": content}), _tc("peek")])
+
+    rejected = gate.check(
+        session, asst, ["note", "peek"], turn=1, compaction_imminent=True
+    )
+
+    assert rejected is None
+    assert session.scratchpad == "previous"
 
 
 # ---------- StuckReflection ----------
@@ -207,6 +263,84 @@ def test_memory_cue_scan_reads_update_progress_fields() -> None:
     gate.observe_turn(session, asst)
 
     assert any("4021" in c for c in session.memory_cues)
+
+
+@pytest.mark.parametrize(
+    "name, arguments",
+    [
+        ("note", {"summary": 123, "scratchpad": "remember: gate code 4021"}),
+        ("note", {"summary": "remember: gate code 4021", "scratchpad": ["bad"]}),
+        ("update_progress", {"user_said": "remember: gate code 4021", "steps": 123}),
+        ("update_progress", {"user_said": "remember: gate code 4021", "steps": True}),
+        ("update_progress", {"user_said": "remember: gate code 4021", "steps": "bad"}),
+        (
+            "update_progress",
+            {"user_said": "remember: gate code 4021", "steps": {"content": "bad"}},
+        ),
+        (
+            "update_progress",
+            {"user_said": "remember: gate code 4021", "understanding": 123},
+        ),
+        (
+            "update_progress",
+            {
+                "user_said": 123,
+                "steps": [{"content": "remember: gate code 4021"}, {"content": 123}],
+            },
+        ),
+    ],
+)
+def test_regression_memory_cue_scan_ignores_invalid_fields(name, arguments) -> None:
+    gate = policy_mod.MemoryCueCheckpoint()
+    session = Session()
+    asst = _asst([_tc(name, arguments)])
+
+    gate.observe_turn(session, asst)
+
+    assert session.memory_cues == ["remember: gate code 4021"]
+
+
+@pytest.mark.parametrize(
+    "name, arguments",
+    [
+        ("note", {"summary": "remember: gate code 4021"}),
+        ("note", {"scratchpad": "remember: gate code 4021"}),
+        ("update_progress", {"user_said": "remember: gate code 4021"}),
+        ("update_progress", {"understanding": "remember: gate code 4021"}),
+        ("update_progress", {"steps": [{"content": "remember: gate code 4021"}]}),
+    ],
+)
+def test_memory_cue_scan_reads_each_supported_text_field(name, arguments) -> None:
+    gate = policy_mod.MemoryCueCheckpoint()
+    session = Session()
+    asst = _asst([_tc(name, arguments)])
+
+    gate.observe_turn(session, asst)
+
+    assert session.memory_cues == ["remember: gate code 4021"]
+
+
+def test_memory_cue_scan_keeps_field_boundaries_and_deduplicates_turns() -> None:
+    gate = policy_mod.MemoryCueCheckpoint()
+    session = Session()
+    asst = _asst(
+        [
+            _tc(
+                "note",
+                {
+                    "summary": "remember: gate code 4021",
+                    "scratchpad": "remember: use metric units",
+                },
+            )
+        ]
+    )
+
+    gate.observe_turn(session, asst)
+    gate.observe_turn(session, asst)
+
+    assert session.memory_cues == [
+        "remember: gate code 4021 remember: use metric units",
+    ]
 
 
 def test_memory_cue_scan_skipped_when_disabled(monkeypatch) -> None:

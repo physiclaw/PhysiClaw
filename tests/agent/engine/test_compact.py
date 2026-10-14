@@ -484,6 +484,71 @@ def test_collapse_first_collapse_harvests_note_summaries_into_slot() -> None:
     assert "- step-d" not in summary.content
 
 
+@pytest.mark.parametrize(
+    "arguments",
+    [None, 12, [], "bad", {}, {"summary": 123}, {"summary": ["bad"]}],
+)
+def test_regression_collapse_malformed_note_keeps_other_summaries(arguments) -> None:
+    malformed = AssistantMessage(
+        content="",
+        tool_calls=[ToolCall(id="bad-note", name="note", arguments=arguments)],
+        finish_reason=FinishReason.TOOL_CALLS,
+    )
+    latest = _note_turn("latest")
+    messages = (
+        _scaffold_with_slots()
+        + [
+            malformed,
+            ToolResultMessage(
+                tool_call_id="bad-note", content="invalid", is_error=True
+            ),
+        ]
+        + _note_turn("collected evidence")
+        + latest
+    )
+
+    folded = collapse_old_turns(messages, policy=TIGHT_POLICY, collapsed_once=False)
+
+    assert folded is True
+    assert messages[2].content == f"{SUMMARY_HEADER}\n- collected evidence"
+    assert messages[5:] == latest
+
+
+@given(summary=st.text())
+def test_collapse_preserves_string_summary_even_when_scratchpad_rejected(
+    summary,
+) -> None:
+    note = AssistantMessage(
+        content="",
+        tool_calls=[
+            ToolCall(
+                id="note", name="note", arguments={"summary": summary, "scratchpad": 1}
+            )
+        ],
+        finish_reason=FinishReason.TOOL_CALLS,
+    )
+    messages = (
+        _scaffold_with_slots()
+        + [
+            note,
+            ToolResultMessage(
+                tool_call_id="note", content="invalid scratchpad", is_error=True
+            ),
+        ]
+        + _note_turn("collected evidence")
+        + _note_turn("latest")
+    )
+    expected = [
+        s for s in (summary.replace("\n", " ").strip(), "collected evidence") if s
+    ]
+
+    collapse_old_turns(messages, policy=TIGHT_POLICY, collapsed_once=False)
+
+    assert messages[2].content == SUMMARY_HEADER + "\n" + "\n".join(
+        f"- {s}" for s in expected
+    )
+
+
 def test_collapse_no_op_when_no_salvageable_content() -> None:
     """Many turns but none have note/memory/skill calls → no-op."""
     msgs = _scaffold_with_slots()
@@ -605,6 +670,38 @@ def test_collapse_skips_when_artifact_result_is_error() -> None:
 
 
 # ---------- collapse_pending / checkpoint tail ----------
+
+
+@pytest.mark.parametrize("name", ["read_memory", "read_logs", "Skill"])
+@pytest.mark.parametrize(
+    "results",
+    [
+        [],
+        [
+            ToolResultMessage(
+                tool_call_id="load", content=[TextBlock(text="not plain text")]
+            )
+        ],
+    ],
+)
+def test_collapse_omits_missing_or_multipart_durable_results(name, results) -> None:
+    load = AssistantMessage(
+        content="",
+        tool_calls=[ToolCall(id="load", name=name, arguments={})],
+        finish_reason=FinishReason.TOOL_CALLS,
+    )
+    messages = (
+        _scaffold_with_slots()
+        + [load]
+        + results
+        + _note_turn("evidence")
+        + _note_turn("latest")
+    )
+
+    collapse_old_turns(messages, policy=TIGHT_POLICY, collapsed_once=False)
+
+    assert messages[3].content == MEMORY_INITIAL
+    assert messages[4].content == SKILLS_INITIAL
 
 
 def test_collapse_pending_false_when_slots_missing() -> None:

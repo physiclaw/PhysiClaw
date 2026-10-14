@@ -28,7 +28,8 @@ from freezegun import freeze_time
 
 from physiclaw.agent.engine import compact as compact_mod
 from physiclaw.agent.engine import memory as memory_mod
-from physiclaw.agent.engine.builtin_tool import LocalTool
+from physiclaw.agent.engine import scratchpad
+from physiclaw.agent.engine.builtin_tool import LocalTool, build_registry
 from physiclaw.agent.engine.loop import (
     CORRECTIVE_LIMIT,
     _advance_with_retry,
@@ -46,6 +47,7 @@ from physiclaw.contract.dto import (
     CollapsePolicy,
     FinishReason,
     SystemMessage,
+    ToolCall,
     ToolResultMessage,
     Usage,
     UserMessage,
@@ -201,6 +203,146 @@ async def _run_checkpoint_session(responses, provider_cls=CheckpointProvider):
     messages = _scaffold_messages()
     await drive(_loop_run(provider, registry), session, messages)
     return provider, session, messages
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"summary": "checkpoint", "scratchpad": "x" * (scratchpad.MAX_CHARS + 1)},
+        {"scratchpad": "checkpoint=updated"},
+        {"summary": 123, "scratchpad": "checkpoint=updated"},
+    ],
+)
+async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
+    arguments,
+) -> None:
+    registry = build_registry({}) | {"peek": _registry()["peek"]}
+    provider = CheckpointProvider(
+        [
+            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
+            _asst(tool_calls=[_tc("note", arguments), _tc("peek")]),
+            _asst(
+                tool_calls=[
+                    _tc(
+                        "note",
+                        {"summary": "checkpoint", "scratchpad": "checkpoint=updated"},
+                    ),
+                    _tc("peek"),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "done"}),
+                ]
+            ),
+        ]
+    )
+    session = Session(scratchpad="previous")
+    messages = _scaffold_messages()
+
+    await drive(_loop_run(provider, registry), session, messages)
+
+    assert session.sentinel_status == DONE
+    assert len(provider.requests) == 4
+    assert "Re-issue the SAME turn" in _req_texts(provider.requests[2])
+    assert provider.requests[2][2].content == compact_mod.SUMMARY_INITIAL
+    assert (
+        provider.requests[3][2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
+    )
+    assert "<scratchpad>\ncheckpoint=updated\n</scratchpad>" in _req_texts(
+        provider.requests[3]
+    )
+    assert session.scratchpad == "checkpoint=updated"
+
+
+async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() -> None:
+    registry = build_registry({}) | {"peek": _registry()["peek"]}
+    oversized = {
+        "summary": "checkpoint",
+        "scratchpad": "x" * (scratchpad.MAX_CHARS + 1),
+    }
+    provider = CheckpointProvider(
+        [
+            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
+            _asst(tool_calls=[_tc("note", oversized), _tc("peek")]),
+            _asst(tool_calls=[_tc("note", oversized), _tc("peek")]),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "done"}),
+                ]
+            ),
+        ]
+    )
+    session = Session(scratchpad="previous")
+    messages = _scaffold_messages()
+
+    await drive(_loop_run(provider, registry), session, messages)
+
+    assert session.sentinel_status == DONE
+    assert len(provider.requests) == 4
+    assert "Re-issue the SAME turn" in _req_texts(provider.requests[2])
+    assert (
+        provider.requests[3][2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
+    )
+    assert any(
+        isinstance(m, ToolResultMessage) and "scratchpad rejected" in str(m.content)
+        for m in provider.requests[3]
+    )
+    assert session.scratchpad == "previous"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{"_raw": 123}, {"_raw": ["bad"]}, {"summary": 123}, {"summary": {"bad": "value"}}],
+)
+async def test_regression_loop_compacts_rejected_note_without_crashing(
+    arguments,
+) -> None:
+    registry = build_registry({}) | {"peek": _registry()["peek"]}
+    provider = CheckpointProvider(
+        [
+            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
+            _asst(
+                tool_calls=[
+                    ToolCall(id="invalid-note", name="note", arguments=arguments),
+                    _tc("peek"),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "checkpoint", "scratchpad": "saved"}),
+                    _tc("peek"),
+                ]
+            ),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": DONE, "recap": "done"}),
+                ]
+            ),
+        ]
+    )
+    run = replace(
+        _loop_run(provider, registry),
+        collapse=CollapsePolicy(first_at=3, keep=1, interval=100),
+    )
+    session = Session()
+    messages = _scaffold_messages()
+
+    await drive(run, session, messages)
+
+    assert session.sentinel_status == DONE
+    assert len(provider.requests) == 4
+    assert any(
+        isinstance(m, ToolResultMessage)
+        and m.tool_call_id == "invalid-note"
+        and m.is_error
+        for m in provider.requests[2]
+    )
+    assert messages[2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
+    assert session.scratchpad == "saved"
 
 
 @pytest.mark.asyncio
