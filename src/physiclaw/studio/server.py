@@ -426,10 +426,15 @@ def build_app(session: Session) -> Starlette:
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
-        yield
-        if job.task is not None and not job.task.done():
-            job.task.cancel()
-        await session.close()
+        try:
+            yield
+        finally:
+            try:
+                if job.task is not None and not job.task.done():
+                    job.task.cancel()
+                    await asyncio.gather(job.task, return_exceptions=True)
+            finally:
+                await session.close()
 
     return Starlette(
         routes=[

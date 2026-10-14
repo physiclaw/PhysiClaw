@@ -81,6 +81,10 @@ class StudioSession:
         self._client: McpClient | None = None
         self._tools: list[str] = []
         self._lock = asyncio.Lock()
+        # MCP's transport opens task-local cancellation scopes. One worker
+        # must own connection setup, calls (including reconnect), and teardown.
+        self._worker: asyncio.Task | None = None
+        self._requests: asyncio.Queue | None = None
 
     @property
     def base_url(self) -> str:
@@ -109,17 +113,19 @@ class StudioSession:
         ConnectionError when the server is unreachable (client dropped
         for reconnect), RuntimeError when the tool itself errored (it
         ran and said no — the session is fine, so it passes through)."""
-        async with self._lock:
-            client = await self._connected()
+
+        async def call(client):
             if tool not in self._tools:
                 raise unpublished(tool)
             try:
-                blocks = await client.call_tool(tool, args)
+                return await client.call_tool(tool, args)
             except RuntimeError:
                 raise
             except Exception as e:
-                await self.close()
                 raise ConnectionError(f"MCP call {tool!r} failed: {e}") from e
+
+        async with self._lock:
+            blocks = await self._submit(call)
         return view_reply(blocks)
 
     async def drive(self, job):
@@ -129,25 +135,102 @@ class StudioSession:
         Raises what the job raises; a transport failure drops the
         client for reconnect exactly like `act`."""
         async with self._lock:
-            client = await self._connected()
-            try:
-                return await job(client)
-            except ConnectionError:
-                await self.close()
-                raise
+            return await self._submit(job)
+
+    async def _submit(self, job):
+        # The caller holds the rig lock until work AND cancellation cleanup
+        # finish. A fresh queue prevents abandoned requests from being replayed.
+        if self._worker is not None and self._worker.cancelling():
+            await self._stop_worker(self._worker)
+        if self._worker is None or self._worker.done():
+            self._requests = asyncio.Queue()
+            self._worker = asyncio.create_task(self._serve(self._requests))
+        worker = self._worker
+        reply = asyncio.get_running_loop().create_future()
+        assert self._requests is not None
+        self._requests.put_nowait((job, reply))
+        try:
+            # Also watch the worker: close can cancel it before it even starts.
+            await asyncio.wait((reply, worker), return_when=asyncio.FIRST_COMPLETED)
+            if reply.done():
+                return reply.result()
+            raise asyncio.CancelledError("MCP session closed")
+        except asyncio.CancelledError:
+            reply.cancel()
+            await self._stop_worker(worker)
+            raise
+
+    async def _serve(self, requests: asyncio.Queue) -> None:
+        owner = asyncio.current_task()
+        assert owner is not None
+        try:
+            while not owner.cancelling():
+                job, reply = await requests.get()
+                try:
+                    client = await self._connected()
+                    result = await job(client)
+                except ConnectionError as e:
+                    await self._disconnect()
+                    if not reply.done():
+                        reply.set_exception(e)
+                except Exception as e:
+                    if not reply.done():
+                        reply.set_exception(e)
+                else:
+                    if not reply.done():
+                        reply.set_result(result)
+                # A driver may catch cancellation and return. Still retire its
+                # connection instead of waiting forever for another request.
+                if reply.cancelled():
+                    return
+        finally:
+            await self._disconnect()
 
     async def _connected(self) -> McpClient:
         if self._client is None:
             client = McpClient(self._base)
             await client.__aenter__()
+            try:
+                tools = [t["name"] for t in await client.list_tools()]
+            except BaseException as e:
+                try:
+                    await client.__aexit__(None, None, None)
+                except BaseException:
+                    log.debug("studio MCP discovery teardown", exc_info=True)
+                if isinstance(e, Exception):
+                    raise ConnectionError(f"MCP tool discovery failed: {e}") from e
+                raise
             self._client = client
-            self._tools = [t["name"] for t in await client.list_tools()]
+            self._tools = tools
             log.info("studio connected (%s, %d tools)", self.mcp_url, len(self._tools))
         return self._client
 
     async def close(self) -> None:
-        """Drop the client (idempotent). The allowlist stays — it names
-        a frozen surface, and /api/state showing it is harmless."""
+        """Stop active work and drop the client (idempotent). The allowlist
+        stays — it names a frozen surface, and /api/state showing it is harmless."""
+        if self._worker is not None:
+            await self._stop_worker(self._worker)
+
+    async def _stop_worker(self, worker: asyncio.Task) -> None:
+        # Cancel once; repeated caller cancellation must not interrupt MCP's
+        # teardown. Shield the join, then propagate any caller cancellation.
+        if not worker.done() and not worker.cancelling():
+            worker.cancel()
+        joined = asyncio.gather(worker, return_exceptions=True)
+        cancelled = None
+        while not joined.done():
+            try:
+                await asyncio.shield(joined)
+            except asyncio.CancelledError as e:
+                cancelled = e
+        if self._worker is worker:
+            self._worker = None
+            self._requests = None
+        if cancelled is not None:
+            raise cancelled
+
+    async def _disconnect(self) -> None:
+        """Only the connection's owner may enter or exit its MCP context."""
         client, self._client = self._client, None
         if client is not None:
             try:

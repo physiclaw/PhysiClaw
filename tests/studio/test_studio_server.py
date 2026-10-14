@@ -3,9 +3,11 @@ handlers called directly (the `hardware_setup` test convention)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from physiclaw.studio import server
@@ -169,6 +171,50 @@ async def test_build_app_routes_and_closes_the_session_on_shutdown() -> None:
     async with app.router.lifespan_context(app):
         assert session.closed is False
     assert session.closed is True
+
+
+async def test_regression_lifespan_failure_still_closes_session(mocker):
+    session = FakeSession()
+    session.close = mocker.AsyncMock()
+    app = server.build_app(session)
+
+    with pytest.raises(RuntimeError, match="server stopped"):
+        async with app.router.lifespan_context(app):
+            raise RuntimeError("server stopped")
+
+    session.close.assert_awaited_once_with()
+
+
+async def test_regression_shutdown_joins_active_job_before_closing_session(mocker):
+    started = asyncio.Event()
+    cleaned = asyncio.Event()
+    cleanup_observed_on_close = []
+
+    async def step(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await asyncio.sleep(0)
+            cleaned.set()
+
+    async def close():
+        cleanup_observed_on_close.append(cleaned.is_set())
+
+    mocker.patch.object(server.stepping, "step", side_effect=step)
+    session = FakeSession()
+    session.close = close
+    app = server.build_app(session)
+
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://studio"
+        ) as client:
+            launched = await client.post("/api/step", json={"ref": "demo/flow"})
+            await asyncio.wait_for(started.wait(), 2)
+
+    assert launched.status_code == 200
+    assert cleanup_observed_on_close == [True]
 
 
 # ---------- the step job: the stepping driver behind /api/step ----------
