@@ -142,7 +142,6 @@ async def test_append_log_calls_memory_append_log(mocker) -> None:
 async def test_save_memory_calls_memory_save_fact(mocker) -> None:
     spy = mocker.patch("physiclaw.agent.engine.memory.save_fact")
 
-    mocker.patch("physiclaw.agent.engine.memory.over_soft_cap", return_value=None)
     s = Session()
     out = await _handle_save_memory(s, {"text": "user prefers metric"})
 
@@ -174,11 +173,12 @@ async def test_save_memory_echoes_full_updated_store(
 
 
 @pytest.mark.asyncio
-async def test_save_memory_nudges_to_consolidate_over_soft_cap(mocker) -> None:
-    mocker.patch("physiclaw.agent.engine.memory.save_fact")
-    mocker.patch("physiclaw.agent.engine.memory.over_soft_cap", return_value=2500)
+async def test_save_memory_nudges_to_consolidate_over_soft_cap(
+    mem_paths, monkeypatch
+) -> None:
+    monkeypatch.setattr(memory, "SOFT_CAP_CHARS", 10)
 
-    out = await _handle_save_memory(Session(), {"text": "x"})
+    out = await _handle_save_memory(Session(), {"text": "x" * 2500})
 
     assert "update_memory" in out and "2500" in out  # curation nudge surfaced
 

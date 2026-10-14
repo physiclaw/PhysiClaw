@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from physiclaw.common.text import append_text, iter_jsonl, read_text, write_text
+from physiclaw.common.text import (
+    append_line,
+    append_text,
+    iter_jsonl,
+    read_text,
+    write_text,
+)
 
 
 def test_write_then_read_roundtrips_utf8(tmp_path: Path) -> None:
@@ -63,3 +69,52 @@ def test_iter_jsonl_missing_file_yields_nothing(tmp_path) -> None:
     records = list(iter_jsonl(path))
 
     assert records == []
+
+
+@pytest.mark.parametrize(
+    "before, expected",
+    [
+        (b"", "新事实\n".encode()),
+        (b"old", "old\n新事实\n".encode()),
+        (b"old\n", "old\n新事实\n".encode()),
+        (b"old\r\n", "old\r\n新事实\n".encode()),
+        (b"old\r", "old\r新事实\n".encode()),
+        ("旧事实".encode(), "旧事实\n新事实\n".encode()),
+    ],
+)
+def test_append_line_preserves_bytes_and_starts_a_new_utf8_line(
+    tmp_path, before, expected
+):
+    path = tmp_path / "facts.md"
+    path.write_bytes(before)
+
+    append_line(path, "新事实")
+
+    assert path.read_bytes() == expected
+
+
+def test_append_line_creates_missing_file_without_leading_blank_line(tmp_path):
+    path = tmp_path / "facts.md"
+
+    append_line(path, "new fact")
+
+    assert path.read_bytes() == b"new fact\n"
+
+
+def test_append_line_invalid_unicode_preserves_existing_bytes(tmp_path):
+    path = tmp_path / "facts.md"
+    path.write_bytes(b"old")
+
+    with pytest.raises(UnicodeEncodeError):
+        append_line(path, "\ud800")
+
+    assert path.read_bytes() == b"old"
+
+
+def test_append_line_invalid_unicode_does_not_create_file(tmp_path):
+    path = tmp_path / "facts.md"
+
+    with pytest.raises(UnicodeEncodeError):
+        append_line(path, "\ud800")
+
+    assert not path.exists()

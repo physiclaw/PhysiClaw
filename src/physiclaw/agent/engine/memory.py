@@ -6,8 +6,8 @@ Read paths:
   - `load_persistent` — `memory/memory.md`. Auto-injected at session start.
   - `load_recent_entries` — last N entries across `memory/YYYY-MM-DD.md`
     daily logs, walking back through prior days when the latest file
-    has fewer than N. Fetched on demand via `read_logs`; injecting
-    them every wake would burn context.
+    has fewer than N. A small window is preloaded at wake; `read_logs`
+    fetches more on demand.
 
 Write paths used by the local tool handlers: `append_log`, `save_fact`,
 `update_fact`. After a save/update, `render_result` builds the tool result —
@@ -24,7 +24,7 @@ import re
 
 from physiclaw.common import daylog, paths
 from physiclaw.common.config import CONFIG
-from physiclaw.common.text import append_text, read_text, write_text
+from physiclaw.common.text import append_line, read_text, write_text
 
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = paths.memory_file()
@@ -80,7 +80,7 @@ def save_fact(text: str) -> None:
     if not text:
         return
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    append_text(MEMORY_FILE, text + "\n")
+    append_line(MEMORY_FILE, text)
 
 
 # Soft size budget for the always-injected semantic store (memory.md). Over
@@ -102,10 +102,10 @@ def render_result(action: str) -> str:
     memory.md, so the agent always sees the whole updated store without a
     re-read (the injected `## memory.md` is a wake snapshot and goes stale after
     a mid-session write). Appends the soft-cap curation nudge when over budget."""
-    store = load_persistent() or "(empty)"
-    msg = f"{action}\n\n## memory.md (now)\n{store}"
-    over = over_soft_cap()
-    if over is not None:
+    store = load_persistent()
+    msg = f"{action}\n\n## memory.md (now)\n{store or '(empty)'}"
+    over = len(store)
+    if over > SOFT_CAP_CHARS:
         # memory.md rides in every prompt, so keep it lean.
         msg += (
             f"\n\n~{over} chars, over the {SOFT_CAP_CHARS} soft cap — "
@@ -123,11 +123,11 @@ def render_result(action: str) -> str:
 # the CJK ones match verbatim. Kept precision-leaning — a false positive
 # only costs a single fail-open nudge the agent can decline.
 _MEMORY_CUE_RE = re.compile(
-    r"remember\s+(?:this|that|to|:|,)"
-    r"|don'?t\s+forget|do\s+not\s+forget"
-    r"|keep\s+in\s+mind"
-    r"|for\s+(?:future|next)\s+(?:reference|time)"
-    r"|save\s+(?:this\s+)?to\s+memory"
+    r"\bremember(?:\s+(?:this|that|to)\b|\s*[:,])"
+    r"|\bdon['’]?t\s+forget\b|\bdo\s+not\s+forget\b"
+    r"|\bkeep\s+in\s+mind\b"
+    r"|\bfor\s+(?:future|next)\s+(?:reference|time)\b"
+    r"|\bsave\s+(?:this\s+)?to\s+memory\b"
     r"|记住|记一下|记下来|记下|别忘|不要忘|务必记|以后记得|下次记得",
     re.IGNORECASE,
 )
@@ -136,7 +136,10 @@ _MEMORY_CUE_RE = re.compile(
 def scan_cues(text: str, *, window: int = 50, limit: int = 5) -> list[str]:
     """Snippets of `text` around any 'remember this' / '记住' cue — the match
     plus `window` chars either side, so the agent gets the cue and its
-    context. Deduped (case-folded), capped at `limit`, order preserved."""
+    context. Deduped (case-folded), capped at `limit`, order preserved.
+    A nonpositive limit returns no snippets."""
+    if limit <= 0:
+        return []
     out: list[str] = []
     seen: set[str] = set()
     for m in _MEMORY_CUE_RE.finditer(text or ""):
@@ -189,21 +192,15 @@ def update_fact(old: str, new: str) -> None:
     if new:
         updated = text.replace(old, new, 1)
     else:
-        if "\n" in old:
-            # The line loop below can never match a substring spanning a
-            # newline — without this guard the rewrite is a byte-identical
-            # no-op that still reports "memory.md updated".
+        if "\n" in old or len(old.splitlines()) > 1:
+            # Match splitlines' Unicode boundaries too: a substring spanning
+            # two lines cannot occur in either line, making deletion a no-op.
             raise ValueError(
                 "old spans multiple lines — delete one line at a time "
                 "(pass a single-line substring)"
             )
-        lines = text.splitlines(keepends=True)
-        out: list[str] = []
-        removed = False
-        for line in lines:
-            if not removed and old in line:
-                removed = True
-                continue
-            out.append(line)
-        updated = "".join(out)
+        # The occurrence check above guarantees only one line can match.
+        updated = "".join(
+            line for line in text.splitlines(keepends=True) if old not in line
+        )
     write_text(MEMORY_FILE, updated)

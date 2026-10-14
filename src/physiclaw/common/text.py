@@ -72,6 +72,23 @@ def append_text(path: Path, data: str) -> None:
         f.write(data)
 
 
+def append_line(path: Path, text: str) -> None:
+    """Append UTF-8 text followed by LF, starting on a new line.
+
+    Preserve existing bytes, including CRLF/CR endings. Inspect only the last
+    byte so appending to a growing daily log does not reread the whole file.
+    Encode before opening so invalid Unicode cannot leave a partial record.
+    """
+    data = (text + "\n").encode("utf-8")
+    separator = b""
+    with path.open("a+b") as f:
+        if f.tell():
+            f.seek(-1, 2)
+            if f.read(1) not in (b"\n", b"\r"):
+                separator = b"\n"
+        f.write(separator + data)
+
+
 def clip(text: str, limit: int) -> str:
     """Truncate with a trailing ellipsis — the one spelling of the
     log-line trimmer (several modules used to hand-roll it)."""

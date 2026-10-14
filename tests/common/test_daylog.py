@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+import pytest
 from freezegun import freeze_time
 
 from physiclaw.common import daylog, paths
@@ -106,3 +107,16 @@ def test_unstamped_lines_pass_through_unchanged() -> None:
 
     assert entries == "a bare note without a clock"
     assert not re.match(r"^\[\d{4}-", entries)
+
+
+@freeze_time("2026-10-14T11:00:00")
+@pytest.mark.parametrize("ending", ["", "\n", "\r\n", "\r"])
+def test_regression_append_to_unterminated_file_preserves_two_entries(ending):
+    paths.memory_dir().mkdir(parents=True)
+    _today_file().write_bytes(("[10:00] first" + ending).encode("utf-8"))
+
+    daylog.append_log("[11:00] second")
+
+    assert daylog.load_recent_entries(2) == (
+        "[2026-10-14 11:00] second\n[2026-10-14 10:00] first"
+    )

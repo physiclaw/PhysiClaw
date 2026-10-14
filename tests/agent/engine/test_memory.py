@@ -11,15 +11,10 @@ makes 365 days of accumulation deterministic by freezing the day.
 
 Accepted equivalent mutants:
 
-  - `update_fact` delete-line branch flag mutations (`removed = False/
-    None` initial, `True` → `False/None` post-match) — the `count > 1`
-    pre-check guarantees `old` matches in exactly one line, so the
-    flag never has to gate a second iteration.
-  - `text.replace(old, new, 1)` ↔ `count=2` — same: pre-check ensures
+  - `text.replace(old, new, 1)` ↔ `count=2` — the pre-check ensures
     only one occurrence, so 1 and 2 produce identical output.
-  - Outer-loop `break` → `continue` (after `len(collected) >= n`) —
-    behavior matches `break` because `continue` re-checks the guard
-    immediately; only the iteration count differs.
+  - The empty-input regex fallback `""` → `"XXXX"` — neither contains
+    a memory cue, so both return no snippets.
 """
 
 from __future__ import annotations
@@ -29,6 +24,8 @@ from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.agent.engine import memory
 
@@ -386,6 +383,34 @@ def test_save_fact_strips_text_before_writing(_memory_paths: Path) -> None:
     assert (_memory_paths / "memory.md").read_text() == "surrounded\n"
 
 
+@pytest.mark.parametrize("ending", ["", "\n", "\r\n", "\r"])
+def test_regression_save_fact_keeps_existing_and_new_facts_separate(
+    _memory_paths, ending
+):
+    _memory_paths.mkdir()
+    path = _memory_paths / "memory.md"
+    path.write_bytes(("prefers metric units" + ending).encode("utf-8"))
+
+    memory.save_fact("drinks tea")
+
+    assert memory.load_persistent().splitlines() == [
+        "prefers metric units",
+        "drinks tea",
+    ]
+    assert path.read_bytes().startswith(
+        ("prefers metric units" + ending).encode("utf-8")
+    )
+
+
+def test_regression_save_fact_after_update_removed_final_newline(_memory_paths):
+    memory.save_fact("prefers metric units")
+    memory.update_fact("metric units\n", "imperial units")
+
+    memory.save_fact("drinks tea")
+
+    assert memory.load_persistent() == "prefers imperial units\ndrinks tea"
+
+
 # ---------- update_fact ----------
 
 
@@ -487,6 +512,150 @@ def test_update_fact_with_empty_new_only_removes_first_match_and_keeps_others(
 # ---------- memory cues (scan_cues / cue_corrective) ----------
 
 
+@pytest.mark.parametrize(
+    "separator", ["\n", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"]
+)
+def test_regression_update_fact_rejects_multiline_delete_without_changes(
+    _memory_paths, separator
+):
+    memory.save_fact(f"keep\nfirst{separator}second\nlast")
+    before = memory.MEMORY_FILE.read_bytes()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"^old spans multiple lines — delete one line at a time "
+            r"\(pass a single-line substring\)$"
+        ),
+    ):
+        memory.update_fact(f"first{separator}second", "")
+
+    assert memory.MEMORY_FILE.read_bytes() == before
+
+
+def test_update_fact_delete_rejects_trailing_newline_in_match(_memory_paths):
+    memory.save_fact("keep\nremove\nlast")
+    before = memory.MEMORY_FILE.read_bytes()
+
+    with pytest.raises(ValueError, match="old spans multiple lines"):
+        memory.update_fact("remove\n", "")
+
+    assert memory.MEMORY_FILE.read_bytes() == before
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_scan_cues_nonpositive_limit_returns_nothing(limit):
+    text = "remember this: prefers tea"
+
+    cues = memory.scan_cues(text, limit=limit)
+
+    assert cues == []
+
+
+def test_scan_cues_one_result_limit_keeps_the_first_cue():
+    text = "remember this " + "x" * 120 + " 记住"
+
+    cues = memory.scan_cues(text, window=0, limit=1)
+
+    assert cues == ["remember this"]
+
+
+def test_scan_cues_default_context_is_fifty_characters_each_side():
+    text = "0" * 60 + " remember: " + "1" * 60
+
+    cues = memory.scan_cues(text)
+
+    assert cues == ["0" * 49 + " remember: " + "1" * 49]
+
+
+def test_scan_cues_default_cap_keeps_first_five_distinct_matches():
+    text = "remember this, remember that, remember to, don't forget, keep in mind, save to memory"
+
+    cues = memory.scan_cues(text, window=0)
+
+    assert cues == [
+        "remember this",
+        "remember that",
+        "remember to",
+        "don't forget",
+        "keep in mind",
+    ]
+
+
+def test_scan_cues_continues_after_casefolded_duplicate():
+    text = "remember this | REMEMBER THIS | 记住"
+
+    cues = memory.scan_cues(text, window=0)
+
+    assert cues == ["remember this", "记住"]
+
+
+@pytest.mark.parametrize(
+    "cue",
+    [
+        "remember:",
+        "REMEMBER,",
+        "remember :",
+        "remember ,",
+        "remember this",
+        "remember that",
+        "remember to",
+        "don't forget",
+        "don’t forget",
+        "dont forget",
+        "do not forget",
+        "keep in mind",
+        "for future reference",
+        "for next time",
+        "save this to memory",
+        "save to memory",
+        "记住",
+        "记一下",
+        "记下来",
+        "记下",
+        "别忘",
+        "不要忘",
+        "务必记",
+        "以后记得",
+        "下次记得",
+    ],
+)
+def test_scan_cues_matches_supported_phrase_as_a_complete_snippet(cue):
+    text = f"{cue} prefers tea"
+
+    cues = memory.scan_cues(text)
+
+    assert cues == [text]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "remember thisthat is an identifier",
+        "disremember this message",
+        "don't forgetful is a typo",
+        "keep in mindless mode",
+        "for future references",
+        "save to memoryless cache",
+    ],
+)
+def test_scan_cues_does_not_match_inside_longer_english_words(text):
+    cues = memory.scan_cues(text)
+
+    assert cues == []
+
+
+@given(text=st.text(max_size=250), limit=st.integers(min_value=0, max_value=6))
+def test_scan_cues_respects_cap_and_casefolded_uniqueness(text, limit):
+    content = f"remember: {text}\n记住 {text}\nREMEMBER: {text}"
+
+    cues = memory.scan_cues(content, window=10, limit=limit)
+
+    assert len(cues) <= limit
+    assert len({cue.casefold() for cue in cues}) == len(cues)
+    assert all(cue == " ".join(cue.split()) for cue in cues)
+
+
 def test_scan_cues_matches_english_and_chinese_with_context() -> None:
     # Cues far enough apart (> 2×window) to yield two distinct snippets.
     text = "记住我不吃辣。" + "x" * 120 + " remember this: code 4021."
@@ -522,8 +691,14 @@ def test_scan_cues_dedups_and_caps() -> None:
 
 def test_cue_corrective_lists_snippets_and_names_the_fix() -> None:
     out = memory.cue_corrective(["记住我不吃辣", "remember: code 4021"])
-    assert "记住我不吃辣" in out and "remember: code 4021" in out
-    assert "save_memory" in out
+
+    assert out.splitlines() == [
+        "Rejected — you flagged something to remember but haven't saved it. Matched cue(s):",
+        '- "记住我不吃辣"',
+        '- "remember: code 4021"',
+        "If any is a durable fact/preference, `save_memory` it (one line); "
+        "one-off detail goes to `append_log`. Then re-issue `end_session`.",
+    ]
 
 
 # ---------- soft cap (over_soft_cap) ----------
@@ -541,3 +716,50 @@ def test_over_soft_cap_reports_size_only_when_exceeded(
 
     monkeypatch.setattr(memory, "SOFT_CAP_CHARS", 10_000)
     assert memory.over_soft_cap() is None  # now comfortably under
+
+
+@pytest.mark.parametrize("size, expected", [(0, None), (10, None), (11, 11)])
+def test_over_soft_cap_exact_boundary(_memory_paths, monkeypatch, size, expected):
+    monkeypatch.setattr(memory, "SOFT_CAP_CHARS", 10)
+    memory.save_fact("x" * size)
+
+    result = memory.over_soft_cap()
+
+    assert result == expected
+
+
+def test_render_result_missing_memory_shows_empty():
+    result = memory.render_result("saved")
+
+    assert result == "saved\n\n## memory.md (now)\n(empty)"
+
+
+@pytest.mark.parametrize("content", ["", "   \n", "fact one", "x" * 10])
+def test_render_result_echoes_current_store_without_nudge_below_or_at_cap(
+    _memory_paths, monkeypatch, content
+):
+    monkeypatch.setattr(memory, "SOFT_CAP_CHARS", 10)
+    _memory_paths.mkdir()
+    memory.MEMORY_FILE.write_text(content, encoding="utf-8")
+
+    result = memory.render_result("saved")
+
+    assert result == f"saved\n\n## memory.md (now)\n{content.strip() or '(empty)'}"
+
+
+def test_render_result_sizes_the_same_snapshot_it_displays(
+    _memory_paths, monkeypatch, mocker
+):
+    monkeypatch.setattr(memory, "SOFT_CAP_CHARS", 10)
+    _memory_paths.mkdir()
+    memory.MEMORY_FILE.touch()
+    reader = mocker.patch.object(memory, "read_text", side_effect=["x" * 11, "short"])
+
+    result = memory.render_result("saved")
+
+    assert result == (
+        "saved\n\n## memory.md (now)\n"
+        + "x" * 11
+        + "\n\n~11 chars, over the 10 soft cap — use `update_memory` to merge or prune stale facts."
+    )
+    reader.assert_called_once_with(memory.MEMORY_FILE)

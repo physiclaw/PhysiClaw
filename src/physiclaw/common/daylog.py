@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 
 from physiclaw.common import paths
-from physiclaw.common.text import append_text, read_text
+from physiclaw.common.text import append_line, read_text
 
 # Hard ceiling on how far back to scan when collecting entries. Guards
 # against an indefinite loop on a near-empty memory dir; missing days
@@ -60,7 +60,7 @@ def append_log(entry: str, root: Path | None = None) -> None:
     today = dt.date.today().isoformat()
     path = mem / f"{today}.md"
     header = f"# {today}\n\n" if not path.exists() else ""
-    append_text(path, header + entry + "\n")
+    append_line(path, header + entry)
 
 
 def load_recent_entries(n: int, root: Path | None = None) -> str:
