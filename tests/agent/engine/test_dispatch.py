@@ -57,6 +57,45 @@ async def test_dispatch_invalid_args_returns_error() -> None:
     assert "invalid arguments" in result.content
 
 
+@pytest.mark.parametrize(
+    "prop,value",
+    [
+        ({"type": ["array", "null"], "items": {"type": "string"}}, [3]),
+        ({"type": ["object", "null"], "required": ["name"]}, {}),
+        ({"type": "number", "minimum": 0, "maximum": 1}, float("nan")),
+        ({"enum": [{"approved": 1}]}, {"approved": True}),
+        ({"additionalProperties": False}, {"extra": "forbidden"}),
+        ({"items": False}, ["forbidden"]),
+    ],
+)
+async def test_regression_invalid_nested_arguments_never_reach_mcp(prop, value) -> None:
+    schema = {"name": "probe", "input_schema": {"properties": {"v": prop}}}
+    mcp = FakeMcpClient()
+    run = _mk_run(mcp=mcp, schema_by_name={"probe": schema})
+    call = _tc("probe", {"v": value})
+
+    result = await dispatch(run, Session(), call, 0)
+
+    assert result.is_error is True
+    assert result.tool_call_id == call.id
+    assert result.content.startswith("invalid arguments for probe:")
+    assert mcp.tool_calls == []
+
+
+@pytest.mark.parametrize("value", [None, ["operator text"]])
+async def test_nullable_array_argument_reaches_mcp_unchanged(value) -> None:
+    prop = {"type": ["array", "null"], "items": {"type": "string"}}
+    schema = {"name": "probe", "input_schema": {"properties": {"v": prop}}}
+    mcp = FakeMcpClient()
+    run = _mk_run(mcp=mcp, schema_by_name={"probe": schema})
+    args = {"v": value}
+
+    result = await dispatch(run, Session(), _tc("probe", args), 0)
+
+    assert result.is_error is False
+    assert mcp.tool_calls == [("probe", args)]
+
+
 @pytest.mark.asyncio
 async def test_dispatch_local_tool_returns_text() -> None:
     async def handler(_session, _args):

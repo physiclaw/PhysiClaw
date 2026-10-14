@@ -9,29 +9,19 @@ Coverage targets:
   - per-property: enum, number bounds, string lengths, type matching
     (including bool ≠ integer/number), type-list, unknown types
   - array: per-item recursion, minItems
-  - object: nested recursion via re-entering `validate_arguments`
+  - object: nested properties, required fields and additional properties
   - Hypothesis: any dict against an empty schema never raises
 
 All `pytest.raises(match=...)` regexes are `^`-anchored so a mutmut
 `XX…XX` wrap on the message would no longer substring-match.
 
-Accepted equivalent mutants (cannot be killed by behavior tests):
-
-  - `matched = False` ↔ `matched = None` initialization — both falsy,
-    `if not matched:` evaluates identically.
-  - Unknown-type `break` ↔ `continue` after `matched = True` — the
-    post-loop `if not matched:` is False either way; the loop only
-    ever sets `matched=True`, never back to False.
-  - `t == "boolean"` ↔ `t == "XXbooleanXX"` — when the boolean arm is
-    skipped, control falls through to the generic
-    `isinstance(value, py_type)` check with `py_type = bool`, giving
-    the same matched/not-matched outcome.
-  - `break` ↔ `continue` immediately after `matched = True` — same
-    rationale; matched cannot regress.
+Container regressions exercise both nullable types and omitted types.
+Numeric regressions include non-finite values and bool/number equality.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -463,7 +453,7 @@ def test_object_nested_recurses_and_raises_on_inner_missing_required() -> None:
     }
 
     with pytest.raises(
-        ValidationError, match=r"^missing required argument\(s\): inner$"
+        ValidationError, match=r"^missing required argument\(s\): outer\.inner$"
     ):
         validate_arguments({"outer": {}}, schema)
 
@@ -502,7 +492,9 @@ def test_nested_object_with_only_properties_still_recurses() -> None:
         },
     }
 
-    with pytest.raises(ValidationError, match=r"^inner: expected string, got int"):
+    with pytest.raises(
+        ValidationError, match=r"^outer\.inner: expected string, got int"
+    ):
         validate_arguments({"outer": {"inner": 42}}, schema)
 
 
@@ -519,7 +511,7 @@ def test_nested_object_with_only_required_still_recurses() -> None:
     }
 
     with pytest.raises(
-        ValidationError, match=r"^missing required argument\(s\): inner$"
+        ValidationError, match=r"^missing required argument\(s\): outer\.inner$"
     ):
         validate_arguments({"outer": {}}, schema)
 
@@ -547,3 +539,197 @@ def test_arbitrary_dict_against_empty_schema_never_raises(
     args.pop("bbox", None)
 
     validate_arguments(args, {"type": "object", "properties": {}})
+
+
+@pytest.mark.parametrize("declared", [{}, {"type": ["array", "null"]}])
+@pytest.mark.parametrize(
+    "constraint,value,message",
+    [
+        ({"items": {"type": "string"}}, [1], r"v\[0\]: expected string"),
+        ({"minItems": 2}, ["one"], r"v: array has 1 items, min 2"),
+        ({"maxItems": 1}, ["one", "two"], r"^v: array has 2 items, max 1$"),
+    ],
+)
+def test_regression_array_constraints_apply_without_single_type(
+    declared, constraint, value, message
+) -> None:
+    schema = {"properties": {"v": declared | constraint}}
+
+    with pytest.raises(ValidationError, match=message):
+        validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize("declared", [{}, {"type": ["object", "null"]}])
+@pytest.mark.parametrize(
+    "constraint,value,message",
+    [
+        ({"required": ["name"]}, {}, r"missing required argument.*name"),
+        ({"properties": {"name": {"type": "string"}}}, {"name": 3}, r"expected string"),
+        ({"additionalProperties": False}, {"extra": 1}, r"extra.*not allowed"),
+        (
+            {"additionalProperties": {"type": "string"}},
+            {"extra": 1},
+            r"expected string",
+        ),
+    ],
+)
+def test_regression_object_constraints_apply_without_single_type(
+    declared, constraint, value, message
+) -> None:
+    schema = {"properties": {"v": declared | constraint}}
+
+    with pytest.raises(ValidationError, match=message):
+        validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize(
+    "constraint", [{}, {"type": "number"}, {"minimum": 0, "maximum": 1}]
+)
+def test_regression_nonfinite_number_rejected(value, constraint) -> None:
+    schema = {"properties": {"v": constraint}}
+
+    with pytest.raises(ValidationError, match=r"^v: number must be finite"):
+        validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize(
+    "value,choice",
+    [
+        (True, 1),
+        (False, 0),
+        (1, True),
+        ([True], [1]),
+        ({"ok": False}, {"ok": 0}),
+        ([], 1),
+        (1, []),
+        ({}, 1),
+        (1, {}),
+        ([], [1]),
+        ([1], []),
+        ({"left": 1}, {"right": 1}),
+    ],
+)
+def test_regression_enum_distinguishes_boolean_from_number(value, choice) -> None:
+    schema = {"properties": {"v": {"enum": [choice]}}}
+
+    with pytest.raises(ValidationError, match=r"^v: value .* is not one of"):
+        validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize(
+    "value,choice",
+    [(1, 1.0), (1.0, 1), (True, True), ([1], [1.0]), ({"ok": 1}, {"ok": 1.0})],
+)
+def test_enum_preserves_json_numeric_equality(value, choice) -> None:
+    schema = {"properties": {"v": {"enum": [choice]}}}
+
+    validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize(
+    "schema", [{"properties": {"v": False}}, {"additionalProperties": False}]
+)
+def test_regression_false_property_schema_rejects_value(schema) -> None:
+    with pytest.raises(ValidationError, match=r"^v: .*not allowed"):
+        validate_arguments({"v": "forbidden"}, schema)
+
+
+@pytest.mark.parametrize("item_schema", [True, False])
+def test_boolean_item_schema_accepts_empty_list(item_schema) -> None:
+    schema = {"properties": {"v": {"type": "array", "items": item_schema}}}
+
+    validate_arguments({"v": []}, schema)
+
+
+def test_regression_false_item_schema_rejects_nonempty_list() -> None:
+    schema = {"properties": {"v": {"type": "array", "items": False}}}
+
+    with pytest.raises(ValidationError, match=r"^v\[0\]: .*not allowed"):
+        validate_arguments({"v": ["forbidden"]}, schema)
+
+
+def test_true_item_schema_accepts_any_value() -> None:
+    schema = {"properties": {"v": {"type": "array", "items": True}}}
+
+    validate_arguments({"v": ["allowed"]}, schema)
+
+
+@pytest.mark.parametrize(
+    "prop",
+    [
+        {"type": ["array", "null"], "items": False, "minItems": 1},
+        {
+            "type": ["object", "null"],
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    ],
+)
+def test_nullable_container_accepts_null(prop) -> None:
+    schema = {"properties": {"v": prop}}
+
+    validate_arguments({"v": None}, schema)
+
+
+def test_additional_properties_schema_keeps_declared_property_rules() -> None:
+    schema = {
+        "properties": {"known": {"type": "integer"}},
+        "additionalProperties": {"type": "string"},
+    }
+
+    validate_arguments({"known": 3, "extra": "allowed"}, schema)
+
+
+def test_open_nested_object_keeps_arbitrary_bbox_named_metadata() -> None:
+    schema = {"properties": {"inputs": {"type": "object"}}}
+
+    validate_arguments({"inputs": {"bbox": "macro input text"}}, schema)
+
+
+def test_unbounded_integer_does_not_overflow_finite_check() -> None:
+    schema = {"properties": {"v": {"type": "integer"}}}
+
+    validate_arguments({"v": 10**1000}, schema)
+
+
+def _accepted(value, prop) -> bool:
+    try:
+        validate_arguments({"v": value}, {"properties": {"v": prop}})
+    except ValidationError:
+        return False
+    return True
+
+
+@given(st.lists(st.one_of(st.text(), st.integers()), max_size=8))
+def test_nullable_array_has_same_item_constraints_as_plain_array(value) -> None:
+    rules = {"items": {"type": "string"}, "minItems": 1, "maxItems": 4}
+
+    plain = _accepted(value, rules | {"type": "array"})
+    nullable = _accepted(value, rules | {"type": ["array", "null"]})
+
+    assert nullable == plain
+
+
+def test_regression_deep_json_returns_validation_error_instead_of_recursion_error(
+    validator_recursion_limit,
+) -> None:
+    value = json.loads('{"nested":' * 700 + "0" + "}" * 700)
+
+    with pytest.raises(
+        ValidationError, match=r"^arguments or schema are too deeply nested$"
+    ):
+        validate_arguments({"v": value}, {})
+
+
+@pytest.mark.parametrize("value", [{"hidden": float("nan")}, [float("inf")]])
+def test_regression_nonfinite_number_in_open_container_rejected(value) -> None:
+    with pytest.raises(ValidationError, match=r"number must be finite"):
+        validate_arguments({"v": value}, {})
+
+
+@pytest.mark.parametrize("value,limit", [([], 0), (["one"], 1), (["one", "two"], 2)])
+def test_array_at_max_items_boundary_passes(value, limit) -> None:
+    schema = {"properties": {"v": {"type": "array", "maxItems": limit}}}
+
+    validate_arguments({"v": value}, schema)

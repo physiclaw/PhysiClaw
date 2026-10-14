@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from physiclaw.agent.engine import memory
+
+
+@pytest.fixture
+def validator_recursion_limit() -> Iterator[None]:
+    """Keep the depth regression independent of libraries raising Python's limit."""
+    previous = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        yield
+    finally:
+        sys.setrecursionlimit(previous)
 
 
 @pytest.fixture
