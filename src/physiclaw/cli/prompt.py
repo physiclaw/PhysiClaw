@@ -10,10 +10,15 @@ output can't drift from what the running agent actually sends. Pass
 
 from __future__ import annotations
 
+import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Annotated
 
 import typer
+
+from physiclaw.cli._format import exit_error
+from physiclaw.contract.dto import ContentBlock
 
 prompt_app = typer.Typer(
     no_args_is_help=True,
@@ -37,7 +42,8 @@ def _provider_id() -> str:
         return ""
 
 
-def _content_text(content) -> str:
+def _content_text(content: str | list[ContentBlock]) -> str:
+    """Keep text blocks verbatim and label non-text blocks in the dump."""
     if isinstance(content, str):
         return content
     parts = []
@@ -48,15 +54,35 @@ def _content_text(content) -> str:
 
 
 def _emit(text: str, save_as: Path | None) -> None:
-    """Write `text` to `save_as` (with a confirmation line), else print it to
-    stdout verbatim (no added newline, so `request` output stays byte-exact)."""
-    if save_as is not None:
-        from physiclaw.common.text import write_text
+    """Save a complete dump or preserve the previous one on failure.
 
-        write_text(save_as, text.rstrip("\n") + "\n")
-        typer.echo(f"Wrote {len(text)} chars to {save_as}")
-    else:
+    Stdout stays verbatim; saved files end with exactly one newline.
+    """
+    if save_as is None:
         typer.echo(text, nl=False)
+        return
+
+    from physiclaw.common.text import write_text
+
+    content = text.rstrip("\n") + "\n"
+    temporary: Path | None = None
+    try:
+        # Follow destination symlinks as the previous direct write did.
+        target = save_as.resolve()
+        with tempfile.NamedTemporaryFile(
+            dir=target.parent, prefix=".physiclaw-prompt-", suffix=".tmp", delete=False
+        ) as f:
+            temporary = Path(f.name)
+        write_text(temporary, content)
+        temporary.replace(target)
+    except (OSError, UnicodeError, RuntimeError) as e:
+        # resolve() raises RuntimeError for symlink loops on Python 3.12.
+        exit_error(f"could not save prompt to {save_as}: {e}")
+    finally:
+        if temporary is not None:
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
+    typer.echo(f"Wrote {len(content)} chars to {save_as}")
 
 
 @prompt_app.command()
