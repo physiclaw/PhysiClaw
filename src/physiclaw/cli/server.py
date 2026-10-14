@@ -1,14 +1,16 @@
 """``physiclaw server`` — run the MCP server (and the agent runtime subprocess)."""
 
 import _thread
-import atexit
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
 import threading
-import time
+from collections.abc import Callable
+from contextlib import ExitStack
+from functools import partial
 from typing import Annotated, Optional
 
 import typer
@@ -21,6 +23,8 @@ def server(
         int,
         typer.Option(
             "--port",
+            min=1,
+            max=65534,
             help="Control-plane port (MCP + setup). The "
             "LAN phone bridge always listens on port+1.",
         ),
@@ -124,19 +128,24 @@ def server(
 ) -> None:
     """Run the PhysiClaw MCP server.
 
-    Startup is a straight sequence of phases — a few inline, the rest in the
-    `_*` helpers below: banner + maintenance → save-flag env → logging → MCP
-    init → model resolution → endpoint log → hardware bring-up → runtime
-    subprocess → serve. The two background flows (hardware bring-up, runtime
-    loop) start daemon threads / a subprocess so `_serve` can start first.
+    Reserve both listeners before recording state or starting hardware and the
+    runtime. One scope owns the server lock, listeners, state and child process;
+    returning or failing releases them in reverse order.
     """
     from physiclaw import __version__
-    from physiclaw.common import paths
+    from physiclaw.cli._format import exit_error
+    from physiclaw.common import paths, runtime_state
+    from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
     from physiclaw.common.logger import (
         SERVER_LOG_TAG,
         attach_server_mcp_tee,
         setup_logging,
     )
+    from physiclaw.core.bridge.lan import bridge_port
+
+    # Direct callers (mcp/now/auto) bypass Typer's option validation.
+    if not 1 <= port <= 65534:
+        exit_error("--port must be between 1 and 65534 (bridge uses port + 1)", code=2)
 
     # Logging first: everything from here on — including the version line and
     # the background auto-sync's outcome — speaks in one voice, the
@@ -163,44 +172,93 @@ def server(
     log = logging.getLogger(__name__)
     log.info("PhysiClaw %s", __version__)
     _require_vision_model()
-    _run_startup_maintenance(sync_skills=not no_runtime)
-    _apply_save_flags(
-        save_tool_calls, save_snapshots, save_screenshots, save_raw_camera
-    )
+    with ExitStack() as resources:
+        # Uvicorn replays SIGTERM after graceful shutdown. Translate that replay
+        # into KeyboardInterrupt so Python cleanup runs before restoring it.
+        if threading.current_thread() is threading.main_thread():
+            previous = signal.signal(signal.SIGTERM, signal.default_int_handler)
+            resources.callback(signal.signal, signal.SIGTERM, previous)
+        try:
+            resources.enter_context(
+                exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock"))
+            )
+        except FileLockBusy:
+            exit_error("another PhysiClaw server is running or starting")
+        except OSError as e:
+            exit_error(f"cannot acquire the server lock: {e}")
+        _refuse_if_already_running(host, port)
+        listeners = (
+            resources.enter_context(_open_listener(host, port)),
+            resources.enter_context(_open_listener("0.0.0.0", bridge_port(port))),
+        )
+        _run_startup_maintenance(sync_skills=not no_runtime)
+        _apply_save_flags(
+            save_tool_calls, save_snapshots, save_screenshots, save_raw_camera
+        )
 
-    from physiclaw.core.server import build_apps, shutdown
+        from physiclaw.core.server import build_apps, shutdown
 
-    atexit.register(shutdown)
+        resources.callback(shutdown)
+        resources.callback(runtime_state.clear)
+        model_ref, runtime_label = _resolve_and_record_model(host, port)
+        _log_endpoints(host, port, no_runtime=no_runtime)
+        apps = build_apps(host)
+        child = _start_runtime_loop(
+            host,
+            port,
+            verbose,
+            no_runtime=no_runtime,
+            model_ref=model_ref,
+            runtime_label=runtime_label,
+        )
+        if child is not None:
+            resources.callback(terminate_child, child)
+        try:
+            _serve(
+                host,
+                port,
+                *apps,
+                sockets=listeners,
+                announce_ready=no_runtime,
+                on_started=partial(
+                    _start_hardware_bringup,
+                    host,
+                    port,
+                    warm_start=warm_start,
+                    hot_start=hot_start,
+                    cam_index=cam_index,
+                    auto_calibrate=auto_calibrate,
+                    no_setup_hardware=no_setup_hardware,
+                ),
+            )
+        except KeyboardInterrupt:
+            pass
 
-    _refuse_if_already_running(host, port)
-    model_ref, runtime_label = _resolve_and_record_model(host, port)
-    _log_endpoints(host, port, no_runtime=no_runtime)
-    _start_hardware_bringup(
-        host,
-        port,
-        warm_start=warm_start,
-        hot_start=hot_start,
-        cam_index=cam_index,
-        auto_calibrate=auto_calibrate,
-        no_setup_hardware=no_setup_hardware,
-    )
-    _start_runtime_loop(
-        host,
-        port,
-        verbose,
-        no_runtime=no_runtime,
-        model_ref=model_ref,
-        runtime_label=runtime_label,
-    )
 
+def _open_listener(host: str, port: int) -> socket.socket:
+    """Reserve an address before startup side effects; the caller owns closing."""
+    from physiclaw.cli._format import exit_error
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
     try:
-        _serve(host, port, *build_apps(host), announce_ready=no_runtime)
-    except KeyboardInterrupt:
-        pass
+        return socket.create_server(
+            (host, port),
+            family=family,
+            dualstack_ipv6=family == socket.AF_INET6 and socket.has_dualstack_ipv6(),
+        )
+    except OSError as e:
+        exit_error(f"cannot listen on {host}:{port}: {e}")
 
 
 def _serve(
-    host: str, port: int, control_app, bridge_app, *, announce_ready: bool
+    host: str,
+    port: int,
+    control_app,
+    bridge_app,
+    *,
+    sockets: tuple[socket.socket, socket.socket],
+    announce_ready: bool,
+    on_started: Callable[[], None],
 ) -> None:
     """Serve the two planes from one process, two listeners.
 
@@ -212,27 +270,88 @@ def _serve(
 
     The bridge runs in a daemon thread (uvicorn skips signal handling off
     the main thread); the control server keeps the main thread, so Ctrl-C
-    behaves exactly as it did under `mcp.run()` — uvicorn catches SIGINT,
-    shuts down gracefully, then re-raises so atexit handlers still fire.
+    uvicorn handles signals and shuts down gracefully. A failed bridge stops
+    the control listener too; leaving this scope cancels startup and joins both
+    worker threads. Hardware bring-up starts only after both ASGI apps are up.
     """
     import uvicorn
 
+    from physiclaw.cli._format import exit_error
     from physiclaw.core.bridge.lan import bridge_port
 
-    if announce_ready:
-        _announce_ready_when_up(host, port)
+    stopping = threading.Event()
     bridge_server = uvicorn.Server(
         uvicorn.Config(
             bridge_app, host="0.0.0.0", port=bridge_port(port), log_level="warning"
         )
     )
-    threading.Thread(target=bridge_server.run, name="bridge-http", daemon=True).start()
-    uvicorn.Server(
+    control_server = uvicorn.Server(
         uvicorn.Config(control_app, host=host, port=port, log_level="warning")
-    ).run()
+    )
+    failures: list[str] = []
+
+    def run_bridge() -> None:
+        try:
+            bridge_server.run(sockets=[sockets[1]])
+        except BaseException as e:
+            failures.append(f"phone bridge failed: {str(e) or type(e).__name__}")
+        finally:
+            if not stopping.is_set():
+                if not failures:
+                    failures.append(
+                        "phone bridge failed: listener stopped unexpectedly"
+                    )
+                control_server.should_exit = True
+
+    def after_startup() -> None:
+        # Reserved sockets already accept TCP connections. Hardware must wait
+        # for both ASGI lifespans to complete, not merely a successful connect.
+        while not stopping.wait(0.01):
+            if control_server.should_exit or bridge_server.should_exit:
+                return
+            if control_server.started and bridge_server.started:
+                try:
+                    on_started()
+                    if announce_ready:
+                        _announce_ready_when_up(host, port, stopping=stopping)
+                except BaseException as e:
+                    failures.append(
+                        f"hardware startup failed: {str(e) or type(e).__name__}"
+                    )
+                    control_server.should_exit = True
+                return
+
+    threads = (
+        threading.Thread(target=run_bridge, name="bridge-http", daemon=True),
+        threading.Thread(target=after_startup, name="server-startup", daemon=True),
+    )
+    interrupted = False
+    try:
+        for thread in threads:
+            thread.start()
+        control_server.run(sockets=[sockets[0]])
+    except KeyboardInterrupt:
+        interrupted = True
+    finally:
+        stopping.set()
+        bridge_server.should_exit = True
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(timeout=5)
+    if failures:
+        exit_error(failures[0])
+    for thread in threads:
+        if thread.is_alive():
+            exit_error(f"{thread.name} did not stop within 5 seconds")
+    if interrupted:
+        raise KeyboardInterrupt
+    if not control_server.started:
+        exit_error("control server failed to start")
 
 
-def _announce_ready_when_up(host: str, port: int) -> None:
+def _announce_ready_when_up(
+    host: str, port: int, *, stopping: threading.Event | None = None
+) -> None:
     """`physiclaw mcp` mode: one ready line when the rig can actually be
     driven — /api/status `ready: true`, the same flag the built-in
     runtime polls before waking (`runtime._check_ready`).
@@ -244,23 +363,26 @@ def _announce_ready_when_up(host: str, port: int) -> None:
     `physiclaw ready=True`, so this watcher runs only without one.
     Daemon thread, no deadline — the wizard flow flips ready whenever
     the user finishes calibrating; connection errors are pre-serving
-    or mid-blip states, held and retried like the runtime does."""
+    or mid-blip states, held and retried like the runtime does. The serving
+    scope signals `stopping` to cancel the watcher on shutdown."""
     log = logging.getLogger(__name__)
     # The shared ready definition (`common.ready`); its httpx transport
     # loads on the first probe, not at import.
     from physiclaw.common.ready import check_ready_once
 
     base = f"http://{url_host(host)}:{port}"
+    stopping = stopping or threading.Event()
 
     def _watch() -> None:
-        while True:
+        while not stopping.is_set():
             try:
                 if check_ready_once(base):
-                    break
+                    if not stopping.is_set():
+                        log.info(f"PhysiClaw ready — MCP tools live at {base}/mcp")
+                    return
             except Exception:
                 pass
-            time.sleep(1.0)
-        log.info(f"PhysiClaw ready — MCP tools live at {base}/mcp")
+            stopping.wait(1.0)
 
     threading.Thread(target=_watch, daemon=True).start()
 
@@ -335,7 +457,7 @@ def _dial_host(host: str) -> str:
 
 
 def _port_in_use(host: str, port: int) -> bool:
-    """Quick connect probe of the target control port."""
+    """Quick connect probe of a control or bridge port."""
     try:
         with socket.create_connection((_dial_host(host), port), timeout=0.5):
             return True
@@ -347,13 +469,14 @@ def _refuse_if_already_running(host: str, port: int) -> None:
     """Exit before touching runtime state when a server is already live.
 
     Without this, a second `physiclaw server` writes runtime_state (clobbering
-    the live server's record), fails the port bind, and its atexit clear()
+    the live server's record), fails the port bind, and its cleanup
     then erases the record entirely — doctor/setup lose the LIVE server.
     read_live() is pid-checked, so a stale file from a crash never blocks a
     start; the socket probe catches a live listener whose state file is gone.
     """
     from physiclaw.cli._format import exit_error
     from physiclaw.common import runtime_state
+    from physiclaw.core.bridge.lan import bridge_port
 
     live = runtime_state.read_live()
     if live:
@@ -361,14 +484,17 @@ def _refuse_if_already_running(host: str, port: int) -> None:
             f"physiclaw server already running (pid {live.get('pid')}, "
             f"http://{live.get('host')}:{live.get('port')}). "
             "Stop it first — the runtime-state record is single-slot, so "
-            "only one physiclaw server can run per machine."
+            "only one physiclaw server can use this data directory."
         )
-    if _port_in_use(host, port):
-        exit_error(
-            f"port {port} is already accepting connections on "
-            f"{_dial_host(host)} — is another server running? "
-            "Stop it first, or pass a different --port."
-        )
+    # On macOS a wildcard SO_REUSEADDR listener can coexist with a more
+    # specific listener, which would receive the loopback traffic instead.
+    for bind, number in ((host, port), ("0.0.0.0", bridge_port(port))):
+        if _port_in_use(bind, number):
+            exit_error(
+                f"port {number} is already accepting connections on "
+                f"{_dial_host(bind)} — is another server running? "
+                "Stop it first, or pass a different --port."
+            )
 
 
 def _resolve_and_record_model(host: str, port: int) -> tuple[Optional[str], str]:
@@ -382,8 +508,8 @@ def _resolve_and_record_model(host: str, port: int) -> tuple[Optional[str], str]
     the runtime subprocess report the real error.
 
     `runtime_state.write` also lets `doctor` probe the actual server, not the
-    config-default port. atexit covers normal exits and KeyboardInterrupt;
-    SIGTERM-without-cleanup is handled by doctor's pid-liveness check on read.
+    config-default port. The caller owns clearing it when serving ends;
+    unclean process death is handled by doctor's pid-liveness check on read.
 
     Returns (model_ref, runtime_label); model_ref is None when no model is set.
     """
@@ -398,7 +524,6 @@ def _resolve_and_record_model(host: str, port: int) -> tuple[Optional[str], str]
         model_ref, model_source = None, None
         runtime_label = "engine=(unset)"
     runtime_state.write(host, port, model_ref=model_ref, model_source=model_source)
-    atexit.register(runtime_state.clear)
     return model_ref, runtime_label
 
 
@@ -413,17 +538,17 @@ def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
     from physiclaw.core.bridge import bridge_base_urls
 
     primary, fallback = bridge_base_urls(port)
-    display_host = "localhost" if host in WILDCARD_HOSTS else host
+    base = f"http://{url_host(host)}:{port}"
     if no_runtime:
-        url = f"http://{url_host(host)}:{port}/mcp"
+        url = f"{base}/mcp"
         log.info(
             f"PhysiClaw MCP server on {url} — no built-in runtime\n"
             f"  Connect an external MCP client, e.g. Claude Code: "
             f"claude mcp add --transport http physiclaw {url}"
         )
     else:
-        log.info(f"PhysiClaw MCP server on http://{display_host}:{port}/mcp")
-    log.info(f"QR code (scan with phone): http://localhost:{port}/api/bridge/qr")
+        log.info(f"PhysiClaw MCP server on {base}/mcp")
+    log.info(f"QR code (scan with phone): {base}/api/bridge/qr")
     if primary != fallback:
         log.info(f"Phone page: {primary}/bridge  (recommended — survives IP changes)")
         log.info(f"Fallback:   {fallback}/bridge  (if mDNS blocked)")
@@ -444,8 +569,8 @@ def _start_hardware_bringup(
 ) -> None:
     """Dispatch hardware bring-up to one of five mutually exclusive modes. Each
     (except --no-setup-hardware, which just waits) runs in a daemon thread so
-    `mcp.run()` can serve first — the phone needs the server already listening
-    to load /bridge. --hot-start is --warm-start minus the verification; when
+    HTTP serving stays responsive during setup. The caller waits for both
+    servers to start first. --hot-start skips warm-start verification; when
     both are passed the verifying mode wins."""
     if warm_start or hot_start:
         _warm_start_hardware(host, port, cam_index, verify=warm_start)
@@ -467,8 +592,8 @@ def _warm_start_hardware(
     a background thread (`verify=False` = --hot-start, which skips the bridge
     wait and sanity tap). On failure, raise KeyboardInterrupt in the main
     thread (via _thread.interrupt_main — cross-platform; os.kill(SIGINT) on
-    Windows would TerminateProcess and skip atexit) so `mcp.run()` exits and
-    the atexit handlers (shutdown, arm park-off-screen) still fire cleanly."""
+    Windows would TerminateProcess and skip cleanup) so serving stops and
+    the owning scope shuts down hardware and parks the arm cleanly."""
     log = logging.getLogger(__name__)
     from physiclaw.core.server import warm_start as ws
 
@@ -525,11 +650,11 @@ def _auto_calibrate_hardware(host: str, port: int) -> None:
 def _open_hardware_wizard(host: str, port: int) -> None:
     """Default mode: open the browser hardware-setup wizard once the server is
     actually accepting connections (the page immediately calls /api/status).
-    Runs in a daemon thread so `mcp.run()` can start serving first."""
+    Runs in a daemon thread to keep browser launch off the serving loop."""
     log = logging.getLogger(__name__)
     from physiclaw.core.server.warm_start import wait_for_port
 
-    setup_url = f"http://localhost:{port}/setup-hardware"
+    setup_url = f"http://{url_host(host)}:{port}/setup-hardware"
     log.info(f"Hardware-setup wizard: {setup_url}  (disable with --no-setup-hardware)")
 
     def _open_setup() -> None:
@@ -552,14 +677,14 @@ def _start_runtime_loop(
     no_runtime: bool,
     model_ref: Optional[str],
     runtime_label: str,
-) -> None:
-    """Spawn the agent runtime subprocess and register its atexit terminator,
+) -> subprocess.Popen | None:
+    """Spawn the agent runtime subprocess for the caller to own,
     unless disabled (--no-runtime) or no model is configured."""
     log = logging.getLogger(__name__)
     if no_runtime:
         # The external-client connect hint rides the /mcp endpoint line
         # (`_log_endpoints`) — nothing to report here.
-        return
+        return None
     if model_ref is None:
         # First-run case: server is useful for hardware setup + manual MCP
         # tool calls, but the agent can't wake without a model. Skip spawn
@@ -575,26 +700,31 @@ def _start_runtime_loop(
             "`physiclaw server`.",
             _NO_MODEL_MSG,
         )
-        return
+        return None
 
-    runtime_proc = _spawn_runtime(host, port, verbose, runtime_label)
-    atexit.register(terminate_child, runtime_proc)
+    return _spawn_runtime(host, port, verbose, runtime_label)
 
 
 def terminate_child(proc: subprocess.Popen, timeout: float = 5) -> None:
-    """Stop a child we spawned: terminate, wait, kill if it lingers. The
-    one reaping policy — the studio's server child uses it too."""
+    """Stop and reap a child we spawned, killing it if termination times out."""
     if proc.poll() is None:
-        proc.terminate()
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            pass  # it exited between poll and terminate; still reap it below
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            proc.wait()
 
 
 def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subprocess.Popen:
     """Run the hook loop out-of-process so long-running hooks don't block
-    the MCP event loop. Terminated via atexit when the server exits.
+    the MCP event loop. The caller terminates it when serving ends.
 
     `label` is the pre-resolved engine string (e.g. "engine=claude-code")
     passed by the caller — the caller already did provider resolution to

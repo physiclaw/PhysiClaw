@@ -1,15 +1,16 @@
 """Tests for `physiclaw.cli.server`.
 
-The full `server` command runs an MCP HTTP server in process — heavy
-integration. We exercise `_spawn_runtime` directly and the env-var
-wiring + warm-start + no-runtime branches with the heavy boundaries
-(mcp.run, runtime subprocess, warm_start thread) mocked out.
+Exercise the public server command with isolated process, hardware, and ASGI
+boundaries. Lifecycle tests run real threads to cover startup and shutdown.
 """
 
 from __future__ import annotations
 
 import importlib
 import logging
+import socket
+import subprocess
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,6 +20,11 @@ from typer.testing import CliRunner
 server_mod = importlib.import_module("physiclaw.cli.server")
 
 runner = CliRunner()
+
+# Mutation audit: 180 generated cases, 133 killed plus one detected timeout.
+# The 46 accepted survivors only decorate diagnostics, omit debug traceback
+# detail, substitute equivalent falsey values/an unused unset-model label, or
+# vary polling intervals. All 14 additional lifecycle omission cases are caught.
 
 
 # ---------- _spawn_runtime ----------
@@ -35,7 +41,7 @@ def test_spawn_runtime_builds_cmd_with_port_and_label(mocker) -> None:
     assert proc is fake_proc
     args = spy.call_args.args[0]
     # First arg is sys.executable; remaining must include module + server flag.
-    assert args[0] == server_mod.sys.executable
+    assert args[:2] == [server_mod.sys.executable, "-m"]
     assert "physiclaw.agent.runtime" in args
     assert "--server" in args
     assert "http://127.0.0.1:8048" in args
@@ -103,7 +109,8 @@ def _run_ready_watcher(mocker, caplog, polls) -> list:
     and the watcher thread's target run inline. The script must end on
     True — the watcher polls forever by design."""
     probe = mocker.patch("physiclaw.common.ready.check_ready_once", side_effect=polls)
-    sleep_spy = mocker.patch.object(server_mod.time, "sleep")
+    stopping = server_mod.threading.Event()
+    sleep_spy = mocker.patch.object(stopping, "wait")
     captured = {}
 
     def fake_thread(target, daemon=False):
@@ -113,7 +120,7 @@ def _run_ready_watcher(mocker, caplog, polls) -> list:
     mocker.patch.object(server_mod.threading, "Thread", side_effect=fake_thread)
 
     with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
-        server_mod._announce_ready_when_up("127.0.0.1", 8047)
+        server_mod._announce_ready_when_up("127.0.0.1", 8047, stopping=stopping)
         captured["target"]()
     probe.assert_called_with("http://127.0.0.1:8047")
     assert probe.call_count == len(polls)
@@ -171,7 +178,9 @@ def _patch_server_runtime_deps(
 
     # `_serve` is the process's serving boundary (two uvicorn servers) —
     # always mocked; tests assert against it instead of running sockets.
-    fake_serve = mocker.patch.object(server_mod, "_serve")
+    fake_serve = mocker.patch.object(
+        server_mod, "_serve", side_effect=lambda *args, **kw: kw["on_started"]()
+    )
 
     fake_mcp = MagicMock()
     fake_shutdown = MagicMock()
@@ -183,12 +192,22 @@ def _patch_server_runtime_deps(
     # No real socket probe in tests — the already-running guard's branches
     # have their own tests below.
     mocker.patch.object(server_mod, "_port_in_use", return_value=False)
+    listeners = []
+
+    def create_listener(*args, **kwargs):
+        listener = MagicMock()
+        listener.__enter__.return_value = listener
+        listeners.append(listener)
+        return listener
+
+    mocker.patch.object(server_mod.socket, "create_server", side_effect=create_listener)
     fake_launcher = MagicMock()
     if resolve_raises:
         fake_launcher.resolve.side_effect = RuntimeError("no model set")
     else:
         fake_launcher.resolve.return_value = ("openai/gpt-5", "config")
     fake_launcher.engine_label.return_value = "engine=openai"
+    bridge_lan = importlib.import_module("physiclaw.core.bridge.lan")
     fake_bridge = MagicMock()
     fake_bridge.bridge_base_urls.return_value = (primary, fallback)
 
@@ -222,6 +241,7 @@ def _patch_server_runtime_deps(
             "physiclaw.core.server.warm_start": fake_warm,
             "physiclaw.agent.runtime.launcher": fake_launcher,
             "physiclaw.core.bridge": fake_bridge,
+            "physiclaw.core.bridge.lan": bridge_lan,
         },
     )
 
@@ -235,6 +255,7 @@ def _patch_server_runtime_deps(
         "serve": fake_serve,
         "core_server": fake_core_server,
         "apps": (fake_control_app, fake_bridge_app),
+        "listeners": listeners,
     }
 
 
@@ -264,7 +285,8 @@ def test_server_opens_setup_wizard_by_default(mocker) -> None:
     # The wizard opens only after the port is accepting connections.
     captured["target"]()
     deps["warm_start"].wait_for_port.assert_called_once()
-    open_spy.assert_called_once_with("http://localhost:8048/setup-hardware")
+    open_spy.assert_called_once_with("http://127.0.0.1:8048/setup-hardware")
+    assert server_mod.threading.Thread.call_args.kwargs["daemon"] is True
 
 
 def test_server_no_setup_hardware_skips_wizard(
@@ -375,7 +397,12 @@ def test_server_default_invocation_serves_both_planes(mocker) -> None:
     # Both ASGI apps built for the control bind and handed to _serve.
     deps["core_server"].build_apps.assert_called_once_with("127.0.0.1")
     deps["serve"].assert_called_once_with(
-        "127.0.0.1", 8048, *deps["apps"], announce_ready=True
+        "127.0.0.1",
+        8048,
+        *deps["apps"],
+        sockets=tuple(deps["listeners"]),
+        announce_ready=True,
+        on_started=mocker.ANY,
     )
     # State recorded with resolved model.
     deps["state"].write.assert_called_once()
@@ -600,7 +627,6 @@ def test_server_runtime_stop_terminates_subprocess(mocker) -> None:
     fake_proc = MagicMock()
     fake_proc.poll.return_value = None  # still running
     mocker.patch.object(server_mod, "_spawn_runtime", return_value=fake_proc)
-    register_spy = mocker.patch.object(server_mod.atexit, "register")
 
     server_mod.server(
         port=8048,
@@ -614,15 +640,7 @@ def test_server_runtime_stop_terminates_subprocess(mocker) -> None:
         save_screenshots=False,
     )
 
-    # The shared terminator is registered with the child as its argument.
-    stop_calls = [
-        c
-        for c in register_spy.call_args_list
-        if c.args[0] is server_mod.terminate_child
-    ]
-    assert stop_calls
-    stop_calls[0].args[0](*stop_calls[0].args[1:])
-
+    # Leaving the serving scope reaps the child immediately.
     fake_proc.terminate.assert_called_once()
 
 
@@ -630,9 +648,8 @@ def test_server_runtime_stop_kills_after_timeout(mocker) -> None:
     _patch_server_runtime_deps(mocker)
     fake_proc = MagicMock()
     fake_proc.poll.return_value = None
-    fake_proc.wait.side_effect = server_mod.subprocess.TimeoutExpired("cmd", 5)
+    fake_proc.wait.side_effect = [server_mod.subprocess.TimeoutExpired("cmd", 5), -9]
     mocker.patch.object(server_mod, "_spawn_runtime", return_value=fake_proc)
-    register_spy = mocker.patch.object(server_mod.atexit, "register")
 
     server_mod.server(
         port=8048,
@@ -645,13 +662,6 @@ def test_server_runtime_stop_kills_after_timeout(mocker) -> None:
         save_snapshots=False,
         save_screenshots=False,
     )
-
-    stop = next(
-        c
-        for c in register_spy.call_args_list
-        if c.args[0] is server_mod.terminate_child
-    )
-    stop.args[0](*stop.args[1:])
 
     fake_proc.terminate.assert_called_once()
     fake_proc.kill.assert_called_once()
@@ -843,7 +853,9 @@ def test_server_refuses_when_live_server_recorded(mocker, capsys) -> None:
         server_mod.server(**_server_kwargs())
 
     deps["state"].write.assert_not_called()
-    assert "already running" in capsys.readouterr().err
+    assert (
+        "already running (pid 4242, http://127.0.0.1:8048)" in capsys.readouterr().err
+    )
 
 
 def test_server_refuses_when_port_probe_hits(mocker, capsys) -> None:
@@ -906,6 +918,7 @@ def test_server_auto_calibrate_starts_thread_and_skips_wizard(mocker) -> None:
     open_spy.assert_not_called()  # no desktop wizard in auto mode
     captured["target"]()  # run the daemon-thread body
     worker_spy.assert_called_once_with("127.0.0.1", 8048)
+    assert server_mod.threading.Thread.call_args.kwargs["daemon"] is True
 
 
 # ---------- _require_vision_model ----------
@@ -945,3 +958,541 @@ def test_server_preflights_vision_model_regardless_of_runtime(mocker) -> None:
             save_screenshots=False,
         )
         server_mod._require_vision_model.assert_called_once()
+
+
+def test_regression_terminate_child_reaps_after_forced_kill(mocker) -> None:
+    proc = mocker.Mock()
+    proc.poll.return_value = None
+    proc.wait.side_effect = [subprocess.TimeoutExpired("child", 0.1), -9]
+
+    server_mod.terminate_child(proc, timeout=0.1)
+
+    assert proc.method_calls == [
+        mocker.call.poll(),
+        mocker.call.terminate(),
+        mocker.call.wait(timeout=0.1),
+        mocker.call.kill(),
+        mocker.call.wait(),
+    ]
+
+
+@pytest.mark.parametrize("port", [-1, 0, 65535, 65536])
+def test_regression_server_rejects_invalid_port_before_startup(port, mocker, capsys):
+    deps = _patch_server_runtime_deps(mocker)
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(port=port, no_runtime=True)
+
+    assert error.value.exit_code == 2
+    assert "65534" in capsys.readouterr().err
+    deps["state"].write.assert_not_called()
+    deps["core_server"].build_apps.assert_not_called()
+
+
+def test_regression_second_listener_bind_failure_releases_first(mocker, capsys):
+    deps = _patch_server_runtime_deps(mocker)
+    control_socket = mocker.MagicMock()
+    mocker.patch.object(
+        server_mod.socket,
+        "create_server",
+        side_effect=[control_socket, OSError("address in use")],
+    )
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(**_server_kwargs())
+
+    assert error.value.exit_code == 1
+    assert "address in use" in capsys.readouterr().err
+    deps["state"].write.assert_not_called()
+    control_socket.__exit__.assert_called_once()
+
+
+def test_server_refuses_existing_loopback_bridge_listener_before_binding(
+    mocker, capsys
+):
+    deps = _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod, "_port_in_use", side_effect=[False, True])
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(**_server_kwargs())
+
+    assert error.value.exit_code == 1
+    assert "8049 is already accepting connections" in capsys.readouterr().err
+    assert deps["listeners"] == []
+    deps["state"].write.assert_not_called()
+
+
+def test_regression_server_return_cleans_child_hardware_and_state(mocker):
+    deps = _patch_server_runtime_deps(mocker)
+    proc = mocker.Mock()
+    proc.poll.return_value = None
+    mocker.patch.object(server_mod, "_spawn_runtime", return_value=proc)
+
+    server_mod.server(port=8048, host="127.0.0.1", no_runtime=False)
+
+    proc.terminate.assert_called_once()
+    proc.wait.assert_called_once_with(timeout=5)
+    deps["shutdown"].assert_called_once()
+    deps["state"].clear.assert_called_once()
+
+
+def test_regression_setup_wizard_dials_configured_bind(mocker):
+    _patch_server_runtime_deps(mocker)
+    opened = mocker.patch("webbrowser.open")
+    targets = []
+    mocker.patch.object(
+        server_mod.threading,
+        "Thread",
+        side_effect=lambda **kw: targets.append(kw["target"]) or mocker.Mock(),
+    )
+
+    server_mod.server(port=8048, host="192.0.2.10", no_runtime=True)
+    targets[0]()
+
+    opened.assert_called_once_with("http://192.0.2.10:8048/setup-hardware")
+
+
+def _serving_pair(mocker, mode="normal"):
+    """Real serving orchestration and threads, fake ASGI runners/listeners."""
+    real_serve, real_thread = server_mod._serve, threading.Thread
+    deps = _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod, "_serve", real_serve)
+    mocker.patch.object(server_mod.threading, "Thread", real_thread)
+    created = []
+    bridge_entered = threading.Event()
+    deps["bringup_completed"] = threading.Event()
+    deps["ready_probed"] = threading.Event()
+
+    class Server:
+        def __init__(self, config):
+            self.config = config
+            self.started = False
+            self.stopped = threading.Event()
+            self.sockets = []
+            created.append(self)
+
+        @property
+        def should_exit(self):
+            return self.stopped.is_set()
+
+        @should_exit.setter
+        def should_exit(self, value):
+            if value:
+                self.stopped.set()
+
+        def run(self, *, sockets):
+            self.sockets = sockets
+            if self.config.host == "0.0.0.0":
+                bridge_entered.set()
+                if mode == "bridge-error":
+                    raise RuntimeError("bridge startup broke")
+                if mode == "bridge-return":
+                    return
+                if mode == "delayed-bridge":
+                    deps["bringup_completed"].wait(0.05)
+                self.started = True
+                assert self.stopped.wait(4), "bridge was never stopped"
+                return
+            assert bridge_entered.wait(2), "bridge was never started"
+            if mode == "control-startup":
+                return
+            if mode == "interrupt-startup":
+                raise KeyboardInterrupt
+            if mode == "delayed-control":
+                deps["bringup_completed"].wait(0.05)
+            self.started = True
+            if mode == "stopping":
+                self.should_exit = True
+                deps["bringup_completed"].wait(0.05)
+            if mode == "wait-ready":
+                assert deps["ready_probed"].wait(2), "ready watcher never started"
+            if mode in {"wait-bringup", "delayed-control", "delayed-bridge"}:
+                assert deps["bringup_completed"].wait(2), "bringup was never started"
+            if mode.startswith("bridge-") or mode == "startup-error":
+                assert self.stopped.wait(2), "control never learned the bridge failed"
+            if mode == "control-error":
+                raise OSError("control serving broke")
+            if mode == "interrupt":
+                raise KeyboardInterrupt
+
+    mocker.patch("uvicorn.Server", Server)
+    return deps, created
+
+
+def test_server_serves_reserved_sockets_and_stops_bridge_on_return(mocker):
+    deps, servers = _serving_pair(mocker)
+
+    server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
+
+    assert servers[0].sockets == [deps["listeners"][1]]
+    assert servers[1].sockets == [deps["listeners"][0]]
+    assert servers[0].should_exit
+    deps["listeners"][0].__exit__.assert_called_once()
+    deps["listeners"][1].__exit__.assert_called_once()
+    deps["state"].clear.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["bridge-error", "bridge-return", "control-startup"])
+def test_server_reports_listener_failure_and_cleans_both_planes(mode, mocker, capsys):
+    deps, servers = _serving_pair(mocker, mode)
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
+
+    assert error.value.exit_code == 1
+    assert "failed" in capsys.readouterr().err
+    assert servers[0].should_exit
+    deps["listeners"][0].__exit__.assert_called_once()
+    deps["listeners"][1].__exit__.assert_called_once()
+    deps["shutdown"].assert_called_once()
+    deps["state"].clear.assert_called_once()
+
+
+def test_server_reports_hardware_dispatch_failure_and_stops_both_planes(mocker, capsys):
+    deps, servers = _serving_pair(mocker, "startup-error")
+    deps["warm_start"].resume_flag.side_effect = RuntimeError("bundle import failed")
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(host="127.0.0.1", port=8048, warm_start=True)
+
+    assert error.value.exit_code == 1
+    assert "hardware startup failed: bundle import failed" in capsys.readouterr().err
+    assert servers[0].should_exit
+    deps["shutdown"].assert_called_once()
+
+
+def test_server_closes_bridge_when_control_serving_raises(mocker):
+    deps, servers = _serving_pair(mocker, "control-error")
+
+    with pytest.raises(OSError, match="control serving broke"):
+        server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
+
+    assert servers[0].should_exit
+    deps["listeners"][0].__exit__.assert_called_once()
+    deps["listeners"][1].__exit__.assert_called_once()
+    deps["shutdown"].assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["interrupt", "interrupt-startup"])
+def test_server_interrupt_cleans_both_planes_and_restores_signal(mode, mocker):
+    import signal
+
+    previous = signal.getsignal(signal.SIGTERM)
+    deps, servers = _serving_pair(mocker, mode)
+    handler = mocker.spy(signal, "signal")
+
+    server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
+
+    assert signal.getsignal(signal.SIGTERM) == previous
+    assert handler.call_args_list == [
+        mocker.call(signal.SIGTERM, signal.default_int_handler),
+        mocker.call(signal.SIGTERM, previous),
+    ]
+    assert servers[0].should_exit
+    deps["shutdown"].assert_called_once()
+    deps["state"].clear.assert_called_once()
+
+
+def test_server_refuses_concurrent_start_before_opening_listeners(mocker, capsys):
+    from physiclaw.common import paths
+    from physiclaw.common.file_lock import exclusive_file_lock
+
+    deps = _patch_server_runtime_deps(mocker)
+    with exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")):
+        with pytest.raises(typer.Exit) as error:
+            server_mod.server(**_server_kwargs())
+
+    assert error.value.exit_code == 1
+    assert "running or starting" in capsys.readouterr().err
+    assert deps["listeners"] == []
+    deps["state"].write.assert_not_called()
+
+
+def test_server_startup_failure_releases_listeners_and_lock(mocker):
+    from physiclaw.common import paths
+    from physiclaw.common.file_lock import exclusive_file_lock
+
+    deps = _patch_server_runtime_deps(mocker)
+    deps["core_server"].build_apps.side_effect = RuntimeError("build failed")
+
+    with pytest.raises(RuntimeError, match="build failed"):
+        server_mod.server(**_server_kwargs())
+
+    deps["listeners"][0].__exit__.assert_called_once()
+    deps["listeners"][1].__exit__.assert_called_once()
+    deps["state"].clear.assert_called_once()
+    deps["shutdown"].assert_called_once()
+    with exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")):
+        pass
+
+
+@pytest.mark.parametrize("method", ["terminate", "kill"])
+def test_terminate_child_reaps_when_exit_races_signal(method, mocker):
+    proc = mocker.Mock()
+    proc.poll.return_value = None
+    proc.wait.side_effect = [subprocess.TimeoutExpired("child", 0.1), 0]
+    getattr(proc, method).side_effect = ProcessLookupError("already exited")
+
+    server_mod.terminate_child(proc, timeout=0.1)
+
+    assert proc.wait.call_args_list == [mocker.call(timeout=0.1), mocker.call()]
+
+
+def test_terminate_child_does_not_signal_exited_process(mocker):
+    proc = mocker.Mock()
+    proc.poll.return_value = 0
+
+    server_mod.terminate_child(proc)
+
+    assert proc.method_calls == [mocker.call.poll()]
+
+
+@pytest.mark.parametrize("port", [1, 65534])
+def test_server_reserves_control_and_adjacent_bridge_ports(port, mocker):
+    _patch_server_runtime_deps(mocker)
+    create = server_mod.socket.create_server
+
+    server_mod.server(
+        port=port, host="127.0.0.1", no_runtime=True, no_setup_hardware=True
+    )
+
+    assert create.call_args_list == [
+        mocker.call(("127.0.0.1", port), family=socket.AF_INET, dualstack_ipv6=False),
+        mocker.call(("0.0.0.0", port + 1), family=socket.AF_INET, dualstack_ipv6=False),
+    ]
+
+
+@pytest.mark.parametrize("port", ["-1", "0", "65535", "65536"])
+def test_server_cli_rejects_invalid_ports_before_vision_preflight(port, mocker):
+    from physiclaw.cli import app
+
+    vision = mocker.patch.object(server_mod, "_require_vision_model")
+
+    result = runner.invoke(app, ["server", "--port", port])
+
+    assert result.exit_code == 2
+    assert "Invalid value" in result.output
+    vision.assert_not_called()
+
+
+def test_server_ipv6_listener_and_endpoint_logs_use_the_same_host(mocker, caplog):
+    _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod.socket, "has_dualstack_ipv6", return_value=True)
+
+    with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
+        server_mod.server(host="::1", port=8048, no_setup_hardware=True)
+
+    server_mod.socket.create_server.assert_any_call(
+        ("::1", 8048), family=socket.AF_INET6, dualstack_ipv6=True
+    )
+    assert "http://[::1]:8048/mcp" in caplog.text
+    assert "http://[::1]:8048/api/bridge/qr" in caplog.text
+
+
+def test_server_reports_lock_permission_error_before_opening_listeners(mocker, capsys):
+    deps = _patch_server_runtime_deps(mocker)
+    mocker.patch(
+        "physiclaw.common.file_lock.exclusive_file_lock",
+        side_effect=PermissionError("read-only home"),
+    )
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(**_server_kwargs())
+
+    assert error.value.exit_code == 1
+    assert "cannot acquire the server lock: read-only home" in capsys.readouterr().err
+    assert deps["listeners"] == []
+
+
+def test_server_keeps_signal_handlers_when_called_off_main_thread(mocker):
+    worker = threading.Thread(name="server-test-worker")
+    _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod.threading, "current_thread", return_value=worker)
+    signal = mocker.patch.object(server_mod.signal, "signal")
+
+    server_mod.server(**_server_kwargs())
+
+    signal.assert_not_called()
+
+
+def test_server_bridge_thread_start_failure_releases_resources(mocker):
+    real_serve = server_mod._serve
+    deps = _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod, "_serve", real_serve)
+    thread = server_mod.threading.Thread.return_value
+    thread.start.side_effect = RuntimeError("no threads available")
+    thread.ident = None
+    mocker.patch("uvicorn.Server")
+
+    with pytest.raises(RuntimeError, match="no threads available"):
+        server_mod.server(port=8048, no_setup_hardware=True)
+
+    thread.join.assert_not_called()
+    deps["listeners"][0].__exit__.assert_called_once()
+    deps["listeners"][1].__exit__.assert_called_once()
+    deps["shutdown"].assert_called_once()
+
+
+def test_server_reports_bridge_that_will_not_stop(mocker, capsys):
+    real_serve = server_mod._serve
+    deps = _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod, "_serve", real_serve)
+    thread = server_mod.threading.Thread.return_value
+    thread.ident = 123
+    thread.name = "bridge-http"
+    thread.is_alive.return_value = True
+    mocker.patch("uvicorn.Server")
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod.server(port=8048, no_setup_hardware=True)
+
+    assert error.value.exit_code == 1
+    assert "bridge-http did not stop" in capsys.readouterr().err
+    assert thread.join.call_args_list == [
+        mocker.call(timeout=5),
+        mocker.call(timeout=5),
+    ]
+    deps["state"].clear.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["wait-bringup", "delayed-control", "delayed-bridge"])
+def test_server_resumes_hardware_only_after_both_asgi_servers_start(mode, mocker):
+    deps, servers = _serving_pair(mocker, mode)
+    observed = []
+    workers = []
+
+    def resume(*args, **kwargs):
+        observed.append([server.started for server in servers])
+        workers.extend(
+            thread.daemon
+            for thread in threading.enumerate()
+            if thread.name in {"bridge-http", "server-startup"}
+        )
+        deps["bringup_completed"].set()
+        return True
+
+    deps["warm_start"].try_resume.side_effect = resume
+
+    server_mod.server(port=8048, host="127.0.0.1", warm_start=True)
+
+    assert observed == [[True, True]]
+    assert workers == [True, True]
+
+
+@pytest.mark.parametrize("mode", ["bridge-error", "bridge-return", "control-startup"])
+def test_server_does_not_resume_hardware_after_asgi_startup_failure(mode, mocker):
+    deps, _ = _serving_pair(mocker, mode)
+
+    with pytest.raises(typer.Exit):
+        server_mod.server(port=8048, host="127.0.0.1", warm_start=True)
+
+    deps["warm_start"].try_resume.assert_not_called()
+
+
+def test_server_does_not_start_hardware_during_shutdown(mocker):
+    deps, _ = _serving_pair(mocker, "stopping")
+
+    server_mod.server(port=8048, host="127.0.0.1", warm_start=True)
+
+    deps["warm_start"].try_resume.assert_not_called()
+
+
+def test_server_return_cancels_pending_ready_watcher(mocker):
+    deps, _ = _serving_pair(mocker, "wait-ready")
+    real_thread = threading.Thread
+    threads = []
+
+    def make_thread(**kwargs):
+        thread = real_thread(**kwargs)
+        threads.append(thread)
+        return thread
+
+    def probe(base):
+        deps["ready_probed"].set()
+        return False
+
+    mocker.patch.object(server_mod.threading, "Thread", side_effect=make_thread)
+    mocker.patch("physiclaw.common.ready.check_ready_once", side_effect=probe)
+
+    server_mod.server(port=8048, no_runtime=True, no_setup_hardware=True)
+    threads[-1].join(timeout=1)
+
+    assert len(threads) == 3
+    assert threads[-1].daemon
+    assert not threads[-1].is_alive()
+
+
+def test_server_defaults_spawn_runtime_with_info_logging(mocker):
+    from physiclaw.common import logger
+
+    _patch_server_runtime_deps(mocker)
+
+    server_mod.server(port=8048, no_setup_hardware=True)
+
+    server_mod._spawn_runtime.assert_called_once()
+    assert logger.setup_logging.call_args.args[1] == logging.INFO
+    assert logging.getLogger("mcp").level == logging.WARNING
+
+
+def test_server_enables_raw_camera_saving(mocker, monkeypatch):
+    import os
+
+    _patch_server_runtime_deps(mocker)
+    monkeypatch.delenv("PHYSICLAW_SAVE_RAW_CAMERA", raising=False)
+
+    server_mod.server(port=8048, no_setup_hardware=True, save_raw_camera=True)
+
+    assert os.environ["PHYSICLAW_SAVE_RAW_CAMERA"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("host", "dial"),
+    [("0.0.0.0", "127.0.0.1"), ("::", "127.0.0.1"), ("192.0.2.10", "192.0.2.10")],
+)
+def test_server_probes_dialable_control_and_bridge_addresses(host, dial, mocker):
+    real_probe = server_mod._port_in_use
+    _patch_server_runtime_deps(mocker)
+    mocker.patch.object(server_mod, "_port_in_use", real_probe)
+    connect = mocker.patch.object(
+        server_mod.socket, "create_connection", side_effect=OSError
+    )
+
+    server_mod.server(port=8048, host=host, no_setup_hardware=True)
+
+    assert connect.call_args_list == [
+        mocker.call((dial, 8048), timeout=0.5),
+        mocker.call(("127.0.0.1", 8049), timeout=0.5),
+    ]
+
+
+def test_server_reports_original_bridge_exception(mocker, capsys):
+    _serving_pair(mocker, "bridge-error")
+
+    with pytest.raises(typer.Exit):
+        server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
+
+    assert "phone bridge failed: bridge startup broke" in capsys.readouterr().err
+
+
+def test_server_resume_exception_interrupts_and_reports_failure(mocker, caplog):
+    deps = _patch_server_runtime_deps(mocker)
+    deps["warm_start"].try_resume.side_effect = OSError("camera unplugged")
+    interrupt = mocker.patch.object(server_mod._thread, "interrupt_main")
+
+    server_mod.server(port=8048, warm_start=True)
+    server_mod.threading.Thread.call_args.kwargs["target"]()
+
+    interrupt.assert_called_once_with()
+    assert "resume crashed" in caplog.text
+    assert "camera unplugged" in caplog.text
+
+
+def test_server_wizard_browser_failure_is_nonfatal(mocker, caplog):
+    _patch_server_runtime_deps(mocker)
+    mocker.patch("webbrowser.open", side_effect=OSError("headless machine"))
+
+    with caplog.at_level(logging.DEBUG):
+        server_mod.server(port=8048)
+        server_mod.threading.Thread.call_args.kwargs["target"]()
+
+    assert "could not open browser" in caplog.text
