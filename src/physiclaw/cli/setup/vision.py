@@ -18,14 +18,16 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 
 from physiclaw.cli._format import ok
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 
 _PT_URL = (
     "https://huggingface.co/microsoft/OmniParser-v2.0/resolve/main/icon_detect/model.pt"
@@ -74,7 +76,7 @@ YOLO("{_PT_NAME}").export(format="onnx", imgsz=1280)
 """
 
 
-def _abort_kept_scratch(convert_dir: Path, reason: str) -> None:
+def _abort_kept_scratch(convert_dir: Path, reason: str) -> NoReturn:
     typer.echo(
         typer.style(
             f"{reason} Scratch dir kept for debugging: {convert_dir}",
@@ -110,79 +112,68 @@ def _fetch_part(url: str, label: str) -> bytes:
     return bytes(buf)
 
 
-def _download_prebuilt_zip(dest: Path) -> bool:
-    """Write the prebuilt zip to ``dest``.
-
-    Tries the base64 parts on physiclaw.ai first (concatenate + decode), then
-    the whole-zip GitHub release. Returns False on any network failure so the
-    caller can fall back to converting from source.
-    """
-    try:
-        b64 = bytearray()
-        for i in range(_PREBUILT_PARTS):
-            b64.extend(
-                _fetch_part(
-                    _PREBUILT_PARTS_URL.format(i=i),
-                    f"  vision model part {i + 1}/{_PREBUILT_PARTS}",
-                )
-            )
-        dest.write_bytes(base64.b64decode(b64))
-        return True
-    # ValueError covers binascii.Error from b64decode — belt-and-braces
-    # behind stream()'s truncation check, so corrupt parts fall through to
-    # the release instead of crashing the installer with a traceback.
-    except (OSError, ValueError) as e:
-        typer.echo(
-            typer.style(
-                f"  CDN parts unavailable ({e}) — trying the release.",
-                fg=typer.colors.YELLOW,
+def _download_cdn_zip(dest: Path) -> None:
+    """Assemble the split CDN download; integrity is checked by the caller."""
+    b64 = bytearray()
+    for i in range(_PREBUILT_PARTS):
+        b64.extend(
+            _fetch_part(
+                _PREBUILT_PARTS_URL.format(i=i),
+                f"  vision model part {i + 1}/{_PREBUILT_PARTS}",
             )
         )
-    try:
-        with http_get(_PREBUILT_ZIP_URL) as r, open(dest, "wb") as f:
-            stream(r, f.write, "  vision model")
-        return True
-    except OSError as e:
-        typer.echo(typer.style(f"  release unavailable ({e}).", fg=typer.colors.YELLOW))
-        return False
+    dest.write_bytes(base64.b64decode(b64))
+
+
+def _download_release_zip(dest: Path) -> None:
+    with http_get(_PREBUILT_ZIP_URL) as r, open(dest, "wb") as f:
+        stream(r, f.write, "  vision model")
 
 
 def _try_prebuilt(onnx: Path) -> bool:
     """Install the pre-converted ONNX from the release mirror, verifying its
     sha256.
 
-    Returns True on success, False (quietly) on any network / archive /
-    integrity failure so the caller can fall back to converting from source.
-    Needs no uv and no conversion deps.
+    Try each mirror through download, extraction, and checksum validation.
+    Return False only after both fail, so the caller can convert from source.
+    Publication errors propagate without retrying downloads. Needs no uv.
     """
-    with tempfile.TemporaryDirectory() as td:
+    # Stage beside the destination so replace() is an atomic rename, even
+    # when the system temp directory lives on a different filesystem.
+    with tempfile.TemporaryDirectory(dir=onnx.parent, prefix=".vision-") as td:
         tmp = Path(td)
-        if not _download_prebuilt_zip(tmp / "model.zip"):
-            return False
-        try:
-            with zipfile.ZipFile(tmp / "model.zip") as z:
-                z.extract(_ONNX_NAME, tmp)
-        except (zipfile.BadZipFile, KeyError) as e:
-            typer.echo(
-                typer.style(
-                    f"  bad archive ({e}) — skipping prebuilt.",
-                    fg=typer.colors.YELLOW,
-                )
-            )
-            return False
         extracted = tmp / _ONNX_NAME
-        digest = _sha256(extracted)
-        if digest != _PREBUILT_ONNX_SHA256:
-            typer.echo(
-                typer.style(
-                    f"  checksum mismatch ({digest[:12]}…) — skipping prebuilt.",
-                    fg=typer.colors.YELLOW,
+        for label, download in (
+            ("CDN parts", _download_cdn_zip),
+            ("release", _download_release_zip),
+        ):
+            try:
+                download(tmp / "model.zip")
+                with zipfile.ZipFile(tmp / "model.zip") as z:
+                    z.extract(_ONNX_NAME, tmp)
+                digest = _sha256(extracted)
+                if digest != _PREBUILT_ONNX_SHA256:
+                    raise ValueError(f"checksum mismatch ({digest[:12]}…)")
+            except (
+                OSError,
+                ValueError,
+                zipfile.BadZipFile,
+                zlib.error,
+                KeyError,
+                RuntimeError,
+            ) as e:
+                # RuntimeError includes encrypted archives and unsupported
+                # compression (NotImplementedError); neither is usable here.
+                typer.echo(
+                    typer.style(
+                        f"  {label} unavailable ({e}).",
+                        fg=typer.colors.YELLOW,
+                    )
                 )
-            )
-            return False
-        onnx.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(extracted), onnx)
-        return True
+                continue
+            extracted.replace(onnx)
+            return True
+    return False
 
 
 def _report_ready(onnx: Path, label: str) -> None:
@@ -191,7 +182,7 @@ def _report_ready(onnx: Path, label: str) -> None:
     typer.echo(ok(label))
 
 
-def _abort_download(exc: OSError) -> None:
+def _abort_download(exc: OSError) -> NoReturn:
     """Friendly message for a failed weights download — no raw traceback.
 
     ``http_get`` raises ``urllib.error.HTTPError`` / ``URLError`` (both
@@ -234,7 +225,21 @@ def vision(
 ) -> None:
     """Install the local vision model (prebuilt by default; --build to convert)."""
     onnx = paths.omniparser_onnx()
-    if onnx.exists() and not force:
+    try:
+        with exclusive_file_lock(onnx.parent / ".install.lock"):
+            _install(onnx, force=force, build=build)
+    except FileLockBusy:
+        typer.echo("A vision model install is already running.", err=True)
+        raise typer.Abort() from None
+    except OSError as e:
+        typer.echo(f"Couldn't install the vision model: {e}", err=True)
+        raise typer.Abort() from e
+
+
+def _install(onnx: Path, *, force: bool, build: bool) -> None:
+    if onnx.exists() and not onnx.is_file():
+        raise OSError(f"{onnx} is not a regular file")
+    if onnx.is_file() and onnx.stat().st_size > 0 and not force:
         typer.echo(f"Already present: {onnx}")
         return
 
@@ -275,8 +280,8 @@ def vision(
     script_path = convert_dir / _SCRIPT_NAME
     onnx_in_scratch = convert_dir / _ONNX_NAME
 
-    if not pt_path.exists():
-        # Download to a temp name and rename on completion: the exists()
+    if not pt_path.is_file() or pt_path.stat().st_size == 0:
+        # Download to a temp name and rename on completion: the cache
         # check above must never see a partial file. The old in-place
         # write cleaned up on OSError only — Ctrl-C left a truncated .pt
         # that every later --build silently reused.
@@ -293,6 +298,8 @@ def vision(
             tmp_path.unlink(missing_ok=True)
 
     script_path.write_text(_CONVERT_SCRIPT)
+    # A prior failed export must never satisfy this attempt's output check.
+    onnx_in_scratch.unlink(missing_ok=True)
 
     typer.echo("Converting to ONNX in ephemeral uv env …")
     cmd = [
@@ -305,19 +312,22 @@ def vision(
         "python",
         _SCRIPT_NAME,
     ]
-    result = subprocess.run(cmd, cwd=convert_dir)
+    try:
+        result = subprocess.run(cmd, cwd=convert_dir)
+    except OSError as e:
+        _abort_kept_scratch(convert_dir, f"Couldn't start conversion: {e}.")
     if result.returncode != 0:
         _abort_kept_scratch(
             convert_dir,
             f"Conversion failed (uv exit {result.returncode}).",
         )
-    if not onnx_in_scratch.exists():
+    if not onnx_in_scratch.is_file() or onnx_in_scratch.stat().st_size == 0:
         _abort_kept_scratch(
             convert_dir,
-            f"Conversion finished but {onnx_in_scratch} not found.",
+            f"Conversion finished but {onnx_in_scratch} not found or empty.",
         )
 
-    shutil.move(onnx_in_scratch, onnx)
+    onnx_in_scratch.replace(onnx)
     shutil.rmtree(convert_dir)
 
     _report_ready(onnx, "vision model ready")

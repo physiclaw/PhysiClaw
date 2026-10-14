@@ -1,401 +1,555 @@
-"""Tests for `physiclaw.cli.setup.vision` — local vision model download."""
+"""Vision installation through the public CLI, with HTTP and uv isolated.
+
+Accepted mutation survivors affect presentation/progress text, temporary names,
+rounded size diagnostics, equivalent hash buffer sizes/parent creation, and the
+production checksum replaced by the fixture's pin. Publication, fallback,
+cleanup, contention, and conversion contracts are asserted independently.
+"""
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib
 import io
+import struct
 import subprocess
+import zipfile
 from pathlib import Path
 
+import pytest
 import typer
 from typer.testing import CliRunner
 
+from physiclaw.common.file_lock import exclusive_file_lock
+
 vision_mod = importlib.import_module("physiclaw.cli.setup.vision")
-http_mod = importlib.import_module("physiclaw.cli._http")
-
-
-class _BytesCtx:
-    """Stand-in for an ``urlopen`` response: a context manager backed by a
-    BytesIO, supporting ``.read(n)`` and ``.getheader("Content-Length")`` so it
-    works with the chunked ``stream`` reader."""
-
-    def __init__(self, data: bytes, *, content_length: str | None = None) -> None:
-        self._buf = io.BytesIO(data)
-        self._len = content_length
-
-    def __enter__(self) -> _BytesCtx:
-        return self
-
-    def __exit__(self, *_exc: object) -> bool:
-        return False
-
-    def read(self, *args: object) -> bytes:
-        return self._buf.read(*args)
-
-    def getheader(self, name: str, default: object = None) -> object:
-        if name.lower() == "content-length":
-            return self._len if self._len is not None else default
-        return default
-
-
 runner = CliRunner()
 app = typer.Typer()
 app.command()(vision_mod.vision)
+MODEL = b"verified prebuilt ONNX"
+BUILT = b"fresh converted ONNX"
+CDN_URL = "https://physiclaw.ai/downloads/local_vision_model.zip.b64.{i:02d}"
+RELEASE_URL = "https://github.com/physiclaw/PhysiClaw/releases/download/local-vision-model/local_vision_model.zip"
+WEIGHTS_URL = (
+    "https://huggingface.co/microsoft/OmniParser-v2.0/resolve/main/icon_detect/model.pt"
+)
 
 
-def _stub_download(mocker, payload: bytes = b"PT") -> None:
-    """Replace the HF fetch (http_get -> urlopen) with one returning payload."""
+class BytesResponse(io.BytesIO):
+    def __init__(self, data: bytes, length: int | None = None):
+        super().__init__(data)
+        self.length = len(data) if length is None else length
+
+    def getheader(self, name, default=None):
+        return str(self.length) if name == "Content-Length" else default
+
+
+class InterruptedResponse(BytesResponse):
+    def __init__(self, error):
+        super().__init__(b"partial data", length=30)
+        self.error = error
+
+    def read(self, size=-1):
+        data = super().read(size)
+        if not data:
+            raise self.error
+        return data
+
+
+def archive(payload=MODEL, name="model.onnx", compression=zipfile.ZIP_STORED):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=compression) as zipped:
+        zipped.writestr(name, payload)
+    return buffer.getvalue()
+
+
+def split_parts(data):
+    encoded = base64.b64encode(data)
+    width = len(encoded) // 4
+    return [
+        encoded[:width],
+        encoded[width : 2 * width],
+        encoded[2 * width : 3 * width],
+        encoded[3 * width :],
+    ]
+
+
+def unusable_archive(kind):
+    if kind == "not-zip":
+        return b"not an archive"
+    if kind == "missing-model":
+        return archive(name="different.onnx")
+    if kind == "checksum":
+        return archive(b"tampered")
+    if kind == "deflate":
+        data = bytearray(archive(compression=zipfile.ZIP_DEFLATED))
+        data[40] = 255
+        return bytes(data)
+    data = bytearray(archive())
+    central = data.index(b"PK\x01\x02")
+    if kind == "encrypted":
+        struct.pack_into("<H", data, 6, 1)
+        struct.pack_into("<H", data, central + 8, 1)
+    elif kind == "compression":
+        struct.pack_into("<H", data, 8, 99)
+        struct.pack_into("<H", data, central + 10, 99)
+    elif kind == "crc":
+        data[30 + len("model.onnx")] ^= 1
+    else:
+        raise AssertionError(kind)
+    return bytes(data)
+
+
+class InstallerIO:
+    """A deterministic transport and converter; the installer owns all files."""
+
+    def __init__(self, model):
+        self.model = model
+        self.requests = []
+        self.responses = {}
+        self.set_cdn(archive())
+        self.responses[RELEASE_URL] = archive()
+        self.responses[WEIGHTS_URL] = b"fresh weights"
+        self.commands = []
+        self.output = BUILT
+        self.returncode = 0
+        self.export_error = None
+
+    @property
+    def scratch(self):
+        return self.model.parent / "convert"
+
+    def set_cdn(self, data):
+        self.responses.update(dict(zip(self.cdn_urls, split_parts(data))))
+
+    @property
+    def cdn_urls(self):
+        return [CDN_URL.format(i=i) for i in range(4)]
+
+    def fetch(self, url):
+        self.requests.append(url)
+        response = self.responses[url]
+        if isinstance(response, list):
+            response = response.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return BytesResponse(response) if isinstance(response, bytes) else response
+
+    def convert(self, cmd, cwd):
+        self.commands.append((cmd, Path(cwd), (Path(cwd) / "convert.py").read_text()))
+        if self.export_error is not None:
+            raise self.export_error
+        output = Path(cwd) / "model.onnx"
+        if self.output == "directory":
+            output.mkdir()
+        elif self.output is not None:
+            output.write_bytes(self.output)
+        return subprocess.CompletedProcess(cmd, self.returncode)
+
+    def cache_weights(self, data=b"cached weights"):
+        self.scratch.mkdir(parents=True)
+        (self.scratch / "model.pt").write_bytes(data)
+
+
+@pytest.fixture
+def installer(tmp_path, mocker):
+    io = InstallerIO(tmp_path / "models" / "icons" / "model.onnx")
+    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=io.model)
+    mocker.patch.object(vision_mod, "http_get", side_effect=io.fetch)
     mocker.patch.object(
-        http_mod.urllib.request,
-        "urlopen",
-        side_effect=lambda *_a, **_k: _BytesCtx(payload),
+        vision_mod, "_PREBUILT_ONNX_SHA256", hashlib.sha256(MODEL).hexdigest()
     )
-
-
-def _stub_uv_run(mocker, *, onnx_bytes: bytes = b"ONNX") -> object:
-    """Make `uv run` write convert/<onnx> and return 0. Returns the spy."""
-
-    def _fake_run(cmd, cwd, **_kw):
-        (Path(cwd) / vision_mod._ONNX_NAME).write_bytes(onnx_bytes)
-        return subprocess.CompletedProcess(cmd, 0)
-
-    return mocker.patch.object(vision_mod.subprocess, "run", side_effect=_fake_run)
-
-
-def _zip_bytes(onnx_bytes: bytes) -> bytes:
-    """A zip archive (as bytes) holding model.onnx=onnx_bytes."""
-    import io
-    import zipfile
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr(vision_mod._ONNX_NAME, onnx_bytes)
-    return buf.getvalue()
-
-
-def _stub_prebuilt(mocker, onnx_bytes: bytes, *, pin_hash: bool = True) -> None:
-    """Make `_download_prebuilt_zip` write a zip holding model.onnx=onnx_bytes;
-    optionally pin the expected sha256 so the install succeeds."""
-    import hashlib
-
-    def _fake_download(dest):
-        Path(dest).write_bytes(_zip_bytes(onnx_bytes))
-        return True
-
     mocker.patch.object(
-        vision_mod, "_download_prebuilt_zip", side_effect=_fake_download
+        vision_mod.shutil, "which", side_effect={"uv": "/usr/bin/uv"}.get
     )
-    if pin_hash:
-        mocker.patch.object(
-            vision_mod,
-            "_PREBUILT_ONNX_SHA256",
-            hashlib.sha256(onnx_bytes).hexdigest(),
-        )
+    mocker.patch.object(vision_mod.subprocess, "run", side_effect=io.convert)
+    return io
 
 
-def test_vision_prebuilt_installs_without_uv(tmp_path: Path, mocker) -> None:
-    # The default path fetches the prebuilt ONNX — no uv, no conversion.
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    _stub_prebuilt(mocker, onnx_bytes=b"PREBUILT-ONNX")
-    uv_run = mocker.patch.object(vision_mod.subprocess, "run")
+def test_vision_cdn_installs_verified_model_without_uv(installer, mocker):
+    mocker.patch.object(vision_mod.shutil, "which", return_value=None)
 
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert onnx.read_bytes() == b"PREBUILT-ONNX"
-    assert "prebuilt" in result.output
-    uv_run.assert_not_called()
+    assert installer.model.read_bytes() == MODEL
+    assert installer.requests == installer.cdn_urls
+    assert installer.commands == []
+    assert "vision model ready (prebuilt)" in result.output
+    assert list(installer.model.parent.glob(".vision-*")) == []
 
 
-def test_vision_prebuilt_checksum_mismatch_falls_back_to_build(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
-
-    # Prebuilt zip downloads fine but its onnx hash won't match the pinned one.
-    _stub_prebuilt(mocker, onnx_bytes=b"TAMPERED", pin_hash=False)
-    _stub_download(mocker)  # mock the HF fetch the convert fallback uses
-    _stub_uv_run(mocker)
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "not-zip",
+        "missing-model",
+        "checksum",
+        "encrypted",
+        "compression",
+        "crc",
+        "deflate",
+    ],
+)
+def test_regression_vision_invalid_cdn_tries_release(installer, kind, mocker):
+    installer.set_cdn(unusable_archive(kind))
+    mocker.patch.object(vision_mod.shutil, "which", return_value=None)
 
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert "checksum mismatch" in result.output
+    assert installer.model.read_bytes() == MODEL
+    assert installer.requests == installer.cdn_urls + [vision_mod._PREBUILT_ZIP_URL]
+    assert "CDN parts unavailable" in result.output
+    assert "converting from source" not in result.output
+    assert list(installer.model.parent.glob(".vision-*")) == []
+
+
+@pytest.mark.parametrize(
+    "bad_response", [OSError("offline"), BytesResponse(b"cut", length=100)]
+)
+def test_vision_retries_part_without_reusing_partial_bytes(installer, bad_response):
+    part = installer.cdn_urls[1]
+    installer.responses[part] = [bad_response, installer.responses[part]]
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == MODEL
+    assert installer.requests == installer.cdn_urls[:2] + installer.cdn_urls[1:]
+
+
+def test_vision_repeated_cdn_failure_uses_release(installer):
+    installer.responses[installer.cdn_urls[0]] = OSError("offline")
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == MODEL
+    assert installer.requests == [installer.cdn_urls[0]] * 2 + [
+        vision_mod._PREBUILT_ZIP_URL
+    ]
+
+
+def test_vision_invalid_base64_uses_release(installer):
+    installer.responses.update(dict.fromkeys(installer.cdn_urls, b"abcd"))
+    installer.responses[installer.cdn_urls[0]] = b"abcde"
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == MODEL
+    assert installer.requests[-1] == vision_mod._PREBUILT_ZIP_URL
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError("offline"), b"invalid archive", archive(b"wrong hash")]
+)
+def test_vision_all_prebuilt_mirrors_fail_then_converts(installer, failure):
+    installer.responses[installer.cdn_urls[0]] = OSError("CDN offline")
+    installer.responses[vision_mod._PREBUILT_ZIP_URL] = failure
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == BUILT
+    assert installer.requests[-2:] == [vision_mod._PREBUILT_ZIP_URL, vision_mod._PT_URL]
+    assert "release unavailable" in result.output
     assert "converting from source" in result.output
-    assert onnx.read_bytes() == b"ONNX"  # came from the convert fallback
+    assert not installer.scratch.exists()
 
 
-def test_download_prebuilt_zip_reassembles_base64_parts(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    payload = _zip_bytes(b"PARTED-ONNX")
-    b64 = base64.b64encode(payload)
-    n = len(b64)
-    cuts = [
-        b64[0 : n // 4],
-        b64[n // 4 : n // 2],
-        b64[n // 2 : 3 * n // 4],
-        b64[3 * n // 4 :],
-    ]
-    seen: list[str] = []
-
-    def _fake_urlopen(req, **_kw):
-        seen.append(req.full_url)
-        return _BytesCtx(cuts[len(seen) - 1])
-
-    mocker.patch.object(http_mod.urllib.request, "urlopen", side_effect=_fake_urlopen)
-
-    dest = tmp_path / "out.zip"
-    assert vision_mod._download_prebuilt_zip(dest) is True
-    assert dest.read_bytes() == payload
-    assert len(seen) == vision_mod._PREBUILT_PARTS
-
-
-def test_download_prebuilt_zip_retries_a_truncated_part(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    # A CDN dropping the connection mid-part makes read() end early with no
-    # error (the install.sh field failure) — stream()'s Content-Length check
-    # turns that into a retry, and the retry's clean bytes are used; the
-    # failed attempt's partial bytes must never reach the concatenation.
-    payload = _zip_bytes(b"PARTED-ONNX")
-    b64 = base64.b64encode(payload)
-    n = len(b64)
-    cuts = [
-        b64[0 : n // 4],
-        b64[n // 4 : n // 2],
-        b64[n // 2 : 3 * n // 4],
-        b64[3 * n // 4 :],
-    ]
-    truncated_once = {"done": False}
-
-    def _fake_urlopen(req, **_kw):
-        i = int(req.full_url[-2:])
-        if i == 1 and not truncated_once["done"]:
-            truncated_once["done"] = True
-            # Body stops short of the declared length — no exception.
-            return _BytesCtx(
-                cuts[1][: len(cuts[1]) // 2], content_length=str(len(cuts[1]))
-            )
-        return _BytesCtx(cuts[i])
-
-    mocker.patch.object(http_mod.urllib.request, "urlopen", side_effect=_fake_urlopen)
-
-    dest = tmp_path / "out.zip"
-    assert vision_mod._download_prebuilt_zip(dest) is True
-    assert dest.read_bytes() == payload
-
-
-def test_download_prebuilt_zip_corrupt_b64_falls_back_to_release(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    # Garbage that survives the length check (no Content-Length header, so
-    # stream can't verify) must not escape as a b64decode traceback — it
-    # falls through to the release like any other CDN failure. The parts
-    # concatenate to 17 base64 chars (≡1 mod 4), an impossible length.
-    def _fake_urlopen(req, **_kw):
-        if "b64" in req.full_url:
-            return _BytesCtx(b"abcde" if req.full_url.endswith("00") else b"abcd")
-        return _BytesCtx(b"WHOLE-ZIP")
-
-    mocker.patch.object(http_mod.urllib.request, "urlopen", side_effect=_fake_urlopen)
-
-    dest = tmp_path / "out.zip"
-    assert vision_mod._download_prebuilt_zip(dest) is True
-    assert dest.read_bytes() == b"WHOLE-ZIP"
-
-
-def test_download_prebuilt_zip_falls_back_to_release(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    # CDN parts fail; the whole-zip release (also fetched via http_get) wins.
-    def _fake_urlopen(req, **_kw):
-        if "b64" in req.full_url:
-            raise OSError("CDN down")
-        return _BytesCtx(b"WHOLE-ZIP")
-
-    mocker.patch.object(http_mod.urllib.request, "urlopen", side_effect=_fake_urlopen)
-
-    dest = tmp_path / "out.zip"
-    assert vision_mod._download_prebuilt_zip(dest) is True
-    assert dest.read_bytes() == b"WHOLE-ZIP"
-
-
-def test_download_prebuilt_zip_sets_user_agent(tmp_path: Path, mocker) -> None:
-    # Cloudflare 403s the default Python-urllib UA — every request must set one.
-    seen_ua: list[str] = []
-
-    def _fake_urlopen(req, **_kw):
-        seen_ua.append(req.get_header("User-agent"))
-        return _BytesCtx(b"")  # body irrelevant — we only assert the header
-
-    mocker.patch.object(http_mod.urllib.request, "urlopen", side_effect=_fake_urlopen)
-    vision_mod._download_prebuilt_zip(tmp_path / "out.zip")
-    assert seen_ua and all(ua == http_mod.USER_AGENT for ua in seen_ua)
-
-
-def test_vision_already_present_no_op(tmp_path: Path, mocker) -> None:
-    onnx = tmp_path / "model.onnx"
-    onnx.write_bytes(b"x")
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
+def test_vision_verifies_all_chunks_of_large_model(installer, mocker):
+    payload = b"x" * (2**20 + 1)
+    installer.set_cdn(archive(payload))
+    mocker.patch.object(
+        vision_mod, "_PREBUILT_ONNX_SHA256", hashlib.sha256(payload).hexdigest()
+    )
 
     result = runner.invoke(app, [])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == payload
+    assert "1.0 MB at" in result.output
+
+
+@pytest.mark.parametrize("args", [[], ["--build"]])
+@pytest.mark.parametrize("existing", [b"x", b"installed"])
+def test_vision_existing_nonempty_model_is_unchanged(installer, args, existing):
+    installer.model.parent.mkdir(parents=True)
+    installer.model.write_bytes(existing)
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0, result.output
     assert "Already present" in result.output
+    assert installer.model.read_bytes() == existing
+    assert installer.requests == []
+    assert installer.commands == []
 
 
-def test_vision_build_aborts_when_uv_missing(tmp_path: Path, mocker) -> None:
-    # --build forces the from-source path, which needs uv.
-    onnx = tmp_path / "missing.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
+@pytest.mark.parametrize("args", [[], ["--force"]])
+def test_regression_vision_directory_is_not_an_installed_model(installer, args):
+    installer.model.mkdir(parents=True)
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "not a regular file" in result.stderr
+    assert isinstance(result.exception, SystemExit)
+    assert installer.model.is_dir()
+    assert installer.requests == []
+
+
+def test_regression_vision_empty_destination_is_reinstalled(installer):
+    installer.model.parent.mkdir(parents=True)
+    installer.model.touch()
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == MODEL
+
+
+@pytest.mark.parametrize("args", [[], ["--force", "--build"]])
+def test_regression_vision_serializes_installers(installer, args):
+    installer.cache_weights()
+
+    with exclusive_file_lock(installer.model.parent / ".install.lock"):
+        result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "already running" in result.stderr
+    assert isinstance(result.exception, SystemExit)
+    assert not installer.model.exists()
+    assert (installer.scratch / "model.pt").read_bytes() == b"cached weights"
+    assert installer.requests == []
+    assert installer.commands == []
+
+
+def test_vision_build_requires_uv_without_downloading(installer, mocker):
     mocker.patch.object(vision_mod.shutil, "which", return_value=None)
 
     result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 1
-    assert "uv" in result.output
+    assert "`uv` is required" in result.output
     assert "physiclaw setup local-vision-model" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert installer.requests == []
 
 
-def test_vision_downloads_converts_and_cleans_up(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
-
-    _stub_download(mocker, payload=b"PT-WEIGHTS")
-    spy = _stub_uv_run(mocker)
-
+def test_vision_build_downloads_exports_and_cleans_scratch(installer):
     result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 0, result.output
-    assert onnx.exists()
-    assert onnx.read_bytes() == b"ONNX"
+    assert installer.model.read_bytes() == BUILT
+    assert installer.requests == [vision_mod._PT_URL]
+    assert installer.commands == [
+        (
+            [
+                "uv",
+                "run",
+                "--python",
+                "3.12",
+                "--no-project",
+                "--with",
+                "ultralytics>=8.4",
+                "--with",
+                "onnx>=1.18",
+                "--with",
+                "onnxslim>=0.1.71",
+                "python",
+                "convert.py",
+            ],
+            installer.scratch,
+            'from ultralytics import YOLO\nYOLO("model.pt").export(format="onnx", imgsz=1280)\n',
+        )
+    ]
+    assert not installer.scratch.exists()
     assert "vision model ready" in result.output
-    assert not (onnx.parent / "convert").exists()
-
-    cmd = spy.call_args.args[0]
-    assert cmd[0] == "uv"
-    assert "run" in cmd
-    assert "--no-project" in cmd
-    assert "--python" in cmd and "3.12" in cmd
-    assert vision_mod._SCRIPT_NAME in cmd
-    with_args = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--with"]
-    assert any(a.startswith("ultralytics") for a in with_args)
-    assert any(a.startswith("onnx>=") for a in with_args)
-    assert any(a.startswith("onnxslim") for a in with_args)
 
 
-def test_vision_force_redownloads(tmp_path: Path, mocker) -> None:
-    onnx = tmp_path / "model.onnx"
-    onnx.write_bytes(b"old")
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
+@pytest.mark.parametrize(
+    "args,expected", [(["--force"], MODEL), (["--force", "--build"], BUILT)]
+)
+def test_vision_force_replaces_existing_model(installer, args, expected):
+    installer.model.parent.mkdir(parents=True)
+    installer.model.write_bytes(b"old")
 
-    _stub_download(mocker)
-    _stub_uv_run(mocker, onnx_bytes=b"newly converted")
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert installer.model.read_bytes() == expected
+
+
+def test_vision_force_build_refreshes_cached_weights(installer):
+    installer.cache_weights(b"stale weights")
 
     result = runner.invoke(app, ["--force", "--build"])
 
     assert result.exit_code == 0, result.output
-    assert onnx.read_bytes() == b"newly converted"
+    assert installer.requests == [vision_mod._PT_URL]
+    assert installer.model.read_bytes() == BUILT
 
 
-def test_vision_force_purges_stale_scratch(tmp_path: Path, mocker) -> None:
-    """--force must drop any stale convert/model.pt and re-download."""
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    onnx.parent.mkdir(parents=True)
-    onnx.write_bytes(b"old onnx")
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
+def test_vision_build_reuses_complete_cached_weights(installer):
+    installer.cache_weights()
 
-    convert_dir = onnx.parent / "convert"
-    convert_dir.mkdir()
-    (convert_dir / vision_mod._PT_NAME).write_bytes(b"stale PT")
+    result = runner.invoke(app, ["--build"])
 
-    download_spy = mocker.patch.object(
-        http_mod.urllib.request,
-        "urlopen",
-        side_effect=lambda *_a, **_k: _BytesCtx(b"FRESH PT"),
-    )
-    _stub_uv_run(mocker)
+    assert result.exit_code == 0, result.output
+    assert installer.requests == []
+    assert installer.model.read_bytes() == BUILT
+
+
+def test_vision_build_refetches_empty_cached_weights(installer):
+    installer.cache_weights(b"")
+
+    result = runner.invoke(app, ["--build"])
+
+    assert result.exit_code == 0, result.output
+    assert installer.requests == [vision_mod._PT_URL]
+    assert installer.model.read_bytes() == BUILT
+
+
+@pytest.mark.parametrize("output", [None, b"", "directory"])
+def test_vision_build_requires_nonempty_file_output(installer, output):
+    installer.output = output
+
+    result = runner.invoke(app, ["--build"])
+
+    assert result.exit_code == 1
+    assert "Conversion finished" in result.output
+    assert "Scratch dir kept" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert not installer.model.exists()
+    assert (installer.scratch / "model.pt").read_bytes() == b"fresh weights"
+
+
+def test_regression_vision_does_not_publish_stale_export(installer):
+    installer.cache_weights()
+    (installer.scratch / "model.onnx").write_bytes(b"stale output")
+    installer.output = None
+
+    result = runner.invoke(app, ["--build"])
+
+    assert result.exit_code == 1
+    assert "Conversion finished" in result.output
+    assert not installer.model.exists()
+    assert not (installer.scratch / "model.onnx").exists()
+    assert (installer.scratch / "model.pt").read_bytes() == b"cached weights"
+
+
+@pytest.mark.parametrize(
+    "returncode,error,message",
+    [
+        (2, None, "uv exit 2"),
+        (0, FileNotFoundError("missing uv"), "Couldn't start conversion"),
+    ],
+)
+def test_vision_failed_conversion_keeps_scratch_and_old_model(
+    installer, returncode, error, message
+):
+    installer.model.parent.mkdir(parents=True)
+    installer.model.write_bytes(b"old model")
+    installer.returncode, installer.export_error = returncode, error
 
     result = runner.invoke(app, ["--force", "--build"])
 
-    assert result.exit_code == 0, result.output
-    download_spy.assert_called_once()
+    assert result.exit_code == 1
+    assert message in result.output
+    assert "Scratch dir kept" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert installer.model.read_bytes() == b"old model"
+    assert (installer.scratch / "model.pt").read_bytes() == b"fresh weights"
 
 
-def test_vision_skips_download_when_pt_already_exists(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
+@pytest.mark.parametrize(
+    "failure,exit_code", [(OSError("offline"), 1), (KeyboardInterrupt(), 130)]
+)
+def test_vision_interrupted_weights_are_removed_and_retried(
+    installer, failure, exit_code
+):
+    installer.responses[vision_mod._PT_URL] = [
+        InterruptedResponse(failure),
+        b"retry weights",
+    ]
 
-    convert_dir = onnx.parent / "convert"
-    convert_dir.mkdir(parents=True)
-    (convert_dir / vision_mod._PT_NAME).write_bytes(b"existing PT")
+    failed = runner.invoke(app, ["--build"])
+    succeeded = runner.invoke(app, ["--build"])
 
-    download_spy = mocker.patch.object(http_mod.urllib.request, "urlopen")
-    _stub_uv_run(mocker)
-
-    result = runner.invoke(app, ["--build"])
-
-    assert result.exit_code == 0, result.output
-    download_spy.assert_not_called()
+    assert failed.exit_code == exit_code
+    assert succeeded.exit_code == 0, succeeded.output
+    assert installer.requests == [vision_mod._PT_URL, vision_mod._PT_URL]
+    assert installer.model.read_bytes() == BUILT
+    assert not installer.scratch.exists()
 
 
-def test_vision_keeps_scratch_on_uv_failure(tmp_path: Path, mocker) -> None:
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
-    _stub_download(mocker)
-
-    mocker.patch.object(
-        vision_mod.subprocess,
-        "run",
-        return_value=subprocess.CompletedProcess([], returncode=2),
-    )
+def test_vision_failed_weights_download_explains_recovery(installer):
+    installer.responses[vision_mod._PT_URL] = OSError("blocked host")
 
     result = runner.invoke(app, ["--build"])
 
     assert result.exit_code == 1
-    assert "Conversion failed" in result.output
-    assert (onnx.parent / "convert").exists()
-    assert not onnx.exists()
+    assert "Couldn't download" in result.output
+    assert "blocked host" in result.output
+    assert vision_mod._PT_URL in result.output
+    assert "physiclaw setup local-vision-model" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert list(installer.scratch.iterdir()) == []
 
 
-def test_vision_keeps_scratch_when_onnx_not_produced(
-    tmp_path: Path,
-    mocker,
-) -> None:
-    onnx = tmp_path / "models" / "omniparser_icon_detect" / "model.onnx"
-    mocker.patch.object(vision_mod.paths, "omniparser_onnx", return_value=onnx)
-    mocker.patch.object(vision_mod.shutil, "which", return_value="/usr/bin/uv")
-    _stub_download(mocker)
-
-    mocker.patch.object(
-        vision_mod.subprocess,
-        "run",
-        return_value=subprocess.CompletedProcess([], returncode=0),
-    )
+@pytest.mark.parametrize("failure", [OSError("offline"), KeyboardInterrupt()])
+def test_vision_failed_weights_download_leaves_no_partial_cache(installer, failure):
+    installer.responses[vision_mod._PT_URL] = InterruptedResponse(failure)
 
     result = runner.invoke(app, ["--build"])
 
+    assert result.exit_code != 0
+    assert not installer.model.exists()
+    assert list(installer.scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize("args", [["--force"], ["--force", "--build"]])
+def test_regression_vision_failed_publish_preserves_old_model(installer, mocker, args):
+    installer.model.parent.mkdir(parents=True)
+    installer.model.write_bytes(b"old model")
+    original_replace = Path.replace
+    publication = []
+
+    def refuse_publish(source, target):
+        if target == installer.model:
+            publication.append((source, source.read_bytes(), target.read_bytes()))
+            raise OSError("destination busy")
+        return original_replace(source, target)
+
+    mocker.patch.object(Path, "replace", refuse_publish)
+
+    result = runner.invoke(app, args)
+
     assert result.exit_code == 1
-    assert "not found" in result.output
-    assert (onnx.parent / "convert").exists()
+    assert "destination busy" in result.output
+    assert isinstance(result.exception, SystemExit)
+    assert installer.model.read_bytes() == b"old model"
+    assert len(publication) == 1
+    assert publication[0][0].parent.parent == installer.model.parent
+    assert publication[0][1] in (MODEL, BUILT)
+    assert publication[0][2] == b"old model"
+    assert list(installer.model.parent.glob(".vision-*")) == []
+
+
+def test_vision_interrupted_cdn_cleans_staging_and_releases_lock(installer):
+    installer.responses[installer.cdn_urls[0]] = [
+        KeyboardInterrupt(),
+        installer.responses[installer.cdn_urls[0]],
+    ]
+
+    failed = runner.invoke(app, [])
+    succeeded = runner.invoke(app, [])
+
+    assert failed.exit_code == 130
+    assert succeeded.exit_code == 0, succeeded.output
+    assert installer.model.read_bytes() == MODEL
+    assert list(installer.model.parent.glob(".vision-*")) == []
