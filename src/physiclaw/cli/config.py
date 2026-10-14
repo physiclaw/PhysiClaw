@@ -7,6 +7,7 @@ to keep them out of shell history.
 
 import dataclasses
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -28,7 +29,7 @@ config_app = typer.Typer(
 def _load_or_exit(path: Path | None = None) -> _config.Config:
     try:
         return _config.load(path)
-    except _config.ConfigError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
 
 
@@ -99,7 +100,7 @@ def _set(
     land in shell history — use ``physiclaw config edit`` for API keys."""
     try:
         _config.set_dotted(dotted, value)
-    except _config.ConfigError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     typer.echo(ok(f"{dotted} updated"))
     typer.echo("Restart `physiclaw server` to apply.")
@@ -115,7 +116,7 @@ def _unset(
     """Remove one dotted key from the file so the built-in default applies."""
     try:
         removed = _config.unset_dotted(dotted)
-    except _config.ConfigError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     if removed:
         typer.echo(ok(f"{dotted} reverted to default"))
@@ -127,8 +128,11 @@ def _unset(
 @config_app.command("edit")
 def _edit() -> None:
     """Open the config file in ``$EDITOR`` (creates it from the template if
-    missing)."""
-    path = _config.write_default()
+    missing). Editor commands may include arguments such as ``code --wait``."""
+    try:
+        path = _config.write_default()
+    except OSError as e:
+        exit_error(str(e))
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
     if not editor:
         for candidate in ("nano", "vim", "vi"):
@@ -141,7 +145,15 @@ def _edit() -> None:
             err=True,
         )
         raise typer.Exit(code=1)
-    subprocess.run([editor, str(path)], check=False)
+    try:
+        # Preserve bare executable paths (including spaces/backslashes).
+        # Otherwise parse shell-style quoting without invoking a shell.
+        command = [editor] if Path(editor).is_file() else shlex.split(editor)
+        if not command:
+            exit_error("editor command is empty")
+        subprocess.run([*command, str(path)], check=True)
+    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        exit_error(f"could not edit {path}: {e}")
     _load_or_exit(path)
     typer.echo(ok("config OK"))
     typer.echo("Restart `physiclaw server` to apply.")
