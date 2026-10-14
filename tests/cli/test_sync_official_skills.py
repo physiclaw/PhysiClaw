@@ -1259,6 +1259,45 @@ def test_cleanup_failure_after_success_does_not_report_failed_install(
     assert (official_home / "skills" / "new" / "SKILL.md").is_file()
 
 
+@pytest.fixture
+def blocked_staging_cleanup(mocker):
+    """Model Linux's unlink-directory error, which differs from macOS's."""
+    rmdir, unlink = osk.os.rmdir, osk.os.unlink
+
+    def blocked_rmdir(path, *args, **kwargs):
+        if Path(path).name.startswith(osk.STAGING_DIR):
+            raise PermissionError("cleanup blocked")
+        return rmdir(path, *args, **kwargs)
+
+    def linux_unlink(path, *args, **kwargs):
+        if Path(path).name.startswith(osk.STAGING_DIR):
+            raise IsADirectoryError("cannot unlink directory")
+        return unlink(path, *args, **kwargs)
+
+    mocker.patch.object(osk.os, "rmdir", side_effect=blocked_rmdir)
+    mocker.patch.object(osk.os, "unlink", side_effect=linux_unlink)
+
+
+def test_regression_linux_staging_cleanup_failure_preserves_success(
+    official_home, installed, blocked_staging_cleanup, capsys
+):
+    osk.sync()
+
+    assert "synced 1" in capsys.readouterr().out
+    assert (official_home / "skills" / "new" / "SKILL.md").is_file()
+
+
+def test_regression_linux_staging_cleanup_failure_preserves_install_error(
+    official_home, installed, blocked_staging_cleanup, mocker
+):
+    _fail_replace(mocker, official_home, "install:skills", OSError("install blocked"))
+
+    with pytest.raises(osk.SyncError, match="install blocked"):
+        osk.sync()
+
+    assert _snapshot(official_home) == installed
+
+
 def test_backup_cleanup_failure_does_not_replace_original_install_error(
     official_home, installed, mocker
 ):

@@ -394,10 +394,8 @@ def _sync(*, force: bool, dry_run: bool, emit: Callable[[str], None]) -> None:
                 f"checksum mismatch — expected {expected[:12]}…, got "
                 f"{actual[:12]}…. Aborting; the install was not touched."
             )
-        with tempfile.TemporaryDirectory(
-            prefix=STAGING_DIR + "-", dir=official, ignore_cleanup_errors=True
-        ) as directory:
-            staging = Path(directory)
+        staging = Path(tempfile.mkdtemp(prefix=STAGING_DIR + "-", dir=official))
+        try:
             _extract_zip(zip_path, staging)
             _sanity_check_layout(staging)
             src = _read_json_object(staging / "source.json")
@@ -410,6 +408,10 @@ def _sync(*, force: bool, dry_run: bool, emit: Callable[[str], None]) -> None:
             landed = _count_skills(staging / "skills")
             _write_sync_state(staging, urls["zip"], actual, remote_commit, landed)
             _install(staging, official)
+        finally:
+            # TemporaryDirectory retries permission failures recursively on some
+            # Python/platform combinations. A failed cleanup must stay nonfatal.
+            shutil.rmtree(staging, ignore_errors=True)
     finally:
         with suppress(OSError):
             zip_path.unlink(missing_ok=True)
