@@ -1,6 +1,6 @@
 """Tests for `physiclaw.agent.hooks.poll` — phone watchdog hook.
 
-`httpx.AsyncClient` is mocked so tests don't hit the real server.
+HTTP responses are mocked so tests don't hit the real server.
 
 Accepted mutation survivors: two log/diagnostic decorations, two equivalent
 False-to-None resets of the truth-tested blip flag, and a 10-to-11-second
@@ -242,8 +242,12 @@ async def _poll_document(document):
         router.get("http://watch.test/api/phone/watch").respond(
             content=json.dumps(document), content_type="application/json"
         )
+        # Avoid loading real TLS certificates for every Hypothesis example;
+        # that unrelated I/O can exceed its deadline on a busy machine.
         async with httpx.AsyncClient(
-            base_url="http://watch.test", trust_env=False
+            base_url="http://watch.test",
+            trust_env=False,
+            transport=httpx.MockTransport(router.async_handler),
         ) as client:
             with (
                 patch.object(poll, "_client", client),
