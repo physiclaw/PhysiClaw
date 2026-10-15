@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import shutil
 import struct
 import sys
@@ -63,6 +64,7 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError
 
 DEFAULT_TAG = "v4.0.3"
 BUNDLE_NAME = "fluidnc.zip"  # version-free; fluidnc_version.txt inside records it
@@ -94,30 +96,65 @@ def sha256(data: bytes) -> str:
 def fetch(url: str, dest: Path) -> None:
     """Download with resume + retry (GitHub is flaky from some networks)."""
     done = dest.with_name(dest.name + ".done")
-    if done.exists():  # complete from a previous run — skip the round trip
+    if done.is_file() and dest.is_file() and dest.stat().st_size:
         return
+    done.unlink(missing_ok=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, 9):
-        have = dest.stat().st_size if dest.exists() else 0
+        have = dest.stat().st_size if dest.is_file() else 0
         req = urllib.request.Request(url)
         if have:
             req.add_header("Range", f"bytes={have}-")
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
-                if have and r.status == 200:  # server ignored Range
+                if r.status == 200:  # a server may ignore Range and send the whole file
                     have = 0
+                expected, total = _response_size(r, have)
+                received = 0
                 with open(dest, "ab" if have else "wb") as f:
                     while chunk := r.read(1 << 16):
                         f.write(chunk)
+                        received += len(chunk)
+                if not received or (expected is not None and received != expected):
+                    raise ValueError("incomplete download response")
+                if total is not None and have + received != total:
+                    raise ValueError("download has more bytes to fetch")
             done.touch()
             return
         except Exception as e:  # noqa: BLE001 — any transport error: resume
-            if getattr(e, "code", None) == 416:  # Range past EOF: complete
-                done.touch()
-                return
+            if isinstance(e, HTTPError):
+                e.close()
+                if e.code == 416:
+                    # A rejected range does not prove our cached bytes are complete.
+                    dest.unlink(missing_ok=True)
             print(f"    retry {attempt}/8: {e}", file=sys.stderr)
-            time.sleep(2)
+            if attempt < 8:
+                time.sleep(2)
     sys.exit(f"download failed: {url}")
+
+
+def _response_size(response, offset: int) -> tuple[int | None, int | None]:
+    """Validate a resumed response before appending; return body and file sizes."""
+    length = response.headers.get("Content-Length")
+    expected = int(length) if length is not None else None
+    if expected is not None and expected <= 0:
+        raise ValueError("empty or invalid download length")
+    if response.status == 200:
+        return expected, expected
+    if response.status != 206:
+        raise ValueError(f"unexpected download status {response.status}")
+    match = re.fullmatch(
+        r"bytes (\d+)-(\d+)/(\d+)", response.headers.get("Content-Range", "")
+    )
+    if match is None:
+        raise ValueError("missing or invalid Content-Range")
+    start, end, total = map(int, match.groups())
+    if start != offset or not start <= end < total:
+        raise ValueError("Content-Range does not match the cached prefix")
+    size = end - start + 1
+    if expected is not None and expected != size:
+        raise ValueError("Content-Length does not match Content-Range")
+    return size, total
 
 
 def elf2image(elf: Path, out: Path) -> None:
@@ -141,8 +178,9 @@ def elf2image(elf: Path, out: Path) -> None:
 
 def data_partition(partitions: bytes) -> tuple[int, int]:
     """(offset, size) of the spiffs/littlefs data partition in the table."""
-    for i in range(0, len(partitions) - 32, 32):
-        entry = partitions[i : i + 32]
+    entry_size = 32
+    for i in range(0, len(partitions) - entry_size + 1, entry_size):
+        entry = partitions[i : i + entry_size]
         if entry[:2] != b"\xaaP":  # end of table
             break
         ptype, subtype = entry[2], entry[3]
@@ -163,14 +201,18 @@ def build_littlefs(config: bytes, block_count: int, out: Path) -> None:
 
 
 def write_bundle(files: dict[str, bytes], out: Path) -> None:
-    """Deterministic zip: fixed order and timestamps, no extra fields."""
+    """Publish a complete deterministic zip, preserving any previous bundle on failure."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(out, "w") as zf:
-        for name in ORDER:
-            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o644 << 16
-            zf.writestr(info, files[name])
+    with tempfile.TemporaryDirectory(prefix=".physiclaw-fw-", dir=out.parent) as td:
+        pending = Path(td) / out.name
+        with zipfile.ZipFile(pending, "w") as zf:
+            for name in ORDER:
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.create_system = 3  # fixed Unix attributes on every build host
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o644 << 16
+                zf.writestr(info, files[name])
+        pending.replace(out)
 
 
 def main() -> None:
