@@ -20,6 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from hardware.build_lock import locked_main
 from hardware.assembly.travel_ranges import (
     PHONE_BED_BEAM_LENGTH,
     X_BEAM_LENGTH,
@@ -1004,7 +1005,7 @@ def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
         items = cut_list()
     chrome = find_chrome() if pdf else None
     if pdf and chrome is None:
-        print("note: no Chrome/Chromium found — skipping PDF output")
+        raise BuildError("PDF requested but no Chrome/Chromium found")
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for lang in langs:
@@ -1019,9 +1020,12 @@ def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
                 ok = render_pdf(doc, pdf_path, chrome)
             if ok:
                 written.append(pdf_path)
+            else:
+                raise BuildError(f"PDF render failed: {pdf_path.name}")
     return written
 
 
+@locked_main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(

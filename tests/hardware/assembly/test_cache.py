@@ -7,6 +7,7 @@ under ``REPO_ROOT``) and its store/restore run against tmp files only.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -212,6 +213,9 @@ def test_store_source_replaces_the_layer_wholesale(repo):
 
 
 def test_snapshots_cached_after_store_is_true(repo):
+    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
+        '[{"id":"abcd","preop":"orig"}]'
+    )
     (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text("snap")
 
     cache.store_snapshots(STEM)
@@ -283,3 +287,72 @@ def test_prune_drops_entries_for_unknown_stems(repo):
     removed = cache.prune({STEM})
 
     assert (removed, (cache.CACHE_DIR / STEM).is_dir()) == (1, True)
+
+
+def test_cumulative_cache_does_not_satisfy_delta_request(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    assert not cache.source_cached(STEM, want_bom=True, want_delta=True)
+
+
+def test_partial_camera_manifest_is_not_a_hit(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    assert not cache.source_cached(
+        STEM, want_bom=False, expected_svgs={f"{STEM}_exploded_cam1.svg"}
+    )
+
+
+def test_both_step_variants_are_required(repo):
+    write_outputs(repo)
+    (repo.STEP_DIR / f"{STEM}_assembled.step").unlink()
+    cache.store_source(STEM)
+    assert not cache.source_cached(STEM, want_bom=False)
+
+
+@pytest.mark.parametrize(
+    "files", [[], "bad", {"../escape.step": "a" * 64}, {"x.step": None}]
+)
+def test_malformed_manifest_is_a_miss(repo, files):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    (cache.CACHE_DIR / STEM / "source.key").write_text(
+        json.dumps({"key": cache.source_key(STEM), "files": files})
+    )
+    assert not cache.source_cached(STEM, want_bom=False)
+
+
+def test_unmanifested_cache_file_is_never_restored(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    extra = f"{STEM}_exploded_cam99.svg"
+    (cache.CACHE_DIR / STEM / extra).write_text("unexpected")
+    cache.restore_source(STEM)
+    assert not (repo.SVG_DIR / extra).exists()
+
+
+def test_missing_snapshot_cannot_be_manifested_as_complete(repo):
+    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
+        '[{"id":"abcd","preop":"orig"}]'
+    )
+    cache.store_snapshots(STEM)
+    assert not cache.snapshots_cached(STEM)
+
+
+def test_added_relative_import_is_hashed_even_after_previous_lookup(repo):
+    initial = cache.source_key(STEM)
+    dependency = repo.helper.parent / "new.py"
+    dependency.write_text("SIZE = 1")
+    repo.helper.write_text("from .new import SIZE")
+    changed = cache.source_key(STEM)
+    assert changed != initial
+    dependency.write_text("SIZE = 2")
+    assert cache.source_key(STEM) != changed
+
+
+def test_dependency_lock_changes_invalidate_source_cache(repo, tmp_path):
+    lock = tmp_path / "uv.lock"
+    lock.write_text("old kernel")
+    previous = cache.source_key(STEM)
+    lock.write_text("new kernel")
+    assert cache.source_key(STEM) != previous

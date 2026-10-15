@@ -40,7 +40,8 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --group dev
+        # CAD orchestration tests must run, not silently importorskip.
+        run: uv sync --locked --group dev --group cad
 
       # Studio's inline JavaScript uses Node's built-in test runner; no npm
       # packages or Node runtime are needed by the Python application.
@@ -56,7 +57,7 @@ jobs:
       # everywhere (hardware/ is style-star-import CAD code, format-only).
       - name: Lint
         run: |
-          uv run ruff check src/ tests/
+          uv run ruff check src/ tests/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
           uv run ruff format --check src/ tests/ hardware/ scripts/
 
       # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
@@ -68,9 +69,14 @@ jobs:
       # stems / patches / manual figures / sourcing ids) — stdlib-only, no
       # cad dependency group needed.
       - name: Hardware consistency check
-        run: uv run python -m hardware check
+        run: uv run --locked python -m hardware check
+
+      - name: Hardware CAD smoke build
+        env:
+          PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
+        run: uv run --locked --group cad python -m hardware step fastener_10_BHCS
 
       # Bare --cov: source + branch come from [tool.coverage.run] in
       # pyproject, keeping one source of truth.
       - name: Test
-        run: uv run pytest --cov
+        run: uv run --locked --group cad pytest --cov

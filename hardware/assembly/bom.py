@@ -154,18 +154,23 @@ def write_bom(
 
     Reused by ``hardware.assembly.build_procedures`` so one render pass can
     also emit BOMs; the build is cheap there because the leaf-part cache is
-    already warm. Delta is skipped silently for the first step in a family
-    (no predecessor)."""
+    already warm. The first step's delta is its entire BOM (empty predecessor)."""
     current = collect(load_step(step_name))
     BOM_DIR.mkdir(parents=True, exist_ok=True)
     if cumulative:
         text = to_markdown(current, title=f"{step_name} — cumulative BOM")
-        (BOM_DIR / f"{step_name}.md").write_text(text)
+        _write_atomic(BOM_DIR / f"{step_name}.md", text)
     if want_delta:
         prev_name = predecessor_module(step_name)
-        if prev_name is not None:
-            entries = delta(current, collect(load_step(prev_name)))
-            title = f"{step_name} — delta vs. {prev_name.rsplit('.', 1)[-1]}"
-            (BOM_DIR / f"{step_name}_delta.md").write_text(
-                to_markdown(entries, title=title)
-            )
+        previous = collect(load_step(prev_name)) if prev_name else []
+        entries = delta(current, previous)
+        title = f"{step_name} — delta vs. {prev_name.rsplit('.', 1)[-1] if prev_name else 'empty assembly'}"
+        _write_atomic(
+            BOM_DIR / f"{step_name}_delta.md", to_markdown(entries, title=title)
+        )
+
+
+def _write_atomic(path, text: str) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)

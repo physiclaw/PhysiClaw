@@ -66,6 +66,7 @@ import sys
 import time
 import traceback
 from functools import cache
+from pathlib import Path
 
 from hardware.assembly import cache as stepcache
 from hardware.assembly.base import BaseAssembly
@@ -82,6 +83,7 @@ from hardware.assembly.dispatch import (
 )
 from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
+from hardware.build_lock import inherited_fds, locked_main
 from hardware.scheme import (
     BOM_DIR,
     OUTPUT_DIR,
@@ -101,6 +103,10 @@ from hardware.scheme import (
 CRASH_LOG = OUTPUT_DIR / "crash.log"
 
 
+def _shown(path: Path) -> Path:
+    return path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+
+
 def _clear_outputs(clear_bom: bool = False) -> None:
     """Wipe stale .step / .svg artifacts (and .md BOMs when ``clear_bom``)
     so deleted procedures and renamed variants don't survive across runs.
@@ -109,13 +115,15 @@ def _clear_outputs(clear_bom: bool = False) -> None:
     Only touches the file extensions we generate — user-placed files in the
     output dirs are left alone."""
     targets = [
-        (STEP_DIR, "*.step"),
+        (STEP_DIR, "*_exploded.step"),
+        (STEP_DIR, "*_assembled.step"),
         (STEP_DIR, "*.tmp"),
         (SVG_DIR, "*.svg"),
         (SVG_DIR, "*.tmp"),
     ]
     if clear_bom:
         targets.append((BOM_DIR, "*.md"))
+        targets.append((BOM_DIR, "*.tmp"))
     cleared = 0
     for d, pattern in targets:
         if not d.exists():
@@ -173,20 +181,14 @@ def _replay_patches_for(stem: str, exploded: bool) -> int:
     """For every SVG just rendered for this procedure variant, replay
     any matching patch JSON in ``hardware/assembly/patch/``. Returns
     the total number of patch-leaf snapshots written (0 if none of the
-    rendered SVGs has a patch). Per-source failures are logged but
-    don't propagate — patches are user annotations, not build outputs."""
+    rendered SVGs has a patch). Annotations are required manual inputs;
+    a failed replay must fail the build."""
     variant = "exploded" if exploded else "assembled"
     written = 0
     for svg in sorted(SVG_DIR.glob(f"{stem}_{variant}_cam*.svg")):
         if not patch_path(svg).exists():
             continue
-        try:
-            written += len(replay_one(svg))
-        except Exception as exc:  # malformed patch / I/O — keep building
-            print(
-                f"    WARN: patch replay failed for {svg.name}: "
-                f"{type(exc).__name__}: {exc}"
-            )
+        written += len(replay_one(svg))
     return written
 
 
@@ -294,17 +296,23 @@ def _run_subprocess(
     *,
     only_missing: bool = False,
 ) -> int:
-    return subprocess.call(
-        [
-            sys.executable,
-            "-m",
-            "hardware.assembly.build_procedures",
-            "--stems",
-            *stems,
-            *bom_flags,
-            *(("--only-missing",) if only_missing else ()),
-        ]
-    )
+    try:
+        return subprocess.call(
+            [
+                sys.executable,
+                "-m",
+                "hardware.assembly.build_procedures",
+                "--stems",
+                *stems,
+                *bom_flags,
+                *(("--only-missing",) if only_missing else ()),
+            ],
+            pass_fds=inherited_fds(),
+            timeout=900,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"Worker timed out after 900s: {', '.join(stems)}")
+        return 124
 
 
 _VARIANTS = tuple((name, name == "exploded") for name in VARIANTS)
@@ -352,6 +360,18 @@ def _incomplete(stem: str, bom_flags: tuple[str, ...]) -> list[str]:
         stem, bom="--bom" in bom_flags, bom_delta="--bom-delta" in bom_flags
     ):
         missing.append("bom")
+    from hardware.assembly.mark.patch import load_patch, snapshot_path
+    from hardware.assembly.mark.replay import find_leaves
+
+    for variant, exploded in _VARIANTS:
+        for index in _view_indices(stem, exploded):
+            svg = svg_path_for(stem, exploded, index=index)
+            if patch_path(svg).exists():
+                if any(
+                    not snapshot_path(svg, leaf["id"]).is_file()
+                    for leaf in find_leaves(load_patch(svg))
+                ):
+                    missing.append(f"{variant} annotations")
     return missing
 
 
@@ -385,10 +405,22 @@ def _dispatch(
     cached: dict[str, bool] = {}
     if use_cache:
         pruned = stepcache.prune(position)
-        cached = {s: stepcache.source_cached(s, want_bom=want_bom) for s in position}
+        cached = {
+            s: stepcache.source_cached(
+                s,
+                want_bom="--bom" in bom_flags,
+                want_delta="--bom-delta" in bom_flags,
+                expected_svgs={
+                    svg_path_for(s, exploded, index=i).name
+                    for _, exploded in _VARIANTS
+                    for i in _view_indices(s, exploded)
+                },
+            )
+            for s in position
+        }
         n_cached = sum(cached.values())
         print(
-            f"cache: {stepcache.CACHE_DIR.relative_to(REPO_ROOT)} — "
+            f"cache: {_shown(stepcache.CACHE_DIR)} — "
             f"{n_cached}/{total} cached, {total - n_cached} to build"
             + (f"   (pruned {pruned} stale)" if pruned else "")
         )
@@ -407,6 +439,7 @@ def _dispatch(
             if not cached.get(s):
                 misses.append(s)
                 continue
+            stepcache.clear_outputs(s)
             stepcache.restore_source(s, want_bom=want_bom)
             if stepcache.snapshots_cached(s):
                 stepcache.restore_snapshots(s)
@@ -414,11 +447,9 @@ def _dispatch(
             else:
                 # Patch edited but geometry/render unchanged: keep the cached
                 # .step + raw .svg, just re-apply the (build123d-free) replay.
-                # Drop the old snapshot layer first — an op the edit removed
-                # or renamed would otherwise leave its stale `_<opid>.svg`
-                # behind for store_snapshots to re-manifest.
+                # clear_outputs already removed the old snapshots, so removed
+                # or renamed patch operations cannot survive in the new layer.
                 print(f"  [patch] {s}: geometry cached, re-replaying annotations")
-                stepcache.clear_snapshots(s)
                 for exploded in (True, False):
                     _replay_patches_for(s, exploded)
                 stepcache.store_snapshots(s)
@@ -440,7 +471,7 @@ def _dispatch(
             incomplete = [s for s in misses if _incomplete(s, bom_flags)]
             print(
                 f"\n--- batch exit {rc}; retrying {len(incomplete)}/{len(misses)} "
-                f"incomplete stem(s)  [stacks → {CRASH_LOG.relative_to(REPO_ROOT)}] ---"
+                f"incomplete stem(s)  [stacks → {_shown(CRASH_LOG)}] ---"
             )
             retry_stems(
                 incomplete,
@@ -454,6 +485,12 @@ def _dispatch(
                     header([s]) + f"  (retry {a}/{MAX_STEM_RETRIES})"
                 ),
             )
+            # Exceptions after the last output landed (e.g. annotation
+            # replay) must never be converted to success by file presence.
+            # Re-run a cheap only-missing pass and require a successful exit.
+            completed = [s for s in misses if not _incomplete(s, bom_flags)]
+            if completed and _run_subprocess(completed, bom_flags, only_missing=True):
+                return 1
         # Store every stem that completed — also on --no-cache runs: the
         # flag bypasses cache READS, but the fresh rebuild is exactly what
         # is worth storing; skipping the store would make the next cached
@@ -486,6 +523,7 @@ def _dispatch(
     return 0
 
 
+@locked_main
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -522,6 +560,10 @@ def main(argv: list[str] | None = None) -> int:
         "(worker mode; the dispatcher's crash retries pass this)",
     )
     args = parser.parse_args(argv)
+    if args.batch_size < 1:
+        parser.error("--batch-size must be at least 1")
+    if args.only_missing and not args.stems:
+        parser.error("--only-missing requires --stems")
 
     # Line-buffer stdout: under a pipe (make … | tee, CI) the default is
     # block buffering, which holds the dispatcher's progress until exit and

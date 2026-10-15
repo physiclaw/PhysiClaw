@@ -83,7 +83,9 @@ def replay_one(src: Path) -> List[Path]:
         chain = chain_to(entries, leaf["id"])
         out_bytes = apply_chain(src_bytes, chain)
         out = snapshot_path(src, leaf["id"])
-        out.write_bytes(out_bytes)
+        tmp = out.with_suffix(".tmp")
+        tmp.write_bytes(out_bytes)
+        tmp.replace(out)
         written.append(out)
     return written
 

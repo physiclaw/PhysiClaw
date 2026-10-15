@@ -97,6 +97,7 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from hardware.build_lock import locked_main
 from hardware.manual import BuildError
 
 # Shared with the manual build: localization, BOM row grouping, step timing,
@@ -867,6 +868,7 @@ def build(langs: list[str], out_dir: Path, scaffold: bool) -> list[Path]:
     return written
 
 
+@locked_main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(

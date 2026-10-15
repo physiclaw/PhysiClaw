@@ -41,6 +41,7 @@ import ast
 import functools
 import hashlib
 import json
+import platform
 import re
 import shutil
 from importlib.metadata import PackageNotFoundError, version
@@ -75,8 +76,11 @@ def _module_to_path(mod: str) -> Path | None:
         or mod.startswith("src.physiclaw.")
     ):
         return None
-    p = REPO_ROOT / Path(*mod.split(".")).with_suffix(".py")
-    return p if p.is_file() else None
+    p = REPO_ROOT / Path(*mod.split("."))
+    if p.with_suffix(".py").is_file():
+        return p.with_suffix(".py")
+    init = p / "__init__.py"
+    return init if init.is_file() else None
 
 
 def _imports(path: Path) -> set[str]:
@@ -84,19 +88,23 @@ def _imports(path: Path) -> set[str]:
     mods: set[str] = set()
     for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
         if isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module:
-                mods.add(node.module)
+            module = node.module
+            if node.level:
+                package = list(path.relative_to(REPO_ROOT).parts[:-1])
+                package = package[: len(package) - node.level + 1]
+                module = ".".join(package + ([module] if module else []))
+            if module:
+                mods.add(module)
                 # `from hardware.parts import custom` names the SUBMODULE
                 # hardware/parts/custom.py — record the package-qualified
                 # name per alias too. Non-module names (functions, classes)
                 # resolve to no file in _module_to_path and drop out.
-                mods.update(f"{node.module}.{a.name}" for a in node.names)
+                mods.update(f"{module}.{a.name}" for a in node.names)
         elif isinstance(node, ast.Import):
             mods.update(a.name for a in node.names)
     return mods
 
 
-@functools.cache
 def _closure(path: Path) -> frozenset[Path]:
     """All project source files reachable from ``path`` through imports."""
     seen: set[Path] = set()
@@ -133,8 +141,23 @@ def source_key(stem: str) -> str:
     """Content hash of ``stem``'s import closure + kernel version.
     Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
     h = hashlib.sha256()
+    h.update(b"hardware-cache-v2\n")
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
+    h.update(platform.python_version().encode())
+    h.update(platform.platform().encode())
     _hash_files(h, _closure(PROCEDURES_DIR / f"{stem}.py"))
+    # Export orchestration and BOM code aren't necessarily imported by the
+    # procedure. Lockfile changes also invalidate transitive OCCT versions.
+    for name in (
+        "hardware/assembly/build_procedures.py",
+        "hardware/assembly/bom.py",
+        "hardware/assembly/cache.py",
+        "uv.lock",
+        "pyproject.toml",
+    ):
+        path = REPO_ROOT / name
+        if path.is_file():
+            _hash_files(h, _closure(path) if path.suffix == ".py" else [path])
     return h.hexdigest()
 
 
@@ -179,9 +202,9 @@ def _dest_dir(name: str) -> Path:
 def _is_source(stem: str, name: str, *, want_bom: bool = True) -> bool:
     """``name`` belongs to ``stem``'s source layer (.step / raw .svg / BOM)."""
     return (
-        name.endswith(".step")
+        name in {f"{stem}_{v}.step" for v in VARIANTS}
         or bool(raw_svg_re(stem).match(name))
-        or (want_bom and name.endswith(".md"))
+        or (want_bom and name in {f"{stem}.md", f"{stem}_delta.md"})
     )
 
 
@@ -277,8 +300,19 @@ def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
         return None, {}
     try:
         m = json.loads(p.read_text())
+        if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
+            return None, {}
+        if not isinstance(m.get("key"), str):
+            return None, {}
+        for name, sha in m["files"].items():
+            if (
+                Path(name).name != name
+                or not isinstance(sha, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", sha)
+            ):
+                return None, {}
         return m["key"], m["files"]
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, OSError):
         return None, {}
 
 
@@ -289,7 +323,12 @@ def _entry_intact(stem: str, files: dict[str, str]) -> bool:
     entry = _entry(stem)
     for name, sha in files.items():
         p = entry / name
-        if not p.is_file() or _sha256_file(p) != sha:
+        if (
+            p.is_symlink()
+            or not p.is_file()
+            or p.stat().st_size == 0
+            or _sha256_file(p) != sha
+        ):
             return False
     return True
 
@@ -316,19 +355,30 @@ def store_snapshots(stem: str) -> None:
     )
 
 
-def source_cached(stem: str, *, want_bom: bool) -> bool:
+def source_cached(
+    stem: str,
+    *,
+    want_bom: bool,
+    want_delta: bool = False,
+    expected_svgs: set[str] | None = None,
+) -> bool:
     """True only if the source key matches AND every recorded file is present
     with its recorded hash — a changed, damaged, incomplete, or corrupted entry
     all fall back to a rebuild. Cheap checks first; the integrity hash runs only
     on a key match (a rebuild from a source edit pays no hashing)."""
     key, files = _read_layer(stem, _SOURCE_KEY)
-    if key != source_key(stem):
+    if key is None or key != source_key(stem):
         return False
-    has_step = any(n.endswith(".step") for n in files)
-    has_raw = any(raw_svg_re(stem).match(n) for n in files)
-    if not (has_step and has_raw):
+    required = {f"{stem}_{v}.step" for v in VARIANTS}
+    if expected_svgs is not None:
+        required.update(expected_svgs)
+    if want_bom:
+        required.add(f"{stem}.md")
+    if want_delta:
+        required.add(f"{stem}_delta.md")
+    if not required.issubset(files):
         return False
-    if want_bom and not any(n.endswith(".md") for n in files):
+    if any(not _is_source(stem, name) for name in files):
         return False
     return _entry_intact(stem, files)
 
@@ -337,19 +387,32 @@ def snapshots_cached(stem: str) -> bool:
     """True only if the patch key matches AND every recorded snapshot is present
     with its hash (a stem with no patches records an empty set — trivially true)."""
     key, files = _read_layer(stem, _PATCH_KEY)
-    if key != patch_key(stem):
+    if key is None or key != patch_key(stem):
+        return False
+    from hardware.assembly.mark.replay import find_leaves
+
+    expected = {
+        f"{patch.stem}_{leaf['id']}.svg"
+        for patch in _patch_files(stem)
+        for leaf in find_leaves(json.loads(patch.read_text()))
+    }
+    if set(files) != expected:
         return False
     return _entry_intact(stem, files)
 
 
 def restore_source(stem: str, *, want_bom: bool = True) -> None:
+    _, files = _read_layer(stem, _SOURCE_KEY)
     _restore(
-        f for f in _entry(stem).iterdir() if _is_source(stem, f.name, want_bom=want_bom)
+        _entry(stem) / name
+        for name in files
+        if _is_source(stem, name, want_bom=want_bom)
     )
 
 
 def restore_snapshots(stem: str) -> None:
-    _restore(f for f in _entry(stem).iterdir() if _is_snapshot(stem, f.name))
+    _, files = _read_layer(stem, _PATCH_KEY)
+    _restore(_entry(stem) / name for name in files if _is_snapshot(stem, name))
 
 
 def prune(valid_stems) -> int:
@@ -360,6 +423,7 @@ def prune(valid_stems) -> int:
     removed = 0
     for entry in CACHE_DIR.iterdir():
         if entry.is_dir() and entry.name not in valid:
+            clear_outputs(entry.name)
             shutil.rmtree(entry)
             removed += 1
     return removed

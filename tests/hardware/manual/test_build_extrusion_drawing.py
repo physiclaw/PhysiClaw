@@ -272,21 +272,11 @@ def test_document_is_byte_stable():
     assert bed.render_document(items, "en") == bed.render_document(items, "en")
 
 
-def test_build_writes_the_html_per_language_and_skips_pdf_without_chrome(
-    tmp_path, monkeypatch, capsys
-):
+def test_explicit_pdf_request_fails_without_chrome(tmp_path, monkeypatch):
     monkeypatch.setattr(bed, "find_chrome", lambda: None)
 
-    written = bed.build(["en", "zh"], tmp_path, pdf=True)
-
-    assert [p.name for p in written] == [
-        bed.LANG_FILENAME["en"],
-        bed.LANG_FILENAME["zh"],
-    ]
-    assert all(
-        p.read_text(encoding="utf-8").startswith("<!DOCTYPE html>") for p in written
-    )
-    assert "no Chrome/Chromium found" in capsys.readouterr().out
+    with pytest.raises(BuildError, match="no Chrome/Chromium"):
+        bed.build(["en", "zh"], tmp_path, pdf=True)
 
 
 @pytest.mark.parametrize("langs", [["en"], ["zh"], ["en", "zh"]])

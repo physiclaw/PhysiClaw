@@ -2,8 +2,7 @@
 
 The manual's CSS is print-ready (@page A4 landscape), so it is rendered
 with the browser engine it's designed for rather than a separate PDF
-library. Chrome is used only if already installed; absent it, the HTML
-build still succeeds and PDF is skipped with a note.
+library. Callers fail when PDF was requested but Chrome is unavailable.
 """
 
 from __future__ import annotations
@@ -109,6 +108,7 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
     for attempt in range(1, PDF_ATTEMPTS + 1):
         with (
             tempfile.TemporaryDirectory() as profile,
+            tempfile.TemporaryDirectory(dir=pdf_path.parent) as staging,
             tempfile.NamedTemporaryFile(
                 "w", suffix=".html", dir=pdf_path.parent, encoding="utf-8", delete=False
             ) as tmp,
@@ -117,12 +117,19 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
             tmp.write(html)
             tmp.flush()
             try:
-                result = _chrome_print(chrome, tmp_path.as_uri(), profile, pdf_path)
+                staged_pdf = Path(staging) / pdf_path.name
+                result = _chrome_print(chrome, tmp_path.as_uri(), profile, staged_pdf)
+                if result:
+                    data = staged_pdf.read_bytes()
+                    result = data.startswith(b"%PDF-") and data.rstrip().endswith(
+                        b"%%EOF"
+                    )
+                if result:
+                    staged_pdf.replace(pdf_path)
             finally:
                 tmp_path.unlink(missing_ok=True)
         if result:  # _chrome_print returns True only after the PDF is written
             return True
-        pdf_path.unlink(missing_ok=True)
         tail = " — retrying" if attempt < PDF_ATTEMPTS else " — skipped"
         print(
             f"warning: PDF render failed for {pdf_path.name} (attempt {attempt}){tail}"

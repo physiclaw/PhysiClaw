@@ -4,8 +4,20 @@ from __future__ import annotations
 
 import pytest
 
-from hardware.manual import build_manual
+from hardware.manual import BuildError, build_manual
 from hardware.manual.assets import InlineAssets
+
+
+def test_pdf_request_requires_browser_before_removing_existing_manual(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "previous.pdf"
+    path.write_bytes(b"previous")
+    monkeypatch.setattr(build_manual, "find_chrome", lambda: None)
+    with pytest.raises(BuildError, match="no Chrome/Chromium"):
+        build_manual.build(["en"], tmp_path, inline=False, pdf=True)
+    assert path.read_bytes() == b"previous"
+
 
 # ── figure_alt ────────────────────────────────────────────────────────────────
 

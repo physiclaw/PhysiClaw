@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from hardware.build_lock import locked_main
 from hardware.manual import BuildError
 from hardware.manual.assets import (
     ASSETS_SUBDIR,
@@ -564,6 +565,9 @@ def build(
     just-written HTML — in external mode (default) Chrome loads the figures
     from the emitted ``assets/`` dir and embeds them into the PDF; in inline
     mode they are already data URIs."""
+    chrome = find_chrome() if pdf else None
+    if pdf and chrome is None:
+        raise BuildError("PDF requested but no Chrome/Chromium found")
     _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
     out_dir.mkdir(parents=True, exist_ok=True)
     SVG_DIR.mkdir(parents=True, exist_ok=True)
@@ -581,10 +585,6 @@ def build(
     for warning in inline_style_unit_warnings(pages):
         print(f"warning: {warning}", file=sys.stderr)
     assets: Assets = InlineAssets() if inline else ExternalAssets()
-
-    chrome = find_chrome() if pdf else None
-    if pdf and chrome is None:
-        print("note: no Chrome/Chromium found — skipping PDF output")
 
     written: list[Path] = []
     docs: dict[str, tuple[Path, str]] = {}
@@ -609,9 +609,12 @@ def build(
                 ok = render_pdf(html, pdf_path, chrome)
             if ok:
                 written.append(pdf_path)
+            else:
+                raise BuildError(f"PDF render failed: {pdf_path.name}")
     return written
 
 
+@locked_main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(

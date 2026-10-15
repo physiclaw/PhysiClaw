@@ -1,20 +1,16 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help bump build publish release docs-deploy \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-deploy hw-release _hw-package
+        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-deploy hw-release _hw-package
 
 PY ?= uv run
 
 # Hardware CAD pipeline (see hardware/README.md). Geometry stages need the
 # `cad` group; the manual / sourcing / drawing builders are standard-library only.
 # Pass flags through ARGS, e.g.  make hw-build ARGS="--bom --bom-delta"
-HW     = $(PY) --group cad python -m hardware
-HW_DOC = $(PY) python -m hardware
+HW     = $(PY) --locked --group cad python -m hardware
+HW_DOC = $(PY) --locked python -m hardware
 
-# Hardware GitHub release — assets are packaged from hardware/output/.
-# Versioned separately from the PyPI package: set HW_VERSION per release,
-# e.g.  make hw-deploy HW_VERSION=0.3  (build + publish in one key)
-HW_OUT     = hardware/output
-HW_REL_DIR = $(HW_OUT)/release
-HW_REL_TAG = physiclaw-hardware-v$(HW_VERSION)
+# Passed as data through the environment, never interpolated into a shell command.
+export HW_VERSION
 
 # Guard for hw-* targets that need a positional: fail with a usage hint when
 # ARGS is empty. $(1) describes the expected value.
@@ -61,8 +57,10 @@ help:
 	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
 	@echo "                            (or pipe: pbpaste | make hw-camera)"
 	@echo "  hw-rebuild              — full rebuild: parts → build → print → manual+pdf → sourcing"
-	@echo "  hw-deploy HW_VERSION=X.Y  — one-key release: cached build → docs → check → publish"
-	@echo "  hw-release HW_VERSION=X.Y — package output/ as-is into the 4 zips & publish (gh)"
+	@echo "  hw-prepare HW_VERSION=X.Y — fresh isolated build + verified local release bundle"
+	@echo "  hw-verify HW_VERSION=X.Y  — verify sources, checksums and bundle contents"
+	@echo "  hw-deploy HW_VERSION=X.Y  — preflight → prepare → publish verified draft"
+	@echo "  hw-release HW_VERSION=X.Y — publish a previously prepared and verified bundle"
 	@echo "  docs-deploy             — redeploy docs.physiclaw.ai (Cloudflare Pages deploy hook)"
 
 test:
@@ -90,7 +88,7 @@ mutate:
 	$(PY) mutmut run --paths-to-mutate $(MOD)
 
 lint:
-	$(PY) ruff check src/ tests/
+	$(PY) ruff check src/ tests/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
 	$(PY) ruff format --check src/ tests/ hardware/ scripts/
 
 fmt:
@@ -249,93 +247,37 @@ hw-camera:
 	$(HW) camera $(ARGS)
 
 # Full rebuild — STEPs → steps+BOM → print package → manual (HTML+PDF) →
-# sourcing → extrusion tech drawing (HTML+PDF). Includes --pdf so the result
-# always satisfies hw-release's artifact guard: a "full" rebuild is a
-# releasable one.
+# sourcing → extrusion tech drawing (HTML+PDF) in the interactive output tree.
+# Use hw-prepare to build a versioned release bundle with its manifest.
 hw-rebuild:
-	$(HW) parts --custom --standard
-	$(HW) build --bom
-	$(HW) print
-	$(HW_DOC) manual --pdf
-	$(HW_DOC) sourcing
-	$(HW_DOC) drawing --pdf
-
-# Shared release preflight — every check that can fail does so here, before
-# any long build. Beyond the version/gh/tag guards: `gh release create
-# --target main` tags GitHub's main, not the checkout — a dirty tree or
-# unpushed commits would silently ship a release without them.
-hw-preflight:
-	@if [ -z "$(HW_VERSION)" ]; then echo 'usage: make hw-deploy|hw-release HW_VERSION=X.Y'; exit 2; fi
-	@command -v gh >/dev/null 2>&1 || { echo "✗ gh (GitHub CLI) not found — https://cli.github.com/"; exit 1; }
-	@if gh release view "$(HW_REL_TAG)" >/dev/null 2>&1; then echo "✗ release $(HW_REL_TAG) already exists"; exit 1; fi
-	@if [ -n "$$(git status --porcelain)" ]; then echo "✗ working tree not clean — commit (and push) first"; exit 1; fi
-	@if [ "$$(git rev-parse main)" != "$$(git rev-parse origin/main)" ]; then echo "✗ local main != origin/main — push first"; exit 1; fi
-
-# One-key deploy — build what's stale and publish the release. `build` is
-# incremental (content-hash cache under output/.cache), so unchanged stems
-# restore instead of rebuilding; the doc builders are fast and always re-run,
-# so manual/sourcing can never ship stale. Preflight runs first so a bad
-# version/tag/tree fails in seconds, not after the build; the build writes
-# only to gitignored output/, so the checks can't go stale before _hw-package.
-#   make hw-deploy HW_VERSION=0.3
-hw-deploy: hw-preflight
-	$(HW) build --bom
-	$(HW) print
-	$(HW_DOC) manual --pdf
-	$(HW_DOC) sourcing
-	$(HW_DOC) drawing --pdf
 	$(HW_DOC) check
-	$(MAKE) _hw-package HW_VERSION=$(HW_VERSION)
+	$(HW) parts --custom --standard
+	$(HW) build --bom --no-cache
+	$(HW) print
+	$(HW_DOC) manual --pdf
+	$(HW_DOC) sourcing
+	$(HW_DOC) drawing --pdf
 
-# Package what's already in hardware/output into the four release zips plus
-# the two extrusion-drawing PDFs and publish them as a GitHub release. Prefer `hw-deploy`, which builds first;
-# this exists for re-publishing an output/ that is already built and checked.
-#   make hw-release HW_VERSION=0.3
-hw-release: hw-preflight _hw-package
+# All release entry points delegate to the same guarded Python workflow.
+# Each is a single recipe, so make -j cannot reorder preflight/build/publish.
+# hw-prepare and hw-verify are local; hw-deploy and hw-release publish.
+hw-preflight:
+	$(HW_DOC) release preflight
 
-# Internal packaging body — no guards of its own beyond the artifact check;
-# reached only through hw-deploy / hw-release, which both run hw-preflight
-# exactly once. The artifact guard catches a missing or HTML-only build
-# (zip -r would happily package a manual without its PDFs); the filenames
-# mirror their owners — LANG_FILENAME in build_manual.py /
-# build_sourcing_guide.py / build_extrusion_drawing.py, ZIP_PATH in
-# build_custom_parts.py, scheme.py's step naming — keep them in sync. The
-# extrusion tech drawing travels twice: its HTML + PDFs ride inside the
-# sourcing-guide zip (the docs site serves them from there), and the two
-# PDFs are also direct release assets so the guide's note can link them at
-# releases/latest/download/. set -e aborts before the release is cut, so no
-# half-published release.
-_hw-package:
-	@set -e; \
-	rm -rf "$(HW_REL_DIR)"; mkdir -p "$(HW_REL_DIR)"; \
-	REL="$$(cd "$(HW_REL_DIR)" && pwd)"; cd "$(HW_OUT)"; \
-	for f in print_3d/physiclaw_custom_parts.zip \
-	         step/camera_40_frame_assembled.step \
-	         manual/physiclaw_manual.html manual/physiclaw_manual.pdf \
-	         manual/physiclaw装配手册.html manual/physiclaw装配手册.pdf \
-	         sourcing/sourcing_guide.html sourcing/physiclaw采购指南.html \
-	         drawing/physiclaw_extrusion_drawing_en.html drawing/physiclaw_extrusion_drawing_en.pdf \
-	         drawing/physiclaw_extrusion_drawing_zh.html drawing/physiclaw_extrusion_drawing_zh.pdf; do \
-		[ -f "$$f" ] || { echo "✗ missing $(HW_OUT)/$$f — run: make hw-deploy HW_VERSION=$(HW_VERSION)"; exit 1; }; \
-	done; \
-	cp print_3d/physiclaw_custom_parts.zip "$$REL"/; \
-	cp drawing/physiclaw_extrusion_drawing_en.pdf drawing/physiclaw_extrusion_drawing_zh.pdf "$$REL"/; \
-	zip -jq "$$REL/physiclaw_camera_frame_assembled.zip" step/camera_40_frame_assembled.step; \
-	zip -rq "$$REL/physiclaw-assembly-manual.zip" manual   -x '*.DS_Store'; \
-	zip -rq "$$REL/physiclaw-sourcing-guide.zip"  sourcing drawing -x '*.DS_Store'; \
-	printf '%s\n' \
-		'Build artifacts for assembling a PhysiClaw rig (English + 中文).' '' \
-		'- **physiclaw-assembly-manual.zip** — full assembly manual: HTML + PDF in English and 中文, with all exploded/step SVG figures.' \
-		'- **physiclaw-sourcing-guide.zip** — sourcing guide: HTML in English and 中文, plus the extrusion tech drawing (HTML + PDF).' \
-		'- **physiclaw_extrusion_drawing_en.pdf / _zh.pdf** — extrusion tech drawings for the 7 frame extrusions: English + Chinese in _en.pdf (2 pages), Chinese only in _zh.pdf (1 page).' \
-		'- **physiclaw_custom_parts.zip** — the 9 custom 3D-printed parts as STEP files (print in black PA12 via SLS/MJF) plus a bilingual print guide.' \
-		> "$$REL/notes.md"; \
-	gh release create "$(HW_REL_TAG)" "$$REL"/*.zip "$$REL"/*.pdf \
-		--target main --latest \
-		--title "PhysiClaw hardware v$(HW_VERSION) — assembly manual, sourcing guide & printed parts (STEP)" \
-		--notes-file "$$REL/notes.md"; \
-	printf '\n\033[32m✓\033[0m Released $(HW_REL_TAG).\n'; \
-	printf '\033[33m!\033[0m The docs site serves the manual from this release — run `make docs-deploy` to pick it up.\n'
+hw-prepare:
+	$(HW) release prepare
+
+hw-verify:
+	$(HW_DOC) release verify
+
+hw-deploy:
+	$(HW) release deploy
+
+hw-release:
+	$(HW_DOC) release publish
+
+# Compatibility alias: never provide an unguarded internal publish target.
+_hw-package: hw-release
 
 # Redeploy docs.physiclaw.ai after a hardware release: the site pulls the
 # manual, sourcing guide and drawing from the latest release at build time.

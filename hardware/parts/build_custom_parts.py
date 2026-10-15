@@ -13,13 +13,13 @@ filename suffix and listed in the manifests. Run from the repo root::
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 import zipfile
 from pathlib import Path
 
 from build123d import export_step
 
+from hardware.build_lock import build_lock
 from hardware.parts.custom.belt_clamp import BeltClamp
 from hardware.parts.custom.idler_mount_front import IdlerMountFront
 from hardware.parts.custom.idler_mount_motor import IdlerMountMotor
@@ -110,33 +110,29 @@ def _manifest(rows: list[tuple[str, int, str, str]], lang: str) -> str:
 
 def build() -> Path:
     """Export each custom part to STEP and write the zip. Returns the zip path."""
-    # Start clean so a renamed zip or an old format (e.g. a previous STL build)
-    # never lingers in the package directory.
-    if OUT_DIR.exists():
-        shutil.rmtree(OUT_DIR)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rows: list[tuple[str, int, str, str]] = []
-    with (
-        tempfile.TemporaryDirectory() as tmp,
-        zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zf,
-    ):
-        for cls, qty, en, zh in CUSTOM_PARTS:
-            part = cls(qty=qty)
-            shape = part.build()
-            # output_path().name is "<stem>_x<qty>.step" (from BasePart); just
-            # prefix the project name for the print package.
-            fname = f"physiclaw_{part.output_path().name}"
-            step = Path(tmp) / fname
-            export_step(shape, str(step))
-            zf.write(step, arcname=fname)
-            rows.append((fname, qty, en, zh))
-            print(f"  + {fname}  ×{qty}  {en} / {zh}")
-        zf.writestr("3d_printed_parts_guide.txt", _manifest(rows, "en"))
-        zf.writestr("3d打印零件说明.txt", _manifest(rows, "zh"))
+    with tempfile.TemporaryDirectory(dir=OUT_DIR) as tmp:
+        staged_zip = Path(tmp) / ZIP_PATH.name
+        with zipfile.ZipFile(staged_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for cls, qty, en, zh in CUSTOM_PARTS:
+                part = cls(qty=qty)
+                shape = part.build()
+                # output_path().name is "<stem>_x<qty>.step" (from BasePart).
+                fname = f"physiclaw_{part.output_path().name}"
+                step = Path(tmp) / fname
+                export_step(shape, str(step))
+                zf.write(step, arcname=fname)
+                rows.append((fname, qty, en, zh))
+                print(f"  + {fname}  ×{qty}  {en} / {zh}")
+            zf.writestr("3d_printed_parts_guide.txt", _manifest(rows, "en"))
+            zf.writestr("3d打印零件说明.txt", _manifest(rows, "zh"))
+        staged_zip.replace(ZIP_PATH)
     total = sum(qty for _, qty, _, _ in rows)
     print(f"\nwrote {ZIP_PATH}  ({len(rows)} designs, {total} pieces)")
     return ZIP_PATH
 
 
 if __name__ == "__main__":
-    build()
+    with build_lock():
+        build()

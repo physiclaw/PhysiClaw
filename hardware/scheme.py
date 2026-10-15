@@ -15,12 +15,15 @@ kernel.
 from __future__ import annotations
 
 import functools
+import os
 import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _HW = REPO_ROOT / "hardware"
-OUTPUT_DIR = _HW / "output"
+# Release preparation gives every subprocess a fresh, private output tree.
+# Interactive builds retain the usual location.
+OUTPUT_DIR = Path(os.environ.get("PHYSICLAW_HW_OUTPUT", _HW / "output")).resolve()
 STEP_DIR = OUTPUT_DIR / "step"
 SVG_DIR = OUTPUT_DIR / "svg"
 BOM_DIR = OUTPUT_DIR / "bom"

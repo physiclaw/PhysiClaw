@@ -15,6 +15,9 @@ still apply:
     uv run            python -m hardware manual     [--pdf] [--lang …] …      bilingual build manual
     uv run            python -m hardware sourcing   [--lang …] [--scaffold]   sourcing guide
     uv run            python -m hardware drawing    [--pdf] [--lang …]        extrusion tech drawing (cut & drill)
+    uv run --group cad python -m hardware release prepare --version X.Y       build a verified local release bundle
+    uv run            python -m hardware release verify --version X.Y        verify a prepared bundle
+    uv run            python -m hardware release publish --version X.Y       publish the verified bundle via a draft
     uv run --group cad python -m hardware mark      <svg|json>                annotate a step drawing
     uv run --group cad python -m hardware replay    [file]                    replay annotation patches
     uv run --group cad python -m hardware refit     <json> [--parts …]        refit a patch's highlights from the model
@@ -33,6 +36,8 @@ import argparse
 import subprocess
 import sys
 
+from hardware.build_lock import inherited_fds, locked_main
+
 # Subcommand → argv it delegates to (after ``sys.executable``), every one a
 # ``-m`` module run.
 _DELEGATED: dict[str, list[str]] = {
@@ -46,14 +51,13 @@ _DELEGATED: dict[str, list[str]] = {
     "manual": ["-m", "hardware.manual.build_manual"],
     "sourcing": ["-m", "hardware.manual.build_sourcing_guide"],
     "drawing": ["-m", "hardware.manual.build_extrusion_drawing"],
+    "release": ["-m", "hardware.release"],
 }
 
 
 def _parts(argv: list[str]) -> int:
     """Export part STEPs — the legacy default behaviour. Imported lazily so
     non-geometry subcommands (manual, sourcing, drawing) don't need ``--group cad``."""
-    import shutil
-
     from hardware.parts.base import export_all
     from hardware.parts.export_custom import ALL_PARTS as CUSTOM_PARTS
     from hardware.parts.export_standard import ALL_PARTS as STANDARD_PARTS
@@ -66,7 +70,9 @@ def _parts(argv: list[str]) -> int:
     parser.add_argument("--standard", action="store_true", help="export standard parts")
     args = parser.parse_args(argv)
     export_custom = args.custom or not args.standard
-    shutil.rmtree(STEP_DIR, ignore_errors=True)
+    # Part exports share this directory with assembly STEPs. Never erase
+    # unrelated assembly outputs when exporting a single class of parts.
+    STEP_DIR.mkdir(parents=True, exist_ok=True)
     if args.standard:
         export_all(STANDARD_PARTS)
     if export_custom:
@@ -78,9 +84,10 @@ def _delegate(prefix: list[str], argv: list[str]) -> int:
     """Run a sibling entry point in its own process, forwarding ``argv``.
     A subprocess (rather than an in-process import) keeps each script's
     behaviour, sys.path, and exit code identical to its standalone form."""
-    return subprocess.call([sys.executable, *prefix, *argv])
+    return subprocess.call([sys.executable, *prefix, *argv], pass_fds=inherited_fds())
 
 
+@locked_main
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 

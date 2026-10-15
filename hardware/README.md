@@ -133,7 +133,7 @@ motor → linear → belt → tapz → phone → board → camera → wire`.
 - **`--group cad`** — pulls in build123d. Required for any script that touches
   geometry (parts, assemblies, BOM). The manual and sourcing builders are
   standard-library only and need no group.
-- **Optional:** a Chromium-family browser for manual PDF export.
+- **A Chromium-family browser** is required when `--pdf` is requested and for release preparation. HTML-only builds do not need it.
 
 Run all commands **from the repo root**.
 
@@ -160,6 +160,7 @@ The subcommands — each forwarding its flags to the stage it wraps:
 | `manual` | bilingual HTML / PDF manual → `output/manual/` |
 | `sourcing` | sourcing guide → `output/sourcing/` |
 | `drawing` | A4 extrusion cut-and-drill drawings (`--pdf`) → `output/drawing/` |
+| `release` | prepare, verify, preflight, publish or deploy a verified release bundle |
 | `mark` / `replay` | annotate step SVGs / replay saved patches |
 | `refit <json> --parts …` | recompute a patch's highlights as the exact silhouettes of the named parts (by label prefix), then replay |
 | `camera` | FreeCAD camera view → `Camera()` literal |
@@ -222,7 +223,7 @@ positions, so check those entries when deleting or reordering suppliers.
 uv run --group cad python -m hardware parts --custom --standard  # part STEPs
 uv run --group cad python -m hardware build --bom                # steps + BOM
 uv run --group cad python -m hardware print                      # 3D-print package
-uv run            python -m hardware manual                      # the manual
+uv run            python -m hardware manual --pdf                # the manual + required PDFs
 uv run            python -m hardware sourcing                    # the sourcing guide
 uv run            python -m hardware drawing --pdf                # the extrusion tech drawing
 ```
@@ -247,20 +248,67 @@ packaged from a freshly regenerated `output/`:
 The version stamp on the manual's cover comes from `manual/MANUAL_VERSION` —
 bump that file when the manual content changes.
 
-One key does it all:
+Prepare and review a local bundle first (no GitHub writes):
 
 ```bash
+make hw-prepare HW_VERSION=X.Y
+make hw-verify HW_VERSION=X.Y
+```
+
+Preparation runs the hardware regression tests and static consistency gate, builds **all procedures**
+with BOMs from scratch, exports the custom parts, and renders both language
+editions of the manual, sourcing guide and extrusion drawings. It uses an
+empty private output directory, never the interactive `output/` artifacts
+or their cache. Dependencies are resolved with `uv --locked`. Missing Chrome,
+failed PDFs, annotation errors and incomplete CAD outputs fail the command.
+The browser must also pass a small PDF render before CAD work starts, catching
+launch permission problems early. The normal interactive build remains incremental.
+
+The resulting bundle is stored at
+`hardware/output/release/physiclaw-hardware-vX.Y/`: four zips, two PDFs and
+`manifest.json`. The manifest records the exact Git commit, a digest of source
+files, the Python/CAD toolchain versions and each asset's SHA-256. Verification
+checks the exact asset set, checksums, basic file integrity, bilingual documents,
+local image references and matching copies of the extrusion PDFs. Preparation
+refuses to overwrite an existing version directory. To rebuild the same version,
+explicitly remove its generated directory after reviewing why it failed.
+
+When publication is intended, commit and push main **before preparation**, then:
+
+```bash
+make hw-release HW_VERSION=X.Y
+# Or preflight, prepare and publish in one command:
 make hw-deploy HW_VERSION=X.Y
 ```
 
-This preflights (version, `gh`, tag free, tree clean and pushed — the tag
-points at GitHub's `main`), rebuilds what's stale (the step build is
-incremental via `output/.cache`; manual with PDFs, sourcing and the
-extrusion tech drawing always re-render), runs `hw-check`, then packages the
-four zips and two PDFs and publishes the
-release with tag `physiclaw-hardware-vX.Y`. To publish `output/` as-is
-without building, use `make hw-release HW_VERSION=X.Y` — it guards that the
-artifacts (including the manual and drawing PDFs) exist first.
+Publishing repeats verification and requires a clean main checkout whose HEAD
+matches **live** `origin/main`. Existing local/remote tags or GitHub releases
+(including drafts) stop the command. Network or authentication failures also
+stop it. The release targets the recorded commit SHA, never a moving branch.
+Assets are uploaded to a draft, downloaded again and checked byte for byte;
+only then is the draft published and marked latest. A failure leaves the draft
+unpublished for inspection. The workflow does not overwrite or delete it.
+
+All Make release targets use the same guarded Python entry point, including
+the legacy `_hw-package` alias. `make -j` cannot run validation and publishing
+out of order. A per-output OS lock rejects concurrent CLI writers and releases
+automatically if a process exits. `PHYSICLAW_HW_OUTPUT` can select a private
+directory for development or CI builds; release bundles always use the fixed
+versioned location above.
+
+Run the hardware regression suite after pipeline changes:
+
+```bash
+make hw-check
+uv run --locked --group cad pytest tests/hardware
+```
+
+CI installs the CAD group on Linux and macOS, runs these tests as part of the
+suite, and builds a real fastener STEP/SVG/BOM as a smoke test. Full release
+preparation is intentionally a fresh build and takes longer than normal edits.
+The gates catch build and packaging mistakes; they do not prove physical fit
+or replace engineering review of changed geometry. Repository administrators
+must keep CI required and review changes to release guards to prevent bypasses.
 
 After publishing, run `make docs-deploy` — it triggers the docs site's
 Cloudflare Pages deploy hook (the URL lives in the gitignored

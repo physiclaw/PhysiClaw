@@ -58,6 +58,68 @@ def test_bom_write_success_keeps_the_build_green(worker, monkeypatch):
     assert bp._build_stems([STEM], bom=True) == 0
 
 
+def test_annotation_exception_fails_worker(worker, monkeypatch):
+    def fail(*args):
+        raise ValueError("invalid annotation")
+
+    monkeypatch.setattr(bp, "_replay_patches_for", fail)
+    assert bp._build_stems([STEM]) == 1
+
+
+def test_first_step_delta_bom_is_written(tmp_path, monkeypatch):
+    from hardware.assembly import bom
+
+    monkeypatch.setattr(bom, "BOM_DIR", tmp_path)
+    monkeypatch.setattr(bom, "load_step", lambda name: None)
+    monkeypatch.setattr(
+        bom, "collect", lambda step: [bom.BomEntry("standard", ("Screw", "M3"), 2)]
+    )
+    monkeypatch.setattr(bom, "predecessor_module", lambda name: None)
+    bom.write_bom(STEM, cumulative=False, want_delta=True)
+    assert "Screw M3" in (tmp_path / f"{STEM}_delta.md").read_text()
+
+
+def test_worker_timeout_returns_failure(monkeypatch):
+    import subprocess
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(bp.subprocess, "call", timeout)
+    assert bp._run_subprocess([STEM]) == 124
+
+
+def test_external_output_path_is_safe_to_log(tmp_path):
+    assert bp._shown(tmp_path / "crash.log") == tmp_path / "crash.log"
+
+
+@pytest.mark.parametrize("verification_exit", [0, 1])
+def test_crashed_batch_with_complete_files_still_requires_successful_verification(
+    tmp_path, monkeypatch, verification_exit
+):
+    stems = [STEM, "frame_20_next"]
+    calls = []
+    stored = []
+
+    def run(stems, bom_flags, *, only_missing=False):
+        calls.append((stems, only_missing))
+        return verification_exit if only_missing else -11
+
+    monkeypatch.setattr(bp, "CRASH_LOG", tmp_path / "crash.log")
+    monkeypatch.setattr(bp, "STEP_DIR", tmp_path / "step")
+    monkeypatch.setattr(bp, "SVG_DIR", tmp_path / "svg")
+    monkeypatch.setattr(bp, "_clear_outputs", lambda **kwargs: None)
+    monkeypatch.setattr(bp, "_batches", lambda size: [stems])
+    monkeypatch.setattr(bp, "_incomplete", lambda stem, flags: [])
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    monkeypatch.setattr(bp.stepcache, "store_source", stored.append)
+    monkeypatch.setattr(bp.stepcache, "store_snapshots", lambda stem: None)
+
+    assert bp._dispatch(2, use_cache=False) == verification_exit
+    assert calls == [(stems, False), (stems, True)]
+    assert stored == ([] if verification_exit else stems)
+
+
 # ── _incomplete: STEP/SVG variants + requested BOMs ───────────────────────────
 
 
@@ -141,7 +203,7 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
     tmp_path, monkeypatch
 ):
     # A leaf op the patch edit removed/renamed leaves its `_<opid>.svg` on
-    # disk; without clear_snapshots first, store_snapshots re-manifests it.
+    # disk; clear_outputs must remove it before restoring source and replaying.
     events: list[tuple[str, str]] = []
 
     def record(name):
@@ -150,11 +212,10 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
     fake_cache = SimpleNamespace(
         CACHE_DIR=tmp_path / "hardware" / "output" / ".cache",
         prune=lambda stems: 0,
-        source_cached=lambda stem, *, want_bom: True,
+        source_cached=lambda stem, **kwargs: True,
         snapshots_cached=lambda stem: False,  # patch edited → re-replay
         restore_source=record("restore_source"),
         restore_snapshots=record("restore_snapshots"),
-        clear_snapshots=record("clear_snapshots"),
         store_snapshots=record("store_snapshots"),
         clear_outputs=record("clear_outputs"),
         store_source=record("store_source"),
@@ -166,6 +227,7 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
     monkeypatch.setattr(bp, "SVG_DIR", tmp_path / "svg")
     monkeypatch.setattr(bp, "_batches", lambda batch_size: [[STEM]])
     monkeypatch.setattr(bp, "_incomplete", lambda stem, bom_flags: [])
+    monkeypatch.setattr(bp, "_view_indices", lambda stem, exploded: (0,))
     monkeypatch.setattr(
         bp,
         "_replay_patches_for",
@@ -176,8 +238,8 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
 
     assert rc == 0
     assert [name for name, _ in events] == [
+        "clear_outputs",  # stale snapshots removed before replay
         "restore_source",
-        "clear_snapshots",  # stale layer dropped BEFORE the replay …
         "replay",  # … which rewrites both variants …
         "replay",
         "store_snapshots",  # … and only then is the fresh layer stored.
