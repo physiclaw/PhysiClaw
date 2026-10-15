@@ -395,7 +395,7 @@ def _git_state(version: str) -> tuple[str, str, str]:
     return commit, host, slug
 
 
-def _release(repo: str, tag: str, release_id: int | None = None) -> dict | None:
+def _release(repo: str, tag: str, release_id: int | str | None = None) -> dict | None:
     host, slug = repo.split("/", 1)
     args = ["gh", "api", "--hostname", host]
     if release_id is None:
@@ -465,6 +465,36 @@ def _asset_signature(remote: dict) -> list[tuple]:
         )
         for asset in remote["assets"]
     )
+
+
+def _confirm_publication(repo: str, tag: str, commit: str, verified: dict) -> None:
+    """Read back the public release, its assets, and the actual Git tag."""
+    published = _release(repo, tag, "latest")
+    if (
+        published is None
+        or published.get("id") != verified["id"]
+        or published.get("tag_name") != tag
+        or published.get("draft") is not False
+        or published.get("prerelease") is not False
+        or published.get("target_commitish") != commit
+        or _asset_signature(published) != _asset_signature(verified)
+    ):
+        raise ReleaseError(
+            "Published latest release does not match the verified draft and assets; "
+            "inspect GitHub before retrying"
+        )
+    host, slug = repo.split("/", 1)
+    tagged_commit = run(
+        "gh",
+        "api",
+        "--hostname",
+        host,
+        f"repos/{slug}/commits/refs/tags/{tag}",
+        "--jq",
+        ".sha",
+    )
+    if tagged_commit != commit:
+        raise ReleaseError("Published Git tag points to a different commit")
 
 
 def publish(version: str) -> None:
@@ -558,19 +588,26 @@ def publish(version: str) -> None:
         raise ReleaseError(
             "Draft assets changed during verification; retry after inspection"
         )
+    # Promote this exact draft ID, even if another process replaces its tag.
     run(
         "gh",
-        "release",
-        "edit",
-        tag,
-        "--repo",
-        repo,
-        "--draft=false",
-        "--latest",
-        "--target",
-        commit,
+        "api",
+        "--hostname",
+        host,
+        "--method",
+        "PATCH",
+        f"repos/{slug}/releases/{release_id}",
+        "-F",
+        "draft=false",
+        "-F",
+        "prerelease=false",
+        "-f",
+        "make_latest=true",
+        "-f",
+        f"target_commitish={commit}",
     )
-    print(f"Published {tag} at {commit}", flush=True)
+    _confirm_publication(repo, tag, commit, remote)
+    print(f"Published and verified {tag} at {commit}", flush=True)
     try:
         print(run("make", "docs-deploy"), flush=True)
     except (subprocess.SubprocessError, OSError) as exc:
@@ -578,6 +615,9 @@ def publish(version: str) -> None:
             "Hardware release is published, but the docs hook failed. "
             "Retry only: make docs-deploy"
         ) from exc
+    # The hook is a network round trip; reject a release changed while it ran.
+    _confirm_publication(repo, tag, commit, remote)
+    print(f"Deployment verified: {tag}; docs build triggered", flush=True)
 
 
 @locked_main

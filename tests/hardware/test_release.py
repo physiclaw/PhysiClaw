@@ -233,6 +233,7 @@ def draft(bundle, names=None):
         "id": 42,
         "tag_name": rel.tag_for(VERSION),
         "draft": True,
+        "prerelease": False,
         "target_commitish": COMMIT,
         "assets": [
             {
@@ -262,6 +263,10 @@ def github(bundle, monkeypatch):
         "after_upload": None,
         "before_final_check": None,
         "remote_checks": 0,
+        "tag_commit": COMMIT,
+        "after_publish": None,
+        "after_docs": None,
+        "latest_id": 42,
     }
 
     def run(*args, **kwargs):
@@ -286,6 +291,23 @@ def github(bundle, monkeypatch):
                 state["failure"] == "view" and state["release"]
             ):
                 raise subprocess.CalledProcessError(1, args)
+            if "PATCH" in args:
+                if state["failure"] == "publish":
+                    raise subprocess.CalledProcessError(1, args)
+                assert "repos/physiclaw/PhysiClaw/releases/42" in args
+                state["release"]["draft"] = False
+                state["release"]["prerelease"] = False
+                if state["after_publish"]:
+                    state["after_publish"]()
+            if any("/commits/refs/tags/" in a for a in args):
+                if state["failure"] == "tag-read":
+                    raise subprocess.CalledProcessError(1, args)
+                return state["tag_commit"]
+            if args[-1].endswith("/releases/latest"):
+                if state["failure"] == "published-read":
+                    raise subprocess.CalledProcessError(1, args)
+                remote = dict(state["release"], id=state["latest_id"])
+                return json.dumps(remote)
             return json.dumps(state["release"]) if state["release"] else ""
         if args[:2] == ("gh", "release"):
             action = args[2]
@@ -315,13 +337,13 @@ def github(bundle, monkeypatch):
                     (target / name).write_bytes(b"bad upload")
                 for asset in state["release"]["assets"]:
                     asset["download_count"] = asset.get("download_count", 0) + 1
-            if action == "edit":
-                state["release"]["draft"] = False
             return ""
         if args == ("make", "docs-deploy"):
             assert state["release"]["draft"] is False
             if state["failure"] == "docs":
                 raise subprocess.CalledProcessError(1, args)
+            if state["after_docs"]:
+                state["after_docs"]()
             return "docs-site deploy triggered"
         pytest.fail(f"Unexpected command: {args}")
 
@@ -352,15 +374,30 @@ def test_publish_uses_exact_commit_and_server_checksums_without_download(github)
     _, calls = github
     rel.publish(VERSION)
     releases = [c for c in calls if c[:2] == ("gh", "release")]
-    assert [c[2] for c in releases] == ["create", "upload", "edit"]
+    assert [c[2] for c in releases] == ["create", "upload"]
     create = releases[0]
     assert "--draft" in create and create[create.index("--target") + 1] == COMMIT
     assert create[create.index("--repo") + 1] == "github.com/physiclaw/PhysiClaw"
-    assert "--draft=false" in releases[-1]
-    reads = [c for c in calls if c[:2] == ("gh", "api")]
-    assert "--paginate" in reads[0]  # Includes unpublished drafts.
-    assert reads[-1][-1] == "repos/physiclaw/PhysiClaw/releases/42"
-    assert calls[-1] == ("make", "docs-deploy")
+    api = [c for c in calls if c[:2] == ("gh", "api")]
+    assert "--paginate" in api[0]  # Includes unpublished drafts.
+    publish = next(c for c in api if "PATCH" in c)
+    assert "repos/physiclaw/PhysiClaw/releases/42" in publish
+    assert {
+        "draft=false",
+        "prerelease=false",
+        "make_latest=true",
+        f"target_commitish={COMMIT}",
+    } <= set(publish)
+    latest_reads = [
+        i for i, c in enumerate(calls) if c[-1].endswith("/releases/latest")
+    ]
+    hook_index = calls.index(("make", "docs-deploy"))
+    assert len(latest_reads) == 2 and latest_reads[0] < hook_index < latest_reads[1]
+    assert calls[-1][-3:] == (
+        f"repos/physiclaw/PhysiClaw/commits/refs/tags/{rel.tag_for(VERSION)}",
+        "--jq",
+        ".sha",
+    )
 
 
 def test_docs_failure_leaves_published_release_and_gives_specific_retry(github):
@@ -436,7 +473,7 @@ def test_conflicting_draft_is_never_modified(github, bundle, damage):
 
 
 @pytest.mark.parametrize(
-    "failure", ["create", "upload", "view", "missing-asset", "edit"]
+    "failure", ["create", "upload", "view", "missing-asset", "publish"]
 )
 def test_upload_failure_never_publishes_or_deletes_draft(github, failure):
     state, calls = github
@@ -492,7 +529,77 @@ def test_changes_during_transfer_block_publication(github, bundle, monkeypatch, 
     )
     with pytest.raises(rel.ReleaseError):
         rel.publish(VERSION)
-    assert not any(c[:3] == ("gh", "release", "edit") for c in calls)
+    assert not any("PATCH" in c for c in calls)
+
+
+@pytest.mark.parametrize("when", ["after_publish", "after_docs"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "latest",
+        "tag",
+        "draft",
+        "prerelease",
+        "target",
+        "missing",
+        "extra",
+        "duplicate",
+        "bytes",
+        "replacement",
+        "manifest",
+    ],
+)
+def test_deploy_cannot_succeed_with_wrong_published_assets_or_tag(github, when, change):
+    state, calls = github
+
+    def mutate():
+        remote = state["release"]
+        if change == "latest":
+            state["latest_id"] = 99
+        elif change == "tag":
+            state["tag_commit"] = "b" * 40
+        elif change in {"draft", "prerelease"}:
+            remote[change] = True
+        elif change == "target":
+            remote["target_commitish"] = "b" * 40
+        elif change == "missing":
+            remote["assets"].pop()
+        elif change == "extra":
+            remote["assets"].append(dict(remote["assets"][0], name="extra.zip"))
+        elif change == "duplicate":
+            remote["assets"].append(remote["assets"][0].copy())
+        elif change == "replacement":
+            remote["assets"][0]["id"] += 100
+        else:
+            asset = next(
+                a
+                for a in remote["assets"]
+                if a["name"]
+                == (rel.MANIFEST if change == "manifest" else rel.FRAME_ZIP)
+            )
+            asset["digest"] = "sha256:" + "0" * 64
+
+    state[when] = mutate
+    # Exercise the actual deploy entry point and its exit status, not just a helper.
+    assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 1
+    assert (("make", "docs-deploy") in calls) == (when == "after_docs")
+
+
+@pytest.mark.parametrize("failure", ["published-read", "tag-read"])
+def test_unreadable_published_state_never_reports_success_or_triggers_docs(
+    github, failure
+):
+    state, calls = github
+    state["failure"] = failure
+    assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 1
+    assert ("make", "docs-deploy") not in calls
+
+
+def test_deploy_success_requires_published_assets_tag_and_docs(github):
+    state, calls = github
+    assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 0
+    assert state["release"]["draft"] is False
+    assert calls.count(("make", "docs-deploy")) == 1
 
 
 def test_source_digest_includes_untracked_files_and_renames(tmp_path, monkeypatch):

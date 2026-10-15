@@ -8,6 +8,7 @@ under ``REPO_ROOT``) and its store/restore run against tmp files only.
 from __future__ import annotations
 
 import json
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -367,3 +368,103 @@ def test_orchestration_dependencies_invalidate_source_cache(repo):
     previous = cache.source_key(STEM)
     writer.write_text("FORMAT = 2\n")
     assert cache.source_key(STEM) != previous
+
+
+@pytest.mark.parametrize("change_sources", [False, True])
+def test_interrupted_cache_update_cannot_pair_old_snapshots_with_new_geometry(
+    repo, change_sources
+):
+    write_outputs(repo)
+    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
+        '[{"id":"abcd","preop":"orig"}]'
+    )
+    snapshot = repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg"
+    snapshot.write_text("old annotated drawing")
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    assert cache.snapshots_cached(STEM)
+
+    if change_sources:
+        repo.helper.write_text("SIZE = 2\n")
+    # A fresh render can differ even with identical source (e.g. after --no-cache).
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0.svg").write_text("new raw drawing")
+    cache.store_source(STEM)
+    # Simulate a crash before store_snapshots. The old snapshot is intact,
+    # but belongs to a different generation of the source layer.
+    assert cache.source_cached(STEM, want_bom=True)
+    assert not cache.snapshots_cached(STEM)
+    snapshot.write_text("new annotated drawing")
+    cache.store_snapshots(STEM)
+    assert cache.snapshots_cached(STEM)
+
+
+def test_package_initialization_changes_invalidate_source_cache(repo):
+    init = repo.helper.parent / "__init__.py"
+    init.write_text("SIZE = 1\n")
+    before = cache.source_key(STEM)
+    init.write_text("SIZE = 2\n")
+    assert cache.source_key(STEM) != before
+
+
+def test_installed_project_import_changes_invalidate_source_cache(repo, tmp_path):
+    shared = tmp_path / "src" / "physiclaw" / "core" / "arm_geometry.py"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("X_TRAVEL = 110\n")
+    repo.helper.write_text("from physiclaw.core.arm_geometry import X_TRAVEL\n")
+    before = cache.source_key(STEM)
+    shared.write_text("X_TRAVEL = 120\n")
+    assert cache.source_key(STEM) != before
+
+
+def test_entry_copied_from_another_procedure_is_rejected(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    other = "frame_20_other"
+    (repo.PROCEDURES_DIR / f"{other}.py").write_text(repo.procedure.read_text())
+    shutil.copytree(repo.CACHE_DIR / STEM, repo.CACHE_DIR / other)
+    assert not cache.source_cached(other, want_bom=True)
+
+
+def test_manual_only_edit_preserves_geometry_cache(repo, tmp_path):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    manual = tmp_path / "hardware" / "manual" / "content.json"
+    manual.parent.mkdir()
+    manual.write_text('{"title":"updated manual"}')
+    assert cache.source_cached(STEM, want_bom=True)
+
+
+@pytest.mark.parametrize("layer", ["source", "snapshots"])
+@pytest.mark.parametrize("change", ["bytes", "key"])
+def test_cache_changed_after_hit_cannot_be_restored(repo, layer, change):
+    write_outputs(repo)
+    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
+        '[{"id":"abcd","preop":"orig"}]'
+    )
+    snapshot = f"{STEM}_exploded_cam0_abcd.svg"
+    (repo.SVG_DIR / snapshot).write_text("snapshot")
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    assert cache.source_cached(STEM, want_bom=True)
+    assert cache.snapshots_cached(STEM)
+
+    if change == "bytes":
+        name = f"{STEM}_exploded.step" if layer == "source" else snapshot
+        (repo.CACHE_DIR / STEM / name).write_text("changed after hit")
+    elif layer == "source":
+        repo.helper.write_text("SIZE = 2")
+    else:
+        (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text("[]")
+    restore = cache.restore_source if layer == "source" else cache.restore_snapshots
+    with pytest.raises(RuntimeError, match="changed"):
+        restore(STEM)
+
+
+def test_corrupt_copy_never_succeeds(repo, monkeypatch):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    monkeypatch.setattr(
+        cache.shutil, "copy2", lambda src, dest: dest.write_text("bad copy")
+    )
+    with pytest.raises(RuntimeError, match="Cached artifact changed"):
+        cache.restore_source(STEM)

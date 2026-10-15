@@ -10,9 +10,13 @@
   validated persistent CAD cache; do not force a fresh CAD build for releases.
 - Publish only when the user has requested publication. Use
   `make hw-publish HW_VERSION=X.Y` after committing and pushing main, or
-  `make hw-deploy HW_VERSION=X.Y` to prepare and publish together. Both trigger
+  `make hw-release HW_VERSION=X.Y` to prepare and publish together. Both trigger
   the docs deploy hook after publication. If that hook fails, retry only
   `make docs-deploy`; do not recreate the release.
+- Publication success requires reading back the published latest release, matching
+  its assets to the verified draft, and resolving its actual Git tag to the bundle
+  commit. Recheck after the docs hook. Never infer success from a publish command's
+  exit code alone. The docs hook starts an asynchronous site build.
 - Do not publish with ad hoc `gh release` commands, package interactive
   output directories, hand-edit manifests, ignore nonzero exits, or remove
   guards to get a release through. Fix the failing source or environment.

@@ -168,7 +168,11 @@ are standard-library only. Each stage module is also runnable on its own (e.g.
 
 `build` is incremental: each step's outputs are cached under
 `output/.cache/` keyed by a content hash of its import closure (source +
-parts + predecessors), the build123d version, and its patch JSON. Unchanged
+parts + predecessors + package initializers), the toolchain lock and platform,
+and its patch JSON. Annotated drawings are also bound to the exact geometry-cache
+manifest, so an interrupted update cannot mix old drawings with new geometry.
+Copied files are hash-checked again before use, and the build prints the resolved
+cache directory. Unchanged
 steps are restored instead of rebuilt+re-rendered — and a patch-only edit
 just re-runs the cheap annotation replay. Pass `--no-cache` to force a full
 rebuild — the rebuilt outputs still refresh the cache. (`step` always
@@ -200,12 +204,11 @@ Run `make hw-help` for the hardware commands, grouped by task. The main workflow
 | `make hw-prepare HW_VERSION=X.Y` | Prepare and verify a local release bundle with the cache. No upload. |
 | `make hw-verify HW_VERSION=X.Y` | Check an existing bundle. No rebuild or upload. |
 | `make hw-publish HW_VERSION=X.Y` | Publish a prepared bundle, then trigger the docs hook. |
-| `make hw-deploy HW_VERSION=X.Y` | Prepare, verify, publish and trigger the docs hook in one command. |
+| `make hw-release HW_VERSION=X.Y` | Prepare, verify, publish and trigger the docs hook in one command. |
 
 Commit and push main before preparing a bundle intended for publication.
-`hw-release` remains an alias for `hw-publish`. Use `make docs-deploy` to retry
-only the docs hook. `hw-rebuild` explicitly bypasses the CAD cache; routine builds
-and releases use the cache.
+Use `make docs-deploy` to retry only the docs hook. `hw-rebuild` explicitly bypasses
+the CAD cache; routine builds and releases use the cache.
 
 For individual outputs, pass flags through `ARGS`:
 
@@ -309,7 +312,7 @@ When publication is intended, commit and push main **before preparation**, then:
 ```bash
 make hw-publish HW_VERSION=X.Y
 # Or preflight, prepare, publish and refresh docs in one command:
-make hw-deploy HW_VERSION=X.Y
+make hw-release HW_VERSION=X.Y
 ```
 
 Publishing repeats verification and requires a clean main checkout whose HEAD
@@ -318,7 +321,11 @@ drafts targeting another commit stop the command. Network or authentication fail
 also stop it. The release targets the recorded commit SHA, never a moving branch.
 Assets are uploaded to a draft and checked against GitHub's SHA-256 digests and sizes.
 Only assets without a server digest are downloaded for local verification. After a
-final source and draft check, the release is published and marked latest.
+final source and draft check, that exact draft ID is published and marked latest.
+The command then reads GitHub's published latest release back and requires the same
+release ID, version, asset IDs, sizes and checksums. It also resolves the actual Git
+tag to the bundle's commit; release metadata alone is insufficient. These checks run
+before and after the docs hook. Any mismatch or unreadable result returns failure.
 
 If a transfer fails, inspect the error and retry the same command. A matching draft
 resumes by uploading only missing assets; valid uploaded files are kept. Unexpected,
@@ -347,10 +354,16 @@ The gates catch build and packaging mistakes; they do not prove physical fit
 or replace engineering review of changed geometry. Repository administrators
 must keep CI required and review changes to release guards to prevent bypasses.
 
-After successful publication, both `make hw-publish` (also called `hw-release`)
-and `make hw-deploy` automatically run `make docs-deploy` to trigger the docs site's
-Cloudflare Pages deploy hook. Its URL lives in the gitignored `.docs-deploy-hook`
+After successful publication, both `make hw-publish` and `make hw-release`
+automatically run `make docs-deploy` to trigger the docs site's Cloudflare Pages
+deploy hook. Its URL lives in the gitignored `.docs-deploy-hook`
 at the repo root. The site serves the assembly manual,
 the sourcing guide and the extrusion tech drawing from the release assets,
 so the live pages update when that deployment finishes. If the hook fails, the
-hardware release stays published; retry only `make docs-deploy`.
+hardware release stays published; retry only `make docs-deploy`. The hook must return
+HTTP 2xx within its timeout; redirects and server errors fail the command.
+
+A successful `make hw-release` means the requested release is published as latest,
+its tag and assets match the verified bundle, and the docs hook accepted the request.
+The Cloudflare site build runs asynchronously; hook success does not mean the new
+site has finished deploying. Later external edits to GitHub are outside this check.

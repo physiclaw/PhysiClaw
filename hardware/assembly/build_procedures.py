@@ -388,7 +388,7 @@ def _dispatch(
         }
         n_cached = sum(cached.values())
         print(
-            f"cache: {_shown(stepcache.CACHE_DIR)} — "
+            f"cache: {_shown(stepcache.CACHE_DIR.resolve())} — "
             f"{n_cached}/{total} cached, {total - n_cached} to build"
             + (f"   (pruned {pruned} stale)" if pruned else "")
         )

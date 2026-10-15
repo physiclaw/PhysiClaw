@@ -10,7 +10,8 @@ Three output kinds, two invalidation layers (their "subtly different logic"):
     changes → rebuild geometry, re-render, re-aggregate BOM.
   * the patch-snapshot ``.svg`` (the raw render with the mark-tool
     annotations composited in) carries an extra **patch key** on top: the
-    stem's patch JSON(s) plus the replay engine's own source. Edit only a
+    stem's patch JSON(s), the replay engine's own source, and the exact
+    source-layer manifest. Edit only a
     patch and the source key still matches — so we keep the cached ``.step``
     and raw ``.svg`` and just re-run the replay — no geometry rebuild, though
     the replay itself still imports build123d (via ``assembly.base``).
@@ -26,7 +27,8 @@ No stale cache, three ways:
     file's sha256), written last; a hit requires the key to match AND every
     listed file to be present with its recorded hash, so a partial entry
     (store killed mid-copy), a deleted file, or a corrupted/edited one all
-    fall back to a rebuild instead of restoring a bad set. (Output files are
+    fall back to a rebuild instead of restoring a bad set. Restored copies are
+    hashed again before use. (Output files are
     reconstructed from the entry on every hit, so tampering there self-heals
     on the next build.)
 
@@ -71,9 +73,12 @@ _PATCH_KEY = "patch.key"
 
 def _module_to_path(mod: str) -> Path | None:
     """Resolve hardware and shared runtime source modules within this checkout."""
+    if mod == "physiclaw" or mod.startswith("physiclaw."):
+        mod = f"src.{mod}"
     if not (
         mod == "hardware"
         or mod.startswith("hardware.")
+        or mod == "src.physiclaw"
         or mod.startswith("src.physiclaw.")
     ):
         return None
@@ -115,6 +120,13 @@ def _closure(*paths: Path) -> frozenset[Path]:
         if p in seen:
             continue
         seen.add(p)
+        # Python executes package initializers before importing their modules.
+        for directory in p.parents:
+            if directory == REPO_ROOT:
+                break
+            init = directory / "__init__.py"
+            if init.is_file() and init not in seen:
+                stack.append(init)
         for mod in _imports(p):
             dep = _module_to_path(mod)
             if dep is not None and dep not in seen:
@@ -183,9 +195,11 @@ def _replay_engine_files() -> list[Path]:
 
 
 def patch_key(stem: str) -> str:
-    """Content hash of ``stem``'s patch JSON(s) + replay-engine source.
-    Combined with ``source_key`` it governs the patch-snapshot ``.svg``s."""
+    """Bind annotated drawings to the exact source layer, patches and replay code."""
     h = hashlib.sha256()
+    # A crash between the two stores must not pair new geometry with old
+    # snapshots. File hashes also cover rerenders with unchanged source keys.
+    h.update(json.dumps(_read_layer(stem, _SOURCE_KEY), sort_keys=True).encode())
     _hash_files(h, _replay_engine_files())
     _hash_files(h, _patch_files(stem))
     return h.hexdigest()
@@ -259,10 +273,13 @@ def clear_snapshots(stem: str) -> None:
 
 
 def _restore(files) -> None:
-    for f in files:
+    for f, sha in files:
         dest = _dest_dir(f.name)
         dest.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, dest / f.name)
+        restored = dest / f.name
+        shutil.copy2(f, restored)
+        if _sha256_file(restored) != sha:
+            raise RuntimeError(f"Cached artifact changed during restore: {f}")
 
 
 def _sha256_file(p: Path) -> str:
@@ -406,17 +423,25 @@ def snapshots_cached(stem: str) -> bool:
 
 
 def restore_source(stem: str, *, want_bom: bool = True) -> None:
-    _, files = _read_layer(stem, _SOURCE_KEY)
+    key, files = _read_layer(stem, _SOURCE_KEY)
+    if key != source_key(stem):
+        raise RuntimeError(f"Source cache changed before restore: {stem}")
     _restore(
-        _entry(stem) / name
-        for name in files
+        (_entry(stem) / name, sha)
+        for name, sha in files.items()
         if _is_source(stem, name, want_bom=want_bom)
     )
 
 
 def restore_snapshots(stem: str) -> None:
-    _, files = _read_layer(stem, _PATCH_KEY)
-    _restore(_entry(stem) / name for name in files if _is_snapshot(stem, name))
+    key, files = _read_layer(stem, _PATCH_KEY)
+    if key != patch_key(stem):
+        raise RuntimeError(f"Drawing cache changed before restore: {stem}")
+    _restore(
+        (_entry(stem) / name, sha)
+        for name, sha in files.items()
+        if _is_snapshot(stem, name)
+    )
 
 
 def prune(valid_stems) -> int:

@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help bump build publish release docs-deploy \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-deploy hw-publish hw-release _hw-package
+        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
 
@@ -187,7 +187,7 @@ hw-help:
 	@echo "    make hw-verify HW_VERSION=X.Y        Verify an existing bundle without rebuilding"
 	@echo ""
 	@echo "  Release (commit and push main first):"
-	@echo "    make hw-deploy HW_VERSION=X.Y        Prepare → verify → publish → trigger docs deploy"
+	@echo "    make hw-release HW_VERSION=X.Y       Prepare → verify → publish → trigger docs deploy"
 	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → trigger docs deploy"
 	@echo "    make hw-preflight HW_VERSION=X.Y     Check Git/GitHub readiness; no upload"
 	@echo "    make docs-deploy                     Trigger only the docs hook; use if that step failed"
@@ -208,7 +208,6 @@ hw-help:
 	@echo "    make hw-rebuild                      Rebuild all local outputs without CAD cache"
 	@echo ""
 	@echo "  Options: make hw-build ARGS=--help (also works for other build commands)"
-	@echo "  Compatibility: hw-release is an alias for hw-publish."
 	@echo "  Guide: hardware/README.md"
 
 hw-parts:
@@ -272,7 +271,7 @@ hw-rebuild:
 
 # All release entry points delegate to the same guarded Python workflow.
 # Each is a single recipe, so make -j cannot reorder preflight/build/publish.
-# hw-prepare and hw-verify are local; hw-deploy and hw-publish publish.
+# hw-prepare and hw-verify are local; hw-release and hw-publish publish.
 hw-preflight:
 	$(HW_DOC) release preflight
 
@@ -282,14 +281,14 @@ hw-prepare:
 hw-verify:
 	$(HW_DOC) release verify
 
-hw-deploy:
+hw-release:
 	$(HW) release deploy
 
 hw-publish:
 	$(HW_DOC) release publish
 
-# Keep existing scripts on the same guarded publication path.
-hw-release _hw-package: hw-publish
+# Keep the legacy internal target on the guarded publication path.
+_hw-package: hw-publish
 
 # Redeploy docs.physiclaw.ai after a hardware release: the site pulls the
 # manual, sourcing guide and drawing from the latest release at build time.
@@ -297,4 +296,8 @@ hw-release _hw-package: hw-publish
 # trigger a deploy), so it lives in the gitignored .docs-deploy-hook, one line.
 docs-deploy:
 	@[ -s .docs-deploy-hook ] || { echo "✗ .docs-deploy-hook missing — put the Cloudflare Pages deploy hook URL in it"; exit 1; }
-	@curl -fsS -o /dev/null -X POST "$$(cat .docs-deploy-hook)" && printf '\033[32m✓\033[0m docs-site deploy triggered.\n'
+	@status=$$(curl -sS --connect-timeout 10 --max-time 90 -o /dev/null -w '%{http_code}' -X POST "$$(cat .docs-deploy-hook)") || exit 1; \
+	case "$$status" in \
+	  2??) printf '\033[32m✓\033[0m docs-site deploy triggered.\n' ;; \
+	  *) printf 'Docs deploy hook failed: HTTP %s\n' "$$status" >&2; exit 1 ;; \
+	esac
