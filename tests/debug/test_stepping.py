@@ -4,6 +4,21 @@ panel lists, the seeded-output fast-forward, and the JSON the CLI
 prints for an agent's loop. The CLI's own flag tests live beside the
 conductor tests (`tests/conductor/test_step_cli.py`)."""
 
+# Accepted mutation survivors from the stepping audit:
+# - Diagnostic XX decorations/separators retain the useful error and recovery
+#   text (46, 47, 62-65, 68, 76, 77, 156-158, 203, 208, 209, 211, 215, 242,
+#   253, 256, 261, 262; catalogue patch mutants 7 and 15).
+# - Removing frozen from the three projections does not affect their consumers,
+#   which never reassign fields (27, 49, 124).
+# - Reloading the staged queue instead of reusing the catalogue snapshot adds
+#   one read; no atomic cross-file snapshot is promised (94).
+# - The initial Program only provides state(), so its dry flag has no effect
+#   before any advance (141). None and an empty string both clear a round (169).
+# - Verbose result rendering sees no listing after action_text strips it (271).
+#   The observation ID is an opaque label (275), and the no-result fallback is
+#   unreachable with the production runner's mandatory result header (280).
+# The unused logger was removed rather than retaining its equivalent mutant.
+
 from __future__ import annotations
 
 import json
