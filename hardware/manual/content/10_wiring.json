@@ -294,11 +294,23 @@
           "zh": "错开接头"
         },
         "body": {
-          "en": "1. Stagger the two joints by about 10 mm, so that they do not sit side by side. 2. Solder each joint. 3. Cover each joint with heat shrink tubing.",
-          "zh": "1. 把两个接头错开约 10 mm，不要并排。2. 焊接每个接头。3. 套上热缩管。"
+          "en": "Stagger the two joints by about 10 mm. Do not put them side by side.",
+          "zh": "把两个接头错开约 10 mm，不要并排。"
         },
         "classes": "note overlay sm",
-        "style": "left:100mm; bottom:40mm; width:120mm;"
+        "style": "left:16mm; top:140mm; width:60mm;"
+      },
+      {
+        "h3": {
+          "en": "Connect the wires",
+          "zh": "连接"
+        },
+        "body": {
+          "en": "Solder each joint. Cover each joint with heat shrink tubing. If you cannot solder, twist the wires together. Wrap each joint tightly with electrical tape.",
+          "zh": "焊接每个接头，再套上热缩管。没有焊接工具时，先拧紧接头，再用电工胶带缠紧。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:100mm; top:140mm; width:70mm;"
       }
     ],
     "bom": {

@@ -102,6 +102,21 @@ body.hl .checklist .hl { color: var(--accent); }
   background: var(--tint);
 }
 
+/* ---- optional tools ----------------------------------------------------- */
+.optional-tools {
+  margin-top: 32px;
+  max-width: 760px;
+}
+.optional-tools h2 {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.optional-tools .table-wrap { margin-top: 0; }
+
 /* ---- parts table --------------------------------------------------------
    Border hierarchy: a containing frame (ink-faint), one strong rule under
    the header (ink), a medium rule opening each class group (ink-faint), and
@@ -136,6 +151,33 @@ table.sourcing {
 .sourcing th:nth-child(10) { width: 6%; }
 .sourcing th:nth-child(11) { width: 11%; }
 
+/* Three short columns need a reading width, not the BOM's 1180px canvas.
+   Keep the shared table rules and type while giving the purpose more room. */
+table.sourcing.optional-sourcing {
+  min-width: 0;
+  table-layout: fixed;
+  border: none;
+}
+.optional-sourcing th:nth-child(1) { width: 28%; }
+.optional-sourcing th:nth-child(2) { width: 48%; }
+.optional-sourcing th:nth-child(3) { width: 24%; }
+.optional-sourcing td {
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--rule) 65%, var(--page-bg));
+  padding: 10px 12px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.optional-sourcing tbody tr:last-child td { border-bottom-color: var(--rule); }
+.tool-spec {
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.supplier-offer + .supplier-offer { margin-top: 8px; }
+
 /* Open header in the manual's table idiom — no vertical rules, thin uppercase
    letterspaced labels, one strong closing rule above the ruled body. */
 .sourcing thead th {
@@ -152,6 +194,10 @@ table.sourcing {
   padding: 11px 12px;
   border: none;
   border-bottom: 2px solid var(--ink);
+}
+.optional-sourcing thead th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
 }
 /* Align the Qty / Bought headers with their centered columns. */
 .sourcing thead th:nth-child(4),
@@ -452,6 +498,10 @@ body.hl tbody tr:not(.done) :is(td.spec, td.qty) { background: var(--mark); }
   .preamble { flex-direction: column; gap: 12px; }
   .lede, .disclaimer { max-width: none; }
   .guide-body { padding: 20px 16px 16px; }
+}
+
+@media (max-width: 480px) {
+  .optional-sourcing thead th, .optional-sourcing td { padding: 9px 8px; }
 }
 
 /* ---- print -------------------------------------------------------------- */

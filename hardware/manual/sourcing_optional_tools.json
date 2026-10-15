@@ -1,0 +1,105 @@
+[
+  {
+    "name": {"zh": "一字螺丝刀", "en": "Slotted screwdriver"},
+    "spec": {"zh": "刀头宽度 2 mm", "en": "Blade width: 2 mm"},
+    "purpose": {"zh": "拧紧控制板主轴接线端子的螺丝", "en": "Tightening the control board's spindle terminal screws"},
+    "sources": {
+      "zh": [
+        {
+          "name": "世达",
+          "product": "【一字】2.0x50MM",
+          "url": "https://detail.tmall.com/item.htm?id=701699369447&skuId=5118027718027"
+        }
+      ],
+      "en": [
+        {
+          "name": "LAOA",
+          "product": "SL 2.0 x 50mm",
+          "url": "https://www.aliexpress.us/item/3256807937660636.html"
+        }
+      ]
+    }
+  },
+  {
+    "name": {"zh": "电工胶带", "en": "Electrical tape"},
+    "purpose": {"zh": "固定并绝缘电磁铁延长线的接头（未焊接时）", "en": "Securing and insulating unsoldered joints in the solenoid extension cable"},
+    "sources": {
+      "zh": [
+        {
+          "name": "3M",
+          "product": "【阻燃防潮】蓝色（1卷）20米/卷",
+          "url": "https://detail.tmall.com/item.htm?id=7662482335&skuId=6279283375518"
+        }
+      ],
+      "en": [
+        {
+          "name": "Senlian",
+          "product": "Width: 15mm, Color: Orange, Length: 10M",
+          "url": "https://www.aliexpress.us/item/3256811632679513.html"
+        }
+      ]
+    }
+  },
+  {
+    "name": {"zh": "剥线钳", "en": "Wire strippers"},
+    "purpose": {"zh": "剥除导线端部的绝缘层", "en": "Stripping insulation from wire ends"},
+    "sources": {
+      "zh": [
+        {
+          "name": "绿林",
+          "product": "7寸不锈钢剥线钳",
+          "url": "https://detail.tmall.com/item.htm?id=673585043158&skuId=4862582468795"
+        }
+      ],
+      "en": [
+        {
+          "name": "LAOA",
+          "product": "LA320919",
+          "url": "https://www.aliexpress.us/item/3256804869558082.html"
+        }
+      ]
+    }
+  },
+  {
+    "name": {"zh": "开口扳手", "en": "Open-end wrench"},
+    "spec": "11 mm",
+    "purpose": {"zh": "拧紧相机支架的 1/4-20 螺母", "en": "Tightening the camera mount’s 1/4-20 nut"},
+    "sources": {
+      "zh": [
+        {
+          "name": "世达",
+          "product": "9*11",
+          "url": "https://detail.tmall.com/item.htm?id=701411036194&skuId=5122067439683"
+        }
+      ],
+      "en": [
+        {
+          "name": "NINDEJIN",
+          "product": "Size: 11mm",
+          "url": "https://www.aliexpress.us/item/3256801513356285.html"
+        }
+      ]
+    }
+  },
+  {
+    "name": {"zh": "英制内六角扳手", "en": "Hex key (inch)"},
+    "spec": "3/16\"",
+    "purpose": {"zh": "拧紧相机支架的 1/4-20 螺栓", "en": "Tightening the camera mount’s 1/4-20 bolt"},
+    "sources": {
+      "zh": [
+        {
+          "name": "天诚五金",
+          "product": "CRV镀镍球头3/16 【1支】",
+          "url": "https://item.taobao.com/item.htm?id=608051882802&skuId=5713900687821"
+        }
+      ],
+      "en": [
+        {
+          "name": "AMR",
+          "product": "Style F, 3/16",
+          "url": "https://www.aliexpress.us/item/3256806107073640.html"
+        }
+      ]
+    }
+  }
+]

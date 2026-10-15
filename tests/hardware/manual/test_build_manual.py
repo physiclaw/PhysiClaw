@@ -44,3 +44,36 @@ def test_cover_title_without_a_cover_falls_back_to_the_default():
     title = build_manual.cover_title([], build_manual.Ctx("en", InlineAssets()))
 
     assert title == "PhysiClaw Assembly Manual"
+
+
+def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
+    tmp_path, monkeypatch, capsys
+):
+    pages = [
+        {
+            "type": "solo",
+            "page": "wire_splice",
+            "figures": [],
+            "notes": [
+                {
+                    "h3": {"en": "Connect the wires", "zh": "连接"},
+                    "body": {"en": "Connect each joint.", "zh": "连接各接头。"},
+                    "classes": "note overlay sm",
+                    "style": "left:16mm; top:140; width:70mm;",
+                }
+            ],
+        }
+    ]
+    monkeypatch.setattr(build_manual, "load_pages", lambda: pages)
+    monkeypatch.setattr(build_manual, "SVG_DIR", tmp_path / "svg")
+    monkeypatch.setattr(build_manual, "HAND_FIGURES", {})
+
+    paths = build_manual.build(["en", "zh"], tmp_path / "out", inline=False)
+
+    warning = capsys.readouterr().err
+    assert warning.count("warning:") == 1
+    assert "page 'wire_splice'.notes[0].style" in warning
+    assert "'top:140'" in warning
+    assert "browsers ignore this declaration" in warning
+    assert len(paths) == 2
+    assert all(path.exists() for path in paths)

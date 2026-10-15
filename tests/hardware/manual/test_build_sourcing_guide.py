@@ -209,6 +209,53 @@ def test_accessory_vendors_each_show_link_above_localized_spec():
     )
 
 
+# ── optional tools ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_optional_tools_use_flexible_regional_links_outside_checklist(lang, count):
+    sources = [
+        {
+            "name": f"Shop <{i}>",
+            "url": f"https://www.aliexpress.us/item/{i}.html?spm=tracking",
+            "product": {"en": "Small", "zh": "小号"},
+        }
+        for i in range(count)
+    ]
+    tool = {
+        "name": {"en": "Hex key", "zh": "内六角扳手"},
+        "spec": '3/16"',
+        "purpose": {"en": "Camera <mount>", "zh": "相机<支架>"},
+        "sources": {
+            lang: sources + [{"name": "", "url": ""}],
+            "zh" if lang == "en" else "en": [
+                {"name": "Other region", "url": "https://example.com/other"}
+            ],
+        },
+    }
+
+    section = bsg.render_optional_tools([tool], lang)
+
+    assert section.count("<a href=") == count
+    assert "Other region" not in section
+    assert "data-pid=" not in section
+    assert 'type="checkbox"' not in section
+    assert ("Hex key" if lang == "en" else "内六角扳手") in section
+    assert ("Camera &lt;mount&gt;" if lang == "en" else "相机&lt;支架&gt;") in section
+    if count:
+        assert bsg.ui("pending", lang) not in section
+        assert "Shop &lt;0&gt;</a>" in section
+        assert 'href="https://www.aliexpress.us/item/0.html"' in section
+        assert ("Small" if lang == "en" else "小号") in section
+    else:
+        assert f'<td class="offer pending">{bsg.ui("pending", lang)}</td>' in section
+
+
+def test_empty_optional_tools_omit_the_section():
+    assert bsg.render_optional_tools([], "en") == ""
+
+
 # ── load_bom_rows ─────────────────────────────────────────────────────────────
 
 

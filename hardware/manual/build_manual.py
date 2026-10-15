@@ -4,6 +4,8 @@
 The manual's content lives as a sequence of ``content/*.json`` files, each a
 list of *page* dicts in visual (DOM) order. This script turns those pages into
 one HTML document per language, laid out by ``styles.css`` (always inlined).
+The build warns about non-zero lengths without CSS units in inline JSON
+styles, with the page and field to fix. Warnings do not stop rendering.
 
 Image assets (the SVG renders + the crab logo) are handled by one of two
 strategies, chosen with ``--assets`` (see ``hardware.manual.assets``):
@@ -65,6 +67,7 @@ from hardware.manual.icon_svg import (
 )
 from hardware.manual.paginate import assign_page_numbers, paginate_bom_pages
 from hardware.manual.pdf import find_chrome, render_pdf
+from hardware.manual.style_checks import inline_style_unit_warnings
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 from hardware.scheme import SVG_DIR
 
@@ -575,6 +578,8 @@ def build(
         assign_page_numbers(
             pages
         )  # position-derived footer + TOC numbers (after BOM split)
+    for warning in inline_style_unit_warnings(pages):
+        print(f"warning: {warning}", file=sys.stderr)
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     chrome = find_chrome() if pdf else None

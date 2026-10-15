@@ -242,7 +242,7 @@
     ],
     "labels": [
       {
-        "style": "position:absolute; left:60; top:145mm; width:130mm; text-align:center; font-size:12pt; font-weight:400; color:var(--accent); z-index:2;",
+        "style": "position:absolute; left:16mm; top:145mm; width:127mm; text-align:center; font-size:12pt; font-weight:400; color:var(--accent); z-index:2;",
         "text": "75 Hz"
       }
     ],

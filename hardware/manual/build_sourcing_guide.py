@@ -67,6 +67,14 @@ by the builder's explicit tick or toggle; browsing (following a
 supplier link) marks nothing. On narrow screens the lede and disclaimer
 stack full-width; the table itself just scrolls sideways.
 
+``sourcing_optional_tools.json`` supplies the optional tools
+section. Each item has localized ``name``, optional ``spec`` (shown beneath the
+tool name), and ``purpose``.
+Its ``sources`` maps ``en`` / ``zh`` to any number of ``{name, url, product?}``
+suppliers, using the same presentation as BOM suppliers. Missing suppliers
+show a pending placeholder. These extras are outside the BOM checklist and
+do not affect the required-parts tally.
+
 Run under ``uv`` from the repo root (standard library only, Python 3.12+)::
 
     uv run python -m hardware.manual.build_sourcing_guide              # en + zh
@@ -113,6 +121,7 @@ from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 # --------------------------------------------------------------------------- #
 SCRIPT_DIR = Path(__file__).resolve().parent
 STYLES_CSS = SCRIPT_DIR / "sourcing_styles.css"
+OPTIONAL_TOOLS_FILE = SCRIPT_DIR / "sourcing_optional_tools.json"
 # Own output dir — build_manual._clear_output_dir wipes *.html in output/manual,
 # so the sourcing guide must not live there.
 OUTPUT_DIR = _OUTPUT_ROOT / "sourcing"
@@ -178,6 +187,11 @@ UI = {
     "th_desc": {"en": "Application", "zh": "用途"},
     "th_ref": {"en": "Ref. price", "zh": "参考价"},
     "th_note": {"en": "Notes", "zh": "备注"},
+    "optional_tools_title": {
+        "en": "Optional tools",
+        "zh": "可选工具",
+    },
+    "th_tool": {"en": "Tool", "zh": "工具"},
 }
 
 
@@ -382,17 +396,9 @@ def _inquiry_button(
     )
 
 
-def render_supplier_cell(
-    supplier: dict | None, lang: str, span: int, guide_id: str = ""
-) -> str:
-    """One supplier cell: the shop name (linked to its url) over the shop's
-    own ``product`` spec, when set."""
-    name = loc(supplier.get("name") or "", lang) if supplier else ""
-    if not name:
-        return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
-    if name == "—":
-        return f'<td class="offer na"{_span_attr(span)}>—</td>'
-    name = html.escape(name)
+def render_supplier_offer(supplier: dict, lang: str) -> str:
+    """Shared supplier name/link and product spec for required and optional items."""
+    name = html.escape(loc(supplier.get("name") or "", lang))
     if supplier.get("url"):
         href = html.escape(clean_supplier_url(supplier["url"]), quote=True)
         name = f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
@@ -400,6 +406,18 @@ def render_supplier_cell(
     product_html = (
         f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
     )
+    return f'<div class="v-vendor">{name}</div>{product_html}'
+
+
+def render_supplier_cell(
+    supplier: dict | None, lang: str, span: int, guide_id: str = ""
+) -> str:
+    """One supplier cell: the shop name (linked to its url) over its product spec."""
+    name = loc(supplier.get("name") or "", lang) if supplier else ""
+    if not name:
+        return f'<td class="offer pending"{_span_attr(span)}>{ui("pending", lang)}</td>'
+    if name == "—":
+        return f'<td class="offer na"{_span_attr(span)}>—</td>'
     details_html = ""
     if guide_id and supplier.get("details"):
         label = html.escape(loc(supplier["details"]["label"], lang))
@@ -408,8 +426,8 @@ def render_supplier_cell(
             f'aria-haspopup="dialog" aria-controls="{guide_id}">{label}</button>'
         )
     return (
-        f'<td class="offer"{_span_attr(span)}><div class="v-vendor">{name}</div>'
-        f"{product_html}{details_html}</td>"
+        f'<td class="offer"{_span_attr(span)}>'
+        f"{render_supplier_offer(supplier, lang)}{details_html}</td>"
     )
 
 
@@ -502,6 +520,40 @@ def render_accessories(accessories: list[dict], lang: str) -> str:
             f"{spec_html}</div>"
         )
     return f'<div class="note-accessory">{"".join(offers)}</div>'
+
+
+def render_optional_tools(tools: list[dict], lang: str) -> str:
+    """Use the sourcing table's cells and supplier renderer, with one supplier column."""
+    if not tools:
+        return ""
+    rows = []
+    for tool in tools:
+        name = html.escape(loc(tool["name"], lang))
+        spec = html.escape(loc(tool.get("spec") or "", lang))
+        spec_html = f'<div class="tool-spec">{spec}</div>' if spec else ""
+        purpose = html.escape(loc(tool["purpose"], lang))
+        offers = "".join(
+            f'<div class="supplier-offer">{render_supplier_offer(source, lang)}</div>'
+            for source in tool.get("sources", {}).get(lang, [])
+            if loc(source.get("name") or "", lang).strip()
+        )
+        offer_class = "offer" if offers else "offer pending"
+        rows.append(
+            f'<tr><td class="comp">{name}{spec_html}</td>'
+            f'<td class="desc">{purpose}</td><td class="{offer_class}">'
+            f"{offers or ui('pending', lang)}</td></tr>"
+        )
+    headings = "".join(
+        f'<th scope="col">{ui(key, lang)}</th>'
+        for key in ("th_tool", "th_desc", "supplier_n")
+    )
+    return (
+        '<section class="optional-tools" aria-labelledby="optional-tools-title">'
+        f'<h2 id="optional-tools-title">{ui("optional_tools_title", lang)}</h2>'
+        '<div class="table-wrap"><table class="sourcing optional-sourcing" aria-labelledby="optional-tools-title">'
+        f"<thead><tr>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+        "</div></section>"
+    )
 
 
 def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
@@ -619,7 +671,7 @@ PAGE_JS = """\
   } catch (e) {}
 
   // The row anatomy, resolved once: the tr, its part id, its checkbox.
-  var items = Array.from(document.querySelectorAll('.sourcing > tbody > tr')).map(function (tr) {
+  var items = Array.from(document.querySelectorAll('.sourcing > tbody > tr[data-pid]')).map(function (tr) {
     return {tr: tr, pid: tr.dataset.pid, box: tr.querySelector('td.get input')};
   });
   // A cell that spans several rows (class group, component group, Ditto
@@ -736,6 +788,7 @@ document.querySelectorAll('.supplier-guide').forEach(function (guide) {
 
 
 def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) -> str:
+    optional_tools = json.loads(OPTIONAL_TOOLS_FILE.read_text(encoding="utf-8"))
     # The checklist line sits left-aligned just above the table: the tally
     # (JS fills it from the localized templates) and the reset / highlight
     # buttons (hidden until something is ticked; reset's confirm text rides
@@ -757,7 +810,8 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         f'<span class="url">{URL_MARK}</span></header>'
         f'<div class="preamble"><p class="lede">{ui("lede", lang)}</p>'
         f'<p class="disclaimer">{ui("disclaimer", lang)}</p></div>'
-        f"{checklist}{render_table(rows, entries, lang)}</div>"
+        f"{checklist}{render_table(rows, entries, lang)}"
+        f"{render_optional_tools(optional_tools, lang)}</div>"
         f"{render_supplier_guides(entries, lang)}"
     )
     body = typeset_quantities(body)
