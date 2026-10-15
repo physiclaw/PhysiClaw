@@ -57,7 +57,7 @@ help:
 	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
 	@echo "                            (or pipe: pbpaste | make hw-camera)"
 	@echo "  hw-rebuild              — full rebuild: parts → build → print → manual+pdf → sourcing"
-	@echo "  hw-prepare HW_VERSION=X.Y — fresh isolated build + verified local release bundle"
+	@echo "  hw-prepare HW_VERSION=X.Y — cached isolated build + verified local release bundle"
 	@echo "  hw-verify HW_VERSION=X.Y  — verify sources, checksums and bundle contents"
 	@echo "  hw-deploy HW_VERSION=X.Y  — preflight → prepare → publish verified draft"
 	@echo "  hw-release HW_VERSION=X.Y — publish a previously prepared and verified bundle"

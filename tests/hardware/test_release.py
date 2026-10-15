@@ -53,6 +53,7 @@ def build_outputs(root):
 @pytest.fixture
 def preparation(tmp_path, monkeypatch):
     monkeypatch.setattr(rel, "RELEASE_DIR", tmp_path / "release")
+    monkeypatch.setattr(rel, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(rel, "source_digest", lambda: "source-digest")
     monkeypatch.setattr(rel, "find_chrome", lambda: "/fake/chrome")
     monkeypatch.setattr(rel, "render_pdf", lambda *args: True)
@@ -64,6 +65,10 @@ def preparation(tmp_path, monkeypatch):
     def stage(output, *args):
         calls.append((output, args))
         if args[0] == "build":
+            assert (output / ".cache").is_symlink()
+            assert (output / ".cache").resolve() == rel.CACHE_DIR
+            assert not (output / "step").exists()
+            (output / ".cache" / "marker").write_text("retained")
             build_outputs(output)
 
     monkeypatch.setattr(rel, "_stage", stage)
@@ -104,15 +109,17 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
     assert len(roots) == 1 and not next(iter(roots)).exists()
     assert [args for _, args in preparation] == [
         ("check",),
-        ("build", "--bom", "--no-cache"),
+        ("build", "--bom"),
         ("print",),
         ("manual", "--pdf"),
         ("sourcing",),
         ("drawing", "--pdf"),
         ("check",),
     ]
-    with pytest.raises(rel.ReleaseError, match="already exists"):
-        rel.prepare(VERSION)
+    assert (rel.CACHE_DIR / "marker").read_text() == "retained"
+    count = len(preparation)
+    assert rel.prepare(VERSION) == bundle
+    assert len(preparation) == count
 
 
 def test_stage_failure_never_leaves_a_publishable_bundle(preparation, monkeypatch):
@@ -176,13 +183,13 @@ def test_bundle_damage_blocks_verification(bundle, damage):
     else:
         (bundle / rel.MANIFEST).write_text("[]")
     with pytest.raises(rel.ReleaseError):
-        rel.verify(VERSION)
+        rel.prepare(VERSION)
 
 
 def test_stale_source_bundle_is_rejected(bundle, monkeypatch):
     monkeypatch.setattr(rel, "source_digest", lambda: "different")
     with pytest.raises(rel.ReleaseError, match="different sources"):
-        rel.verify(VERSION)
+        rel.prepare(VERSION)
 
 
 def test_manifest_cannot_bless_broken_offline_document(bundle):
@@ -220,6 +227,27 @@ def test_archive_traversal_rejected(tmp_path):
         rel._read_zip(path)
 
 
+def draft(bundle, names=None):
+    names = sorted(rel.ASSETS | {rel.MANIFEST}) if names is None else names
+    return {
+        "id": 42,
+        "tag_name": rel.tag_for(VERSION),
+        "draft": True,
+        "target_commitish": COMMIT,
+        "assets": [
+            {
+                "id": index,
+                "name": name,
+                "state": "uploaded",
+                "size": (bundle / name).stat().st_size,
+                "digest": f"sha256:{rel.digest(bundle / name)}",
+                "updated_at": "2026-10-15T00:00:00Z",
+            }
+            for index, name in enumerate(names)
+        ],
+    }
+
+
 @pytest.fixture
 def github(bundle, monkeypatch):
     calls = []
@@ -229,8 +257,11 @@ def github(bundle, monkeypatch):
         "head": COMMIT,
         "remote": COMMIT,
         "tags": "",
-        "releases": "",
+        "release": None,
         "failure": None,
+        "after_upload": None,
+        "before_final_check": None,
+        "remote_checks": 0,
     }
 
     def run(*args, **kwargs):
@@ -242,36 +273,50 @@ def github(bundle, monkeypatch):
         if args[:2] == ("git", "status"):
             return state["dirty"]
         if args[:2] == ("git", "ls-remote"):
+            state["remote_checks"] += 1
+            if state["remote_checks"] == 2 and state["before_final_check"]:
+                state["before_final_check"]()
             return f"{state['remote']}\trefs/heads/main\n" + state["tags"]
         if args[:2] == ("git", "tag"):
             return ""
         if args[:2] == ("git", "remote"):
             return "git@github.com:physiclaw/PhysiClaw.git"
         if args[:2] == ("gh", "api"):
-            if state["failure"] == "auth":
+            if state["failure"] == "auth" or (
+                state["failure"] == "view" and state["release"]
+            ):
                 raise subprocess.CalledProcessError(1, args)
-            return state["releases"]
+            return json.dumps(state["release"]) if state["release"] else ""
         if args[:2] == ("gh", "release"):
             action = args[2]
             if state["failure"] == action:
                 raise subprocess.CalledProcessError(1, args)
-            if action == "view":
-                names = sorted(rel.ASSETS | {rel.MANIFEST})
+            if action == "create":
+                assert state["release"] is None
+                state["release"] = draft(bundle, [])
+            if action == "upload":
+                assert kwargs["timeout"] == 600
+                paths = args[4 : args.index("--repo")]
+                assets = draft(bundle, [Path(p).name for p in paths])["assets"]
+                if state["failure"] == "partial-upload":
+                    state["release"]["assets"].append(assets[0])
+                    raise subprocess.TimeoutExpired(args, 600)
                 if state["failure"] == "missing-asset":
-                    names.pop()
-                return json.dumps(
-                    {
-                        "isDraft": True,
-                        "targetCommitish": COMMIT,
-                        "assets": [{"name": n} for n in names],
-                    }
-                )
+                    assets.pop()
+                state["release"]["assets"].extend(assets)
+                if state["after_upload"]:
+                    state["after_upload"]()
             if action == "download":
+                assert kwargs["timeout"] == 600
                 target = Path(args[args.index("--dir") + 1])
-                for path in bundle.iterdir():
-                    shutil.copyfile(path, target / path.name)
+                name = args[args.index("--pattern") + 1]
+                shutil.copyfile(bundle / name, target / name)
                 if state["failure"] == "checksum":
-                    (target / rel.PRINT_ZIP).write_bytes(b"bad upload")
+                    (target / name).write_bytes(b"bad upload")
+                for asset in state["release"]["assets"]:
+                    asset["download_count"] = asset.get("download_count", 0) + 1
+            if action == "edit":
+                state["release"]["draft"] = False
             return ""
         pytest.fail(f"Unexpected command: {args}")
 
@@ -287,7 +332,6 @@ def github(bundle, monkeypatch):
         ("dirty", " M hardware/scheme.py"),
         ("remote", "b" * 40),
         ("tags", f"{COMMIT}\trefs/tags/{rel.tag_for(VERSION)}"),
-        ("releases", rel.tag_for(VERSION)),
         ("failure", "auth"),
     ],
 )
@@ -296,25 +340,85 @@ def test_preflight_fails_closed(github, field, value):
     state[field] = value
     with pytest.raises((rel.ReleaseError, subprocess.CalledProcessError)):
         rel.publish(VERSION)
-    assert not any(c[:3] == ("gh", "release", "create") for c in calls)
+    assert not any(c[:2] == ("gh", "release") for c in calls)
 
 
-def test_publish_uses_exact_commit_and_promotes_only_after_download_verification(
-    github,
-):
+def test_publish_uses_exact_commit_and_server_checksums_without_download(github):
     _, calls = github
     rel.publish(VERSION)
     releases = [c for c in calls if c[:2] == ("gh", "release")]
-    assert [c[2] for c in releases] == ["create", "upload", "view", "download", "edit"]
+    assert [c[2] for c in releases] == ["create", "upload", "edit"]
     create = releases[0]
     assert "--draft" in create and create[create.index("--target") + 1] == COMMIT
     assert create[create.index("--repo") + 1] == "github.com/physiclaw/PhysiClaw"
     assert "--draft=false" in releases[-1]
+    reads = [c for c in calls if c[:2] == ("gh", "api")]
+    assert "--paginate" in reads[0]  # Includes unpublished drafts.
+    assert reads[-1][-1] == "repos/physiclaw/PhysiClaw/releases/42"
+
+
+@pytest.mark.parametrize("count", [0, 3, 7])
+def test_resume_matching_draft_uploads_only_missing_assets(github, bundle, count):
+    state, calls = github
+    names = sorted(rel.ASSETS | {rel.MANIFEST})
+    state["release"] = draft(bundle, names[:count])
+    rel.publish(VERSION)
+    assert not any(c[:3] == ("gh", "release", "create") for c in calls)
+    uploads = [c for c in calls if c[:3] == ("gh", "release", "upload")]
+    if count == len(names):
+        assert uploads == []
+    else:
+        assert len(uploads) == 1
+        assert uploads[0][4 : uploads[0].index("--repo")] == tuple(
+            str(bundle / n) for n in names[count:]
+        )
+    assert state["release"]["draft"] is False
+
+
+def test_partial_upload_timeout_can_resume_without_duplicate_upload(github):
+    state, calls = github
+    state["failure"] = "partial-upload"
+    with pytest.raises(subprocess.TimeoutExpired):
+        rel.publish(VERSION)
+    retained = state["release"]["assets"][0]["name"]
+    assert state["release"]["draft"] is True
+    calls.clear()
+    state["failure"] = None
+    rel.publish(VERSION)
+    upload = next(c for c in calls if c[:3] == ("gh", "release", "upload"))
+    assert retained not in [Path(p).name for p in upload[4 : upload.index("--repo")]]
 
 
 @pytest.mark.parametrize(
-    "failure", ["create", "upload", "view", "download", "missing-asset", "checksum"]
+    "damage",
+    ["published", "target", "tag", "extra", "duplicate", "size", "state", "digest"],
 )
+def test_conflicting_draft_is_never_modified(github, bundle, damage):
+    state, calls = github
+    remote = state["release"] = draft(bundle)
+    asset = remote["assets"][0]
+    if damage == "published":
+        remote["draft"] = False
+    elif damage == "target":
+        remote["target_commitish"] = "b" * 40
+    elif damage == "tag":
+        remote["tag_name"] = "unexpected"
+    elif damage == "extra":
+        asset["name"] = "unexpected.zip"
+    elif damage == "duplicate":
+        remote["assets"].append(asset.copy())
+    elif damage == "size":
+        asset["size"] += 1
+    elif damage == "state":
+        asset["state"] = "starter"
+    else:
+        asset["digest"] = "sha256:" + "0" * 64
+    with pytest.raises(rel.ReleaseError):
+        rel.publish(VERSION)
+    assert not any(c[:2] == ("gh", "release") for c in calls)
+
+
+@pytest.mark.parametrize("failure", ["create", "upload", "view", "missing-asset"])
 def test_upload_failure_never_publishes_or_deletes_draft(github, failure):
     state, calls = github
     state["failure"] = failure
@@ -323,6 +427,53 @@ def test_upload_failure_never_publishes_or_deletes_draft(github, failure):
     assert not any(
         c[:3] in [("gh", "release", "edit"), ("gh", "release", "delete")] for c in calls
     )
+
+
+@pytest.mark.parametrize("failure", [None, "download", "checksum"])
+def test_download_fallback_only_for_asset_without_server_digest(
+    github, bundle, failure
+):
+    state, calls = github
+    state["release"] = draft(bundle)
+    asset = state["release"]["assets"][0]
+    asset["digest"] = None
+    state["failure"] = failure
+    if failure:
+        with pytest.raises((rel.ReleaseError, subprocess.CalledProcessError)):
+            rel.publish(VERSION)
+        assert state["release"]["draft"] is True
+    else:
+        rel.publish(VERSION)
+        assert state["release"]["draft"] is False
+    downloads = [c for c in calls if c[:3] == ("gh", "release", "download")]
+    assert len(downloads) == 1
+    assert downloads[0][downloads[0].index("--pattern") + 1] == asset["name"]
+
+
+@pytest.mark.parametrize(
+    "change", ["head", "remote", "source", "local-asset", "draft", "asset"]
+)
+def test_changes_during_transfer_block_publication(github, bundle, monkeypatch, change):
+    state, calls = github
+
+    def mutate():
+        if change in {"head", "remote"}:
+            state[change] = "b" * 40
+        elif change == "source":
+            monkeypatch.setattr(rel, "source_digest", lambda: "changed")
+        elif change == "local-asset":
+            (bundle / rel.FRAME_ZIP).write_bytes(b"changed")
+        elif change == "draft":
+            state["release"]["target_commitish"] = "b" * 40
+        else:
+            state["release"]["assets"][0]["id"] += 100
+
+    state["before_final_check" if change in {"draft", "asset"} else "after_upload"] = (
+        mutate
+    )
+    with pytest.raises(rel.ReleaseError):
+        rel.publish(VERSION)
+    assert not any(c[:3] == ("gh", "release", "edit") for c in calls)
 
 
 def test_source_digest_includes_untracked_files_and_renames(tmp_path, monkeypatch):

@@ -1,8 +1,8 @@
 """Prepare, verify and publish hardware releases through one guarded path.
 
-Preparation is local and builds in an empty output tree. Publishing accepts
-only a verified bundle from the current clean, pushed main commit. Uploads
-stay in a draft until the downloaded bytes match the local manifest.
+Preparation uses validated CAD cache entries in a private output tree. Publishing
+accepts only a verified bundle from the current clean, pushed main commit. Uploads
+stay in a draft until their SHA-256 checksums match the local bundle.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from hardware.manual.build_extrusion_drawing import PDF_FILENAME as DRAWING_PDFS
 from hardware.manual.build_manual import LANG_FILENAME as MANUALS
 from hardware.manual.build_sourcing_guide import LANG_FILENAME as SOURCING
 from hardware.manual.pdf import find_chrome, render_pdf
-from hardware.scheme import REPO_ROOT
+from hardware.scheme import CACHE_DIR, REPO_ROOT
 
 # This location is deliberately independent of the subprocess output override.
 RELEASE_DIR = REPO_ROOT / "hardware" / "output" / "release"
@@ -60,14 +60,14 @@ def tag_for(version: str) -> str:
     return f"physiclaw-hardware-v{validate_version(version)}"
 
 
-def run(*args: str) -> str:
+def run(*args: str, timeout: int = 120) -> str:
     result = subprocess.run(
         args,
         cwd=REPO_ROOT,
         check=True,
         text=True,
         stdout=subprocess.PIPE,
-        timeout=120,
+        timeout=timeout,
     )
     return result.stdout.strip()
 
@@ -247,9 +247,9 @@ def prepare(version: str) -> Path:
     tag = tag_for(version)
     destination = RELEASE_DIR / tag
     if destination.exists():
-        raise ReleaseError(
-            f"Bundle already exists: {destination}; verify it or choose a new version"
-        )
+        verify(version)
+        print(f"Reusing verified local release: {destination}")
+        return destination
     chrome = find_chrome()
     if chrome is None:
         raise ReleaseError(
@@ -270,14 +270,18 @@ def prepare(version: str) -> Path:
     commit = run("git", "rev-parse", "HEAD")
     run_tests()
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-    # Never bless an interactive output/ tree. No cache is read for releases.
+    # Share only the validated cache; the CLI holds its output tree lock.
+    # All restored/generated artifacts and packaging remain private.
     with tempfile.TemporaryDirectory(prefix=".prepare-", dir=RELEASE_DIR) as tmp:
         work = Path(tmp)
         output, bundle = work / "output", work / "bundle"
         bundle.mkdir()
+        output.mkdir()
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (output / ".cache").symlink_to(CACHE_DIR.resolve(), target_is_directory=True)
         for args in (
             ("check",),
-            ("build", "--bom", "--no-cache"),
+            ("build", "--bom"),
             ("print",),
             ("manual", "--pdf"),
             ("sourcing",),
@@ -391,85 +395,169 @@ def _git_state(version: str) -> tuple[str, str, str]:
     return commit, host, slug
 
 
-def preflight(version: str) -> tuple[str, str]:
-    commit, host, slug = _git_state(version)
-    # A failed auth/network request is an error, never evidence of absence.
-    tags = run(
-        "gh",
-        "api",
-        "--hostname",
-        host,
-        f"repos/{slug}/releases?per_page=100",
-        "--paginate",
-        "--jq",
-        ".[].tag_name",
-    )
-    if tag_for(version) in tags.splitlines():
+def _release(repo: str, tag: str, release_id: int | None = None) -> dict | None:
+    host, slug = repo.split("/", 1)
+    args = ["gh", "api", "--hostname", host]
+    if release_id is None:
+        # The by-tag endpoint does not find unpublished drafts. A failed
+        # auth/network request must remain an error, never evidence of absence.
+        args += [
+            f"repos/{slug}/releases?per_page=100",
+            "--paginate",
+            "--jq",
+            f'.[] | select(.tag_name == "{tag}")',
+        ]
+    else:
+        args += [f"repos/{slug}/releases/{release_id}"]
+    result = run(*args)
+    return json.loads(result) if result else None
+
+
+def _check_draft(remote: dict, tag: str, commit: str) -> None:
+    if (
+        remote.get("draft") is not True
+        or remote.get("tag_name") != tag
+        or remote.get("target_commitish") != commit
+    ):
         raise ReleaseError(
-            f"Release or draft already exists: {tag_for(version)}; inspect it before retrying"
+            "Existing release must be an unpublished draft of this exact commit; "
+            "inspect it before retrying"
         )
-    return commit, f"{host}/{slug}"
+
+
+def preflight(version: str) -> tuple[str, str, dict | None]:
+    commit, host, slug = _git_state(version)
+    repo, tag = f"{host}/{slug}", tag_for(version)
+    remote = _release(repo, tag)
+    if remote is not None:
+        _check_draft(remote, tag, commit)
+    return commit, repo, remote
+
+
+def _check_assets(remote: dict, bundle: Path, *, complete: bool = False) -> dict:
+    assets = {asset["name"]: asset for asset in remote["assets"]}
+    expected = ASSETS | {MANIFEST}
+    if (
+        len(assets) != len(remote["assets"])
+        or not assets.keys() <= expected
+        or (complete and assets.keys() != expected)
+    ):
+        raise ReleaseError("Draft asset set differs from the verified bundle")
+    for name, asset in assets.items():
+        if (
+            asset["state"] != "uploaded"
+            or asset["size"] != (bundle / name).stat().st_size
+        ):
+            raise ReleaseError(
+                f"Draft artifact is incomplete or has the wrong size: {name}"
+            )
+        if asset.get("digest") and asset["digest"] != f"sha256:{digest(bundle / name)}":
+            raise ReleaseError(f"Uploaded artifact checksum mismatch: {name}")
+    return assets
+
+
+def _asset_signature(remote: dict) -> list[tuple]:
+    # download_count changes during fallback verification; content identity must not.
+    return sorted(
+        tuple(
+            asset.get(key)
+            for key in ("name", "id", "size", "state", "digest", "updated_at")
+        )
+        for asset in remote["assets"]
+    )
 
 
 def publish(version: str) -> None:
     bundle, manifest = verify(version)
-    commit, repo = preflight(version)
+    commit, repo, remote = preflight(version)
     tag = tag_for(version)
-    names = sorted(ASSETS | {MANIFEST})
-    run(
-        "gh",
-        "release",
-        "create",
-        tag,
-        "--repo",
-        repo,
-        "--draft",
-        "--target",
-        commit,
-        "--title",
-        f"PhysiClaw hardware v{version}",
-        "--notes",
-        f"Bilingual assembly manual, sourcing guide, extrusion drawings and custom STEP parts.\n\nSource commit: {commit}\nArtifact SHA-256 checksums and build provenance: manifest.json.",
-    )
-    # On failure, leave the draft for inspection; never delete or overwrite it.
-    run(
-        "gh",
-        "release",
-        "upload",
-        tag,
-        *[str(bundle / name) for name in names],
-        "--repo",
-        repo,
-    )
-    remote = json.loads(
+    if remote is None:
         run(
             "gh",
             "release",
-            "view",
+            "create",
             tag,
             "--repo",
             repo,
-            "--json",
-            "isDraft,targetCommitish,assets",
+            "--draft",
+            "--target",
+            commit,
+            "--title",
+            f"PhysiClaw hardware v{version}",
+            "--notes",
+            f"Bilingual assembly manual, sourcing guide, extrusion drawings and custom STEP parts.\n\nSource commit: {commit}\nArtifact SHA-256 checksums and build provenance: manifest.json.",
         )
+        remote = _release(repo, tag)
+    if remote is None:
+        raise ReleaseError(
+            "Created draft could not be found; inspect it before retrying"
+        )
+    _check_draft(remote, tag, commit)
+    assets = _check_assets(remote, bundle)
+    missing = sorted((ASSETS | {MANIFEST}) - assets.keys())
+    release_id = remote["id"]
+    if missing:
+        print(
+            f"Uploading {len(missing)} missing assets; retaining {len(assets)} uploaded assets",
+            flush=True,
+        )
+        # On failure, leave the draft. Retrying uploads only missing assets.
+        run(
+            "gh",
+            "release",
+            "upload",
+            tag,
+            *[str(bundle / name) for name in missing],
+            "--repo",
+            repo,
+            timeout=600,
+        )
+        remote = _release(repo, tag, release_id)
+        if remote is None:
+            raise ReleaseError("Draft disappeared during upload")
+        _check_draft(remote, tag, commit)
+        assets = _check_assets(remote, bundle, complete=True)
+    fallback = [name for name, asset in assets.items() if not asset.get("digest")]
+    if fallback:
+        # Older GitHub servers may omit SHA-256. Download only those assets.
+        with tempfile.TemporaryDirectory(prefix="physiclaw-release-check-") as tmp:
+            for name in fallback:
+                run(
+                    "gh",
+                    "release",
+                    "download",
+                    tag,
+                    "--repo",
+                    repo,
+                    "--pattern",
+                    name,
+                    "--dir",
+                    tmp,
+                    timeout=600,
+                )
+                downloaded = Path(tmp) / name
+                _regular(downloaded)
+                if digest(downloaded) != digest(bundle / name):
+                    raise ReleaseError(f"Uploaded artifact checksum mismatch: {name}")
+    print(
+        f"Verified {len(assets)} asset checksums ({len(fallback)} downloads)",
+        flush=True,
     )
-    if not remote["isDraft"] or remote["targetCommitish"] != commit:
-        raise ReleaseError("Draft state or target changed; publication stopped")
-    remote_names = [asset["name"] for asset in remote["assets"]]
-    if sorted(remote_names) != names:
-        raise ReleaseError("Draft asset set differs from the verified bundle")
-    with tempfile.TemporaryDirectory(prefix="physiclaw-release-check-") as tmp:
-        run("gh", "release", "download", tag, "--repo", repo, "--dir", tmp)
-        for name in names:
-            downloaded = Path(tmp) / name
-            _regular(downloaded)
-            if digest(downloaded) != digest(bundle / name):
-                raise ReleaseError(f"Uploaded artifact checksum mismatch: {name}")
-    # Re-check local inputs and live remote HEAD after the potentially long upload.
+    # Re-check source, live origin/main and draft content after transfers.
     _, current = verify(version)
     now, host, slug = _git_state(version)
     if current != manifest or now != commit or f"{host}/{slug}" != repo:
         raise ReleaseError("Release inputs changed during upload")
+    latest = _release(repo, tag, release_id)
+    if latest is None:
+        raise ReleaseError("Draft disappeared before publication")
+    _check_draft(latest, tag, commit)
+    if latest["id"] != release_id or _asset_signature(latest) != _asset_signature(
+        remote
+    ):
+        raise ReleaseError(
+            "Draft assets changed during verification; retry after inspection"
+        )
     run(
         "gh",
         "release",

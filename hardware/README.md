@@ -248,7 +248,7 @@ uv run            python -m hardware drawing --pdf                # the extrusio
 ## Cutting a release
 
 Each `physiclaw-hardware-vX.Y` release bundles four zips and two PDFs
-packaged from a freshly regenerated `output/`:
+packaged in a private output tree using validated CAD cache entries:
 
 - **Assembly manual** — the whole `manual/` folder (HTML + PDF in English
   and 中文, plus the step figures).
@@ -270,23 +270,25 @@ make hw-prepare HW_VERSION=X.Y
 make hw-verify HW_VERSION=X.Y
 ```
 
-Preparation runs the hardware regression tests and static consistency gate, builds **all procedures**
-with BOMs from scratch, exports the custom parts, and renders both language
-editions of the manual, sourcing guide and extrusion drawings. It uses an
-empty private output directory, never the interactive `output/` artifacts
-or their cache. Dependencies are resolved with `uv --locked`. Missing Chrome,
-failed PDFs, annotation errors and incomplete CAD outputs fail the command.
-The browser must also pass a small PDF render before CAD work starts, catching
-launch permission problems early. The normal interactive build remains incremental.
+Preparation runs the hardware regression tests and static consistency gate, restores
+or builds **all procedures** with BOMs, exports the custom parts, and renders both
+language editions of the manual, sourcing guide and extrusion drawings. It uses a
+private output directory and shares only the persistent CAD cache. Source keys,
+required files and SHA-256 checksums must match before any cached output is restored;
+changed or damaged entries rebuild automatically. Manual-only edits reuse CAD work.
+Interactive output files are never packaged. Dependencies use `uv --locked`.
+Missing Chrome, failed PDFs, annotation errors and incomplete CAD outputs stop the
+command. A small PDF render checks browser launch permissions before CAD work starts.
 
 The resulting bundle is stored at
 `hardware/output/release/physiclaw-hardware-vX.Y/`: four zips, two PDFs and
 `manifest.json`. The manifest records the exact Git commit, a digest of source
 files, the Python/CAD toolchain versions and each asset's SHA-256. Verification
 checks the exact asset set, checksums, basic file integrity, bilingual documents,
-local image references and matching copies of the extrusion PDFs. Preparation
-refuses to overwrite an existing version directory. To rebuild the same version,
-explicitly remove its generated directory after reviewing why it failed.
+local image references and matching copies of the extrusion PDFs. Repeating preparation
+reuses an existing bundle only after it passes verification against the current commit
+and sources. Stale or damaged bundles stop the command. To rebuild the same version,
+move its generated directory aside after reviewing why it failed.
 
 When publication is intended, commit and push main **before preparation**, then:
 
@@ -297,12 +299,18 @@ make hw-deploy HW_VERSION=X.Y
 ```
 
 Publishing repeats verification and requires a clean main checkout whose HEAD
-matches **live** `origin/main`. Existing local/remote tags or GitHub releases
-(including drafts) stop the command. Network or authentication failures also
-stop it. The release targets the recorded commit SHA, never a moving branch.
-Assets are uploaded to a draft, downloaded again and checked byte for byte;
-only then is the draft published and marked latest. A failure leaves the draft
-unpublished for inspection. The workflow does not overwrite or delete it.
+matches **live** `origin/main`. Existing local/remote tags, published releases and
+drafts targeting another commit stop the command. Network or authentication failures
+also stop it. The release targets the recorded commit SHA, never a moving branch.
+Assets are uploaded to a draft and checked against GitHub's SHA-256 digests and sizes.
+Only assets without a server digest are downloaded for local verification. After a
+final source and draft check, the release is published and marked latest.
+
+If a transfer fails, inspect the error and retry the same command. A matching draft
+resumes by uploading only missing assets; valid uploaded files are kept. Unexpected,
+incomplete or mismatched assets stop publication. The workflow never overwrites or
+deletes assets, drafts or published releases. For a stale draft, inspect and remove
+that unpublished draft explicitly before preparing its replacement.
 
 All Make release targets use the same guarded Python entry point, including
 the legacy `_hw-package` alias. `make -j` cannot run validation and publishing
@@ -319,8 +327,8 @@ uv run --locked --group cad pytest tests/hardware
 ```
 
 CI installs the CAD group on Linux and macOS, runs these tests as part of the
-suite, and builds a real fastener STEP/SVG/BOM as a smoke test. Full release
-preparation is intentionally a fresh build and takes longer than normal edits.
+suite, and builds a real fastener STEP/SVG/BOM as a smoke test. Release preparation
+uses the same validated CAD cache as normal builds; documents and packaging are fresh.
 The gates catch build and packaging mistakes; they do not prove physical fit
 or replace engineering review of changed geometry. Repository administrators
 must keep CI required and review changes to release guards to prevent bypasses.
