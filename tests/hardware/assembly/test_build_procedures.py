@@ -9,6 +9,7 @@ the patch-replay branch's stale-snapshot clearing.
 
 from __future__ import annotations
 
+from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import pytest
@@ -118,6 +119,40 @@ def test_crashed_batch_with_complete_files_still_requires_successful_verificatio
     assert bp._dispatch(2, use_cache=False) == verification_exit
     assert calls == [(stems, False), (stems, True)]
     assert stored == ([] if verification_exit else stems)
+
+
+def test_parallel_batches_are_bounded_and_awaited(tmp_path, monkeypatch):
+    stems = [STEM, "frame_20_next", "frame_30_last", "frame_40_end"]
+    barrier = Barrier(2, timeout=5)
+    lock = Lock()
+    active = peak = 0
+    completed = []
+
+    def run(batch, flags, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        barrier.wait()
+        with lock:
+            active -= 1
+            completed.extend(batch)
+        return 0
+
+    monkeypatch.setattr(bp, "CRASH_LOG", tmp_path / "crash.log")
+    monkeypatch.setattr(bp, "STEP_DIR", tmp_path / "step")
+    monkeypatch.setattr(bp, "SVG_DIR", tmp_path / "svg")
+    monkeypatch.setattr(bp, "_clear_outputs", lambda **kwargs: None)
+    monkeypatch.setattr(bp, "_batches", lambda size: [[s] for s in stems])
+    monkeypatch.setattr(bp, "_incomplete", lambda stem, flags: [])
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    monkeypatch.setattr(bp.stepcache, "store_source", lambda stem: None)
+    monkeypatch.setattr(bp.stepcache, "store_snapshots", lambda stem: None)
+
+    assert bp._dispatch(1, use_cache=False, jobs=2) == 0
+    assert sorted(completed) == stems
+    assert active == 0
+    assert peak == 2
 
 
 # ── _incomplete: STEP/SVG variants + requested BOMs ───────────────────────────

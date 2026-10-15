@@ -111,13 +111,10 @@ only those render (each skipped view saves an exact-HLR pass, the dominant
 cost and the crash surface). No `views` means render every camera for both
 variants. Camera indices stay stable, so trimming never renames files.
 
-**Built in subprocesses.** OpenCASCADE never returns freed memory to the OS, so
-building all steps in one process is OOM-killed. `build_procedures` groups steps
-by family in dependency order, runs each batch in its own subprocess, and
-**retries crashed steps solo** (the hidden-line renderer intermittently
-segfaults — up to ~80% per attempt on the heaviest steps). A retry passes
-`--only-missing`, re-rendering just the SVGs that are absent, so finished
-work is never re-exposed to the crash and the retries converge.
+**Built in subprocesses.** `build_procedures` groups steps by family in
+dependency order and runs each batch in its own subprocess to bound OCCT
+memory use. Crashed steps retry independently with `--only-missing`, retaining
+finished outputs. Concurrency and crash recovery are described below.
 
 **Naming convention.** Procedure and part files follow
 `<family>_<NN>_<descriptor>.py`, where `NN` orders steps within a family in
@@ -176,6 +173,24 @@ steps are restored instead of rebuilt+re-rendered — and a patch-only edit
 just re-runs the cheap annotation replay. Pass `--no-cache` to force a full
 rebuild — the rebuilt outputs still refresh the cache. (`step` always
 rebuilds its one stem.)
+
+Full builds run two independent CAD batch processes by default. Use
+`build --jobs 1` on a low-memory machine, or up to `--jobs 4` when more
+memory and CPU cores are available. Each heavy worker can use about 1.2 GB.
+Workers never share an OCCT interpreter, and the output lock still rejects
+concurrent build commands targeting the same directory.
+
+Exact hidden-line rendering can crash inside OpenCascade's rejection cache
+([upstream issue #1546](https://github.com/Open-Cascade-SAS/OCCT/issues/1546)).
+The fault is present in the pinned kernel and released 8.0.1; an upstream
+[cache replacement](https://github.com/Open-Cascade-SAS/OCCT/pull/1489) has
+landed on its development branch. Until a compatible fixed release is
+available, crashed workers restart with a bounded retry budget. Completed
+STEPs, BOMs and drawings are retained, and temporary exact BREP geometry in
+`output/.render-work/` lets unfinished views resume without rebuilding their
+assembly. Checkpoints retain both drawing layers and the original cameras,
+are checked for corruption, and are removed after success or before a fresh
+build. Exhausted retries and incomplete outputs still fail the build.
 
 For shorter typing, the repo `Makefile` wraps each subcommand as a `hw-*`
 target (flags via `ARGS`):

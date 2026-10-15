@@ -31,10 +31,9 @@ from hardware.scheme import (
 )
 
 DEFAULT_BATCH_SIZE = 5
-# Exact-HLR crashes hit up to ~80% per attempt on the worst stem
-# (board_30_pcb assembled). A failed retry costs ~15s — only the missing
-# outputs re-run — so a deep budget is cheap; 12 tries keeps the residual
-# per-stem failure rate near 1%.
+# Exact HLR can crash repeatedly in OCCT's rejection cache (upstream #1546).
+# Retry only missing outputs in fresh processes, resuming saved render
+# geometry where available. Exhaustion remains a hard build failure.
 MAX_STEM_RETRIES = 12
 
 

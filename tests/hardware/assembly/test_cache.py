@@ -29,6 +29,7 @@ def repo(tmp_path, monkeypatch):
         "SVG_DIR": tmp_path / "hardware" / "output" / "svg",
         "BOM_DIR": tmp_path / "hardware" / "output" / "bom",
         "CACHE_DIR": tmp_path / "hardware" / "output" / ".cache",
+        "RENDER_WORK_DIR": tmp_path / "hardware" / "output" / ".render-work",
     }
     monkeypatch.setattr(cache, "REPO_ROOT", tmp_path)
     for name, d in dirs.items():
@@ -355,4 +356,14 @@ def test_dependency_lock_changes_invalidate_source_cache(repo, tmp_path):
     lock.write_text("old kernel")
     previous = cache.source_key(STEM)
     lock.write_text("new kernel")
+    assert cache.source_key(STEM) != previous
+
+
+def test_orchestration_dependencies_invalidate_source_cache(repo):
+    assembly = repo.PROCEDURES_DIR.parent
+    (assembly / "build_procedures.py").write_text("from .writer import FORMAT\n")
+    writer = assembly / "writer.py"
+    writer.write_text("FORMAT = 1\n")
+    previous = cache.source_key(STEM)
+    writer.write_text("FORMAT = 2\n")
     assert cache.source_key(STEM) != previous

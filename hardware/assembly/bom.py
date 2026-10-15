@@ -152,9 +152,8 @@ def write_bom(
     """Build ``step_name`` and write its BOM Markdown to ``BOM_DIR`` —
     cumulative and/or delta-vs-predecessor.
 
-    Reused by ``hardware.assembly.build_procedures`` so one render pass can
-    also emit BOMs; the build is cheap there because the leaf-part cache is
-    already warm. The first step's delta is its entire BOM (empty predecessor)."""
+    Called before rendering to warm the leaf-part cache and retain BOMs if
+    rendering crashes. The first step's delta is its entire BOM (empty predecessor)."""
     current = collect(load_step(step_name))
     BOM_DIR.mkdir(parents=True, exist_ok=True)
     if cumulative:

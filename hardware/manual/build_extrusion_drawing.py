@@ -20,13 +20,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from hardware.build_lock import locked_main
 from hardware.assembly.travel_ranges import (
     PHONE_BED_BEAM_LENGTH,
     X_BEAM_LENGTH,
     X_EXTRUSION_LENGTH,
     Y_EXTRUSION_LENGTH,
 )
+from hardware.build_lock import locked_main
 from hardware.manual import BuildError
 from hardware.manual.build_sourcing_guide import load_bom_rows
 from hardware.manual.common import HTML_LANG, URL_MARK, _step, loc, manual_version

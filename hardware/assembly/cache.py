@@ -53,6 +53,7 @@ from hardware.scheme import (
     MARK_DIR,
     PATCH_DIR,
     PROCEDURES_DIR,
+    RENDER_WORK_DIR,
     REPO_ROOT,
     STEP_DIR,
     SVG_DIR,
@@ -105,10 +106,10 @@ def _imports(path: Path) -> set[str]:
     return mods
 
 
-def _closure(path: Path) -> frozenset[Path]:
-    """All project source files reachable from ``path`` through imports."""
+def _closure(*paths: Path) -> frozenset[Path]:
+    """All project source files reachable from ``paths`` through imports."""
     seen: set[Path] = set()
-    stack = [path]
+    stack = list(paths)
     while stack:
         p = stack.pop()
         if p in seen:
@@ -145,19 +146,23 @@ def source_key(stem: str) -> str:
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
     h.update(platform.python_version().encode())
     h.update(platform.platform().encode())
-    _hash_files(h, _closure(PROCEDURES_DIR / f"{stem}.py"))
     # Export orchestration and BOM code aren't necessarily imported by the
     # procedure. Lockfile changes also invalidate transitive OCCT versions.
-    for name in (
-        "hardware/assembly/build_procedures.py",
-        "hardware/assembly/bom.py",
-        "hardware/assembly/cache.py",
-        "uv.lock",
-        "pyproject.toml",
-    ):
-        path = REPO_ROOT / name
-        if path.is_file():
-            _hash_files(h, _closure(path) if path.suffix == ".py" else [path])
+    inputs = {
+        REPO_ROOT / name
+        for name in (
+            "hardware/assembly/build_procedures.py",
+            "hardware/assembly/bom.py",
+            "hardware/assembly/cache.py",
+            "uv.lock",
+            "pyproject.toml",
+        )
+        if (REPO_ROOT / name).is_file()
+    }
+    sources = _closure(
+        PROCEDURES_DIR / f"{stem}.py", *(p for p in inputs if p.suffix == ".py")
+    )
+    _hash_files(h, sources | inputs)
     return h.hexdigest()
 
 
@@ -236,6 +241,8 @@ def clear_outputs(stem: str) -> None:
     now emits fewer cameras/variants doesn't leave a stale file behind.
     Sweeps the stem's in-progress .tmp files too (a SIGSEGV'd render or
     export can leave one)."""
+    for variant in VARIANTS:
+        shutil.rmtree(RENDER_WORK_DIR / f"{stem}_{variant}", ignore_errors=True)
     tmps = list(SVG_DIR.glob(f"{stem}_*_cam*.tmp"))
     tmps += STEP_DIR.glob(f"{stem}_*.tmp")
     for f in _source_outputs(stem) + _snapshot_outputs(stem) + tmps:
@@ -260,11 +267,8 @@ def _restore(files) -> None:
 
 def _sha256_file(p: Path) -> str:
     """sha256 of a file's bytes, streamed (the .step files run to ~18 MB)."""
-    h = hashlib.sha256()
     with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+        return hashlib.file_digest(f, "sha256").hexdigest()
 
 
 def _store_layer(stem: str, *, key_file: str, key_value: str, belongs, outputs) -> None:

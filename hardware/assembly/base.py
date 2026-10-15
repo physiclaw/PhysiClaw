@@ -15,10 +15,11 @@ from pathlib import Path
 
 from build123d import MM, Compound, ExportSVG, LineType, ShapeList, Unit
 
+from hardware.assembly import render_checkpoint
 from hardware.assembly.projection import ISO, Camera, camera_view
 from hardware.assembly.svg_utils import inject_non_scaling_strokes, strip_root_dims
 from hardware.parts.base import BasePart
-from hardware.scheme import svg_path_for, variant_suffix
+from hardware.scheme import RENDER_WORK_DIR, svg_path_for, variant_suffix
 
 # Top-level Compound labels recognised by BaseAssembly.render() for the
 # two-layer split. The ``layer_`` prefix namespaces them as render-routing
@@ -158,10 +159,22 @@ class BaseAssembly(BasePart):
         clearing a stem's outputs before its first attempt) — and the
         whole-variant skip that avoids ``build()`` entirely lives with
         them too, since only they can also skip the STEP export."""
-        if not self.view_indices:  # variant renders no views — skip the build
+        indices = self.view_indices
+        if not indices:  # variant renders no views — skip the build
             return
-        assembly = self.build()
-        solid, ghost = _split_solid_ghost(assembly)
+        checkpoint = RENDER_WORK_DIR / f"{self._module_stem()}{self.name_suffix()}"
+        resumed = render_checkpoint.load(checkpoint, indices) if only_missing else None
+        if resumed is None:
+            assembly = self.build()
+            solid, ghost = _split_solid_ghost(assembly)
+            cameras = self.cameras
+            views = {
+                str(i): [list(v) for v in camera_view(assembly, cameras[i])]
+                for i in indices
+            }
+            render_checkpoint.save(checkpoint, solid, ghost, views)
+        else:
+            solid, ghost, views = resumed
 
         with warnings.catch_warnings():
             # OCCT's hidden-line removal can split a projected circular rim (every
@@ -172,8 +185,7 @@ class BaseAssembly(BasePart):
             warnings.filterwarnings(
                 "ignore", message="Skipping ellipse that is too small"
             )
-            for i in self.view_indices:
-                cam = self.cameras[i]
+            for i in indices:
                 if only_missing and self.svg_path(index=i).exists():
                     continue
                 # Camera + look_at derived from the FULL assembly bbox so
@@ -181,7 +193,7 @@ class BaseAssembly(BasePart):
                 # shared look_at, project_to_viewport defaults to each
                 # subset's own center, which warps the projection direction
                 # per layer.
-                cam_pos, up, look_at = camera_view(assembly, cam)
+                cam_pos, up, look_at = views[str(i)]
 
                 exporter = ExportSVG(unit=Unit.MM, margin=self.page_margin)
                 exporter.add_layer(SOLID_LABEL, line_weight=self.line_weight)
@@ -213,6 +225,7 @@ class BaseAssembly(BasePart):
                     inject_non_scaling_strokes(strip_root_dims(tmp.read_text()))
                 )
                 tmp.replace(path)
+        render_checkpoint.clear(checkpoint)
 
 
 def _split_solid_ghost(assembly):
