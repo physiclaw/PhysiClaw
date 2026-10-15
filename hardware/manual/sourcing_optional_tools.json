@@ -22,7 +22,7 @@
   },
   {
     "name": {"zh": "电工胶带", "en": "Electrical tape"},
-    "purpose": {"zh": "固定并绝缘电磁铁延长线的接头（未焊接时）", "en": "Securing and insulating unsoldered joints in the solenoid extension cable"},
+    "purpose": {"zh": "固定并绝缘电磁铁延长线的接头", "en": "Securing and insulating unsoldered joints in the solenoid extension cable"},
     "sources": {
       "zh": [
         {

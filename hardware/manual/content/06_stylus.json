@@ -146,6 +146,18 @@
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:60mm;"
+      },
+      {
+        "h3": {
+          "en": "Use 6 <span class=\"unit\">mm</span> long bolts",
+          "zh": "使用 6 <span class=\"unit\">mm</span> 长度螺栓"
+        },
+        "body": {
+          "en": "Longer bolts can push against the coil and cause damage.",
+          "zh": "过长的螺栓会挤压线圈，损坏电磁铁。"
+        },
+        "classes": "note overlay sm",
+        "style": "left:22mm; bottom:32mm; width:90mm;"
       }
     ],
     "bom": {
