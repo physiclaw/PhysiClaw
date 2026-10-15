@@ -188,6 +188,31 @@ test('test_reset_waits_for_catalog_before_unlocking', async () => {
   assert.equal(ui.el('banner').textContent, 'fixture catalog unavailable');
 });
 
+for (const button of ['pb-step', 'pb-end']) {
+  test(`test_regression_invalid_position_blocks_${button}_until_reset`, async () => {
+    const ui = await createUI();
+    const entry = ui.routes.get('/api/playbooks').packs[0].playbooks[0];
+    entry.position_error = 'Saved position is invalid: <bad>. Use Reset to start over.';
+    await ui.click('pb-reset'); // Reload the catalog with the invalid position.
+
+    await ui.click(button);
+
+    assert.equal(ui.el('pb-pos').textContent, entry.position_error);
+    assert.equal(ui.el('banner').textContent, entry.position_error);
+    assert.equal(ui.el('pb-select').options[0].disabled, false);
+    assert.equal(ui.el('pb-reset').disabled, false);
+    assert.equal(ui.requests.filter(r => r.url === '/api/step' && r.body).length, 0);
+
+    delete entry.position_error;
+    ui.routes.set('/api/step', ({body}) => body ? {status: 'ok'} : {status: 'ok', running: false});
+    await ui.click('pb-reset');
+    await ui.click(button);
+    await ui.flush();
+
+    assert.equal(ui.requests.filter(r => r.url === '/api/step' && r.body).length, 1);
+  });
+}
+
 for (const event of ['pointercancel', 'lostpointercapture']) {
   test(`test_regression_${event}_discards_drag_before_pointer_up`, async () => {
     const ui = await createUI();

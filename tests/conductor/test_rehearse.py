@@ -13,6 +13,8 @@ the MCP connection and the macro runner are both faked.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from conductor_fakes import (
     HOME,
@@ -114,6 +116,34 @@ def _registry():
 
 
 # ---------- _dispatch: the engine's routing, reproduced ----------
+
+
+async def test_regression_dispatch_records_pack_macros_separately():
+    from physiclaw.common import paths
+    from physiclaw.conductor.load.pack import load_pack
+    from physiclaw.macros import stats
+
+    write_pack(app="alpha", macros=("open-app",))
+    write_pack(app="beta", macros=("open-app",))
+    registry = {
+        "alpha/open-app": load_pack("alpha").macros["open-app"],
+        "beta/open-app": load_pack("beta").macros["open-app"],
+    }
+    first = ToolCall(id="a", name="run_macro", arguments={"name": "alpha/open-app"})
+    second = ToolCall(id="b", name="run_macro", arguments={"name": "beta/open-app"})
+
+    a = await rehearsal.dispatch(_FakeMcp(), first, registry)
+    b = await rehearsal.dispatch(_FakeMcp(), second, registry)
+
+    assert not a[1] and not b[1]
+    assert {name: row["total_runs"] for name, row in stats.load().items()} == {
+        "alpha/open-app": 1,
+        "beta/open-app": 1,
+    }
+    assert {
+        json.loads(p.read_text().splitlines()[0])["macro"]
+        for p in paths.macros_log_dir().glob("*/events.jsonl")
+    } == {"alpha/open-app", "beta/open-app"}
 
 
 async def test_dispatch_sends_an_ordinary_gesture_to_mcp() -> None:

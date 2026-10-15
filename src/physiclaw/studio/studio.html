@@ -850,7 +850,7 @@ function renderPlaybook() {
   const desc = $("pb-desc"), route = $("route"), pos = $("pb-pos");
   route.innerHTML = ""; pos.innerHTML = "";
   desc.textContent = p ? (p.description || "") : "scaffold a pack: physiclaw playbooks init <app>";
-  renderInputs($("pb-inputs"), p && !p.position ? p.inputs : [], pb.ref);
+  renderInputs($("pb-inputs"), p && !p.position && !p.position_error ? p.inputs : [], pb.ref);
   if (!p) return;
   const cur = p.position ? p.position.idx : 0;
   (p.nodes || []).forEach((n, i) => {
@@ -876,6 +876,10 @@ function renderPlaybook() {
     };
     route.appendChild(li);
   });
+  if (p.position_error) {
+    pos.textContent = p.position_error;
+    return;
+  }
   const g = p.position;
   pos.innerHTML = g
     ? "at <b>" + g.node + "</b>" + (pb.at ? " · next step at <b>" + pb.at + "</b>" : "")
@@ -894,6 +898,7 @@ function pbNextNode(p) {
 async function stepPlaybook(toEnd) {
   const p = pbEntry();
   if (!p || state.busy) return;
+  if (p.position_error) { banner(p.position_error); return; }
   const next = pbNextNode(p);
   const from = pb.at ? (p.nodes || []).findIndex(n => n.id === pb.at) : (p.position ? p.position.idx : 0);
   const ahead = (p.nodes || []).slice(Math.max(0, from));

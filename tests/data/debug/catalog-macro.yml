@@ -1,0 +1,11 @@
+kind: macro
+schema: 1
+name: example
+description: catalogue example
+inputs:
+  message:
+    description: text to send
+    default: default message
+    example: example message
+steps:
+  - send_to_clipboard: "{message}"

@@ -527,6 +527,7 @@ async def test_macro_runs_the_range_on_the_lent_client(monkeypatch) -> None:
 
     assert record["spec"] is spec and record["client"] is session.client
     assert record["values"] == {"message": "hi"} and record["caller"] == "studio"
+    assert record["record_as"] == "demo/open-app"
     assert record["start_at"] == "clip" and record["stop_after"] == "clip"
     snap = job.snapshot(0)
     assert snap["kind"] == "macro" and snap["result"]["ok"] is True

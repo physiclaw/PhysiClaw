@@ -302,6 +302,7 @@ async def dispatch(
                 call.arguments.get("inputs") or {},
                 mcp,
                 caller=caller,
+                record_as=qualified,
                 start_at=start_at,
                 stop_after=stop_after,
             )

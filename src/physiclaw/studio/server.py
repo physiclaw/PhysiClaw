@@ -417,6 +417,7 @@ async def handle_macro(request: Request, session: Session, job: Job) -> JSONResp
                 emit=emit,
                 observe=observe,
                 caller="studio",
+                record_as=name,
                 **span,
             )
 

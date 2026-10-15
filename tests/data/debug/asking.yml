@@ -1,0 +1,13 @@
+description: ask
+route:
+  - page: app.pages.home
+  - do: open
+    macro: app.macros.open-app
+  - page: app.pages.home
+  - ask: approve
+    message: continue?
+    approve: continue
+    yes: [yes]
+    no: [no]
+    wait: 5
+    rounds: 1

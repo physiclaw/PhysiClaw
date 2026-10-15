@@ -1,37 +1,22 @@
-"""Stepping — one node of a playbook, or one gesture of a macro, per
-call: the debugger's core. `physiclaw playbooks step` and `macros run`
-are typer around it for an agent at a terminal; the studio's Playbook
-and Macro tabs are HTML around it for a person in a browser. Neither
-skin holds any of this logic.
+"""Playbook and macro stepping for the CLI and Studio.
 
-Two granularities, deliberately separate. A playbook node runs with
-its page checks (enter, verify, the declared recover hand), so it is
-stepped whole, or its FIRST gesture only (`start_at`/`stop_after`) —
-from the second gesture on, the screen is no longer the enter page and
-the walk would recover instead of tapping. A macro is stepped gesture
-by gesture with no page checks at all (`run_macro`, over the macro
-runner's own step range), which is how a hand that misses is fixed:
-run one gesture, look, tap by hand to recover, edit the step, run it
-again. Pack macros (directory and inline) are addressable by their
-qualified `app/name`, the same name a walk dispatches.
+`step` rebuilds a Program from its saved position, runs a node through
+the rehearsal loop, and saves the resulting cursor. Page checks and
+recovery remain active. A handover keeps the cursor for an edited retry;
+completion clears it. `debug/walk.json` is debugger state, separate from
+the runtime's cross-wake suspension file.
 
-A step rebuilds the walk from a persisted position (`Program.state`,
-the suspension projection, overlaid as a checkpoint: a recover hand's
-restart walks below the cursor exactly as a wake's fresh walk would),
-runs the node at the cursor on the live
-phone through the rehearsal loop (`conductor.rehearsal.walk` with
-`Program.step_one` set), and persists where the cursor stands when the
-loop pauses. The user channel is virtual: an ask's send still runs on
-the phone, but its observation is rewritten from `debug/thread.json`
-(`interceptor.FakeChannel`), so the reply an ask reads is the one
-staged here. No model ever takes over on a handover — the position
-stays on the node so the author can edit the pack and step again.
+The user channel is virtual while stepping: sends still reach the phone,
+but FakeChannel supplies observations from `debug/thread.json`. Staged
+replies let an author exercise asks without another person answering.
 
-The position file is a tool's scratch under `debug/` (never a wake's
-contract: `conductor.suspension` stays the only cross-wake file).
+`run_macro` executes a gesture range through the same runner as `macros run`.
+It applies macro guards without the enclosing playbook's page checks, so
+individual gestures can be retried after editing. Pack macros use qualified
+names (`app/name`, or `app/playbook.move` for inline bodies); callers retain
+that identity when recording runs and reporting observations.
 """
 
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,8 +46,6 @@ from physiclaw.contract.dto import ToolCall
 from physiclaw.debug import thread as vthread
 from physiclaw.macros.model import Macro, MacroError, MacroInput
 from physiclaw.macros.steps import Step as MacroStep
-
-log = logging.getLogger(__name__)
 
 STATE_FILENAME = "walk.json"
 
@@ -237,11 +220,14 @@ def reset(app: str, name: str) -> str:
 def position(spec: Playbook, state: dict, staged: list[str] | None = None) -> Position:
     """`staged` is the virtual thread's queue; read here when the caller
     has not already."""
+    idx = int(state["idx"])
+    if not 0 <= idx <= len(spec.nodes):
+        raise PlaybookError(f"saved idx {idx} is outside the playbook")
     return Position(
         app=spec.app,
         name=spec.name,
-        idx=int(state["idx"]),
-        node=str(state.get("label") or node_label(spec, int(state["idx"]))),
+        idx=idx,
+        node=str(state.get("label") or node_label(spec, idx)),
         values=dict(state.get("values") or {}),
         outputs=dict(state.get("outputs") or {}),
         awaiting=bool(state.get("awaiting")),
@@ -290,9 +276,16 @@ def catalog() -> list[dict]:
                 item["inputs"] = [_input_item(i) for i in spec.inputs]
                 item["nodes"] = [n.to_dict() for n in route(spec)]
                 state = _owned(stored, app, entry.name)
-                item["position"] = (
-                    position(spec, state, staged).to_dict() if state else None
-                )
+                item["position"] = None
+                if state:
+                    try:
+                        item["position"] = position(spec, state, staged).to_dict()
+                    except (KeyError, TypeError, ValueError, OverflowError) as e:
+                        # Keep the playbook selectable so Reset can recover it.
+                        # Never discard a cursor or silently restart its actions.
+                        item["position_error"] = (
+                            f"Saved position is invalid: {e}. Use Reset to start over."
+                        )
             entries.append(item)
         if entries:
             packs.append({"app": app, "playbooks": entries})
@@ -370,6 +363,11 @@ async def step(
 
     emit_warn = emit_warn or emit
     spec, pack = load_spec(app, name)
+    # Refuse invalid targets before resetting the script or staging a reply.
+    at_idx = node_index(spec, at) if at is not None else None
+    to_idx = None
+    if to is not None:
+        to_idx = len(spec.nodes) if to == "end" else node_index(spec, to)
     channel = channel_mod.load_channel()
     # The boot's menu of enabled playbooks: every pack on disk, read
     # once per invocation rather than per node built.
@@ -408,13 +406,13 @@ async def step(
             "inputs are fixed for a walk in progress — reset to start over"
         )
     state["outputs"] = {**state.get("outputs", {}), **(outputs or {})}
-    if at is not None:
+    if at_idx is not None:
         # A jump abandons whatever the cursor was holding — an ask left
         # awaiting its reply (`Gate.abandon_ask` says what goes and what
         # stays) — and forgets the jumped-to node's own recorded answer,
         # so a re-run really re-runs it (the walk starts past any
         # SETTLED pure-text node).
-        state["idx"] = node_index(spec, at)
+        state["idx"] = at_idx
         # …including the round it was in. The stored offset is read
         # against whatever run the new index lands on, so leaving it
         # behind seats the cursor INSIDE that run at the old node —
@@ -427,9 +425,6 @@ async def step(
         }
     if reply is not None:
         vthread.stage([reply])
-    to_idx = None
-    if to is not None:
-        to_idx = len(spec.nodes) if to == "end" else node_index(spec, to)
     fake = FakeChannel()
     opts = {k: v for k, v in (("start_at", start_at), ("stop_after", stop_after)) if v}
     first = True
@@ -594,17 +589,28 @@ async def run_macro(
     emit: Emit,
     observe: Observe | None = None,
     caller: str = "cli",
+    record_as: str = "",
 ) -> dict:
     """Run a macro's step range through the macro runner — no page
     checks, the runner's own guards only — emitting its header and step
     log, and showing `observe` the result view. Returns {ok, message,
-    run_id}. Raises MacroError before any gesture on bad inputs or an
+    run_id}. Pass the requested qualified name as `record_as` for pack
+    macros, so history and observations retain their namespace. Defaults
+    to the spec's name for standalone macros.
+    Raises MacroError before any gesture on bad inputs or an
     unknown step handle (recorded as bad_input by the runner)."""
     from physiclaw.common import gesture_vocab, verdict
     from physiclaw.macros import runner as macro_runner
 
+    name = record_as or spec.name
     result = await macro_runner.run_and_record(
-        spec, values, mcp, caller=caller, start_at=start_at, stop_after=stop_after
+        spec,
+        values,
+        mcp,
+        caller=caller,
+        start_at=start_at,
+        stop_after=stop_after,
+        record_as=name,
     )
     text = verdict.action_text(result.blocks)
     lines = exchange.result_lines(text, False)
@@ -613,12 +619,12 @@ async def run_macro(
     if observe is not None:
         observe(
             ToolCall(
-                id="macro", name=gesture_vocab.RUN_MACRO, arguments={"name": spec.name}
+                id="macro", name=gesture_vocab.RUN_MACRO, arguments={"name": name}
             ),
             result.blocks,
         )
     return {
         "ok": result.ok,
-        "message": lines[0] if lines else f"macro {spec.name}: no result",
+        "message": lines[0] if lines else f"macro {name}: no result",
         "run_id": result.run_id,
     }
