@@ -192,8 +192,22 @@ assembly. Checkpoints retain both drawing layers and the original cameras,
 are checked for corruption, and are removed after success or before a fresh
 build. Exhausted retries and incomplete outputs still fail the build.
 
-For shorter typing, the repo `Makefile` wraps each subcommand as a `hw-*`
-target (flags via `ARGS`):
+Run `make hw-help` for the hardware commands, grouped by task. The main workflow is:
+
+| Command | Result |
+| --- | --- |
+| `make hw-build ARGS=--bom` | Build local CAD outputs with the cache. |
+| `make hw-prepare HW_VERSION=X.Y` | Prepare and verify a local release bundle with the cache. No upload. |
+| `make hw-verify HW_VERSION=X.Y` | Check an existing bundle. No rebuild or upload. |
+| `make hw-publish HW_VERSION=X.Y` | Publish a prepared bundle, then trigger the docs hook. |
+| `make hw-deploy HW_VERSION=X.Y` | Prepare, verify, publish and trigger the docs hook in one command. |
+
+Commit and push main before preparing a bundle intended for publication.
+`hw-release` remains an alias for `hw-publish`. Use `make docs-deploy` to retry
+only the docs hook. `hw-rebuild` explicitly bypasses the CAD cache; routine builds
+and releases use the cache.
+
+For individual outputs, pass flags through `ARGS`:
 
 ```bash
 make hw-parts                     # export part STEPs
@@ -207,8 +221,8 @@ make hw-sourcing                  # build sourcing guide
 make hw-drawing ARGS=--pdf        # build the extrusion tech drawing (HTML, and PDF)
 make hw-mark ARGS=<svg|json>      # annotate a step drawing
 pbpaste | make hw-camera          # FreeCAD view → Camera() literal
-make hw-rebuild                   # full rebuild, all stages
-make hw-help                      # list every subcommand
+make hw-rebuild                   # all local stages, bypass CAD cache
+make hw-help                      # show commands by task
 ```
 
 The sourcing builder reads `sourcing_vendors.cn.json` for `--lang zh` and
@@ -293,8 +307,8 @@ move its generated directory aside after reviewing why it failed.
 When publication is intended, commit and push main **before preparation**, then:
 
 ```bash
-make hw-release HW_VERSION=X.Y
-# Or preflight, prepare and publish in one command:
+make hw-publish HW_VERSION=X.Y
+# Or preflight, prepare, publish and refresh docs in one command:
 make hw-deploy HW_VERSION=X.Y
 ```
 
@@ -333,8 +347,10 @@ The gates catch build and packaging mistakes; they do not prove physical fit
 or replace engineering review of changed geometry. Repository administrators
 must keep CI required and review changes to release guards to prevent bypasses.
 
-After publishing, run `make docs-deploy` — it triggers the docs site's
-Cloudflare Pages deploy hook (the URL lives in the gitignored
-`.docs-deploy-hook` at the repo root). The site serves the assembly manual,
+After successful publication, both `make hw-publish` (also called `hw-release`)
+and `make hw-deploy` automatically run `make docs-deploy` to trigger the docs site's
+Cloudflare Pages deploy hook. Its URL lives in the gitignored `.docs-deploy-hook`
+at the repo root. The site serves the assembly manual,
 the sourcing guide and the extrusion tech drawing from the release assets,
-so the live pages stay on the old release until it rebuilds.
+so the live pages update when that deployment finishes. If the hook fails, the
+hardware release stays published; retry only `make docs-deploy`.

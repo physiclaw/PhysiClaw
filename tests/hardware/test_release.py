@@ -318,6 +318,11 @@ def github(bundle, monkeypatch):
             if action == "edit":
                 state["release"]["draft"] = False
             return ""
+        if args == ("make", "docs-deploy"):
+            assert state["release"]["draft"] is False
+            if state["failure"] == "docs":
+                raise subprocess.CalledProcessError(1, args)
+            return "docs-site deploy triggered"
         pytest.fail(f"Unexpected command: {args}")
 
     monkeypatch.setattr(rel, "run", run)
@@ -355,6 +360,18 @@ def test_publish_uses_exact_commit_and_server_checksums_without_download(github)
     reads = [c for c in calls if c[:2] == ("gh", "api")]
     assert "--paginate" in reads[0]  # Includes unpublished drafts.
     assert reads[-1][-1] == "repos/physiclaw/PhysiClaw/releases/42"
+    assert calls[-1] == ("make", "docs-deploy")
+
+
+def test_docs_failure_leaves_published_release_and_gives_specific_retry(github):
+    state, calls = github
+    state["failure"] = "docs"
+    with pytest.raises(
+        rel.ReleaseError, match="published.*Retry only: make docs-deploy"
+    ):
+        rel.publish(VERSION)
+    assert state["release"]["draft"] is False
+    assert calls[-1] == ("make", "docs-deploy")
 
 
 @pytest.mark.parametrize("count", [0, 3, 7])
@@ -418,15 +435,17 @@ def test_conflicting_draft_is_never_modified(github, bundle, damage):
     assert not any(c[:2] == ("gh", "release") for c in calls)
 
 
-@pytest.mark.parametrize("failure", ["create", "upload", "view", "missing-asset"])
+@pytest.mark.parametrize(
+    "failure", ["create", "upload", "view", "missing-asset", "edit"]
+)
 def test_upload_failure_never_publishes_or_deletes_draft(github, failure):
     state, calls = github
     state["failure"] = failure
     with pytest.raises((rel.ReleaseError, subprocess.CalledProcessError)):
         rel.publish(VERSION)
-    assert not any(
-        c[:3] in [("gh", "release", "edit"), ("gh", "release", "delete")] for c in calls
-    )
+    assert state["release"] is None or state["release"]["draft"] is True
+    assert ("make", "docs-deploy") not in calls
+    assert not any(c[:3] == ("gh", "release", "delete") for c in calls)
 
 
 @pytest.mark.parametrize("failure", [None, "download", "checksum"])

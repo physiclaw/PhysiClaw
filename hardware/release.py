@@ -570,9 +570,14 @@ def publish(version: str) -> None:
         "--target",
         commit,
     )
-    print(
-        f"Published {tag} at {commit}. Run make docs-deploy to refresh the docs site."
-    )
+    print(f"Published {tag} at {commit}", flush=True)
+    try:
+        print(run("make", "docs-deploy"), flush=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise ReleaseError(
+            "Hardware release is published, but the docs hook failed. "
+            "Retry only: make docs-deploy"
+        ) from exc
 
 
 @locked_main

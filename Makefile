@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help bump build publish release docs-deploy \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-deploy hw-release _hw-package
+        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-deploy hw-publish hw-release _hw-package
 
 PY ?= uv run
 
@@ -42,26 +42,7 @@ help:
 	@echo "  release [VERSION=X.Y.Z]"
 	@echo "                        — full release: bump + build + publish in one shot."
 	@echo ""
-	@echo "Hardware (CAD-as-code) — pass flags via ARGS=\"...\":"
-	@echo "  hw-help                 — list the hardware CLI subcommands"
-	@echo "  hw-parts                — export part STEPs"
-	@echo "  hw-build [ARGS=--bom]   — build assembly steps (STEP + SVG)"
-	@echo "  hw-check                — static consistency check (stems/patches/manual/sourcing)"
-	@echo "  hw-step ARGS=<stem>     — build one step (= build --bom --stems)"
-	@echo "  hw-print                — 3D-print package (zip)"
-	@echo "  hw-manual [ARGS=--pdf]  — bilingual build manual"
-	@echo "  hw-sourcing             — sourcing guide"
-	@echo "  hw-drawing [ARGS=--pdf] — extrusion tech drawing: English file EN + ZH (2 pages), Chinese file ZH (1 page)"
-	@echo "  hw-mark ARGS=<svg|json> — annotate a step drawing"
-	@echo "  hw-replay [ARGS=file]   — replay annotation patches"
-	@echo "  hw-camera ARGS=\"...\"    — FreeCAD camera view → Camera() literal"
-	@echo "                            (or pipe: pbpaste | make hw-camera)"
-	@echo "  hw-rebuild              — full rebuild: parts → build → print → manual+pdf → sourcing"
-	@echo "  hw-prepare HW_VERSION=X.Y — cached isolated build + verified local release bundle"
-	@echo "  hw-verify HW_VERSION=X.Y  — verify sources, checksums and bundle contents"
-	@echo "  hw-deploy HW_VERSION=X.Y  — preflight → prepare → publish verified draft"
-	@echo "  hw-release HW_VERSION=X.Y — publish a previously prepared and verified bundle"
-	@echo "  docs-deploy             — redeploy docs.physiclaw.ai (Cloudflare Pages deploy hook)"
+	@$(MAKE) --no-print-directory hw-help
 
 test:
 	$(PY) pytest
@@ -197,7 +178,38 @@ release: bump build publish
 # Flags / positionals go through ARGS, e.g.  make hw-build ARGS="--bom".
 
 hw-help:
-	$(HW) --help
+	@echo "Hardware — run from the repository root:"
+	@echo ""
+	@echo "  Local work (no upload):"
+	@echo "    make hw-build [ARGS=--bom]           Build CAD drawings and STEPs; reuse cache"
+	@echo "    make hw-check                       Check hardware source consistency"
+	@echo "    make hw-prepare HW_VERSION=X.Y       Build and verify a local release bundle; reuse cache"
+	@echo "    make hw-verify HW_VERSION=X.Y        Verify an existing bundle without rebuilding"
+	@echo ""
+	@echo "  Release (commit and push main first):"
+	@echo "    make hw-deploy HW_VERSION=X.Y        Prepare → verify → publish → trigger docs deploy"
+	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → trigger docs deploy"
+	@echo "    make hw-preflight HW_VERSION=X.Y     Check Git/GitHub readiness; no upload"
+	@echo "    make docs-deploy                     Trigger only the docs hook; use if that step failed"
+	@echo ""
+	@echo '  Build or edit one output (flags through ARGS="..."):'
+	@echo "    make hw-step ARGS=<stem>             Build one assembly step with its BOM"
+	@echo "    make hw-parts                       Export part STEPs"
+	@echo "    make hw-print                       Package custom parts for 3D printing"
+	@echo "    make hw-manual                      Build bilingual manual HTML"
+	@echo "    make hw-manual-pdf                   Build bilingual manual HTML and PDFs"
+	@echo "    make hw-sourcing                    Build bilingual sourcing guides"
+	@echo "    make hw-drawing [ARGS=--pdf]         Build extrusion drawings; add --pdf for PDFs"
+	@echo "    make hw-mark ARGS=<svg|json>         Open the drawing annotation tool"
+	@echo "    make hw-replay [ARGS=file]           Apply saved drawing annotations"
+	@echo "    pbpaste | make hw-camera            Convert a FreeCAD view to a Camera() literal"
+	@echo ""
+	@echo "  Force rebuild:"
+	@echo "    make hw-rebuild                      Rebuild all local outputs without CAD cache"
+	@echo ""
+	@echo "  Options: make hw-build ARGS=--help (also works for other build commands)"
+	@echo "  Compatibility: hw-release is an alias for hw-publish."
+	@echo "  Guide: hardware/README.md"
 
 hw-parts:
 	$(HW) parts $(ARGS)
@@ -260,7 +272,7 @@ hw-rebuild:
 
 # All release entry points delegate to the same guarded Python workflow.
 # Each is a single recipe, so make -j cannot reorder preflight/build/publish.
-# hw-prepare and hw-verify are local; hw-deploy and hw-release publish.
+# hw-prepare and hw-verify are local; hw-deploy and hw-publish publish.
 hw-preflight:
 	$(HW_DOC) release preflight
 
@@ -273,11 +285,11 @@ hw-verify:
 hw-deploy:
 	$(HW) release deploy
 
-hw-release:
+hw-publish:
 	$(HW_DOC) release publish
 
-# Compatibility alias: never provide an unguarded internal publish target.
-_hw-package: hw-release
+# Keep existing scripts on the same guarded publication path.
+hw-release _hw-package: hw-publish
 
 # Redeploy docs.physiclaw.ai after a hardware release: the site pulls the
 # manual, sourcing guide and drawing from the latest release at build time.
