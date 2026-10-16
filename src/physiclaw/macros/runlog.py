@@ -48,7 +48,7 @@ from physiclaw.common.text import append_text, clip
 log = logging.getLogger(__name__)
 
 RUN_ID_PREFIX = "macro-run-"
-# Retention is swept once per process, like `trace.RawLog` and the claude
+# Retention is swept once per process, like `trace.RawLog` and the engine
 # session log. It used to run per RUN, and `purge_old_sessions` stats every
 # file under every retained run dir (~23 per run) — so the cost grew with
 # usage and blocked the event loop before each macro.

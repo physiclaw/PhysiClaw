@@ -24,11 +24,8 @@ The second job is loopback exemption: with an env proxy set and no
 ``NO_PROXY``, every loopback client — the runtime's 1s status poll, the
 phone watch, the MCP client — transits the proxy, and local proxies
 answer 502 for loopback upstreams, so the runtime never sees ``ready``.
-It is fixed HERE, in the env, and not by per-client ``trust_env``,
-because one loopback client is not ours to construct: the claude-code
-subprocess's MCP client dials our loopback URL with whatever env it
-inherited (``spawn._child_env`` passes ``NO_PROXY`` through). The env
-is the process-wide floor that children inherit; ``TRUST_PROXY_ENV``
+Normalize loopback exemptions in the environment before clients are built,
+including clients created by SDKs. ``TRUST_PROXY_ENV``
 stays the per-client belt for platforms whose proxy config is not
 env-visible at all (Windows registry — and a darwin proxy set only in
 Network Settings keeps relying on macOS's own bypass list).

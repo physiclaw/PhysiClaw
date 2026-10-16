@@ -33,6 +33,8 @@ def test_write_creates_file_with_required_fields(physiclaw_home: Path) -> None:
     assert state["port"] == 8048
     assert state["model_ref"] is None
     assert state["model_source"] is None
+    assert state["model_error"] is None
+    assert state["no_runtime"] is False
     assert isinstance(state["started_at"], float)
 
 
@@ -422,3 +424,24 @@ def test_request_shutdown_windows_does_not_terminate_process(mocker) -> None:
 
     assert sent is False
     kill.assert_not_called()
+
+
+def test_write_external_mode_survives_live_state_read(mocker):
+    mocker.patch("os.kill")
+
+    runtime_state.write("127.0.0.1", 8048, no_runtime=True)
+    state = runtime_state.read_live()
+
+    assert state["no_runtime"] is True
+    assert state["model_ref"] is None
+
+
+def test_write_startup_model_error_survives_live_state_read(mocker):
+    mocker.patch("os.kill")
+    failure = "unknown provider 'unsupported' (from PHYSICLAW_MODEL env)"
+
+    runtime_state.write("127.0.0.1", 8048, model_error=failure)
+    state = runtime_state.read_live()
+
+    assert state["model_error"] == failure
+    assert state["model_ref"] is None

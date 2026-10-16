@@ -86,7 +86,7 @@ def test_build_trigger_description_includes_job_block_and_done_fail_lines() -> N
     assert "job: x" in out
     assert "description: Do thing" in out
     assert "context: some context" in out
-    # Engine-neutral close instruction — no concrete CLI syntax; each
+    # Engine tool close instruction — no concrete CLI syntax; each
     # engine path routes through its own jobs surface.
     assert "When you finish each job" in out
     assert "finish_job" in out

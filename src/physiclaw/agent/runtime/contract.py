@@ -1,43 +1,17 @@
-"""Session-outcome contract — engine-neutral close policy for one wake.
+"""Session close policy for one wake of the PhysiClaw engine.
 
-Both engines (the in-process tool-call loop in ``agent/engine/`` and the
-``claude -p`` subprocess in ``agent/claude/``) speak the same outcome
-vocabulary (``runtime.sentinel``): DONE / STUCK / FAIL / IDLE / WAIT, or
-no clean close at all. What must HAPPEN on each outcome — which ones get
-a fresh attempt, what a jobless WAIT schedules, when a first-run setup
-session earns a restart — is product policy, not engine mechanics. It
-lives here, once, so an engine cannot silently diverge from it (the
-claude path shipped without the WAIT follow-up for exactly that reason:
-the doctrine promised it, but the policy was buried in the other
-engine's retry loop).
-
-``drive()`` owns the attempt loop; an engine shrinks to "run one
-attempt, report a ``SessionOutcome``". Attempts keep their own error
-containment — the engine converts crashes to STUCK internally, the
-claude path lets construction errors propagate (a broken spawn is an
-operator problem, not a retry case) — so ``drive()`` never catches.
-
-One divergence is deliberate, not drift: the in-process engine runs
-turn plugins (`[agent] plugins` — the conductor's armed playbooks, and
-its boot to the user's thread at wake); the claude path runs none. A plugin's payoff is eliminating metered provider calls, and that
-path is subscription-metered — so it keeps the doctrine-in-prose
-version, executed by the model.
-
-Retry semantics stay per-engine via ``retry_on``: the engine retries
-STUCK (its harness-detected dead ends — max turns, provider exhausted,
-crash — are worth a fresh session), while the claude path retries only
-UNDONE (``None``): a model-declared STUCK there is a considered close,
-and a re-spawn would replay the same doctrine against the same blocker.
+``drive()`` owns STUCK retries, first-run setup restarts, and jobless-WAIT
+follow-ups. Attempts report ``SessionOutcome`` and contain their own runtime
+failures. The runtime uses ``productive()`` to back off unproductive wakes.
 """
 
-import asyncio
 import datetime as dt
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Collection
+from typing import Awaitable, Callable
 
 from physiclaw.agent.runtime.hook import Trigger
-from physiclaw.agent.runtime.sentinel import DONE, WAIT
+from physiclaw.agent.runtime.sentinel import DONE, STUCK, WAIT
 
 log = logging.getLogger(__name__)
 
@@ -47,14 +21,13 @@ class SessionOutcome:
     """What one session attempt reports back to ``drive()``.
 
     ``status`` is a ``runtime.sentinel`` status, or ``None`` when the
-    session produced no clean close (crash, kill, timeout — the claude
-    path's "UNDONE"). ``created_job`` matters only on WAIT: True when
-    the session scheduled its own resume job, which suppresses the
-    generic follow-up. ``restart_requested`` is the engine's one-shot
+    session produced no clean close. ``created_job`` matters only on WAIT:
+    True when the session scheduled its own resume job, which suppresses
+    the generic follow-up. ``restart_requested`` is the engine's one-shot
     first-run-setup restart. ``retryable=False`` marks an outcome that
-    must not burn further attempts even when ``status`` is in
-    ``retry_on`` (e.g. a wall-clock budget exhaustion — a slow
-    environment would eat every retry the same way).
+    must not burn further attempts even when ``status`` is STUCK (e.g. a
+    wall-clock budget exhaustion — a slow environment would eat every retry
+    the same way).
     """
 
     status: str | None = None
@@ -85,17 +58,11 @@ async def drive(
     *,
     max_attempts: int,
     wait_default_minutes: int,
-    retry_on: Collection[str | None],
-    retry_backoff_seconds: float = 0.0,
 ) -> SessionOutcome:
     """Run ``attempt`` until a final outcome; enforce the close policy.
 
-    - An outcome whose status is in ``retry_on`` (and is ``retryable``)
-      gets a fresh attempt, up to ``max_attempts`` total, spaced by
-      ``retry_backoff_seconds``. Anything else is final on first
-      occurrence. ``retry_on`` has no default on purpose — which
-      statuses earn a fresh attempt is the one genuinely per-engine
-      policy (see module docstring), so every caller states it.
+    - A retryable STUCK gets a fresh attempt, up to ``max_attempts`` total.
+      Other outcomes end the wake immediately.
     - One extra restart is allowed when an attempt completes first-run
       screen-layout setup: the layout only reaches the SYSTEM prompt on
       a fresh render, so the same triggers re-run once with it loaded.
@@ -122,24 +89,16 @@ async def drive(
                 log.info("screen layout learned during setup — restarting to load it")
                 continue
             log.info("screen layout learned on first-run wake — no request to resume")
-        if outcome.status not in retry_on or not outcome.retryable:
+        if outcome.status != STUCK or not outcome.retryable:
             break
         if n < max_attempts:
             log.warning(
                 "session %s (attempt %d/%d): %r — retrying",
-                outcome.status or "UNDONE",
+                outcome.status,
                 n,
                 max_attempts,
                 outcome.recap,
             )
-            if retry_backoff_seconds > 0:
-                await asyncio.sleep(retry_backoff_seconds)
-    else:
-        # Attempts exhausted without a final close. STUCK exhaustion
-        # already logged its per-retry warnings; a silent UNDONE would
-        # look like a wake that never happened.
-        if outcome.status is None:
-            log.error("giving up after %d UNDONE attempts", max_attempts)
     if outcome.status == WAIT and not outcome.created_job:
         log.warning(
             "WAIT with no create_job — auto-scheduling %d-min follow-up",

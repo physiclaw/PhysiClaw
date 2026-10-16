@@ -151,7 +151,7 @@ def test_runtime_state_file_lives_under_run_dir(physiclaw_home: Path) -> None:
 
 @pytest.mark.parametrize(
     "func_name, suffix",
-    [("claude_log_dir", "claude"), ("engine_log_dir", "engine")],
+    [("engine_log_dir", "engine")],
 )
 def test_log_rooted_helpers_resolve_under_LOG_DIR(
     physiclaw_home: Path, func_name: str, suffix: str

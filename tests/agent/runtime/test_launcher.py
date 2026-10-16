@@ -9,35 +9,11 @@ import pytest
 
 from physiclaw.agent.runtime import launcher
 from physiclaw.agent.runtime.launcher import (
-    _claude_available,
     engine_label,
     resolve,
 )
 
-# ---------- _claude_available ----------
-
-
-def test_claude_available_true_when_package_present(mocker) -> None:
-    fake = mocker.MagicMock()
-    mocker.patch.object(launcher, "_claude_available", wraps=_claude_available)
-    mocker.patch("importlib.util.find_spec", return_value=fake)
-
-    assert _claude_available() is True
-
-
-def test_claude_available_false_when_package_missing(mocker) -> None:
-    mocker.patch("importlib.util.find_spec", return_value=None)
-
-    assert _claude_available() is False
-
-
 # ---------- engine_label ----------
-
-
-def test_engine_label_for_claude_code() -> None:
-    assert engine_label("claude-code/claude-sonnet-4-6") == (
-        "engine=claude-code, model=claude-sonnet-4-6"
-    )
 
 
 def test_engine_label_for_in_process_provider() -> None:
@@ -79,30 +55,6 @@ def test_resolve_raises_runtime_error_for_slashless_ref(
 
     with pytest.raises(RuntimeError, match="must be 'provider/model'"):
         resolve()
-
-
-def test_resolve_raises_for_claude_code_when_unavailable(
-    monkeypatch: pytest.MonkeyPatch, mocker
-) -> None:
-    monkeypatch.setenv("PHYSICLAW_MODEL", "claude-code/claude-test")
-    mocker.patch.object(launcher, "_claude_available", return_value=False)
-
-    with pytest.raises(
-        RuntimeError, match=r"selects claude-code but agent/claude/ is not installed"
-    ):
-        resolve()
-
-
-def test_resolve_succeeds_for_claude_code_when_available(
-    monkeypatch: pytest.MonkeyPatch, mocker
-) -> None:
-    monkeypatch.setenv("PHYSICLAW_MODEL", "claude-code/claude-test")
-    mocker.patch.object(launcher, "_claude_available", return_value=True)
-
-    ref, source = resolve()
-
-    assert ref == "claude-code/claude-test"
-    assert source == "PHYSICLAW_MODEL env"
 
 
 # ---------- launch() ----------
@@ -165,48 +117,6 @@ def test_launch_runs_engine_path_for_in_process_provider(
     assert kwargs["label"].startswith("engine=physiclaw")
     assert kwargs["react"].func is fake_engine_run
     assert kwargs["react"].keywords == {"model_ref": "qwen/qwen3-plus"}
-
-
-def test_launch_runs_claude_path_for_claude_code(
-    mocker,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("PHYSICLAW_MODEL", "claude-code/claude-test")
-    monkeypatch.setattr("sys.argv", ["runtime"])
-    mocker.patch.object(launcher, "setup_logging")
-    mocker.patch.object(launcher, "_claude_available", return_value=True)
-
-    fake_runtime = mocker.MagicMock()
-
-    async def _start():
-        return None
-
-    fake_runtime.start.side_effect = _start
-    runtime_cls = mocker.patch.object(
-        launcher,
-        "Runtime",
-        return_value=fake_runtime,
-    )
-
-    async def _close():
-        return None
-
-    mocker.patch.object(launcher, "close_mcp", side_effect=_close)
-
-    fake_spawn = mocker.MagicMock()
-    mocker.patch.dict(
-        "sys.modules",
-        {"physiclaw.agent.claude": mocker.MagicMock(spawn_claude=fake_spawn)},
-    )
-
-    launcher.launch()
-
-    runtime_cls.assert_called_once()
-    assert runtime_cls.call_args.kwargs["label"].startswith("engine=claude-code")
-    assert runtime_cls.call_args.kwargs["interval"] == 1.0
-    react = runtime_cls.call_args.kwargs["react"]
-    assert react.func is fake_spawn
-    assert react.keywords == {"model_id": "claude-test"}
 
 
 def test_launch_normalizes_proxy_env_first(

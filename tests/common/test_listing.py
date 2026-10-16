@@ -49,7 +49,6 @@ _PKG = Path(physiclaw.__file__).parent
 # Grammar changes must update all of them; this pin is what enforces it.
 HEADER_COPIES = [
     _PKG / "agent" / "context" / "PHYSICLAW.md",  # doctrine + MCP instructions
-    _PKG / "agent" / "claude" / "CLAUDE.md",  # claude-engine doctrine
     _PKG / "core" / "server" / "tools.py",  # `peek` tool docstring
 ]
 
@@ -64,8 +63,7 @@ def test_listing_header_bytes_pinned() -> None:
 @pytest.mark.parametrize("path", HEADER_COPIES, ids=lambda p: p.name)
 def test_listing_header_quoted_verbatim_in_doc_surfaces(path: Path) -> None:
     """Each doc surface quotes the header as literal prose — it is not
-    a doctrine `{{token}}` (two of the three surfaces have no render
-    pass) — so this pin is what keeps every copy true to the constant."""
+    a doctrine `{{token}}` (the tool docstring has no render pass) — so this pin is what keeps every copy true to the constant."""
     assert LISTING_HEADER in read_text(path)
 
 

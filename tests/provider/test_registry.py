@@ -1,8 +1,7 @@
 """Tests for `physiclaw.provider.registry` — id → class lookups.
 
 The registry is a tiny dispatch table; tests pin the membership and
-exercise each lookup branch including the `claude-code` subprocess
-engine which is intentionally NOT in the in-process table.
+exercise provider construction, validation, and unknown-provider errors.
 """
 
 from __future__ import annotations
@@ -11,12 +10,12 @@ import pytest
 
 from physiclaw.provider import registry
 from physiclaw.provider.registry import (
-    CLAUDE_CODE_ID,
     in_process_provider_ids,
     is_known,
     make_provider,
     provider_class,
     provider_key_status,
+    validate_model_ref,
 )
 from physiclaw.provider.vendors.anthropic import AnthropicProvider
 from physiclaw.provider.vendors.deepseek import DeepSeekProvider
@@ -26,10 +25,6 @@ from physiclaw.provider.vendors.openai import OpenAIProvider
 from physiclaw.provider.vendors.qwen import QwenProvider
 
 # ---------- constants ----------
-
-
-def test_claude_code_id_constant_pinned() -> None:
-    assert CLAUDE_CODE_ID == "claude-code"
 
 
 def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
@@ -58,13 +53,6 @@ def test_provider_classes_each_id_maps_to_its_vendor_class(
     provider_id: str, cls: type
 ) -> None:
     assert registry._PROVIDER_CLASSES[provider_id] is cls
-
-
-def test_claude_code_is_NOT_in_provider_classes_dict() -> None:
-    # claude-code is the subprocess engine; routed by launcher, not
-    # via _PROVIDER_CLASSES. Putting it in the dict would let
-    # make_provider try to instantiate the wrong path.
-    assert CLAUDE_CODE_ID not in registry._PROVIDER_CLASSES
 
 
 # ---------- in_process_provider_ids ----------
@@ -103,22 +91,11 @@ def test_provider_class_returns_none_for_unknown_id() -> None:
     assert provider_class("mystery") is None
 
 
-def test_provider_class_returns_none_for_claude_code() -> None:
-    # claude-code routes via launcher, not the in-process table.
-    assert provider_class(CLAUDE_CODE_ID) is None
-
-
 # ---------- provider_key_status ----------
 
 
 def test_provider_key_status_returns_none_for_unknown_provider_id() -> None:
     assert provider_key_status("mystery") == (None, None)
-
-
-def test_provider_key_status_returns_none_for_claude_code() -> None:
-    # Even though claude-code is a known concept, it isn't an
-    # in-process provider — key_status falls through to (None, None).
-    assert provider_key_status(CLAUDE_CODE_ID) == (None, None)
 
 
 def test_provider_key_status_returns_masked_value_when_key_set(
@@ -192,10 +169,7 @@ def test_make_provider_applies_the_configured_read_timeout(
 def test_make_provider_raises_value_error_for_unknown_id() -> None:
     with pytest.raises(
         ValueError,
-        match=(
-            r"^unknown provider 'mystery' \(known in-process: .+; "
-            r"or use 'claude-code' for the subprocess engine\)$"
-        ),
+        match=(r"^unknown provider 'mystery' \(known: .+\)$"),
     ):
         make_provider("mystery", "any-model")
 
@@ -210,3 +184,24 @@ def test_make_provider_error_message_lists_each_in_process_id() -> None:
     # Comma-space join — kills the `', '` ↔ `'XX, XX'` separator mutation.
     assert "qwen, moonshot" in msg or ", " in msg
     assert "XX" not in msg
+
+
+@pytest.mark.parametrize("provider", in_process_provider_ids())
+def test_validate_model_ref_accepts_registered_provider_without_credentials(provider):
+    ref = f"{provider}/org/model-id"
+
+    result = validate_model_ref(ref)
+
+    assert result == (provider, "org/model-id")
+
+
+@pytest.mark.parametrize("ref", ["unknown/model", "claude-code/model"])
+def test_validate_model_ref_rejects_unknown_provider(ref):
+    with pytest.raises(ValueError, match="unknown provider"):
+        validate_model_ref(ref)
+
+
+@pytest.mark.parametrize("ref", ["bare", "/model", "openai/"])
+def test_validate_model_ref_rejects_malformed_reference(ref):
+    with pytest.raises(ValueError):
+        validate_model_ref(ref)

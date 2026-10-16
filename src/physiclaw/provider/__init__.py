@@ -22,8 +22,8 @@ before partial tools can execute. Optional accounting and cache-write
 failures must not discard a usable model reply or discovery result.
 
 A model ref is ``provider/model`` (for example ``qwen/qwen3.6-plus``).
-``claude-code`` selects the separate subprocess engine, not a provider
-in this package. This module is the public re-export surface.
+Every registered provider runs through the PhysiClaw engine. This module
+is the public re-export surface.
 """
 
 from physiclaw.provider.anthropic_compat import AnthropicCompatibleProvider
@@ -36,12 +36,12 @@ from physiclaw.provider.provider_base import (
     ProviderTransientError,
 )
 from physiclaw.provider.registry import (
-    CLAUDE_CODE_ID,
     in_process_provider_ids,
     is_known,
     make_provider,
     provider_class,
     provider_key_status,
+    validate_model_ref,
 )
 from physiclaw.provider.vendors.anthropic import AnthropicProvider
 from physiclaw.provider.vendors.deepseek import DeepSeekProvider
@@ -58,7 +58,6 @@ from physiclaw.provider.wire import (
 )
 
 __all__ = [
-    "CLAUDE_CODE_ID",
     "AnthropicCompatibleProvider",
     "AnthropicProvider",
     "BaseProvider",
@@ -79,6 +78,7 @@ __all__ = [
     "mcp_blocks_to_content_blocks",
     "provider_class",
     "provider_key_status",
+    "validate_model_ref",
     "tool_result_to_wire",
     "tool_to_wire",
     "user_content_to_openai",

@@ -122,7 +122,9 @@ def test_status_without_key_reports_unset():
     assert "openai api key: (unset)" in result.stdout
 
 
-@pytest.mark.parametrize("ref", ["bare", "/model", "openai/"])
+@pytest.mark.parametrize(
+    "ref", ["bare", "/model", "openai/", "unknown/model", "claude-code/model"]
+)
 def test_status_invalid_ref_explains_problem(ref):
     result = runner.invoke(models_app, [], env={"PHYSICLAW_MODEL": ref})
 
@@ -130,7 +132,7 @@ def test_status_invalid_ref_explains_problem(ref):
     assert "invalid ref" in result.stdout
 
 
-@pytest.mark.parametrize("provider", ["openai", "claude-code"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
 def test_list_without_cache_prints_provider_specific_hint(provider):
     result = runner.invoke(models_app, ["list", provider])
 
@@ -138,7 +140,7 @@ def test_list_without_cache_prints_provider_specific_hint(provider):
     assert f"physiclaw models discover {provider}" in result.stdout
 
 
-def test_list_all_includes_each_provider_and_catalog_alias():
+def test_list_all_includes_each_provider():
     discovered.save("openai", [{"id": "openai-model"}])
     discovered.save("anthropic", [{"id": "anthropic-model"}])
 
@@ -148,7 +150,7 @@ def test_list_all_includes_each_provider_and_catalog_alias():
     assert all(provider in result.stdout for provider in in_process_provider_ids())
     assert "openai/openai-model" in result.stdout
     assert "anthropic/anthropic-model" in result.stdout
-    assert "claude-code/anthropic-model" in result.stdout
+    assert "claude-code" not in result.stdout
 
 
 @settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -171,8 +173,11 @@ def test_list_cached_ids_are_sorted_and_deduplicated(ids):
 
 
 @pytest.mark.parametrize("command", ["list", "discover", "key"])
-def test_unknown_provider_fails_before_any_client_or_config_write(client, command):
-    result = runner.invoke(models_app, [command, "unknown-provider"])
+@pytest.mark.parametrize("provider", ["unknown-provider", "claude-code"])
+def test_unknown_provider_fails_before_any_client_or_config_write(
+    client, command, provider
+):
+    result = runner.invoke(models_app, [command, provider])
 
     assert result.exit_code == 1
     assert "unknown provider" in result.output
@@ -203,6 +208,7 @@ def test_use_cached_model_persists_exact_ref_and_preserves_comments(command):
         ("/model", "empty provider"),
         ("openai/", "empty provider"),
         ("unknown/model", "unknown provider"),
+        ("claude-code/model", "unknown provider"),
         ("openai/missing", "not in openai discovery cache"),
     ],
 )
@@ -215,23 +221,6 @@ def test_use_invalid_ref_preserves_config(ref, message):
     assert result.exit_code == 1
     assert message in result.output
     assert config.config_path().read_bytes() == before
-
-
-def test_use_subscription_alias_without_cache_preserves_existing_support():
-    result = runner.invoke(models_app, ["use", "claude-code/subscription-model"])
-
-    assert result.exit_code == 0
-    assert config.load().agent.model == "claude-code/subscription-model"
-
-
-def test_use_alias_with_catalog_still_rejects_missing_model():
-    discovered.save("anthropic", [{"id": "available"}])
-
-    result = runner.invoke(models_app, ["use", "claude-code/missing"])
-
-    assert result.exit_code == 1
-    assert "not in claude-code discovery cache" in result.output
-    assert not config.config_path().exists()
 
 
 @pytest.mark.parametrize(
@@ -307,15 +296,6 @@ def test_key_aborted_prompt_does_not_write_or_connect(client):
     client.lookup.assert_not_called()
 
 
-def test_key_alias_points_to_credential_owner(client):
-    result = runner.invoke(models_app, ["key", "claude-code", "synthetic-key"])
-
-    assert result.exit_code == 1
-    assert "physiclaw models key anthropic" in result.output
-    assert not config.config_path().exists()
-    client.lookup.assert_not_called()
-
-
 def test_keys_show_masked_config_and_environment_sources():
     config.set_dotted("provider.qwen_api_key", "synthetic-config-key")
 
@@ -333,19 +313,15 @@ def test_keys_show_masked_config_and_environment_sources():
     assert result.stdout.count("api key:") == len(in_process_provider_ids())
 
 
-@pytest.mark.parametrize(
-    "provider,source", [("openai", "openai"), ("claude-code", "anthropic")]
-)
-def test_discover_caches_result_under_source_and_displays_requested_provider(
-    client, provider, source
-):
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_discover_caches_result_and_displays_provider(client, provider):
     result = runner.invoke(models_app, ["discover", provider])
 
     assert result.exit_code == 0
-    assert discovered.model_ids(source) == {"test-model"}
+    assert discovered.model_ids(provider) == {"test-model"}
     assert f"{provider} — 1 model(s) live" in result.stdout
     assert f"physiclaw models use {provider}/" in result.stdout
-    client.lookup.assert_called_once_with(source)
+    client.lookup.assert_called_once_with(provider)
     assert client.events == ["fetch", "close"]
 
 

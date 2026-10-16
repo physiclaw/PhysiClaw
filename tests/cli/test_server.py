@@ -35,7 +35,10 @@ def test_spawn_runtime_builds_cmd_with_port_and_label(mocker) -> None:
     spy = mocker.patch.object(server_mod.subprocess, "Popen", return_value=fake_proc)
 
     proc = server_mod._spawn_runtime(
-        "127.0.0.1", 8048, verbose=False, label="engine=claude-code"
+        "127.0.0.1",
+        8048,
+        verbose=False,
+        label="engine=physiclaw, provider=anthropic, model=test",
     )
 
     assert proc is fake_proc
@@ -203,7 +206,7 @@ def _patch_server_runtime_deps(
     mocker.patch.object(server_mod.socket, "create_server", side_effect=create_listener)
     fake_launcher = MagicMock()
     if resolve_raises:
-        fake_launcher.resolve.side_effect = RuntimeError("no model set")
+        fake_launcher.resolve.side_effect = RuntimeError("no model configured")
     else:
         fake_launcher.resolve.return_value = ("openai/gpt-5", "config")
     fake_launcher.engine_label.return_value = "engine=openai"
@@ -436,7 +439,7 @@ def test_server_save_flags_set_env_vars(
     assert os.environ["PHYSICLAW_SAVE_SCREENSHOTS"] == "1"
 
 
-def test_server_records_unset_when_resolve_fails(mocker) -> None:
+def test_server_external_mode_skips_model_resolution(mocker) -> None:
     deps = _patch_server_runtime_deps(mocker, resolve_raises=True)
 
     server_mod.server(
@@ -451,11 +454,8 @@ def test_server_records_unset_when_resolve_fails(mocker) -> None:
         save_screenshots=False,
     )
 
-    # Recorded (host, port, model_ref=None, model_source=None) since resolve failed.
-    deps["state"].write.assert_called_once()
-    kwargs = deps["state"].write.call_args.kwargs
-    assert kwargs.get("model_ref") is None
-    assert kwargs.get("model_source") is None
+    deps["launcher"].resolve.assert_not_called()
+    deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
 
 
 def test_server_skips_runtime_spawn_when_no_model_configured(
@@ -1496,3 +1496,22 @@ def test_server_wizard_browser_failure_is_nonfatal(mocker, caplog):
         server_mod.threading.Thread.call_args.kwargs["target"]()
 
     assert "could not open browser" in caplog.text
+
+
+def test_server_invalid_model_reports_original_error_and_keeps_mcp(mocker, caplog):
+    deps = _patch_server_runtime_deps(mocker)
+    deps["launcher"].resolve.side_effect = RuntimeError(
+        "unknown provider 'unknown' in ref 'unknown/model' (from PHYSICLAW_MODEL env)"
+    )
+
+    with caplog.at_level(logging.WARNING):
+        server_mod.server(no_runtime=False)
+
+    server_mod._spawn_runtime.assert_not_called()
+    deps["serve"].assert_called_once()
+    assert "unknown provider 'unknown'" in caplog.text
+    assert "PHYSICLAW_MODEL env" in caplog.text
+    assert "no model configured" not in caplog.text
+    assert deps["state"].write.call_args.kwargs["model_error"] == (
+        "unknown provider 'unknown' in ref 'unknown/model' (from PHYSICLAW_MODEL env)"
+    )

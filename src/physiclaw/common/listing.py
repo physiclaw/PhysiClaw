@@ -9,14 +9,10 @@ when stubbing superseded views. Defining every side here means the shape
 exists once — a formatter change and its parser change are the same
 edit.
 
-Three doc surfaces quote `LISTING_HEADER` verbatim for a model to read:
-the doctrine (`agent/context/PHYSICLAW.md` § Element listing), the
-`peek` tool docstring (`core/server/tools.py`), and the claude-engine
-doctrine (`agent/claude/CLAUDE.md`). Those copies stay literal rather
-than becoming a `{{token}}`: only the doctrine path renders tokens
-(`common.doctrine`), while tool docstrings and CLAUDE.md ship as-is —
-so `tests/common/test_listing.py` pins all three against this constant
-instead.
+Two doc surfaces quote `LISTING_HEADER` verbatim for a model to read:
+the doctrine (`agent/context/PHYSICLAW.md` § Element listing) and the
+`peek` tool docstring (`core/server/tools.py`). Those copies stay literal;
+`tests/common/test_listing.py` pins both against this constant.
 
 Dependency-free on purpose: core composes, engine parses, and neither
 should drag the other's imports (cv2 on one side, provider stack on the

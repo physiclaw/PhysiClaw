@@ -15,10 +15,6 @@ from physiclaw.provider.vendors.moonshot import MoonshotProvider
 from physiclaw.provider.vendors.openai import OpenAIProvider
 from physiclaw.provider.vendors.qwen import QwenProvider
 
-# Subprocess engine; routed by launcher, not via _PROVIDER_CLASSES.
-CLAUDE_CODE_ID = "claude-code"
-
-
 _PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
     QwenProvider.PROVIDER_ID: QwenProvider,
     MoonshotProvider.PROVIDER_ID: MoonshotProvider,
@@ -42,7 +38,7 @@ def is_known(provider_id: str) -> bool:
 
 def provider_class(provider_id: str) -> type[BaseProvider] | None:
     """Class for an in-process provider id, or None if `provider_id`
-    isn't one of ours (e.g. `claude-code`)."""
+    isn't registered."""
     return _PROVIDER_CLASSES.get(provider_id)
 
 
@@ -62,6 +58,19 @@ def provider_key_status(provider_id: str) -> tuple[str | None, str | None]:
     return ("********" if val else None), source
 
 
+def validate_model_ref(ref: str) -> tuple[str, str]:
+    """Parse a model reference and require a registered API provider."""
+    from physiclaw.common.model_ref import parse_model_ref
+
+    provider_id, model_id = parse_model_ref(ref)
+    if provider_id not in _PROVIDER_CLASSES:
+        raise ValueError(
+            f"unknown provider {provider_id!r} in ref {ref!r} "
+            f"(known: {', '.join(_PROVIDER_CLASSES)})"
+        )
+    return provider_id, model_id
+
+
 def make_provider(
     provider_id: str, model_id: str, *, usage_sink: "EventSink | None" = None
 ) -> Provider:
@@ -79,9 +88,7 @@ def make_provider(
     cls = _PROVIDER_CLASSES.get(provider_id)
     if cls is None:
         raise ValueError(
-            f"unknown provider {provider_id!r} "
-            f"(known in-process: {', '.join(_PROVIDER_CLASSES)}; "
-            f"or use {CLAUDE_CODE_ID!r} for the subprocess engine)"
+            f"unknown provider {provider_id!r} (known: {', '.join(_PROVIDER_CLASSES)})"
         )
     return cls(
         model=model_id,

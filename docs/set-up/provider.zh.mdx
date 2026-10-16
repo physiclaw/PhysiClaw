@@ -1,6 +1,6 @@
 ---
 title: 获取 API Key
-description: 选择模型提供商，申请 API Key 并添加到 PhysiClaw；也可以改用 Claude 订阅。
+description: 选择模型提供商，申请 API Key 并添加到 PhysiClaw。
 ---
 
 PhysiClaw 支持多家模型提供商。任选一家，注册账号并申请 API Key，然后把 Key 添加到 PhysiClaw 并指定 `provider/model`。
@@ -26,17 +26,3 @@ PhysiClaw 每一步都要查看手机屏幕，因此必须使用**同时支持�
 :::
 
 例如，运行 `physiclaw models key moonshot` 并粘贴 API Key，再运行 `physiclaw models use moonshot/kimi-k3`，即可使用 `kimi-k3`。
-
-## 使用 Claude 订阅
-
-如果你订阅了 Claude（Pro 或 Max），且已安装并登录 [Claude Code](https://claude.com/claude-code)，就不需要 API Key。PhysiClaw 底层通过 `claude -p` 运行智能体，使用你的订阅额度：
-
-```bash
-physiclaw models use claude-code/claude-sonnet-5
-```
-
-模型名与 `anthropic` 相同（例如 `claude-opus-4-8`）。如果已配置 anthropic API Key，运行 `physiclaw models discover claude-code` 可查看完整列表。
-
-:::caution[订阅政策可能变化]
-Anthropic 的订阅政策可能调整，PhysiClaw 也可能因此无法再通过 `claude -p` 使用订阅。届时请改用 `anthropic` API Key，按 token 用量计费。
-:::

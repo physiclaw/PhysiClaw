@@ -1,10 +1,10 @@
-"""Retention for session logs — shared by engine / runtime / claude dirs.
+"""Retention for session logs — shared by engine / runtime / macro logs.
 
 `purge_daily_logs` covers the `<prefix>-YYYY-MM-DD.log` dailies
 (CONFIG.retention.log_days); `purge_old_sessions` covers the per-session
 artifact dirs (CONFIG.retention.trace_days). Two knobs because the two
 sizes differ by orders of magnitude, though both default to a month. Both run at session
-bootstrap, from each engine's writer.
+bootstrap, from the session writers.
 """
 
 import logging
@@ -47,8 +47,7 @@ def purge_old_sessions(sessions_dir: Path, *, days: int) -> int:
     """Remove session dirs under `sessions_dir` whose newest file is older
     than `days` (mtime, not filename — tolerant of clock skew + files
     appended long after creation). Fail-open; returns the count removed.
-    Shared by the engine (`trace.store._purge_old`) and the claude session
-    writer."""
+    Used by engine and macro session writers."""
     cutoff = time.time() - days * 86400
     try:
         dirs = [d for d in sessions_dir.iterdir() if d.is_dir() and not d.is_symlink()]

@@ -5,7 +5,7 @@ placeholders so the prose can never drift from the config the engine
 actually enforces. Two paths deliver doctrine and both must render:
 the engine's SYSTEM composer (`agent.engine.prompt`) and the MCP
 `initialize` instructions (`core.server.mcp`, which ships
-`PHYSICLAW.md` to external clients and the claude subprocess).
+`PHYSICLAW.md` to external clients).
 
 Lives in common because core must not import agent (see
 `tests/test_architecture.py`) — before this module existed the renderer
@@ -40,8 +40,7 @@ def fill_tokens(name: str, body: str) -> str:
     the source label for the warning (e.g. the doctrine filename).
 
     NOTE: skill `{{box}}` placeholders are a different token system
-    (learned screen elements, resolved by `agent.layout`
-    / `agent.claude.spawn`) — never pass skill bodies through this.
+    (learned screen elements, resolved by `agent.layout`) — never pass skill bodies through this.
     """
     for token, value in DOCTRINE_TOKENS.items():
         body = body.replace(token, value)

@@ -166,12 +166,12 @@ async def test_cli_request_matches_engine_turn0(monkeypatch) -> None:
     monkeypatch.setattr(engine_mod, "Trace", lambda *_a, **_k: MagicMock())
     monkeypatch.setattr(engine_mod, "RawLog", lambda *_a, **_k: MagicMock())
     # CLI resolves the provider id from config; align it with the engine's.
-    monkeypatch.setattr("physiclaw.common.config.model_ref", lambda: "fake/fake-model")
+    monkeypatch.setattr("physiclaw.common.config.model_ref", lambda: "qwen/fake-model")
 
     trigger = Trigger(description="phone screen changed", source="phone")
     await engine_mod._run_session(
         [trigger],
-        model_ref="fake/fake-model",
+        model_ref="qwen/fake-model",
         session=Session(),
     )
 
@@ -402,7 +402,7 @@ def test_prompt_cleanup_error_does_not_hide_write_error(tmp_path, mocker):
 
 @pytest.mark.parametrize(
     ("model", "provider"),
-    [("openai/example", "openai"), ("custom/nested/model", "custom"), ("invalid", "")],
+    [("openai/example", "openai"), ("qwen/nested/model", "qwen")],
 )
 def test_prompt_uses_resolved_provider_id(mocker, model, provider):
     mocker.patch("physiclaw.common.config.model_ref", return_value=model)
@@ -474,3 +474,18 @@ def test_prompt_save_writes_the_allocated_temporary_file(tmp_path, mocker):
     assert result.exit_code == 0
     assert existed_before_write == [True]
     assert dest.read_text(encoding="utf-8").startswith("# Doctrine")
+
+
+@pytest.mark.parametrize("command", ["system", "request"])
+@pytest.mark.parametrize("model", ["claude-code/model", "unknown/model", "invalid"])
+def test_prompt_invalid_model_preserves_previous_dump(mocker, tmp_path, command, model):
+    mocker.patch("physiclaw.common.config.model_ref", return_value=model)
+    destination = tmp_path / "prompt.txt"
+    destination.write_text("previous dump", encoding="utf-8")
+
+    result = runner.invoke(prompt_app, [command, "--save-as", str(destination)])
+
+    assert result.exit_code == 1
+    assert model in result.stderr
+    assert destination.read_text(encoding="utf-8") == "previous dump"
+    assert result.stdout == ""

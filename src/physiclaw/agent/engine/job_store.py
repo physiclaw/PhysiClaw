@@ -9,7 +9,7 @@ outcomes). This module holds:
 - `validate_schedule` / `matches_now` / `next_fire` / `find_due` — cron helpers
 - `purge_stale` — housekeeping for terminal jobs older than `[retention] trace_days`
 
-See `src/physiclaw/agent/claude/skills/jobs/SKILL.md` for the job workflows.
+See `agent/context/JOBS.md` for the engine job workflows.
 
 Schedule syntax: standard 5-field cron (min hour dom mon dow). Supports `*`,
 `N`, `N,M`, `*/N`, `A-B`. Day-of-week: 0=Sun, 6=Sat. All times are naive

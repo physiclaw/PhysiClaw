@@ -466,7 +466,6 @@ def _patch_doctor_environment(
     )
 
     fake_provider = MagicMock()
-    fake_provider.CLAUDE_CODE_ID = "claude-code"
     fake_provider.provider_key_status.return_value = (
         (None, "config") if key_unset else ("sk-***x", "env")
     )
@@ -1450,3 +1449,50 @@ def test_doctor_surfaces_platform_hardware_permission_hints(doctor_io, mocker):
 
     assert result.exit_code == 0, result.exception
     assert "! camera permission requires attention" in result.output
+
+
+@pytest.mark.parametrize("arguments", [[], ["--deep"]])
+def test_doctor_external_mode_needs_no_agent_provider(doctor_io, mocker, arguments):
+    doctor_io.live.return_value = {
+        "host": "127.0.0.1",
+        "port": 8048,
+        "no_runtime": True,
+    }
+    resolve = mocker.patch("physiclaw.agent.runtime.launcher.resolve")
+    provider_probe = mocker.patch.object(doctor_mod, "_probe_provider_deep")
+
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 0
+    assert "external MCP client" in result.stdout
+    resolve.assert_not_called()
+    doctor_io.key_status.assert_not_called()
+    provider_probe.assert_not_called()
+
+
+@pytest.mark.parametrize("arguments", [[], ["--deep"]])
+def test_doctor_reports_live_model_failure_without_resolving_shell(
+    doctor_io, mocker, arguments
+):
+    startup_error = "unknown provider 'unsupported' (from PHYSICLAW_MODEL env)"
+    doctor_io.live.return_value = {
+        "host": "127.0.0.1",
+        "port": 8048,
+        "model_ref": None,
+        "model_error": startup_error,
+        "no_runtime": False,
+    }
+    resolve = mocker.patch(
+        "physiclaw.agent.runtime.launcher.resolve",
+        return_value=("openai/shell-model", "current shell"),
+    )
+    provider_probe = mocker.patch.object(doctor_mod, "_probe_provider_deep")
+
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 0
+    assert startup_error in result.stdout
+    assert "shell-model" not in result.stdout
+    resolve.assert_not_called()
+    doctor_io.key_status.assert_not_called()
+    provider_probe.assert_not_called()

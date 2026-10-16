@@ -28,15 +28,17 @@ def write(
     *,
     model_ref: str | None = None,
     model_source: str | None = None,
+    model_error: str | None = None,
+    no_runtime: bool = False,
 ) -> None:
     """Record this process as the running server. Overwrites any prior file.
 
     ``model_ref`` / ``model_source`` capture the `provider/model` ref the
     server resolved at startup so ``physiclaw doctor`` in a different
     shell can report the live choice instead of re-running ``resolve()``
-    against a shell that doesn't have the env var set. ``None`` marks
-    "not recorded"; readers gate on truthiness so the JSON-``null``
-    round-trip works unchanged.
+    against a shell that doesn't have the env var set. ``model_error``
+    preserves a failed startup selection for the same reason. ``no_runtime``
+    identifies an external MCP session, which needs no provider credentials.
     """
     p = paths.runtime_state_file()
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +51,8 @@ def write(
                 "port": port,
                 "model_ref": model_ref,
                 "model_source": model_source,
+                "model_error": model_error,
+                "no_runtime": no_runtime,
                 "started_at": time.time(),
             }
         ),
@@ -76,7 +80,7 @@ def clear() -> None:
 
 
 def read_live() -> dict | None:
-    """Return ``{pid, host, port, started_at}`` if a live server is recorded.
+    """Return the recorded server state if its process is still alive.
 
     Returns ``None`` for missing/malformed state or a stale pid.
     Doesn't delete stale files — the next ``server`` start overwrites them.

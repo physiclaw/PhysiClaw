@@ -2,9 +2,8 @@
 
 Each tick: load jobs.md → find jobs whose `Next fire time` has arrived →
 fire one Trigger → update the status/timing fields in place. The agent
-marks completion through `engine.jobs.finish_job` — via the engine's
-finish_job tool or the claude path's jobs skill; the CLI below wraps
-the same function for manual maintenance. Terminal jobs
+marks completion through the engine's `finish_job` tool; the CLI below
+wraps the same function for manual maintenance. Terminal jobs
 (cancel/done/fail) auto-purge after `[retention] trace_days`.
 
 The durable data model (Job dataclass, parser, field updates) lives in
@@ -48,14 +47,10 @@ def _build_trigger_description(due: list[Job]) -> str:
         blocks.append("\n".join(block))
 
     body = "\n\n".join(blocks)
-    # Engine-neutral close instruction: the in-process engine exposes a
-    # `finish_job` tool, the claude path a `jobs` skill — both route to
-    # the same engine.jobs.finish_job this hook's CLI wraps.
     ids = ", ".join(j.id for j in due)
     return (
         f"{body}\n\n"
-        "When you finish each job, close it with your jobs facility "
-        "(the finish_job tool, or the jobs skill): mark done with a "
+        "When you finish each job, close it with the finish_job tool: mark done with a "
         "one-line result summary, or fail with what went wrong. Every "
         f"fired job needs an explicit close: {ids}"
     )

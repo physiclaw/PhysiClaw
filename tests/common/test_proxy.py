@@ -65,7 +65,7 @@ def test_httpx_accepts_normalized_env(monkeypatch):
 
 # ---------- loopback NO_PROXY exemption ----------
 # Guards: a proxied env must never route the runtime's own loopback
-# clients (or the claude child's inherited env) through the proxy.
+# clients through the proxy.
 # Conftest's autouse `scrub_proxy_env` clears every proxy var first.
 
 

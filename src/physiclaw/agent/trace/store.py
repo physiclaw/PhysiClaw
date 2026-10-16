@@ -265,7 +265,7 @@ in the `env` event / `summary.json.env.utc_offset`.
 - Cross-session stats: every summary is one JSON file —
   `jq .usage.cache_hit_pct sessions/*/summary.json`. For trends past
   the retention window, `log/stats.jsonl` (one summary line per
-  session at close, both engines) survives the session-dir purge.
+  session at close) survives the session-dir purge.
 - Turn timeline: events with the same `turn` value tell one
   turn's story: usage → response → tool_result(s) (the provider writes
   `usage` as the call returns, before the engine records `response`; a

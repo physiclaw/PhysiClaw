@@ -35,7 +35,7 @@ class Trigger:
     """A hook firing — what happened, and who reported it.
 
     `description` is the human-readable reason the hook fired, used to
-    build the prompt handed to Claude. `source` is a short tag
+    build the engine wake prompt. `source` is a short tag
     identifying the hook (e.g. "phone", "cron:daily-cleanup") so the
     dispatch side can group, filter, or log by origin.
     """

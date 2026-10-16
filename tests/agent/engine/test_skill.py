@@ -26,7 +26,6 @@ from physiclaw.agent.engine import skill as skill_mod
 from physiclaw.agent.engine.skill import (
     Skill,
     _load_reference,
-    discover,
     discover_builtin_skills,
     discover_user_skills,
     dispatch,
@@ -238,7 +237,12 @@ def test_discover_accepts_skill_file_symlink_inside_root(_skill_roots, flat) -> 
 @pytest.mark.parametrize(
     "name", ["/tmp/outside", "../escape", "a/b", r"a\b", "C:drive", ".", ".."]
 )
-def test_discover_rejects_unsafe_frontmatter_name(_skill_roots, name) -> None:
+@pytest.mark.parametrize(
+    "discover_skills", [discover_builtin_skills, discover_user_skills]
+)
+def test_discover_rejects_unsafe_frontmatter_name(
+    _skill_roots, name, discover_skills
+) -> None:
     home, _ = _skill_roots
     folder = _write_skill(home, "normal")
     (folder / "SKILL.md").write_text(f"---\nname: {name}\n---\nbody")
@@ -246,7 +250,7 @@ def test_discover_rejects_unsafe_frontmatter_name(_skill_roots, name) -> None:
         f"---\nname: {name}\n---\nbody"
     )
 
-    found = discover()
+    found = discover_skills()
 
     assert found == {}
 
@@ -260,8 +264,12 @@ def test_discover_accepts_installer_name_characters(_skill_roots) -> None:
     assert list(found) == ["A0-b_c.d"]
 
 
+@pytest.mark.parametrize(
+    "discover_skills, expected",
+    [(discover_builtin_skills, ["healthy-flat"]), (discover_user_skills, ["healthy"])],
+)
 def test_discover_ignores_private_paths_even_with_public_frontmatter(
-    _skill_roots,
+    _skill_roots, discover_skills, expected
 ) -> None:
     home, _ = _skill_roots
     hidden = _write_skill(home, "_hidden")
@@ -272,9 +280,9 @@ def test_discover_ignores_private_paths_even_with_public_frontmatter(
     _write_skill(home, "healthy")
     (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text("body")
 
-    found = discover()
+    found = discover_skills()
 
-    assert list(found) == ["healthy-flat", "healthy"]
+    assert list(found) == expected
 
 
 @pytest.mark.parametrize(
@@ -345,8 +353,12 @@ def test_discover_read_error_does_not_hide_healthy_skills(
     assert list(found) == ["healthy"]
 
 
+@pytest.mark.parametrize(
+    "discover_skills, expected",
+    [(discover_builtin_skills, ["healthy-flat"]), (discover_user_skills, ["healthy"])],
+)
 def test_discover_stat_error_does_not_hide_healthy_skills(
-    _skill_roots, monkeypatch
+    _skill_roots, monkeypatch, discover_skills, expected
 ) -> None:
     home, _ = _skill_roots
     bad = _write_skill(home, "bad") / "SKILL.md"
@@ -363,9 +375,9 @@ def test_discover_stat_error_does_not_hide_healthy_skills(
 
     monkeypatch.setattr(Path, "is_file", is_file_or_deny)
 
-    found = discover()
+    found = discover_skills()
 
-    assert list(found) == ["healthy-flat", "healthy"]
+    assert list(found) == expected
 
 
 def test_discover_rejects_outside_directory_even_with_inside_skill_file(
@@ -402,14 +414,17 @@ def test_discover_inside_directory_symlink_keeps_references_scoped(
     assert guide == "guide"
 
 
-def test_discover_ignores_non_directory_roots(_skill_roots) -> None:
+@pytest.mark.parametrize(
+    "discover_skills", [discover_builtin_skills, discover_user_skills]
+)
+def test_discover_ignores_non_directory_roots(_skill_roots, discover_skills) -> None:
     home, _ = _skill_roots
     home.write_text("not a directory")
     skill_mod.OFFICIAL_SKILLS_DIR.write_text("not a directory")
     skill_mod.BUILTIN_SKILLS_DIR.rmdir()
     skill_mod.BUILTIN_SKILLS_DIR.write_text("not a directory")
 
-    found = discover()
+    found = discover_skills()
 
     assert found == {}
 
@@ -431,7 +446,7 @@ def test_render_builtin_retains_empty_skill_heading() -> None:
 
 
 def test_discover_empty_when_no_roots_exist() -> None:
-    assert discover() == {}
+    assert discover_user_skills() == {}
 
 
 def test_discover_ignores_cwd_skills_dir(_skill_roots) -> None:
@@ -439,14 +454,14 @@ def test_discover_ignores_cwd_skills_dir(_skill_roots) -> None:
     home, cwd = _skill_roots
     _write_skill(cwd / "skills", "foo")
 
-    assert discover() == {}
+    assert discover_user_skills() == {}
 
 
 def test_discover_finds_skill_in_home_skills_root(_skill_roots) -> None:
     home, _ = _skill_roots
     _write_skill(home, "bar")
 
-    out = discover()
+    out = discover_user_skills()
 
     assert "bar" in out
 
@@ -457,7 +472,7 @@ def test_discover_skips_directories_starting_with_underscore(
     home, _ = _skill_roots
     _write_skill(home, "_internal")
 
-    assert discover() == {}
+    assert discover_user_skills() == {}
 
 
 def test_discover_skips_skills_without_skill_md(_skill_roots) -> None:
@@ -466,7 +481,7 @@ def test_discover_skips_skills_without_skill_md(_skill_roots) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "README.md").write_text("not a skill")
 
-    assert discover() == {}
+    assert discover_user_skills() == {}
 
 
 def test_discover_skips_non_directory_entries(_skill_roots) -> None:
@@ -474,7 +489,7 @@ def test_discover_skips_non_directory_entries(_skill_roots) -> None:
     home.mkdir()
     (home / "stray.txt").write_text("not a dir")
 
-    assert discover() == {}
+    assert discover_user_skills() == {}
 
 
 def test_discover_uses_directory_name_when_frontmatter_lacks_name(
@@ -485,7 +500,7 @@ def test_discover_uses_directory_name_when_frontmatter_lacks_name(
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("---\ndescription: only desc\n---\nbody\n")
 
-    out = discover()
+    out = discover_user_skills()
 
     assert "no-name" in out
 
@@ -502,7 +517,7 @@ def test_discover_rejects_symlink_resolving_outside_root(
     symlink_path = home / "evil-link"
     symlink_path.symlink_to(outside / "evil")
 
-    out = discover()
+    out = discover_user_skills()
 
     assert "evil" not in out
 
@@ -517,7 +532,7 @@ def test_discover_strips_frontmatter_whitespace_from_description_and_body(
         "---\nname: trimmed\ndescription: padded around\n---\n\n  body\n"
     )
 
-    out = discover()
+    out = discover_user_skills()
 
     assert out["trimmed"].description == "padded around"
     assert out["trimmed"].body == "body"
@@ -540,7 +555,7 @@ def _write_flat(
 def test_discover_finds_builtin_flat_md_skill() -> None:
     _write_flat("im", description="messaging", body="im workflow")
 
-    out = discover()
+    out = discover_builtin_skills()
 
     assert out["im"].description == "messaging"
     assert out["im"].body == "im workflow"
@@ -559,7 +574,7 @@ def test_discover_flat_uses_filename_stem_when_name_missing() -> None:
         "---\ndescription: launch apps\n---\nbody\n"
     )
 
-    assert "open-app" in discover()
+    assert "open-app" in discover_builtin_skills()
 
 
 def test_discover_flat_skips_underscore_prefixed_files() -> None:
@@ -567,19 +582,20 @@ def test_discover_flat_skips_underscore_prefixed_files() -> None:
         "---\nname: _draft\ndescription: wip\n---\nbody\n"
     )
 
-    assert discover() == {}
+    assert discover_builtin_skills() == {}
 
 
-def test_discover_home_skill_overrides_builtin(_skill_roots) -> None:
-    # Built-in is the lowest-precedence root; a home skill of the same name wins.
+def test_home_skill_does_not_shadow_builtin(_skill_roots) -> None:
+    # Built-in and user skills remain separate even when their names match.
     home, _ = _skill_roots
     _write_flat("im", description="built-in", body="built-in-body")
     _write_skill(home, "im", description="user", body="user-body")
 
-    out = discover()
+    out = discover_user_skills()
 
     assert out["im"].description == "user"
     assert out["im"].body == "user-body"
+    assert discover_builtin_skills()["im"].body == "built-in-body"
 
 
 # ---------- discover_builtin_skills / discover_user_skills ----------
@@ -654,15 +670,15 @@ def test_no_clash_keeps_plain_names(_skill_roots) -> None:
 
 def test_builtin_always_on_alongside_clashing_on_demand(_skill_roots) -> None:
     # A built-in is inlined independently; official/user disambiguation never
-    # touches it. discover() (merged Claude view) still surfaces all three.
+    # touches it. The on-demand index contains only official and user skills.
     home, _ = _skill_roots
     _write_flat("im", description="built-in im")
     _write_skill(skill_mod.OFFICIAL_SKILLS_DIR, "jd", description="official jd")
     _write_skill(home, "jd", description="user jd")
 
     assert set(discover_builtin_skills()) == {"im"}  # built-in unaffected
-    merged = discover()
-    assert set(merged) == {"im", "jd-official", "jd-user"}
+    merged = discover_user_skills()
+    assert set(merged) == {"jd-official", "jd-user"}
 
 
 # ---------- render_builtin ----------
@@ -705,7 +721,7 @@ def test_dispatch_returns_body_for_known_skill(_skill_roots) -> None:
     home, _ = _skill_roots
     _write_skill(home, "foo", body="step 1\nstep 2")
 
-    out = dispatch(discover(), {"name": "foo"})
+    out = dispatch(discover_user_skills(), {"name": "foo"})
 
     assert out == "step 1\nstep 2"
 
@@ -729,7 +745,7 @@ def test_dispatch_raises_on_unknown_skill_name(_skill_roots) -> None:
         ValueError,
         match=r"^unknown skill 'mystery'\. Available: alpha, beta$",
     ):
-        dispatch(discover(), {"name": "mystery"})
+        dispatch(discover_user_skills(), {"name": "mystery"})
 
 
 def test_dispatch_lists_none_when_no_skills_available() -> None:
@@ -774,7 +790,7 @@ def test_dispatch_loads_reference_when_reference_arg_present(
         extra_files={"references/spec.md": "spec contents here"},
     )
 
-    out = dispatch(discover(), {"name": "foo", "reference": "spec.md"})
+    out = dispatch(discover_user_skills(), {"name": "foo", "reference": "spec.md"})
 
     assert out == "spec contents here"
 
@@ -789,7 +805,7 @@ def test_load_reference_returns_file_contents(_skill_roots) -> None:
         "foo",
         extra_files={"references/note.md": "hi"},
     )
-    skills = discover()
+    skills = discover_user_skills()
 
     assert _load_reference(skills["foo"], "note.md") == "hi"
 
@@ -799,7 +815,7 @@ def test_load_reference_raises_on_path_traversal(_skill_roots, tmp_path: Path) -
     _write_skill(home, "foo")
     # Place an "escape" file outside the references dir.
     (home / "secret.md").write_text("don't read me")
-    skills = discover()
+    skills = discover_user_skills()
 
     with pytest.raises(
         ValueError,
@@ -811,7 +827,7 @@ def test_load_reference_raises_on_path_traversal(_skill_roots, tmp_path: Path) -
 def test_load_reference_raises_when_target_missing(_skill_roots) -> None:
     home, _ = _skill_roots
     _write_skill(home, "foo")
-    skills = discover()
+    skills = discover_user_skills()
 
     with pytest.raises(
         FileNotFoundError,
@@ -914,29 +930,6 @@ def test_render_section_splits_official_and_user_subsections() -> None:
     assert out.index("### official skills") < out.index("### user skills")
     assert "- **jd** — off" in out
     assert "- **taobao** — usr" in out
-
-
-def test_render_section_orders_builtin_official_user() -> None:
-    # The Claude merged view can carry all three sources at once.
-    skills = {
-        "im": Skill(
-            name="im", description="b", body="", dir=Path("/"), source="built-in"
-        ),
-        "jd": Skill(
-            name="jd", description="o", body="", dir=Path("/"), source="official"
-        ),
-        "taobao": Skill(
-            name="taobao", description="u", body="", dir=Path("/"), source="user"
-        ),
-    }
-
-    out = render_section(skills)
-
-    assert (
-        out.index("### built-in skills")
-        < out.index("### official skills")
-        < out.index("### user skills")
-    )
 
 
 # ---------- dispatch (user skills only) ----------

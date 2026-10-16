@@ -8,7 +8,7 @@
 
 Hooks stay idle until `/api/status` reports `ready: true` (flipped by
 `/setup` on its final step). The `react` callable is the only injection
-point — typically `physiclaw.agent.claude.spawn_claude`. Because
+point — wired to `physiclaw.agent.engine.engine.run`. Because
 `check_hooks()` and `react` are awaited in sequence, no new tick starts
 while a reaction is in progress.
 """
@@ -75,7 +75,7 @@ class Runtime:
     Args:
         react: Called with the list of triggers whenever `check_hooks()`
             returns a non-empty list. Sync or async. Typical wiring is
-            `physiclaw.agent.claude.spawn_claude`, but tests can pass
+            `physiclaw.agent.engine.engine.run`, but tests can pass
             any callable.
         interval: Finite, non-negative seconds to sleep between hook checks.
             Sleep happens after `react` returns, so a slow reaction

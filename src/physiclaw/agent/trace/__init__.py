@@ -1,9 +1,7 @@
 """Engine session logs — a daily human narrative + a per-session artifact dir.
 
-`Trace` writes the per-day human log (through the shared
-`DailyLogWriter`, the same one `agent/claude/session_log.py` uses, so
-operators scan either runtime the same way) plus the session's
-events.jsonl and summary.json, filing every frame a tool result
+`Trace` writes the per-day human log through `DailyLogWriter`, plus the
+session's events.jsonl and summary.json, filing every frame a tool result
 carries into the session's `store.Images` as it arrives; `RawLog`
 captures the provider round-trips into wire.jsonl, with each inline
 image replaced by a reference into that same store. Everything lands

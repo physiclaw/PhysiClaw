@@ -100,7 +100,7 @@ def test_formatter_paints_error_red() -> None:
 
 
 def test_formatter_plain_mode_strips_ansi_in_message() -> None:
-    # Embedded ANSI in the message content (subprocess/claude-stream output)
+    # Embedded ANSI in the message content (subprocess output)
     # must not survive into a file sink.
     fmt = _TaggedFormatter(tag="runtime", color=False)
 

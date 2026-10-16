@@ -1,11 +1,4 @@
-"""Sentinel line parsing — shared between the `claude -p` runtime and the engine.
-
-Both agent runtimes close each session with a sentinel line of the form
-`>> DONE - <recap>`. `parse_sentinel` recovers the status word + recap from
-the assistant's final text; `STATUSES` is the canonical set.
-"""
-
-import re
+"""Canonical session outcome statuses used by the engine and runtime."""
 
 DONE = "DONE"
 STUCK = "STUCK"
@@ -13,25 +6,3 @@ FAIL = "FAIL"
 IDLE = "IDLE"
 WAIT = "WAIT"
 STATUSES: frozenset[str] = frozenset({DONE, STUCK, FAIL, IDLE, WAIT})
-
-_SENTINEL_RE = re.compile(
-    r"^[ \t]*>+[ \t]*(DONE|STUCK|FAIL|IDLE|WAIT)\b[ \t]*-?[ \t]*(.*)",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
-def parse_sentinel(text: str | None) -> tuple[str | None, str]:
-    """Return (status, recap) parsed from `text`, or (None, original) if no match.
-
-    Accepts `>> DONE - recap`, bare `DONE`, lowercase, missing hyphen.
-    A marked status must start its line; quoted/inline statuses are prose.
-    """
-    if not text:
-        return None, ""
-    m = _SENTINEL_RE.search(text)
-    if m:
-        return m.group(1).upper(), m.group(2).strip()
-    word = text.strip().upper()
-    if word in STATUSES:
-        return word, ""
-    return None, text.strip()

@@ -1,7 +1,6 @@
 """Anthropic — Claude models via the official `anthropic` SDK.
 
-Distinct from `claude-code` (the subprocess engine that shells out to
-the `claude` CLI). This provider calls Anthropic's `/v1/messages`
+This provider calls Anthropic's `/v1/messages`
 endpoint directly through `AsyncAnthropic` — wire-format flow lives in
 `provider/anthropic_compat.py`.
 

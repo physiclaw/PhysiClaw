@@ -29,8 +29,7 @@ Layout::
         ├── engine/
         │   ├── engine-YYYY-MM-DD.log    (human narrative, all sessions of a day)
         │   └── sessions/{README.md, <sid>/{events.jsonl, wire.jsonl, summary.json, images/}}
-        ├── runtime/runtime-YYYY-MM-DD.log
-        └── claude/claude-YYYY-MM-DD.log
+        └── runtime/runtime-YYYY-MM-DD.log
 
 File-format rule — the mix above is deliberate, one format per audience
 (the Python-community split: TOML for what humans edit, JSON for what
@@ -570,17 +569,6 @@ def macros_log_dir() -> Path:
     session layout in miniature), engine runs and CLI rehearsals alike.
     Read by `physiclaw macros runs`."""
     return LOG_DIR / "macros"
-
-
-def claude_log_dir() -> Path:
-    return LOG_DIR / "claude"
-
-
-def claude_sessions_dir() -> Path:
-    """Per-session artifact dirs for the `claude -p` engine — same layout
-    as ``engine_sessions_dir`` (summary.json, images/), so both engines'
-    sessions read with one tool."""
-    return claude_log_dir() / "sessions"
 
 
 def engine_log_dir() -> Path:

@@ -389,6 +389,51 @@ _PROBE_IMAGE_B64 = (
 _PROBE_IMAGE_WORD = "PhysiClaw"
 
 
+def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[str]:
+    """Report the live engine selection, or resolve locally when offline."""
+    if live and live.get("no_runtime") is True:
+        yield _fmt_ok("external MCP client — built-in runtime disabled")
+        return
+    if live and live.get("model_error"):
+        yield _fmt_warn(f"engine: invalid — {live['model_error']} (live server)")
+        return
+
+    from physiclaw.agent.runtime.launcher import engine_label, resolve
+    from physiclaw.common.config import parse_model_ref
+    from physiclaw.provider import provider_key_status
+
+    # A running server's environment may differ from this shell's.
+    live_ref = live.get("model_ref") if live else None
+    live_src = live.get("model_source") if live else None
+    try:
+        if live_ref:
+            active_ref = live_ref
+            ref_source = f"live server, {live_src or '?'}"
+        else:
+            active_ref, ref_source = resolve()
+            ref_source = f"from {ref_source}"
+        if not isinstance(active_ref, str):
+            raise ValueError("model ref must be a string")
+        label = engine_label(active_ref)
+        provider, model = parse_model_ref(active_ref)
+    except (RuntimeError, ValueError) as e:
+        yield _fmt_warn(f"engine: invalid — {e}")
+        return
+
+    yield _fmt_ok(f"{label} ({ref_source})")
+    masked, source = provider_key_status(provider)
+    if masked is None:
+        yield _fmt_warn(
+            f"{provider} api key: (unset) — required for the active model. "
+            f"Set via `physiclaw models key {provider}` or env var."
+        )
+        return
+
+    yield _fmt_ok(f"{provider} api key: {masked} ({source})")
+    if deep:
+        yield _probe_provider_deep(provider, model)
+
+
 def _probe_provider_deep(provider_id: str, model_id: str) -> str:
     """One round-trip with text + a tiny inline image — exercises the
     full path PhysiClaw needs (network, auth, billing, vision input,
@@ -590,50 +635,8 @@ def doctor(
     typer.echo()
     typer.echo(_fmt_section("Engine"))
 
-    # Prefer the live server's recorded choice — resolving here would pull
-    # from the current shell's env, which may be missing PHYSICLAW_MODEL
-    # even when the server has it set. Fall back to a fresh resolve when no
-    # server is running.
-    from physiclaw.agent.runtime.launcher import engine_label, resolve
-    from physiclaw.common.config import parse_model_ref
-
-    live_ref = live.get("model_ref") if live else None
-    live_src = live.get("model_source") if live else None
-    active_provider, active_model = (None, None)
-    try:
-        if live_ref:
-            active_ref = live_ref
-            ref_source = f"live server, {live_src or '?'}"
-        else:
-            active_ref, ref_source = resolve()
-            ref_source = f"from {ref_source}"
-        if not isinstance(active_ref, str):
-            raise ValueError("model ref must be a string")
-        label = engine_label(active_ref)
-        active_provider, active_model = parse_model_ref(active_ref)
-    except (RuntimeError, ValueError) as e:
-        typer.echo(_fmt_warn(f"engine: invalid — {e}"))
-    else:
-        typer.echo(_fmt_ok(f"{label} ({ref_source})"))
-
-    # Surface the active provider's key status. In `--deep` mode, send a
-    # real `chat()` round-trip on the active provider (proves network +
-    # auth + billing + model response).
-    from physiclaw.provider import CLAUDE_CODE_ID, provider_key_status
-
-    if active_provider and active_provider != CLAUDE_CODE_ID:
-        masked, source = provider_key_status(active_provider)
-        if masked is None:
-            typer.echo(
-                _fmt_warn(
-                    f"{active_provider} api key: (unset) — required for the active model. "
-                    f"Set via `physiclaw models key {active_provider}` or env var."
-                )
-            )
-        else:
-            typer.echo(_fmt_ok(f"{active_provider} api key: {masked} ({source})"))
-            if deep and active_model:
-                typer.echo(_probe_provider_deep(active_provider, active_model))
+    for line in _engine_lines(live, deep=deep):
+        typer.echo(line)
 
     typer.echo()
     typer.echo(_fmt_section("Skills"))

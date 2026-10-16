@@ -203,8 +203,8 @@ class AgentConfig:
     """Agent runtime selection.
 
     ``model`` is a ``provider/model`` ref, e.g. ``"qwen/qwen3.6-plus"`` or
-    ``"claude-code/claude-sonnet-4-6"``. The first segment selects the
-    engine + provider; the second is the model id passed to that
+    ``"anthropic/claude-sonnet-5"``. The first segment selects the
+    API provider; the second is the model id passed to that
     provider verbatim. Empty string means "use ``PHYSICLAW_MODEL`` env
     var, then fail loudly" — there is no universal default.
 
@@ -282,20 +282,12 @@ class ConductorConfig:
 
 
 @dataclass
-class ClaudeConfig:
-    timeout_seconds: int = 180
-    stream_buffer_mb: int = 10
-    max_attempts: int = 3
-    retry_backoff_seconds: float = 5.0
-
-
-@dataclass
 class RetentionConfig:
-    # Per-session artifact dirs (engine + claude sessions, macro run
+    # Per-session artifact dirs (engine sessions, macro run
     # dirs) and terminal cron jobs: a month covers a post-mortem on a
     # run the user only notices weeks later.
     trace_days: int = 30
-    # Daily human-readable log files (engine-/runtime-/claude-*.log),
+    # Daily human-readable log files (engine-/runtime-*.log),
     # tiny next to session artifacts.
     log_days: int = 30
     # A cron job stuck in `fired` (no session ever closed it) is
@@ -366,7 +358,6 @@ class Config:
     compact: CompactConfig = field(default_factory=CompactConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     conductor: ConductorConfig = field(default_factory=ConductorConfig)
-    claude: ClaudeConfig = field(default_factory=ClaudeConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
     pitfalls: PitfallsConfig = field(default_factory=PitfallsConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
@@ -450,8 +441,8 @@ _SECTION_COMMENTS: dict[str, str] = {
         "plan gate) + retry + pacing."
     ),
     "agent": (
-        "Engine + model selection. `model` is a `provider/model` ref, e.g. "
-        "`qwen/qwen3.6-plus` or `claude-code/claude-sonnet-4-6`. "
+        "API model selection. `model` is a `provider/model` ref, e.g. "
+        "`qwen/qwen3.6-plus` or `anthropic/claude-sonnet-5`. "
         "`PHYSICLAW_MODEL` env var overrides."
     ),
     "provider": (
@@ -468,7 +459,6 @@ _SECTION_COMMENTS: dict[str, str] = {
         "smaller blurs fine print."
     ),
     "memory": "Daily-log loading: bootstrap preload + on-demand `read_logs` defaults.",
-    "claude": "Applied when [agent] model = 'claude-code/...' (external CLI subprocess).",
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "pitfalls": (
         "Agent-flagged turn-wasting traps (~/.physiclaw/learned/pitfalls/), "
@@ -839,7 +829,7 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
 
 
 # Module-level singleton, evaluated once at import. See CONFIG usage in the
-# migrated consumers (engine, claude, runtime, plan, compact, memory, trace,
+# consumers (engine, runtime, plan, compact, memory, trace,
 # warm_start, job_store).
 #
 # Catch ConfigError at import-time so a corrupted ~/.physiclaw/config.toml

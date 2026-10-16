@@ -1,22 +1,9 @@
-"""Shared session-artifact surface for the two agent engines.
+"""Session artifact formats and I/O shared by the engine and its readers.
 
-The engine (`agent/trace`) and the claude subprocess path
-(`agent/claude/session_log.py`) each write a daily human narrative plus
-a per-session artifact dir whose `summary.json` shares one schema (v1)
-— one `physiclaw logs` / `jq` reads both engines' sessions. This module
-owns the pieces that must stay identical between the two writers:
-
-  - `DailyLogWriter` — the daily narrative file, session banner/footer,
-    and midnight rollover;
-  - `build_summary` — the summary.json shape, one constructor;
-  - `iso_now` / `env_snapshot` / `write_json_atomic` / `image_filename`
-    / `save_image` / `ensure_readme` — the helpers both artifact dirs
-    are built from.
-  - `mime_for` / `resolve_image` — readers of the recorded image format.
-
-Each engine keeps its own event accumulation (their event streams are
-genuinely different); only the on-disk shape is centralized, so a schema
-change is one edit here instead of a lockstep pair.
+The engine writes a daily narrative and a per-session directory with a
+schema-v1 ``summary.json``. This module owns the daily writer, summary
+constructor, timestamps, environment snapshots, atomic JSON writes, and
+image storage and resolution. Event accumulation lives in ``agent.trace``.
 """
 
 import base64
@@ -96,7 +83,7 @@ def write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
 def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:
     """Append one session's summary as a line to `<log_dir>/stats.jsonl` —
     the durable per-session aggregate that outlives session-dir retention
-    (both engines append to the same file at the sweep-free `log/` root).
+    (the engine appends to the sweep-free `log/` root).
     Fail-open: losing a stats line must never cost the session close."""
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -168,9 +155,7 @@ def resolve_image(session_dir: Path, ref: object) -> Path | None:
 def image_filename(turn: int, mime: str) -> str:
     """Name a captured screenshot `<HHMMSS>_<mmm>_t<turn>.<ext>`: a
     local-time stamp (hour-minute-second + milliseconds, so the names sort
-    chronologically within a session) plus the turn that carried it — the
-    tool result's, in the engine; the request's, in the claude runtime.
-    Shared by both engines so the `images/` layout stays identical.
+    chronologically within a session) plus the turn that carried the image.
     `.bin` is the fallback for an unknown mime."""
     now = dt.datetime.now()
     ext = _MIME_EXT.get(mime, ".bin")
@@ -182,7 +167,7 @@ def save_image(img_dir: Path, turn: int, mime: str, b64: str) -> str | None:
     `<img_dir>/<image_filename(turn, mime)>`; returns the filename, or
     None on undecodable data. A failed write raises OSError — each
     caller picks its own fail-open policy (the engine's session store
-    stubs the reference, the claude writer skips its counter)."""
+    stubs the reference)."""
     try:
         raw = base64.b64decode(b64, validate=False)
     except (ValueError, TypeError):
@@ -204,8 +189,8 @@ def save_image(img_dir: Path, turn: int, mime: str, b64: str) -> str | None:
             n += 1
 
 
-# The session banner/footer rule — one width, so "operators scan either
-# runtime the same way" can't drift between the two dailies.
+# Keep session banners and footers the same width across daily log files.
+# Rollover markers identify a session's continuation in the next file.
 _RULE = "=" * 60
 
 
@@ -273,9 +258,7 @@ class DailyLogWriter:
             log.debug("daily log close failed", exc_info=True)
 
 
-# summary.json `errors` — the full engine-internal counter set. Both
-# engines render every key (absent counters as 0) so `jq` never has to
-# null-guard a field across engines.
+# Session summaries include every error counter, using zero when absent.
 _ERROR_KEYS = (
     "blocked_plan",
     "blocked_layout",
@@ -310,7 +293,6 @@ def build_summary(
     cache_creation_tokens: int,
     new_tokens: int | None = None,
     by_model: Mapping[str, Mapping[str, int]] | None = None,
-    cost_usd: float | None = None,
     tool_calls: Mapping[str, int],
     tool_time_ms: int | None = None,
     verdicts: Mapping[str, int] | None = None,
@@ -320,15 +302,11 @@ def build_summary(
     images: int,
     env: dict[str, Any],
 ) -> dict[str, Any]:
-    """The schema-v1 summary.json dict — the single constructor both
-    engines' `finalize` paths call, so the shape can't drift. `ended_at`
-    is stamped here (finalize time). `errors` may carry any subset of
-    `_ERROR_KEYS`; the rest render as 0. `cost_usd` (claude-only — the
-    CLI reports it) is dropped when None, keeping engine summaries
-    byte-stable; `tool_time_ms` / `verdicts` / `conductor_turns` /
-    `micro_calls` (engine-only — the claude CLI's stream carries no
-    per-tool timing, camera verdicts, or conductor turns/decisions) are
-    dropped the same way."""
+    """Build the schema-v1 summary, stamping ``ended_at`` at finalize time.
+
+    Missing error counters render as zero. Optional timing, verdict, and
+    conductor fields are omitted when the writer has no corresponding data.
+    """
     unknown = set(errors) - set(_ERROR_KEYS)
     if unknown:
         # A counter incremented somewhere without a matching _ERROR_KEYS
@@ -373,7 +351,7 @@ def build_summary(
                 if input_tokens
                 else 0.0
             ),
-            # Per model (engine-only): calls and the same buckets, so a
+            # Per model: calls and the same buckets, so a
             # session mixing a decision tier with the main model can be
             # billed model by model — multiply each bucket by its rate.
             **(
@@ -382,11 +360,10 @@ def build_summary(
                 else {}
             ),
         },
-        "cost_usd": round(cost_usd, 4) if cost_usd is not None else None,
         "tool_calls": dict(tool_calls),
         "verdicts": dict(verdicts) if verdicts is not None else None,
         # The conductor's walks, in order — app, playbook, outcome, the
-        # node it ended at, and the reason (engine-only; absent when no
+        # node it ended at, and the reason (absent when no
         # walk ran, so "was a playbook used?" is one key away).
         "walks": list(walks) if walks is not None else None,
         "errors": {key: int(errors.get(key, 0)) for key in _ERROR_KEYS},
@@ -395,7 +372,6 @@ def build_summary(
         "env": env,
     }
     for optional in (
-        "cost_usd",
         "tool_time_ms",
         "verdicts",
         "walks",

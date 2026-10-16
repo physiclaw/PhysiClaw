@@ -94,7 +94,7 @@ class _TaggedFormatter(logging.Formatter):
         if not self.color:
             # File sinks (daily logs, runtime.log, mcp.log) and piped output
             # must be plain text: strip any ANSI the MESSAGE itself carried
-            # (subprocess / claude stream output, etc.) — color=False means we
+            # (subprocess output, etc.) — color=False means we
             # ADD no color, not that the content has none. The `\033` pre-check
             # skips the regex on the vast majority of records, which have none.
             if "\033" in msg:
@@ -342,18 +342,13 @@ def _clear_active_session(sid: str) -> None:
 
 
 def _active_session_dir(sid: str) -> Path | None:
-    """Resolve a session id to its on-disk dir. The engine and claude writers
-    use different session roots, so probe both and take the one that exists —
-    exactly one does (the writer created it before publishing the marker)."""
+    """Resolve the active engine session id to its on-disk directory."""
     from physiclaw.common import paths
 
     if not sid or sid in {".", ".."} or any(c in sid for c in "/\\:\0"):
         return None
-    for base in (paths.engine_sessions_dir(), paths.claude_sessions_dir()):
-        d = base / sid
-        if d.is_dir():
-            return d
-    return None
+    directory = paths.engine_sessions_dir() / sid
+    return directory if directory.is_dir() else None
 
 
 class SessionLogSidecars:

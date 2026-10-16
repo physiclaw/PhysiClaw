@@ -200,7 +200,9 @@ def server(
 
         resources.callback(shutdown)
         resources.callback(runtime_state.clear)
-        model_ref, runtime_label = _resolve_and_record_model(host, port)
+        model_ref, runtime_label = _resolve_and_record_model(
+            host, port, no_runtime=no_runtime
+        )
         _log_endpoints(host, port, no_runtime=no_runtime)
         apps = build_apps(host)
         child = _start_runtime_loop(
@@ -497,32 +499,32 @@ def _refuse_if_already_running(host: str, port: int) -> None:
             )
 
 
-def _resolve_and_record_model(host: str, port: int) -> tuple[Optional[str], str]:
-    """Resolve the engine model ref and record the live (host, port, model).
+def _resolve_and_record_model(
+    host: str, port: int, *, no_runtime: bool = False
+) -> tuple[Optional[str], str]:
+    """Record the startup selection so doctor doesn't resolve another shell's model.
 
-    Resolve ONCE here, in the same env the user invoked `physiclaw server`
-    from, so `doctor` in another shell reads the live choice instead of
-    re-resolving against an env that may be missing PHYSICLAW_MODEL. The
-    runtime subprocess reuses this via the pre-built label. A bad ref is
-    non-fatal for the HTTP server — record nothing (model_ref=None) and let
-    the runtime subprocess report the real error.
-
-    `runtime_state.write` also lets `doctor` probe the actual server, not the
-    config-default port. The caller owns clearing it when serving ends;
-    unclean process death is handled by doctor's pid-liveness check on read.
-
-    Returns (model_ref, runtime_label); model_ref is None when no model is set.
+    External MCP mode needs no model. Invalid selections keep the HTTP server
+    running, record the cause, and skip the runtime. The caller clears the
+    state on shutdown; stale processes are handled by runtime_state.read_live.
     """
+    from physiclaw.common import runtime_state
+
+    if no_runtime:
+        runtime_state.write(host, port, no_runtime=True)
+        return None, "external MCP client"
+
     from physiclaw.agent.runtime.launcher import engine_label
     from physiclaw.agent.runtime.launcher import resolve as _resolve_model
-    from physiclaw.common import runtime_state
 
     try:
         model_ref, model_source = _resolve_model()
         runtime_label = engine_label(model_ref)
-    except RuntimeError:
-        model_ref, model_source = None, None
-        runtime_label = "engine=(unset)"
+    except RuntimeError as e:
+        logging.getLogger(__name__).warning("Runtime loop NOT started — %s", e)
+        runtime_state.write(host, port, model_error=str(e))
+        return None, "engine=(unset)"
+
     runtime_state.write(host, port, model_ref=model_ref, model_source=model_source)
     return model_ref, runtime_label
 
@@ -686,19 +688,12 @@ def _start_runtime_loop(
         # (`_log_endpoints`) — nothing to report here.
         return None
     if model_ref is None:
-        # First-run case: server is useful for hardware setup + manual MCP
-        # tool calls, but the agent can't wake without a model. Skip spawn
-        # rather than letting the subprocess crash with a stack trace.
-        # Reuse `_NO_MODEL_MSG` so this hint stays in sync with the
-        # RuntimeError raised elsewhere — single source of truth.
-        from physiclaw.common.model_ref import _NO_MODEL_MSG
-
+        # Resolution already reported the actual cause. Keep the hardware
+        # server available for setup and external MCP clients.
         log.warning(
-            "Runtime loop NOT started — %s\n"
-            "  The MCP server is running and you can use it for hardware setup,\n"
-            "  but the agent won't wake. After setting a model, restart "
-            "`physiclaw server`.",
-            _NO_MODEL_MSG,
+            "The MCP server is running for hardware setup and external clients. "
+            "Configure an API model with `physiclaw models key <provider>` and "
+            "`physiclaw models use <provider/model>`, then restart `physiclaw server`."
         )
         return None
 
@@ -726,7 +721,7 @@ def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subproces
     """Run the hook loop out-of-process so long-running hooks don't block
     the MCP event loop. The caller terminates it when serving ends.
 
-    `label` is the pre-resolved engine string (e.g. "engine=claude-code")
+    `label` is the pre-resolved engine/provider/model string
     passed by the caller — the caller already did provider resolution to
     record into runtime_state, so reuse that instead of resolving again.
     """

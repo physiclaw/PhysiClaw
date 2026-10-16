@@ -1,30 +1,10 @@
-"""Runtime launcher — wires args + env + engine choice, starts the Runtime loop.
+"""Runtime launcher — resolves the API model and starts the hook loop.
 
-Invoked via `python -m physiclaw.agent.runtime` (the package's `__main__.py`
-shim imports `launch` from here).
-
-Spawned as a subprocess by `physiclaw.main` so the hook loop runs
-out-of-process from the MCP server. This isolates long-running hook work
-(claude -p subprocess, or the in-process engine) from the MCPServer event
-loop.
-
-Two engines, one hook loop, one config knob:
-
-  - `physiclaw`   — in-process tool-call loop (agent/engine/). Drives one
-                    of the providers in provider/.
-  - `claude-code` — subprocess to Anthropic's `claude` CLI. Lives under
-                    agent/claude/. Loaded lazily — if the package is
-                    deleted, any `claude-code/...` ref errors out; the
-                    engine path keeps working.
-
-Single config field `[agent] model` (or `PHYSICLAW_MODEL` env) selects
-the whole stack via a `provider/model` ref:
-  qwen/qwen3.6-plus            → physiclaw engine + Qwen
-  claude-code/claude-sonnet-4-6 → agent/claude/ subprocess
-
-Each in-process provider reads its credential at startup (e.g.
-QWEN_API_KEY env var or [provider] qwen_api_key in config.toml) and
-fails loudly if missing.
+Invoked via ``python -m physiclaw.agent.runtime``. The server starts this
+process separately so long-running engine sessions do not block MCP serving.
+``[agent] model`` or ``PHYSICLAW_MODEL`` selects a ``provider/model`` reference;
+every provider uses the same PhysiClaw engine. External agents connect to
+``physiclaw mcp`` without starting this runtime.
 """
 
 import argparse
@@ -41,37 +21,18 @@ from physiclaw.common import paths
 from physiclaw.common.config import (
     SERVER_ENV_VAR,
     model_ref_with_source,
-    parse_model_ref,
     server_url,
 )
 from physiclaw.common.logger import setup_logging
 from physiclaw.common.proxy import normalize_proxy_env
-from physiclaw.provider import (
-    CLAUDE_CODE_ID,
-    in_process_provider_ids,
-)
+from physiclaw.provider import validate_model_ref
 
 log = logging.getLogger(__name__)
 
 
-def _claude_available() -> bool:
-    """Whether the claude-code subprocess engine is installed.
-
-    Pure availability check via importlib — does not execute the
-    package, so a missing plugin dir or other side-effect failure is
-    surfaced later when `spawn_claude` actually imports it."""
-    from importlib.util import find_spec
-
-    return find_spec("physiclaw.agent.claude") is not None
-
-
 def engine_label(ref: str) -> str:
-    """Human-readable engine label for a model ref. `claude-code` is a
-    whole engine (the subprocess runner); other providers run inside the
-    in-process physiclaw engine."""
-    provider_id, model_id = parse_model_ref(ref)
-    if provider_id == CLAUDE_CODE_ID:
-        return f"engine=claude-code, model={model_id}"
+    """Human-readable engine, provider, and model label."""
+    provider_id, model_id = validate_model_ref(ref)
     return f"engine=physiclaw, provider={provider_id}, model={model_id}"
 
 
@@ -84,28 +45,9 @@ def resolve() -> tuple[str, str]:
     — provider APIs reject unknown ids on the first chat."""
     ref, source = model_ref_with_source()  # raises if not configured
     try:
-        provider_id, _ = parse_model_ref(ref)
+        validate_model_ref(ref)
     except ValueError as e:
-        # Normalize to RuntimeError: every resolve() caller guards with
-        # `except RuntimeError` (server startup's non-fatal fallback,
-        # doctor's diagnosis line) — a slashless ref must not traceback
-        # past them.
         raise RuntimeError(f"{e} (from {source})") from e
-    known_in_process = in_process_provider_ids()
-    if provider_id == CLAUDE_CODE_ID:
-        if not _claude_available():
-            raise RuntimeError(
-                f"model ref {ref!r} (from {source}) selects claude-code "
-                "but agent/claude/ is not installed."
-            )
-    elif provider_id not in known_in_process:
-        choices = (*known_in_process,) + (
-            (CLAUDE_CODE_ID,) if _claude_available() else ()
-        )
-        raise RuntimeError(
-            f"unknown provider {provider_id!r} in ref {ref!r} (from {source}); "
-            f"known: {choices}"
-        )
     return ref, source
 
 
@@ -114,8 +56,7 @@ def launch() -> None:
     # a direct `python -m physiclaw.agent.runtime` skips the CLI callback
     # — and a raw `socks://` proxy env kills every httpx client here
     # (provider AND the loopback poll/MCP clients). It also pins loopback
-    # into NO_PROXY, which the claude-code child INHERITS — its MCP client
-    # dials our loopback URL, so this must run before any spawn.
+    # into NO_PROXY so local status polls and MCP calls stay local.
     normalize_proxy_env()
     parser = argparse.ArgumentParser(description="PhysiClaw runtime loop")
     # None → resolve via config.server_url() ($PHYSICLAW_SERVER, else
@@ -134,7 +75,6 @@ def launch() -> None:
         # and bail. No Python stack trace bleeds into the parent shell.
         print(f"physiclaw runtime: {e}", file=sys.stderr)
         sys.exit(1)
-    provider_id, model_id = parse_model_ref(ref)
 
     # Hooks read this to know where the MCP server lives. Must be set
     # before load_hooks() imports them. An explicit --server (the server
@@ -155,14 +95,9 @@ def launch() -> None:
         file_dir=paths.runtime_log_dir(),
     )
 
-    if provider_id == CLAUDE_CODE_ID:
-        from physiclaw.agent.claude import spawn_claude
+    from physiclaw.agent.engine.engine import run as engine_run
 
-        react = partial(spawn_claude, model_id=model_id)
-    else:
-        from physiclaw.agent.engine.engine import run as engine_run
-
-        react = partial(engine_run, model_ref=ref)
+    react = partial(engine_run, model_ref=ref)
 
     label = engine_label(ref)
     log.info("%s [%s]", label, source)

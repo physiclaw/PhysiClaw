@@ -69,7 +69,7 @@ _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-]*")
 def _builtin_skills_dir() -> Path:
     """Flat-``.md`` skills shipped inside the wheel — the out-of-the-box
     baseline every install gets. The engine inlines these separately from
-    on-demand skills; the Claude plugin uses the merged `discover()` view.
+    on-demand skills.
 
     Lives here (sole consumer), not in `common.paths`: resolving it
     imports `physiclaw.agent` via the import system, an agent-layer
@@ -84,7 +84,7 @@ HOME_SKILLS_DIR = paths.skills_dir()
 
 @dataclass
 class Skill:
-    """Snapshot of a skill at discover() time. `body` and `dir` are
+    """Snapshot of a skill at discovery time. `body` and `dir` are
     captured on session start; edits to SKILL.md mid-session are not
     reflected (deliberate: protects the SYSTEM prompt cache prefix)."""
 
@@ -150,17 +150,6 @@ def _merge_disambiguated(
                     number += 1
                 reserved.add(key)
             out[key] = replace(sk, name=key)
-    return out
-
-
-def discover() -> dict[str, Skill]:
-    """Merged view — built-in (always on), then the disambiguated official+user
-    on-demand set layered on top. Used by the Claude-provider plugin dir, which
-    materializes every skill as a Claude Code skill; the engine keeps built-in
-    (inlined) and on-demand (Skill()) separate instead. Unreadable or unsafe
-    skills are logged and skipped rather than taking down the session."""
-    out = discover_builtin_skills()
-    out.update(discover_user_skills())
     return out
 
 
@@ -262,7 +251,7 @@ def _load_reference(skill: Skill, ref_path: str) -> str:
             f"skill {skill.name!r} is built-in and self-contained — it has no "
             "references"
         )
-    # skill.dir is already a realpath from discover(); no need to resolve it
+    # skill.dir is already a realpath from discovery; no need to resolve it
     # again. Only the target needs resolving to collapse any `..` segments
     # in `ref_path` before the scope check.
     root = skill.dir / "references"
@@ -307,7 +296,6 @@ def _skill_bullets(skills: list[Skill]) -> list[str]:
 # `## Available skills` (dict insertion order). A subsection is emitted only if
 # that source has any skills.
 _SECTION_LABELS = {
-    "built-in": "built-in skills",
     "official": "official skills",
     "user": "user skills",
 }
@@ -315,8 +303,7 @@ _SECTION_LABELS = {
 
 def render_section(skills: dict[str, Skill]) -> str:
     """`## Available skills`, split into `### official skills` / `### user skills`
-    subsections (and `### built-in skills` on the Claude path, which merges all
-    three) — one `- **name** — description` line per skill. Empty string if none.
+    subsections — one `- **name** — description` line per skill. Empty string if none.
     A pure index; the body loads on demand via the Skill tool. Built-in skills in
     the engine path use `render_builtin` instead (full bodies, not an index)."""
     if not skills:

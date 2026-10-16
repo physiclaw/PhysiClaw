@@ -134,7 +134,7 @@ def test_common_is_a_leaf() -> None:
 # lives in `physiclaw.contract`, so they have NO legal engine edge at
 # all. Stated as the exception set so a new shared package is guarded
 # from birth, with no test edit to remember.
-_ENGINE_RUNTIMES = frozenset({"engine", "claude", "hooks", "runtime"})
+_ENGINE_RUNTIMES = frozenset({"engine", "hooks", "runtime"})
 
 
 def test_shared_agent_packages_do_not_import_the_engine() -> None:

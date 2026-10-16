@@ -1,6 +1,6 @@
 """Tests for `physiclaw.provider.vendors.anthropic` — adapter class.
 
-Distinct from the `claude-code` engine. This vendor calls Anthropic's
+This vendor calls Anthropic's
 `/v1/messages` endpoint via the `AsyncAnthropic` SDK; wire-format flow
 lives in `provider/anthropic_compat.py` and is exercised separately.
 """
@@ -35,15 +35,6 @@ def test_inherits_anthropic_compat() -> None:
     )
 
     assert issubclass(AnthropicProvider, AnthropicCompatibleProvider)
-
-
-def test_distinct_from_claude_code_engine() -> None:
-    """The `claude-code` provider id is the subprocess engine; this
-    one (`anthropic`) is the in-process SDK adapter. They share an
-    API key but are different code paths."""
-    from physiclaw.provider import CLAUDE_CODE_ID
-
-    assert AnthropicProvider.PROVIDER_ID != CLAUDE_CODE_ID
 
 
 @pytest.fixture

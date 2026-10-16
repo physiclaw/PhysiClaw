@@ -105,11 +105,6 @@ def test_config_error_is_value_error_subclass() -> None:
         # MemoryConfig
         ("memory", "default_log_entries", 20),
         ("memory", "bootstrap_log_entries", 10),
-        # ClaudeConfig
-        ("claude", "timeout_seconds", 180),
-        ("claude", "stream_buffer_mb", 10),
-        ("claude", "max_attempts", 3),
-        ("claude", "retry_backoff_seconds", 5.0),
         # RetentionConfig
         ("retention", "trace_days", 30),
         # SkillsConfig
@@ -346,7 +341,7 @@ def test_to_toml_emits_header_and_section_comments_when_with_comments() -> None:
 
     assert out.startswith("# PhysiClaw config.")
     assert "# Timeouts for `physiclaw server --warm-start`" in out
-    assert "# Engine + model selection." in out
+    assert "# API model selection." in out
 
 
 @pytest.mark.parametrize(
@@ -377,10 +372,6 @@ def test_to_toml_emits_header_and_section_comments_when_with_comments() -> None:
             "memory",
             "Daily-log loading: bootstrap preload + on-demand `read_logs` defaults.",
         ),
-        (
-            "claude",
-            "Applied when [agent] model = 'claude-code/...' (external CLI subprocess).",
-        ),
         ("retention", "Purge window for on-disk engine trace logs + cron job history."),
         (
             "macros",
@@ -399,8 +390,8 @@ def test_section_comment_pinned(
 def test_agent_section_comment_includes_provider_model_examples() -> None:
     # The agent comment is built via parens + concatenation; assert exact.
     assert config._SECTION_COMMENTS["agent"] == (
-        "Engine + model selection. `model` is a `provider/model` ref, e.g. "
-        "`qwen/qwen3.6-plus` or `claude-code/claude-sonnet-4-6`. "
+        "API model selection. `model` is a `provider/model` ref, e.g. "
+        "`qwen/qwen3.6-plus` or `anthropic/claude-sonnet-5`. "
         "`PHYSICLAW_MODEL` env var overrides."
     )
 
@@ -1077,3 +1068,11 @@ def test_load_coerces_toml_int_for_float_field(tmp_path: Path) -> None:
     cfg = config.load(p)
     assert cfg.engine.retry_backoff_seconds == 5.0
     assert isinstance(cfg.engine.retry_backoff_seconds, float)
+
+
+def test_load_rejects_removed_claude_section(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("[claude]\nmax_attempts = 3\n", encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match="unknown section.*claude"):
+        config.load(path)

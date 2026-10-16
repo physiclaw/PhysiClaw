@@ -1,4 +1,4 @@
-"""Engine — provider-agnostic tool-use loop (low-level replacement for `claude -p`).
+"""Engine — provider-agnostic tool-use loop with local tools and turn plugins.
 
 Submodules import lazily — there's no eager re-export of `engine.run`
 because an eager one once triggered a cycle with the provider package

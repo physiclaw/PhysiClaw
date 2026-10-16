@@ -34,12 +34,17 @@ _SaveAs = Annotated[
 def _provider_id() -> str:
     """The active provider id, or '' when no model is configured (the SYSTEM
     prompt only uses it to pick the provider's reasoning-format fragment)."""
-    from physiclaw.common.config import model_ref, parse_model_ref
+    from physiclaw.common.config import model_ref
+    from physiclaw.provider import validate_model_ref
 
     try:
-        return parse_model_ref(model_ref())[0]
-    except (RuntimeError, ValueError):
+        ref = model_ref()
+    except RuntimeError:
         return ""
+    try:
+        return validate_model_ref(ref)[0]
+    except ValueError as e:
+        exit_error(str(e))
 
 
 def _content_text(content: str | list[ContentBlock]) -> str:

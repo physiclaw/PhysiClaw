@@ -90,7 +90,6 @@ async def run(triggers: list[Trigger], *, model_ref: str) -> contract.SessionOut
         triggers,
         max_attempts=settings.max_session_attempts,
         wait_default_minutes=settings.wait_default_minutes,
-        retry_on=(STUCK,),
     )
 
 
