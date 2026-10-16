@@ -48,9 +48,9 @@ _DELEGATED: dict[str, list[str]] = {
     "replay": ["-m", "hardware.assembly.mark.replay"],
     "refit": ["-m", "hardware.assembly.mark.refit"],
     "camera": ["-m", "hardware.assembly.projection"],
-    "manual": ["-m", "hardware.manual.build_manual"],
-    "sourcing": ["-m", "hardware.manual.build_sourcing_guide"],
-    "drawing": ["-m", "hardware.manual.build_extrusion_drawing"],
+    "manual": ["-m", "hardware.documents.manual.build"],
+    "sourcing": ["-m", "hardware.documents.sourcing.build"],
+    "drawing": ["-m", "hardware.documents.drawing.extrusion"],
     "release": ["-m", "hardware.release"],
 }
 

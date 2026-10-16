@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from hardware.manual.common import load_pages
-from hardware.manual.style_checks import inline_style_unit_warnings
+from hardware.documents.manual.pages import load_pages
+from hardware.documents.manual.style_checks import inline_style_unit_warnings
 
 
 def warnings_for(style: str) -> list[str]:

@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 from hardware import check
-from hardware.manual.build_extrusion_drawing import SPECS
+from hardware.documents import bom
+from hardware.documents.drawing.extrusion import SPECS
 
 # One BOM row per extrusion the model cuts, stating its length in both
 # languages, so the world's BOM satisfies the extrusion gate too.
@@ -44,19 +45,23 @@ def world(tmp_path, monkeypatch):
     BOM/sourcing pair that joins cleanly."""
     procedures = tmp_path / "procedures"
     patches = tmp_path / "patch"
-    manual = tmp_path / "manual"
+    documents = tmp_path / "documents"
+    manual = documents / "manual"
+    vendors = documents / "sourcing" / "vendors"
+    data = documents / "data"
     content = manual / "content"
-    for d in (procedures, patches, content):
+    for d in (procedures, patches, content, vendors, data):
         d.mkdir(parents=True)
     monkeypatch.setattr(check, "PROCEDURES_DIR", procedures)
     monkeypatch.setattr(check, "PATCH_DIR", patches)
     monkeypatch.setattr(check, "CONTENT_DIR", content)
+    monkeypatch.setattr(bom, "BOM_FILE", data / "bom.json")
     monkeypatch.setattr(
         check,
         "VENDOR_FILES",
         {
-            "zh": manual / "sourcing_vendors.cn.json",
-            "en": manual / "sourcing_vendors.global.json",
+            "zh": vendors / "cn.json",
+            "en": vendors / "global.json",
         },
     )
     monkeypatch.setattr(check, "HAND_FIGURES", {"wire_splice.svg": "<svg/>"})
@@ -78,21 +83,34 @@ def world(tmp_path, monkeypatch):
             ]
         )
     )
-    write_bom(content, manual, [{"part_id": "p1"}, {"part_id": "p2"}])
+    write_bom(content, vendors, [{"part_id": "p1"}, {"part_id": "p2"}])
     return SimpleNamespace(
-        procedures=procedures, patches=patches, manual=manual, content=content
+        procedures=procedures,
+        patches=patches,
+        vendors=vendors,
+        content=content,
+        bom=data / "bom.json",
     )
 
 
-def write_bom(content, manual, rows: list[dict], extrusions=EXTRUSION_ROWS) -> None:
+def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> None:
     """A BOM page of ``rows`` plus the extrusion rows (the real ones unless
     a test hands in altered ones), and a vendor file that joins to every one
     of them."""
     rows = rows + extrusions
-    (content / "11_bom.json").write_text(json.dumps([{"type": "bom", "rows": rows}]))
-    for filename in ("sourcing_vendors.cn.json", "sourcing_vendors.global.json"):
-        (manual / filename).write_text(
-            json.dumps([{"part_id": r["part_id"]} for r in rows if "part_id" in r])
+    (content / "11_bom.json").write_text(
+        json.dumps([{"type": "bom", "rows_source": "bom"}])
+    )
+    (content.parent.parent / "data" / "bom.json").write_text(json.dumps(rows))
+    for filename in ("cn.json", "global.json"):
+        (vendors / filename).write_text(
+            json.dumps(
+                [
+                    {"part_id": r["part_id"]}
+                    for r in rows
+                    if isinstance(r, dict) and "part_id" in r
+                ]
+            )
         )
 
 
@@ -100,13 +118,15 @@ def run_check() -> list[str]:
     proc_findings, views_by_stem = check.check_procedures()
     patch_findings, leaves_by_svg = check.check_patches(views_by_stem)
     content_findings, pages_by_file = check.load_content()
+    bom_findings, rows = check.load_purchasing_bom()
     return (
         proc_findings
         + patch_findings
         + content_findings
+        + bom_findings
         + check.check_manual(views_by_stem, leaves_by_svg, pages_by_file)
-        + check.check_sourcing(pages_by_file)
-        + check.check_extrusions(pages_by_file)
+        + check.check_sourcing(rows)
+        + check.check_extrusions(rows)
     )
 
 
@@ -348,36 +368,68 @@ def test_manual_content_with_invalid_json_is_flagged(world):
     assert_finding("02_x.json is not valid JSON")
 
 
+def test_malformed_manual_chapter_reports_a_finding(world):
+    (world.content / "02_x.json").write_text("[null]")
+    assert_finding("manual chapter must be a JSON array of page objects")
+
+
 # ── sourcing ──────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture(params=["sourcing_vendors.cn.json", "sourcing_vendors.global.json"])
+@pytest.fixture(params=["cn.json", "global.json"])
 def vendor_filename(request):
     return request.param
 
 
 def test_bom_row_without_part_id_is_flagged(world):
-    write_bom(world.content, world.manual, [{"part_id": "p1"}, {"spec": "x"}])
+    write_bom(world.content, world.vendors, [{"part_id": "p1"}, {"spec": "x"}])
 
     assert_finding("1 BOM row(s) missing a part_id")
 
 
 def test_duplicate_bom_part_ids_are_flagged(world):
-    write_bom(world.content, world.manual, [{"part_id": "p1"}, {"part_id": "p1"}])
+    write_bom(world.content, world.vendors, [{"part_id": "p1"}, {"part_id": "p1"}])
 
     assert_finding("duplicate BOM part_id(s): p1")
+
+
+def test_unhashable_bom_part_id_is_flagged_not_crashed(world):
+    rows = json.loads(world.bom.read_text())
+    rows.append({"part_id": []})
+    world.bom.write_text(json.dumps(rows))
+    assert_finding("missing a part_id (non-empty string required)")
 
 
 def test_malformed_bom_row_is_flagged_not_crashed(world):
     # A non-object row must produce a finding, not an AttributeError that
     # aborts the whole gate and masks every other finding.
-    write_bom(world.content, world.manual, [{"part_id": "p1"}, "stray string"])
+    write_bom(world.content, world.vendors, [{"part_id": "p1"}, "stray string"])
 
     assert_finding("malformed BOM row(s)")
 
 
+def test_missing_shared_bom_is_flagged(world):
+    world.bom.unlink()
+    assert_finding("Cannot read purchasing BOM")
+
+
+@pytest.mark.parametrize("contents", ["{broken", "{}"])
+def test_unreadable_shared_bom_is_flagged(world, contents):
+    world.bom.write_text(contents)
+    assert any(finding.startswith("bom:") for finding in run_check())
+
+
+def test_manual_cannot_override_shared_bom_rows(world):
+    (world.content / "11_bom.json").write_text(
+        json.dumps(
+            [{"type": "bom", "rows_source": "bom", "rows": [{"part_id": "other"}]}]
+        )
+    )
+    assert_finding("use rows_source instead of duplicating BOM rows")
+
+
 def test_stale_vendor_part_id_is_flagged(world, vendor_filename):
-    (world.manual / vendor_filename).write_text(
+    (world.vendors / vendor_filename).write_text(
         json.dumps([{"part_id": i} for i in ["p1", "p2", *EXTRUSION_IDS, "gone"]])
     )
 
@@ -385,7 +437,7 @@ def test_stale_vendor_part_id_is_flagged(world, vendor_filename):
 
 
 def test_bom_row_missing_from_vendors_is_flagged(world, vendor_filename):
-    (world.manual / vendor_filename).write_text(
+    (world.vendors / vendor_filename).write_text(
         json.dumps([{"part_id": i} for i in ["p1", *EXTRUSION_IDS]])
     )
 
@@ -393,19 +445,19 @@ def test_bom_row_missing_from_vendors_is_flagged(world, vendor_filename):
 
 
 def test_missing_vendor_file_is_flagged(world, vendor_filename):
-    (world.manual / vendor_filename).unlink()
+    (world.vendors / vendor_filename).unlink()
 
     assert_finding(f"{vendor_filename} not found")
 
 
 def test_vendor_file_with_invalid_json_is_flagged(world, vendor_filename):
-    (world.manual / vendor_filename).write_text("{nope")
+    (world.vendors / vendor_filename).write_text("{nope")
 
     assert_finding(f"{vendor_filename} is not valid JSON")
 
 
 def test_duplicate_vendor_part_ids_are_flagged(world, vendor_filename):
-    (world.manual / vendor_filename).write_text(
+    (world.vendors / vendor_filename).write_text(
         json.dumps([{"part_id": i} for i in ["p1", "p1", "p2", *EXTRUSION_IDS]])
     )
 
@@ -418,13 +470,13 @@ def test_duplicate_vendor_part_ids_are_flagged(world, vendor_filename):
 def test_bom_stating_another_extrusion_length_is_flagged(world):
     rows = [dict(r) for r in EXTRUSION_ROWS]
     rows[0]["spec"] = {"en": "Length 999 mm", "zh": "长度 999 mm"}
-    write_bom(world.content, world.manual, [{"part_id": "p1"}], extrusions=rows)
+    write_bom(world.content, world.vendors, [{"part_id": "p1"}], extrusions=rows)
 
     assert_finding("extrusions: BOM row 'ext-2040-y' spec [en] does not state")
 
 
 def test_extrusion_without_a_bom_row_is_flagged(world):
     rows = [r for r in EXTRUSION_ROWS if r["part_id"] != "ext-1020-x-beam"]
-    write_bom(world.content, world.manual, [{"part_id": "p1"}], extrusions=rows)
+    write_bom(world.content, world.vendors, [{"part_id": "p1"}], extrusions=rows)
 
     assert_finding("extrusions: no BOM row with part_id 'ext-1020-x-beam'")

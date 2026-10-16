@@ -1,4 +1,4 @@
-"""Tests for hardware/manual/paginate.py — page numbering + BOM pagination."""
+"""Tests for hardware/documents/manual/paginate.py — page numbering + BOM pagination."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from hardware.manual import paginate
+from hardware.documents.manual import paginate
 
 
 def row(cls: str, component: str, **extra) -> dict:

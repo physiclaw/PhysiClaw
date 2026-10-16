@@ -1,4 +1,4 @@
-"""Tests for hardware/manual/assets.py — image-asset strategies."""
+"""Tests for hardware/documents/manual/assets.py — image-asset strategies."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import base64
 
 import pytest
 
-from hardware.manual import assets
+from hardware.documents.manual import assets
 
 
 @pytest.fixture

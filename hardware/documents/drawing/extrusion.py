@@ -1,7 +1,7 @@
 """Render A4 landscape cut-and-drill drawings for the frame's seven extrusions.
 
 Dimensions and profiles use the CAD constants in ``travel_ranges`` and
-``extrusion_spec``; quantities and applications come from ``11_bom.json``.
+``extrusion_spec``; quantities and applications come from ``documents/data/bom.json``.
 The build rejects BOM lengths that disagree with the CAD.
 
 English output: EN then ZH (2 pages). Chinese output: ZH (1 page).
@@ -27,10 +27,10 @@ from hardware.assembly.travel_ranges import (
     Y_EXTRUSION_LENGTH,
 )
 from hardware.build_lock import locked_main
-from hardware.manual import BuildError
-from hardware.manual.build_sourcing_guide import load_bom_rows
-from hardware.manual.common import HTML_LANG, URL_MARK, _step, loc, manual_version
-from hardware.manual.pdf import find_chrome, render_pdf
+from hardware.documents import BuildError
+from hardware.documents.bom import load_bom_rows
+from hardware.documents.common import HTML_LANG, URL_MARK, _step, loc, manual_version
+from hardware.documents.pdf import find_chrome, render_pdf
 from hardware.parts.standard import extrusion_spec as spec
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 
@@ -138,7 +138,7 @@ def cut_list(rows: list[dict] | None = None) -> list[CutItem]:
                 raise BuildError(
                     f"BOM row {cut.part_id!r} spec [{lang}] does not state "
                     f"{stated!r} — the model cuts {stated} "
-                    f"(hardware/assembly/travel_ranges.py); update 11_bom.json"
+                    f"(hardware/assembly/travel_ranges.py); update hardware/documents/data/bom.json"
                 )
         try:
             qty = int(row.get("qty", ""))

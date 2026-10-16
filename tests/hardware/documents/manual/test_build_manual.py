@@ -1,11 +1,12 @@
-"""Tests for hardware/manual/build_manual.py — the pure document helpers."""
+"""Tests for hardware/documents/manual/build.py — the pure document helpers."""
 
 from __future__ import annotations
 
 import pytest
 
-from hardware.manual import BuildError, build_manual
-from hardware.manual.assets import InlineAssets
+from hardware.documents import BuildError
+from hardware.documents.manual import build as build_manual
+from hardware.documents.manual.assets import InlineAssets
 
 
 def test_pdf_request_requires_browser_before_removing_existing_manual(

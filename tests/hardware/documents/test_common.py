@@ -1,10 +1,10 @@
-"""Tests for hardware/manual/common.py — shared builder helpers."""
+"""Tests for hardware/documents/common.py — shared builder helpers."""
 
 from __future__ import annotations
 
 import pytest
 
-from hardware.manual import common
+from hardware.documents import common
 
 # ── loc ───────────────────────────────────────────────────────────────────────
 
@@ -35,17 +35,6 @@ def test_rowspans_marks_group_starts_with_size_and_rest_with_zero():
 
 def test_rowspans_of_empty_rows_is_empty():
     assert common._rowspans([], lambda r: r) == []
-
-
-# ── load_pages ────────────────────────────────────────────────────────────────
-
-
-def test_load_pages_concatenates_content_files_in_filename_order(tmp_path, monkeypatch):
-    monkeypatch.setattr(common, "CONTENT_DIR", tmp_path)
-    (tmp_path / "01_a.json").write_text('[{"page": "a"}]')
-    (tmp_path / "00_front.json").write_text('[{"page": "front"}]')
-
-    assert common.load_pages() == [{"page": "front"}, {"page": "a"}]
 
 
 NBSP = "\u00a0"

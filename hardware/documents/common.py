@@ -1,26 +1,15 @@
-"""Helpers shared by both document builders — localization, content
-loading, table row-span math, step timing, and the document chrome
-conventions. Keeps ``build_sourcing_guide`` from reaching into
-``build_manual``'s internals.
-"""
+"""Shared localization, typography, table grouping and document build timing."""
 
 from __future__ import annotations
 
 import contextlib
-import json
 import re
 import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable
 
-_MANUAL_DIR = Path(__file__).resolve().parent
-CONTENT_DIR = _MANUAL_DIR / "content"
-VENDOR_FILES = {
-    "zh": _MANUAL_DIR / "sourcing_vendors.cn.json",
-    "en": _MANUAL_DIR / "sourcing_vendors.global.json",
-}
-MANUAL_VERSION_FILE = _MANUAL_DIR / "MANUAL_VERSION"
+MANUAL_VERSION_FILE = Path(__file__).resolve().parent / "MANUAL_VERSION"
 
 # The <html lang> attribute value per language.
 HTML_LANG = {"en": "en", "zh": "zh-Hans"}
@@ -65,14 +54,6 @@ def typeset_quantities(markup: str) -> str:
 def manual_version() -> str:
     """The manual's cover version stamp; MANUAL_VERSION is the single source of truth."""
     return MANUAL_VERSION_FILE.read_text(encoding="utf-8").strip()
-
-
-def load_pages() -> list[dict]:
-    """Load every content/*.json (sorted by filename = page order) into pages."""
-    pages: list[dict] = []
-    for path in sorted(CONTENT_DIR.glob("*.json")):
-        pages.extend(json.loads(path.read_text(encoding="utf-8")))
-    return pages
 
 
 def _rowspans(rows: list[dict], key: Callable[[dict], Any]) -> list[int]:

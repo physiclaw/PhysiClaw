@@ -1,4 +1,4 @@
-"""Tests for hardware/manual/build_sourcing_guide.py — the pure data logic."""
+"""Tests for hardware/documents/sourcing/build.py — the pure data logic."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from copy import deepcopy
 
 import pytest
 
-from hardware.manual import BuildError
-from hardware.manual import build_sourcing_guide as bsg
+from hardware.documents import BuildError
+from hardware.documents.sourcing import build as bsg
 
 
 def bom_row(pid: str) -> dict:
@@ -256,47 +256,14 @@ def test_empty_optional_tools_omit_the_section():
     assert bsg.render_optional_tools([], "en") == ""
 
 
-# ── load_bom_rows ─────────────────────────────────────────────────────────────
-
-
-def test_load_bom_rows_collects_rows_from_bom_pages(monkeypatch):
-    pages = [{"type": "solo"}, {"type": "bom", "rows": [bom_row("p1")]}]
-    monkeypatch.setattr(bsg, "load_pages", lambda: pages)
-
-    assert bsg.load_bom_rows() == [bom_row("p1")]
-
-
-def test_load_bom_rows_without_a_bom_page_raises(monkeypatch):
-    monkeypatch.setattr(bsg, "load_pages", lambda: [{"type": "solo"}])
-
-    with pytest.raises(BuildError, match="no 'bom' page rows"):
-        bsg.load_bom_rows()
-
-
-def test_load_bom_rows_with_missing_part_id_raises(monkeypatch):
-    row = {"component": {"en": "Rail"}, "spec": {"en": "MGN9H"}}
-    monkeypatch.setattr(bsg, "load_pages", lambda: [{"type": "bom", "rows": [row]}])
-
-    with pytest.raises(BuildError, match="missing a part_id"):
-        bsg.load_bom_rows()
-
-
-def test_load_bom_rows_with_duplicate_part_ids_raises(monkeypatch):
-    pages = [{"type": "bom", "rows": [bom_row("p1"), bom_row("p1")]}]
-    monkeypatch.setattr(bsg, "load_pages", lambda: pages)
-
-    with pytest.raises(BuildError, match="duplicate part_id"):
-        bsg.load_bom_rows()
-
-
 @pytest.mark.parametrize("langs", [["en"], ["zh"], ["en", "zh"]])
 @pytest.mark.parametrize("scaffold", [False, True])
 def test_build_uses_and_scaffolds_only_selected_vendor_files(
     tmp_path, monkeypatch, langs, scaffold
 ):
     files = {
-        "en": tmp_path / "sourcing_vendors.global.json",
-        "zh": tmp_path / "sourcing_vendors.cn.json",
+        "en": tmp_path / "global.json",
+        "zh": tmp_path / "cn.json",
     }
     originals = {}
     for lang, path in files.items():

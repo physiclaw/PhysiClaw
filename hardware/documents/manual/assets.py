@@ -14,8 +14,8 @@ from functools import cache
 from pathlib import Path
 from typing import Protocol
 
-from hardware.manual import BuildError
-from hardware.manual.icon_svg import CRAB_SVG, WIRE_SPLICE_SVG
+from hardware.documents import BuildError
+from hardware.documents.manual.icon_svg import CRAB_SVG, WIRE_SPLICE_SVG
 from hardware.scheme import SVG_DIR, SVG_NAME_RE
 
 ASSETS_SUBDIR = "assets"  # where external mode writes images, relative to the HTML.
@@ -48,7 +48,7 @@ def _require_renders(names) -> None:
     raise BuildError(
         f"{len(missing)} referenced SVG render(s) missing from output/svg:\n"
         f"{listed}\n\n"
-        "These are produced by the assembly render pipeline, not build_manual.\n"
+        "These are produced by the assembly render pipeline.\n"
         "Regenerate them with:\n"
         f"    uv run --group cad python -m hardware.assembly.build_procedures "
         f"--stems {' '.join(stems)}"

@@ -24,11 +24,11 @@ from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree
 
 from hardware.build_lock import inherited_fds, locked_main
-from hardware.manual.build_extrusion_drawing import LANG_FILENAME as DRAWINGS
-from hardware.manual.build_extrusion_drawing import PDF_FILENAME as DRAWING_PDFS
-from hardware.manual.build_manual import LANG_FILENAME as MANUALS
-from hardware.manual.build_sourcing_guide import LANG_FILENAME as SOURCING
-from hardware.manual.pdf import find_chrome, render_pdf
+from hardware.documents.drawing.extrusion import LANG_FILENAME as DRAWINGS
+from hardware.documents.drawing.extrusion import PDF_FILENAME as DRAWING_PDFS
+from hardware.documents.manual.build import LANG_FILENAME as MANUALS
+from hardware.documents.pdf import find_chrome, render_pdf
+from hardware.documents.sourcing.build import LANG_FILENAME as SOURCING
 from hardware.scheme import CACHE_DIR, REPO_ROOT
 
 # This location is deliberately independent of the subprocess output override.

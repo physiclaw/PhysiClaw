@@ -1,4 +1,4 @@
-from hardware.manual import pdf
+from hardware.documents import pdf
 
 
 def test_incomplete_pdf_is_retried_and_never_replaces_previous_file(

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Render the bilingual PhysiClaw sourcing guide from the manual BOM + supplier data.
+"""Render the bilingual PhysiClaw sourcing guide from purchasing and supplier data.
 
-The parts list is read straight from the manual's bill-of-materials content
-(the ``"bom"``-type page in ``content/``), so the sourcing guide can never
-drift from the assembly manual — class, component, spec, qty and application
+The parts list is read from ``documents/data/bom.json``, also used by the
+assembly manual and technical drawings. Class, component, spec, qty and application
 render verbatim from those rows, each carrying a short stable ``part_id``
 (e.g. ``rail-y``).
 
-``sourcing_vendors.cn.json`` supplies the Chinese guide;
-``sourcing_vendors.global.json`` supplies the English guide. Each is an array
+``vendors/cn.json`` supplies the Chinese guide;
+``vendors/global.json`` supplies the English guide. Each is an array
 with one entry per BOM row, in BOM order, keyed by ``part_id``. Each entry
 adds the sourcing columns of the table — all optional:
 
@@ -67,7 +66,7 @@ by the builder's explicit tick or toggle; browsing (following a
 supplier link) marks nothing. On narrow screens the lede and disclaimer
 stack full-width; the table itself just scrolls sideways.
 
-``sourcing_optional_tools.json`` supplies the optional tools
+``optional_tools.json`` supplies the optional tools
 section. Each item has localized ``name``, optional ``spec`` (shown beneath the
 tool name), and ``purpose``.
 Its ``sources`` maps ``en`` / ``zh`` to any number of ``{name, url, product?}``
@@ -77,9 +76,9 @@ do not affect the required-parts tally.
 
 Run under ``uv`` from the repo root (standard library only, Python 3.12+)::
 
-    uv run python -m hardware.manual.build_sourcing_guide              # en + zh
-    uv run python -m hardware.manual.build_sourcing_guide --lang en    # English only -> sourcing_guide.html
-    uv run python -m hardware.manual.build_sourcing_guide --scaffold   # sync both vendor files with the BOM, then build
+    uv run python -m hardware.documents.sourcing.build              # en + zh
+    uv run python -m hardware.documents.sourcing.build --lang en    # English only -> sourcing_guide.html
+    uv run python -m hardware.documents.sourcing.build --scaffold   # sync both vendor files with the BOM, then build
 
 ``--scaffold`` inserts a bare ``{"part_id": …}`` entry for every BOM row
 missing from the file, reorders entries to BOM order, and reports stale ids;
@@ -98,22 +97,20 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from hardware.build_lock import locked_main
-from hardware.manual import BuildError
+from hardware.documents import BuildError
+from hardware.documents.bom import load_bom_rows
 
-# Shared with the manual build: localization, BOM row grouping, step timing,
-# content/vendor-data loading and the html-lang / masthead-mark conventions.
-from hardware.manual.common import (
-    CONTENT_DIR,
+# Shared localization, table grouping, timing and document chrome conventions.
+from hardware.documents.common import (
     HTML_LANG,
     URL_MARK,
-    VENDOR_FILES,
     _rowspans,
     _step,
-    load_pages,
     loc,
     manual_version,
     typeset_quantities,
 )
+from hardware.documents.sourcing import VENDOR_FILES
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 
 # --------------------------------------------------------------------------- #
@@ -121,10 +118,9 @@ from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 # from hardware.scheme, so the cwd does not matter.
 # --------------------------------------------------------------------------- #
 SCRIPT_DIR = Path(__file__).resolve().parent
-STYLES_CSS = SCRIPT_DIR / "sourcing_styles.css"
-OPTIONAL_TOOLS_FILE = SCRIPT_DIR / "sourcing_optional_tools.json"
-# Own output dir — build_manual._clear_output_dir wipes *.html in output/manual,
-# so the sourcing guide must not live there.
+STYLES_CSS = SCRIPT_DIR / "styles.css"
+OPTIONAL_TOOLS_FILE = SCRIPT_DIR / "optional_tools.json"
+# Each document owns its output directory and cleanup.
 OUTPUT_DIR = _OUTPUT_ROOT / "sourcing"
 
 LANG_FILENAME = {"en": "sourcing_guide.html", "zh": "physiclaw采购指南.html"}
@@ -238,40 +234,8 @@ def clean_supplier_url(url: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Data — BOM rows from the manual content, sourcing entries from the data file.
+# Data — shared purchasing rows and market-specific supplier entries.
 # --------------------------------------------------------------------------- #
-def load_bom_rows() -> list[dict]:
-    """The ``bom`` page rows from the manual content, in order — located by
-    page type (not filename) via the same loader the manual build uses, so a
-    renamed or split content file cannot desync the two builds. Every row
-    must carry a unique ``part_id`` — that id is the sourcing data's key, so
-    a missing or duplicated one would silently orphan entries."""
-    rows = [
-        row
-        for page in load_pages()
-        if page.get("type") == "bom"
-        for row in page.get("rows", [])
-    ]
-    if not rows:
-        raise BuildError(f"no 'bom' page rows found in {CONTENT_DIR}")
-    missing = [
-        f"{r['component']['en']} | {r['spec']['en']}"
-        for r in rows
-        if not r.get("part_id")
-    ]
-    if missing:
-        raise BuildError(
-            "BOM row(s) missing a part_id:\n" + "\n".join(f"    {k}" for k in missing)
-        )
-    ids = [r["part_id"] for r in rows]
-    if len(ids) != len(set(ids)):
-        dupes = sorted(i for i, count in Counter(ids).items() if count > 1)
-        raise BuildError(
-            "duplicate part_id(s) in the BOM:\n" + "\n".join(f"    {i}" for i in dupes)
-        )
-    return rows
-
-
 def load_sourcing_data(vendor_file: Path) -> list[dict]:
     """Read a vendor file (an array, one entry per BOM row),
     bootstrapping an empty list on first run."""

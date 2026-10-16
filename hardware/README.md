@@ -29,11 +29,12 @@ assembly/   compose parts into ~70 steps   →  STEP + SVG line-art  (+ per-step
 mark/       annotate the step SVGs         →  snapshot SVGs (raw if unmarked)
    │
    ▼
-manual/     content/*.json + step SVGs     →  bilingual HTML / PDF
-   └─ content/11_bom.json (the parts list) feeds Section 11 AND ─┐
-                                                                 ▼
-sourcing/   that same BOM + vendor data    →  bilingual HTML
-drawing/    the model's own constants       →  extrusion tech drawing, cut & drill (HTML / PDF)
+documents/manual/    chapter JSON + step SVGs → bilingual HTML / PDF
+
+documents/data/bom.json   authored purchasing list
+   ├─ documents/manual/   → Section 11 of the assembly manual
+   ├─ documents/sourcing/ + market-specific vendors → bilingual HTML
+   └─ documents/drawing/  + model dimensions → cut-and-drill sheets (HTML / PDF)
 ```
 
 All generated files land under `output/` and are not committed.
@@ -68,17 +69,23 @@ hardware/
 │   ├── patch/             Saved annotation ops, one JSON per drawing
 │   └── mark/              Browser tool to annotate step SVGs
 │
-├── manual/                Bilingual (EN/ZH) assembly manual + sourcing guide
-│   ├── build_manual.py        content/*.json + SVGs → HTML / PDF
-│   ├── build_sourcing_guide.py  manual BOM + vendor data → HTML
-│   ├── build_extrusion_drawing.py  lengths + hole specs + profile vertices → A4 sheets
-│   ├── assets.py / common.py / paginate.py / pdf.py   Support modules (asset
-│   │                          strategies, shared helpers, page numbering +
-│   │                          BOM splits, headless-Chrome PDF)
-│   ├── content/           13 ordered JSON sections (front + 11 chapters + back)
-│   ├── MANUAL_VERSION     The cover's version stamp (single source of truth)
-│   ├── sourcing_vendors.cn.json      Suppliers for the Chinese guide, keyed to BOM rows
-│   └── sourcing_vendors.global.json  Suppliers for the English guide, keyed to BOM rows
+├── documents/             Bilingual builder documents (standard-library only)
+│   ├── MANUAL_VERSION     Shared document date, updated by the user
+│   ├── common.py / pdf.py Localization, typography, tables, timing and PDF rendering
+│   ├── bom.py             Shared purchasing-list loader and validation
+│   ├── data/bom.json      Authored purchasing rows, keyed by part_id
+│   ├── manual/
+│   │   ├── build.py       Chapter JSON + SVGs → HTML / PDF
+│   │   ├── content/       13 ordered chapters; Section 11 references the shared BOM
+│   │   ├── styles.css
+│   │   └── assets.py / icon_svg.py / pages.py / paginate.py / style_checks.py
+│   ├── sourcing/
+│   │   ├── build.py       Shared purchasing list + vendor data → HTML
+│   │   ├── styles.css
+│   │   ├── optional_tools.json
+│   │   └── vendors/       cn.json and global.json, keyed by part_id
+│   └── drawing/
+│       └── extrusion.py  Model dimensions + purchasing list → A4 cut-and-drill sheets
 │
 └── output/                Generated artifacts (git-ignored)
     ├── step/  svg/  bom/  manual/  sourcing/  drawing/  print_3d/  render/
@@ -228,8 +235,8 @@ make hw-rebuild                   # all local stages, bypass CAD cache
 make hw-help                      # show commands by task
 ```
 
-The sourcing builder reads `sourcing_vendors.cn.json` for `--lang zh` and
-`sourcing_vendors.global.json` for `--lang en`; the default builds both. Each
+The sourcing builder reads `documents/sourcing/vendors/cn.json` for `--lang zh` and
+`documents/sourcing/vendors/global.json` for `--lang en`; the default builds both. Each
 file uses the same entry schema and shared BOM `part_id` values, but suppliers
 can be maintained independently. Vendor text is stored as plain Chinese strings
 in the CN file and plain English strings in the global file. `--scaffold` syncs the selected language files
@@ -277,7 +284,7 @@ packaged in a private output tree using validated CAD cache entries:
 - **Camera frame** — just the assembled camera-frame STEP file, on its own.
 - **Custom parts** — the print package from `output/print_3d/`.
 
-The version stamp on the manual's cover comes from `manual/MANUAL_VERSION` —
+The version stamp on the manual's cover comes from `documents/MANUAL_VERSION` —
 bump that file when the manual content changes.
 
 Prepare and review a local bundle first (no GitHub writes):

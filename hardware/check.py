@@ -9,7 +9,7 @@ What a rename or typo breaks quietly, this catches loudly:
   patch/       every patch JSON names a procedure stem and a declared
                (variant, camera) view; its ops have unique ids and every
                ``preop`` chain terminates at ``orig``.
-  manual       every figure ``src``/``render`` in ``manual/content/*.json``
+  manual       every figure ``src``/``render`` in ``documents/manual/content/*.json``
                resolves to a declared view's raw render, one of its patch
                leaves' snapshots, or a hand figure the manual builder
                generates itself (``HAND_FIGURES``).
@@ -18,7 +18,7 @@ What a rename or typo breaks quietly, this catches loudly:
   extrusions   every extrusion the model cuts has a BOM row whose spec
                states that length — the drawing builder's own refusal,
                surfaced here so a travel-range edit that skipped
-               ``11_bom.json`` fails CI, not the release build.
+               ``documents/data/bom.json`` fails CI, not the release build.
 
 Static only: everything is read via AST / JSON — no build123d import, no
 ``--group cad`` — so it runs anywhere (CI included) in under a second. The
@@ -43,10 +43,12 @@ from collections import Counter
 
 from hardware.assembly.mark.patch import ID_RE, ORIG_SENTINEL
 from hardware.assembly.mark.replay import find_leaves
-from hardware.manual import BuildError
-from hardware.manual.assets import HAND_FIGURES
-from hardware.manual.build_extrusion_drawing import cut_list
-from hardware.manual.common import CONTENT_DIR, VENDOR_FILES
+from hardware.documents import BuildError
+from hardware.documents.bom import bom_row_findings, read_bom_rows
+from hardware.documents.drawing.extrusion import cut_list
+from hardware.documents.manual.assets import HAND_FIGURES
+from hardware.documents.manual.pages import CONTENT_DIR, load_chapter
+from hardware.documents.sourcing import VENDOR_FILES
 from hardware.scheme import (
     FAMILY_PRIORITY,
     PATCH_DIR,
@@ -271,9 +273,11 @@ def load_content() -> tuple[list[str], dict[str, list]]:
     pages_by_file: dict[str, list] = {}
     for path in sorted(CONTENT_DIR.glob("*.json")):
         try:
-            pages_by_file[path.name] = json.loads(path.read_text(encoding="utf-8"))
+            pages_by_file[path.name] = load_chapter(path)
         except ValueError as exc:
             findings.append(f"manual: {path.name} is not valid JSON ({exc})")
+        except (BuildError, OSError) as exc:
+            findings.append(f"manual: {exc}")
     return findings, pages_by_file
 
 
@@ -345,46 +349,27 @@ def _duplicates(ids: list) -> list[str]:
     return sorted(i for i, n in Counter(filter(None, ids)).items() if n > 1)
 
 
-def _bom_rows(pages_by_file: dict[str, list]) -> tuple[list[dict], int]:
-    """The ``bom`` pages' rows, and how many were malformed (not an
-    object). A malformed row must become a finding, not crash the gate on
-    ``row.get(...)`` — the vendor-file side already guards this way."""
-    rows: list[dict] = []
-    malformed = 0
-    for pages in pages_by_file.values():
-        if not isinstance(pages, list):
-            continue
-        for page in pages:
-            if not (isinstance(page, dict) and page.get("type") == "bom"):
-                continue
-            page_rows = page.get("rows", [])
-            if not isinstance(page_rows, list):
-                malformed += 1
-                continue
-            for row in page_rows:
-                if isinstance(row, dict):
-                    rows.append(row)
-                else:
-                    malformed += 1
-    return rows, malformed
+def load_purchasing_bom() -> tuple[list[str], list]:
+    """Check the purchasing list independently of the manual's page structure."""
+    try:
+        return [], read_bom_rows()
+    except BuildError as exc:
+        return [f"bom: {exc}"], []
 
 
-def check_sourcing(pages_by_file: dict[str, list]) -> list[str]:
-    """The BOM content rows and each vendor file must join one-to-one
-    on part_id — the same invariants build_sourcing_guide enforces at build
+def check_sourcing(rows: list) -> list[str]:
+    """The shared purchasing rows and each vendor file must join one-to-one
+    on part_id — the same invariants the sourcing builder enforces at build
     time (missing/duplicate row ids) plus the sync drift it only reports
     (stale / missing vendor entries)."""
-    findings: list[str] = []
-    rows, malformed = _bom_rows(pages_by_file)
-    if malformed:
-        findings.append(f"sourcing: {malformed} malformed BOM row(s) (not an object)")
-    row_ids = [r.get("part_id") for r in rows]
-    if missing := sum(1 for i in row_ids if not i):
-        findings.append(f"sourcing: {missing} BOM row(s) missing a part_id")
-    if dupes := _duplicates(row_ids):
-        findings.append(f"sourcing: duplicate BOM part_id(s): {', '.join(dupes)}")
-
-    row_set = set(filter(None, row_ids))
+    findings = [f"sourcing: {finding}" for finding in bom_row_findings(rows)]
+    row_set = {
+        row["part_id"]
+        for row in rows
+        if isinstance(row, dict)
+        and isinstance(row.get("part_id"), str)
+        and row["part_id"]
+    }
     for lang, vendor_file in VENDOR_FILES.items():
         if not vendor_file.exists():
             findings.append(f"sourcing: {vendor_file.name} not found")
@@ -416,14 +401,19 @@ def check_sourcing(pages_by_file: dict[str, list]) -> list[str]:
 # ── extrusions ────────────────────────────────────────────────────────────────
 
 
-def check_extrusions(pages_by_file: dict[str, list]) -> list[str]:
-    """Each extrusion the model cuts (``build_extrusion_drawing.SPECS``,
+def check_extrusions(rows: list) -> list[str]:
+    """Each extrusion the model cuts (``drawing.extrusion.SPECS``,
     lengths from ``travel_ranges``) needs a BOM row stating that length in
     both languages — the join the drawing builder makes; its refusal is the
     finding."""
-    rows, _ = _bom_rows(pages_by_file)
     try:
-        cut_list(rows)
+        cut_list(
+            [
+                row
+                for row in rows
+                if isinstance(row, dict) and isinstance(row.get("part_id"), str)
+            ]
+        )
     except BuildError as exc:
         return [f"extrusions: {exc}"]
     return []
@@ -437,13 +427,15 @@ def main(argv: list[str] | None = None) -> int:
     proc_findings, views_by_stem = check_procedures()
     patch_findings, leaves_by_svg = check_patches(views_by_stem)
     content_findings, pages_by_file = load_content()
+    bom_findings, rows = load_purchasing_bom()
     findings = (
         proc_findings
         + patch_findings
         + content_findings
+        + bom_findings
         + check_manual(views_by_stem, leaves_by_svg, pages_by_file)
-        + check_sourcing(pages_by_file)
-        + check_extrusions(pages_by_file)
+        + check_sourcing(rows)
+        + check_extrusions(rows)
     )
     if findings:
         for f in findings:

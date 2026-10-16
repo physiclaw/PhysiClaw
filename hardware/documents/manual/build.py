@@ -8,7 +8,7 @@ The build warns about non-zero lengths without CSS units in inline JSON
 styles, with the page and field to fix. Warnings do not stop rendering.
 
 Image assets (the SVG renders + the crab logo) are handled by one of two
-strategies, chosen with ``--assets`` (see ``hardware.manual.assets``):
+strategies, chosen with ``--assets`` (see ``hardware.documents.manual.assets``):
 
 - ``external`` (default) — best for the web. SVGs are written as separate files
   under ``assets/`` and referenced with ``loading="lazy" decoding="async"`` so
@@ -21,15 +21,15 @@ strategies, chosen with ``--assets`` (see ``hardware.manual.assets``):
 
 Run under ``uv`` from the repo root (standard library only, Python 3.12+)::
 
-    uv run python -m hardware.manual.build_manual                  # en + zh, external assets, HTML only
-    uv run python -m hardware.manual.build_manual --pdf            # also render a PDF per language
-    uv run python -m hardware.manual.build_manual --lang en        # English only -> physiclaw_manual.html
-    uv run python -m hardware.manual.build_manual --assets inline  # single self-contained file
-    uv run python -m hardware.manual.build_manual --out /tmp/out   # custom output directory
+    uv run python -m hardware.documents.manual.build                  # en + zh, external assets, HTML only
+    uv run python -m hardware.documents.manual.build --pdf            # also render a PDF per language
+    uv run python -m hardware.documents.manual.build --lang en        # English only -> physiclaw_manual.html
+    uv run python -m hardware.documents.manual.build --assets inline  # single self-contained file
+    uv run python -m hardware.documents.manual.build --out /tmp/out   # custom output directory
 
-PDF output uses an already-installed Chromium-family browser (Chrome / Chromium
-/ Edge); if none is found the HTML still builds and PDF is skipped with a note
-(see ``hardware.manual.pdf``).
+PDF output requires an installed Chromium-family browser (Chrome / Chromium
+/ Edge). A requested PDF fails the build if no browser is available or rendering
+fails (see ``hardware.documents.pdf``).
 """
 
 from __future__ import annotations
@@ -42,33 +42,33 @@ from pathlib import Path
 from typing import Callable
 
 from hardware.build_lock import locked_main
-from hardware.manual import BuildError
-from hardware.manual.assets import (
+from hardware.documents import BuildError
+from hardware.documents.common import (
+    HTML_LANG,
+    URL_MARK,
+    _rowspans,
+    _step,
+    loc,
+    manual_version,
+    typeset_quantities,
+)
+from hardware.documents.manual.assets import (
     ASSETS_SUBDIR,
     HAND_FIGURES,
     Assets,
     ExternalAssets,
     InlineAssets,
 )
-from hardware.manual.common import (
-    HTML_LANG,
-    URL_MARK,
-    _rowspans,
-    _step,
-    load_pages,
-    loc,
-    manual_version,
-    typeset_quantities,
-)
-from hardware.manual.icon_svg import (
+from hardware.documents.manual.icon_svg import (
     BACK_CORNER_SVG,
     COVER_STRIPES_SVG,
     GITHUB_OCTICON_SVG,
     INFO_ICON_SVG,
 )
-from hardware.manual.paginate import assign_page_numbers, paginate_bom_pages
-from hardware.manual.pdf import find_chrome, render_pdf
-from hardware.manual.style_checks import inline_style_unit_warnings
+from hardware.documents.manual.pages import load_pages
+from hardware.documents.manual.paginate import assign_page_numbers, paginate_bom_pages
+from hardware.documents.manual.style_checks import inline_style_unit_warnings
+from hardware.documents.pdf import find_chrome, render_pdf
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 from hardware.scheme import SVG_DIR
 
@@ -434,7 +434,7 @@ def render_bom_page(page: dict, ctx: Ctx) -> str:
     cell merges over all its components and each Component cell merges over its
     specs (two-level rowspan). Spans are computed per page, so a class split
     across a page break simply repeats its label on the continuation page. Rows
-    are authored in ``content/11_bom.json``; ``paginate_bom_pages`` splits an
+    are authored in ``documents/data/bom.json``; ``paginate_bom_pages`` splits an
     over-long list across continuation pages."""
     rows = page.get("rows", [])
     cls_span = _rowspans(rows, lambda r: r["cls"]["en"])
@@ -560,8 +560,9 @@ def build(
 ) -> list[Path]:
     """Render the requested languages into ``out_dir`` and return written files.
 
-    Always writes the HTML; also writes a PDF per language when ``pdf`` is set
-    and a Chromium-family browser is available. The PDF is printed from the
+    Writes HTML and, when requested, a PDF per language. PDF requests require
+    a Chromium-family browser before any existing output is cleared.
+    The PDF is printed from the
     just-written HTML — in external mode (default) Chrome loads the figures
     from the emitted ``assets/`` dir and embeds them into the PDF; in inline
     mode they are already data URIs."""

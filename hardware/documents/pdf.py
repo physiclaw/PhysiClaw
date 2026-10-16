@@ -130,7 +130,7 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
                 tmp_path.unlink(missing_ok=True)
         if result:  # _chrome_print returns True only after the PDF is written
             return True
-        tail = " — retrying" if attempt < PDF_ATTEMPTS else " — skipped"
+        tail = " — retrying" if attempt < PDF_ATTEMPTS else " — retries exhausted"
         print(
             f"warning: PDF render failed for {pdf_path.name} (attempt {attempt}){tail}"
         )

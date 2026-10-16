@@ -3,7 +3,7 @@ half of ``extrusion.py``.
 
 Two readers share these constants. ``extrusion.py`` turns them into
 build123d solids (it needs ``--group cad``); the sourcing drawing
-(``hardware.manual.build_extrusion_drawing``) turns the same numbers into
+(``hardware.documents.drawing.extrusion``) turns the same numbers into
 the cut-and-drill sheet a supplier machines from, without loading the CAD
 kernel. Keeping them here — plain floats in millimetres, no build123d
 import — is what lets one edit move both the model and the drawing.

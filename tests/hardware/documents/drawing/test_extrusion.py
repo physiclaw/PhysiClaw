@@ -1,4 +1,4 @@
-"""Tests for hardware/manual/build_extrusion_drawing.py — the cut list's
+"""Tests for hardware/documents/drawing/extrusion.py — the cut list's
 join to the BOM, the section outlines traced from the CAD constants, and
 the rendered sheet."""
 
@@ -8,8 +8,8 @@ import re
 
 import pytest
 
-from hardware.manual import BuildError
-from hardware.manual import build_extrusion_drawing as bed
+from hardware.documents import BuildError
+from hardware.documents.drawing import extrusion as bed
 from hardware.parts import _fits
 from hardware.parts.standard import extrusion_spec as spec
 
