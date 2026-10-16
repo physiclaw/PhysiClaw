@@ -54,8 +54,15 @@ def ignore_interrupts():
 @contextmanager
 def cancel_on_interrupt(cancelled: Event):
     """Let supervising threads stop children before the main thread unwinds."""
+
+    def cancel(*_):
+        # Event.set holds a non-reentrant lock. A second Ctrl+C must not
+        # re-enter it while the first signal is setting cancellation.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        cancelled.set()
+
     cancelled.clear()
-    previous = signal.signal(signal.SIGINT, lambda *_: cancelled.set())
+    previous = signal.signal(signal.SIGINT, cancel)
     try:
         yield
     finally:

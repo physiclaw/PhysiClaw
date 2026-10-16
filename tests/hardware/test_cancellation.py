@@ -78,7 +78,9 @@ raise SystemExit(cli.main(['build']))
             if stubborn:
                 time.sleep(0.05)
                 os.killpg(process.pid, signal.SIGINT)
-            terminal, _ = process.communicate(timeout=8)
+            # The CLI allows 10s for dispatcher cleanup, then 1s for SIGTERM.
+            # Leave scheduling headroom on busy CI runners.
+            terminal, _ = process.communicate(timeout=15)
             remaining = []
             for marker in control.glob("*.worker"):
                 try:
@@ -134,6 +136,40 @@ raise SystemExit(cli.main(['build']))
     )
     assert acquired.returncode == 0, acquired.stderr
     assert acquired.stdout.strip() == "released"
+
+
+def test_repeated_ctrl_c_cannot_reenter_cancellation_event():
+    script = """
+import signal
+from threading import Event
+from hardware.process import cancel_on_interrupt
+
+cancelled = Event()
+notify = cancelled._cond.notify_all
+def interrupt_again():
+    # Event.set holds its non-reentrant condition lock while notifying.
+    signal.raise_signal(signal.SIGINT)
+    notify()
+cancelled._cond.notify_all = interrupt_again
+
+previous = signal.getsignal(signal.SIGINT)
+with cancel_on_interrupt(cancelled):
+    signal.raise_signal(signal.SIGINT)
+    assert cancelled.is_set()
+    signal.raise_signal(signal.SIGINT)
+    assert cancelled.is_set()
+assert signal.getsignal(signal.SIGINT) == previous
+assert not cancelled.is_set()
+print('cancelled without deadlock')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "cancelled without deadlock"
 
 
 def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
