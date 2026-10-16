@@ -31,7 +31,7 @@ mark/       annotate the step SVGs         →  snapshot SVGs (raw if unmarked)
    ▼
 documents/manual/    chapter JSON + step SVGs → bilingual HTML / PDF
 
-documents/data/bom.json   authored purchasing list
+documents/bom/bom.json   authored purchasing list
    ├─ documents/manual/   → Section 11 of the assembly manual
    ├─ documents/sourcing/ + market-specific vendors → bilingual HTML
    └─ documents/drawing/  + model dimensions → cut-and-drill sheets (HTML / PDF)
@@ -72,8 +72,9 @@ hardware/
 ├── documents/             Bilingual builder documents (standard-library only)
 │   ├── MANUAL_VERSION     Shared document date, updated by the user
 │   ├── common.py / pdf.py Localization, typography, tables, timing and PDF rendering
-│   ├── bom.py             Shared purchasing-list loader and validation
-│   ├── data/bom.json      Authored purchasing rows, keyed by part_id
+│   ├── bom/
+│   │   ├── bom.json       Authored purchasing rows, keyed by part_id
+│   │   └── loader.py      Shared purchasing-list loading and validation
 │   ├── manual/
 │   │   ├── build.py       Chapter JSON + SVGs → HTML / PDF
 │   │   ├── content/       13 ordered chapters; Section 11 references the shared BOM

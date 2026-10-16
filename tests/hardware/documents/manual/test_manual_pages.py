@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from hardware.documents import BuildError, bom
+from hardware.documents import BuildError
+from hardware.documents.bom import loader as bom
 from hardware.documents.manual import pages as manual_pages
 
 # ── load_pages ────────────────────────────────────────────────────────────────

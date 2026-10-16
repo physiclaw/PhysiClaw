@@ -108,7 +108,7 @@ def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
 
 def paginate_bom_pages(pages: list[dict]) -> None:
     """Split the ``bom`` page's authored rows (the hand-maintained parts list in
-    ``documents/data/bom.json``) across as many pages as fit, cloning the page shell
+    ``documents/bom/bom.json``) across as many pages as fit, cloning the page shell
     for any overflow. This is layout only — it does NOT derive the list from the
     per-section BOMs; the consolidated BOM is kept consistent by hand. Must run
     BEFORE ``assign_page_numbers`` so any added pages get numbered."""

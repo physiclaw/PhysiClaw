@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from hardware.documents import BuildError
-from hardware.documents.bom import load_bom_rows
+from hardware.documents.bom.loader import load_bom_rows
 
 CONTENT_DIR = Path(__file__).resolve().parent / "content"
 

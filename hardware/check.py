@@ -18,7 +18,7 @@ What a rename or typo breaks quietly, this catches loudly:
   extrusions   every extrusion the model cuts has a BOM row whose spec
                states that length — the drawing builder's own refusal,
                surfaced here so a travel-range edit that skipped
-               ``documents/data/bom.json`` fails CI, not the release build.
+               ``documents/bom/bom.json`` fails CI, not the release build.
 
 Static only: everything is read via AST / JSON — no build123d import, no
 ``--group cad`` — so it runs anywhere (CI included) in under a second. The
@@ -44,7 +44,7 @@ from collections import Counter
 from hardware.assembly.mark.patch import ID_RE, ORIG_SENTINEL
 from hardware.assembly.mark.replay import find_leaves
 from hardware.documents import BuildError
-from hardware.documents.bom import bom_row_findings, read_bom_rows
+from hardware.documents.bom.loader import bom_row_findings, read_bom_rows
 from hardware.documents.drawing.extrusion import cut_list
 from hardware.documents.manual.assets import HAND_FIGURES
 from hardware.documents.manual.pages import CONTENT_DIR, load_chapter

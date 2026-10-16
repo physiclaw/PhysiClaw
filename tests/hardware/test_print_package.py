@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip("build123d", reason="CAD group not installed")
 
-from hardware.documents.bom import load_bom_rows  # noqa: E402
+from hardware.documents.bom.loader import load_bom_rows  # noqa: E402
 from hardware.parts import build_custom_parts as printing  # noqa: E402
 from hardware.parts.export_custom import ALL_PARTS  # noqa: E402
 

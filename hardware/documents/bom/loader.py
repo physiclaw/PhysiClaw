@@ -9,7 +9,7 @@ from pathlib import Path
 
 from hardware.documents import BuildError
 
-BOM_FILE = Path(__file__).resolve().parent / "data" / "bom.json"
+BOM_FILE = Path(__file__).resolve().parent / "bom.json"
 
 
 def read_bom_rows() -> list:

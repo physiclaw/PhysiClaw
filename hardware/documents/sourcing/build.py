@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the bilingual PhysiClaw sourcing guide from purchasing and supplier data.
 
-The parts list is read from ``documents/data/bom.json``, also used by the
+The parts list is read from ``documents/bom/bom.json``, also used by the
 assembly manual and technical drawings. Class, component, spec, qty and application
 render verbatim from those rows, each carrying a short stable ``part_id``
 (e.g. ``rail-y``).
@@ -98,7 +98,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
-from hardware.documents.bom import load_bom_rows
+from hardware.documents.bom.loader import load_bom_rows
 
 # Shared localization, table grouping, timing and document chrome conventions.
 from hardware.documents.common import (

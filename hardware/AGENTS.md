@@ -32,7 +32,7 @@
 - Document sources live under `documents/`: `manual/` owns assembly instructions,
   `sourcing/` owns supplier data and optional tools, and `drawing/` owns technical
   drawing rendering. All three consume the authored purchasing list in
-  `documents/data/bom.json`; do not duplicate its rows in manual chapters or
+  `documents/bom/bom.json`; do not duplicate its rows in manual chapters or
   replace it with the separate CAD-derived per-step BOM. Preserve CLI commands,
   generated paths and release asset names when reorganizing these sources.
 - Build checks verify software artifacts, not physical fit, tolerances or

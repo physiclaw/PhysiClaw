@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from hardware.documents import BuildError, bom
+from hardware.documents import BuildError
+from hardware.documents.bom import loader as bom
 
 
 @pytest.fixture

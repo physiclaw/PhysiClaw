@@ -434,7 +434,7 @@ def render_bom_page(page: dict, ctx: Ctx) -> str:
     cell merges over all its components and each Component cell merges over its
     specs (two-level rowspan). Spans are computed per page, so a class split
     across a page break simply repeats its label on the continuation page. Rows
-    are authored in ``documents/data/bom.json``; ``paginate_bom_pages`` splits an
+    are authored in ``documents/bom/bom.json``; ``paginate_bom_pages`` splits an
     over-long list across continuation pages."""
     rows = page.get("rows", [])
     cls_span = _rowspans(rows, lambda r: r["cls"]["en"])

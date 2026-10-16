@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from hardware import check
-from hardware.documents import bom
+from hardware.documents.bom import loader as bom
 from hardware.documents.drawing.extrusion import SPECS
 
 # One BOM row per extrusion the model cuts, stating its length in both
@@ -48,14 +48,14 @@ def world(tmp_path, monkeypatch):
     documents = tmp_path / "documents"
     manual = documents / "manual"
     vendors = documents / "sourcing" / "vendors"
-    data = documents / "data"
+    bom_dir = documents / "bom"
     content = manual / "content"
-    for d in (procedures, patches, content, vendors, data):
+    for d in (procedures, patches, content, vendors, bom_dir):
         d.mkdir(parents=True)
     monkeypatch.setattr(check, "PROCEDURES_DIR", procedures)
     monkeypatch.setattr(check, "PATCH_DIR", patches)
     monkeypatch.setattr(check, "CONTENT_DIR", content)
-    monkeypatch.setattr(bom, "BOM_FILE", data / "bom.json")
+    monkeypatch.setattr(bom, "BOM_FILE", bom_dir / "bom.json")
     monkeypatch.setattr(
         check,
         "VENDOR_FILES",
@@ -89,7 +89,7 @@ def world(tmp_path, monkeypatch):
         patches=patches,
         vendors=vendors,
         content=content,
-        bom=data / "bom.json",
+        bom=bom_dir / "bom.json",
     )
 
 
@@ -101,7 +101,7 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
     (content / "11_bom.json").write_text(
         json.dumps([{"type": "bom", "rows_source": "bom"}])
     )
-    (content.parent.parent / "data" / "bom.json").write_text(json.dumps(rows))
+    (content.parent.parent / "bom" / "bom.json").write_text(json.dumps(rows))
     for filename in ("cn.json", "global.json"):
         (vendors / filename).write_text(
             json.dumps(
