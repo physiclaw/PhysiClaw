@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree
 
+from hardware import buildlog
 from hardware.build_lock import inherited_fds, locked_main
 from hardware.documents.drawing.extrusion import LANG_FILENAME as DRAWINGS
 from hardware.documents.drawing.extrusion import PDF_FILENAME as DRAWING_PDFS
@@ -61,15 +62,9 @@ def tag_for(version: str) -> str:
 
 
 def run(*args: str, timeout: int = 120) -> str:
-    result = subprocess.run(
-        args,
-        cwd=REPO_ROOT,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        timeout=timeout,
-    )
-    return result.stdout.strip()
+    return buildlog.run_process(
+        args, cwd=REPO_ROOT, timeout=timeout, merge_stderr=False
+    ).strip()
 
 
 def digest(path: Path) -> str:
@@ -224,23 +219,23 @@ def _zip(path: Path, root: Path, files: list[Path]) -> None:
 
 def _stage(output: Path, *args: str) -> None:
     env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(output)}
-    subprocess.run(
-        [sys.executable, "-m", "hardware", *args],
-        cwd=REPO_ROOT,
-        env=env,
-        pass_fds=inherited_fds(),
-        check=True,
-    )
+    with buildlog.step(args[0]):
+        buildlog.run_process(
+            [sys.executable, "-m", "hardware", *args, "--log-format", "json"],
+            cwd=REPO_ROOT,
+            env=env,
+            pass_fds=inherited_fds(),
+        )
 
 
 def run_tests() -> None:
-    subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/hardware", "-q"],
-        cwd=REPO_ROOT,
-        check=True,
-        pass_fds=inherited_fds(),
-        timeout=600,
-    )
+    with buildlog.step("Hardware tests"):
+        buildlog.run_process(
+            [sys.executable, "-m", "pytest", "tests/hardware", "-q"],
+            cwd=REPO_ROOT,
+            pass_fds=inherited_fds(),
+            timeout=600,
+        )
 
 
 def prepare(version: str) -> Path:
@@ -248,7 +243,9 @@ def prepare(version: str) -> Path:
     destination = RELEASE_DIR / tag
     if destination.exists():
         verify(version)
-        print(f"Reusing verified local release: {destination}")
+        buildlog.event(
+            "release_reused", "Reusing verified release", path=str(destination)
+        )
         return destination
     chrome = find_chrome()
     if chrome is None:
@@ -279,16 +276,19 @@ def prepare(version: str) -> Path:
         output.mkdir()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         (output / ".cache").symlink_to(CACHE_DIR.resolve(), target_is_directory=True)
-        for args in (
-            ("check",),
-            ("build", "--bom"),
-            ("print",),
-            ("manual", "--pdf"),
-            ("sourcing",),
-            ("drawing", "--pdf"),
-            ("check",),
-        ):
-            _stage(output, *args)
+        try:
+            for args in (
+                ("check",),
+                ("build", "--bom"),
+                ("print",),
+                ("manual", "--pdf"),
+                ("sourcing",),
+                ("drawing", "--pdf"),
+                ("check",),
+            ):
+                _stage(output, *args)
+        finally:
+            buildlog.retain_logs(output / "logs")
         shutil.copyfile(output / "print_3d" / PRINT_ZIP, bundle / PRINT_ZIP)
         _zip(bundle / FRAME_ZIP, output / "step", [output / "step" / FRAME_STEP])
         for name, directories in (
@@ -322,7 +322,9 @@ def prepare(version: str) -> Path:
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
         )
         bundle.rename(destination)
-    print(f"Prepared and verified local release: {destination}")
+    buildlog.event(
+        "release_prepared", "Release prepared and verified", path=str(destination)
+    )
     return destination
 
 
@@ -527,9 +529,11 @@ def publish(version: str) -> None:
     missing = sorted((ASSETS | {MANIFEST}) - assets.keys())
     release_id = remote["id"]
     if missing:
-        print(
-            f"Uploading {len(missing)} missing assets; retaining {len(assets)} uploaded assets",
-            flush=True,
+        buildlog.event(
+            "release_upload",
+            f"Upload {len(missing)} missing assets",
+            retained=len(assets),
+            missing=missing,
         )
         # On failure, leave the draft. Retrying uploads only missing assets.
         run(
@@ -569,9 +573,10 @@ def publish(version: str) -> None:
                 _regular(downloaded)
                 if digest(downloaded) != digest(bundle / name):
                     raise ReleaseError(f"Uploaded artifact checksum mismatch: {name}")
-    print(
-        f"Verified {len(assets)} asset checksums ({len(fallback)} downloads)",
-        flush=True,
+    buildlog.event(
+        "release_assets_verified",
+        f"Verified {len(assets)} assets",
+        downloads=len(fallback),
     )
     # Re-check source, live origin/main and draft content after transfers.
     _, current = verify(version)
@@ -607,9 +612,9 @@ def publish(version: str) -> None:
         f"target_commitish={commit}",
     )
     _confirm_publication(repo, tag, commit, remote)
-    print(f"Published and verified {tag} at {commit}", flush=True)
+    buildlog.event("release_published", "Publication verified", tag=tag, commit=commit)
     try:
-        print(run("make", "docs-deploy"), flush=True)
+        buildlog.event("docs_hook_output", run("make", "docs-deploy"), level="debug")
     except (subprocess.SubprocessError, OSError) as exc:
         raise ReleaseError(
             "Hardware release is published, but the docs hook failed. "
@@ -617,7 +622,7 @@ def publish(version: str) -> None:
         ) from exc
     # The hook is a network round trip; reject a release changed while it ran.
     _confirm_publication(repo, tag, commit, remote)
-    print(f"Deployment verified: {tag}; docs build triggered", flush=True)
+    buildlog.event("release_deployed", "Docs build triggered", tag=tag)
 
 
 @locked_main
@@ -627,23 +632,29 @@ def main(argv: list[str] | None = None) -> int:
         "action", choices=("prepare", "verify", "preflight", "publish", "deploy")
     )
     parser.add_argument("--version", default=os.environ.get("HW_VERSION", ""))
+    buildlog.add_arguments(parser)
     args = parser.parse_args(argv)
     try:
-        version = validate_version(args.version)
-        if args.action == "deploy":
-            preflight(version)
-            prepare(version)
-            publish(version)
-        else:
-            {
-                "prepare": prepare,
-                "verify": verify,
-                "preflight": preflight,
-                "publish": publish,
-            }[args.action](version)
-    except (ReleaseError, subprocess.SubprocessError, OSError, ValueError) as exc:
-        print(f"Hardware release stopped: {exc}", file=sys.stderr)
-        return 1
+        with buildlog.command(
+            f"Hardware release / {args.action}", args, name="release"
+        ) as run:
+            version = validate_version(args.version)
+            if args.action == "deploy":
+                preflight(version)
+                prepare(version)
+                publish(version)
+            else:
+                {
+                    "prepare": prepare,
+                    "verify": verify,
+                    "preflight": preflight,
+                    "publish": publish,
+                }[args.action](version)
+            run.summary = tag_for(version)
+            if args.action in ("prepare", "verify", "deploy", "publish"):
+                run.output_dir = RELEASE_DIR / tag_for(version)
+    except SystemExit as exc:
+        return exc.code
     return 0
 
 

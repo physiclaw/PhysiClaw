@@ -21,10 +21,12 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from hardware import buildlog
 from hardware.assembly.mark.patch import (
     ID_RE,
     ORIG_SENTINEL,
@@ -52,7 +54,7 @@ class Handler(BaseHTTPRequestHandler):
     src_path: Path  # populated by make_server() before the loop runs.
 
     def log_message(self, format, *args):  # noqa: A002 - stdlib signature
-        sys.stderr.write(f"[mark] {format % args}\n")
+        buildlog.event("http_request", format % args, level="debug")
 
     def do_GET(self):  # noqa: N802
         if self.path in ("/", "/index.html"):
@@ -169,6 +171,17 @@ class Handler(BaseHTTPRequestHandler):
     def _send(
         self, code: int, ctype: str, body: bytes, extra_headers: dict | None = None
     ):
+        if code >= 400:
+            buildlog.event(
+                "http_error",
+                body.decode("utf-8", errors="replace"),
+                level="error" if code >= 500 else "debug",
+                status_code=code,
+                request_path=self.path,
+                traceback=traceback.format_exc()
+                if sys.exception() is not None
+                else None,
+            )
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))

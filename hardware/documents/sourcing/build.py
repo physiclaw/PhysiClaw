@@ -91,11 +91,11 @@ import argparse
 import html
 import json
 import re
-import sys
 from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from hardware import buildlog
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import load_bom_rows
@@ -807,26 +807,36 @@ def build(langs: list[str], out_dir: Path, scaffold: bool) -> list[Path]:
     written: list[Path] = []
     for lang in langs:
         vendor_file = VENDOR_FILES[lang]
-        with _step(f"load sourcing [{lang}]"):
+        with _step(f"Load sourcing [{lang}]"):
             entries, added, stale = sync_entries(rows, load_sourcing_data(vendor_file))
         if scaffold or not vendor_file.exists():
             write_sourcing_file(entries, vendor_file)
-            print(f"  synced {vendor_file.name}: +{len(added)} new empty entr(y/ies)")
+            buildlog.event(
+                "vendors_synced",
+                vendor_file.name,
+                level="debug",
+                path=str(vendor_file),
+                added=added,
+            )
         elif added:
-            print(
-                f"  note: {len(added)} BOM row(s) have no sourcing entry in "
-                f"{vendor_file.name} (rendered with defaults) — run with --scaffold to add them"
+            buildlog.event(
+                "vendors_missing",
+                f"Run with --scaffold to add missing entries to {vendor_file.name}",
+                level="warning",
+                path=str(vendor_file),
+                missing=added,
             )
         if stale:
-            print(
-                f"  warning: {vendor_file.name}: {len(stale)} stale entr(y/ies) "
-                "no longer match a BOM part_id:"
+            buildlog.event(
+                "vendors_stale",
+                f"Stale entries in {vendor_file.name}",
+                level="warning",
+                path=str(vendor_file),
+                stale=stale,
             )
-            for i in stale:
-                print(f"    {i}")
 
         path = out_dir / LANG_FILENAME[lang]
-        with _step(f"render html [{lang}]"):
+        with _step(f"Render HTML [{lang}]"):
             path.write_text(render_document(rows, entries, css, lang), encoding="utf-8")
         written.append(path)
     return written
@@ -852,20 +862,16 @@ def main() -> None:
         action="store_true",
         help="sync the selected language vendor files with the BOM (add bare part_id entries) before building",
     )
+    buildlog.add_arguments(parser)
     args = parser.parse_args()
 
     langs = ["en", "zh"] if args.lang == "all" else [args.lang]
     out = args.out.resolve()
-    shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
-    print(f"building sourcing guide [{', '.join(langs)}] -> {shown}")
-    try:
+    with buildlog.command(
+        "Hardware sourcing guide", args, name="sourcing", output_dir=out
+    ) as run:
         written = build(langs, out, scaffold=args.scaffold)
-    except BuildError as exc:
-        print(f"\nerror: {exc}", file=sys.stderr)
-        raise SystemExit(1) from None
-    print(f"\ndone — wrote {len(written)} file(s):")
-    for path in written:
-        print(f"  {path.name}")
+        run.artifacts(written)
 
 
 if __name__ == "__main__":

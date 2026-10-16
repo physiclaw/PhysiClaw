@@ -170,7 +170,7 @@ if __name__ == "__main__":
     try:
         cam = Camera.from_freecad_view(s)
     except Exception as err:
-        print(f"error: {err}", file=sys.stderr)
+        print(f"ERROR: {err}", file=sys.stderr)
         print(
             "\nTo grab the camera string in FreeCAD, frame the angle in the\n"
             "3D viewport, then run in View → Panels → Python console:\n"

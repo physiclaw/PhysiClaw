@@ -36,7 +36,9 @@ import argparse
 import subprocess
 import sys
 
+from hardware import buildlog
 from hardware.build_lock import inherited_fds, locked_main
+from hardware.process import ignore_interrupts, interrupt_process
 
 # Subcommand → argv it delegates to (after ``sys.executable``), every one a
 # ``-m`` module run.
@@ -68,15 +70,18 @@ def _parts(argv: list[str]) -> int:
         "--custom", action="store_true", help="export custom parts (default)"
     )
     parser.add_argument("--standard", action="store_true", help="export standard parts")
+    buildlog.add_arguments(parser)
     args = parser.parse_args(argv)
     export_custom = args.custom or not args.standard
-    # Part exports share this directory with assembly STEPs. Never erase
-    # unrelated assembly outputs when exporting a single class of parts.
-    STEP_DIR.mkdir(parents=True, exist_ok=True)
-    if args.standard:
-        export_all(STANDARD_PARTS)
-    if export_custom:
-        export_all(CUSTOM_PARTS)
+    parts = (STANDARD_PARTS if args.standard else []) + (
+        CUSTOM_PARTS if export_custom else []
+    )
+    with buildlog.command(
+        "Hardware part exports", args, name="parts", output_dir=STEP_DIR
+    ) as run:
+        STEP_DIR.mkdir(parents=True, exist_ok=True)
+        export_all(parts)
+        run.summary = f"{len(parts)} parts"
     return 0
 
 
@@ -84,7 +89,20 @@ def _delegate(prefix: list[str], argv: list[str]) -> int:
     """Run a sibling entry point in its own process, forwarding ``argv``.
     A subprocess (rather than an in-process import) keeps each script's
     behaviour, sys.path, and exit code identical to its standalone form."""
-    return subprocess.call([sys.executable, *prefix, *argv], pass_fds=inherited_fds())
+    if prefix[:1] == ["-m"]:
+        prefix = ["-m", "hardware._run", *prefix[1:]]
+    with subprocess.Popen(
+        [sys.executable, *prefix, *argv], pass_fds=inherited_fds()
+    ) as child:
+        try:
+            returncode = child.wait()
+            return 128 - returncode if returncode < 0 else returncode
+        except KeyboardInterrupt:
+            # subprocess.call kills its child while unwinding KeyboardInterrupt,
+            # cutting off the dispatcher's worker cleanup and saved summary.
+            with ignore_interrupts():
+                interrupt_process(child, timeout=10)
+            return 130
 
 
 @locked_main
@@ -125,4 +143,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

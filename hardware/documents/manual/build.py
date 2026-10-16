@@ -36,11 +36,11 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from hardware import buildlog
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
 from hardware.documents.common import (
@@ -552,7 +552,9 @@ def _clear_output_dir(out_dir: Path) -> None:
         for f in d.glob(pattern):
             f.unlink()
             cleared += 1
-    print(f"  cleared {cleared} stale file(s)")
+    buildlog.event(
+        "outputs_cleared", "Cleared stale files", level="debug", count=cleared
+    )
 
 
 def build(
@@ -574,7 +576,7 @@ def build(
     SVG_DIR.mkdir(parents=True, exist_ok=True)
     for name, svg in HAND_FIGURES.items():  # regenerate tracked hand figures
         (SVG_DIR / name).write_text(svg, encoding="utf-8")
-    with _step("load + number pages"):
+    with _step("Load and number pages"):
         css = STYLES_CSS.read_text(encoding="utf-8")
         pages = load_pages()
         paginate_bom_pages(
@@ -584,19 +586,19 @@ def build(
             pages
         )  # position-derived footer + TOC numbers (after BOM split)
     for warning in inline_style_unit_warnings(pages):
-        print(f"warning: {warning}", file=sys.stderr)
+        buildlog.event("style_warning", warning, level="warning")
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     written: list[Path] = []
     docs: dict[str, tuple[Path, str]] = {}
     for lang in langs:
         path = out_dir / LANG_FILENAME[lang]
-        with _step(f"render html [{lang}]"):
+        with _step(f"Render HTML [{lang}]"):
             html = render_document(pages, css, Ctx(lang, assets))
             path.write_text(html, encoding="utf-8")
         written.append(path)
         docs[lang] = (path, html)
-    with _step("emit assets"):
+    with _step("Write assets"):
         assets.emit(out_dir)  # external mode writes the shared assets/ dir once.
 
     # PDFs print from the just-written HTML against the on-disk assets/, so
@@ -606,12 +608,10 @@ def build(
         for lang in langs:
             path, html = docs[lang]
             pdf_path = path.with_suffix(".pdf")
-            with _step(f"render pdf  [{lang}]"):
-                ok = render_pdf(html, pdf_path, chrome)
-            if ok:
-                written.append(pdf_path)
-            else:
-                raise BuildError(f"PDF render failed: {pdf_path.name}")
+            with _step(f"Render PDF [{lang}]"):
+                if not render_pdf(html, pdf_path, chrome):
+                    raise BuildError(f"PDF render failed: {pdf_path.name}")
+            written.append(pdf_path)
     return written
 
 
@@ -642,22 +642,16 @@ def main() -> None:
         default=False,
         help="also render a PDF per language via headless Chrome (default: off — HTML only)",
     )
+    buildlog.add_arguments(parser)
     args = parser.parse_args()
 
     langs = ["en", "zh"] if args.lang == "all" else [args.lang]
     out = args.out.resolve()
-    # Show the output dir relative to the cwd when possible — an absolute path
-    # is usually too long to read at a glance.
-    shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
-    print(f"building manual [{', '.join(langs)}] -> {shown}")
-    try:
+    with buildlog.command(
+        "Hardware manual", args, name="manual", output_dir=out
+    ) as run:
         written = build(langs, out, inline=args.assets == "inline", pdf=args.pdf)
-    except BuildError as exc:
-        print(f"\nerror: {exc}", file=sys.stderr)
-        raise SystemExit(1) from None
-    print(f"\ndone — wrote {len(written)} file(s):")
-    for path in written:
-        print(f"  {path.name}")
+        run.artifacts(written)
 
 
 if __name__ == "__main__":

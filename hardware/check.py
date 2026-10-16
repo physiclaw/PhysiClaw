@@ -35,12 +35,14 @@ Exit 0 when clean; exit 1 with one line per finding.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
 import re
 import sys
 from collections import Counter
 
+from hardware import buildlog
 from hardware.assembly.mark.patch import ID_RE, ORIG_SENTINEL
 from hardware.assembly.mark.replay import find_leaves
 from hardware.documents import BuildError
@@ -423,31 +425,36 @@ def check_extrusions(rows: list) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    del argv  # no flags; kept for the __main__ delegation convention
-    proc_findings, views_by_stem = check_procedures()
-    patch_findings, leaves_by_svg = check_patches(views_by_stem)
-    content_findings, pages_by_file = load_content()
-    bom_findings, rows = load_purchasing_bom()
-    findings = (
-        proc_findings
-        + patch_findings
-        + content_findings
-        + bom_findings
-        + check_manual(views_by_stem, leaves_by_svg, pages_by_file)
-        + check_sourcing(rows)
-        + check_extrusions(rows)
-    )
-    if findings:
-        for f in findings:
-            print(f, file=sys.stderr)
-        print(f"\n{len(findings)} consistency finding(s)", file=sys.stderr)
-        return 1
-    n_patches = len(list(PATCH_DIR.glob("*.json")))
-    print(
-        f"hardware check OK — {len(views_by_stem)} procedures, "
-        f"{n_patches} patches, manual + sourcing + extrusions consistent"
-    )
-    return 0
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    buildlog.add_arguments(parser)
+    args = parser.parse_args(argv)
+    with buildlog.command("Hardware check", args, name="check") as run:
+        with buildlog.step("Check consistency"):
+            proc_findings, views_by_stem = check_procedures()
+            patch_findings, leaves_by_svg = check_patches(views_by_stem)
+            content_findings, pages_by_file = load_content()
+            bom_findings, rows = load_purchasing_bom()
+            findings = (
+                proc_findings
+                + patch_findings
+                + content_findings
+                + bom_findings
+                + check_manual(views_by_stem, leaves_by_svg, pages_by_file)
+                + check_sourcing(rows)
+                + check_extrusions(rows)
+            )
+        if findings:
+            for finding in findings:
+                buildlog.event("consistency_error", finding, level="error")
+            run.exit_code = 1
+            run.summary = f"{len(findings)} consistency findings"
+        else:
+            n_patches = len(list(PATCH_DIR.glob("*.json")))
+            run.summary = "All checks passed"
+            run.details.append(
+                f"{len(views_by_stem)} procedures, {n_patches} patches; manual, sourcing and extrusions consistent"
+            )
+        return run.exit_code
 
 
 if __name__ == "__main__":

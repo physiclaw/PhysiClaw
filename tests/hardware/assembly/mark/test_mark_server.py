@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hardware import buildlog
 from hardware.assembly.mark import server
 
 SAVE_BODY = json.dumps({"shapes": [], "viewBox": "0 0 10 10", "preop": "orig"}).encode()
@@ -85,6 +86,24 @@ def test_save_appends_the_op_and_replies_with_its_id(store):
     assert b" 200 " in response.splitlines()[0]
     assert b"X-Op-Id: aaaa" in response
     assert [e["id"] for e in store.entries] == ["aaaa"]
+
+
+def test_save_failure_keeps_response_and_traceback_in_run_log(
+    store, tmp_path, monkeypatch
+):
+    def fail(*args):
+        raise OSError("Cannot write annotation patch")
+
+    monkeypatch.setattr(server, "write_patch", fail)
+    handler = make_handler(SAVE_BODY)
+    with buildlog.session(tmp_path) as log:
+        handler.do_POST()
+    assert b" 500 " in handler.wfile.getvalue().splitlines()[0]
+    events = [json.loads(line) for line in log.path.read_text().splitlines()]
+    error = next(event for event in events if event["event"] == "http_error")
+    assert error["status_code"] == 500
+    assert "Cannot write annotation patch" in error["message"]
+    assert "OSError: Cannot write annotation patch" in error["traceback"]
 
 
 def test_concurrent_saves_do_not_lose_an_op(store):

@@ -463,8 +463,122 @@ def test_cache_changed_after_hit_cannot_be_restored(repo, layer, change):
 def test_corrupt_copy_never_succeeds(repo, monkeypatch):
     write_outputs(repo)
     cache.store_source(STEM)
+    before = {
+        path: path.read_bytes()
+        for directory in (repo.STEP_DIR, repo.SVG_DIR, repo.BOM_DIR)
+        for path in directory.iterdir()
+    }
     monkeypatch.setattr(
         cache.shutil, "copy2", lambda src, dest: dest.write_text("bad copy")
     )
     with pytest.raises(RuntimeError, match="Cached artifact changed"):
         cache.restore_source(STEM)
+    assert all(path.read_bytes() == data for path, data in before.items())
+    assert not [
+        path
+        for directory in (repo.STEP_DIR, repo.SVG_DIR, repo.BOM_DIR)
+        for path in directory.glob("*.tmp")
+    ]
+
+
+def test_interrupted_restore_preserves_complete_output_and_removes_partial_copy(
+    repo, monkeypatch
+):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    target = repo.STEP_DIR / f"{STEM}_exploded.step"
+    target.write_text("existing complete output")
+
+    def interrupt(src, dest):
+        dest.write_text("partial copy")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cache.shutil, "copy2", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        cache.restore_source(STEM)
+    assert target.read_text() == "existing complete output"
+    assert not list(repo.STEP_DIR.glob("*.tmp"))
+
+
+def test_cache_store_rejects_sources_edited_after_build_started(repo):
+    write_outputs(repo)
+    expected = cache.source_key(STEM)
+    repo.helper.write_text("SIZE = 2\n")
+    with pytest.raises(RuntimeError, match="inputs changed"):
+        cache.store_source(STEM, expected_key=expected)
+    assert not cache.source_cached(STEM, want_bom=True)
+
+
+@pytest.mark.parametrize("layer", ["source", "snapshots"])
+def test_inputs_changed_during_copy_cannot_publish_a_cache_hit(
+    repo, monkeypatch, layer
+):
+    write_outputs(repo)
+    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
+    patch.write_text('[{"id":"abcd","preop":"orig"}]')
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text("snapshot")
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    copy = cache.shutil.copy2
+
+    def edit_inputs(src, dest):
+        result = copy(src, dest)
+        if layer == "source":
+            repo.helper.write_text("SIZE = 2\n")
+        else:
+            patch.write_text("[]")
+        return result
+
+    monkeypatch.setattr(cache.shutil, "copy2", edit_inputs)
+    store = cache.store_source if layer == "source" else cache.store_snapshots
+    with pytest.raises(RuntimeError, match="inputs changed"):
+        store(STEM)
+    if layer == "source":
+        assert not cache.source_cached(STEM, want_bom=True)
+    assert not cache.snapshots_cached(STEM)
+
+
+def test_snapshot_store_rejects_patches_edited_during_render(repo):
+    write_outputs(repo)
+    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
+    patch.write_text('[{"id":"abcd","preop":"orig"}]')
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text("old snapshot")
+    cache.store_source(STEM)
+    expected = cache.annotation_key(STEM)
+    patch.write_text("[]")
+    with pytest.raises(RuntimeError, match="inputs changed"):
+        cache.store_snapshots(STEM, expected_annotation_key=expected)
+    assert not cache.snapshots_cached(STEM)
+
+
+@pytest.mark.parametrize("layer", ["source", "snapshots"])
+def test_corrupt_store_copy_cannot_become_a_valid_cache_entry(repo, monkeypatch, layer):
+    write_outputs(repo)
+    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
+    patch.write_text('[{"id":"abcd","preop":"orig"}]')
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text("snapshot")
+    cache.store_source(STEM)
+    monkeypatch.setattr(
+        cache.shutil, "copy2", lambda src, dest: dest.write_text("bad copy")
+    )
+    store = cache.store_source if layer == "source" else cache.store_snapshots
+    with pytest.raises(RuntimeError, match="Artifact changed while caching"):
+        store(STEM)
+    if layer == "source":
+        assert not cache.source_cached(STEM, want_bom=True)
+    assert not cache.snapshots_cached(STEM)
+
+
+@pytest.mark.parametrize(
+    "want_bom,want_delta", [(False, False), (True, False), (False, True)]
+)
+def test_cache_store_excludes_unrequested_boms(repo, want_bom, want_delta):
+    write_outputs(repo)
+    (repo.BOM_DIR / f"{STEM}_delta.md").write_text("delta BOM")
+    cache.store_source(STEM, want_bom=want_bom, want_delta=want_delta)
+    manifest = json.loads((repo.CACHE_DIR / STEM / "source.key").read_text())["files"]
+    assert (f"{STEM}.md" in manifest) is want_bom
+    assert (f"{STEM}_delta.md" in manifest) is want_delta
+    assert cache.source_cached(STEM, want_bom=want_bom, want_delta=want_delta)
+    assert cache.source_cached(STEM, want_bom=True) is want_bom
+    assert cache.source_cached(STEM, want_bom=False, want_delta=True) is want_delta

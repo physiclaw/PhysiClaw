@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from hardware import buildlog
 from hardware.documents import BuildError
 from hardware.documents.manual import build as build_manual
 from hardware.documents.manual.assets import InlineAssets
@@ -81,10 +84,15 @@ def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
     monkeypatch.setattr(build_manual, "SVG_DIR", tmp_path / "svg")
     monkeypatch.setattr(build_manual, "HAND_FIGURES", {})
 
-    paths = build_manual.build(["en", "zh"], tmp_path / "out", inline=False)
+    with buildlog.session(tmp_path) as log:
+        paths = build_manual.build(["en", "zh"], tmp_path / "out", inline=False)
 
-    warning = capsys.readouterr().err
-    assert warning.count("warning:") == 1
+    output = capsys.readouterr()
+    assert "warning:" not in output.out + output.err
+    saved = [json.loads(line) for line in log.path.read_text().splitlines()]
+    warnings = [record for record in saved if record["event"] == "style_warning"]
+    assert len(warnings) == 1
+    warning = warnings[0]["message"]
     assert "page 'wire_splice'.notes[0].style" in warning
     assert "'top:140'" in warning
     assert "browsers ignore this declaration" in warning

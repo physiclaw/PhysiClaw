@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 import re
-import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable
+
+from hardware.buildlog import step as _step  # noqa: F401 — shared by document builders
 
 MANUAL_VERSION_FILE = Path(__file__).resolve().parent / "MANUAL_VERSION"
 
@@ -68,21 +67,3 @@ def _rowspans(rows: list[dict], key: Callable[[dict], Any]) -> list[int]:
         spans[i] = j - i
         i = j
     return spans
-
-
-_STEP_LABEL_W = 22  # pad labels to a column so every duration lines up
-
-
-@contextlib.contextmanager
-def _step(label: str) -> Iterator[None]:
-    """Print a build step (padded with dot leaders to a fixed column) and, once
-    it finishes, how long it took — so a slow phase shows what's running and the
-    times read down a clean right-aligned column."""
-    print(f"  {label:.<{_STEP_LABEL_W}} ", end="", flush=True)
-    t0 = time.monotonic()
-    try:
-        yield
-    except BaseException:
-        print("FAILED", flush=True)
-        raise
-    print(f"{time.monotonic() - t0:>5.1f}s")

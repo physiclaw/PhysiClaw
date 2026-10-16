@@ -179,18 +179,118 @@ are standard-library only. Each stage module is also runnable on its own (e.g.
 parts + predecessors + package initializers), the toolchain lock and platform,
 and its patch JSON. Annotated drawings are also bound to the exact geometry-cache
 manifest, so an interrupted update cannot mix old drawings with new geometry.
-Copied files are hash-checked again before use, and the build prints the resolved
-cache directory. Unchanged
+Restored files are hash-checked in temporary files before atomic replacement,
+so a cancelled or corrupt copy does not replace a complete output. The resolved
+cache directory is saved in the log. Unchanged
 steps are restored instead of rebuilt+re-rendered — and a patch-only edit
 just re-runs the cheap annotation replay. Pass `--no-cache` to force a full
 rebuild — the rebuilt outputs still refresh the cache. (`step` always
 rebuilds its one stem.)
+
+The dispatcher records source and annotation keys before work and rechecks them
+before success. Cache stores verify those keys and copied bytes before publishing
+a manifest, including when saving completed work after cancellation. Input edits
+during a build fail the run. Only requested BOM kinds are cached, so an old BOM
+left on disk cannot satisfy a later `--bom` or `--bom-delta` request.
 
 Full builds run two independent CAD batch processes by default. Use
 `build --jobs 1` on a low-memory machine, or up to `--jobs 4` when more
 memory and CPU cores are available. Each heavy worker can use about 1.2 GB.
 Workers never share an OCCT interpreter, and the output lock still rejects
 concurrent build commands targeting the same directory.
+
+### Terminal output and logs
+
+Hardware generators, checks, releases and annotation tools use the same terminal
+renderer: a title, completed tasks with elapsed time in the last column, and one
+`SUCCESS`, `FAILED` or `CANCELLED` result. Times are measured from command start;
+individual task durations are saved in JSON. CAD builds count completed assemblies,
+including cache restores, so parallel workers can finish out of source order.
+Repeated verification does not repeat successful rows.
+
+```text
+Hardware build / 71 assemblies
+
+   Step Assembly                     Elapsed
+--------------------------------------------
+68 cached; 3 to build                   0.3s
+[69/71] fastener_22_tnut_standard       7.0s
+[70/71] fastener_10_BHCS                7.1s
+[71/71] fastener_11_SHCS                7.1s
+--------------------------------------------
+SUCCESS  71/71 complete                 7.3s
+68 cached, 3 built
+Output: hardware/output
+```
+
+Routine output omits `INFO`. Warnings and periodic worker status stay hidden even
+with `--verbose`, which otherwise adds diagnostics and severity levels. Errors
+retain `ERROR:`. Extra details wrap below task names; long
+names and paths wrap without truncation. Narrow panes shrink the name column
+while keeping timings aligned. Pipes and CI use 120 columns when neither a
+terminal size nor `COLUMNS` is available. Interactive terminals use a bold title,
+muted progress and timings, green success and red errors. `NO_COLOR` (even empty)
+or `TERM=dumb` disables color; pipes and JSON stay plain. Output uses no cursor
+movement and reads cleanly through `tee`.
+
+Each command saves a separate UTF-8 `output/logs/build-<run>.jsonl`, except help,
+camera conversion and failures before a run starts. `PHYSICLAW_HW_OUTPUT` selects
+the log root; a document's `--out` only changes its document directory. All debug
+events, warnings, retries, timings, worker stdout/stderr and Python tracebacks are
+saved and flushed as they arrive. Python warnings include category and source
+location. Workers use unbuffered output and record both supervisor and actual
+process return codes. Logs persist until removed; their path appears in verbose
+output, JSON and failure summaries. Saved records contain no added styling.
+
+Use the same presentation flags across commands; Make suppresses recipe echo:
+
+```bash
+make hw-build ARGS="--bom --verbose"          # variant timings and diagnostics
+make hw-build ARGS="--bom --log-format json" # every event as JSONL on stdout
+make hw-step ARGS="fastener_10_BHCS --log-format json"
+make hw-check ARGS="--log-format json"
+make hw-manual ARGS="--verbose"
+make hw-verify HW_VERSION=X.Y ARGS="--log-format json"
+```
+
+JSON records contain `schema_version: 1`, `command`, `run_id`, collector `sequence`,
+UTC `timestamp`, `elapsed_s`, `level`, `event`, `message` and producer `pid`.
+Agents should use event names and typed fields instead of parsing message wording.
+JSON includes debug events without `--verbose`, with one record per physical line.
+Worker output is wrapped in `worker_output` events. Worker records add `worker_pid`;
+assembly records identify `stem` and optionally `variant`. Timings such as
+`build_s`, `export_s`, `render_s` and `duration_s` are seconds. Sequence describes
+receipt order; producer timestamps describe when events originated.
+
+Non-CAD commands use `command_started`, `task_started`, `task_finished` and
+`command_finished`. Task events identify `item`; successful completions include
+`completed` and `duration_s`. Final events include `status` and `exit_code`.
+Release commands show stage completions and save child JSON under
+`subprocess_event.child_event`. Before removing private release output, they copy
+stage JSONL and native crash logs beside the parent log into
+`build-<run>.children/`; `diagnostic_saved` links original and retained paths.
+
+Native CAD stacks are saved in `build-<run>.crash.log`, shared by the run's workers
+and retries and linked from JSON via `crash_log`. Startup faults before this file
+opens are captured from stderr. Later builds never clear earlier logs. Recovery
+retains completed outputs; only `build_finished` with `status: "success"` and exit
+code zero confirms success. Failed verification still fails even if files exist.
+
+Ctrl+C stops queued batches and retries, interrupts active workers and escalates
+to termination if native code does not respond. The CLI waits for cleanup before
+releasing its output lock, keeps completed files and logs, saves interruption
+details, and shows `CANCELLED` without a Python traceback. It returns 130; Make may
+print `Error 130` and return its own nonzero status. Argument and lock errors use
+stderr before a run starts. Help retains standard usage formatting, and
+`hw-camera` prints a copyable `Camera(...)` literal without a table.
+
+After workers stop, cancellation caches assemblies whose latest attempt reported
+success and whose required outputs are complete, including those in unfinished
+recovery batches. With unchanged sources and valid cache entries, the next build
+restores those assemblies. A progress label such as `[45/71]` counts completions
+in the current run, including restored assemblies; it is not a source-list index.
+Failed, unfinished and unreported attempts are rebuilt. Cache-write problems are
+saved in the run log; changed source files or damaged cache entries also rebuild.
 
 Exact hidden-line rendering can crash inside OpenCascade's rejection cache
 ([upstream issue #1546](https://github.com/Open-Cascade-SAS/OCCT/issues/1546)).

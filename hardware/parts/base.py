@@ -177,6 +177,35 @@ class BaseCustomPart(BasePart):
 
 
 def export_all(parts):
+    from hardware import buildlog
+
     for part in parts:
-        part.export()
-        print(f"  exported {type(part).__name__:20s} → {part.output_path()}")
+        with buildlog.step(part.output_path().stem):
+            part.export()
+        buildlog.event(
+            "artifact_written",
+            str(part.output_path()),
+            level="debug",
+            path=str(part.output_path()),
+            part=type(part).__name__,
+        )
+
+
+def export_main(parts, description, argv=None):
+    """Run a standalone part exporter with the shared options, logging and lock."""
+    import argparse
+
+    from hardware import buildlog
+    from hardware.build_lock import build_lock
+
+    parser = argparse.ArgumentParser(description=description)
+    buildlog.add_arguments(parser)
+    args = parser.parse_args(argv)
+    with (
+        buildlog.command(
+            "Hardware part exports", args, name="parts", output_dir=STEP_DIR
+        ) as run,
+        build_lock(),
+    ):
+        export_all(parts)
+        run.summary = f"{len(parts)} parts"

@@ -4,7 +4,8 @@ hardware/output/step/. Run: `uv run python -m hardware.parts.export_standard`.""
 from build123d import MM
 
 from hardware.assembly.travel_ranges import X_RAIL_LENGTH, Y_RAIL_LENGTH
-from hardware.parts.base import export_all
+from hardware.parts.base import export_all as export_all
+from hardware.parts.base import export_main
 from hardware.parts.standard.board import MksBoard
 from hardware.parts.standard.bracket import CornerBracket, FlatBracket, MotorBracket
 from hardware.parts.standard.bumper import Bumper
@@ -68,4 +69,4 @@ ALL_PARTS = [
 
 
 if __name__ == "__main__":
-    export_all(ALL_PARTS)
+    export_main(ALL_PARTS, __doc__)

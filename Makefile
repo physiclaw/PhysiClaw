@@ -211,81 +211,81 @@ hw-help:
 	@echo "  Guide: hardware/README.md"
 
 hw-parts:
-	$(HW) parts $(ARGS)
+	@$(HW) parts $(ARGS)
 
 hw-build:
-	$(HW) build $(ARGS)
+	@$(HW) build $(ARGS)
 
 # Static cross-artifact consistency check (stems / patches / manual /
 # sourcing) — stdlib-only, no cad group, also run in CI.
 hw-check:
-	$(HW_DOC) check
+	@$(HW_DOC) check $(ARGS)
 
 hw-step:
 	$(call need-args,<procedure_stem>)
-	$(HW) step $(ARGS)
+	@$(HW) step $(ARGS)
 
 hw-print:
-	$(HW) print $(ARGS)
+	@$(HW) print $(ARGS)
 
 hw-manual:
-	$(HW_DOC) manual $(ARGS)
+	@$(HW_DOC) manual $(ARGS)
 
 # Convenience alias for `make hw-manual ARGS="--pdf"`; extra flags still go
 # through ARGS, e.g.  make hw-manual-pdf ARGS="--lang en".
 hw-manual-pdf:
-	$(HW_DOC) manual --pdf $(ARGS)
+	@$(HW_DOC) manual --pdf $(ARGS)
 
 hw-sourcing:
-	$(HW_DOC) sourcing $(ARGS)
+	@$(HW_DOC) sourcing $(ARGS)
 
 # The supplier's sheet for the frame extrusions — drawn from the same
 # constants the assembly cuts and drills with, so it can't drift from the
 # model. --pdf prints it through headless Chrome like the manual.
 hw-drawing:
-	$(HW_DOC) drawing $(ARGS)
+	@$(HW_DOC) drawing $(ARGS)
 
 hw-mark:
 	$(call need-args,<svg|json>)
-	$(HW) mark $(ARGS)
+	@$(HW) mark $(ARGS)
 
 hw-replay:
-	$(HW) replay $(ARGS)
+	@$(HW) replay $(ARGS)
 
 # No need-args guard: `camera` also reads the view from stdin when ARGS is
 # empty (projection.py), so `pbpaste | make hw-camera` works too.
 hw-camera:
-	$(HW) camera $(ARGS)
+	@$(HW) camera $(ARGS)
 
 # Full rebuild — STEPs → steps+BOM → print package → manual (HTML+PDF) →
 # sourcing → extrusion tech drawing (HTML+PDF) in the interactive output tree.
 # Use hw-prepare to build a versioned release bundle with its manifest.
 hw-rebuild:
-	$(HW_DOC) check
-	$(HW) parts --custom --standard
-	$(HW) build --bom --no-cache
-	$(HW) print
-	$(HW_DOC) manual --pdf
-	$(HW_DOC) sourcing
-	$(HW_DOC) drawing --pdf
+	@$(HW_DOC) check
+	@$(HW) parts --custom --standard
+	@$(HW) build --bom --no-cache
+	@$(HW) print
+	@$(HW_DOC) manual --pdf
+	@$(HW_DOC) sourcing
+	@$(HW_DOC) drawing --pdf
 
 # All release entry points delegate to the same guarded Python workflow.
 # Each is a single recipe, so make -j cannot reorder preflight/build/publish.
 # hw-prepare and hw-verify are local; hw-release and hw-publish publish.
 hw-preflight:
-	$(HW_DOC) release preflight
+	@$(HW_DOC) release preflight $(ARGS)
 
 hw-prepare:
-	$(HW) release prepare
+	@$(HW) release prepare $(ARGS)
 
 hw-verify:
-	$(HW_DOC) release verify
+	@$(HW_DOC) release verify $(ARGS)
 
 hw-release:
-	$(HW) release deploy
+	@$(HW) release deploy $(ARGS)
 
 hw-publish:
-	$(HW_DOC) release publish
+	@$(HW_DOC) release publish $(ARGS)
 
 # Keep the legacy internal target on the guarded publication path.
 _hw-package: hw-publish

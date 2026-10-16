@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import argparse
 import html
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from hardware import buildlog
 from hardware.assembly.travel_ranges import (
     PHONE_BED_BEAM_LENGTH,
     X_BEAM_LENGTH,
@@ -1001,7 +1001,7 @@ def render_document(items: list[CutItem], lang: str) -> str:
 # --------------------------------------------------------------------------- #
 def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
     """Write selected editions as HTML; optionally print PDFs if Chrome is available."""
-    with _step("load cut list"):
+    with _step("Load cut list"):
         items = cut_list()
     chrome = find_chrome() if pdf else None
     if pdf and chrome is None:
@@ -1010,18 +1010,16 @@ def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
     written: list[Path] = []
     for lang in langs:
         path = out_dir / LANG_FILENAME[lang]
-        with _step(f"render html [{lang}]"):
+        with _step(f"Render HTML [{lang}]"):
             doc = render_document(items, lang)
             path.write_text(doc, encoding="utf-8")
         written.append(path)
         if chrome:
             pdf_path = out_dir / PDF_FILENAME[lang]
-            with _step(f"render pdf  [{lang}]"):
-                ok = render_pdf(doc, pdf_path, chrome)
-            if ok:
-                written.append(pdf_path)
-            else:
-                raise BuildError(f"PDF render failed: {pdf_path.name}")
+            with _step(f"Render PDF [{lang}]"):
+                if not render_pdf(doc, pdf_path, chrome):
+                    raise BuildError(f"PDF render failed: {pdf_path.name}")
+            written.append(pdf_path)
     return written
 
 
@@ -1045,20 +1043,16 @@ def main() -> None:
         action="store_true",
         help="also render a PDF per language via headless Chrome (default: off — HTML only)",
     )
+    buildlog.add_arguments(parser)
     args = parser.parse_args()
 
     langs = ["en", "zh"] if args.lang == "all" else [args.lang]
     out = args.out.resolve()
-    shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
-    print(f"building extrusion tech drawing [{', '.join(langs)}] -> {shown}")
-    try:
+    with buildlog.command(
+        "Hardware extrusion drawings", args, name="drawing", output_dir=out
+    ) as run:
         written = build(langs, out, pdf=args.pdf)
-    except BuildError as exc:
-        print(f"\nerror: {exc}", file=sys.stderr)
-        raise SystemExit(1) from None
-    print(f"\ndone — wrote {len(written)} file(s):")
-    for path in written:
-        print(f"  {path.name}")
+        run.artifacts(written)
 
 
 if __name__ == "__main__":

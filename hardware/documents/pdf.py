@@ -16,6 +16,9 @@ import tempfile
 import time
 from pathlib import Path
 
+from hardware import buildlog
+from hardware.process import ignore_interrupts
+
 CHROME_APP_PATHS = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -56,42 +59,57 @@ def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bo
     def written() -> bool:
         return pdf_path.exists() and pdf_path.stat().st_size > 0
 
-    proc = subprocess.Popen(
-        [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-background-networking",
-            f"--user-data-dir={profile}",
-            "--no-pdf-header-footer",
-            "--virtual-time-budget=30000",
-            f"--print-to-pdf={pdf_path}",
-            src_uri,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    try:
-        deadline = time.monotonic() + PDF_TIMEOUT
-        last_size, stable = -1, 0
-        while time.monotonic() < deadline:
-            size = pdf_path.stat().st_size if pdf_path.exists() else 0
-            stable = stable + 1 if size > 0 and size == last_size else 0
-            if stable >= 3:  # size held ~2.4s → fully written
-                return True
-            last_size = size
-            if proc.poll() is not None:  # exited on its own
-                return written()
-            time.sleep(0.8)
-        return written()
-    finally:
-        if proc.poll() is None:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            proc.wait()
+    with tempfile.TemporaryFile(
+        mode="w+", encoding="utf-8", errors="replace"
+    ) as diagnostics:
+        proc = subprocess.Popen(
+            [
+                chrome,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-background-networking",
+                f"--user-data-dir={profile}",
+                "--no-pdf-header-footer",
+                "--virtual-time-budget=30000",
+                f"--print-to-pdf={pdf_path}",
+                src_uri,
+            ],
+            stdout=diagnostics,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            deadline = time.monotonic() + PDF_TIMEOUT
+            last_size, stable = -1, 0
+            while time.monotonic() < deadline:
+                size = pdf_path.stat().st_size if pdf_path.exists() else 0
+                stable = stable + 1 if size > 0 and size == last_size else 0
+                if stable >= 3:  # size held ~2.4s → fully written
+                    return True
+                last_size = size
+                if proc.poll() is not None:  # exited on its own
+                    return written()
+                time.sleep(0.8)
+            return written()
+        finally:
+            # Helpers may outlive an already-exited browser leader. Reap and
+            # clean its private group before closing the diagnostic stream.
+            with ignore_interrupts():
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+            diagnostics.seek(0)
+            output = diagnostics.read()
+            if output:
+                buildlog.event(
+                    "pdf_diagnostics",
+                    output,
+                    level="debug",
+                    path=str(pdf_path),
+                    returncode=proc.returncode,
+                )
 
 
 def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
@@ -131,7 +149,11 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
         if result:  # _chrome_print returns True only after the PDF is written
             return True
         tail = " — retrying" if attempt < PDF_ATTEMPTS else " — retries exhausted"
-        print(
-            f"warning: PDF render failed for {pdf_path.name} (attempt {attempt}){tail}"
+        buildlog.event(
+            "pdf_retry",
+            f"PDF render failed for {pdf_path.name}{tail}",
+            level="warning",
+            attempt=attempt,
+            path=str(pdf_path),
         )
     return False

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from hardware import buildlog, scheme
 from hardware import release as rel
 
 VERSION = "1.2"
@@ -613,3 +614,43 @@ def test_source_digest_includes_untracked_files_and_renames(tmp_path, monkeypatc
     second = rel.source_digest()
     source.rename(tmp_path / "renamed.py")
     assert rel.source_digest() != second
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_preparation_retains_child_logs_once_before_cleanup(
+    preparation, tmp_path, monkeypatch, failed
+):
+    monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path / "run")
+    original_stage = rel._stage
+
+    def logged_stage(output, *args):
+        original_stage(output, *args)
+        logs = output / "logs"
+        logs.mkdir(exist_ok=True)
+        stem = f"build-child-{len(preparation)}"
+        (logs / f"{stem}.jsonl").write_text('{"event":"build_started"}\n')
+        (logs / f"{stem}.crash.log").write_text("Native crash stack\n")
+        if failed and args[0] == "build":
+            raise subprocess.CalledProcessError(1, "build")
+
+    monkeypatch.setattr(rel, "_stage", logged_stage)
+    if failed:
+        with (
+            pytest.raises(SystemExit, match="1"),
+            buildlog.command("Hardware release", name="release"),
+        ):
+            rel.prepare(VERSION)
+    else:
+        with buildlog.command("Hardware release", name="release"):
+            rel.prepare(VERSION)
+    assert all(not output.exists() for output, _ in preparation)
+    parent_log = next((scheme.OUTPUT_DIR / "logs").glob("*.jsonl"))
+    retained = parent_log.with_suffix(".children")
+    assert len(list(retained.glob("*.jsonl"))) == len(preparation)
+    for path in retained.glob("*.crash.log"):
+        assert path.read_text() == "Native crash stack\n"
+    events = [json.loads(line) for line in parent_log.read_text().splitlines()]
+    assert len(
+        [event for event in events if event["event"] == "diagnostic_saved"]
+    ) == 2 * len(preparation)
+    assert events[-1]["status"] == ("failed" if failed else "success")

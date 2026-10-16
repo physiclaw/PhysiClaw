@@ -15,10 +15,12 @@ Run from the repo root:
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import List
 
+from hardware import buildlog
 from hardware.assembly.mark.patch import (
     ORIG_SENTINEL,
     load_patch,
@@ -110,27 +112,34 @@ def _resolve_targets(argv: list[str]) -> list[tuple[Path, Path]]:
 
 
 def main(argv: List[str]) -> int:
-    pairs = _resolve_targets(argv)
-    if not pairs:
-        print("no patch files found", file=sys.stderr)
-        return 1
-
-    total = 0
-    for src, pj in pairs:
-        if not pj.exists():
-            print(f"  {pj.name:50s}  (no patch file)")
-            continue
-        if not src.exists():
-            print(f"  {pj.name:50s}  (source missing: {src.name})")
-            continue
-        written = replay_one(src)
-        print(f"  {pj.name:50s}  {len(written)} leaf snapshot(s)")
-        for out in written:
-            print(f"    → {out.name}")
-        total += len(written)
-
-    print(f"\nreplay: {total} snapshot(s) written")
-    return 0
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("file", nargs="?")
+    buildlog.add_arguments(parser)
+    args = parser.parse_args(argv[1:])
+    with buildlog.command("Hardware annotation replay", args, name="replay") as run:
+        pairs = _resolve_targets([argv[0], *([args.file] if args.file else [])])
+        if not pairs:
+            raise ValueError("No patch files found")
+        written_all = []
+        for src, pj in pairs:
+            if not pj.exists() or not src.exists():
+                buildlog.event(
+                    "replay_failed",
+                    f"Missing patch: {pj}"
+                    if not pj.exists()
+                    else f"Missing source: {src}",
+                    level="error",
+                    patch=str(pj),
+                    source=str(src),
+                )
+                run.exit_code = 1
+                continue
+            with buildlog.step(pj.stem):
+                written = replay_one(src)
+            written_all.extend(written)
+        run.artifacts(written_all)
+        run.summary = f"{len(written_all)} snapshots"
+        return run.exit_code
 
 
 if __name__ == "__main__":

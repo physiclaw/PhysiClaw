@@ -13,13 +13,15 @@ filename suffix and listed in the manifests. Run from the repo root::
 
 from __future__ import annotations
 
+import argparse
 import tempfile
 import zipfile
 from pathlib import Path
 
 from build123d import export_step
 
-from hardware.build_lock import build_lock
+from hardware import buildlog
+from hardware.build_lock import locked_main
 from hardware.parts.custom.belt_clamp import BeltClamp
 from hardware.parts.custom.idler_mount_front import IdlerMountFront
 from hardware.parts.custom.idler_mount_motor import IdlerMountMotor
@@ -117,22 +119,50 @@ def build() -> Path:
         with zipfile.ZipFile(staged_zip, "w", zipfile.ZIP_DEFLATED) as zf:
             for cls, qty, en, zh in CUSTOM_PARTS:
                 part = cls(qty=qty)
-                shape = part.build()
-                # output_path().name is "<stem>_x<qty>.step" (from BasePart).
-                fname = f"physiclaw_{part.output_path().name}"
-                step = Path(tmp) / fname
-                export_step(shape, str(step))
+                with buildlog.step(part.output_path().stem):
+                    shape = part.build()
+                    # Exports are included in this task's elapsed duration.
+                    fname = f"physiclaw_{part.output_path().name}"
+                    step = Path(tmp) / fname
+                    export_step(shape, str(step))
                 zf.write(step, arcname=fname)
                 rows.append((fname, qty, en, zh))
-                print(f"  + {fname}  ×{qty}  {en} / {zh}")
+                buildlog.event(
+                    "part_packaged",
+                    fname,
+                    level="debug",
+                    filename=fname,
+                    quantity=qty,
+                    name_en=en,
+                    name_zh=zh,
+                )
             zf.writestr("3d_printed_parts_guide.txt", _manifest(rows, "en"))
             zf.writestr("3d打印零件说明.txt", _manifest(rows, "zh"))
         staged_zip.replace(ZIP_PATH)
     total = sum(qty for _, qty, _, _ in rows)
-    print(f"\nwrote {ZIP_PATH}  ({len(rows)} designs, {total} pieces)")
+    buildlog.event(
+        "package_written",
+        str(ZIP_PATH),
+        level="debug",
+        path=str(ZIP_PATH),
+        designs=len(rows),
+        pieces=total,
+    )
     return ZIP_PATH
 
 
-if __name__ == "__main__":
-    with build_lock():
+@locked_main
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    buildlog.add_arguments(parser)
+    args = parser.parse_args(argv)
+    with buildlog.command(
+        "Hardware print package", args, name="print", output_dir=ZIP_PATH
+    ) as run:
         build()
+        run.summary = f"{len(CUSTOM_PARTS)} designs, {sum(qty for _, qty, _, _ in CUSTOM_PARTS)} pieces"
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

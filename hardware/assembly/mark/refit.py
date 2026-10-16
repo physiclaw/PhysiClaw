@@ -33,6 +33,7 @@ from build123d import Align, Box, GeomType, Location, Shape
 from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.ops import polygonize, unary_union
 
+from hardware import buildlog
 from hardware.assembly.dispatch import load_class
 from hardware.assembly.mark.patch import load_patch, make_entry, write_patch
 from hardware.assembly.mark.replay import replay_one
@@ -156,12 +157,18 @@ def refit(patch: Path, parts: list[str] | None) -> int:
         entry["parts"] = list(wanted)
         op.clear()
         op.update(entry)
-        print(f"{patch.name}: op {op['id']} → {len(shapes)} highlight(s) from {wanted}")
+        buildlog.event(
+            "highlight_refitted",
+            "",
+            item=f"{patch.stem}/{op['id']}",
+            highlights=len(shapes),
+            parts=wanted,
+        )
         done += 1
     if done:
         write_patch(src, ops)
         for out in replay_one(src):
-            print(f"  wrote {out.name}")
+            buildlog.event("artifact_written", out.name, level="debug", path=str(out))
     return done
 
 
@@ -169,18 +176,20 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("patch", type=Path, help="hardware/assembly/patch/<stem>.json")
     ap.add_argument("--parts", nargs="+", help="label prefixes of the parts to outline")
+    buildlog.add_arguments(ap)
     args = ap.parse_args(argv[1:])
-    try:
-        if not refit(args.patch.resolve(), args.parts):
-            print(
-                f"{args.patch.name}: no op has parts to refit (pass --parts)",
-                file=sys.stderr,
+    with buildlog.command("Hardware annotation refit", args, name="refit") as run:
+        count = refit(args.patch.resolve(), args.parts)
+        if not count:
+            buildlog.event(
+                "refit_error",
+                "No op has parts to refit (pass --parts)",
+                level="error",
+                path=str(args.patch),
             )
-            return 2
-    except ValueError as exc:
-        print(f"refit: {exc}", file=sys.stderr)
-        return 2
-    return 0
+            run.exit_code = 2
+        run.summary = f"{count} operations"
+        return run.exit_code
 
 
 if __name__ == "__main__":

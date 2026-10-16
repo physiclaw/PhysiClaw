@@ -29,7 +29,6 @@ from hardware.assembly.mark.patch import (
     patch_path,
     write_patch,
 )
-from hardware.assembly.mark.replay import replay_one
 from hardware.assembly.mark.svg import build_shapes_svg
 from hardware.assembly.mark.validate import validate_shapes
 
@@ -42,3 +41,13 @@ __all__ = [
     "validate_shapes",
     "write_patch",
 ]
+
+
+def __getattr__(name):
+    # Importing the CLI module here makes `python -m ...mark.replay` warn
+    # before its logging session starts. Preserve the public helper lazily.
+    if name == "replay_one":
+        from hardware.assembly.mark.replay import replay_one
+
+        return replay_one
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

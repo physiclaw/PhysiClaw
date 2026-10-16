@@ -194,14 +194,21 @@ def _replay_engine_files() -> list[Path]:
     return [f for f in _closure(MARK_DIR / "replay.py") if MARK_DIR in f.parents]
 
 
-def patch_key(stem: str) -> str:
+def annotation_key(stem: str) -> str:
+    """Inputs to annotation replay, independent of the cached geometry generation."""
+    h = hashlib.sha256()
+    _hash_files(h, _replay_engine_files())
+    _hash_files(h, _patch_files(stem))
+    return h.hexdigest()
+
+
+def patch_key(stem: str, *, inputs_key: str | None = None) -> str:
     """Bind annotated drawings to the exact source layer, patches and replay code."""
     h = hashlib.sha256()
     # A crash between the two stores must not pair new geometry with old
     # snapshots. File hashes also cover rerenders with unchanged source keys.
     h.update(json.dumps(_read_layer(stem, _SOURCE_KEY), sort_keys=True).encode())
-    _hash_files(h, _replay_engine_files())
-    _hash_files(h, _patch_files(stem))
+    h.update((annotation_key(stem) if inputs_key is None else inputs_key).encode())
     return h.hexdigest()
 
 
@@ -236,12 +243,19 @@ def _svgs(stem: str, pat: re.Pattern) -> list[Path]:
     return [p for p in SVG_DIR.glob(f"{stem}_*_cam*.svg") if pat.match(p.name)]
 
 
-def _source_outputs(stem: str) -> list[Path]:
+def _source_outputs(
+    stem: str, *, want_bom: bool = True, want_delta: bool = True
+) -> list[Path]:
     """``.step`` + raw ``.svg`` + BOM ``.md`` for ``stem`` currently on disk."""
     files = [p for v in VARIANTS for p in STEP_DIR.glob(f"{stem}_{v}.step")]
     files += _svgs(stem, raw_svg_re(stem))
     files += [
-        p for p in (BOM_DIR / f"{stem}.md", BOM_DIR / f"{stem}_delta.md") if p.exists()
+        p
+        for p, wanted in (
+            (BOM_DIR / f"{stem}.md", want_bom),
+            (BOM_DIR / f"{stem}_delta.md", want_delta),
+        )
+        if wanted and p.exists()
     ]
     return files
 
@@ -277,9 +291,14 @@ def _restore(files) -> None:
         dest = _dest_dir(f.name)
         dest.mkdir(parents=True, exist_ok=True)
         restored = dest / f.name
-        shutil.copy2(f, restored)
-        if _sha256_file(restored) != sha:
-            raise RuntimeError(f"Cached artifact changed during restore: {f}")
+        staged = restored.with_suffix(restored.suffix + ".tmp")
+        try:
+            shutil.copy2(f, staged)
+            if _sha256_file(staged) != sha:
+                raise RuntimeError(f"Cached artifact changed during restore: {f}")
+            staged.replace(restored)
+        finally:
+            staged.unlink(missing_ok=True)
 
 
 def _sha256_file(p: Path) -> str:
@@ -288,7 +307,9 @@ def _sha256_file(p: Path) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def _store_layer(stem: str, *, key_file: str, key_value: str, belongs, outputs) -> None:
+def _store_layer(
+    stem: str, *, key_file: str, current_key, expected_key=None, belongs, outputs
+) -> None:
     """Replace one layer of ``stem``'s entry: drop its old files (the layer's
     key + everything it ``belongs`` to), copy in the current ``outputs``, then
     write the key file LAST as a manifest ``{"key", "files": {name: sha256}}``.
@@ -299,6 +320,9 @@ def _store_layer(stem: str, *, key_file: str, key_value: str, belongs, outputs) 
     match AND every listed file be present with its recorded hash — so a partial
     entry (store killed mid-copy), a deleted file, or a corrupted/edited one all
     read as a miss, never a hit that restores a bad set."""
+    key_value = current_key(stem)
+    if expected_key is not None and key_value != expected_key:
+        raise RuntimeError(f"Build inputs changed before caching: {stem}")
     entry = _entry(stem)
     entry.mkdir(parents=True, exist_ok=True)
     for f in entry.iterdir():
@@ -307,8 +331,13 @@ def _store_layer(stem: str, *, key_file: str, key_value: str, belongs, outputs) 
     files: dict[str, str] = {}
     for f in outputs:
         dest = entry / f.name
+        digest = _sha256_file(f)
         shutil.copy2(f, dest)
-        files[f.name] = _sha256_file(dest)
+        if _sha256_file(dest) != digest:
+            raise RuntimeError(f"Artifact changed while caching: {f}")
+        files[f.name] = digest
+    if current_key(stem) != key_value:
+        raise RuntimeError(f"Build inputs changed while caching: {stem}")
     (entry / key_file).write_text(json.dumps({"key": key_value, "files": files}))
 
 
@@ -354,23 +383,33 @@ def _entry_intact(stem: str, files: dict[str, str]) -> bool:
     return True
 
 
-def store_source(stem: str) -> None:
+def store_source(
+    stem: str,
+    *,
+    expected_key: str | None = None,
+    want_bom: bool = True,
+    want_delta: bool = True,
+) -> None:
     """Replace ``stem``'s source layer (.step / raw .svg / .md) + source key."""
     _store_layer(
         stem,
         key_file=_SOURCE_KEY,
-        key_value=source_key(stem),
+        current_key=source_key,
+        expected_key=expected_key,
         belongs=lambda n: _is_source(stem, n),
-        outputs=_source_outputs(stem),
+        outputs=_source_outputs(stem, want_bom=want_bom, want_delta=want_delta),
     )
 
 
-def store_snapshots(stem: str) -> None:
+def store_snapshots(stem: str, *, expected_annotation_key: str | None = None) -> None:
     """Replace ``stem``'s snapshot layer (.svg op snapshots) + patch key."""
     _store_layer(
         stem,
         key_file=_PATCH_KEY,
-        key_value=patch_key(stem),
+        current_key=patch_key,
+        expected_key=patch_key(stem, inputs_key=expected_annotation_key)
+        if expected_annotation_key is not None
+        else None,
         belongs=lambda n: _is_snapshot(stem, n),
         outputs=_snapshot_outputs(stem),
     )
@@ -382,13 +421,16 @@ def source_cached(
     want_bom: bool,
     want_delta: bool = False,
     expected_svgs: set[str] | None = None,
+    expected_key: str | None = None,
 ) -> bool:
     """True only if the source key matches AND every recorded file is present
     with its recorded hash — a changed, damaged, incomplete, or corrupted entry
     all fall back to a rebuild. Cheap checks first; the integrity hash runs only
     on a key match (a rebuild from a source edit pays no hashing)."""
     key, files = _read_layer(stem, _SOURCE_KEY)
-    if key is None or key != source_key(stem):
+    if key is None or key != (
+        source_key(stem) if expected_key is None else expected_key
+    ):
         return False
     required = {f"{stem}_{v}.step" for v in VARIANTS}
     if expected_svgs is not None:

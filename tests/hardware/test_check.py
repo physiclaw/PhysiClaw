@@ -144,13 +144,13 @@ def test_consistent_world_reports_no_findings(world):
 
 
 def test_main_on_consistent_world_returns_zero(world, capsys):
-    assert (check.main(), "hardware check OK" in capsys.readouterr().out) == (0, True)
+    assert (check.main([]), "SUCCESS" in capsys.readouterr().out) == (0, True)
 
 
 def test_main_with_findings_returns_one(world, capsys):
     (world.procedures / "badname.py").write_text("")
 
-    assert (check.main(), "1 consistency finding" in capsys.readouterr().err) == (
+    assert (check.main([]), "1 consistency findings" in capsys.readouterr().out) == (
         1,
         True,
     )

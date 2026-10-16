@@ -1,7 +1,8 @@
 """Export every custom part — one .step file per part written to
 hardware/output/step/. Run: `uv run python -m hardware.parts.export_custom`."""
 
-from hardware.parts.base import export_all
+from hardware.parts.base import export_all as export_all
+from hardware.parts.base import export_main
 from hardware.parts.custom.belt_clamp import BeltClamp
 from hardware.parts.custom.idler_mount_front import IdlerMountFront
 from hardware.parts.custom.idler_mount_motor import IdlerMountMotor
@@ -26,4 +27,4 @@ ALL_PARTS = [
 
 
 if __name__ == "__main__":
-    export_all(ALL_PARTS)
+    export_main(ALL_PARTS, __doc__)
