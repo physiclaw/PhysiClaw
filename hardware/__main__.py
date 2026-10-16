@@ -35,10 +35,11 @@ subcommands are a convenience wrapper, not a replacement.
 import argparse
 import subprocess
 import sys
+from threading import Event
 
 from hardware import buildlog
 from hardware.build_lock import inherited_fds, locked_main
-from hardware.process import ignore_interrupts, interrupt_process
+from hardware.process import cancel_on_interrupt, interrupt_process
 
 # Subcommand → argv it delegates to (after ``sys.executable``), every one a
 # ``-m`` module run.
@@ -91,18 +92,26 @@ def _delegate(prefix: list[str], argv: list[str]) -> int:
     behaviour, sys.path, and exit code identical to its standalone form."""
     if prefix[:1] == ["-m"]:
         prefix = ["-m", "hardware._run", *prefix[1:]]
-    with subprocess.Popen(
-        [sys.executable, *prefix, *argv], pass_fds=inherited_fds()
-    ) as child:
-        try:
-            returncode = child.wait()
-            return 128 - returncode if returncode < 0 else returncode
-        except KeyboardInterrupt:
-            # subprocess.call kills its child while unwinding KeyboardInterrupt,
-            # cutting off the dispatcher's worker cleanup and saved summary.
-            with ignore_interrupts():
-                interrupt_process(child, timeout=10)
-            return 130
+    cancelled = Event()
+    with (
+        cancel_on_interrupt(cancelled),
+        subprocess.Popen(
+            [sys.executable, *prefix, *argv], pass_fds=inherited_fds()
+        ) as child,
+    ):
+        # Record signals without raising inside Popen.wait: an interrupt during
+        # lock acquisition can otherwise leave its waitpid lock held forever.
+        while not cancelled.is_set():
+            try:
+                returncode = child.wait(timeout=0.1)
+                if cancelled.is_set():
+                    break
+                return 128 - returncode if returncode < 0 else returncode
+            except subprocess.TimeoutExpired:
+                pass
+        # Allow the child to finish its worker cleanup and saved summary.
+        interrupt_process(child, timeout=10)
+        return 130
 
 
 @locked_main

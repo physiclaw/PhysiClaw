@@ -172,6 +172,58 @@ print('cancelled without deadlock')
     assert result.stdout.strip() == "cancelled without deadlock"
 
 
+@pytest.mark.parametrize("finishes", [False, True])
+def test_ctrl_c_during_wait_lock_acquisition_does_not_leak_lock(finishes):
+    script = f"""
+import signal, subprocess
+from threading import Lock
+from hardware import __main__ as cli
+
+class Child:
+    returncode = None
+    lock = Lock()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.wait()
+
+    def wait(self, timeout=None):
+        if self.returncode is not None:
+            return self.returncode
+        assert self.lock.acquire(False), 'waitpid lock leaked'
+        # Reproduce SIGINT after waitpid-lock acquisition, before the protected
+        # block starts. An asynchronous KeyboardInterrupt would leak this lock.
+        signal.raise_signal(signal.SIGINT)
+        try:
+            if {finishes!r}:
+                self.returncode = 0
+                return 0
+            raise subprocess.TimeoutExpired('child', timeout)
+        finally:
+            self.lock.release()
+
+def cleanup(child, **kwargs):
+    assert child.lock.acquire(False), 'waitpid lock leaked'
+    child.lock.release()
+    child.returncode = 130
+
+cli.subprocess.Popen = lambda *args, **kwargs: Child()
+cli.interrupt_process = cleanup
+assert cli._delegate(['-c', ''], []) == 130
+print('cancelled without leaking the waitpid lock')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "cancelled without leaking the waitpid lock"
+
+
 def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
     (tmp_path / "interrupted_stage.py").write_text("raise KeyboardInterrupt\n")
     script = (
