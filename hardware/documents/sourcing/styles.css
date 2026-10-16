@@ -290,6 +290,65 @@ td.offer .v-prod {
 td.offer.pending { color: var(--ink-faint); font-size: 12.5px; font-style: italic; }
 td.offer.na { color: var(--ink-faint); }
 
+/* Reserve the flag's corner so revealing it never moves a supplier link. */
+.reportable { position: relative; }
+.sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
+  padding-right: 36px;
+}
+.accessory-offer.reportable, .supplier-offer.reportable { min-height: 32px; }
+a.report-link {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--ink-soft);
+  background: var(--page-bg);
+  opacity: 0;
+  pointer-events: none;
+}
+.report-link svg { width: 14px; height: 14px; }
+.sourcing td:hover .report-link,
+.reportable:focus-within > .report-link,
+a.report-link:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+a.report-link:hover { color: var(--accent); background: var(--tint); }
+a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Native title tooltips have a browser-controlled delay. Show this short label
+   immediately on the flag itself, including when reached by keyboard. */
+.report-link::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 4;
+  width: max-content;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+.report-link:hover::after, .report-link:focus-visible::after { opacity: 1; }
+@media (hover: none), (any-pointer: coarse) {
+  a.report-link { opacity: 1; pointer-events: auto; width: 32px; height: 32px; }
+  .sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
+    padding-right: 44px;
+  }
+  .accessory-offer.reportable, .supplier-offer.reportable { min-height: 40px; }
+}
+
 /* Long supplier instructions open above the page, leaving the BOM compact. */
 .guide-open {
   display: block;
@@ -478,7 +537,7 @@ td.note button.copy { margin-top: 0; vertical-align: -1px; }
    the per-column color rules (td.cls, td.note, td.ref, .v-prod) regardless
    of source order. */
 :is(tr.done td:not([rowspan]), td.done),
-:is(tr.done td:not([rowspan]), td.done) :is(.v-vendor a, .v-prod, button.copy, .note-accessory a) {
+:is(tr.done td:not([rowspan]), td.done) :is(.v-vendor a, .v-prod, button.copy, .note-accessory a:not(.report-link)) {
   color: var(--ink-faint);
 }
 
@@ -515,6 +574,11 @@ body.hl tbody tr:not(.done) :is(td.spec, td.qty) { background: var(--mark); }
   .sourcing thead th { position: static; }
   .checklist button { display: none; }
   .guide-open, .guide-close, .guide-part button.copy { display: none; }
+  a.report-link { display: none; }
+  .sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
+    padding-right: 12px;
+  }
+  .accessory-offer.reportable, .supplier-offer.reportable { min-height: 0; }
   .supplier-guide {
     display: block;
     position: static;

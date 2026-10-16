@@ -351,6 +351,11 @@ Rebuild with `make hw-sourcing`; no renderer changes are needed. Whole-row
 `"Ditto"` follows the updated supplier list. Per-slot `"Ditto"` follows column
 positions, so check those entries when deleting or reordering suppliers.
 
+Supplier cells reveal a report flag on hover or keyboard focus; touch screens
+show it directly. It opens a GitHub issue draft with the listing, affected parts,
+source file, market and guide date. Parts, accessories and optional tools share
+this action. Reporting leaves the checklist unchanged; flags are hidden in print.
+
 > **Photoreal render — WIP.** A separate Blender render of the full machine
 > (`camera_40_frame`) is being reworked; its scripts were cleared and are not
 > currently in the tree. The line-art SVG pipeline is unaffected.

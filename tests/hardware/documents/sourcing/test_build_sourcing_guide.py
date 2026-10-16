@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 from copy import deepcopy
+from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -140,6 +142,154 @@ def test_clean_supplier_url_leaves_other_links_unchanged(url):
     assert bsg.clean_supplier_url(url) == url
 
 
+def report_links(markup):
+    class Links(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "a" and "report-link" in attrs.get("class", "").split():
+                links.append(attrs)
+
+    links = []
+    Links().feed(markup)
+    return links
+
+
+@pytest.mark.parametrize("lang,market", [("en", "global"), ("zh", "cn")])
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://www.aliexpress.us/item/123.html?spm=tracking#details",
+            "https://www.aliexpress.us/item/123.html",
+        ),
+        (
+            "https://detail.tmall.com/item.htm?id=123&skuId=456&spm=tracking",
+            "https://detail.tmall.com/item.htm?id=123&skuId=456",
+        ),
+    ],
+)
+def test_report_opens_encoded_issue_draft_with_listing_context(
+    monkeypatch, lang, market, url, expected
+):
+    monkeypatch.setattr(bsg, "manual_version", lambda: "2026-10-16")
+    supplier = {"name": 'Shop <"&> 商家', "url": url, "product": 'M3 & 5/16"'}
+    markup = bsg.render_supplier_cell(supplier, lang, 1, item="Stylus tip (tip)")
+    (link,) = report_links(markup)
+    target = urlsplit(link["href"])
+    query = parse_qs(target.query)
+    assert (target.scheme, target.netloc, target.path) == (
+        "https",
+        "github.com",
+        "/physiclaw/PhysiClaw/issues/new",
+    )
+    assert set(query) == {"title", "body"}  # No submission or automatic labels.
+    assert query["title"] == [f"Sourcing link: {supplier['name']} — Stylus tip (tip)"]
+    body = query["body"][0]
+    for value in (
+        bsg.ui("report_prompt", lang),
+        "Stylus tip (tip)",
+        supplier["name"],
+        supplier["product"],
+        f"URL: {expected}",
+        "Guide version: 2026-10-16",
+        f"Market: {market}",
+        f"Source: hardware/documents/sourcing/vendors/{market}.json",
+    ):
+        assert value in body
+    assert "spm=" not in body and "#details" not in body
+    assert link["target"] == "_blank"
+    assert set(link["rel"].split()) == {"noopener", "noreferrer"}
+    assert bsg.ui("report_link", lang) in link["aria-label"]
+    assert supplier["name"] in link["aria-label"]
+    assert "title" not in link  # Avoid a second, delayed browser tooltip.
+    assert link["data-tooltip"] == (
+        "Report link issue" if lang == "en" else "反馈链接问题"
+    )
+    assert '<svg viewBox="0 0 24 24"' in markup
+
+
+@pytest.mark.parametrize(
+    "supplier",
+    [None, {}, {"name": "Shop"}, {"name": "—", "url": "https://example.com"}],
+)
+def test_missing_or_unlinked_supplier_has_no_report_action(supplier):
+    assert report_links(bsg.render_supplier_cell(supplier, "en", 1)) == []
+
+
+def test_report_market_follows_vendor_file_instead_of_language(tmp_path, monkeypatch):
+    monkeypatch.setitem(bsg.VENDOR_FILES, "en", tmp_path / "cn.json")
+    supplier = {"name": "Shop", "url": "https://example.com"}
+    (link,) = report_links(bsg.render_supplier_cell(supplier, "en", 1))
+    body = parse_qs(urlsplit(link["href"]).query)["body"][0]
+    assert "Market: cn" in body
+    assert "Source: hardware/documents/sourcing/vendors/cn.json" in body
+
+
+def test_shared_supplier_report_identifies_every_covered_part():
+    rows = [dict(bom_row(pid), qty="1", desc="") for pid in ("p1", "p2", "p3")]
+    entries = [
+        {
+            "part_id": "p1",
+            "suppliers": [{"name": "Shop", "url": "https://example.com"}],
+        },
+        {"part_id": "p2", "suppliers": "Ditto"},
+        {"part_id": "p3"},
+    ]
+    table = bsg.render_table(rows, entries, "en")
+    (link,) = report_links(table)
+    body = parse_qs(urlsplit(link["href"]).query)["body"][0]
+    assert "(p1)" in body and "(p2)" in body and "p3" not in body
+    assert table.count('type="checkbox"') == 3
+
+
+def test_accessory_report_carries_its_own_vendor_and_selection():
+    rows = [dict(bom_row("tip"), qty="1", desc="")]
+    entry = {
+        "part_id": "tip",
+        "accessories": [
+            {
+                "name": "Adapter shop",
+                "url": "https://example.com/adapter",
+                "spec": "M3-M5, 5 mm",
+            }
+        ],
+    }
+    (link,) = report_links(bsg.render_table(rows, [entry], "en"))
+    body = parse_qs(urlsplit(link["href"]).query)["body"][0]
+    assert "(tip)" in body
+    assert "Supplier: Adapter shop" in body
+    assert "Product / option: M3-M5, 5 mm" in body
+    assert "URL: https://example.com/adapter" in body
+    assert "vendors/global.json" in body
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_optional_tool_reports_point_to_tool_data_in_the_selected_market(lang):
+    tool = {
+        "name": {"en": "Hex key", "zh": "内六角扳手"},
+        "spec": '3/16"',
+        "purpose": "Camera mount",
+        "sources": {lang: [{"name": "Tool shop", "url": "https://example.com/key"}]},
+    }
+    (link,) = report_links(bsg.render_optional_tools([tool], lang))
+    body = parse_qs(urlsplit(link["href"]).query)["body"][0]
+    assert f'{bsg.loc(tool["name"], lang)} (3/16")' in body
+    assert "Source: hardware/documents/sourcing/optional_tools.json" in body
+    assert "URL: https://example.com/key" in body
+
+
+def test_optional_supplier_without_url_has_no_report_action_or_reserved_corner():
+    tool = {
+        "name": "Hex key",
+        "purpose": "Camera mount",
+        "sources": {"en": [{"name": "Local hardware store"}]},
+    }
+    section = bsg.render_optional_tools([tool], "en")
+    assert "Local hardware store" in section
+    assert report_links(section) == []
+    assert "reportable" not in section
+
+
 # ── accessories ──────────────────────────────────────────────────────────────
 
 
@@ -200,7 +350,7 @@ def test_accessory_vendors_each_show_link_above_localized_spec():
     rendered = bsg.render_accessories(accessories, "en")
     assert rendered.count('class="accessory-spec">M3-M5 &lt;5pcs&gt;</div>') == 2
     assert rendered.count('class="note-accessory"') == 1
-    assert rendered.count('class="accessory-offer"') == 3
+    assert rendered.count('class="accessory-offer reportable"') == 3
     assert rendered.count("<a href=") == 3
     assert 'Vendor 1</a><div class="accessory-spec">' in rendered
     assert 'class="accessory-spec">10pcs</div>' in rendered
@@ -325,7 +475,7 @@ def test_supplier_details_share_one_dialog_across_ditto_rows(ordering_supplier, 
     assert 'class="guide-close"' in document
     assert 'aria-label="Close"' in document
     assert 'aria-hidden="true">×</span>' in document
-    assert '<td class="offer" rowspan="2">' in document
+    assert '<td class="offer reportable" rowspan="2">' in document
     assert document.index("</table></div>") < document.index("<dialog")
 
 

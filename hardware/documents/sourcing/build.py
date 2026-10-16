@@ -168,6 +168,16 @@ UI = {
     "supplier_n": {"en": "Supplier", "zh": "商家"},
     "close": {"en": "Close", "zh": "关闭"},
     "copy": {"en": "Copy", "zh": "复制"},
+    "report_link": {
+        "en": "Report link issue (opens GitHub in a new tab)",
+        "zh": "反馈链接问题（在新标签页打开 GitHub）",
+    },
+    "report_tip": {"en": "Report link issue", "zh": "反馈链接问题"},
+    "report_prompt": {
+        "en": "Please describe the problem (unavailable link, wrong product, "
+        "or changed options). If possible, include a replacement link:",
+        "zh": "请说明问题（链接失效、商品不符或选项变更）。如有替代链接，请一并提供：",
+    },
     # Bought-checklist chrome. tally_fmt/tally_done are JS templates
     # ({n} ticked / {t} rows).
     "th_bought": {"en": "Bought", "zh": "已购"},
@@ -208,6 +218,12 @@ CHECK_ICON_SVG = (
     '<svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
     '<path d="M20 6 9 17l-5-5"/></svg>'
+)
+REPORT_ICON_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '
+    'aria-hidden="true" focusable="false">'
+    '<path d="M4 22V3c5-4 11 4 16 0v12c-5 4-11-4-16 0"/></svg>'
 )
 
 
@@ -361,7 +377,46 @@ def _inquiry_button(
     )
 
 
-def render_supplier_offer(supplier: dict, lang: str) -> str:
+def _report_link(supplier: dict, lang: str, item: str, source: str = "") -> str:
+    """Open an editable issue draft; static links also work in downloaded guides."""
+    name = loc(supplier.get("name") or "", lang)
+    if not supplier.get("url") or not name or name == "—":
+        return ""
+    fields = {
+        "Item / part IDs": item,
+        "Supplier": name,
+        "Product / option": loc(
+            supplier.get("product") or supplier.get("spec") or "", lang
+        ),
+        "URL": clean_supplier_url(supplier["url"]),
+        "Guide version": manual_version(),
+        "Market": VENDOR_FILES[lang].stem,
+        "Source": source
+        or f"hardware/documents/sourcing/vendors/{VENDOR_FILES[lang].name}",
+    }
+    details = "\n".join(
+        f"- {label}: {value}" for label, value in fields.items() if value
+    )
+    body = f"{ui('report_prompt', lang)}\n\n\n---\n{details}"
+    title = f"Sourcing link: {name}"
+    if item:
+        title += f" — {item.split('; ', 1)[0]}"
+    query = urlencode({"title": title, "body": body})
+    href = html.escape(
+        f"https://github.com/physiclaw/PhysiClaw/issues/new?{query}", quote=True
+    )
+    label = html.escape(f"{ui('report_link', lang)}: {name}", quote=True)
+    tip = html.escape(ui("report_tip", lang), quote=True)
+    return (
+        f'<a class="report-link" href="{href}" target="_blank" '
+        f'rel="noopener noreferrer" aria-label="{label}" data-tooltip="{tip}">'
+        f"{REPORT_ICON_SVG}</a>"
+    )
+
+
+def render_supplier_offer(
+    supplier: dict, lang: str, *, item: str = "", source: str = ""
+) -> str:
     """Shared supplier name/link and product spec for required and optional items."""
     name = html.escape(loc(supplier.get("name") or "", lang))
     if supplier.get("url"):
@@ -371,11 +426,14 @@ def render_supplier_offer(supplier: dict, lang: str) -> str:
     product_html = (
         f'<div class="v-prod">{html.escape(product)}</div>' if product else ""
     )
-    return f'<div class="v-vendor">{name}</div>{product_html}'
+    return (
+        f'<div class="v-vendor">{name}</div>{product_html}'
+        f"{_report_link(supplier, lang, item, source)}"
+    )
 
 
 def render_supplier_cell(
-    supplier: dict | None, lang: str, span: int, guide_id: str = ""
+    supplier: dict | None, lang: str, span: int, guide_id: str = "", *, item: str = ""
 ) -> str:
     """One supplier cell: the shop name (linked to its url) over its product spec."""
     name = loc(supplier.get("name") or "", lang) if supplier else ""
@@ -390,9 +448,10 @@ def render_supplier_cell(
             f'<button class="guide-open" type="button" data-guide="{guide_id}" '
             f'aria-haspopup="dialog" aria-controls="{guide_id}">{label}</button>'
         )
+    cell_class = "offer reportable" if supplier.get("url") else "offer"
     return (
-        f'<td class="offer"{_span_attr(span)}>'
-        f"{render_supplier_offer(supplier, lang)}{details_html}</td>"
+        f'<td class="{cell_class}"{_span_attr(span)}>'
+        f"{render_supplier_offer(supplier, lang, item=item)}{details_html}</td>"
     )
 
 
@@ -469,7 +528,7 @@ def render_supplier_guides(entries: list[dict], lang: str) -> str:
     return "".join(guides)
 
 
-def render_accessories(accessories: list[dict], lang: str) -> str:
+def render_accessories(accessories: list[dict], lang: str, *, item: str = "") -> str:
     """Variant-specific purchases within a part's note; never checklist rows."""
     offers = []
     for accessory in accessories:
@@ -480,9 +539,9 @@ def render_accessories(accessories: list[dict], lang: str) -> str:
             f'<div class="accessory-spec">{html.escape(spec)}</div>' if spec else ""
         )
         offers.append(
-            '<div class="accessory-offer">'
+            '<div class="accessory-offer reportable">'
             f'<a href="{href}" target="_blank" rel="noopener">{name}</a>'
-            f"{spec_html}</div>"
+            f"{spec_html}{_report_link(accessory, lang, item)}</div>"
         )
     return f'<div class="note-accessory">{"".join(offers)}</div>'
 
@@ -493,18 +552,22 @@ def render_optional_tools(tools: list[dict], lang: str) -> str:
         return ""
     rows = []
     for tool in tools:
-        name = html.escape(loc(tool["name"], lang))
-        spec = html.escape(loc(tool.get("spec") or "", lang))
-        spec_html = f'<div class="tool-spec">{spec}</div>' if spec else ""
+        name = loc(tool["name"], lang)
+        spec = loc(tool.get("spec") or "", lang)
+        spec_html = f'<div class="tool-spec">{html.escape(spec)}</div>' if spec else ""
         purpose = html.escape(loc(tool["purpose"], lang))
+        item = name
+        if tool.get("spec"):
+            item += f" ({spec})"
         offers = "".join(
-            f'<div class="supplier-offer">{render_supplier_offer(source, lang)}</div>'
-            for source in tool.get("sources", {}).get(lang, [])
-            if loc(source.get("name") or "", lang).strip()
+            f'<div class="supplier-offer{" reportable" if supplier.get("url") else ""}">'
+            f"{render_supplier_offer(supplier, lang, item=item, source='hardware/documents/sourcing/optional_tools.json')}</div>"
+            for supplier in tool.get("sources", {}).get(lang, [])
+            if loc(supplier.get("name") or "", lang).strip()
         )
         offer_class = "offer" if offers else "offer pending"
         rows.append(
-            f'<tr><td class="comp">{name}{spec_html}</td>'
+            f'<tr><td class="comp">{html.escape(name)}{spec_html}</td>'
             f'<td class="desc">{purpose}</td><td class="{offer_class}">'
             f"{offers or ui('pending', lang)}</td></tr>"
         )
@@ -539,6 +602,12 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     # the part's note ({inquiry}), so only its resolved values are used.
     _, inquiries = ditto_walk([e.get("inquiry") for e in entries], "inquiry", ids)
 
+    def report_item(index: int, span: int) -> str:
+        return "; ".join(
+            f"{loc(part['component'], lang)} ({part['part_id']})"
+            for part in rows[index : index + span]
+        )
+
     body: list[str] = []
     bought_label = ui("th_bought", lang)
     for idx, row in enumerate(rows):
@@ -563,7 +632,11 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
         for slot, (spans, col) in enumerate(sup_walks):
             if spans[idx]:
                 cells += render_supplier_cell(
-                    col[idx], lang, spans[idx], f"supplier-guide-{idx}-{slot}"
+                    col[idx],
+                    lang,
+                    spans[idx],
+                    f"supplier-guide-{idx}-{slot}",
+                    item=report_item(idx, spans[idx]),
                 )
         if ref_spans[idx]:
             ref = loc(refs[idx] or "", lang) or "—"
@@ -585,7 +658,9 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
                 )
             accessories = entries[idx].get("accessories")
             if accessories:
-                note += render_accessories(accessories, lang)
+                note += render_accessories(
+                    accessories, lang, item=report_item(idx, note_spans[idx])
+                )
             cells += f'<td class="note"{_span_attr(note_spans[idx])}>{note or "—"}</td>'
 
         # Only class starts get a heavier separator; the full cell grid
