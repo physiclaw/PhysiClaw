@@ -603,10 +603,21 @@ def test_deploy_success_requires_published_assets_tag_and_docs(github):
     assert calls.count(("make", "docs-deploy")) == 1
 
 
-def test_source_digest_includes_untracked_files_and_renames(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "name",
+    [
+        "model.py",
+        "hardware/documents/assets/icon/report.svg",
+        "hardware/documents/assets/figure/wire_splice.svg",
+    ],
+)
+def test_source_digest_includes_untracked_files_and_renames(
+    tmp_path, monkeypatch, name
+):
     monkeypatch.setattr(rel, "REPO_ROOT", tmp_path)
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    source = tmp_path / "model.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("SIZE = 1")
     first = rel.source_digest()
     source.write_text("SIZE = 2")

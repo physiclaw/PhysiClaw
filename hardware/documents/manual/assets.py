@@ -15,16 +15,13 @@ from pathlib import Path
 from typing import Protocol
 
 from hardware.documents import BuildError
-from hardware.documents.manual.icon_svg import CRAB_SVG, WIRE_SPLICE_SVG
+from hardware.documents.assets import figure, icon
 from hardware.scheme import SVG_DIR, SVG_NAME_RE
 
 ASSETS_SUBDIR = "assets"  # where external mode writes images, relative to the HTML.
 
-# Hand-authored figures kept as constants in icon_svg.py (so they are tracked,
-# unlike the generated output/svg renders). build() writes them into the SVG
-# pool before rendering, so the figure pipeline treats them like any render and
-# the file stays a single-source copy of the constant.
-HAND_FIGURES = {"wire_splice.svg": WIRE_SPLICE_SVG}
+# Authored figures copied into the manual's render pool at build time.
+HAND_FIGURES = {"wire_splice.svg": lambda: figure.wire_splice_svg}
 
 
 def _render_stem(basename: str) -> str:
@@ -62,6 +59,14 @@ def _read_svg(basename: str) -> str:
     return (SVG_DIR / basename).read_text(encoding="utf-8")
 
 
+def prepare_figures() -> None:
+    """Start a new figure cache and copy the current authored SVGs into the pool."""
+    _read_svg.cache_clear()
+    SVG_DIR.mkdir(parents=True, exist_ok=True)
+    for name, read_svg in HAND_FIGURES.items():
+        (SVG_DIR / name).write_text(read_svg(), encoding="utf-8")
+
+
 def _data_uri(svg_text: str) -> str:
     """Encode SVG markup as a base64 ``data:image/svg+xml`` URI."""
     b64 = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
@@ -87,7 +92,7 @@ class InlineAssets:
 
     @property
     def crab(self) -> str:
-        return _data_uri(CRAB_SVG)
+        return _data_uri(icon.crab_svg)
 
     def preload(self, src: str) -> str:
         return ""  # nothing to preload — the bytes are already in the document.
@@ -116,7 +121,7 @@ class ExternalAssets:
     def emit(self, out_dir: Path) -> None:
         assets_dir = out_dir / ASSETS_SUBDIR
         assets_dir.mkdir(parents=True, exist_ok=True)
-        (assets_dir / "crab.svg").write_text(CRAB_SVG, encoding="utf-8")
+        (assets_dir / "crab.svg").write_text(icon.crab_svg, encoding="utf-8")
         _require_renders(self.referenced)  # all missing at once, with a fix hint
         for name in sorted(self.referenced):
             shutil.copyfile(SVG_DIR / name, assets_dir / name)

@@ -72,6 +72,10 @@ hardware/
 ├── documents/             Bilingual builder documents (standard-library only)
 │   ├── MANUAL_VERSION     Shared document date, updated by the user
 │   ├── common.py / pdf.py Localization, typography, tables, timing and PDF rendering
+│   ├── assets/
+│   │   ├── __init__.py    Shared icon and figure objects with SVG properties
+│   │   ├── icon/          Shared SVG icons, logos and decorations
+│   │   └── figure/        Page illustrations, including wire_splice.svg
 │   ├── bom/
 │   │   ├── bom.json       Authored purchasing rows, keyed by part_id
 │   │   └── loader.py      Shared purchasing-list loading and validation
@@ -79,7 +83,7 @@ hardware/
 │   │   ├── build.py       Chapter JSON + SVGs → HTML / PDF
 │   │   ├── content/       13 ordered chapters; Section 11 references the shared BOM
 │   │   ├── styles.css
-│   │   └── assets.py / icon_svg.py / pages.py / paginate.py / style_checks.py
+│   │   └── assets.py / pages.py / paginate.py / style_checks.py
 │   ├── sourcing/
 │   │   ├── build.py       Shared purchasing list + vendor data → HTML
 │   │   ├── styles.css
@@ -91,6 +95,10 @@ hardware/
 └── output/                Generated artifacts (git-ignored)
     ├── step/  svg/  bom/  manual/  sourcing/  drawing/  print_3d/  render/
 ```
+
+Builders use `icon.crab_svg` and `figure.wire_splice_svg` from
+`hardware.documents.assets`. Properties read current SVG contents on access.
+The manual owns figure registration and refreshes its figure cache at each build.
 
 ---
 

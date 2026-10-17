@@ -43,6 +43,7 @@ from typing import Callable
 from hardware import buildlog
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
+from hardware.documents.assets import icon
 from hardware.documents.common import (
     HTML_LANG,
     URL_MARK,
@@ -54,26 +55,19 @@ from hardware.documents.common import (
 )
 from hardware.documents.manual.assets import (
     ASSETS_SUBDIR,
-    HAND_FIGURES,
     Assets,
     ExternalAssets,
     InlineAssets,
-)
-from hardware.documents.manual.icon_svg import (
-    BACK_CORNER_SVG,
-    COVER_STRIPES_SVG,
-    GITHUB_OCTICON_SVG,
-    INFO_ICON_SVG,
+    prepare_figures,
 )
 from hardware.documents.manual.pages import load_pages
 from hardware.documents.manual.paginate import assign_page_numbers, paginate_bom_pages
 from hardware.documents.manual.style_checks import inline_style_unit_warnings
 from hardware.documents.pdf import find_chrome, render_pdf
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
-from hardware.scheme import SVG_DIR
 
-# Note "icon" keys -> inline SVG markup, for the leading icon of a flex callout.
-NOTE_ICONS = {"info": INFO_ICON_SVG}
+# Note "icon" keys -> SVG accessors for the leading icon of a flex callout.
+NOTE_ICONS = {"info": lambda: icon.info_svg}
 
 # --------------------------------------------------------------------------- #
 # Paths — package files are resolved relative to this file; output paths come
@@ -116,7 +110,7 @@ def render_note(note: dict, ctx: Ctx) -> str:
     body_html = body if body.lstrip().startswith("<") else f"<p>{body}</p>"
     heading = f"<h3{h3_style}>{loc(note['h3'], ctx.lang)}</h3>{body_html}"
     inner = (
-        f"{NOTE_ICONS[note['icon']]}<div>{heading}</div>"
+        f"{NOTE_ICONS[note['icon']]()}<div>{heading}</div>"
         if note.get("icon")
         else heading
     )
@@ -259,7 +253,7 @@ def render_cover(page: dict, ctx: Ctx) -> str:
     # <head> for a fast LCP.
     render_src = ctx.assets.figure(page["render"]["src"])
     body = (
-        f'<div class="stripes">{COVER_STRIPES_SVG}</div>'
+        f'<div class="stripes">{icon.cover_stripes_svg}</div>'
         '<div class="brand"><div class="mark">'
         f'<img src="{ctx.assets.crab}" alt="PhysiClaw logo">'
         '<span class="word">PhysiClaw<span class="tld">.ai</span></span>'
@@ -293,7 +287,7 @@ def render_intro(page: dict, ctx: Ctx) -> str:
     link_cells = []
     for link in page["links"]:
         logo = (
-            GITHUB_OCTICON_SVG
+            icon.github_svg
             if link["logo"] == "github"
             else f'<img src="{ctx.assets.crab}" alt="">'
         )
@@ -317,18 +311,14 @@ def render_hardware_ref(page: dict, ctx: Ctx) -> str:
         # the part has an icon; entries still carrying only ``iconLabel`` fall
         # back to the placeholder so a half-populated page still builds.
         if e.get("src"):
-            icon = (
+            icon_markup = (
                 f'<img src="{ctx.assets.figure(e["src"])}" '
                 f'alt="{loc(e["h3"], ctx.lang)}" loading="lazy" decoding="async">'
             )
         else:
-            icon = (
-                '<svg class="ph" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">'
-                '<rect class="frame" x="20" y="20" width="160" height="100"/>'
-                f'<text x="100" y="75" text-anchor="middle">{e["iconLabel"]}</text></svg>'
-            )
+            icon_markup = icon.hardware_placeholder_svg(e["iconLabel"])
         entries.append(
-            f'<div class="hw-entry"><div class="icon">{icon}</div>'
+            f'<div class="hw-entry"><div class="icon">{icon_markup}</div>'
             '<div class="note">'
             f"<h3>{loc(e['h3'], ctx.lang)}</h3><p>{loc(e['body'], ctx.lang)}</p>{ref}"
             "</div></div>"
@@ -415,7 +405,7 @@ def render_main_inset_br(page: dict, ctx: Ctx) -> str:
 def render_back(page: dict, ctx: Ctx) -> str:
     sub = f"<div>{loc(page['sub'], ctx.lang)}</div>" if page.get("sub") else ""
     body = (
-        f'<div class="corner">{BACK_CORNER_SVG}</div>'
+        f'<div class="corner">{icon.back_corner_svg}</div>'
         '<div class="top">'
         f'<div class="stamp">{loc(page["stamp"], ctx.lang)}</div>'
         f"<h2>{loc(page['h2'], ctx.lang)}</h2>"
@@ -573,9 +563,7 @@ def build(
         raise BuildError("PDF requested but no Chrome/Chromium found")
     _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
     out_dir.mkdir(parents=True, exist_ok=True)
-    SVG_DIR.mkdir(parents=True, exist_ok=True)
-    for name, svg in HAND_FIGURES.items():  # regenerate tracked hand figures
-        (SVG_DIR / name).write_text(svg, encoding="utf-8")
+    prepare_figures()
     with _step("Load and number pages"):
         css = STYLES_CSS.read_text(encoding="utf-8")
         pages = load_pages()

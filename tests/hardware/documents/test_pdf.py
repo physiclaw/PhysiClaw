@@ -41,6 +41,7 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
     tmp_path, monkeypatch, document
 ):
     from hardware.documents.drawing import extrusion
+    from hardware.documents.manual import assets as manual_assets
     from hardware.documents.manual import build as manual
 
     builder = manual if document == "manual" else extrusion
@@ -48,8 +49,8 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
     monkeypatch.setattr(builder, "render_pdf", lambda *args: False)
     if document == "manual":
         monkeypatch.setattr(manual, "load_pages", lambda: [])
-        monkeypatch.setattr(manual, "HAND_FIGURES", {})
-        monkeypatch.setattr(manual, "SVG_DIR", tmp_path / "svg")
+        monkeypatch.setattr(manual_assets, "HAND_FIGURES", {})
+        monkeypatch.setattr(manual_assets, "SVG_DIR", tmp_path / "svg")
     kwargs = {"inline": False} if document == "manual" else {}
     with (
         buildlog.session(tmp_path) as log,

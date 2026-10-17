@@ -8,6 +8,7 @@ import pytest
 
 from hardware import buildlog
 from hardware.documents import BuildError
+from hardware.documents.manual import assets as manual_assets
 from hardware.documents.manual import build as build_manual
 from hardware.documents.manual.assets import InlineAssets
 
@@ -81,8 +82,8 @@ def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
         }
     ]
     monkeypatch.setattr(build_manual, "load_pages", lambda: pages)
-    monkeypatch.setattr(build_manual, "SVG_DIR", tmp_path / "svg")
-    monkeypatch.setattr(build_manual, "HAND_FIGURES", {})
+    monkeypatch.setattr(manual_assets, "SVG_DIR", tmp_path / "svg")
+    monkeypatch.setattr(manual_assets, "HAND_FIGURES", {})
 
     with buildlog.session(tmp_path) as log:
         paths = build_manual.build(["en", "zh"], tmp_path / "out", inline=False)

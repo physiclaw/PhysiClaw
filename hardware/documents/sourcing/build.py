@@ -98,6 +98,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from hardware import buildlog
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
+from hardware.documents.assets import icon
 from hardware.documents.bom.loader import load_bom_rows
 
 # Shared localization, table grouping, timing and document chrome conventions.
@@ -204,27 +205,6 @@ UI = {
 
 def ui(key: str, lang: str) -> str:
     return loc(UI[key], lang)
-
-
-# Snippet-style copy button icons (Feather "copy" / "check"), swapped by CSS
-# when the button briefly carries the `ok` class after a successful copy.
-COPY_ICON_SVG = (
-    '<svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
-    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
-)
-CHECK_ICON_SVG = (
-    '<svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="M20 6 9 17l-5-5"/></svg>'
-)
-REPORT_ICON_SVG = (
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '
-    'aria-hidden="true" focusable="false">'
-    '<path d="M4 22V3c5-4 11 4 16 0v12c-5 4-11-4-16 0"/></svg>'
-)
 
 
 def clean_supplier_url(url: str) -> str:
@@ -372,7 +352,7 @@ def _inquiry_button(
     )
     return (
         f'<button class="{cls}" type="button" data-q="{msg_attr}"{aria}>'
-        f"{COPY_ICON_SVG}{CHECK_ICON_SVG}"
+        f"{icon.copy_svg}{icon.check_svg}"
         f"<span>{html.escape(label) if label is not None else ui('inquiry_label', lang)}</span></button>"
     )
 
@@ -410,7 +390,7 @@ def _report_link(supplier: dict, lang: str, item: str, source: str = "") -> str:
     return (
         f'<a class="report-link" href="{href}" target="_blank" '
         f'rel="noopener noreferrer" aria-label="{label}" data-tooltip="{tip}">'
-        f"{REPORT_ICON_SVG}</a>"
+        f"{icon.report_svg}</a>"
     )
 
 
