@@ -8,6 +8,7 @@ import logging
 import math
 import socket
 import subprocess
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -110,24 +111,35 @@ def open_image_files(paths: list[str]) -> None:
 # macOS lever that lets exposure.py's `converge` correct that.
 
 # Probe result cache: None = not probed yet, False = unavailable this
-# process, else the live CameraTerminal. One verdict per process — a
-# camera hot-plugged mid-session picks it up on the next restart.
+# capture, else the live CameraTerminal. Reconnect discards this verdict
+# and its IOKit interface so controls follow the new device instance.
 _uvc_terminal = None
+_uvc_lock = threading.Lock()
+
+
+def camera_reset_controls() -> None:
+    """Drop the cached UVC interface before rebuilding the capture stream."""
+    global _uvc_terminal
+    with _uvc_lock:
+        channel, _uvc_terminal = _uvc_terminal, None
+        if channel:
+            channel.close()
 
 
 def _camera_terminal():
     global _uvc_terminal
-    if _uvc_terminal is None:
-        from physiclaw.common.platform import uvc
+    with _uvc_lock:
+        if _uvc_terminal is None:
+            from physiclaw.common.platform import uvc
 
-        _uvc_terminal = uvc.camera_terminal() or False
-        if _uvc_terminal:
-            log.info("UVC camera-terminal control live (IOKit, in-process)")
-    return _uvc_terminal or None
+            _uvc_terminal = uvc.camera_terminal() or False
+            if _uvc_terminal:
+                log.info("UVC camera-terminal control live (IOKit, in-process)")
+        return _uvc_terminal or None
 
 
 def camera_exposure_tunable() -> bool:
-    """Whether UVC exposure control is live (probed once per process).
+    """Whether UVC exposure control is live (cached until capture resets).
 
     True only when exactly one UVC device is on the bus and it answers
     for its exposure controls — see `uvc.camera_terminal` for why the

@@ -210,6 +210,10 @@ class Camera:
     # the caller on it.
     CLOSE_LOCK_TIMEOUT_SECONDS = 2.0
 
+    # Reconnect must produce a real frame, but must not run startup's
+    # long warmup/permission loop while the reader's supervisor is paused.
+    RECONNECT_FRAME_ATTEMPTS = 3
+
     def __init__(self, index: int = 0, focus_value: float | None = None) -> None:
         self.index = index
         self.rotation: int = -1  # no rotation until calibration step 3 sets it
@@ -380,23 +384,35 @@ class Camera:
         raise DeviceTimeout(f"Camera {self.index}: read failed")
 
     def _reopen(self) -> None:
-        """Close and reopen the cap. Called by the reader on stale frames.
-        `_open` re-applies the remembered exposure state, so a converged
-        manual exposure survives the reconnect."""
+        """Rebuild capture and controls, then verify frame delivery resumes.
+
+        Keep the negotiated resolution and remembered exposure/focus.
+        An open handle alone does not mean its stream is delivering frames.
+        """
         log.warning(f"Camera {self.index}: reconnecting cv2.VideoCapture")
         with self._cap_lock:
             if self._closing:
                 return
-            try:
+            with contextlib.suppress(Exception):
                 self.cap.release()
-            except Exception:
-                pass
+            self._reader.note_reopened()
             try:
+                platform.camera_reset_controls()
                 self._open()
+                for _ in range(self.RECONNECT_FRAME_ATTEMPTS):
+                    ok, frame = self.cap.read()
+                    if self._closing:
+                        return
+                    if ok and frame is not None:
+                        self._reader.publish(frame)
+                        log.info("Camera %s: capture recovered", self.index)
+                        return
+                raise DeviceTimeout("reopened camera produced no frames")
             except Exception as e:
+                with contextlib.suppress(Exception):
+                    self.cap.release()
+                self._reader.note_reopened()
                 log.error(f"Camera {self.index}: reopen failed: {e!r}")
-                return
-        self._reader.note_reopened()  # reset the stale clock
 
     # ─── Exposure control ───────────────────────────────────────
 
@@ -500,8 +516,7 @@ class Camera:
         """Return the latest raw (unrotated) BGR frame, or ``None``.
 
         Waits up to ``FrameReader.FRAME_WAIT_SECONDS`` for a frame
-        fresher than ``FRESH_MAX_AGE_SECONDS``; otherwise returns
-        whatever the reader last had.
+        fresher than ``FRESH_MAX_AGE_SECONDS``; otherwise returns ``None``.
         """
         frame = self._reader.fresh_frame()
         # Copy outside the reader's lock — a frame copy (~1 ms at 1080p,
@@ -597,6 +612,7 @@ class Camera:
                     self.cap.release()
                     self._focus_applied = False
                     self._closed = True
+                    platform.camera_reset_controls()
             finally:
                 self._cap_lock.release()
         else:

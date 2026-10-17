@@ -231,6 +231,24 @@ def test_probe_verdict_is_cached_either_way(monkeypatch, channel, tunable) -> No
     assert calls == 1
 
 
+@pytest.mark.parametrize("cached", [False, None, "live"])
+def test_reconnect_discards_cached_control_interface(mocker, monkeypatch, cached):
+    from physiclaw.common.platform import uvc
+
+    old = mocker.Mock() if cached == "live" else cached
+    fresh = mocker.Mock()
+    monkeypatch.setattr(darwin, "_uvc_terminal", old)
+    probe = mocker.patch.object(uvc, "camera_terminal", return_value=fresh)
+
+    darwin.camera_reset_controls()
+
+    assert darwin._uvc_terminal is None
+    if cached == "live":
+        old.close.assert_called_once_with()
+    assert darwin._camera_terminal() is fresh
+    probe.assert_called_once_with()
+
+
 def test_manual_exposure_converts_log2_seconds_to_uvc_ticks(monkeypatch) -> None:
     # Same contract as linux.py: 2^e seconds in 100µs ticks, so one
     # integer step of `converge` stays one real stop.

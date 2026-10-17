@@ -8,6 +8,7 @@ integration checks.
 
 from __future__ import annotations
 
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -72,6 +73,63 @@ def test_terminal_native_dispatch_releases_unresponsive_interface(usb_bus) -> No
     channel = uvc.camera_terminal()
 
     assert channel is None
+    assert usb_bus.calls.count("interface.Release") == 1
+    assert usb_bus.calls.count("close") == 1
+
+
+@pytest.mark.parametrize("open_error", [0, 1])
+def test_terminal_close_releases_once_and_rejects_late_requests(usb_bus, open_error):
+    usb_bus.open_error = open_error
+    channel = uvc.camera_terminal()
+    assert channel is not None
+    requests = list(usb_bus.requests)
+
+    channel.close()
+    channel.close()
+
+    assert usb_bus.calls.count("interface.Release") == 1
+    assert usb_bus.calls.count("close") == (1 if open_error == 0 else 0)
+    assert not channel.set_auto()
+    assert usb_bus.requests == requests
+
+
+def test_terminal_close_waits_for_inflight_control_request(usb_bus):
+    channel = uvc.camera_terminal()
+    entered, resume = threading.Event(), threading.Event()
+    closing, closed = threading.Event(), threading.Event()
+    result = []
+
+    def control(interface, pipe, request):
+        entered.set()
+        if not resume.wait(2):
+            return 1
+        request.contents.wLenDone = request.contents.wLength
+        return 0
+
+    callback = uvc._CTRL(control)
+    usb_bus.interface.contents.contents.ControlRequest = callback
+    reader = threading.Thread(target=lambda: result.append(channel.set_auto()))
+
+    def close():
+        closing.set()
+        channel.close()
+        closed.set()
+
+    closer = threading.Thread(target=close)
+    reader.start()
+    try:
+        assert entered.wait(1)
+        closer.start()
+        assert closing.wait(1)
+        assert not closed.wait(0.05)
+    finally:
+        resume.set()
+        reader.join(2)
+        if closer.ident is not None:
+            closer.join(2)
+
+    assert result == [True]
+    assert closed.is_set()
     assert usb_bus.calls.count("interface.Release") == 1
 
 
@@ -165,17 +223,15 @@ def test_terminal_none_and_released_with_multiple_devices(monkeypatch) -> None:
 def test_terminal_none_when_probe_fails(monkeypatch) -> None:
     # Device enumerates but won't answer for its exposure controls (the
     # Monterey+ empty-controls failure mode) -> degrade, don't tune blind.
-    released = []
     monkeypatch.setattr(uvc, "_load", lambda: True)
     monkeypatch.setattr(uvc, "_video_control_interfaces", lambda: ["intf"])
-    monkeypatch.setattr(uvc, "_call", lambda ptr, name, *a: released.append(name) or 0)
 
     channel = MagicMock()
     channel.probe.return_value = False
     monkeypatch.setattr(uvc, "CameraTerminal", lambda intf: channel)
 
     assert uvc.camera_terminal() is None
-    assert "Release" in released
+    channel.close.assert_called_once_with()
 
 
 def test_terminal_returned_for_single_answering_device(monkeypatch) -> None:
@@ -198,6 +254,7 @@ def _bare_terminal(monkeypatch, **attrs) -> uvc.CameraTerminal:
     set on the instance. The shared base for every framing test."""
     monkeypatch.setattr(uvc.CameraTerminal, "__init__", lambda self, intf: None)
     channel = uvc.CameraTerminal(None)
+    channel._lock = threading.Lock()
     for name, value in attrs.items():
         setattr(channel, name, value)
     return channel

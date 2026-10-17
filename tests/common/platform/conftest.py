@@ -38,6 +38,7 @@ class UsbBus:
         interface.USBInterfaceOpen = uvc._NOARG(
             lambda _: self._record("open") or self.open_error
         )
+        interface.USBInterfaceClose = uvc._NOARG(lambda _: self._record("close"))
         interface.ControlRequest = uvc._CTRL(self._control)
         self.interface = uvc.C.pointer(uvc.C.pointer(interface))
         self.iokit = SimpleNamespace(

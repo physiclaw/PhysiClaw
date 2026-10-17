@@ -256,9 +256,6 @@ def test_reopen_swallows_release_failure(mocker) -> None:
     mocker.patch.object(cv2, "VideoCapture", return_value=new_vc)
     mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
-    # Disable warmup so _open's call doesn't loop trying to read.
-    mocker.patch.object(cam, "_warmup")
-
     cam._reopen()
 
     assert cam.cap is new_vc
@@ -276,6 +273,67 @@ def test_reopen_logs_when_open_raises(
         cam._reopen()
 
     assert any("reopen failed" in r.getMessage() for r in caplog.records)
+
+
+def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
+    cam, original = _ready_camera(mocker)
+    recovered = _frame()
+    replacement = FakeVideoCapture(
+        index=0, read_results=[(False, None), (False, None), (True, recovered)]
+    )
+    reset = mocker.patch.object(camera_mod.platform, "camera_reset_controls")
+    mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
+    cam._reader._first_fail_time = time.monotonic() - 30
+
+    cam._reopen()
+
+    assert original.released
+    assert not replacement.released
+    assert cam._reader.fresh_frame() is recovered
+    assert cam._reader._first_fail_time is None
+    reset.assert_called_once_with()
+
+
+def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) -> None:
+    cam, _ = _ready_camera(mocker)
+    empty = FakeVideoCapture(index=0)
+    recovered = _frame()
+    good = FakeVideoCapture(index=0, read_results=[(True, recovered)])
+    mocker.patch.object(cv2, "VideoCapture", side_effect=[empty, good])
+    cam._reader.FRAME_WAIT_SECONDS = 0
+    fail_time = time.monotonic() - 30
+    cam._reader._first_fail_time = fail_time
+
+    cam._reopen()
+
+    assert empty.released
+    assert cam._reader.fresh_frame() is None
+    assert cam._reader._first_fail_time == fail_time
+    assert time.monotonic() - cam._reader._frame_time < 1
+
+    cam._reopen()
+
+    assert cam._reader.fresh_frame() is recovered
+    assert cam._reader._first_fail_time is None
+
+
+def test_close_during_reconnect_discards_verification_frame(mocker) -> None:
+    cam, _ = _ready_camera(mocker)
+    replacement = FakeVideoCapture(index=0)
+    mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
+    seq = cam._reader._frame_seq
+
+    def read():
+        cam._closing = True
+        return True, _frame()
+
+    mocker.patch.object(replacement, "read", side_effect=read)
+
+    cam._reopen()
+    cam.close()
+
+    assert cam._reader._frame_seq == seq
+    assert replacement.released
 
 
 # ---------- _fresh_frame / accessors ----------
@@ -1006,6 +1064,7 @@ def test_regression_repeated_close_does_not_reset_replacement_controls(mocker):
     mocker.patch.object(camera_mod.platform, "camera_apply_focus", return_value=True)
     auto = mocker.patch.object(camera_mod.platform, "camera_set_auto_exposure")
     unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+    reset = mocker.patch.object(camera_mod.platform, "camera_reset_controls")
     cam.set_manual_exposure(-5)
     cam.apply_focus(137.0)
 
@@ -1014,6 +1073,7 @@ def test_regression_repeated_close_does_not_reset_replacement_controls(mocker):
 
     auto.assert_called_once_with(vc)
     unlock.assert_called_once_with(vc)
+    reset.assert_called_once_with()
     assert not cam.focus_pinned
 
 

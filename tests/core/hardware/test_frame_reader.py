@@ -65,6 +65,39 @@ def test_fresh_frame_returns_none_when_nothing_published(mocker) -> None:
     assert r.fresh_frame() is None
 
 
+def test_fresh_frame_rejects_stale_capture_and_recovers(mocker) -> None:
+    clock = {"now": 100.0}
+    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    reader = _reader()
+    reader.FRAME_WAIT_SECONDS = 0
+    reader.publish(_frame())
+
+    clock["now"] += reader.FRESH_MAX_AGE_SECONDS
+    assert reader.fresh_frame() is None
+
+    recovered = _frame()
+    reader.publish(recovered)
+    assert reader.fresh_frame() is recovered
+
+
+def test_reopen_cannot_make_cached_capture_fresh_or_healthy(mocker) -> None:
+    reader = _reader()
+    reader.FRAME_WAIT_SECONDS = 0
+    mocker.patch.object(reader._thread, "is_alive", return_value=True)
+    reader.publish(_frame())
+    assert reader.healthy()
+
+    reader.note_reopened()
+
+    assert reader.fresh_frame() is None
+    assert not reader.healthy()
+
+    recovered = _frame()
+    reader.publish(recovered)
+    assert reader.fresh_frame() is recovered
+    assert reader.healthy()
+
+
 def test_wait_frames_counts_new_publishes() -> None:
     import threading
 
@@ -252,6 +285,7 @@ def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> Non
         reader.stop()
 
     reader.FRAME_WAIT_SECONDS = 0
-    assert reader.fresh_frame() is seed
+    assert reader._frame is seed
+    assert reader.fresh_frame() is None
     reopen.assert_not_called()
     interrupt.assert_not_called()

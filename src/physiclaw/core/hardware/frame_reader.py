@@ -37,7 +37,7 @@ class FrameReader:
     FATAL_AFTER_SECONDS = 60.0
 
     # Max time fresh_frame() waits for the loop to produce a frame
-    # before returning whatever it last had (or None).
+    # before returning None.
     FRAME_WAIT_SECONDS = 2.0
 
     # A frame older than this is treated as "not yet fresh" by
@@ -98,12 +98,13 @@ class FrameReader:
         most of every stale cycle."""
         with self._cond:
             age = time.monotonic() - self._frame_time
-        return (
-            self._thread.is_alive()
-            and not self._stopped.is_set()
-            and self._first_fail_time is None
-            and age < self.STALE_RECONNECT_SECONDS
-        )
+            return (
+                self._thread.is_alive()
+                and not self._stopped.is_set()
+                and self._first_fail_time is None
+                and self._frame is not None
+                and age < self.STALE_RECONNECT_SECONDS
+            )
 
     # ─── Publish / consume ──────────────────────────────────────
 
@@ -112,14 +113,17 @@ class FrameReader:
         seed before the thread starts."""
         with self._cond:
             self._frame = frame
+            self._first_fail_time = None
             self._frame_time = time.monotonic()
             self._frame_seq += 1
             self._cond.notify_all()
 
     def note_reopened(self) -> None:
         """Reset the stale clock after the owner rebuilt the stream, so
-        one reopen isn't immediately followed by another."""
+        one reopen isn't immediately followed by another. Discard the old
+        frame: reopening is not evidence of a new capture."""
         with self._cond:
+            self._frame = None
             self._frame_time = time.monotonic()
 
     def wait_frames(self, n: int, timeout: float = 5.0) -> bool:
@@ -140,18 +144,18 @@ class FrameReader:
         """The latest published frame, or ``None``.
 
         Waits up to ``FRAME_WAIT_SECONDS`` for a frame fresher than
-        ``FRESH_MAX_AGE_SECONDS``; otherwise returns whatever the loop
-        last had. Returns the internal reference — the owner copies
-        outside the lock so the copy can't stall the next publish."""
+        ``FRESH_MAX_AGE_SECONDS``; otherwise returns ``None``. Returns the
+        internal reference — the owner copies outside the lock so the copy
+        can't stall the next publish."""
         with self._cond:
-            self._cond.wait_for(
+            fresh = self._cond.wait_for(
                 lambda: (
                     self._frame is not None
                     and time.monotonic() - self._frame_time < self.FRESH_MAX_AGE_SECONDS
                 ),
                 timeout=self.FRAME_WAIT_SECONDS,
             )
-            return self._frame
+            return self._frame if fresh else None
 
     # ─── The loop ───────────────────────────────────────────────
 
@@ -177,7 +181,6 @@ class FrameReader:
             now = time.monotonic()
 
             if ok and frame is not None:
-                self._first_fail_time = None
                 self.publish(frame)
                 continue
 

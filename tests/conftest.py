@@ -53,6 +53,7 @@ def _no_real_uvc(monkeypatch: pytest.MonkeyPatch) -> None:
     from physiclaw.common import platform as _platform
 
     monkeypatch.setattr(_platform, "camera_size_cap", lambda: None)
+    monkeypatch.setattr(_platform, "camera_reset_controls", lambda: None)
 
 
 @pytest.fixture(autouse=True)

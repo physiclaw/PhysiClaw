@@ -96,6 +96,10 @@ def camera_backend() -> int:
     return cv2.CAP_MSMF
 
 
+def camera_reset_controls() -> None:
+    """Controls belong to the capture handle; reopening it resets them."""
+
+
 def camera_set_auto_exposure(cap) -> None:
     """Ask the driver for firmware auto-exposure.
 

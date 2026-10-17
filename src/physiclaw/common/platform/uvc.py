@@ -56,6 +56,7 @@ never control-request readbacks:
 
 import ctypes as C
 import logging
+import threading
 
 log = logging.getLogger(__name__)
 
@@ -357,6 +358,7 @@ class CameraTerminal:
     `camera_terminal`."""
 
     def __init__(self, intf) -> None:
+        self._lock = threading.Lock()
         self._intf = intf
         self._terminal = _CAMERA_TERMINAL_CANDIDATES[0]
         self._range: tuple[int | None, int | None] | None = None
@@ -370,7 +372,19 @@ class CameraTerminal:
         # kIOReturnExclusiveAccess refusal (Apple's driver holds the
         # interface) is expected and harmless — pipe-0 control requests
         # go through regardless (measured on real hardware).
-        _call(intf, "USBInterfaceOpen")
+        self._opened = _call(intf, "USBInterfaceOpen") == 0
+
+    def close(self) -> None:
+        """Release the control interface before rediscovering a reconnected device."""
+        with self._lock:
+            intf, self._intf = self._intf, None
+            if intf is None:
+                return
+            try:
+                if self._opened:
+                    _call(intf, "USBInterfaceClose")
+            finally:
+                _call(intf, "Release")
 
     def _request(
         self, direction: int, request: int, selector: int, data: bytearray
@@ -381,18 +395,23 @@ class CameraTerminal:
         reads, and during terminal discovery it is what distinguishes a
         real camera terminal from some other entity whose same-numbered
         selector has a different byte size."""
-        buf = (C.c_uint8 * len(data)).from_buffer(data)
-        req = _DevRequest(
-            direction,
-            request,
-            selector << 8,
-            (self._terminal << 8) | self._ifnum,
-            len(data),
-            C.cast(buf, C.c_void_p),
-            0,
-        )
-        kr = _call(self._intf, "ControlRequest", 0, C.byref(req))
-        return kr == 0 and req.wLenDone == len(data)
+        # Reconnect may close the cached interface while another caller
+        # probes capabilities. Never release a COM pointer during its I/O.
+        with self._lock:
+            if self._intf is None:
+                return False
+            buf = (C.c_uint8 * len(data)).from_buffer(data)
+            req = _DevRequest(
+                direction,
+                request,
+                selector << 8,
+                (self._terminal << 8) | self._ifnum,
+                len(data),
+                C.cast(buf, C.c_void_p),
+                0,
+            )
+            kr = _call(self._intf, "ControlRequest", 0, C.byref(req))
+            return kr == 0 and req.wLenDone == len(data)
 
     def _get(self, request: int, selector: int, length: int) -> int | None:
         data = bytearray(length)
@@ -528,6 +547,6 @@ def camera_terminal() -> CameraTerminal | None:
         return None
     if not channel.probe():
         log.info("UVC camera control off: device doesn't answer for exposure")
-        _call(interfaces[0], "Release")
+        channel.close()
         return None
     return channel

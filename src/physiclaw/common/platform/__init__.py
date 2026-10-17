@@ -26,6 +26,7 @@ local_hostname = _impl.local_hostname
 camera_exposure_tunable = _impl.camera_exposure_tunable
 camera_size_cap = _impl.camera_size_cap
 camera_backend = _impl.camera_backend
+camera_reset_controls = _impl.camera_reset_controls
 camera_set_auto_exposure = _impl.camera_set_auto_exposure
 camera_set_manual_exposure = _impl.camera_set_manual_exposure
 camera_focus_lockable = _impl.camera_focus_lockable
@@ -48,6 +49,7 @@ __all__ = [
     "camera_exposure_tunable",
     "camera_size_cap",
     "camera_backend",
+    "camera_reset_controls",
     "camera_set_auto_exposure",
     "camera_set_manual_exposure",
     "camera_focus_lockable",
