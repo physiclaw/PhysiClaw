@@ -31,6 +31,7 @@ from physiclaw.provider.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.provider_base import (
     BaseProvider,
     Provider,
+    ProviderConfigurationError,
     ProviderError,
     ProviderPermanentError,
     ProviderTransientError,
@@ -67,6 +68,7 @@ __all__ = [
     "OpenAICompatibleProvider",
     "OpenAIProvider",
     "Provider",
+    "ProviderConfigurationError",
     "ProviderError",
     "ProviderPermanentError",
     "ProviderTransientError",

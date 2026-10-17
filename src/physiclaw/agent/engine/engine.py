@@ -42,7 +42,7 @@ from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.contract.dto import Message
 from physiclaw.contract.plugin import SetupContext, TurnPlugin
 from physiclaw.macros.model import Macro
-from physiclaw.provider import Provider, make_provider
+from physiclaw.provider import Provider, ProviderConfigurationError, make_provider
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +51,8 @@ async def run(triggers: list[Trigger], *, model_ref: str) -> contract.SessionOut
     """Run engine sessions for `triggers` under the session-outcome contract.
 
     One attempt = one fresh `Session` through `_run_session` (runtime crashes
-    close STUCK; cancellation propagates). Everything above the attempt belongs to
-    `contract.drive`: STUCK retries up to `max_attempts` (STUCK here is
+    close STUCK; configuration errors and cancellation propagate).
+    `contract.drive` owns STUCK retries up to `max_attempts` (STUCK here is
     mostly harness-detected — max turns, provider exhausted, crash — so a
     fresh session is worth it; DONE / FAIL / IDLE / WAIT are final), the
     one-shot first-run setup restart, and the jobless-WAIT follow-up. A
@@ -102,7 +102,8 @@ async def _run_session(
 ) -> None:
     """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider /
     policy set per call. Writes outcome to `session.sentinel_*`; invalid
-    model references and cancellation propagate, runtime crashes close STUCK."""
+    model references, provider configuration errors, and cancellation propagate;
+    runtime crashes close STUCK."""
     provider_id, model_id = parse_model_ref(model_ref)
     settings = settings or Settings.from_config()
 
@@ -133,13 +134,13 @@ async def _run_session(
             model_ref,
             [t.source or "?" for t in triggers],
         )
-        mcp = await get_mcp()
-        mcp_tools = await list_tools_cached()
         # The provider client exists before plugin setup so the setup
         # context can offer it (a plugin's decision calls fall back to
         # the session model). Construction is cheap; nothing is sent
         # until the first chat call.
         provider = make_provider(provider_id, model_id, usage_sink=tr)
+        mcp = await get_mcp()
+        mcp_tools = await list_tools_cached()
         # Turn-plugin wake-time setup, fail-open throughout: each
         # config-listed plugin loads blindly and contributes its gated
         # macros (dispatchable only on plugin-minted turns). Nothing
@@ -274,6 +275,9 @@ async def _run_session(
             await curate.curate(provider, tr=tr)
     except asyncio.CancelledError:
         loop.log_external_stop(session, tr)
+        raise
+    except ProviderConfigurationError:
+        # The launcher reports setup errors once; retries cannot fix them.
         raise
     except Exception as e:
         # Crashes count as STUCK so the retry loop gives it another shot.

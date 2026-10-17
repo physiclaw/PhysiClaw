@@ -38,6 +38,7 @@ from physiclaw.provider.provider_base import (
     BaseProvider,
     CacheMarkers,
     Provider,
+    ProviderConfigurationError,
     ProviderError,
     ProviderPermanentError,
     ProviderTransientError,
@@ -182,7 +183,7 @@ def test_init_raises_with_missing_key_message_when_no_credential(
     monkeypatch.setattr(config, "CONFIG", config.Config())
 
     with pytest.raises(
-        RuntimeError,
+        ProviderConfigurationError,
         match=(
             r"^stub credential not found\. Set STUB_API_KEY env var "
             r"or \[provider\] stub_api_key in ~/\.physiclaw/config\.toml\.$"

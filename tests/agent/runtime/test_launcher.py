@@ -5,6 +5,8 @@ Accepted mutation variants only change help, error, or log wording.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from physiclaw.agent.runtime import launcher
@@ -180,6 +182,53 @@ def test_launch_exits_cleanly_when_no_model_configured(
     captured = capsys.readouterr()
     assert "no model configured" in captured.err
     assert "physiclaw models" in captured.err
+
+
+def test_missing_credentials_stop_runtime_without_traceback_or_retries(
+    mocker, monkeypatch, capsys, caplog
+) -> None:
+    from physiclaw.agent.engine import engine
+    from physiclaw.agent.runtime import runtime
+    from physiclaw.agent.runtime.hook import Trigger
+    from physiclaw.common.config import CONFIG
+
+    monkeypatch.setenv("PHYSICLAW_MODEL", "deepseek/deepseek-flash")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(CONFIG.provider, "deepseek_api_key", "")
+    monkeypatch.setattr(CONFIG.engine, "max_attempts", 3)
+    monkeypatch.setattr("sys.argv", ["runtime"])
+    mocker.patch.object(launcher, "setup_logging")
+    close = mocker.patch.object(launcher, "close_mcp")
+    mcp = mocker.patch.object(engine, "get_mcp")
+    make = mocker.spy(engine, "make_provider")
+    mocker.patch.object(runtime, "load_hooks")
+    mocker.patch.object(runtime, "_check_ready", return_value=True)
+    hooks = mocker.patch.object(
+        runtime,
+        "check_hooks",
+        side_effect=[
+            [Trigger(source="phone", description="screen changed")],
+            asyncio.CancelledError(),
+        ],
+    )
+    mocker.patch.object(runtime.asyncio, "sleep")
+
+    with pytest.raises(SystemExit) as error:
+        launcher.launch()
+
+    assert error.value.code == 1
+    message = capsys.readouterr().err
+    assert len(message.splitlines()) == 1
+    assert message.startswith("physiclaw runtime: deepseek credential not found")
+    assert "DEEPSEEK_API_KEY" in message
+    assert "deepseek_api_key" in message
+    make.assert_called_once()
+    hooks.assert_awaited_once()
+    mcp.assert_not_awaited()
+    close.assert_awaited_once()
+    assert not any(record.exc_info for record in caplog.records)
+    assert "retrying" not in caplog.text
+    assert "backing off" not in caplog.text
 
 
 def test_launch_swallows_keyboard_interrupt(

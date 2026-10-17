@@ -60,6 +60,10 @@ class ProviderPermanentError(ProviderError):
     """4xx (except 429) — retries will keep failing, fail fast."""
 
 
+class ProviderConfigurationError(RuntimeError):
+    """Local provider setup needs correction before the runtime can run."""
+
+
 def token_count(value: Any) -> int:
     """An optional usage counter: accept integers and proxy-stringified integers.
 
@@ -265,7 +269,7 @@ class BaseProvider:
             )
         key = self._api_key()
         if not key:
-            raise RuntimeError(self._missing_key_message())
+            raise ProviderConfigurationError(self._missing_key_message())
         # Model resolution: explicit arg → env override → empty (chat()
         # will surface a clear API error if invoked without a model).
         self.model = model or os.environ.get(self._model_env_var()) or ""

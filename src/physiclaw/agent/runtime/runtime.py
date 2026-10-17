@@ -26,6 +26,7 @@ from physiclaw.agent.runtime.hook import Trigger, check_hooks, load_hooks
 from physiclaw.common import platform
 from physiclaw.common.config import CONFIG, server_url
 from physiclaw.common.ready import check_ready
+from physiclaw.provider import ProviderConfigurationError
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class Runtime:
         self._streak = 0  # consecutive unproductive sessions — see BACKOFF_CAP
 
     async def start(self) -> None:
-        """Run the loop until `stop()` is called or the task is cancelled."""
+        """Run until stopped or cancelled; provider configuration errors propagate."""
         load_hooks()
         self._running = True
         log.info("runtime started (interval=%.2fs)", self.interval)
@@ -128,7 +129,7 @@ class Runtime:
                         # EMA_STALE so the next poll re-inits its baseline
                         # — stretched by the unproductive-streak backoff.
                         await asyncio.sleep(self._react_cooldown(outcome))
-                except asyncio.CancelledError:
+                except (asyncio.CancelledError, ProviderConfigurationError):
                     raise
                 except Exception:
                     log.exception("runtime tick failed")
