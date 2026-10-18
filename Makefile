@@ -28,7 +28,7 @@ help:
 	@echo "  test-slow             — only @pytest.mark.slow"
 	@echo "  test-integration      — only @pytest.mark.integration"
 	@echo "  test-all              — every test, including slow and integration"
-	@echo "  test-studio-ui        — Studio JavaScript regressions (Node 22+)"
+	@echo "  test-studio-ui        — JavaScript UI regressions (Node 22+)"
 	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
 	@echo "  lint                  — ruff check + format check"
 	@echo "  fmt                   — ruff format (src, tests, hardware, scripts)"
@@ -62,7 +62,7 @@ test-all:
 	$(PY) pytest -m ""
 
 test-studio-ui:
-	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs
+	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs
 
 mutate:
 	@if [ -z "$(MOD)" ]; then echo "usage: make mutate MOD=src/physiclaw/<path>"; exit 2; fi

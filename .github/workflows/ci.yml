@@ -43,15 +43,15 @@ jobs:
         # CAD orchestration tests must run, not silently importorskip.
         run: uv sync --locked --group dev --group cad
 
-      # Studio's inline JavaScript uses Node's built-in test runner; no npm
+      # Inline JavaScript uses Node's built-in test runner; no npm
       # packages or Node runtime are needed by the Python application.
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           package-manager-cache: false
 
-      - name: Studio and session viewer UI regressions
-        run: node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs
+      - name: JavaScript UI regressions
+        run: make test-studio-ui
 
       # Mirrors `make lint`: ruff check on the packaged code, format check
       # everywhere (hardware/ is style-star-import CAD code, format-only).

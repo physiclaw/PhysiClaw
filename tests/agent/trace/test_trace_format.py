@@ -161,27 +161,27 @@ def test_usage_text_does_not_invent_usage_for_absent_buckets():
     [
         (
             {"input": 12400, "output": 320, "cache_read": 9920},
-            "Tokens: 12.4k in / 320 out · 80% cached",
+            "in 12.4k out 320 · cache 80%",
         ),
-        ({"input": 500, "output": 120}, "Tokens: 500 in / 120 out"),
-        ({"input": 1200000, "output": 2500}, "Tokens: 1.2M in / 2.5k out"),
+        ({"input": 500, "output": 120}, "in 500 out 120"),
+        ({"input": 1200000, "output": 2500}, "in 1.2M out 2.5k"),
         (
             {"input": 100, "output": 0, "cache_read": 200},
-            "Tokens: 100 in / 0 out · 100% cached",
+            "in 100 out 0 · cache 100%",
         ),
-        ({}, "Tokens: not reported"),
-        ({"error": "TimeoutError", "input": 0, "output": 0}, "Tokens: not reported"),
+        ({}, "tokens not reported"),
+        ({"error": "TimeoutError", "input": 0, "output": 0}, "tokens not reported"),
         (
             {"call": "turn", "turn": 3, "input": 100, "output": 20},
-            "Tokens: 100 in / 20 out · step 3",
+            "turn 3 · in 100 out 20",
         ),
         (
             {"call": "micro", "input": 100, "output": 20},
-            "Tokens: 100 in / 20 out · decision",
+            "decision · in 100 out 20",
         ),
         (
             {"call": "curate", "input": 100, "output": 20},
-            "Tokens: 100 in / 20 out · lesson upkeep",
+            "lesson upkeep · in 100 out 20",
         ),
     ],
 )
@@ -194,11 +194,11 @@ def test_usage_summary_can_identify_an_alternate_model():
         usage_summary(
             {"model": "test/decision", "input": 100, "output": 20}, include_model=True
         )
-        == "Tokens: 100 in / 20 out · test/decision"
+        == "in 100 out 20 · test/decision"
     )
     assert (
         usage_summary({"model": "test/decision"}, include_model=True)
-        == "Tokens: not reported · test/decision"
+        == "tokens not reported · test/decision"
     )
 
 

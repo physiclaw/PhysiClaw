@@ -139,21 +139,19 @@ def usage_summary(event: dict[str, Any], *, include_model: bool = False) -> str:
     input_tokens = int(event.get("input") or 0)
     output_tokens = int(event.get("output") or 0)
     if not (input_tokens or output_tokens):
-        text = "Tokens: not reported"
+        text = "tokens not reported"
     else:
-        text = (
-            f"Tokens: {fmt_tokens(input_tokens)} in / {fmt_tokens(output_tokens)} out"
-        )
+        text = f"in {fmt_tokens(input_tokens)} out {fmt_tokens(output_tokens)}"
         cached = int(event.get("cache_read") or 0)
         if cached > 0 and input_tokens > 0:
-            text += f" · {min(cached / input_tokens * 100, 100):.0f}% cached"
-    purpose = {"turn": "step", "micro": "decision", "curate": "lesson upkeep"}.get(
+            text += f" · cache {min(cached / input_tokens * 100, 100):.0f}%"
+    purpose = {"turn": "turn", "micro": "decision", "curate": "lesson upkeep"}.get(
         str(event.get("call") or "")
     )
     if purpose:
-        text += " · " + purpose
         if event.get("call") == "turn" and event.get("turn") is not None:
-            text += f" {event['turn']}"
+            purpose += f" {event['turn']}"
+        text = f"{purpose} · {text}"
     if include_model and event.get("model"):
         text += " · " + brief(" ".join(str(event["model"]).split()), 100)
     return text

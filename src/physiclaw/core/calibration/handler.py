@@ -42,6 +42,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+class _ManualPositionRequired(PreconditionError):
+    """The first arm calibration needs the operator to position the stylus."""
+
+
 # ─── Helpers ────────────────────────────────────────────────
 
 
@@ -122,9 +126,23 @@ async def _run_locked_step(
     try:
         result = await _run_blocking(_step)
         return _ok(result)
+    except _ManualPositionRequired as e:
+        log.info(
+            "Arm calibration waiting for stylus positioning",
+            extra={"event": "calibration.waiting_for_user"},
+        )
+        return JSONResponse(
+            {"status": "needs_input", "message": str(e)}, status_code=409
+        )
     except PreconditionError as e:
+        log.warning("Calibration step blocked: %s", e)
         return _err(str(e), status_code=409)
     except Exception as e:
+        log.exception(
+            "Calibration step failed: %s",
+            e,
+            extra={"event": "calibration.failed", "step": do.__qualname__},
+        )
         return _err(str(e))
 
 
@@ -184,9 +202,9 @@ def _borrow_saved_affine(rig: "HardwareRig") -> bool:
         return False
     prior = Calibration.load()
     if prior is None or prior.pct_to_grbl is None:
-        raise RuntimeError(
-            "Auto needs a previous calibration to place the stylus — "
-            "position the stylus over the circle and calibrate manually."
+        raise _ManualPositionRequired(
+            "No saved arm calibration. Move the stylus tip above the orange "
+            "center circle, then press Start."
         )
     rig.borrow_arm_calibration(prior.pct_to_grbl)
     return True

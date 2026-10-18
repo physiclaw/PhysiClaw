@@ -394,8 +394,8 @@ const STR = {
   s_viewport_busy: { en: "Measuring…", zh: "测量中…" },
   s_viewport_ok: { en: "Screen located.", zh: "屏幕已定位。" },
   s_viewport_err: {
-    en: "Couldn't read the screenshot. On the phone, tap AssistiveTouch once, then double-tap, and try again.",
-    zh: "没有收到截图。请在手机上先单击辅助触控截屏、再双击上传，然后重试。",
+    en: (r) => `Screen location failed: ${msg(r)}`,
+    zh: (r) => `屏幕定位失败：${msg(r)}`,
   },
   s_viewport_warn: { en: "Couldn't show the square. Is the bridge page open and awake on the phone?", zh: "方块没能显示出来。手机上的 bridge 页面还开着、屏幕还亮着吗？" },
   s_armcal_title: { en: "Calibrate the arm", zh: "校准机械臂" },
@@ -413,14 +413,18 @@ const STR = {
   },
   s_armcal_btn: { en: "Start", zh: "开始" },
   s_armcal_busy: { en: "Tapping 18 points…", zh: "正在点击 18 个位置…" },
+  s_armcal_input: {
+    en: "No saved arm calibration. Move the stylus tip above the orange center circle, then press Start.",
+    zh: "首次校准机械臂，请把笔尖移到屏幕中央橙色圆圈正上方，然后点击「开始」。",
+  },
   s_armcal_ok: { en: (r) => `Arm calibrated. Mapped ${r.body.pairs} points.`, zh: (r) => `机械臂校准完成，已映射 ${r.body.pairs} 个位置。` },
   s_armcal_warnSkew: {
     en: (pct) => `The phone looks slightly rotated relative to the arm (${pct}%). If validation fails later, straighten the phone and run this step again.`,
     zh: (pct) => `手机相对机械臂似乎放歪了（倾斜约 ${pct}%）。如果后面验证不通过，请把手机摆正，再重做这一步。`,
   },
   s_armcal_err: {
-    en: (r) => `Couldn't calibrate: ${msg(r)}. Make sure the stylus tip is over the center circle, then try again.`,
-    zh: (r) => `校准失败：${msg(r)}。请确认笔尖悬在中心圆圈正上方，然后重试。`,
+    en: (r) => `Arm calibration failed: ${msg(r)}`,
+    zh: (r) => `机械臂校准失败：${msg(r)}`,
   },
   s_armcal_warn: { en: "Couldn't show the center circle. Is the bridge page open and awake on the phone?", zh: "中心圆圈没能显示出来。手机上的 bridge 页面还开着、屏幕还亮着吗？" },
   s_camcal_title: { en: "Calibrate the camera", zh: "校准相机" },
@@ -496,6 +500,7 @@ const STR = {
   s_finish_finishingTitle: { en: "Calibration complete…", zh: "校准完成…" },
   s_finish_finishingLede: { en: "Sending the phone home and checking camera readiness.", zh: "正在让手机返回主屏幕，并检查相机是否就绪。" },
   s_finish_err: { en: "Readiness was not confirmed. Check the server and retry once hardware is idle.", zh: "尚未确认设备就绪。请检查服务器，待硬件空闲后重试。" },
+  s_finish_homeErr: { en: (r) => `Couldn't return the phone home: ${msg(r)}`, zh: (r) => `返回手机主屏幕失败：${msg(r)}` },
   s_finish_retry: { en: "Retry", zh: "重试" },
   s_finish_readyTitle: { en: "PhysiClaw is ready", zh: "PhysiClaw 已就绪" },
   s_finish_readyLedeShort: { en: "The arm, camera, and screen are calibrated and working together.", zh: "机械臂、相机和屏幕已全部校准，正在协同工作。" },
@@ -527,6 +532,8 @@ function setStaticText() {
   const lb = document.getElementById("langToggle"); if (lb) lb.textContent = t("langName");
 }
 function applyLang(l) {
+  if (WORKING) return;
+  stopAuto(); AUTO_ARMED = false;
   LANG = normLang(l);
   setLS(LANG_KEY, LANG);
   setStaticText();
@@ -579,7 +586,7 @@ async function api(method, path, body, timeoutMs = 60000) {
     clearTimeout(to);
   }
 }
-const isOk = (res) => res.ok && res.body && res.body.status === "ok";
+const isOk = (res) => res.ok && res.body && (res.body.status === "ok" || res.body.ok === true);
 
 /* ── Step definitions ───────────────────────────────────────────
    Each step: { key, done(status), render(ctx) }. The sidebar label comes
@@ -601,6 +608,9 @@ const STEPS = [
 ];
 
 let CURRENT = 0;
+let VIEW_ID = 0;
+let WORKING = false;
+let STEP_READY = Promise.resolve();
 let STATUS = { steps: {} };
 const START = Date.now();
 
@@ -627,15 +637,20 @@ function renderSidebar() {
 }
 
 function ctxFor(i) {
+  const view = VIEW_ID;
+  const active = () => CURRENT === i && VIEW_ID === view;
   return {
-    next: () => go(Math.min(i + 1, STEPS.length - 1)),
-    back: () => go(Math.max(0, i - 1)),  // "Back" is always the previous step
+    active,
+    next: () => active() ? go(Math.min(i + 1, STEPS.length - 1), true) : false,
+    back: () => active() ? go(Math.max(0, i - 1)) : false,
     go,
   };
 }
 
 let _stopHooks = [];
 function render() {
+  VIEW_ID++;
+  STEP_READY = Promise.resolve();
   _stopHooks.forEach(fn => { try { fn(); } catch {} });
   _stopHooks = [];
   renderSidebar();
@@ -645,10 +660,17 @@ function render() {
   panel.appendChild(node);
 }
 
-async function go(i) {
+async function go(i, automatic = false) {
+  if (WORKING) return false;
+  if (!automatic) { stopAuto(); AUTO_ARMED = false; }
+  const prepared = STEP_READY;
+  const view = ++VIEW_ID;
   CURRENT = Math.max(0, Math.min(i, STEPS.length - 1));
+  await prepared;
   await refreshStatus();
+  if (VIEW_ID !== view) return false;
   render();
+  return true;
 }
 
 /* Auto mode (mirrors the CLI `--auto`): run each step for the user by
@@ -658,31 +680,29 @@ async function go(i) {
    leaving the user on that step to finish it, then press Continue to resume. */
 let AUTO = false;       // the autoRun loop is currently driving
 let AUTO_ARMED = false; // "Auto mode" button is on — Continue starts the run
+let AUTO_ID = 0;
+function stopAuto() {
+  AUTO = false;
+  AUTO_ID++;
+}
+
+async function advance(ctx) {
+  const advanced = await ctx.next();
+  if (advanced && AUTO_ARMED && !AUTO) autoRun();
+  return advanced;
+}
+
 async function autoRun() {
-  if (AUTO) return;
+  if (AUTO || !AUTO_ARMED) return;
+  const run = ++AUTO_ID;
   AUTO = true;
   try {
-    while (AUTO && CURRENT < STEPS.length - 1) {
-      const start = CURRENT;
-      // Wait for the step's confirm button to be enabled (some are gated).
-      let btn = null;
-      for (let i = 0; AUTO && i < 40 && !(btn = enterTarget()); i++) await sleep(400);
-      if (!AUTO || !btn) break;
-      btn.click();
-      // Wait for the action to resolve: advance, error (stop), or a ready
-      // "Continue" to click.
-      let advanced = false;
-      for (let i = 0; AUTO && i < 320; i++) {
-        await sleep(400);
-        if (CURRENT !== start) { advanced = true; break; }
-        if (document.querySelector("#panel .note.err")) break;  // failed → hand to user
-        const cont = enterTarget();
-        if (cont) cont.click();  // hold step: the "Continue" is ready
-      }
-      if (!advanced) break;  // errored / needs the user / timed out → stop here
+    while (AUTO && AUTO_ID === run && CURRENT < STEPS.length - 1) {
+      const button = enterTarget();
+      if (!button || !button.onclick || !(await button.onclick())) break;
     }
   } finally {
-    AUTO = false;
+    if (AUTO_ID === run) AUTO = false;
   }
 }
 
@@ -700,8 +720,14 @@ function shell({ n, eyebrow, title, lede, cards = [] }) {
 function card(inner) { const c = $(`<div class="card"></div>`); if (typeof inner === "string") c.innerHTML = inner; else c.appendChild(inner); return c; }
 function note(kind, html) { return $(`<div class="note ${kind}"><span class="ic">${{ info: "ℹ", ok: "✓", warn: "⚠", err: "✕" }[kind]}</span><span>${html}</span></div>`); }
 function busy(btn, on, label) {
-  if (on) { btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label || "Working…"}`; }
+  if (on) { if (!btn.disabled) btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label || "Working…"}`; }
   else { btn.disabled = false; btn.innerHTML = btn._t; }
+}
+
+function setWorking(on) {
+  WORKING = on;
+  document.getElementById("langToggle").disabled = on;
+  document.querySelectorAll("#panel .actions .ghost").forEach(button => button.disabled = on);
 }
 
 /* Consistent step footer: Back on the left, the primary action on the
@@ -720,36 +746,75 @@ function footer(ctx, { back, primary } = {}) {
     p.textContent = primary.label;
     if (primary.id) p.id = primary.id;
     if (primary.disabled) p.disabled = true;
-    if (primary.onClick) p.onclick = primary.onClick;
+    if (primary.onClick) p.onclick = async () => {
+      if (p.disabled || WORKING || !ctx.active()) return false;
+      p.disabled = true;
+      try { return await primary.onClick(); }
+      finally { if (ctx.active()) p.disabled = false; }
+    };
     bar.appendChild(p);
   }
   return bar;
 }
 
 const ADVANCE_DELAY = 700;  // ms — let the success note linger before advancing
-const msg = (r, fallback = "no response") => (r.body && r.body.message) || fallback;
+const msg = (r, fallback = "no response") => (r.body && (r.body.message || r.body.error)) || fallback;
 
 /* Wire the primary button to a one-shot async action and own the lifecycle
    every action step shares: toggle busy, clear the result area `st`, run
    `call()`, refresh status. `ok(r)` decides success (defaults to isOk —
    some endpoints always return status:"ok" and signal pass/fail in the
    body, so they pass a custom predicate). `onOk(r)` renders the result;
-   `err(r)` returns the error message. The wizard then auto-advances, unless
+   `err(r)` returns the error message; `input(r)` explains a required manual
+   action and pauses auto mode. The wizard then auto-advances, unless
    `hold` is set — that turns the button into "Continue" so the user can
    read a result worth keeping before moving on. */
-function runAction(ctx, go, st, { busy: label, call, ok = isOk, onOk, err, hold, delay = ADVANCE_DELAY }) {
+function runAction(ctx, go, st, { busy: label, prepare, call, ok = isOk, onOk, err, prepareError = err, input, hold, delay = ADVANCE_DELAY }) {
+  let prepared = prepare ? prepare() : null;
+  if (prepared) {
+    STEP_READY = prepared;
+    prepared.then(r => {
+      if (ctx.active() && !go.disabled && !isOk(r)) st.appendChild(note("warn", prepareError(r)));
+    });
+  }
   go.onclick = async () => {
+    if (go.disabled || WORKING || !ctx.active()) return false;
     busy(go, true, label); st.innerHTML = "";
-    const r = await call();
-    busy(go, false);
-    if (ok(r)) {
+    setWorking(true);
+    let next = false;
+    try {
+      const pending = prepared;
+      prepared = null;
+      const ready = prepare ? await (pending || prepare()) : null;
+      if (!ctx.active()) return false;
+      const r = ready && !isOk(ready) ? ready : await call();
+      if (!ctx.active()) return false;
+      if (!ok(r)) {
+        stopAuto();
+        st.appendChild(input && r.body && r.body.status === "needs_input"
+          ? note("info", input(r)) : note("err", err(r)));
+        return false;
+      }
       onOk(r);
       await refreshStatus();
-      if (hold) { go.textContent = t("cont"); go.onclick = () => ctx.next(); }
-      else { go.disabled = true; setTimeout(() => ctx.next(), delay); }  // stay disabled while we wait to advance
-    } else {
-      st.appendChild(note("err", err(r)));
+      if (!ctx.active()) return false;
+      if (!hold) { await sleep(delay); next = true; }
+    } catch (e) {
+      stopAuto();
+      if (ctx.active()) st.appendChild(note("err", err({body: {message: e.message || "Request failed"}})));
+      return false;
+    } finally {
+      if (!next) busy(go, false);
+      setWorking(false);
     }
+    if (next) return advance(ctx);
+    go.textContent = t("cont");
+    go.onclick = async () => {
+      if (go.disabled || WORKING || !ctx.active()) return false;
+      go.disabled = true;
+      return advance(ctx);
+    };
+    return true;
   };
 }
 
@@ -770,7 +835,7 @@ function connectPhone(ctx) {
   const wrap = shell({ n: 1, title: t("s_phone_title"), lede: t("s_phone_lede"), cards: [body] });
   // Continue advances one step. If "Auto mode" is on, that same press then
   // drives the rest of the wizard hands-off (mirrors the CLI `--auto`).
-  const actions = footer(ctx, { primary: { id: "nextBtn", label: t("cont"), disabled: true, onClick: () => { ctx.next(); if (AUTO_ARMED) autoRun(); } } });
+  const actions = footer(ctx, { primary: { id: "nextBtn", label: t("cont"), disabled: true, onClick: () => advance(ctx) } });
   // "Auto mode" toggle-button: click to arm (a check badge appears in the
   // top-right corner), then press Continue to run every step automatically
   // (pausing on any step that needs you). Disabled until the phone connects.
@@ -779,7 +844,7 @@ function connectPhone(ctx) {
   autoBtn.onclick = () => {
     AUTO_ARMED = !AUTO_ARMED;
     autoBtn.classList.toggle("on", AUTO_ARMED);
-    if (!AUTO_ARMED) AUTO = false;
+    if (!AUTO_ARMED) stopAuto();
   };
   // Auto-mode button sits just left of Continue on the right; its explanation
   // (was a button tooltip) fills the left of the action bar, where the button
@@ -871,16 +936,13 @@ function viewportShift(ctx) {
   const wrap = shell({ n: 5, title: t("s_viewport_title"), lede: t("s_viewport_lede"), cards: [list, st] });
   const actions = footer(ctx, { back: true, primary: { id: "go", label: t("s_viewport_btn") } });
   wrap.appendChild(actions);
-  // Show the orange square right away so the user can see it before measuring.
-  (async () => {
-    const r = await api("POST", "/api/bridge/switch", { mode: "calibrate", phase: "screenshot_cal" });
-    if (!(r.ok && r.body && r.body.ok)) st.appendChild(note("warn", t("s_viewport_warn")));
-  })();
   runAction(ctx, actions.querySelector("#go"), st, {
     busy: t("s_viewport_busy"),
+    prepare: () => api("POST", "/api/bridge/switch", { mode: "calibrate", phase: "screenshot_cal" }),
+    prepareError: () => t("s_viewport_warn"),
     call: () => api("POST", "/api/calibrate/viewport-shift", { fresh: !AUTO }, 40000),
     onOk: () => st.appendChild(note("ok", t("s_viewport_ok"))),
-    err: () => t("s_viewport_err"),
+    err: r => t("s_viewport_err", r),
   });
   return wrap;
 }
@@ -895,13 +957,10 @@ function calibrateArm(ctx) {
   const wrap = shell({ n: 6, title: t("s_armcal_title"), lede: t("s_armcal_lede"), cards: [list, st] });
   const actions = footer(ctx, { back: true, primary: { id: "go", label: t("s_armcal_btn") } });
   wrap.appendChild(actions);
-  // Show the center circle right away so the user can hand-position the stylus first.
-  (async () => {
-    const r = await api("POST", "/api/bridge/switch", { mode: "calibrate", phase: "center" });
-    if (!(r.ok && r.body && r.body.ok)) st.appendChild(note("warn", t("s_armcal_warn")));
-  })();
   runAction(ctx, actions.querySelector("#go"), st, {
     busy: t("s_armcal_busy"),
+    prepare: () => api("POST", "/api/bridge/switch", { mode: "calibrate", phase: "center" }),
+    prepareError: () => t("s_armcal_warn"),
     // In auto mode the stylus is parked off-screen — tell the server to drive
     // it onto the screen center first (using the saved calibration).
     call: () => api("POST", "/api/calibrate/arm", AUTO ? { from_park: true } : null, 130000),
@@ -909,6 +968,7 @@ function calibrateArm(ctx) {
       st.appendChild(note("ok", t("s_armcal_ok", r)));
       if (!r.body.aligned) st.appendChild(note("warn", t("s_armcal_warnSkew", (r.body.tilt_ratio * 100).toFixed(1))));
     },
+    input: () => t("s_armcal_input"),
     err: r => t("s_armcal_err", r),
     hold: true,
   });
@@ -927,21 +987,23 @@ function calibrateCamera(ctx) {
   wrap.appendChild(actions);
   const go = actions.querySelector("#go");
 
-  // Two camera-side passes back-to-back: the rotation/coverage check (whose
-  // rotation the mapping needs) then the 15-dot screen→camera mapping.
-  go.onclick = async () => {
-    busy(go, true, t("s_camcal_busyFrame")); st.innerHTML = "";
-    const chk = await api("POST", "/api/calibrate/camera", null, 20000);
-    if (!isOk(chk)) { busy(go, false); st.appendChild(note("err", t("s_camcal_errCam", chk))); return; }
-    st.appendChild($(`<div class="kv"><span>${t("s_camcal_kvRot")} <b>${chk.body.rotation_name}</b></span><span>${t("s_camcal_kvCov")} <b>${Math.round((chk.body.coverage || 0) * 100)}%</b></span></div>`));
-    (chk.body.issues || []).forEach(i => st.appendChild(note("warn", i)));
-    busy(go, true, t("s_camcal_busyDots"));
-    const map = await api("POST", "/api/calibrate/camera-mapping", null, 30000);
-    busy(go, false);
-    if (!isOk(map)) { st.appendChild(note("err", t("s_camcal_errMap", map))); return; }
-    st.appendChild(note("ok", t("s_camcal_ok", map.body.dots)));
-    await refreshStatus(); go.textContent = t("cont"); go.onclick = () => ctx.next();
-  };
+  let frame;
+  runAction(ctx, go, st, {
+    busy: t("s_camcal_busyFrame"),
+    call: async () => {
+      frame = true;
+      const chk = await api("POST", "/api/calibrate/camera", null, 20000);
+      if (!isOk(chk) || !ctx.active()) return chk;
+      st.appendChild($(`<div class="kv"><span>${t("s_camcal_kvRot")} <b>${chk.body.rotation_name}</b></span><span>${t("s_camcal_kvCov")} <b>${Math.round((chk.body.coverage || 0) * 100)}%</b></span></div>`));
+      (chk.body.issues || []).forEach(i => st.appendChild(note("warn", i)));
+      busy(go, true, t("s_camcal_busyDots"));
+      frame = false;
+      return api("POST", "/api/calibrate/camera-mapping", null, 30000);
+    },
+    onOk: r => st.appendChild(note("ok", t("s_camcal_ok", r.body.dots))),
+    err: r => t(frame ? "s_camcal_errCam" : "s_camcal_errMap", r),
+    hold: true,
+  });
   return wrap;
 }
 
@@ -975,10 +1037,9 @@ function assistiveTouch(ctx) {
   const wrap = shell({ n: 9, title: t("s_at_title"), lede: t("s_at_lede"), cards: [list, st] });
   const actions = footer(ctx, { back: true, primary: { id: "go", label: t("s_at_btn") } });
   wrap.appendChild(actions);
-  // Show the orange target circle right away so the user can place the button.
-  (async () => { await api("POST", "/api/calibrate/assistive-touch/show"); })();
   runAction(ctx, actions.querySelector("#go"), st, {
     busy: t("s_at_busy"),
+    prepare: () => api("POST", "/api/calibrate/assistive-touch/show"),
     call: () => api("POST", "/api/calibrate/assistive-touch/verify", null, 25000),
     ok: r => r.ok && r.body && r.body.passed,
     onOk: r => {
@@ -1016,19 +1077,29 @@ function finish(ctx) {
   }
 
   if (alreadyReady) { showReady(""); return wrap; }
-  let stop = false; _stopHooks.push(() => stop = true);
+  const active = ctx.active;
+
+  function showFailure(message) {
+    hero.innerHTML = "";
+    hero.appendChild(note("err", message));
+    const retry = $(`<button class="btn primary" data-enter>${t("s_finish_retry")}</button>`);
+    retry.onclick = () => ctx.go(STEPS.length - 1);
+    hero.appendChild(retry);
+  }
 
   (async () => {
-    await api("POST", "/api/phone/home");
+    const home = await api("POST", "/api/phone/home");
+    if (!active()) return;
+    if (!isOk(home)) { showFailure(t("s_finish_homeErr", home)); return; }
     await sleep(3000);
-    if (stop) return;
+    if (!active()) return;
     const requested = await api("POST", "/api/ready");
     if (requested.ok && requested.body && requested.body.ok) {
       const deadline = Date.now() + 45000;
-      while (!stop && Date.now() < deadline) {
+      while (active() && Date.now() < deadline) {
         // Read a fresh response: refreshStatus retains old state on error.
         const r = await api("GET", "/api/status", null, Math.min(5000, deadline - Date.now()));
-        if (stop) return;
+        if (!active()) return;
         if (!r.ok || !r.body) break;
         STATUS = r.body;
         if (STATUS.ready) {
@@ -1040,12 +1111,7 @@ function finish(ctx) {
         await sleep(1000);
       }
     }
-    if (stop) return;
-    hero.innerHTML = "";
-    hero.appendChild(note("err", t("s_finish_err")));
-    const retry = $(`<button class="btn primary" data-enter>${t("s_finish_retry")}</button>`);
-    retry.onclick = () => ctx.go(STEPS.length - 1);
-    hero.appendChild(retry);
+    if (active()) showFailure(t("s_finish_err"));
   })();
   return wrap;
 }

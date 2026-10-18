@@ -305,9 +305,9 @@ def test_each_call_shows_compact_usage_and_saves_full_accounting(output_logs):
     saved = (directory / "runtime.log").read_text()
     assert terminal.count("Task completed") == 1
     assert "terminal-session" not in terminal
-    assert terminal.count("Tokens:") == 2
-    assert "Tokens: 1.0k in / 50 out" in terminal
-    assert "Tokens: 12.4k in / 320 out · 80% cached" in terminal
+    assert terminal.count(" out ") == 2
+    assert "turn 0 · in 1.0k out 50" in terminal
+    assert "decision · in 12.4k out 320 · cache 80%" in terminal
     assert "test/decision" in terminal
     assert "test/model" not in terminal  # The primary model was already announced.
     assert "internal decision details" not in terminal

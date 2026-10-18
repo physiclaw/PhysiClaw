@@ -172,7 +172,9 @@ async def test_handle_measure_viewport_shift_default_fresh_false(mocker) -> None
 
 
 @pytest.mark.asyncio
-async def test_handle_measure_viewport_shift_returns_err_on_exception(mocker) -> None:
+async def test_handle_measure_viewport_shift_returns_err_on_exception(
+    mocker, caplog
+) -> None:
     rig = _rig_mock()
     calib = MagicMock()
     mocker.patch.object(
@@ -191,6 +193,8 @@ async def test_handle_measure_viewport_shift_returns_err_on_exception(mocker) ->
 
     assert resp.status_code == 500
     assert "no upload" in _read_json(resp)["message"]
+    assert "Calibration step failed: no upload" in caplog.text
+    assert any(record.exc_info for record in caplog.records)
 
 
 # ---------- handle_calibrate_arm ----------
@@ -274,25 +278,33 @@ async def test_handle_calibrate_arm_from_park_centers_stylus(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_calibrate_arm_from_park_without_bundle_errors(mocker) -> None:
-    """from_park with no in-memory mapping and no saved bundle → clear error."""
+async def test_handle_calibrate_arm_from_park_without_bundle_requests_position(
+    mocker, caplog
+) -> None:
+    """A first calibration needs operator positioning before any arm movement."""
     rig = _rig_mock()
     rig.arm = MagicMock()
     rig.calibration = SimpleNamespace(pct_to_grbl=None)
     mocker.patch.object(handler.Calibration, "load", return_value=None)
     cal_arm = mocker.patch.object(handler, "calibrate_arm")
 
-    resp = await handle_calibrate_arm(
-        _fake_request(json_obj={"from_park": True}),
-        rig,
-        MagicMock(),
-        MagicMock(),
-    )
+    with caplog.at_level("INFO", logger=handler.__name__):
+        resp = await handle_calibrate_arm(
+            _fake_request(json_obj={"from_park": True}),
+            rig,
+            MagicMock(),
+            MagicMock(),
+        )
 
     body = _read_json(resp)
-    assert body["status"] == "error"
-    assert "previous calibration" in body["message"]
+    assert resp.status_code == 409
+    assert body["status"] == "needs_input"
+    assert "No saved arm calibration" in body["message"]
+    assert "press Start" in body["message"]
+    assert "waiting for stylus positioning" in caplog.text
     cal_arm.assert_not_called()  # never reached the probe
+    rig.arm.set_origin.assert_not_called()
+    rig.arm.rapid_to.assert_not_called()
     rig.release.assert_called_once()  # lock still released
 
 
@@ -1329,8 +1341,8 @@ async def test_missing_auto_calibration_preserves_current_page_and_touches(mocke
 
     response = await _invoke_setup("arm", rig, cal, bridge, phone, {"from_park": True})
 
-    assert response.status_code == 500
-    assert "previous calibration" in _read_json(response)["message"]
+    assert response.status_code == 409
+    assert _read_json(response)["status"] == "needs_input"
     assert cal.phase == "grid"
     assert cal.touches == [{"x": 0.5, "y": 0.5}]
     rig.arm.rapid_to.assert_not_called()
