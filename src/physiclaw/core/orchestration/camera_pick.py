@@ -16,8 +16,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from physiclaw.common import platform
 from physiclaw.common.config import CONFIG
 from physiclaw.core.hardware.camera import Camera
+from physiclaw.core.hardware.device import DeviceNotFound
 from physiclaw.core.vision.grid_detect import detect_bridge_corners
 from physiclaw.core.vision.render import watermark_index
 from physiclaw.core.vision.util import encode_jpeg
@@ -80,7 +82,13 @@ def _capture_raw(idx: int, connected: Camera | None = None) -> np.ndarray | None
         with _camera_for(idx, connected) as cam:
             return cam.raw_frame()
     except (OSError, RuntimeError) as e:
-        log.debug("Camera %s probe failed: %s", idx, e, exc_info=True)
+        # Missing indices are normal during enumeration; omit their tracebacks.
+        log.debug(
+            "Camera %s probe failed: %s",
+            idx,
+            e,
+            exc_info=not isinstance(e, DeviceNotFound),
+        )
         return None
 
 
@@ -92,21 +100,31 @@ def _auto_pick_camera_index(connected: Camera | None = None) -> int | None:
     indices 0..7 and pick the camera whose frame contains all four
     markers arranged clockwise — only the camera actually pointing at
     the phone can possibly see them, so the match is unambiguous.
+
+    Returns None when frames lack the markers; raises DeviceNotFound
+    when no camera supplies a frame at all.
     """
     # macOS Continuity Camera + iPhone Webcam can occupy low indices,
     # pushing the actual USB camera to 4+. Probing 0..7 covers the
     # typical configurations without measurably slowing the loop —
     # missing-index opens fail fast on macOS.
+    captured = False
     for idx in range(8):
         frame = _capture_raw(idx, connected)
         if frame is None:
             continue
+        captured = True
         corners = detect_bridge_corners(frame)
         if corners is None:
             log.info(f"  cam {idx}: corners not detected")
             continue
         log.info(f"Auto-picked camera {idx} — all four RGBM corners detected")
         return idx
+    if not captured:
+        raise DeviceNotFound(
+            "auto-pick could not capture a frame from any camera (indices 0–7). "
+            f"Check the USB connection; {platform.camera_denied_hint()}."
+        )
     return None
 
 

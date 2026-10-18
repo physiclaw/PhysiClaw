@@ -109,8 +109,7 @@ def open_image_files(paths: list[str]) -> None:
 
 
 def camera_exposure_tunable() -> bool:
-    """MSMF exposes AE toggling via IAMCameraControl — always tunable.
-    (DSHOW couldn't re-enable AE once off, opencv#17019 — we pin MSMF.)"""
+    """MSMF exposes exposure control via IAMCameraControl."""
     return True
 
 
@@ -121,11 +120,7 @@ def camera_size_cap() -> tuple[int, int] | None:
 
 
 def camera_backend() -> int:
-    """Capture backend for cv2.VideoCapture: explicit MSMF.
-
-    Modern OpenCV defaults to MSMF on Windows already — the explicit flag
-    documents intent and guards against DSHOW-default builds, where
-    auto-exposure could never be re-enabled programmatically."""
+    """Use Media Foundation for Windows capture and camera controls."""
     import cv2
 
     return cv2.CAP_MSMF
@@ -218,8 +213,9 @@ def camera_apply_focus(cap, value: float) -> bool:
 def camera_denied_hint() -> str:
     """Guidance when a camera opens but yields no frame, or none are detected."""
     return (
-        "camera access may be off — Settings → Privacy & security → Camera, "
-        "and allow desktop apps to access the camera"
+        "close Windows Camera and other camera apps; check Settings → "
+        "Privacy & security → Camera, enable Camera access and allow "
+        "desktop apps to access the camera"
     )
 
 

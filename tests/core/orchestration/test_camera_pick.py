@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from physiclaw.core.hardware.device import DeviceNotFound
 from physiclaw.core.orchestration import camera_pick
 from physiclaw.core.orchestration.camera_pick import (
     _auto_pick_camera_index,
@@ -105,12 +106,20 @@ def test_capture_raw_returns_none_on_runtime_error(mocker) -> None:
     fake_cam.close.assert_called_once()
 
 
-def test_capture_raw_returns_none_when_constructor_raises(mocker) -> None:
+@pytest.mark.parametrize("error_type", [RuntimeError, DeviceNotFound])
+def test_capture_raw_returns_none_when_constructor_raises(
+    mocker, caplog: pytest.LogCaptureFixture, error_type
+) -> None:
     """A missing USB index raises from Camera() itself — the auto-pick
     loop must treat it like any other capture failure, not crash."""
-    mocker.patch.object(camera_pick, "Camera", side_effect=RuntimeError("no device"))
+    mocker.patch.object(camera_pick, "Camera", side_effect=error_type("no device"))
 
-    assert _capture_raw(5) is None
+    with caplog.at_level(logging.DEBUG, logger=camera_pick.__name__):
+        assert _capture_raw(5) is None
+
+    (record,) = caplog.records
+    assert "Camera 5 probe failed" in record.getMessage()
+    assert bool(record.exc_info) is (error_type is not DeviceNotFound)
 
 
 # ---------- _auto_pick_camera_index ----------
@@ -139,11 +148,17 @@ def test_auto_pick_camera_returns_first_match(mocker) -> None:
     assert capture_spy.call_count >= 2
 
 
-def test_auto_pick_camera_returns_none_when_no_match(mocker) -> None:
+def test_auto_pick_camera_reports_no_accessible_camera(mocker) -> None:
     mocker.patch.object(camera_pick, "_capture_raw", return_value=None)
-    mocker.patch.object(camera_pick, "detect_bridge_corners", return_value=None)
+    detect = mocker.patch.object(camera_pick, "detect_bridge_corners")
+    mocker.patch.object(
+        camera_pick.platform, "camera_denied_hint", return_value="allow desktop apps"
+    )
 
-    assert _auto_pick_camera_index() is None
+    with pytest.raises(DeviceNotFound, match="any camera.*allow desktop apps"):
+        _auto_pick_camera_index()
+
+    detect.assert_not_called()
 
 
 def test_auto_pick_camera_skips_when_corners_not_detected(
@@ -212,6 +227,19 @@ def test_resolve_auto_index_restores_bridge_mode_on_no_match(mocker) -> None:
         resolve_auto_index(rig, phone)
 
     # Phone restored to bridge mode even on failure.
+    assert phone.set_mode.call_args_list[-1].args == ("bridge",)
+
+
+def test_resolve_auto_index_restores_bridge_when_all_cameras_fail(mocker) -> None:
+    rig = MagicMock()
+    rig.assert_locked = MagicMock()
+    phone = MagicMock()
+    mocker.patch.object(camera_pick, "_capture_raw", return_value=None)
+    mocker.patch.object(camera_pick.time, "sleep")
+
+    with pytest.raises(DeviceNotFound, match="any camera"):
+        resolve_auto_index(rig, phone)
+
     assert phone.set_mode.call_args_list[-1].args == ("bridge",)
 
 

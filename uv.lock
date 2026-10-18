@@ -1607,7 +1607,7 @@ requires-dist = [
     { name = "onnxruntime", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8" },
     { name = "pyserial", specifier = ">=3.5" },
-    { name = "rapidocr", specifier = ">=3.7.0" },
+    { name = "rapidocr", specifier = ">=3.7.0,<3.10" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "typer", specifier = ">=0.12" },

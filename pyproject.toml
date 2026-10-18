@@ -37,7 +37,9 @@ dependencies = [
     # an httpx2 client); the SDK's own pin is what resolves the version.
     "httpx2>=2.5",
     "croniter>=6.2.2",
-    "rapidocr>=3.7.0",
+    # RapidOCR 3.10 switched to opencv-python-headless, which shares cv2
+    # with our opencv-python dependency. Keep only one OpenCV distribution.
+    "rapidocr>=3.7.0,<3.10",
     "onnxruntime>=1.24.0",
     "typer>=0.12",
     "tomlkit>=0.13",

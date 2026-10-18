@@ -145,7 +145,7 @@ def test_no_camera_size_cap_on_windows() -> None:
 
 
 def test_camera_backend_is_msmf() -> None:
-    # MSMF is the only Windows backend where AE can be re-enabled.
+    # Keep capture consistent with the Windows camera-control implementation.
     import cv2
 
     assert windows.camera_backend() == cv2.CAP_MSMF
