@@ -28,7 +28,7 @@ class RawLog:
         self._images = images
         store._purge_old()
         self.session_id = session_id
-        self.path = d / "wire.jsonl"
+        self.path = d / "model.jsonl"
         self._f = open(self.path, "a", encoding="utf-8", newline="\n")
         # The turn the latest request/response record carried: a micro
         # record files an unseen frame under it (its frame is normally
@@ -107,7 +107,7 @@ class RawLog:
 
     def _emit(self, kind: str, **data: Any) -> None:
         """Fail-open like the sibling sinks (`Trace._write_event`,
-        `DailyLogWriter.line`): a full disk or an unserializable payload
+        the image store): a full disk or an unserializable payload
         costs the wire record, never the session."""
         obj = {"t": iso_now(), "kind": kind, **data}
         try:
@@ -115,4 +115,4 @@ class RawLog:
             self._f.write(json.dumps(obj) + "\n")
             self._f.flush()
         except (OSError, TypeError, ValueError):
-            log.warning("wire.jsonl write failed", exc_info=True)
+            log.warning("model.jsonl write failed", exc_info=True)

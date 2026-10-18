@@ -40,7 +40,7 @@ def _session_dir(tmp_path: Path, records: list[dict], images: list[str]) -> Path
     (d / "images").mkdir(parents=True)
     for name in images:
         (d / "images" / name).write_bytes(JPEG)
-    (d / "wire.jsonl").write_text(
+    (d / "model.jsonl").write_text(
         "\n".join(json.dumps(r) for r in records) + "\nnot json\n", encoding="utf-8"
     )
     return d
@@ -138,7 +138,7 @@ def test_session_frames_skips_missing_images_and_refuses_no_wire(tmp_path) -> No
     )
     assert mock.session_frames(d) == []
 
-    with pytest.raises(FileNotFoundError, match="wire.jsonl"):
+    with pytest.raises(FileNotFoundError, match="model.jsonl"):
         mock.session_frames(tmp_path / "nowhere")
 
 
@@ -277,7 +277,7 @@ def recorded_views(tmp_path, request):
             _events(directory, [_event(ref, listing) for ref, listing in views])
         else:
             records = [_request(_openai_view(ref, listing)) for ref, listing in views]
-            (directory / "wire.jsonl").write_text(
+            (directory / "model.jsonl").write_text(
                 "\n".join(json.dumps(rec) for rec in records), encoding="utf-8"
             )
         return directory

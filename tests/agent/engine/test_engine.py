@@ -262,7 +262,7 @@ def recorded_run(completed_run, monkeypatch, caplog):
     monkeypatch.setattr(engine_mod, "RawLog", RawLog)
     monkeypatch.setattr(engine_mod, "new_sid", lambda: "recorded-abc123")
     caplog.set_level(logging.DEBUG)
-    completed_run.directory = paths.engine_sessions_dir() / "recorded-abc123"
+    completed_run.directory = paths.sessions_dir() / "recorded-abc123"
     return completed_run
 
 

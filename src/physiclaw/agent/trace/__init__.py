@@ -1,21 +1,12 @@
-"""Engine session logs — a daily human narrative + a per-session artifact dir.
+"""Agent session logs: one self-contained directory per task.
 
-`Trace` writes the per-day human log through `DailyLogWriter`, plus the
-session's events.jsonl and summary.json, filing every frame a tool result
-carries into the session's `store.Images` as it arrives; `RawLog`
-captures the provider round-trips into wire.jsonl, with each inline
-image replaced by a reference into that same store. Everything lands
-under log/engine/sessions/<sid>/ —
-self-contained (image refs are relative), so "share the bad session"
-is one directory copy. The on-disk format is documented once, in
-`store.SESSIONS_README` (shipped into the sessions dir and every
-`physiclaw logs --save` zip); retention sweeps on session bootstrap
-(`store._purge_old`).
+`Trace` saves events, summary, notes and runtime diagnostics; `RawLog`
+saves model requests and replies. Both share `store.Images`, so screenshots
+are filed once and referenced relative to log/sessions/<sid>/.
 
-One submodule per concern: `store` (artifact dirs, session ids,
-retention, the shipped README), `format` (event/value rendering for
-the human surfaces), `trace` (`Trace` + the summary accumulator),
-`rawlog` (`RawLog`).
+`physiclaw logs` renders a readable narrative from events.jsonl and exports
+complete session bundles. Format details ship in sessions/README.md and
+all exports; retention removes whole session folders on bootstrap.
 """
 
 from physiclaw.agent.trace.format import (

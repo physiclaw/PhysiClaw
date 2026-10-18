@@ -16,32 +16,19 @@ import hashlib
 import json
 import logging
 import secrets
-import time
 from pathlib import Path
 from typing import Any
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
 from physiclaw.common.logger import save_image
-from physiclaw.common.logger.retention import purge_daily_logs, purge_old_sessions
+from physiclaw.common.logger.retention import purge_old_sessions
 
 log = logging.getLogger(__name__)
 
 
-def _log_dir() -> Path:
-    return paths.engine_log_dir()
-
-
-def _raw_dir() -> Path:
-    return _log_dir() / "raw"  # legacy layout — purge-only, no new writes
-
-
-def _sessions_dir() -> Path:
-    return paths.engine_sessions_dir()
-
-
 def _session_dir(sid: str) -> Path:
-    return _sessions_dir() / sid
+    return paths.sessions_dir() / sid
 
 
 class Images:
@@ -88,49 +75,17 @@ def new_sid() -> str:
     return f"{dt.datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
 
 
-# Purge session dirs (and legacy raw files) older than this on session
+# Purge session dirs older than this on session
 # bootstrap: the `[retention]` window, a month by default — long enough
 # to post-mortem a run noticed late, bounded for long-running operators.
 _RETENTION_DAYS = CONFIG.retention.trace_days
-_LOG_RETENTION_DAYS = CONFIG.retention.log_days
 
 
-def _purge_old(
-    *,
-    days: int = _RETENTION_DAYS,
-    log_days: int = _LOG_RETENTION_DAYS,
-) -> None:
-    """Session-bootstrap retention sweep, three targets:
-
-      1. legacy files under `log/engine/raw/` (pre-sessions layout —
-         purge-only until they age out),
-      2. `sessions/<sid>/` dirs whose newest file is older than `days`,
-      3. daily `engine-*.log` files older than `log_days`.
-
-    mtime beats filename-date parsing because it tolerates clock skew
-    and handles files appended to long after creation. Fail-open
-    throughout — retention must never take down a session."""
-    cutoff = time.time() - days * 86400
-    removed = 0
-    try:
-        entries = list(_raw_dir().rglob("*"))
-    except OSError:
-        entries = []
-    for path in entries:
-        try:
-            if path.is_file() and path.stat().st_mtime < cutoff:
-                path.unlink()
-                removed += 1
-        except OSError:
-            pass
-    if removed:
-        log.info("purged %d legacy raw log file(s) older than %d days", removed, days)
-
-    removed = purge_old_sessions(_sessions_dir(), days=days)
+def _purge_old(*, days: int = _RETENTION_DAYS) -> None:
+    """Expire session dirs by their newest file's mtime. Fail-open."""
+    removed = purge_old_sessions(paths.sessions_dir(), days=days)
     if removed:
         log.info("purged %d session dir(s) older than %d days", removed, days)
-
-    purge_daily_logs(_log_dir(), "engine", log_days)
 
 
 SESSIONS_README = """\
@@ -161,7 +116,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   outcome completed|suspended|handover|crashed|abandoned, node, idx,
   nodes, reason, micros, rescues, total} — every conductor walk in
   order, the boot's hand-on first; absent when no playbook ran, and
-  the runtime log's `conductor: plain model session — <reason>` line
+  the runtime log's `Plain model session: <reason>` line
   says why], errors {blocked_plan,
   blocked_layout, blocked_stuck, invalid_args, unknown_tool,
   tool_errors, correctives, provider_failures}, stuck_events, images,
@@ -202,7 +157,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   `*_checkpoint` (turn rejected, corrective sent), `done`
   (sentinel + recap), `crashed`.
 
-- `wire.jsonl` — the provider round-trips: `session_start` (provider,
+- `model.jsonl` — the provider round-trips: `session_start` (provider,
   model, prompt_hash, tool schemas) once, then per turn `request`
   (full message array) and `response` (raw provider reply,
   elapsed_ms; `synthesized: true` marks a conductor-composed turn —
@@ -225,7 +180,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   (hour-minute-second `_` milliseconds) plus `_t<turn>` = the turn
   whose tool result carried the frame, so `ls` sorts them in capture
   order and each links back to its `tool_result` in `events.jsonl`
-  (its `images` field) and to any `wire.jsonl` request that carried
+  (its `images` field) and to any `model.jsonl` request that carried
   it. Example: `104542_123_t20.jpg` = 10:45:42.123, turn 20.
 
 - `session.html` — the session viewer page (`agent/trace/viewer.py`):
@@ -244,9 +199,9 @@ in the `env` event / `summary.json.env.utc_offset`.
   warnings, and full tracebacks that the structured events only record
   as an error string. Capture stays open through provider, plugin, wire-log
   and artifact cleanup, so setup and close failures remain in the session.
-  Operational daily-log size rotation never trims this session file.
+  Service-log size rotation never trims this session file.
 
-- `mcp.log` — the MCP-server process's log for this session (camera,
+- `server.log` — the MCP-server process's log for this session (camera,
   exposure/tune, gesture execution), written live by the server: the
   runtime publishes the active session id to a marker and the server
   resolves it to this dir and tees its log there. This is where to look
@@ -267,7 +222,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   around the last turns, then view the matching `images/`.
 - Cross-session stats: every summary is one JSON file —
   `jq .usage.cache_hit_pct sessions/*/summary.json`. For trends past
-  the retention window, `log/stats.jsonl` (one summary line per
+  the retention window, `log/session-stats.jsonl` (one summary line per
   session at close) survives the session-dir purge.
 - Turn timeline: events with the same `turn` value tell one
   turn's story: usage → response → tool_result(s) (the provider writes
@@ -279,7 +234,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   call's token buckets and per-model totals; cost is each bucket times
   the model's rate, summed — no price table is kept here.
 
-Privacy: wire.jsonl carries full prompts (including the user profile /
+Privacy: model.jsonl carries full prompts (including the user profile /
 memory) and images/ are phone screenshots. Treat a session dir as
 sensitive.
 """

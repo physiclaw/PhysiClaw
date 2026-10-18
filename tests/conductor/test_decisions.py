@@ -41,9 +41,9 @@ def _micro_record(**over) -> dict:
 
 
 def _session(records: list[dict], events: list[dict] | None = None):
-    d = paths.engine_sessions_dir() / SID
+    d = paths.sessions_dir() / SID
     d.mkdir(parents=True, exist_ok=True)
-    (d / "wire.jsonl").write_text(
+    (d / "model.jsonl").write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
         encoding="utf-8",
     )
@@ -162,7 +162,7 @@ def test_load_reads_a_scrubbed_frame_back_from_the_session_images() -> None:
 
 
 def test_load_without_a_wire_log_raises() -> None:
-    d = paths.engine_sessions_dir() / SID
+    d = paths.sessions_dir() / SID
     d.mkdir(parents=True, exist_ok=True)
     with pytest.raises(FileNotFoundError):
         decisions.load(d)
@@ -315,7 +315,7 @@ def test_session_decisions_join_each_call_to_the_usage_its_attempts_wrote() -> N
 def test_decision_stats_fold_per_call_kind() -> None:
     d = _session([], events=EVENTS)
 
-    stats = decisions.decision_stats([d, paths.engine_sessions_dir() / "missing"])
+    stats = decisions.decision_stats([d, paths.sessions_dir() / "missing"])
 
     pick = stats["agent_act"]
     assert (pick.calls, pick.escalated, pick.repaired) == (2, 1, 1)

@@ -2,9 +2,8 @@
 
 The brief/args helpers are shared with `dispatch.py` (its per-call log
 lines) and the `physiclaw logs` / `doctor` CLIs; `summarize_event`
-turns one structured event into the daily log's one-liner — the CLI
-renders a session's narrative from its events.jsonl with the same
-formatter the daily log uses.
+turns one structured event into a readable narrative line — the CLI
+renders a session's narrative directly from its events.jsonl.
 """
 
 from typing import Any, Callable
@@ -17,7 +16,7 @@ from physiclaw.common.text import clip
 # Events that are internal bookkeeping — don't surface in the human log.
 # Add here when silencing a new event is cheaper than adding a dedicated
 # summary branch.
-# Data-only events: recorded for analysis, never a daily-log line
+# Data-only events: recorded for analysis, omitted from the readable narrative
 # (`walk_read` is per gesture — the walk's process line covers a human
 # following along).
 _SILENT_EVENTS = frozenset({"prefix_pinned", "finish_length_warning", "walk_read"})
@@ -106,14 +105,14 @@ def fmt_tokens(n: int) -> str:
 
 
 # Event kinds whose rendered line ALSO goes to the process log
-# (runtime.log), beside the daily log: a model call's account and a
+# (runtime.log): a model call's account and a
 # conductor decision are each printed in ONE place, so neither the
 # engine's turn line nor the micro-caller repeats them.
 MIRRORED_EVENTS = frozenset({"usage", "micro_call"})
 
 
 def usage_text(event: dict[str, Any]) -> str:
-    """THE rendering of one model call's account — the daily log, the
+    """THE rendering of one model call's account — the
     process log and `physiclaw logs` all read it from here, so the
     numbers can never disagree. Every bucket by name; reasoning and
     error only when there is something to say."""
@@ -161,7 +160,7 @@ def usage_summary(event: dict[str, Any], *, include_model: bool = False) -> str:
 
 
 def _end_footer(summary: dict[str, Any]) -> str:
-    """The daily-log session footer — headline metrics on one greppable line."""
+    """Session metrics for the runtime log, on one greppable line."""
     u = summary["usage"]
     return (
         f"END session={summary['sid']} "

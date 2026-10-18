@@ -7,7 +7,7 @@ other (the agent ↔ conductor split relies on it — see
 
     dto.py     — the message/tool-call shapes the engine loop, the
                  providers, and every turn plugin all speak
-    wire.py    — the wire.jsonl text codec: the scrubber the RawLog
+    wire.py    — the model.jsonl text codec: the scrubber the RawLog
                  writes through and the reader the corpus extracts
                  with, kept beside each other so a provider shape
                  added to one is added to the other in the same edit

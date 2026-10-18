@@ -28,7 +28,7 @@ from physiclaw.contract.dto import (
 )
 
 # Call-id prefix for every synthesized action. Stable on purpose: it is
-# what lets a reader of a recorded session (wire.jsonl, traces) tell
+# what lets a reader of a recorded session (model.jsonl, traces) tell
 # conductor-made tool calls apart — in-process code never parses ids;
 # provenance there is the session's structural `synthesized` bit.
 # The full id is `conductor-<scope>-<seq>-<role>`: each walk mints

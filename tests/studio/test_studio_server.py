@@ -568,7 +568,7 @@ async def test_macros_lists_the_catalog(monkeypatch) -> None:
 def _recorded(sid: str = "20260908-100000-abc123"):
     from physiclaw.common import paths
 
-    d = paths.engine_sessions_dir() / sid
+    d = paths.sessions_dir() / sid
     (d / "images").mkdir(parents=True)
     (d / "images" / "100001_000_t0.jpg").write_bytes(b"\xff\xd8\xff\xd9")
     (d / "events.jsonl").write_text(

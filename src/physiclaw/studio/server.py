@@ -247,11 +247,11 @@ def _not_found(why: str) -> HTMLResponse:
 
 def handle_sessions(request: Request) -> Response:
     """GET /sessions/ — the newest recorded session's viewer."""
-    rows = recent_sessions(paths.engine_sessions_dir(), 1)
+    rows = recent_sessions(paths.sessions_dir(), 1)
     if not rows:
         return HTMLResponse(
             "<p>No recorded sessions yet — a wake writes one under the "
-            "engine's sessions dir. <a href='/'>Back to the studio.</a></p>",
+            "log/sessions directory. <a href='/'>Back to the studio.</a></p>",
             status_code=404,
         )
     return RedirectResponse(f"/sessions/{rows[0]['sid']}/")
@@ -262,7 +262,7 @@ def handle_session_page(request: Request) -> Response:
     picker of recent sessions; `no-store` like the studio page."""
     ref = request.path_params["sid"]
     try:
-        d = resolve_session(paths.engine_sessions_dir(), ref)
+        d = resolve_session(paths.sessions_dir(), ref)
     except LookupError as e:
         return _not_found(str(e))
     if d.name != ref:
@@ -273,7 +273,7 @@ def handle_session_page(request: Request) -> Response:
 
 
 def _session_page(directory: Path, *, selected: bool = False) -> HTMLResponse:
-    model = viewer.load(directory, sessions=viewer.recent(paths.engine_sessions_dir()))
+    model = viewer.load(directory, sessions=viewer.recent(paths.sessions_dir()))
     if selected:
         model["review_url"] = REVIEW_PATH
     return HTMLResponse(viewer.render(model), headers={"Cache-Control": "no-store"})
@@ -282,7 +282,7 @@ def _session_page(directory: Path, *, selected: bool = False) -> HTMLResponse:
 def handle_session_image(request: Request) -> Response:
     """GET /sessions/{sid}/images/{name} — one frame confined to `images/`."""
     try:
-        d = resolve_session(paths.engine_sessions_dir(), request.path_params["sid"])
+        d = resolve_session(paths.sessions_dir(), request.path_params["sid"])
     except LookupError:
         return Response("no such frame", status_code=404)
     return _session_image(d, request.path_params["name"])

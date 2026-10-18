@@ -1,4 +1,4 @@
-"""`Trace` — the per-day human log + per-session events.jsonl/summary.json."""
+"""`Trace` — session events, summaries, notes and diagnostic capture."""
 
 import json
 import logging
@@ -17,7 +17,6 @@ from physiclaw.agent.trace.format import (
 )
 from physiclaw.common import paths
 from physiclaw.common.logger import (
-    DailyLogWriter,
     SessionLogSidecars,
     append_stats,
     build_summary,
@@ -32,26 +31,24 @@ log = logging.getLogger(__name__)
 
 
 class Trace:
-    """Daily human log + per-session events.jsonl + summary.json.
+    """Per-session events.jsonl, summary.json and process diagnostics.
 
-    One instance per session. `write(event)` fans out three ways: the
-    structured event lands in events.jsonl verbatim (data for analysis),
-    feeds the summary accumulator, and renders as a one-liner in the
-    daily log (unless silent). `close()` finalizes summary.json and the
-    daily-log END footer.
+    One instance per session. Events are saved whole and feed the summary
+    accumulator. Model usage and decisions also reach the process log;
+    `physiclaw logs` renders a readable narrative from the saved events.
+    `close()` writes summary.json, aggregate stats and the task outcome.
     """
 
     def __init__(self, session_id: str, images: "store.Images"):
         self.session_id = session_id
-        self._daily = DailyLogWriter(store._log_dir(), "engine")
         d = store._session_dir(session_id)
         d.mkdir(parents=True, exist_ok=True)
         # The session's frame store — the wire log holds the same one, so
         # a frame filed here is what a request's scrub references.
         self._images = images
-        ensure_readme(store._sessions_dir(), store.SESSIONS_README)
+        ensure_readme(paths.sessions_dir(), store.SESSIONS_README)
         self._events = open(d / "events.jsonl", "a", encoding="utf-8", newline="\n")
-        # Self-containment: runtime.log (process log mirror) + mcp.log
+        # Self-containment: runtime.log (process log mirror) + server.log
         # (the server's log for this session's window) via the shared
         # sidecars, plus a human-readable per-turn note history — so a
         # shared session dir explains itself without the terminal or `jq`.
@@ -100,35 +97,28 @@ class Trace:
         self._write_event(event)
         self._summary.observe(event)
         self._append_note(event)
-        msg = summarize_event(event)
-        if msg is None:
+        if event.get("event") not in MIRRORED_EVENTS:
             return
-        self._daily.line(msg)
-        if event.get("event") in MIRRORED_EVENTS:
-            # Each provider call owns one token notice. A micro_call records
-            # the decision separately, without repeating that call's account.
-            is_usage = event["event"] == "usage"
-            fields = {
-                "console": is_usage,
-                "event": event["event"],
-                "turn": event.get("turn"),
-                "session_id": self.session_id,
-            }
-            if is_usage:
-                fields.update(
-                    console_message=usage_summary(
-                        event, include_model=event.get("model") != self._primary_model
-                    ),
-                    model_ref=event.get("model"),
-                    input_tokens=int(event.get("input") or 0),
-                    output_tokens=int(event.get("output") or 0),
-                    duration_ms=event.get("elapsed_ms"),
-                )
-            log.info(
-                "%s",
-                msg,
-                extra=fields,
+        # Each provider call owns one token notice. A micro_call records
+        # the decision separately, without repeating that call's account.
+        is_usage = event["event"] == "usage"
+        fields = {
+            "console": is_usage,
+            "event": event["event"],
+            "turn": event.get("turn"),
+            "session_id": self.session_id,
+        }
+        if is_usage:
+            fields.update(
+                console_message=usage_summary(
+                    event, include_model=event.get("model") != self._primary_model
+                ),
+                model_ref=event.get("model"),
+                input_tokens=int(event.get("input") or 0),
+                output_tokens=int(event.get("output") or 0),
+                duration_ms=event.get("elapsed_ms"),
             )
+        log.info("%s", summarize_event(event), extra=fields)
 
     def _append_note(self, event: dict[str, Any]) -> None:
         """Append a `note` tool_result's summary to notes.md — the
@@ -169,12 +159,11 @@ class Trace:
                     store._session_dir(self.session_id) / "summary.json", summary
                 )
             except OSError:
-                # The durable stats and daily footer have independent sinks;
+                # The durable stats and diagnostic outcome have independent sinks;
                 # losing this session's summary must not suppress them too.
                 log.warning("session summary write failed", exc_info=True)
             append_stats(paths.LOG_DIR, summary)
             footer = _end_footer(summary)
-            self._daily.line(footer)
             outcome = summary["outcome"]
             recap = str(outcome.get("recap") or "")
             log.log(
@@ -202,7 +191,6 @@ class Trace:
         finally:
             # Keep diagnostic capture alive for the other files' close errors.
             try:
-                self._daily.close()
                 for f in (self._events, self._notes):
                     try:
                         if f is not None and not f.closed:

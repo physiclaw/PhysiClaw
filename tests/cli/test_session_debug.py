@@ -33,10 +33,13 @@ def test_logs_reads_and_exports_complete_session_after_service_rotation(
     monkeypatch.setattr(config.CONFIG.retention, "log_backup_count", 1)
     console = io.StringIO()
     monkeypatch.setattr(sys, "stderr", console)
-    setup_logging("runtime", file_dir=paths.runtime_log_dir(), file_level=logging.DEBUG)
+    setup_logging("runtime", file_dir=paths.LOG_DIR, file_level=logging.DEBUG)
+    guide = (paths.LOG_DIR / "README.md").read_text(encoding="utf-8")
+    assert "server.log" in guide and "model.jsonl" in guide and "archive/" in guide
 
     sid = "20261018-100000-abc123"
-    directory = paths.engine_sessions_dir() / sid
+    directory = paths.sessions_dir() / sid
+    assert directory == paths.LOG_DIR / "sessions" / sid
     images = Images(sid)
     trace, raw = Trace(sid, images), RawLog(sid, images)
     context = bind_log_context(session_id=sid, turn=0, tool_call_id="call-peek")
@@ -150,7 +153,7 @@ from physiclaw.common.config import CONFIG
 from physiclaw.common.logger import attach_server_mcp_tee, setup_logging
 CONFIG.retention.log_max_bytes = 256
 CONFIG.retention.log_backup_count = 1
-setup_logging('physiclaw', file_dir=paths.server_log_dir(), file_level=logging.DEBUG)
+setup_logging('physiclaw', file_dir=paths.LOG_DIR, file_level=logging.DEBUG, file_prefix='server')
 attach_server_mcp_tee()
 log = logging.getLogger('physiclaw.core.hardware.camera')
 log.debug('Camera diagnostic before rotation')
@@ -183,7 +186,7 @@ for i in range(15):
     assert "Runtime detail" not in console.getvalue()
     assert "runtime failure detail" not in console.getvalue()
     runtime = (directory / "runtime.log").read_text(encoding="utf-8")
-    mcp = (directory / "mcp.log").read_text(encoding="utf-8")
+    mcp = (directory / "server.log").read_text(encoding="utf-8")
     assert (
         "Runtime detail before rotation" in runtime and "Runtime detail 14:" in runtime
     )
@@ -193,16 +196,25 @@ for i in range(15):
     assert "OSError: simulated camera failure detail" in mcp and "Traceback" in mcp
     assert note in (directory / "notes.md").read_text(encoding="utf-8")
     assert not paths.active_session_marker().exists()
-    # Daily service files have already dropped the oldest details; sidecars
+    # Rotating service files have already dropped the oldest details; sidecars
     # and replay artifacts preserve the complete session independently.
-    for folder, missing in [
-        (paths.runtime_log_dir(), "Runtime detail before rotation"),
-        (paths.server_log_dir(), "Camera diagnostic before rotation"),
+    for prefix, missing in [
+        ("runtime", "Runtime detail before rotation"),
+        ("server", "Camera diagnostic before rotation"),
     ]:
-        daily_files = list(folder.glob("*-*.log*"))
-        assert len(daily_files) == 2
-        assert all(missing not in p.read_text(encoding="utf-8") for p in daily_files)
+        active = paths.LOG_DIR / f"{prefix}.log"
+        archives = list((paths.LOG_DIR / "archive").glob(f"{prefix}.log.*"))
+        assert active.is_file() and len(archives) == 1
+        assert all(
+            missing not in p.read_text(encoding="utf-8") for p in [active, *archives]
+        )
     assert not list(directory.glob("*.log.*"))
+    assert not any(
+        (paths.LOG_DIR / name).exists()
+        for name in ("engine", "runtime", "server", "cli", "studio")
+    )
+    assert not list(paths.LOG_DIR.glob("engine-*.log"))
+    assert (paths.LOG_DIR / "session-stats.jsonl").is_file()
 
     events = [
         json.loads(line)
@@ -215,7 +227,7 @@ for i in range(15):
     assert (directory / peek["images"][0]).read_bytes() == base64.b64decode(PNG)
     wire = [
         json.loads(line)
-        for line in (directory / "wire.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (directory / "model.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert wire[1]["messages"][0]["content"] == prompt
     assert wire[2]["raw"] == reply
@@ -253,7 +265,7 @@ for i in range(15):
     assert "Verified all results" in detail
     assert (
         str(directory / "runtime.log") in detail
-        and str(directory / "mcp.log") in detail
+        and str(directory / "server.log") in detail
     )
     usage = json.loads(cli("abc123", "--usage", "--json"))
     assert usage == [
@@ -282,4 +294,6 @@ for i in range(15):
             and "simulated camera failure detail" in html
         )
         readme = archive.read(f"{sid}/README.md").decode("utf-8")
-        assert "runtime.log" in readme and "mcp.log" in readme
+        assert all(
+            name in readme for name in ("runtime.log", "server.log", "model.jsonl")
+        )

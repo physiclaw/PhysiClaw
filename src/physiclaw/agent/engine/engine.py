@@ -151,7 +151,7 @@ async def _run_session(
             sid,
             model_ref,
             [t.source or "?" for t in triggers],
-            paths.engine_sessions_dir() / sid,
+            paths.sessions_dir() / sid,
             extra={
                 "event": "session.started",
                 "model_ref": model_ref,

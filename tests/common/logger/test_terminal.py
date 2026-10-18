@@ -51,7 +51,7 @@ def test_new_components_are_quiet_until_they_opt_into_user_notices(
         log.info("Helpful update from %s", name, extra={"console": True})
         log.warning("Needs attention from %s", name, extra={"console": False})
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert ("internal diagnostic" in terminal) is verbose
     assert terminal.count("Helpful update") == 2
     assert terminal.count("Needs attention") == 2
@@ -66,7 +66,7 @@ def test_legacy_message_indentation_does_not_shift_normal_notices(output_logs, v
     )
 
     normal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text(encoding="utf-8")
+    saved = (directory / "runtime.log").read_text(encoding="utf-8")
     if verbose:
         assert "|     Camera needs attention" in normal
     else:
@@ -92,7 +92,7 @@ def test_task_recap_stays_with_its_outcome_and_retains_full_saved_text(output_lo
     (line,) = console.getvalue().splitlines()
     assert "Task completed" in line
     assert " — Order 12345 placed. Track delivery tomorrow." in line
-    saved = next(directory.glob("runtime-*.log")).read_text(encoding="utf-8")
+    saved = (directory / "runtime.log").read_text(encoding="utf-8")
     assert "Order 12345 placed." in saved and "Track delivery tomorrow." in saved
 
 
@@ -106,7 +106,7 @@ def test_bookkeeping_stays_on_disk_and_verbose_reveals_it(output_logs, verbose):
     log.warning("action failed", extra={"console": False})
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert ("request diagnostic" in terminal) is verbose
     assert ("token accounting" in terminal) is verbose
     assert "action completed" in terminal and "action failed" in terminal
@@ -137,7 +137,7 @@ def test_console_summary_does_not_replace_full_saved_message(output_logs, capsys
     log.info("tap completed", extra={"console": True})
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert "concise result" in terminal
     assert "complete diagnostic payload" not in terminal
     assert "complete diagnostic payload" in saved
@@ -162,7 +162,7 @@ async def test_server_success_is_quiet_but_failure_keeps_type_and_saved_tracebac
         await probe(fail=True)
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert "tool probe(" not in terminal
     assert terminal.count("Tool probe failed") == 1
     assert "WARN" in terminal and "ValueError: camera disconnected" in terminal
@@ -182,7 +182,7 @@ def test_exception_details_are_short_only_in_normal_output(output_logs, verbose)
         logging.getLogger("physiclaw.provider").exception("Model request failed")
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert "ValueError: request rejected" in terminal
     assert ("END_OF_PAYLOAD" in terminal) is verbose
     if not verbose:
@@ -302,7 +302,7 @@ def test_each_call_shows_compact_usage_and_saves_full_accounting(output_logs):
     trace.close()
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert terminal.count("Task completed") == 1
     assert "terminal-session" not in terminal
     assert terminal.count("Tokens:") == 2
@@ -364,7 +364,7 @@ def test_json_stream_preserves_full_messages_context_and_exceptions(
     assert re.search(r"\.\d{3}[+-]\d{2}:\d{2}$", completed["timestamp"])
     assert failed["level"] == "error"
     assert "ValueError: camera offline" in failed["exception"]
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert "session_id=session-A" in saved and "tool_call_id=call-7" in saved
     assert "Traceback" in saved  # text diagnostics remain intact
 
@@ -387,7 +387,7 @@ def test_component_filter_limits_debug_chatter_but_preserves_all_warnings(
     text = console.getvalue()
     assert "camera diagnostic" in text and "model diagnostic" not in text
     assert "provider unavailable" in text and "action failed" in text
-    assert "model diagnostic" in next(directory.glob("runtime-*.log")).read_text()
+    assert "model diagnostic" in (directory / "runtime.log").read_text()
     if style == "json":
         assert len([json.loads(line) for line in text.splitlines()]) == 3
 
@@ -584,7 +584,7 @@ def test_now_default_is_task_level_but_every_detail_is_saved(output_logs, verbos
     )
 
     terminal = console.getvalue()
-    saved = next(directory.glob("runtime-*.log")).read_text()
+    saved = (directory / "runtime.log").read_text()
     assert all(full in saved for _, full, _ in notices)
     assert all(message in saved for _, message in diagnostics)
     assert "model selection and config provenance" in saved

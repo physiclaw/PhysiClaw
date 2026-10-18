@@ -73,9 +73,9 @@ def load(session_dir: Path, only: str | None = None) -> list[Recorded]:
     those whose call or node is `only`, judged before any frame is read.
     A record from before the log kept the caller's reading (no
     `allowed`) still loads — its replies can be asked, not judged."""
-    path = session_dir / "wire.jsonl"
+    path = session_dir / "model.jsonl"
     if not path.exists():
-        raise FileNotFoundError(f"no wire.jsonl for session {session_dir.name!r}")
+        raise FileNotFoundError(f"no model.jsonl for session {session_dir.name!r}")
     frames: dict[Path, ImageBlock | None] = {}
     return [
         Recorded(

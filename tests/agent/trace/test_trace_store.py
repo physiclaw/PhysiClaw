@@ -5,19 +5,16 @@
 # is also accepted: either treats the unreadable entry as older than ordinary sessions.
 
 import base64
-import datetime as dt
 import json
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
-from freezegun import freeze_time
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from physiclaw.agent.trace import RawLog, store
-from physiclaw.common import paths
+from physiclaw.agent.trace import store
 
 
 @pytest.fixture
@@ -289,31 +286,3 @@ def test_images_bad_base64_returns_empty_reference(physiclaw_home):
 
     assert reference == ""
     assert list(images.dir.iterdir()) == []
-
-
-@pytest.mark.parametrize("offset, retained", [(-1, False), (0, True), (1, True)])
-def test_rawlog_bootstrap_preserves_legacy_logs_until_retention_boundary(
-    physiclaw_home, offset, retained
-):
-    legacy = paths.engine_log_dir() / "raw" / "old.jsonl"
-    legacy.parent.mkdir(parents=True)
-    legacy.write_text("record", encoding="utf-8")
-    now = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    boundary = now.timestamp() - store._RETENTION_DAYS * 86400
-    os.utime(legacy, (boundary + offset, boundary + offset))
-
-    with freeze_time(now):
-        raw = RawLog("session-abc123", store.Images("session-abc123"))
-        raw.close()
-
-    assert legacy.exists() is retained
-
-
-def test_rawlog_bootstrap_tolerates_unreadable_legacy_directory(physiclaw_home, mocker):
-    mocker.patch.object(Path, "rglob", side_effect=OSError("unreadable"))
-
-    raw = RawLog("session-abc123", store.Images("session-abc123"))
-    raw.write_request(0, [{"role": "user", "content": "hello"}])
-    raw.close()
-
-    assert json.loads(raw.path.read_text(encoding="utf-8"))["kind"] == "request"

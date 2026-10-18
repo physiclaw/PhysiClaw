@@ -629,10 +629,10 @@
     return apply;
   }
 
-  const FILE_WORDS = { 'notes.md': 'Notes — one line per turn, as the model or playbook wrote them', 'runtime.log': 'Runtime log — the process log for this session', 'mcp.log': 'Phone-server log — camera, exposure, gestures', 'summary.json': 'Summary — the numbers the session ended with' };
+  const FILE_WORDS = { 'notes.md': 'Notes — one line per turn, as the model or playbook wrote them', 'runtime.log': 'Runtime log — the process log for this session', 'server.log': 'Phone-server log — camera, exposure, gestures', 'summary.json': 'Summary — the numbers the session ended with' };
   function main() {
     const m = document.getElementById('main');
-    if (!S.groups.length) m.append(el('div', { class: 'empty', text: 'This session dir has no events.jsonl or wire.jsonl to show.' }));
+    if (!S.groups.length) m.append(el('div', { class: 'empty', text: 'This session dir has no events.jsonl or model.jsonl to show.' }));
     for (const g of S.groups) {
       const info = g.info;
       const box = el('section', { class: 'group', id: g.id });

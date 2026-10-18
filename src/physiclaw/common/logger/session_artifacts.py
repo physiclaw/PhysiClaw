@@ -1,9 +1,9 @@
 """Session artifact formats and I/O shared by the engine and its readers.
 
-The engine writes a daily narrative and a per-session directory with a
-schema-v1 ``summary.json``. This module owns the daily writer, summary
-constructor, timestamps, environment snapshots, atomic JSON writes, and
-image storage and resolution. Event accumulation lives in ``agent.trace``.
+The engine writes per-session directories with a schema-v1 ``summary.json``.
+This module owns the log directory guide, summary constructor, timestamps,
+environment snapshots, atomic JSON writes, and image storage and resolution.
+Event accumulation lives in ``agent.trace``.
 """
 
 import base64
@@ -15,17 +15,68 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Mapping
 
-from physiclaw.common.logger.logger import _open_log_file, daily_log_path
+from physiclaw.common.logger.logger import _open_log_file
 from physiclaw.common.text import read_text, write_text
 
 log = logging.getLogger(__name__)
 
 
+LOGS_README = """\
+# PhysiClaw logs
+
+Start with sessions/<session-id>/summary.json when debugging a task.
+Use `physiclaw logs` to list sessions, `physiclaw logs <id>` to read one,
+and `physiclaw logs <id> --save` to export its complete debug bundle.
+
+## Directory layout
+
+    log/
+      cli.log                    CLI diagnostics
+      server.log                 Hardware and MCP server diagnostics
+      runtime.log                Agent diagnostics, including idle/startup errors
+      studio.log                 Studio diagnostics
+      archive/<service>.log.1    Older service logs; .1 is the newest archive
+      session-stats.jsonl        One summary per completed agent session
+      sessions/<session-id>/
+        summary.json             Outcome, timings, model and token totals
+        events.jsonl             Full task events, tool arguments and results
+        model.jsonl              Raw model requests, responses and decision calls
+        runtime.log              Complete agent diagnostics for this session
+        server.log               Server diagnostics during this session
+        notes.md                 Agent notes and intent
+        images/                  Screenshots referenced by the JSONL files
+      macros/macro-run-<id>/
+        events.jsonl             Macro step records
+        images/                  Macro screenshots
+
+## Conventions
+
+Service logs keep stable names; every record includes its date and time.
+At retention.log_max_bytes (10 MiB by default), the current file moves to
+archive/<service>.log.1. Older copies become .2, .3, etc.; at most
+retention.log_backup_count (5 by default) are kept per service. Archives
+also expire after retention.log_days, checked at startup and midnight.
+Count and age are limits, not a guaranteed history window. Session files
+are independent of service-log rotation. Hidden .<service>.log.lock files
+coordinate concurrent writers; live process/session markers belong in run/.
+
+Each session id is YYYYMMDD-HHMMSS-<6 hex digits>, safe on every platform.
+Its suffix is a short handle accepted by `physiclaw logs` and Studio.
+Session logs are not size-rotated; whole session folders expire according
+to retention.trace_days. See sessions/README.md for the full artifact schema.
+session-stats.jsonl survives session-folder retention.
+
+JSON files are single documents; JSONL files contain one JSON record per line.
+Text files use UTF-8 and LF newlines. Console summaries never replace saved
+diagnostic messages. Session folders contain full prompts and phone images.
+"""
+
+
 def iso_now() -> str:
     """Local time as ISO with millisecond precision — the one timestamp
     format across the session artifacts (`started_at`/`ended_at`,
-    events.jsonl / wire.jsonl `t`). ms precision makes per-turn latency
-    analysis possible without correlating against the engine log."""
+    events.jsonl / model.jsonl `t`). ms precision makes per-turn latency
+    analysis possible without correlating against the process log."""
     return dt.datetime.now().isoformat(timespec="milliseconds")
 
 
@@ -84,17 +135,17 @@ def write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
 
 
 def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:
-    """Append one session's summary as a line to `<log_dir>/stats.jsonl` —
+    """Append one session's summary as a line to `<log_dir>/session-stats.jsonl` —
     the durable per-session aggregate that outlives session-dir retention
     (the engine appends to the sweep-free `log/` root).
     Fail-open: losing a stats line must never cost the session close."""
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         line = json.dumps(summary, default=repr)
-        with _open_log_file(log_dir / "stats.jsonl") as f:
+        with _open_log_file(log_dir / "session-stats.jsonl") as f:
             f.write(line + "\n")
     except (OSError, UnicodeError):
-        log.warning("stats.jsonl append failed", exc_info=True)
+        log.warning("session-stats.jsonl append failed", exc_info=True)
 
 
 def ensure_readme(dir: Path, content: str) -> None:
@@ -112,7 +163,7 @@ def ensure_readme(dir: Path, content: str) -> None:
             dir.mkdir(parents=True, exist_ok=True)
             write_text(path, content)
     except OSError:
-        log.debug("sessions README write failed", exc_info=True)
+        log.debug("log README write failed: %s", path, exc_info=True)
 
 
 # mime → filename suffix for images extracted from data-URLs. Everything
@@ -190,75 +241,6 @@ def save_image(img_dir: Path, turn: int, mime: str, b64: str) -> str | None:
         except FileExistsError:
             path = img_dir / f"{stem}_{n}.{ext}"
             n += 1
-
-
-# Keep session banners and footers the same width across daily log files.
-# Rollover markers identify a session's continuation in the next file.
-_RULE = "=" * 60
-
-
-class DailyLogWriter:
-    """Append-only daily narrative log: `<dir>/<prefix>-YYYY-MM-DD.log`.
-
-    Opens with the session banner, and owns the midnight rollover: a
-    `line()` that lands past midnight closes the day's file (with a →
-    marker), reopens today's (with a ← marker), and continues — markers
-    in both files let a reader follow one session across days. `close()`
-    is idempotent and OSError-safe: a full disk must not turn a finished
-    session into a crash.
-    """
-
-    def __init__(self, dir: Path, prefix: str):
-        dir.mkdir(parents=True, exist_ok=True)
-        self._dir = dir
-        self._prefix = prefix
-        self._date = dt.datetime.now().strftime("%Y-%m-%d")
-        self._f = _open_log_file(daily_log_path(dir, prefix, self._date))
-        self._f.write(f"\n{_RULE}\n")
-        self._f.flush()
-
-    def _write(self, text: str) -> None:
-        """The one guarded write: fail-open (like the sibling sinks) — a
-        full disk costs narrative lines, never the session. ValueError
-        covers late writes after the handle was closed."""
-        try:
-            self._f.write(text)
-            self._f.flush()
-        except (OSError, ValueError):
-            log.warning("daily log write failed", exc_info=True)
-
-    def line(self, msg: str) -> None:
-        """Append `[HH:MM:SS] msg`, rolling to the new day's file first
-        when midnight was crossed."""
-        now = dt.datetime.now()
-        today = now.strftime("%Y-%m-%d")
-        if today != self._date:
-            new_path = daily_log_path(self._dir, self._prefix, today)
-            try:
-                new_file = _open_log_file(new_path)
-            except OSError:
-                # Keep the old file usable and retry on the next line.
-                log.warning("daily log rollover failed", exc_info=True)
-            else:
-                self._write(f"[{now:%H:%M:%S}] ROLLOVER → {new_path.name}\n")
-                self.close()
-                self._f = new_file
-                self._date = today
-                self._write(
-                    f"\n[{now:%H:%M:%S}] ROLLOVER ← continued from previous day\n"
-                )
-        self._write(f"[{now:%H:%M:%S}] {msg}\n")
-
-    def footer(self) -> None:
-        """Close the session's block in the daily narrative."""
-        self._write(f"{_RULE}\n\n")
-
-    def close(self) -> None:
-        try:
-            if not self._f.closed:
-                self._f.close()
-        except OSError:
-            log.debug("daily log close failed", exc_info=True)
 
 
 # Session summaries include every error counter, using zero when absent.

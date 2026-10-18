@@ -13,7 +13,6 @@ from physiclaw.common.logger.logger import (
     setup_logging,
 )
 from physiclaw.common.logger.session_artifacts import (
-    DailyLogWriter,
     append_stats,
     build_summary,
     ensure_readme,
@@ -26,7 +25,6 @@ from physiclaw.common.logger.session_artifacts import (
 
 __all__ = [
     "SERVER_LOG_TAG",
-    "DailyLogWriter",
     "LineLogStream",
     "SessionLogSidecars",
     "append_stats",

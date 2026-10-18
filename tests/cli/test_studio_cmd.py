@@ -79,7 +79,7 @@ def test_regression_studio_review_serves_selected_directory(
 ):
     from physiclaw.common import paths
 
-    _recording(paths.engine_sessions_dir() / "20261015-000000-abc123", "WRONG_INTERNAL")
+    _recording(paths.sessions_dir() / "20261015-000000-abc123", "WRONG_INTERNAL")
     selected = _recording(tmp_path / "export" / dirname, "SELECTED_EXTERNAL")
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])
@@ -100,9 +100,7 @@ def test_studio_selected_recording_does_not_replace_internal_browsing(
 ):
     from physiclaw.common import paths
 
-    internal = _recording(
-        paths.engine_sessions_dir() / "20261015-000000-abc123", "INTERNAL"
-    )
+    internal = _recording(paths.sessions_dir() / "20261015-000000-abc123", "INTERNAL")
     selected = _recording(tmp_path / "export" / internal.name, "EXTERNAL")
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])
@@ -235,9 +233,7 @@ def test_studio_rejects_invalid_listening_ports(launched, port):
 def test_studio_review_without_selection_opens_newest_without_mcp(launched, mocker):
     from physiclaw.common import paths
 
-    recording = _recording(
-        paths.engine_sessions_dir() / "20260908-100000-abc123", "LATEST"
-    )
+    recording = _recording(paths.sessions_dir() / "20260908-100000-abc123", "LATEST")
     probe = mocker.patch("physiclaw.common.ready.check_ready_once")
 
     result = runner.invoke(app, ["--review", "--no-open"])
@@ -253,9 +249,7 @@ def test_studio_review_without_selection_opens_newest_without_mcp(launched, mock
 def test_studio_session_suffix_resolves_to_selected_recording(launched):
     from physiclaw.common import paths
 
-    _recording(
-        paths.engine_sessions_dir() / "20260908-100000-abc123", "SUFFIX_SELECTED"
-    )
+    _recording(paths.sessions_dir() / "20260908-100000-abc123", "SUFFIX_SELECTED")
 
     result = runner.invoke(app, ["--review", "--session", "abc123", "--no-open"])
     with TestClient(launched[0].config.app) as client:
@@ -277,7 +271,7 @@ def test_studio_recorded_driver_requires_screen_frames(launched, tmp_path):
     result = runner.invoke(app, ["--session", str(tmp_path), "--no-open"])
 
     assert result.exit_code == 2
-    assert "wire.jsonl" in result.output
+    assert "model.jsonl" in result.output
     assert launched == []
 
 

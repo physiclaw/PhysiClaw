@@ -126,7 +126,7 @@ def session_dir(tmp_path: Path) -> Path:
             },
         )
     )
-    (d / "wire.jsonl").write_text(
+    (d / "model.jsonl").write_text(
         _lines(
             {
                 "t": "2026-09-08T10:00:00.050",
@@ -275,14 +275,14 @@ def test_load_carries_the_narrative_files_and_the_inventory(session_dir: Path) -
     assert model["sid"] == session_dir.name
     assert model["summary"]["outcome"]["sentinel"] == "DONE"
     assert model["narrative"]["notes.md"] == "# notes\n"
-    assert model["narrative"]["mcp.log"] == ""
+    assert model["narrative"]["server.log"] == ""
     assert [f["name"] for f in model["files"]] == [
         "events.jsonl",
         "images/100001_000_t0.jpg",
+        "model.jsonl",
         "notes.md",
         "runtime.log",
         "summary.json",
-        "wire.jsonl",
     ]
     assert model["sessions"] is None
 
@@ -466,7 +466,7 @@ def test_load_preserves_arbitrary_record_fields(record):
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         (directory / "events.jsonl").write_text(_lines(record), encoding="utf-8")
-        (directory / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+        (directory / "model.jsonl").write_text(_lines(record), encoding="utf-8")
 
         model = viewer.load(directory)
 
@@ -474,7 +474,7 @@ def test_load_preserves_arbitrary_record_fields(record):
         assert [row["rec"] for row in rows] == [record, record]
 
 
-@pytest.mark.parametrize("filename", ["events.jsonl", "wire.jsonl"])
+@pytest.mark.parametrize("filename", ["events.jsonl", "model.jsonl"])
 def test_regression_torn_utf8_keeps_its_line_and_later_records(tmp_path, filename):
     (tmp_path / filename).write_bytes(b'{"turn":0}\n\xff\n{"turn":1}\n')
 
@@ -487,7 +487,7 @@ def test_regression_torn_utf8_keeps_its_line_and_later_records(tmp_path, filenam
 
 
 @pytest.mark.parametrize(
-    "filename", ["notes.md", "runtime.log", "mcp.log", "summary.json"]
+    "filename", ["notes.md", "runtime.log", "server.log", "summary.json"]
 )
 def test_regression_invalid_narrative_utf8_is_still_readable(tmp_path, filename):
     (tmp_path / filename).write_bytes(b"prefix \xff suffix")
@@ -501,10 +501,10 @@ def test_regression_invalid_narrative_utf8_is_still_readable(tmp_path, filename)
     "filename",
     [
         "events.jsonl",
-        "wire.jsonl",
+        "model.jsonl",
         "notes.md",
         "runtime.log",
-        "mcp.log",
+        "server.log",
         "summary.json",
     ],
 )
@@ -608,7 +608,7 @@ def test_regression_nonfinite_summary_remains_in_narrative(tmp_path):
 
 def test_regression_unreadable_stream_does_not_hide_other_stream(tmp_path, mocker):
     record = {"kind": "request", "messages": []}
-    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+    (tmp_path / "model.jsonl").write_text(_lines(record), encoding="utf-8")
     open_path = Path.open
 
     def open_unless_events(path, *args, **kwargs):
@@ -676,7 +676,7 @@ def test_load_micro_record_recovers_legacy_reason_and_frames(tmp_path):
         ],
         "raw": {"choices": [{"message": {"content": '{"reason":"legacy reason"}'}}]},
     }
-    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+    (tmp_path / "model.jsonl").write_text(_lines(record), encoding="utf-8")
 
     model = viewer.load(tmp_path)
 
@@ -729,7 +729,7 @@ def test_load_reply_gist_and_explicit_reason_remain_available(tmp_path, kind):
         "raw": {"choices": [{"message": {"content": '{"reason":"legacy"}'}}]},
         "reason": "recorded reason",
     }
-    (tmp_path / "wire.jsonl").write_text(_lines(record), encoding="utf-8")
+    (tmp_path / "model.jsonl").write_text(_lines(record), encoding="utf-8")
 
     model = viewer.load(tmp_path)
 
@@ -750,7 +750,7 @@ def test_load_deltas_stop_at_first_changed_message(tmp_path):
         "kind": "request",
         "messages": [{"role": "user", "content": "changed"}, first["messages"][1]],
     }
-    (tmp_path / "wire.jsonl").write_text(_lines(first, second), encoding="utf-8")
+    (tmp_path / "model.jsonl").write_text(_lines(first, second), encoding="utf-8")
 
     model = viewer.load(tmp_path)
 
@@ -766,7 +766,7 @@ def test_load_deltas_skip_malformed_request_and_continue(tmp_path):
         "kind": "request",
         "messages": [message, {"role": "assistant", "content": "second"}],
     }
-    (tmp_path / "wire.jsonl").write_text(
+    (tmp_path / "model.jsonl").write_text(
         _lines(first, malformed, last), encoding="utf-8"
     )
 
@@ -781,7 +781,7 @@ def test_load_deltas_ignore_message_fields_in_event_records(tmp_path):
     (tmp_path / "events.jsonl").write_text(
         _lines({"event": "request", "messages": [message]}), encoding="utf-8"
     )
-    (tmp_path / "wire.jsonl").write_text(
+    (tmp_path / "model.jsonl").write_text(
         _lines({"kind": "request", "messages": [message]}), encoding="utf-8"
     )
 
@@ -814,7 +814,7 @@ def test_load_missing_timestamps_keep_prelude_and_file_order(tmp_path):
 
 @pytest.mark.parametrize("line", ["unparsed lineX", "null", "[1]", '"a string"'])
 def test_load_keeps_non_object_lines_whole(tmp_path, line):
-    (tmp_path / "wire.jsonl").write_text(line + "\n", encoding="utf-8")
+    (tmp_path / "model.jsonl").write_text(line + "\n", encoding="utf-8")
 
     model = viewer.load(tmp_path)
 

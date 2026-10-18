@@ -300,6 +300,6 @@ def test_launch_verbose_flag_sets_debug_level(
     setup_spy.assert_called_once_with(
         "runtime",
         _logging.DEBUG,
-        file_dir=paths.runtime_log_dir(),
+        file_dir=paths.LOG_DIR,
         file_level=_logging.DEBUG,
     )

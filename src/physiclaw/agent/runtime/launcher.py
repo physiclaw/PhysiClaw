@@ -88,12 +88,12 @@ def launch() -> None:
     else:
         os.environ.setdefault(SERVER_ENV_VAR, server_url())
 
-    # Mirror to a daily file so wake decisions / poll errors survive for
+    # Mirror to runtime.log so wake decisions / poll errors survive for
     # post-mortems — the runtime's stderr is gone once the terminal is.
     setup_logging(
         "runtime",
         logging.DEBUG if args.verbose else logging.INFO,
-        file_dir=paths.runtime_log_dir(),
+        file_dir=paths.LOG_DIR,
         file_level=logging.DEBUG,
     )
 

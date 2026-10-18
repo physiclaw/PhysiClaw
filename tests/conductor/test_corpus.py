@@ -21,9 +21,9 @@ LISTING_B = f'{LISTING_HEADER}\n0 [text] "结算" [0.500,0.900,0.600,0.940] 0.90
 
 
 def _write_wire(sid: str, lines: list[dict]) -> None:
-    d = paths.engine_sessions_dir() / sid
+    d = paths.sessions_dir() / sid
     d.mkdir(parents=True, exist_ok=True)
-    (d / "wire.jsonl").write_text(
+    (d / "model.jsonl").write_text(
         "\n".join(json.dumps(rec, ensure_ascii=False) for rec in lines) + "\n",
         encoding="utf-8",
     )
@@ -181,7 +181,7 @@ def test_session_listings_invalid_event_screens_fall_back_to_wire():
         {"event": "tool_result", "text": None},
         {"event": "note", "name": "tool_result", "text": LISTING_B},
     ]
-    (paths.engine_sessions_dir() / sid / "events.jsonl").write_text(
+    (paths.sessions_dir() / sid / "events.jsonl").write_text(
         "\n".join(json.dumps(e) for e in events), encoding="utf-8"
     )
 
@@ -194,7 +194,7 @@ def test_session_listings_prefers_the_tool_results_own_record() -> None:
     # The trace keeps every screen whole on its tool_result — a walk's
     # turns included, which the wire log never carries.
     sid = "20260101-000000-eeeeee"
-    d = paths.engine_sessions_dir() / sid
+    d = paths.sessions_dir() / sid
     d.mkdir(parents=True)
     events = [
         {"event": "env"},
@@ -222,7 +222,7 @@ def test_session_listings_prefers_the_tool_results_own_record() -> None:
 
 
 def _write_wire_lines(d, lines: list[dict]) -> None:
-    (d / "wire.jsonl").write_text(
+    (d / "model.jsonl").write_text(
         "\n".join(json.dumps(rec, ensure_ascii=False) for rec in lines) + "\n",
         encoding="utf-8",
     )

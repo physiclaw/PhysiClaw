@@ -58,7 +58,7 @@ def _summary(sid: str, sentinel: str = "DONE", recap: str = "ok") -> dict:
 def sessions(physiclaw_home) -> Path:
     from physiclaw.common import paths
 
-    d = paths.engine_sessions_dir()
+    d = paths.sessions_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -153,7 +153,7 @@ def test_logs_detail_prints_summary_and_narrative(sessions: Path) -> None:
     assert '"sid": "20260710_090000"' in result.output
     assert "OUTCOME: DONE — finished" in result.output
     assert "[09:00:05]" in result.output
-    assert "wire.jsonl" in result.output
+    assert "model.jsonl" in result.output
 
 
 def test_logs_detail_json_emits_summary(sessions: Path) -> None:
@@ -206,7 +206,7 @@ def test_logs_unmatched_suffix_reports_missing(sessions: Path) -> None:
 
 def _populate(sd: Path) -> None:
     (sd / "events.jsonl").write_text('{"event": "env"}\n')
-    (sd / "wire.jsonl").write_text('{"kind": "session_start"}\n')
+    (sd / "model.jsonl").write_text('{"kind": "session_start"}\n')
     img = sd / "images"
     img.mkdir(exist_ok=True)
     (img / "090000_000_t0.jpg").write_bytes(b"jpeg")
@@ -234,7 +234,7 @@ def test_save_packs_session_zip_with_privacy_notice(
     names = set(zipfile.ZipFile(out).namelist())
     assert "20260710_090000_ab12cd/summary.json" in names
     assert "20260710_090000_ab12cd/events.jsonl" in names
-    assert "20260710_090000_ab12cd/wire.jsonl" in names
+    assert "20260710_090000_ab12cd/model.jsonl" in names
     assert "20260710_090000_ab12cd/images/090000_000_t0.jpg" in names
     # The zip reviews itself: the viewer page rides along, beside its frames.
     assert "20260710_090000_ab12cd/session.html" in names
@@ -761,7 +761,7 @@ def test_logs_detail_links_actual_artifact_paths(sessions):
     result = runner.invoke(app, ["logs", "abc123"])
 
     assert result.exit_code == 0
-    assert str(directory / "wire.jsonl") in result.output
+    assert str(directory / "model.jsonl") in result.output
     assert str(directory / "images") in result.output
 
 

@@ -149,16 +149,17 @@ def server(
 
     # Logging first: everything from here on — including the version line and
     # the background auto-sync's outcome — speaks in one voice, the
-    # timestamped `[physiclaw]` stream. The daily file is DEBUG regardless of
+    # timestamped `[physiclaw]` stream. The service file is DEBUG regardless of
     # console verbosity (the server's own persistent log).
     setup_logging(
         SERVER_LOG_TAG,
         logging.DEBUG if verbose else logging.INFO,
-        file_dir=paths.server_log_dir(),
+        file_dir=paths.LOG_DIR,
         file_level=logging.DEBUG,
+        file_prefix="server",
     )
     # Tee this process's camera/exposure/tune detail into the agent's active
-    # session dir as mcp.log (the runtime publishes which session is active).
+    # session dir as server.log (the runtime publishes which session is active).
     attach_server_mcp_tee()
     logging.getLogger("mcp").setLevel(logging.WARNING)
     # Phones opening the bridge URL probe https:// first (Safari's HTTPS

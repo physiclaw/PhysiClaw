@@ -200,21 +200,26 @@ def test_detach_session_log_closes_file_and_stops_capture(tmp_path, mocker) -> N
 
 
 def test_setup_logging_file_level_debug_keeps_own_debug(tmp_path, mocker) -> None:
-    """A DEBUG daily file (file_level) captures physiclaw.* DEBUG while the
+    """A DEBUG service file (file_level) captures physiclaw.* DEBUG while the
     console stays at `level` — how the server persists tune detail."""
     from freezegun import freeze_time
 
     mocker.patch.object(logger_mod, "_colorize", return_value=False)
     with freeze_time("2026-04-28T10:00:00"):
         setup_logging(
-            "physiclaw", level=logging.INFO, file_dir=tmp_path, file_level=logging.DEBUG
+            "physiclaw",
+            level=logging.INFO,
+            file_dir=tmp_path,
+            file_level=logging.DEBUG,
+            file_prefix="server",
         )
         logging.getLogger("physiclaw.srv").debug("tune-debug-line")
         logging.getLogger("noisy.dep").debug("dep-debug-line")
         for h in logging.getLogger().handlers:
             h.flush()
 
-    text = (tmp_path / "physiclaw-2026-04-28.log").read_text()
+    text = (tmp_path / "server.log").read_text()
+    assert "[physiclaw]" in text  # File names do not change the console/service tag.
     assert "tune-debug-line" in text  # our DEBUG persisted
     assert "dep-debug-line" not in text  # third-party DEBUG filtered out
 
@@ -253,17 +258,6 @@ def test_attach_session_log_failopen_on_bad_path(tmp_path) -> None:
     detach_session_log(None)  # no-op, no raise
 
 
-# ---------- daily_log_path ----------
-
-
-def test_daily_log_path_naming(tmp_path) -> None:
-    from physiclaw.common.logger.logger import daily_log_path
-
-    assert daily_log_path(tmp_path, "physiclaw", "2026-04-28") == (
-        tmp_path / "physiclaw-2026-04-28.log"
-    )
-
-
 # ---------- active-session marker + server mcp tee ----------
 
 
@@ -296,7 +290,7 @@ def test_server_mcp_tee_writes_to_active_session(tmp_path) -> None:
     from physiclaw.common.logger.logger import attach_server_mcp_tee
 
     sid = "20260101-000000-abcdef"
-    session_dir = paths.engine_sessions_dir() / sid  # tee resolves the id → dir
+    session_dir = paths.sessions_dir() / sid  # tee resolves the id → dir
     session_dir.mkdir(parents=True)
     _marker_for(sid)
 
@@ -308,7 +302,7 @@ def test_server_mcp_tee_writes_to_active_session(tmp_path) -> None:
         logging.getLogger().removeHandler(tee)
         tee.close()
 
-    assert "exposure tune: in band" in (session_dir / "mcp.log").read_text()
+    assert "exposure tune: in band" in (session_dir / "server.log").read_text()
 
 
 def test_server_mcp_tee_drops_between_sessions(tmp_path) -> None:
@@ -329,8 +323,8 @@ def test_server_mcp_tee_repoints_on_marker_change(tmp_path) -> None:
     from physiclaw.common.logger.logger import attach_server_mcp_tee
 
     sid_a, sid_b = "20260101-000000-aaaaaa", "20260101-000001-bbbbbb"
-    a = paths.engine_sessions_dir() / sid_a
-    b = paths.engine_sessions_dir() / sid_b
+    a = paths.sessions_dir() / sid_a
+    b = paths.sessions_dir() / sid_b
     a.mkdir(parents=True)
     b.mkdir(parents=True)
     marker = _marker_for(sid_a)
@@ -348,15 +342,15 @@ def test_server_mcp_tee_repoints_on_marker_change(tmp_path) -> None:
         logging.getLogger().removeHandler(tee)
         tee.close()
 
-    assert "line-A" in (a / "mcp.log").read_text()
-    assert "line-B" in (b / "mcp.log").read_text()
-    assert "line-B" not in (a / "mcp.log").read_text()  # repointed, no leak
+    assert "line-A" in (a / "server.log").read_text()
+    assert "line-B" in (b / "server.log").read_text()
+    assert "line-B" not in (a / "server.log").read_text()  # repointed, no leak
 
 
 def test_regression_server_tee_retries_failed_open(mocker) -> None:
     from physiclaw.common import paths
 
-    session_dir = paths.engine_sessions_dir() / "session"
+    session_dir = paths.sessions_dir() / "session"
     session_dir.mkdir(parents=True)
     _marker_for("session")
     tee = logger_mod.attach_server_mcp_tee()
@@ -371,13 +365,13 @@ def test_regression_server_tee_retries_failed_open(mocker) -> None:
     finally:
         logger_mod.detach_session_log(tee)
 
-    assert "after recovery" in (session_dir / "mcp.log").read_text()
+    assert "after recovery" in (session_dir / "server.log").read_text()
 
 
 def test_regression_server_tee_retries_when_session_directory_appears() -> None:
     from physiclaw.common import paths
 
-    session_dir = paths.engine_sessions_dir() / "session"
+    session_dir = paths.sessions_dir() / "session"
     _marker_for("session")
     tee = logger_mod.attach_server_mcp_tee()
     tee.handle(_record("directory missing"))
@@ -388,14 +382,14 @@ def test_regression_server_tee_retries_when_session_directory_appears() -> None:
     finally:
         logger_mod.detach_session_log(tee)
 
-    assert "directory available" in (session_dir / "mcp.log").read_text()
+    assert "directory available" in (session_dir / "server.log").read_text()
 
 
 @pytest.mark.parametrize("sid", ["..", "../escape", "."])
 def test_regression_server_tee_ignores_marker_path_traversal(sid) -> None:
     from physiclaw.common import paths
 
-    base = paths.engine_sessions_dir()
+    base = paths.sessions_dir()
     outside = base / sid
     outside.mkdir(parents=True, exist_ok=True)
     _marker_for(sid)
@@ -406,7 +400,7 @@ def test_regression_server_tee_ignores_marker_path_traversal(sid) -> None:
     finally:
         logger_mod.detach_session_log(tee)
 
-    assert not (outside / "mcp.log").exists()
+    assert not (outside / "server.log").exists()
 
 
 def test_regression_sidecars_detach_after_corrupt_marker(tmp_path) -> None:
@@ -429,7 +423,7 @@ def test_regression_server_tee_invalid_path_ids_never_probe_directories(
     from physiclaw.common import paths
 
     _marker_for(sid)
-    root = mocker.patch.object(paths, "engine_sessions_dir")
+    root = mocker.patch.object(paths, "sessions_dir")
     tee = logger_mod.attach_server_mcp_tee()
 
     try:
@@ -712,15 +706,15 @@ async def test_regression_logged_bad_arguments_do_not_mask_tool_error(caplog) ->
     assert caught.value is failure
 
 
-# ---------- _DailyFileHandler ----------
+# ---------- _ServiceFileHandler ----------
 
 
 def _file_logger(tmp_path, name: str):
     import logging
 
-    from physiclaw.common.logger.logger import _DailyFileHandler
+    from physiclaw.common.logger.logger import _ServiceFileHandler
 
-    handler = _DailyFileHandler(tmp_path, "runtime", "runtime")
+    handler = _ServiceFileHandler(tmp_path, "runtime", "runtime")
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     logger.propagate = False
@@ -728,68 +722,75 @@ def _file_logger(tmp_path, name: str):
     return logger, handler
 
 
-def test_daily_file_handler_writes_uncolored_tagged_lines(tmp_path) -> None:
+def test_service_file_handler_writes_uncolored_tagged_lines(tmp_path) -> None:
     from freezegun import freeze_time
 
     with freeze_time("2026-04-28T10:00:00"):
-        logger, handler = _file_logger(tmp_path, "t.daily.plain")
+        logger, handler = _file_logger(tmp_path, "t.service.plain")
         logger.info("hello \033[31mred\033[0m world")
         handler.close()
 
-    text = (tmp_path / "runtime-2026-04-28.log").read_text()
-    assert "[runtime] t.daily.plain:" in text
+    text = (tmp_path / "runtime.log").read_text()
+    assert "[runtime] t.service.plain:" in text
     assert "| hello red world" in text
     assert "\033[" not in text.split("hello")[0]  # prefix uncolored
 
 
-def test_daily_file_handler_reopens_after_close(tmp_path) -> None:
+def test_service_file_handler_reopens_after_close(tmp_path) -> None:
     from freezegun import freeze_time
 
     # logging.shutdown() closes the file at interpreter exit while the app
     # still logs (arm teardown) — emit must reopen, not raise per record.
     with freeze_time("2026-04-28T10:00:00"):
-        logger, handler = _file_logger(tmp_path, "t.daily.reopen")
+        logger, handler = _file_logger(tmp_path, "t.service.reopen")
         logger.info("before shutdown")
         handler.close()  # simulate logging.shutdown() closing the handle
         logger.info(">>> M5")  # a teardown G-code line after close
         handler.close()
 
-    text = (tmp_path / "runtime-2026-04-28.log").read_text()
+    text = (tmp_path / "runtime.log").read_text()
     assert "before shutdown" in text
     assert ">>> M5" in text  # captured after reopen, no "closed file" error
 
 
-def test_daily_file_handler_rolls_to_new_day(tmp_path) -> None:
+def test_service_file_handler_keeps_same_file_across_midnight(tmp_path) -> None:
     from freezegun import freeze_time
 
     with freeze_time("2026-04-28T23:59:00") as ft:
-        logger, handler = _file_logger(tmp_path, "t.daily.roll")
+        logger, handler = _file_logger(tmp_path, "t.service.roll")
         logger.info("before midnight")
         ft.move_to("2026-04-29T00:01:00")
         logger.info("after midnight")
         handler.close()
 
-    assert "before midnight" in (tmp_path / "runtime-2026-04-28.log").read_text()
-    assert "after midnight" in (tmp_path / "runtime-2026-04-29.log").read_text()
+    text = (tmp_path / "runtime.log").read_text()
+    assert "before midnight" in text and "after midnight" in text
+    assert list(tmp_path.glob("*.log")) == [tmp_path / "runtime.log"]
 
 
-def test_daily_file_handler_purges_old_dailies_at_construction(tmp_path) -> None:
+def test_service_file_handler_purges_old_archives_at_construction(tmp_path) -> None:
     import datetime as dt
     import os
 
     from physiclaw.common.config import CONFIG
 
-    old = tmp_path / "runtime-2026-01-01.log"
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    old = archive / "runtime.log.1"
     old.write_text("x")
+    active = tmp_path / "runtime.log"
+    active.write_text("startup evidence")
     ago = (
         dt.datetime.now() - dt.timedelta(days=CONFIG.retention.log_days + 1)
     ).timestamp()
     os.utime(old, (ago, ago))
+    os.utime(active, (ago, ago))
 
-    _, handler = _file_logger(tmp_path, "t.daily.purge")
+    _, handler = _file_logger(tmp_path, "t.service.purge")
     handler.close()
 
     assert not old.exists()
+    assert active.read_text() == "startup evidence"
 
 
 def test_setup_logging_with_unwritable_dir_falls_back_to_stderr(tmp_path) -> None:

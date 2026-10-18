@@ -71,7 +71,7 @@ def test_reconfiguration_replaces_own_handlers_and_preserves_host_capture(
         or handler not in isolated_logs.handlers
         for handler in prior
     )
-    assert len(list(tmp_path.glob("studio-*.log"))) == 1
+    assert (tmp_path / "studio.log").is_file()
 
 
 def test_expected_error_is_saved_once_and_follows_stderr_redirection(
@@ -82,7 +82,7 @@ def test_expected_error_is_saved_once_and_follows_stderr_redirection(
     monkeypatch.setattr(sys, "stderr", redirected)
     log_style.report_error("Cannot read configuration", exit_code=2)
     assert redirected.getvalue().count("Cannot read configuration") == 1
-    saved = next(tmp_path.glob("cli-*.log")).read_text()
+    saved = (tmp_path / "cli.log").read_text()
     assert saved.count("Cannot read configuration") == 1
     assert "event=process.error" in saved and "exit_code=2" in saved
 
@@ -99,7 +99,7 @@ def test_exception_details_follow_one_console_policy(
     except OSError:
         logging.getLogger("physiclaw.studio").exception("Cannot start Studio")
     console = capsys.readouterr().err
-    saved = next(tmp_path.glob("studio-*.log")).read_text()
+    saved = (tmp_path / "studio.log").read_text()
     assert "OSError: port unavailable" in console
     assert ("Traceback (most recent call last)" in console) is verbose
     assert "Traceback (most recent call last)" in saved
@@ -157,7 +157,7 @@ async def test_failure_bursts_keep_every_traceback_on_disk_without_console_repea
         )
 
     console = capsys.readouterr().err
-    saved = next(tmp_path.glob("runtime-*.log")).read_text()
+    saved = (tmp_path / "runtime.log").read_text()
     assert console.count(failure_notice) == 2  # One notice for each outage.
     assert console.count(recovery_notice) == 1
     assert "Traceback (most recent call last)" not in console
@@ -226,7 +226,7 @@ async def test_poll_failures_keep_changed_causes_and_repeated_tracebacks(
         failure_event, recovery_event = "phone.watch_failed", "phone.watch_recovered"
 
     console = capsys.readouterr().err
-    saved = next(tmp_path.glob("runtime-*.log")).read_text()
+    saved = (tmp_path / "runtime.log").read_text()
     assert console.count("poll failed:") == 3  # New cause, recovery, new outage.
     assert console.count("connection restored") == 1
     assert "invalid status" in console
@@ -288,7 +288,7 @@ async def test_model_failures_save_the_full_exception_chain(
         assert (await caller.run(request)).outcome is None
 
     console = capsys.readouterr().err
-    saved = next(tmp_path.glob("runtime-*.log")).read_text()
+    saved = (tmp_path / "runtime.log").read_text()
     assert "gateway unavailable" in console
     assert "Traceback (most recent call last)" not in console
     assert "OSError: transport detail 1" in saved
@@ -322,7 +322,7 @@ def test_real_cli_keeps_payload_stdout_and_records_errors(
     assert result.exit_code != 0 and result.stdout == ""
     (record,) = [json.loads(line) for line in result.stderr.splitlines()]
     assert record["event"] == "process.error" and record["service"] == "cli"
-    saved = next((physiclaw_home / "log" / "cli").glob("*.log")).read_text()
+    saved = (physiclaw_home / "log" / "cli.log").read_text()
     assert saved.count(record["message"]) == 1
 
 

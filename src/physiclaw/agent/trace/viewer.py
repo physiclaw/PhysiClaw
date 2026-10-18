@@ -1,6 +1,6 @@
 """The session viewer — one HTML page that shows a session whole.
 
-The two record streams (events.jsonl, wire.jsonl) merged by time and
+The two record streams (events.jsonl, model.jsonl) merged by time and
 grouped by turn, every record kept — the exact message array each
 provider request carried (frames inline from `images/`) with the turn's
 new messages marked, the raw reply, each tool result's full text and
@@ -43,7 +43,7 @@ from physiclaw.contract.wire import image_ref, leaf_blocks, reply_gist
 VIEWER_FILE = "session.html"
 _TEMPLATE = Path(__file__).with_name("viewer.html")
 _TURN_LINE = re.compile(r"\bturn (\d+)\b")
-_NARRATIVE = ("notes.md", "runtime.log", "mcp.log", "summary.json")
+_NARRATIVE = ("notes.md", "runtime.log", "server.log", "summary.json")
 
 
 def load(
@@ -53,7 +53,7 @@ def load(
     and grouped by turn, each record stamped with its words (`_stamp`);
     `sessions` is the served page's picker (None for the static copy)."""
     records = _records(session_dir / "events.jsonl", "events") + _records(
-        session_dir / "wire.jsonl", "wire"
+        session_dir / "model.jsonl", "wire"
     )
     # Same clock, millisecond stamps; ties keep events before wire and
     # both in file order, so a turn's request precedes its response.

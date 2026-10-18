@@ -23,13 +23,18 @@ Layout::
     ├── screen-layout/{layout.json, layout.md}  (learned on first run by the `screen-layout` skill)
     ├── snapshots/, screenshots/, tool_calls/, raw_camera/  (debug dumps; `physiclaw clear`)
     ├── debug/{thread.json, wake.json}   (e2e harness: virtual thread + one-shot wake)
-    ├── run/server.json                  (live server pid+host+port; cleared on exit)
+    ├── run/{server.json, active-session} (live process/session state; cleared on exit)
     └── log/
-        ├── macros/macro-run-<hex6>/{events.jsonl, images/}  (per-step macro-run records)
-        ├── engine/
-        │   ├── engine-YYYY-MM-DD.log    (human narrative, all sessions of a day)
-        │   └── sessions/{README.md, <sid>/{events.jsonl, wire.jsonl, summary.json, images/}}
-        └── runtime/runtime-YYYY-MM-DD.log
+        ├── README.md                    (directory guide and naming conventions)
+        ├── cli.log                      (command diagnostics)
+        ├── server.log                   (hardware/MCP diagnostics)
+        ├── runtime.log                  (agent diagnostics)
+        ├── studio.log                   (Studio diagnostics)
+        ├── archive/<service>.log.<1-5>   (bounded older service logs)
+        ├── session-stats.jsonl           (one summary per completed session)
+        ├── sessions/{README.md, <sid>/{summary.json, events.jsonl, model.jsonl,
+        │                             runtime.log, server.log, notes.md, images/}}
+        └── macros/macro-run-<hex6>/{events.jsonl, images/}  (per-step macro-run records)
 
 File-format rule — the mix above is deliberate, one format per audience
 (the Python-community split: TOML for what humans edit, JSON for what
@@ -571,30 +576,15 @@ def macros_log_dir() -> Path:
     return LOG_DIR / "macros"
 
 
-def engine_log_dir() -> Path:
-    return LOG_DIR / "engine"
-
-
-def engine_sessions_dir() -> Path:
-    """Per-session artifact dirs: sessions/<sid>/{events.jsonl, wire.jsonl,
+def sessions_dir() -> Path:
+    """Per-session artifact dirs: sessions/<sid>/{events.jsonl, model.jsonl,
     summary.json, images/}."""
-    return engine_log_dir() / "sessions"
-
-
-def runtime_log_dir() -> Path:
-    return LOG_DIR / "runtime"
-
-
-def server_log_dir() -> Path:
-    """Daily log files for the MCP-server process (`physiclaw-YYYY-MM-DD.log`)
-    — the server's own persistent log, spanning all sessions and the idle
-    time between them."""
-    return LOG_DIR / "server"
+    return LOG_DIR / "sessions"
 
 
 def active_session_marker() -> Path:
     """Cross-process pointer to the agent's current session id. The runtime
     writes the session id here at session start and clears it at close; the
     MCP-server process (a separate process — no shared memory) reads it,
-    resolves the id to its session dir, and tees `mcp.log` there."""
-    return LOG_DIR / "active_session"
+    resolves the id to its session dir, and tees `server.log` there."""
+    return HOME / "run" / "active-session"

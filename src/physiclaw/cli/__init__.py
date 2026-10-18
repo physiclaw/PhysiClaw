@@ -117,9 +117,7 @@ def _root(
     from physiclaw.common import paths
     from physiclaw.common.logger import setup_logging
 
-    setup_logging(
-        "cli", file_dir=paths.LOG_DIR / "cli", file_level=logging.DEBUG, force=False
-    )
+    setup_logging("cli", file_dir=paths.LOG_DIR, file_level=logging.DEBUG, force=False)
     # Bare `physiclaw` (no subcommand) defaults to `physiclaw server`.
     if ctx.invoked_subcommand is None:
         server()

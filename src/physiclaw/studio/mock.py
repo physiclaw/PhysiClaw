@@ -56,9 +56,11 @@ def session_frames(session_dir: Path) -> list[Frame]:
     frames = _event_frames(session_dir)
     if frames:
         return frames
-    wire = session_dir / "wire.jsonl"
+    wire = session_dir / "model.jsonl"
     if not wire.exists():
-        raise FileNotFoundError(f"no events.jsonl views or wire.jsonl in {session_dir}")
+        raise FileNotFoundError(
+            f"no events.jsonl views or model.jsonl in {session_dir}"
+        )
     for role, blocks in iter_request_messages(wire):
         if role == "system":  # doctrine quotes the header; never a view
             continue

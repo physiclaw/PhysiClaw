@@ -1478,7 +1478,7 @@ def test_server_return_cancels_pending_ready_watcher(mocker):
 
 
 def test_server_defaults_spawn_runtime_with_info_logging(mocker):
-    from physiclaw.common import logger
+    from physiclaw.common import logger, paths
 
     _patch_server_runtime_deps(mocker)
 
@@ -1486,6 +1486,8 @@ def test_server_defaults_spawn_runtime_with_info_logging(mocker):
 
     server_mod._spawn_runtime.assert_called_once()
     assert logger.setup_logging.call_args.args[1] == logging.INFO
+    assert logger.setup_logging.call_args.kwargs["file_dir"] == paths.LOG_DIR
+    assert logger.setup_logging.call_args.kwargs["file_prefix"] == "server"
     assert logging.getLogger("mcp").level == logging.WARNING
 
 

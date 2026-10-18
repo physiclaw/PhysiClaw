@@ -2,7 +2,7 @@
 
 Every command that reads a recorded session (`logs`, `playbooks
 replay`, `playbooks pages match/extract`, `studio --session`) takes the
-id or any unique suffix of it, resolved against the engine's session
+id or any unique suffix of it, resolved against the shared session
 directory the same way.
 """
 
@@ -16,6 +16,6 @@ def resolve_sid(suffix: str) -> str:
     from physiclaw.common import paths
 
     try:
-        return resolve_session(paths.engine_sessions_dir(), suffix).name
+        return resolve_session(paths.sessions_dir(), suffix).name
     except LookupError as e:
         exit_error(str(e))

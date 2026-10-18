@@ -1,4 +1,4 @@
-"""The wire.jsonl text codec — scrubber and reader, one home.
+"""The model.jsonl text codec — scrubber and reader, one home.
 
 `RawLog` (agent.trace.rawlog) owns the sink mechanics: session dirs,
 image files, fail-open writes. The *format* knowledge lives here: which
@@ -89,7 +89,7 @@ def scrub_block(b: dict, persist: PersistImage) -> dict:
 
 
 def iter_request_messages(path) -> Iterator[tuple[str, list[dict]]]:
-    """Every ``(message_role, leaf blocks)`` in a wire.jsonl's request
+    """Every ``(message_role, leaf blocks)`` in a model.jsonl's request
     records — the reader beside the writer above. A string content is
     one text block; a ``tool_result``'s nested content is flattened so
     a consumer sees the image and listing blocks it carries in order.
@@ -115,7 +115,7 @@ def iter_request_messages(path) -> Iterator[tuple[str, list[dict]]]:
 
 
 def iter_request_texts(path) -> Iterator[tuple[str, str]]:
-    """Every ``(message_role, text)`` in a wire.jsonl's request records."""
+    """Every ``(message_role, text)`` in a model.jsonl's request records."""
     for role, blocks in iter_request_messages(path):
         for b in blocks:
             if b.get("type") == "text":

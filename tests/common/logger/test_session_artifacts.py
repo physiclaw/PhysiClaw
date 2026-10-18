@@ -1,6 +1,4 @@
-"""Shared session-artifact surface: DailyLogWriter banner/rollover/footer,
-atomic JSON, image naming, and — the reason the module exists —
-the engine summary.json schema."""
+"""Shared session artifacts: atomic JSON, image naming and summary schema."""
 
 from __future__ import annotations
 
@@ -16,7 +14,6 @@ from hypothesis import strategies as st
 
 from physiclaw.common.logger import session_artifacts as artifacts
 from physiclaw.common.logger.session_artifacts import (
-    DailyLogWriter,
     append_stats,
     build_summary,
     image_filename,
@@ -29,56 +26,13 @@ from physiclaw.common.logger.session_artifacts import (
 def test_append_stats_creates_then_appends_one_line_per_session(
     tmp_path: Path,
 ) -> None:
-    log_dir = tmp_path / "log" / "engine"  # not pre-created — helper mkdirs
+    log_dir = tmp_path / "log"  # not pre-created — helper mkdirs
 
     append_stats(log_dir, {"sid": "a", "turns": 3})
     append_stats(log_dir, {"sid": "b", "turns": 5})
 
-    lines = (log_dir / "stats.jsonl").read_text(encoding="utf-8").splitlines()
+    lines = (log_dir / "session-stats.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(ln)["sid"] for ln in lines] == ["a", "b"]
-
-
-# ---------- DailyLogWriter ----------
-
-
-def test_daily_log_writer_banner_then_timestamped_lines(tmp_path: Path) -> None:
-    with freeze_time("2026-04-28T10:15:30"):
-        w = DailyLogWriter(tmp_path / "log", "engine")
-        w.line("hello")
-        w.close()
-
-    text = (tmp_path / "log" / "engine-2026-04-28.log").read_text()
-    assert text == f"\n{'=' * 60}\n[10:15:30] hello\n"
-
-
-def test_daily_log_writer_footer_closes_the_session_block(tmp_path: Path) -> None:
-    w = DailyLogWriter(tmp_path, "engine")
-    w.footer()
-    w.close()
-
-    text = next(tmp_path.glob("engine-*.log")).read_text()
-    assert text.endswith(f"{'=' * 60}\n\n")
-
-
-def test_daily_log_writer_rolls_over_at_midnight(tmp_path: Path) -> None:
-    with freeze_time("2026-04-28T23:59:59") as ft:
-        w = DailyLogWriter(tmp_path, "engine")
-        w.line("before")
-        ft.move_to("2026-04-29T00:00:01")
-        w.line("after")
-        w.close()
-
-    old = (tmp_path / "engine-2026-04-28.log").read_text()
-    new = (tmp_path / "engine-2026-04-29.log").read_text()
-    assert "ROLLOVER → engine-2026-04-29.log" in old
-    assert "ROLLOVER ← continued from previous day" in new
-    assert "after" in new
-
-
-def test_daily_log_writer_close_is_idempotent(tmp_path: Path) -> None:
-    w = DailyLogWriter(tmp_path, "engine")
-    w.close()
-    w.close()
 
 
 # ---------- helpers ----------
@@ -206,39 +160,14 @@ def test_regression_concurrent_image_saves_keep_both_frames(tmp_path, mocker) ->
     assert (tmp_path / second_name).read_bytes() == b"second"
 
 
-def test_regression_daily_log_retries_after_failed_rollover(tmp_path, mocker) -> None:
-    with freeze_time("2026-04-28T23:59:59") as clock:
-        writer = DailyLogWriter(tmp_path, "engine")
-        clock.move_to("2026-04-29T00:00:01")
-        fail_once = mocker.patch.object(
-            artifacts, "_open_log_file", side_effect=PermissionError
-        )
-        writer.line("during failure")
-        mocker.stop(fail_once)
-
-        writer.line("after recovery")
-        writer.close()
-
-    assert "during failure" in (tmp_path / "engine-2026-04-28.log").read_text()
-    assert "after recovery" in (tmp_path / "engine-2026-04-29.log").read_text()
-
-
 def test_regression_append_stats_preserves_unpaired_surrogate(tmp_path) -> None:
     summary = {"recap": "unencodable \ud800"}
 
     append_stats(tmp_path, summary)
 
-    assert json.loads((tmp_path / "stats.jsonl").read_text(encoding="utf-8")) == summary
-
-
-def test_regression_daily_log_preserves_unpaired_surrogate(tmp_path) -> None:
-    writer = DailyLogWriter(tmp_path, "engine")
-
-    writer.line("你好\ud800")
-    writer.close()
-
-    assert "你好\\ud800\n" in next(tmp_path.glob("engine-*.log")).read_text(
-        encoding="utf-8"
+    assert (
+        json.loads((tmp_path / "session-stats.jsonl").read_text(encoding="utf-8"))
+        == summary
     )
 
 

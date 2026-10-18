@@ -2,7 +2,7 @@
 
 Exports:
     setup_logging(tag, level, file_dir=None) — colored TTY-aware
-    root-logger config, optionally mirrored to a daily log file.
+    root-logger config, optionally mirrored to a rotating service log.
     logged(fn) — announce an MCP call, save completion timing and failures.
 """
 
@@ -18,7 +18,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, TextIO, TypeVar, cast
 
-from physiclaw.common.file_lock import exclusive_file_lock
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.log_style import PLAYBOOK_ACCENT as PLAYBOOK_ACCENT
 from physiclaw.common.log_style import (
     FailureState,
@@ -53,17 +53,9 @@ def _colorize() -> bool:
     return color_enabled(sys.stderr)
 
 
-# The MCP-server process logs under this tag (both its console `[physiclaw]`
-# prefix and its daily-log file name); the server's mcp tee reuses it too so
-# the tag lives in one place.
+# The hardware server's console tag; its file uses the service name
+# "server". The per-session server mirror uses the same console tag.
 SERVER_LOG_TAG = "physiclaw"
-
-
-def daily_log_path(log_dir: Path, prefix: str, date: str) -> Path:
-    """`<dir>/<prefix>-YYYY-MM-DD.log` — the one daily-log naming scheme,
-    shared by the writer (`_DailyFileHandler`) and the reader (retention's
-    purge), so the format lives in a single place."""
-    return log_dir / f"{prefix}-{date}.log"
 
 
 def _open_log_file(path: Path) -> TextIOWrapper:
@@ -73,37 +65,57 @@ def _open_log_file(path: Path) -> TextIOWrapper:
     return open(path, "a", encoding="utf-8", errors="backslashreplace", newline="\n")
 
 
-class _DailyFileHandler(RotatingFileHandler):
-    """Mirror log records into `<dir>/<prefix>-YYYY-MM-DD.log`, uncolored.
+class _ServiceFileHandler(RotatingFileHandler):
+    """Write `<dir>/<prefix>.log`, rotating older copies into `archive/`.
 
-    Rotate by date and UTF-8 bytes; expire old files at startup and midnight.
+    Bound archives by count and age; count record sizes in UTF-8 bytes.
     Serialize shared CLI writes with a process lock and close each append
     before releasing it, so another process can rotate the file on Windows.
     """
 
     def __init__(self, dir: Path, prefix: str, tag: str):
         from physiclaw.common.config import CONFIG
-        from physiclaw.common.logger.retention import purge_daily_logs
 
-        self._dir = dir
+        self._archive_dir = dir / "archive"
         self._prefix = prefix
-        self._date = dt.datetime.now().strftime("%Y-%m-%d")
+        self._retention_date = dt.datetime.now().date()
         self._log_days = CONFIG.retention.log_days
         self._lock_path = dir / f".{prefix}.log.lock"
         self._rotation_failure = FailureState()
         self._rotation_warnings: list[OSError] = []
         self._purge_pending = False
-        dir.mkdir(parents=True, exist_ok=True)
+        self._archive_dir.mkdir(parents=True, exist_ok=True)
         super().__init__(
-            daily_log_path(dir, prefix, self._date),
+            dir / f"{prefix}.log",
             maxBytes=CONFIG.retention.log_max_bytes,
             backupCount=CONFIG.retention.log_backup_count,
             encoding="utf-8",
             errors="backslashreplace",
             delay=True,
         )
+        self.namer = lambda name: str(self._archive_dir / Path(name).name)
         self.setFormatter(_TaggedFormatter(tag, color=False, diagnostic=True))
-        purge_daily_logs(dir, prefix, self._log_days)
+        self._purge_archives()
+
+    def _purge_archives(self) -> None:
+        from physiclaw.common.logger.retention import purge_log_archives
+
+        try:
+            with exclusive_file_lock(self._lock_path, timeout=1):
+                removed = purge_log_archives(
+                    self._archive_dir,
+                    self._prefix,
+                    self._log_days,
+                    backup_count=self.backupCount,
+                )
+        except (OSError, FileLockBusy):
+            return  # Retention must not interrupt recording.
+        if removed:
+            log.info(
+                "purged %d %s log archive(s) beyond retention limits",
+                removed,
+                self._prefix,
+            )
 
     def _open(self) -> TextIOWrapper:
         return _open_log_file(Path(self.baseFilename))
@@ -120,9 +132,7 @@ class _DailyFileHandler(RotatingFileHandler):
             self.release()
         try:
             if purge:
-                from physiclaw.common.logger.retention import purge_daily_logs
-
-                purge_daily_logs(self._dir, self._prefix, self._log_days)
+                self._purge_archives()
             for error in warnings:
                 log.warning(
                     "Cannot rotate %s — recording continues in the active file: %s",
@@ -140,12 +150,9 @@ class _DailyFileHandler(RotatingFileHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            today = dt.datetime.now().strftime("%Y-%m-%d")
-            if today != self._date:
-                self.baseFilename = str(
-                    daily_log_path(self._dir, self._prefix, today).absolute()
-                )
-                self._date = today
+            today = dt.datetime.now().date()
+            if today != self._retention_date:
+                self._retention_date = today
                 self._purge_pending = True
             text = self.format(record) + "\n"
             size = len(text.encode("utf-8", "backslashreplace"))
@@ -181,21 +188,23 @@ def setup_logging(
     *,
     file_dir: Path | None = None,
     file_level: int | None = None,
+    file_prefix: str | None = None,
     force: bool = True,
 ) -> None:
     """Configure the root logger with the colored, tagged format.
 
     With `file_dir`, records are additionally mirrored (uncolored) to a
-    daily `<tag>-YYYY-MM-DD.log` there — used by the runtime so wake
-    decisions and poll errors survive for post-mortems. `file_level`
-    overrides the daily file's threshold (defaults to `level`): the
+    rotating `<file_prefix or tag>.log` there, with older copies in `archive/`.
+    `file_prefix` names the process independently of its console tag.
+    Wake decisions and poll errors survive for post-mortems. `file_level`
+    overrides the service file's threshold (defaults to `level`): the
     server passes DEBUG so its camera/exposure/tune detail is on disk
     regardless of console verbosity. File-handler setup is fail-open:
     logging must never take the process down.
 
     The root logger is kept permissive (DEBUG); each handler gates its
     own verbosity via its own level. This is what lets a per-session
-    capture handler (`attach_session_log`) — or a DEBUG daily file —
+    capture handler (`attach_session_log`) — or a DEBUG service file —
     record full DEBUG while the console stays at `level`; with a NOTSET
     root the console would print DEBUG the moment any physiclaw logger
     emitted it."""
@@ -204,13 +213,17 @@ def setup_logging(
     handlers: list[logging.Handler] = [stream]
     if file_dir is not None:
         try:
-            fh = _DailyFileHandler(file_dir, tag, tag)
+            fh = _ServiceFileHandler(file_dir, file_prefix or tag, tag)
             fh.setLevel(level if file_level is None else file_level)
             fh.addFilter(_OwnDebugFilter())  # gates third-party DEBUG when file<INFO
             handlers.append(fh)
         except OSError:
             pass  # unwritable dir → stderr-only; better than not starting
     install_handlers(handlers, force=force)
+    if file_dir is not None:
+        from physiclaw.common.logger.session_artifacts import LOGS_README, ensure_readme
+
+        ensure_readme(file_dir, LOGS_README)
     selected = os.environ.get("PHYSICLAW_LOG_FORMAT", "").strip().lower()
     if selected not in {"", "pretty", "json"}:
         log.warning(
@@ -235,7 +248,7 @@ class _SessionCaptureHandler(logging.StreamHandler):
     def emit(self, record: logging.LogRecord) -> None:
         # Drop records once the handle is closed — logging.shutdown() at exit
         # closes it while other threads may still log. The session is over, so
-        # (unlike the long-lived daily file) there's nothing to reopen for.
+        # (unlike the long-lived service file) there's nothing to reopen for.
         if not self._file.closed:
             super().emit(record)
 
@@ -283,11 +296,11 @@ def detach_session_log(handler: logging.Handler | None) -> None:
 # ---------- per-session log sidecars (cross-process) ----------
 #
 # runtime.log mirrors the runtime process's own log stream (attach_session_log
-# above). mcp.log carries the MCP-SERVER process's log for the session — but
+# above). server.log carries the MCP-SERVER process's log for the session — but
 # the server is a separate process, so the two can't share an in-memory object.
 # Instead the agent publishes the active session ID to a marker file, and the
 # server's tee (`attach_server_mcp_tee`) reads it, resolves the id to its
-# session dir, and writes mcp.log there live.
+# session dir, and writes server.log there live.
 
 
 def _publish_active_session(sid: str) -> None:
@@ -322,15 +335,15 @@ def _active_session_dir(sid: str) -> Path | None:
 
     if not sid or sid in {".", ".."} or any(c in sid for c in "/\\:\0"):
         return None
-    directory = paths.engine_sessions_dir() / sid
+    directory = paths.sessions_dir() / sid
     return directory if directory.is_dir() else None
 
 
 class SessionLogSidecars:
     """The per-session log sidecars owned by the agent session writers:
     `runtime.log` (a mirror of the runtime process log stream) and the
-    active-session marker (the session id) that steers the server's mcp.log
-    tee into this session's dir. One home for both so they can't drift."""
+    active-session marker that directs server diagnostics to `server.log`
+    in this session's directory. One home for both so they can't drift."""
 
     def __init__(self, session_dir: Path):
         self._sid = session_dir.name
@@ -346,7 +359,7 @@ class SessionLogSidecars:
 
 class _SessionMcpTee(logging.Handler):
     """Server-side: tee the server's own log into the ACTIVE session's
-    mcp.log. The agent publishes the active session id to a marker file
+    server.log. The agent publishes the active session id to a marker file
     (`_publish_active_session`); this follows it — resolving the id to its
     dir and repointing whenever the id changes — so the server's camera/
     exposure/tune detail lands live in the running session's dir. Between
@@ -365,7 +378,7 @@ class _SessionMcpTee(logging.Handler):
         self._f: TextIO | None = None
 
     def _refresh(self) -> None:
-        """Repoint the mcp.log handle when the marker names a different session.
+        """Repoint the server.log handle when the marker names a different session.
         Keying on the session id (not the marker's mtime) so a new session is
         followed even when two markers land in the same mtime tick; the id is
         resolved again when an earlier open failed."""
@@ -380,7 +393,7 @@ class _SessionMcpTee(logging.Handler):
         target = _active_session_dir(sid) if sid else None
         if target is not None:
             try:
-                self._f = _open_log_file(target / "mcp.log")
+                self._f = _open_log_file(target / "server.log")
             except OSError:
                 self._f = None
 
@@ -408,7 +421,7 @@ class _SessionMcpTee(logging.Handler):
 
 def attach_server_mcp_tee() -> logging.Handler:
     """Server-side: attach the handler that tees the server's own log into
-    the agent's active session dir as `mcp.log`. Call once after
+    the agent's active session dir as `server.log`. Call once after
     `setup_logging` in the MCP-server process (the runtime process uses
     `SessionLogSidecars` to publish which session is active)."""
     handler = _SessionMcpTee()

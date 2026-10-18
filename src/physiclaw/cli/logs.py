@@ -1,10 +1,9 @@
 """``physiclaw logs`` — list and inspect engine session logs.
 
-The analysis entry point for `~/.physiclaw/log/engine/sessions/`:
+The analysis entry point for `~/.physiclaw/log/sessions/`:
 `physiclaw logs` tables the recent sessions from their summary.json;
 `physiclaw logs <sid>` prints one session's summary plus the tail of its
-narrative (re-rendered from events.jsonl — the daily log interleaves
-sessions, so the per-session stream is the clean source). `--json` emits
+narrative (rendered from that session's events.jsonl). `--json` emits
 machine-readable output for scripting; `--save [DEST]` zips a session
 (with its format README and the session viewer page) for backups or
 bug reports. Reviewing a session in the browser is the studio's:
@@ -93,7 +92,7 @@ def logs(
         exit_error("--save cannot be combined with --usage or --json")
     if dest is not None and not save:
         exit_error(f"a destination needs --save: physiclaw logs {sid} --save {dest}")
-    sessions_dir = paths.engine_sessions_dir()
+    sessions_dir = paths.sessions_dir()
     if sid is None:
         if save or usage:
             _echo(
@@ -251,10 +250,10 @@ def _show_session(d: Path, *, n: int, as_json: bool) -> None:
     _echo_narrative(d / "events.jsonl", n)
     _echo("")
     _echo(info(f"session:     {d}"))
-    for name in ("runtime.log", "mcp.log"):
+    for name in ("runtime.log", "server.log"):
         if (d / name).is_file():
             _echo(info(f"{name + ':':<13}{d / name}"))
-    _echo(info(f"wire log:    {d / 'wire.jsonl'}"))
+    _echo(info(f"model log:   {d / 'model.jsonl'}"))
     _echo(info(f"images:      {d / 'images'}"))
     # Suffix handle = the trailing 6 hex chars — true regardless of the
     # id's separator style, and all `_resolve` matches via `endswith`.
@@ -272,9 +271,7 @@ def _events(events_path: Path) -> list[dict[str, Any]] | None:
 
 
 def _echo_narrative(events_path: Path, n: int) -> None:
-    """Re-render the last `n` events with the daily log's formatter — the
-    per-session equivalent of the day file's narrative, without the other
-    sessions interleaved."""
+    """Render the last `n` readable events from this session's journal."""
     from physiclaw.agent.trace import brief, summarize_event
 
     events = _events(events_path)

@@ -15,7 +15,7 @@ from physiclaw.contract import wire
 
 
 def _wire(tmp_path, records):
-    p = tmp_path / "wire.jsonl"
+    p = tmp_path / "model.jsonl"
     p.write_text(
         "\n".join(json.dumps(r) for r in records) + "\nnot json\n", encoding="utf-8"
     )
@@ -132,7 +132,7 @@ def test_request_reader_skips_malformed_messages_without_losing_later_records(
 
 
 def test_request_reader_recovers_after_invalid_utf8_line(tmp_path):
-    path = tmp_path / "wire.jsonl"
+    path = tmp_path / "model.jsonl"
     valid = json.dumps(
         {"kind": "request", "messages": [{"role": "user", "content": "牛奶"}]}
     ).encode()

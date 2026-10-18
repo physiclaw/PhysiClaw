@@ -2,7 +2,7 @@
 
 `events.jsonl` keeps every screen the runtime saw, whole, on its
 `tool_result` (a walk's turns included — those send no request, so
-`wire.jsonl` never carries them); a session recorded before the trace
+`model.jsonl` never carries them); a session recorded before the trace
 kept them falls back to the wire log's requests. This module owns only
 "is this text a screen" and the corpus file format. A corpus file is
 JSONL, one screen per line::
@@ -38,14 +38,14 @@ def session_listings(sid: str) -> list[str]:
     order — the tool results' own record when the session kept it, else
     (a session recorded before the trace kept them) the wire log's
     requests."""
-    d = paths.engine_sessions_dir() / sid
-    events, wire_log = d / "events.jsonl", d / "wire.jsonl"
+    d = paths.sessions_dir() / sid
+    events, wire_log = d / "events.jsonl", d / "model.jsonl"
     if events.exists():
         found = _screens(_result_texts(events))
         if found:
             return found
     if not wire_log.exists():
-        raise FileNotFoundError(f"no events.jsonl or wire.jsonl for session {sid!r}")
+        raise FileNotFoundError(f"no events.jsonl or model.jsonl for session {sid!r}")
     # The SYSTEM prompt quotes the listing header verbatim in doctrine,
     # so system messages must not extract as screens.
     return _screens(

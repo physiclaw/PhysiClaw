@@ -964,8 +964,7 @@ async def test_a_frame_is_filed_at_dispatch_and_the_wire_reuses_it(
     from physiclaw.contract.dto import ImageBlock
 
     log_dir = tmp_path / "engine"
-    monkeypatch.setattr(paths, "engine_log_dir", lambda: log_dir)
-    monkeypatch.setattr(paths, "engine_sessions_dir", lambda: log_dir / "sessions")
+    monkeypatch.setattr(paths, "sessions_dir", lambda: log_dir / "sessions")
     import cv2
     import numpy as np
 
@@ -1026,7 +1025,7 @@ async def test_a_frame_is_filed_at_dispatch_and_the_wire_reuses_it(
     assert event["text"].startswith("Tapped | screen: changed")
     (req,) = [
         json.loads(line)
-        for line in (d / "wire.jsonl").read_text().splitlines()
+        for line in (d / "model.jsonl").read_text().splitlines()
         if '"request"' in line
     ]
     assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{filed}"

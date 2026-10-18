@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from physiclaw.common import config
-from physiclaw.common.file_lock import exclusive_file_lock
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.logger import logger as logger_mod
-from physiclaw.common.logger.retention import purge_daily_logs
+from physiclaw.common.logger.retention import purge_log_archives
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,7 +24,7 @@ def sink(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG", config.Config())
     config.CONFIG.retention.log_max_bytes = 20
     config.CONFIG.retention.log_backup_count = 2
-    handler = logger_mod._DailyFileHandler(tmp_path, "runtime", "runtime")
+    handler = logger_mod._ServiceFileHandler(tmp_path, "runtime", "runtime")
     handler.setFormatter(logging.Formatter("%(message)s"))
     yield handler
     handler.close()
@@ -44,9 +44,11 @@ def test_size_rotation_counts_utf8_bytes_and_bounds_archives(sink):
         assert sink.stream is None  # Peers can rename on Windows.
 
     assert path.read_bytes() == "3中文测试啊\n".encode()
-    assert Path(f"{path}.1").read_bytes() == "2中文测试啊\n".encode()
-    assert Path(f"{path}.2").read_bytes() == "1中文测试啊\n".encode()
-    assert not Path(f"{path}.3").exists()
+    archive = path.parent / "archive"
+    assert (archive / "runtime.log.1").read_bytes() == "2中文测试啊\n".encode()
+    assert (archive / "runtime.log.2").read_bytes() == "1中文测试啊\n".encode()
+    assert len(list(archive.iterdir())) == 2
+    assert list(path.parent.glob("runtime.log*")) == [path]
 
 
 def test_large_single_record_is_preserved_then_rotated(sink):
@@ -55,7 +57,8 @@ def test_large_single_record_is_preserved_then_rotated(sink):
     emit(sink, large)
     emit(sink, "next event")
 
-    assert Path(f"{path}.1").read_text(encoding="utf-8") == large + "\n"
+    archive = path.parent / "archive" / "runtime.log.1"
+    assert archive.read_text(encoding="utf-8") == large + "\n"
     assert path.read_bytes() == b"next event\n"
 
 
@@ -66,32 +69,60 @@ def test_surrogate_and_newlines_have_stable_disk_encoding(sink):
 
 def test_retention_expires_numbered_archives_and_leaves_other_files(tmp_path):
     stale = [
-        "runtime-2000-01-01.log",
-        "runtime-2000-01-01.log.1",
-        "runtime-2000-01-01.log.2",
+        "runtime.log.1",
+        "runtime.log.2",
     ]
     untouched = [
-        "runtime-2000-01-01.log.tmp",
-        "runtime-2000-01-01.log.backup",
-        "other-2000-01-01.log",
+        "runtime.log",
+        "runtime.log.tmp",
+        "runtime.log.backup",
+        "runtime.log.backup.1",
+        "runtime.log.tmp.2",
+        "runtime.log.1.extra",
+        "other.log.1",
         ".runtime.log.lock",
     ]
-    fresh = ["runtime-2026-10-18.log", "runtime-2026-10-18.log.1"]
+    fresh = ["runtime.log.3"]
     for name in stale + untouched + fresh:
         path = tmp_path / name
         path.write_text("evidence", encoding="utf-8")
         if name not in fresh:
             os.utime(path, (1, 1))
 
-    purge_daily_logs(tmp_path, "runtime", days=30)
+    assert purge_log_archives(tmp_path, "runtime", days=30, backup_count=5) == 2
 
     assert all(not (tmp_path / name).exists() for name in stale)
     assert all((tmp_path / name).exists() for name in untouched + fresh)
 
 
+def test_restart_with_lower_backup_count_removes_excess_archives(sink):
+    root = Path(sink.baseFilename).parent
+    sink.backupCount = 5
+    for i in range(6):
+        emit(sink, f"{i}中文测试啊")
+    sink.close()
+    archive = root / "archive"
+    assert len(list(archive.iterdir())) == 5
+
+    # The fixture's configuration still requests two backups at restart.
+    restarted = logger_mod._ServiceFileHandler(root, "runtime", "runtime")
+    try:
+        assert {p.name for p in archive.iterdir()} == {
+            "runtime.log.1",
+            "runtime.log.2",
+        }
+        emit(restarted, "recorded after restart")
+    finally:
+        restarted.close()
+    assert "recorded after restart" in (root / "runtime.log").read_text(
+        encoding="utf-8"
+    )
+    assert len(list(archive.iterdir())) == 2
+
+
 def test_long_running_handler_purges_at_date_change(sink, monkeypatch):
     path = Path(sink.baseFilename)
-    old = path.parent / "runtime-2000-01-01.log.1"
+    old = path.parent / "archive" / "runtime.log.1"
     old.write_text("expired", encoding="utf-8")
     os.utime(old, (1, 1))
     tomorrow = dt.datetime.now() + dt.timedelta(days=1)
@@ -105,8 +136,56 @@ def test_long_running_handler_purges_at_date_change(sink, monkeypatch):
     emit(sink, "after midnight")
 
     assert not old.exists()
-    assert Path(sink.baseFilename).name == f"runtime-{tomorrow:%Y-%m-%d}.log"
+    assert Path(sink.baseFilename) == path
     assert Path(sink.baseFilename).read_bytes() == b"after midnight\n"
+
+
+def test_retention_uses_the_rotation_lock(sink, monkeypatch):
+    from physiclaw.common.logger import retention
+
+    checked = []
+
+    def purge(*args, **kwargs):
+        with pytest.raises(FileLockBusy), exclusive_file_lock(sink._lock_path):
+            pass
+        checked.append(True)
+        return 0
+
+    monkeypatch.setattr(retention, "purge_log_archives", purge)
+    sink._purge_archives()
+    assert checked == [True]
+
+
+def test_busy_retention_does_not_disable_logging_at_startup(tmp_path, monkeypatch):
+    def busy(path, *, timeout):
+        return exclusive_file_lock(path)
+
+    monkeypatch.setattr(logger_mod, "exclusive_file_lock", busy)
+    with exclusive_file_lock(tmp_path / ".runtime.log.lock"):
+        handler = logger_mod._ServiceFileHandler(tmp_path, "runtime", "runtime")
+    try:
+        emit(handler, "startup evidence")
+    finally:
+        handler.close()
+    assert "startup evidence" in (tmp_path / "runtime.log").read_text(encoding="utf-8")
+
+
+def test_file_count_stays_bounded_across_many_days(sink, monkeypatch):
+    day = dt.datetime.now()
+
+    class CurrentDay(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return day
+
+    monkeypatch.setattr(logger_mod.dt, "datetime", CurrentDay)
+    for i in range(60):
+        day += dt.timedelta(days=1)
+        emit(sink, f"day {i}")
+
+    root = Path(sink.baseFilename).parent
+    assert list(root.glob("runtime.log*")) == [root / "runtime.log"]
+    assert len(list((root / "archive").iterdir())) == 2
 
 
 def test_rotation_failure_preserves_records_and_warns_once(sink, monkeypatch):
@@ -196,11 +275,11 @@ def test_concurrent_processes_rotate_without_losing_or_duplicating_records(tmp_p
 import logging, sys, time
 from pathlib import Path
 from physiclaw.common.config import CONFIG
-from physiclaw.common.logger.logger import _DailyFileHandler
+from physiclaw.common.logger.logger import _ServiceFileHandler
 directory, worker = Path(sys.argv[1]), sys.argv[2]
 CONFIG.retention.log_max_bytes = 128
 CONFIG.retention.log_backup_count = 128
-handler = _DailyFileHandler(directory, 'runtime', 'runtime')
+handler = _ServiceFileHandler(directory, 'runtime', 'runtime')
 handler.setFormatter(logging.Formatter('%(message)s'))
 (directory / ('ready-' + worker)).touch()
 deadline = time.monotonic() + 10
@@ -244,7 +323,10 @@ handler.close()
                 process.communicate()
 
     lines = []
-    for path in tmp_path.glob("runtime-*.log*"):
+    for path in [
+        tmp_path / "runtime.log",
+        *(tmp_path / "archive").glob("runtime.log.*"),
+    ]:
         assert path.stat().st_size <= 128
         lines.extend(path.read_text(encoding="utf-8").splitlines())
     assert len(lines) == 180

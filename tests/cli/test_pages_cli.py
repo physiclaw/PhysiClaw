@@ -54,7 +54,7 @@ def listing_file(tmp_path):
 
 @pytest.fixture
 def recording():
-    root = paths.engine_sessions_dir() / SID
+    root = paths.sessions_dir() / SID
     root.mkdir(parents=True)
     event = {"event": "tool_result", "text": LISTING}
     (root / "events.jsonl").write_text(json.dumps(event) + "\n", encoding="utf-8")
@@ -267,7 +267,7 @@ def test_regression_recording_without_logs_reports_error(recording, command):
 
     assert result.exit_code == 1
     assert (
-        "ERROR [" in result.stderr and "no events.jsonl or wire.jsonl" in result.output
+        "ERROR [" in result.stderr and "no events.jsonl or model.jsonl" in result.output
     )
 
 

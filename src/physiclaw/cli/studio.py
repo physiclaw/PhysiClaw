@@ -79,7 +79,7 @@ def studio(
 
     setup_logging(
         "studio",
-        file_dir=paths.LOG_DIR / "studio",
+        file_dir=paths.LOG_DIR,
         file_level=logging.DEBUG,
         force=False,
     )
@@ -163,7 +163,7 @@ def _session_dir(ref: str) -> Path:
             return d.resolve()
     except (OSError, RuntimeError, ValueError) as e:
         raise typer.BadParameter(str(e), param_hint="--session") from e
-    return paths.engine_sessions_dir() / resolve_sid(ref)
+    return paths.sessions_dir() / resolve_sid(ref)
 
 
 def _recorded_session(ref: str):

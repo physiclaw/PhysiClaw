@@ -287,11 +287,10 @@ class RetentionConfig:
     # dirs) and terminal cron jobs: a month covers a post-mortem on a
     # run the user only notices weeks later.
     trace_days: int = 30
-    # Daily human-readable log files (engine-/runtime-*.log),
-    # tiny next to session artifacts.
+    # Maximum age of rotated service-log archives; active files are kept.
     log_days: int = 30
-    # Daily operational logs rotate by UTF-8 bytes, retaining this many
-    # numbered archives per day. Session journals keep their own lifecycle.
+    # Service logs rotate by UTF-8 bytes, retaining this many numbered
+    # archives per service. Session journals keep their own lifecycle.
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 5
     # A cron job stuck in `fired` (no session ever closed it) is
@@ -482,11 +481,12 @@ _SECTION_COMMENTS: dict[str, str] = {
 }
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
+    ("retention", "log_days"): "maximum service-log archive age in days",
     (
         "retention",
         "log_max_bytes",
     ): "UTF-8 byte limit per operational log file (10 MiB)",
-    ("retention", "log_backup_count"): "numbered archives per service per day",
+    ("retention", "log_backup_count"): "maximum numbered archives per service",
     ("server", "save_tool_calls"): "dump every peek/screenshot output",
     (
         "server",

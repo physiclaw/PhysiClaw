@@ -132,10 +132,10 @@ async def test_curate_saves_complete_request_and_reply_for_session_review(
         raw.close()
         trace.close()
 
-    directory = paths.engine_sessions_dir() / "curate-debug"
+    directory = paths.sessions_dir() / "curate-debug"
     request, response = [
         json.loads(line)
-        for line in (directory / "wire.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (directory / "model.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert request["call"] == response["call"] == "curate"
     assert request["turn"] == response["turn"] == 7
@@ -166,8 +166,8 @@ async def test_failed_curate_keeps_request_and_error_in_session(caplog):
         raw.close()
         trace.close()
 
-    directory = paths.engine_sessions_dir() / "failed-curate"
-    request = json.loads((directory / "wire.jsonl").read_text(encoding="utf-8"))
+    directory = paths.sessions_dir() / "failed-curate"
+    request = json.loads((directory / "model.jsonl").read_text(encoding="utf-8"))
     assert request["kind"] == "request" and request["call"] == "curate"
     assert request["messages"][1]["content"] == "- original lesson"
     assert "RuntimeError: curation failure detail" in (

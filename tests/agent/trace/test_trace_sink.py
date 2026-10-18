@@ -9,6 +9,7 @@ already creates the session directory; the constructor always observes env.
 
 import builtins
 import json
+import logging
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -48,9 +49,7 @@ def test_regression_trace_note_preserves_unpaired_surrogates(text, expected):
     finally:
         trace.close()
 
-    notes = (paths.engine_sessions_dir() / "note" / "notes.md").read_text(
-        encoding="utf-8"
-    )
+    notes = (paths.sessions_dir() / "note" / "notes.md").read_text(encoding="utf-8")
     assert f"- turn 2 — {expected}\n" in notes
 
 
@@ -63,7 +62,7 @@ def test_regression_trace_events_preserve_unpaired_surrogates(text):
     finally:
         trace.close()
 
-    records = (paths.engine_sessions_dir() / "event" / "events.jsonl").read_text(
+    records = (paths.sessions_dir() / "event" / "events.jsonl").read_text(
         encoding="utf-8"
     )
     assert json.loads(records.splitlines()[-1])["error"] == text
@@ -77,9 +76,7 @@ def test_regression_trace_close_keeps_surrogate_recap_and_completed_outcome(text
     trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "finished" / "summary.json").read_text(
-            encoding="utf-8"
-        )
+        (paths.sessions_dir() / "finished" / "summary.json").read_text(encoding="utf-8")
     )
     assert summary["outcome"] == {"sentinel": "DONE", "recap": text, "crashed": False}
     assert not paths.active_session_marker().exists()
@@ -103,21 +100,17 @@ def test_trace_saves_its_artifact_close_failures_before_detaching(mocker, caplog
 
     caplog.set_level(logging.DEBUG)
     trace = Trace("close-debug", Images("close-debug"))
-    daily_file, notes = trace._daily._f, trace._notes
-    trace._daily._f = mocker.MagicMock(wraps=daily_file, closed=False)
-    trace._daily._f.close.side_effect = OSError("daily close failure detail")
+    notes = trace._notes
     trace._notes = mocker.MagicMock(wraps=notes, closed=False)
     trace._notes.close.side_effect = OSError("notes close failure detail")
     try:
         trace.close()
     finally:
-        daily_file.close()
         notes.close()
 
-    text = (paths.engine_sessions_dir() / "close-debug" / "runtime.log").read_text(
+    text = (paths.sessions_dir() / "close-debug" / "runtime.log").read_text(
         encoding="utf-8"
     )
-    assert "OSError: daily close failure detail" in text
     assert "OSError: notes close failure detail" in text
     assert not paths.active_session_marker().exists()
 
@@ -126,7 +119,7 @@ def test_trace_saves_its_artifact_close_failures_before_detaching(mocker, caplog
 def blocked_summary():
     trace = Trace("blocked-summary", Images("blocked-summary"))
     trace.write({"event": "done", "sentinel": "DONE", "recap": "finished"})
-    (paths.engine_sessions_dir() / "blocked-summary" / "summary.json").mkdir()
+    (paths.sessions_dir() / "blocked-summary" / "summary.json").mkdir()
     try:
         yield trace
     finally:
@@ -137,7 +130,9 @@ def test_regression_summary_write_failure_keeps_durable_stats(blocked_summary):
     blocked_summary.close()
     blocked_summary.close()
 
-    summary = json.loads((paths.LOG_DIR / "stats.jsonl").read_text(encoding="utf-8"))
+    summary = json.loads(
+        (paths.LOG_DIR / "session-stats.jsonl").read_text(encoding="utf-8")
+    )
     assert summary["sid"] == "blocked-summary"
     assert summary["outcome"] == {
         "sentinel": "DONE",
@@ -146,13 +141,16 @@ def test_regression_summary_write_failure_keeps_durable_stats(blocked_summary):
     }
 
 
-def test_regression_summary_write_failure_keeps_daily_end_footer(blocked_summary):
+def test_regression_summary_write_failure_keeps_runtime_outcome(
+    blocked_summary, caplog
+):
+    caplog.set_level(logging.INFO)
     blocked_summary.close()
 
-    daily = next(paths.engine_log_dir().glob("engine-*.log")).read_text(
+    runtime = (paths.sessions_dir() / "blocked-summary" / "runtime.log").read_text(
         encoding="utf-8"
     )
-    assert "END session=blocked-summary outcome=DONE" in daily
+    assert "END session=blocked-summary outcome=DONE" in runtime
 
 
 def test_regression_burned_macro_block_is_visible_as_viewer_warning():
@@ -170,7 +168,7 @@ def test_regression_burned_macro_block_is_visible_as_viewer_warning():
     finally:
         trace.close()
 
-    model = viewer.load(paths.engine_sessions_dir() / "blocked-macro")
+    model = viewer.load(paths.sessions_dir() / "blocked-macro")
     (blocked,) = [
         row
         for group in model["groups"]
@@ -257,9 +255,7 @@ def test_summary_classifies_rejected_and_failed_events(event, error_key, stuck_c
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "errors" / "summary.json").read_text(
-            encoding="utf-8"
-        )
+        (paths.sessions_dir() / "errors" / "summary.json").read_text(encoding="utf-8")
     )
     assert summary["errors"][error_key] == 2
     assert sum(summary["errors"].values()) == 2
@@ -297,9 +293,7 @@ def test_summary_keeps_camera_verdicts_in_separate_buckets(changed, bucket):
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "verdicts" / "summary.json").read_text(
-            encoding="utf-8"
-        )
+        (paths.sessions_dir() / "verdicts" / "summary.json").read_text(encoding="utf-8")
     )
     assert summary["verdicts"] == {bucket: 2}
     assert summary["tool_time_ms"] == 57
@@ -367,7 +361,7 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
     finally:
         trace.close()
 
-    directory = paths.engine_sessions_dir() / "io-failure"
+    directory = paths.sessions_dir() / "io-failure"
     summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     events = (directory / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert fault["armed"] is False
@@ -378,7 +372,7 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
 
 def test_trace_unavailable_notes_file_does_not_abort_session():
     images = Images("no-notes")
-    directory = paths.engine_sessions_dir() / "no-notes"
+    directory = paths.sessions_dir() / "no-notes"
     (directory / "notes.md").mkdir()
     trace = Trace("no-notes", images)
 
@@ -417,7 +411,7 @@ def test_usage_records_follow_the_highest_started_turn(turns, expected, caplog):
         trace.close()
 
     lines = (
-        (paths.engine_sessions_dir() / "usage-turn" / "events.jsonl")
+        (paths.sessions_dir() / "usage-turn" / "events.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     )
@@ -433,9 +427,7 @@ def test_empty_session_summary_preserves_schema_defaults():
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "empty" / "summary.json").read_text(
-            encoding="utf-8"
-        )
+        (paths.sessions_dir() / "empty" / "summary.json").read_text(encoding="utf-8")
     )
     assert summary["started_at"] == "2026-10-14T12:00:00.000"
     assert summary["model_ref"] == summary["prompt_hash"] == ""
@@ -474,9 +466,7 @@ def test_summary_adds_repeated_calls_without_billing_synthesized_turns():
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "calls" / "summary.json").read_text(
-            encoding="utf-8"
-        )
+        (paths.sessions_dir() / "calls" / "summary.json").read_text(encoding="utf-8")
     )
     assert (
         summary["provider_calls"]
@@ -508,7 +498,7 @@ def test_failure_events_are_flagged_in_the_viewer(event):
     finally:
         trace.close()
 
-    model = viewer.load(paths.engine_sessions_dir() / "warning")
+    model = viewer.load(paths.sessions_dir() / "warning")
     row = model["groups"][-1]["records"][-1]
     assert row["warn"] is True
     assert isinstance(row["words"], str) and row["words"]
@@ -524,7 +514,7 @@ def test_zero_elapsed_time_does_not_inflate_summary(event):
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "zero-time" / "summary.json").read_text(
+        (paths.sessions_dir() / "zero-time" / "summary.json").read_text(
             encoding="utf-8"
         )
     )
@@ -541,7 +531,7 @@ def test_walk_summary_keeps_payload_without_event_envelope():
         trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "walk-summary" / "summary.json").read_text(
+        (paths.sessions_dir() / "walk-summary" / "summary.json").read_text(
             encoding="utf-8"
         )
     )
@@ -555,7 +545,7 @@ def test_image_inventory_failure_keeps_session_summary(mocker):
     trace.close()
 
     summary = json.loads(
-        (paths.engine_sessions_dir() / "unreadable-images" / "summary.json").read_text(
+        (paths.sessions_dir() / "unreadable-images" / "summary.json").read_text(
             encoding="utf-8"
         )
     )

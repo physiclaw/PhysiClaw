@@ -1,50 +1,45 @@
 """Retention for session logs — shared by engine / runtime / macro logs.
 
-`purge_daily_logs` covers the `<prefix>-YYYY-MM-DD.log` dailies
+`purge_log_archives` covers the numbered service-log archives
 (CONFIG.retention.log_days); `purge_old_sessions` covers the per-session
 artifact dirs (CONFIG.retention.trace_days). Two knobs because the two
 sizes differ by orders of magnitude, though both default to a month. Session
-writers purge at bootstrap; operational daily handlers also purge at midnight.
+writers purge at bootstrap; service handlers also purge at midnight.
 """
 
-import logging
 import shutil
 import time
 from pathlib import Path
 
-log = logging.getLogger(__name__)
 
-
-def purge_daily_logs(dir: Path, prefix: str, days: int) -> None:
-    """Expire daily logs and numbered rotation archives by mtime.
+def purge_log_archives(dir: Path, prefix: str, days: int, *, backup_count: int) -> int:
+    """Expire numbered archives by age or backup count; return the count removed.
 
     mtime beats filename-date parsing: it tolerates clock skew and files
-    appended to long after creation. Fail-open — retention must never
-    take down the process doing the logging."""
+    appended to long after creation. The caller holds the service's file
+    lock so rotation cannot replace an archive between stat and unlink.
+    Fail-open — retention must never take down the process doing the logging.
+    """
     cutoff = time.time() - days * 86400
     removed = 0
+    stem = f"{prefix}.log."
     try:
-        entries = list(dir.glob(f"{prefix}-*.log*"))
+        entries = list(dir.glob(f"{stem}*"))
     except OSError:
-        return
+        return 0
     for path in entries:
-        if path.suffix != ".log" and not (
-            path.suffix[1:].isdigit() and path.with_suffix("").suffix == ".log"
-        ):
+        number = path.name.removeprefix(stem)
+        if not number.isdecimal():
             continue
         try:
-            if path.is_file() and path.stat().st_mtime < cutoff:
+            if path.is_file() and (
+                int(number) > backup_count or path.stat().st_mtime < cutoff
+            ):
                 path.unlink()
                 removed += 1
         except OSError:
             pass
-    if removed:
-        log.info(
-            "purged %d %s daily log(s) older than %d days",
-            removed,
-            prefix,
-            days,
-        )
+    return removed
 
 
 def purge_old_sessions(sessions_dir: Path, *, days: int) -> int:

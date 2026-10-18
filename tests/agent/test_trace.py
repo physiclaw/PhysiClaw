@@ -6,7 +6,7 @@ emit + image scrubbing for both OpenAI (image_url) and Anthropic
 (image+source) wire shapes, and _purge_old retention.
 
 `trace.store` resolves its dirs through `common.paths` per call; the
-autouse fixture re-points the two `paths` functions to per-test dirs.
+autouse fixture re-points the session root to a per-test directory.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -37,9 +38,8 @@ from physiclaw.contract.dto import ImageBlock, TextBlock
 
 @pytest.fixture(autouse=True)
 def _trace_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    log_dir = tmp_path / "engine"
-    monkeypatch.setattr(paths, "engine_log_dir", lambda: log_dir)
-    monkeypatch.setattr(paths, "engine_sessions_dir", lambda: log_dir / "sessions")
+    log_dir = tmp_path / "log"
+    monkeypatch.setattr(paths, "sessions_dir", lambda: log_dir / "sessions")
     return log_dir
 
 
@@ -100,9 +100,6 @@ def test_clipboard_body_is_redacted_in_diagnostics_but_preserved_in_session(
         )
         t.close()
 
-    assert secret not in (_trace_dirs / "engine-2026-04-28.log").read_text(
-        encoding="utf-8"
-    )
     assert secret not in (
         _trace_dirs / "sessions" / "clipboard" / "runtime.log"
     ).read_text(encoding="utf-8")
@@ -412,19 +409,18 @@ def test_summarize_tool_result_without_text_uses_brief_content_on_blocks() -> No
 # ---------- Trace ----------
 
 
-def test_trace_creates_log_directory_and_opens_file_with_separator(
+def test_trace_creates_only_the_session_directory(
     _trace_dirs: Path,
 ) -> None:
     with freeze_time("2026-04-28T10:00:00"):
         t = Trace("session-1", Images("session-1"))
         t.close()
 
-    log_path = _trace_dirs / "engine-2026-04-28.log"
-    assert log_path.is_file()
-    assert "=" * 60 in log_path.read_text()
+    assert list(_trace_dirs.iterdir()) == [_trace_dirs / "sessions"]
+    assert (_trace_dirs / "sessions" / "session-1" / "events.jsonl").is_file()
 
 
-def test_trace_write_appends_summary_line_with_timestamp(
+def test_trace_write_keeps_timestamped_events_for_the_cli_narrative(
     _trace_dirs: Path,
 ) -> None:
     with freeze_time("2026-04-28T10:00:00"):
@@ -432,8 +428,9 @@ def test_trace_write_appends_summary_line_with_timestamp(
         t.write({"event": "tools_loaded", "mcp": [], "local": []})
         t.close()
 
-    text = (_trace_dirs / "engine-2026-04-28.log").read_text()
-    assert "[10:00:00] tools: 0 MCP + 0 local" in text
+    event = next(e for e in _events(_trace_dirs, "s1") if e["event"] == "tools_loaded")
+    assert event["t"] == "2026-04-28T10:00:00.000"
+    assert trace.summarize_event(event) == "tools: 0 MCP + 0 local"
 
 
 def test_trace_write_skips_silent_events(_trace_dirs: Path) -> None:
@@ -442,8 +439,8 @@ def test_trace_write_skips_silent_events(_trace_dirs: Path) -> None:
         t.write({"event": "prefix_pinned"})
         t.close()
 
-    text = (_trace_dirs / "engine-2026-04-28.log").read_text()
-    assert "prefix_pinned" not in text
+    assert trace.summarize_event({"event": "prefix_pinned"}) is None
+    assert any(e["event"] == "prefix_pinned" for e in _events(_trace_dirs, "s1"))
 
 
 def test_trace_close_is_idempotent(_trace_dirs: Path) -> None:
@@ -498,22 +495,6 @@ def test_trace_publishes_and_clears_active_session_marker(_trace_dirs: Path) -> 
     assert not marker.exists()  # cleared on close
 
 
-def test_trace_rolls_over_to_new_day_when_midnight_crossed(
-    _trace_dirs: Path,
-) -> None:
-    with freeze_time("2026-04-28T23:59:00") as ft:
-        t = Trace("s1", Images("s1"))
-        ft.move_to("2026-04-29T00:00:00")
-        t.write({"event": "tools_loaded", "mcp": [], "local": []})
-        t.close()
-
-    # Marker details are pinned by the DailyLogWriter unit tests
-    # (tests/common/logger); here just the wiring: a post-midnight write
-    # lands in the new day's file.
-    assert (_trace_dirs / "engine-2026-04-28.log").exists()
-    assert "tools: 0 MCP" in (_trace_dirs / "engine-2026-04-29.log").read_text()
-
-
 # ---------- RawLog ----------
 
 
@@ -528,7 +509,9 @@ def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
     log.close()
 
     line = (
-        (_trace_dirs / "sessions" / "sess-A" / "wire.jsonl").read_text().splitlines()[0]
+        (_trace_dirs / "sessions" / "sess-A" / "model.jsonl")
+        .read_text()
+        .splitlines()[0]
     )
     obj = json.loads(line)
     assert obj["kind"] == "session_start"
@@ -542,7 +525,9 @@ def test_rawlog_writes_request_with_turn_index(_trace_dirs: Path) -> None:
     log.close()
 
     line = (
-        (_trace_dirs / "sessions" / "sess-B" / "wire.jsonl").read_text().splitlines()[0]
+        (_trace_dirs / "sessions" / "sess-B" / "model.jsonl")
+        .read_text()
+        .splitlines()[0]
     )
     obj = json.loads(line)
     assert obj["kind"] == "request"
@@ -556,7 +541,9 @@ def test_rawlog_writes_response_with_elapsed(_trace_dirs: Path) -> None:
     log.close()
 
     line = (
-        (_trace_dirs / "sessions" / "sess-C" / "wire.jsonl").read_text().splitlines()[0]
+        (_trace_dirs / "sessions" / "sess-C" / "model.jsonl")
+        .read_text()
+        .splitlines()[0]
     )
     obj = json.loads(line)
     assert obj["kind"] == "response"
@@ -820,30 +807,6 @@ def test_rawlog_empty_data_field_returns_unreadable_stub(
 # ---------- _purge_old ----------
 
 
-def test_purge_old_removes_files_older_than_retention_days(
-    _trace_dirs: Path,
-) -> None:
-    raw_dir = _trace_dirs / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    old = raw_dir / "old.jsonl"
-    young = raw_dir / "young.jsonl"
-    old.write_text("x")
-    young.write_text("y")
-
-    import os
-
-    cutoff_seconds = trace.store._RETENTION_DAYS * 86400
-    long_ago = (
-        dt.datetime.now() - dt.timedelta(seconds=cutoff_seconds + 100)
-    ).timestamp()
-    os.utime(old, (long_ago, long_ago))
-
-    trace.store._purge_old()
-
-    assert not old.exists()
-    assert young.exists()
-
-
 def test_purge_old_returns_silently_when_dir_missing() -> None:
     # raw dir doesn't exist — must not raise.
     trace.store._purge_old()
@@ -1016,13 +979,16 @@ def test_summary_marks_crashed_sessions(_trace_dirs: Path) -> None:
     assert s["outcome"]["sentinel"] is None
 
 
-def test_close_writes_end_footer_to_daily_log(_trace_dirs: Path) -> None:
+def test_close_records_session_metrics_in_runtime_log(
+    _trace_dirs: Path, caplog
+) -> None:
+    caplog.set_level(logging.INFO)
     with freeze_time("2026-04-28T10:00:00"):
         t = Trace("s1", Images("s1"))
         _feed_session(t)
         t.close()
 
-    text = (_trace_dirs / "engine-2026-04-28.log").read_text()
+    text = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_text()
     assert "END session=s1 outcome=DONE turns=4" in text
     assert "tokens=1.0k/50 cache=80% tools=2" in text
 
@@ -1076,7 +1042,9 @@ def test_write_request_tags_images_with_turn(_trace_dirs: Path) -> None:
     log.close()
 
     line = (
-        (_trace_dirs / "sessions" / "sess-T" / "wire.jsonl").read_text().splitlines()[0]
+        (_trace_dirs / "sessions" / "sess-T" / "model.jsonl")
+        .read_text()
+        .splitlines()[0]
     )
     url = json.loads(line)["messages"][0]["content"][0]["image_url"]["url"]
     assert url.startswith("images/") and url.endswith("_t7.jpg")  # tagged with turn 7
@@ -1100,7 +1068,9 @@ def test_close_appends_summary_line_to_durable_stats(_trace_dirs: Path) -> None:
     Trace("s1", Images("s1")).close()
     Trace("s2", Images("s2")).close()
 
-    lines = (paths.LOG_DIR / "stats.jsonl").read_text(encoding="utf-8").splitlines()
+    lines = (
+        (paths.LOG_DIR / "session-stats.jsonl").read_text(encoding="utf-8").splitlines()
+    )
     assert [json.loads(ln)["sid"] for ln in lines] == ["s1", "s2"]
 
 
@@ -1135,20 +1105,6 @@ def test_purge_old_spares_session_dir_with_a_recent_file(_trace_dirs: Path) -> N
     trace.store._purge_old()
 
     assert d.exists()
-
-
-def test_purge_old_removes_stale_daily_logs(_trace_dirs: Path) -> None:
-    _trace_dirs.mkdir(parents=True, exist_ok=True)
-    old = _trace_dirs / "engine-2026-01-01.log"
-    old.write_text("x")
-    _age(old, trace.store._LOG_RETENTION_DAYS + 1)
-    young = _trace_dirs / "engine-2099-01-01.log"
-    young.write_text("y")
-
-    trace.store._purge_old()
-
-    assert not old.exists()
-    assert young.exists()
 
 
 # ---------- new_sid ----------
@@ -1209,15 +1165,6 @@ def test_summary_includes_env(_trace_dirs: Path) -> None:
     assert s["env"]["config"]["camera"]["width"] > 0
 
 
-def test_env_renders_one_daily_log_line(_trace_dirs: Path) -> None:
-    with freeze_time("2026-04-28T10:00:00"):
-        Trace("s1", Images("s1")).close()
-
-    text = (_trace_dirs / "engine-2026-04-28.log").read_text()
-    assert "env physiclaw=" in text
-    assert "host=" in text
-
-
 # ---------- cross-platform bytes + sessions README ----------
 
 
@@ -1231,11 +1178,11 @@ def test_log_files_use_lf_newlines_regardless_of_platform(_trace_dirs: Path) -> 
     rlog.write_request(turn=0, messages=[{"role": "user", "content": "hi"}])
     rlog.close()
 
-    for name in ("events.jsonl", "wire.jsonl", "summary.json"):
+    for name in ("events.jsonl", "model.jsonl", "summary.json"):
         raw = (_trace_dirs / "sessions" / "s1" / name).read_bytes()
         assert b"\r" not in raw, name
-    daily = next(_trace_dirs.glob("engine-*.log")).read_bytes()
-    assert b"\r" not in daily
+    runtime = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_bytes()
+    assert b"\r" not in runtime
 
 
 def test_sessions_readme_written_once(_trace_dirs: Path) -> None:
@@ -1265,7 +1212,7 @@ def test_sessions_readme_documents_the_full_summary_schema() -> None:
         assert key in readme, f"errors key {key!r} missing from SESSIONS_README"
     for key in s["outcome"]:
         assert key in readme, f"outcome key {key!r} missing from SESSIONS_README"
-    for name in ("events.jsonl", "wire.jsonl", "summary.json", "images/"):
+    for name in ("events.jsonl", "model.jsonl", "summary.json", "images/"):
         assert name in readme
 
 
@@ -1495,7 +1442,7 @@ def test_a_frame_is_written_once_and_the_wire_references_it(
     assert len(files) == 1 and files[0].endswith("_t2.jpg")  # the capture turn
     (req,) = [
         json.loads(line)
-        for line in (d / "wire.jsonl").read_text().splitlines()
+        for line in (d / "model.jsonl").read_text().splitlines()
         if '"request"' in line
     ]
     assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{files[0]}"

@@ -669,7 +669,7 @@ def micro(
         level = think
     if reps < 1:
         exit_error("--reps must be at least 1", code=2)
-    d = paths.engine_sessions_dir() / resolve_sid(session)
+    d = paths.sessions_dir() / resolve_sid(session)
     try:
         records = decisions.load(d, only=only or None)
     except OSError as e:
