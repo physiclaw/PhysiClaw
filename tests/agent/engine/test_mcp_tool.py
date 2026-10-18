@@ -17,6 +17,7 @@ from mcp import MCPError
 from mcp.types import INTERNAL_ERROR, INVALID_REQUEST, ImageContent, TextContent
 
 from physiclaw.agent.engine import mcp_tool
+from physiclaw.agent.runtime.stopping import stop_event
 
 
 @pytest.fixture(autouse=True)
@@ -713,3 +714,44 @@ async def test_regression_close_failure_clears_live_session(
     with pytest.raises(AssertionError, match="McpClient not entered"):
         await client.list_tools()
     patched_transport.list_tools.assert_not_awaited()
+
+
+async def test_stop_during_expired_session_does_not_reconnect_or_replay(
+    patched_transport,
+):
+    stopping = asyncio.Event()
+
+    async def rejected(*args, **kwargs):
+        stopping.set()
+        raise MCPError(INVALID_REQUEST, "Session not found")
+
+    token = stop_event.set(stopping)
+    try:
+        async with mcp_tool.McpClient() as client:
+            patched_transport.call_tool.side_effect = rejected
+            with pytest.raises(asyncio.CancelledError, match="stop requested"):
+                await client.call_tool("tap")
+    finally:
+        stop_event.reset(token)
+    patched_transport.initialize.assert_awaited_once()
+    patched_transport.call_tool.assert_awaited_once()
+
+
+async def test_stop_during_pending_reconnect_does_not_send_tool(patched_transport):
+    stopping = asyncio.Event()
+
+    async def initialize():
+        stopping.set()
+        return SimpleNamespace(instructions="fixture")
+
+    token = stop_event.set(stopping)
+    try:
+        async with mcp_tool.McpClient() as client:
+            patched_transport.initialize.side_effect = initialize
+            client._reconnect_pending = True
+            with pytest.raises(asyncio.CancelledError, match="stop requested"):
+                await client.call_tool("tap")
+    finally:
+        stop_event.reset(token)
+    assert patched_transport.initialize.await_count == 2
+    patched_transport.call_tool.assert_not_awaited()

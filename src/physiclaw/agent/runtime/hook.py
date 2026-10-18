@@ -27,6 +27,8 @@ import pkgutil
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional, Union
 
+from physiclaw.agent.runtime.stopping import checkpoint
+
 log = logging.getLogger(__name__)
 
 
@@ -78,6 +80,7 @@ async def check_hooks() -> list[Trigger]:
     """
     triggers: list[Trigger] = []
     for fn in list(_hooks):
+        checkpoint()
         try:
             result = fn()
             if inspect.isawaitable(result):

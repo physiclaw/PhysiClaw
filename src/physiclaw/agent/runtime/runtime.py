@@ -23,6 +23,7 @@ import httpx
 
 from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger, check_hooks, load_hooks
+from physiclaw.agent.runtime.stopping import checkpoint, stop_event
 from physiclaw.common import platform
 from physiclaw.common.config import CONFIG, server_url
 from physiclaw.common.log_style import FailureState
@@ -93,12 +94,14 @@ class Runtime:
         # operator sees what's driving the loop without scrolling startup.
         self.label = label
         self._running = False
+        self._stopping = asyncio.Event()
         self._streak = 0  # consecutive unproductive sessions — see BACKOFF_CAP
 
     async def start(self) -> None:
         """Run until stopped or cancelled; provider configuration errors propagate."""
         load_hooks()
-        self._running = True
+        self._running = not self._stopping.is_set()
+        token = stop_event.set(self._stopping)
         log.debug("runtime started (interval=%.2fs)", self.interval)
         last_ready: bool | None = None
         poll_failure = FailureState()
@@ -129,6 +132,7 @@ class Runtime:
                             extra={"event": "server.connection_lost"},
                         )
                         in_blip = True
+                    checkpoint()
                     if ready != last_ready:
                         log.info(
                             "physiclaw ready=%s%s",
@@ -150,10 +154,11 @@ class Runtime:
                         )
                         last_ready = ready
                     if not ready or in_blip:
-                        await asyncio.sleep(self.interval)
+                        await self._sleep(self.interval)
                         continue
 
                     triggers = await check_hooks()
+                    checkpoint()
                     if triggers:
                         sources = [t.source or "?" for t in triggers]
                         log.debug("triggers fired: %s", sources)
@@ -161,15 +166,16 @@ class Runtime:
                         # Lets screen animations settle + exceeds watchdog
                         # EMA_STALE so the next poll re-inits its baseline
                         # — stretched by the unproductive-streak backoff.
-                        await asyncio.sleep(self._react_cooldown(outcome))
+                        await self._sleep(self._react_cooldown(outcome))
                 except (asyncio.CancelledError, ProviderConfigurationError):
                     raise
                 except Exception:
                     log.exception(
                         "Runtime tick failed", extra={"event": "runtime.tick_failed"}
                     )
-                await asyncio.sleep(self.interval)
+                await self._sleep(self.interval)
         finally:
+            stop_event.reset(token)
             self._running = False
             log.info(
                 "Runtime stopped", extra={"event": "runtime.stopped", "console": True}
@@ -201,5 +207,26 @@ class Runtime:
         return cooldown
 
     def stop(self) -> None:
-        """Signal the loop to exit after the current iteration finishes."""
+        """Idempotent, terminal request; call on the runtime event loop."""
+        if not self._stopping.is_set():
+            log.info(
+                "Runtime stop requested", extra={"event": "runtime.stop_requested"}
+            )
         self._running = False
+        self._stopping.set()
+
+    async def _sleep(self, seconds: float) -> None:
+        if seconds == 0:
+            await asyncio.sleep(0)
+            return
+        try:
+            await asyncio.wait_for(self._stopping.wait(), timeout=seconds)
+        except TimeoutError:
+            pass
+
+
+async def close_status_client() -> None:
+    global _client
+    client, _client = _client, None
+    if client is not None:
+        await client.aclose()

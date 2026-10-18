@@ -155,7 +155,7 @@ def test_launch_normalizes_proxy_env_first(
 
 
 def _stub_asyncio_run(mocker, *, raise_kbd_interrupt: bool = False):
-    """Stub `asyncio.run` so it accepts the inner `_main()` coroutine
+    """Stub `asyncio.run` so it accepts the runtime coroutine
     without awaiting it. Without `.close()`, Python flags the unawaited
     coro with a RuntimeWarning (often attributed to whichever test
     happens to be running when GC sweeps it)."""
@@ -303,3 +303,28 @@ def test_launch_verbose_flag_sets_debug_level(
         file_dir=paths.LOG_DIR,
         file_level=_logging.DEBUG,
     )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_keeps_original_failure_and_task(mocker):
+    owner = asyncio.current_task()
+    failure = RuntimeError("original runtime failure")
+    runtime = mocker.Mock()
+    runtime.start = mocker.AsyncMock(side_effect=failure)
+    closed = []
+
+    async def close_mcp():
+        assert asyncio.current_task() is owner
+        closed.append("mcp")
+        raise OSError("cleanup failure")
+
+    async def close_status():
+        assert asyncio.current_task() is owner
+        closed.append("status")
+
+    mocker.patch.object(launcher, "close_mcp", side_effect=close_mcp)
+    mocker.patch.object(launcher, "close_status_client", side_effect=close_status)
+    with pytest.raises(RuntimeError) as error:
+        await launcher._run_runtime(runtime)
+    assert error.value is failure
+    assert closed == ["mcp", "status"]

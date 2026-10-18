@@ -33,6 +33,13 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
+async def close_client() -> None:
+    global _client
+    client, _client = _client, None
+    if client is not None:
+        await client.aclose()
+
+
 @register
 async def phone_watch() -> Trigger | None:
     try:

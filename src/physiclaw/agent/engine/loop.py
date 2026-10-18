@@ -20,6 +20,7 @@ from physiclaw.agent.engine.dispatch import dispatch
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
+from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.agent.trace import Trace
 from physiclaw.common import daylog
 from physiclaw.common.log_style import console_text
@@ -189,6 +190,7 @@ async def _drive(
 
 
 def _stop_if_expired(run: EngineRun, session: Session, turn: int) -> bool:
+    checkpoint()
     # Calls that finish without yielding can cross the deadline before the
     # asyncio timer gets a chance to cancel us. Do not start another action.
     if run.deadline is not None and time.monotonic() >= run.deadline:
@@ -635,6 +637,7 @@ async def _advance_with_retry(
     call retries — transient errors only (principle 3: permanent 4xx
     fails fast)."""
     for plug in plugins:
+        checkpoint()
         try:
             turn = await plug.advance(messages)
         except Exception:
@@ -644,9 +647,11 @@ async def _advance_with_retry(
             return turn
     last_err: Exception | None = None
     for attempt in range(1, attempts + 1):
+        checkpoint()
         try:
             return await chat(messages, tools)
         except ProviderTransientError as e:
+            checkpoint()
             last_err = e
             if attempt < attempts:
                 log.warning(

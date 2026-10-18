@@ -22,6 +22,7 @@ from physiclaw.agent.engine.policy import DispatchGuard
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.engine.validator import ValidationError, validate_arguments
+from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.agent.trace import (
     brief_content,
     format_call_args,
@@ -50,6 +51,7 @@ async def dispatch(
     """Guards, validate, execute, observe. Pair successful calls and tool
     errors with a ToolResultMessage. Cancellation propagates so the loop
     can enforce its time budget and the runtime can stop."""
+    checkpoint()
     log.debug(
         "turn %d: calling %s(%s)",
         turn,

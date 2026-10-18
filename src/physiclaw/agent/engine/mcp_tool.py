@@ -18,6 +18,7 @@ from mcp import ClientSession, MCPError
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import INVALID_REQUEST, ImageContent, TextContent
 
+from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.common import platform
 from physiclaw.common.config import server_url
 
@@ -110,6 +111,7 @@ class McpClient:
         fresh handshake, then the same call — every later call would
         fail the same way, and the model cannot repair a transport from
         inside a turn."""
+        checkpoint()
         if self._reconnect_pending:
             await self._reconnect()
         try:
@@ -123,6 +125,7 @@ class McpClient:
                 "Session terminated",
             }:
                 raise
+            checkpoint()
             log.warning("MCP session lost (%s) — reconnecting once", e)
             await self._reconnect()
             return await op()
@@ -137,8 +140,10 @@ class McpClient:
         Cancellation during close propagates without starting new work."""
         try:
             await self.__aexit__(None, None, None)
+            checkpoint()
             self._stack = AsyncExitStack()
             await self.__aenter__()
+            checkpoint()
         finally:
             self._reconnect_pending = self._session is None
 
@@ -153,6 +158,7 @@ class McpClient:
         # transport's terminate-on-close DELETE. Other kwargs match mcp's
         # create_mcp_http_client defaults.
         await self._probe()  # legible error before the transport swallows it
+        checkpoint()
         http_client = await self._stack.enter_async_context(
             httpx2.AsyncClient(
                 follow_redirects=True,
@@ -166,6 +172,7 @@ class McpClient:
         self._session = await self._stack.enter_async_context(
             ClientSession(read, write)
         )
+        checkpoint()
         init = await self._session.initialize()
         self.server_instructions = (init.instructions or "").rstrip()
         log.info("MCP client connected (%s)", self._url)
@@ -241,6 +248,7 @@ async def get_mcp() -> McpClient:
     handshake are paid once per runtime process, not once per session.
     """
     global _stack, _mcp
+    checkpoint()
     if _mcp is None:
         stack = AsyncExitStack()
         await stack.__aenter__()
@@ -274,5 +282,6 @@ async def close_mcp() -> None:
     stack, _stack, _mcp, _tools_cache = _stack, None, None, None
     try:
         await stack.aclose()
+        log.info("MCP client closed", extra={"event": "runtime.mcp_closed"})
     except Exception:
         log.warning("MCP client close failed", exc_info=True)

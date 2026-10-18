@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from types import SimpleNamespace
 
 import pytest
 import respx
@@ -110,7 +109,7 @@ async def test_start_ready_calls_react_when_triggers_fire(mocker) -> None:
 
     rt = runtime.Runtime(react=_react, interval=0.01, label="qwen")
     sleep_stub, _ = _stop_after_n(rt, 3)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep_stub)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep_stub)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
     mocker.patch.object(runtime, "load_hooks")
 
@@ -132,7 +131,7 @@ async def test_start_skips_react_when_not_ready(mocker) -> None:
     react_spy = mocker.MagicMock()
     rt = runtime.Runtime(react=react_spy, interval=0.01)
     sleep_stub, _ = _stop_after_n(rt, 2)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep_stub)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep_stub)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(False))
     mocker.patch.object(runtime, "load_hooks")
     check_spy = mocker.patch.object(runtime, "check_hooks")
@@ -152,7 +151,7 @@ async def test_start_warns_only_once_per_blip(
 
     rt = runtime.Runtime(react=lambda t: None, interval=0.01)
     sleep_stub, _ = _stop_after_n(rt, 4)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep_stub)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep_stub)
 
     async def _bad_check():
         raise RuntimeError("server down")
@@ -178,7 +177,7 @@ async def test_start_logs_ready_transition(
 
     rt = runtime.Runtime(react=lambda t: None, interval=0.01, label="X")
     sleep_stub, _ = _stop_after_n(rt, 2)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep_stub)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep_stub)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
     mocker.patch.object(runtime, "load_hooks")
     mocker.patch.object(runtime, "check_hooks", return_value=[])
@@ -199,7 +198,7 @@ async def test_start_exception_in_tick_logs_and_continues(
 
     rt = runtime.Runtime(react=lambda t: None, interval=0.01)
     sleep_stub, _ = _stop_after_n(rt, 3)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep_stub)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep_stub)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
     mocker.patch.object(runtime, "load_hooks")
     # Raise on first check, succeed afterwards so loop continues.
@@ -268,7 +267,7 @@ async def test_unproductive_sessions_back_off_the_wake_cadence(mocker) -> None:
         if not outcomes and len(sleeps) >= 8:
             rt.stop()
 
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=_sleep)
+    mocker.patch.object(rt, "_sleep", side_effect=_sleep)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
     mocker.patch.object(runtime, "load_hooks")
     trig = [Trigger(description="x", source="cron")]
@@ -296,7 +295,7 @@ def _backoff_rt(mocker, react, *, stop_after: int):
         if len(sleeps) >= stop_after:
             rt.stop()
 
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=_sleep)
+    mocker.patch.object(rt, "_sleep", side_effect=_sleep)
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
     mocker.patch.object(runtime, "load_hooks")
     trig = [Trigger(description="x", source="cron")]
@@ -351,7 +350,7 @@ async def _run_failures(mocker, count, cooldown):
     rt = Runtime(react, interval=0.01)
     mocker.patch.object(runtime, "load_hooks")
     mocker.patch.object(runtime, "check_ready", side_effect=ready)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleep)
+    mocker.patch.object(rt, "_sleep", side_effect=sleep)
     mocker.patch.object(runtime.CONFIG.engine, "react_cooldown_seconds", cooldown)
     try:
         await rt.start()
@@ -386,7 +385,7 @@ async def test_regression_invalid_hook_result_cannot_starve_a_valid_trigger(mock
     sleeper, _ = _stop_after_n(rt, 1)
     mocker.patch.object(runtime, "load_hooks")
     mocker.patch.object(runtime, "_check_ready", side_effect=_async_returning(True))
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleeper)
+    mocker.patch.object(rt, "_sleep", side_effect=sleeper)
 
     await rt.start()
 
@@ -415,7 +414,7 @@ async def test_start_preserves_readiness_across_blips_and_resumes(mocker, caplog
     sleeper, _ = _stop_after_n(rt, 7)
     mocker.patch.object(runtime, "load_hooks")
     ready = mocker.patch.object(runtime, "check_ready", side_effect=polls)
-    mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleeper)
+    mocker.patch.object(rt, "_sleep", side_effect=sleeper)
 
     with caplog.at_level(logging.DEBUG, logger=runtime.__name__):
         await rt.start()
@@ -448,11 +447,7 @@ async def test_fresh_runtime_polls_with_its_cached_http_client(
     rt = state["Runtime"](lambda triggers: received.extend(triggers), interval=0.125)
     sleeper, _ = _stop_after_n(rt, 4)
     monkeypatch.setitem(state, "load_hooks", lambda: None)
-    monkeypatch.setitem(
-        state,
-        "asyncio",
-        SimpleNamespace(sleep=sleeper, CancelledError=asyncio.CancelledError),
-    )
+    monkeypatch.setattr(rt, "_sleep", sleeper)
 
     with caplog.at_level(logging.ERROR):
         await rt.start()
@@ -460,3 +455,43 @@ async def test_fresh_runtime_polls_with_its_cached_http_client(
     assert route.call_count == 2
     assert received == [Trigger(description="wake", source="phone")] * 2
     assert not caplog.records
+
+
+@pytest.mark.parametrize("phase", ["ready", "hooks"])
+async def test_stop_during_check_does_not_start_react(mocker, phase):
+    react = mocker.Mock()
+    rt = Runtime(react)
+    mocker.patch.object(runtime, "load_hooks")
+
+    async def ready():
+        if phase == "ready":
+            rt.stop()
+        return True
+
+    async def hooks():
+        rt.stop()
+        return [Trigger(description="late", source="test")]
+
+    mocker.patch.object(runtime, "_check_ready", side_effect=ready)
+    mocker.patch.object(runtime, "check_hooks", side_effect=hooks)
+    with pytest.raises(asyncio.CancelledError, match="stop requested"):
+        await rt.start()
+    react.assert_not_called()
+
+
+@pytest.mark.parametrize("seconds", [0, 600])
+async def test_stop_wakes_runtime_sleep(seconds):
+    rt = Runtime(lambda triggers: None)
+    asyncio.get_running_loop().call_soon(rt.stop)
+    await asyncio.wait_for(rt._sleep(seconds), timeout=0.1)
+    rt.stop()
+    assert rt._stopping.is_set()
+
+
+async def test_stop_before_start_is_terminal(mocker):
+    ready = mocker.patch.object(runtime, "_check_ready")
+    mocker.patch.object(runtime, "load_hooks")
+    rt = Runtime(mocker.Mock())
+    rt.stop()
+    await rt.start()
+    ready.assert_not_called()

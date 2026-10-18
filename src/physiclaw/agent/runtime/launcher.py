@@ -12,11 +12,14 @@ import asyncio
 import logging
 import math
 import os
+import signal
 import sys
+import threading
 from functools import partial
 
 from physiclaw.agent.engine.mcp_tool import close_mcp
 from physiclaw.agent.runtime import Runtime
+from physiclaw.agent.runtime.runtime import close_status_client
 from physiclaw.common import paths
 from physiclaw.common.config import (
     SERVER_ENV_VAR,
@@ -52,6 +55,64 @@ def resolve() -> tuple[str, str]:
     return ref, source
 
 
+async def _run_runtime(runtime: Runtime, *, managed: bool = False) -> None:
+    """Keep MCP creation and cleanup in this task, including on stop/EOF.
+
+    Managed stdin is a dedicated, parent-owned pipe: EOF requests shutdown
+    even when the parent died. The reader never enters an asyncio/MCP context.
+    """
+    loop = asyncio.get_running_loop()
+    previous = {}
+
+    def request_stop(*_args) -> None:
+        loop.call_soon_threadsafe(runtime.stop)
+
+    if managed:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            previous[sig] = signal.signal(sig, request_stop)
+
+        def read_control() -> None:
+            try:
+                # A daemon must not hold stdin's BufferedReader lock when
+                # Python finalizes after an early runtime return/failure.
+                os.read(sys.stdin.fileno(), 1)
+            finally:
+                try:
+                    request_stop()
+                except RuntimeError:
+                    pass  # The owning loop already finished.
+
+        threading.Thread(
+            target=read_control, name="runtime-control", daemon=True
+        ).start()
+
+    failure: BaseException | None = None
+    try:
+        await runtime.start()
+    except asyncio.CancelledError as e:
+        if not runtime._stopping.is_set():
+            failure = e
+    except BaseException as e:
+        failure = e
+    finally:
+        from physiclaw.agent.hooks.poll import close_client as close_watch_client
+
+        # No wait_for/shield/create_task here: AnyIO scopes must unwind in
+        # the task that entered them. The parent bounds the entire exit.
+        for close in (close_mcp, close_status_client, close_watch_client):
+            try:
+                await close()
+            except BaseException as e:
+                if failure is None:
+                    failure = e
+                else:
+                    log.warning("Runtime resource close failed", exc_info=True)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    if failure is not None:
+        raise failure
+
+
 def launch() -> None:
     # Normally inherited already normalized from the server process, but
     # a direct `python -m physiclaw.agent.runtime` skips the CLI callback
@@ -66,6 +127,7 @@ def launch() -> None:
     parser.add_argument("--server", default=None)
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--managed", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not math.isfinite(args.interval) or args.interval < 0:
         parser.error("interval must be finite and non-negative")
@@ -114,18 +176,9 @@ def launch() -> None:
         },
     )
 
-    async def _main():
-        try:
-            await Runtime(
-                react=react,
-                interval=args.interval,
-                label=label,
-            ).start()
-        finally:
-            await close_mcp()
-
+    runtime = Runtime(react=react, interval=args.interval, label=label)
     try:
-        asyncio.run(_main())
+        asyncio.run(_run_runtime(runtime, managed=args.managed))
     except ProviderConfigurationError as e:
         report_error(str(e), tag="runtime")
         sys.exit(1)

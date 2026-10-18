@@ -15,6 +15,8 @@ from typing import Annotated, Optional
 
 import typer
 
+from physiclaw.cli.runtime_process import ManagedRuntime
+from physiclaw.cli.runtime_process import terminate_child as terminate_child
 from physiclaw.common.config import CONFIG, WILDCARD_HOSTS, url_host
 
 
@@ -220,9 +222,10 @@ def server(
             )
         _log_endpoints(host, port, no_runtime=no_runtime)
         apps = build_apps(host)
+        runtime = None
         if not no_runtime:
-            child = _spawn_runtime(host, port, verbose, runtime_label)
-            resources.callback(terminate_child, child)
+            runtime = ManagedRuntime(_spawn_runtime(host, port, verbose, runtime_label))
+            resources.callback(runtime.close)
         try:
             _serve(
                 host,
@@ -230,6 +233,7 @@ def server(
                 *apps,
                 sockets=listeners,
                 announce_ready=no_runtime,
+                runtime=runtime,
                 on_started=partial(
                     _start_hardware_bringup,
                     host,
@@ -269,6 +273,7 @@ def _serve(
     sockets: tuple[socket.socket, socket.socket],
     announce_ready: bool,
     on_started: Callable[[], None],
+    runtime: ManagedRuntime | None = None,
 ) -> None:
     """Serve the two planes from one process, two listeners.
 
@@ -285,11 +290,24 @@ def _serve(
     worker threads. Hardware bring-up starts only after both ASGI apps are up.
     """
     import uvicorn
+    from sse_starlette.sse import AppStatus
 
     from physiclaw.cli._format import exit_error
     from physiclaw.core.bridge.lan import bridge_port
 
     stopping = threading.Event()
+    automatic_drain = AppStatus.enable_automatic_graceful_drain
+    was_exiting = AppStatus.should_exit
+
+    class ControlServer(uvicorn.Server):
+        async def shutdown(self, sockets=None) -> None:
+            stopping.set()
+            if runtime is not None:
+                await runtime.stop(force=lambda: self.force_exit)
+                AppStatus.should_exit = True
+            logging.getLogger(__name__).info("Control service stopping")
+            await super().shutdown(sockets=sockets)
+
     bridge_server = uvicorn.Server(
         uvicorn.Config(
             bridge_app,
@@ -300,7 +318,7 @@ def _serve(
             access_log=False,
         )
     )
-    control_server = uvicorn.Server(
+    control_server = ControlServer(
         uvicorn.Config(
             control_app,
             host=host,
@@ -348,6 +366,10 @@ def _serve(
         threading.Thread(target=after_startup, name="server-startup", daemon=True),
     )
     interrupted = False
+    if runtime is not None:
+        # SSE otherwise drains on the signal itself (also by polling
+        # should_exit), before our shutdown hook can close the MCP client.
+        AppStatus.disable_automatic_graceful_drain()
     try:
         for thread in threads:
             thread.start()
@@ -356,10 +378,18 @@ def _serve(
         interrupted = True
     finally:
         stopping.set()
-        bridge_server.should_exit = True
-        for thread in threads:
-            if thread.ident is not None:
-                thread.join(timeout=5)
+        try:
+            if runtime is not None:
+                runtime.close()
+        finally:
+            logging.getLogger(__name__).info("Phone bridge stopping")
+            bridge_server.should_exit = True
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(timeout=5)
+            if runtime is not None:
+                AppStatus.enable_automatic_graceful_drain = automatic_drain
+                AppStatus.should_exit = was_exiting
     if failures:
         exit_error(failures[0])
     for thread in threads:
@@ -689,26 +719,9 @@ def _open_hardware_wizard(host: str, port: int) -> None:
     threading.Thread(target=_open_setup, daemon=True).start()
 
 
-def terminate_child(proc: subprocess.Popen, timeout: float = 5) -> None:
-    """Stop and reap a child we spawned, killing it if termination times out."""
-    if proc.poll() is None:
-        try:
-            proc.terminate()
-        except ProcessLookupError:
-            pass  # it exited between poll and terminate; still reap it below
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            proc.wait()
-
-
 def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subprocess.Popen:
     """Run the hook loop out-of-process so long-running hooks don't block
-    the MCP event loop. The caller terminates it when serving ends.
+    the MCP event loop. The parent requests exit before stopping MCP serving.
 
     `label` is the pre-resolved engine/provider/model string
     passed by the caller — the caller already did provider resolution to
@@ -721,11 +734,20 @@ def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subproces
         sys.executable,
         "-m",
         "physiclaw.agent.runtime",
+        "--managed",
         "--server",
         f"http://{url_host(host)}:{port}",
     ]
     if verbose:
         cmd.append("--verbose")
-    proc = subprocess.Popen(cmd)
+    # The parent owns terminal signals; the child receives EOF instead.
+    if sys.platform == "win32":
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+    else:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, start_new_session=True)
     log.debug("Runtime loop started as subprocess (pid=%s, %s)", proc.pid, label)
     return proc

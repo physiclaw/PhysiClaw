@@ -299,3 +299,11 @@ async def test_first_failure_after_import_is_not_silently_suppressed(
 
     assert triggers == []
     assert "Phone watch poll failed" in caplog.text
+
+
+async def test_close_client_is_idempotent_and_releases_http_pool():
+    client = poll._get_client()
+    await poll.close_client()
+    await poll.close_client()
+    assert client.is_closed
+    assert poll._client is None

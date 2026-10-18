@@ -455,6 +455,7 @@ def test_server_default_invocation_serves_both_planes(mocker) -> None:
         *deps["apps"],
         sockets=tuple(deps["listeners"]),
         announce_ready=True,
+        runtime=None,
         on_started=mocker.ANY,
     )
     # State recorded with resolved model.
@@ -1020,7 +1021,7 @@ def test_regression_terminate_child_reaps_after_forced_kill(mocker) -> None:
         mocker.call.terminate(),
         mocker.call.wait(timeout=0.1),
         mocker.call.kill(),
-        mocker.call.wait(),
+        mocker.call.wait(timeout=0.1),
     ]
 
 
@@ -1285,7 +1286,10 @@ def test_terminate_child_reaps_when_exit_races_signal(method, mocker):
 
     server_mod.terminate_child(proc, timeout=0.1)
 
-    assert proc.wait.call_args_list == [mocker.call(timeout=0.1), mocker.call()]
+    assert proc.wait.call_args_list == [
+        mocker.call(timeout=0.1),
+        mocker.call(timeout=0.1),
+    ]
 
 
 def test_terminate_child_does_not_signal_exited_process(mocker):
