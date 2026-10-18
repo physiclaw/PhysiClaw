@@ -64,9 +64,9 @@ def _recording(directory: Path, marker: str) -> Path:
 
 def _printed_path(result) -> str:
     url = next(
-        line.removeprefix("studio: ")
-        for line in result.stdout.splitlines()
-        if line.startswith("studio: http://127.0.0.1:8058/")
+        line.split("Open Studio: ", 1)[1]
+        for line in result.stderr.splitlines()
+        if "Open Studio: http://127.0.0.1:8058/" in line
     )
     return urlsplit(url).path
 
@@ -195,7 +195,7 @@ def test_studio_explicit_address_and_port_are_preserved(launched, mocker):
     assert _state(launched)["mcp_url"] == "http://127.0.0.1:9998/mcp"
     assert launched[0].config.port == 8123
     assert launched[0].config.host == "127.0.0.1"
-    assert "http://127.0.0.1:8123/" in result.stdout
+    assert "http://127.0.0.1:8123/" in result.stderr
     probe.assert_not_called()
 
 
@@ -302,7 +302,7 @@ def test_studio_recorded_driver_uses_selected_frames_without_mcp(
     result = runner.invoke(app, ["--session", str(selected), "--no-open"])
 
     assert result.exit_code == 0
-    assert "recorded recorded (1 frames)" in result.stdout
+    assert "Recorded session recorded | frames=1" in result.stderr
     assert _state(launched)["mcp_url"] == "mock:recorded"
     probe.assert_not_called()
 
@@ -459,7 +459,7 @@ def test_studio_browser_failure_does_not_stop_server(launched, mocker):
     result = runner.invoke(app, ["--review"])
 
     assert result.exit_code == 0
-    assert "could not open browser: headless" in result.stderr
+    assert "Could not open browser: headless" in result.stderr
 
 
 @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])

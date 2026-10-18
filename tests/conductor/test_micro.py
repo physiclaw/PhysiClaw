@@ -372,7 +372,11 @@ async def test_done_carries_the_return_fields_as_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_repair_retry_recovers_one_invalid_reply() -> None:
+async def test_repair_retry_recovers_one_invalid_reply(caplog) -> None:
+    import logging
+
+    from physiclaw.common.log_style import ConsoleFilter
+
     tap = Sink()
     caller = _caller(
         [
@@ -382,7 +386,8 @@ async def test_repair_retry_recovers_one_invalid_reply() -> None:
         tr=tap,
     )
 
-    result = await caller.run(_fields_req())
+    with caplog.at_level(logging.INFO):
+        result = await caller.run(_fields_req())
 
     assert result.outcome is not None and result.outcome.out == "done"
     assert result.attempts == 2
@@ -391,6 +396,11 @@ async def test_repair_retry_recovers_one_invalid_reply() -> None:
     assert tap.events[-1]["event"] == "micro_call"
     assert tap.events[-1]["attempts"] == 2
     assert "prompt_tokens" not in tap.events[-1]
+    record = next(
+        r for r in caplog.records if getattr(r, "event", "") == "provider.reply_invalid"
+    )
+    assert ConsoleFilter(verbose=False).filter(record)
+    assert record.console_message == "Decision reply invalid — retrying once"
 
 
 @pytest.mark.asyncio

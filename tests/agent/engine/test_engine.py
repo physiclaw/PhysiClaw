@@ -50,6 +50,82 @@ from physiclaw.contract.dto import UserMessage
 # ---------- _run_session ----------
 
 
+@pytest.mark.parametrize(
+    "source, label, headline",
+    [
+        ("cron:buy-coffee", "Buy coffee", "Scheduled task started: Buy coffee"),
+        ("first-run", "", "Learning phone controls"),
+        ("phone", "", "Task started"),
+    ],
+)
+async def test_task_start_names_the_work_without_dumping_the_wake_prompt(
+    completed_run, caplog, source, label, headline
+):
+    import logging
+
+    trigger = Trigger(description="private wake context", source=source, label=label)
+    with caplog.at_level(logging.INFO):
+        await engine_mod.run([trigger], model_ref="fake/model")
+    record = next(
+        r for r in caplog.records if getattr(r, "event", "") == "session.started"
+    )
+    assert record.console and record.console_message == headline
+    wake = next(
+        c.args[0]
+        for c in completed_run.tr.write.call_args_list
+        if c.args[0].get("event") == "wake"
+    )
+    assert wake["triggers"][0]["description"] == "private wake context"
+    if label:
+        assert wake["triggers"][0]["label"] == label
+
+
+async def test_session_logs_carry_context_through_turns_and_restore_it(
+    completed_run, mocker
+):
+    import json
+    import logging
+
+    from physiclaw.common.logger.context import record_fields
+    from physiclaw.common.logger.structured import JsonLogFormatter
+
+    captured = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            if record.name.startswith("physiclaw."):
+                captured.append(json.loads(JsonLogFormatter("runtime").format(record)))
+
+    mocker.patch.object(engine_mod, "new_sid", return_value="correlated-session")
+    handler = Capture()
+    root = logging.getLogger()
+    previous_level = root.level
+    root.addHandler(handler)
+    root.setLevel(logging.DEBUG)
+    completed_run.plugin.aclose.side_effect = lambda: logging.getLogger(
+        "physiclaw.plugin"
+    ).info("closing plugin")
+    try:
+        outcome = await engine_mod.run(
+            [Trigger(description="t")], model_ref="fake/model"
+        )
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(previous_level)
+
+    assert outcome.status == DONE
+    completed = [r for r in captured if r.get("event") == "tool.completed"]
+    assert [r["tool"] for r in completed] == ["note", "end_session"]
+    assert all(
+        r["session_id"] == "correlated-session" and r["turn"] == 0 for r in completed
+    )
+    assert all(r["tool_call_id"] for r in completed)
+    closing = next(r for r in captured if r["message"] == "closing plugin")
+    assert closing["session_id"] == "correlated-session"
+    assert "turn" not in closing and "tool_call_id" not in closing
+    assert "session_id" not in record_fields(logging.makeLogRecord({}))
+
+
 async def test_regression_private_macro_dispatch_survives_hidden_schema(
     private_macro_run,
 ):
@@ -172,6 +248,59 @@ def completed_run(mocker):
     )
     factory = mocker.patch.object(engine_mod, "make_provider", return_value=provider)
     return SimpleNamespace(**deps, provider=provider, plugin=plugin, factory=factory)
+
+
+@pytest.fixture
+def recorded_run(completed_run, monkeypatch, caplog):
+    """The real session writers with the same isolated provider/MCP boundaries."""
+    import logging
+
+    from physiclaw.agent.trace import RawLog, Trace
+    from physiclaw.common import paths
+
+    monkeypatch.setattr(engine_mod, "Trace", Trace)
+    monkeypatch.setattr(engine_mod, "RawLog", RawLog)
+    monkeypatch.setattr(engine_mod, "new_sid", lambda: "recorded-abc123")
+    caplog.set_level(logging.DEBUG)
+    completed_run.directory = paths.engine_sessions_dir() / "recorded-abc123"
+    return completed_run
+
+
+async def test_provider_setup_failure_is_saved_before_session_capture_closes(
+    recorded_run,
+):
+    from physiclaw.provider import ProviderConfigurationError
+
+    recorded_run.factory.side_effect = ProviderConfigurationError(
+        "API credential is missing"
+    )
+
+    with pytest.raises(ProviderConfigurationError, match="API credential is missing"):
+        await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    text = (recorded_run.directory / "runtime.log").read_text(encoding="utf-8")
+    assert "ProviderConfigurationError: API credential is missing" in text
+    assert "Traceback" in text
+
+
+async def test_wire_close_failure_stays_in_the_session_diagnostics(
+    recorded_run, monkeypatch
+):
+    from physiclaw.agent.trace import RawLog
+
+    close = RawLog.close
+
+    def fail_close(raw):
+        close(raw)
+        raise OSError("wire close failure detail")
+
+    monkeypatch.setattr(RawLog, "close", fail_close)
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    text = (recorded_run.directory / "runtime.log").read_text(encoding="utf-8")
+    assert "OSError: wire close failure detail" in text and "Traceback" in text
+    assert text.index("wire close failure detail") < text.index("END session=")
 
 
 async def test_regression_failed_plugin_setup_is_skipped_but_closed(completed_run):
@@ -325,6 +454,10 @@ async def test_run_session_crash_marks_stuck(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_run_session_cancellation_propagates(mocker) -> None:
+    import logging
+
+    from physiclaw.common.logger.context import record_fields
+
     _patch_session_deps(mocker)
     mocker.patch.object(
         engine_mod,
@@ -338,6 +471,7 @@ async def test_run_session_cancellation_propagates(mocker) -> None:
             model_ref="fake/fake-model",
             session=Session(),
         )
+    assert "session_id" not in record_fields(logging.makeLogRecord({}))
 
 
 # ---------- run (outcome-contract wiring: retries, WAIT, budget) ----------
@@ -573,6 +707,7 @@ async def test_done_is_recorded_before_the_curation_pass(mocker) -> None:
         )
 
     curate.assert_awaited_once()
+    assert curate.await_args.kwargs["rlog"] is deps["rlog"]
     done = [
         c.args[0]
         for c in deps["tr"].write.call_args_list

@@ -122,7 +122,10 @@ def test_measure_viewport_shift_raises_when_dim_zero_width(mocker) -> None:
 def test_measure_viewport_shift_raises_when_screenshot_timeout(
     mocker,
     tmp_path: Path,
+    caplog,
 ) -> None:
+    import logging
+
     mocker.patch.object(viewport_mod.time, "sleep")
     mocker.patch.object(
         viewport_mod,
@@ -136,8 +139,16 @@ def test_measure_viewport_shift_raises_when_screenshot_timeout(
     bridge.wait_screenshot.return_value = None
     bridge.connectivity_hint.return_value = None  # phone still polling
 
-    with pytest.raises(RuntimeError, match="Double-tap AssistiveTouch"):
-        measure_viewport_shift(cal, bridge, fresh=True)
+    def wait_screenshot(*args, **kwargs):
+        # The instruction must be visible BEFORE the blocking wait.
+        notices = [r for r in caplog.records if getattr(r, "console", False)]
+        assert any("double-tap AssistiveTouch" in r.console_message for r in notices)
+        return None
+
+    bridge.wait_screenshot.side_effect = wait_screenshot
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(RuntimeError, match="Double-tap AssistiveTouch"):
+            measure_viewport_shift(cal, bridge, fresh=True)
 
 
 def test_measure_viewport_shift_timeout_carries_connectivity_hint(

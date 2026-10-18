@@ -259,7 +259,10 @@ def test_verify_assistive_touch_shows_clipboard_confirmation_on_phone(mocker) ->
     bridge.clear_text.assert_called_once()
 
 
-def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
+def test_verify_assistive_touch_clipboard_timeout(mocker, caplog) -> None:
+    from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
+
+    caplog.set_level(logging.INFO)
     mocker.patch.object(at_verify_mod.time, "sleep")
     mocker.patch.object(at_verify_mod.random, "randbytes", return_value=b"\x01\x02\x03")
     arm = MagicMock()
@@ -275,6 +278,7 @@ def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
     cal = _make_cal(viewport_shift=vshift)
     bridge = MagicMock()
     bridge.wait_clipboard.return_value = False
+    bridge.connectivity_hint.return_value = None
     img = np.zeros((400, 400, 3), dtype=np.uint8)
     ok, buf = cv2.imencode(".png", img)
     bridge.wait_screenshot.return_value = buf.tobytes()
@@ -293,6 +297,16 @@ def test_verify_assistive_touch_clipboard_timeout(mocker) -> None:
     assert out["passed"] is False
     assert out["screenshot"]["passed"] is True
     assert out["clipboard"]["fetched"] is False
+    normal = "\n".join(
+        TaggedFormatter("physiclaw", False, verbose=False).format(r)
+        for r in caplog.records
+        if ConsoleFilter(verbose=False).filter(r)
+    )
+    assert normal.count("Phone clipboard shortcut timed out") == 1
+    assert "AssistiveTouch verification failed" not in normal
+    assert any(
+        "AssistiveTouch verification failed" in r.getMessage() for r in caplog.records
+    )
 
 
 def _render_nonce(phone: PageState) -> bytes:

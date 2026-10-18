@@ -1,8 +1,8 @@
-"""Tests for `drive.setup` — the wake's one setup call, and the two log
-lines it owes every wake: the roster (every playbook on disk with its
-state) and the decision (the boot drives and what it offers, or the
-plain model session and the one reason). A playbook not running is
-the first thing to know about a wake, so nothing here stays quiet."""
+"""Tests for `drive.setup` and each wake's saved diagnostic evidence.
+
+The roster names every playbook and its state; the decision explains what
+the boot offers or why the session uses the model. Retain both at DEBUG.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ DISABLED_MACRO = "enabled: false\n" + PACK_MACRO.format(name="open-app")
 
 @pytest.fixture
 def wake_log(caplog: pytest.LogCaptureFixture) -> pytest.LogCaptureFixture:
-    caplog.set_level(logging.INFO, logger="physiclaw.conductor")
+    caplog.set_level(logging.DEBUG, logger="physiclaw.conductor")
     return caplog
 
 
@@ -48,7 +48,7 @@ def test_roster_names_every_playbook_with_its_state(wake_log) -> None:
 
     setup.session_setup()
 
-    (roster,) = _lines(wake_log, "conductor: playbooks on disk")
+    (roster,) = _lines(wake_log, "Playbooks on disk:")
     assert "demo/flow (live)" in roster
     assert "demo/later (disabled)" in roster
     assert "demo/broken (invalid: " in roster
@@ -61,7 +61,7 @@ def test_roster_names_the_disabled_macro_that_holds_a_playbook_back(wake_log) ->
 
     setup.session_setup()
 
-    (roster,) = _lines(wake_log, "conductor: playbooks on disk")
+    (roster,) = _lines(wake_log, "Playbooks on disk:")
     assert "demo/flow (disabled macro: open-app)" in roster
 
 
@@ -73,7 +73,7 @@ def test_roster_carries_an_unusable_pack_as_a_line(wake_log) -> None:
 
     program, _ = setup.session_setup()
 
-    (roster,) = _lines(wake_log, "conductor: playbooks on disk")
+    (roster,) = _lines(wake_log, "Playbooks on disk:")
     assert "junk (pack unusable: " in roster
     assert program is None
 
@@ -107,10 +107,8 @@ def test_a_live_playbook_and_boot_log_what_the_boot_offers(wake_log) -> None:
     program, _ = setup.session_setup()
 
     assert program is not None
-    assert _lines(wake_log, "conductor: boot drives") == [
-        "conductor: boot drives — offering demo/flow"
-    ]
-    assert not _lines(wake_log, "conductor: plain model session")
+    assert _lines(wake_log, "Boot drives:") == ["Boot drives: offering demo/flow"]
+    assert not _lines(wake_log, "Plain model session:")
 
 
 def test_no_channel_pack_is_the_first_reason(wake_log) -> None:
@@ -119,10 +117,10 @@ def test_no_channel_pack_is_the_first_reason(wake_log) -> None:
     program, _ = setup.session_setup()
 
     assert program is None
-    (why,) = _lines(wake_log, "conductor: plain model session")
+    (why,) = _lines(wake_log, "Plain model session:")
     assert "no usable channel pack" in why
     # The roster still prints: the user sees the pack IS there.
-    (roster,) = _lines(wake_log, "conductor: playbooks on disk")
+    (roster,) = _lines(wake_log, "Playbooks on disk:")
     assert "demo/flow (live)" in roster
 
 
@@ -138,7 +136,7 @@ def test_a_channel_without_a_live_boot_says_so(wake_log) -> None:
     program, _ = setup.session_setup()
 
     assert program is None
-    (why,) = _lines(wake_log, "conductor: plain model session")
+    (why,) = _lines(wake_log, "Plain model session:")
     assert "no live boot" in why
     # …and the channel logged the specific gap above it.
     assert any("channel/boot: disabled" in m for m in _lines(wake_log, "conductor:"))
@@ -150,10 +148,8 @@ def test_no_task_pack_on_disk_says_so(wake_log) -> None:
     program, _ = setup.session_setup()
 
     assert program is None
-    assert _lines(wake_log, "conductor: playbooks on disk") == [
-        "conductor: playbooks on disk — none"
-    ]
-    (why,) = _lines(wake_log, "conductor: plain model session")
+    assert _lines(wake_log, "Playbooks on disk:") == ["Playbooks on disk: none"]
+    (why,) = _lines(wake_log, "Plain model session:")
     assert "no task pack on disk" in why
 
 
@@ -164,5 +160,5 @@ def test_only_disabled_playbooks_point_at_the_roster(wake_log) -> None:
     program, _ = setup.session_setup()
 
     assert program is None
-    (why,) = _lines(wake_log, "conductor: plain model session")
+    (why,) = _lines(wake_log, "Plain model session:")
     assert "no live playbook" in why

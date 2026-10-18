@@ -18,6 +18,8 @@ fail-open: a parse error or empty result leaves the list untouched.
 """
 
 import logging
+import time
+from contextlib import suppress
 
 from physiclaw.agent.engine import pitfalls
 from physiclaw.common.config import CONFIG
@@ -60,24 +62,47 @@ def _parse(text: str) -> list[str] | None:
     return [x for x in arr if isinstance(x, str) and x.strip()]
 
 
-async def curate(provider, *, tr=None) -> bool:
+async def curate(provider, *, tr=None, rlog=None) -> bool:
     """Consolidate the pitfalls list in place. Returns True if it was rewritten.
     Fail-open: any error / unparseable / empty reply leaves the list as-is."""
     try:
         current = pitfalls.read()
         if not current:
             return False
+        messages = [
+            SystemMessage(content=_system()),
+            UserMessage(content="\n".join(f"- {x}" for x in current)),
+        ]
+        turn = (tr.turn if tr is not None else None) or 0
+        if rlog is not None:
+            # Record before sending so a failed call keeps its input. Optional
+            # diagnostics must never prevent consolidation or lose its result.
+            with suppress(Exception):
+                rlog.write_request(
+                    turn, provider.serialize_history(messages), call=USAGE_CALL_CURATE
+                )
+        started = time.perf_counter()
         asst = await provider.chat(
-            [
-                SystemMessage(content=_system()),
-                UserMessage(content="\n".join(f"- {x}" for x in current)),
-            ],
+            messages,
             [],
             purpose=USAGE_CALL_CURATE,
         )
+        if rlog is not None:
+            with suppress(Exception):
+                rlog.write_response(
+                    turn,
+                    asst.raw,
+                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    call=USAGE_CALL_CURATE,
+                )
         items = _parse(asst.content or "")
         if not items:
-            log.warning("curate: unparseable/empty pitfalls reply — skipped")
+            log.warning(
+                "curate: unparseable/empty pitfalls reply — skipped",
+                extra={
+                    "console_message": "Could not consolidate learned lessons — existing lessons kept"
+                },
+            )
             return False
         res = pitfalls.replace(items)
         # Surface the change (never silent) — the pre-curate snapshot is one
@@ -99,5 +124,10 @@ async def curate(provider, *, tr=None) -> bool:
             )
         return True
     except Exception:
-        log.exception("curate: pitfalls pass failed (non-fatal)")
+        log.exception(
+            "curate: pitfalls pass failed (non-fatal)",
+            extra={
+                "console_message": "Lesson consolidation did not finish — see saved logs"
+            },
+        )
         return False

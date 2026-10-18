@@ -510,7 +510,13 @@ def await_bridge_and_calibrate(host: str, port: int) -> None:
         return
 
     BASE = f"http://{config.url_host(host)}:{port}"
-    log.info("auto: waiting for the phone bridge to connect…")
+    log.info(
+        "auto: waiting for the phone bridge to connect…",
+        extra={
+            "console": True,
+            "console_message": "Connect your phone to begin calibration",
+        },
+    )
     while True:
         status = api("GET", STATUS_PATH)
         if status and (
@@ -521,7 +527,13 @@ def await_bridge_and_calibrate(host: str, port: int) -> None:
             break
         time.sleep(1.0)
 
-    log.info("auto: phone bridge connected — starting calibration.")
+    log.info(
+        "auto: phone bridge connected — starting calibration.",
+        extra={
+            "console": True,
+            "console_message": "Phone connected — starting calibration",
+        },
+    )
     from physiclaw.common.logger import LineLogStream, make_tagged_logger
 
     wizard_log = make_tagged_logger("physiclaw.setup_wizard", "setup wizard")

@@ -590,7 +590,7 @@ def test_run_sync_quiet_calls_sync_with_log_emitter(mocker) -> None:
 
 def test_log_emit_logs_unstyled(caplog) -> None:
     styled = typer.style("✓ ", fg=typer.colors.GREEN) + "synced 1 skill @ abc1234."
-    with caplog.at_level(logging.INFO, logger=osk.__name__):
+    with caplog.at_level(logging.DEBUG, logger=osk.__name__):
         osk._log_emit(styled)
     assert caplog.records[-1].getMessage() == "✓ synced 1 skill @ abc1234."
 

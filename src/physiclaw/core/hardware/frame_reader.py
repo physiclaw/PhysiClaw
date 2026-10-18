@@ -70,6 +70,8 @@ class FrameReader:
         # which would otherwise postpone the FATAL_AFTER_SECONDS check
         # indefinitely. _first_fail_time resets only on a real good frame.
         self._first_fail_time: float | None = None
+        self._reconnect_attempts = 0
+        self._read_failure: str | None = None
         self._cond = threading.Condition()
         self._stopped = threading.Event()
         self._thread = threading.Thread(
@@ -112,11 +114,32 @@ class FrameReader:
         """Publish a frame — the loop's good path, and the owner's warmup
         seed before the thread starts."""
         with self._cond:
+            failed_at = self._first_fail_time
             self._frame = frame
             self._first_fail_time = None
             self._frame_time = time.monotonic()
             self._frame_seq += 1
             self._cond.notify_all()
+            attempts, self._reconnect_attempts = self._reconnect_attempts, 0
+            warned = self._read_failure is not None
+            self._read_failure = None
+        if failed_at is not None:
+            elapsed = time.monotonic() - failed_at
+            if warned or attempts or elapsed >= self.STALE_RECONNECT_SECONDS:
+                log.info(
+                    "%s: frames restored after %.1fs%s",
+                    self._label,
+                    elapsed,
+                    f" (reconnects={attempts})" if attempts else "",
+                    extra={
+                        "event": "camera.frames_restored",
+                        "console": True,
+                        "console_message": "Camera connection restored",
+                        "device_id": self._label,
+                        "duration_ms": round(elapsed * 1000),
+                        "attempt": attempts,
+                    },
+                )
 
     def note_reopened(self) -> None:
         """Reset the stale clock after the owner rebuilt the stream, so
@@ -169,7 +192,27 @@ class FrameReader:
             try:
                 ok, frame = self._read_frame()
             except Exception as e:
-                log.warning(f"{self._label}: read raised {e!r}")
+                signature = f"{type(e).__name__}: {e}"
+                if not self._stopped.is_set():
+                    level = (
+                        logging.WARNING
+                        if signature != self._read_failure
+                        else logging.DEBUG
+                    )
+                    self._read_failure = signature
+                    log.log(
+                        level,
+                        "%s: read raised %r — retrying automatically; check camera USB and power",
+                        self._label,
+                        e,
+                        exc_info=True,
+                        extra={
+                            "console_traceback": False,
+                            "event": "camera.read_failed",
+                            "console_message": "Camera read failed — retrying; check camera USB and power",
+                            "device_id": self._label,
+                        },
+                    )
                 ok, frame = False, None
 
             # stop() can time out while the native read remains blocked.
@@ -191,7 +234,14 @@ class FrameReader:
                 log.error(
                     f"{self._label}: no frames for {fail_duration:.0f}s "
                     "— giving up and exiting process "
-                    "(display sleep / bus suspend / hardware gone)"
+                    "(display sleep / bus suspend / hardware gone). "
+                    "Wake the computer, check camera USB and power, then restart PhysiClaw.",
+                    extra={
+                        "event": "camera.unavailable",
+                        "console_message": f"Camera unavailable for {fail_duration:.0f}s — stopping. Wake the computer, check USB and power, then restart PhysiClaw.",
+                        "device_id": self._label,
+                        "duration_ms": round(fail_duration * 1000),
+                    },
                 )
                 _thread.interrupt_main()
                 return
@@ -199,6 +249,17 @@ class FrameReader:
             with self._cond:
                 stale = now - self._frame_time
             if stale > self.STALE_RECONNECT_SECONDS:
+                self._reconnect_attempts += 1
+                if self._reconnect_attempts == 1:
+                    log.warning(
+                        "%s: no fresh frames for %.1fs — reconnecting camera",
+                        self._label,
+                        stale,
+                        extra={
+                            "event": "camera.reconnecting",
+                            "device_id": self._label,
+                        },
+                    )
                 self._reopen()
             # Unconditional on the fail path: caps iteration rate if
             # read_frame raises or returns empty every tick (e.g. display

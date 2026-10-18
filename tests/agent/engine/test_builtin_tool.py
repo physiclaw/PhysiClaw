@@ -1069,3 +1069,74 @@ async def test_run_macro_pack_macro_abort_burns_the_called_name(mocker) -> None:
     # Burned under the CALLED name, so a healthy user macro named "leg"
     # is never shadowed by the pack macro's failure.
     assert session.failed_macros == {"demo/leg"}
+
+
+@pytest.mark.asyncio
+async def test_plan_progress_reports_only_a_changed_active_step(caplog):
+    import logging
+
+    session = Session()
+    steps = [{"content": "Find the requested item", "status": "in_progress"}]
+    with caplog.at_level(logging.INFO, logger="physiclaw.agent.engine.builtin_tool"):
+        await _handle_update_progress(session, {"steps": steps})
+        await _handle_update_progress(session, {"steps": steps})
+        await _handle_update_progress(
+            session, {"understanding": "Find the item for the user"}
+        )
+        await _handle_update_progress(
+            session,
+            {"steps": [{"content": "Confirm availability", "status": "in_progress"}]},
+        )
+    progress = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "task.progress"
+    ]
+    assert [record.console_message for record in progress] == [
+        "Working on: Find the requested item",
+        "Working on: Confirm availability",
+    ]
+    assert all(record.console is True for record in progress)
+
+
+async def test_plan_shows_upcoming_steps_once_then_only_changed_progress(caplog):
+    import logging
+
+    session = Session()
+    steps = [
+        {"content": "Search for the item", "status": "in_progress"},
+        {"content": "Compare options", "status": "pending"},
+        {"content": "Report the result", "status": "pending"},
+    ]
+    with caplog.at_level(logging.INFO, logger="physiclaw.agent.engine.builtin_tool"):
+        await _handle_update_progress(session, {"steps": steps})
+        await _handle_update_progress(session, {"steps": steps})
+        steps = [
+            {**steps[0], "status": "completed"},
+            {**steps[1], "status": "in_progress"},
+            steps[2],
+        ]
+        await _handle_update_progress(session, {"steps": steps})
+    notices = [
+        r.console_message for r in caplog.records if getattr(r, "console", False)
+    ]
+    assert notices == [
+        "Plan: 1. Search for the item; 2. Compare options; 3. Report the result",
+        "Working on: Compare options",
+    ]
+
+
+async def test_plan_summary_focuses_on_remaining_work_and_bounds_long_plans(caplog):
+    import logging
+
+    steps = [{"content": "Already finished", "status": "completed"}] + [
+        {"content": f"Upcoming step {i}", "status": "pending"} for i in range(1, 6)
+    ]
+    with caplog.at_level(logging.INFO, logger="physiclaw.agent.engine.builtin_tool"):
+        await _handle_update_progress(Session(), {"steps": steps})
+    (record,) = [r for r in caplog.records if getattr(r, "console", False)]
+    assert (
+        record.console_message
+        == "Plan: 2. Upcoming step 1; 3. Upcoming step 2; 4. Upcoming step 3; +2 more"
+    )
+    assert "Already finished" in record.getMessage()

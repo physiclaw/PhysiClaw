@@ -42,6 +42,7 @@ camera_aim_hint = _impl.camera_aim_hint
 opencv_import_hint = _impl.opencv_import_hint
 hardware_permission_hints = _impl.hardware_permission_hints
 TRUST_PROXY_ENV = _impl.TRUST_PROXY_ENV
+enable_terminal_color = _impl.enable_terminal_color
 
 __all__ = [
     "ensure_camera_permission",
@@ -65,4 +66,5 @@ __all__ = [
     "opencv_import_hint",
     "hardware_permission_hints",
     "TRUST_PROXY_ENV",
+    "enable_terminal_color",
 ]

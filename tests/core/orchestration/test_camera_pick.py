@@ -86,13 +86,14 @@ def test_capture_raw_returns_none_and_logs_on_oserror(
     mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
 
     with caplog.at_level(
-        logging.WARNING, logger="physiclaw.core.orchestration.camera_pick"
+        logging.DEBUG, logger="physiclaw.core.orchestration.camera_pick"
     ):
         out = _capture_raw(3)
 
     assert out is None
     fake_cam.close.assert_called_once()
-    assert any("cam 3: capture failed" in r.getMessage() for r in caplog.records)
+    (record,) = [r for r in caplog.records if "Camera 3 probe failed" in r.getMessage()]
+    assert record.levelno == logging.DEBUG and record.exc_info
 
 
 def test_capture_raw_returns_none_on_runtime_error(mocker) -> None:

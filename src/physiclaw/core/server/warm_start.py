@@ -104,7 +104,10 @@ def _sanity(
         log.error(
             f"--warm-start: sanity — {passed}/{total} taps within tolerance "
             f"({received}/{total} touches received). Calibration looks stale "
-            f"(arm, phone, or camera likely moved since last setup)."
+            f"(arm, phone, or camera likely moved since last setup).",
+            extra={
+                "console_message": f"Calibration check failed ({passed}/{total} taps) — run `physiclaw setup hardware`"
+            },
         )
     return False
 
@@ -151,18 +154,35 @@ def try_resume(
                 "incompatible — recalibrate with `physiclaw setup hardware`"
             )
         else:
-            log.error(f"{flag}: no calibration bundle on disk")
+            log.error(
+                f"{flag}: no calibration bundle on disk",
+                extra={
+                    "console_message": "No saved calibration — run `physiclaw setup hardware`"
+                },
+            )
         return False
     log.info(
         f"{flag}: loaded bundle (rotation={loaded.cam_rotation}, "
-        f"complete={loaded.complete})"
+        f"complete={loaded.complete})",
+        extra={
+            "event": "calibration.restoring",
+            "console": True,
+            "console_message": "Checking saved calibration"
+            if verify
+            else "Using saved calibration",
+        },
     )
     if not loaded.complete:
         # Gate BEFORE any state lands in the session: an incomplete
         # bundle must not leak a stale viewport shift / screen dimension
         # into the live calib state the interactive wizard then runs
         # against.
-        log.error(f"{flag}: bundle on disk is incomplete")
+        log.error(
+            f"{flag}: bundle on disk is incomplete",
+            extra={
+                "console_message": "Saved calibration is incomplete — run `physiclaw setup hardware`"
+            },
+        )
         return False
     cal = loaded
     cam_index = (
@@ -198,7 +218,13 @@ def try_resume(
                 rig.connect_arm()
                 rig.connect_camera(cam_index)
             except Exception as e:
-                log.error(f"{flag}: hardware reconnect failed: {e}")
+                log.error(
+                    f"{flag}: hardware reconnect failed: {e}",
+                    exc_info=True,
+                    extra={
+                        "console_message": "Hardware could not reconnect — check arm and camera USB connections"
+                    },
+                )
                 return False
 
             # The camera may have negotiated a different resolution than the
@@ -210,13 +236,21 @@ def try_resume(
                 raise RuntimeError(f"{flag}: camera missing after connect")
             live = cam.peek()
             if live is None:
-                log.error(f"{flag}: camera produced no frame")
+                log.error(
+                    f"{flag}: camera produced no frame",
+                    extra={
+                        "console_message": "Camera returned no image — check USB and power, then restart PhysiClaw"
+                    },
+                )
                 return False
             live_h, live_w = live.shape[:2]
             if not cal.reconcile_cam_size((live_w, live_h)):
                 log.error(
                     f"{flag}: capture aspect ratio changed since calibration "
-                    "— run `physiclaw` setup again"
+                    "— run `physiclaw` setup again",
+                    extra={
+                        "console_message": "Camera framing changed — run `physiclaw setup hardware`"
+                    },
                 )
                 return False
 
@@ -228,16 +262,12 @@ def try_resume(
             rig.restore_park_origin()
             if verify:
                 if sys.stdin.isatty():
-                    print()
-                    print("━" * 60)
-                    print("Warm-start")
-                    print(
-                        "  Open or refresh /bridge on the phone (foreground, not locked)."
+                    log.info(
+                        "Open or refresh /bridge on the phone (foreground, unlocked) "
+                        "— waiting up to %ss for steady polling",
+                        BRIDGE_WAIT_TIMEOUT,
+                        extra={"event": "bridge.waiting", "console": True},
                     )
-                    print(
-                        f"  Server waits up to {BRIDGE_WAIT_TIMEOUT}s for steady polling."
-                    )
-                    print("━" * 60)
                     if not rig.require_bridge().wait_for_connection(
                         BRIDGE_WAIT_TIMEOUT, BRIDGE_SETTLE_SECONDS
                     ):

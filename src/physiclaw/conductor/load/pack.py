@@ -336,7 +336,15 @@ def discover() -> Discovery:
         try:
             pack = load_pack(app)
         except Exception as e:
-            log.warning("pack %s unusable at wake (%s) — skipped", app, e)
+            log.warning(
+                "pack %s unusable at wake (%s) — skipped",
+                app,
+                e,
+                exc_info=True,
+                extra={
+                    "console_message": f"Playbooks for {app} could not load — skipping this pack"
+                },
+            )
             roster.append(f"{app} (pack unusable: {e})")
             continue
         # One scan per pack: the dispatch table (every playbook's inline

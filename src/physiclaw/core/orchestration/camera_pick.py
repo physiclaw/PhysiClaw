@@ -80,7 +80,7 @@ def _capture_raw(idx: int, connected: Camera | None = None) -> np.ndarray | None
         with _camera_for(idx, connected) as cam:
             return cam.raw_frame()
     except (OSError, RuntimeError) as e:
-        log.warning(f"  cam {idx}: capture failed — {e}")
+        log.debug("Camera %s probe failed: %s", idx, e, exc_info=True)
         return None
 
 

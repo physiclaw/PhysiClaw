@@ -22,6 +22,7 @@ from physiclaw.agent.engine.job_store import (
     KIND_ONE_TIME,
     KIND_PERIODIC,
     NEVER,
+    STATUS_CANCEL,
     STATUS_DONE,
     STATUS_FAIL,
     STATUS_PEND,
@@ -37,6 +38,7 @@ from physiclaw.agent.engine.job_store import (
     validate_schedule,
 )
 from physiclaw.agent.runtime.hook import Trigger
+from physiclaw.common.text import clip
 
 log = logging.getLogger(__name__)
 
@@ -172,7 +174,17 @@ def create_job(
         if not existed:
             f.write("# Jobs\n")
         f.write(block)
-    log.info("jobs: created %s (schedule=%r, next=%s)", id, schedule, stamp_next)
+    log.info(
+        "jobs: created %s (schedule=%r, next=%s)",
+        id,
+        schedule,
+        stamp_next,
+        extra={
+            "event": "task.scheduled",
+            "console": id != AUTO_WAIT_JOB_ID,
+            "console_message": f"Scheduled: {clip(description, 120)} · next {stamp_next}",
+        },
+    )
 
 
 def upsert_auto_wait_check(at: dt.datetime) -> None:
@@ -256,7 +268,26 @@ def finish_job(*, id: str, status: str, recap: str) -> str:
             }
         },
     )
-    log.info("jobs: finished %s as %s", id, status)
+    if new_status == STATUS_PEND:
+        next_notice = f" · next {j.next_fire_time or 'scheduled run'}"
+    else:
+        next_notice = ""
+    outcome = {
+        STATUS_DONE: "completed",
+        STATUS_FAIL: "failed",
+        STATUS_CANCEL: "cancelled",
+    }[status]
+    log.log(
+        logging.WARNING if status == STATUS_FAIL else logging.INFO,
+        "jobs: finished %s as %s",
+        id,
+        status,
+        extra={
+            "event": "task.schedule_updated",
+            "console": id != AUTO_WAIT_JOB_ID,
+            "console_message": f"Scheduled task {outcome}: {clip(j.description, 100)}{next_notice}",
+        },
+    )
     if new_status == STATUS_PEND:
         nxt = j.next_fire_time or "its next scheduled minute"
         return (

@@ -245,7 +245,12 @@ def collapse_old_turns(
         messages, policy=policy, collapsed_once=collapsed_once
     )
     if threshold is None:
-        log.warning("collapse_old_turns: missing summary/memory/skill slots")
+        log.warning(
+            "collapse_old_turns: missing summary/memory/skill slots",
+            extra={
+                "console_message": "Conversation could not be compacted — the next model call may use more tokens"
+            },
+        )
         return False
 
     turn_starts = [i for i, m in enumerate(messages) if isinstance(m, AssistantMessage)]

@@ -1,6 +1,6 @@
 """Smoke-test a GRBL-driven solenoid using the hit-and-keep pattern.
 
-Self-contained — only depends on pyserial.
+Only external dependency: pyserial. Uses the repository logging contract.
 
 Solenoids need brief peak current (~500 mA) to pull the iron core in,
 then a much smaller hold current (~100 mA) to keep it seated.
@@ -18,14 +18,31 @@ Empirical baseline (MKS DLC32, 2026-05-06):
 """
 
 import argparse
+import logging
 import sys
 import time
+from pathlib import Path
+
+# Run directly from a checkout without requiring the full application install.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from physiclaw.common.log_style import (  # noqa: E402
+    add_log_arguments,
+    configure_console,
+    report_error,
+    run_diagnostic,
+)
+
+log = logging.getLogger("physiclaw.scripts.grbl_solenoid_test")
 
 try:
     import serial
     import serial.tools.list_ports
 except ImportError:
-    raise SystemExit("pyserial not installed.")
+    report_error(
+        "pyserial not installed; install pyserial to run this diagnostic.",
+        tag="diagnostic",
+    )
+    raise SystemExit(1) from None
 
 
 # ─── Shared GRBL helpers (identical in scripts/grbl_jog.py) ─────────
@@ -56,7 +73,7 @@ def find_port() -> str | None:
     candidates.sort()
 
     for _, dev in candidates:
-        print(f"  probing {dev} ...", end=" ", flush=True)
+        log.debug("Probing %s", dev)
         try:
             with serial.Serial(dev, BAUD, timeout=2) as ser:
                 time.sleep(2)
@@ -66,27 +83,27 @@ def find_port() -> str | None:
                 resp = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore")
                 if "grbl" in resp.lower() or "[VER:" in resp:
                     first = resp.strip().splitlines()[0] if resp.strip() else "ok"
-                    print(f"GRBL ({first})")
+                    log.debug("GRBL detected on %s: %s", dev, first)
                     return dev
-                print("not GRBL")
+                log.debug("No GRBL response on %s", dev)
         except (serial.SerialException, OSError) as e:
-            print(f"open failed ({e})")
+            log.debug("Cannot open %s: %s", dev, e)
     return None
 
 
 def connect(port: str | None) -> serial.Serial:
     """Resolve port (auto-detect if None), open, drain the reset banner."""
     if port is None:
-        print("Scanning serial ports for a GRBL board...")
+        log.info("Scanning serial ports for a GRBL board")
         port = find_port()
         if port is None:
             raise SystemExit("No GRBL device found. Pass --port explicitly.")
-    print(f"\nOpening {port} @ {BAUD}")
+    log.info("Opening %s at %d baud", port, BAUD)
     ser = serial.Serial(port, BAUD, timeout=3)
     time.sleep(2)  # wait for board reset (DTR pulse on open)
     banner = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore").strip()
     if banner:
-        print(f"  banner: {banner!r}")
+        log.debug("Reset banner: %r", banner)
     ser.reset_input_buffer()
     return ser
 
@@ -107,7 +124,7 @@ def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
     lives in YAML config (FluidNC) or simply isn't supported. Only the
     error codes we've observed empirically are swallowed.
     """
-    print(f"  >>> {cmd}")
+    log.debug("TX %s", cmd)
     ser.write((cmd + "\r\n").encode())
     empty = 0
     while True:
@@ -118,12 +135,12 @@ def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
                 raise RuntimeError(f"no reply to: {cmd}")
             continue
         empty = 0
-        print(f"  <<< {line}")
+        log.debug("RX %s", line)
         if line == "ok":
             return
         if line.startswith("error"):
             if optional and line.replace(" ", "") in _OPTIONAL_ERRORS:
-                print(f"  !!! {cmd} not supported by this firmware — skipping")
+                log.warning("%s not supported by this firmware — skipping", cmd)
                 return
             raise RuntimeError(f"GRBL error on {cmd!r}: {line}")
         if line.startswith("ALARM"):
@@ -144,9 +161,9 @@ def query_status(ser: serial.Serial) -> str:
 def unlock_if_alarmed(ser: serial.Serial) -> None:
     """Print status; if Alarm, send $X to clear it."""
     status = query_status(ser)
-    print(f"  status: {status}")
+    log.debug("Status: %s", status)
     if "Alarm" in status:
-        print("  alarm state — sending $X")
+        log.warning("Board alarm — sending $X to unlock")
         send(ser, "$X")
 
 
@@ -159,7 +176,7 @@ def dump_settings(ser: serial.Serial, duration: float = 2.0) -> None:
     Time-bounded — doesn't try to detect a trailing `ok`, since stale
     `ok`s from prior commands can stop a stop-on-ok loop early.
     """
-    print("\n--- $$ settings dump ---")
+    log.debug("Settings dump ($$)")
     ser.reset_input_buffer()
     ser.write(b"$$\r\n")
     saved = ser.timeout
@@ -169,10 +186,10 @@ def dump_settings(ser: serial.Serial, duration: float = 2.0) -> None:
         while time.time() < deadline:
             line = ser.readline().decode("utf-8", "ignore").strip()
             if line:
-                print(f"  {line}")
+                log.debug("Setting: %s", line)
     finally:
         ser.timeout = saved
-    print("--- end dump ---\n")
+    log.debug("Settings dump complete")
 
 
 # ─── Main ────────────────────────────────────────────────────────────
@@ -217,7 +234,9 @@ def main() -> int:
         action="store_true",
         help="use laser mode ($32=1) instead of spindle mode ($32=0)",
     )
+    add_log_arguments(ap)
     args = ap.parse_args()
+    configure_console("diagnostic", verbose=args.verbose, log_format=args.log_format)
     laser_mode = 1 if args.laser else 0
 
     with connect(args.port) as ser:
@@ -239,9 +258,12 @@ def main() -> int:
         try:
             if args.keep_on > 0:
                 pin = "LASER" if laser_mode else "SPINDLE"
-                print(
-                    f"\n=== keep-on {args.keep_on:.1f}s @ S{args.s_hit} "
-                    f"($32={laser_mode}, {pin} pin) ==="
+                log.info(
+                    "Keep on for %.1fs at S%d ($32=%d, %s pin)",
+                    args.keep_on,
+                    args.s_hit,
+                    laser_mode,
+                    pin,
                 )
                 send(ser, f"M3 S{args.s_hit}")
                 time.sleep(args.keep_on)
@@ -251,7 +273,7 @@ def main() -> int:
             # Production sequence: short taps + optional long hit-and-keep hold.
             tap_s = args.tap_ms / 1000.0
             for i in range(args.taps):
-                print(f"\n=== tap {i + 1}/{args.taps} ({args.tap_ms} ms) ===")
+                log.info("Tap %d/%d (%d ms)", i + 1, args.taps, args.tap_ms)
                 send(ser, f"M3 S{args.s_hit}")
                 send(ser, f"G4 P{tap_s:.3f}")
                 send(ser, "M5")
@@ -259,9 +281,12 @@ def main() -> int:
 
             if args.hold > 0:
                 settle_s = args.settle_ms / 1000.0
-                print(
-                    f"\n=== hold {args.hold:.2f}s @ S{args.s_hold} "
-                    f"(hit S{args.s_hit}, settle {args.settle_ms}ms) ==="
+                log.info(
+                    "Hold %.2fs at S%d (hit S%d, settle %d ms)",
+                    args.hold,
+                    args.s_hold,
+                    args.s_hit,
+                    args.settle_ms,
                 )
                 send(ser, f"M3 S{args.s_hit}")
                 send(ser, f"G4 P{settle_s:.3f}")
@@ -275,9 +300,9 @@ def main() -> int:
             except Exception:
                 pass
 
-    print("\nDone.")
+    log.info("Diagnostic completed", extra={"event": "diagnostic.completed"})
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_diagnostic(main))

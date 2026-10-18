@@ -14,6 +14,7 @@ thread the user's bubbles hang from is the IM's (`reply.incoming_box`).
 import logging
 
 from physiclaw.common import paths
+from physiclaw.common.log_style import console_text
 from physiclaw.conductor.load.pack import load_pack, scan_playbooks
 from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.conventions import (
@@ -34,13 +35,23 @@ def load_channel() -> Channel | None:
     try:
         pack = load_pack(CHANNEL_APP)
     except Exception as e:
-        log.warning("channel pack unusable (%s) — asks will hand over", e)
+        log.warning(
+            "channel pack unusable (%s) — asks will hand over",
+            e,
+            extra={
+                "console_message": "Phone messaging setup unavailable — requests need the task model: "
+                + console_text(e, 140)
+            },
+        )
         return None
     thread = next((p.decl for p in pack.prints if p.decl.name == THREAD_PAGE), None)
     if thread is None:
         log.warning(
             "channel pack declares no %r page — unusable, asks will hand over",
             THREAD_PAGE,
+            extra={
+                "console_message": "Phone messaging setup has no thread page — requests need the task model"
+            },
         )
         return None
     im = paths.pack_root(CHANNEL_APP).name  # the IM folder under channel/
@@ -61,7 +72,14 @@ def _live_boot(pack: Pack) -> Playbook | None:
         )
         return None
     if entry.spec is None:
-        log.warning("conductor: channel boot is invalid (%s) — no boot", entry.error)
+        log.warning(
+            "conductor: channel boot is invalid (%s) — no boot",
+            entry.error,
+            extra={
+                "console_message": "Phone startup playbook unavailable — using the task model: "
+                + console_text(entry.error, 140)
+            },
+        )
         return None
     try:
         require_live(entry.spec, pack)

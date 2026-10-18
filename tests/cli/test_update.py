@@ -498,8 +498,16 @@ def test_regression_thread_start_failure_does_not_abort_server(
         side_effect=RuntimeError("can't start new thread"),
     )
 
-    up.start_stage_update_thread()
+    import logging
 
-    assert "could not start background update check" in caplog.text
+    with caplog.at_level(logging.DEBUG, logger=up.__name__):
+        up.start_stage_update_thread()
+
+    (record,) = [
+        r
+        for r in caplog.records
+        if "could not start background update check" in r.getMessage()
+    ]
+    assert record.levelno == logging.DEBUG and record.exc_info
     boundary.which.assert_not_called()
     boundary.http.assert_not_called()

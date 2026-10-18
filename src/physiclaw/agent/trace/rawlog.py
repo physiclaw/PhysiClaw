@@ -8,7 +8,7 @@ from typing import Any
 from physiclaw.agent.trace import store
 from physiclaw.common.logger import iso_now
 from physiclaw.contract import wire
-from physiclaw.contract.dto import MicroRecord
+from physiclaw.contract.dto import MicroRecord, UsageCall
 
 log = logging.getLogger(__name__)
 
@@ -55,14 +55,17 @@ class RawLog:
             tools=tools,
         )
 
-    def write_request(self, turn: int, messages: list[dict]) -> None:
+    def write_request(
+        self, turn: int, messages: list[dict], *, call: UsageCall | None = None
+    ) -> None:
         # Inline frames become session-relative paths: the file the
         # frame's own tool result filed, or one filed now under this turn.
         self._turn = turn
         scrubbed = wire.scrub_messages(
             messages, lambda mime, b64: self._images.put(turn, mime, b64)
         )
-        self._emit("request", turn=turn, messages=scrubbed)
+        extra = {"call": call} if call is not None else {}
+        self._emit("request", turn=turn, messages=scrubbed, **extra)
 
     def write_response(
         self,
@@ -72,6 +75,7 @@ class RawLog:
         elapsed_ms: int,
         synthesized: bool = False,
         driver: str = "",
+        call: UsageCall | None = None,
     ) -> None:
         # Wire fidelity: a synthesized response was composed by the
         # conductor — nothing was sent to the provider, and no request
@@ -79,6 +83,8 @@ class RawLog:
         # `driver` names the playbook that composed it.
         self._turn = turn
         extra = {"synthesized": True, "driver": driver} if synthesized else {}
+        if call is not None:
+            extra["call"] = call
         self._emit("response", turn=turn, elapsed_ms=elapsed_ms, **extra, raw=raw)
 
     def write_micro(self, rec: MicroRecord) -> None:

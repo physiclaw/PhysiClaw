@@ -104,7 +104,7 @@ async def handle_clipboard_copied(request, bridge: BridgeState):
         return _bad_request("text_id must be an integer from the phone state")
     if not bridge.mark_clipboard_copied(body["text_id"]):
         return JSONResponse({"error": "clipboard text changed"}, status_code=409)
-    log.info("Bridge: clipboard copied")
+    log.debug("Clipboard copied", extra={"event": "bridge.clipboard_copied"})
     return JSONResponse({"ok": True})
 
 
@@ -167,10 +167,15 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
     ip = request.client.host if request.client else None
     upload_token = bridge.screenshot_upload_token()
     if upload_token is None:
-        log.warning(f"Bridge: screenshot upload rejected — not armed (from {ip})")
+        log.debug(f"Bridge: screenshot upload rejected — not armed (from {ip})")
         return JSONResponse({"error": "no screenshot expected"}, status_code=403)
     if not bridge.upload_ip_allowed(ip):
-        log.warning(f"Bridge: screenshot upload rejected — unpinned IP {ip}")
+        log.warning(
+            f"Bridge: screenshot upload rejected — unpinned IP {ip}",
+            extra={
+                "console_message": "Screenshot from an unrecognized phone rejected — reconnect the phone bridge"
+            },
+        )
         return JSONResponse({"error": "unrecognized sender"}, status_code=403)
 
     declared = request.headers.get("content-length")
@@ -229,9 +234,17 @@ async def handle_clipboard_fetch(request, bridge: BridgeState):
     # Defence-in-depth: some upstream paths (mis-typed sequence args) could
     # slip a non-string through. str()-coerce rather than crash the handler.
     if not isinstance(text, str):
-        log.warning("Bridge: non-string clipboard value %r — coercing", text)
+        log.info(
+            "Non-string clipboard value (%s) — coercing",
+            type(text).__name__,
+            extra={"event": "bridge.clipboard_coerced"},
+        )
         text = str(text)
-    log.info(f"Bridge: clipboard fetched — '{text}'")
+    log.debug(
+        "Clipboard fetched | characters=%d",
+        len(text),
+        extra={"event": "bridge.clipboard_fetched"},
+    )
     return PlainTextResponse(text)
 
 
@@ -290,7 +303,7 @@ async def handle_calib_touch(request, cal: CalibrationState):
     """
     touch_token = cal.touch_token()
     if touch_token is None:
-        log.warning("Bridge: calibration touch rejected — no step waiting (idle)")
+        log.debug("Bridge: calibration touch rejected — no step waiting (idle)")
         return JSONResponse(
             {"error": "no calibration step waiting for touches"}, status_code=409
         )

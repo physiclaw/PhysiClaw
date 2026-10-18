@@ -14,7 +14,9 @@ into an error ToolResult.
 """
 
 import logging
+import re
 import time
+from contextlib import suppress
 
 from physiclaw.agent.engine.policy import DispatchGuard
 from physiclaw.agent.engine.runspec import EngineRun
@@ -25,7 +27,9 @@ from physiclaw.agent.trace import (
     format_call_args,
     format_call_result,
 )
+from physiclaw.agent.trace.format import brief, note_text
 from physiclaw.common import verdict
+from physiclaw.common.log_style import console_text, format_tool_call
 from physiclaw.contract.dto import (
     ContentBlock,
     TextBlock,
@@ -46,7 +50,12 @@ async def dispatch(
     """Guards, validate, execute, observe. Pair successful calls and tool
     errors with a ToolResultMessage. Cancellation propagates so the loop
     can enforce its time budget and the runtime can stop."""
-    log.info("  → %s(%s)", call.name, format_call_args(call.name, call.arguments))
+    log.debug(
+        "turn %d: calling %s(%s)",
+        turn,
+        call.name,
+        format_call_args(call.name, call.arguments),
+    )
 
     blocked = _run_guards(run, session, call, turn, run.policies.pre_validation_guards)
     if blocked is not None:
@@ -57,7 +66,18 @@ async def dispatch(
         run.tr.write(
             {"event": "tool_unknown", "turn": turn, "name": call.name, "id": call.id}
         )
-        log.warning("  ✗ %s: unknown tool", call.name)
+        log.warning(
+            "turn %d: %s — unknown tool",
+            turn,
+            call.name,
+            extra={
+                "event": "tool.unknown",
+                "console_message": f"Unknown tool: {call.name} — action skipped",
+                "turn": turn,
+                "tool": call.name,
+                "tool_call_id": call.id,
+            },
+        )
         return ToolResultMessage(
             tool_call_id=call.id,
             content=f"unknown tool: {call.name!r}",
@@ -78,7 +98,19 @@ async def dispatch(
                 "error": str(e),
             }
         )
-        log.warning("  ✗ %s: invalid args — %s", call.name, e)
+        log.warning(
+            "turn %d: %s — invalid arguments: %s",
+            turn,
+            call.name,
+            e,
+            extra={
+                "event": "tool.invalid_arguments",
+                "console_message": f"Invalid {call.name} arguments: {console_text(e, 160)}",
+                "turn": turn,
+                "tool": call.name,
+                "tool_call_id": call.id,
+            },
+        )
         return ToolResultMessage(
             tool_call_id=call.id,
             content=f"invalid arguments for {call.name}: {e}",
@@ -94,6 +126,24 @@ async def dispatch(
     t0 = time.monotonic()
     try:
         if local is not None:
+            if call.name not in {"note", "update_progress", "end_session"}:
+                # A presentation failure must not change whether a tool executes.
+                with suppress(Exception):
+                    log.info(
+                        "turn %d: calling %s(%s)",
+                        turn,
+                        call.name,
+                        format_call_args(call.name, call.arguments),
+                        extra={
+                            "event": "tool.started",
+                            "turn": turn,
+                            "tool": call.name,
+                            "tool_call_id": call.id,
+                            "console": True,
+                            "console_message": "Tool: "
+                            + format_tool_call(call.name, call.arguments),
+                        },
+                    )
             result = await local.handler(session, call.arguments)
             if local.returns_blocks:
                 # A local tool DECLARING raw MCP-style blocks (run_macro's
@@ -126,6 +176,7 @@ async def dispatch(
                     f"{call.name} returned {type(result).__name__} but does "
                     "not declare returns_blocks"
                 )
+            elapsed_ms = _ms_since(t0)
             run.tr.write(
                 {
                     "event": "tool_result",
@@ -133,11 +184,11 @@ async def dispatch(
                     "name": call.name,
                     "id": call.id,
                     "arguments": call.arguments,
-                    "elapsed_ms": _ms_since(t0),
+                    "elapsed_ms": elapsed_ms,
                     "text": result,
                 }
             )
-            log.info("  ✓ %s → %s", call.name, format_call_result(call.name, result))
+            _log_result(call, turn, format_call_result(call.name, result), elapsed_ms)
             return ToolResultMessage(tool_call_id=call.id, content=result)
 
         blocks = await run.mcp.call_tool(call.name, call.arguments)
@@ -146,13 +197,31 @@ async def dispatch(
         )
 
     except Exception as e:
-        log.error("  ✗ %s failed: %s", call.name, e)
+        elapsed_ms = _ms_since(t0)
+        log.error(
+            "turn %d: %s failed after %.2fs — %s: %s",
+            turn,
+            call.name,
+            elapsed_ms / 1000,
+            type(e).__name__,
+            e,
+            exc_info=True,
+            extra={
+                "console_traceback": False,
+                "event": "tool.failed",
+                "console_message": f"Tool {call.name} failed ({elapsed_ms / 1000:.1f}s)",
+                "turn": turn,
+                "tool": call.name,
+                "tool_call_id": call.id,
+                "duration_ms": elapsed_ms,
+            },
+        )
         run.tr.write(
             {
                 "event": "tool_error",
                 "turn": turn,
                 "name": call.name,
-                "elapsed_ms": _ms_since(t0),
+                "elapsed_ms": elapsed_ms,
                 "error": str(e),
             }
         )
@@ -174,6 +243,66 @@ async def dispatch(
 
 def _ms_since(t0: float) -> int:
     return int((time.monotonic() - t0) * 1000)
+
+
+def _log_result(
+    call: ToolCall,
+    turn: int,
+    result: str,
+    elapsed_ms: int,
+    *,
+    notice: str | None = None,
+    failed: bool = False,
+) -> None:
+    """Show intent and exceptional outcomes; save routine completion details."""
+    # A completed physical action must never become retryable because its log failed.
+    with suppress(Exception):
+        is_note = call.name == "note"
+        note = note_text(call.arguments) if is_note else ""
+        # A note's result already echoes its summary; showing the args repeats it.
+        label = (
+            call.name
+            if is_note
+            else f"{call.name}({format_call_args(call.name, call.arguments)})"
+        )
+        log.log(
+            logging.WARNING if failed else logging.INFO,
+            "turn %d: %s → %s — %.2fs",
+            turn,
+            label,
+            result,
+            elapsed_ms / 1000,
+            extra={
+                "event": "tool.failed" if failed else "tool.completed",
+                "turn": turn,
+                "tool": call.name,
+                "tool_call_id": call.id,
+                "duration_ms": elapsed_ms,
+                "console": notice is not None or bool(note.strip()),
+                "console_message": notice
+                or ("Agent: " + brief(" ".join(note.split()), 220) if is_note else ""),
+            },
+        )
+
+
+def _outcome_notice(
+    call: ToolCall, action: str, changed: bool | None
+) -> tuple[str | None, bool]:
+    # Only inspect the core-composed action text, never OCR/screen content.
+    header = action.splitlines()[0] if action else ""
+    if (
+        call.name == "run_macro"
+        and header.startswith("macro ")
+        and ": ABORTED at step " in header
+    ):
+        return brief(header.split(" — ", 1)[0], 220), True
+    if call.name == "sequence":
+        for line in action.splitlines():
+            if re.match(r"^\d+ \S+ FAIL \(", line):
+                return "sequence — " + brief(line, 200), True
+    if changed is False:
+        return f"Result: {call.name} — no visible screen change", False
+    return None, False
 
 
 def _blocks_result(
@@ -207,7 +336,9 @@ def _blocks_result(
             )
             blocks = faked
     content = mcp_blocks_to_content_blocks(blocks)
-    changed = verdict.parse(verdict.action_text(blocks))
+    action = verdict.action_text(blocks)
+    changed = verdict.parse(action)
+    notice, failed = _outcome_notice(call, action, changed)
     content = _observe_result(
         run,
         session,
@@ -233,7 +364,9 @@ def _blocks_result(
             "blocks": content,
         }
     )
-    log.info("  ✓ %s → %s", call.name, brief_content(content))
+    _log_result(
+        call, turn, brief_content(content), elapsed_ms, notice=notice, failed=failed
+    )
     return ToolResultMessage(tool_call_id=call.id, content=content)
 
 
@@ -262,7 +395,19 @@ def _run_guards(
                 "arguments": call.arguments,
             }
         )
-        log.warning("  ✗ %s: %s", call.name, block.log_msg)
+        log.warning(
+            "turn %d: %s blocked — %s",
+            turn,
+            call.name,
+            block.log_msg,
+            extra={
+                "event": "tool.blocked",
+                "console_message": f"Blocked {call.name}: {console_text(block.log_msg)}",
+                "turn": turn,
+                "tool": call.name,
+                "tool_call_id": call.id,
+            },
+        )
         return ToolResultMessage(
             tool_call_id=call.id,
             content=block.content,

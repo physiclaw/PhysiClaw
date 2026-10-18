@@ -136,7 +136,14 @@ def measure_viewport_shift(
 
     Returns the ViewportShift and stores it on cal.viewport_shift.
     """
-    log.info("═══ Pre-cal: Screenshot coordinate mapping ═══")
+    log.info(
+        "═══ Pre-cal: Screenshot coordinate mapping ═══",
+        extra={
+            "event": "calibration.started",
+            "console": True,
+            "console_message": "Calibration: matching phone screenshot coordinates",
+        },
+    )
     log.info("  Goal: compute viewport CSS → screenshot pixel transform")
 
     dim = cal.screen_dimension
@@ -185,7 +192,14 @@ def measure_viewport_shift(
                 log.info(f"  Pending upload unusable ({e}) — waiting for a fresh one")
         if data is None or decoded is None:
             bridge.clear_screenshot()
-            log.info("  Waiting for phone screenshot (double-tap AssistiveTouch)...")
+            log.info(
+                "  Waiting for phone screenshot (double-tap AssistiveTouch)...",
+                extra={
+                    "event": "calibration.waiting_for_user",
+                    "console": True,
+                    "console_message": "Waiting for phone screenshot — double-tap AssistiveTouch",
+                },
+            )
             data = bridge.wait_screenshot(timeout=30.0)
             if data is None:
                 hint = bridge.connectivity_hint()

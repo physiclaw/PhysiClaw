@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from physiclaw.common import daylog
 from physiclaw.common.config import CONFIG
+from physiclaw.common.text import clip
 from physiclaw.conductor.drive.build import build_program
 from physiclaw.conductor.load.pack import discover
 from physiclaw.conductor.micro.decision import (
@@ -117,9 +118,28 @@ class Activation:
         try:
             values = resolve_inputs(spec, outcome.payload or {})
         except PlaybookError as e:
-            log.warning("activation %s: inputs did not resolve (%s)", outcome.out, e)
+            log.warning(
+                "activation %s: inputs did not resolve (%s)",
+                outcome.out,
+                e,
+                exc_info=True,
+                extra={
+                    "console_message": f"Playbook {outcome.out} has missing or invalid inputs — using the task model"
+                },
+            )
             return None
-        log.info("conductor: activated %s (%s)", outcome.out, outcome.reason)
+        log.info(
+            "conductor: activated %s (%s)",
+            outcome.out,
+            outcome.reason,
+            extra={
+                "event": "task.playbook_started",
+                "console": True,
+                "console_message": "Plan: "
+                + clip(" ".join(spec.description.split()), 180)
+                + f" ({outcome.out})",
+            },
+        )
         return build_program(
             spec, pack, values, self.channel, events=self.events, thread=thread
         )

@@ -39,7 +39,10 @@ def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
         arr = np.frombuffer(raw, dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:
-            log.warning("scale_image_bytes: decode failed on %d bytes", len(raw))
+            log.info(
+                "scale_image_bytes: decode failed on %d bytes",
+                len(raw),
+            )
             return raw, "application/octet-stream"
         h, w = img.shape[:2]
         long_edge = max(h, w)
@@ -51,9 +54,12 @@ def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
             img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
         ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         if not ok:
-            log.warning("scale_image_bytes: encode failed")
+            log.info("scale_image_bytes: encode failed")
             return raw, "application/octet-stream"
         return buf.tobytes(), "image/jpeg"
     except cv2.error:
-        log.warning("scale_image_bytes: OpenCV could not process image", exc_info=True)
+        log.info(
+            "scale_image_bytes: OpenCV could not process image",
+            exc_info=True,
+        )
         return raw, "application/octet-stream"

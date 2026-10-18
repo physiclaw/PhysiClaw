@@ -214,7 +214,14 @@ def validate_calibration(
 
     max_error: threshold in 0-1 units (0.015 ≈ 5px on a 390px screen).
     """
-    log.info("═══ Full-chain validation ═══")
+    log.info(
+        "═══ Full-chain validation ═══",
+        extra={
+            "event": "calibration.checking",
+            "console": True,
+            "console_message": f"Checking calibration: {num_tests} test taps",
+        },
+    )
     log.info(f"  Goal: end-to-end test of both mappings — {num_tests} random positions")
     log.info(
         "  Chain: dot on screen → camera detect → Mapping B⁻¹ → Mapping A → arm tap → touch"
@@ -255,7 +262,15 @@ def validate_calibration(
 
     arm.return_to_origin()
     passed_count = sum(1 for r in results if r["passed"])
-    log.info(f"  ✓ Validation done: {passed_count}/{num_tests} tests passed")
+    log.log(
+        logging.INFO if passed_count == num_tests else logging.WARNING,
+        f"  ✓ Validation done: {passed_count}/{num_tests} tests passed",
+        extra={
+            "event": "calibration.checked",
+            "console": True,
+            "console_message": f"Calibration check: {passed_count}/{num_tests} taps passed",
+        },
+    )
     return results
 
 

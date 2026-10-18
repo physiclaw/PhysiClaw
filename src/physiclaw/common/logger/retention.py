@@ -3,8 +3,8 @@
 `purge_daily_logs` covers the `<prefix>-YYYY-MM-DD.log` dailies
 (CONFIG.retention.log_days); `purge_old_sessions` covers the per-session
 artifact dirs (CONFIG.retention.trace_days). Two knobs because the two
-sizes differ by orders of magnitude, though both default to a month. Both run at session
-bootstrap, from the session writers.
+sizes differ by orders of magnitude, though both default to a month. Session
+writers purge at bootstrap; operational daily handlers also purge at midnight.
 """
 
 import logging
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def purge_daily_logs(dir: Path, prefix: str, days: int) -> None:
-    """Delete `<prefix>-*.log` files in `dir` with mtime older than `days`.
+    """Expire daily logs and numbered rotation archives by mtime.
 
     mtime beats filename-date parsing: it tolerates clock skew and files
     appended to long after creation. Fail-open — retention must never
@@ -24,10 +24,14 @@ def purge_daily_logs(dir: Path, prefix: str, days: int) -> None:
     cutoff = time.time() - days * 86400
     removed = 0
     try:
-        entries = list(dir.glob(f"{prefix}-*.log"))
+        entries = list(dir.glob(f"{prefix}-*.log*"))
     except OSError:
         return
     for path in entries:
+        if path.suffix != ".log" and not (
+            path.suffix[1:].isdigit() and path.with_suffix("").suffix == ".log"
+        ):
+            continue
         try:
             if path.is_file() and path.stat().st_mtime < cutoff:
                 path.unlink()

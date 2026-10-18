@@ -32,6 +32,23 @@ os.environ["PHYSICLAW_HOME"] = str(_SESSION_HOME)
 
 
 @pytest.fixture(autouse=True)
+def _restore_logging():
+    """Process-entry tests must not leave sinks or a DEBUG root in later tests."""
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    try:
+        yield
+    finally:
+        for handler in root.handlers:
+            if handler not in handlers and getattr(
+                handler, "_physiclaw_managed", False
+            ):
+                handler.close()
+        root.handlers = handlers
+        root.setLevel(level)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_uvc(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep unit tests off the physical camera and host-independent.
 

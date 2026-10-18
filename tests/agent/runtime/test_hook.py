@@ -6,6 +6,7 @@ loaded flag, and equivalent final-component indexing on qualified names.
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -140,6 +141,67 @@ async def test_check_hooks_logs_exception_and_continues(
 # ---------- clear ----------
 
 
+async def test_hook_failure_reports_changes_and_recovery_without_poll_spam(caplog):
+    results = iter(
+        [
+            RuntimeError("camera offline"),
+            RuntimeError("camera offline"),
+            ValueError("camera offline"),
+            ValueError("camera offline"),
+            None,
+            RuntimeError("camera offline"),
+        ]
+    )
+
+    @register
+    def camera():
+        result = next(results)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    @register
+    def healthy():
+        return Trigger("scheduled work", "cron")
+
+    with caplog.at_level(logging.DEBUG, logger=hook.__name__):
+        for _ in range(6):
+            assert await check_hooks() == [Trigger("scheduled work", "cron")]
+
+    failures = [r for r in caplog.records if getattr(r, "event", "") == "hook.failed"]
+    assert [r.levelno for r in failures] == [
+        logging.ERROR,
+        logging.DEBUG,
+        logging.ERROR,
+        logging.DEBUG,
+        logging.ERROR,
+    ]
+    assert [r.attempt for r in failures] == [1, 2, 3, 4, 1]
+    assert all(r.exc_info is not None for r in failures)
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 3  # initial failure, changed type, new outage
+    assert all(r.exc_info is not None for r in errors)
+    assert "RuntimeError: camera offline" in errors[0].console_message
+    assert "ValueError: camera offline" in errors[1].console_message
+    recovered = [r for r in caplog.records if "recovered" in r.getMessage()]
+    assert len(recovered) == 1
+    assert "4 failed checks" in recovered[0].getMessage()
+
+
+async def test_clear_forgets_hook_failure_state(caplog):
+    def broken():
+        raise RuntimeError("offline")
+
+    with caplog.at_level(logging.ERROR, logger=hook.__name__):
+        register(broken)
+        await check_hooks()
+        clear()
+        register(broken)
+        await check_hooks()
+
+    assert len([r for r in caplog.records if r.msg == "hook failed: %s"]) == 2
+
+
 def test_clear_removes_all_hooks() -> None:
     @register
     def fn() -> Trigger | None:
@@ -202,7 +264,7 @@ def test_load_hooks_logs_loaded_module_name(
     info.name = f"{hook.HOOKS_PACKAGE}.cron"
     mocker.patch.object(hook.pkgutil, "iter_modules", return_value=[info])
 
-    with caplog.at_level(logging.INFO, logger="physiclaw.agent.runtime.hook"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.agent.runtime.hook"):
         hook.load_hooks()
 
     expected = f"loaded hook module: {hook.HOOKS_PACKAGE}.cron"
@@ -265,6 +327,10 @@ def test_load_hooks_logs_but_continues_on_module_import_failure(
         [],
         Trigger(description=None),
         Trigger(description="bad", source=1),
+        Trigger(description="bad", label=None),
+        Trigger(description="bad", label=42),
+        Trigger(description="bad", label=[]),
+        Trigger(description="bad", label={}),
     ],
 )
 @pytest.mark.parametrize("asynchronous", [False, True])

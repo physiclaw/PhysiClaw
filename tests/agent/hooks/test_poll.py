@@ -2,8 +2,7 @@
 
 HTTP responses are mocked so tests don't hit the real server.
 
-Accepted mutation survivors: two log/diagnostic decorations, two equivalent
-False-to-None resets of the truth-tested blip flag, and a 10-to-11-second
+Accepted mutation survivors: two log/diagnostic decorations and a 10-to-11-second
 request timeout variation. There is no exact timing SLA; both keep requests
 bounded. Startup state, registration, malformed envelopes and recovery are
 covered through the public hook and HTTP boundary.
@@ -24,13 +23,14 @@ from hypothesis import strategies as st
 from physiclaw.agent.hooks import poll
 from physiclaw.agent.hooks.poll import phone_watch
 from physiclaw.agent.runtime.hook import Trigger, check_hooks
+from physiclaw.common.log_style import FailureState
 
 
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Module-level _client + _in_blip state must reset per test."""
+    """Module-level _client + failure state must reset per test."""
     monkeypatch.setattr(poll, "_client", None)
-    monkeypatch.setattr(poll, "_in_blip", False)
+    monkeypatch.setattr(poll, "_failure", FailureState())
 
 
 @pytest.fixture(autouse=True)
@@ -105,7 +105,7 @@ async def test_phone_watch_logs_warning_only_on_first_failure(
         await phone_watch()
         await phone_watch()
 
-    # Only the first failure logs; subsequent suppressed by _in_blip.
+    # Only the first failure warns; repeated failures remain DEBUG diagnostics.
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
 
@@ -132,7 +132,7 @@ async def test_phone_watch_resets_blip_state_on_recovery(
         await phone_watch()
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    # Two warnings — one per dropout (recovery resets _in_blip).
+    # Two warnings — one per dropout (recovery resets the failure state).
     assert len(warnings) == 2
 
 
@@ -182,7 +182,7 @@ async def test_regression_malformed_watch_payload_is_a_warn_once_blip(
 
     assert first is None and second is None
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1 and "phone watch poll failed" in warnings[0].message
+    assert len(warnings) == 1 and "Phone watch poll failed" in warnings[0].message
 
 
 @pytest.mark.parametrize("reason", [None, "", " \n ", 123, [], {"text": "changed"}])
@@ -200,7 +200,7 @@ async def test_verified_wake_with_unusable_reason_keeps_a_readable_default(
 
 
 @pytest.mark.asyncio
-async def test_malformed_payload_does_not_reset_an_existing_blip(respx_mock, caplog):
+async def test_changed_failure_cause_warns_before_recovery(respx_mock, caplog):
     respx_mock.get("http://test.host:8048/api/phone/watch").mock(
         side_effect=[
             httpx.ConnectError("offline"),
@@ -214,7 +214,9 @@ async def test_malformed_payload_does_not_reset_an_existing_blip(respx_mock, cap
 
     assert results == [None] * 4
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 2
+    assert len(warnings) == 3  # A changed cause and a fresh outage both matter.
+    assert "offline" in warnings[0].getMessage()
+    assert "boolean wake" in warnings[1].getMessage()
 
 
 @pytest.mark.asyncio
@@ -251,7 +253,7 @@ async def _poll_document(document):
         ) as client:
             with (
                 patch.object(poll, "_client", client),
-                patch.object(poll, "_in_blip", False),
+                patch.object(poll, "_failure", FailureState()),
             ):
                 return await phone_watch()
 
@@ -296,4 +298,4 @@ async def test_first_failure_after_import_is_not_silently_suppressed(
     triggers = await check_hooks()
 
     assert triggers == []
-    assert "phone watch poll failed" in caplog.text
+    assert "Phone watch poll failed" in caplog.text

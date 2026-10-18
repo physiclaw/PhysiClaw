@@ -17,10 +17,13 @@ import numpy as np
 from physiclaw.common import paths
 from physiclaw.common.bbox import validate_bbox
 from physiclaw.common.listing import Element
+from physiclaw.common.log_style import FailureState
 from physiclaw.common.text import write_text
 from physiclaw.core.vision.render import annotate_elements
 
 log = logging.getLogger(__name__)
+_icon_failure = FailureState()
+_ocr_failure = FailureState()
 
 
 @dataclass
@@ -106,7 +109,7 @@ def _detect_icons(frame, w, h, detector, confidence) -> list[UIElement]:
         from physiclaw.core.vision.icon_detect import IconDetector
 
         det = detector or IconDetector()
-        return [
+        elements = [
             UIElement(
                 0,
                 "icon",
@@ -117,8 +120,19 @@ def _detect_icons(frame, w, h, detector, confidence) -> list[UIElement]:
             for e in det.detect(frame, confidence=confidence)
         ]
     except (ImportError, FileNotFoundError) as ex:
-        log.warning("icon detection unavailable: %s", ex)
+        log.log(
+            _icon_failure.level(ex),
+            "icon detection unavailable: %s",
+            ex,
+            exc_info=True,
+            extra={
+                "console_message": "Icon detection unavailable — continuing with screen text"
+            },
+        )
         return []
+    if _icon_failure.recovered():
+        log.info("Icon detection restored", extra={"console": True})
+    return elements
 
 
 def _single_line(text: str) -> str:
@@ -138,7 +152,7 @@ def _detect_texts(frame, w, h, reader) -> list[UIElement]:
         # (limit_side_len=736, max_side_len=2000), so only the recognition
         # crops use full resolution. Capping max_edge here is a small lever:
         # ≈17% off OCR time at 1566, no memory change, slight recall shift.
-        return [
+        elements = [
             UIElement(
                 0,
                 "text",
@@ -153,8 +167,19 @@ def _detect_texts(frame, w, h, reader) -> list[UIElement]:
         # RapidOCR install fails at read() time (missing/corrupt bundled
         # models raise runtime errors, not ImportError) and must not take
         # the whole detection pass — and the icons — down with it.
-        log.warning("OCR unavailable: %s", ex)
+        log.log(
+            _ocr_failure.level(ex),
+            "OCR unavailable: %s",
+            ex,
+            exc_info=True,
+            extra={
+                "console_message": "Screen text unavailable — continuing with icons"
+            },
+        )
         return []
+    if _ocr_failure.recovered():
+        log.info("Screen text detection restored", extra={"console": True})
+    return elements
 
 
 # ── Filtering ─────────────────────────────────
@@ -221,6 +246,11 @@ if __name__ == "__main__":
 
     import cv2
 
+    from physiclaw.common.log_style import (
+        add_log_arguments,
+        configure_console,
+        report_error,
+    )
     from physiclaw.core.vision.util import compact_json
 
     p = argparse.ArgumentParser(description="Detect UI elements (icons + OCR)")
@@ -230,13 +260,15 @@ if __name__ == "__main__":
     p.add_argument("--min-text-conf", type=float, default=0.7)
     p.add_argument("-o", "--output", help="Output path for annotated image")
     p.add_argument("--json", action="store_true", help="Output JSON only")
+    add_log_arguments(p)
     args = p.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    configure_console("vision", verbose=args.verbose, log_format=args.log_format)
 
     frame = cv2.imread(args.image)
     if frame is None:
-        raise SystemExit(f"cannot read image: {args.image}")
+        report_error(f"Cannot read image: {args.image}", tag="vision")
+        raise SystemExit(1)
 
     elements, annotated = detect_ui_elements(
         frame,

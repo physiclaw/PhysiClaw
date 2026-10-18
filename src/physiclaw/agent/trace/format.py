@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from physiclaw.agent.runtime import sentinel
 from physiclaw.common import gesture_vocab
+from physiclaw.common.log_style import redact_tool_arguments
 from physiclaw.common.text import clip
 
 # Events that are internal bookkeeping — don't surface in the human log.
@@ -44,6 +45,7 @@ def format_call_args(tool_name: str, args: dict[str, Any]) -> str:
     bypasses the default 40-char truncation — the plan content IS the
     point of the call, and it never appears in the result line (which
     is just "progress updated"). Other tools use the brief default."""
+    args = redact_tool_arguments(tool_name, args)
     if tool_name == "update_progress":
         return _full_args(args)
     return brief_args(args)
@@ -133,6 +135,31 @@ def usage_text(event: dict[str, Any]) -> str:
     return text
 
 
+def usage_summary(event: dict[str, Any], *, include_model: bool = False) -> str:
+    """One compact account per model call; output includes reasoning tokens."""
+    input_tokens = int(event.get("input") or 0)
+    output_tokens = int(event.get("output") or 0)
+    if not (input_tokens or output_tokens):
+        text = "Tokens: not reported"
+    else:
+        text = (
+            f"Tokens: {fmt_tokens(input_tokens)} in / {fmt_tokens(output_tokens)} out"
+        )
+        cached = int(event.get("cache_read") or 0)
+        if cached > 0 and input_tokens > 0:
+            text += f" · {min(cached / input_tokens * 100, 100):.0f}% cached"
+    purpose = {"turn": "step", "micro": "decision", "curate": "lesson upkeep"}.get(
+        str(event.get("call") or "")
+    )
+    if purpose:
+        text += " · " + purpose
+        if event.get("call") == "turn" and event.get("turn") is not None:
+            text += f" {event['turn']}"
+    if include_model and event.get("model"):
+        text += " · " + brief(" ".join(str(event["model"]).split()), 100)
+    return text
+
+
 def _end_footer(summary: dict[str, Any]) -> str:
     """The daily-log session footer — headline metrics on one greppable line."""
     u = summary["usage"]
@@ -144,6 +171,32 @@ def _end_footer(summary: dict[str, Any]) -> str:
         f"cache={u['cache_hit_pct']:.0f}% "
         f"tools={sum(summary['tool_calls'].values())}"
     )
+
+
+def session_footer(summary: dict[str, Any]) -> str:
+    """Task-level outcome; IDs, token accounting and turn counts stay on disk."""
+    outcome = summary["outcome"]
+    status = outcome["sentinel"] or ("CRASHED" if outcome["crashed"] else "STOPPED")
+    label = {
+        "DONE": "Task completed",
+        "STUCK": "Task needs attention",
+        "FAIL": "Task failed",
+        "IDLE": "Nothing to do",
+        "WAIT": "Task paused",
+        "CRASHED": "Task failed",
+        "STOPPED": "Task stopped",
+    }.get(status, "Task ended")
+    text = f"{label} ({summary['duration_s']:.1f}s)"
+    recap = str(outcome.get("recap") or "")
+    recap = " ".join(recap.split())
+    if recap and recap.rstrip(".! ").casefold() not in {
+        label.casefold(),
+        str(status).casefold(),
+    }:
+        # The recap is the task's result, not a diagnostic payload. An
+        # arbitrary cutoff can hide a receipt or the next required action.
+        text += " — " + recap
+    return text
 
 
 def summarize_event(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat dispatch

@@ -75,7 +75,14 @@ def verify_assistive_touch(
     if t is None:
         raise RuntimeError("viewport_shift not set — run measure-viewport-shift first")
 
-    log.info("═══ AssistiveTouch screenshot verification ═══")
+    log.info(
+        "═══ AssistiveTouch screenshot verification ═══",
+        extra={
+            "event": "calibration.checking",
+            "console": True,
+            "console_message": "Calibration: checking phone shortcuts",
+        },
+    )
     log.info(
         f"  AT position: screen 0-1 ({at.at_screen[0]:.3f}, {at.at_screen[1]:.3f})"
     )
@@ -104,13 +111,24 @@ def verify_assistive_touch(
     data = bridge.wait_screenshot(timeout=10.0)
     if data is None:
         hint = bridge.connectivity_hint()
-        log.warning("  Screenshot upload timed out" + (f" — {hint}" if hint else ""))
+        log.warning(
+            "  Screenshot upload timed out" + (f" — {hint}" if hint else ""),
+            extra={
+                "console_message": "Phone screenshot timed out — "
+                + str(hint or "check the phone's screenshot shortcut")
+            },
+        )
         return _failed()
 
     arr = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
-        log.warning("  Failed to decode screenshot")
+        log.warning(
+            "  Failed to decode screenshot",
+            extra={
+                "console_message": "Phone screenshot could not be decoded — retry shortcut verification"
+            },
+        )
         return _failed()
 
     log.info(f"  Screenshot received: {img.shape[1]}×{img.shape[0]}px")
@@ -123,7 +141,10 @@ def verify_assistive_touch(
         )
     else:
         log.warning(
-            f"  ✗ Screenshot verification failed: {matched}/{NONCE_COUNT} bits matched"
+            f"  ✗ Screenshot verification failed: {matched}/{NONCE_COUNT} bits matched",
+            extra={
+                "console_message": "Phone screenshot verification failed — retry shortcut verification"
+            },
         )
 
     # ─── Long-press: clipboard fetch verification ──────────────
@@ -153,7 +174,11 @@ def verify_assistive_touch(
             hint = bridge.connectivity_hint()
             log.warning(
                 "  ✗ Clipboard fetch timed out — server was not hit"
-                + (f"; {hint}" if hint else "")
+                + (f"; {hint}" if hint else ""),
+                extra={
+                    "console_message": "Phone clipboard shortcut timed out — "
+                    + str(hint or "check the phone's clipboard shortcut")
+                },
             )
     except BaseException:
         # Retire even a partially published payload when a gesture fails or
@@ -167,9 +192,17 @@ def verify_assistive_touch(
 
     passed = shot_passed and clip_fetched
     if passed:
-        log.info("  ✓ AssistiveTouch done: tap + double-tap + long-press all verified")
+        log.info(
+            "  ✓ AssistiveTouch done: tap + double-tap + long-press all verified",
+            extra={
+                "event": "calibration.checked",
+                "console": True,
+                "console_message": "Phone shortcuts verified",
+            },
+        )
     else:
-        log.warning("  ✗ AssistiveTouch verification failed")
+        # The failing screenshot/clipboard step already reported its cause.
+        log.info("  ✗ AssistiveTouch verification failed")
 
     return {
         "passed": passed,

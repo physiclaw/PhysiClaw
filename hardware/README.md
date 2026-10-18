@@ -46,6 +46,8 @@ All generated files land under `output/` and are not committed.
 ```text
 hardware/
 ├── __main__.py            Unified CLI front door (python -m hardware <subcommand>)
+├── buildlog.py            Run state, structured events and worker collection
+├── log_style.py           Independent stdlib logging handlers, filters and formatters
 ├── scheme.py              Shared naming scheme: output dirs, stem convention,
 │                          variant/filename builders + their matching regexes
 ├── check.py               Static cross-artifact consistency check (CI gate)
@@ -209,12 +211,30 @@ concurrent build commands targeting the same directory.
 
 ### Terminal output and logs
 
+The backend follows the application's separation of records, handlers, filters,
+and formatters, implemented entirely inside `hardware` with the Python standard
+library. It never imports `physiclaw` or configures the root logger. `buildlog`
+owns run IDs, sequence numbers, progress, worker collection and command lifecycles;
+`log_style` owns the JSON file handler, worker/JSON stdout handler, and the table
+formatter with its console filter. Each run owns its logger and closes its handlers.
+
+The complete event is written and flushed before console filtering or formatting.
+File and worker-protocol failures propagate so an incomplete log or disconnected
+collector cannot be reported as success. A closed human console does not interrupt
+file capture. The event API and JSON schema are preserved;
+JSON escapes non-ASCII characters for limited console encodings without changing
+the decoded values.
+
 Hardware generators, checks, releases and annotation tools use the same terminal
-renderer: a title, completed tasks with elapsed time in the last column, and one
+renderer: a title, progress with elapsed time in the last column, and one
 `SUCCESS`, `FAILED` or `CANCELLED` result. Times are measured from command start;
 individual task durations are saved in JSON. CAD builds count completed assemblies,
 including cache restores, so parallel workers can finish out of source order.
-Repeated verification does not repeat successful rows.
+Repeated verification does not repeat successful rows. In normal interactive
+output, completions update the same row in place; errors and the final result
+print on separate lines. Long names shorten to fit the live row; full names
+remain in the saved events. Pipes, CI, `TERM=dumb` and `--verbose` append each
+completion separately.
 
 ```text
 Hardware build / 71 assemblies
@@ -222,8 +242,6 @@ Hardware build / 71 assemblies
    Step Assembly                     Elapsed
 --------------------------------------------
 68 cached; 3 to build                   0.3s
-[69/71] fastener_22_tnut_standard       7.0s
-[70/71] fastener_10_BHCS                7.1s
 [71/71] fastener_11_SHCS                7.1s
 --------------------------------------------
 SUCCESS  71/71 complete                 7.3s
@@ -233,13 +251,14 @@ Output: hardware/output
 
 Routine output omits `INFO`. Warnings and periodic worker status stay hidden even
 with `--verbose`, which otherwise adds diagnostics and severity levels. Errors
-retain `ERROR:`. Extra details wrap below task names; long
-names and paths wrap without truncation. Narrow panes shrink the name column
+retain `ERROR:`. In append-only output, extra details wrap below task names;
+long names and paths wrap without truncation. Narrow panes shrink the name column
 while keeping timings aligned. Pipes and CI use 120 columns when neither a
 terminal size nor `COLUMNS` is available. Interactive terminals use a bold title,
 muted progress and timings, green success and red errors. `NO_COLOR` (even empty)
-or `TERM=dumb` disables color; pipes and JSON stay plain. Output uses no cursor
-movement and reads cleanly through `tee`.
+or `TERM=dumb` disables color; pipes and JSON stay plain. Live progress uses a
+carriage return, without cursor escape sequences. Output through `tee` remains
+append-only.
 
 Each command saves a separate UTF-8 `output/logs/build-<run>.jsonl`, except help,
 camera conversion and failures before a run starts. `PHYSICLAW_HW_OUTPUT` selects

@@ -98,9 +98,12 @@ async def drive(
                 n,
                 max_attempts,
                 outcome.recap,
+                extra={
+                    "console_message": f"Retrying task — attempt {n + 1}/{max_attempts}"
+                },
             )
     if outcome.status == WAIT and not outcome.created_job:
-        log.warning(
+        log.info(
             "WAIT with no create_job — auto-scheduling %d-min follow-up",
             wait_default_minutes,
         )
@@ -123,7 +126,13 @@ def _schedule_wait_followup(*, minutes: int) -> None:
         at = dt.datetime.now() + dt.timedelta(minutes=minutes)
         jobs.upsert_auto_wait_check(at)
         log.info(
-            "auto-WAIT follow-up scheduled at %s", at.isoformat(timespec="minutes")
+            "auto-WAIT follow-up scheduled at %s",
+            at.isoformat(timespec="minutes"),
+            extra={
+                "event": "task.followup_scheduled",
+                "console": True,
+                "console_message": f"Will check again at {at:%H:%M}",
+            },
         )
     except Exception:
         log.exception("failed to auto-schedule WAIT follow-up")

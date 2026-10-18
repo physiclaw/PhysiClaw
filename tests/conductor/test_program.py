@@ -765,6 +765,25 @@ def test_gate_ask_is_the_filled_template_exactly() -> None:
     assert ask == "已选好milk，合计 ¥45。回复 好的 确认支付，或 不用 取消。"
 
 
+def test_waiting_notice_quotes_the_question_once_across_silent_polls(caplog) -> None:
+    import logging
+
+    from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
+
+    with caplog.at_level(logging.INFO):
+        p, h, send = _at_gate()
+        ask = _suspend_via_silence(p, h, send)
+    records = [
+        r for r in caplog.records if getattr(r, "event", "") == "task.waiting_for_user"
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert ConsoleFilter(verbose=False).filter(record)
+    assert "Waiting for your reply: " + ask in TaggedFormatter(
+        "runtime", False, verbose=False
+    ).format(record)
+
+
 def test_suspension_persists_consent_across_the_wake() -> None:
     # The consented total rides the projection (the Gate half of
     # `Program.state`), so a walk restored from it can never resume into

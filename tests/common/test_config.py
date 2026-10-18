@@ -106,6 +106,8 @@ def test_config_error_is_value_error_subclass() -> None:
         ("memory", "default_log_entries", 20),
         ("memory", "bootstrap_log_entries", 10),
         # RetentionConfig
+        ("retention", "log_max_bytes", 10 * 1024 * 1024),
+        ("retention", "log_backup_count", 5),
         ("retention", "trace_days", 30),
         # SkillsConfig
         ("skills", "default_source", ""),
@@ -715,6 +717,33 @@ def test_set_dotted_raises_on_unknown_dotted(tmp_path: Path) -> None:
 
     with pytest.raises(config.ConfigError, match=r"^unknown section"):
         config.set_dotted("mystery.field", "x", path=p)
+
+
+# ---------- operational log rotation ----------
+
+
+@pytest.mark.parametrize("key", ["log_max_bytes", "log_backup_count"])
+@pytest.mark.parametrize("value", [0, -1, "100", True])
+def test_log_rotation_limits_reject_invalid_config(tmp_path, key, value):
+    path = tmp_path / "config.toml"
+    literal = {str: '"100"', bool: "true"}.get(type(value), str(value))
+    path.write_text(f"[retention]\n{key} = {literal}\n", encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match=key):
+        config.load(path)
+
+
+@pytest.mark.parametrize("key", ["log_max_bytes", "log_backup_count"])
+def test_log_rotation_limit_can_be_configured_and_invalid_set_keeps_file(tmp_path, key):
+    path = tmp_path / "config.toml"
+    config.set_dotted(f"retention.{key}", "123", path)
+    assert getattr(config.load(path).retention, key) == 123
+    before = path.read_bytes()
+
+    with pytest.raises(config.ConfigError, match="positive integer"):
+        config.set_dotted(f"retention.{key}", "0", path)
+
+    assert path.read_bytes() == before
 
 
 # ---------- unset_dotted ----------

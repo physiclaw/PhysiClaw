@@ -24,7 +24,7 @@ def test_none_is_the_off_switch(monkeypatch, caplog) -> None:
     # plain provider call, exactly the pre-plugin engine — and the log
     # says so, so a plugin-less session reads as a choice in forensics.
     monkeypatch.setattr(CONFIG.agent, "plugins", "none")
-    with caplog.at_level("INFO"):
+    with caplog.at_level("DEBUG"):
         assert plugins_mod.load_plugins() == ()
     assert "disabled by config" in caplog.text
     monkeypatch.setattr(CONFIG.agent, "plugins", " None ")
@@ -38,7 +38,7 @@ def test_empty_config_resolves_to_the_builtin_default(caplog) -> None:
     # engine silently loses its conductor. The resolved set is logged
     # per session ("was the conductor even in play?").
     assert CONFIG.agent.plugins == ""
-    with caplog.at_level("INFO"):
+    with caplog.at_level("DEBUG"):
         plugins = plugins_mod.load_plugins()
     assert len(plugins) == 1
     assert isinstance(plugins[0], TurnPlugin)

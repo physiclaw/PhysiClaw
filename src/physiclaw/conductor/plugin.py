@@ -53,7 +53,12 @@ class ConductorPlugin:
             self._conductor = Conductor(program=program, micro=self._micro)
             return SessionSetup(gated_macros=hidden)
         except Exception:
-            log.exception("conductor setup crashed — plain model session")
+            log.exception(
+                "conductor setup crashed — plain model session",
+                extra={
+                    "console_message": "Playbooks could not start — using the task model"
+                },
+            )
             self._conductor = None
             return SessionSetup(gated_macros={})
 
@@ -66,7 +71,12 @@ class ConductorPlugin:
             # The conductor is dropped for the rest of the session: its
             # state is unknown, and the transcript so far is the model's
             # hand-off. Every later advance is a pass.
-            log.exception("conductor advance crashed — the model takes the session")
+            log.exception(
+                "conductor advance crashed — the model takes the session",
+                extra={
+                    "console_message": "Playbook failed — the task model will continue"
+                },
+            )
             self._conductor = None
             return None
 

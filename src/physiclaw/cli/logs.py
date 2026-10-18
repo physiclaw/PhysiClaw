@@ -250,8 +250,12 @@ def _show_session(d: Path, *, n: int, as_json: bool) -> None:
         _echo(warn("no summary.json — session was killed or is still running"))
     _echo_narrative(d / "events.jsonl", n)
     _echo("")
-    _echo(info(f"wire log:  {d / 'wire.jsonl'}"))
-    _echo(info(f"images:    {d / 'images'}"))
+    _echo(info(f"session:     {d}"))
+    for name in ("runtime.log", "mcp.log"):
+        if (d / name).is_file():
+            _echo(info(f"{name + ':':<13}{d / name}"))
+    _echo(info(f"wire log:    {d / 'wire.jsonl'}"))
+    _echo(info(f"images:      {d / 'images'}"))
     # Suffix handle = the trailing 6 hex chars — true regardless of the
     # id's separator style, and all `_resolve` matches via `endswith`.
     _echo(info(f"review it whole: physiclaw studio --review --session {d.name[-6:]}"))

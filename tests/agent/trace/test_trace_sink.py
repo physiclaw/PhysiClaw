@@ -98,6 +98,30 @@ def test_trace_summary_write_failure_still_detaches_session(mocker):
     assert not paths.active_session_marker().exists()
 
 
+def test_trace_saves_its_artifact_close_failures_before_detaching(mocker, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    trace = Trace("close-debug", Images("close-debug"))
+    daily_file, notes = trace._daily._f, trace._notes
+    trace._daily._f = mocker.MagicMock(wraps=daily_file, closed=False)
+    trace._daily._f.close.side_effect = OSError("daily close failure detail")
+    trace._notes = mocker.MagicMock(wraps=notes, closed=False)
+    trace._notes.close.side_effect = OSError("notes close failure detail")
+    try:
+        trace.close()
+    finally:
+        daily_file.close()
+        notes.close()
+
+    text = (paths.engine_sessions_dir() / "close-debug" / "runtime.log").read_text(
+        encoding="utf-8"
+    )
+    assert "OSError: daily close failure detail" in text
+    assert "OSError: notes close failure detail" in text
+    assert not paths.active_session_marker().exists()
+
+
 @pytest.fixture
 def blocked_summary():
     trace = Trace("blocked-summary", Images("blocked-summary"))

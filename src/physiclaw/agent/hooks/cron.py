@@ -31,8 +31,13 @@ from physiclaw.agent.engine.job_store import (
     update_fields,
 )
 from physiclaw.agent.runtime.hook import Trigger, register
+from physiclaw.common.log_style import FailureState
 
 log = logging.getLogger(__name__)
+_load_failure = FailureState()
+_purge_failure = FailureState()
+_expiry_failure = FailureState()
+_save_failure = FailureState()
 
 
 # ---------- prompt building ----------
@@ -63,9 +68,19 @@ def _build_trigger_description(due: list[Job]) -> str:
 async def cron() -> Trigger | None:
     try:
         jobs = load_jobs()
-    except Exception:
-        log.exception("cron: failed to load %s", JOBS_PATH)
+    except Exception as error:
+        log.log(
+            _load_failure.level(error, logging.ERROR),
+            "cron: failed to load %s",
+            JOBS_PATH,
+            exc_info=True,
+            extra={
+                "console_message": "Cannot read scheduled tasks — retrying automatically"
+            },
+        )
         return None
+    if _load_failure.recovered():
+        log.info("Scheduled tasks available again", extra={"console": True})
     if not jobs:
         return None
 
@@ -75,8 +90,17 @@ async def cron() -> Trigger | None:
     # Pass the already-loaded jobs so purge_stale doesn't re-parse jobs.md.
     try:
         purge_stale(now=now, jobs=jobs)
-    except Exception:
-        log.exception("cron: purge_stale failed")
+        if _purge_failure.recovered():
+            log.info("Schedule cleanup restored", extra={"console": True})
+    except Exception as error:
+        log.log(
+            _purge_failure.level(error, logging.ERROR),
+            "cron: purge_stale failed",
+            exc_info=True,
+            extra={
+                "console_message": "Old schedules could not be cleaned up — active tasks will still run"
+            },
+        )
 
     # Close firings left unfinished for 24h+: fail one-time jobs and re-arm
     # periodic jobs. Purge targets terminal statuses; expiry targets fired,
@@ -84,8 +108,17 @@ async def cron() -> Trigger | None:
     # when load_jobs sees their new pending status.
     try:
         expire_stale_fired(now=now, jobs=jobs)
-    except Exception:
-        log.exception("cron: expire_stale_fired failed")
+        if _expiry_failure.recovered():
+            log.info("Stale schedule recovery restored", extra={"console": True})
+    except Exception as error:
+        log.log(
+            _expiry_failure.level(error, logging.ERROR),
+            "cron: expire_stale_fired failed",
+            exc_info=True,
+            extra={
+                "console_message": "Unfinished schedules could not be reset — retrying automatically"
+            },
+        )
 
     due = find_due(jobs, now)
     if not due:
@@ -111,13 +144,27 @@ async def cron() -> Trigger | None:
 
     try:
         update_fields(JOBS_PATH, updates)
-    except Exception:
-        log.exception("cron: failed to write fire times to %s", JOBS_PATH)
+        if _save_failure.recovered():
+            log.info("Schedule saving restored", extra={"console": True})
+    except Exception as error:
+        log.log(
+            _save_failure.level(error, logging.ERROR),
+            "cron: failed to write fire times to %s",
+            JOBS_PATH,
+            exc_info=True,
+            extra={
+                "console_message": "Cannot save schedule state — due tasks will run, but may run again"
+            },
+        )
         # Still fire — better to double-fire next tick than to miss entirely.
 
     description = _build_trigger_description(due)
     source = "cron:" + ",".join(j.id for j in due)
-    return Trigger(description=description, source=source)
+    return Trigger(
+        description=description,
+        source=source,
+        label="; ".join(j.description for j in due),
+    )
 
 
 # ---------- CLI (used by the /cron skill and the agent) ----------
@@ -126,6 +173,9 @@ async def cron() -> Trigger | None:
 def _cli() -> int:
     import sys
 
+    from physiclaw.common.log_style import configure_console, report_error
+
+    configure_console("cli")
     args = sys.argv[1:]
     cmd = args[0] if args else "verify"
 
@@ -136,7 +186,7 @@ def _cli() -> int:
         try:
             jobs = load_jobs()
         except Exception as e:
-            print(f"PARSE ERROR: {e}")
+            report_error(f"Cannot parse jobs: {e}")
             return 1
         print(f"OK: {len(jobs)} job(s) parsed from {JOBS_PATH}")
         for j in jobs:
@@ -155,7 +205,7 @@ def _cli() -> int:
         try:
             jobs = load_jobs()
         except Exception as e:
-            print(f"PARSE ERROR: {e}")
+            report_error(f"Cannot parse jobs: {e}")
             return 1
         fired = [j for j in jobs if j.status == STATUS_FIRED]
         if not fired:
@@ -177,11 +227,11 @@ def _cli() -> int:
         try:
             jobs = load_jobs()
         except Exception as e:
-            print(f"PARSE ERROR: {e}")
+            report_error(f"Cannot parse jobs: {e}")
             return 1
         job = next((j for j in jobs if j.id == job_id), None)
         if job is None:
-            print(f"ERROR: no job named {job_id!r} in {JOBS_PATH}")
+            report_error(f"No job named {job_id!r} in {JOBS_PATH}")
             return 1
 
         # The status/reset/stamp policy is single-sourced in
@@ -191,10 +241,10 @@ def _cli() -> int:
         try:
             engine_jobs.finish_job(id=job_id, status=cmd, recap=result_desc)
         except ValueError as e:
-            print(f"ERROR: {e}")
+            report_error(str(e))
             return 1
         except Exception as e:
-            print(f"WRITE ERROR: {e}")
+            report_error(f"Cannot save jobs: {e}")
             return 1
         print(f"OK: {cmd} {job_id}")
         if cmd in ("done", "fail") and job.kind != KIND_ONE_TIME:
@@ -213,14 +263,14 @@ def _cli() -> int:
         try:
             jobs = load_jobs()
         except Exception as e:
-            print(f"PARSE ERROR: {e}")
+            report_error(f"Cannot parse jobs: {e}")
             return 1
         try:
             # Background housekeeping tolerates unreadable job files. The
             # CLI must report them instead of claiming there is nothing to do.
             purged = purge_stale(jobs=jobs)
         except Exception as e:
-            print(f"WRITE ERROR: {e}")
+            report_error(f"Cannot save jobs: {e}")
             return 1
         if not purged:
             print("nothing to purge")

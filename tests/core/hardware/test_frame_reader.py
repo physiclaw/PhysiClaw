@@ -4,6 +4,7 @@ except where the thread itself is under test, no cv2)."""
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from types import SimpleNamespace
@@ -44,6 +45,78 @@ def _run_one_tick(r: FrameReader, mocker) -> None:
     r._stopped.clear()
     mocker.patch.object(r._stopped, "wait", side_effect=lambda t: r._stopped.set())
     r._loop()
+
+
+def test_read_failure_burst_warns_once_and_reports_recovery(mocker, caplog):
+    clock = {"now": 100.0}
+    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    r = _reader(raise_on_read=True)
+    r._frame_time = clock["now"]
+
+    with caplog.at_level(logging.INFO, logger=fr_mod.__name__):
+        for _ in range(4):
+            _run_one_tick(r, mocker)
+            clock["now"] += 1
+        clock["now"] += 6
+        r.publish(_frame())
+        r.publish(_frame())
+        # A later outage is a new event and must still be reported.
+        _run_one_tick(r, mocker)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    recoveries = [r for r in caplog.records if "frames restored" in r.getMessage()]
+    assert len(warnings) == 2
+    assert all("hardware error" in r.getMessage() for r in warnings)
+    assert len(recoveries) == 1
+    assert "10.0s" in recoveries[0].getMessage()
+
+
+def test_changed_read_error_is_reported_during_an_existing_empty_frame_outage(
+    mocker, caplog
+):
+    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0))
+    reader = FrameReader(
+        mocker.Mock(
+            side_effect=[
+                (False, None),
+                RuntimeError("read timeout"),
+                RuntimeError("read timeout"),
+                OSError("device removed"),
+                OSError("device removed"),
+            ]
+        ),
+        mocker.Mock(),
+    )
+    reader._frame_time = 100.0
+    with caplog.at_level(logging.DEBUG, logger=fr_mod.__name__):
+        for _ in range(5):
+            _run_one_tick(reader, mocker)
+    records = [
+        r for r in caplog.records if getattr(r, "event", "") == "camera.read_failed"
+    ]
+    assert [r.levelno for r in records] == [
+        logging.WARNING,
+        logging.DEBUG,
+        logging.WARNING,
+        logging.DEBUG,
+    ]
+    assert "read timeout" in records[0].getMessage()
+    assert "device removed" in records[2].getMessage()
+    assert all(r.exc_info for r in records)
+
+
+def test_brief_read_error_reports_recovery_without_claiming_a_reconnect(mocker, caplog):
+    r = _reader(raise_on_read=True)
+    r._frame_time = time.monotonic()
+
+    with caplog.at_level(logging.INFO, logger=fr_mod.__name__):
+        _run_one_tick(r, mocker)
+        r.publish(_frame())
+
+    assert len(caplog.records) == 2
+    assert "read raised" in caplog.records[0].getMessage()
+    assert "frames restored" in caplog.records[1].getMessage()
+    assert "reconnect" not in caplog.records[1].getMessage()
 
 
 # ---------- publish / consume ----------

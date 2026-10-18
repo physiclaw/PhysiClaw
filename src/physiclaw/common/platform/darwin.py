@@ -10,6 +10,7 @@ import socket
 import subprocess
 import threading
 import time
+from typing import TextIO
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +21,11 @@ log = logging.getLogger(__name__)
 # config, so trusting env is only safe because `normalize_proxy_env()`
 # (common/proxy.py) pins loopback into NO_PROXY first.
 TRUST_PROXY_ENV = True
+
+
+def enable_terminal_color(stream: TextIO | None) -> bool:
+    """POSIX terminal capability; TTY/environment checks live in terminal.py."""
+    return True
 
 
 def ensure_camera_permission() -> None:

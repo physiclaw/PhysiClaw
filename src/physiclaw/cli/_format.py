@@ -10,59 +10,71 @@ commands echo, and the indented ``step_*`` lines of the setup wizard
 markers. ``exit_error`` is the one failure shape for expected errors.
 """
 
+import sys
 from typing import NoReturn
 
 import typer
 
+from physiclaw.common.terminal import color_enabled, stdout_text
+
+
+def _style(text: str, *, fg: str, bold: bool = False) -> str:
+    text = stdout_text(text)
+    return typer.style(text, fg=fg, bold=bold) if color_enabled(sys.stdout) else text
+
 
 def ok(msg: str) -> str:
     """Green ``✓`` prefix + msg."""
-    return typer.style("✓ ", fg=typer.colors.GREEN) + msg
+    return _style("✓ ", fg=typer.colors.GREEN) + stdout_text(msg)
 
 
 def warn(msg: str) -> str:
     """Yellow ``!`` prefix + msg."""
-    return typer.style("! ", fg=typer.colors.YELLOW) + msg
+    return _style("! ", fg=typer.colors.YELLOW) + stdout_text(msg)
 
 
 def next_hint(line: str) -> str:
     """Bold ``Next:`` prefix + the rest of the line."""
-    return typer.style("Next:", bold=True) + " " + line
+    return _style("Next:", fg=typer.colors.CYAN, bold=True) + " " + stdout_text(line)
 
 
 def info(msg: str) -> str:
     """Two-space indent + msg. Use for neutral state lines that shouldn't
     read as a problem (unlike ``warn``) or a confirmation (unlike ``ok``)."""
-    return f"  {msg}"
+    return f"  {stdout_text(msg)}"
 
 
 def section(title: str) -> str:
-    """Bold bright-cyan section header. Distinct from ok (green) and warn
+    """Bold cyan section header. Distinct from ok (green) and warn
     (yellow) so the reader can scan section boundaries at a glance in
     commands that emit multi-section reports (``doctor``, ``status``)."""
-    return typer.style(title, fg=typer.colors.BRIGHT_CYAN, bold=True)
+    return _style(title, fg=typer.colors.CYAN, bold=True)
 
 
 def step_ok(msg: str = "OK") -> str:
     """Setup-wizard step line: two-space indent + green ``✓`` + msg."""
-    return f"  {typer.style('✓', fg=typer.colors.GREEN)} {msg}"
+    return f"  {_style('✓', fg=typer.colors.GREEN)} {stdout_text(msg)}"
 
 
 def step_fail(msg: str) -> str:
     """Setup-wizard step failure: two-space indent + red ``✗ msg``."""
-    return "  " + typer.style(f"✗ {msg}", fg=typer.colors.RED)
+    return "  " + _style(f"✗ {msg}", fg=typer.colors.RED)
 
 
 def step_warn(msg: str) -> str:
     """Setup-wizard step warning: two-space indent + yellow ``⚠ msg``."""
-    return "  " + typer.style(f"⚠ {msg}", fg=typer.colors.YELLOW)
+    return "  " + _style(f"⚠ {msg}", fg=typer.colors.YELLOW)
 
 
 def exit_error(msg: str, code: int = 1) -> NoReturn:
-    """Echo ``error: <msg>`` to stderr and abort with ``code`` — the one
-    failure shape expected CLI errors use (no traceback for bad input,
-    network down, corrupt downloads, missing files)."""
-    typer.echo(f"error: {msg}", err=True)
+    """Log one expected error to stderr and exit with ``code``.
+
+    Uses the shared pretty/JSON format without a traceback for bad input,
+    network failures, corrupt downloads or missing files.
+    """
+    from physiclaw.common.log_style import report_error
+
+    report_error(msg, exit_code=code)
     raise typer.Exit(code=code)
 
 
@@ -82,10 +94,8 @@ def parse_inputs(pairs: list[str], flag: str = "--input") -> dict[str, str]:
 def state_tag(*, valid: bool, enabled: bool = False) -> str:
     """The colored invalid/enabled/disabled tag both artifact listings
     (`macros list`, `playbooks list`) render — one palette, one wording."""
-    import typer
-
     if not valid:
-        return typer.style("invalid ", fg=typer.colors.RED)
+        return _style("invalid ", fg=typer.colors.RED)
     if enabled:
-        return typer.style("enabled ", fg=typer.colors.GREEN)
-    return typer.style("disabled", fg=typer.colors.YELLOW)
+        return _style("enabled ", fg=typer.colors.GREEN)
+    return _style("disabled", fg=typer.colors.YELLOW)

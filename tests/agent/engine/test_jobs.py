@@ -365,8 +365,11 @@ def test_create_job_records_create_time_from_now(_jobs_path: Path) -> None:
 
 def test_create_job_records_next_fire_from_cron_schedule(
     _jobs_path: Path,
+    caplog,
 ) -> None:
-    with freeze_time("2026-04-28T14:30:00"):
+    import logging
+
+    with caplog.at_level(logging.INFO), freeze_time("2026-04-28T14:30:00"):
         jobs.create_job(
             id="x",
             description="d",
@@ -376,6 +379,11 @@ def test_create_job_records_next_fire_from_cron_schedule(
 
     text = _jobs_path.read_text()
     assert "- Next fire time: 2026-04-28T15:00" in text
+    record = next(
+        r for r in caplog.records if getattr(r, "event", "") == "task.scheduled"
+    )
+    assert record.console is True
+    assert "next 2026-04-28T15:00" in record.console_message
 
 
 def test_create_job_periodic_rejects_high_frequency_schedule(
@@ -437,11 +445,18 @@ def test_create_job_periodic_kind_records_periodic(_jobs_path: Path) -> None:
 # ---------- upsert_auto_wait_check ----------
 
 
-def test_upsert_auto_wait_creates_when_absent(_jobs_path: Path) -> None:
+def test_upsert_auto_wait_creates_when_absent(_jobs_path: Path, caplog) -> None:
+    import logging
+
+    from physiclaw.common.log_style import ConsoleFilter
+
     target = dt.datetime(2026, 4, 28, 14, 30)
 
-    with freeze_time("2026-04-28T14:00:00"):
+    with caplog.at_level(logging.INFO), freeze_time("2026-04-28T14:00:00"):
         jobs.upsert_auto_wait_check(target)
+
+    # The session-outcome contract owns the one user-facing follow-up notice.
+    assert not [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
 
     text = _jobs_path.read_text()
     assert f"## {jobs.AUTO_WAIT_JOB_ID}" in text
@@ -593,7 +608,7 @@ def test_finish_job_periodic_done_resets_to_pend(_jobs_path: Path) -> None:
     assert "- Status: pend" in text
 
 
-def test_finish_job_periodic_done_reply_flags_rearm(_jobs_path: Path) -> None:
+def test_finish_job_periodic_done_reply_flags_rearm(_jobs_path: Path, caplog) -> None:
     # The re-fire trap: an agent reads "done" as "over" while the
     # periodic job re-arms and fires again minutes later. The tool
     # reply must state the re-arm and the permanent way out (cancel).
@@ -607,12 +622,20 @@ def test_finish_job_periodic_done_reply_flags_rearm(_jobs_path: Path) -> None:
         ),
     )
 
-    with freeze_time("2026-04-28T08:00:00"):
+    import logging
+
+    with caplog.at_level(logging.INFO), freeze_time("2026-04-28T08:00:00"):
         out = jobs.finish_job(id="periodic", status=STATUS_DONE, recap="ok")
 
     assert "RE-ARMED" in out
     assert "2026-04-29T07:00" in out
     assert "cancel" in out
+    record = next(
+        r for r in caplog.records if getattr(r, "event", "") == "task.schedule_updated"
+    )
+    assert record.console is True
+    assert "Say hi to user" in record.console_message
+    assert "next 2026-04-29T07:00" in record.console_message
 
 
 def test_finish_job_one_time_reply_is_plain(_jobs_path: Path) -> None:

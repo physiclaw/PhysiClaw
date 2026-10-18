@@ -33,6 +33,7 @@ from functools import partial
 
 from physiclaw.common import gesture_vocab
 from physiclaw.common.listing import Screen
+from physiclaw.common.log_style import console_text
 from physiclaw.conductor.micro.decision import MicroOutcome
 from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.conventions import (
@@ -226,11 +227,16 @@ class Program:
             self._restore(restored, resumed=suspended is not None)
         if suspended is not None:
             log.info(
-                "conductor: resuming suspended %s/%s at node %d (%s)",
+                "Resuming suspended %s/%s at node %d (%s)",
                 self.app,
                 spec.name,
                 self.course.idx + 1,
                 "awaiting reply" if self.gate.awaiting else "walk",
+                extra={
+                    "event": "task.resumed",
+                    "console": True,
+                    "console_message": f"Resuming: {self.ref}",
+                },
             )
 
     # ---- suspension ----
@@ -325,7 +331,7 @@ class Program:
         """A completed walk's end: recorded, the daily log's line (the
         model's memory line when the closing call wrote one, else the
         recap), and the session closed DONE."""
-        log.info("conductor: playbook %s complete — %s", self.ref, recap)
+        log.info("Playbook %s complete — %s", self.ref, recap)
         self._end(Outcome.COMPLETED)
         return self._close_session(
             "complete", recap, memory or recap, status=DONE_STATUS
@@ -406,11 +412,11 @@ class Program:
             # other writer of this line — returns early after this.
             self.log_purchase()
         except Exception:
-            log.exception("conductor: crash purchase line failed — ignored")
+            log.exception("Crash purchase line failed — ignored")
         try:
             self._record_run(Outcome.CRASHED, "program crashed")
         except Exception:
-            log.exception("conductor: crash record failed — ignored")
+            log.exception("Crash record failed — ignored")
 
     def _advance(self, history: list[Message]) -> Turn:
         if self.phase is Phase.DONE:
@@ -457,7 +463,7 @@ class Program:
             self.channel.prints if channel and self.channel else self.prints,
         )
         log.info(
-            "conductor: %s/%s read after %s — %s",
+            "%s/%s read after %s — %s",
             self.app,
             self.spec.name,
             kind,
@@ -563,7 +569,7 @@ class Program:
                 # the route, so the next round's first node inherits the
                 # index this one had and an index check would walk on.
                 log.info(
-                    "conductor: stepping pause — cursor moved from %s to %s",
+                    "Stepping pause — cursor moved from %s to %s",
                     self._stepped,
                     here,
                 )
@@ -626,7 +632,7 @@ class Program:
             f"revising from {rd.run.revise!r} ({self.gate.revisions}/"
             f"{rd.run.revise_limit}) — the user said {replies!r}"
         )
-        log.info("conductor: %s revises from %s — %r", self.ref, rd.run.revise, replies)
+        log.info("%s revises from %s — %r", self.ref, rd.run.revise, replies)
         # A round in progress past the target starts over on the next
         # pass: its partial record (an agent's output from this pass)
         # is dropped, or refs would read it until overwritten.
@@ -656,7 +662,14 @@ class Program:
         return node.on_fail if node is not None else None
 
     def _skip_round(self, rd: Round, reason: str) -> Turn:
-        log.warning("conductor: round %s missed — %s", rd.prefix, reason)
+        log.warning(
+            "Round %s missed — %s",
+            rd.prefix,
+            reason,
+            extra={
+                "console_message": f"Skipped round {rd.prefix}: {console_text(reason)}"
+            },
+        )
         self.journal(f"round {rd.prefix} missed — {reason}")
         self.ledger.round_missed(rd.prefix, reason)
         self.recoveries.drop()
@@ -738,7 +751,7 @@ class Program:
         `select` step set the baton) or the model's own thread (it
         set none), and either way there is nothing to report to a
         model that is not about to speak from a brief."""
-        log.info("conductor: %s/%s concluded — %s", self.app, self.spec.name, reason)
+        log.info("%s/%s concluded — %s", self.app, self.spec.name, reason)
         self._end(Outcome.COMPLETED, reason)
 
     def handover(
@@ -765,10 +778,13 @@ class Program:
             assert rd is not None  # the word comes from the round's run
             return self._skip_round(rd, reason)
         log.warning(
-            "conductor: handing %s/%s over to the model — %s",
+            "Handing %s/%s over to the model — %s",
             self.app,
             self.spec.name,
             reason,
+            extra={
+                "console_message": f"Continuing {self.ref} with the task model: {console_text(reason)}"
+            },
         )
         self._end(Outcome.HANDOVER, reason)
         return self.synth(
@@ -794,7 +810,7 @@ class Program:
         recap = brief.stop_recap(
             reason, ref=self.ref, where=self.course.label(), ledger=self.ledger
         )
-        log.warning("conductor: %s", recap)
+        log.warning("%s", recap)
         self._end(Outcome.HANDOVER, reason)
         return self._close_session("stop", recap, recap)
 

@@ -23,6 +23,7 @@ from physiclaw.common.config import (
     model_ref_with_source,
     server_url,
 )
+from physiclaw.common.log_style import report_error
 from physiclaw.common.logger import setup_logging
 from physiclaw.common.proxy import normalize_proxy_env
 from physiclaw.provider import ProviderConfigurationError, validate_model_ref
@@ -73,7 +74,7 @@ def launch() -> None:
     except RuntimeError as e:
         # Friendly exit: print the (already actionable) message to stderr
         # and bail. No Python stack trace bleeds into the parent shell.
-        print(f"physiclaw runtime: {e}", file=sys.stderr)
+        report_error(str(e), tag="runtime")
         sys.exit(1)
 
     # Hooks read this to know where the MCP server lives. Must be set
@@ -93,6 +94,7 @@ def launch() -> None:
         "runtime",
         logging.DEBUG if args.verbose else logging.INFO,
         file_dir=paths.runtime_log_dir(),
+        file_level=logging.DEBUG,
     )
 
     from physiclaw.agent.engine.engine import run as engine_run
@@ -100,7 +102,17 @@ def launch() -> None:
     react = partial(engine_run, model_ref=ref)
 
     label = engine_label(ref)
-    log.info("%s [%s]", label, source)
+    log.info(
+        "%s [%s]",
+        label,
+        source,
+        extra={
+            "event": "model.selected",
+            "model_ref": ref,
+            "console": True,
+            "console_message": f"Model: {ref}",
+        },
+    )
 
     async def _main():
         try:
@@ -115,7 +127,7 @@ def launch() -> None:
     try:
         asyncio.run(_main())
     except ProviderConfigurationError as e:
-        print(f"physiclaw runtime: {e}", file=sys.stderr)
+        report_error(str(e), tag="runtime")
         sys.exit(1)
     except KeyboardInterrupt:
         pass

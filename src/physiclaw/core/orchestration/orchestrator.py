@@ -96,7 +96,12 @@ class PhysiClaw:
                     self.rig.park()
                     self.perception.tune_now()
                 except Exception:
-                    log.exception("camera settle failed — continuing readiness")
+                    log.exception(
+                        "camera settle failed — continuing readiness",
+                        extra={
+                            "console_message": "Camera adjustment failed — continuing with current settings"
+                        },
+                    )
                 self.rig.mark_ready()
                 return self.rig.ready
         except RuntimeError as exc:

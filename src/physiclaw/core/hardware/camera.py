@@ -79,7 +79,7 @@ def apply_size_cap(size: tuple[int, int]) -> tuple[int, int]:
     size_cap = platform.camera_size_cap()
     if size_cap is None or size[0] * size[1] <= size_cap[0] * size_cap[1]:
         return size
-    log.info(
+    log.debug(
         "capture request %dx%d capped to %dx%d — exposure is not "
         "tunable on this rig and higher modes risk uncorrectable "
         "overexposure",
@@ -162,7 +162,10 @@ def configure_capture(
         platform.camera_unlock_focus(cap)
         log.warning(
             "could not apply the remembered focus position — "
-            "lens handed back to autofocus"
+            "lens handed back to autofocus",
+            extra={
+                "console_message": "Saved camera focus could not be restored — using autofocus"
+            },
         )
         return False
     return True
@@ -356,7 +359,7 @@ class Camera:
         ladder = self._request_ladder()
         for rung, size in enumerate(ladder):
             if size != self._request_size:
-                log.warning(
+                log.debug(
                     f"Camera {self.index}: negotiation misbehaved — "
                     f"retrying at {size[0]}x{size[1]}"
                 )
@@ -373,12 +376,18 @@ class Camera:
                 continue
             h, w = frame.shape[:2]
             if max(w, h) < BASELINE_LONG_EDGE and rung < len(ladder) - 1:
-                log.warning(
+                log.debug(
                     f"Camera {self.index}: {size[0]}x{size[1]} request "
                     f"negotiated only {w}x{h}"
                 )
                 continue
-            log.info(f"Camera {self.index} ready  ({w}x{h})")
+            log.info(
+                "Camera %s ready | capture=%dx%d | requested=%dx%d",
+                self.index,
+                w,
+                h,
+                *ladder[0],
+            )
             self._reader.publish(frame)
             return
         raise DeviceTimeout(f"Camera {self.index}: read failed")
@@ -389,7 +398,7 @@ class Camera:
         Keep the negotiated resolution and remembered exposure/focus.
         An open handle alone does not mean its stream is delivering frames.
         """
-        log.warning(f"Camera {self.index}: reconnecting cv2.VideoCapture")
+        log.debug("Camera %s: reopening capture", self.index)
         with self._cap_lock:
             if self._closing:
                 return
@@ -405,14 +414,14 @@ class Camera:
                         return
                     if ok and frame is not None:
                         self._reader.publish(frame)
-                        log.info("Camera %s: capture recovered", self.index)
+                        log.debug("Camera %s: capture recovered", self.index)
                         return
                 raise DeviceTimeout("reopened camera produced no frames")
             except Exception as e:
                 with contextlib.suppress(Exception):
                     self.cap.release()
                 self._reader.note_reopened()
-                log.error(f"Camera {self.index}: reopen failed: {e!r}")
+                log.debug("Camera %s: reopen failed: %r", self.index, e, exc_info=True)
 
     # ─── Exposure control ───────────────────────────────────────
 
@@ -618,5 +627,8 @@ class Camera:
         else:
             log.warning(
                 f"Camera {self.index}: close() couldn't take the cap lock "
-                "(reader wedged in cap.read()?) — leaking the capture handle"
+                "(reader wedged in cap.read()?) — leaking the capture handle",
+                extra={
+                    "console_message": f"Camera {self.index} did not close — unplug and reconnect it before restarting"
+                },
             )

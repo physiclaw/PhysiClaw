@@ -258,9 +258,22 @@ class AnthropicCompatibleProvider(BaseProvider):
         except APIStatusError as e:
             text = (e.message or "")[:500]
             if e.status_code >= 500:
-                log.warning("anthropic HTTP %s (transient): %s", e.status_code, text)
+                log.debug(
+                    "HTTP %s (transient): %s",
+                    e.status_code,
+                    text,
+                    extra={
+                        "event": "provider.http_failed",
+                        "http_status": e.status_code,
+                    },
+                )
                 raise ProviderTransientError(f"HTTP {e.status_code}: {text}") from e
-            log.error("anthropic HTTP %s (permanent): %s", e.status_code, text)
+            log.debug(
+                "HTTP %s (permanent): %s",
+                e.status_code,
+                text,
+                extra={"event": "provider.http_failed", "http_status": e.status_code},
+            )
             raise ProviderPermanentError(f"HTTP {e.status_code}: {text}") from e
 
         return _from_anthropic_response(resp)

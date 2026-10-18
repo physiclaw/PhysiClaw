@@ -75,6 +75,44 @@ def test_brief_args_truncates_individual_values_at_40() -> None:
 # ---------- format_call_args / format_call_result ----------
 
 
+@pytest.mark.parametrize("name", ["send_to_clipboard", "sequence"])
+def test_clipboard_body_is_redacted_in_diagnostics_but_preserved_in_session(
+    _trace_dirs, name
+):
+    secret = "PIN-7391"
+    arguments = (
+        {"text": secret}
+        if name == "send_to_clipboard"
+        else {"actions": [{"tool_name": "send_to_clipboard", "arg": secret}]}
+    )
+    assert secret not in format_call_args(name, arguments)
+
+    with freeze_time("2026-04-28T10:00:00"):
+        t = Trace("clipboard", Images("clipboard"))
+        t.write(
+            {
+                "event": "tool_result",
+                "turn": 0,
+                "name": name,
+                "arguments": arguments,
+                "text": "Copied 8 chars to phone clipboard",
+            }
+        )
+        t.close()
+
+    assert secret not in (_trace_dirs / "engine-2026-04-28.log").read_text(
+        encoding="utf-8"
+    )
+    assert secret not in (
+        _trace_dirs / "sessions" / "clipboard" / "runtime.log"
+    ).read_text(encoding="utf-8")
+    event = next(
+        e for e in _events(_trace_dirs, "clipboard") if e["event"] == "tool_result"
+    )
+    assert event["arguments"] == arguments
+    assert secret in json.dumps(arguments)
+
+
 def test_format_call_args_uses_full_args_for_update_progress() -> None:
     long = "x" * 100
     out = format_call_args("update_progress", {"steps": long})
@@ -1149,6 +1187,8 @@ def test_first_event_of_every_session_is_the_env_snapshot(_trace_dirs: Path) -> 
         assert e[key]
     assert "auto_exposure" in e["config"]["camera"]
     assert "max_image_edge_px" in e["config"]["compact"]
+    assert "blur_threshold" in e["config"]["vision"]
+    assert "max_turns" in e["config"]["engine"]
 
 
 def test_env_snapshot_never_carries_secrets(_trace_dirs: Path) -> None:

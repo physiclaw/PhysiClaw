@@ -97,7 +97,7 @@ def test_spawn_runtime_logs_label(
         return_value=MagicMock(pid=99),
     )
 
-    with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.cli.server"):
         server_mod._spawn_runtime("127.0.0.1", 8048, False, "engine=qwen")
 
     assert any("engine=qwen" in r.getMessage() for r in caplog.records)
@@ -318,6 +318,12 @@ def test_server_no_setup_hardware_skips_wizard(
     open_spy.assert_not_called()
     msgs = " ".join(r.getMessage() for r in caplog.records)
     assert "physiclaw setup hardware" in msgs
+    assert (
+        next(
+            r for r in caplog.records if "physiclaw setup hardware" in r.getMessage()
+        ).console
+        is True
+    )
 
 
 def test_server_logs_version_first(mocker, caplog) -> None:
@@ -343,6 +349,48 @@ def test_server_logs_version_first(mocker, caplog) -> None:
 
     messages = [r.getMessage() for r in caplog.records]
     assert f"PhysiClaw {__version__}" in messages
+    assert (
+        next(
+            r for r in caplog.records if r.getMessage() == f"PhysiClaw {__version__}"
+        ).console
+        is True
+    )
+
+
+@pytest.mark.parametrize("no_runtime", [False, True])
+def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runtime):
+    from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
+
+    mocker.patch(
+        "physiclaw.core.bridge.bridge_base_urls",
+        return_value=("http://rig.local:8049", "http://192.168.1.25:8049"),
+    )
+    with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
+        server_mod._log_endpoints("127.0.0.1", 8048, no_runtime=no_runtime)
+    visible = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
+    logs = visible[-1]
+    normal = "\n".join(
+        TaggedFormatter("physiclaw", False, verbose=False).format(record)
+        for record in visible
+    )
+    diagnostic = "\n".join(
+        TaggedFormatter("physiclaw", False, verbose=True).format(record)
+        for record in caplog.records
+    )
+    assert "Phone: http://rig.local:8049/bridge" in normal
+    assert "Logs:" in normal
+    assert ("MCP: http://127.0.0.1:8048/mcp" in normal) is no_runtime
+    assert all(
+        text not in normal
+        for text in ("cli.server", "QR code", "Fallback", "Connections")
+    )
+    assert "QR code" in diagnostic and "Fallback" in diagnostic
+    assert logs.getMessage().startswith("Logs: ")
+    assert normal.splitlines()[-1].endswith("[physiclaw] " + logs.getMessage())
+    assert len(visible) == (3 if no_runtime else 2)
+    assert all("[physiclaw] " in line for line in normal.splitlines())
+    assert normal.count("Phone:") == diagnostic.count("Phone:") == 1
+    assert normal.count("Logs:") == diagnostic.count("Logs:") == 1
 
 
 def test_server_drops_uvicorn_invalid_http_noise(mocker) -> None:
@@ -888,7 +936,10 @@ def test_port_in_use_probes_real_socket() -> None:
 # ---------- auto_calibrate branch (physiclaw auto) ----------
 
 
-def test_server_auto_calibrate_starts_thread_and_skips_wizard(mocker) -> None:
+def test_server_auto_calibrate_starts_thread_and_skips_wizard(mocker, caplog) -> None:
+    from physiclaw.common.log_style import ConsoleFilter
+
+    caplog.set_level(logging.INFO)
     _patch_server_runtime_deps(mocker)
     open_spy = mocker.patch("webbrowser.open")
     # The branch spawns a thread that lazily imports the setup module and
@@ -919,6 +970,8 @@ def test_server_auto_calibrate_starts_thread_and_skips_wizard(mocker) -> None:
     captured["target"]()  # run the daemon-thread body
     worker_spy.assert_called_once_with("127.0.0.1", 8048)
     assert server_mod.threading.Thread.call_args.kwargs["daemon"] is True
+    mode = next(r for r in caplog.records if r.getMessage().startswith("Auto mode:"))
+    assert not ConsoleFilter(verbose=False).filter(mode)
 
 
 # ---------- _require_vision_model ----------
@@ -1126,6 +1179,8 @@ def test_server_serves_reserved_sockets_and_stops_bridge_on_return(mocker):
 
     assert servers[0].sockets == [deps["listeners"][1]]
     assert servers[1].sockets == [deps["listeners"][0]]
+    assert all(s.config.log_config is None for s in servers)
+    assert all(s.config.access_log is False for s in servers)
     assert servers[0].should_exit
     deps["listeners"][0].__exit__.assert_called_once()
     deps["listeners"][1].__exit__.assert_called_once()

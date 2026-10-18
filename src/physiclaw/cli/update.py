@@ -171,6 +171,7 @@ def notify_staged_update() -> None:
         "stop the server and run `uv tool upgrade physiclaw`.",
         staged,
         _pkg_version,
+        extra={"console": True},
     )
 
 
@@ -215,4 +216,4 @@ def start_stage_update_thread() -> None:
             target=maybe_stage_update, name="physiclaw-stage-update", daemon=True
         ).start()
     except RuntimeError as e:
-        log.warning("could not start background update check: %s", e)
+        log.debug("could not start background update check: %s", e, exc_info=True)

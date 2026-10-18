@@ -38,7 +38,10 @@ from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import STUCK
 from physiclaw.agent.trace import RawLog, Trace, new_sid
 from physiclaw.agent.trace.store import Images
+from physiclaw.common import paths
 from physiclaw.common.config import CONFIG, parse_model_ref
+from physiclaw.common.logger import bind_log_context, reset_log_context
+from physiclaw.common.text import clip
 from physiclaw.contract.dto import Message
 from physiclaw.contract.plugin import SetupContext, TurnPlugin
 from physiclaw.macros.model import Macro
@@ -112,6 +115,7 @@ async def _run_session(
     plugins: tuple[TurnPlugin, ...] = ()
     tr: Trace | None = None
     rlog: RawLog | None = None
+    context = bind_log_context(session_id=sid)
     try:
         # Open inside the try so the finally block's close() runs even
         # if construction fails midway (disk full, perms, etc.).
@@ -124,15 +128,36 @@ async def _run_session(
                 "session": sid,
                 "model_ref": model_ref,
                 "triggers": [
-                    {"source": t.source, "description": t.description} for t in triggers
+                    {
+                        "source": t.source,
+                        "description": t.description,
+                        **({"label": t.label} if t.label else {}),
+                    }
+                    for t in triggers
                 ],
             }
         )
+        scheduled = bool(triggers) and all(
+            (t.source or "").startswith("cron:") for t in triggers
+        )
+        labels = "; ".join(str(t.label) for t in triggers if t.label)
+        headline = "Scheduled task started" if scheduled else "Task started"
+        if labels:
+            headline += ": " + clip(" ".join(labels.split()), 160)
+        elif triggers and all(t.source == "first-run" for t in triggers):
+            headline = "Learning phone controls"
         log.info(
-            "wake session=%s model=%s triggers=%s",
+            "Session %s started | model=%s | triggers=%s\nDebug files: %s",
             sid,
             model_ref,
             [t.source or "?" for t in triggers],
+            paths.engine_sessions_dir() / sid,
+            extra={
+                "event": "session.started",
+                "model_ref": model_ref,
+                "console": True,
+                "console_message": headline,
+            },
         )
         # The provider client exists before plugin setup so the setup
         # context can offer it (a plugin's decision calls fall back to
@@ -199,7 +224,7 @@ async def _run_session(
                 "local": sorted(bundle.local_registry.keys()),
             }
         )
-        log.info(
+        log.debug(
             "tools loaded: %d MCP + %d local + %d built-in + %d user skills "
             "+ %d pitfalls + %d macros",
             len(mcp_tools),
@@ -252,7 +277,7 @@ async def _run_session(
         tr.write({"event": "prefix_pinned", "hash": prompt_hash})
         await loop.drive(engine_run, session, messages)
 
-        log.info(
+        log.debug(
             "session done: session=%s status=%s recap=%r",
             sid,
             session.sentinel_status,
@@ -272,12 +297,15 @@ async def _run_session(
         # provider) that consolidates the list + enforces the cap when the agent
         # added traps this session. Fail-open — never affects the outcome.
         if CONFIG.pitfalls.curate_enabled and session.added_pitfalls:
-            await curate.curate(provider, tr=tr)
+            await curate.curate(provider, tr=tr, rlog=rlog)
     except asyncio.CancelledError:
         loop.log_external_stop(session, tr)
         raise
     except ProviderConfigurationError:
         # The launcher reports setup errors once; retries cannot fix them.
+        # Save the traceback before this session's capture closes, since the
+        # launcher's later user-facing error is outside the session window.
+        log.debug("Session provider configuration failed", exc_info=True)
         raise
     except Exception as e:
         # Crashes count as STUCK so the retry loop gives it another shot.
@@ -287,25 +315,30 @@ async def _run_session(
         session.sentinel_status = STUCK
         session.sentinel_recap = f"session crashed: {e}"
     finally:
-        # Retain all loaded plugins for cleanup, including partial setup.
-        cancelled: asyncio.CancelledError | None = None
-        closers = [provider.aclose] if provider is not None else []
-        closers += [plug.aclose for plug in plugins]
-        for close in closers:
-            try:
-                await close()
-            except asyncio.CancelledError as exc:
-                # Finish the other resources in this task, then propagate
-                # cancellation. Moving closes to a new task can break MCP
-                # transports whose cancellation scopes belong to this one.
-                cancelled = cancelled or exc
-            except Exception:
-                log.warning("session resource close failed", exc_info=True)
-        for sink in (tr, rlog):
-            if sink is not None:
+        try:
+            # Retain all loaded plugins for cleanup, including partial setup.
+            cancelled: asyncio.CancelledError | None = None
+            closers = [provider.aclose] if provider is not None else []
+            closers += [plug.aclose for plug in plugins]
+            for close in closers:
                 try:
-                    sink.close()
+                    await close()
+                except asyncio.CancelledError as exc:
+                    # Finish the other resources in this task, then propagate
+                    # cancellation. Moving closes to a new task can break MCP
+                    # transports whose cancellation scopes belong to this one.
+                    cancelled = cancelled or exc
                 except Exception:
-                    log.warning("session log close failed", exc_info=True)
-        if cancelled is not None:
-            raise cancelled
+                    log.warning("session resource close failed", exc_info=True)
+            # Trace owns runtime.log and the MCP marker; keep it open until
+            # the wire log closes so its final failures stay in this session.
+            for sink in (rlog, tr):
+                if sink is not None:
+                    try:
+                        sink.close()
+                    except Exception:
+                        log.warning("session log close failed", exc_info=True)
+            if cancelled is not None:
+                raise cancelled
+        finally:
+            reset_log_context(context)

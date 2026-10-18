@@ -303,7 +303,7 @@ def test_regression_edit_failed_editor_does_not_claim_success(
     result = runner.invoke(config_app, ["edit"])
 
     assert result.exit_code == 1
-    assert "error:" in result.stderr
+    assert "ERROR [" in result.stderr
     assert "config OK" not in result.stdout
     assert "Restart" not in result.stdout
 
@@ -353,7 +353,7 @@ def test_regression_edit_invalid_editor_reports_error(
     result = runner.invoke(config_app, ["edit"])
 
     assert result.exit_code == 1
-    assert "error:" in result.stderr
+    assert "ERROR [" in result.stderr
     assert "config OK" not in result.stdout
     run.assert_not_called()
 
@@ -393,7 +393,7 @@ def test_regression_config_io_failure_reports_error(
 
     assert result.exit_code == 1
     assert "denied" in result.stderr
-    assert "error:" in result.stderr
+    assert "ERROR [" in result.stderr
     assert "Restart" not in result.stdout
 
 

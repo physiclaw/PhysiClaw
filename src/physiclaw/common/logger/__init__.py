@@ -1,3 +1,4 @@
+from physiclaw.common.logger.context import bind_log_context, reset_log_context
 from physiclaw.common.logger.logger import (
     PLAYBOOK_ACCENT,
     SERVER_LOG_TAG,
@@ -32,6 +33,7 @@ __all__ = [
     "attach_server_mcp_tee",
     "attach_session_log",
     "build_summary",
+    "bind_log_context",
     "detach_session_log",
     "ensure_readme",
     "env_snapshot",
@@ -42,6 +44,7 @@ __all__ = [
     "save_image",
     "PLAYBOOK_ACCENT",
     "set_tag_accent",
+    "reset_log_context",
     "setup_logging",
     "write_json_atomic",
 ]

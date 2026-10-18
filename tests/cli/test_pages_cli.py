@@ -126,7 +126,7 @@ def test_regression_missing_listing_reports_path(pack, tmp_path, command):
     result = runner.invoke(pages.pages_app, command + ["--listing", str(missing)])
 
     assert result.exit_code == 1
-    assert "error:" in result.output and str(missing) in result.output
+    assert "ERROR [" in result.stderr and str(missing) in result.output
     assert isinstance(result.exception, SystemExit)
 
 
@@ -204,7 +204,7 @@ def test_regression_live_failure_reports_cause_and_closes_client(client, error):
     result = runner.invoke(pages.pages_app, ["propose", "--live"])
 
     assert result.exit_code == 1
-    assert "error:" in result.output and str(error) in result.output
+    assert "ERROR [" in result.stderr and str(error) in result.output
     assert client.events == ["enter", ("peek", {}), "close"]
     assert isinstance(result.exception, SystemExit)
 
@@ -249,7 +249,7 @@ def test_regression_extract_write_failure_reports_destination(recording, tmp_pat
     result = runner.invoke(pages.pages_app, ["extract", "abcdef", "--out", str(output)])
 
     assert result.exit_code == 1
-    assert "error:" in result.output and str(output) in result.output
+    assert "ERROR [" in result.stderr and str(output) in result.output
     assert "wrote" not in result.stdout
 
 
@@ -267,7 +267,7 @@ def test_regression_recording_without_logs_reports_error(recording, command):
 
     assert result.exit_code == 1
     assert (
-        "error:" in result.output and "no events.jsonl or wire.jsonl" in result.output
+        "ERROR [" in result.stderr and "no events.jsonl or wire.jsonl" in result.output
     )
 
 
@@ -283,7 +283,7 @@ def test_regression_invalid_pack_is_reported_before_live_access(pack, client, co
     result = runner.invoke(pages.pages_app, command)
 
     assert result.exit_code == 1
-    assert "error:" in result.output and "anchors" in result.output
+    assert "ERROR [" in result.stderr and "anchors" in result.output
     assert client.events == []
 
 
@@ -380,7 +380,7 @@ def test_regression_bad_corpus_reports_file_and_line(pack, labeled_corpus, conte
     )
 
     assert result.exit_code == 1
-    assert "error:" in result.output and f"{labeled_corpus}:1:" in result.output
+    assert "ERROR [" in result.stderr and f"{labeled_corpus}:1:" in result.output
     assert not prints.learned_file("sample").exists()
 
 
@@ -390,7 +390,7 @@ def test_regression_missing_corpus_reports_path(pack, tmp_path):
     result = runner.invoke(pages.pages_app, ["calibrate", "sample", str(path)])
 
     assert result.exit_code == 1
-    assert "error:" in result.output and str(path) in result.output
+    assert "ERROR [" in result.stderr and str(path) in result.output
 
 
 def test_regression_failed_learned_save_is_reported(pack, labeled_corpus):
@@ -402,7 +402,7 @@ def test_regression_failed_learned_save_is_reported(pack, labeled_corpus):
     )
 
     assert result.exit_code == 1
-    assert "error:" in result.output and "sample.json" in result.output
+    assert "ERROR [" in result.stderr and "sample.json" in result.output
     assert "saved learned" not in result.stdout
 
 

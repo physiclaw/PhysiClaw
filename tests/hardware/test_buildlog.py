@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from hardware import buildlog
+from hardware import buildlog, log_style
 
 
 def records(path):
@@ -170,7 +171,7 @@ def test_terminal_wraps_long_messages_without_losing_identifiers(monkeypatch, co
         "CAD worker still running: phone_10_extrusion, phone_20_bed_tnut, "
         "phone_30_bed_extrusion, phone_40_bed_frame"
     )
-    rendered = buildlog._text_lines(
+    rendered = log_style._text_lines(
         dict(level="info", elapsed_s=164.5, worker_pid=12345, message=message)
     )
     lines = rendered.splitlines()
@@ -200,7 +201,7 @@ def test_terminal_aligns_messages_across_contexts_and_severities(monkeypatch):
         {**common, "worker_pid": 12345},
         common,
     ]
-    lines = [buildlog._text_lines(row) for row in rows]
+    lines = [log_style._text_lines(row) for row in rows]
     details = [line.splitlines()[1] for line in lines[:3]]
     assert all(line == " " * 16 + "Message starts here" for line in details)
     assert lines[3].startswith("INFO    Message starts here")
@@ -216,7 +217,7 @@ def test_terminal_wraps_long_context_and_file_paths_without_truncation(monkeypat
     )
     stem = "phone_40_" + "long_assembly_name" * 3
     path = "/some/long/directory/" + "file-name" * 10 + ".json"
-    rendered = buildlog._text_lines(
+    rendered = log_style._text_lines(
         dict(level="error", elapsed_s=164.5, stem=stem, message=path)
     )
     lines = rendered.splitlines()
@@ -307,7 +308,7 @@ def test_terminal_ends_with_elapsed_time_and_omits_step_duration(monkeypatch, co
         "get_terminal_size",
         lambda **kwargs: os.terminal_size((columns, 24)),
     )
-    rendered = buildlog._text_lines(
+    rendered = log_style._text_lines(
         dict(
             event="step_finished",
             status="success",
@@ -421,7 +422,7 @@ def test_status_updates_are_saved_without_terminal_output(tmp_path, capsys, verb
 def test_terminal_style_respects_output_and_environment(
     tmp_path, monkeypatch, capsys, tty, no_color, term, colored
 ):
-    monkeypatch.setattr(buildlog.sys.stdout, "isatty", lambda: tty)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: tty)
     monkeypatch.setenv("TERM", term)
     monkeypatch.delenv("NO_COLOR", raising=False)
     if no_color is not None:
@@ -456,7 +457,7 @@ def test_terminal_style_respects_output_and_environment(
 
 
 def test_json_mode_stays_plain_even_on_color_terminal(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(buildlog.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.delenv("NO_COLOR", raising=False)
     with buildlog.session(tmp_path, log_format="json") as log:
@@ -470,7 +471,7 @@ def test_json_mode_stays_plain_even_on_color_terminal(tmp_path, monkeypatch, cap
 def test_failure_footer_has_explicit_status_and_saved_log_path(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setattr(buildlog.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.delenv("NO_COLOR", raising=False)
     with buildlog.session(tmp_path) as log:

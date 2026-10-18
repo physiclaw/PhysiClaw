@@ -435,7 +435,7 @@ def _log_emit(msg: str) -> None:
     """Outcome printer for the background sync: unstyle (no ANSI codes in
     the daily log file) and route through the server's logger so the line
     gets the ``HH:MM [physiclaw]`` shape like every other startup message."""
-    log.info("%s", click.unstyle(msg))
+    log.debug("%s", click.unstyle(msg))
 
 
 __all__ = ["SyncError", "sync", "maybe_auto_sync"]

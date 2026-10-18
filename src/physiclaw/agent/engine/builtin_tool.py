@@ -31,6 +31,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import IDLE, STATUSES
 from physiclaw.common import gesture_vocab, runtime_state
 from physiclaw.common.config import MACRO_FAILURE_ENV_VAR
+from physiclaw.common.text import clip
 from physiclaw.macros import runner as macro_runner
 from physiclaw.macros.model import Macro
 from physiclaw.macros.runlog import run_dir
@@ -100,7 +101,37 @@ async def _handle_note(session: Session, args: dict) -> str:
 
 
 async def _handle_update_progress(session: Session, args: dict) -> str:
+    previous = session.plan.current_step()
+    previous_steps = [step.content for step in session.plan.steps]
     session.plan.update(**args)
+    current = session.plan.current_step()
+    contents = [step.content for step in session.plan.steps]
+    upcoming = [
+        (i, step.content)
+        for i, step in enumerate(session.plan.steps, 1)
+        if step.status != "completed"
+    ]
+    revised = contents != previous_steps
+    if revised and upcoming and (len(contents) > 1 or not current):
+        summary = "Plan: " + "; ".join(
+            f"{i}. {clip(' '.join(step.split()), 70)}" for i, step in upcoming[:3]
+        )
+        if len(upcoming) > 3:
+            summary += f"; +{len(upcoming) - 3} more"
+    elif current and current != previous:
+        summary = "Working on: " + clip(" ".join(current.split()), 180)
+    else:
+        return "progress updated"
+    log.info(
+        "Plan updated: %s | current=%s",
+        contents,
+        current,
+        extra={
+            "event": "task.progress",
+            "console": True,
+            "console_message": summary,
+        },
+    )
     return "progress updated"
 
 

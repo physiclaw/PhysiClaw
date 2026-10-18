@@ -16,7 +16,9 @@ from physiclaw.agent.trace.format import (
     describe_call,
     fmt_tokens,
     note_text,
+    session_footer,
     summarize_event,
+    usage_summary,
     usage_text,
 )
 
@@ -44,6 +46,34 @@ def test_token_format_boundaries(count, expected):
     result = fmt_tokens(count)
 
     assert result == expected
+
+
+@pytest.mark.parametrize("status", ["DONE", "STUCK", "WAIT"])
+def test_final_result_keeps_receipts_and_required_actions_after_a_long_recap(status):
+    recap = (
+        "Verified item and delivery details. " * 12
+        + "Order 12345: payment still needs approval."
+    )
+    summary = {
+        "outcome": {"sentinel": status, "crashed": False, "recap": recap},
+        "duration_s": 12.0,
+    }
+    footer = session_footer(summary)
+    assert footer.endswith(recap)
+    assert "\n" not in footer
+
+
+@pytest.mark.parametrize("status", ["DONE", "FAIL", "WAIT", "IDLE", "STUCK"])
+def test_final_result_does_not_repeat_a_status_only_recap(status):
+    summary = {
+        "outcome": {
+            "sentinel": status,
+            "crashed": False,
+            "recap": status.lower() + ".",
+        },
+        "duration_s": 1.0,
+    }
+    assert " — " not in session_footer(summary)
 
 
 @pytest.mark.parametrize(
@@ -124,6 +154,52 @@ def test_usage_text_does_not_invent_usage_for_absent_buckets():
     result = usage_text({"elapsed_ms": 1350})
 
     assert result == "usage[? ?] 1.4s in=0 (read 0, write 0, new 0) out=0"
+
+
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        (
+            {"input": 12400, "output": 320, "cache_read": 9920},
+            "Tokens: 12.4k in / 320 out · 80% cached",
+        ),
+        ({"input": 500, "output": 120}, "Tokens: 500 in / 120 out"),
+        ({"input": 1200000, "output": 2500}, "Tokens: 1.2M in / 2.5k out"),
+        (
+            {"input": 100, "output": 0, "cache_read": 200},
+            "Tokens: 100 in / 0 out · 100% cached",
+        ),
+        ({}, "Tokens: not reported"),
+        ({"error": "TimeoutError", "input": 0, "output": 0}, "Tokens: not reported"),
+        (
+            {"call": "turn", "turn": 3, "input": 100, "output": 20},
+            "Tokens: 100 in / 20 out · step 3",
+        ),
+        (
+            {"call": "micro", "input": 100, "output": 20},
+            "Tokens: 100 in / 20 out · decision",
+        ),
+        (
+            {"call": "curate", "input": 100, "output": 20},
+            "Tokens: 100 in / 20 out · lesson upkeep",
+        ),
+    ],
+)
+def test_usage_summary_is_short_and_does_not_invent_missing_counts(event, expected):
+    assert usage_summary(event) == expected
+
+
+def test_usage_summary_can_identify_an_alternate_model():
+    assert (
+        usage_summary(
+            {"model": "test/decision", "input": 100, "output": 20}, include_model=True
+        )
+        == "Tokens: 100 in / 20 out · test/decision"
+    )
+    assert (
+        usage_summary({"model": "test/decision"}, include_model=True)
+        == "Tokens: not reported · test/decision"
+    )
 
 
 @pytest.mark.parametrize(

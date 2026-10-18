@@ -212,7 +212,14 @@ def compute_camera_mapping(
     gated on homography inliers + reprojection residual — a mis-corresponded
     grid is retried, then fails loudly, never returned as a silently-wrong map.
     """
-    log.info("═══ Camera ↔ Screen mapping (Mapping B) ═══")
+    log.info(
+        "═══ Camera ↔ Screen mapping (Mapping B) ═══",
+        extra={
+            "event": "calibration.started",
+            "console": True,
+            "console_message": "Calibration: mapping the camera to the screen",
+        },
+    )
     log.info("  Goal: compute affine transform from screen 0-1 → camera 0-1")
     expected = len(cal.GRID_COLS_PCT) * len(cal.GRID_ROWS_PCT)
 
@@ -341,6 +348,11 @@ def _detect_grid_mapping(
     pct_to_cam, cam_size = best
     log.info(
         f"  ✓ Camera mapping done: Mapping B ready (screen 0-1 → camera 0-1) "
-        f"from {expected} dot pairs, frame {cam_size[0]}×{cam_size[1]}px"
+        f"from {expected} dot pairs, frame {cam_size[0]}×{cam_size[1]}px",
+        extra={
+            "event": "calibration.completed",
+            "console": True,
+            "console_message": "Camera calibration complete",
+        },
     )
     return pct_to_cam, cam_size

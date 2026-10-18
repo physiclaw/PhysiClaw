@@ -44,7 +44,7 @@ def load_plugins() -> tuple[TurnPlugin, ...]:
     if raw.lower() == DISABLED:
         # Logged so a forensic read of a plugin-less session shows a
         # choice, not a silent failure.
-        log.info("turn plugins: disabled by config")
+        log.debug("Turn plugins disabled by config")
         return ()
     out: list[TurnPlugin] = []
     loaded: list[str] = []
@@ -64,7 +64,7 @@ def load_plugins() -> tuple[TurnPlugin, ...]:
     # The resolved set, once per session — the session log's answer to
     # "was the conductor even in play?" (a rotted default otherwise
     # reads exactly like a healthy plain-LLM session).
-    log.info("turn plugins: %s", ", ".join(loaded) or "(none loaded)")
+    log.debug("Turn plugins: %s", ", ".join(loaded) or "(none loaded)")
     return tuple(out)
 
 

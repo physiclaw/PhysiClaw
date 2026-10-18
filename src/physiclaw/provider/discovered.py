@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 
 from physiclaw.common import paths
+from physiclaw.common.log_style import console_text
 from physiclaw.common.logger.session_artifacts import write_json_atomic
 from physiclaw.common.text import read_text
 
@@ -49,7 +50,14 @@ def save(provider_id: str, models: list[dict]) -> None:
         _DIR.mkdir(parents=True, exist_ok=True)
         write_json_atomic(cache_path(provider_id), payload)
     except OSError as e:
-        log.warning("failed to write discovered cache for %s: %s", provider_id, e)
+        log.warning(
+            "failed to write discovered cache for %s: %s",
+            provider_id,
+            e,
+            extra={
+                "console_message": f"Could not save {provider_id} model list: {console_text(e)}"
+            },
+        )
 
 
 def load(provider_id: str) -> list[dict]:
@@ -60,7 +68,14 @@ def load(provider_id: str) -> list[dict]:
     except FileNotFoundError:
         return []
     except (OSError, ValueError) as e:  # ValueError covers JSON + UTF-8 decode
-        log.warning("failed to read discovered cache for %s: %s", provider_id, e)
+        log.warning(
+            "failed to read discovered cache for %s: %s",
+            provider_id,
+            e,
+            extra={
+                "console_message": f"Cached {provider_id} model list unavailable — run `physiclaw models discover {provider_id}`: {console_text(e, 120)}"
+            },
+        )
         return []
     if not isinstance(payload, dict):
         return []

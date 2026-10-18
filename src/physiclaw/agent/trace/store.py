@@ -166,8 +166,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   blocked_layout, blocked_stuck, invalid_args, unknown_tool,
   tool_errors, correctives, provider_failures}, stuck_events, images,
   env {physiclaw/python versions, os, platform, host, utc_offset,
-  config.camera, config.compact}. Missing summary.json = the session
-  was killed or is still running.
+  config.camera, config.vision, config.compact, config.engine}. Missing
+  summary.json = the session was killed or is still running.
 
 - `events.jsonl` — the engine's decision stream, one JSON object per
   line: `{"t": iso-ms, "event": <type>, "turn": <int, when turn-scoped>,
@@ -215,7 +215,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   own shape rather than the provider's wire — an episode's replayed
   history included), `raw` (the reply), and `answer`/`confidence`/
   `reason` as the caller read them — `physiclaw playbooks micro <sid>` re-asks
-  them.
+  them. Post-session lesson consolidation also writes `request`/`response`
+  records, marked `call: "curate"`, with its full prompt, raw reply and timing.
 
 - `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — every frame a tool result
   carried (typically .jpg), written once when the result arrived: the
@@ -241,7 +242,9 @@ in the `env` event / `summary.json.env.utc_offset`.
   this session (uncolored, full DEBUG for `physiclaw.*` plus INFO+
   from other loggers): the turn-by-turn engine log, provider timings,
   warnings, and full tracebacks that the structured events only record
-  as an error string.
+  as an error string. Capture stays open through provider, plugin, wire-log
+  and artifact cleanup, so setup and close failures remain in the session.
+  Operational daily-log size rotation never trims this session file.
 
 - `mcp.log` — the MCP-server process's log for this session (camera,
   exposure/tune, gesture execution), written live by the server: the

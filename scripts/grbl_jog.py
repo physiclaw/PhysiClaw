@@ -10,7 +10,7 @@ Phases run in order:
 Each phase loops --loops times. Forward + back leaves the machine back
 at origin before the next phase, so the run ends at WPos 0,0,0.
 
-Self-contained — only depends on pyserial.
+Only external dependency: pyserial. Uses the repository logging contract.
 
 Usage:
     .venv/bin/python scripts/grbl_jog.py
@@ -19,14 +19,31 @@ Usage:
 """
 
 import argparse
+import logging
 import sys
 import time
+from pathlib import Path
+
+# Run directly from a checkout without requiring the full application install.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from physiclaw.common.log_style import (  # noqa: E402
+    add_log_arguments,
+    configure_console,
+    report_error,
+    run_diagnostic,
+)
+
+log = logging.getLogger("physiclaw.scripts.grbl_jog")
 
 try:
     import serial
     import serial.tools.list_ports
 except ImportError:
-    raise SystemExit("pyserial not installed.")
+    report_error(
+        "pyserial not installed; install pyserial to run this diagnostic.",
+        tag="diagnostic",
+    )
+    raise SystemExit(1) from None
 
 
 # ─── Shared GRBL helpers (identical in scripts/grbl_solenoid_test.py) ─
@@ -57,7 +74,7 @@ def find_port() -> str | None:
     candidates.sort()
 
     for _, dev in candidates:
-        print(f"  probing {dev} ...", end=" ", flush=True)
+        log.debug("Probing %s", dev)
         try:
             with serial.Serial(dev, BAUD, timeout=2) as ser:
                 time.sleep(2)
@@ -67,27 +84,27 @@ def find_port() -> str | None:
                 resp = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore")
                 if "grbl" in resp.lower() or "[VER:" in resp:
                     first = resp.strip().splitlines()[0] if resp.strip() else "ok"
-                    print(f"GRBL ({first})")
+                    log.debug("GRBL detected on %s: %s", dev, first)
                     return dev
-                print("not GRBL")
+                log.debug("No GRBL response on %s", dev)
         except (serial.SerialException, OSError) as e:
-            print(f"open failed ({e})")
+            log.debug("Cannot open %s: %s", dev, e)
     return None
 
 
 def connect(port: str | None) -> serial.Serial:
     """Resolve port (auto-detect if None), open, drain the reset banner."""
     if port is None:
-        print("Scanning serial ports for a GRBL board...")
+        log.info("Scanning serial ports for a GRBL board")
         port = find_port()
         if port is None:
             raise SystemExit("No GRBL device found. Pass --port explicitly.")
-    print(f"\nOpening {port} @ {BAUD}")
+    log.info("Opening %s at %d baud", port, BAUD)
     ser = serial.Serial(port, BAUD, timeout=3)
     time.sleep(2)  # wait for board reset (DTR pulse on open)
     banner = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore").strip()
     if banner:
-        print(f"  banner: {banner!r}")
+        log.debug("Reset banner: %r", banner)
     ser.reset_input_buffer()
     return ser
 
@@ -108,7 +125,7 @@ def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
     lives in YAML config (FluidNC) or simply isn't supported. Only the
     error codes we've observed empirically are swallowed.
     """
-    print(f"  >>> {cmd}")
+    log.debug("TX %s", cmd)
     ser.write((cmd + "\r\n").encode())
     empty = 0
     while True:
@@ -119,12 +136,12 @@ def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
                 raise RuntimeError(f"no reply to: {cmd}")
             continue
         empty = 0
-        print(f"  <<< {line}")
+        log.debug("RX %s", line)
         if line == "ok":
             return
         if line.startswith("error"):
             if optional and line.replace(" ", "") in _OPTIONAL_ERRORS:
-                print(f"  !!! {cmd} not supported by this firmware — skipping")
+                log.warning("%s not supported by this firmware — skipping", cmd)
                 return
             raise RuntimeError(f"GRBL error on {cmd!r}: {line}")
         if line.startswith("ALARM"):
@@ -145,9 +162,9 @@ def query_status(ser: serial.Serial) -> str:
 def unlock_if_alarmed(ser: serial.Serial) -> None:
     """Print status; if Alarm, send $X to clear it."""
     status = query_status(ser)
-    print(f"  status: {status}")
+    log.debug("Status: %s", status)
     if "Alarm" in status:
-        print("  alarm state — sending $X")
+        log.warning("Board alarm — sending $X to unlock")
         send(ser, "$X")
 
 
@@ -195,7 +212,9 @@ def main() -> int:
         default=2,
         help="forward/back cycles per phase (default: 2)",
     )
+    add_log_arguments(ap)
     args = ap.parse_args()
+    configure_console("diagnostic", verbose=args.verbose, log_format=args.log_format)
 
     with connect(args.port) as ser:
         send(ser, "$I")
@@ -212,23 +231,23 @@ def main() -> int:
             if dy:
                 parts.append(f"Y{dy:.3f}")
             move = " ".join(parts)
-            print(f"\n  jog {move} at F{args.feed}")
+            log.debug("Jog %s at F%d", move, args.feed)
             send(ser, f"G91 G0 {move} F{args.feed}")
             send(ser, "G90")
             wait_idle(ser, timeout=15)
 
         for name, (sx, sy) in PHASES:
             fx, fy = sx * args.dist, sy * args.dist
-            print(f"\n### phase: {name} ###")
+            log.info("Phase: %s", name)
             for i in range(args.loops):
-                print(f"\n=== loop {i + 1}/{args.loops} ({name}) ===")
+                log.info("Cycle %d/%d (%s)", i + 1, args.loops, name)
                 jog(+fx, +fy)
                 jog(-fx, -fy)
 
-        print(f"\nFinal status: {query_status(ser)}")
-    print("Done.")
+        log.info("Final status: %s", query_status(ser))
+    log.info("Diagnostic completed", extra={"event": "diagnostic.completed"})
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_diagnostic(main))

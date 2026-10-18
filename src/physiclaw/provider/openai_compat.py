@@ -141,10 +141,20 @@ class OpenAICompatibleProvider(BaseProvider):
             raise ProviderTransientError(f"transport: {describe(e)}") from e
 
         if r.status_code == 429 or r.status_code >= 500:
-            log.warning("provider HTTP %s (transient): %s", r.status_code, r.text[:200])
+            log.debug(
+                "HTTP %s (transient): %s",
+                r.status_code,
+                r.text[:200],
+                extra={"event": "provider.http_failed", "http_status": r.status_code},
+            )
             raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:200]}")
         if r.status_code >= 400:
-            log.error("provider HTTP %s (permanent): %s", r.status_code, r.text[:500])
+            log.debug(
+                "HTTP %s (permanent): %s",
+                r.status_code,
+                r.text[:500],
+                extra={"event": "provider.http_failed", "http_status": r.status_code},
+            )
             raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:500]}")
 
         try:
@@ -152,7 +162,14 @@ class OpenAICompatibleProvider(BaseProvider):
         except ValueError as e:
             # A 200 with a non-JSON body (gateway/proxy page mid-restart)
             # is a retryable provider hiccup, not an engine crash.
-            log.warning("provider 200 with non-JSON body: %s", r.text[:200])
+            log.debug(
+                "HTTP 200 with non-JSON body: %s",
+                r.text[:200],
+                extra={
+                    "event": "provider.invalid_response",
+                    "http_status": r.status_code,
+                },
+            )
             raise ProviderTransientError(f"non-JSON response: {r.text[:200]}") from e
         return self._parse_response(raw)
 
@@ -345,5 +362,5 @@ def _normalize_finish(r: str) -> FinishReason:
     try:
         return FinishReason(r)
     except ValueError:
-        log.warning("unknown finish_reason %r — treating as stop", r)
+        log.info("unknown finish_reason %r — treating as stop", r)
         return FinishReason.STOP

@@ -484,7 +484,11 @@ class BaseProvider:
             )
         except Exception:
             # Preserve either the paid-for reply or the original provider error.
-            log.warning("provider usage event write failed", exc_info=True)
+            log.warning(
+                "provider usage event write failed",
+                exc_info=True,
+                extra={"console_message": "Token usage could not be recorded"},
+            )
 
     async def _chat(
         self,

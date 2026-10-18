@@ -100,7 +100,14 @@ def calibrate_arm(
     ``< TILT_ALIGNED_THRESHOLD`` means arm and phone axes are aligned;
     higher means the phone is rotated relative to arm travel.
     """
-    log.info("═══ Arm calibration — screen↔arm mapping ═══")
+    log.info(
+        "═══ Arm calibration — screen↔arm mapping ═══",
+        extra={
+            "event": "calibration.started",
+            "console": True,
+            "console_message": "Calibration: mapping the arm to the screen",
+        },
+    )
     require_viewport_shift(cal)
     require_screen_dimension(cal)
     cal.set_phase("center")
@@ -223,5 +230,12 @@ def calibrate_arm(
     cal.set_phase("center")
     arm.set_origin()
 
-    log.info(f"  ✓ Arm calibration done: {len(grbl_pts)} pairs, tilt={tilt:.4f}")
+    log.info(
+        f"  ✓ Arm calibration done: {len(grbl_pts)} pairs, tilt={tilt:.4f}",
+        extra={
+            "event": "calibration.completed",
+            "console": True,
+            "console_message": "Arm calibration complete",
+        },
+    )
     return rebased, tilt, grid_touches

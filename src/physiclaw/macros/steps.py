@@ -127,7 +127,12 @@ class RunContext:
             try:
                 view = await self.mcp.call_tool(gesture_vocab.PEEK, {})
             except Exception as e:
-                log.warning("macro peek failed: %s", e)
+                log.warning(
+                    "macro peek failed: %s",
+                    e,
+                    exc_info=True,
+                    extra={"console_message": "Macro screen check failed"},
+                )
                 continue
             self.adopt_view(view)
             if self.screen.readable:
@@ -290,7 +295,16 @@ class GestureStep(Step):
         try:
             blocks = await ctx.mcp.call_tool(self.mcp_tool, args)
         except Exception as e:
-            log.warning("macro step %s (%s) failed: %s", self.name, self.tool, e)
+            log.warning(
+                "macro step %s (%s) failed: %s",
+                self.name,
+                self.tool,
+                e,
+                exc_info=True,
+                extra={
+                    "console_message": f"Macro step {self.name} failed ({self.tool})"
+                },
+            )
             return StepOutcome(
                 log_line=f"✗ {self.display()} — {e}",
                 outcome=REASON_TOOL_ERROR,

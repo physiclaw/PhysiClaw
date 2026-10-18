@@ -38,7 +38,8 @@ def env_snapshot() -> dict[str, Any]:
 
     Deliberately NOT the whole CONFIG — the provider section holds API
     keys. Only secret-free sections that vary across rigs and change
-    what the agent sees (camera exposure/format, image compaction)."""
+    what the agent sees and how it runs (camera/vision, image compaction,
+    engine limits and retries)."""
     import dataclasses
     import platform as _platform
     import sys
@@ -55,7 +56,9 @@ def env_snapshot() -> dict[str, Any]:
         "utc_offset": dt.datetime.now().astimezone().strftime("%z"),
         "config": {
             "camera": dataclasses.asdict(CONFIG.camera),
+            "vision": dataclasses.asdict(CONFIG.vision),
             "compact": dataclasses.asdict(CONFIG.compact),
+            "engine": dataclasses.asdict(CONFIG.engine),
         },
     }
 

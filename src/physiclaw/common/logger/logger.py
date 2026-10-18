@@ -3,25 +3,44 @@
 Exports:
     setup_logging(tag, level, file_dir=None) — colored TTY-aware
     root-logger config, optionally mirrored to a daily log file.
-    logged(fn) — decorator that logs an MCP tool call's completion
-    with args and duration.
+    logged(fn) — announce an MCP call, save completion timing and failures.
 """
 
 import datetime as dt
 import logging
 import os
-import re
 import sys
 import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
+from io import TextIOWrapper
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, TextIO, TypeVar, cast
 
-# common.text imports only pathlib — no cycle back to logger.
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.file_lock import exclusive_file_lock
+from physiclaw.common.log_style import PLAYBOOK_ACCENT as PLAYBOOK_ACCENT
+from physiclaw.common.log_style import (
+    FailureState,
+    color_enabled,
+    console_handler,
+    format_tool_call,
+    install_handlers,
+    redact_tool_arguments,
+)
+from physiclaw.common.log_style import (
+    OwnDebugFilter as _OwnDebugFilter,
+)
+from physiclaw.common.log_style import (
+    TaggedFormatter as _TaggedFormatter,
+)
+from physiclaw.common.log_style import set_tag_accent as set_tag_accent
+from physiclaw.common.logger.structured import (
+    ANSI_RE as _ANSI_RE,
+)
 
-_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+# common.text has no logging/config dependencies.
+from physiclaw.common.text import read_text, write_text
 
 log = logging.getLogger("physiclaw.tools")
 
@@ -29,89 +48,9 @@ log = logging.getLogger("physiclaw.tools")
 # runtime `TypeError` from awaiting a non-coroutine.
 AsyncFn = TypeVar("AsyncFn", bound=Callable[..., Awaitable[Any]])
 
-# ANSI codes. 256-color greys so timestamp/message fade without going invisible
-# on light-theme terminals; levels that should pop use standard 8-color.
-_GREY_DARK = "38;5;244"
-_GREY_LIGHT = "38;5;250"
-_YELLOW = "33"
-_RED = "31"
-_GREEN = "32"
-_GREEN_BRIGHT = "92"
-
-# Tag → accent color. Each entry-point picks its own so devs can skim
-# interleaved output at a glance.
-_TAG_COLORS = {
-    "physiclaw": "36",  # cyan — hardware server
-    "runtime": "35",  # magenta — agent loop
-    "setup wizard": _GREEN,  # `physiclaw auto` calibration steps
-}
-
-# Who is driving, painted on the tag: while a playbook walk produces the
-# turns the `[runtime]` tag turns green, so a terminal reader sees the
-# hand-off between playbook and model down the left edge without
-# reading a line. The engine sets it as each turn's producer is known
-# and clears it at session end; file sinks are plain and never see it.
-PLAYBOOK_ACCENT = _GREEN_BRIGHT  # a green of its own, not the wizard's
-_tag_accent: str | None = None
-
-
-def set_tag_accent(code: str | None) -> None:
-    """Override the tag's accent color (an ANSI code) for lines from now
-    on; None restores the tag's own."""
-    global _tag_accent
-    _tag_accent = code
-
 
 def _colorize() -> bool:
-    return bool(sys.stderr.isatty() and not os.environ.get("NO_COLOR"))
-
-
-class _TaggedFormatter(logging.Formatter):
-    def __init__(self, tag: str, color: bool):
-        super().__init__(datefmt="%H:%M")
-        self.color = color
-        self.tag = tag
-        self._tag_color = _TAG_COLORS[tag]  # an unknown tag fails here, once
-        # Derive the continuation indent from the actual uncolored prefix
-        # so tweaks to the datefmt or tag layout can't drift.
-        self._cont_indent = "\n" + " " * len(f"00:00 [{tag}] ")
-
-    def format(self, record: logging.LogRecord) -> str:
-        ts = self.formatTime(record, self.datefmt)
-        msg = record.getMessage()
-        # Append exception / stack traceback the way logging.Formatter does —
-        # otherwise log.exception() / exc_info=True tracebacks vanish from
-        # every sink (console, daily files, per-session runtime.log). The
-        # continuation indent below then aligns the traceback under the tag.
-        if record.exc_info and not record.exc_text:
-            record.exc_text = self.formatException(record.exc_info)
-        if record.exc_text:
-            msg = f"{msg}\n{record.exc_text}"
-        if record.stack_info:
-            msg = f"{msg}\n{self.formatStack(record.stack_info)}"
-        if "\n" in msg:
-            msg = msg.replace("\n", self._cont_indent)
-        if not self.color:
-            # File sinks (daily logs, runtime.log, mcp.log) and piped output
-            # must be plain text: strip any ANSI the MESSAGE itself carried
-            # (subprocess output, etc.) — color=False means we
-            # ADD no color, not that the content has none. The `\033` pre-check
-            # skips the regex on the vast majority of records, which have none.
-            if "\033" in msg:
-                msg = _ANSI_RE.sub("", msg)
-            return f"{ts} [{self.tag}] {msg}"
-        if record.levelno >= logging.ERROR:
-            msg_color = _RED
-        elif record.levelno >= logging.WARNING:
-            msg_color = _YELLOW
-        else:
-            msg_color = _GREY_LIGHT
-        tag_color = _tag_accent or self._tag_color
-        return (
-            f"\033[{_GREY_DARK}m{ts}\033[0m "
-            f"\033[{tag_color}m[{self.tag}]\033[0m "
-            f"\033[{msg_color}m{msg}\033[0m"
-        )
+    return color_enabled(sys.stderr)
 
 
 # The MCP-server process logs under this tag (both its console `[physiclaw]`
@@ -127,80 +66,113 @@ def daily_log_path(log_dir: Path, prefix: str, date: str) -> Path:
     return log_dir / f"{prefix}-{date}.log"
 
 
-def _open_log_file(path: Path) -> TextIO:
+def _open_log_file(path: Path) -> TextIOWrapper:
     """Append-open a log file as UTF-8 with LF newlines — the one open every
     file-backed handler here shares. Escape unpaired surrogates so one
     model/subprocess string cannot discard a whole log record."""
     return open(path, "a", encoding="utf-8", errors="backslashreplace", newline="\n")
 
 
-class _DailyFileHandler(logging.Handler):
+class _DailyFileHandler(RotatingFileHandler):
     """Mirror log records into `<dir>/<prefix>-YYYY-MM-DD.log`, uncolored.
 
-    Re-opens the file when the date changes — the runtime is a long-lived
-    process, so a single open would strand everything in the start day's
-    file. Construction purges dailies older than
-    CONFIG.retention.log_days."""
+    Rotate by date and UTF-8 bytes; expire old files at startup and midnight.
+    Serialize shared CLI writes with a process lock and close each append
+    before releasing it, so another process can rotate the file on Windows.
+    """
 
     def __init__(self, dir: Path, prefix: str, tag: str):
-        super().__init__()
         from physiclaw.common.config import CONFIG
         from physiclaw.common.logger.retention import purge_daily_logs
 
         self._dir = dir
         self._prefix = prefix
-        self._date = ""
-        self._f: TextIO | None = None
-        self.setFormatter(_TaggedFormatter(tag, color=False))
+        self._date = dt.datetime.now().strftime("%Y-%m-%d")
+        self._log_days = CONFIG.retention.log_days
+        self._lock_path = dir / f".{prefix}.log.lock"
+        self._rotation_failure = FailureState()
+        self._rotation_warnings: list[OSError] = []
+        self._purge_pending = False
         dir.mkdir(parents=True, exist_ok=True)
-        purge_daily_logs(dir, prefix, CONFIG.retention.log_days)
+        super().__init__(
+            daily_log_path(dir, prefix, self._date),
+            maxBytes=CONFIG.retention.log_max_bytes,
+            backupCount=CONFIG.retention.log_backup_count,
+            encoding="utf-8",
+            errors="backslashreplace",
+            delay=True,
+        )
+        self.setFormatter(_TaggedFormatter(tag, color=False, diagnostic=True))
+        purge_daily_logs(dir, prefix, self._log_days)
+
+    def _open(self) -> TextIOWrapper:
+        return _open_log_file(Path(self.baseFilename))
+
+    def handle(self, record: logging.LogRecord) -> bool:
+        handled = super().handle(record)
+        # Cleanup and warning logging can re-enter the root logger. Drain
+        # their work outside both locks, avoiding handler lock inversion.
+        self.acquire()
+        try:
+            warnings, self._rotation_warnings = self._rotation_warnings, []
+            purge, self._purge_pending = self._purge_pending, False
+        finally:
+            self.release()
+        try:
+            if purge:
+                from physiclaw.common.logger.retention import purge_daily_logs
+
+                purge_daily_logs(self._dir, self._prefix, self._log_days)
+            for error in warnings:
+                log.warning(
+                    "Cannot rotate %s — recording continues in the active file: %s",
+                    self.baseFilename,
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
+                    extra={
+                        "event": "log.rotation_failed",
+                        "console_message": "Debug log rotation failed — recording continues; check disk space and directory permissions",
+                    },
+                )
+        except Exception:
+            self.handleError(record)
+        return handled
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             today = dt.datetime.now().strftime("%Y-%m-%d")
-            f = self._f
-            # Reopen on a new day OR a closed handle: at interpreter exit
-            # logging.shutdown() closes every handler, but the app still logs
-            # (physiclaw.shutdown drives the arm, emitting DEBUG G-code) — so
-            # reopen and capture that tail instead of raising per record.
-            if f is None or f.closed or today != self._date:
-                if f is not None and not f.closed:
-                    f.close()
-                f = _open_log_file(daily_log_path(self._dir, self._prefix, today))
-                self._f = f
+            if today != self._date:
+                self.baseFilename = str(
+                    daily_log_path(self._dir, self._prefix, today).absolute()
+                )
                 self._date = today
-            f.write(self.format(record) + "\n")
-            f.flush()
+                self._purge_pending = True
+            text = self.format(record) + "\n"
+            size = len(text.encode("utf-8", "backslashreplace"))
+            rotation_error = None
+            with exclusive_file_lock(self._lock_path, timeout=1):
+                try:
+                    self.stream = self._open()
+                    current_size = self.stream.tell()
+                    if current_size and current_size + size > self.maxBytes:
+                        try:
+                            self.doRollover()
+                        except OSError as error:
+                            # A failed rename must not discard the current event.
+                            rotation_error = error
+                        self.stream = self._open()
+                    self.stream.write(text)
+                    self.flush()
+                finally:
+                    if self.stream is not None:
+                        self.stream.close()
+                        self.stream = None
+            if rotation_error is None:
+                self._rotation_failure.recovered()
+            elif self._rotation_failure.level(rotation_error) == logging.WARNING:
+                self._rotation_warnings.append(rotation_error)
         except Exception:
             self.handleError(record)
-
-    def close(self) -> None:
-        try:
-            if self._f is not None and not self._f.closed:
-                self._f.close()
-        finally:
-            super().close()
-
-
-class _OwnDebugFilter(logging.Filter):
-    """Admit every ``physiclaw.*`` record (down to DEBUG) plus any INFO+
-    record from other loggers. Keeps a DEBUG capture full-detail for our
-    own code without drowning it in third-party DEBUG spew — or leaking
-    SDK request bodies some libraries log at DEBUG. A no-op on an INFO
-    handler (nothing below INFO reaches it), so it's safe to attach
-    unconditionally."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Test the level first: INFO+ is the common case and skips the
-        # per-record startswith on the majority of records.
-        return record.levelno >= logging.INFO or record.name.startswith("physiclaw")
-
-
-# Each request through these stacks logs one INFO "HTTP Request:" line:
-# httpx/httpcore carry the providers and the localhost status probes,
-# httpx2/httpcore2 the MCP SDK's client. At 1 Hz (the ready watcher) that
-# floods a DEBUG daily file, so every process quiets them to WARNING.
-_NOISY_HTTP_LOGGERS = ("httpx", "httpcore", "httpx2", "httpcore2")
 
 
 def setup_logging(
@@ -209,6 +181,7 @@ def setup_logging(
     *,
     file_dir: Path | None = None,
     file_level: int | None = None,
+    force: bool = True,
 ) -> None:
     """Configure the root logger with the colored, tagged format.
 
@@ -226,11 +199,9 @@ def setup_logging(
     record full DEBUG while the console stays at `level`; with a NOTSET
     root the console would print DEBUG the moment any physiclaw logger
     emitted it."""
-    handlers: list[logging.Handler] = []
-    stream = logging.StreamHandler()
-    stream.setFormatter(_TaggedFormatter(tag, _colorize()))
+    stream = console_handler(tag, verbose=level <= logging.DEBUG, notices_only=True)
     stream.setLevel(level)
-    handlers.append(stream)
+    handlers: list[logging.Handler] = [stream]
     if file_dir is not None:
         try:
             fh = _DailyFileHandler(file_dir, tag, tag)
@@ -239,9 +210,13 @@ def setup_logging(
             handlers.append(fh)
         except OSError:
             pass  # unwritable dir → stderr-only; better than not starting
-    logging.basicConfig(level=logging.DEBUG, handlers=handlers, force=True)
-    for name in _NOISY_HTTP_LOGGERS:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    install_handlers(handlers, force=force)
+    selected = os.environ.get("PHYSICLAW_LOG_FORMAT", "").strip().lower()
+    if selected not in {"", "pretty", "json"}:
+        log.warning(
+            "Unknown PHYSICLAW_LOG_FORMAT=%r; using pretty (choose pretty or json)",
+            selected,
+        )
 
 
 class _SessionCaptureHandler(logging.StreamHandler):
@@ -253,7 +228,7 @@ class _SessionCaptureHandler(logging.StreamHandler):
     def __init__(self, path: Path):
         self._file = _open_log_file(path)
         super().__init__(self._file)
-        self.setFormatter(_TaggedFormatter("runtime", color=False))
+        self.setFormatter(_TaggedFormatter("runtime", color=False, diagnostic=True))
         self.setLevel(logging.DEBUG)
         self.addFilter(_OwnDebugFilter())
 
@@ -381,7 +356,9 @@ class _SessionMcpTee(logging.Handler):
         from physiclaw.common import paths
 
         super().__init__(level=logging.DEBUG)
-        self.setFormatter(_TaggedFormatter(SERVER_LOG_TAG, color=False))
+        self.setFormatter(
+            _TaggedFormatter(SERVER_LOG_TAG, color=False, diagnostic=True)
+        )
         self.addFilter(_OwnDebugFilter())
         self._marker = paths.active_session_marker()  # process-invariant
         self._sid = ""
@@ -452,8 +429,10 @@ def make_tagged_logger(
     logger.setLevel(level)
     logger.propagate = False
     if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(_TaggedFormatter(tag, _colorize()))
+        handler = console_handler(
+            tag, verbose=level <= logging.DEBUG, notices_only=False
+        )
+        handler.setLevel(logging.NOTSET)  # The standalone logger owns its level.
         logger.addHandler(handler)
     return logger
 
@@ -496,7 +475,7 @@ def _format_args(fn_name: str, kwargs: dict) -> str:
     and summarize sequence steps to tool names only, since a step may
     itself be a send_to_clipboard."""
     if fn_name == "send_to_clipboard":
-        return f"text=<{len(kwargs.get('text', ''))} chars>"
+        return f"text={redact_tool_arguments(fn_name, kwargs)['text']}"
     if fn_name == "sequence":
         # The schema's single param is a LIST of step dicts:
         # actions=[{...}, ...] — scanning kwargs.values() for dicts finds
@@ -513,11 +492,11 @@ def _format_args(fn_name: str, kwargs: dict) -> str:
 
 
 def logged(fn: AsyncFn) -> AsyncFn:
-    """Log the wrapped MCP tool's completion with args and duration.
+    """Announce each MCP call once; save its completion timing on disk.
 
-    A failing tool logs `… — 0.0s FAILED: <err>` instead of a bare duration, so
-    the server stream tells a fast failure apart from a fast success (both would
-    otherwise read as an identical `tool X(…) — 0.0s`). Cancellation
+    Success timings are DEBUG (the runtime/client displays the action result).
+    Failures are WARNING with the exception type, message and a saved traceback.
+    Cancellation
     (BaseException) propagates unlogged — it isn't a tool completion.
     Formatting or sink failures never replace the tool's result/error."""
 
@@ -525,9 +504,23 @@ def logged(fn: AsyncFn) -> AsyncFn:
     # args land in `args` but never in practice); the log reads kwargs.
     @wraps(fn)
     async def wrapper(*args, **kwargs):
-        if not log.isEnabledFor(logging.INFO):
-            return await fn(*args, **kwargs)
         t0 = time.monotonic()
+        try:
+            if log.isEnabledFor(logging.INFO):
+                log.info(
+                    "tool %s(%s) started",
+                    fn.__name__,
+                    _format_args(fn.__name__, kwargs),
+                    extra={
+                        "event": "tool.started",
+                        "tool": fn.__name__,
+                        "console": True,
+                        "console_message": "Tool: "
+                        + format_tool_call(fn.__name__, kwargs),
+                    },
+                )
+        except Exception:
+            pass  # Presentation must never prevent an action.
         try:
             result = await fn(*args, **kwargs)
         except Exception as e:
@@ -543,12 +536,32 @@ def _log_completion(
     name: str, kwargs: dict, started: float, error: Exception | None = None
 ) -> None:
     try:
-        log.info(
+        level = logging.WARNING if error is not None else logging.DEBUG
+        if not log.isEnabledFor(level):
+            return
+        elapsed = time.monotonic() - started
+        # The call was already announced. Keep completion timing on disk
+        # without echoing every successful action in the terminal.
+        log.log(
+            level,
             "tool %s(%s) — %.1fs%s",
             name,
             _format_args(name, kwargs),
-            time.monotonic() - started,
-            f" FAILED: {error}" if error is not None else "",
+            elapsed,
+            f" FAILED: {type(error).__name__}: {error}" if error is not None else "",
+            exc_info=(type(error), error, error.__traceback__)
+            if error is not None
+            else None,
+            extra={
+                "console": False,
+                "console_traceback": False,
+                "console_message": f"Tool {name} failed ({elapsed:.1f}s)"
+                if error is not None
+                else "",
+                "event": "tool.failed" if error is not None else "tool.completed",
+                "tool": name,
+                "duration_ms": int(elapsed * 1000),
+            },
         )
     except Exception:
         # Reporting is best-effort; retrying the log here could recurse.

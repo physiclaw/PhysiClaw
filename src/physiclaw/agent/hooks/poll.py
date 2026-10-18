@@ -16,11 +16,12 @@ import httpx
 from physiclaw.agent.runtime.hook import Trigger, register
 from physiclaw.common import platform
 from physiclaw.common.config import server_url
+from physiclaw.common.log_style import FailureState
 
 log = logging.getLogger(__name__)
 
 _client: httpx.AsyncClient | None = None
-_in_blip = False
+_failure = FailureState()
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -34,7 +35,6 @@ def _get_client() -> httpx.AsyncClient:
 
 @register
 async def phone_watch() -> Trigger | None:
-    global _in_blip
     try:
         r = await _get_client().get("/api/phone/watch")
         r.raise_for_status()
@@ -43,11 +43,19 @@ async def phone_watch() -> Trigger | None:
         data = r.json()
         if not isinstance(data, dict) or not isinstance(data.get("wake"), bool):
             raise ValueError("expected a watch object with a boolean wake field")
-        _in_blip = False
+        if _failure.recovered():
+            log.info(
+                "Phone watch connection restored",
+                extra={"event": "phone.watch_recovered", "console": True},
+            )
     except Exception as e:
-        if not _in_blip:
-            log.warning("phone watch poll failed: %s", e)
-        _in_blip = True
+        log.log(
+            _failure.level(e),
+            "Phone watch poll failed: %s — retrying automatically",
+            e,
+            exc_info=True,
+            extra={"event": "phone.watch_failed"},
+        )
         return None
     if not data["wake"]:
         return None

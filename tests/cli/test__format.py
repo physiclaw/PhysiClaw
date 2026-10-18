@@ -42,3 +42,37 @@ def test_section_includes_title_text() -> None:
 def test_ok_and_warn_use_different_prefixes() -> None:
     assert "✓" in ok("x") and "✓" not in warn("x")
     assert "!" in warn("x") and "!" not in ok("x")
+
+
+def test_cli_decorations_respect_encoding_and_no_color(monkeypatch):
+    import io
+    import sys
+
+    from physiclaw.cli._format import step_fail, step_ok, step_warn
+
+    class ASCIIConsole(io.StringIO):
+        @property
+        def encoding(self):
+            return "ascii"
+
+        def isatty(self):
+            return True
+
+    stream = ASCIIConsole()
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setenv("NO_COLOR", "")
+    rendered = "\n".join(
+        [
+            ok("ready → go"),
+            warn("check cable"),
+            section("状态"),
+            step_ok(),
+            step_warn("retry"),
+            step_fail("stopped"),
+            next_hint("physiclaw status"),
+        ]
+    )
+    rendered.encode("ascii", "strict")
+    assert "\033" not in rendered and "OK ready -> go" in rendered
+    assert "\\u72b6\\u6001" in rendered
+    assert "Next: physiclaw status" in rendered

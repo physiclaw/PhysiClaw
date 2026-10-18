@@ -216,7 +216,9 @@ async def test_start_exception_in_tick_logs_and_continues(
     with caplog.at_level(logging.ERROR, logger="physiclaw.agent.runtime.runtime"):
         await rt.start()
 
-    assert any("runtime tick failed" in r.getMessage() for r in caplog.records)
+    assert any(
+        getattr(r, "event", None) == "runtime.tick_failed" for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
@@ -415,7 +417,7 @@ async def test_start_preserves_readiness_across_blips_and_resumes(mocker, caplog
     ready = mocker.patch.object(runtime, "check_ready", side_effect=polls)
     mocker.patch.object(runtime.asyncio, "sleep", side_effect=sleeper)
 
-    with caplog.at_level(logging.INFO, logger=runtime.__name__):
+    with caplog.at_level(logging.DEBUG, logger=runtime.__name__):
         await rt.start()
     await runtime._client.aclose()
 
@@ -429,7 +431,8 @@ async def test_start_preserves_readiness_across_blips_and_resumes(mocker, caplog
         ["phone"],
         ["phone"],
     ]
-    assert sum("status poll failed:" in r.msg for r in caplog.records) == 1
+    assert sum("status poll failed:" in r.msg for r in caplog.records) == 2
+    assert sum("Server connection restored" in r.msg for r in caplog.records) == 1
 
 
 @pytest.mark.asyncio

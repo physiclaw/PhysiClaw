@@ -268,7 +268,12 @@ class HardwareRig:
                     # Best-effort like shutdown's _safe, but never silent: a
                     # persistently failing inter-gesture park leaves the tip
                     # over the glass while gestures keep running.
-                    log.exception("engaged(): auto-park failed")
+                    log.exception(
+                        "engaged(): auto-park failed",
+                        extra={
+                            "console_message": "Arm could not park — check its position before continuing"
+                        },
+                    )
 
     # ─── Hardware connection ──────────────────────────────────
 
@@ -312,7 +317,15 @@ class HardwareRig:
             except Exception:
                 log.exception("connect_arm: close after failed setup also failed")
             raise
-        log.info("Arm connected")
+        log.info(
+            "Arm attached to rig",
+            extra={
+                "event": "hardware.connected",
+                "device_id": "arm",
+                "console": True,
+                "console_message": "Arm ready",
+            },
+        )
 
     def connect_camera(self, index: int):
         """Open a camera by index.
@@ -345,7 +358,16 @@ class HardwareRig:
             except Exception:
                 log.exception("connect_camera: close after failed setup also failed")
             raise
-        log.info(f"Camera {index} connected")
+        log.info(
+            "Camera %s attached to rig",
+            index,
+            extra={
+                "event": "hardware.connected",
+                "device_id": str(index),
+                "console": True,
+                "console_message": "Camera ready",
+            },
+        )
 
     def disconnect_camera(self) -> bool:
         """Release the camera device handle so another app can use it.
@@ -363,7 +385,7 @@ class HardwareRig:
         if cam is None:
             return False
         cam.close()
-        log.info("Camera disconnected")
+        log.info("Camera disconnected", extra={"console": True})
         return True
 
     def restore_park_origin(self) -> bool:
@@ -570,7 +592,12 @@ class HardwareRig:
         if park_xy is None:
             return
         if not self._origin_pinned:
-            log.warning("park skipped: work frame not pinned to the affine")
+            log.warning(
+                "park skipped: work frame not pinned to the affine",
+                extra={
+                    "console_message": "Arm parking skipped — calibrate its position in hardware setup"
+                },
+            )
             return
         self._arm.rapid_to(*park_xy)
         self._arm.wait_idle()
@@ -686,6 +713,10 @@ class HardwareRig:
                 arm = self._arm
                 if arm is not None:
                     _safe(arm.lift_stylus, "lift stylus")
+                    log.debug(
+                        "Parking the arm",
+                        extra={"event": "hardware.parking"},
+                    )
                     _safe(self._park_for_teardown, "park")
 
             # Transfer ownership once, even on timeout: a current lock

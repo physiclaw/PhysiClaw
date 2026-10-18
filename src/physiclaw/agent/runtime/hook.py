@@ -42,6 +42,7 @@ class Trigger:
 
     description: str
     source: str = ""
+    label: str = ""  # Optional short task name; never replaces the wake prompt.
 
 
 Hook = Callable[[], Union[Optional[Trigger], Awaitable[Optional[Trigger]]]]
@@ -49,6 +50,9 @@ HOOKS_PACKAGE = "physiclaw.agent.hooks"
 
 _hooks: list[Hook] = []
 _hooks_loaded = False
+# Per hook, retain the last failure and the outage's check count. Key by
+# identity because callable objects need not be hashable; _hooks owns them.
+_failures: dict[int, tuple[str, int]] = {}
 
 
 def register(fn: Hook) -> Hook:
@@ -83,14 +87,47 @@ async def check_hooks() -> list[Trigger]:
                     not isinstance(result, Trigger)
                     or not isinstance(result.description, str)
                     or not isinstance(result.source, str)
+                    or not isinstance(result.label, str)
                 ):
                     raise TypeError(
-                        "hook must return None or a Trigger with string description and source"
+                        "hook must return None or a Trigger with string description, source and label"
                     )
                 triggers.append(result)
-        except Exception:
+            previous = _failures.pop(id(fn), None)
+            if previous is not None:
+                name = getattr(fn, "__name__", repr(fn))
+                log.info(
+                    "Hook %s recovered after %d failed checks",
+                    name,
+                    previous[1],
+                    extra={
+                        "event": "hook.recovered",
+                        "attempt": previous[1],
+                        "console": True,
+                    },
+                )
+        except Exception as error:
             name = getattr(fn, "__name__", repr(fn))
-            log.exception("hook failed: %s", name)
+            signature = f"{type(error).__name__}: {error}"
+            previous = _failures.get(id(fn))
+            count = previous[1] + 1 if previous else 1
+            _failures[id(fn)] = (signature, count)
+            log.log(
+                logging.ERROR
+                if previous is None or previous[0] != signature
+                else logging.DEBUG,
+                "hook failed: %s",
+                name,
+                exc_info=True,
+                extra={
+                    "event": "hook.failed",
+                    "attempt": count,
+                    "console_message": (
+                        f"Hook {name} failed — {signature}; retrying automatically"
+                    ),
+                    "console_traceback": False,
+                },
+            )
     return triggers
 
 
@@ -98,6 +135,7 @@ def clear() -> None:
     """Remove all registered hooks. Intended for tests."""
     global _hooks_loaded
     _hooks.clear()
+    _failures.clear()
     _hooks_loaded = False
 
 
@@ -120,6 +158,6 @@ def load_hooks() -> None:
             continue
         try:
             importlib.import_module(info.name)
-            log.info("loaded hook module: %s", info.name)
+            log.debug("loaded hook module: %s", info.name)
         except Exception:
             log.exception("failed to load hook module: %s", info.name)

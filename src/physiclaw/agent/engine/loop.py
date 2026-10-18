@@ -22,7 +22,13 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
 from physiclaw.agent.trace import Trace
 from physiclaw.common import daylog
-from physiclaw.common.logger import PLAYBOOK_ACCENT, set_tag_accent
+from physiclaw.common.log_style import console_text
+from physiclaw.common.logger import (
+    PLAYBOOK_ACCENT,
+    bind_log_context,
+    reset_log_context,
+    set_tag_accent,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -68,6 +74,7 @@ async def drive(run: EngineRun, session: Session, messages: list[Message]) -> No
         max(0.0, run.deadline - time.monotonic()) if run.deadline is not None else None
     )
     budget = asyncio.timeout(remaining)
+    context = bind_log_context()
     try:
         async with budget:
             await _drive(run, session, messages, state)
@@ -77,6 +84,7 @@ async def drive(run: EngineRun, session: Session, messages: list[Message]) -> No
         _close_budget_exhausted(run, session, state.turn)
     finally:
         set_tag_accent(None)
+        reset_log_context(context)
 
 
 async def _drive(
@@ -100,6 +108,9 @@ async def _drive(
     `session.synthesized_turn`.
     """
     for turn in range(run.settings.max_turns):
+        # drive() owns the enclosing context scope and restores it on every
+        # exit. Each provider/plugin call inherits its turn, including retries.
+        bind_log_context(turn=turn)
         state.turn = turn
         if _stop_if_expired(run, session, turn):
             return
@@ -231,7 +242,7 @@ def log_external_stop(
         )
         if tr is not None and event:
             tr.write({"event": event})
-        log.warning("%s mid-task — recovery line logged", cause)
+        log.info("%s mid-task — recovery line logged", cause)
     except Exception:
         log.exception("mid-task recovery log failed")
 
@@ -282,7 +293,7 @@ def _prepare_request(
     run.tr.write(
         {"event": "request", "turn": turn, "message_count": len(request_messages)}
     )
-    log.info("turn %d: %d messages", turn, len(request_messages))
+    log.debug("turn %d: %d messages", turn, len(request_messages))
     return request_messages, compaction_imminent
 
 
@@ -311,10 +322,18 @@ async def _call_provider(
         if isinstance(e, ProviderError):
             # Expected terminal state (retries exhausted, permanent 4xx)
             # — already handled as STUCK + session retry. One readable
-            # line; a traceback here is noise, not signal.
-            log.error("provider failed: %s", e)
+            # terminal notice; retain the cause chain in saved diagnostics.
+            log.error(
+                "Provider failed: %s",
+                e,
+                exc_info=True,
+                extra={
+                    "event": "provider.failed",
+                    "console_message": "Model request failed: " + console_text(e),
+                },
+            )
         else:
-            log.exception("provider call crashed")
+            log.exception("Provider call crashed", extra={"event": "provider.crashed"})
         # The failed request's wire form is the forensic record — write
         # it now (deferred from _prepare_request; see below).
         run.rlog.write_request(turn, run.serialize_wire(request_messages))
@@ -362,7 +381,17 @@ async def _call_provider(
     if asst.synthesized:
         # No provider round-trip: no usage to log, and the token/cache
         # metrics would report zeros that read as data.
-        log.info("turn %d: PLAYBOOK %s → %s", turn, asst.driver, calls)
+        log.info(
+            "turn %d: PLAYBOOK %s → %s",
+            turn,
+            asst.driver,
+            calls,
+            extra={
+                "event": "turn.planned",
+                "turn": turn,
+                "console_message": f"Turn {turn} · {asst.driver}: {calls}",
+            },
+        )
         return asst
     # Tokens: the provider's `usage` event, rendered once by the trace.
     log.info(
@@ -371,6 +400,12 @@ async def _call_provider(
         calls,
         asst.finish_reason,
         elapsed_ms / 1000,
+        extra={
+            "event": "turn.planned",
+            "turn": turn,
+            "duration_ms": elapsed_ms,
+            "console_message": f"Turn {turn} · Model: {calls} ({elapsed_ms / 1000:.1f}s)",
+        },
     )
     return asst
 
@@ -397,7 +432,7 @@ def _enforce_shape(
     """
     # Principle 3: route on finish_reason.
     if asst.finish_reason == FinishReason.CONTENT_FILTER:
-        log.error("content_filter — stopping session")
+        log.error("The model provider blocked the response — stopping task")
         session.sentinel_status = FAIL
         session.sentinel_recap = "content filter blocked response"
         return _Turn.ABORT
@@ -426,6 +461,9 @@ def _enforce_shape(
             "turn %d: bad turn shape tool_calls=%s — injecting corrective",
             turn,
             called,
+            extra={
+                "console_message": "Model reply has invalid tool calls — requesting a corrected reply"
+            },
         )
         tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
         return _reject_shape(
@@ -461,6 +499,9 @@ def _give_up_on_shape(session: Session, state: _LoopState) -> _Turn:
     log.warning(
         "%d consecutive turn-shape correctives — giving up",
         state.consecutive_correctives,
+        extra={
+            "console_message": "The model repeatedly returned invalid tool calls — stopping task"
+        },
     )
     session.sentinel_status = STUCK
     session.sentinel_recap = (
@@ -517,7 +558,11 @@ async def _dispatch_turn(
     bad args. Returns the calls that succeeded for trajectory bookkeeping."""
     if asst.finish_reason == FinishReason.LENGTH:
         log.warning(
-            "turn %d: finish=length; last tool_call args may be truncated", turn
+            "turn %d: finish=length; last tool_call args may be truncated",
+            turn,
+            extra={
+                "console_message": "Model response reached its length limit — checking tool arguments"
+            },
         )
         run.tr.write({"event": "finish_length_warning", "turn": turn})
 
@@ -525,7 +570,11 @@ async def _dispatch_turn(
     for call in asst.tool_calls:
         if _stop_if_expired(run, session, turn):
             return successful_calls
-        result = await dispatch(run, session, call, turn)
+        context = bind_log_context(tool=call.name, tool_call_id=call.id)
+        try:
+            result = await dispatch(run, session, call, turn)
+        finally:
+            reset_log_context(context)
         messages.append(result)
         if not result.is_error:
             successful_calls.append(call)
@@ -601,12 +650,23 @@ async def _advance_with_retry(
             last_err = e
             if attempt < attempts:
                 log.warning(
-                    "provider transient (attempt %d/%d): %s", attempt, attempts, e
+                    "Provider attempt %d/%d failed: %s — retrying in %.1fs",
+                    attempt,
+                    attempts,
+                    e,
+                    backoff,
+                    exc_info=True,
+                    extra={
+                        "event": "provider.retry",
+                        "attempt": attempt,
+                        "retry_in_ms": round(backoff * 1000),
+                        "console_message": f"Model request failed ({attempt}/{attempts}): {console_text(e, 140)} — retrying in {backoff:.1f}s",
+                    },
                 )
                 await asyncio.sleep(backoff)
     # Typed, so _call_provider can tell this expected exhaustion (one
     # clean log line) from an engine bug (full traceback).
-    raise ProviderError(f"gave up after {attempts} attempts: {last_err}")
+    raise ProviderError(f"gave up after {attempts} attempts: {last_err}") from last_err
 
 
 def _corrective_for_bad_shape(called: list[str]) -> str:

@@ -410,13 +410,16 @@ def test_mcp_blocks_image_scale_failure_logs_exception(
         side_effect=RuntimeError("scaler down"),
     )
 
-    with caplog.at_level(logging.ERROR, logger="physiclaw.provider.wire"):
-        mcp_blocks_to_content_blocks([{"type": "image", "data": "aGk="}])
+    with caplog.at_level(logging.INFO, logger="physiclaw.provider.wire"):
+        out = mcp_blocks_to_content_blocks([{"type": "image", "data": "aGk="}])
 
-    assert any(
-        r.getMessage().startswith("scale failed; forwarding original image")
+    (record,) = [
+        r
         for r in caplog.records
-    )
+        if r.getMessage().startswith("scale failed; forwarding original image")
+    ]
+    assert record.levelno == logging.INFO and record.exc_info
+    assert out[0].data_b64 == "aGk="
 
 
 def test_mcp_blocks_image_scale_failure_preserves_explicit_mime_type(

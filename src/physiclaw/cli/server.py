@@ -170,7 +170,14 @@ def server(
         lambda record: "Invalid HTTP request received" not in record.getMessage()
     )
     log = logging.getLogger(__name__)
-    log.info("PhysiClaw %s", __version__)
+    log.info(
+        "PhysiClaw %s",
+        __version__,
+        extra={
+            "console": True,
+            "console_message": f"PhysiClaw {__version__} — starting hardware",
+        },
+    )
     _require_vision_model()
     with ExitStack() as resources:
         # Uvicorn replays SIGTERM after graceful shutdown. Translate that replay
@@ -284,11 +291,23 @@ def _serve(
     stopping = threading.Event()
     bridge_server = uvicorn.Server(
         uvicorn.Config(
-            bridge_app, host="0.0.0.0", port=bridge_port(port), log_level="warning"
+            bridge_app,
+            host="0.0.0.0",
+            port=bridge_port(port),
+            log_level="warning",
+            log_config=None,
+            access_log=False,
         )
     )
     control_server = uvicorn.Server(
-        uvicorn.Config(control_app, host=host, port=port, log_level="warning")
+        uvicorn.Config(
+            control_app,
+            host=host,
+            port=port,
+            log_level="warning",
+            log_config=None,
+            access_log=False,
+        )
     )
     failures: list[str] = []
 
@@ -380,7 +399,11 @@ def _announce_ready_when_up(
             try:
                 if check_ready_once(base):
                     if not stopping.is_set():
-                        log.info(f"PhysiClaw ready — MCP tools live at {base}/mcp")
+                        log.info(
+                            "PhysiClaw ready — MCP tools live at %s/mcp",
+                            base,
+                            extra={"console": True},
+                        )
                     return
             except Exception:
                 pass
@@ -537,26 +560,25 @@ def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
     so the /mcp line carries the connect hint — dialable via
     `config.url_host`, since the client pastes it."""
     log = logging.getLogger(__name__)
+    from physiclaw.common import paths
     from physiclaw.core.bridge import bridge_base_urls
 
     primary, fallback = bridge_base_urls(port)
     base = f"http://{url_host(host)}:{port}"
-    if no_runtime:
-        url = f"{base}/mcp"
-        log.info(
-            f"PhysiClaw MCP server on {url} — no built-in runtime\n"
-            f"  Connect an external MCP client, e.g. Claude Code: "
-            f"claude mcp add --transport http physiclaw {url}"
-        )
-    else:
-        log.info(f"PhysiClaw MCP server on {base}/mcp")
-    log.info(f"QR code (scan with phone): {base}/api/bridge/qr")
+    log.info("MCP: %s/mcp", base, extra={"console": no_runtime})
+    log.info("Phone: %s/bridge", primary, extra={"console": True})
+    log.info("QR code: %s/api/bridge/qr (scan with your phone)", base)
     if primary != fallback:
-        log.info(f"Phone page: {primary}/bridge  (recommended — survives IP changes)")
-        log.info(f"Fallback:   {fallback}/bridge  (if mDNS blocked)")
+        log.info("Fallback: %s/bridge (if mDNS is blocked)", fallback)
     else:
-        log.info(f"Phone page: {fallback}/bridge")
         log.info("Tip: set a stable LocalHostName for <name>.local URLs.")
+    if no_runtime:
+        log.info(
+            "External agent: connect your MCP client, e.g. Claude Code:\n"
+            "  claude mcp add --transport http physiclaw %s/mcp",
+            base,
+        )
+    log.info("Logs: %s", paths.LOG_DIR, extra={"console": True})
 
 
 def _start_hardware_bringup(
@@ -581,7 +603,8 @@ def _start_hardware_bringup(
     elif no_setup_hardware:
         logging.getLogger(__name__).info(
             "Run `physiclaw setup hardware` in another shell to connect "
-            "hardware and calibrate — server is waiting."
+            "hardware and calibrate — server is waiting.",
+            extra={"console": True},
         )
     else:
         _open_hardware_wizard(host, port)
@@ -626,7 +649,7 @@ def _warm_start_hardware(
             # `physiclaw server -H`, or `--warm-start` — try_resume already
             # named the failing mode AND the fix (plug in the board,
             # recalibrate, …) in its diagnosis, so prescribe nothing here.
-            log.error("Exiting. Fix the cause above and re-run.")
+            log.debug("Exiting. Fix the cause above and re-run.")
             _thread.interrupt_main()
 
     threading.Thread(target=_warm_start_thread, daemon=True).start()
@@ -657,7 +680,10 @@ def _open_hardware_wizard(host: str, port: int) -> None:
     from physiclaw.core.server.warm_start import wait_for_port
 
     setup_url = f"http://{url_host(host)}:{port}/setup-hardware"
-    log.info(f"Hardware-setup wizard: {setup_url}  (disable with --no-setup-hardware)")
+    log.info(
+        f"Hardware-setup wizard: {setup_url}  (disable with --no-setup-hardware)",
+        extra={"console": True, "console_message": f"Open hardware setup: {setup_url}"},
+    )
 
     def _open_setup() -> None:
         import webbrowser
@@ -738,5 +764,5 @@ def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subproces
     if verbose:
         cmd.append("--verbose")
     proc = subprocess.Popen(cmd)
-    log.info(f"Runtime loop started as subprocess (pid={proc.pid}, {label})")
+    log.debug("Runtime loop started as subprocess (pid=%s, %s)", proc.pid, label)
     return proc

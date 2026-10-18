@@ -18,11 +18,18 @@ import shutil
 import socket
 import subprocess
 import time
+from typing import TextIO
 
 # urllib/httpx read proxy config from env vars on Linux and honor `no_proxy`
 # for loopback — which is only guaranteed because `normalize_proxy_env()`
 # (common/proxy.py) pins loopback into NO_PROXY first; users rarely set it.
 TRUST_PROXY_ENV = True
+
+
+def enable_terminal_color(stream: TextIO | None) -> bool:
+    """POSIX terminal capability; TTY/environment checks live in terminal.py."""
+    return True
+
 
 # Webcam viewers tried in preference order. GNOME Snapshot superseded Cheese
 # as the default in Ubuntu 24.04 / Fedora Workstation; guvcview is the common

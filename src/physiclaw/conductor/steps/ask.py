@@ -16,7 +16,10 @@ the ask IS the consent record, and the label it read by is what the
 pay move reads the total by again before it fires.
 """
 
+import logging
+
 from physiclaw.common import gesture_vocab
+from physiclaw.common.text import clip
 from physiclaw.conductor.micro.decision import (
     ASK,
     READ_REPLY,
@@ -40,6 +43,7 @@ KIND_ASK_PEEK = "ask-peek"
 KIND_ASK_OPEN = "ask-open"
 KIND_ASK_RESUME = "ask-resume"
 KIND_ASK_DENIED = "ask-denied"
+log = logging.getLogger(__name__)
 
 
 class AskStep(Step[AskNode]):
@@ -77,6 +81,16 @@ class AskStep(Step[AskNode]):
             if stop is not None:
                 return stop
             walk.gate.hold()
+            log.info(
+                "Waiting for user reply: %s",
+                walk.gate.ask or self.node.message,
+                extra={
+                    "event": "task.waiting_for_user",
+                    "console": True,
+                    "console_message": "Waiting for your reply: "
+                    + clip(" ".join((walk.gate.ask or self.node.message).split()), 200),
+                },
+            )
             return self._wait()
         if kind == KIND_ASK_WAIT:
             return self._peek()

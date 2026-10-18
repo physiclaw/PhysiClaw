@@ -617,7 +617,12 @@ async def _current_view(
     try:
         fresh = await ctx.mcp.call_tool(gesture_vocab.PEEK, {})
     except Exception as e:
-        log.warning("macro recovery peek failed: %s", e)
+        log.warning(
+            "macro recovery peek failed: %s",
+            e,
+            exc_info=True,
+            extra={"console_message": "Macro recovery could not check the screen"},
+        )
         fresh = None
     if fresh is not None and verdict.has_image(fresh):
         return fresh, "the view below is a fresh `peek` of the current screen"

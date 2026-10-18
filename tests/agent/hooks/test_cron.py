@@ -31,6 +31,7 @@ from physiclaw.agent.hooks.cron import (
 from physiclaw.agent.hooks.cron import (
     cron as cron_hook,
 )
+from physiclaw.common.log_style import FailureState
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +42,38 @@ def _jobs_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # The CLI's done/fail/cancel now route through engine.jobs.finish_job,
     # whose module captured its own JOBS_PATH name at import.
     monkeypatch.setattr(engine_jobs, "JOBS_PATH", p)
+    for name in ("_load_failure", "_purge_failure", "_expiry_failure", "_save_failure"):
+        monkeypatch.setattr(cron, name, FailureState())
     return p
+
+
+async def test_schedule_outage_does_not_repeat_and_rearms_after_recovery(
+    mocker, caplog
+):
+    import logging
+
+    mocker.patch.object(
+        cron,
+        "load_jobs",
+        side_effect=[
+            OSError("offline"),
+            OSError("offline"),
+            [],
+            [],
+            OSError("offline"),
+        ],
+    )
+    with caplog.at_level(logging.DEBUG, logger=cron.__name__):
+        for _ in range(5):
+            assert await cron_hook() is None
+    failures = [r for r in caplog.records if "failed to load" in r.getMessage()]
+    assert [r.levelno for r in failures] == [
+        logging.ERROR,
+        logging.DEBUG,
+        logging.ERROR,
+    ]
+    assert all(r.exc_info for r in failures)
+    assert sum("available again" in r.getMessage() for r in caplog.records) == 1
 
 
 def _job_text(
@@ -168,6 +200,7 @@ async def test_cron_fires_due_one_time_job_and_marks_fired(
 
     assert trigger is not None
     assert trigger.source == "cron:due-one"
+    assert trigger.label == "Description text"
     assert "due-one" in trigger.description
     text = _jobs_path.read_text()
     assert "- Status: fired" in text
@@ -320,7 +353,7 @@ def test_cli_verify_parse_error(
     rc = _run_cli(monkeypatch, "verify")
 
     assert rc == 1
-    assert "PARSE ERROR" in capsys.readouterr().out
+    assert "Cannot parse jobs" in capsys.readouterr().err
 
 
 def test_cli_jobs_to_do_none(
@@ -371,7 +404,7 @@ def test_cli_jobs_to_do_parse_error(
     rc = _run_cli(monkeypatch, "jobs-to-do")
 
     assert rc == 1
-    assert "PARSE ERROR" in capsys.readouterr().out
+    assert "Cannot parse jobs" in capsys.readouterr().err
 
 
 def test_cli_done_missing_arg(
@@ -398,7 +431,7 @@ def test_cli_done_unknown_id(
     rc = _run_cli(monkeypatch, "done", "nope")
 
     assert rc == 1
-    assert "no job named 'nope'" in capsys.readouterr().out
+    assert "No job named 'nope'" in capsys.readouterr().err
 
 
 def test_cli_done_parse_error(
@@ -410,7 +443,7 @@ def test_cli_done_parse_error(
     rc = _run_cli(monkeypatch, "done", "anything")
 
     assert rc == 1
-    assert "PARSE ERROR" in capsys.readouterr().out
+    assert "Cannot parse jobs" in capsys.readouterr().err
 
 
 def test_cli_done_one_time_marks_done(
@@ -548,7 +581,7 @@ def test_cli_done_write_error(
     rc = _run_cli(monkeypatch, "done", "x")
 
     assert rc == 1
-    assert "WRITE ERROR" in capsys.readouterr().out
+    assert "Cannot save jobs" in capsys.readouterr().err
 
 
 def test_cli_purge_nothing(
@@ -614,7 +647,7 @@ def test_regression_purge_reports_malformed_jobs_without_a_traceback(
     status = _run_module(monkeypatch, "purge")
 
     assert status == 1
-    assert "PARSE ERROR" in capsys.readouterr().out
+    assert "Cannot parse jobs" in capsys.readouterr().err
     assert _jobs_path.read_bytes() == before
 
 
@@ -628,7 +661,7 @@ def test_regression_purge_reports_io_failure_without_a_traceback(
     status = _run_module(monkeypatch, "purge")
 
     assert status == 1
-    assert "WRITE ERROR: disk full" in capsys.readouterr().out
+    assert "Cannot save jobs: disk full" in capsys.readouterr().err
     assert _jobs_path.read_bytes() == before
 
 
@@ -641,7 +674,7 @@ def test_closing_an_already_terminal_job_reports_error_without_mutating_it(
     status = _run_module(monkeypatch, "done", "closed", "again")
 
     assert status == 1
-    assert "already in terminal status" in capsys.readouterr().out
+    assert "already in terminal status" in capsys.readouterr().err
     assert _jobs_path.read_bytes() == before
 
 

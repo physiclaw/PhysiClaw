@@ -149,7 +149,14 @@ class Perception:
                 ocr = self.ocr_reader()
             except Exception as ex:
                 self._ocr_error = str(ex)
-                log.warning("OCR reader unavailable — detecting icons only: %s", ex)
+                log.warning(
+                    "OCR reader unavailable — detecting icons only: %s",
+                    ex,
+                    exc_info=True,
+                    extra={
+                        "console_message": "Screen text unavailable — continuing with icons; check the vision installation"
+                    },
+                )
                 ocr = _NullOCR()
         elements, annotated = detect_ui_elements(
             frame,
@@ -201,7 +208,7 @@ class Perception:
                 bbox = None
             ocr_passes += 1
             now = time.monotonic()
-            log.info(
+            log.debug(
                 "numpad poll #%d @%.1fs: grab %.2fs, ocr %.2fs, %d text elems — %s",
                 ocr_passes,
                 grab_start - start,

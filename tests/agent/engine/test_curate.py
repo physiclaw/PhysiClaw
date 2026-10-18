@@ -6,9 +6,14 @@ The autouse `physiclaw_home` fixture isolates `paths.pitfalls_dir()`.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from physiclaw.agent.engine import curate, pitfalls
+from physiclaw.agent.trace import RawLog, Trace, viewer
+from physiclaw.agent.trace.store import Images
+from physiclaw.common import paths
 from physiclaw.contract.dto import AssistantMessage, FinishReason
 
 
@@ -21,9 +26,19 @@ class _FakeProvider:
 
     async def chat(self, history, tools, **kw):
         self.calls.append(history)
+        text = self._replies.pop(0)
         return AssistantMessage(
-            content=self._replies.pop(0), tool_calls=[], finish_reason=FinishReason.STOP
+            content=text,
+            tool_calls=[],
+            finish_reason=FinishReason.STOP,
+            raw={"choices": [{"message": {"content": text}}]},
         )
+
+    def serialize_history(self, history):
+        return [
+            {"role": "system" if i == 0 else "user", "content": message.content}
+            for i, message in enumerate(history)
+        ]
 
 
 class _BoomProvider:
@@ -98,3 +113,76 @@ async def test_regression_curate_unreadable_file_is_nonfatal() -> None:
     assert result is False
     assert provider.calls == []
     assert path.read_bytes() == b"\xff"
+
+
+@pytest.mark.parametrize(
+    "reply, success", [('["kept lesson"]', True), ("invalid reply " * 100, False)]
+)
+async def test_curate_saves_complete_request_and_reply_for_session_review(
+    reply, success
+):
+    pitfalls.add(["original lesson"])
+    provider = _FakeProvider([reply])
+    images = Images("curate-debug")
+    trace, raw = Trace("curate-debug", images), RawLog("curate-debug", images)
+    trace.write({"event": "request", "turn": 7, "message_count": 2})
+    try:
+        assert await curate.curate(provider, tr=trace, rlog=raw) is success
+    finally:
+        raw.close()
+        trace.close()
+
+    directory = paths.engine_sessions_dir() / "curate-debug"
+    request, response = [
+        json.loads(line)
+        for line in (directory / "wire.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert request["call"] == response["call"] == "curate"
+    assert request["turn"] == response["turn"] == 7
+    assert request["messages"] == provider.serialize_history(provider.calls[0])
+    assert response["raw"]["choices"][0]["message"]["content"] == reply
+    assert response["elapsed_ms"] >= 0
+    records = next(g for g in viewer.load(directory)["groups"] if g["turn"] == 7)[
+        "records"
+    ]
+    assert any(r["rec"] == response for r in records)
+
+
+async def test_failed_curate_keeps_request_and_error_in_session(caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    pitfalls.add(["original lesson"])
+
+    class BrokenProvider(_FakeProvider):
+        async def chat(self, *args, **kwargs):
+            raise RuntimeError("curation failure detail")
+
+    images = Images("failed-curate")
+    trace, raw = Trace("failed-curate", images), RawLog("failed-curate", images)
+    try:
+        assert await curate.curate(BrokenProvider([]), tr=trace, rlog=raw) is False
+    finally:
+        raw.close()
+        trace.close()
+
+    directory = paths.engine_sessions_dir() / "failed-curate"
+    request = json.loads((directory / "wire.jsonl").read_text(encoding="utf-8"))
+    assert request["kind"] == "request" and request["call"] == "curate"
+    assert request["messages"][1]["content"] == "- original lesson"
+    assert "RuntimeError: curation failure detail" in (
+        directory / "runtime.log"
+    ).read_text(encoding="utf-8")
+    assert pitfalls.read() == ["original lesson"]
+
+
+async def test_curate_diagnostic_failure_cannot_prevent_consolidation(mocker):
+    pitfalls.add(["original lesson"])
+    raw = mocker.Mock()
+    raw.write_request.side_effect = OSError("disk full")
+    raw.write_response.side_effect = OSError("disk full")
+
+    assert await curate.curate(_FakeProvider(['["kept lesson"]']), rlog=raw) is True
+    assert pitfalls.read() == ["kept lesson"]
+    raw.write_request.assert_called_once()
+    raw.write_response.assert_called_once()

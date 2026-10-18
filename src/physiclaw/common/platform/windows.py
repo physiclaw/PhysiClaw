@@ -9,12 +9,47 @@ import os
 import socket
 import subprocess
 import time
+from typing import TextIO
 
 # Windows registry's ProxyOverride is unreliable for loopback bypass —
 # corporate ProxyOverride often lacks `<local>` / `localhost`, and an
 # `HTTP_PROXY` env var bypasses no-proxy rules entirely. Tell urllib /
 # httpx to skip system proxy when calling our own server.
 TRUST_PROXY_ENV = False
+
+
+def enable_terminal_color(stream: TextIO | None) -> bool:
+    """Enable VT output on the actual stream handle; fall back to plain text."""
+    try:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        if stream is None:
+            return False
+        handle = getattr(msvcrt, "get_osfhandle")(stream.fileno())
+        kernel = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
+        kernel.GetConsoleMode.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel.GetConsoleMode.restype = wintypes.BOOL
+        kernel.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.SetConsoleMode.restype = wintypes.BOOL
+        mode = wintypes.DWORD()
+        if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
+            # ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING.
+            return bool(
+                mode.value & 5 == 5 or kernel.SetConsoleMode(handle, mode.value | 5)
+            )
+    except (ImportError, AttributeError, OSError, ValueError):
+        pass
+    # MSYS/Cygwin terminals expose ANSI through a PTY rather than a Win32 console.
+    return (
+        os.environ.get("TERM", "")
+        .lower()
+        .startswith(("xterm", "screen", "tmux", "vt100", "ansi"))
+    )
 
 
 def ensure_camera_permission() -> None:

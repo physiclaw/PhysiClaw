@@ -138,6 +138,7 @@ class GestureObserver:
         self._grab = grab  # () -> cropped phone-screen BGR frame
         self._detect = detect  # frame -> (element listing, annotated frame)
         self._quality = monitor if monitor is not None else quality.QualityMonitor()
+        self._quality_notice: tuple[bool, bool, bool] | None = None
         # (report, streak) after every judged view — perception hangs its
         # re-tune policy here without observation knowing about tuning.
         self._on_quality = on_quality
@@ -211,7 +212,27 @@ class GestureObserver:
             log.exception("camera-quality check failed — skipping")
             return None
         if warning is not None:
-            log.warning("%s: %s", source, warning)
+            issues = (report.dark, report.blurry, report.blown)
+            labels = [
+                label
+                for active, label in zip(issues, ("dark", "blurry", "overexposed"))
+                if active
+            ]
+            log.log(
+                logging.WARNING if issues != self._quality_notice else logging.DEBUG,
+                "%s: %s",
+                source,
+                warning,
+                extra={
+                    "console_message": "Camera view "
+                    + (", ".join(labels) or "unreliable")
+                    + " — check focus and lighting in hardware setup"
+                },
+            )
+            self._quality_notice = issues
+        elif self._quality_notice is not None:
+            self._quality_notice = None
+            log.info("Camera view clear again", extra={"console": True})
         if self._on_quality is not None and not retuned:
             try:
                 self._on_quality(report, self._quality.streak)
@@ -260,7 +281,7 @@ class GestureObserver:
         if blurry or report.blown:
             kind = "blurry" if blurry else "blown"
             if peek:
-                log.warning(
+                log.debug(
                     "peek: %s frame (sharpness %.1f, clip %.0f%%) — retrying",
                     kind,
                     report.sharpness,
@@ -307,7 +328,7 @@ class GestureObserver:
             frame, report, retuned = self._acquire_frame("gesture view")
             sharp = report.sharpness >= self.GRAB_BLUR_THRESHOLD
             if not sharp:
-                log.warning("gesture frame blurry — verdict withheld")
+                log.debug("gesture frame blurry — verdict withheld")
             return Grab(frame=frame, report=report, sharp=sharp, retuned=retuned)
         except Exception:
             log.warning("screen frame grab failed", exc_info=True)
@@ -357,7 +378,7 @@ class GestureObserver:
             # Brightness-class flip: the after frame was likely grabbed
             # mid-transition (see FLIP_MEDIAN_DELTA) — settle again and
             # regrab through the full quality pipeline.
-            log.info(
+            log.debug(
                 "gesture view: screen flipped brightness (median %.0f → %.0f) "
                 "— extra settle + regrab",
                 before.report.median_luma,

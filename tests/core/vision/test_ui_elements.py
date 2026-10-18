@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from physiclaw.common.log_style import FailureState
 from physiclaw.core.vision import ui_elements
 from physiclaw.core.vision.ui_elements import (
     UIElement,
@@ -21,6 +22,44 @@ from physiclaw.core.vision.ui_elements import (
 )
 
 # ---------- UIElement ----------
+
+
+@pytest.fixture(autouse=True)
+def _failure_state(monkeypatch):
+    monkeypatch.setattr(ui_elements, "_icon_failure", FailureState())
+    monkeypatch.setattr(ui_elements, "_ocr_failure", FailureState())
+
+
+@pytest.mark.parametrize(
+    "kind,error_type", [("icons", FileNotFoundError), ("texts", RuntimeError)]
+)
+def test_detection_outage_warns_on_change_and_after_recovery(kind, error_type, caplog):
+    detector = MagicMock()
+    operation = detector.detect if kind == "icons" else detector.read
+    operation.side_effect = [
+        error_type("offline"),
+        error_type("offline"),
+        error_type("changed"),
+        [],
+        error_type("offline"),
+    ]
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    with caplog.at_level(logging.DEBUG, logger=ui_elements.__name__):
+        for _ in range(5):
+            if kind == "icons":
+                assert _detect_icons(frame, 10, 10, detector, 0.2) == []
+            else:
+                assert _detect_texts(frame, 10, 10, detector) == []
+    failures = [r for r in caplog.records if "unavailable" in r.getMessage()]
+    assert [r.levelno for r in failures] == [
+        logging.WARNING,
+        logging.DEBUG,
+        logging.WARNING,
+        logging.WARNING,
+    ]
+    assert all(r.exc_info for r in failures)
+    recovery = [r for r in caplog.records if "restored" in r.getMessage()]
+    assert len(recovery) == 1 and recovery[0].console is True
 
 
 def test_ui_element_to_dict_rounds_values() -> None:

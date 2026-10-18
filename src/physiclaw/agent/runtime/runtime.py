@@ -25,6 +25,7 @@ from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger, check_hooks, load_hooks
 from physiclaw.common import platform
 from physiclaw.common.config import CONFIG, server_url
+from physiclaw.common.log_style import FailureState
 from physiclaw.common.ready import check_ready
 from physiclaw.provider import ProviderConfigurationError
 
@@ -98,8 +99,9 @@ class Runtime:
         """Run until stopped or cancelled; provider configuration errors propagate."""
         load_hooks()
         self._running = True
-        log.info("runtime started (interval=%.2fs)", self.interval)
+        log.debug("runtime started (interval=%.2fs)", self.interval)
         last_ready: bool | None = None
+        poll_failure = FailureState()
         in_blip = False
         suffix = f" [{self.label}]" if self.label else ""
         try:
@@ -108,13 +110,44 @@ class Runtime:
                     ready = last_ready
                     try:
                         ready = await _check_ready()
+                        if poll_failure.recovered():
+                            log.info(
+                                "Server connection restored — status checks resumed",
+                                extra={
+                                    "event": "server.connection_restored",
+                                    "console": True,
+                                },
+                            )
                         in_blip = False
                     except Exception as e:
-                        if not in_blip:
-                            log.warning("status poll failed: %s", e)
+                        log.log(
+                            poll_failure.level(e),
+                            "status poll failed: %s: %s — tasks paused; retrying automatically",
+                            type(e).__name__,
+                            e,
+                            exc_info=True,
+                            extra={"event": "server.connection_lost"},
+                        )
                         in_blip = True
                     if ready != last_ready:
-                        log.info("physiclaw ready=%s%s", ready, suffix)
+                        log.info(
+                            "physiclaw ready=%s%s",
+                            ready,
+                            suffix,
+                            extra={
+                                "event": "runtime.ready"
+                                if ready
+                                else "runtime.waiting",
+                                # Initial hardware bring-up is already announced
+                                # by the server. A later loss of readiness matters.
+                                "console": bool(ready or last_ready is not None),
+                                "console_message": (
+                                    "Ready — watching for tasks"
+                                    if ready
+                                    else "Waiting for hardware — complete the setup wizard"
+                                ),
+                            },
+                        )
                         last_ready = ready
                     if not ready or in_blip:
                         await asyncio.sleep(self.interval)
@@ -123,7 +156,7 @@ class Runtime:
                     triggers = await check_hooks()
                     if triggers:
                         sources = [t.source or "?" for t in triggers]
-                        log.info("triggers fired: %s", sources)
+                        log.debug("triggers fired: %s", sources)
                         outcome = await _maybe_await(self.react(triggers))
                         # Lets screen animations settle + exceeds watchdog
                         # EMA_STALE so the next poll re-inits its baseline
@@ -132,11 +165,15 @@ class Runtime:
                 except (asyncio.CancelledError, ProviderConfigurationError):
                     raise
                 except Exception:
-                    log.exception("runtime tick failed")
+                    log.exception(
+                        "Runtime tick failed", extra={"event": "runtime.tick_failed"}
+                    )
                 await asyncio.sleep(self.interval)
         finally:
             self._running = False
-            log.info("runtime stopped")
+            log.info(
+                "Runtime stopped", extra={"event": "runtime.stopped", "console": True}
+            )
 
     def _react_cooldown(self, outcome) -> float:
         """Streak bookkeeping + the post-react sleep. `contract.productive`

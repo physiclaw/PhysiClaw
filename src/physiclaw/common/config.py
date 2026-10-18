@@ -290,6 +290,10 @@ class RetentionConfig:
     # Daily human-readable log files (engine-/runtime-*.log),
     # tiny next to session artifacts.
     log_days: int = 30
+    # Daily operational logs rotate by UTF-8 bytes, retaining this many
+    # numbered archives per day. Session journals keep their own lifecycle.
+    log_max_bytes: int = 10 * 1024 * 1024
+    log_backup_count: int = 5
     # A cron job stuck in `fired` (no session ever closed it) is
     # auto-closed after this long: one-time → fail, periodic → re-armed.
     fired_expire_hours: int = 24
@@ -478,6 +482,11 @@ _SECTION_COMMENTS: dict[str, str] = {
 }
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
+    (
+        "retention",
+        "log_max_bytes",
+    ): "UTF-8 byte limit per operational log file (10 MiB)",
+    ("retention", "log_backup_count"): "numbered archives per service per day",
     ("server", "save_tool_calls"): "dump every peek/screenshot output",
     (
         "server",
@@ -529,6 +538,12 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
             return value
     elif declared is int:
         if isinstance(value, int) and not isinstance(value, bool):
+            if (
+                section == "retention"
+                and key in {"log_max_bytes", "log_backup_count"}
+                and value <= 0
+            ):
+                raise ConfigError(f"[{section}] {key}: expected a positive integer")
             return value
     elif declared is float:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -841,12 +856,11 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
 try:
     CONFIG: Config = load()
 except ConfigError as _e:
-    import sys as _sys
+    from physiclaw.common.log_style import report_error
 
-    print(f"physiclaw: {_e}", file=_sys.stderr)
-    print(
-        "physiclaw: continuing with default config; fix the file or delete it.",
-        file=_sys.stderr,
+    report_error(
+        f"{_e} — continuing with default config; fix the file or delete it.",
+        exit_code=0,
     )
     CONFIG = Config()
 

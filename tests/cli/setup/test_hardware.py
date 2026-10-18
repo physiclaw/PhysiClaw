@@ -216,21 +216,24 @@ def test_calibrate_retry_uses_custom_predicate(mocker) -> None:
 # ---------- _done / _fail / _warn ----------
 
 
-def test_done_prints_green(capsys: pytest.CaptureFixture) -> None:
+def test_done_prints_green(capsys: pytest.CaptureFixture, mocker) -> None:
+    mocker.patch("physiclaw.cli._format.color_enabled", return_value=True)
     hw_mod._done("yay")
     out = capsys.readouterr().out
     assert "yay" in out
     assert "\033[32m" in out
 
 
-def test_fail_prints_red(capsys: pytest.CaptureFixture) -> None:
+def test_fail_prints_red(capsys: pytest.CaptureFixture, mocker) -> None:
+    mocker.patch("physiclaw.cli._format.color_enabled", return_value=True)
     hw_mod._fail("bad")
     out = capsys.readouterr().out
     assert "bad" in out
     assert "\033[31m" in out
 
 
-def test_warn_prints_yellow(capsys: pytest.CaptureFixture) -> None:
+def test_warn_prints_yellow(capsys: pytest.CaptureFixture, mocker) -> None:
+    mocker.patch("physiclaw.cli._format.color_enabled", return_value=True)
     hw_mod._warn("careful")
     out = capsys.readouterr().out
     assert "careful" in out

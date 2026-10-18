@@ -190,7 +190,7 @@ def mcp_blocks_to_content_blocks(blocks: list[dict]) -> str | list[ContentBlock]
                     b["data"] if scaled is raw else base64.b64encode(scaled).decode()
                 )
             except Exception:
-                log.exception("scale failed; forwarding original image")
+                log.info("scale failed; forwarding original image", exc_info=True)
                 new_b64 = b["data"]
                 mime = b.get("mime_type") or "image/jpeg"
             images.append(ImageBlock(media_type=mime, data_b64=new_b64))

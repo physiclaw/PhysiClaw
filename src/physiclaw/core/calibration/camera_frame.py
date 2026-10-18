@@ -79,7 +79,14 @@ def calibrate_camera_frame(cam: Camera, cal: CalibrationState) -> dict:
     Returns ``{"rotation", "rotation_name", "setup_ok", "issues",
               "coverage", "aspect_ratio", "image_size", "phone_region"}``.
     """
-    log.info("═══ Camera frame calibration ═══")
+    log.info(
+        "═══ Camera frame calibration ═══",
+        extra={
+            "event": "calibration.started",
+            "console": True,
+            "console_message": "Calibration: checking camera alignment",
+        },
+    )
     cal.set_phase("markers")
     time.sleep(1.0)
 
@@ -89,7 +96,17 @@ def calibrate_camera_frame(cam: Camera, cal: CalibrationState) -> dict:
 
     checks = check_phone_in_frame(frame)
     rotation, rot_label = _pick_rotation_from_markers(frame)
-    log.info(f"  ✓ Camera frame: rotation={rot_label}, setup_ok={checks['ok']}")
+    log.log(
+        logging.INFO if checks["ok"] else logging.WARNING,
+        f"  ✓ Camera frame: rotation={rot_label}, setup_ok={checks['ok']}",
+        extra={
+            "event": "calibration.checked",
+            "console": True,
+            "console_message": "Camera alignment ready"
+            if checks["ok"]
+            else "Camera alignment needs adjustment — check the setup wizard",
+        },
+    )
     return {
         "rotation": rotation,
         "rotation_name": rot_label,

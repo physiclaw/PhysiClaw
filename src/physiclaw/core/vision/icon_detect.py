@@ -170,19 +170,27 @@ def annotate(frame: np.ndarray, elements: list[Element]) -> np.ndarray:
 if __name__ == "__main__":
     import argparse
 
+    from physiclaw.common.log_style import (
+        add_log_arguments,
+        configure_console,
+        report_error,
+    )
+
     parser = argparse.ArgumentParser(
         description="Detect UI elements in a phone screenshot"
     )
     parser.add_argument("image", help="Path to phone screen image")
     parser.add_argument("-c", "--confidence", type=float, default=MIN_CONFIDENCE)
     parser.add_argument("-o", "--output", help="Save annotated image to this path")
+    add_log_arguments(parser)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+    configure_console("vision", verbose=args.verbose, log_format=args.log_format)
 
     img = cv2.imread(args.image)
     if img is None:
-        raise SystemExit(f"Cannot read image: {args.image}")
+        report_error(f"Cannot read image: {args.image}", tag="vision")
+        raise SystemExit(1)
 
     detector = IconDetector()
     elements = detector.detect(img, confidence=args.confidence)

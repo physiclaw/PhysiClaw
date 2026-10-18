@@ -1,5 +1,6 @@
 """PhysiClaw command-line interface."""
 
+import logging
 from typing import Annotated
 
 import typer
@@ -113,6 +114,12 @@ def _root(
     # rewrite it, and pin loopback into NO_PROXY, before any command
     # builds an HTTP client.
     normalize_proxy_env()
+    from physiclaw.common import paths
+    from physiclaw.common.logger import setup_logging
+
+    setup_logging(
+        "cli", file_dir=paths.LOG_DIR / "cli", file_level=logging.DEBUG, force=False
+    )
     # Bare `physiclaw` (no subcommand) defaults to `physiclaw server`.
     if ctx.invoked_subcommand is None:
         server()

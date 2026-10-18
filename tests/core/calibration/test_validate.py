@@ -100,7 +100,9 @@ def test_validate_calibration_falls_back_when_dot_undetected(mocker) -> None:
     arm.rapid_to.assert_called_with(5.0, 10.0)
 
 
-def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
+def test_validate_calibration_records_failure_on_no_touch(mocker, caplog) -> None:
+    import logging
+
     mocker.patch.object(validate_mod.time, "sleep")
     mocker.patch.object(validate_mod.random, "random", return_value=0.5)
     arm = MagicMock()
@@ -129,6 +131,11 @@ def test_validate_calibration_records_failure_on_no_touch(mocker) -> None:
     assert len(results) == 1
     assert results[0]["passed"] is False
     assert results[0]["error"] == 999.0
+    record = next(
+        r for r in caplog.records if getattr(r, "event", "") == "calibration.checked"
+    )
+    assert record.levelno == logging.WARNING
+    assert record.console_message == "Calibration check: 0/1 taps passed"
 
 
 def test_validate_calibration_refires_on_miss(mocker) -> None:

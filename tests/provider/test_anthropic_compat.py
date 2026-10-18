@@ -268,7 +268,7 @@ def test_encode_unknown_message_type_returns_none_with_warning(
     class _Weird:
         pass
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
         out = provider._encode_message(_Weird())  # type: ignore[arg-type]
 
     assert out is None
@@ -547,13 +547,11 @@ async def test_chat_maps_5xx_status_to_transient(
         503, "service unavailable"
     )
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
         with pytest.raises(ProviderTransientError, match=r"^HTTP 503: "):
             await provider.chat([UserMessage(content="x")], [])
 
-    assert any(
-        "anthropic HTTP 503 (transient)" in r.getMessage() for r in caplog.records
-    )
+    assert any("HTTP 503 (transient)" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -564,13 +562,11 @@ async def test_chat_maps_4xx_status_to_permanent(
 
     provider._client.messages.create.side_effect = _status_err(400, "bad model")
 
-    with caplog.at_level(logging.ERROR, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
         with pytest.raises(ProviderPermanentError, match=r"^HTTP 400: "):
             await provider.chat([UserMessage(content="x")], [])
 
-    assert any(
-        "anthropic HTTP 400 (permanent)" in r.getMessage() for r in caplog.records
-    )
+    assert any("HTTP 400 (permanent)" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio

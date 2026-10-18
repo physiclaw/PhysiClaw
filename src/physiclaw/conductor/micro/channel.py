@@ -25,6 +25,7 @@ import time
 from typing import Any, Callable
 
 from physiclaw.common.config import CONFIG
+from physiclaw.common.log_style import console_text
 from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.compose import messages
@@ -127,7 +128,7 @@ class MicroCaller:
         try:
             outcome, detail, attempts = await self._ask(req)
         except Exception as e:
-            log.warning("micro %s (%s): provider failed — %s", req.call, req.node_id, e)
+            _log_provider_failure(req, e)
             outcome, detail, attempts = None, "provider error", 0
         result = MicroResult(
             outcome=outcome,
@@ -159,9 +160,7 @@ class MicroCaller:
                 # Escalate HERE, not via run()'s catch-all, so the
                 # attempt count the trace records stays exact. (Tokens are
                 # the provider's `usage` events, one per attempt.)
-                log.warning(
-                    "micro %s (%s): provider failed — %s", req.call, req.node_id, e
-                )
+                _log_provider_failure(req, e)
                 return None, "provider error", attempts
             parsed, err = parse_reply(asst.content or "", allowed, req.call)
             try:
@@ -175,6 +174,11 @@ class MicroCaller:
                     req.node_id,
                     attempts,
                     err,
+                    extra={
+                        "event": "provider.reply_invalid",
+                        "console": attempts == 1,
+                        "console_message": "Decision reply invalid — retrying once",
+                    },
                 )
                 # Repair retry: the model sees its own reply + the exact
                 # validation error, once. A second miss escalates.
@@ -266,6 +270,18 @@ class MicroCaller:
         )
 
 
+def _log_provider_failure(req: DecisionRequest, error: Exception) -> None:
+    log.warning(
+        "micro %s (%s): provider failed — %s",
+        req.call,
+        req.node_id,
+        error,
+        exc_info=(type(error), error, error.__traceback__),
+        extra={"console_message": "Decision request failed: " + console_text(error)},
+        stacklevel=2,
+    )
+
+
 def _picked_words(outcome: MicroOutcome | None) -> str | None:
     picked = outcome.picked if outcome else None
     if isinstance(picked, Tap):
@@ -305,6 +321,12 @@ async def _chat(
             "micro %s (%s): transient provider error — one retry",
             req.call,
             req.node_id,
+            exc_info=True,
+            extra={
+                "event": "provider.retry",
+                "console": True,
+                "console_message": "Decision request interrupted — retrying once",
+            },
         )
         await asyncio.sleep(CONFIG.engine.retry_backoff_seconds)
         return await provider.chat(

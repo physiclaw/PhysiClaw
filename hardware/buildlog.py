@@ -8,12 +8,11 @@ native/library output is retained as diagnostics, never parsed as build events.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import signal
 import subprocess
-import sys
-import textwrap
 import threading
 import time
 import traceback
@@ -23,81 +22,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from hardware.scheme import REPO_ROOT
+from hardware.log_style import (
+    LEVELS,
+    WORKER_PREFIX,
+    BuildState,
+    ConsoleHandler,
+    EventFileHandler,
+)
 
-WORKER_PREFIX = "PHYSICLAW_BUILD_EVENT "
 CRASH_LOG_ENV = "PHYSICLAW_HW_CRASH_LOG"
-_CONTEXT_WIDTH = 26
-
-
-def _single_line(value: object) -> str:
-    # Escape control characters (including ANSI escapes) from library errors.
-    return "".join(
-        char if char.isprintable() else f"\\x{ord(char):02x}" for char in str(value)
-    )
-
-
-def _table_widths(columns: int, total: int | None) -> tuple[int, int]:
-    progress_width = max(7, len(f"[{total}/{total}]")) if total is not None else 7
-    progress_width = min(progress_width, max(1, columns - 12))
-    # Reserve the same elapsed column for headers, progress and summaries.
-    context_width = min(_CONTEXT_WIDTH, columns - progress_width - 1 - 2 - 8)
-    return progress_width, max(1, context_width)
-
-
-def _text_lines(record: dict, *, show_level: bool = True) -> str:
-    """Align columns and wrap cells without truncating diagnostic text."""
-    columns = max(24, shutil.get_terminal_size(fallback=(120, 24)).columns)
-    label = "WARN" if record["level"] == "warning" else record["level"].upper()
-    prefix = f"{label:7s} " if show_level else ""
-    elapsed = f"{record['elapsed_s']:7.1f}s"
-    progress = ""
-    if "completed" in record:
-        progress = (
-            f"[{record['completed']}/{record['total']}]"
-            if record.get("total") is not None
-            else f"[{record['completed']}]"
-        )
-    context = record.get("stem") or record.get("item")
-    if not context and record.get("worker_pid"):
-        context = f"worker {record['worker_pid']}"
-    message = _single_line(record["message"])
-    if record.get("event") in ("step_finished", "task_finished"):
-        message = "" if record.get("status") == "success" else "Failed"
-    if record.get("variant"):
-        message = f"{_single_line(record['variant'])}: {message}"
-    if (
-        not show_level
-        and record["level"] in ("error", "critical")
-        and record.get("event") not in ("build_finished", "command_finished")
-    ):
-        message = f"{label}: {message}"
-    progress_width, context_width = _table_widths(
-        columns - len(prefix), record.get("total")
-    )
-    span_width = progress_width + 1 + context_width
-    continuation = " " * len(prefix)
-    if not context:
-        texts = textwrap.wrap(message, width=span_width, break_on_hyphens=False) or [""]
-        return "\n".join(
-            f"{prefix}{text:<{span_width}}  {elapsed}"
-            if index == 0
-            else continuation + text
-            for index, text in enumerate(texts)
-        )
-    contexts = textwrap.wrap(
-        _single_line(context), width=context_width, break_on_hyphens=False
-    )
-    indent = continuation + " " * (progress_width + 1)
-    lines = [
-        f"{prefix}{progress:>{progress_width}} {contexts[0]:<{context_width}}  {elapsed}"
-    ]
-    lines.extend(indent + name for name in contexts[1:])
-    lines.extend(
-        indent + text
-        for text in textwrap.wrap(message, width=context_width, break_on_hyphens=False)
-    )
-    return "\n".join(lines)
 
 
 class BuildLog:
@@ -114,7 +47,12 @@ class BuildLog:
             self.crash_path = path.with_suffix(".crash.log")
         self._lock = threading.Lock()
         self._sequence = 0
-        self._file = None
+        self._logger = logging.Logger("hardware.build", logging.DEBUG)
+        self._logger.propagate = False
+        self._console = ConsoleHandler(
+            log_format=log_format, verbose=verbose, worker=worker
+        )
+        self._logger.addHandler(self._console)
         self._complete = set()
         self._successful = set()
         self._total = None
@@ -125,12 +63,17 @@ class BuildLog:
     def __enter__(self):
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._file = self.path.open("x", encoding="utf-8")
+            file_handler = EventFileHandler(self.path)
+            # Persist the original event before applying console-only policy.
+            self._logger.removeHandler(self._console)
+            self._logger.addHandler(file_handler)
+            self._logger.addHandler(self._console)
         return self
 
     def __exit__(self, *exc):
-        if self._file is not None:
-            self._file.close()
+        with self._lock:
+            for handler in self._logger.handlers:
+                handler.close()
 
     def emit(self, event, message, *, level="info", **fields):
         self.write(
@@ -186,162 +129,23 @@ class BuildLog:
                 "sequence": self._sequence,
                 "elapsed_s": round(time.monotonic() - self.started, 3),
             }
-            encoded = json.dumps(record, ensure_ascii=False)
-            if self._file is not None:
-                self._file.write(encoded + "\n")
-                self._file.flush()
-            if self.worker:
-                print(WORKER_PREFIX + encoded, flush=True)
-            elif self.log_format == "json":
-                print(encoded, flush=True)
-            else:
-                terminal = self._terminal_record(record, repeated=repeated)
-                if terminal is not None:
-                    print(self._render_terminal(terminal), flush=True)
-
-    def _render_terminal(self, record):
-        color = (
-            sys.stdout.isatty()
-            and "NO_COLOR" not in os.environ
-            and os.environ.get("TERM") != "dumb"
-        )
-
-        def style(text, code):
-            return f"\033[{code}m{text}\033[0m" if color else text
-
-        columns = max(24, shutil.get_terminal_size(fallback=(120, 24)).columns)
-        level_width = 8 if self.verbose else 0
-        progress_width, context_width = _table_widths(
-            columns - level_width, self._total
-        )
-        table_width = level_width + progress_width + 1 + context_width + 2 + 8
-        rule = style("-" * min(table_width, columns), "2")
-        name = record["event"]
-        if not self.verbose and name in (
-            "build_started",
-            "build_plan",
-            "command_started",
-        ):
-            count = self._total
-            title = record.get("title") or (
-                f"Hardware build / {count} {'assembly' if count == 1 else 'assemblies'}"
-            )
-            name_label = "Task" if name == "command_started" else "Assembly"
-            if context_width < 8:
-                name_label = "Name"
-            heading = f"{'Step':>{progress_width}} {name_label:<{context_width}}  {'Elapsed':>8}"
-            return "\n".join(
-                (
-                    style(textwrap.fill(title, width=columns), "1"),
-                    "",
-                    style(
-                        textwrap.fill(heading, width=columns, replace_whitespace=False),
-                        "2",
+            entry = self._logger.makeRecord(
+                self._logger.name,
+                LEVELS.get(record["level"], logging.INFO),
+                "",
+                0,
+                record["message"],
+                (),
+                None,
+                extra={
+                    "hardware_event": record,
+                    "hardware_state": BuildState(
+                        self._total, len(self._complete), self._summary, repeated
                     ),
-                    rule,
-                )
+                },
             )
-
-        text = _text_lines({"total": self._total, **record}, show_level=self.verbose)
-        if record["level"] in ("error", "critical"):
-            text = style(text, "1;31")
-        elif name in ("build_finished", "command_finished"):
-            text = style(text, "1;32" if record.get("status") == "success" else "1;33")
-        elif name == "cache_checked":
-            text = style(text, "2")
-        elif (
-            color
-            and name in ("step_finished", "task_finished")
-            and record.get("status") == "success"
-        ):
-            lines = text.splitlines()
-            elapsed = f"{record['elapsed_s']:7.1f}s"
-            first = lines[0]
-            count_start, count_end = first.find("["), first.find("]")
-            if count_start >= 0 and count_end > count_start:
-                first = (
-                    first[:count_start]
-                    + style(first[count_start : count_end + 1], "2")
-                    + first[count_end + 1 :]
-                )
-            if first.endswith(elapsed):
-                first = first[: -len(elapsed)] + style(elapsed, "2")
-            text = "\n".join([first, *lines[1:]])
-        if name in ("build_finished", "command_finished"):
-            details = [
-                style(
-                    textwrap.fill(
-                        _single_line(detail), width=columns, subsequent_indent="  "
-                    ),
-                    "2",
-                )
-                for detail in record.get("terminal_details", [])
-            ]
-            return "\n".join((rule, text, *details))
-        return text
-
-    def _terminal_record(self, record, *, repeated):
-        # Presentation only: the original event has already been saved in full.
-        if record["level"] == "warning" or record["event"] == "worker_running":
-            return None
-        name = record["event"]
-        if self.verbose and name not in ("build_finished", "command_finished"):
-            return record
-        if record["level"] == "debug" or name in (
-            "log_opened",
-            "outputs_cleared",
-            "build_summary",
-        ):
-            return None
-        if name == "step_finished" and repeated and record.get("status") == "success":
-            return None
-        if name == "build_started" and not record.get("stems"):
-            return None  # The dispatcher prints its plan once it knows the total.
-        message = record["message"]
-        if name == "command_error":
-            message = message.splitlines()[0] if message else "Command failed"
-        elif name == "cache_checked":
-            if not record["cached"]:
-                return None
-            message = f"{record['cached']} cached; {record['to_build']} to build"
-        elif name in ("build_finished", "command_finished"):
-            message = record["status"].upper()
-            details = list(record.get("details", []))
-            if record.get("summary"):
-                message += f"  {record['summary']}"
-            if self._summary is not None:
-                summary = self._summary
-                message += f"  {summary['complete']}/{summary['total']} complete"
-                counts = [
-                    f"{summary[key]} {label}"
-                    for key, label in (
-                        ("cached", "cached"),
-                        ("rebuilt", "built"),
-                        ("reannotated", "updated"),
-                    )
-                    if summary.get(key)
-                ]
-                if counts:
-                    details.append(", ".join(counts))
-            elif self._total is not None:
-                message += f"  {len(self._complete)}/{self._total} complete"
-            path = (
-                record.get("log_path")
-                if record.get("exit_code")
-                else record.get("output_dir")
-            )
-            if path:
-                path = Path(path)
-                shown = (
-                    path.relative_to(REPO_ROOT)
-                    if path.is_relative_to(REPO_ROOT)
-                    else path
-                )
-                details.append(
-                    f"{'Details' if record.get('exit_code') else 'Output'}: {shown}"
-                )
-            record = {**record, "terminal_details": details}
-        return {**record, "message": message}
+            # The run owns this logger; host/root verbosity must not discard events.
+            self._logger.handle(entry)
 
     def worker_line(self, line, *, stems, worker_pid):
         if line.startswith(WORKER_PREFIX):

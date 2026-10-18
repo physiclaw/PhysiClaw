@@ -181,4 +181,6 @@ def testdrive(
             message = f"could not close the board connection: {e}"
             if completed:
                 exit_error(message)
-            typer.echo(f"error: {message}", err=True)
+            from physiclaw.common.log_style import report_error
+
+            report_error(message)

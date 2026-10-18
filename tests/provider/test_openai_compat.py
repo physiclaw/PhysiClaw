@@ -105,7 +105,7 @@ def test_normalize_finish_unknown_value_falls_back_to_stop_with_warning(
 ) -> None:
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
         out = _normalize_finish("future_unknown_reason")
 
     assert out == FinishReason.STOP
@@ -394,13 +394,11 @@ async def test_chat_maps_429_to_transient(
         json={"error": "rate limited"},
     )
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
         with pytest.raises(ProviderTransientError, match=r"^HTTP 429: "):
             await provider.chat([UserMessage(content="x")], [])
 
-    assert any(
-        "provider HTTP 429 (transient)" in r.getMessage() for r in caplog.records
-    )
+    assert any("HTTP 429 (transient)" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -429,13 +427,11 @@ async def test_chat_maps_400_to_permanent(
         json={"error": "bad model"},
     )
 
-    with caplog.at_level(logging.ERROR, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
         with pytest.raises(ProviderPermanentError, match=r"^HTTP 400: "):
             await provider.chat([UserMessage(content="x")], [])
 
-    assert any(
-        "provider HTTP 400 (permanent)" in r.getMessage() for r in caplog.records
-    )
+    assert any("HTTP 400 (permanent)" in r.getMessage() for r in caplog.records)
 
 
 # ---------- list_models ----------

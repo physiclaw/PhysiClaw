@@ -74,7 +74,15 @@ def load_suspended(
             events=events,
         )
     except Exception as e:
-        log.warning("suspended playbook could not load (%s) — dropped: %s", p, e)
+        log.warning(
+            "suspended playbook could not load (%s) — dropped: %s",
+            p,
+            e,
+            exc_info=True,
+            extra={
+                "console_message": "Saved playbook could not resume — continuing without saved progress"
+            },
+        )
         return None
     finally:
         suspension.clear_suspended()  # one-shot: consumed on ANY load outcome
@@ -122,7 +130,7 @@ def session_setup(
         # resume itself).
         return program, walk_registry(program, channel)
     found = discover()
-    log.info("conductor: playbooks on disk — %s", ", ".join(found.roster) or "none")
+    log.debug("Playbooks on disk: %s", ", ".join(found.roster) or "none")
     hidden: dict[str, Macro] = {}
     if channel is not None:
         hidden.update(channel.macros)
@@ -135,7 +143,7 @@ def session_setup(
         # The first gap in the chain the boot needs — a usable channel
         # pack, a live boot in it, a task pack on disk, a live playbook
         # in one — each naming the door that closes it.
-        log.info("conductor: plain model session — %s", reason)
+        log.debug("Plain model session: %s", reason)
         return None, hidden
 
     if channel is None:
@@ -161,7 +169,7 @@ def session_setup(
         events=events,
     )
     hidden.update(boot.pack_macros)  # a hand embedded in the boot route
-    log.info("conductor: boot drives — offering %s", ", ".join(found.entries))
+    log.debug("Boot drives: offering %s", ", ".join(found.entries))
     return boot, hidden
 
 

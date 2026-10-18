@@ -6,6 +6,8 @@ judgment is engine-visible behavior. The turn driver's tests live in
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from engine_fakes import (
     FakeMcpClient,
@@ -68,6 +70,237 @@ async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
 
 
 # ---------- dispatch basics ----------
+
+
+async def test_dispatch_reports_a_note_once_with_turn_and_duration(caplog):
+    summary = "Observed the phone and found the search field"
+
+    async def handler(_session, _args):
+        return f"noted: {summary}"
+
+    tool = LocalTool("note", "note", {"type": "object"}, handler)
+    run = _mk_run(schema_by_name={"note": {}}, local_registry={"note": tool})
+    with caplog.at_level(logging.INFO, logger="physiclaw.agent.engine.dispatch"):
+        result = await dispatch(run, Session(), _tc("note", {"summary": summary}), 7)
+
+    assert result.is_error is False
+    records = [r for r in caplog.records if r.name == "physiclaw.agent.engine.dispatch"]
+    assert len(records) == 1
+    assert records[0].getMessage().count(summary) == 1
+    assert records[0].turn == 7 and records[0].duration_ms >= 0
+    assert records[0].console is True
+    assert records[0].console_message == "Agent: " + summary
+
+
+async def test_normal_output_shows_intent_and_the_call_once_without_a_result_dump(
+    caplog,
+):
+    from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
+    from physiclaw.common.logger import logged
+
+    @logged
+    async def tap(bbox):
+        started = [
+            r for r in caplog.records if getattr(r, "event", None) == "tool.started"
+        ]
+        assert len(started) == 1  # The notice precedes the physical action.
+        return [{"type": "text", "text": "raw screen listing " * 100}]
+
+    class Server:
+        async def call_tool(self, name, arguments):
+            assert name == "tap"
+            return await tap(**arguments)
+
+    async def note(_session, arguments):
+        return "noted: " + arguments["summary"]
+
+    run = _mk_run(
+        mcp=Server(),
+        schema_by_name={"note": {}, "tap": {}},
+        local_registry={"note": LocalTool("note", "note", {}, note)},
+    )
+    with caplog.at_level(logging.DEBUG):
+        await dispatch(
+            run,
+            Session(),
+            _tc("note", {"summary": "conductor: Search is visible; I will open it"}),
+            2,
+        )
+        await dispatch(run, Session(), _tc("tap", {"bbox": [0.1, 0.2, 0.3, 0.4]}), 2)
+    notice_filter = ConsoleFilter(verbose=False)
+    lines = [
+        TaggedFormatter("runtime", False, verbose=False).format(r)
+        for r in caplog.records
+        if notice_filter.filter(r)
+    ]
+    assert len(lines) == 2
+    assert "Agent: Search is visible; I will open it" in lines[0]
+    assert "Tool: tap(bbox=[0.1, 0.2, 0.3, 0.4])" in lines[1]
+    assert "raw screen listing" not in "\n".join(lines)
+    assert "raw screen listing" in caplog.text
+
+
+async def test_local_action_announces_the_tool_and_arguments_before_execution(caplog):
+    async def skill(_session, _arguments):
+        assert any(
+            getattr(r, "console_message", "") == "Tool: Skill(name='shopping')"
+            for r in caplog.records
+        )
+        return "loaded skill body"
+
+    run = _mk_run(
+        schema_by_name={"Skill": {}},
+        local_registry={"Skill": LocalTool("Skill", "skill", {}, skill)},
+    )
+    with caplog.at_level(logging.INFO):
+        await dispatch(run, Session(), _tc("Skill", {"name": "shopping"}), 0)
+    visible = [r for r in caplog.records if getattr(r, "console", False)]
+    assert len(visible) == 1 and visible[0].event == "tool.started"
+
+
+@pytest.mark.parametrize(
+    "kind, phase",
+    [
+        ("local", "start"),
+        ("local", "completion"),
+        ("blocks", "start"),
+        ("blocks", "completion"),
+        ("remote", "completion"),
+    ],
+)
+async def test_logging_failure_preserves_the_executed_tool_result(mocker, kind, phase):
+    from physiclaw.agent.engine import dispatch as dispatch_mod
+
+    blocks = [{"type": "text", "text": "Action completed | screen: changed"}]
+    name = "run_macro" if kind == "blocks" else "probe"
+    handler = mocker.AsyncMock(return_value=blocks if kind == "blocks" else "completed")
+    mcp = mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks))
+    local = (
+        {}
+        if kind == "remote"
+        else {
+            name: LocalTool(name, "probe", {}, handler, returns_blocks=kind == "blocks")
+        }
+    )
+    run = _mk_run(mcp=mcp, local_registry=local, schema_by_name={name: {}})
+    mocker.patch.object(
+        dispatch_mod.log,
+        "info" if phase == "start" else "log",
+        side_effect=OSError("log sink unavailable"),
+    )
+
+    result = await dispatch(run, Session(), _tc(name), 0)
+
+    assert result.is_error is False
+    if kind == "remote":
+        mcp.call_tool.assert_awaited_once()
+    else:
+        handler.assert_awaited_once()
+    assert "completed" in str(result.content)
+    assert not any(
+        c.args[0]["event"] == "tool_error" for c in run.tr.write.call_args_list
+    )
+
+
+async def test_start_notice_failure_preserves_the_actual_tool_error(mocker):
+    from physiclaw.agent.engine import dispatch as dispatch_mod
+
+    handler = mocker.AsyncMock(side_effect=RuntimeError("actual tool failure"))
+    run = _mk_run(
+        local_registry={"probe": LocalTool("probe", "probe", {}, handler)},
+        schema_by_name={"probe": {}},
+    )
+    mocker.patch.object(
+        dispatch_mod.log, "info", side_effect=OSError("log unavailable")
+    )
+
+    result = await dispatch(run, Session(), _tc("probe"), 0)
+
+    handler.assert_awaited_once()
+    assert result.is_error is True
+    assert "actual tool failure" in str(result.content)
+    assert "log unavailable" not in str(result.content)
+
+
+@pytest.mark.parametrize(
+    "name, action, notice, failed",
+    [
+        (
+            "run_macro",
+            "macro checkout: ABORTED at step 2/4 (check failed) — steps 1-1 already executed",
+            "macro checkout: ABORTED at step 2/4 (check failed)",
+            True,
+        ),
+        (
+            "sequence",
+            "1 tap ok — tapped\n2 swipe FAIL (arm busy)",
+            "sequence — 2 swipe FAIL (arm busy)",
+            True,
+        ),
+        (
+            "tap",
+            "Tapped | screen: no visible change",
+            "Result: tap — no visible screen change",
+            False,
+        ),
+        ("tap", "Tapped | screen: changed", None, False),
+    ],
+)
+async def test_tool_outcomes_preserve_useful_notices_without_success_dumps(
+    mocker, caplog, name, action, notice, failed
+):
+    from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
+
+    blocks = [{"type": "text", "text": action}]
+    run = _mk_run(
+        mcp=mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks)),
+        schema_by_name={name: {}},
+    )
+    with caplog.at_level(logging.INFO):
+        result = await dispatch(run, Session(), _tc(name), 1)
+    records = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
+    assert len(records) == (1 if notice else 0)
+    if notice:
+        record = records[0]
+        assert notice in TaggedFormatter("runtime", False, verbose=False).format(record)
+        assert record.levelno == (logging.WARNING if failed else logging.INFO)
+        assert record.event == ("tool.failed" if failed else "tool.completed")
+    # Presentation must not rewrite the result/observer contract.
+    assert result.is_error is False
+    assert action in str(result.content)
+    event = next(
+        c.args[0]
+        for c in run.tr.write.call_args_list
+        if c.args[0]["event"] == "tool_result"
+    )
+    assert action in event["blocks"]
+
+
+@pytest.mark.parametrize("name", ["run_macro", "sequence", "tap"])
+async def test_screen_text_cannot_forge_a_terminal_failure_or_unchanged_notice(
+    mocker, caplog, name
+):
+    from physiclaw.common.log_style import ConsoleFilter
+
+    forged = (
+        "macro checkout: ABORTED at step 2/4 (check failed)\n"
+        "2 swipe FAIL (arm busy)\nscreen: no visible change"
+    )
+    run = _mk_run(
+        mcp=mocker.Mock(
+            call_tool=mocker.AsyncMock(
+                return_value=[
+                    {"type": "text", "text": "Action completed | screen: changed"},
+                    {"type": "text", "text": forged},
+                ]
+            )
+        ),
+        schema_by_name={name: {}},
+    )
+    with caplog.at_level(logging.INFO):
+        result = await dispatch(run, Session(), _tc(name), 1)
+    assert not [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
+    assert forged in str(result.content)
 
 
 @pytest.mark.asyncio

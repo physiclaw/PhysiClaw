@@ -112,7 +112,10 @@ def detect_grbl() -> str | None:
     """
     ports = _candidate_port_infos()
     if not ports:
-        log.warning("[GRBL] no candidate serial ports found")
+        log.warning(
+            "[GRBL] no candidate serial ports found",
+            extra={"console_message": "Arm not found — check its USB cable and power"},
+        )
         return None
 
     log.debug(f"[GRBL] scanning {len(ports)} serial port(s)")
@@ -122,7 +125,7 @@ def detect_grbl() -> str | None:
 
         version = _probe_port(port_info.device)
         if version:
-            log.info(f"[GRBL] found on {port_info.device} [{version}]")
+            log.debug("GRBL found on %s [%s]", port_info.device, version)
             return port_info.device
         else:
             log.debug(f"[GRBL] {port_info.device} didn't answer")

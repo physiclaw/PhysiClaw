@@ -9,6 +9,7 @@ whatever agent is at the terminal. `--session` puts a recorded
 session's frames behind the same page instead of hardware.
 """
 
+import logging
 import threading
 import webbrowser
 from pathlib import Path
@@ -19,6 +20,8 @@ import typer
 from physiclaw.cli._format import exit_error
 from physiclaw.common.ready import START_HINT
 from physiclaw.studio.session import Session
+
+log = logging.getLogger(__name__)
 
 
 def studio(
@@ -69,8 +72,17 @@ def studio(
     """
     import uvicorn
 
+    from physiclaw.common import paths
+    from physiclaw.common.logger import setup_logging
     from physiclaw.studio.server import REVIEW_PATH, build_app
     from physiclaw.studio.session import StudioSession
+
+    setup_logging(
+        "studio",
+        file_dir=paths.LOG_DIR / "studio",
+        file_level=logging.DEBUG,
+        force=False,
+    )
 
     driven: Session
     review_dir = None
@@ -84,18 +96,29 @@ def studio(
         url += REVIEW_PATH.lstrip("/") if review_dir is not None else "sessions/"
     elif session is not None:
         recorded = _recorded_session(session)
-        typer.echo(f"studio: recorded {recorded.label} ({len(recorded.frames)} frames)")
+        log.info(
+            "Recorded session %s | frames=%d",
+            recorded.label,
+            len(recorded.frames),
+            extra={"event": "studio.recording_loaded", "console": True},
+        )
         driven = recorded
     else:
         driven = StudioSession(mcp_url or _server_base())
-        typer.echo(f"studio: hardware via {driven.mcp_url}")
-    typer.echo(f"studio: {url}")
+        log.info(
+            "Hardware connection: %s",
+            driven.mcp_url,
+            extra={"event": "studio.hardware_selected", "console": True},
+        )
+    log.info("Open Studio: %s", url, extra={"event": "studio.started", "console": True})
     server = uvicorn.Server(
         uvicorn.Config(
             build_app(driven, review_dir=review_dir),
             host="127.0.0.1",
             port=port,
             log_level="warning",
+            log_config=None,
+            access_log=False,
         )
     )
     stopped = threading.Event()
@@ -106,7 +129,12 @@ def studio(
                 try:
                     webbrowser.open(url)
                 except (OSError, webbrowser.Error) as e:
-                    typer.echo(f"studio: could not open browser: {e}", err=True)
+                    log.warning(
+                        "Could not open browser: %s — open %s manually",
+                        e,
+                        url,
+                        extra={"event": "studio.browser_failed"},
+                    )
                 return
 
     opener = None
@@ -160,7 +188,11 @@ def _server_address() -> tuple[str, bool]:
     live = runtime_state.read_live()
     if live:
         base = f"http://{url_host(live['host'])}:{live['port']}"
-        typer.echo(f"studio: MCP server running at {base}")
+        log.debug(
+            "Using live MCP server at %s",
+            base,
+            extra={"event": "studio.server_selected"},
+        )
         return base, True
     return server_url().rstrip("/"), False
 

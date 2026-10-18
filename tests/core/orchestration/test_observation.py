@@ -562,6 +562,24 @@ def test_observe_quality_returns_warning_line() -> None:
     assert obs.observe_quality("peek", _report_of(_flat())) == "⚠ camera: bad"
 
 
+def test_quality_notices_follow_issue_changes_without_repeating_measurements(caplog):
+    import logging
+
+    obs = GestureObserver(park=MagicMock(), grab=MagicMock(), detect=MagicMock())
+    reports = [
+        _report_of(frame)
+        for frame in (_flat(0), _flat(1), _flat(128), _sharp(), _flat(0))
+    ]
+    with caplog.at_level(logging.DEBUG, logger=observation.__name__):
+        warnings = [obs.observe_quality("peek", report) for report in reports]
+    assert all(warnings[i] is not None for i in (0, 1, 2, 4))
+    assert warnings[3] is None
+    notices = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(notices) == 3
+    assert all("hardware setup" in r.console_message for r in notices)
+    assert sum("Camera view clear again" in r.getMessage() for r in caplog.records) == 1
+
+
 def test_observe_quality_none_on_good_view() -> None:
     obs = _observer([])
 

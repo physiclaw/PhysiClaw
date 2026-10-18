@@ -27,6 +27,7 @@ def test_colorize_true_when_tty_and_no_color_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
     mocker.patch.object(logger_mod.sys.stderr, "isatty", return_value=True)
 
     assert _colorize() is True
@@ -136,7 +137,7 @@ def test_formatter_indents_continuation_lines() -> None:
     lines = out.split("\n")
     # Continuation indent matches the prefix length.
     assert "line one" in lines[0]
-    assert lines[1].startswith(" " * len("00:00 [runtime] "))
+    assert lines[1] == " " * lines[0].index("line one") + "line two"
 
 
 # ---------- setup_logging ----------
@@ -594,7 +595,7 @@ async def test_logged_calls_wrapped_function(
     async def my_tool(bbox):
         return f"tapped {bbox}"
 
-    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.tools"):
         out = await my_tool(bbox=[0, 0, 1, 1])
 
     assert out == "tapped [0, 0, 1, 1]"
@@ -604,26 +605,21 @@ async def test_logged_calls_wrapped_function(
 
 
 @pytest.mark.asyncio
-async def test_logged_skips_logging_when_info_disabled(
-    mocker,
+async def test_logged_announces_the_call_once_without_success_chatter(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     @logged
     async def my_tool():
         return "ok"
 
-    # Disable info-level logging.
-    mocker.patch.object(
-        logger_mod.log,
-        "isEnabledFor",
-        return_value=False,
-    )
-
     with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
         out = await my_tool()
 
     assert out == "ok"
-    assert not [r for r in caplog.records if "my_tool" in r.getMessage()]
+    records = [r for r in caplog.records if "my_tool" in r.getMessage()]
+    assert len(records) == 1
+    assert records[0].event == "tool.started"
+    assert records[0].console_message == "Tool: my_tool()"
 
 
 @pytest.mark.asyncio
@@ -642,7 +638,12 @@ async def test_logged_marks_failure_when_function_raises(
     # failure isn't mistaken for a fast success in the server stream.
     msgs = [r.getMessage() for r in caplog.records if "my_tool" in r.getMessage()]
     assert msgs
-    assert any("FAILED: boom" in m for m in msgs)
+    assert any("FAILED: RuntimeError: boom" in m for m in msgs)
+    assert all(
+        r.levelno == logging.WARNING
+        for r in caplog.records
+        if getattr(r, "event", None) == "tool.failed"
+    )
 
 
 @pytest.mark.asyncio
@@ -653,7 +654,7 @@ async def test_logged_success_line_has_no_failed_marker(
     async def my_tool():
         return "ok"
 
-    with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.tools"):
         await my_tool()
 
     msgs = [r.getMessage() for r in caplog.records if "my_tool" in r.getMessage()]
@@ -669,7 +670,7 @@ async def test_regression_logged_sink_failure_preserves_tool_result(
     async def tool():
         return "action completed"
 
-    mocker.patch.object(logger_mod.log, "info", side_effect=OSError("disk full"))
+    mocker.patch.object(logger_mod.log, "log", side_effect=OSError("disk full"))
 
     with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
         result = await tool()
@@ -687,7 +688,7 @@ async def test_regression_logged_sink_failure_preserves_original_error(
     async def tool():
         raise failure
 
-    mocker.patch.object(logger_mod.log, "info", side_effect=OSError("disk full"))
+    mocker.patch.object(logger_mod.log, "log", side_effect=OSError("disk full"))
 
     with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
         with pytest.raises(ValueError) as caught:
@@ -736,7 +737,8 @@ def test_daily_file_handler_writes_uncolored_tagged_lines(tmp_path) -> None:
         handler.close()
 
     text = (tmp_path / "runtime-2026-04-28.log").read_text()
-    assert "[runtime] hello" in text
+    assert "[runtime] t.daily.plain:" in text
+    assert "| hello red world" in text
     assert "\033[" not in text.split("hello")[0]  # prefix uncolored
 
 

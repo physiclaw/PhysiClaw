@@ -78,8 +78,10 @@ def test_launch_rejects_invalid_interval_before_startup(monkeypatch, capsys, int
 def test_launch_runs_engine_path_for_in_process_provider(
     mocker,
     monkeypatch: pytest.MonkeyPatch,
+    caplog,
     interval,
 ) -> None:
+    caplog.set_level("INFO", logger="physiclaw.agent.runtime.launcher")
     monkeypatch.setenv("PHYSICLAW_MODEL", "qwen/qwen3-plus")
     monkeypatch.setattr(
         "sys.argv",
@@ -119,6 +121,12 @@ def test_launch_runs_engine_path_for_in_process_provider(
     assert kwargs["label"].startswith("engine=physiclaw")
     assert kwargs["react"].func is fake_engine_run
     assert kwargs["react"].keywords == {"model_ref": "qwen/qwen3-plus"}
+    (selected,) = [
+        r for r in caplog.records if getattr(r, "event", None) == "model.selected"
+    ]
+    assert selected.console is True
+    assert selected.console_message == "Model: qwen/qwen3-plus"
+    assert selected.model_ref == "qwen/qwen3-plus"
 
 
 def test_launch_normalizes_proxy_env_first(
@@ -219,7 +227,8 @@ def test_missing_credentials_stop_runtime_without_traceback_or_retries(
     assert error.value.code == 1
     message = capsys.readouterr().err
     assert len(message.splitlines()) == 1
-    assert message.startswith("physiclaw runtime: deepseek credential not found")
+    assert "ERROR [" in message
+    assert "deepseek credential not found" in message
     assert "DEEPSEEK_API_KEY" in message
     assert "deepseek_api_key" in message
     make.assert_called_once()
@@ -292,4 +301,5 @@ def test_launch_verbose_flag_sets_debug_level(
         "runtime",
         _logging.DEBUG,
         file_dir=paths.runtime_log_dir(),
+        file_level=_logging.DEBUG,
     )

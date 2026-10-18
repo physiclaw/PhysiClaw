@@ -470,6 +470,9 @@ def expire_stale_fired(
             "jobs: auto-closed %d zombie fired job(s): %s",
             len(updates),
             sorted(updates),
+            extra={
+                "console_message": f"Updated {len(updates)} unfinished schedule(s) — review {path}"
+            },
         )
     return sorted(updates)
 

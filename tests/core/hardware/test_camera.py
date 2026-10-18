@@ -269,7 +269,7 @@ def test_reopen_logs_when_open_raises(
     cam.cap = MagicMock()
     mocker.patch.object(cam, "_open", side_effect=RuntimeError("dead"))
 
-    with caplog.at_level(logging.ERROR, logger="physiclaw.core.hardware.camera"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.core.hardware.camera"):
         cam._reopen()
 
     assert any("reopen failed" in r.getMessage() for r in caplog.records)

@@ -11,7 +11,9 @@ from physiclaw.agent.trace import store
 from physiclaw.agent.trace.format import (
     MIRRORED_EVENTS,
     _end_footer,
+    session_footer,
     summarize_event,
+    usage_summary,
 )
 from physiclaw.common import paths
 from physiclaw.common.logger import (
@@ -57,6 +59,7 @@ class Trace:
         self._notes = self._open_notes(d / "notes.md")
         self._summary = _Summary(session_id)
         self._closed = False
+        self._primary_model: str | None = None
         # First line of every session: the environment it ran in —
         # crash-safe (flushed now), so even a killed session is
         # self-describing.
@@ -88,6 +91,8 @@ class Trace:
             return None
 
     def write(self, event: dict[str, Any]) -> None:
+        if event.get("event") == "wake":
+            self._primary_model = event.get("model_ref")
         if event.get("event") == "usage":
             # The trace owns turns: a model call's account is stamped
             # with the turn in progress here, whoever made the call.
@@ -100,8 +105,30 @@ class Trace:
             return
         self._daily.line(msg)
         if event.get("event") in MIRRORED_EVENTS:
-            # One rendering, in the process log too (runtime.log).
-            log.info("%s", msg)
+            # Each provider call owns one token notice. A micro_call records
+            # the decision separately, without repeating that call's account.
+            is_usage = event["event"] == "usage"
+            fields = {
+                "console": is_usage,
+                "event": event["event"],
+                "turn": event.get("turn"),
+                "session_id": self.session_id,
+            }
+            if is_usage:
+                fields.update(
+                    console_message=usage_summary(
+                        event, include_model=event.get("model") != self._primary_model
+                    ),
+                    model_ref=event.get("model"),
+                    input_tokens=int(event.get("input") or 0),
+                    output_tokens=int(event.get("output") or 0),
+                    duration_ms=event.get("elapsed_ms"),
+                )
+            log.info(
+                "%s",
+                msg,
+                extra=fields,
+            )
 
     def _append_note(self, event: dict[str, Any]) -> None:
         """Append a `note` tool_result's summary to notes.md — the
@@ -146,18 +173,44 @@ class Trace:
                 # losing this session's summary must not suppress them too.
                 log.warning("session summary write failed", exc_info=True)
             append_stats(paths.LOG_DIR, summary)
-            self._daily.line(_end_footer(summary))
+            footer = _end_footer(summary)
+            self._daily.line(footer)
+            outcome = summary["outcome"]
+            recap = str(outcome.get("recap") or "")
+            log.log(
+                logging.WARNING
+                if outcome["sentinel"] in {"FAIL", "STUCK"} or outcome["crashed"]
+                else logging.INFO,
+                "%s%s",
+                footer,
+                f"\n{recap}" if recap else "",
+                extra={
+                    "console_message": session_footer(summary),
+                    "console": True,
+                    "event": "session.completed",
+                    "session_id": self.session_id,
+                    "status": outcome["sentinel"]
+                    or ("CRASHED" if outcome["crashed"] else "STOPPED"),
+                    "duration_ms": round(summary["duration_s"] * 1000),
+                    "turn_count": summary["turns"],
+                    "tool_count": sum(summary["tool_calls"].values()),
+                    "input_tokens": summary["usage"]["input_tokens"],
+                    "output_tokens": summary["usage"]["output_tokens"],
+                    "cache_hit_pct": summary["usage"]["cache_hit_pct"],
+                },
+            )
         finally:
-            # Stop routing MCP logs here and detach the runtime mirror
-            # before closing this session's trace files.
-            self._sidecars.close()
-            self._daily.close()
-            for f in (self._events, self._notes):
-                try:
-                    if f is not None and not f.closed:
-                        f.close()
-                except OSError:
-                    pass
+            # Keep diagnostic capture alive for the other files' close errors.
+            try:
+                self._daily.close()
+                for f in (self._events, self._notes):
+                    try:
+                        if f is not None and not f.closed:
+                            f.close()
+                    except OSError:
+                        log.debug("session artifact close failed", exc_info=True)
+            finally:
+                self._sidecars.close()
 
     def _write_event(self, event: dict[str, Any]) -> None:
         """Append the structured event to events.jsonl. A `tool_result`'s

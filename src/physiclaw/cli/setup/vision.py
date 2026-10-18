@@ -24,7 +24,7 @@ from typing import Annotated, NoReturn
 
 import typer
 
-from physiclaw.cli._format import ok
+from physiclaw.cli._format import exit_error, ok
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
 from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
@@ -229,11 +229,9 @@ def vision(
         with exclusive_file_lock(onnx.parent / ".install.lock"):
             _install(onnx, force=force, build=build)
     except FileLockBusy:
-        typer.echo("A vision model install is already running.", err=True)
-        raise typer.Abort() from None
+        exit_error("A vision model install is already running.")
     except OSError as e:
-        typer.echo(f"Couldn't install the vision model: {e}", err=True)
-        raise typer.Abort() from e
+        exit_error(f"Couldn't install the vision model: {e}")
 
 
 def _install(onnx: Path, *, force: bool, build: bool) -> None:
