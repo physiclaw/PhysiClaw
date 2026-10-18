@@ -868,11 +868,11 @@ def test_provider_base_url_override_returns_none_for_flat_providers_table(
 def test_model_ref_raises_when_neither_env_nor_config_set() -> None:
     # Exact-equality on the full message so any prose drift fails the test.
     expected = (
-        "no model configured.\n"
-        "  Quick start:\n"
-        "    physiclaw models key <provider>     # e.g. anthropic, openai, qwen\n"
-        "    physiclaw models use <provider/model>\n"
-        "  Or set PHYSICLAW_MODEL=<provider>/<model> in your shell."
+        "no model configured.\n\n"
+        "  Set an API key for your provider (e.g. anthropic or openai):\n"
+        "    physiclaw models key <provider>\n"
+        "  Select a model from the list shown:\n"
+        "    physiclaw models use <provider>/<model>"
     )
     with pytest.raises(RuntimeError) as exc_info:
         config.model_ref()

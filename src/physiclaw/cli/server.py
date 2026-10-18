@@ -128,9 +128,10 @@ def server(
 ) -> None:
     """Run the PhysiClaw MCP server.
 
-    Reserve both listeners before recording state or starting hardware and the
-    runtime. One scope owns the server lock, listeners, state and child process;
-    returning or failing releases them in reverse order.
+    Validate the model, then reserve both listeners before recording state or
+    starting hardware and the runtime. One scope owns the server lock,
+    listeners, state and child process; returning or failing releases them
+    in reverse order.
     """
     from physiclaw import __version__
     from physiclaw.cli._format import exit_error
@@ -170,6 +171,9 @@ def server(
     logging.getLogger("uvicorn.error").addFilter(
         lambda record: "Invalid HTTP request received" not in record.getMessage()
     )
+    model_ref, model_source, runtime_label = _resolve_runtime_model(
+        no_runtime=no_runtime
+    )
     log = logging.getLogger(__name__)
     log.info(
         "PhysiClaw %s",
@@ -208,20 +212,16 @@ def server(
 
         resources.callback(shutdown)
         resources.callback(runtime_state.clear)
-        model_ref, runtime_label = _resolve_and_record_model(
-            host, port, no_runtime=no_runtime
-        )
+        if no_runtime:
+            runtime_state.write(host, port, no_runtime=True)
+        else:
+            runtime_state.write(
+                host, port, model_ref=model_ref, model_source=model_source
+            )
         _log_endpoints(host, port, no_runtime=no_runtime)
         apps = build_apps(host)
-        child = _start_runtime_loop(
-            host,
-            port,
-            verbose,
-            no_runtime=no_runtime,
-            model_ref=model_ref,
-            runtime_label=runtime_label,
-        )
-        if child is not None:
+        if not no_runtime:
+            child = _spawn_runtime(host, port, verbose, runtime_label)
             resources.callback(terminate_child, child)
         try:
             _serve(
@@ -523,20 +523,14 @@ def _refuse_if_already_running(host: str, port: int) -> None:
             )
 
 
-def _resolve_and_record_model(
-    host: str, port: int, *, no_runtime: bool = False
-) -> tuple[Optional[str], str]:
-    """Record the startup selection so doctor doesn't resolve another shell's model.
-
-    External MCP mode needs no model. Invalid selections keep the HTTP server
-    running, record the cause, and skip the runtime. The caller clears the
-    state on shutdown; stale processes are handled by runtime_state.read_live.
-    """
-    from physiclaw.common import runtime_state
+def _resolve_runtime_model(
+    *, no_runtime: bool
+) -> tuple[Optional[str], Optional[str], str]:
+    """Validate the model before startup; external MCP mode needs no model."""
+    from physiclaw.cli._format import exit_error
 
     if no_runtime:
-        runtime_state.write(host, port, no_runtime=True)
-        return None, "external MCP client"
+        return None, None, "external MCP client"
 
     from physiclaw.agent.runtime.launcher import engine_label
     from physiclaw.agent.runtime.launcher import resolve as _resolve_model
@@ -545,12 +539,9 @@ def _resolve_and_record_model(
         model_ref, model_source = _resolve_model()
         runtime_label = engine_label(model_ref)
     except RuntimeError as e:
-        logging.getLogger(__name__).warning("Runtime loop NOT started — %s", e)
-        runtime_state.write(host, port, model_error=str(e))
-        return None, "engine=(unset)"
+        exit_error(f"Cannot start PhysiClaw: {e}")
 
-    runtime_state.write(host, port, model_ref=model_ref, model_source=model_source)
-    return model_ref, runtime_label
+    return model_ref, model_source, runtime_label
 
 
 def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
@@ -696,35 +687,6 @@ def _open_hardware_wizard(host: str, port: int) -> None:
                 log.debug("could not open browser for setup wizard", exc_info=True)
 
     threading.Thread(target=_open_setup, daemon=True).start()
-
-
-def _start_runtime_loop(
-    host: str,
-    port: int,
-    verbose: bool,
-    *,
-    no_runtime: bool,
-    model_ref: Optional[str],
-    runtime_label: str,
-) -> subprocess.Popen | None:
-    """Spawn the agent runtime subprocess for the caller to own,
-    unless disabled (--no-runtime) or no model is configured."""
-    log = logging.getLogger(__name__)
-    if no_runtime:
-        # The external-client connect hint rides the /mcp endpoint line
-        # (`_log_endpoints`) — nothing to report here.
-        return None
-    if model_ref is None:
-        # Resolution already reported the actual cause. Keep the hardware
-        # server available for setup and external MCP clients.
-        log.warning(
-            "The MCP server is running for hardware setup and external clients. "
-            "Configure an API model with `physiclaw models key <provider>` and "
-            "`physiclaw models use <provider/model>`, then restart `physiclaw server`."
-        )
-        return None
-
-    return _spawn_runtime(host, port, verbose, runtime_label)
 
 
 def terminate_child(proc: subprocess.Popen, timeout: float = 5) -> None:

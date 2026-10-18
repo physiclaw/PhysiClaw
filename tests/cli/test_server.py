@@ -206,7 +206,9 @@ def _patch_server_runtime_deps(
     mocker.patch.object(server_mod.socket, "create_server", side_effect=create_listener)
     fake_launcher = MagicMock()
     if resolve_raises:
-        fake_launcher.resolve.side_effect = RuntimeError("no model configured")
+        from physiclaw.common.model_ref import _NO_MODEL_MSG
+
+        fake_launcher.resolve.side_effect = RuntimeError(_NO_MODEL_MSG)
     else:
         fake_launcher.resolve.return_value = ("openai/gpt-5", "config")
     fake_launcher.engine_label.return_value = "engine=openai"
@@ -487,52 +489,45 @@ def test_server_save_flags_set_env_vars(
     assert os.environ["PHYSICLAW_SAVE_SCREENSHOTS"] == "1"
 
 
-def test_server_external_mode_skips_model_resolution(mocker) -> None:
+@pytest.mark.parametrize("argv", [["mcp"], ["server", "--no-runtime"]])
+def test_server_external_mode_skips_model_resolution(mocker, argv) -> None:
+    from physiclaw.cli import app
+
     deps = _patch_server_runtime_deps(mocker, resolve_raises=True)
 
-    server_mod.server(
-        port=8048,
-        host="127.0.0.1",
-        verbose=False,
-        no_runtime=True,
-        warm_start=False,
-        cam_index=None,
-        save_tool_calls=False,
-        save_snapshots=False,
-        save_screenshots=False,
-    )
+    result = runner.invoke(app, [*argv, "--host", "127.0.0.1", "--port", "8048"])
 
+    assert result.exit_code == 0, result.output
     deps["launcher"].resolve.assert_not_called()
     deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
+    deps["serve"].assert_called_once()
 
 
-def test_server_skips_runtime_spawn_when_no_model_configured(
-    mocker,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """First-run UX: with no model set, the MCP server still starts but the
-    runtime subprocess is not spawned (a stack trace is the bug we're avoiding).
-    The user is told why + how to fix."""
-    _patch_server_runtime_deps(mocker, resolve_raises=True)
-    spawn_spy = mocker.patch.object(server_mod, "_spawn_runtime")
+@pytest.mark.parametrize("argv", [[], ["server"]])
+def test_server_exits_before_startup_when_no_model_configured(mocker, argv) -> None:
+    """Missing model settings stop startup with actionable setup instructions."""
+    from physiclaw.cli import app
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.cli.server"):
-        server_mod.server(
-            port=8048,
-            host="127.0.0.1",
-            verbose=False,
-            no_runtime=False,
-            warm_start=False,
-            cam_index=None,
-            save_tool_calls=False,
-            save_snapshots=False,
-            save_screenshots=False,
-        )
+    deps = _patch_server_runtime_deps(mocker, resolve_raises=True)
+    maintenance = mocker.patch.object(server_mod, "_run_startup_maintenance")
 
-    spawn_spy.assert_not_called()
-    msgs = " ".join(r.getMessage() for r in caplog.records)
-    assert "no model configured" in msgs
-    assert "physiclaw models" in msgs
+    result = runner.invoke(app, argv)
+
+    assert result.exit_code == 1
+    assert "Cannot start PhysiClaw: no model configured." in result.stderr
+    assert "physiclaw models key <provider>" in result.stderr
+    assert "physiclaw models use <provider>/<model>" in result.stderr
+    assert "Traceback" not in result.output
+    assert "starting hardware" not in result.output
+    maintenance.assert_not_called()
+    server_mod._require_vision_model.assert_not_called()
+    server_mod.socket.create_server.assert_not_called()
+    server_mod._spawn_runtime.assert_not_called()
+    server_mod.threading.Thread.assert_not_called()
+    deps["core_server"].build_apps.assert_not_called()
+    deps["state"].write.assert_not_called()
+    deps["state"].clear.assert_not_called()
+    deps["serve"].assert_not_called()
 
 
 def test_server_keyboard_interrupt_is_swallowed(mocker) -> None:
@@ -1555,20 +1550,22 @@ def test_server_wizard_browser_failure_is_nonfatal(mocker, caplog):
     assert "could not open browser" in caplog.text
 
 
-def test_server_invalid_model_reports_original_error_and_keeps_mcp(mocker, caplog):
+def test_server_invalid_model_reports_original_error_and_exits(mocker, capsys):
     deps = _patch_server_runtime_deps(mocker)
     deps["launcher"].resolve.side_effect = RuntimeError(
         "unknown provider 'unknown' in ref 'unknown/model' (from PHYSICLAW_MODEL env)"
     )
 
-    with caplog.at_level(logging.WARNING):
+    with pytest.raises(typer.Exit) as error:
         server_mod.server(no_runtime=False)
 
+    assert error.value.exit_code == 1
     server_mod._spawn_runtime.assert_not_called()
-    deps["serve"].assert_called_once()
-    assert "unknown provider 'unknown'" in caplog.text
-    assert "PHYSICLAW_MODEL env" in caplog.text
-    assert "no model configured" not in caplog.text
-    assert deps["state"].write.call_args.kwargs["model_error"] == (
-        "unknown provider 'unknown' in ref 'unknown/model' (from PHYSICLAW_MODEL env)"
-    )
+    server_mod.socket.create_server.assert_not_called()
+    deps["serve"].assert_not_called()
+    deps["state"].write.assert_not_called()
+    deps["state"].clear.assert_not_called()
+    output = capsys.readouterr().err
+    assert "unknown provider 'unknown'" in output
+    assert "PHYSICLAW_MODEL env" in output
+    assert "no model configured" not in output

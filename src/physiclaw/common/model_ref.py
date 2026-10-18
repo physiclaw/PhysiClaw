@@ -27,11 +27,11 @@ from physiclaw.common.text import read_text
 MODEL_ENV_VAR = "PHYSICLAW_MODEL"
 
 _NO_MODEL_MSG = (
-    "no model configured.\n"
-    "  Quick start:\n"
-    "    physiclaw models key <provider>     # e.g. anthropic, openai, qwen\n"
-    "    physiclaw models use <provider/model>\n"
-    f"  Or set {MODEL_ENV_VAR}=<provider>/<model> in your shell."
+    "no model configured.\n\n"
+    "  Set an API key for your provider (e.g. anthropic or openai):\n"
+    "    physiclaw models key <provider>\n"
+    "  Select a model from the list shown:\n"
+    "    physiclaw models use <provider>/<model>"
 )
 
 
