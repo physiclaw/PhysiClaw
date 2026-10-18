@@ -89,9 +89,6 @@ async def _run_runtime(runtime: Runtime, *, managed: bool = False) -> None:
     failure: BaseException | None = None
     try:
         await runtime.start()
-    except asyncio.CancelledError as e:
-        if not runtime._stopping.is_set():
-            failure = e
     except BaseException as e:
         failure = e
     finally:

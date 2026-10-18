@@ -202,7 +202,7 @@ async def test_poll_failures_keep_changed_causes_and_repeated_tracebacks(
 
         monkeypatch.setattr(runtime, "load_hooks", lambda: None)
         monkeypatch.setattr(runtime, "_check_ready", check)
-        monkeypatch.setattr(runtime.asyncio, "sleep", AsyncMock())
+        monkeypatch.setattr(rt, "_sleep", AsyncMock())
         await rt.start()
         failure_event, recovery_event = (
             "server.connection_lost",

@@ -474,8 +474,7 @@ async def test_stop_during_check_does_not_start_react(mocker, phase):
 
     mocker.patch.object(runtime, "_check_ready", side_effect=ready)
     mocker.patch.object(runtime, "check_hooks", side_effect=hooks)
-    with pytest.raises(asyncio.CancelledError, match="stop requested"):
-        await rt.start()
+    await rt.start()
     react.assert_not_called()
 
 

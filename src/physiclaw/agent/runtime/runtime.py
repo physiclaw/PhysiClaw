@@ -167,7 +167,11 @@ class Runtime:
                         # EMA_STALE so the next poll re-inits its baseline
                         # — stretched by the unproductive-streak backoff.
                         await self._sleep(self._react_cooldown(outcome))
-                except (asyncio.CancelledError, ProviderConfigurationError):
+                except asyncio.CancelledError:
+                    if not self._stopping.is_set():
+                        raise
+                    break
+                except ProviderConfigurationError:
                     raise
                 except Exception:
                     log.exception(
