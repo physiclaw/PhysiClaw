@@ -36,7 +36,7 @@ from physiclaw.contract.dto import ToolCall
 async def test_rehearsal_caller_closes_the_provider_it_created(mocker) -> None:
     provider = ScriptedProvider([])
     mocker.patch("physiclaw.common.config.model_ref", return_value="demo/model")
-    mocker.patch("physiclaw.provider.make_provider", return_value=provider)
+    mocker.patch("physiclaw.provider.make_chat_provider", return_value=provider)
 
     caller = rehearsal.micro_caller()
     await caller.aclose()

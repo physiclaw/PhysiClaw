@@ -441,7 +441,7 @@ def test_render_tooling_kept_for_unknown_provider(
 
 
 def test_render_tooling_kept_via_real_anthropic_provider() -> None:
-    # Deliberate: AnthropicProvider keeps the default INLINE_TOOL_INDEX=True —
+    # Deliberate: AnthropicChatProvider keeps the default INLINE_TOOL_INDEX=True —
     # the card is cheap insurance even though Claude reads the tools= schema.
     out = "\n".join(
         prompt._render_tooling([{"name": "tap", "description": "Tap."}], "anthropic")
@@ -562,7 +562,7 @@ def test_render_reasoning_format_empty_when_fragment_blank(
 
 
 def test_render_reasoning_format_via_real_anthropic_provider() -> None:
-    # The real AnthropicProvider has system_prompt_fragment="" (default)
+    # The real AnthropicChatProvider has system_prompt_fragment="" (default)
     # — so the section is NOT emitted.
     out = prompt._render_reasoning_format("anthropic")
 

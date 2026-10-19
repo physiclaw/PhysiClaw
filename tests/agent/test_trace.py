@@ -235,11 +235,11 @@ def test_brief_content_multiple_blocks_joined_by_plus() -> None:
             {
                 "event": "response",
                 "turn": 4,
-                "synthesized": True,
-                "driver": "taobao/buy",
+                "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                "presentation": "playbook",
                 "tool_calls": [{"name": "note"}, {"name": "tap"}],
             },
-            "turn 4: response by playbook taobao/buy calls=['note', 'tap']",
+            "turn 4: response by playbook conductor-slot calls=['note', 'tap']",
         ),
         (
             {
@@ -1236,7 +1236,15 @@ def test_summary_splits_conductor_turns_from_provider_calls(
     _trace_dirs: Path,
 ) -> None:
     t = Trace("s2", Images("s2"))
-    t.write({"event": "response", "turn": 0, "elapsed_ms": 3, "synthesized": True})
+    t.write(
+        {
+            "event": "response",
+            "turn": 0,
+            "elapsed_ms": 3,
+            "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+            "presentation": "playbook",
+        }
+    )
     t.write({"event": "response", "turn": 1, "elapsed_ms": 1500})
     t.close()
 

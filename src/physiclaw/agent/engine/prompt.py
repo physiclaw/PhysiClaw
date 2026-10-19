@@ -13,7 +13,7 @@ The inline `## Tooling` index card duplicates the schema sent via the
 provider's `tools=` API — open-weight models often miss tools that appear
 only in the schema, so the card is a redundant anchor. Providers whose
 models read the schema reliably opt out via `INLINE_TOOL_INDEX = False`
-(see `BaseProvider`) and skip the card entirely.
+(see `BaseChatProvider`) and skip the card entirely.
 """
 
 import hashlib
@@ -82,7 +82,7 @@ def render_system_prompts(
       ## Examples          ❌/✅ for the most common per-turn failures
       ## Reasoning Format  provider-specific reasoning wrapper (e.g. Qwen
                            `<think>...</think>`); pulled from
-                           `BaseProvider.system_prompt_fragment()`
+                           `BaseChatProvider.system_prompt_fragment()`
       ## memory.md         session-stable persistent facts — live file
                            dump (the spec lives in the PERSISTENCE.md slot)
 
@@ -297,7 +297,7 @@ def _first_sentence(text: str) -> str:
 
 
 # Cache-marker placement lives in the provider classes — see
-# `BaseProvider.serialize_history` (template) and the per-shape
+# `BaseChatProvider.serialize_history` (template) and the per-shape
 # `CacheMarkers` factories. It's a wire-format concern that
 # belongs with the request builder, not the prompt assembly.
 

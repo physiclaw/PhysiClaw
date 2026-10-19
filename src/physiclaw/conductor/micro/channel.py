@@ -46,8 +46,8 @@ from physiclaw.contract.dto import (
     UserMessage,
     role_of,
 )
-from physiclaw.contract.plugin import ChatProvider, EventSink, WireSink
-from physiclaw.provider import Provider, ProviderTransientError
+from physiclaw.contract.plugin import EventSink, SessionChatProvider, WireSink
+from physiclaw.provider import ChatProvider, ProviderTransientError
 from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
 
 log = logging.getLogger(__name__)
@@ -65,13 +65,13 @@ class MicroCaller:
         self,
         # The fail-open floor only ever answers `chat` — the structural
         # contract slice, so the seam can hand us the session provider
-        # without the conductor demanding the full Provider surface.
-        provider: ChatProvider,
+        # without the conductor demanding the full ChatProvider surface.
+        provider: SessionChatProvider,
         *,
         confidence_floor: float,
         tr: "EventSink | None" = None,
         rlog: "WireSink | None" = None,
-        owned_factory: "Callable[[], Provider] | None" = None,
+        owned_factory: "Callable[[], ChatProvider] | None" = None,
     ):
         self._provider = provider
         self._floor = confidence_floor
@@ -81,12 +81,12 @@ class MicroCaller:
         # call. Rehearsals set `_owned` directly through `owning`.
         # Only `_owned` is ours to close; the session provider is borrowed.
         self._owned_factory = owned_factory
-        self._owned: Provider | None = None
+        self._owned: ChatProvider | None = None
 
     @classmethod
     def owning(
         cls,
-        provider: Provider,
+        provider: ChatProvider,
         *,
         confidence_floor: float,
         rlog: WireSink | None = None,
@@ -101,7 +101,7 @@ class MicroCaller:
         caller._owned = provider
         return caller
 
-    def _live_provider(self) -> ChatProvider:
+    def _live_provider(self) -> SessionChatProvider:
         if self._owned_factory is not None:
             factory, self._owned_factory = self._owned_factory, None
             try:
@@ -303,14 +303,14 @@ def wire_content(content: "str | list[ContentBlock] | Any") -> Any:
 
 
 async def _chat(
-    provider: ChatProvider, messages: list[Message], req: DecisionRequest
+    provider: SessionChatProvider, messages: list[Message], req: DecisionRequest
 ) -> AssistantMessage:
     """One provider call with ONE transient retry (the providers' own
     taxonomy: timeout / 429 / 5xx — permanent 4xx and real bugs fail
     fast): a blip on the cheap tier is common and permanent escalation
     is too big a price for it. Raises whatever the second try raises."""
     # How much the model may think is the step's `think:` (the vendor
-    # translates it, see `BaseProvider.thinking_params`); the reply's
+    # translates it, see `BaseChatProvider.thinking_params`); the reply's
     # `reason` field is the chain of thought the contract always gets.
     try:
         return await provider.chat(

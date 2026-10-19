@@ -11,8 +11,8 @@ from physiclaw.provider import (
     ProviderConfigurationError,
     decision_provider_capabilities,
     in_process_provider_ids,
+    make_chat_provider,
     make_decision_provider,
-    make_provider,
     provider_key_status,
     register_decision_provider,
     registry,
@@ -105,7 +105,7 @@ def test_decision_only_provider_cannot_be_main_agent(fake_registration):
         with pytest.raises(ValueError, match="unknown provider"):
             validate_model_ref(f"{provider_id}/model")
         with pytest.raises(ValueError, match="unknown provider"):
-            make_provider(provider_id, "model")
+            make_chat_provider(provider_id, "model")
     with pytest.raises(ValueError, match="unknown decision provider"):
         make_decision_provider("qwen", "chat-only")
     with pytest.raises(

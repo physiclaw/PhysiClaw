@@ -325,7 +325,7 @@ def _blocks_result(
         # only (errors never reach this tail), riding the same verdict /
         # observer / trace machinery — marked, so a forensic read can
         # never mistake a virtual thread for a real one.
-        faked = run.debug_intercept(call, session.synthesized_turn, blocks)
+        faked = run.debug_intercept(call, session.active_plugin is not None, blocks)
         if faked is not None:
             run.tr.write(
                 {
@@ -383,7 +383,11 @@ def _run_guards(
     at Policies construction) in declared order; the first Block wins and
     becomes an error ToolResult."""
     for guard in guards:
-        if guard.MODEL_TURNS_ONLY and session.synthesized_turn:
+        if (
+            guard.MODEL_GUARD
+            and session.active_plugin is not None
+            and session.active_plugin.skip_model_guards
+        ):
             continue
         block = guard.check(session, call, turn=turn)
         if block is None:

@@ -458,10 +458,10 @@ def _probe_provider_deep(provider_id: str, model_id: str) -> str:
         TextBlock,
         UserMessage,
     )
-    from physiclaw.provider import make_provider
+    from physiclaw.provider import make_chat_provider
 
     try:
-        prov = make_provider(provider_id, model_id)
+        prov = make_chat_provider(provider_id, model_id)
     except (ValueError, RuntimeError) as e:
         return _fmt_warn(f"{provider_id}/{model_id}: setup — {e}")
 

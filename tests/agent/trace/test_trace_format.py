@@ -23,6 +23,27 @@ from physiclaw.agent.trace.format import (
 )
 
 
+@pytest.mark.parametrize(
+    "kind, presentation, expected",
+    [
+        ("plugin", "plugin", "by plugin actual-slot"),
+        ("plugin", "playbook", "by playbook actual-slot"),
+        ("llm", "model", "finish=stop"),
+    ],
+)
+def test_response_labels_follow_host_identity(kind, presentation, expected):
+    event = {
+        "event": "response",
+        "producer": {"kind": kind, "plugin_id": "actual-slot"},
+        "presentation": presentation,
+        "finish_reason": "stop",
+    }
+    text = summarize_event(event)
+    assert expected in text
+    if presentation != "playbook":
+        assert "by playbook" not in text
+
+
 @given(st.text(max_size=1000), st.integers(min_value=1, max_value=200))
 def test_brief_limits_text_without_changing_its_prefix(text, limit):
     result = brief(text, limit)

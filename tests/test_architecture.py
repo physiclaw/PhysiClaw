@@ -198,6 +198,7 @@ def test_shared_agent_packages_do_not_import_the_engine() -> None:
 # silently; the two directional guards below them are the seam itself.
 
 _EDGE_ALLOWLISTS = {
+    "decision": ("physiclaw.contract",),
     # package dir → allowed physiclaw import prefixes (self always allowed)
     # contract may name macro types (SessionSetup.gated_macros) — data
     # shapes only, never agent or conductor (both import contract).

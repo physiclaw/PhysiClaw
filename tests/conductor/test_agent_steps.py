@@ -895,7 +895,7 @@ def test_recover_hand_loop_is_bounded_by_the_walk_budget() -> None:
     step = p.resolve(_done_outcome(keyword="milk"))
     quits = 0
     for _ in range(60):
-        assert step is not None and step.synthesized
+        assert step is not None
         if step.tool_names() == ["note", "force_quit"]:
             quits += 1
         _feed(h, step, ELSEWHERE)  # home never reads
@@ -922,7 +922,7 @@ def test_page_recover_limit_stops_the_hand_loop_before_the_walk_budget() -> None
     step = p.resolve(_done_outcome(keyword="milk"))
     quits = 0
     for _ in range(20):
-        assert step is not None and step.synthesized
+        assert step is not None
         if step.tool_names() == ["note", "force_quit"]:
             quits += 1
         elif quits:  # between hands nothing else runs — never the start again

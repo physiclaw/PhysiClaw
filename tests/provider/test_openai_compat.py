@@ -1,6 +1,6 @@
 """Tests for `physiclaw.provider.chat.openai_compat`.
 
-The provider uses `httpx.AsyncClient` (inherited from BaseProvider)
+The provider uses `httpx.AsyncClient` (inherited from BaseChatProvider)
 to POST to `/chat/completions`. Tests use `respx` to fake the HTTP
 layer, which is HTTPX-native and avoids monkeypatching internals.
 

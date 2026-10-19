@@ -282,9 +282,8 @@ def _handle_run_macro_factory(
     returns normally — the step log + current screen are a substantive
     result the model must read, not an error to retry.
 
-    `pack_macros` are the armed playbook pack's private macros under
-    qualified `app/name` keys — the conductor's hands. They resolve only
-    while the session dispatches a conductor-synthesized turn; a model
+    `pack_macros` are plugin-private macros under qualified `app/name`
+    keys. They resolve only while their registering plugin dispatches; a model
     turn naming one gets the same unknown-macro error as any typo, and
     the available-list never mentions them."""
     hidden = pack_macros or {}
@@ -295,23 +294,26 @@ def _handle_run_macro_factory(
         from physiclaw.agent.engine.mcp_tool import get_mcp
 
         name = (args.get("name") or "").strip()
-        # Provenance and namespace are separate facts: the caller label
-        # follows who authored the turn, while the qualified `app/name`
-        # namespace additionally REQUIRES conductor provenance to resolve
-        # at all — that conjunction is the authorization, nothing else.
-        synthesized = session.synthesized_turn
+        binding = session.active_plugin
         if "/" in name:
-            spec = hidden.get(name) if synthesized else None
+            spec = (
+                hidden.get(name)
+                if binding is not None and name in binding.private_macros
+                else None
+            )
         else:
             spec = macro_registry.get(name)
         if spec is None:
             available = ", ".join(sorted(macro_registry)) or "(none)"
             raise ValueError(f"unknown macro {name!r}. Available: {available}")
+        caller = "engine"
+        if binding is not None:
+            caller = "conductor" if binding.playbook else f"plugin:{binding.id}"
         result = await macro_runner.run_and_record(
             spec,
             args.get("inputs") or {},
             await get_mcp(),
-            caller="conductor" if synthesized else "engine",
+            caller=caller,
             start_at=(args.get("start_at") or "").strip(),
             record_as=name,
         )

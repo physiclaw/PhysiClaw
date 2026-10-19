@@ -15,6 +15,7 @@ import pytest
 from physiclaw.agent import layout
 from physiclaw.agent.engine import policy as policy_mod
 from physiclaw.agent.engine import scratchpad
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.common.config import CONFIG
 from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall, Usage
@@ -533,19 +534,25 @@ def test_burned_macro_blocks_a_rerun_after_an_abort() -> None:
     assert "already aborted this session" in block.content
 
 
-def test_burned_macro_lets_a_synthesized_turn_rerun_an_aborted_macro() -> None:
+def test_host_grant_allows_recovery_to_rerun_an_aborted_macro() -> None:
     # A conductor recover hand (force_quit) re-runs the route's `start`
     # macro by declared design; the walk bounds that, not this guard —
-    # the guard runner skips MODEL_TURNS_ONLY guards on a synthesized turn.
+    # the host grant lets the guard runner skip MODEL_GUARD guards.
     from types import SimpleNamespace
 
     from physiclaw.agent.engine.dispatch import _run_guards
 
     session = Session()
     session.failed_macros.add("taobao/buy.app")
-    session.synthesized_turn = True
+    session.active_plugin = PluginBinding(
+        "conductor",
+        SimpleNamespace(),
+        skip_model_guards=True,
+        playbook=True,
+        name="playbook",
+    )
     guard = policy_mod.BurnedMacro()
-    assert guard.MODEL_TURNS_ONLY is True
+    assert guard.MODEL_GUARD is True
 
     blocked = _run_guards(
         SimpleNamespace(tr=None),
@@ -592,24 +599,30 @@ def test_burned_macro_is_registered_and_runs_before_the_stuck_block() -> None:
     assert kinds.index("BurnedMacro") < kinds.index("StuckBlock")
 
 
-def test_plan_gate_stands_down_on_a_synthesized_turn() -> None:
+def test_host_grant_skips_the_plan_gate() -> None:
     # The conductor's turns carry no plan and never will — the armed
     # playbook is their plan: the guard runner skips the gate on a
-    # synthesized turn. Same call on a model turn stays gated.
+    # plugin turn. Same call on an LLM turn stays gated.
     from types import SimpleNamespace
 
     from physiclaw.agent.engine.dispatch import _run_guards
 
     gate = policy_mod.PlanGate(layout_incomplete=False, required_after=0)
-    assert gate.MODEL_TURNS_ONLY is True
+    assert gate.MODEL_GUARD is True
     session = Session()
     session.model_turns = 5  # well past the threshold, plan undrafted
 
-    session.synthesized_turn = True
+    session.active_plugin = PluginBinding(
+        "conductor",
+        SimpleNamespace(),
+        skip_model_guards=True,
+        playbook=True,
+        name="playbook",
+    )
     call = ToolCall(id="c", name="tap", arguments={})
     assert _run_guards(SimpleNamespace(tr=None), session, call, 5, (gate,)) is None
 
-    session.synthesized_turn = False
+    session.active_plugin = None
     assert (
         gate.check(session, ToolCall(id="c", name="tap", arguments={}), turn=5)
         is not None

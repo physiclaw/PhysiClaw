@@ -38,6 +38,7 @@ from physiclaw.agent.engine.loop import (
     drive,
     log_external_stop,
 )
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
@@ -1088,7 +1089,9 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
     if request.param == "provider":
         run.chat = call
     elif request.param == "plugin":
-        run.plugins = (SimpleNamespace(advance=call),)
+        run.plugins = (
+            PluginBinding("stalled", SimpleNamespace(advance=call), name="test"),
+        )
     elif request.param == "local":
         registry["peek"] = replace(registry["peek"], handler=call)
     else:
@@ -1105,7 +1108,7 @@ async def test_regression_budget_cancels_inflight_calls(stalled_run):
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
-    assert session.synthesized_turn is False
+    assert session.active_plugin is None
     call.assert_awaited_once()
     assert cancelled == [True]
     run.tr.write.assert_any_call(
@@ -1344,7 +1347,7 @@ async def test_advance_with_retry_returns_immediately_on_success(mocker) -> None
 
     out = await _advance_with_retry((), chat, [], [], attempts=3, backoff=0.0)
 
-    assert out is asst
+    assert out.message is asst
     assert chat.await_count == 1
 
 
@@ -1356,7 +1359,7 @@ async def test_advance_with_retry_retries_then_succeeds(mocker) -> None:
 
     out = await _advance_with_retry((), chat, [], [], attempts=3, backoff=0.0)
 
-    assert out is asst
+    assert out.message is asst
     assert chat.await_count == 2
 
 
@@ -1385,7 +1388,7 @@ async def test_advance_with_retry_does_not_catch_permanent_errors(mocker) -> Non
 async def test_first_plugin_turn_wins_and_provider_is_never_called(mocker) -> None:
     # Arbitration, not a chain: the first plugin to speak ends the turn —
     # later plugins are not consulted and no provider round-trip is paid.
-    turn = _asst(content="plugin turn", finish=FinishReason.STOP)
+    turn = _asst(tool_calls=[_tc("peek")])
     first = mocker.MagicMock()
     first.advance = mocker.AsyncMock(return_value=turn)
     second = mocker.MagicMock()
@@ -1393,10 +1396,19 @@ async def test_first_plugin_turn_wins_and_provider_is_never_called(mocker) -> No
     chat = mocker.AsyncMock()
 
     out = await _advance_with_retry(
-        (first, second), chat, [], [], attempts=3, backoff=0.0
+        (
+            PluginBinding("first", first, name="test"),
+            PluginBinding("second", second, name="test"),
+        ),
+        chat,
+        [],
+        [],
+        attempts=3,
+        backoff=0.0,
     )
 
-    assert out is turn
+    assert out.message is turn
+    assert out.binding.id == "first"
     second.advance.assert_not_awaited()
     chat.assert_not_awaited()
 
@@ -1415,10 +1427,18 @@ async def test_plugin_pass_and_crash_both_fall_through_to_the_provider(
     chat = mocker.AsyncMock(return_value=asst)
 
     out = await _advance_with_retry(
-        (passing, crashing), chat, [], [], attempts=3, backoff=0.0
+        (
+            PluginBinding("passing", passing, name="test"),
+            PluginBinding("crashing", crashing, name="test"),
+        ),
+        chat,
+        [],
+        [],
+        attempts=3,
+        backoff=0.0,
     )
 
-    assert out is asst
+    assert out.message is asst
     assert passing.advance.await_count == 1
     assert crashing.advance.await_count == 1
 
@@ -1451,7 +1471,7 @@ async def test_call_provider_response_event_carries_elapsed_ms(
 
     out = await _call_provider(run, Session(), [], turn=0)
 
-    assert out is asst
+    assert out.message == asst
     response_event = next(
         c.args[0]
         for c in trace_stub.write.call_args_list
@@ -1512,12 +1532,10 @@ def test_corrective_for_three_notes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_synthesized_turn_skips_gates_and_flags_dispatch(
+async def test_plugin_turn_skips_model_gates_and_binds_dispatch(
     patched_loop_deps, mocker
 ) -> None:
-    """A conductor-synthesized turn dispatches without the turn gates'
-    judgment, under `session.synthesized_turn`; the next (model) turn is
-    gated as usual and the flag is back down."""
+    """The selected plugin owns dispatch; the next LLM turn is gated normally."""
     from physiclaw.agent.engine import policy as policy_mod
 
     seen_gate_turns: list[list[str]] = []
@@ -1527,10 +1545,11 @@ async def test_synthesized_turn_skips_gates_and_flags_dispatch(
             seen_gate_turns.append(list(called))
             return None
 
-    flag_during_dispatch: list[bool] = []
+    producers_during_dispatch: list[str | None] = []
 
     async def peek_handler(session, _args):
-        flag_during_dispatch.append(session.synthesized_turn)
+        binding = session.active_plugin
+        producers_during_dispatch.append(binding.id if binding is not None else None)
         return "peek-result"
 
     registry = _registry()
@@ -1544,60 +1563,78 @@ async def test_synthesized_turn_skips_gates_and_flags_dispatch(
     synthesized = _asst(
         tool_calls=[_tc("note", {"summary": "conductor"}), _tc("peek")],
     )
-    synthesized.synthesized = True
     closing = _asst(
         tool_calls=[
             _tc("note", {"summary": "done"}),
             _tc("end_session", {"status": DONE, "recap": "ok"}),
         ],
     )
-    provider = FakeProvider([synthesized, closing])
+    provider = FakeProvider([closing])
     policies = policy_mod.Policies(
         turn_gates=[SpyGate()], dispatch_guards=[], result_observers=[]
     )
 
     session = Session()
     messages: list = [SystemMessage(content="sys"), UserMessage(content="trig")]
-    await drive(_loop_run(provider, registry, policies=policies), session, messages)
+    run = _loop_run(provider, registry, policies=policies)
+    run.plugins = (
+        PluginBinding(
+            "conductor",
+            SimpleNamespace(advance=mocker.AsyncMock(side_effect=[synthesized, None])),
+            skip_model_guards=True,
+            playbook=True,
+            name="playbook",
+        ),
+    )
+    await drive(run, session, messages)
 
     assert session.sentinel_status == DONE
-    assert flag_during_dispatch == [True]  # up for the synthesized dispatch...
-    assert session.synthesized_turn is False  # ...and back down after
+    assert producers_during_dispatch == ["conductor"]
+    assert session.active_plugin is None
     # The gate judged only the model's closing turn.
     assert seen_gate_turns == [["note", "end_session"]]
 
 
 @pytest.mark.asyncio
-async def test_synthesized_response_is_marked_in_wire_and_trace(
+async def test_plugin_response_has_host_producer_in_wire_and_trace(
     patched_loop_deps,
+    mocker,
 ) -> None:
     registry = _registry()
     synthesized = _asst(tool_calls=[_tc("note", {"summary": "c"}), _tc("peek")])
-    synthesized.synthesized = True
     closing = _asst(
         tool_calls=[
             _tc("note", {"summary": "done"}),
             _tc("end_session", {"status": DONE, "recap": "ok"}),
         ],
     )
-    provider = FakeProvider([synthesized, closing])
+    provider = FakeProvider([closing])
     tr, rlog = MagicMock(), MagicMock()
 
     session = Session()
     messages: list = [SystemMessage(content="sys"), UserMessage(content="trig")]
-    await drive(_loop_run(provider, registry, tr=tr, rlog=rlog), session, messages)
+    run = _loop_run(provider, registry, tr=tr, rlog=rlog)
+    run.plugins = (
+        PluginBinding(
+            "conductor",
+            SimpleNamespace(advance=mocker.AsyncMock(side_effect=[synthesized, None])),
+            skip_model_guards=True,
+            playbook=True,
+            name="playbook",
+        ),
+    )
+    await drive(run, session, messages)
 
-    by_synth = {
-        c.kwargs.get("synthesized", False): c
-        for c in rlog.write_response.call_args_list
+    by_producer = {
+        c.kwargs["producer"].kind: c for c in rlog.write_response.call_args_list
     }
-    assert set(by_synth) == {True, False}  # one of each, flagged apart
+    assert set(by_producer) == {"plugin", "llm"}
     response_events = [
         c.args[0]
         for c in tr.write.call_args_list
         if c.args and c.args[0].get("event") == "response"
     ]
-    assert [e.get("synthesized") for e in response_events] == [True, None]
+    assert [e["producer"]["kind"] for e in response_events] == ["plugin", "llm"]
     # The loop writes no usage event of its own (the provider does, per
     # call) — and a synthesized turn made no call.
     assert not [

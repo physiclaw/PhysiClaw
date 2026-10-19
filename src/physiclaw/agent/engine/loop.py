@@ -13,10 +13,11 @@ import asyncio
 import enum
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from physiclaw.agent.engine import assemble, compact, memory, trajectory
 from physiclaw.agent.engine.dispatch import dispatch
+from physiclaw.agent.engine.provenance import ProducedTurn
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
@@ -104,9 +105,8 @@ async def _drive(
       6. `_dispatch_turn`      — run the tool_calls, append their results.
       7. `_finalize_turn`      — snapshot trajectory, compact, reset gates.
 
-    A plugin-synthesized turn (e.g. the conductor's playbook walk) skips
-    3–5 — those judge model output — and dispatches under
-    `session.synthesized_turn`.
+    Plugin turns skip model-output presentation checks in 3–5. Dispatch
+    permissions come from the host binding.
     """
     for turn in range(run.settings.max_turns):
         # drive() owns the enclosing context scope and restores it on every
@@ -122,27 +122,22 @@ async def _drive(
             turn,
         )
 
-        asst = await _call_provider(run, session, request_messages, turn)
+        produced = await _call_provider(run, session, request_messages, turn)
         if _stop_if_expired(run, session, turn):
             return
-        if asst is None:
+        if produced is None:
             return  # provider exhausted its retries — STUCK already set
+        asst = produced.message
 
         # Principle 2: reasoning_content / thinking blocks were stripped at
         # parse time inside the provider — append the assistant turn directly.
         messages.append(asst)
         called = asst.tool_names()
 
-        # A synthesized turn is a plugin's own output, not the
-        # model's: the shape is correct by construction and the turn
-        # gates' judgments (plan discipline, checkpoints, stuck
-        # reflection) address model behavior — skip both. Dispatch
-        # guards still see every call, under `session.synthesized_turn`
-        # so the plan gate stands down while phone protection holds.
-        if not asst.synthesized:
-            # The plan gate's meter: turns the MODEL produced. Synthesized
-            # turns must not advance it — a long playbook would otherwise
-            # leave the model instantly plan-gated on its first real turn.
+        # Notes and model-output judgments belong to LLM turns. A plugin
+        # needs no fabricated LLM note; this grants no dispatch exemption.
+        if produced.binding is None:
+            # Only main-LLM turns advance the plan gate's meter.
             session.model_turns += 1
             shape = _enforce_shape(
                 messages, asst, called, state, session=session, turn=turn, tr=run.tr
@@ -166,15 +161,15 @@ async def _drive(
             ):
                 continue
 
-        session.synthesized_turn = asst.synthesized
+        session.active_plugin = produced.binding
         # The terminal's tag wears the driver's colour from here until
         # the other side produces a turn — set where the session's own
         # record of the producer is set, so the two cannot disagree.
-        set_tag_accent(PLAYBOOK_ACCENT if asst.synthesized else None)
+        set_tag_accent(PLAYBOOK_ACCENT if produced.presentation == "playbook" else None)
         try:
             successful_calls = await _dispatch_turn(run, session, messages, asst, turn)
         finally:
-            session.synthesized_turn = False
+            session.active_plugin = None
         if session.budget_exhausted:
             return
         if session.sentinel_status is None and _stop_if_expired(run, session, turn):
@@ -290,7 +285,7 @@ def _prepare_request(
     )
     # The wire-form request record is NOT written here: only turns that
     # actually reach the provider pay the full-transcript serialization
-    # (`_call_provider`) — a playbook walk of synthesized turns would
+    # (`_call_provider`) — a playbook walk of plugin turns would
     # otherwise serialize and log the growing history once per leg.
     run.tr.write(
         {"event": "request", "turn": turn, "message_count": len(request_messages)}
@@ -304,15 +299,15 @@ async def _call_provider(
     session: Session,
     request_messages: list[Message],
     turn: int,
-) -> AssistantMessage | None:
+) -> ProducedTurn | None:
     """Ask the plugins, then the provider, for the turn (transient-retry
-    on the provider only) — a synthesized plugin turn or a provider call
-    — log the response, and return the AssistantMessage. When retries
+    on the provider only) — a plugin turn or a provider call
+    — log the response, and return its host-owned envelope. When retries
     exhaust: mark the session STUCK, trace it, and return None — the
     caller returns from the loop."""
     t0 = time.perf_counter()
     try:
-        asst = await _advance_with_retry(
+        produced = await _advance_with_retry(
             run.plugins,
             run.chat,
             request_messages,
@@ -320,6 +315,8 @@ async def _call_provider(
             attempts=run.settings.provider_retry_attempts,
             backoff=run.settings.retry_backoff_seconds,
         )
+        presentation = produced.presentation
+        asst = produced.message
     except Exception as e:
         if isinstance(e, ProviderError):
             # Expected terminal state (retries exhausted, permanent 4xx)
@@ -344,19 +341,20 @@ async def _call_provider(
         session.sentinel_recap = f"provider error: {e}"
         return None
 
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
-    if not asst.synthesized:
+    arbitration_elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    elapsed_ms = produced.elapsed_ms
+    if produced.binding is None:
         # Cache markers + the actual wire format are the provider's
         # business; log the wire form by asking it to serialize once.
-        # Deferred to AFTER the advance so a synthesized turn — which
+        # Deferred to AFTER the advance so a plugin turn — which
         # sent no request — never pays the full-transcript serialization.
         run.rlog.write_request(turn, run.serialize_wire(request_messages))
     run.rlog.write_response(
         turn,
         asst.raw,
         elapsed_ms=elapsed_ms,
-        synthesized=asst.synthesized,
-        driver=asst.driver,
+        producer=produced.producer,
+        presentation=presentation,
     )
     run.tr.write(
         {
@@ -364,37 +362,37 @@ async def _call_provider(
             "turn": turn,
             "finish_reason": asst.finish_reason,
             "content_len": len(asst.content or ""),
-            # Provider round-trip time — the session summary sums these
-            # into provider_time_ms (synthesized turns count into
-            # conductor_turns instead; no request was sent).
+            "producer": asdict(produced.producer),
+            "presentation": presentation,
+            "arbitration_elapsed_ms": arbitration_elapsed_ms,
+            "response_id": asst.response_id,
+            "response_model": asst.response_model,
+            # Selected producer's time; earlier declines are not LLM time.
             "elapsed_ms": elapsed_ms,
             "tool_calls": [
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in asst.tool_calls
             ],
-            **(
-                {"synthesized": True, "driver": asst.driver} if asst.synthesized else {}
-            ),
         }
     )
-    # The one line per turn that says WHO drove it — a playbook by name,
-    # or the model — so a terminal reader can tell at a glance.
+    # Name the host-selected plugin slot or the main LLM once per turn.
     calls = ", ".join(asst.tool_names()) or "no calls"
-    if asst.synthesized:
-        # No provider round-trip: no usage to log, and the token/cache
-        # metrics would report zeros that read as data.
+    if produced.binding is not None:
+        # No main-LLM round trip. Any plugin inference owns its own account.
+        plugin_id = produced.binding.id
         log.info(
-            "turn %d: PLAYBOOK %s → %s",
+            "turn %d: %s %s → %s",
             turn,
-            asst.driver,
+            "PLAYBOOK" if presentation == "playbook" else "PLUGIN",
+            plugin_id,
             calls,
             extra={
                 "event": "turn.planned",
                 "turn": turn,
-                "console_message": f"Turn {turn} · {asst.driver}: {calls}",
+                "console_message": f"Turn {turn} · {produced.binding.name} ({plugin_id}): {calls}",
             },
         )
-        return asst
+        return produced
     # Tokens: the provider's `usage` event, rendered once by the trace.
     log.info(
         "turn %d: MODEL → %s (finish=%s) — %.1fs",
@@ -409,7 +407,7 @@ async def _call_provider(
             "console_message": f"Turn {turn} · Model: {calls} ({elapsed_ms / 1000:.1f}s)",
         },
     )
-    return asst
+    return produced
 
 
 def _enforce_shape(
@@ -618,6 +616,35 @@ def _finalize_turn(
 # ---------- helpers ----------
 
 
+def _validate_plugin_turn(turn: AssistantMessage) -> None:
+    """Reject unusable plugin output before it can suppress the fallback.
+
+    This checks transcript structure, without imposing LLM note discipline.
+    Tool existence, argument schemas and action guards remain dispatch's job.
+    """
+    if not isinstance(turn, AssistantMessage):
+        raise TypeError("turn plugin must return AssistantMessage or None")
+    if not turn.tool_calls or turn.finish_reason in (
+        FinishReason.LENGTH,
+        FinishReason.CONTENT_FILTER,
+        FinishReason.ERROR,
+    ):
+        raise ValueError("turn plugin returned no executable turn")
+    ids: set[str] = set()
+    for call in turn.tool_calls:
+        if (
+            not isinstance(call, ToolCall)
+            or not isinstance(call.id, str)
+            or not call.id.strip()
+            or call.id in ids
+            or not isinstance(call.name, str)
+            or not call.name.strip()
+            or not isinstance(call.arguments, dict)
+        ):
+            raise ValueError("turn plugin returned invalid tool calls or duplicate IDs")
+        ids.add(call.id)
+
+
 async def _advance_with_retry(
     plugins,
     chat,
@@ -626,7 +653,7 @@ async def _advance_with_retry(
     *,
     attempts: int,
     backoff: float,
-) -> AssistantMessage:
+) -> ProducedTurn:
     """Plugin arbitration, then the provider with transient-retry.
 
     Plugins are asked in registration order; the first to return a turn
@@ -636,20 +663,28 @@ async def _advance_with_retry(
     degrade to "the LLM speaks", not kill the session. Only the provider
     call retries — transient errors only (principle 3: permanent 4xx
     fails fast)."""
-    for plug in plugins:
+    for binding in plugins:
         checkpoint()
+        started = time.perf_counter()
         try:
-            turn = await plug.advance(messages)
+            turn = await binding.plugin.advance(messages)
+            if turn is None:
+                continue
+            _validate_plugin_turn(turn)
+            return ProducedTurn(
+                turn, binding, int((time.perf_counter() - started) * 1000)
+            )
         except Exception:
             log.exception("turn plugin advance crashed — passing to the next")
-            turn = None
-        if turn is not None:
-            return turn
     last_err: Exception | None = None
+    started = time.perf_counter()
     for attempt in range(1, attempts + 1):
         checkpoint()
         try:
-            return await chat(messages, tools)
+            message = await chat(messages, tools)
+            return ProducedTurn(
+                message, elapsed_ms=int((time.perf_counter() - started) * 1000)
+            )
         except ProviderTransientError as e:
             checkpoint()
             last_err = e

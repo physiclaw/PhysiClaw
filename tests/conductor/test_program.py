@@ -52,7 +52,7 @@ def test_walk_runs_both_moves_then_completes() -> None:
     h = _history()
 
     peek = p.advance(h)
-    assert peek is not None and peek.synthesized
+    assert peek is not None
     assert peek.tool_names() == ["note", "peek"]
 
     _feed(h, peek, HOME)  # the start page — the walk begins
@@ -1861,7 +1861,7 @@ def test_a_deny_is_answered_by_the_ask_and_then_the_stop_takes_it() -> None:
 
     stop = _deny_answered(p, h, send)
 
-    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    assert stop is not None and stop.tool_names() == ["note", "end_session"]
     args = stop.tool_calls[1].arguments
     assert args["status"] == "WAIT"
     assert "user declined the ask, answered" in args["recap"]
@@ -1919,7 +1919,7 @@ def test_the_ask_that_says_stop_ends_the_session_with_nothing_paid() -> None:
 
     stop = p.advance(h)
 
-    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    assert stop is not None and stop.tool_names() == ["note", "end_session"]
     args = stop.tool_calls[1].arguments
     assert args["status"] == "WAIT"
     assert "stopped at gate" in args["recap"] and "nothing paid" in args["recap"]
@@ -1952,7 +1952,7 @@ def test_an_entry_that_says_stop_ends_the_session_when_it_fails(
 
     stop = p.advance(h)
 
-    assert stop.synthesized and stop.tool_names() == ["note", "end_session"]
+    assert stop is not None and stop.tool_names() == ["note", "end_session"]
     assert fragment in stop.tool_calls[1].arguments["recap"]
     assert p.outcome == "handover"
 

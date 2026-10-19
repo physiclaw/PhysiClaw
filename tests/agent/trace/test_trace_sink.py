@@ -437,7 +437,7 @@ def test_empty_session_summary_preserves_schema_defaults():
     assert "event" not in summary["env"]
 
 
-def test_summary_adds_repeated_calls_without_billing_synthesized_turns():
+def test_summary_adds_repeated_calls_without_billing_plugin_turns():
     with freeze_time("2026-10-14T12:00:00") as clock:
         trace = Trace("calls", Images("calls"))
 
@@ -449,13 +449,15 @@ def test_summary_adds_repeated_calls_without_billing_synthesized_turns():
                 {
                     "event": "response",
                     "turn": 2,
-                    "synthesized": True,
+                    "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                    "presentation": "playbook",
                     "elapsed_ms": 100,
                 },
                 {
                     "event": "response",
                     "turn": 3,
-                    "synthesized": True,
+                    "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                    "presentation": "playbook",
                     "elapsed_ms": 200,
                 },
                 {"event": "micro_call"},
@@ -476,6 +478,84 @@ def test_summary_adds_repeated_calls_without_billing_synthesized_turns():
     )
     assert summary["provider_time_ms"] == 40
     assert summary["duration_s"] == 2.5
+
+
+def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
+    trace = Trace("host-producers", Images("host-producers"))
+    trace.write(
+        {
+            "event": "response",
+            "turn": 0,
+            "producer": {"kind": "plugin", "plugin_id": "decision-slot"},
+            "presentation": "plugin",
+            "elapsed_ms": 200,
+        }
+    )
+    trace.write(
+        {
+            "event": "response",
+            "turn": 1,
+            "producer": {"kind": "llm", "plugin_id": None},
+            "presentation": "model",
+            "elapsed_ms": 50,
+        }
+    )
+    trace.write(
+        {
+            "event": "response",
+            "turn": 2,
+            "producer": {"kind": "plugin", "plugin_id": "playbook-slot"},
+            "presentation": "playbook",
+            "elapsed_ms": 2,
+        }
+    )
+    trace.write(
+        {
+            "event": "response",
+            "turn": 3,
+            "producer": {"kind": "plugin", "plugin_id": "playbook-slot"},
+            "presentation": "playbook",
+            "elapsed_ms": 3,
+        }
+    )
+    trace.write(
+        {
+            "event": "response",
+            "turn": 4,
+            "producer": {"kind": "llm", "plugin_id": None},
+            "presentation": "model",
+            "elapsed_ms": 40,
+        }
+    )
+    trace.write({"event": "micro_call"})
+    decision = {
+        "event": "decision_call",
+        "turn": 0,
+        "model": "vendor/bounded",
+        "elapsed_ms": 180,
+        "usage": {"input_tokens": 120, "output_tokens": None},
+    }
+    trace.write(decision)
+    trace.close()
+
+    directory = paths.sessions_dir() / "host-producers"
+    summary = json.loads((directory / "summary.json").read_text())
+    assert summary["plugin_turns"] == 1
+    assert summary["provider_calls"] == summary["conductor_turns"] == 2
+    assert summary["provider_time_ms"] == 90
+    assert summary["micro_calls"] == summary["decision_calls"] == 1
+    assert summary["decision_time_ms"] == 180
+    assert summary["usage"]["input_tokens"] == summary["usage"]["output_tokens"] == 0
+    assert "vendor/bounded" not in summary["usage"]["by_model"]
+    saved = [
+        json.loads(line)
+        for line in (directory / "events.jsonl").read_text().splitlines()
+    ]
+    assert (
+        next(e for e in saved if e["event"] == "decision_call")["usage"]
+        == decision["usage"]
+    )
+    assert (directory / "notes.md").read_text().strip().endswith("note history")
 
 
 @pytest.mark.parametrize(

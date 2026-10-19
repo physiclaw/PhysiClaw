@@ -1,6 +1,6 @@
 """Tests for `physiclaw.provider.vendors.google.chat`.
 
-GoogleProvider extends OpenAICompatibleProvider with shim-specific
+GoogleChatProvider extends OpenAICompatibleProvider with shim-specific
 quirks: image_url isn't allowed in role:tool, and tool_calls require
 a thought_signature. Tests exercise both wire-level transformations
 without going through the network.
@@ -24,11 +24,9 @@ from physiclaw.contract.dto import (
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
 from physiclaw.provider.vendors.google.chat import (
     _SIG_BYPASS,
+    GoogleChatProvider,
     _encode_tool_result,
     _extract_thought_signature,
-)
-from physiclaw.provider.vendors.google.chat import (
-    GoogleChatProvider as GoogleProvider,
 )
 
 
@@ -38,19 +36,19 @@ def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def provider() -> GoogleProvider:
-    return GoogleProvider(model="gemini-3-flash-preview")
+def provider() -> GoogleChatProvider:
+    return GoogleChatProvider(model="gemini-3-flash-preview")
 
 
 # ---------- constants ----------
 
 
 def test_provider_id_is_google() -> None:
-    assert GoogleProvider.PROVIDER_ID == "google"
+    assert GoogleChatProvider.PROVIDER_ID == "google"
 
 
 def test_base_url_uses_google_openai_shim() -> None:
-    assert GoogleProvider.BASE_URL == (
+    assert GoogleChatProvider.BASE_URL == (
         "https://generativelanguage.googleapis.com/v1beta/openai"
     )
 
@@ -64,7 +62,7 @@ def test_sig_bypass_constant_pinned() -> None:
 
 @pytest.mark.asyncio
 async def test_list_models_strips_models_slash_prefix(
-    provider: GoogleProvider, respx_mock: respx.MockRouter
+    provider: GoogleChatProvider, respx_mock: respx.MockRouter
 ) -> None:
     respx_mock.get(
         "https://generativelanguage.googleapis.com/v1beta/openai/models"
@@ -87,7 +85,7 @@ async def test_list_models_strips_models_slash_prefix(
 
 @pytest.mark.asyncio
 async def test_list_models_passes_through_id_without_models_prefix(
-    provider: GoogleProvider, respx_mock: respx.MockRouter
+    provider: GoogleChatProvider, respx_mock: respx.MockRouter
 ) -> None:
     # Defensive — if Google ever drops the prefix, the helper must not
     # double-mangle.
@@ -106,14 +104,14 @@ def test_cache_markers_disabled() -> None:
     would perturb Gemini's implicit prefix cache — markers off. (The
     null-object template path itself is pinned in
     `test_provider_base.py`.)"""
-    assert GoogleProvider.CACHE_MARKERS is NO_CACHE_MARKERS
+    assert GoogleChatProvider.CACHE_MARKERS is NO_CACHE_MARKERS
 
 
 # ---------- _encode_message dispatch ----------
 
 
 def test_encode_system_message_delegates_to_super(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     out = provider._encode_message(SystemMessage(content="hi"))
 
@@ -121,7 +119,7 @@ def test_encode_system_message_delegates_to_super(
 
 
 def test_encode_user_message_delegates_to_super(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     out = provider._encode_message(UserMessage(content="ping"))
 
@@ -129,7 +127,7 @@ def test_encode_user_message_delegates_to_super(
 
 
 def test_encode_assistant_with_no_tool_calls_delegates_to_super(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     out = provider._encode_message(
         AssistantMessage(
@@ -143,7 +141,7 @@ def test_encode_assistant_with_no_tool_calls_delegates_to_super(
 
 
 def test_encode_assistant_with_tool_calls_uses_captured_thought_signature(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     msg = AssistantMessage(
         content="reasoning",
@@ -160,7 +158,7 @@ def test_encode_assistant_with_tool_calls_uses_captured_thought_signature(
 
 
 def test_encode_assistant_with_tool_calls_falls_back_to_bypass_when_sig_missing(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     msg = AssistantMessage(
         content="reasoning",
@@ -177,7 +175,7 @@ def test_encode_assistant_with_tool_calls_falls_back_to_bypass_when_sig_missing(
 
 
 def test_encode_assistant_falls_back_to_bypass_when_sig_value_empty(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     msg = AssistantMessage(
         content="",
@@ -195,7 +193,7 @@ def test_encode_assistant_falls_back_to_bypass_when_sig_value_empty(
 
 
 def test_encode_tool_result_message_routes_to_helper(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     out = provider._encode_message(ToolResultMessage(tool_call_id="t1", content="ok"))
 
@@ -207,7 +205,7 @@ def test_encode_tool_result_message_routes_to_helper(
 
 
 def test_parse_response_captures_signature_from_tool_call_extra_content(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     raw = {
         "choices": [
@@ -232,7 +230,7 @@ def test_parse_response_captures_signature_from_tool_call_extra_content(
 
 
 def test_parse_response_captures_signature_from_message_extra_content(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     # Text-only response — signature on the message rather than tool_call.
     raw = {
@@ -253,7 +251,7 @@ def test_parse_response_captures_signature_from_message_extra_content(
 
 
 def test_parse_response_no_signature_leaves_vendor_extra_empty(
-    provider: GoogleProvider,
+    provider: GoogleChatProvider,
 ) -> None:
     raw = {
         "choices": [
@@ -270,7 +268,7 @@ def test_parse_response_no_signature_leaves_vendor_extra_empty(
 
 
 def test_parse_response_preserves_existing_google_vendor_extra(
-    provider: GoogleProvider, mocker
+    provider: GoogleChatProvider, mocker
 ) -> None:
     # super()._parse_response is what builds the AssistantMessage; we
     # verify our override only overlays "thought_signature" without
@@ -478,7 +476,7 @@ def _cfg(**kw):
 
 
 async def test_chat_places_google_thinking_inside_http_extra_body(
-    provider: GoogleProvider, respx_mock: respx.MockRouter
+    provider: GoogleChatProvider, respx_mock: respx.MockRouter
 ) -> None:
     import json
 
@@ -498,8 +496,8 @@ async def test_chat_places_google_thinking_inside_http_extra_body(
 
 
 def test_gemini_25_takes_a_budget_and_pro_cannot_go_below_its_floor():
-    flash = GoogleProvider(model="gemini-2.5-flash")
-    pro = GoogleProvider(model="gemini-2.5-pro")
+    flash = GoogleChatProvider(model="gemini-2.5-flash")
+    pro = GoogleChatProvider(model="gemini-2.5-pro")
     assert flash.thinking_params("off") == _cfg(thinking_budget=0)
     assert flash.thinking_params("medium") == _cfg(thinking_budget=8192)
     assert pro.thinking_params("off") == _cfg(thinking_budget=128)
@@ -507,9 +505,9 @@ def test_gemini_25_takes_a_budget_and_pro_cannot_go_below_its_floor():
 
 
 def test_gemini_3_takes_a_level_each_line_floors_where_it_can():
-    flash = GoogleProvider(model="gemini-3-flash-preview")
-    pro3 = GoogleProvider(model="gemini-3-pro-preview")
-    pro31 = GoogleProvider(model="gemini-3.1-pro-preview")
+    flash = GoogleChatProvider(model="gemini-3-flash-preview")
+    pro3 = GoogleChatProvider(model="gemini-3-pro-preview")
+    pro31 = GoogleChatProvider(model="gemini-3.1-pro-preview")
     assert flash.thinking_params("off") == _cfg(thinking_level="minimal")
     assert pro3.thinking_params("off") == _cfg(thinking_level="low")
     assert pro3.thinking_params("medium") == _cfg(thinking_level="low")
@@ -518,4 +516,4 @@ def test_gemini_3_takes_a_level_each_line_floors_where_it_can():
 
 
 def test_a_model_outside_both_generations_gets_no_field() -> None:
-    assert GoogleProvider(model="gemini-1.5-pro").thinking_params("off") == {}
+    assert GoogleChatProvider(model="gemini-1.5-pro").thinking_params("off") == {}

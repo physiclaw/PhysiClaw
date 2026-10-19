@@ -127,11 +127,10 @@ class DispatchGuard:
     """
 
     PRE_VALIDATION = False
-    # Model-discipline guards (the plan meter, the burned-macro strike)
-    # judge the MODEL's turns only: a conductor-synthesized turn runs
-    # what the playbook declares, under the walk's own bounds. The
-    # phone-protecting guards keep `False` and see every call.
-    MODEL_TURNS_ONLY = False
+    # Model-discipline guards (plan meter, burned macros).
+    # Only an explicit host grant skips them; another plugin's turns still
+    # run these guards. Phone-protecting guards stay False for every source.
+    MODEL_GUARD = False
 
     def check(self, session: "Session", call: ToolCall, *, turn: int) -> Block | None:
         return None
@@ -387,7 +386,7 @@ class PlanGate(DispatchGuard):
     # Fires before schema lookup / validation — a gated call must be told
     # to draft the plan, not to fix its arguments.
     PRE_VALIDATION = True
-    MODEL_TURNS_ONLY = True
+    MODEL_GUARD = True
 
     def __init__(self, *, layout_incomplete: bool, required_after: int):
         self._layout_incomplete = layout_incomplete
@@ -464,14 +463,14 @@ class BurnedMacro(DispatchGuard):
     the same stale rehearsal. `bad_input` never gets here: it raises before a
     result exists, so a malformed call cannot burn a healthy macro.
 
-    `MODEL_TURNS_ONLY`: a conductor-synthesized turn re-runs a macro by
+    `MODEL_GUARD`: a conductor-synthesized turn re-runs a macro by
     declared design — a page's `recover:` hand resets the app and the
     walk starts the route over, `start` included — under the walk's own
     bounded recovery counters; blocking it here would veto the one
     recovery the playbook author wrote. The model's later turns still
     see the macro as burned."""
 
-    MODEL_TURNS_ONLY = True
+    MODEL_GUARD = True
 
     def check(self, session, call, *, turn):
         if call.name != RUN_MACRO:

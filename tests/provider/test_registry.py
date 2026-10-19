@@ -12,23 +12,23 @@ from physiclaw.provider import registry
 from physiclaw.provider.registry import (
     in_process_provider_ids,
     is_known,
-    make_provider,
+    make_chat_provider,
     provider_class,
     provider_key_status,
     validate_model_ref,
 )
 from physiclaw.provider.vendors.anthropic.chat import (
-    AnthropicChatProvider as AnthropicProvider,
+    AnthropicChatProvider,
 )
 from physiclaw.provider.vendors.deepseek.chat import (
-    DeepSeekChatProvider as DeepSeekProvider,
+    DeepSeekChatProvider,
 )
-from physiclaw.provider.vendors.google.chat import GoogleChatProvider as GoogleProvider
+from physiclaw.provider.vendors.google.chat import GoogleChatProvider
 from physiclaw.provider.vendors.moonshot.chat import (
-    MoonshotChatProvider as MoonshotProvider,
+    MoonshotChatProvider,
 )
-from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider as OpenAIProvider
-from physiclaw.provider.vendors.qwen.chat import QwenChatProvider as QwenProvider
+from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
+from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 
 # ---------- constants ----------
 
@@ -47,12 +47,12 @@ def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
 @pytest.mark.parametrize(
     "provider_id, cls",
     [
-        ("qwen", QwenProvider),
-        ("moonshot", MoonshotProvider),
-        ("openai", OpenAIProvider),
-        ("anthropic", AnthropicProvider),
-        ("google", GoogleProvider),
-        ("deepseek", DeepSeekProvider),
+        ("qwen", QwenChatProvider),
+        ("moonshot", MoonshotChatProvider),
+        ("openai", OpenAIChatProvider),
+        ("anthropic", AnthropicChatProvider),
+        ("google", GoogleChatProvider),
+        ("deepseek", DeepSeekChatProvider),
     ],
 )
 def test_provider_classes_each_id_maps_to_its_vendor_class(
@@ -92,7 +92,7 @@ def test_is_known_false_for_other_ids(unknown: str) -> None:
 
 
 def test_provider_class_returns_class_for_known_id() -> None:
-    assert provider_class("openai") is OpenAIProvider
+    assert provider_class("openai") is OpenAIChatProvider
 
 
 def test_provider_class_returns_none_for_unknown_id() -> None:
@@ -136,30 +136,30 @@ def test_provider_key_status_returns_none_source_when_unset(
     assert source is None
 
 
-# ---------- make_provider ----------
+# ---------- make_chat_provider ----------
 
 
-def test_make_provider_instantiates_known_provider_class(
+def test_make_chat_provider_instantiates_known_provider_class(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    p = make_provider("openai", "gpt-5")
+    p = make_chat_provider("openai", "gpt-5")
 
-    assert isinstance(p, OpenAIProvider)
+    assert isinstance(p, OpenAIChatProvider)
 
 
-def test_make_provider_passes_model_id_through(
+def test_make_chat_provider_passes_model_id_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
-    p = make_provider("anthropic", "claude-opus-4-7")
+    p = make_chat_provider("anthropic", "claude-opus-4-7")
 
     assert p.model == "claude-opus-4-7"
 
 
-def test_make_provider_applies_the_configured_read_timeout(
+def test_make_chat_provider_applies_the_configured_read_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A reasoning model can spend minutes on one decision; the ceiling is
@@ -169,22 +169,22 @@ def test_make_provider_applies_the_configured_read_timeout(
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(CONFIG.engine, "provider_timeout_seconds", 42.0)
 
-    p = make_provider("openai", "gpt-5")
+    p = make_chat_provider("openai", "gpt-5")
 
     assert p._client.timeout.read == 42.0
 
 
-def test_make_provider_raises_value_error_for_unknown_id() -> None:
+def test_make_chat_provider_raises_value_error_for_unknown_id() -> None:
     with pytest.raises(
         ValueError,
         match=(r"^unknown provider 'mystery' \(known: .+\)$"),
     ):
-        make_provider("mystery", "any-model")
+        make_chat_provider("mystery", "any-model")
 
 
-def test_make_provider_error_message_lists_each_in_process_id() -> None:
+def test_make_chat_provider_error_message_lists_each_in_process_id() -> None:
     with pytest.raises(ValueError) as exc_info:
-        make_provider("nope", "model")
+        make_chat_provider("nope", "model")
 
     msg = str(exc_info.value)
     for known in ("qwen", "moonshot", "openai", "anthropic", "google", "deepseek"):

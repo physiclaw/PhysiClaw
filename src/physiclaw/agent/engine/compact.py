@@ -238,7 +238,7 @@ def collapse_old_turns(
     Each collapse mutates the prefix bytes between system and the next
     stub anchor → triggers one cache_creation event. The vendor's
     defaults amortize this tax against the bounded-prompt savings
-    (EOQ analysis at `BaseProvider.COLLAPSE`; `MoonshotProvider` for
+    (EOQ analysis at `BaseChatProvider.COLLAPSE`; `MoonshotChatProvider` for
     the whole-prefix-invalidation trade-off).
     """
     threshold = _trigger_threshold(

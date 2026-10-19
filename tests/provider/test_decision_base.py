@@ -10,7 +10,7 @@ from physiclaw.contract.decision import (
     DecisionCapabilities,
     DecisionResult,
 )
-from physiclaw.provider import BaseAPIProvider, BaseDecisionProvider, BaseProvider
+from physiclaw.provider import BaseAPIProvider, BaseChatProvider, BaseDecisionProvider
 from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
     ProviderPermanentError,
@@ -42,7 +42,7 @@ class StubDecisionProvider(BaseDecisionProvider):
         )
 
 
-class StubChatProvider(BaseProvider):
+class StubChatProvider(BaseChatProvider):
     PROVIDER_ID = "stubdecision"
     BASE_URL = "https://stub.example/v1"
 
@@ -62,7 +62,7 @@ def deadline():
 async def test_shared_lifecycle_and_separate_capabilities(provider):
     assert isinstance(provider, BaseAPIProvider)
     assert issubclass(TypeSafeDecisionProvider, BaseDecisionProvider)
-    assert not issubclass(TypeSafeDecisionProvider, BaseProvider)
+    assert not issubclass(TypeSafeDecisionProvider, BaseChatProvider)
     chat = StubChatProvider("chat-model")
     try:
         assert isinstance(chat, BaseAPIProvider)

@@ -660,7 +660,7 @@ def micro(
     from physiclaw.common.model_ref import parse_model_ref
     from physiclaw.conductor.bench import decisions
     from physiclaw.contract.dto import THINKING_LEVELS, Thinking
-    from physiclaw.provider import make_provider
+    from physiclaw.provider import make_chat_provider
 
     level: Thinking | None = None
     if think is not None:
@@ -679,7 +679,7 @@ def micro(
     ref = model or CONFIG.conductor.micro_model or CONFIG.agent.model
     try:
         pid, mid = parse_model_ref(ref)
-        provider = make_provider(pid, mid)
+        provider = make_chat_provider(pid, mid)
     except Exception as e:
         exit_error(f"cannot build provider for {ref!r}: {e}")
     if not as_json:

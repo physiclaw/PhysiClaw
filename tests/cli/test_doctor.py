@@ -680,7 +680,7 @@ def _make_async(value):
 
 def test_probe_provider_deep_setup_error_returns_warn(mocker) -> None:
     fake_provider = MagicMock()
-    fake_provider.make_provider.side_effect = ValueError("missing api key")
+    fake_provider.make_chat_provider.side_effect = ValueError("missing api key")
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_provider},
@@ -700,7 +700,7 @@ def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
     fake_prov.aclose = _make_async(None)
 
     fake_module = MagicMock()
-    fake_module.make_provider.return_value = fake_prov
+    fake_module.make_chat_provider.return_value = fake_prov
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_module},
@@ -728,7 +728,7 @@ def test_probe_provider_deep_empty_reply_returns_warn(mocker) -> None:
     fake_prov.aclose = _make_async(None)
 
     fake_module = MagicMock()
-    fake_module.make_provider.return_value = fake_prov
+    fake_module.make_chat_provider.return_value = fake_prov
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_module},
@@ -757,7 +757,7 @@ def test_probe_provider_deep_vision_check_fails(mocker) -> None:
     fake_prov.aclose = _make_async(None)
 
     fake_module = MagicMock()
-    fake_module.make_provider.return_value = fake_prov
+    fake_module.make_chat_provider.return_value = fake_prov
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_module},
@@ -787,7 +787,7 @@ def test_probe_provider_deep_success_with_usage(mocker) -> None:
     fake_prov.aclose = _make_async(None)
 
     fake_module = MagicMock()
-    fake_module.make_provider.return_value = fake_prov
+    fake_module.make_chat_provider.return_value = fake_prov
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_module},
@@ -818,7 +818,7 @@ def test_probe_provider_deep_success_no_usage(mocker) -> None:
     fake_prov.aclose = _make_async(None)
 
     fake_module = MagicMock()
-    fake_module.make_provider.return_value = fake_prov
+    fake_module.make_chat_provider.return_value = fake_prov
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.provider": fake_module},
@@ -1229,7 +1229,7 @@ def test_doctor_provider_probe_sends_valid_image_and_closes_client(
         ),
         aclose=mocker.AsyncMock(),
     )
-    mocker.patch("physiclaw.provider.make_provider", return_value=provider)
+    mocker.patch("physiclaw.provider.make_chat_provider", return_value=provider)
 
     result = runner.invoke(app, ["--deep"])
 
@@ -1411,7 +1411,7 @@ def test_doctor_live_engine_metadata_takes_precedence(doctor_io):
 
 def test_doctor_shallow_check_does_not_contact_provider(doctor_io, mocker):
     doctor_io.key_status.return_value = ("***", "test")
-    make = mocker.patch("physiclaw.provider.make_provider")
+    make = mocker.patch("physiclaw.provider.make_chat_provider")
 
     result = runner.invoke(app, [])
 

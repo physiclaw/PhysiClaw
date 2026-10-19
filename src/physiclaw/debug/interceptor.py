@@ -10,7 +10,7 @@ While on the thread, conductor peeks render the virtual conversation and
 release staged replies through `thread.peek_bubbles`. A real peek matching
 the channel fingerprint can also enter this state after a session resumes.
 Other phone-moving tools leave it. Model-authored calls are never rewritten;
-dispatch supplies the session's synthesized-turn bit as provenance.
+dispatch supplies the host-selected plugin-turn bit as provenance.
 
 State belongs to one session. The channel fingerprint is cached, while the
 thread file is re-read on each render. Harness errors clear the state and
@@ -70,14 +70,14 @@ class FakeChannel:
         return self._view[1]
 
     def intercept(
-        self, call: ToolCall, synthesized: bool, blocks: list[dict]
+        self, call: ToolCall, plugin_turn: bool, blocks: list[dict]
     ) -> list[dict] | None:
         """Replacement blocks for a REAL result just produced by `call`,
-        or None — keep it untouched. `synthesized` is the session's
-        plugin-minted-turn bit. Never raises: a harness bug must fail
+        or None — keep it untouched. `plugin_turn` is derived from the
+        host-selected binding. Never raises: a harness bug must fail
         open into the real observation, not kill the session."""
         try:
-            return self._intercept(call, synthesized, blocks)
+            return self._intercept(call, plugin_turn, blocks)
         except Exception:
             self._on_thread = False
             log.exception("debug fake-channel crashed — keeping the real result")
@@ -87,12 +87,12 @@ class FakeChannel:
         return vthread.render_listing(bubbles, self._pp, self.incoming)
 
     def _intercept(
-        self, call: ToolCall, synthesized: bool, blocks: list[dict]
+        self, call: ToolCall, plugin_turn: bool, blocks: list[dict]
     ) -> list[dict] | None:
         args = call.arguments or {}
         macro = str(args.get("name") or "")
         if (
-            synthesized
+            plugin_turn
             and call.name == gesture_vocab.RUN_MACRO
             and macro_app(macro) == CHANNEL_APP
         ):
@@ -115,7 +115,7 @@ class FakeChannel:
             return vthread.gesture_blocks(
                 verdict.attach(action, True), self._render(bubbles)
             )
-        if synthesized and call.name == gesture_vocab.PEEK:
+        if plugin_turn and call.name == gesture_vocab.PEEK:
             if not self._on_thread and self._reads_as_thread(blocks):
                 self._on_thread = True
                 log.info(

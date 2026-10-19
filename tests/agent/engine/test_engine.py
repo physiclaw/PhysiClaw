@@ -42,6 +42,7 @@ from physiclaw.agent.engine import (
 from physiclaw.agent.engine import (
     skill as skill_mod,
 )
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, IDLE, STUCK, WAIT
@@ -144,7 +145,6 @@ async def test_regression_private_macro_dispatch_survives_hidden_schema(
 async def test_private_macro_hidden_schema_still_validates_arguments(private_macro_run):
     state = private_macro_run
     hand = _asst(tool_calls=[_tc("run_macro", {"name": 123})])
-    hand.synthesized = True
     state.plugin.advance.side_effect = [hand, None]
 
     outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
@@ -244,9 +244,13 @@ def completed_run(mocker):
         aclose=mocker.AsyncMock(),
     )
     mocker.patch.object(
-        engine_mod.plugin_loader, "load_plugins", return_value=(plugin,)
+        engine_mod.plugin_loader,
+        "load_plugins",
+        return_value=(PluginBinding("fixture", plugin, name="test"),),
     )
-    factory = mocker.patch.object(engine_mod, "make_provider", return_value=provider)
+    factory = mocker.patch.object(
+        engine_mod, "make_chat_provider", return_value=provider
+    )
     return SimpleNamespace(**deps, provider=provider, plugin=plugin, factory=factory)
 
 
@@ -321,6 +325,21 @@ async def test_run_plugin_without_setup_contribution_still_advances(completed_ru
     assert outcome.status == DONE
     plugin.advance.assert_awaited_once()
     plugin.aclose.assert_awaited_once()
+
+
+async def test_plugin_cleanup_keeps_the_borrowed_provider_open(completed_run):
+    provider_open_during_cleanup = []
+
+    async def close_plugin():
+        provider_open_during_cleanup.append(not completed_run.provider.closed)
+
+    completed_run.plugin.aclose.side_effect = close_plugin
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    assert provider_open_during_cleanup == [True]
+    assert completed_run.provider.closed
 
 
 @pytest.mark.parametrize("resource", ["provider", "plugin"])
@@ -417,7 +436,7 @@ async def test_run_session_closes_provider_in_finally(mocker) -> None:
         ]
     )
     fake_provider = FakeProvider([asst])
-    mocker.patch.object(engine_mod, "make_provider", return_value=fake_provider)
+    mocker.patch.object(engine_mod, "make_chat_provider", return_value=fake_provider)
 
     session = Session()
     await engine_mod._run_session(
@@ -437,7 +456,7 @@ async def test_run_session_crash_marks_stuck(mocker) -> None:
     _patch_session_deps(mocker)
     mocker.patch.object(
         engine_mod,
-        "make_provider",
+        "make_chat_provider",
         side_effect=RuntimeError("bad provider"),
     )
 
@@ -461,7 +480,7 @@ async def test_run_session_cancellation_propagates(mocker) -> None:
     _patch_session_deps(mocker)
     mocker.patch.object(
         engine_mod,
-        "make_provider",
+        "make_chat_provider",
         side_effect=asyncio.CancelledError,
     )
 
@@ -693,7 +712,9 @@ async def test_done_is_recorded_before_the_curation_pass(mocker) -> None:
             _tc("end_session", {"status": DONE, "recap": "fin"}),
         ]
     )
-    mocker.patch.object(engine_mod, "make_provider", return_value=FakeProvider([asst]))
+    mocker.patch.object(
+        engine_mod, "make_chat_provider", return_value=FakeProvider([asst])
+    )
     mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
     curate = mocker.patch.object(
         engine_mod.curate, "curate", side_effect=asyncio.CancelledError()

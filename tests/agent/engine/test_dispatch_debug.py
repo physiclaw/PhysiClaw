@@ -6,10 +6,13 @@ only its successful result blocks may be rewritten (traced as
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from engine_fakes import FakeMcpClient, _mk_run, _tc
 
 from physiclaw.agent.engine.dispatch import dispatch
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.debug.thread import TINY_JPEG_B64
 
@@ -26,13 +29,14 @@ async def test_rewritten_call_still_executes_and_marks_the_trace() -> None:
     mcp = FakeMcpClient()
     run = _mk_run(mcp=mcp, schema_by_name={"peek": PEEK_SCHEMA})
     seen: list[tuple[bool, list[dict]]] = []
-    run.debug_intercept = lambda call, synthesized, blocks: (
-        seen.append((synthesized, blocks)),
+    run.debug_intercept = lambda call, plugin_turn, blocks: (
+        seen.append((plugin_turn, blocks)),
         FAKED,
     )[1]
     call = _tc("peek", {})
-    session = Session()
-    session.synthesized_turn = True
+    session = Session(
+        active_plugin=PluginBinding("selected", SimpleNamespace(), name="test")
+    )
 
     result = await dispatch(run, session, call, 0)
 
@@ -48,7 +52,7 @@ async def test_rewritten_call_still_executes_and_marks_the_trace() -> None:
 async def test_transformer_none_keeps_the_real_result() -> None:
     mcp = FakeMcpClient()
     run = _mk_run(mcp=mcp, schema_by_name={"peek": PEEK_SCHEMA})
-    run.debug_intercept = lambda call, synthesized, blocks: None
+    run.debug_intercept = lambda call, plugin_turn, blocks: None
 
     result = await dispatch(run, Session(), _tc("peek", {}), 0)
 

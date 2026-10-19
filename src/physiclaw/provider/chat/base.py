@@ -18,7 +18,7 @@ from physiclaw.contract.dto import (
     UsageCall,
     usage_event,
 )
-from physiclaw.contract.plugin import EventSink
+from physiclaw.contract.plugin import EventSink, SessionChatProvider
 from physiclaw.provider.provider_base import BaseAPIProvider
 
 log = logging.getLogger(__name__)
@@ -38,21 +38,12 @@ def token_count(value: Any) -> int:
         return 0
 
 
-class ChatProvider(Protocol):
+class ChatProvider(SessionChatProvider, Protocol):
     @property
     def api_kind(self) -> Literal["chat"]: ...
 
     model: str
     COLLAPSE: CollapsePolicy
-
-    async def chat(
-        self,
-        history: list[Message],
-        tools: list[dict],
-        *,
-        purpose: UsageCall = USAGE_CALL_TURN,
-        thinking: Thinking | None = None,
-    ) -> AssistantMessage: ...
 
     def serialize_history(self, history: list[Message]) -> list[dict]:
         """Convert engine DTOs into the wire-format messages this provider
@@ -191,7 +182,7 @@ class BaseChatProvider(BaseAPIProvider):
     # Cache-marker factory for this provider's wire shape. Each
     # wire-shape base sets its own (`OpenAICacheMarkers` /
     # `AnthropicCacheMarkers`); a vendor whose endpoint ignores markers
-    # resets to `NO_CACHE_MARKERS` — see `GoogleProvider`.
+    # resets to `NO_CACHE_MARKERS` — see `GoogleChatProvider`.
     CACHE_MARKERS: CacheMarkers = NO_CACHE_MARKERS
 
     # Turn-age summary collapse — see `compact.collapse_old_turns`.
@@ -203,7 +194,7 @@ class BaseChatProvider(BaseAPIProvider):
     # match every shipping provider; Moonshot carries the highest
     # cost-per-collapse (whole-prefix invalidation vs anchored caches)
     # but accepts the tax in exchange for tighter prompts on long
-    # sessions — see `MoonshotProvider` for the trade-off rationale.
+    # sessions — see `MoonshotChatProvider` for the trade-off rationale.
     COLLAPSE: CollapsePolicy = CollapsePolicy(first_at=30, keep=10, interval=20)
 
     def __init__(
@@ -263,7 +254,7 @@ class BaseChatProvider(BaseAPIProvider):
         Subclasses implement `_encode_message` (DTO → wire dict, list of
         wire dicts, or `None` to skip). Most encodings are 1:1; the list
         form is for vendor-specific splits — e.g. Google's shim rejects
-        `image_url` parts in `role: tool`, so `GoogleProvider` splits a
+        `image_url` parts in `role: tool`, so `GoogleChatProvider` splits a
         ToolResultMessage with images into [text-only tool, synthetic
         user with images]. Anthropic's `SystemMessage` returns `None`
         (system rides outside the messages array). Cache markers attach

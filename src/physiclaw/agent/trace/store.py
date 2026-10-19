@@ -105,8 +105,11 @@ in the `env` event / `summary.json.env.utc_offset`.
   outcome {sentinel: DONE|WAIT|IDLE|STUCK|FAIL, recap, crashed},
   turns, provider_calls, conductor_turns (turns the conductor
   synthesized from an armed playbook — no provider request sent),
-  micro_calls (the conductor's scoped decision calls; their tokens
-  fold into usage), provider_time_ms, tool_time_ms, usage
+  plugin_turns (other host-bound plugin turns), micro_calls (the
+  conductor's scoped chat calls; their tokens fold into usage),
+  decision_calls and decision_time_ms (native decision attempts;
+  their usage remains in decision_call events, separate from chat
+  usage, with unknown values preserved), provider_time_ms, tool_time_ms, usage
   {input_tokens, new_tokens, output_tokens, cache_read_tokens,
   cache_creation_tokens, cache_hit_pct, by_model {model: {calls,
   failed, input, input_new, cache_read, cache_write, output,
@@ -128,8 +131,14 @@ in the `env` event / `summary.json.env.utc_offset`.
   line: `{"t": iso-ms, "event": <type>, "turn": <int, when turn-scoped>,
   ...event fields}`. First line is always `env`. Key event types:
   `wake` (triggers), `response` (finish_reason, tool_calls requested,
-  elapsed_ms; `synthesized: true` = a conductor playbook turn, no
-  request sent), `micro_call` (one conductor decision call: call, node,
+  elapsed_ms for the selected producer, arbitration_elapsed_ms including
+  earlier declines, response_model/response_id when supplied,
+  host-stamped producer {kind: llm|plugin, plugin_id},
+  presentation: model|plugin|playbook), `plugin_bound` (registered name/id,
+  granted private macros and model-guard exemptions), `plugin_macro_collision`
+  (conflicting registration skipped), `decision_call` (one native
+  decision attempt, its elapsed_ms and native usage; no chat token fold),
+  `micro_call` (one conductor decision call: call, node,
   rows the decision saw, out or null when it escalated, confidence,
   detail, attempts, elapsed_ms), `walk` (a conductor walk's terminal moment — the
   fields `summary.walks` lists),
@@ -160,9 +169,10 @@ in the `env` event / `summary.json.env.utc_offset`.
 - `model.jsonl` — the provider round-trips: `session_start` (provider,
   model, prompt_hash, tool schemas) once, then per turn `request`
   (full message array) and `response` (raw provider reply,
-  elapsed_ms; `synthesized: true` marks a conductor-composed turn —
-  nothing was sent to the provider, and no request record precedes
-  it). Inline base64 images are replaced by relative paths into
+  elapsed_ms, producer and presentation; a plugin-composed turn has
+  no main-LLM request record before it, but may have its own inference
+  records). Inline
+  base64 images are replaced by relative paths into
   `images/` — the file the frame's own `tool_result` wrote. `micro`
   records carry one conductor decision call whole: `call` and `node`,
   `thinking` (the step's level), `allowed` (the answers the caller

@@ -25,7 +25,7 @@ def isolated_job_store(tmp_path, monkeypatch):
 
 @pytest.fixture
 def private_macro_pack():
-    """A plugin-owned hand, callable only on synthesized turns."""
+    """A private hand, callable only by its registering plugin."""
     spec = parse_macro(
         "kind: macro\nschema: 1\nname: leg\ndescription: Private hand\n"
         "steps:\n  - home_screen\n",
@@ -42,6 +42,7 @@ def private_macro_run(mocker, private_macro_pack):
     from engine_fakes import FakeMcpClient, FakeProvider, _asst, _tc
 
     from physiclaw.agent.engine import engine, mcp_tool
+    from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.runtime.sentinel import DONE
     from physiclaw.contract.plugin import SessionSetup
 
@@ -57,7 +58,6 @@ def private_macro_run(mocker, private_macro_pack):
         ]
     )
     hand = _asst(tool_calls=[_tc("run_macro", {"name": "demo/leg"})])
-    hand.synthesized = True
     plugin = SimpleNamespace(
         session_setup=mocker.AsyncMock(
             return_value=SessionSetup(gated_macros=private_macro_pack)
@@ -84,11 +84,27 @@ def private_macro_run(mocker, private_macro_pack):
             ]
         ),
     )
-    mocker.patch.object(engine, "make_provider", return_value=provider)
-    mocker.patch.object(engine.plugin_loader, "load_plugins", return_value=(plugin,))
+    mocker.patch.object(engine, "make_chat_provider", return_value=provider)
+    load_plugins = mocker.patch.object(
+        engine.plugin_loader,
+        "load_plugins",
+        return_value=(
+            PluginBinding(
+                "fixture-conductor",
+                plugin,
+                skip_model_guards=True,
+                playbook=True,
+                name="playbook",
+            ),
+        ),
+    )
     mocker.patch.object(engine.CONFIG.engine, "max_attempts", 1)
     return SimpleNamespace(
-        mcp=mcp, provider=provider, plugin=plugin, chat=mocker.spy(provider, "chat")
+        mcp=mcp,
+        provider=provider,
+        plugin=plugin,
+        chat=mocker.spy(provider, "chat"),
+        load_plugins=load_plugins,
     )
 
 

@@ -269,8 +269,11 @@ def build_summary(
     crashed: bool,
     turns: int,
     provider_calls: int,
-    conductor_turns: int | None = None,
-    micro_calls: int | None = None,
+    conductor_turns: int = 0,
+    plugin_turns: int = 0,
+    micro_calls: int = 0,
+    decision_calls: int = 0,
+    decision_time_ms: int = 0,
     provider_time_ms: int,
     input_tokens: int,
     output_tokens: int,
@@ -289,8 +292,9 @@ def build_summary(
 ) -> dict[str, Any]:
     """Build the schema-v1 summary, stamping ``ended_at`` at finalize time.
 
-    Missing error counters render as zero. Optional timing, verdict, and
-    conductor fields are omitted when the writer has no corresponding data.
+    Missing error counters render as zero. Optional timing, verdict, and walk
+    fields are omitted when the writer has no corresponding data. Producer
+    and inference counters are always present.
     """
     unknown = set(errors) - set(_ERROR_KEYS)
     if unknown:
@@ -315,7 +319,10 @@ def build_summary(
         "turns": turns,
         "provider_calls": provider_calls,
         "conductor_turns": conductor_turns,
+        "plugin_turns": plugin_turns,
         "micro_calls": micro_calls,
+        "decision_calls": decision_calls,
+        "decision_time_ms": decision_time_ms,
         "provider_time_ms": provider_time_ms,
         "tool_time_ms": tool_time_ms,
         "usage": {
@@ -360,8 +367,6 @@ def build_summary(
         "tool_time_ms",
         "verdicts",
         "walks",
-        "conductor_turns",
-        "micro_calls",
     ):
         if summary[optional] is None:
             del summary[optional]

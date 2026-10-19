@@ -3,7 +3,7 @@
 Every provider serializes messages, tool_calls, finish reasons, and
 assistant content differently. These DTOs normalize that boundary: the
 engine deals only in DTOs; provider classes own translation to/from
-their native wire format (`AnthropicProvider` → `/v1/messages` blocks,
+their native wire format (`AnthropicChatProvider` → `/v1/messages` blocks,
 `OpenAICompatibleProvider` → `/chat/completions` dicts, etc.). Reasoning
 stays out of public assistant content. Opaque state needed
 for protocol continuity (such as signed Anthropic thinking blocks) lives
@@ -159,7 +159,7 @@ USAGE_CALL_CURATE: Final[UsageCall] = "curate"
 # neutral: "off" asks for none, the three levels scale it. Each vendor
 # translates a level into its own request field (a `thinking` block
 # with a token budget, a `reasoning_effort` word, an `enable_thinking`
-# flag — `BaseProvider.thinking_params`), and a model that cannot go
+# flag — `BaseChatProvider.thinking_params`), and a model that cannot go
 # that low or high gets its nearest setting. None = the vendor's own
 # default for that model.
 Thinking = Literal["off", "low", "medium", "high"]
@@ -235,11 +235,8 @@ class AssistantMessage:
     coexist in mixed-history scenarios. Engine code never reads this;
     only the originating provider does, on serialize.
 
-    `synthesized` marks a turn a plugin minted via `advance()` (see
-    `contract.plugin`) — no provider request was sent. The loop skips
-    the model-output judgments for it (turn shape, turn gates) and keeps
-    the wire log and token counters honest; dispatch guards that protect
-    the phone still apply in full.
+    Producer identity and execution grants belong to the host's arbitration
+    result, independently of the message or any model's raw response.
     """
 
     content: str
@@ -253,10 +250,6 @@ class AssistantMessage:
     response_model: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
     vendor_extra: dict[str, Any] = field(default_factory=dict)
-    synthesized: bool = False
-    # Who minted a synthesized turn — the playbook ref (`taobao/buy`) —
-    # so a log line can say which walk is driving; "" for the model.
-    driver: str = ""
 
     def tool_names(self) -> list[str]:
         return [tc.name for tc in self.tool_calls]
@@ -349,7 +342,7 @@ class CollapsePolicy:
     IndexError mid-session (`collapse_old_turns` cuts at
     `turn_starts[-keep]`, so `keep` may not exceed `first_at`) fails at
     import instead. Default values and the per-vendor economics behind
-    them live on `BaseProvider.COLLAPSE`.
+    them live on `BaseChatProvider.COLLAPSE`.
 
     Lives in dto.py rather than compact.py (which owns the collapse
     semantics) because dto.py is the shared type vocabulary the provider

@@ -162,7 +162,7 @@ async def test_cli_request_matches_engine_turn0(monkeypatch) -> None:
     monkeypatch.setattr(assemble_mod, "dt", _FakeDtModule)
     monkeypatch.setattr(engine_mod, "get_mcp", _aret(MagicMock()))
     monkeypatch.setattr(engine_mod, "list_tools_cached", _aret([]))
-    monkeypatch.setattr(engine_mod, "make_provider", lambda *_a, **_k: capture)
+    monkeypatch.setattr(engine_mod, "make_chat_provider", lambda *_a, **_k: capture)
     monkeypatch.setattr(engine_mod, "Trace", lambda *_a, **_k: MagicMock())
     monkeypatch.setattr(engine_mod, "RawLog", lambda *_a, **_k: MagicMock())
     # CLI resolves the provider id from config; align it with the engine's.

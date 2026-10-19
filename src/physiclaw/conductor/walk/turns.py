@@ -3,8 +3,8 @@
 Everything the conductor does to the phone, it does by MINTING A TURN:
 a ``[note, one-other]`` assistant message, the shape the loop enforces
 on model turns, so dispatch, the phone-protection guards, compaction,
-and the wire log see an ordinary turn (`AssistantMessage.synthesized`
-skips only the judgment gates). The loop dispatches the tool calls and
+and the wire log see an ordinary turn (the host binding grants the
+conductor's judgment-gate exemptions). The loop dispatches the tool calls and
 the results come back as history, read by call id (`views.result_for`).
 
 `Turnsmith` owns the round trip — mint (`synth`) and settle (`settle`)
@@ -30,7 +30,7 @@ from physiclaw.contract.dto import (
 # Call-id prefix for every synthesized action. Stable on purpose: it is
 # what lets a reader of a recorded session (model.jsonl, traces) tell
 # conductor-made tool calls apart — in-process code never parses ids;
-# provenance there is the session's structural `synthesized` bit.
+# provenance there is the host's selected plugin binding.
 # The full id is `conductor-<scope>-<seq>-<role>`: each walk mints
 # under its own scope (its playbook ref), so ids stay unique across the
 # session even though the boot and the program it activates each run a
@@ -75,13 +75,11 @@ class Turnsmith:
     `ref` names the walk this smith belongs to (its playbook ref,
     `taobao/buy`) — required rather than defaulted so two walks in one
     session cannot silently collide on one sequence. It rides every
-    minted turn as `driver`, so the engine can say who is driving, and
-    every call id in its id-safe spelling — `taobao/hema-buy.add` is
+    call id in its id-safe spelling — `taobao/hema-buy.add` is
     `taobao-hema-buy-add`, every character a call id may not hold
     replaced once, so a wider ref grammar needs no new rule here."""
 
     def __init__(self, ref: str) -> None:
-        self.driver = ref
         self.scope = _ID_UNSAFE.sub("-", ref)
         self.pending: Pending | None = None
         self._seq = 0
@@ -136,6 +134,4 @@ class Turnsmith:
                 ToolCall(id=f"{cid}-act", name=tool, arguments=args),
             ],
             finish_reason=FinishReason.TOOL_CALLS,
-            synthesized=True,
-            driver=self.driver,
         )

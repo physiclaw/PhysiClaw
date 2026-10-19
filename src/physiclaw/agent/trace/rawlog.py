@@ -2,13 +2,14 @@
 
 import json
 import logging
-from dataclasses import fields
-from typing import Any
+from dataclasses import asdict, fields
+from typing import Any, Literal
 
 from physiclaw.agent.trace import store
 from physiclaw.common.logger import iso_now
 from physiclaw.contract import wire
 from physiclaw.contract.dto import MicroRecord, UsageCall
+from physiclaw.contract.plugin import TurnProducer
 
 log = logging.getLogger(__name__)
 
@@ -73,19 +74,20 @@ class RawLog:
         raw: dict[str, Any],
         *,
         elapsed_ms: int,
-        synthesized: bool = False,
-        driver: str = "",
         call: UsageCall | None = None,
+        producer: TurnProducer = TurnProducer(),
+        presentation: Literal["model", "plugin", "playbook"] = "model",
     ) -> None:
-        # Wire fidelity: a synthesized response was composed by the
-        # conductor — nothing was sent to the provider, and no request
-        # record precedes it (the loop skips the request write entirely).
-        # `driver` names the playbook that composed it.
         self._turn = turn
-        extra = {"synthesized": True, "driver": driver} if synthesized else {}
-        if call is not None:
-            extra["call"] = call
-        self._emit("response", turn=turn, elapsed_ms=elapsed_ms, **extra, raw=raw)
+        self._emit(
+            "response",
+            turn=turn,
+            elapsed_ms=elapsed_ms,
+            producer=asdict(producer),
+            presentation=presentation,
+            raw=raw,
+            **({"call": call} if call is not None else {}),
+        )
 
     def write_micro(self, rec: MicroRecord) -> None:
         """One conductor decision call in a single record (kind "micro")

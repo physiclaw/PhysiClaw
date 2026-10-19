@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from physiclaw.contract.dto import UserMessage
-from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider as OpenAIProvider
+from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
 
 
 @pytest.fixture(autouse=True)
@@ -24,17 +24,17 @@ def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_provider_id_pinned() -> None:
     """Provider id is the API surface (`openai`), matching the OpenClaw
     / Anthropic-SDK convention — not the brand (`chatgpt`)."""
-    assert OpenAIProvider.PROVIDER_ID == "openai"
+    assert OpenAIChatProvider.PROVIDER_ID == "openai"
 
 
 def test_base_url_pinned() -> None:
-    assert OpenAIProvider.BASE_URL == "https://api.openai.com/v1"
+    assert OpenAIChatProvider.BASE_URL == "https://api.openai.com/v1"
 
 
 def test_inherits_openai_compat() -> None:
     from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
-    assert issubclass(OpenAIProvider, OpenAICompatibleProvider)
+    assert issubclass(OpenAIChatProvider, OpenAICompatibleProvider)
 
 
 def test_no_system_prompt_fragment_declared() -> None:
@@ -42,24 +42,24 @@ def test_no_system_prompt_fragment_declared() -> None:
     OpenAI's reasoning models surface chain-of-thought via API field,
     not a prompt convention — the vendor keeps the base's empty
     declaration."""
-    assert OpenAIProvider.SYSTEM_PROMPT_FRAGMENT == ""
-    assert OpenAIProvider.system_prompt_fragment() == ""
+    assert OpenAIChatProvider.SYSTEM_PROMPT_FRAGMENT == ""
+    assert OpenAIChatProvider.system_prompt_fragment() == ""
 
 
 # ---------- thinking table ----------
 
 
 def test_gpt5_takes_minimal_for_off_and_the_o_series_floors_at_low():
-    p = OpenAIProvider(model="gpt-5")
+    p = OpenAIChatProvider(model="gpt-5")
     assert p.thinking_params("off") == {"reasoning_effort": "minimal"}
     assert p.thinking_params("high") == {"reasoning_effort": "high"}
-    o = OpenAIProvider(model="o4-mini")
+    o = OpenAIChatProvider(model="o4-mini")
     assert o.thinking_params("off") == {"reasoning_effort": "low"}
     assert o.thinking_params("medium") == {"reasoning_effort": "medium"}
 
 
 def test_a_non_reasoning_model_gets_no_field() -> None:
-    assert OpenAIProvider(model="gpt-4o").thinking_params("off") == {}
+    assert OpenAIChatProvider(model="gpt-4o").thinking_params("off") == {}
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ async def test_chat_off_sends_effort_supported_by_model(model, effort, respx_moc
             json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
         )
     )
-    provider = OpenAIProvider(model=model)
+    provider = OpenAIChatProvider(model=model)
 
     try:
         await provider.chat(
@@ -103,7 +103,7 @@ async def test_chat_off_sends_effort_supported_by_model(model, effort, respx_moc
     "model", ["gpt-5.1-chat-latest", "gpt-5.2-pro", "gpt-5.1-codex", "gpt-5.99"]
 )
 def test_unknown_variant_keeps_its_api_default(model):
-    provider = OpenAIProvider(model=model)
+    provider = OpenAIChatProvider(model=model)
 
     params = provider.thinking_params("off")
 

@@ -13,15 +13,14 @@ from typing import Awaitable, Callable
 from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.mcp_tool import McpClient
 from physiclaw.agent.engine.policy import Policies
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.trace import RawLog, Trace
 from physiclaw.common.config import CONFIG
 from physiclaw.contract.dto import AssistantMessage, CollapsePolicy, Message, ToolCall
-from physiclaw.contract.plugin import TurnPlugin
 
 # The debug harness's result transformer (one spelling here; the loader
-# in `plugins.py` returns it): (call that RAN for real, the session's
-# synthesized-turn bit, the real result blocks) → replacement blocks or
-# None (keep the real result).
+# in `plugins.py` returns it): (call that RAN for real, whether the host
+# selected a plugin, the real result blocks) → replacement blocks or None.
 DebugIntercept = Callable[[ToolCall, bool, list[dict]], "list[dict] | None"]
 
 
@@ -77,7 +76,7 @@ class EngineRun:
     provider handle: every other provider use (curate, close) stays in
     the session lifecycle."""
 
-    plugins: tuple[TurnPlugin, ...]
+    plugins: tuple[PluginBinding, ...]
     # The session provider's chat call — the fallback when every plugin
     # passes (and the whole story when `plugins` is empty).
     chat: Callable[[list[Message], list[dict]], Awaitable[AssistantMessage]]
@@ -99,7 +98,6 @@ class EngineRun:
     deadline: float | None = None
     # The e2e debug harness's result transformer (debug mode —
     # `physiclaw debug`, env-only; loaded by dotted path like the turn
-    # plugins). The synthesized-turn bit it receives is structural
-    # provenance — the same bit the phone-protection policies key on.
+    # plugins). The plugin-turn bit is derived from the host-selected binding.
     # None here (production) leaves dispatch untouched.
     debug_intercept: DebugIntercept | None = None

@@ -14,20 +14,20 @@ import pytest
 
 from physiclaw.contract.dto import UserMessage
 from physiclaw.provider.vendors.anthropic.chat import (
-    AnthropicChatProvider as AnthropicProvider,
+    AnthropicChatProvider,
 )
 
 
 def test_provider_id_pinned() -> None:
     """Routing key for the registry. Renaming breaks `physiclaw models
     use anthropic/<id>` and any config references."""
-    assert AnthropicProvider.PROVIDER_ID == "anthropic"
+    assert AnthropicChatProvider.PROVIDER_ID == "anthropic"
 
 
 def test_base_url_pinned_for_documentation() -> None:
     """The SDK manages the URL itself — this constant is documentation
     so operators can spot which endpoint family the provider hits."""
-    assert AnthropicProvider.BASE_URL == "https://api.anthropic.com/v1"
+    assert AnthropicChatProvider.BASE_URL == "https://api.anthropic.com/v1"
 
 
 def test_inherits_anthropic_compat() -> None:
@@ -36,7 +36,7 @@ def test_inherits_anthropic_compat() -> None:
         AnthropicCompatibleProvider,
     )
 
-    assert issubclass(AnthropicProvider, AnthropicCompatibleProvider)
+    assert issubclass(AnthropicChatProvider, AnthropicCompatibleProvider)
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ _ADAPTIVE_CASES = [
 
 @pytest.mark.parametrize("model, off_mode", _ADAPTIVE_CASES)
 async def test_chat_off_uses_lowest_supported_mode(model, off_mode, reply_route):
-    provider = AnthropicProvider(model=model, base_url="https://api.anthropic.test")
+    provider = AnthropicChatProvider(model=model, base_url="https://api.anthropic.test")
 
     try:
         await provider.chat([UserMessage(content="hi")], [], thinking="off")
@@ -99,7 +99,7 @@ async def test_chat_off_uses_lowest_supported_mode(model, off_mode, reply_route)
 async def test_chat_adaptive_effort_preserves_output_allowance(
     model, _off_mode, thinking, max_tokens, reply_route
 ):
-    provider = AnthropicProvider(model=model, base_url="https://api.anthropic.test")
+    provider = AnthropicChatProvider(model=model, base_url="https://api.anthropic.test")
 
     try:
         await provider.chat([UserMessage(content="hi")], [], thinking=thinking)
@@ -118,7 +118,7 @@ async def test_chat_adaptive_effort_preserves_output_allowance(
 async def test_chat_preserves_manual_budget_for_older_or_custom_models(
     model, reply_route
 ):
-    provider = AnthropicProvider(model=model, base_url="https://api.anthropic.test")
+    provider = AnthropicChatProvider(model=model, base_url="https://api.anthropic.test")
 
     try:
         await provider.chat([UserMessage(content="hi")], [], thinking="low")
@@ -132,7 +132,7 @@ async def test_chat_preserves_manual_budget_for_older_or_custom_models(
 
 
 async def test_chat_without_thinking_keeps_model_default(reply_route):
-    provider = AnthropicProvider(
+    provider = AnthropicChatProvider(
         model="claude-opus-5-5", base_url="https://api.anthropic.test"
     )
 

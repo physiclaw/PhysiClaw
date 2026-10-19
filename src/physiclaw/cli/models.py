@@ -278,7 +278,7 @@ def _print_live_models_table(
 @models_app.command("keys")
 def _keys() -> None:
     """List every provider's API-key status (masked, with source —
-    env var or config file). Mirrors `BaseProvider._api_key()`
+    env var or config file). Mirrors `BaseChatProvider._api_key()`
     resolution so what's shown is what the server will use."""
     from physiclaw.provider import in_process_provider_ids
 

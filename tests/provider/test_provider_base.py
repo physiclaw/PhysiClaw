@@ -1,8 +1,8 @@
-"""Tests for `physiclaw.provider.provider_base` — abstract base.
+"""Tests for `physiclaw.provider.chat.base` — chat interface and base class.
 
 The module is mostly contracts (the concrete request/response flow
 lives in `OpenAICompatibleProvider` / `AnthropicCompatibleProvider`).
-Tests use a small `_TestProvider(BaseProvider)` stub that satisfies
+Tests use a small `_TestProvider(BaseChatProvider)` stub that satisfies
 PROVIDER_ID / BASE_URL and a minimal `_encode_message` so we can
 exercise the inherited template methods.
 
@@ -35,10 +35,10 @@ from physiclaw.contract.dto import (
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     NO_CACHE_MARKERS,
+    BaseChatProvider,
     CacheMarkers,
+    ChatProvider,
 )
-from physiclaw.provider.chat.base import BaseChatProvider as BaseProvider
-from physiclaw.provider.chat.base import ChatProvider as Provider
 from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
     ProviderError,
@@ -49,7 +49,7 @@ from physiclaw.provider.provider_base import (
 # ---------- a minimal concrete stub for inherited-behavior tests ----------
 
 
-class _TestProvider(BaseProvider):
+class _TestProvider(BaseChatProvider):
     PROVIDER_ID = "stub"
     BASE_URL = "https://stub.example/v1"
 
@@ -125,26 +125,28 @@ def test_provider_protocol_is_importable() -> None:
     # Protocol class exists with the expected method shape; we can't
     # easily isinstance-check Protocols without runtime_checkable, but
     # we can assert it's a typing.Protocol subclass conceptually.
-    assert hasattr(Provider, "chat")
-    assert hasattr(Provider, "serialize_history")
-    assert hasattr(Provider, "aclose")
+    assert hasattr(ChatProvider, "chat")
+    assert hasattr(ChatProvider, "serialize_history")
+    assert hasattr(ChatProvider, "aclose")
 
 
 def test_ephemeral_cache_control_constant_pinned() -> None:
     assert EPHEMERAL_CACHE_CONTROL == {"type": "ephemeral"}
 
 
-# ---------- BaseProvider class attributes ----------
+# ---------- BaseChatProvider class attributes ----------
 
 
 def test_baseprovider_default_class_attributes_pinned() -> None:
-    assert BaseProvider.PROVIDER_ID == ""
-    assert BaseProvider.BASE_URL == ""
-    assert BaseProvider.API_KEY_ENV_VARS == ()
+    assert BaseChatProvider.PROVIDER_ID == ""
+    assert BaseChatProvider.BASE_URL == ""
+    assert BaseChatProvider.API_KEY_ENV_VARS == ()
 
 
 def test_baseprovider_collapse_policy_default_pinned() -> None:
-    assert BaseProvider.COLLAPSE == CollapsePolicy(first_at=30, keep=10, interval=20)
+    assert BaseChatProvider.COLLAPSE == CollapsePolicy(
+        first_at=30, keep=10, interval=20
+    )
 
 
 # ---------- __init__ ----------
@@ -153,7 +155,7 @@ def test_baseprovider_collapse_policy_default_pinned() -> None:
 def test_init_raises_when_provider_id_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _NoId(BaseProvider):
+    class _NoId(BaseChatProvider):
         PROVIDER_ID = ""
         BASE_URL = "https://x"
 
@@ -165,7 +167,7 @@ def test_init_raises_when_provider_id_missing(
 
 
 def test_init_raises_when_base_url_missing() -> None:
-    class _NoUrl(BaseProvider):
+    class _NoUrl(BaseChatProvider):
         PROVIDER_ID = "noid"
         BASE_URL = ""
 
@@ -197,7 +199,7 @@ def test_init_raises_with_missing_key_message_when_no_credential(
 def test_init_default_timeout_is_120_seconds() -> None:
     import inspect
 
-    sig = inspect.signature(BaseProvider.__init__)
+    sig = inspect.signature(BaseChatProvider.__init__)
     assert sig.parameters["timeout"].default == 120.0
 
 
@@ -306,7 +308,7 @@ def test_env_vars_default_is_uppercase_id_underscore_API_KEY() -> None:
 
 
 def test_env_vars_uses_explicit_API_KEY_ENV_VARS_when_set() -> None:
-    class _Multi(BaseProvider):
+    class _Multi(BaseChatProvider):
         PROVIDER_ID = "multi"
         BASE_URL = "https://x"
         API_KEY_ENV_VARS = ("MULTI_KEY", "ALT_MULTI_KEY")
@@ -326,7 +328,7 @@ def test_model_env_var_is_uppercase_id_underscore_MODEL() -> None:
 
 
 def test_missing_key_message_lists_each_env_var_with_slashes() -> None:
-    class _Multi(BaseProvider):
+    class _Multi(BaseChatProvider):
         PROVIDER_ID = "multi"
         BASE_URL = "https://x"
         API_KEY_ENV_VARS = ("MULTI_KEY", "ALT_MULTI_KEY")
@@ -341,11 +343,11 @@ def test_missing_key_message_lists_each_env_var_with_slashes() -> None:
 
 
 def test_system_prompt_fragment_default_is_empty_string() -> None:
-    assert BaseProvider.system_prompt_fragment() == ""
+    assert BaseChatProvider.system_prompt_fragment() == ""
 
 
 def test_system_prompt_fragment_returns_declared_class_attr() -> None:
-    class _Frag(BaseProvider):
+    class _Frag(BaseChatProvider):
         PROVIDER_ID = "frag"
         BASE_URL = "https://x"
         SYSTEM_PROMPT_FRAGMENT = "wrap reasoning in <think>"
@@ -583,10 +585,10 @@ def test_serialize_history_skips_empty_list_from_encode() -> None:
 def test_default_encode_message_raises_not_implemented_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Construct a NEW BaseProvider subclass that doesn't override encode.
+    # Construct a NEW BaseChatProvider subclass that doesn't override encode.
     monkeypatch.setenv("BARE_API_KEY", "k")
 
-    class _Bare(BaseProvider):
+    class _Bare(BaseChatProvider):
         PROVIDER_ID = "bare"
         BASE_URL = "https://x"
 
@@ -628,7 +630,7 @@ async def test_default_list_models_raises_not_implemented_error(
 
 
 def test_base_provider_cache_markers_defaults_to_null_object() -> None:
-    assert BaseProvider.CACHE_MARKERS is NO_CACHE_MARKERS
+    assert BaseChatProvider.CACHE_MARKERS is NO_CACHE_MARKERS
 
 
 def test_no_cache_markers_mark_system_is_identity() -> None:

@@ -21,7 +21,9 @@ def micro_session(mocker):
     recorded = Recorded("move", "choose", ("done", "escalate"), (), "done", 0.9, "low")
     reply = Reply("done", 0.8, True, 100, 12, 2)
     provider = mocker.Mock(aclose=mocker.AsyncMock())
-    factory = mocker.patch("physiclaw.provider.make_provider", return_value=provider)
+    factory = mocker.patch(
+        "physiclaw.provider.make_chat_provider", return_value=provider
+    )
     load = mocker.patch(
         "physiclaw.conductor.bench.decisions.load", return_value=[recorded]
     )

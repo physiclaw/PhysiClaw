@@ -314,7 +314,10 @@ class _Summary:
         self.max_turn = -1
         self.provider_calls = 0
         self.conductor_turns = 0
+        self.plugin_turns = 0
         self.micro_calls = 0
+        self.decision_calls = 0
+        self.decision_time_ms = 0
         self.provider_time_ms = 0
         self.tool_time_ms = 0
         self.verdicts: Counter[str] = Counter()
@@ -344,10 +347,12 @@ class _Summary:
         elif name == "prefix_pinned":
             self.prompt_hash = event.get("hash") or ""
         elif name == "response":
-            # A synthesized response is a conductor turn — no request was
-            # sent, so it must not inflate provider calls or timing.
-            if event.get("synthesized"):
-                self.conductor_turns += 1
+            producer = event.get("producer")
+            if isinstance(producer, dict) and producer.get("kind") == "plugin":
+                if event.get("presentation") == "playbook":
+                    self.conductor_turns += 1
+                else:
+                    self.plugin_turns += 1
             else:
                 self.provider_calls += 1
                 self.provider_time_ms += int(event.get("elapsed_ms") or 0)
@@ -356,6 +361,11 @@ class _Summary:
             # from turn-loop calls; its tokens arrive as a `usage` event
             # like every other model call's.
             self.micro_calls += 1
+        elif name == "decision_call":
+            # Native decision accounting stays in its own attempt event,
+            # including unknown counts; never fold it as chat usage.
+            self.decision_calls += 1
+            self.decision_time_ms += int(event.get("elapsed_ms") or 0)
         elif name == "walk":
             self.walks.append(
                 {k: v for k, v in event.items() if k not in ("event", "t")}
@@ -418,7 +428,10 @@ class _Summary:
             turns=self.max_turn + 1,
             provider_calls=self.provider_calls,
             conductor_turns=self.conductor_turns,
+            plugin_turns=self.plugin_turns,
             micro_calls=self.micro_calls,
+            decision_calls=self.decision_calls,
+            decision_time_ms=self.decision_time_ms,
             provider_time_ms=self.provider_time_ms,
             input_tokens=self._total("input"),
             new_tokens=self._total("input_new"),

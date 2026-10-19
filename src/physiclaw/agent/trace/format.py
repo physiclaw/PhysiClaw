@@ -223,11 +223,15 @@ def summarize_event(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat
         return f"{pfx}request ({event.get('message_count', '?')} messages)"
     if name == "response":
         calls = [c.get("name") for c in event.get("tool_calls") or []]
-        who = (
-            f"by playbook {event.get('driver') or 'conductor'}"
-            if event.get("synthesized")
-            else f"finish={event.get('finish_reason', '?')}"
-        )
+        producer = event.get("producer")
+        if isinstance(producer, dict) and producer.get("kind") == "plugin":
+            who = (
+                f"by playbook {producer.get('plugin_id')}"
+                if event.get("presentation") == "playbook"
+                else f"by plugin {producer.get('plugin_id')}"
+            )
+        else:
+            who = f"finish={event.get('finish_reason', '?')}"
         return f"{pfx}response {who} calls={calls}"
     if name == "usage":
         return pfx + usage_text(event)

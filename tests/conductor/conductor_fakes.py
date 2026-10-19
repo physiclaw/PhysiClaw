@@ -150,7 +150,7 @@ def finish(driver, history: list, step) -> str:
         # A completion asks the session thread for its record first; with
         # nobody to answer, the walk's own recap closes it.
         step = driver.resolve(None)
-    assert step.synthesized and step.tool_names() in (
+    assert step is not None and step.tool_names() in (
         ["note", "peek"],
         ["note", "end_session"],
     )

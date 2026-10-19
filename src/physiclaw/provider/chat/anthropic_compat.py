@@ -143,7 +143,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
 
         # Explicit arg wins, else the `[providers.anthropic] base_url`
         # config override — previously ignored (the raw arg is always None
-        # via make_provider). Deliberately NOT _resolved_base_url(): the
+        # via make_chat_provider). Deliberately NOT _resolved_base_url(): the
         # class BASE_URL carries a `/v1` suffix (it only satisfies the
         # base-class non-empty check), and the SDK appends `/v1/...`
         # itself — feeding it the class default would double the prefix.

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from physiclaw.agent import layout
 from physiclaw.agent.engine.plan import Plan
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.stuck import StuckGuard
 
 
@@ -68,12 +69,9 @@ class Session:
     guard: StuckGuard = field(default_factory=StuckGuard)
     # Cross-call keyboard belief for the layout lint (see KeyboardTracker).
     kb: layout.KeyboardTracker = field(default_factory=layout.KeyboardTracker)
-    # True while the loop dispatches a conductor-synthesized turn. The
-    # plan gate stands down (the armed playbook IS the plan) and the
-    # run_macro handler resolves pack-private `app/name` macros only
-    # under it — the model can never borrow the conductor's hands.
-    synthesized_turn: bool = False
-    # Turns the MODEL produced (synthesized turns excluded) — the meter
+    # Host-selected binding while dispatch runs; no message can supply it.
+    active_plugin: PluginBinding | None = None
+    # Turns the main LLM produced (plugin turns excluded) — the meter
     # gates like PlanGate read, so a long playbook prefix never leaves
     # the model instantly overdue on its first real turn.
     model_turns: int = 0

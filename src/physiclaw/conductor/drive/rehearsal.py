@@ -331,12 +331,12 @@ def micro_caller(rlog: "WireSink | None" = None) -> "MicroCaller":
     when no model is configured."""
     from physiclaw.common.config import CONFIG, model_ref, parse_model_ref
     from physiclaw.conductor.micro.channel import MicroCaller
-    from physiclaw.provider import make_provider
+    from physiclaw.provider import make_chat_provider
 
     ref = CONFIG.conductor.micro_model or model_ref()
     pid, mid = parse_model_ref(ref)
     return MicroCaller.owning(
-        make_provider(pid, mid),
+        make_chat_provider(pid, mid),
         confidence_floor=CONFIG.conductor.micro_confidence,
         rlog=rlog,
     )

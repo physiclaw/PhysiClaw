@@ -26,11 +26,13 @@ messages, tails) lives in `assemble.py`, shared with the CLI dump.
 import asyncio
 import logging
 import time
+from dataclasses import replace
 
 from physiclaw.agent.engine import assemble, builtin_tool, curate, loop, prompt
 from physiclaw.agent.engine import plugins as plugin_loader
 from physiclaw.agent.engine.mcp_tool import get_mcp, list_tools_cached
 from physiclaw.agent.engine.policy import default_policies
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime import contract
@@ -43,9 +45,13 @@ from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.common.logger import bind_log_context, reset_log_context
 from physiclaw.common.text import clip
 from physiclaw.contract.dto import Message
-from physiclaw.contract.plugin import SetupContext, TurnPlugin
+from physiclaw.contract.plugin import SetupContext
 from physiclaw.macros.model import Macro
-from physiclaw.provider import Provider, ProviderConfigurationError, make_provider
+from physiclaw.provider import (
+    ChatProvider,
+    ProviderConfigurationError,
+    make_chat_provider,
+)
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +70,7 @@ async def run(triggers: list[Trigger], *, model_ref: str) -> contract.SessionOut
 
     `model_ref` is a `provider/model` string (e.g. `"qwen/qwen3.6-plus"`).
     Parsed inside `_run_session`; the provider is instantiated via
-    `provider.make_provider(provider_id, model_id)`. Required — every
+    `provider.make_chat_provider(provider_id, model_id)`. Required — every
     caller goes through the launcher, which resolves `PHYSICLAW_MODEL`.
     """
     settings = Settings.from_config()
@@ -111,8 +117,8 @@ async def _run_session(
     settings = settings or Settings.from_config()
 
     sid = new_sid()
-    provider: Provider | None = None
-    plugins: tuple[TurnPlugin, ...] = ()
+    provider: ChatProvider | None = None
+    plugins: tuple[PluginBinding, ...] = ()
     tr: Trace | None = None
     rlog: RawLog | None = None
     context = bind_log_context(session_id=sid)
@@ -163,14 +169,13 @@ async def _run_session(
         # context can offer it (a plugin's decision calls fall back to
         # the session model). Construction is cheap; nothing is sent
         # until the first chat call.
-        provider = make_provider(provider_id, model_id, usage_sink=tr)
+        provider = make_chat_provider(provider_id, model_id, usage_sink=tr)
         mcp = await get_mcp()
         mcp_tools = await list_tools_cached()
         # Turn-plugin wake-time setup, fail-open throughout: each
         # config-listed plugin loads blindly and contributes its gated
-        # macros (dispatchable only on plugin-minted turns). Nothing
-        # model-visible changes. The conductor rides this seam; the
-        # engine no longer knows its name.
+        # macros (dispatchable only by their owner). Nothing model-visible
+        # changes. The loader assigns execution grants.
         plugins = plugin_loader.load_plugins()
         setup_ctx = SetupContext(
             session_provider=provider,
@@ -178,25 +183,55 @@ async def _run_session(
             wire=rlog,
         )
         gated_macros: dict[str, Macro] = {}
-        active_plugins: list[TurnPlugin] = []
-        for plug in plugins:
+        active_plugins: list[PluginBinding] = []
+        for binding in plugins:
             try:
-                contribution = await plug.session_setup(setup_ctx)
+                contribution = await binding.plugin.session_setup(setup_ctx)
+                owned = (
+                    dict(contribution.gated_macros) if contribution is not None else {}
+                )
+                if any(
+                    not isinstance(name, str)
+                    or name.count("/") != 1
+                    or any(not part or part != part.strip() for part in name.split("/"))
+                    for name in owned
+                ):
+                    raise ValueError(
+                        "plugin-private macros require a trimmed app/name key"
+                    )
+                if any(not isinstance(spec, Macro) for spec in owned.values()):
+                    raise TypeError("plugin-private macros must be Macro instances")
             except Exception:
                 log.exception("turn plugin setup crashed — plugin skipped")
                 continue
-            if contribution is not None:
-                # Last-wins on a cross-plugin name collision, but never
-                # silently — two plugins claiming one qualified macro is
-                # a config error worth a trace.
-                taken = gated_macros.keys() & contribution.gated_macros.keys()
-                if taken:
-                    log.warning(
-                        "gated macro name collision (last wins): %s",
-                        sorted(taken),
-                    )
-                gated_macros.update(contribution.gated_macros)
-            active_plugins.append(plug)
+            taken = gated_macros.keys() & owned.keys()
+            if taken:
+                log.warning(
+                    "gated macro name collision: %s — plugin %s skipped",
+                    sorted(taken),
+                    binding.id,
+                )
+                tr.write(
+                    {
+                        "event": "plugin_macro_collision",
+                        "plugin_id": binding.id,
+                        "macros": sorted(taken),
+                    }
+                )
+                continue
+            gated_macros.update(owned)
+            binding = replace(binding, private_macros=frozenset(owned))
+            active_plugins.append(binding)
+            tr.write(
+                {
+                    "event": "plugin_bound",
+                    "plugin_id": binding.id,
+                    "name": binding.name,
+                    "presentation": "playbook" if binding.playbook else "plugin",
+                    "private_macros": sorted(binding.private_macros),
+                    "skip_model_guards": binding.skip_model_guards,
+                }
+            )
         # Built-in skills are inlined full-text into SYSTEM; user skills are
         # indexed and loaded on demand via the Skill tool — so only user
         # skills go into the local registry. The first-run screen-layout skill
@@ -318,8 +353,10 @@ async def _run_session(
         try:
             # Retain all loaded plugins for cleanup, including partial setup.
             cancelled: asyncio.CancelledError | None = None
-            closers = [provider.aclose] if provider is not None else []
-            closers += [plug.aclose for plug in plugins]
+            # Plugins borrow the session provider: release them before their host.
+            closers = [binding.plugin.aclose for binding in reversed(plugins)]
+            if provider is not None:
+                closers.append(provider.aclose)
             for close in closers:
                 try:
                     await close()

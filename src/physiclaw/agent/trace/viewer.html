@@ -409,6 +409,11 @@
     }
   }
 
+  function responseSource(rec) {
+    if (rec.producer?.kind !== 'plugin') return 'model';
+    return rec.presentation === 'playbook' ? 'playbook' : 'plugin';
+  }
+
   function renderWire(r) {
     const rec = r.rec;
     switch (rec.kind) {
@@ -423,7 +428,12 @@
       }
       case 'response': {
         const raw = rec.raw || {};
-        if (rec.synthesized) { const who = rec.driver ? `playbook ${rec.driver}` : 'playbook'; return card(r, `The ${who} composed this turn itself`, 'nothing was sent to the model', () => reply(raw, r.gist), { tag: who, tagCls: 'violet' }); }
+        const source = responseSource(rec);
+        if (source !== 'model') {
+          const playbook = source === 'playbook';
+          const who = `${playbook ? 'playbook' : 'plugin'} ${rec.producer.plugin_id}`;
+          return card(r, `The ${who} composed this turn`, 'no main-model request for this turn', () => reply(raw, r.gist), { tag: who, tagCls: playbook ? 'violet' : '' });
+        }
         const g = r.gist || { calls: [], text: '' };
         const sub = [g.calls.length ? 'called ' + g.calls.map((c) => c.name).join(', ') : '', clip(g.text, 120)].filter(Boolean).join(' · ');
         return card(r, 'The model replied', sub, () => reply(raw, r.gist), { cat: 'model', tag: 'from model', tagCls: 'blue' });
@@ -540,6 +550,7 @@
     const chip = (label, value) => value == null || value === '' ? null : el('span', { class: 'chip' }, el('b', { text: value }), label);
     const stats = el('div', { class: 'stats' },
       chip('duration', secs(s.duration_s)), chip('turns', s.turns), chip('by the model', s.provider_calls), chip('by the playbook', s.conductor_turns || null),
+      chip('by plugins', s.plugin_turns || null), chip('decision API calls', s.decision_calls || null),
       chip('quick decisions', s.micro_calls || null),
       chip(`tokens in${Number.isFinite(u.cache_hit_pct) ? ` · ${Math.round(u.cache_hit_pct)}% cached` : ''}`, S.words.tokens.input_tokens),
       chip('tokens out', S.words.tokens.output_tokens),
@@ -592,7 +603,7 @@
       if (r.note != null) note ||= r.note;
       else if (r.src === 'events' && rec.event === 'tool_result') names.push(shown(rec.name));
       if (r.src === 'wire' && rec.kind === 'request') model = true;
-      if (rec.synthesized) conductor = true;
+      if (responseSource(rec) === 'playbook') conductor = true;
       if (r.warn || (rec.event === 'walk' && rec.outcome === 'crashed')) warn = true;
     }
     return { names: [...new Set(names)], model, conductor, warn, note, id: 'g' + (g.turn == null ? 'start' : g.turn), label: g.turn == null ? 'Before the first turn' : `Turn ${g.turn}` };

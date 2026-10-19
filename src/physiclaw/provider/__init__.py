@@ -6,8 +6,7 @@ vendors/<vendor>/chat.py and decision.py contain service-specific adapters.
 
 Use make_chat_provider or make_decision_provider to select the API kind.
 Each service owns its client and context; neither factory substitutes the
-other service. Legacy Provider/BaseProvider/make_provider names remain
-chat-only aliases for existing consumers.
+other service.
 """
 
 from physiclaw.contract.decision import DecisionProvider
@@ -38,7 +37,6 @@ from physiclaw.provider.registry import (
     is_known,
     make_chat_provider,
     make_decision_provider,
-    make_provider,
     provider_capabilities,
     provider_class,
     provider_key_status,
@@ -54,45 +52,27 @@ from physiclaw.provider.vendors.openai.decision import OpenAIDecisionProvider
 from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
-# Compatibility names always mean chat, including for a dual-service vendor.
-Provider = ChatProvider
-BaseProvider = BaseChatProvider
-AnthropicProvider = AnthropicChatProvider
-DeepSeekProvider = DeepSeekChatProvider
-GoogleProvider = GoogleChatProvider
-MoonshotProvider = MoonshotChatProvider
-OpenAIProvider = OpenAIChatProvider
-QwenProvider = QwenChatProvider
-
 __all__ = [
     "AnthropicChatProvider",
     "AnthropicCompatibleProvider",
-    "AnthropicProvider",
     "BaseAPIProvider",
     "BaseChatProvider",
     "BaseDecisionProvider",
-    "BaseProvider",
     "ChatProvider",
     "DecisionProvider",
     "DecisionProviderSpec",
     "VendorServices",
     "DeepSeekChatProvider",
-    "DeepSeekProvider",
     "GoogleChatProvider",
-    "GoogleProvider",
     "MoonshotChatProvider",
-    "MoonshotProvider",
     "OpenAIChatProvider",
     "OpenAICompatibleProvider",
     "OpenAIDecisionProvider",
-    "OpenAIProvider",
-    "Provider",
     "ProviderConfigurationError",
     "ProviderError",
     "ProviderPermanentError",
     "ProviderTransientError",
     "QwenChatProvider",
-    "QwenProvider",
     "TypeSafeDecisionProvider",
     "assistant_to_wire",
     "decision_provider_capabilities",
@@ -101,7 +81,6 @@ __all__ = [
     "is_known",
     "make_chat_provider",
     "make_decision_provider",
-    "make_provider",
     "mcp_blocks_to_content_blocks",
     "provider_capabilities",
     "provider_class",

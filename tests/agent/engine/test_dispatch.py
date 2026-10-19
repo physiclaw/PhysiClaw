@@ -7,6 +7,7 @@ judgment is engine-visible behavior. The turn driver's tests live in
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 from engine_fakes import (
@@ -18,6 +19,7 @@ from engine_fakes import (
 from physiclaw.agent import layout
 from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.dispatch import dispatch
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.common.config import CONFIG
 
@@ -46,7 +48,14 @@ async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
     run = _mk_run(local_registry=registry, tool_schemas=builtin_tool.schemas(registry))
     run.debug_intercept = build().intercept
     session = Session()
-    session.synthesized_turn = True
+    session.active_plugin = PluginBinding(
+        "owner",
+        SimpleNamespace(),
+        private_macros=frozenset({"channel/send"}),
+        skip_model_guards=True,
+        playbook=True,
+        name="playbook",
+    )
     vthread.seed("buy milk", ["ok"])
 
     result = await dispatch(

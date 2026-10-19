@@ -1,7 +1,7 @@
 """Tests for `physiclaw.debug.interceptor` — the fake-channel result
 transformer: which real results are rewritten to the virtual thread,
 which pass through, and how the on-thread state moves. Provenance is
-the session's synthesized-turn bit, passed by dispatch.
+the host-selected plugin-turn bit, passed by dispatch.
 
 Accepted mutation survivors affect log/action wording, equivalent falsy
 state values, or the non-channel fallback for a missing macro name. Outcome

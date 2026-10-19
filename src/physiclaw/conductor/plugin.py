@@ -20,15 +20,17 @@ from physiclaw.conductor.drive.conductor import Conductor
 from physiclaw.conductor.micro.channel import MicroCaller
 from physiclaw.conductor.walk.program import Program
 from physiclaw.contract.dto import AssistantMessage, Message
-from physiclaw.contract.plugin import SessionSetup, SetupContext
-from physiclaw.provider import make_provider
+from physiclaw.contract.plugin import PluginRegistration, SessionSetup, SetupContext
+from physiclaw.provider import make_chat_provider
 
 log = logging.getLogger(__name__)
 
 
-def build() -> "ConductorPlugin":
+def build() -> PluginRegistration:
     """The factory `[agent] plugins` names."""
-    return ConductorPlugin()
+    return PluginRegistration(
+        id="physiclaw.playbook", name="Playbook", create=ConductorPlugin
+    )
 
 
 class ConductorPlugin:
@@ -113,7 +115,7 @@ def _wire_micro(program: "Program | None", ctx: SetupContext) -> MicroCaller | N
     if ref:
         try:
             pid, mid = parse_model_ref(ref)
-            factory = partial(make_provider, pid, mid, usage_sink=ctx.events)
+            factory = partial(make_chat_provider, pid, mid, usage_sink=ctx.events)
         except Exception as e:
             log.warning(
                 "conductor micro_model %r unusable (%s) — using the session model",

@@ -58,13 +58,13 @@ async def test_advance_prefers_the_program_then_quiet_is_permanent() -> None:
     history = [SystemMessage(content="sys"), UserMessage(content="hi")]
 
     first = await conductor.advance(history)
-    assert first.synthesized and first.tool_names() == ["note", "peek"]
+    assert first is not None and first.tool_names() == ["note", "peek"]
 
     # The peek's result never arrives → the program hands over with one
     # final brief turn; from there every advance is a pass — program
     # dropped for good, never retried.
     briefed = await conductor.advance(history)
-    assert briefed.synthesized and briefed.tool_names() == ["note", "peek"]
+    assert briefed is not None and briefed.tool_names() == ["note", "peek"]
     assert "conductor handing over" in briefed.tool_calls[0].arguments["summary"]
     assert await conductor.advance(history) is None
     assert await conductor.advance(history) is None
@@ -156,7 +156,7 @@ async def test_advance_brokers_decision_requests_through_the_micro_caller() -> N
     # own end_session — the one-step route is done).
     turn = await conductor.advance(history)
 
-    assert turn.synthesized and turn.tool_names() == ["note", "end_session"]
+    assert turn is not None and turn.tool_names() == ["note", "end_session"]
     # Two brokered calls: the agent's, then the close's record in the
     # session thread (the fake answers no recap, so the walk's own closes).
     assert [r.call for r in micro.requests] == [AGENT_FIELDS, SUMMARIZE]
@@ -173,7 +173,7 @@ async def test_unwired_micro_caller_means_agent_steps_hand_over() -> None:
     result = await conductor.advance(history)
 
     # Handed over via the one final brief turn; then the LLM takes over.
-    assert result.synthesized and result.tool_names() == ["note", "peek"]
+    assert result is not None and result.tool_names() == ["note", "peek"]
     assert "conductor handing over" in result.tool_calls[0].arguments["summary"]
     assert await conductor.advance(history) is None
 
@@ -202,7 +202,7 @@ async def test_advance_activates_a_playbook_off_the_thread_screen() -> None:
     history: list = [SystemMessage(content="s"), UserMessage(content="u")]
 
     peek = await conductor.advance(history)  # the boot's opening peek
-    assert peek.synthesized and peek.tool_names() == ["note", "peek"]
+    assert peek is not None and peek.tool_names() == ["note", "peek"]
     history.append(peek)
     history.append(
         ToolResultMessage(
@@ -217,7 +217,7 @@ async def test_advance_activates_a_playbook_off_the_thread_screen() -> None:
     # baton, and the activated program's first synthesized turn (its
     # opening peek) came back — all in one advance, zero provider calls.
     assert len(micro.requests) == 1 and micro.requests[0].call == PARSE_TASK
-    assert turn.synthesized and turn.tool_names() == ["note", "peek"]
+    assert turn is not None and turn.tool_names() == ["note", "peek"]
     # Two walks, two call-id scopes: the program's ids can never find
     # the boot's stale results.
     assert peek.tool_calls[1].id.startswith("conductor-channel-boot-")

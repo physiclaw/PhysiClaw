@@ -8,18 +8,13 @@ from physiclaw.contract.decision import DecisionCapabilities
 from physiclaw.provider import (
     BaseChatProvider,
     BaseDecisionProvider,
-    BaseProvider,
-    ChatProvider,
     DecisionProviderSpec,
     OpenAIChatProvider,
     OpenAIDecisionProvider,
-    OpenAIProvider,
-    Provider,
     ProviderConfigurationError,
     VendorServices,
     make_chat_provider,
     make_decision_provider,
-    make_provider,
     provider_capabilities,
     register_decision_provider,
     registry,
@@ -63,19 +58,6 @@ async def test_same_vendor_and_model_require_explicit_service_selection(monkeypa
     finally:
         await chat.aclose()
         await decision.aclose()
-
-
-async def test_legacy_names_remain_chat_only(monkeypatch):
-    assert Provider is ChatProvider
-    assert BaseProvider is BaseChatProvider
-    assert OpenAIProvider is OpenAIChatProvider
-    monkeypatch.setenv("OPENAI_API_KEY", "fixture-only")
-    chat = make_provider("openai", "gpt-6-luna")
-    try:
-        assert type(chat) is OpenAIChatProvider
-        assert chat.api_kind == "chat"
-    finally:
-        await chat.aclose()
 
 
 def test_wrong_service_registration_fails_before_client_creation(monkeypatch):

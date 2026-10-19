@@ -12,7 +12,12 @@ from __future__ import annotations
 import pytest
 
 from physiclaw.conductor import plugin as plugin_mod
-from physiclaw.contract.plugin import SessionSetup, SetupContext, TurnPlugin
+from physiclaw.contract.plugin import (
+    PluginRegistration,
+    SessionSetup,
+    SetupContext,
+    TurnPlugin,
+)
 
 
 def _ctx(provider=None) -> SetupContext:
@@ -20,14 +25,17 @@ def _ctx(provider=None) -> SetupContext:
 
 
 def test_build_satisfies_the_protocol() -> None:
-    assert isinstance(plugin_mod.build(), TurnPlugin)
+    registration = plugin_mod.build()
+    assert isinstance(registration, PluginRegistration)
+    assert (registration.name, registration.id) == ("Playbook", "physiclaw.playbook")
+    assert isinstance(registration.create(), TurnPlugin)
 
 
 @pytest.mark.asyncio
 async def test_setup_on_an_empty_home_yields_no_macros_and_passes_turns() -> None:
     # No channel, no playbooks: session_setup arms nothing, and every
     # advance is a pass — indistinguishable from no conductor at all.
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
 
     contribution = await plug.session_setup(_ctx())
 
@@ -39,7 +47,7 @@ async def test_setup_on_an_empty_home_yields_no_macros_and_passes_turns() -> Non
 
 @pytest.mark.asyncio
 async def test_advance_before_setup_is_a_pass() -> None:
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
     assert await plug.advance([]) is None
 
 
@@ -47,7 +55,7 @@ async def test_advance_before_setup_is_a_pass() -> None:
 async def test_aclose_closes_the_owned_micro_client(mocker) -> None:
     # The micro-caller's lazily built cheap-tier client is the plugin's
     # to close — the engine's finally block reaches it only via aclose.
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
     plug._micro = mocker.AsyncMock()
 
     await plug.aclose()
@@ -62,7 +70,7 @@ async def test_aclose_closes_the_owned_micro_client(mocker) -> None:
 async def test_aclose_abandons_the_in_flight_walk(mocker) -> None:
     # Teardown runs on every session end — a walk cut short mid-flight
     # gets its abandoned record here (log_external_stop's twin).
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
     plug._conductor = mocker.Mock()
 
     await plug.aclose()
@@ -78,7 +86,7 @@ def test_wire_micro_builds_the_configured_cheap_tier(mocker, monkeypatch) -> Non
     from physiclaw.common.config import CONFIG
 
     monkeypatch.setattr(CONFIG.conductor, "micro_model", "moonshot/kimi-test")
-    build_spy = mocker.patch.object(plugin_mod, "make_provider")
+    build_spy = mocker.patch.object(plugin_mod, "make_chat_provider")
 
     caller = plugin_mod._wire_micro(mocker.MagicMock(), _ctx())
 
@@ -115,7 +123,7 @@ async def test_setup_crash_degrades_to_a_plain_model_session(mocker) -> None:
     mocker.patch.object(
         plugin_mod.conductor_setup, "session_setup", side_effect=RuntimeError("boom")
     )
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
 
     contribution = await plug.session_setup(_ctx())
 
@@ -125,7 +133,7 @@ async def test_setup_crash_degrades_to_a_plain_model_session(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_advance_crash_drops_the_conductor_for_the_session(mocker) -> None:
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
     plug._conductor = mocker.Mock()
     plug._conductor.advance = mocker.AsyncMock(side_effect=RuntimeError("boom"))
 
@@ -136,7 +144,7 @@ async def test_advance_crash_drops_the_conductor_for_the_session(mocker) -> None
 
 @pytest.mark.asyncio
 async def test_aclose_survives_both_closers_failing(mocker) -> None:
-    plug = plugin_mod.build()
+    plug = plugin_mod.ConductorPlugin()
     plug._conductor = mocker.Mock()
     plug._conductor.abandon.side_effect = RuntimeError("record failed")
     plug._micro = mocker.Mock()

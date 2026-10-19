@@ -2,9 +2,10 @@
 
 The engine knows `contract.plugin.TurnPlugin` and a config string; it
 never imports a plugin's package. `[agent] plugins` holds
-comma-separated ``module:factory`` paths; each factory returns one
-plugin. Config registration because we own every plugin (see
-`contract.plugin` for the entry-point upgrade trigger). Fail-open at
+comma-separated ``module:factory`` paths; each factory returns a
+registration declaring its name, unique ID and plugin factory. We own
+every plugin, so config is sufficient for discovery (see `contract.plugin`
+for the entry-point upgrade trigger). Fail-open at
 every step: a path that won't import, a factory that raises, a
 wrong-shaped object — logged and skipped, and the session runs with
 whatever loaded (possibly nothing, which is a plain LLM session).
@@ -26,41 +27,66 @@ import importlib
 import logging
 import os
 
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import DebugIntercept
 from physiclaw.common.config import CONFIG, DEBUG_ENV_VAR
-from physiclaw.contract.plugin import TurnPlugin
+from physiclaw.contract.plugin import PluginRegistration, TurnPlugin
 
 log = logging.getLogger(__name__)
 
 # What an empty `[agent] plugins` resolves to.
-DEFAULT_PLUGINS = "physiclaw.conductor.plugin:build"
+PLAYBOOK_FACTORY = "physiclaw.conductor.plugin:build"
+DECISION_FACTORY = "physiclaw.decision.plugin:build"
+DEFAULT_PLUGINS = f"{PLAYBOOK_FACTORY},{DECISION_FACTORY}"
 
 # The explicit off switch — distinct from "absent", which means default.
 DISABLED = "none"
 
 
-def load_plugins() -> tuple[TurnPlugin, ...]:
+def load_plugins() -> tuple[PluginBinding, ...]:
     raw = CONFIG.agent.plugins.strip()
     if raw.lower() == DISABLED:
         # Logged so a forensic read of a plugin-less session shows a
         # choice, not a silent failure.
         log.debug("Turn plugins disabled by config")
         return ()
-    out: list[TurnPlugin] = []
+    out: list[PluginBinding] = []
     loaded: list[str] = []
+    ids: set[str] = set()
     for path in _paths(raw or DEFAULT_PLUGINS):
         try:
             mod_name, _, attr = path.partition(":")
-            factory = getattr(importlib.import_module(mod_name), attr)
-            plugin = factory()
+            register = getattr(importlib.import_module(mod_name), attr)
+            registration = register()
+            if not isinstance(registration, PluginRegistration):
+                raise TypeError("factory must return PluginRegistration")
+            if registration.id in ids:
+                raise ValueError(f"duplicate plugin id {registration.id!r}")
+            plugin = registration.create()
+            if any(binding.plugin is plugin for binding in out):
+                raise ValueError(
+                    "each plugin registration must create a distinct instance"
+                )
         except Exception:
             log.warning("turn plugin %r failed to load — skipped", path, exc_info=True)
             continue
         if not isinstance(plugin, TurnPlugin):
             log.warning("turn plugin %r does not satisfy TurnPlugin — skipped", path)
             continue
-        out.append(plugin)
-        loaded.append(path)
+        # These execution grants are host policy for the configured
+        # factory, never inferred from a plugin's returned message or type.
+        playbook = path == PLAYBOOK_FACTORY
+        out.append(
+            PluginBinding(
+                id=registration.id,
+                plugin=plugin,
+                name=registration.name,
+                skip_model_guards=playbook,
+                playbook=playbook,
+            )
+        )
+        ids.add(registration.id)
+        loaded.append(f"{registration.name} ({registration.id}, {path})")
     # The resolved set, once per session — the session log's answer to
     # "was the conductor even in play?" (a rotted default otherwise
     # reads exactly like a healthy plain-LLM session).

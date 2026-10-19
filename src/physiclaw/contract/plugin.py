@@ -10,11 +10,11 @@ and the engine falls through — with no plugins at all (config
 `[agent] plugins = "none"`), every turn is a plain provider call, which
 is the rollback switch.
 
-The engine knows a turn is plugin-minted because it received it from
-`advance()` — provenance is structural, never inferred from call-id
-strings — and dispatches it under that provenance: the qualified
-macros a plugin contributed at setup (`SessionSetup.gated_macros`)
-resolve only on such turns, so the model can never borrow them.
+Each registration declares a display name and unique, stable instance ID.
+The engine snapshots that identity and assigns execution grants to the slot.
+Qualified macros contributed at setup (`SessionSetup.gated_macros`) resolve
+only for their registering plugin. Raw response metadata and call IDs
+cannot grant authority or identify another plugin.
 
 Plugins are loaded from dotted `module:factory` paths in
 `[agent] plugins` (comma-separated). Config registration is deliberate:
@@ -29,8 +29,9 @@ remote worker is a second transport for this same protocol, with the
 two sink protocols becoming events returned in the advance response.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
@@ -43,7 +44,7 @@ from physiclaw.contract.dto import (
 from physiclaw.macros.model import Macro
 
 
-class ChatProvider(Protocol):
+class SessionChatProvider(Protocol):
     """The slice of the session's provider a plugin may hold — enough to
     fall back to the session model (e.g. a cheap-tier decision call whose
     configured tier failed to build) and to wire-log its own scoped
@@ -85,7 +86,7 @@ class SetupContext:
     in-process; a remote transport replaces them with events in the
     advance response."""
 
-    session_provider: ChatProvider
+    session_provider: SessionChatProvider
     events: EventSink | None = None
     wire: WireSink | None = None
 
@@ -93,11 +94,19 @@ class SetupContext:
 @dataclass(frozen=True, slots=True)
 class SessionSetup:
     """A plugin's wake-time contribution. `gated_macros` are qualified
-    `app/name` macros dispatchable ONLY while a plugin-minted turn is
+    `app/name` macros dispatchable ONLY while the registering plugin's turn is
     executing — they join the prompt bundle's macro surface but never
     its model-visible list."""
 
     gated_macros: dict[str, Macro] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class TurnProducer:
+    """Host-stamped identity; presentation and execution grants are separate."""
+
+    kind: Literal["llm", "plugin"] = "llm"
+    plugin_id: str | None = None
 
 
 @runtime_checkable
@@ -115,3 +124,26 @@ class TurnPlugin(Protocol):
     async def advance(self, history: list[Message]) -> AssistantMessage | None: ...
 
     async def aclose(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PluginRegistration:
+    """A named pipeline entry, separate from its implementation and order.
+
+    IDs are explicit registry keys, such as ``physiclaw.playbook``.
+    Validate identity before creating a plugin or granting it any authority.
+    ``create`` returns a fresh session instance for this registration.
+    """
+
+    id: str
+    name: str
+    create: Callable[[], TurnPlugin]
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, str) or not value or value != value.strip()
+            for value in (self.name, self.id)
+        ):
+            raise ValueError("plugin name and id must be nonblank, trimmed strings")
+        if not callable(self.create):
+            raise TypeError("plugin registration must provide a factory")

@@ -15,6 +15,7 @@ pinning every character of the model-facing descriptions and diagnostics.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from engine_fakes import _mk_run, _tc
@@ -43,6 +44,7 @@ from physiclaw.agent.engine.builtin_tool import (
 )
 from physiclaw.agent.engine.dispatch import dispatch
 from physiclaw.agent.engine.plan import Plan
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.skill import Skill
 
 # ---------- Session ----------
@@ -1016,7 +1018,7 @@ def test_build_registry_registers_run_macro_for_pack_macros_alone() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_macro_pack_macro_only_runs_on_a_synthesized_turn(mocker) -> None:
+async def test_run_macro_pack_macro_only_runs_for_its_owner(mocker) -> None:
     from physiclaw.macros import stats as macro_stats
 
     class OkMcp:
@@ -1035,7 +1037,13 @@ async def test_run_macro_pack_macro_only_runs_on_a_synthesized_turn(mocker) -> N
         await reg["run_macro"].handler(Session(), {"name": "demo/leg"})
 
     session = Session()
-    session.synthesized_turn = True
+    session.active_plugin = PluginBinding(
+        "owner",
+        SimpleNamespace(),
+        private_macros=frozenset({"demo/leg"}),
+        playbook=True,
+        name="playbook",
+    )
     blocks = await reg["run_macro"].handler(
         session, {"name": "demo/leg", "inputs": {"msg": "hi"}}
     )
@@ -1060,7 +1068,13 @@ async def test_run_macro_pack_macro_abort_burns_the_called_name(mocker) -> None:
     reg = build_registry({}, {}, {"demo/leg": _macro_spec("leg")})
 
     session = Session()
-    session.synthesized_turn = True
+    session.active_plugin = PluginBinding(
+        "owner",
+        SimpleNamespace(),
+        private_macros=frozenset({"demo/leg"}),
+        playbook=True,
+        name="playbook",
+    )
     blocks = await reg["run_macro"].handler(
         session, {"name": "demo/leg", "inputs": {"msg": "hi"}}
     )

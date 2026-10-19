@@ -14,7 +14,7 @@ import pytest
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.vendors.moonshot.chat import (
-    MoonshotChatProvider as MoonshotProvider,
+    MoonshotChatProvider,
 )
 
 
@@ -29,12 +29,12 @@ def _stub_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_provider_id_and_base_url_pinned() -> None:
     """Routing key + default region. Override BASE_URL via config for
     the .ai endpoint."""
-    assert MoonshotProvider.PROVIDER_ID == "moonshot"
-    assert MoonshotProvider.BASE_URL == "https://api.moonshot.cn/v1"
+    assert MoonshotChatProvider.PROVIDER_ID == "moonshot"
+    assert MoonshotChatProvider.BASE_URL == "https://api.moonshot.cn/v1"
 
 
 def test_inherits_openai_compat() -> None:
-    assert issubclass(MoonshotProvider, OpenAICompatibleProvider)
+    assert issubclass(MoonshotChatProvider, OpenAICompatibleProvider)
 
 
 # ---------- inherited cache markers ----------
@@ -45,15 +45,15 @@ def test_inherits_cache_markers() -> None:
     cross-wake cache hits (see the module docstring's A/B results) —
     a well-meaning `CACHE_MARKERS = NO_CACHE_MARKERS` here would
     silently cold-start every wake."""
-    assert MoonshotProvider.CACHE_MARKERS is OpenAICompatibleProvider.CACHE_MARKERS
-    assert MoonshotProvider.CACHE_MARKERS is not NO_CACHE_MARKERS
+    assert MoonshotChatProvider.CACHE_MARKERS is OpenAICompatibleProvider.CACHE_MARKERS
+    assert MoonshotChatProvider.CACHE_MARKERS is not NO_CACHE_MARKERS
 
 
 def test_no_parse_usage_override() -> None:
     """K2's top-level `cached_tokens` quirk is handled by the base
     `_parse_usage` fallback — a vendor override reappearing here would
     mean the quirk handling is duplicated."""
-    assert "_parse_usage" not in MoonshotProvider.__dict__
+    assert "_parse_usage" not in MoonshotChatProvider.__dict__
 
 
 # ---------- thinking table ----------
@@ -69,7 +69,7 @@ def test_no_parse_usage_override() -> None:
     ],
 )
 def test_k2_has_one_switch_so_the_levels_split_in_two(level, switch):
-    assert MoonshotProvider(model="kimi-k2.6").thinking_params(level) == {
+    assert MoonshotChatProvider(model="kimi-k2.6").thinking_params(level) == {
         "thinking": {"type": switch}
     }
 
@@ -81,10 +81,10 @@ def test_k2_has_one_switch_so_the_levels_split_in_two(level, switch):
 def test_k3_scales_reasoning_effort_never_the_thinking_block(
     monkeypatch, level, effort
 ):
-    assert MoonshotProvider(model="kimi-k3").thinking_params(level) == {
+    assert MoonshotChatProvider(model="kimi-k3").thinking_params(level) == {
         "reasoning_effort": effort
     }
 
 
 def test_a_model_outside_the_table_sends_nothing() -> None:
-    assert MoonshotProvider(model="moonshot-v1-8k").thinking_params("off") == {}
+    assert MoonshotChatProvider(model="moonshot-v1-8k").thinking_params("off") == {}

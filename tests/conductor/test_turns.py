@@ -8,14 +8,12 @@ from physiclaw.conductor.walk.turns import Turnsmith
 from physiclaw.contract.dto import FinishReason, TextBlock, ToolResultMessage
 
 
-def test_synth_is_a_note_plus_one_other_marked_synthesized() -> None:
+def test_synth_is_a_note_plus_one_other() -> None:
     asst = Turnsmith("walk").synth("peek", "looking", "peek", {})
 
     assert [c.name for c in asst.tool_calls] == ["note", "peek"]
     assert asst.tool_calls[0].arguments == {"summary": "looking"}
     assert asst.finish_reason is FinishReason.TOOL_CALLS
-    # The loop keys its gate-skipping off this flag.
-    assert asst.synthesized is True
 
 
 def test_pending_points_at_the_action_call_not_the_note() -> None:
@@ -90,11 +88,8 @@ def test_driver_scopes_keep_ids_unique_across_smiths() -> None:
     assert all(i.startswith("conductor-") for i in boot_ids | walk_ids)
 
 
-def test_synth_stamps_the_turn_with_its_driver() -> None:
-    # The engine's per-turn log line names who drove it: a walk's turns
-    # carry the playbook ref; the model's carry none.
+def test_playbook_ref_is_encoded_in_call_ids() -> None:
     asst = Turnsmith("taobao/buy").synth("peek", "s", "peek", {})
 
-    assert asst.synthesized and asst.driver == "taobao/buy"
-    # The call id carries the same ref in its id-safe spelling.
+    # The call id carries the ref in its id-safe spelling.
     assert asst.tool_calls[0].id == "conductor-taobao-buy-1-note"

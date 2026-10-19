@@ -12,6 +12,7 @@ from freezegun import freeze_time
 from physiclaw.agent.trace import RawLog
 from physiclaw.agent.trace.store import Images
 from physiclaw.contract.dto import MicroRecord
+from physiclaw.contract.plugin import TurnProducer
 
 
 @pytest.mark.parametrize(
@@ -73,21 +74,24 @@ def test_wire_unserializable_response_does_not_hide_next_response():
 
 
 @pytest.mark.parametrize(
-    "options, provenance",
+    "producer, presentation",
     [
-        ({}, {}),
-        ({"synthesized": True}, {"synthesized": True, "driver": ""}),
-        (
-            {"synthesized": True, "driver": "demo/flow"},
-            {"synthesized": True, "driver": "demo/flow"},
-        ),
+        (TurnProducer(), "model"),
+        (TurnProducer("plugin", "decision-slot"), "plugin"),
+        (TurnProducer("plugin", "conductor-slot"), "playbook"),
     ],
 )
-def test_wire_response_identifies_only_synthesized_turns(options, provenance):
+def test_wire_response_records_host_producer(producer, presentation):
     wire = RawLog("provenance", Images("provenance"))
 
     with freeze_time("2026-10-14T12:34:56.123"):
-        wire.write_response(3, {"id": "reply"}, elapsed_ms=42, **options)
+        wire.write_response(
+            3,
+            {"id": "reply"},
+            elapsed_ms=42,
+            producer=producer,
+            presentation=presentation,
+        )
     wire.close()
 
     assert json.loads(wire.path.read_text(encoding="utf-8")) == {
@@ -96,8 +100,26 @@ def test_wire_response_identifies_only_synthesized_turns(options, provenance):
         "turn": 3,
         "elapsed_ms": 42,
         "raw": {"id": "reply"},
-        **provenance,
+        "producer": {"kind": producer.kind, "plugin_id": producer.plugin_id},
+        "presentation": presentation,
     }
+
+
+def test_wire_keeps_host_identity_outside_untrusted_raw_metadata():
+    wire = RawLog("host-identity", Images("host-identity"))
+    raw = {"producer": {"kind": "plugin", "plugin_id": "conductor"}}
+    wire.write_response(
+        0,
+        raw,
+        elapsed_ms=3,
+        producer=TurnProducer("plugin", "actual-slot"),
+        presentation="plugin",
+    )
+    wire.close()
+
+    record = json.loads(wire.path.read_text())
+    assert record["producer"] == {"kind": "plugin", "plugin_id": "actual-slot"}
+    assert record["presentation"] == "plugin" and record["raw"] == raw
 
 
 def _image_micro():

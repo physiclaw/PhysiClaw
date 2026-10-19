@@ -330,7 +330,7 @@ def test_playbooks_micro_reasks_and_reports(monkeypatch) -> None:
     _session([_micro_record()])
     provider = ScriptedProvider([_ok("done"), _ok("escalate")])
     monkeypatch.setattr(
-        "physiclaw.provider.make_provider", lambda pid, mid, **kw: provider
+        "physiclaw.provider.make_chat_provider", lambda pid, mid, **kw: provider
     )
 
     result = CliRunner().invoke(

@@ -30,7 +30,7 @@ from physiclaw.contract.dto import (
     Thinking,
     message_of,
 )
-from physiclaw.contract.plugin import ChatProvider
+from physiclaw.contract.plugin import SessionChatProvider
 from physiclaw.contract.wire import image_ref, leaf_blocks
 
 
@@ -154,7 +154,7 @@ def _frame(path: Path) -> ImageBlock | None:
 
 
 async def ask(
-    provider: ChatProvider,
+    provider: SessionChatProvider,
     rec: Recorded,
     *,
     thinking: Thinking | None = None,

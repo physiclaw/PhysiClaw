@@ -208,7 +208,7 @@ def test_missing_credentials_stop_runtime_without_traceback_or_retries(
     mocker.patch.object(launcher, "setup_logging")
     close = mocker.patch.object(launcher, "close_mcp")
     mcp = mocker.patch.object(engine, "get_mcp")
-    make = mocker.spy(engine, "make_provider")
+    make = mocker.spy(engine, "make_chat_provider")
     mocker.patch.object(runtime, "load_hooks")
     mocker.patch.object(runtime, "_check_ready", return_value=True)
     hooks = mocker.patch.object(

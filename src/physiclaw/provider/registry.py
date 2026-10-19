@@ -214,10 +214,3 @@ def make_chat_provider(
         timeout=CONFIG.engine.provider_timeout_seconds,
         usage_sink=usage_sink,
     )
-
-
-def make_provider(
-    provider_id: str, model_id: str, *, usage_sink: EventSink | None = None
-) -> ChatProvider:
-    """Backward-compatible chat-only factory; new callers use make_chat_provider."""
-    return make_chat_provider(provider_id, model_id, usage_sink=usage_sink)
