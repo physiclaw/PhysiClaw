@@ -48,7 +48,7 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.plugin import ChatProvider, EventSink, WireSink
 from physiclaw.provider import Provider, ProviderTransientError
-from physiclaw.provider.wire import anthropic_image_part, encode_content
+from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
 
 log = logging.getLogger(__name__)
 

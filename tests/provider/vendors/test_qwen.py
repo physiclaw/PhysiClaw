@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.vendors.qwen` — DashScope
+"""Tests for `physiclaw.provider.vendors.qwen.chat` — DashScope
 declaration.
 
 Pure pins: the id and base URL are registry routing keys, the env vars
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from physiclaw.provider.vendors.qwen import QwenProvider
+from physiclaw.provider.vendors.qwen.chat import QwenChatProvider as QwenProvider
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +34,7 @@ def test_base_url_pinned() -> None:
 
 
 def test_inherits_openai_compat() -> None:
-    from physiclaw.provider.openai_compat import OpenAICompatibleProvider
+    from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
     assert issubclass(QwenProvider, OpenAICompatibleProvider)
 

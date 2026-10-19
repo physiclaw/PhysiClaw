@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.vendors.moonshot` — Moonshot/K2
+"""Tests for `physiclaw.provider.vendors.moonshot.chat` — Moonshot/K2
 declaration.
 
 The vendor is a pure declaration: K2's top-level `usage.cached_tokens`
@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import pytest
 
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import NO_CACHE_MARKERS
-from physiclaw.provider.vendors.moonshot import MoonshotProvider
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.vendors.moonshot.chat import (
+    MoonshotChatProvider as MoonshotProvider,
+)
 
 
 @pytest.fixture(autouse=True)

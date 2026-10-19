@@ -227,11 +227,12 @@ class ProviderConfig:
 
     Empty strings mean "fall back to env" — see
     ``common.model_ref.resolve_provider_key`` for the env-var →
-    config-key precedence each provider applies. Provider/model
-    selection lives under ``[agent] model``.
+    config-key precedence each provider applies. Chat provider/model
+    selection lives under ``[agent] model``. Optional bounded-decision
+    clients use these same credential rules.
 
     Field names match the provider id (qwen/moonshot/openai/anthropic/
-    google/deepseek) — same convention OpenClaw uses.
+    google/deepseek/typesafe) — same convention OpenClaw uses.
     """
 
     qwen_api_key: str = ""
@@ -240,6 +241,7 @@ class ProviderConfig:
     anthropic_api_key: str = ""
     google_api_key: str = ""
     deepseek_api_key: str = ""
+    typesafe_api_key: str = ""
 
 
 @dataclass

@@ -1,0 +1,1 @@
+"""Google chat service adapter."""

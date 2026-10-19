@@ -25,11 +25,11 @@ same table.
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
 
-class DeepSeekProvider(OpenAICompatibleProvider):
+class DeepSeekChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "deepseek"
     BASE_URL = "https://api.deepseek.com/v1"
     CACHE_MARKERS = NO_CACHE_MARKERS

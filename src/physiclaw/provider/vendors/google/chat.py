@@ -46,9 +46,9 @@ from physiclaw.contract.dto import (
     Thinking,
     ToolResultMessage,
 )
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import NO_CACHE_MARKERS
-from physiclaw.provider.wire import (
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     user_content_to_openai,
 )
@@ -64,7 +64,7 @@ _SIG_BYPASS = "skip_thought_signature_validator"
 _BUDGETS_25 = {"off": 0, "low": 1024, "medium": 8192, "high": 24576}
 
 
-class GoogleProvider(OpenAICompatibleProvider):
+class GoogleChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "google"
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 

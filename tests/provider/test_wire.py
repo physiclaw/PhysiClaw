@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.wire` — DTO ↔ OpenAI wire format.
+"""Tests for `physiclaw.provider.chat.wire` — DTO ↔ OpenAI wire format.
 
 Five public functions, two directions:
 
@@ -42,7 +42,7 @@ from physiclaw.contract.dto import (
     ToolCall,
     ToolResultMessage,
 )
-from physiclaw.provider.wire import (
+from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     mcp_blocks_to_content_blocks,
     tool_result_to_wire,
@@ -278,7 +278,7 @@ def test_user_content_to_openai_unknown_block_is_dropped_with_warning(
     class FakeBlock:
         pass
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.wire"):
+    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.wire"):
         parts = user_content_to_openai([TextBlock(text="ok"), FakeBlock()])  # type: ignore[list-item]
 
     assert parts == [{"type": "text", "text": "ok"}]
@@ -410,7 +410,7 @@ def test_mcp_blocks_image_scale_failure_logs_exception(
         side_effect=RuntimeError("scaler down"),
     )
 
-    with caplog.at_level(logging.INFO, logger="physiclaw.provider.wire"):
+    with caplog.at_level(logging.INFO, logger="physiclaw.provider.chat.wire"):
         out = mcp_blocks_to_content_blocks([{"type": "image", "data": "aGk="}])
 
     (record,) = [

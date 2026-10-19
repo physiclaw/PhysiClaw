@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.vendors.deepseek` — DeepSeek (V4.1
+"""Tests for `physiclaw.provider.vendors.deepseek.chat` — DeepSeek (V4.1
 Flash) declaration.
 
 Pure pins plus the declared knobs: cache markers OFF and the thinking
@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import NO_CACHE_MARKERS
-from physiclaw.provider.vendors.deepseek import DeepSeekProvider
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.vendors.deepseek.chat import (
+    DeepSeekChatProvider as DeepSeekProvider,
+)
 
 
 @pytest.fixture(autouse=True)

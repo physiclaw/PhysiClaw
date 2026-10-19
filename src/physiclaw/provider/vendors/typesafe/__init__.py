@@ -1,0 +1,1 @@
+"""TypeSafe decision service adapter."""

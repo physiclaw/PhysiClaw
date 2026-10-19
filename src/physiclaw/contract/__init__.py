@@ -13,6 +13,8 @@ other (the agent ↔ conductor split relies on it — see
                  added to one is added to the other in the same edit
     plugin.py  — the turn-plugin protocol: how a peer package takes
                  the turn before the LLM sees it
+    decision.py — immutable bounded-choice facts/actions and a provider
+                  protocol, independent of chat messages and execution
 
 Imports: `common` (and, for macro types in the plugin protocol, the
 macros package). Never `agent`, never `conductor` — both of those

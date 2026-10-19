@@ -32,12 +32,14 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.provider_base import (
+from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     NO_CACHE_MARKERS,
-    BaseProvider,
     CacheMarkers,
-    Provider,
+)
+from physiclaw.provider.chat.base import BaseChatProvider as BaseProvider
+from physiclaw.provider.chat.base import ChatProvider as Provider
+from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
     ProviderError,
     ProviderPermanentError,

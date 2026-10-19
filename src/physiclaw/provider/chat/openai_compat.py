@@ -58,20 +58,22 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.provider_base import (
+from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
-    BaseProvider,
+    BaseChatProvider,
     CacheMarkers,
-    ProviderPermanentError,
-    ProviderTransientError,
-    describe,
     token_count,
 )
-from physiclaw.provider.wire import (
+from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     tool_result_to_wire,
     tool_to_wire,
     user_content_to_openai,
+)
+from physiclaw.provider.provider_base import (
+    ProviderPermanentError,
+    ProviderTransientError,
+    describe,
 )
 
 log = logging.getLogger(__name__)
@@ -104,9 +106,9 @@ class OpenAICacheMarkers(CacheMarkers):
         return {**entry, "content": [block]}
 
 
-class OpenAICompatibleProvider(BaseProvider):
+class OpenAICompatibleProvider(BaseChatProvider):
     """Base for providers that speak the OpenAI `/chat/completions` wire
-    format. See `BaseProvider` for the auth declarations vendors are
+    format. See `BaseChatProvider` for the auth declarations vendors are
     expected to set; this class plugs the wire-shape encoder
     (`_encode_message`) and the `OpenAICacheMarkers` factory into the
     inherited `serialize_history` template, and adds the HTTP request
@@ -205,9 +207,9 @@ class OpenAICompatibleProvider(BaseProvider):
             )
         return models
 
-    # ---------- serialize_history hooks (called by BaseProvider) ----------
+    # ---------- serialize_history hooks (called by BaseChatProvider) ----------
 
-    # Return type stays as wide as `BaseProvider`'s contract so vendor
+    # Return type stays as wide as `BaseChatProvider`'s contract so vendor
     # overrides (google.py splits one DTO into several wire dicts) conform.
     def _encode_message(self, msg: Message) -> dict | list[dict] | None:
         if isinstance(msg, SystemMessage):

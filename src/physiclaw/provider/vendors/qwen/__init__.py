@@ -1,0 +1,1 @@
+"""Qwen chat service adapter."""

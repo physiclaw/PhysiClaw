@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.anthropic_compat`.
+"""Tests for `physiclaw.provider.chat.anthropic_compat`.
 
 The provider uses Anthropic's `AsyncAnthropic` SDK directly, so tests
 mock the SDK methods rather than HTTP. A small `_TestAnthropic`
@@ -36,7 +36,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.anthropic_compat import (
+from physiclaw.provider.chat.anthropic_compat import (
     _DEFAULT_MAX_TOKENS,
     _STOP_REASON_MAP,
     AnthropicCacheMarkers,
@@ -48,8 +48,8 @@ from physiclaw.provider.anthropic_compat import (
     _parse_anthropic_usage,
     _tool_to_anthropic,
 )
+from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
 from physiclaw.provider.provider_base import (
-    EPHEMERAL_CACHE_CONTROL,
     ProviderPermanentError,
     ProviderTransientError,
 )
@@ -268,7 +268,9 @@ def test_encode_unknown_message_type_returns_none_with_warning(
     class _Weird:
         pass
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(
+        logging.DEBUG, logger="physiclaw.provider.chat.anthropic_compat"
+    ):
         out = provider._encode_message(_Weird())  # type: ignore[arg-type]
 
     assert out is None
@@ -547,7 +549,9 @@ async def test_chat_maps_5xx_status_to_transient(
         503, "service unavailable"
     )
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(
+        logging.DEBUG, logger="physiclaw.provider.chat.anthropic_compat"
+    ):
         with pytest.raises(ProviderTransientError, match=r"^HTTP 503: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -562,7 +566,9 @@ async def test_chat_maps_4xx_status_to_permanent(
 
     provider._client.messages.create.side_effect = _status_err(400, "bad model")
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.anthropic_compat"):
+    with caplog.at_level(
+        logging.DEBUG, logger="physiclaw.provider.chat.anthropic_compat"
+    ):
         with pytest.raises(ProviderPermanentError, match=r"^HTTP 400: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -655,7 +661,7 @@ def test_content_to_anthropic_drops_unknown_block_with_warning(
 
     # Block dispatch is shared — the warning is emitted by
     # `wire.encode_content`, tagged with the anthropic label.
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.wire"):
+    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.wire"):
         out = _content_to_anthropic([_Weird()])  # type: ignore[list-item]
 
     # Falls back to single empty-text block since list became empty.
@@ -716,7 +722,7 @@ def test_assistant_blocks_empty_falls_back_to_empty_text(mocker) -> None:
 
 def test_assistant_blocks_generates_id_when_tool_call_id_empty(mocker) -> None:
     mocker.patch(
-        "physiclaw.provider.anthropic_compat.uuid.uuid4",
+        "physiclaw.provider.chat.anthropic_compat.uuid.uuid4",
         return_value=mocker.MagicMock(hex="abcdef1234567890"),
     )
 

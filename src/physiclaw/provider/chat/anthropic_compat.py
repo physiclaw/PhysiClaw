@@ -60,17 +60,19 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.provider_base import (
+from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     THINKING_BUDGETS,
-    BaseProvider,
+    BaseChatProvider,
     CacheMarkers,
+    token_count,
+)
+from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
+from physiclaw.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
     describe,
-    token_count,
 )
-from physiclaw.provider.wire import anthropic_image_part, encode_content
 
 # `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
 # `physiclaw --help` (and any session that doesn't pick this provider)
@@ -117,9 +119,9 @@ class AnthropicCacheMarkers(CacheMarkers):
         return _mark_tool_result(entry)
 
 
-class AnthropicCompatibleProvider(BaseProvider):
+class AnthropicCompatibleProvider(BaseChatProvider):
     """Base for providers speaking Anthropic's `/v1/messages` shape via
-    `AsyncAnthropic`. See `BaseProvider` for the auth declarations
+    `AsyncAnthropic`. See `BaseChatProvider` for the auth declarations
     vendors are expected to set; this class plugs the wire-shape
     encoder (`_encode_message`) and the `AnthropicCacheMarkers` factory
     into the inherited `serialize_history` template, and adds the
@@ -154,7 +156,7 @@ class AnthropicCompatibleProvider(BaseProvider):
             timeout=timeout,
         )
 
-    async def aclose(self) -> None:
+    async def _close_client(self) -> None:
         # AsyncAnthropic uses .close(), not .aclose() like httpx.
         await self._client.close()
 
@@ -173,7 +175,7 @@ class AnthropicCompatibleProvider(BaseProvider):
             async for m in self._client.models.list(limit=100)
         ]
 
-    # ---------- serialize_history hooks (called by BaseProvider) ----------
+    # ---------- serialize_history hooks (called by BaseChatProvider) ----------
 
     def _encode_message(self, msg: Message) -> dict | None:
         if isinstance(msg, SystemMessage):

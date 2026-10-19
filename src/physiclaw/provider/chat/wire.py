@@ -11,9 +11,9 @@ Two transformation directions:
   - **DTO → OpenAI wire**: `assistant_to_wire`, `tool_result_to_wire`,
     `user_content_to_openai`, `tool_to_wire` produce OpenAI dicts.
     `OpenAICompatibleProvider._encode_message` calls them per DTO; the
-    inherited `BaseProvider.serialize_history` template assembles the
+    inherited `BaseChatProvider.serialize_history` template assembles the
     list and places cache markers. Anthropic's message translators live
-    in `provider/anthropic_compat.py`, but its ContentBlock dispatch
+    in `provider/chat/anthropic_compat.py`, but its ContentBlock dispatch
     runs through the shared `encode_content` here — TextBlock/ImageBlock
     handling (and any future block type or scaling change) lands once,
     with only the per-shape part dicts differing.

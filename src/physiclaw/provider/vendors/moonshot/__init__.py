@@ -1,0 +1,1 @@
+"""Moonshot chat service adapter."""

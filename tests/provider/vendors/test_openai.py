@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.vendors.openai` — declaration.
+"""Tests for `physiclaw.provider.vendors.openai.chat` — declaration.
 
 Native OpenAI endpoint. Reasoning models surface chain-of-thought via
 API field, not a prompt wrapper — so unlike Qwen, no declared
@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from physiclaw.contract.dto import UserMessage
-from physiclaw.provider.vendors.openai import OpenAIProvider
+from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider as OpenAIProvider
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +32,7 @@ def test_base_url_pinned() -> None:
 
 
 def test_inherits_openai_compat() -> None:
-    from physiclaw.provider.openai_compat import OpenAICompatibleProvider
+    from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
     assert issubclass(OpenAIProvider, OpenAICompatibleProvider)
 
@@ -72,6 +72,7 @@ def test_a_non_reasoning_model_gets_no_field() -> None:
         ("gpt-5.2", "none"),
         ("gpt-5.4", "none"),
         ("gpt-5.5", "none"),
+        ("gpt-6-luna", "none"),
     ],
 )
 @pytest.mark.asyncio
@@ -85,11 +86,17 @@ async def test_chat_off_sends_effort_supported_by_model(model, effort, respx_moc
     provider = OpenAIProvider(model=model)
 
     try:
-        await provider.chat([UserMessage(content="hi")], [], thinking="off")
+        await provider.chat(
+            [UserMessage(content="hi")],
+            [{"name": "probe", "input_schema": {"type": "object", "properties": {}}}],
+            thinking="off",
+        )
     finally:
         await provider.aclose()
 
-    assert json.loads(route.calls.last.request.content)["reasoning_effort"] == effort
+    body = json.loads(route.calls.last.request.content)
+    assert body["reasoning_effort"] == effort
+    assert body["tools"][0]["function"]["name"] == "probe"
 
 
 @pytest.mark.parametrize(

@@ -13,8 +13,8 @@ Auth: `QWEN_API_KEY` / `DASHSCOPE_API_KEY` env, or
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import THINKING_BUDGETS
+from physiclaw.provider.chat.base import THINKING_BUDGETS
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
 # The hybrid models switch thinking with `enable_thinking` and bound it
 # with `thinking_budget`; a model without the switch rejects the field,
@@ -22,7 +22,7 @@ from physiclaw.provider.provider_base import THINKING_BUDGETS
 _HYBRID_MODELS = ("qwen3", "qwen-plus", "qwen-flash", "qwen-turbo")
 
 
-class QwenProvider(OpenAICompatibleProvider):
+class QwenChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "qwen"
     BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     API_KEY_ENV_VARS = ("QWEN_API_KEY", "DASHSCOPE_API_KEY")

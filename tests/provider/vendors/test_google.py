@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.vendors.google`.
+"""Tests for `physiclaw.provider.vendors.google.chat`.
 
 GoogleProvider extends OpenAICompatibleProvider with shim-specific
 quirks: image_url isn't allowed in role:tool, and tool_calls require
@@ -21,12 +21,14 @@ from physiclaw.contract.dto import (
     ToolResultMessage,
     UserMessage,
 )
-from physiclaw.provider.provider_base import NO_CACHE_MARKERS
-from physiclaw.provider.vendors.google import (
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.vendors.google.chat import (
     _SIG_BYPASS,
-    GoogleProvider,
     _encode_tool_result,
     _extract_thought_signature,
+)
+from physiclaw.provider.vendors.google.chat import (
+    GoogleChatProvider as GoogleProvider,
 )
 
 
@@ -293,7 +295,7 @@ def test_parse_response_preserves_existing_google_vendor_extra(
         vendor_extra={"google": {"other_key": "kept"}},
     )
     mocker.patch(
-        "physiclaw.provider.openai_compat.OpenAICompatibleProvider._parse_response",
+        "physiclaw.provider.chat.openai_compat.OpenAICompatibleProvider._parse_response",
         return_value=base_msg,
     )
 

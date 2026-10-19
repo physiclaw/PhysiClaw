@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.openai_compat`.
+"""Tests for `physiclaw.provider.chat.openai_compat`.
 
 The provider uses `httpx.AsyncClient` (inherited from BaseProvider)
 to POST to `/chat/completions`. Tests use `respx` to fake the HTTP
@@ -24,14 +24,14 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.openai_compat import (
+from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
+from physiclaw.provider.chat.openai_compat import (
     OpenAICacheMarkers,
     OpenAICompatibleProvider,
     _normalize_finish,
     _with_cache_marker,
 )
 from physiclaw.provider.provider_base import (
-    EPHEMERAL_CACHE_CONTROL,
     ProviderPermanentError,
     ProviderTransientError,
 )
@@ -105,7 +105,7 @@ def test_normalize_finish_unknown_value_falls_back_to_stop_with_warning(
 ) -> None:
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
         out = _normalize_finish("future_unknown_reason")
 
     assert out == FinishReason.STOP
@@ -394,7 +394,7 @@ async def test_chat_maps_429_to_transient(
         json={"error": "rate limited"},
     )
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
         with pytest.raises(ProviderTransientError, match=r"^HTTP 429: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -427,7 +427,7 @@ async def test_chat_maps_400_to_permanent(
         json={"error": "bad model"},
     )
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
         with pytest.raises(ProviderPermanentError, match=r"^HTTP 400: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -743,7 +743,7 @@ def test_parse_response_generates_id_when_tool_call_id_missing(
     provider: _TestOpenAI, mocker
 ) -> None:
     mocker.patch(
-        "physiclaw.provider.openai_compat.uuid.uuid4",
+        "physiclaw.provider.chat.openai_compat.uuid.uuid4",
         return_value=mocker.MagicMock(hex="abcdef1234567890"),
     )
     raw = {

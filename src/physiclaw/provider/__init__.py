@@ -1,87 +1,114 @@
-"""Model providers: engine DTOs in, normalized assistant messages out.
+"""Explicit chat and decision API services, grouped by vendor.
 
-Use ``make_provider(provider_id, model_id)`` and close the returned
-provider with ``aclose()``. ``BaseProvider.chat`` owns usage accounting;
-its wire-specific ``_chat`` implementation performs one model call.
-The engine owns retries through ``ProviderTransientError`` (transport,
-rate limits, server failures, malformed completions) and
-``ProviderPermanentError`` (requests that need correction).
+provider_base owns credentials and client lifecycle. chat/ owns history,
+cache/accounting and generation protocols. decision/ owns bounded choices.
+vendors/<vendor>/chat.py and decision.py contain service-specific adapters.
 
-``openai_compat`` implements Chat Completions for OpenAI, Qwen,
-Moonshot, DeepSeek, and Google's compatibility endpoint.
-``anthropic_compat`` implements Messages through Anthropic's SDK.
-``vendors`` declare endpoints, thinking settings, and protocol quirks.
-``wire`` shares content encoders; ``registry`` resolves provider IDs;
-``discovered`` keeps a best-effort cache of accessible model IDs.
-
-``serialize_history`` creates fresh wire messages and places cache
-markers. Reasoning stays outside public assistant text; opaque state
-required for tool continuations lives in ``vendor_extra`` and is
-replayed only by its originating provider. Invalid completions fail
-before partial tools can execute. Optional accounting and cache-write
-failures must not discard a usable model reply or discovery result.
-
-A model ref is ``provider/model`` (for example ``qwen/qwen3.6-plus``).
-Every registered provider runs through the PhysiClaw engine. This module
-is the public re-export surface.
+Use make_chat_provider or make_decision_provider to select the API kind.
+Each service owns its client and context; neither factory substitutes the
+other service. Legacy Provider/BaseProvider/make_provider names remain
+chat-only aliases for existing consumers.
 """
 
-from physiclaw.provider.anthropic_compat import AnthropicCompatibleProvider
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.provider_base import (
-    BaseProvider,
-    Provider,
-    ProviderConfigurationError,
-    ProviderError,
-    ProviderPermanentError,
-    ProviderTransientError,
-)
-from physiclaw.provider.registry import (
-    in_process_provider_ids,
-    is_known,
-    make_provider,
-    provider_class,
-    provider_key_status,
-    validate_model_ref,
-)
-from physiclaw.provider.vendors.anthropic import AnthropicProvider
-from physiclaw.provider.vendors.deepseek import DeepSeekProvider
-from physiclaw.provider.vendors.google import GoogleProvider
-from physiclaw.provider.vendors.moonshot import MoonshotProvider
-from physiclaw.provider.vendors.openai import OpenAIProvider
-from physiclaw.provider.vendors.qwen import QwenProvider
-from physiclaw.provider.wire import (
+from physiclaw.contract.decision import DecisionProvider
+from physiclaw.provider.chat import discovered
+from physiclaw.provider.chat.anthropic_compat import AnthropicCompatibleProvider
+from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     mcp_blocks_to_content_blocks,
     tool_result_to_wire,
     tool_to_wire,
     user_content_to_openai,
 )
+from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
+from physiclaw.provider.provider_base import (
+    BaseAPIProvider,
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderPermanentError,
+    ProviderTransientError,
+)
+from physiclaw.provider.registry import (
+    DecisionProviderSpec,
+    VendorServices,
+    decision_provider_capabilities,
+    in_process_provider_ids,
+    is_known,
+    make_chat_provider,
+    make_decision_provider,
+    make_provider,
+    provider_capabilities,
+    provider_class,
+    provider_key_status,
+    register_decision_provider,
+    validate_model_ref,
+)
+from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
+from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
+from physiclaw.provider.vendors.google.chat import GoogleChatProvider
+from physiclaw.provider.vendors.moonshot.chat import MoonshotChatProvider
+from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
+from physiclaw.provider.vendors.openai.decision import OpenAIDecisionProvider
+from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
+from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
+
+# Compatibility names always mean chat, including for a dual-service vendor.
+Provider = ChatProvider
+BaseProvider = BaseChatProvider
+AnthropicProvider = AnthropicChatProvider
+DeepSeekProvider = DeepSeekChatProvider
+GoogleProvider = GoogleChatProvider
+MoonshotProvider = MoonshotChatProvider
+OpenAIProvider = OpenAIChatProvider
+QwenProvider = QwenChatProvider
 
 __all__ = [
+    "AnthropicChatProvider",
     "AnthropicCompatibleProvider",
     "AnthropicProvider",
+    "BaseAPIProvider",
+    "BaseChatProvider",
+    "BaseDecisionProvider",
     "BaseProvider",
+    "ChatProvider",
+    "DecisionProvider",
+    "DecisionProviderSpec",
+    "VendorServices",
+    "DeepSeekChatProvider",
     "DeepSeekProvider",
+    "GoogleChatProvider",
     "GoogleProvider",
+    "MoonshotChatProvider",
     "MoonshotProvider",
+    "OpenAIChatProvider",
     "OpenAICompatibleProvider",
+    "OpenAIDecisionProvider",
     "OpenAIProvider",
     "Provider",
     "ProviderConfigurationError",
     "ProviderError",
     "ProviderPermanentError",
     "ProviderTransientError",
+    "QwenChatProvider",
     "QwenProvider",
+    "TypeSafeDecisionProvider",
     "assistant_to_wire",
+    "decision_provider_capabilities",
+    "discovered",
     "in_process_provider_ids",
     "is_known",
+    "make_chat_provider",
+    "make_decision_provider",
     "make_provider",
     "mcp_blocks_to_content_blocks",
+    "provider_capabilities",
     "provider_class",
     "provider_key_status",
-    "validate_model_ref",
+    "register_decision_provider",
     "tool_result_to_wire",
     "tool_to_wire",
     "user_content_to_openai",
+    "validate_model_ref",
 ]

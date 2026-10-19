@@ -1,15 +1,9 @@
-"""Concrete provider implementations.
+"""Vendor API services.
 
-One file per vendor. Qwen, Moonshot, OpenAI, and DeepSeek declare
-endpoints and capabilities, and translate the engine's thinking level
-into model-specific request fields. Other wire differences stay close
-to the vendor that requires them:
-
-  - `google.py`    — `GoogleProvider` (Gemini via the OpenAI shim):
-                     tool-result image splits, thought signatures,
-                     cache markers disabled.
-  - `anthropic.py` — `AnthropicProvider` (Claude): Anthropic-compat
-                     wire shape via the official SDK.
+Each vendor has a package. Its chat.py and decision.py modules are separate
+adapters for separate API services, sharing credentials and lifecycle only.
+For example, openai/chat.py speaks Chat Completions while openai/decision.py
+speaks Decisions. A decision-only vendor needs no chat.py.
 
 `BASE_URL` is overridable per-instance via `~/.physiclaw/config.toml`'s
 `[providers.<id>] base_url = "..."`.

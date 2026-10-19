@@ -127,6 +127,42 @@ def test_common_is_a_leaf() -> None:
     assert not bad, "common must not import core or agent:\n" + "\n".join(bad)
 
 
+def test_decision_contract_and_base_are_vendor_and_chat_independent() -> None:
+    """Vendor wiring belongs at the registry composition root, not in DTOs."""
+    for relative in ("contract/decision.py", "provider/decision/decision_compat.py"):
+        imports = _imported_modules(PKG_ROOT / relative)
+        assert not any(
+            module.startswith("physiclaw.provider.vendors") for module in imports
+        )
+        assert "physiclaw.contract.dto" not in imports
+
+
+def test_provider_service_packages_do_not_import_each_other() -> None:
+    for package, forbidden in (("chat", "decision"), ("decision", "chat")):
+        for path in (PKG_ROOT / "provider" / package).rglob("*.py"):
+            assert not any(
+                module.startswith(f"physiclaw.provider.{forbidden}")
+                for module in _imported_modules(path)
+            ), str(path)
+    imports = _imported_modules(PKG_ROOT / "provider/provider_base.py")
+    assert not any(module.startswith("physiclaw.contract") for module in imports)
+
+
+def test_vendor_adapters_keep_chat_and_decision_imports_separate() -> None:
+    for path in (PKG_ROOT / "provider/vendors").rglob("*.py"):
+        if path.name not in ("chat.py", "decision.py"):
+            continue
+        forbidden = "decision" if path.name == "chat.py" else "chat"
+        assert not any(
+            module.startswith(f"physiclaw.provider.{forbidden}")
+            or (
+                module.startswith("physiclaw.provider.vendors.")
+                and module.endswith(f".{forbidden}")
+            )
+            for module in _imported_modules(path)
+        ), str(path)
+
+
 # The agent packages that ARE the engine or drive it directly — they may
 # import engine internals freely. Everything else under `agent/`
 # (provider, trace, layout, and whatever lands next) is shared across

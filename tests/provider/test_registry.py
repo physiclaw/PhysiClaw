@@ -17,18 +17,24 @@ from physiclaw.provider.registry import (
     provider_key_status,
     validate_model_ref,
 )
-from physiclaw.provider.vendors.anthropic import AnthropicProvider
-from physiclaw.provider.vendors.deepseek import DeepSeekProvider
-from physiclaw.provider.vendors.google import GoogleProvider
-from physiclaw.provider.vendors.moonshot import MoonshotProvider
-from physiclaw.provider.vendors.openai import OpenAIProvider
-from physiclaw.provider.vendors.qwen import QwenProvider
+from physiclaw.provider.vendors.anthropic.chat import (
+    AnthropicChatProvider as AnthropicProvider,
+)
+from physiclaw.provider.vendors.deepseek.chat import (
+    DeepSeekChatProvider as DeepSeekProvider,
+)
+from physiclaw.provider.vendors.google.chat import GoogleChatProvider as GoogleProvider
+from physiclaw.provider.vendors.moonshot.chat import (
+    MoonshotChatProvider as MoonshotProvider,
+)
+from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider as OpenAIProvider
+from physiclaw.provider.vendors.qwen.chat import QwenChatProvider as QwenProvider
 
 # ---------- constants ----------
 
 
 def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
-    assert set(registry._PROVIDER_CLASSES) == {
+    assert set(in_process_provider_ids()) == {
         "qwen",
         "moonshot",
         "openai",
@@ -52,7 +58,7 @@ def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
 def test_provider_classes_each_id_maps_to_its_vendor_class(
     provider_id: str, cls: type
 ) -> None:
-    assert registry._PROVIDER_CLASSES[provider_id] is cls
+    assert registry._VENDORS[provider_id].chat is cls
 
 
 # ---------- in_process_provider_ids ----------
@@ -62,7 +68,9 @@ def test_in_process_provider_ids_returns_tuple() -> None:
     out = in_process_provider_ids()
 
     assert isinstance(out, tuple)
-    assert set(out) == set(registry._PROVIDER_CLASSES)
+    assert set(out) == {
+        name for name, vendor in registry._VENDORS.items() if vendor.chat is not None
+    }
 
 
 # ---------- is_known ----------

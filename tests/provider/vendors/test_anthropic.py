@@ -1,8 +1,8 @@
-"""Tests for `physiclaw.provider.vendors.anthropic` — adapter class.
+"""Tests for `physiclaw.provider.vendors.anthropic.chat` — adapter class.
 
 This vendor calls Anthropic's
 `/v1/messages` endpoint via the `AsyncAnthropic` SDK; wire-format flow
-lives in `provider/anthropic_compat.py` and is exercised separately.
+lives in `provider/chat/anthropic_compat.py` and is exercised separately.
 """
 
 from __future__ import annotations
@@ -13,7 +13,9 @@ import httpx
 import pytest
 
 from physiclaw.contract.dto import UserMessage
-from physiclaw.provider.vendors.anthropic import AnthropicProvider
+from physiclaw.provider.vendors.anthropic.chat import (
+    AnthropicChatProvider as AnthropicProvider,
+)
 
 
 def test_provider_id_pinned() -> None:
@@ -30,7 +32,7 @@ def test_base_url_pinned_for_documentation() -> None:
 
 def test_inherits_anthropic_compat() -> None:
     """Wire format / response parsing comes from the parent."""
-    from physiclaw.provider.anthropic_compat import (
+    from physiclaw.provider.chat.anthropic_compat import (
         AnthropicCompatibleProvider,
     )
 

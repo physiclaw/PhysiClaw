@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.discovered` — model-list cache.
+"""Tests for `physiclaw.provider.chat.discovered` — model-list cache.
 
 Module-level `_DIR = paths.HOME / "discovered"` is captured at import
 time; the autouse `_dir_fixture` re-points it to a per-test directory
@@ -123,7 +123,7 @@ def test_save_swallows_oserror_and_logs_warning(
         discovered, "write_json_atomic", side_effect=OSError("disk full")
     )
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.discovered"):
+    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.discovered"):
         # Must not raise.
         discovered.save("openai", [{"id": "gpt-5"}])
 
@@ -172,7 +172,7 @@ def test_load_returns_empty_and_logs_on_malformed_json(
     _dir_fixture.mkdir(parents=True)
     (_dir_fixture / "openai.json").write_text("{not valid json")
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.discovered"):
+    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.discovered"):
         out = discovered.load("openai")
 
     assert out == []
@@ -191,7 +191,7 @@ def test_load_returns_empty_and_logs_on_oserror(
     (_dir_fixture / "openai.json").write_text("{}")
     mocker.patch.object(Path, "read_text", side_effect=OSError("permission denied"))
 
-    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.discovered"):
+    with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.discovered"):
         out = discovered.load("openai")
 
     assert out == []

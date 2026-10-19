@@ -9,24 +9,26 @@ Auth: `OPENAI_API_KEY` env, or `[provider] openai_api_key` in
 `~/.physiclaw/config.toml`.
 
 Thinking: original GPT-5 models floor at `minimal`; later GPT-5
-models support `none`. These are distinct API values, and `minimal`
-does not guarantee zero reasoning tokens. The o-series floors at
-`low`. Models outside the known table keep their API default.
+models and GPT-6 Luna support `none`. These are distinct API values,
+and `minimal` does not guarantee zero reasoning tokens. GPT-6 Luna's
+Chat Completions tool calls require `none`; reasoning with tools uses
+Responses. The o-series floors at `low`. Models outside the known
+table keep their API default.
 """
 
 import re
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
 # Exact aliases plus their dated snapshots. Do not infer capabilities
 # for chat/codex/pro variants from a shared prefix.
 _MINIMAL_MODELS = {"gpt-5", "gpt-5-mini", "gpt-5-nano"}
-_NONE_MODELS = {"gpt-5.1", "gpt-5.2", "gpt-5.4", "gpt-5.5"}
+_NONE_MODELS = {"gpt-5.1", "gpt-5.2", "gpt-5.4", "gpt-5.5", "gpt-6-luna"}
 
 
-class OpenAIProvider(OpenAICompatibleProvider):
+class OpenAIChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "openai"
     BASE_URL = "https://api.openai.com/v1"
 

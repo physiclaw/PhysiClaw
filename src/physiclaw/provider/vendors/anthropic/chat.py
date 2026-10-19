@@ -2,7 +2,7 @@
 
 This provider calls Anthropic's `/v1/messages`
 endpoint directly through `AsyncAnthropic` — wire-format flow lives in
-`provider/anthropic_compat.py`.
+`provider/chat/anthropic_compat.py`.
 
 Auth: `ANTHROPIC_API_KEY` env, or `[provider] anthropic_api_key` in
 `~/.physiclaw/config.toml`.
@@ -17,7 +17,7 @@ import re
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
-from physiclaw.provider.anthropic_compat import AnthropicCompatibleProvider
+from physiclaw.provider.chat.anthropic_compat import AnthropicCompatibleProvider
 
 # Exact aliases, with optional dated snapshots stripped below. An
 # unrecognized future model must not inherit a guessed capability.
@@ -40,7 +40,7 @@ _ADAPTIVE_OFF_MODES = {
 }
 
 
-class AnthropicProvider(AnthropicCompatibleProvider):
+class AnthropicChatProvider(AnthropicCompatibleProvider):
     PROVIDER_ID = "anthropic"
     # Informational only — `AsyncAnthropic` manages the URL itself.
     BASE_URL = "https://api.anthropic.com/v1"

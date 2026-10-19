@@ -41,10 +41,10 @@ gets nothing extra.
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
-from physiclaw.provider.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
 
-class MoonshotProvider(OpenAICompatibleProvider):
+class MoonshotChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "moonshot"
     BASE_URL = "https://api.moonshot.cn/v1"
 
