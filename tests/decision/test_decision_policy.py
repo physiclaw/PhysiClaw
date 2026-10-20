@@ -40,7 +40,7 @@ def test_all_boxes_are_offered_once_and_gestures_are_a_separate_question(context
         "COMPLETE",
         "UNCLEAR",
     }
-    assert list(questions["action_type"]["options"]) == ["YIELD", "tap", "long_press"]
+    assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
     targets = questions["target"]["options"]
     assert list(targets) == ["NONE", "b0", "b1"]
     for index, element in ((0, context.icons[0]), (1, context.ocr[0])):
@@ -59,11 +59,17 @@ def test_all_boxes_are_offered_once_and_gestures_are_a_separate_question(context
     assert question_profile(context, tools={"long_press", "tap"}) == profile
 
 
-@pytest.mark.parametrize("tool", REVIEW_TOOLS)
-def test_only_advertised_gestures_are_offered_and_clipboard_never_is(context, tool):
-    tools = {tool, "send_to_clipboard", "swipe", "double_tap", "sequence"}
+def test_only_tap_is_offered_among_available_tools(context):
+    tools = {
+        "tap",
+        "long_press",
+        "send_to_clipboard",
+        "swipe",
+        "double_tap",
+        "sequence",
+    }
     questions = question_profile(context, tools=tools).to_dict()["questions"]
-    assert list(questions["action_type"]["options"]) == ["YIELD", tool]
+    assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
 
 
 @pytest.mark.parametrize(
@@ -78,7 +84,7 @@ def test_no_executable_work_means_no_billable_questions(context, problem):
     elif problem == "no_targets":
         context = replace(context, ocr=(), icons=())
     else:
-        tools = {"send_to_clipboard", "swipe", "home_screen"}
+        tools = {"long_press", "send_to_clipboard", "swipe", "home_screen"}
     assert question_profile(context, tools=tools).questions == ()
 
 
@@ -127,7 +133,7 @@ def test_large_target_set_is_linear_and_never_silently_truncated(context):
     context = replace(context, ocr=(), icons=elements)
     phase, gestures, targets = question_profile(context, tools=REVIEW_TOOLS).questions
     assert len(phase.candidates) == 4
-    assert len(gestures.candidates) == 3
+    assert len(gestures.candidates) == 2
     assert len(targets.candidates) == 261  # Provider limit, not hidden pruning.
     assert [c.target_ref for c in targets.candidates[1:]] == [e.ref for e in elements]
 

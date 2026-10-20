@@ -8,6 +8,7 @@ here. Errors deliberately omit server bodies, headers and transport text.
 from __future__ import annotations
 
 import json
+import math
 from hashlib import sha256
 from uuid import uuid4
 
@@ -189,8 +190,23 @@ class TypeSafeDecisionProvider(BaseDecisionProvider):
             if not isinstance(answer, dict) or answer.get("type") != "choice":
                 raise ValueError("expected Choice answer")
             probabilities = answer.get("probabilities")
-            if probabilities is not None and not isinstance(probabilities, dict):
-                raise ValueError("expected probability object")
+            if probabilities is not None:
+                if not isinstance(probabilities, dict):
+                    raise ValueError("expected probability object")
+                if any(
+                    type(value) not in (int, float) or not 0 <= value <= 1
+                    for value in probabilities.values()
+                ):
+                    raise ValueError("expected finite probabilities in [0, 1]")
+                total = math.fsum(probabilities.values())
+                # TypeSafe documents approximate totals. Normalize its rounded
+                # values within our 1% interoperability limit, not a vendor
+                # precision guarantee. Confidence remains provider-reported.
+                if abs(total - 1.0) > 0.01 + 1e-12:
+                    raise ValueError("probability total exceeds rounding tolerance")
+                probabilities = {
+                    key: value / total for key, value in probabilities.items()
+                }
             parsed[name] = DecisionAnswer(
                 selected_id=answer["choice"],
                 confidence=answer.get("confidence"),

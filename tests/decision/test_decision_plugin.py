@@ -183,7 +183,17 @@ async def test_settings_are_captured_once_for_each_session(
     shadow.provider.evaluate.assert_awaited_once()
 
 
-@pytest.mark.parametrize("problem", ["no_progress", "no_tools", "bad_view", "deadline"])
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "no_progress",
+        "no_tools",
+        "long_press_only",
+        "bad_view",
+        "screenshot",
+        "deadline",
+    ],
+)
 async def test_ineligible_work_never_constructs_provider(
     shadow, turn, metadata, problem
 ):
@@ -191,8 +201,12 @@ async def test_ineligible_work_never_constructs_provider(
         turn = replace(turn, progress=None)
     elif problem == "no_tools":
         turn = replace(turn, tools={})
+    elif problem == "long_press_only":
+        turn = replace(turn, tools={"long_press": {}})
     elif problem == "bad_view":
         turn = replace(turn, observation_issue="invalid_view")
+    elif problem == "screenshot":
+        turn = replace(turn, observation=replace(turn.observation, source="screenshot"))
     else:
         metadata = replace(metadata, deadline=asyncio.get_running_loop().time() - 1)
     assert await shadow.plugin.advance(turn, metadata=metadata) is None

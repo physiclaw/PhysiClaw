@@ -133,7 +133,7 @@ async def test_preview_questions_reach_both_adapters_with_one_image(
     for question in review.questions:
         assert questions[question.id]["instructions"] == question.instructions
         assert question.instructions.startswith(CONSERVATIVE_PROMPT + "\n\n")
-    assert list(questions["action_type"]["options"]) == ["YIELD", "tap", "long_press"]
+    assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
     assert list(questions["target"]["options"]) == ["NONE", "b0", "b1"]
     target = questions["target"]["options"]["b0"]
     assert target["target_ref"] == "o17:0"

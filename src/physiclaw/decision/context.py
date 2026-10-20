@@ -88,6 +88,9 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
         blockers.append(turn.observation_issue)
     if turn.observation is None:
         blockers.append("no_observation")
+    elif turn.observation.source == "screenshot":
+        # The capture gesture can change the screen after the captured frame.
+        blockers.append("screenshot_requires_peek")
     publication = next(
         (event for event in reversed(turn.events) if event.tool == "update_progress"),
         None,
@@ -95,7 +98,7 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
     if publication is not None and (publication.is_error or not publication.executed):
         blockers.append("progress_update_failed")
 
-    # A later screenshot alone must not erase a failed interaction.
+    # A fresh view must not erase a failed interaction.
     previous = next(
         (event for event in reversed(turn.events) if event.tool in _INTERACTIONS),
         None,

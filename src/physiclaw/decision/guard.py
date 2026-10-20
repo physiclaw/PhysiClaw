@@ -2,7 +2,7 @@
 
 This is a backstop, not a safety classifier: OCR may miss a label, and an
 unlabelled icon or an innocent label can still have consequential effects.
-No match is never permission to execute. Both tap and long_press use it.
+No match is never permission to execute.
 """
 
 import re

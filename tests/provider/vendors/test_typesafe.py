@@ -114,6 +114,63 @@ async def test_native_choice_and_yield(provider, decision_request, respx_mock, c
     assert route.call_count == 1
 
 
+@pytest.mark.parametrize("selected_probability", [0.89, 0.9, 0.91])
+async def test_rounded_probabilities_preserve_choice_and_confidence(
+    provider, decision_request, respx_mock, selected_probability
+):
+    payload = answer()
+    probabilities = {"YIELD": 0.1, "a1": selected_probability}
+    payload["answers"]["next_action"]["probabilities"] = probabilities
+    respx_mock.post(URL).respond(json=payload)
+
+    result = await provider.evaluate(decision_request, deadline=deadline())
+
+    native = result.answers["next_action"]
+    assert native.selected_id == "a1"
+    assert native.confidence == 0.81
+    total = sum(probabilities.values())
+    assert dict(native.probabilities) == pytest.approx(
+        {key: value / total for key, value in probabilities.items()}
+    )
+    assert sum(native.probabilities.values()) == pytest.approx(1.0)
+
+
+async def test_rounded_target_in_named_question_bundle(
+    provider, image_decision_request, respx_mock
+):
+    profile = question_profile(
+        image_decision_request.context, tools={"tap", "long_press"}
+    )
+    request = replace(image_decision_request, questions=profile.questions)
+    distributions = {
+        "phase": {"ROUTINE": 0.72, "SEMANTIC": 0.19, "COMPLETE": 0.06, "UNCLEAR": 0.03},
+        "action_type": {"YIELD": 0.18, "tap": 0.82},
+        "target": {"NONE": 0.06, "b0": 0.39, "b1": 0.54},
+    }
+    payload = {
+        "model": "jev-1.14.0",
+        "answers": {
+            name: {
+                "type": "choice",
+                "choice": max(probabilities, key=probabilities.get),
+                "confidence": 0.38,
+                "probabilities": probabilities,
+            }
+            for name, probabilities in distributions.items()
+        },
+    }
+    respx_mock.post(URL).respond(json=payload)
+
+    result = await provider.evaluate(request, deadline=deadline())
+
+    assert set(result.answers) == set(distributions)
+    assert result.answers["target"].selected_id == "b1"
+    assert result.answers["target"].confidence == 0.38
+    assert dict(result.answers["target"].probabilities) == pytest.approx(
+        {key: value / 0.99 for key, value in distributions["target"].items()}
+    )
+
+
 async def test_complete_image_ocr_icons_multipart(
     provider, image_decision_request, respx_mock
 ):
@@ -427,10 +484,19 @@ async def test_missing_or_wrong_response_structure(
         {"confidence": True},
         {"confidence": "0.8"},
         {"probabilities": {"YIELD": 0.1, "unknown": 0.9}},
+        {"probabilities": {"YIELD": 0.1, "unknown": 0.89}},
+        {"probabilities": {"a1": 0.99}},
+        {"probabilities": {"YIELD": 0.0, "a1": 0.0}},
+        {"probabilities": {}},
+        {"probabilities": {"YIELD": 0.1, "a1": 0.889999}},
+        {"probabilities": {"YIELD": 0.1, "a1": 0.910001}},
         {"probabilities": {"YIELD": 0.1, "a1": 0.8}},
         {"probabilities": {"YIELD": 0.9, "a1": 0.1}},
+        {"probabilities": {"YIELD": 0.5, "a1": 0.49}},
         {"probabilities": {"YIELD": -0.1, "a1": 1.1}},
         {"probabilities": {"YIELD": True, "a1": 0}},
+        {"probabilities": {"YIELD": False, "a1": 0.99}},
+        {"probabilities": {"YIELD": "0.1", "a1": 0.89}},
         {"probabilities": [0.1, 0.9]},
     ],
 )
@@ -451,6 +517,7 @@ async def test_malformed_choice_or_scores(
         '{"model":"x","model":"y","answers":{}}',
         '{"model":"x","answers":{"next_action":{"type":"choice","choice":"a1","confidence":NaN}}}',
         '{"model":"x","answers":{"next_action":{"type":"choice","choice":"a1","probabilities":{"a1":Infinity,"YIELD":0}}}}',
+        '{"model":"x","answers":{"next_action":{"type":"choice","choice":"a1","probabilities":{"a1":NaN,"YIELD":0}}}}',
     ],
 )
 async def test_bad_json_duplicates_and_nonfinite_numbers(

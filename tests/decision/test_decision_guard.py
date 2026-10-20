@@ -1,4 +1,4 @@
-"""Consequential labels veto both gestures without granting safety otherwise."""
+"""Consequential labels veto targets without granting safety otherwise."""
 
 from dataclasses import replace
 
@@ -113,10 +113,9 @@ def test_batch_vetoes_keep_first_matching_evidence_for_each_observed_target(cont
     assert all(evidence is label for evidence in blocked.values())
 
 
-@pytest.mark.parametrize("tool", ["tap", "long_press"])
-def test_all_blocked_targets_produce_no_questions_and_keep_veto_evidence(control, tool):
+def test_all_blocked_targets_produce_no_questions_and_keep_veto_evidence(control):
     context, target, label = control("发送")
-    profile = question_profile(context, tools={tool}).to_dict()
+    profile = question_profile(context, tools={"tap"}).to_dict()
     assert profile["questions"] == {}
     assert profile["blocked_targets"] == {
         ref: {

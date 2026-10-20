@@ -102,7 +102,7 @@ def test_all_observed_targets_and_available_gestures_are_previewed_without_execu
     data = json.loads(result.preview())
     questions = data["profile"]["questions"]
     assert set(questions) == {"phase", "action_type", "target"}
-    assert list(questions["action_type"]["options"]) == ["YIELD", "tap", "long_press"]
+    assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
     targets = questions["target"]["options"]
     assert list(targets) == ["NONE", "b0", "b1"]
     for element in turn.observation.elements:
@@ -174,6 +174,50 @@ def test_missing_or_invalid_view_stays_blocked(turn):
 
 
 @pytest.mark.parametrize(
+    "changes,remaining",
+    [
+        ({}, ()),
+        ({"is_error": True}, ("previous_action_failed",)),
+        ({"executed": False}, ("previous_action_failed",)),
+        ({"changed": False}, ("previous_action_unchanged",)),
+        ({"changed": None}, ("previous_outcome_unknown",)),
+    ],
+)
+def test_screenshot_requires_camera_refresh_without_erasing_action_outcome(
+    turn, observation_blocks, changes, remaining
+):
+    screenshot = read_observation(observation_blocks(source="screenshot"))
+    turn = replace(
+        turn,
+        observation=screenshot,
+        tools={"tap": {}, "long_press": {}},
+        events=(
+            event(1, "tap", **changes),
+            event(2, "screenshot", changed=None, observation_id=screenshot.id),
+        ),
+    )
+    result = projection(turn)
+    assert result.blockers == ("screenshot_requires_peek", *remaining)
+    assert result.context.facts["observation"]["source"] == "screenshot"
+    assert result.profile.questions == ()
+    assert result.request("screenshot") is None
+
+    camera = read_observation(observation_blocks())
+    refreshed = projection(
+        replace(
+            turn,
+            observation=camera,
+            events=(
+                *turn.events,
+                event(3, "peek", changed=None, observation_id=camera.id),
+            ),
+        )
+    )
+    assert refreshed.blockers == remaining
+    assert (refreshed.request("refreshed") is None) == bool(remaining)
+
+
+@pytest.mark.parametrize(
     "changes,reason",
     [
         ({"is_error": True}, "previous_action_failed"),
@@ -182,14 +226,16 @@ def test_missing_or_invalid_view_stays_blocked(turn):
         ({"changed": None}, "previous_outcome_unknown"),
     ],
 )
+@pytest.mark.parametrize("tool", ["tap", "long_press"])
 def test_fresh_peeks_do_not_erase_uncertain_action_and_its_evidence(
-    turn, changes, reason
+    turn, changes, reason, tool
 ):
-    failed = event(1, "tap", **changes)
+    failed = event(1, tool, **changes)
     events = (failed, *(event(i, "peek") for i in range(2, 8)))
     result = projection(replace(turn, events=events))
     assert reason in result.blockers
     assert result.context.facts["recent_actions"][0]["source"] == "tool:call-1"
+    assert result.context.facts["recent_actions"][0]["tool"] == tool
     assert len(result.context.facts["recent_actions"]) == 4
 
 

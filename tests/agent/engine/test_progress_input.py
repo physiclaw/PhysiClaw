@@ -213,7 +213,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
                     request.id,
                     {
                         "phase": DecisionAnswer("ROUTINE", confidence=0.99),
-                        "action_type": DecisionAnswer("long_press", confidence=0.99),
+                        "action_type": DecisionAnswer("tap", confidence=0.99),
                         "target": DecisionAnswer("b0", confidence=0.99),
                     },
                     "fake",
@@ -310,13 +310,8 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             assert data["blockers"] == []
             questions = data["profile"]["questions"]
             assert set(questions) == {"phase", "action_type", "target"}
-            assert list(questions["action_type"]["options"]) == [
-                "YIELD",
-                "tap",
-                "long_press",
-            ]
+            assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
             assert list(questions["target"]["options"]) == ["NONE", "b0", "b1"]
-        if mode == "shadow":
             decision_provider.evaluate.assert_awaited_once()
             decision_provider.aclose.assert_awaited_once()
             assert cancelled.is_set() is not shadow_finishes

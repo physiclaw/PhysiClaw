@@ -67,17 +67,14 @@ def edit_choice(decision_request, question_id, choice_id, **changes):
     )
 
 
-@pytest.mark.parametrize("gesture", ["tap", "long_press"])
 @pytest.mark.parametrize("target,index", [("b4", 4), ("b62", 62)])
 def test_hypothetical_geometry_comes_from_original_indexed_observation(
-    decision_request, gesture, target, index
+    decision_request, target, index
 ):
-    result = interpret(
-        decision_request, response(decision_request, gesture=gesture, target=target)
-    )
+    result = interpret(decision_request, response(decision_request, target=target))
     assert result.reason == "hypothetical_action"
     assert result.action.id == target
-    assert result.action.tool == gesture
+    assert result.action.tool == "tap"
     assert (
         result.action.target_ref == f"{decision_request.context.observation_id}:{index}"
     )
@@ -159,6 +156,7 @@ def test_malformed_profiles_are_not_interpreted_as_current_policy(
     decision_request, problem
 ):
     selected_target = "b62"
+    selected_gesture = "tap"
     if problem == "question_names":
         decision_request = replace(
             decision_request, questions=decision_request.questions[1:]
@@ -168,8 +166,9 @@ def test_malformed_profiles_are_not_interpreted_as_current_policy(
             decision_request, "phase", "SEMANTIC", id="OTHER"
         )
     elif problem == "gesture_choices":
+        selected_gesture = "long_press"
         decision_request = edit_choice(
-            decision_request, "action_type", "long_press", id="swipe"
+            decision_request, "action_type", "tap", id=selected_gesture
         )
     elif problem == "yield_missing":
         decision_request = edit_choice(
@@ -219,7 +218,9 @@ def test_malformed_profiles_are_not_interpreted_as_current_policy(
         decision_request = replace(
             decision_request, context=replace(decision_request.context, frame=None)
         )
-    result = response(decision_request, target=selected_target)
+    result = response(
+        decision_request, gesture=selected_gesture, target=selected_target
+    )
     # A provider may correctly answer an incompatible question set.
     if problem == "question_names":
         result = replace(
@@ -232,22 +233,12 @@ def test_malformed_profiles_are_not_interpreted_as_current_policy(
     }
 
 
-def test_unavailable_gesture_cannot_be_selected(decision_request):
-    decision_request = replace(
-        decision_request,
-        questions=question_profile(
-            decision_request.context, tools={"long_press"}
-        ).questions,
-    )
-    assert (
-        interpret(decision_request, response(decision_request)).reason
-        == "invalid_result"
-    )
+def test_unoffered_long_press_cannot_be_selected(decision_request):
     assert (
         interpret(
             decision_request, response(decision_request, gesture="long_press")
         ).reason
-        == "hypothetical_action"
+        == "invalid_result"
     )
 
 
