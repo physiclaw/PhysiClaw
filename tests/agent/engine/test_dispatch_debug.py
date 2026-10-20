@@ -43,7 +43,7 @@ async def test_rewritten_call_still_executes_and_marks_the_trace() -> None:
     assert result.is_error is False and result.tool_call_id == call.id
     assert mcp.tool_calls == [("peek", {})]  # the real call happened
     # Structural provenance + the REAL blocks reach the transformer.
-    assert seen == [(True, [{"type": "text", "text": "mcp-ok"}])]
+    assert seen == [("selected", [{"type": "text", "text": "mcp-ok"}])]
     events = [c.args[0]["event"] for c in run.tr.write.call_args_list]
     assert "debug_faked" in events
 

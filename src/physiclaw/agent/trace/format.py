@@ -224,7 +224,10 @@ def summarize_event(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat
     if name == "response":
         calls = [c.get("name") for c in event.get("tool_calls") or []]
         producer = event.get("producer")
-        if isinstance(producer, dict) and producer.get("kind") == "plugin":
+        if isinstance(producer, dict) and event.get("presentation") in {
+            "plugin",
+            "playbook",
+        }:
             who = (
                 f"by playbook {producer.get('plugin_id')}"
                 if event.get("presentation") == "playbook"

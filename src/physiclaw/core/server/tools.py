@@ -37,6 +37,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from physiclaw.common.dumps import save_tool_call
 from physiclaw.common.logger import logged
+from physiclaw.contract.observation import OBSERVATION_META, view_metadata
 from physiclaw.core import PhysiClaw
 from physiclaw.core.orchestration import GestureResult
 from physiclaw.core.server.types import Bbox, ClipboardText, SequenceActions
@@ -88,7 +89,19 @@ def _view_reply(name: str, jpeg: bytes, listing: str) -> list:
     """`[Image, listing]` — the wire shape every screen view ships in —
     and dump the pair to the tool-call log."""
     save_tool_call(name, listing, jpeg)
-    return [Image(data=jpeg, format="jpeg"), listing]
+    image = Image(data=jpeg, format="jpeg").to_image_content()
+    try:
+        image.meta = {
+            OBSERVATION_META: view_metadata(
+                jpeg,
+                listing,
+                source="screenshot" if name == "screenshot" else "camera",
+            )
+        }
+    except ValueError:
+        # A bad view must still reach the LLM; it provides no decision evidence.
+        pass
+    return [image, listing]
 
 
 def _gesture_reply(name: str, res: GestureResult, hint: str) -> str | list:

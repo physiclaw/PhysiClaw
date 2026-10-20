@@ -1,26 +1,9 @@
-"""Engine — native tool-call loop. Follows OpenClaw's 7 principles.
+"""Session composition and lifecycle for the ordered producer pipeline.
 
-  1. Structure via provider API: tools=[...] + message.tool_calls, not JSON.
-  2. Normalized at the boundary: Provider returns AssistantMessage; raw
-     provider-specific fields (reasoning_content) stripped before echo.
-  3. Real finish_reason preserved and routed (length / content_filter / stop).
-  4. Arguments validated against JSONSchema before dispatch.
-  5. Errors marked: failed tool_calls get synthetic tool_result(is_error=True);
-     finish_reason="error" / "length" / "content_filter" drive recovery.
-  6. Transcript stays API-legal: each ToolCall gets exactly one ToolResult
-     with matching tool_call_id in the very next message.
-  7. Loop is the driver: model → tool_calls → dispatch → tool_results → model.
-
-Layering: the mechanics split across four sibling modules — this one
-owns the session lifecycle (wire provider/MCP/tools/policies into an
-`EngineRun`, drive attempts under the session-outcome contract);
-`loop.py` owns the turn driver, finish_reason routing, and the
-[note, one-other] shape (principles 3, 7); `dispatch.py` owns tool-call
-execution (principles 4, 5, 6); `runspec.py` holds the shared wiring
-dataclasses. The *judgment* — when to reject a turn, when to refuse a
-call, what to warn about — lives in `policy.py` as policy objects on
-`EngineRun.policies`; request assembly (prompt bundle, initial
-messages, tails) lives in `assemble.py`, shared with the CLI dump.
+The composition root installs configured plugins followed by the mandatory
+LLM producer. The turn driver uses their common contract. Prompt assembly,
+retries and conversation management belong to the LLM producer; the host
+owns tools, resources, permissions and session outcomes.
 """
 
 import asyncio
@@ -35,6 +18,7 @@ from physiclaw.agent.engine.policy import default_policies
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm import LLMProducer
 from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import STUCK
@@ -45,7 +29,7 @@ from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.common.logger import bind_log_context, reset_log_context
 from physiclaw.common.text import clip
 from physiclaw.contract.dto import Message
-from physiclaw.contract.plugin import SetupContext
+from physiclaw.contract.plugin import PluginServices
 from physiclaw.macros.model import Macro
 from physiclaw.provider import (
     ChatProvider,
@@ -117,6 +101,7 @@ async def _run_session(
     settings = settings or Settings.from_config()
 
     sid = new_sid()
+    session.session_id = sid
     provider: ChatProvider | None = None
     plugins: tuple[PluginBinding, ...] = ()
     tr: Trace | None = None
@@ -165,9 +150,9 @@ async def _run_session(
                 "console_message": headline,
             },
         )
-        # The provider client exists before plugin setup so the setup
-        # context can offer it (a plugin's decision calls fall back to
-        # the session model). Construction is cheap; nothing is sent
+        # The provider client exists before plugin setup so the
+        # shared services can offer it (plugin chat calls fall back
+        # to the session model). Construction is cheap; nothing is sent
         # until the first chat call.
         provider = make_chat_provider(provider_id, model_id, usage_sink=tr)
         mcp = await get_mcp()
@@ -177,7 +162,7 @@ async def _run_session(
         # macros (dispatchable only by their owner). Nothing model-visible
         # changes. The loader assigns execution grants.
         plugins = plugin_loader.load_plugins()
-        setup_ctx = SetupContext(
+        services = PluginServices(
             session_provider=provider,
             events=tr,
             wire=rlog,
@@ -186,7 +171,7 @@ async def _run_session(
         active_plugins: list[PluginBinding] = []
         for binding in plugins:
             try:
-                contribution = await binding.plugin.session_setup(setup_ctx)
+                contribution = await binding.plugin.session_setup(services)
                 owned = (
                     dict(contribution.gated_macros) if contribution is not None else {}
                 )
@@ -227,9 +212,8 @@ async def _run_session(
                     "event": "plugin_bound",
                     "plugin_id": binding.id,
                     "name": binding.name,
-                    "presentation": "playbook" if binding.playbook else "plugin",
+                    "presentation": binding.presentation,
                     "private_macros": sorted(binding.private_macros),
-                    "skip_model_guards": binding.skip_model_guards,
                 }
             )
         # Built-in skills are inlined full-text into SYSTEM; user skills are
@@ -283,16 +267,8 @@ async def _run_session(
             tools=tool_schemas,
         )
         engine_run = EngineRun(
-            # Plugins arbitrate only the turn loop's provider call:
-            # curate's off-transcript pass and the finally-close below
-            # stay on the raw handle, so a plugin never intercepts
-            # side-calls of the very kind its playbooks emit.
-            # Session-management wiring (collapse cadence, wire logging)
-            # comes straight off the provider — not a plugin's job.
+            # Off-turn curation and transport lifetime remain host resources.
             plugins=tuple(active_plugins),
-            chat=provider.chat,
-            collapse=provider.COLLAPSE,
-            serialize_wire=provider.serialize_history,
             mcp=mcp,
             tool_schemas=tool_schemas,
             schema_by_name=schema_by_name,
@@ -301,7 +277,6 @@ async def _run_session(
             rlog=rlog,
             settings=settings,
             policies=default_policies(layout_incomplete=bundle.layout_incomplete),
-            layout_incomplete=bundle.layout_incomplete,
             deadline=(
                 time.monotonic() + settings.max_session_seconds
                 if settings.max_session_seconds > 0
@@ -309,8 +284,19 @@ async def _run_session(
             ),
             debug_intercept=plugin_loader.load_debug_intercept(),
         )
+        llm = LLMProducer(
+            provider,
+            engine_run,
+            session,
+            messages,
+            layout_incomplete=bundle.layout_incomplete,
+        )
+        await llm.session_setup(services)
+        llm_binding = PluginBinding("physiclaw.llm", llm, "LLM", presentation="model")
+        engine_run.plugins = (*engine_run.plugins, llm_binding)
+        plugins = (*plugins, llm_binding)
         tr.write({"event": "prefix_pinned", "hash": prompt_hash})
-        await loop.drive(engine_run, session, messages)
+        await loop.drive(engine_run, session)
 
         log.debug(
             "session done: session=%s status=%s recap=%r",

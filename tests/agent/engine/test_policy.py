@@ -10,6 +10,8 @@ and reported size limit without pinning the complete wording.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from physiclaw.agent import layout
@@ -534,10 +536,8 @@ def test_burned_macro_blocks_a_rerun_after_an_abort() -> None:
     assert "already aborted this session" in block.content
 
 
-def test_host_grant_allows_recovery_to_rerun_an_aborted_macro() -> None:
-    # A conductor recover hand (force_quit) re-runs the route's `start`
-    # macro by declared design; the walk bounds that, not this guard —
-    # the host grant lets the guard runner skip MODEL_GUARD guards.
+def test_all_producers_are_blocked_from_rerunning_aborted_macros() -> None:
+    # Display metadata cannot bypass an installed execution guard.
     from types import SimpleNamespace
 
     from physiclaw.agent.engine.dispatch import _run_guards
@@ -547,22 +547,21 @@ def test_host_grant_allows_recovery_to_rerun_an_aborted_macro() -> None:
     session.active_plugin = PluginBinding(
         "conductor",
         SimpleNamespace(),
-        skip_model_guards=True,
-        playbook=True,
+        presentation="playbook",
         name="playbook",
     )
     guard = policy_mod.BurnedMacro()
-    assert guard.MODEL_GUARD is True
 
     blocked = _run_guards(
-        SimpleNamespace(tr=None),
+        SimpleNamespace(tr=MagicMock()),
         session,
         _macro_call(name="taobao/buy.app"),
         2,
         (guard,),
     )
 
-    assert blocked is None
+    assert blocked is not None
+    assert blocked.is_error
 
 
 def test_burned_macro_blocks_start_at_retries_too() -> None:
@@ -599,28 +598,26 @@ def test_burned_macro_is_registered_and_runs_before_the_stuck_block() -> None:
     assert kinds.index("BurnedMacro") < kinds.index("StuckBlock")
 
 
-def test_host_grant_skips_the_plan_gate() -> None:
-    # The conductor's turns carry no plan and never will — the armed
-    # playbook is their plan: the guard runner skips the gate on a
-    # plugin turn. Same call on an LLM turn stays gated.
+def test_plan_guard_applies_to_every_producer() -> None:
+    # An installed execution guard has the same effect for every slot.
     from types import SimpleNamespace
 
     from physiclaw.agent.engine.dispatch import _run_guards
 
     gate = policy_mod.PlanGate(layout_incomplete=False, required_after=0)
-    assert gate.MODEL_GUARD is True
     session = Session()
     session.model_turns = 5  # well past the threshold, plan undrafted
 
     session.active_plugin = PluginBinding(
         "conductor",
         SimpleNamespace(),
-        skip_model_guards=True,
-        playbook=True,
+        presentation="playbook",
         name="playbook",
     )
     call = ToolCall(id="c", name="tap", arguments={})
-    assert _run_guards(SimpleNamespace(tr=None), session, call, 5, (gate,)) is None
+    assert _run_guards(
+        SimpleNamespace(tr=MagicMock()), session, call, 5, (gate,)
+    ).is_error
 
     session.active_plugin = None
     assert (

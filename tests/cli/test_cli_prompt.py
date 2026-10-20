@@ -111,10 +111,10 @@ class _CaptureProvider:
         self.model = "fake-model"
         self.captured: list | None = None
 
-    def serialize_history(self, messages):
+    def serialize_history(self, messages, *, metadata=None):
         return [{"role": "fake"} for _ in messages]
 
-    async def chat(self, messages, tools):
+    async def chat(self, messages, tools, *, metadata=None):
         if self.captured is None:
             self.captured = list(messages)
         return AssistantMessage(

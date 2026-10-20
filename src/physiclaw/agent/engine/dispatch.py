@@ -80,11 +80,7 @@ async def dispatch(
                 "tool_call_id": call.id,
             },
         )
-        return ToolResultMessage(
-            tool_call_id=call.id,
-            content=f"unknown tool: {call.name!r}",
-            is_error=True,
-        )
+        return _refused_result(session, call, turn, f"unknown tool: {call.name!r}")
 
     # Principle 4: validate arguments before executing.
     try:
@@ -113,10 +109,8 @@ async def dispatch(
                 "tool_call_id": call.id,
             },
         )
-        return ToolResultMessage(
-            tool_call_id=call.id,
-            content=f"invalid arguments for {call.name}: {e}",
-            is_error=True,
+        return _refused_result(
+            session, call, turn, f"invalid arguments for {call.name}: {e}"
         )
 
     blocked = _run_guards(run, session, call, turn, run.policies.post_validation_guards)
@@ -124,6 +118,7 @@ async def dispatch(
         return blocked
 
     local = run.local_registry.get(call.name)
+    session.facts.begin(call.name)
     # Clock starts after the guards: this measures the tool, not the gating.
     t0 = time.monotonic()
     try:
@@ -191,6 +186,9 @@ async def dispatch(
                 }
             )
             _log_result(call, turn, format_call_result(call.name, result), elapsed_ms)
+            session.facts.record(
+                call, turn=turn, changed=None, failed=False, result_text=result
+            )
             return ToolResultMessage(tool_call_id=call.id, content=result)
 
         blocks = await run.mcp.call_tool(call.name, call.arguments)
@@ -325,7 +323,9 @@ def _blocks_result(
         # only (errors never reach this tail), riding the same verdict /
         # observer / trace machinery — marked, so a forensic read can
         # never mistake a virtual thread for a real one.
-        faked = run.debug_intercept(call, session.active_plugin is not None, blocks)
+        faked = run.debug_intercept(
+            call, session.active_plugin.id if session.active_plugin else None, blocks
+        )
         if faked is not None:
             run.tr.write(
                 {
@@ -337,6 +337,7 @@ def _blocks_result(
                 }
             )
             blocks = faked
+    session.facts.observe(blocks, tool=call.name)
     content = mcp_blocks_to_content_blocks(blocks)
     action = verdict.action_text(blocks)
     changed = verdict.parse(action)
@@ -349,6 +350,8 @@ def _blocks_result(
         turn=turn,
         changed=changed,
         failed=False,
+        action_text=action,
+        result_blocks=blocks,
     )
     run.tr.write(
         {
@@ -383,12 +386,6 @@ def _run_guards(
     at Policies construction) in declared order; the first Block wins and
     becomes an error ToolResult."""
     for guard in guards:
-        if (
-            guard.MODEL_GUARD
-            and session.active_plugin is not None
-            and session.active_plugin.skip_model_guards
-        ):
-            continue
         block = guard.check(session, call, turn=turn)
         if block is None:
             continue
@@ -414,12 +411,17 @@ def _run_guards(
                 "tool_call_id": call.id,
             },
         )
-        return ToolResultMessage(
-            tool_call_id=call.id,
-            content=block.content,
-            is_error=True,
-        )
+        return _refused_result(session, call, turn, block.content)
     return None
+
+
+def _refused_result(
+    session: Session, call: ToolCall, turn: int, content: str
+) -> ToolResultMessage:
+    session.facts.record(
+        call, turn=turn, changed=None, failed=True, result_text=content, executed=False
+    )
+    return ToolResultMessage(tool_call_id=call.id, content=content, is_error=True)
 
 
 def _observe_result(
@@ -431,9 +433,15 @@ def _observe_result(
     turn: int,
     changed: bool | None,
     failed: bool,
+    action_text: str | None = None,
+    result_blocks: list[dict] | None = None,
 ) -> str | list[ContentBlock]:
     """Run the result observers in declared order; each may append one
     advisory line to the tool-result content (traced under its event)."""
+    factual_result = action_text
+    if factual_result is None and isinstance(content, str):
+        factual_result = content
+    notices: list[str] = []
     for obs in run.policies.result_observers:
         advisory = obs.observe(session, call, changed=changed, failed=failed)
         if advisory is None:
@@ -446,7 +454,17 @@ def _observe_result(
                 "id": call.id,
             }
         )
+        notices.append(advisory.text)
         content = _append_text(content, advisory.text)
+    session.facts.record(
+        call,
+        turn=turn,
+        changed=changed,
+        failed=failed,
+        result_text=factual_result,
+        result_blocks=result_blocks,
+        notices=tuple(notices),
+    )
     return content
 
 

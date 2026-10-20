@@ -222,6 +222,8 @@ class McpClient:
                         "data": c.data,
                     }
                 )
+                if c.meta:
+                    blocks[-1]["_meta"] = c.meta
             else:
                 # Unknown block type — stringify for debugging. MCP may grow
                 # resource/embedded types later; we don't fail on those.

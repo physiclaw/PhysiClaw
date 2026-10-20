@@ -56,6 +56,7 @@ from physiclaw.conductor.spec.live import disabled_macros
 from physiclaw.conductor.spec.model import AgentNode, DoNode, PlaybookError
 from physiclaw.conductor.spec.pages import AnchorDecl
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, TextBlock
+from physiclaw.contract.turn import TurnMetadata
 
 BACK_LANDMARK = """\
 back:
@@ -1317,29 +1318,31 @@ async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
     )
     h = _history()
 
-    peek = await conductor.advance(h)
+    peek = await conductor.advance(h, metadata=TurnMetadata("session", 0, None, 300))
     _feed(h, peek, ELSEWHERE)
-    start = await conductor.advance(h)  # the parse call brokered inside
+    start = await conductor.advance(
+        h, metadata=TurnMetadata("session", 1, None, 299)
+    )  # the parse call brokered inside
     assert start is not None and start.tool_names() == ["note", "run_macro"]
     _feed(h, start, HOME)
-    search = await conductor.advance(h)
+    search = await conductor.advance(h, metadata=TurnMetadata("session", 2, None, 298))
     _feed(h, search, RESULTS, frame=FRAME)
 
-    scroll = await conductor.advance(h)
+    scroll = await conductor.advance(h, metadata=TurnMetadata("session", 3, None, 297))
     assert scroll is not None and scroll.tool_names() == ["note", "swipe"]
     _feed(h, scroll, RESULTS, frame=FRAME)
-    tap = await conductor.advance(h)
+    tap = await conductor.advance(h, metadata=TurnMetadata("session", 4, None, 296))
     assert tap is not None and tap.tool_names() == ["note", "tap"]
     assert tap.tool_calls[1].arguments["bbox"] == list(milk.bbox)
     _feed(h, tap, RESULTS)
-    mark = await conductor.advance(h)
+    mark = await conductor.advance(h, metadata=TurnMetadata("session", 5, None, 295))
     assert mark is not None and mark.tool_names() == ["note", "tap"]
     assert (
         "tapped 'the back chevron' at [0.000,0.000,0.100,0.100]"
         in (mark.tool_calls[0].arguments["summary"])
     )
     _feed(h, mark, DONE)
-    end = await conductor.advance(h)
+    end = await conductor.advance(h, metadata=TurnMetadata("session", 6, None, 294))
     assert end is not None and end.tool_names() == ["note", "end_session"]
     # The close asked the session thread for the record and closed on it.
     assert end.tool_calls[1].arguments == {
@@ -1348,7 +1351,10 @@ async def test_conductor_drives_a_full_episode_over_tool_call_replies() -> None:
     }
     assert p.outputs["pick.total"] == "45"
     _feed(h, end, "ended")
-    assert await conductor.advance(h) is None
+    assert (
+        await conductor.advance(h, metadata=TurnMetadata("session", 7, None, 293))
+        is None
+    )
 
     # The last episode call replayed every earlier turn: both frames,
     # and each settled reply as the tool call it was. (The very last

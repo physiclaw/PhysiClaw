@@ -62,7 +62,8 @@ def _freeze(value: DecisionValue, *, depth: int = 0) -> DecisionValue:
     raise ValueError("decision facts must be JSON values")
 
 
-def _freeze_mapping(value: Mapping[str, DecisionValue]) -> Mapping[str, DecisionValue]:
+def freeze_mapping(value: Mapping[str, DecisionValue]) -> Mapping[str, DecisionValue]:
+    """Copy and deeply freeze JSON facts or arguments at a contract boundary."""
     if not isinstance(value, Mapping):
         raise ValueError("decision facts and arguments must be objects")
     frozen = _freeze(value)
@@ -135,7 +136,7 @@ class DecisionContext:
 
     def __post_init__(self) -> None:
         _text(self.observation_id)
-        object.__setattr__(self, "facts", _freeze_mapping(self.facts))
+        object.__setattr__(self, "facts", freeze_mapping(self.facts))
         object.__setattr__(self, "ocr", tuple(self.ocr))
         object.__setattr__(self, "icons", tuple(self.icons))
         if self.frame is not None and self.frame.id != self.observation_id:
@@ -164,7 +165,7 @@ class ActionCandidate:
     def __post_init__(self) -> None:
         _text(self.id)
         _text(self.description)
-        object.__setattr__(self, "arguments", _freeze_mapping(self.arguments))
+        object.__setattr__(self, "arguments", freeze_mapping(self.arguments))
         if self.tool is not None:
             _text(self.tool)
         elif self.arguments or self.target_ref is not None:

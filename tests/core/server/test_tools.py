@@ -13,10 +13,11 @@ are part of the prompt contract sent to the agent.
 
 from __future__ import annotations
 
+import base64
 from unittest.mock import MagicMock
 
 import pytest
-from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.types import ImageContent, TextContent
 
@@ -72,8 +73,8 @@ def _assert_view_reply(out, prefix: str, hint: str) -> None:
     assert isinstance(out, list) and len(out) == 3
     assert out[0].startswith(prefix)
     assert out[0].endswith(hint)
-    assert isinstance(out[1], Image)
-    assert out[1].data == b"VIEW"
+    assert isinstance(out[1], ImageContent)
+    assert base64.b64decode(out[1].data) == b"VIEW"
     assert out[2] == "LISTING"
 
 
@@ -147,9 +148,9 @@ async def test_peek_returns_image_and_listing(registered) -> None:
 
     assert pl.peek.called
     assert len(out) == 2
-    assert isinstance(out[0], Image)
-    assert out[0].data == b"PEEK_JPG"
-    assert out[0]._mime_type == "image/jpeg"
+    assert isinstance(out[0], ImageContent)
+    assert base64.b64decode(out[0].data) == b"PEEK_JPG"
+    assert out[0].mime_type == "image/jpeg"
     assert out[1] == "peek-listing"
     tools_mod.save_tool_call.assert_called_once_with(
         "peek",
@@ -167,9 +168,9 @@ async def test_screenshot_returns_image_and_listing(registered) -> None:
 
     assert pl.screenshot.called
     assert len(out) == 2
-    assert isinstance(out[0], Image)
-    assert out[0].data == b"SS_JPG"
-    assert out[0]._mime_type == "image/jpeg"
+    assert isinstance(out[0], ImageContent)
+    assert base64.b64decode(out[0].data) == b"SS_JPG"
+    assert out[0].mime_type == "image/jpeg"
     assert out[1] == "ss-listing"
     tools_mod.save_tool_call.assert_called_once_with(
         "screenshot",
@@ -351,7 +352,7 @@ async def test_sequence_passes_actions_through(registered) -> None:
     pl.sequence.assert_called_once_with(actions)
     # Hint sits on its own line after a result newline; view attached.
     assert out[0].endswith("\n" + tools_mod.HINT_VIEW_AFTER_SEQUENCE)
-    assert isinstance(out[1], Image)
+    assert isinstance(out[1], ImageContent)
 
 
 @pytest.mark.asyncio

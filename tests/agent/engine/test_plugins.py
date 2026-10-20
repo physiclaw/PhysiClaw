@@ -1,11 +1,7 @@
-"""Tests for the engine's turn-plugin loader — the blind end of the seam.
+"""Plugin discovery, identity validation and composition with the default LLM.
 
-The loader knows a config string and the `TurnPlugin` protocol, nothing
-else; the built-in default set is its data, not the config layer's.
-Every failure mode is fail-open: the session runs with whatever loaded.
-The other half of the rollback story — that an EngineRun with
-`plugins=()` is a plain provider session — is pinned across the whole
-loop suite, whose `_mk_run` builds exactly that.
+The loader produces optional slots. The session composition root always
+appends the LLM; all slots obey the same invocation contract.
 """
 
 from __future__ import annotations
@@ -13,11 +9,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from engine_fakes import _arbitration_run, _turn_metadata
 
 from physiclaw.agent.engine import plugins as plugins_mod
 from physiclaw.agent.engine.provenance import PluginBinding
+from physiclaw.agent.engine.session import Session
 from physiclaw.common.config import CONFIG, DEBUG_ENV_VAR
-from physiclaw.contract.plugin import PluginRegistration, SetupContext, TurnPlugin
+from physiclaw.contract.plugin import (
+    PluginRegistration,
+    PluginServices,
+    TurnPlugin,
+)
 
 
 def test_none_is_the_off_switch(monkeypatch, caplog) -> None:
@@ -45,9 +47,10 @@ def test_empty_config_resolves_to_the_builtin_default(caplog) -> None:
         ("Playbook", "physiclaw.playbook"),
         ("Decision", "physiclaw.decision"),
     ]
-    assert all(isinstance(p.plugin, TurnPlugin) for p in plugins)
-    assert plugins[0].playbook and plugins[0].skip_model_guards
-    assert not plugins[1].playbook and not plugins[1].skip_model_guards
+    assert isinstance(plugins[0].plugin, TurnPlugin)
+    assert isinstance(plugins[1].plugin, TurnPlugin)
+    assert plugins[0].presentation == "playbook"
+    assert plugins[1].presentation == "plugin"
     assert all(path in caplog.text for path in plugins_mod.DEFAULT_PLUGINS.split(","))
 
 
@@ -164,7 +167,7 @@ def test_distinct_registrations_cannot_share_a_runtime_instance(
 async def test_default_stack_without_a_playbook_or_decision_uses_the_llm(mocker):
     from engine_fakes import _asst, _tc
 
-    from physiclaw.agent.engine.loop import _advance_with_retry
+    from physiclaw.agent.engine.loop import _advance
 
     bindings = plugins_mod.load_plugins()
     provider = SimpleNamespace(chat=mocker.AsyncMock())
@@ -172,13 +175,17 @@ async def test_default_stack_without_a_playbook_or_decision_uses_the_llm(mocker)
     provider.chat.return_value = answer
     try:
         for binding in bindings:
-            await binding.plugin.session_setup(SetupContext(session_provider=provider))
-        result = await _advance_with_retry(
-            bindings, provider.chat, [], [], attempts=1, backoff=0
+            context = PluginServices(session_provider=provider)
+            await binding.plugin.session_setup(context)
+        result = await _advance(
+            _arbitration_run(provider.chat, plugins=bindings, attempts=1),
+            Session(),
+            _turn_metadata(),
         )
 
-        assert result.binding is None and result.message is answer
-        provider.chat.assert_awaited_once_with([], [])
+        assert result.binding.id == "physiclaw.llm" and result.message is answer
+        provider.chat.assert_awaited_once()
+        assert provider.chat.call_args.kwargs["metadata"] == _turn_metadata()
     finally:
         for binding in bindings:
             await binding.plugin.aclose()
@@ -197,32 +204,32 @@ def test_bad_paths_do_not_sink_good_ones(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_advance_with_retry_passes_a_crashing_plugin_to_the_provider() -> None:
-    from physiclaw.agent.engine.loop import _advance_with_retry
-    from physiclaw.contract.dto import AssistantMessage, FinishReason
+async def test_advance_passes_a_crashing_plugin_to_the_provider() -> None:
+    from engine_fakes import _asst, _tc
+
+    from physiclaw.agent.engine.loop import _advance
 
     class Crashing:
-        async def advance(self, messages):
+        async def advance(self, messages, *, metadata):
             raise RuntimeError("plugin bug")
 
-    spoken = AssistantMessage(
-        content="model", tool_calls=[], finish_reason=FinishReason.STOP
-    )
+    spoken = _asst(tool_calls=[_tc("note"), _tc("peek")])
 
-    async def chat(messages, tools):
+    async def chat(messages, tools, *, metadata):
         return spoken
 
-    turn = await _advance_with_retry(
-        (PluginBinding("crashing", Crashing(), name="test"),),
-        chat,
-        [],
-        [],
-        attempts=1,
-        backoff=0.0,
+    turn = await _advance(
+        _arbitration_run(
+            chat,
+            plugins=(PluginBinding("crashing", Crashing(), name="test"),),
+            attempts=1,
+        ),
+        Session(),
+        _turn_metadata(),
     )
 
     assert turn.message is spoken
-    assert turn.binding is None
+    assert turn.binding.id == "physiclaw.llm"
 
 
 @pytest.mark.parametrize("interceptor", [object(), SimpleNamespace(intercept=None)])

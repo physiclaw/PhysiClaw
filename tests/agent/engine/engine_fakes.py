@@ -1,7 +1,4 @@
-"""Shared fakes and factories for the engine split's test files —
-`test_engine.py` (session lifecycle), `test_loop.py` (turn driver), and
-`test_dispatch.py` (tool-call execution). Names keep their historical
-underscore form from when they were file-local."""
+"""Boundary fakes and explicit producer construction for engine tests."""
 
 from __future__ import annotations
 
@@ -11,8 +8,10 @@ from unittest.mock import MagicMock
 
 from physiclaw.agent.engine import policy as policy_mod
 from physiclaw.agent.engine.builtin_tool import LocalTool
+from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm import LLMProducer
 from physiclaw.contract.dto import (
     AssistantMessage,
     CollapsePolicy,
@@ -20,6 +19,7 @@ from physiclaw.contract.dto import (
     ToolCall,
     Usage,
 )
+from physiclaw.contract.turn import TurnMetadata
 
 
 class FakeProvider:
@@ -34,10 +34,10 @@ class FakeProvider:
         self.calls: list[tuple] = []
         self.closed = False
 
-    def serialize_history(self, messages):
+    def serialize_history(self, messages, *, metadata=None):
         return [{"role": "fake"} for _ in messages]
 
-    async def chat(self, messages, tools):
+    async def chat(self, messages, tools, *, metadata=None):
         self.calls.append((len(messages), len(tools)))
         if not self._responses:
             raise RuntimeError("FakeProvider exhausted")
@@ -91,9 +91,32 @@ def _settings(**over) -> Settings:
     return Settings(**base)
 
 
+def _arbitration_run(
+    chat, *, plugins=(), attempts=3, backoff=0.0, session=None, messages=None
+) -> EngineRun:
+    provider = FakeProvider([])
+    provider.chat = chat
+    run = _mk_run(
+        provider,
+        session=session,
+        messages=messages,
+        settings=_settings(
+            provider_retry_attempts=attempts, retry_backoff_seconds=backoff
+        ),
+    )
+    run.plugins = (*plugins, *run.plugins)
+    return run
+
+
+def _turn_metadata(turn=0) -> TurnMetadata:
+    return TurnMetadata("session", turn, None, 300 - turn)
+
+
 def _mk_run(
     provider=None,
     *,
+    session=None,
+    messages=None,
     mcp=None,
     tool_schemas=None,
     schema_by_name=None,
@@ -106,23 +129,8 @@ def _mk_run(
     deadline=None,
 ) -> EngineRun:
     tool_schemas = tool_schemas if tool_schemas is not None else []
-    return EngineRun(
-        # Tests keep passing a bare provider; the run wires it the way
-        # the engine does — chat + session-management fields pulled
-        # off the provider. None stays None for dispatch tests that
-        # never reach a provider call.
+    run = EngineRun(
         plugins=(),
-        chat=provider.chat if provider is not None else None,
-        collapse=(
-            provider.COLLAPSE
-            if provider is not None
-            else CollapsePolicy(first_at=100, keep=10, interval=100)
-        ),
-        serialize_wire=(
-            provider.serialize_history
-            if provider is not None
-            else (lambda messages: [])
-        ),
         mcp=mcp if mcp is not None else FakeMcpClient(),
         tool_schemas=tool_schemas,
         schema_by_name=(
@@ -139,8 +147,27 @@ def _mk_run(
             if policies is not None
             else policy_mod.default_policies(layout_incomplete=layout_incomplete)
         ),
-        layout_incomplete=layout_incomplete,
         deadline=deadline,
+    )
+    if provider is not None:
+        source = LLMProducer(
+            provider,
+            run,
+            session if session is not None else Session(),
+            messages if messages is not None else [],
+            layout_incomplete=layout_incomplete,
+        )
+        run.plugins = (
+            PluginBinding("physiclaw.llm", source, "LLM", presentation="model"),
+        )
+    return run
+
+
+def _llm(run) -> LLMProducer:
+    return next(
+        binding.plugin
+        for binding in run.plugins
+        if isinstance(binding.plugin, LLMProducer)
     )
 
 

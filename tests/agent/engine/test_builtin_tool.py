@@ -1041,7 +1041,7 @@ async def test_run_macro_pack_macro_only_runs_for_its_owner(mocker) -> None:
         "owner",
         SimpleNamespace(),
         private_macros=frozenset({"demo/leg"}),
-        playbook=True,
+        presentation="playbook",
         name="playbook",
     )
     blocks = await reg["run_macro"].handler(
@@ -1072,7 +1072,7 @@ async def test_run_macro_pack_macro_abort_burns_the_called_name(mocker) -> None:
         "owner",
         SimpleNamespace(),
         private_macros=frozenset({"demo/leg"}),
-        playbook=True,
+        presentation="playbook",
         name="playbook",
     )
     blocks = await reg["run_macro"].handler(

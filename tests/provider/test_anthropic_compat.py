@@ -36,6 +36,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.anthropic_compat import (
     _DEFAULT_MAX_TOKENS,
     _STOP_REASON_MAP,
@@ -378,8 +379,9 @@ def test_tail_anchor_moves_forward_with_byte_stable_old_entry(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("turn", [None, 0, 2])
 async def test_chat_constructs_payload_with_model_max_tokens_messages(
-    provider: _TestAnthropic, mocker
+    provider: _TestAnthropic, mocker, turn
 ) -> None:
     fake_resp = SimpleNamespace(
         content=[SimpleNamespace(type="text", text="hi", id=None)],
@@ -389,12 +391,36 @@ async def test_chat_constructs_payload_with_model_max_tokens_messages(
     )
     provider._client.messages.create.return_value = fake_resp
 
-    await provider.chat([UserMessage(content="ping")], tools=[])
+    history = [UserMessage(content="ping")]
+    metadata = (
+        TurnMetadata("session", turn, None, 300 - turn) if turn is not None else None
+    )
+    await provider.chat(history, tools=[], metadata=metadata)
 
     payload = provider._client.messages.create.call_args.kwargs
     assert payload["model"] == "claude-test"
     assert payload["max_tokens"] == _DEFAULT_MAX_TOKENS
-    assert payload["messages"] == [{"role": "user", "content": "ping"}]
+    assert payload["messages"] == provider.serialize_history(history, metadata=metadata)
+    assert history == [UserMessage(content="ping")]
+    if metadata is None:
+        assert payload["messages"] == [{"role": "user", "content": "ping"}]
+    else:
+        import json
+
+        assert payload["messages"][:-1] == [{"role": "user", "content": "ping"}]
+        tail = payload["messages"][-1]
+        assert tail["role"] == "user"
+        assert json.loads(
+            tail["content"]
+            .removeprefix("<turn_metadata>")
+            .removesuffix("</turn_metadata>")
+        ) == {
+            "session_id": "session",
+            "turn": turn,
+            "deadline": None,
+            "turns_remaining": 300 - turn,
+        }
+    assert "metadata" not in payload
 
 
 @pytest.mark.asyncio

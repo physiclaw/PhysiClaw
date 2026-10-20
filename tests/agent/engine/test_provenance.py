@@ -6,17 +6,19 @@ from types import SimpleNamespace
 import pytest
 from engine_fakes import (
     FakeProvider,
+    _arbitration_run,
     _asst,
     _mk_run,
     _registry,
     _schemas,
     _settings,
     _tc,
+    _turn_metadata,
 )
 
 from physiclaw.agent.engine import engine, plugins
 from physiclaw.agent.engine.dispatch import dispatch
-from physiclaw.agent.engine.loop import _advance_with_retry, _call_provider, drive
+from physiclaw.agent.engine.loop import _advance, _call_producer, drive
 from physiclaw.agent.engine.policy import PlanGate, Policies, StuckBlock
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
@@ -28,7 +30,7 @@ from physiclaw.contract.dto import (
     ToolCall,
     ToolResultMessage,
 )
-from physiclaw.contract.plugin import PluginRegistration, SessionSetup
+from physiclaw.contract.plugin import PluginRegistration, ProposedTurn, SessionSetup
 from physiclaw.macros.parse import parse_macro
 
 
@@ -43,7 +45,15 @@ def events(trace, name):
 def plugin(mocker, *, contribution=None, turns=None):
     return SimpleNamespace(
         session_setup=mocker.AsyncMock(return_value=contribution),
-        advance=mocker.AsyncMock(return_value=None, side_effect=turns),
+        advance=mocker.AsyncMock(
+            return_value=None,
+            side_effect=[
+                ProposedTurn(turn) if isinstance(turn, AssistantMessage) else turn
+                for turn in turns
+            ]
+            if turns is not None
+            else None,
+        ),
         aclose=mocker.AsyncMock(),
     )
 
@@ -61,7 +71,7 @@ async def test_other_plugin_cannot_borrow_owner_macro_or_impersonate_playbook(
     state = provenance_run
     forged = _asst(tool_calls=[_tc("run_macro", {"name": "demo/leg"})])
     forged.raw = {
-        "producer": {"kind": "plugin", "plugin_id": "owner"},
+        "producer": {"plugin_id": "owner"},
         "presentation": "playbook",
     }
     intruder = plugin(mocker, turns=[forged, None, None])
@@ -70,8 +80,7 @@ async def test_other_plugin_cannot_borrow_owner_macro_or_impersonate_playbook(
         PluginBinding(
             "owner",
             state.plugin,
-            skip_model_guards=True,
-            playbook=True,
+            presentation="playbook",
             name="playbook",
         ),
     )
@@ -90,13 +99,13 @@ async def test_other_plugin_cannot_borrow_owner_macro_or_impersonate_playbook(
     )
     responses = events(state.tr, "response")
     assert [e["producer"] for e in responses] == [
-        {"kind": "plugin", "plugin_id": "intruder"},
-        {"kind": "plugin", "plugin_id": "owner"},
-        {"kind": "llm", "plugin_id": None},
+        {"plugin_id": "intruder"},
+        {"plugin_id": "owner"},
+        {"plugin_id": "physiclaw.llm"},
     ]
     assert responses[0]["presentation"] == "plugin"
     assert [c["name"] for c in responses[0]["tool_calls"]] == ["run_macro"]
-    assert "PLUGIN intruder" in caplog.text and "PLAYBOOK conductor" not in caplog.text
+    assert "test → run_macro" in caplog.text
     assert not events(
         state.tr, "usage"
     )  # no accounting fabricated from plugin message tokens
@@ -115,7 +124,7 @@ async def test_llm_raw_metadata_does_not_authorize_private_macro(provenance_run)
         ]
     )
     forged.raw = {
-        "producer": {"kind": "plugin", "plugin_id": "fixture-conductor"},
+        "producer": {"plugin_id": "fixture-conductor"},
         "presentation": "playbook",
     }
     state.provider._responses.insert(0, forged)
@@ -124,7 +133,7 @@ async def test_llm_raw_metadata_does_not_authorize_private_macro(provenance_run)
 
     assert outcome.status == DONE and state.mcp.tool_calls == []
     first = events(state.tr, "response")[0]
-    assert first["producer"] == {"kind": "llm", "plugin_id": None}
+    assert first["producer"] == {"plugin_id": "physiclaw.llm"}
     assert first["presentation"] == "model"
     assert any(
         isinstance(m, ToolResultMessage) and m.is_error and "unknown macro" in m.content
@@ -148,8 +157,7 @@ async def test_private_macro_collision_disables_conflicting_registration(
         PluginBinding(
             "owner",
             state.plugin,
-            skip_model_guards=True,
-            playbook=True,
+            presentation="playbook",
             name="playbook",
         ),
         PluginBinding("conflict", conflicting, name="test"),
@@ -185,8 +193,7 @@ async def test_invalid_macro_contribution_cannot_reserve_another_plugins_name(
         PluginBinding(
             "owner",
             state.plugin,
-            skip_model_guards=True,
-            playbook=True,
+            presentation="playbook",
             name="playbook",
         ),
     )
@@ -217,8 +224,7 @@ async def test_unusable_plugin_output_yields_to_next_slot_before_any_action(
         PluginBinding(
             "owner",
             state.plugin,
-            skip_model_guards=True,
-            playbook=True,
+            presentation="playbook",
             name="playbook",
         ),
     )
@@ -229,7 +235,7 @@ async def test_unusable_plugin_output_yields_to_next_slot_before_any_action(
     assert state.mcp.tool_calls == [("home_screen", {}), ("peek", {})]
     assert [e["producer"]["plugin_id"] for e in events(state.tr, "response")] == [
         "owner",
-        None,
+        "physiclaw.llm",
     ]
     assert all(
         m.finish_reason != finish
@@ -282,7 +288,7 @@ async def test_private_macro_keys_support_dotted_inline_names(private_macro_run)
     spec = state.plugin.session_setup.return_value.gated_macros["demo/leg"]
     state.plugin.session_setup.return_value = SessionSetup({"demo/flow.step": spec})
     state.plugin.advance.side_effect = [
-        _asst(tool_calls=[_tc("run_macro", {"name": "demo/flow.step"})]),
+        ProposedTurn(_asst(tool_calls=[_tc("run_macro", {"name": "demo/flow.step"})])),
         None,
     ]
 
@@ -321,10 +327,7 @@ def test_registered_identity_is_stable_and_names_do_not_grant_permissions(
         ("Decision", "physiclaw.decision"),
     ]
     assert [b.plugin for b in bindings] == [first, second]
-    assert all(
-        not b.skip_model_guards and not b.playbook and not b.private_macros
-        for b in bindings
-    )
+    assert all(b.presentation == "plugin" and not b.private_macros for b in bindings)
     monkeypatch.setattr(
         plugins.CONFIG.agent, "plugins", "test.plugin:second,test.plugin:first"
     )
@@ -343,8 +346,7 @@ async def test_all_sources_still_hit_physical_stuck_guard(kind, mocker):
         session.active_plugin = PluginBinding(
             kind,
             plugin(mocker),
-            skip_model_guards=kind == "playbook",
-            playbook=kind == "playbook",
+            presentation="playbook" if kind == "playbook" else "plugin",
             name="test",
         )
     guard = mocker.patch.object(
@@ -365,9 +367,9 @@ async def test_all_sources_still_hit_physical_stuck_guard(kind, mocker):
 
 
 @pytest.mark.parametrize(
-    "kind, blocked", [("llm", True), ("plugin", True), ("playbook", False)]
+    "kind, blocked", [("llm", True), ("plugin", True), ("playbook", True)]
 )
-async def test_model_guard_exemption_requires_explicit_host_grant(
+async def test_shared_guard_applies_regardless_of_producer_identity(
     kind, blocked, mocker
 ):
     session = Session(model_turns=2)
@@ -375,8 +377,7 @@ async def test_model_guard_exemption_requires_explicit_host_grant(
         session.active_plugin = PluginBinding(
             kind,
             plugin(mocker),
-            skip_model_guards=kind == "playbook",
-            playbook=kind == "playbook",
+            presentation="playbook" if kind == "playbook" else "plugin",
             name="test",
         )
     schema = {"name": "peek", "input_schema": {"type": "object", "properties": {}}}
@@ -398,20 +399,22 @@ async def test_model_guard_exemption_requires_explicit_host_grant(
 async def test_plugin_turns_share_global_turn_budget_without_fabricating_notes(mocker):
     message = _asst(tool_calls=[_tc("peek")])
     source = plugin(mocker)
-    source.advance.return_value = message
+    source.advance.return_value = ProposedTurn(message)
     registry = _registry()
     provider = FakeProvider([])
+    session = Session()
+    history = []
     run = _mk_run(
         provider,
         local_registry=registry,
         tool_schemas=_schemas(registry),
         settings=_settings(max_turns=2),
+        session=session,
+        messages=history,
     )
-    run.plugins = (PluginBinding("bounded", source, name="test"),)
-    session = Session()
-    history = []
+    run.plugins = (PluginBinding("bounded", source, name="test"), *run.plugins)
 
-    await drive(run, session, history)
+    await drive(run, session)
 
     assert (
         session.sentinel_status == STUCK and "max turns (2)" in session.sentinel_recap
@@ -428,7 +431,7 @@ async def test_plugin_turns_share_global_turn_budget_without_fabricating_notes(m
 
 async def test_cancellation_during_plugin_dispatch_clears_its_authority(mocker):
     source = plugin(mocker)
-    source.advance.return_value = _asst(tool_calls=[_tc("peek")])
+    source.advance.return_value = ProposedTurn(_asst(tool_calls=[_tc("peek")]))
     session = Session()
 
     async def cancel(_name, _args):
@@ -440,10 +443,10 @@ async def test_cancellation_during_plugin_dispatch_clears_its_authority(mocker):
         mcp=SimpleNamespace(call_tool=cancel),
         schema_by_name={"peek": {"name": "peek", "input_schema": {"type": "object"}}},
     )
-    run.plugins = (PluginBinding("selected", source, name="test"),)
+    run.plugins = (PluginBinding("selected", source, name="test"), *run.plugins)
 
     with pytest.raises(asyncio.CancelledError):
-        await drive(run, session, [])
+        await drive(run, session)
 
     assert session.active_plugin is None
     assert session.sentinel_status is None
@@ -452,23 +455,28 @@ async def test_cancellation_during_plugin_dispatch_clears_its_authority(mocker):
 async def test_provider_cannot_skip_note_discipline_with_raw_producer_metadata():
     forged = _asst(tool_calls=[_tc("peek")])
     forged.raw = {
-        "producer": {"kind": "plugin", "plugin_id": "conductor"},
+        "producer": {"plugin_id": "conductor"},
         "presentation": "playbook",
     }
     closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
     registry = _registry()
+    session = Session()
     run = _mk_run(
         FakeProvider([forged, closing]),
         local_registry=registry,
         tool_schemas=_schemas(registry),
+        session=session,
+        messages=[],
     )
-    session = Session()
 
-    await drive(run, session, [])
+    await drive(run, session)
 
     assert session.sentinel_status == DONE and session.model_turns == 2
     assert len(events(run.tr, "bad_turn_shape")) == 1
-    assert all(e["producer"]["kind"] == "llm" for e in events(run.tr, "response"))
+    assert all(
+        e["producer"]["plugin_id"] == "physiclaw.llm"
+        for e in events(run.tr, "response")
+    )
 
 
 @pytest.mark.parametrize(
@@ -506,20 +514,26 @@ async def test_invalid_plugin_output_falls_back_and_provider_retry_does_not_rear
     from physiclaw.provider import ProviderTransientError
 
     source = plugin(mocker)
-    source.advance.return_value = invalid_turn
-    answer = _asst()
+    source.advance.return_value = (
+        ProposedTurn(invalid_turn)
+        if isinstance(invalid_turn, AssistantMessage)
+        else invalid_turn
+    )
+    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("retry"), answer])
 
-    result = await _advance_with_retry(
-        (PluginBinding("broken", source, name="test"),),
-        chat,
-        [],
-        [],
-        attempts=2,
-        backoff=0,
+    result = await _advance(
+        _arbitration_run(
+            chat,
+            plugins=(PluginBinding("broken", source, name="test"),),
+            attempts=2,
+            backoff=0,
+        ),
+        Session(),
+        _turn_metadata(),
     )
 
-    assert result.message is answer and result.binding is None
+    assert result.message is answer and result.binding.id == "physiclaw.llm"
     source.advance.assert_awaited_once()
     assert chat.await_count == 2
 
@@ -531,21 +545,21 @@ async def test_declining_plugin_latency_is_not_charged_to_main_llm(mocker):
     )
     source = plugin(mocker)
 
-    async def decline(_messages):
+    async def decline(_messages, *, metadata):
         clock[0] += 2
         return None
 
     source.advance.side_effect = decline
 
-    async def chat(_messages, _tools):
+    async def chat(_messages, _tools, *, metadata):
         clock[0] += 0.5
-        return _asst()
+        return _asst(tool_calls=[_tc("note"), _tc("peek")])
 
-    run = _mk_run()
-    run.plugins = (PluginBinding("optional", source, name="test"),)
-    run.chat = chat
+    run = _arbitration_run(
+        chat, plugins=(PluginBinding("optional", source, name="test"),)
+    )
 
-    await _call_provider(run, Session(), [], 0)
+    await _call_producer(run, Session(), 0)
 
     response = events(run.tr, "response")[0]
     assert response["elapsed_ms"] == 500

@@ -1,11 +1,11 @@
 """Turn-plugin loading — the engine's blind end of the plugin seam.
 
-The engine knows `contract.plugin.TurnPlugin` and a config string; it
+The engine knows the neutral TurnPlugin contract and a config string; it
 never imports a plugin's package. `[agent] plugins` holds
 comma-separated ``module:factory`` paths; each factory returns a
-registration declaring its name, unique ID and plugin factory. We own
-every plugin, so config is sufficient for discovery (see `contract.plugin`
-for the entry-point upgrade trigger). Fail-open at
+registration declaring its name, unique ID and plugin factory.
+We own every plugin, so config is sufficient for discovery (see
+`contract.plugin` for the entry-point upgrade trigger). Fail-open at
 every step: a path that won't import, a factory that raises, a
 wrong-shaped object — logged and skipped, and the session runs with
 whatever loaded (possibly nothing, which is a plain LLM session).
@@ -30,7 +30,10 @@ import os
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import DebugIntercept
 from physiclaw.common.config import CONFIG, DEBUG_ENV_VAR
-from physiclaw.contract.plugin import PluginRegistration, TurnPlugin
+from physiclaw.contract.plugin import (
+    PluginRegistration,
+    TurnPlugin,
+)
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +55,7 @@ def load_plugins() -> tuple[PluginBinding, ...]:
         return ()
     out: list[PluginBinding] = []
     loaded: list[str] = []
-    ids: set[str] = set()
+    ids: set[str] = {"physiclaw.llm"}
     for path in _paths(raw or DEFAULT_PLUGINS):
         try:
             mod_name, _, attr = path.partition(":")
@@ -73,16 +76,14 @@ def load_plugins() -> tuple[PluginBinding, ...]:
         if not isinstance(plugin, TurnPlugin):
             log.warning("turn plugin %r does not satisfy TurnPlugin — skipped", path)
             continue
-        # These execution grants are host policy for the configured
-        # factory, never inferred from a plugin's returned message or type.
+        # Presentation affects logs only; all slots have the same execution checks.
         playbook = path == PLAYBOOK_FACTORY
         out.append(
             PluginBinding(
                 id=registration.id,
                 plugin=plugin,
                 name=registration.name,
-                skip_model_guards=playbook,
-                playbook=playbook,
+                presentation="playbook" if playbook else "plugin",
             )
         )
         ids.add(registration.id)

@@ -14,14 +14,17 @@ import pytest
 from physiclaw.conductor import plugin as plugin_mod
 from physiclaw.contract.plugin import (
     PluginRegistration,
+    PluginServices,
     SessionSetup,
-    SetupContext,
     TurnPlugin,
 )
+from physiclaw.contract.turn import TurnInput, TurnMetadata
+
+TURN_METADATA = TurnMetadata("session", 0, None, 300)
 
 
-def _ctx(provider=None) -> SetupContext:
-    return SetupContext(session_provider=provider)
+def _ctx(provider=None) -> PluginServices:
+    return PluginServices(session_provider=provider)
 
 
 def test_build_satisfies_the_protocol() -> None:
@@ -41,14 +44,20 @@ async def test_setup_on_an_empty_home_yields_no_macros_and_passes_turns() -> Non
 
     assert isinstance(contribution, SessionSetup)
     assert contribution.gated_macros == {}
-    assert await plug.advance([]) is None
+    assert (
+        await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+        is None
+    )
     await plug.aclose()  # no micro wired — must be a clean no-op
 
 
 @pytest.mark.asyncio
 async def test_advance_before_setup_is_a_pass() -> None:
     plug = plugin_mod.ConductorPlugin()
-    assert await plug.advance([]) is None
+    assert (
+        await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -128,7 +137,10 @@ async def test_setup_crash_degrades_to_a_plain_model_session(mocker) -> None:
     contribution = await plug.session_setup(_ctx())
 
     assert contribution == SessionSetup(gated_macros={})
-    assert await plug.advance([]) is None
+    assert (
+        await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -137,9 +149,15 @@ async def test_advance_crash_drops_the_conductor_for_the_session(mocker) -> None
     plug._conductor = mocker.Mock()
     plug._conductor.advance = mocker.AsyncMock(side_effect=RuntimeError("boom"))
 
-    assert await plug.advance([]) is None
+    assert (
+        await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+        is None
+    )
     assert plug._conductor is None  # every later advance is a pass
-    assert await plug.advance([]) is None
+    assert (
+        await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -154,3 +172,36 @@ async def test_aclose_survives_both_closers_failing(mocker) -> None:
 
     plug._conductor.abandon.assert_called_once()
     plug._micro.aclose.assert_awaited_once()
+
+
+async def test_playbook_projects_only_its_own_results_from_neutral_input(mocker):
+    from physiclaw.agent.engine.facts import FactualState
+    from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall
+
+    action = ToolCall("owned", "peek", {})
+    message = AssistantMessage(
+        content="private playbook context",
+        tool_calls=[action],
+        finish_reason=FinishReason.TOOL_CALLS,
+    )
+    plug = plugin_mod.ConductorPlugin()
+    plug._conductor = mocker.Mock(advance=mocker.AsyncMock(side_effect=[message, None]))
+    first = await plug.advance(TurnInput(None, "not_observed"), metadata=TURN_METADATA)
+    assert first.message is message
+    facts = FactualState()
+    facts.record(
+        ToolCall("foreign", "peek", {}),
+        turn=0,
+        changed=None,
+        failed=False,
+        result_text="foreign result",
+    )
+    facts.record(action, turn=0, changed=None, failed=False, result_text="owned result")
+
+    assert (
+        await plug.advance(facts.snapshot(schemas={}), metadata=TURN_METADATA) is None
+    )
+
+    context = plug._conductor.advance.call_args.args[0]
+    assert len(context) == 1 and context[0].tool_call_id == "owned"
+    assert context[0].content == "owned result"

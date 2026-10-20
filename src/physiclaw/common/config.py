@@ -209,8 +209,9 @@ class AgentConfig:
     var, then fail loudly" — there is no universal default.
 
     ``plugins`` lists the engine's turn plugins as comma-separated
-    ``module:factory`` paths (`contract.plugin.TurnPlugin`), asked in
-    order each turn before the LLM. Empty string (the default) means
+    ``module:factory`` paths returning ``contract.plugin.PluginRegistration``.
+    Plugins receive the same neutral runtime input and are asked in order
+    each turn before the LLM. Empty string (the default) means
     the engine's built-in plugin set (`engine/plugins.py` owns that
     default — this neutral layer names no plugin); ``"none"`` disables
     them all, making every turn a plain provider call. The engine loads

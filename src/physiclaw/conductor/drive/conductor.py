@@ -18,6 +18,7 @@ from physiclaw.conductor.micro.decision import DecisionRequest
 from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.surface import Paused
 from physiclaw.contract.dto import AssistantMessage, Message
+from physiclaw.contract.turn import TurnMetadata
 
 log = logging.getLogger(__name__)
 
@@ -49,14 +50,16 @@ class Conductor:
                 log.exception("conductor: abandon record failed — ignored")
             walk = walk.baton
 
-    async def advance(self, history: list[Message]) -> AssistantMessage | None:
+    async def advance(
+        self, history: list[Message], *, metadata: TurnMetadata
+    ) -> AssistantMessage | None:
         """Produce the next assistant turn, or None ("the LLM speaks"):
         the live program's turn, brokering any decision requests it
         raises; when it goes quiet, its baton's — the boot hands the
         activated program on this way; no walk, or one that handed over
         → None."""
         while self._program is not None:
-            turn = await self._drive(self._program, history)
+            turn = await self._drive(self._program, history, metadata)
             if turn is not None:
                 return turn
             # Quiet is permanent — the transcript is the handoff (the
@@ -66,7 +69,7 @@ class Conductor:
         return None
 
     async def _drive(
-        self, program: Program, history: list[Message]
+        self, program: Program, history: list[Message], metadata: TurnMetadata
     ) -> AssistantMessage | None:
         """Run one walk for one turn, brokering every decision request
         it raises. None = it produced no turn (it went quiet) and the
@@ -84,7 +87,7 @@ class Conductor:
             while isinstance(step, DecisionRequest):
                 outcome = None
                 if self._micro is not None:
-                    outcome = (await self._micro.run(step)).outcome
+                    outcome = (await self._micro.run(step, metadata=metadata)).outcome
                 step = program.resolve(outcome)
             if isinstance(step, Paused):
                 # Only a stepping tool sets a walk to pause; under the

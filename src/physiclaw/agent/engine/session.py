@@ -12,8 +12,10 @@ makes the one-shot semantics structural.
 """
 
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from physiclaw.agent import layout
+from physiclaw.agent.engine.facts import FactualState
 from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.stuck import StuckGuard
@@ -23,6 +25,7 @@ from physiclaw.agent.engine.stuck import StuckGuard
 class Session:
     """Ephemeral state the engine and local tools share for one session."""
 
+    session_id: str = field(default_factory=lambda: uuid4().hex)
     sentinel_status: str | None = None
     sentinel_recap: str = ""
     sentinel_turn_created_job: bool = False
@@ -34,7 +37,7 @@ class Session:
     # budget runs out: the STUCK it closes with must not be retried (the
     # outcome contract reads this as `retryable=False`).
     budget_exhausted: bool = False
-    # Set by `loop._finalize_turn` when `compact.collapse_old_turns`
+    # Set by the LLM producer when `compact.collapse_old_turns`
     # actually folds; threads back into the collapse threshold so
     # first-vs-subsequent cadence is explicit state, never inferred from
     # slot byte-forms (an all-empty-summaries fold re-renders the summary
@@ -71,6 +74,7 @@ class Session:
     kb: layout.KeyboardTracker = field(default_factory=layout.KeyboardTracker)
     # Host-selected binding while dispatch runs; no message can supply it.
     active_plugin: PluginBinding | None = None
+    facts: FactualState = field(default_factory=FactualState)
     # Turns the main LLM produced (plugin turns excluded) — the meter
     # gates like PlanGate read, so a long playbook prefix never leaves
     # the model instantly overdue on its first real turn.

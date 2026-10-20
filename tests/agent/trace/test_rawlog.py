@@ -76,9 +76,9 @@ def test_wire_unserializable_response_does_not_hide_next_response():
 @pytest.mark.parametrize(
     "producer, presentation",
     [
-        (TurnProducer(), "model"),
-        (TurnProducer("plugin", "decision-slot"), "plugin"),
-        (TurnProducer("plugin", "conductor-slot"), "playbook"),
+        (TurnProducer("physiclaw.llm"), "model"),
+        (TurnProducer("decision-slot"), "plugin"),
+        (TurnProducer("conductor-slot"), "playbook"),
     ],
 )
 def test_wire_response_records_host_producer(producer, presentation):
@@ -100,25 +100,25 @@ def test_wire_response_records_host_producer(producer, presentation):
         "turn": 3,
         "elapsed_ms": 42,
         "raw": {"id": "reply"},
-        "producer": {"kind": producer.kind, "plugin_id": producer.plugin_id},
+        "producer": {"plugin_id": producer.plugin_id},
         "presentation": presentation,
     }
 
 
 def test_wire_keeps_host_identity_outside_untrusted_raw_metadata():
     wire = RawLog("host-identity", Images("host-identity"))
-    raw = {"producer": {"kind": "plugin", "plugin_id": "conductor"}}
+    raw = {"producer": {"plugin_id": "conductor"}}
     wire.write_response(
         0,
         raw,
         elapsed_ms=3,
-        producer=TurnProducer("plugin", "actual-slot"),
+        producer=TurnProducer("actual-slot"),
         presentation="plugin",
     )
     wire.close()
 
     record = json.loads(wire.path.read_text())
-    assert record["producer"] == {"kind": "plugin", "plugin_id": "actual-slot"}
+    assert record["producer"] == {"plugin_id": "actual-slot"}
     assert record["presentation"] == "plugin" and record["raw"] == raw
 
 

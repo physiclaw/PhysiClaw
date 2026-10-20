@@ -44,7 +44,7 @@ def private_macro_run(mocker, private_macro_pack):
     from physiclaw.agent.engine import engine, mcp_tool
     from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.runtime.sentinel import DONE
-    from physiclaw.contract.plugin import SessionSetup
+    from physiclaw.contract.plugin import ProposedTurn, SessionSetup
 
     mcp = FakeMcpClient()
     provider = FakeProvider(
@@ -62,7 +62,7 @@ def private_macro_run(mocker, private_macro_pack):
         session_setup=mocker.AsyncMock(
             return_value=SessionSetup(gated_macros=private_macro_pack)
         ),
-        advance=mocker.AsyncMock(side_effect=[hand, None]),
+        advance=mocker.AsyncMock(side_effect=[ProposedTurn(hand), None]),
         aclose=mocker.AsyncMock(),
     )
     mocker.patch.object(engine, "get_mcp", new=mocker.AsyncMock(return_value=mcp))
@@ -92,8 +92,7 @@ def private_macro_run(mocker, private_macro_pack):
             PluginBinding(
                 "fixture-conductor",
                 plugin,
-                skip_model_guards=True,
-                playbook=True,
+                presentation="playbook",
                 name="playbook",
             ),
         ),

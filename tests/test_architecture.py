@@ -137,6 +137,17 @@ def test_decision_contract_and_base_are_vendor_and_chat_independent() -> None:
         assert "physiclaw.contract.dto" not in imports
 
 
+def test_factual_input_and_decision_plugin_do_not_import_chat_messages() -> None:
+    for relative in (
+        "contract/turn.py",
+        "contract/observation.py",
+        "decision/plugin.py",
+    ):
+        imports = _imported_modules(PKG_ROOT / relative)
+        assert "physiclaw.contract.dto" not in imports
+        assert not any(module.startswith("physiclaw.provider") for module in imports)
+
+
 def test_provider_service_packages_do_not_import_each_other() -> None:
     for package, forbidden in (("chat", "decision"), ("decision", "chat")):
         for path in (PKG_ROOT / "provider" / package).rglob("*.py"):

@@ -52,8 +52,7 @@ async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
         "owner",
         SimpleNamespace(),
         private_macros=frozenset({"channel/send"}),
-        skip_model_guards=True,
-        playbook=True,
+        presentation="playbook",
         name="playbook",
     )
     vthread.seed("buy milk", ["ok"])

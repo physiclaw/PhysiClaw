@@ -22,6 +22,45 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture
+def observation_blocks():
+    """Fresh, runtime-shaped image/listing pairs with real encoded pixels."""
+    import base64
+
+    import cv2
+    import numpy as np
+
+    from physiclaw.common.listing import Element, format_elements
+    from physiclaw.contract.observation import OBSERVATION_META, view_metadata
+
+    ok, encoded = cv2.imencode(".jpg", np.zeros((120, 80, 3), dtype=np.uint8))
+    assert ok
+    jpeg = encoded.tobytes()
+
+    def make(*, source="camera", listing=None):
+        if listing is None:
+            listing = format_elements(
+                [
+                    Element(0, "icon", "", (0.1, 0.2, 0.3, 0.4), 0.87),
+                    Element(1, "text", "搜索", (0.4, 0.2, 0.8, 0.4), 0.93),
+                ]
+            )
+        return [
+            {
+                "type": "image",
+                "mime_type": "image/jpeg",
+                "data": base64.b64encode(jpeg).decode(),
+                "_meta": {
+                    OBSERVATION_META: view_metadata(jpeg, listing, source=source)
+                },
+            },
+            {"type": "text", "text": listing},
+        ]
+
+    return make
+
+
 # ---- module-load isolation (must run before any `import physiclaw`) ----
 
 _SESSION_HOME = Path(tempfile.mkdtemp(prefix="physiclaw-test-session-"))

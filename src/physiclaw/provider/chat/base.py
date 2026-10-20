@@ -19,6 +19,8 @@ from physiclaw.contract.dto import (
     usage_event,
 )
 from physiclaw.contract.plugin import EventSink, SessionChatProvider
+from physiclaw.contract.turn import TurnMetadata
+from physiclaw.provider.chat.wire import turn_metadata_message
 from physiclaw.provider.provider_base import BaseAPIProvider
 
 log = logging.getLogger(__name__)
@@ -44,14 +46,6 @@ class ChatProvider(SessionChatProvider, Protocol):
 
     model: str
     COLLAPSE: CollapsePolicy
-
-    def serialize_history(self, history: list[Message]) -> list[dict]:
-        """Convert engine DTOs into the wire-format messages this provider
-        will send, with cache-control markers applied. Engine calls this
-        for trace logging; `chat()` calls the same internally before
-        POSTing — the two calls produce equivalent fresh wire so the log
-        faithfully captures what hits the API."""
-        ...
 
     async def aclose(self) -> None: ...
 
@@ -231,7 +225,9 @@ class BaseChatProvider(BaseAPIProvider):
 
     # ---------- DTO → wire (template method, shared across wire shapes) ----------
 
-    def serialize_history(self, history: list[Message]) -> list[dict]:
+    def serialize_history(
+        self, history: list[Message], *, metadata: TurnMetadata | None = None
+    ) -> list[dict]:
         """Single-pass DTO history → provider wire-format messages, with
         cache markers attached (via the `CACHE_MARKERS` factory; the
         default `NO_CACHE_MARKERS` is identity) to:
@@ -260,6 +256,10 @@ class BaseChatProvider(BaseAPIProvider):
         (system rides outside the messages array). Cache markers attach
         to the first entry of any split; superseded results don't carry
         images, so their list is always single-element."""
+        if metadata is not None:
+            # A fresh tail keeps producer metadata visible to the model without
+            # mutating its conversation or importing another producer's context.
+            history = [*history, turn_metadata_message(metadata)]
         markers = self.CACHE_MARKERS
         out: list[dict] = []
         last_stub_idx: int | None = None
@@ -301,6 +301,7 @@ class BaseChatProvider(BaseAPIProvider):
         history: list[Message],
         tools: list[dict],
         *,
+        metadata: TurnMetadata | None = None,
         purpose: UsageCall = USAGE_CALL_TURN,
         thinking: Thinking | None = None,
     ) -> AssistantMessage:
@@ -312,10 +313,16 @@ class BaseChatProvider(BaseAPIProvider):
         conductor decision, curation); `thinking` is the caller's word
         for how much hidden thinking it wants, None for the vendor's
         default (the vendor translates a level, see `thinking_params`);
-        the wire-shape subclass does the request in `_chat`."""
+        the wire-shape subclass does the request in `_chat`.
+
+        Engine turns always supply metadata. Calls outside the turn loop,
+        such as doctor probes and post-session curation, have none.
+        """
         t0 = time.perf_counter()
         try:
-            asst = await self._chat(history, tools, thinking=thinking)
+            asst = await self._chat(
+                history, tools, metadata=metadata, thinking=thinking
+            )
         except Exception as e:
             self._account(purpose, t0, error=type(e).__name__)
             raise
@@ -362,6 +369,7 @@ class BaseChatProvider(BaseAPIProvider):
         history: list[Message],
         tools: list[dict],
         *,
+        metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
     ) -> AssistantMessage:
         raise NotImplementedError(

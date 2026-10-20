@@ -18,13 +18,16 @@ from physiclaw.contract.dto import (
     SystemMessage,
     UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
+
+TURN_METADATA = TurnMetadata("session", 0, None, 300)
 
 
 @pytest.mark.asyncio
 async def test_advance_without_playbook_passes_the_turn() -> None:
     history = [SystemMessage(content="sys"), UserMessage(content="hi")]
 
-    result = await Conductor().advance(history)
+    result = await Conductor().advance(history, metadata=TURN_METADATA)
 
     assert result is None  # "the LLM speaks" — nothing intercepted
 
@@ -57,17 +60,17 @@ async def test_advance_prefers_the_program_then_quiet_is_permanent() -> None:
     conductor = Conductor(program=_one_node_program())
     history = [SystemMessage(content="sys"), UserMessage(content="hi")]
 
-    first = await conductor.advance(history)
+    first = await conductor.advance(history, metadata=TURN_METADATA)
     assert first is not None and first.tool_names() == ["note", "peek"]
 
     # The peek's result never arrives → the program hands over with one
     # final brief turn; from there every advance is a pass — program
     # dropped for good, never retried.
-    briefed = await conductor.advance(history)
+    briefed = await conductor.advance(history, metadata=TURN_METADATA)
     assert briefed is not None and briefed.tool_names() == ["note", "peek"]
     assert "conductor handing over" in briefed.tool_calls[0].arguments["summary"]
-    assert await conductor.advance(history) is None
-    assert await conductor.advance(history) is None
+    assert await conductor.advance(history, metadata=TURN_METADATA) is None
+    assert await conductor.advance(history, metadata=TURN_METADATA) is None
 
 
 class FakeMicro:
@@ -76,11 +79,13 @@ class FakeMicro:
     def __init__(self, factory):
         self._factory = factory
         self.requests = []
+        self.metadata = []
 
-    async def run(self, req):
+    async def run(self, req, *, metadata):
         from physiclaw.conductor.micro.decision import MicroResult
 
         self.requests.append(req)
+        self.metadata.append(metadata)
         outcome = self._factory(req)
         return MicroResult(
             outcome=outcome,
@@ -126,7 +131,7 @@ async def _walk_to_decision(conductor, history) -> None:
 
     from physiclaw.contract.dto import ToolResultMessage
 
-    peek = await conductor.advance(history)
+    peek = await conductor.advance(history, metadata=TURN_METADATA)
     assert peek.tool_names() == ["note", "peek"]
     history.append(peek)
     history.append(
@@ -154,12 +159,13 @@ async def test_advance_brokers_decision_requests_through_the_micro_caller() -> N
     # One advance: the agent step brokers through the micro-caller, its
     # outputs land, and the walk's next turn comes back (here the walk's
     # own end_session — the one-step route is done).
-    turn = await conductor.advance(history)
+    turn = await conductor.advance(history, metadata=TURN_METADATA)
 
     assert turn is not None and turn.tool_names() == ["note", "end_session"]
     # Two brokered calls: the agent's, then the close's record in the
     # session thread (the fake answers no recap, so the walk's own closes).
     assert [r.call for r in micro.requests] == [AGENT_FIELDS, SUMMARIZE]
+    assert all(metadata is TURN_METADATA for metadata in micro.metadata)
     assert prog.outputs == {"parse.keyword": "牛奶"}
 
 
@@ -170,12 +176,12 @@ async def test_unwired_micro_caller_means_agent_steps_hand_over() -> None:
     history: list = [SystemMessage(content="s"), UserMessage(content="u")]
     await _walk_to_decision(conductor, history)
 
-    result = await conductor.advance(history)
+    result = await conductor.advance(history, metadata=TURN_METADATA)
 
     # Handed over via the one final brief turn; then the LLM takes over.
     assert result is not None and result.tool_names() == ["note", "peek"]
     assert "conductor handing over" in result.tool_calls[0].arguments["summary"]
-    assert await conductor.advance(history) is None
+    assert await conductor.advance(history, metadata=TURN_METADATA) is None
 
 
 @pytest.mark.asyncio
@@ -201,7 +207,9 @@ async def test_advance_activates_a_playbook_off_the_thread_screen() -> None:
     conductor = Conductor(program=boot, micro=micro)
     history: list = [SystemMessage(content="s"), UserMessage(content="u")]
 
-    peek = await conductor.advance(history)  # the boot's opening peek
+    peek = await conductor.advance(
+        history, metadata=TURN_METADATA
+    )  # the boot's opening peek
     assert peek is not None and peek.tool_names() == ["note", "peek"]
     history.append(peek)
     history.append(
@@ -211,7 +219,7 @@ async def test_advance_activates_a_playbook_off_the_thread_screen() -> None:
         )
     )
 
-    turn = await conductor.advance(history)
+    turn = await conductor.advance(history, metadata=TURN_METADATA)
 
     # parse_task fired on the thread screen, the boot concluded with the
     # baton, and the activated program's first synthesized turn (its
@@ -277,9 +285,11 @@ async def test_a_program_bug_becomes_a_crash_record_and_silence(mocker) -> None:
     conductor = Conductor(program=program)
     history = [SystemMessage(content="sys"), UserMessage(content="hi")]
 
-    assert await conductor.advance(history) is None
+    assert await conductor.advance(history, metadata=TURN_METADATA) is None
     assert program.phase is Phase.DONE and program.outcome is Outcome.CRASHED
-    assert await conductor.advance(history) is None  # dropped; the model speaks
+    assert (
+        await conductor.advance(history, metadata=TURN_METADATA) is None
+    )  # dropped; the model speaks
 
 
 @pytest.mark.asyncio
@@ -291,5 +301,8 @@ async def test_a_failing_crash_record_still_goes_quiet(mocker) -> None:
     mocker.patch.object(program, "_record_run", side_effect=OSError("disk"))
     conductor = Conductor(program=program)
 
-    assert await conductor.advance([SystemMessage(content="sys")]) is None
+    assert (
+        await conductor.advance([SystemMessage(content="sys")], metadata=TURN_METADATA)
+        is None
+    )
     assert program.phase is Phase.DONE

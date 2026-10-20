@@ -70,14 +70,14 @@ class FakeChannel:
         return self._view[1]
 
     def intercept(
-        self, call: ToolCall, plugin_turn: bool, blocks: list[dict]
+        self, call: ToolCall, producer_id: str | None, blocks: list[dict]
     ) -> list[dict] | None:
         """Replacement blocks for a REAL result just produced by `call`,
-        or None — keep it untouched. `plugin_turn` is derived from the
+        or None — keep it untouched. `producer_id` comes from the
         host-selected binding. Never raises: a harness bug must fail
         open into the real observation, not kill the session."""
         try:
-            return self._intercept(call, plugin_turn, blocks)
+            return self._intercept(call, producer_id, blocks)
         except Exception:
             self._on_thread = False
             log.exception("debug fake-channel crashed — keeping the real result")
@@ -87,12 +87,12 @@ class FakeChannel:
         return vthread.render_listing(bubbles, self._pp, self.incoming)
 
     def _intercept(
-        self, call: ToolCall, plugin_turn: bool, blocks: list[dict]
+        self, call: ToolCall, producer_id: str | None, blocks: list[dict]
     ) -> list[dict] | None:
         args = call.arguments or {}
         macro = str(args.get("name") or "")
         if (
-            plugin_turn
+            producer_id == "physiclaw.playbook"
             and call.name == gesture_vocab.RUN_MACRO
             and macro_app(macro) == CHANNEL_APP
         ):
@@ -115,7 +115,7 @@ class FakeChannel:
             return vthread.gesture_blocks(
                 verdict.attach(action, True), self._render(bubbles)
             )
-        if plugin_turn and call.name == gesture_vocab.PEEK:
+        if producer_id == "physiclaw.playbook" and call.name == gesture_vocab.PEEK:
             if not self._on_thread and self._reads_as_thread(blocks):
                 self._on_thread = True
                 log.info(

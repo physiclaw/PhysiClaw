@@ -34,6 +34,8 @@ from physiclaw.conductor.spec.calls import (
     TOOL_TAP,
 )
 from physiclaw.contract.dto import ImageBlock, TextBlock
+from physiclaw.contract.turn import TurnMetadata
+from physiclaw.provider import ProviderTransientError
 
 
 def _fields_req(prompt: str = "the keyword, please"):
@@ -1009,8 +1011,8 @@ async def test_a_decision_call_asks_for_the_steps_think_level() -> None:
     await caller.run(_fields_req())
 
     assert provider.asks == [
-        {"purpose": USAGE_CALL_MICRO, "thinking": "off"},
-        {"purpose": USAGE_CALL_MICRO, "thinking": None},
+        {"metadata": None, "purpose": USAGE_CALL_MICRO, "thinking": "off"},
+        {"metadata": None, "purpose": USAGE_CALL_MICRO, "thinking": None},
     ]
 
 
@@ -1086,6 +1088,37 @@ class _WireSink:
 
     def write_micro(self, rec) -> None:
         self.records.append(rec)
+
+
+async def test_parent_turn_metadata_survives_transport_and_repair_retries():
+    metadata = TurnMetadata("session", 0, None, 300)
+    sink = _WireSink()
+    provider = ScriptedProvider(
+        [ProviderTransientError("retry"), "not json", _act(AGENT_DONE)]
+    )
+    caller = MicroCaller(provider, confidence_floor=0.6, rlog=sink)
+
+    result = await caller.run(_fields_req(), metadata=metadata)
+
+    assert result.outcome is not None and len(provider.asks) == 3
+    assert all(ask["metadata"] is metadata for ask in provider.asks)
+    assert len(sink.records) == 2
+    for record in sink.records:
+        tail = record.request[-1]
+        assert tail["role"] == "user"
+        assert (
+            json.loads(
+                tail["content"]
+                .removeprefix("<turn_metadata>")
+                .removesuffix("</turn_metadata>")
+            )["turn"]
+            == 0
+        )
+    assert all(
+        "<turn_metadata>" not in str(message.content)
+        for request in provider.calls
+        for message in request
+    )
 
 
 async def test_failed_wire_sink_preserves_the_decision(mocker) -> None:

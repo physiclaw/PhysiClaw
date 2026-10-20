@@ -47,8 +47,13 @@ from physiclaw.contract.dto import (
     role_of,
 )
 from physiclaw.contract.plugin import EventSink, SessionChatProvider, WireSink
+from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider import ChatProvider, ProviderTransientError
-from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
+from physiclaw.provider.chat.wire import (
+    anthropic_image_part,
+    encode_content,
+    turn_metadata_message,
+)
 
 log = logging.getLogger(__name__)
 
@@ -121,12 +126,14 @@ class MicroCaller:
         if owned is not None:
             await owned.aclose()
 
-    async def run(self, req: DecisionRequest) -> MicroResult:
+    async def run(
+        self, req: DecisionRequest, *, metadata: TurnMetadata | None = None
+    ) -> MicroResult:
         """One decision. `result.outcome` is None when the caller should
         escalate. Never raises."""
         t0 = time.perf_counter()
         try:
-            outcome, detail, attempts = await self._ask(req)
+            outcome, detail, attempts = await self._ask(req, metadata)
         except Exception as e:
             _log_provider_failure(req, e)
             outcome, detail, attempts = None, "provider error", 0
@@ -143,7 +150,7 @@ class MicroCaller:
         return result
 
     async def _ask(
-        self, req: DecisionRequest
+        self, req: DecisionRequest, metadata: TurnMetadata | None
     ) -> "tuple[MicroOutcome | None, str, int]":
         """One decision on the live provider: fresh messages, one repair
         retry, floor judgment. No outcome means escalate — the walk hands
@@ -155,7 +162,7 @@ class MicroCaller:
         err = ""
         for attempts in (1, 2):  # one bounded repair retry
             try:
-                asst = await _chat(provider, msgs, req)
+                asst = await _chat(provider, msgs, req, metadata)
             except Exception as e:
                 # Escalate HERE, not via run()'s catch-all, so the
                 # attempt count the trace records stays exact. (Tokens are
@@ -164,7 +171,7 @@ class MicroCaller:
                 return None, "provider error", attempts
             parsed, err = parse_reply(asst.content or "", allowed, req.call)
             try:
-                self._log_wire(req, msgs, asst, allowed, parsed)
+                self._log_wire(req, msgs, asst, allowed, parsed, metadata)
             except Exception:
                 log.warning("micro wire record write failed", exc_info=True)
             if parsed is None:
@@ -211,6 +218,7 @@ class MicroCaller:
         asst: AssistantMessage,
         allowed: tuple[str, ...],
         parsed: "tuple[str, str, float, dict[str, Any]] | None",
+        metadata: TurnMetadata | None,
     ) -> None:
         """One round-trip to the wire sink, whole — every message, an
         episode's replayed history included (its replayed assistant
@@ -222,6 +230,8 @@ class MicroCaller:
         megabytes of text."""
         if self._rlog is None:
             return
+        if metadata is not None:
+            messages = [*messages, turn_metadata_message(metadata)]
         self._rlog.write_micro(
             MicroRecord(
                 call=req.call,
@@ -303,7 +313,10 @@ def wire_content(content: "str | list[ContentBlock] | Any") -> Any:
 
 
 async def _chat(
-    provider: SessionChatProvider, messages: list[Message], req: DecisionRequest
+    provider: SessionChatProvider,
+    messages: list[Message],
+    req: DecisionRequest,
+    metadata: TurnMetadata | None,
 ) -> AssistantMessage:
     """One provider call with ONE transient retry (the providers' own
     taxonomy: timeout / 429 / 5xx — permanent 4xx and real bugs fail
@@ -314,7 +327,11 @@ async def _chat(
     # `reason` field is the chain of thought the contract always gets.
     try:
         return await provider.chat(
-            messages, [], purpose=USAGE_CALL_MICRO, thinking=req.thinking
+            messages,
+            [],
+            metadata=metadata,
+            purpose=USAGE_CALL_MICRO,
+            thinking=req.thinking,
         )
     except ProviderTransientError:
         log.info(
@@ -330,5 +347,9 @@ async def _chat(
         )
         await asyncio.sleep(CONFIG.engine.retry_backoff_seconds)
         return await provider.chat(
-            messages, [], purpose=USAGE_CALL_MICRO, thinking=req.thinking
+            messages,
+            [],
+            metadata=metadata,
+            purpose=USAGE_CALL_MICRO,
+            thinking=req.thinking,
         )

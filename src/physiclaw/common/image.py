@@ -16,6 +16,21 @@ log = logging.getLogger(__name__)
 _JPEG_MAGIC = b"\xff\xd8\xff"  # JPEG SOI marker
 
 
+def image_dimensions(raw: bytes) -> tuple[int, int]:
+    """Validate an encoded image and return its actual (width, height)."""
+    import cv2
+    import numpy as np
+
+    try:
+        decoded = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error as exc:
+        raise ValueError("invalid observation image") from exc
+    if decoded is None:
+        raise ValueError("invalid observation image")
+    height, width = decoded.shape[:2]
+    return width, height
+
+
 def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
     """Decode, scale long-edge to `compact.max_image_edge_px` if larger,
     re-encode JPEG.

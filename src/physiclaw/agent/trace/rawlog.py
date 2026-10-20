@@ -75,7 +75,7 @@ class RawLog:
         *,
         elapsed_ms: int,
         call: UsageCall | None = None,
-        producer: TurnProducer = TurnProducer(),
+        producer: TurnProducer = TurnProducer("physiclaw.llm"),
         presentation: Literal["model", "plugin", "playbook"] = "model",
     ) -> None:
         self._turn = turn

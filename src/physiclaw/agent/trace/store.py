@@ -133,7 +133,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   `wake` (triggers), `response` (finish_reason, tool_calls requested,
   elapsed_ms for the selected producer, arbitration_elapsed_ms including
   earlier declines, response_model/response_id when supplied,
-  host-stamped producer {kind: llm|plugin, plugin_id},
+  host-stamped producer {plugin_id},
   presentation: model|plugin|playbook), `plugin_bound` (registered name/id,
   granted private macros and model-guard exemptions), `plugin_macro_collision`
   (conflicting registration skipped), `decision_call` (one native

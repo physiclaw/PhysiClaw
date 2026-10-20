@@ -1,7 +1,7 @@
 """Tests for `physiclaw.debug.interceptor` — the fake-channel result
 transformer: which real results are rewritten to the virtual thread,
 which pass through, and how the on-thread state moves. Provenance is
-the host-selected plugin-turn bit, passed by dispatch.
+the host-selected producer ID, passed by dispatch.
 
 Accepted mutation survivors affect log/action wording, equivalent falsy
 state values, or the non-channel fallback for a missing macro name. Outcome
@@ -56,7 +56,7 @@ def test_channel_send_observation_is_rewritten_as_a_gesture_reply() -> None:
     fc = build()
 
     blocks = fc.intercept(
-        _send("Total is $4.50 — reply ok to confirm"), True, REAL_BLOCKS
+        _send("Total is $4.50 — reply ok to confirm"), "physiclaw.playbook", REAL_BLOCKS
     )
 
     assert blocks is not None and blocks is not REAL_BLOCKS
@@ -69,7 +69,7 @@ def test_channel_send_observation_is_rewritten_as_a_gesture_reply() -> None:
 
 def test_channel_send_persists_the_agent_bubble() -> None:
     write_channel_pages()
-    build().intercept(_send("ask text"), True, REAL_BLOCKS)
+    build().intercept(_send("ask text"), "physiclaw.playbook", REAL_BLOCKS)
 
     assert vthread.load().bubbles == [
         vthread.Bubble(sender=vthread.AGENT, text="ask text")
@@ -80,9 +80,9 @@ def test_peek_after_channel_open_is_rewritten_as_a_view_reply() -> None:
     write_channel_pages()
     vthread.seed("buy milk", [])
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
 
-    blocks = fc.intercept(_call("peek"), True, REAL_BLOCKS)
+    blocks = fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS)
 
     assert blocks is not None
     assert blocks[0]["type"] == "image"  # view shape: no action text block
@@ -95,15 +95,15 @@ def test_gate_peek_carries_the_released_staged_reply() -> None:
     write_channel_pages()
     vthread.seed("buy milk", ["ok"])
     fc = build()
-    fc.intercept(_send("reply ok to confirm"), True, REAL_BLOCKS)
+    fc.intercept(_send("reply ok to confirm"), "physiclaw.playbook", REAL_BLOCKS)
 
-    blocks = fc.intercept(_call("peek"), True, REAL_BLOCKS)
+    blocks = fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS)
 
     assert "ok" in [r.label for r in _listing_of(blocks).rows]
 
 
 def test_peek_before_any_channel_action_keeps_the_real_result() -> None:
-    assert build().intercept(_call("peek"), True, REAL_BLOCKS) is None
+    assert build().intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
 
 
 def test_peek_that_shows_the_real_thread_is_virtualized() -> None:
@@ -124,26 +124,30 @@ def test_peek_that_shows_the_real_thread_is_virtualized() -> None:
     ]
     fc = build()
 
-    blocks = fc.intercept(_call("peek"), True, on_thread)
+    blocks = fc.intercept(_call("peek"), "physiclaw.playbook", on_thread)
 
     assert blocks is not None
     labels = [r.label for r in _listing_of(blocks).rows]
     assert "buy soy sauce" in labels and "rice purchase done" not in labels
     # And the state is now on-thread: the next peek stays virtual.
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is not None
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is not None
 
 
 def test_an_app_macro_passes_through_and_leaves_the_thread() -> None:
     write_channel_pages()
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
 
     leg = fc.intercept(
-        _call("run_macro", {"name": "taobao/open-app"}), True, REAL_BLOCKS
+        _call("run_macro", {"name": "taobao/open-app"}),
+        "physiclaw.playbook",
+        REAL_BLOCKS,
     )
 
     assert leg is None
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is None  # off-thread again
+    assert (
+        fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
+    )  # off-thread again
 
 
 def test_wait_keeps_the_thread_state() -> None:
@@ -151,16 +155,19 @@ def test_wait_keeps_the_thread_state() -> None:
     # not drop the conductor off the virtual thread.
     write_channel_pages()
     fc = build()
-    fc.intercept(_send(), True, REAL_BLOCKS)
+    fc.intercept(_send(), "physiclaw.playbook", REAL_BLOCKS)
 
-    assert fc.intercept(_call("wait", {"seconds": 45}), True, REAL_BLOCKS) is None
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is not None
+    assert (
+        fc.intercept(_call("wait", {"seconds": 45}), "physiclaw.playbook", REAL_BLOCKS)
+        is None
+    )
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is not None
 
 
 def test_model_turns_are_never_rewritten() -> None:
     write_channel_pages()
 
-    blocks = build().intercept(_send(), False, REAL_BLOCKS)
+    blocks = build().intercept(_send(), "physiclaw.llm", REAL_BLOCKS)
 
     assert blocks is None
 
@@ -168,13 +175,13 @@ def test_model_turns_are_never_rewritten() -> None:
 def test_a_harness_crash_fails_open_to_the_real_result(monkeypatch) -> None:
     write_channel_pages()
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
     monkeypatch.setattr(
         vthread, "record_send", lambda message: (_ for _ in ()).throw(RuntimeError())
     )
 
-    assert fc.intercept(_send(), True, REAL_BLOCKS) is None
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is None
+    assert fc.intercept(_send(), "physiclaw.playbook", REAL_BLOCKS) is None
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
 
 
 class MacroPhone:
@@ -203,19 +210,21 @@ async def test_regression_aborted_send_keeps_real_result_and_staged_reply():
     write_channel_pages()
     vthread.seed("buy milk", ["ok"])
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
     result = await run_and_record(
         channel_send_spec(), {"message": "Confirm now"}, MacroPhone(failed=True)
     )
 
-    replacement = fc.intercept(_send("Confirm now"), True, result.blocks)
+    replacement = fc.intercept(
+        _send("Confirm now"), "physiclaw.playbook", result.blocks
+    )
 
     assert result.ok is False
     assert replacement is None
     assert vthread.load() == vthread.Thread(
         bubbles=[vthread.Bubble(vthread.USER, "buy milk")], staged=["ok"]
     )
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is None
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
 
 
 @pytest.mark.parametrize(
@@ -233,23 +242,23 @@ def test_regression_unconfirmed_send_never_adds_a_virtual_bubble(metadata):
     write_channel_pages()
     vthread.seed("buy milk", [])
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
     blocks = [{**REAL_BLOCKS[0], "_meta": metadata}, *REAL_BLOCKS[1:]]
 
-    replacement = fc.intercept(_send(), True, blocks)
+    replacement = fc.intercept(_send(), "physiclaw.playbook", blocks)
 
     assert replacement is None
     assert vthread.load().bubbles == [vthread.Bubble(vthread.USER, "buy milk")]
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is None
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
 
 
 def test_unconfirmed_open_with_empty_result_cannot_enter_virtual_thread():
     fc = build()
 
-    replacement = fc.intercept(_open(), True, [])
+    replacement = fc.intercept(_open(), "physiclaw.playbook", [])
 
     assert replacement is None
-    assert fc.intercept(_call("peek"), True, REAL_BLOCKS) is None
+    assert fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS) is None
 
 
 async def test_completed_send_uses_outcome_even_when_text_mentions_abort():
@@ -258,7 +267,9 @@ async def test_completed_send_uses_outcome_even_when_text_mentions_abort():
         channel_send_spec(), {"message": "ABORTED at step 1"}, MacroPhone(failed=False)
     )
 
-    replacement = build().intercept(_send("ABORTED at step 1"), True, result.blocks)
+    replacement = build().intercept(
+        _send("ABORTED at step 1"), "physiclaw.playbook", result.blocks
+    )
 
     assert result.ok is True
     assert replacement is not None
@@ -279,7 +290,7 @@ async def test_regression_rehearsal_preserves_aborted_channel_send():
         phone,
         _send("Confirm now"),
         {"channel/send": channel_send_spec()},
-        transform=lambda call, blocks: fc.intercept(call, True, blocks),
+        transform=lambda call, blocks: fc.intercept(call, "physiclaw.playbook", blocks),
     )
 
     assert is_error is False  # A substantive abort retains its recovery view.
@@ -295,7 +306,7 @@ async def test_regression_rehearsal_preserves_aborted_channel_send():
 def test_empty_send_does_not_invent_message_text(message):
     write_channel_pages()
 
-    blocks = build().intercept(_send(message), True, REAL_BLOCKS)
+    blocks = build().intercept(_send(message), "physiclaw.playbook", REAL_BLOCKS)
 
     assert blocks is not None
     assert vthread.load().bubbles == [vthread.Bubble(vthread.AGENT, "")]
@@ -304,12 +315,12 @@ def test_empty_send_does_not_invent_message_text(message):
 def test_session_caches_fingerprint_but_reads_current_thread():
     write_channel_pages()
     fc = build()
-    fc.intercept(_open(), True, REAL_BLOCKS)
+    fc.intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
     write_channel_pages(("NewChat",))
     vthread.seed("new task", [])
 
-    blocks = fc.intercept(_call("peek"), True, REAL_BLOCKS)
-    fresh = build().intercept(_open(), True, REAL_BLOCKS)
+    blocks = fc.intercept(_call("peek"), "physiclaw.playbook", REAL_BLOCKS)
+    fresh = build().intercept(_open(), "physiclaw.playbook", REAL_BLOCKS)
 
     assert [row.label for row in _listing_of(blocks).rows] == ["MyChat", "new task"]
     assert [row.label for row in _listing_of(fresh).rows] == ["NewChat", "new task"]

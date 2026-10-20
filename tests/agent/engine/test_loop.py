@@ -1,9 +1,4 @@
-"""Tests for `physiclaw.agent.engine.loop` — the turn driver (`drive`),
-shape enforcement, the policy turn gates as exercised through the loop
-(their judgment is engine-visible behavior), and the pure helpers
-(`_advance_with_retry`, `_usage_line`, `_corrective_for_bad_shape`,
-`log_external_stop`). Tool-call execution lives in `test_dispatch.py`;
-session lifecycle in `test_engine.py`."""
+"""Producer arbitration, LLM context policies, dispatch and session budgets."""
 
 from __future__ import annotations
 
@@ -16,12 +11,15 @@ from unittest.mock import MagicMock
 import pytest
 from engine_fakes import (
     FakeProvider,
+    _arbitration_run,
     _asst,
+    _llm,
     _mk_run,
     _registry,
     _schemas,
     _settings,
     _tc,
+    _turn_metadata,
     patch_loop_tails,
 )
 from freezegun import freeze_time
@@ -31,16 +29,15 @@ from physiclaw.agent.engine import memory as memory_mod
 from physiclaw.agent.engine import scratchpad
 from physiclaw.agent.engine.builtin_tool import LocalTool, build_registry
 from physiclaw.agent.engine.loop import (
-    CORRECTIVE_LIMIT,
-    _advance_with_retry,
-    _call_provider,
-    _corrective_for_bad_shape,
+    _advance,
+    _call_producer,
     drive,
     log_external_stop,
 )
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm import CORRECTIVE_LIMIT, _corrective_for_bad_shape
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
 from physiclaw.agent.trace import Trace
 from physiclaw.contract.dto import (
@@ -53,6 +50,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.plugin import ProposedTurn
 from physiclaw.provider.provider_base import (
     ProviderError,
     ProviderTransientError,
@@ -96,14 +94,17 @@ async def test_loop_closes_cleanly_on_end_session(patched_loop_deps) -> None:
         UserMessage(content="trig"),
     ]
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     assert session.sentinel_status == DONE
     assert session.sentinel_recap == "all done"
-    # Last messages: assistant + tool_result for note + tool_result for end.
-    assert isinstance(messages[-3], AssistantMessage)
-    assert isinstance(messages[-2], ToolResultMessage)
-    assert isinstance(messages[-1], ToolResultMessage)
+    assert messages[-1] is asst
+    assert [event.call_id for event in session.facts.events] == [
+        call.id for call in asst.tool_calls
+    ]
+    assert all(not event.is_error for event in session.facts.events)
 
 
 @pytest.mark.asyncio
@@ -121,19 +122,30 @@ async def test_loop_skips_layout_reminder_when_complete(patched_loop_deps) -> No
     )
     session = Session()
 
+    run = _loop_run(
+        FakeProvider([asst]),
+        registry,
+        session=session,
+        messages=[SystemMessage(content="s")],
+    )
     await drive(
-        _loop_run(FakeProvider([asst]), registry),  # layout_incomplete defaults False
+        run,  # layout_incomplete defaults False
         session,
-        [SystemMessage(content="s")],
     )
     spy.assert_not_called()
 
     # With layout_incomplete=True it IS injected each turn.
     session2 = Session()
+    run = _loop_run(
+        FakeProvider([asst]),
+        registry,
+        layout_incomplete=True,
+        session=session2,
+        messages=[SystemMessage(content="s")],
+    )
     await drive(
-        _loop_run(FakeProvider([asst]), registry, layout_incomplete=True),
+        run,
         session2,
-        [SystemMessage(content="s")],
     )
     spy.assert_called()
 
@@ -149,10 +161,15 @@ async def test_loop_stucks_after_consecutive_correctives(patched_loop_deps) -> N
     provider = FakeProvider(bad)
     session = Session()
 
+    run = _loop_run(
+        provider,
+        registry,
+        session=session,
+        messages=[SystemMessage(content="sys"), UserMessage(content="trig")],
+    )
     await drive(
-        _loop_run(provider, registry),
+        run,
         session,
-        [SystemMessage(content="sys"), UserMessage(content="trig")],
     )
 
     assert session.sentinel_status == STUCK
@@ -216,7 +233,9 @@ async def test_regression_failed_writes_do_not_replace_trajectory_history(
     session = Session()
     messages = _scaffold_messages()
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     assert session.sentinel_status == DONE
     assert session.plan_log == [(0, session.plan.snapshot())]
@@ -243,7 +262,8 @@ async def test_loop_records_successful_rewrites_even_when_content_is_unchanged()
     session = Session()
     messages = _scaffold_messages()
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
 
     assert session.sentinel_status == DONE
     assert [t for t, _ in session.plan_log] == [0, 1]
@@ -285,7 +305,9 @@ async def test_regression_blank_memory_save_keeps_close_checkpoint_active(
     session = Session()
     messages = _scaffold_messages()
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     assert len(provider.calls) == 4
     assert session.sentinel_recap == "saved"
@@ -309,9 +331,9 @@ class CheckpointProvider(FakeProvider):
         super().__init__(responses)
         self.requests: list[list] = []
 
-    async def chat(self, messages, tools):
+    async def chat(self, messages, tools, *, metadata=None):
         self.requests.append(list(messages))
-        return await super().chat(messages, tools)
+        return await super().chat(messages, tools, metadata=metadata)
 
 
 def _scaffold_messages() -> list:
@@ -338,7 +360,9 @@ async def _run_checkpoint_session(responses, provider_cls=CheckpointProvider):
     provider = provider_cls(responses)
     session = Session()
     messages = _scaffold_messages()
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
     return provider, session, messages
 
 
@@ -378,7 +402,8 @@ async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
     session = Session(scratchpad="previous")
     messages = _scaffold_messages()
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
@@ -415,7 +440,8 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
     session = Session(scratchpad="previous")
     messages = _scaffold_messages()
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
@@ -426,7 +452,7 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
     assert any(
         isinstance(m, ToolResultMessage)
         and m.is_error
-        and "Summarize before writing" in str(m.content)
+        and m.content == "context update failed"
         for m in provider.requests[3]
     )
     assert session.scratchpad == "previous"
@@ -463,14 +489,13 @@ async def test_regression_loop_compacts_rejected_note_without_crashing(
             ),
         ]
     )
-    run = replace(
-        _loop_run(provider, registry),
-        collapse=CollapsePolicy(first_at=3, keep=1, interval=100),
-    )
+    provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=100)
     session = Session()
     messages = _scaffold_messages()
+    run = _loop_run(provider, registry, session=session, messages=messages)
 
-    await drive(run, session, messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
@@ -636,10 +661,15 @@ async def test_loop_corrective_counter_resets_on_good_turn(patched_loop_deps) ->
     provider = FakeProvider(responses)
     session = Session()
 
+    run = _loop_run(
+        provider,
+        registry,
+        session=session,
+        messages=[SystemMessage(content="sys"), UserMessage(content="trig")],
+    )
     await drive(
-        _loop_run(provider, registry),
+        run,
         session,
-        [SystemMessage(content="sys"), UserMessage(content="trig")],
     )
 
     assert session.sentinel_status == DONE
@@ -652,10 +682,12 @@ async def test_loop_routes_content_filter_to_fail(patched_loop_deps) -> None:
     provider = FakeProvider([asst])
     session = Session()
 
+    run = _loop_run(
+        provider, registry, session=session, messages=[SystemMessage(content="s")]
+    )
     await drive(
-        _loop_run(provider, registry),
+        run,
         session,
-        [SystemMessage(content="s")],
     )
 
     assert session.sentinel_status == FAIL
@@ -668,10 +700,12 @@ async def test_loop_provider_failure_marks_stuck(patched_loop_deps) -> None:
     provider = FakeProvider([RuntimeError("network")])
     session = Session()
 
+    run = _loop_run(
+        provider, registry, session=session, messages=[SystemMessage(content="s")]
+    )
     await drive(
-        _loop_run(provider, registry),
+        run,
         session,
-        [SystemMessage(content="s")],
     )
 
     assert session.sentinel_status == STUCK
@@ -692,7 +726,9 @@ async def test_loop_no_tool_calls_injects_corrective(patched_loop_deps) -> None:
     session = Session()
     messages: list = [SystemMessage(content="s")]
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     correctives = [
         m
@@ -719,7 +755,9 @@ async def test_loop_bad_turn_shape_injects_corrective(
     session = Session()
     messages: list = [SystemMessage(content="s")]
 
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     correctives = [
         m
@@ -733,13 +771,21 @@ async def test_loop_bad_turn_shape_injects_corrective(
 @pytest.mark.asyncio
 async def test_loop_max_turns_marks_stuck(patched_loop_deps) -> None:
     registry = _registry()
-    provider = FakeProvider([_asst() for _ in range(2)])
+    provider = FakeProvider(
+        [_asst(tool_calls=[_tc("note"), _tc("peek")]) for _ in range(2)]
+    )
     session = Session()
 
+    run = _loop_run(
+        provider,
+        registry,
+        settings=_settings(max_turns=2),
+        session=session,
+        messages=[SystemMessage(content="s")],
+    )
     await drive(
-        _loop_run(provider, registry, settings=_settings(max_turns=2)),
+        run,
         session,
-        [SystemMessage(content="s")],
     )
 
     assert session.sentinel_status == STUCK
@@ -760,10 +806,16 @@ async def test_loop_finish_length_logs_warning(patched_loop_deps) -> None:
     session = Session()
     tr = MagicMock()
 
+    run = _loop_run(
+        provider,
+        registry,
+        tr=tr,
+        session=session,
+        messages=[SystemMessage(content="s")],
+    )
     await drive(
-        _loop_run(provider, registry, tr=tr),
+        run,
         session,
-        [SystemMessage(content="s")],
     )
 
     events = [c.args[0].get("event") for c in tr.write.call_args_list]
@@ -815,7 +867,9 @@ def _pitfall_asst() -> AssistantMessage:
 
 async def _run_close_loop(provider, session, registry):
     messages: list = [SystemMessage(content="s")]
-    await drive(_loop_run(provider, registry), session, messages)
+    run = _loop_run(provider, registry, session=session, messages=messages)
+    await drive(run, session)
+    messages = _llm(run).messages
     return messages
 
 
@@ -1079,7 +1133,7 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
     )
     cancelled = []
 
-    async def stall(*args):
+    async def stall(*args, **kwargs):
         try:
             await asyncio.Event().wait()
         finally:
@@ -1087,10 +1141,11 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
 
     call = mocker.AsyncMock(side_effect=stall)
     if request.param == "provider":
-        run.chat = call
+        run.plugins[-1].plugin.provider.chat = call
     elif request.param == "plugin":
         run.plugins = (
             PluginBinding("stalled", SimpleNamespace(advance=call), name="test"),
+            *run.plugins,
         )
     elif request.param == "local":
         registry["peek"] = replace(registry["peek"], handler=call)
@@ -1102,9 +1157,9 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
 
 async def test_regression_budget_cancels_inflight_calls(stalled_run):
     run, call, cancelled = stalled_run
-    session = Session()
+    session = _llm(run).session
 
-    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
+    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
@@ -1120,15 +1175,17 @@ async def test_regression_budget_interrupts_provider_retry_backoff(
     patched_loop_deps, budget_clock
 ):
     provider = FakeProvider([ProviderTransientError("busy")])
+    session = Session()
     run = _loop_run(
         provider,
         _registry(),
         settings=_settings(retry_backoff_seconds=30),
         deadline=time.monotonic() + 0.005,
+        session=session,
+        messages=[],
     )
-    session = Session()
 
-    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
+    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.budget_exhausted is True
     assert len(provider.calls) == 1
@@ -1146,12 +1203,12 @@ def expired_before_action(request, mocker, patched_loop_deps, budget_clock):
         deadline=time.monotonic() + 1,
     )
 
-    async def slow_call(*args):
+    async def slow_call(*args, **kwargs):
         budget_clock.tick(2)
         return reply if request.param == "provider" else "noted"
 
     if request.param == "provider":
-        run.chat = slow_call
+        run.plugins[-1].plugin.provider.chat = slow_call
     else:
         registry["note"] = replace(registry["note"], handler=slow_call)
     return run, end
@@ -1161,9 +1218,9 @@ async def test_regression_budget_rechecked_before_starting_next_action(
     expired_before_action,
 ):
     run, end = expired_before_action
-    session = Session()
+    session = _llm(run).session
 
-    await drive(run, session, [])
+    await drive(run, session)
 
     assert session.budget_exhausted is True
     assert session.sentinel_status == STUCK
@@ -1173,12 +1230,20 @@ async def test_regression_budget_rechecked_before_starting_next_action(
 async def test_budget_does_not_swallow_external_cancellation(
     mocker, patched_loop_deps, budget_clock
 ):
-    run = _loop_run(FakeProvider([]), _registry(), deadline=time.monotonic() + 10)
-    run.chat = mocker.AsyncMock(side_effect=asyncio.CancelledError("external stop"))
     session = Session()
+    run = _loop_run(
+        FakeProvider([]),
+        _registry(),
+        deadline=time.monotonic() + 10,
+        session=session,
+        messages=[],
+    )
+    run.plugins[-1].plugin.provider.chat = mocker.AsyncMock(
+        side_effect=asyncio.CancelledError("external stop")
+    )
 
     with pytest.raises(asyncio.CancelledError, match="external stop"):
-        await drive(run, session, [])
+        await drive(run, session)
 
     assert session.budget_exhausted is False
 
@@ -1186,12 +1251,23 @@ async def test_budget_does_not_swallow_external_cancellation(
 async def test_budget_does_not_mislabel_an_unrelated_timeout(
     mocker, patched_loop_deps, budget_clock
 ):
-    run = _loop_run(FakeProvider([]), _registry(), deadline=time.monotonic() + 10)
-    run.tr.write.side_effect = [TimeoutError("trace timeout"), None]
     session = Session()
+    run = _loop_run(
+        FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])]),
+        _registry(),
+        deadline=time.monotonic() + 10,
+        session=session,
+        messages=[],
+    )
+
+    def fail_on_response(event):
+        if event["event"] == "response":
+            raise TimeoutError("trace timeout")
+
+    run.tr.write.side_effect = fail_on_response
 
     with pytest.raises(TimeoutError, match="trace timeout"):
-        await drive(run, session, [])
+        await drive(run, session)
 
     assert session.budget_exhausted is False
 
@@ -1207,15 +1283,17 @@ async def test_budget_on_last_tool_of_last_turn_is_not_retryable(
 
     registry["peek"] = replace(registry["peek"], handler=peek)
     provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    session = Session()
     run = _loop_run(
         provider,
         registry,
         settings=_settings(max_turns=1),
         deadline=time.monotonic() + 1,
+        session=session,
+        messages=[],
     )
-    session = Session()
 
-    await drive(run, session, [])
+    await drive(run, session)
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
@@ -1233,10 +1311,12 @@ async def test_budget_does_not_overwrite_a_completed_outcome(
 
     registry["end_session"] = replace(registry["end_session"], handler=finish)
     provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("end_session")])])
-    run = _loop_run(provider, registry, deadline=time.monotonic() + 1)
     session = Session()
+    run = _loop_run(
+        provider, registry, deadline=time.monotonic() + 1, session=session, messages=[]
+    )
 
-    await drive(run, session, [])
+    await drive(run, session)
 
     assert session.sentinel_status == DONE
     assert session.budget_exhausted is False
@@ -1246,20 +1326,28 @@ async def test_budget_trace_records_the_interrupted_turn(
     patched_loop_deps, budget_clock
 ):
     provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
-    run = _loop_run(provider, _registry(), deadline=time.monotonic() + 0.005)
+    session = Session()
+    run = _loop_run(
+        provider,
+        _registry(),
+        deadline=time.monotonic() + 0.005,
+        session=session,
+        messages=[],
+    )
 
     async def stall(*args):
         await asyncio.Event().wait()
 
-    async def chat(messages, tools):
+    original_chat = provider.chat
+
+    async def chat(messages, tools, *, metadata):
         if provider.calls:
             return await stall()
-        return await provider.chat(messages, tools)
+        return await original_chat(messages, tools, metadata=metadata)
 
-    run.chat = chat
-    session = Session()
+    run.plugins[-1].plugin.provider.chat = chat
 
-    await asyncio.wait_for(drive(run, session, []), timeout=BUDGET_TEST_WATCHDOG)
+    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
 
     assert session.budget_exhausted is True
     run.tr.write.assert_any_call(
@@ -1274,14 +1362,17 @@ async def test_loop_closes_stuck_when_budget_exhausted(budget_clock, offset) -> 
     # provider round-trip (FakeProvider([]) raises if chatted with).
     # The ordinary drive tests use deadline=None for the disabled-budget path.
     session = Session()
+    messages: list = []
     run = _mk_run(
         FakeProvider([]),
         settings=_settings(max_session_seconds=10),
         deadline=time.monotonic() + offset,
+        session=session,
+        messages=messages,
     )
-    messages: list = []
 
-    await drive(run, session, messages)
+    await drive(run, session)
+    messages = _llm(run).messages
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
@@ -1337,51 +1428,59 @@ def test_log_external_stop_never_raises(mem_paths, monkeypatch) -> None:
     log_external_stop(session, None)  # must not raise
 
 
-# ---------- _advance_with_retry ----------
+# ---------- _advance ----------
 
 
 @pytest.mark.asyncio
-async def test_advance_with_retry_returns_immediately_on_success(mocker) -> None:
-    asst = _asst(content="ok", finish=FinishReason.STOP)
+async def test_advance_returns_immediately_on_success(mocker) -> None:
+    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
     chat = mocker.AsyncMock(return_value=asst)
 
-    out = await _advance_with_retry((), chat, [], [], attempts=3, backoff=0.0)
+    out = await _advance(_arbitration_run(chat), Session(), _turn_metadata())
 
     assert out.message is asst
     assert chat.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_advance_with_retry_retries_then_succeeds(mocker) -> None:
+async def test_advance_retries_then_succeeds(mocker) -> None:
     mocker.patch("asyncio.sleep")
-    asst = _asst(content="ok", finish=FinishReason.STOP)
+    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("transient"), asst])
 
-    out = await _advance_with_retry((), chat, [], [], attempts=3, backoff=0.0)
+    out = await _advance(_arbitration_run(chat), Session(), _turn_metadata())
 
     assert out.message is asst
     assert chat.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_advance_with_retry_raises_provider_error_after_max_attempts(
+async def test_advance_raises_provider_error_after_max_attempts(
     mocker,
 ) -> None:
     mocker.patch("asyncio.sleep")
     chat = mocker.AsyncMock(side_effect=ProviderTransientError("nope"))
 
-    # Typed (ProviderError, not bare RuntimeError) so _call_provider logs
+    # Typed (ProviderError, not bare RuntimeError) so _call_producer logs
     # expected exhaustion as one line instead of a traceback.
     with pytest.raises(ProviderError, match=r"^gave up after 2 attempts:"):
-        await _advance_with_retry((), chat, [], [], attempts=2, backoff=0.0)
+        await (
+            _arbitration_run(chat, attempts=2)
+            .plugins[-1]
+            .plugin._chat_with_retry([], _turn_metadata())
+        )
 
 
 @pytest.mark.asyncio
-async def test_advance_with_retry_does_not_catch_permanent_errors(mocker) -> None:
+async def test_advance_does_not_catch_permanent_errors(mocker) -> None:
     chat = mocker.AsyncMock(side_effect=RuntimeError("permanent"))
 
     with pytest.raises(RuntimeError, match=r"^permanent$"):
-        await _advance_with_retry((), chat, [], [], attempts=3, backoff=0.0)
+        await (
+            _arbitration_run(chat)
+            .plugins[-1]
+            .plugin._chat_with_retry([], _turn_metadata())
+        )
 
 
 @pytest.mark.asyncio
@@ -1390,21 +1489,21 @@ async def test_first_plugin_turn_wins_and_provider_is_never_called(mocker) -> No
     # later plugins are not consulted and no provider round-trip is paid.
     turn = _asst(tool_calls=[_tc("peek")])
     first = mocker.MagicMock()
-    first.advance = mocker.AsyncMock(return_value=turn)
+    first.advance = mocker.AsyncMock(return_value=ProposedTurn(turn))
     second = mocker.MagicMock()
     second.advance = mocker.AsyncMock()
     chat = mocker.AsyncMock()
 
-    out = await _advance_with_retry(
-        (
-            PluginBinding("first", first, name="test"),
-            PluginBinding("second", second, name="test"),
+    out = await _advance(
+        _arbitration_run(
+            chat,
+            plugins=(
+                PluginBinding("first", first, name="test"),
+                PluginBinding("second", second, name="test"),
+            ),
         ),
-        chat,
-        [],
-        [],
-        attempts=3,
-        backoff=0.0,
+        Session(),
+        _turn_metadata(),
     )
 
     assert out.message is turn
@@ -1423,19 +1522,19 @@ async def test_plugin_pass_and_crash_both_fall_through_to_the_provider(
     passing.advance = mocker.AsyncMock(return_value=None)
     crashing = mocker.MagicMock()
     crashing.advance = mocker.AsyncMock(side_effect=RuntimeError("plugin bug"))
-    asst = _asst(content="ok", finish=FinishReason.STOP)
+    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
     chat = mocker.AsyncMock(return_value=asst)
 
-    out = await _advance_with_retry(
-        (
-            PluginBinding("passing", passing, name="test"),
-            PluginBinding("crashing", crashing, name="test"),
+    out = await _advance(
+        _arbitration_run(
+            chat,
+            plugins=(
+                PluginBinding("passing", passing, name="test"),
+                PluginBinding("crashing", crashing, name="test"),
+            ),
         ),
-        chat,
-        [],
-        [],
-        attempts=3,
-        backoff=0.0,
+        Session(),
+        _turn_metadata(),
     )
 
     assert out.message is asst
@@ -1443,7 +1542,7 @@ async def test_plugin_pass_and_crash_both_fall_through_to_the_provider(
     assert crashing.advance.await_count == 1
 
 
-# ---------- _usage_line ----------
+# ---------- producer timing ----------
 
 
 @pytest.fixture
@@ -1453,15 +1552,15 @@ def trace_stub(mocker):
 
 
 @pytest.mark.asyncio
-async def test_call_provider_response_event_carries_elapsed_ms(
+async def test_call_producer_response_event_carries_elapsed_ms(
     mocker,
     trace_stub,
 ) -> None:
-    # The session summary sums `response.elapsed_ms` into provider_time_ms.
+    # Producer selection latency remains available independently of API timing.
     asst = AssistantMessage(
         content="",
-        tool_calls=[],
-        finish_reason=FinishReason.STOP,
+        tool_calls=[_tc("note"), _tc("peek")],
+        finish_reason=FinishReason.TOOL_CALLS,
         usage=Usage(),
     )
     provider = mocker.MagicMock()
@@ -1469,7 +1568,7 @@ async def test_call_provider_response_event_carries_elapsed_ms(
     rlog = mocker.MagicMock()
     run = _mk_run(provider=provider, tr=trace_stub, rlog=rlog)
 
-    out = await _call_provider(run, Session(), [], turn=0)
+    out = await _call_producer(run, Session(), turn=0)
 
     assert out.message == asst
     response_event = next(
@@ -1479,10 +1578,7 @@ async def test_call_provider_response_event_carries_elapsed_ms(
     )
     assert isinstance(response_event["elapsed_ms"], int)
     # RawLog got the same number.
-    assert (
-        rlog.write_response.call_args.kwargs["elapsed_ms"]
-        == response_event["elapsed_ms"]
-    )
+    assert isinstance(rlog.write_response.call_args.kwargs["elapsed_ms"], int)
 
 
 # ---------- _corrective_for_bad_shape ----------
@@ -1576,17 +1672,21 @@ async def test_plugin_turn_skips_model_gates_and_binds_dispatch(
 
     session = Session()
     messages: list = [SystemMessage(content="sys"), UserMessage(content="trig")]
-    run = _loop_run(provider, registry, policies=policies)
+    run = _loop_run(
+        provider, registry, policies=policies, session=session, messages=messages
+    )
     run.plugins = (
         PluginBinding(
             "conductor",
-            SimpleNamespace(advance=mocker.AsyncMock(side_effect=[synthesized, None])),
-            skip_model_guards=True,
-            playbook=True,
+            SimpleNamespace(
+                advance=mocker.AsyncMock(side_effect=[ProposedTurn(synthesized), None])
+            ),
+            presentation="playbook",
             name="playbook",
         ),
+        *run.plugins,
     )
-    await drive(run, session, messages)
+    await drive(run, session)
 
     assert session.sentinel_status == DONE
     assert producers_during_dispatch == ["conductor"]
@@ -1596,7 +1696,7 @@ async def test_plugin_turn_skips_model_gates_and_binds_dispatch(
 
 
 @pytest.mark.asyncio
-async def test_plugin_response_has_host_producer_in_wire_and_trace(
+async def test_producer_trace_and_model_wire_log_are_separate(
     patched_loop_deps,
     mocker,
 ) -> None:
@@ -1613,28 +1713,34 @@ async def test_plugin_response_has_host_producer_in_wire_and_trace(
 
     session = Session()
     messages: list = [SystemMessage(content="sys"), UserMessage(content="trig")]
-    run = _loop_run(provider, registry, tr=tr, rlog=rlog)
+    run = _loop_run(
+        provider, registry, tr=tr, rlog=rlog, session=session, messages=messages
+    )
     run.plugins = (
         PluginBinding(
             "conductor",
-            SimpleNamespace(advance=mocker.AsyncMock(side_effect=[synthesized, None])),
-            skip_model_guards=True,
-            playbook=True,
+            SimpleNamespace(
+                advance=mocker.AsyncMock(side_effect=[ProposedTurn(synthesized), None])
+            ),
+            presentation="playbook",
             name="playbook",
         ),
+        *run.plugins,
     )
-    await drive(run, session, messages)
+    await drive(run, session)
 
-    by_producer = {
-        c.kwargs["producer"].kind: c for c in rlog.write_response.call_args_list
-    }
-    assert set(by_producer) == {"plugin", "llm"}
+    rlog.write_request.assert_called_once()
+    rlog.write_response.assert_called_once()
+    assert rlog.write_response.call_args.args[1] == closing.raw
     response_events = [
         c.args[0]
         for c in tr.write.call_args_list
         if c.args and c.args[0].get("event") == "response"
     ]
-    assert [e["producer"]["kind"] for e in response_events] == ["plugin", "llm"]
+    assert [e["producer"]["plugin_id"] for e in response_events] == [
+        "conductor",
+        "physiclaw.llm",
+    ]
     # The loop writes no usage event of its own (the provider does, per
     # call) — and a synthesized turn made no call.
     assert not [

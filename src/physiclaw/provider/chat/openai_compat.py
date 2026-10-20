@@ -58,6 +58,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     BaseChatProvider,
@@ -121,9 +122,10 @@ class OpenAICompatibleProvider(BaseChatProvider):
         history: list[Message],
         tools: list[dict],
         *,
+        metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
     ) -> AssistantMessage:
-        wire = self.serialize_history(history)
+        wire = self.serialize_history(history, metadata=metadata)
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": wire,

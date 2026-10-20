@@ -1,4 +1,4 @@
-"""Execute playbooks through the agent's TurnPlugin interface.
+"""Execute playbooks through the agent's neutral TurnPlugin interface.
 
 A playbook combines deterministic actions with small, constrained model
 calls. The conductor produces ordinary assistant tool-call messages;

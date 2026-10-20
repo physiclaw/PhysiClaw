@@ -28,6 +28,7 @@ import base64
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Any
 
 from physiclaw.common import image
@@ -37,9 +38,20 @@ from physiclaw.contract.dto import (
     ImageBlock,
     TextBlock,
     ToolResultMessage,
+    UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
 
 log = logging.getLogger(__name__)
+
+
+def turn_metadata_message(metadata: TurnMetadata) -> UserMessage:
+    """Render host metadata as a fresh model-visible tail, outside its history."""
+    return UserMessage(
+        content="<turn_metadata>"
+        + json.dumps(asdict(metadata), separators=(",", ":"))
+        + "</turn_metadata>"
+    )
 
 
 # ---------- request-side: tool schema → wire ----------

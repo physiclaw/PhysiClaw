@@ -24,6 +24,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
 from physiclaw.provider.chat.openai_compat import (
     OpenAICacheMarkers,
@@ -274,8 +275,9 @@ def test_superseded_stub_serializes_byte_identical_marked_vs_unmarked(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("turn", [None, 0, 2])
 async def test_chat_posts_to_chat_completions_with_payload(
-    provider: _TestOpenAI, respx_mock: respx.MockRouter
+    provider: _TestOpenAI, respx_mock: respx.MockRouter, turn
 ) -> None:
     route = respx_mock.post("https://api.openai.test/v1/chat/completions").respond(
         json={
@@ -284,7 +286,11 @@ async def test_chat_posts_to_chat_completions_with_payload(
         },
     )
 
-    await provider.chat([UserMessage(content="ping")], tools=[])
+    history = [UserMessage(content="ping")]
+    metadata = (
+        TurnMetadata("session", turn, None, 300 - turn) if turn is not None else None
+    )
+    await provider.chat(history, tools=[], metadata=metadata)
 
     assert route.call_count == 1
     payload = route.calls.last.request.read().decode()
@@ -292,7 +298,25 @@ async def test_chat_posts_to_chat_completions_with_payload(
 
     body = json.loads(payload)
     assert body["model"] == "gpt-test"
-    assert body["messages"] == [{"role": "user", "content": "ping"}]
+    assert body["messages"] == provider.serialize_history(history, metadata=metadata)
+    assert history == [UserMessage(content="ping")]
+    if metadata is None:
+        assert body["messages"] == [{"role": "user", "content": "ping"}]
+    else:
+        assert body["messages"][:-1] == [{"role": "user", "content": "ping"}]
+        tail = body["messages"][-1]
+        assert tail["role"] == "user"
+        assert json.loads(
+            tail["content"]
+            .removeprefix("<turn_metadata>")
+            .removesuffix("</turn_metadata>")
+        ) == {
+            "session_id": "session",
+            "turn": turn,
+            "deadline": None,
+            "turns_remaining": 300 - turn,
+        }
+    assert "metadata" not in body
     assert "tools" not in body
 
 

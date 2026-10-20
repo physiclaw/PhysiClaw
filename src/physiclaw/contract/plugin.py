@@ -1,16 +1,14 @@
-"""The turn-plugin protocol — a peer package takes the turn before the LLM.
+"""One turn-producer protocol for plugins and the default LLM.
 
-Each turn, the engine loop offers the request to its plugins in
-registration order; the first to return an `AssistantMessage` has
-SPOKEN the turn and the provider is never called. This is arbitration,
-not a middleware chain: turns do not flow through the other plugins,
-because the question being answered is "who produces this turn", not
-"how is this request decorated". A plugin that returns None is passing,
-and the engine falls through — with no plugins at all (config
-`[agent] plugins = "none"`), every turn is a plain provider call, which
+Each turn, the engine asks plugins in registration order with one neutral,
+immutable TurnInput and TurnMetadata. Each plugin builds its own context and
+returns a ProposedTurn or None. The first accepted result wins.
+This is arbitration: a plugin produces the turn or returns None to let
+the engine ask the next slot. With no plugins at all (config
+`[agent] plugins = "none"`), only the default LLM producer remains, which
 is the rollback switch.
 
-Each registration declares a display name and unique, stable instance ID.
+Each registration declares its display name and stable instance ID.
 The engine snapshots that identity and assigns execution grants to the slot.
 Qualified macros contributed at setup (`SessionSetup.gated_macros`) resolve
 only for their registering plugin. Raw response metadata and call IDs
@@ -23,33 +21,38 @@ is the whole discovery story. The upgrade trigger to entry-point
 discovery is a plugin shipping as a separately installed distribution —
 do not build it before then.
 
-Everything here is in-process for now, but the shapes are
-serialization-friendly on purpose (data in, one message out): a future
-remote worker is a second transport for this same protocol, with the
-two sink protocols becoming events returned in the advance response.
+The host supplies the same in-process services and runtime input to every
+plugin. No plugin receives another producer's conversation or reasoning.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Literal, Protocol, runtime_checkable
+from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Protocol, runtime_checkable
+from uuid import uuid4
+
+from physiclaw.contract.decision import ActionCandidate, decision_json
 from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
     AssistantMessage,
+    FinishReason,
     Message,
     MicroRecord,
     Thinking,
+    ToolCall,
     UsageCall,
 )
+from physiclaw.contract.turn import TurnInput, TurnMetadata
 from physiclaw.macros.model import Macro
 
 
 class SessionChatProvider(Protocol):
-    """The slice of the session's provider a plugin may hold — enough to
-    fall back to the session model (e.g. a cheap-tier decision call whose
-    configured tier failed to build) and to wire-log its own scoped
-    round-trips verbatim. Deliberately NOT the full provider: session
-    management (collapse cadence, lifecycle close) stays the engine's.
+    """The stateless chat service a plugin may borrow —
+    enough to fall back to the session model for scoped playbook calls
+    and to wire-log its round-trips verbatim. Each producer owns its
+    context and compaction; the host owns the transport lifetime.
     The full interface lives in `physiclaw.provider`; this protocol
     exists so the contract need not import it (provider imports
     contract, never the reverse)."""
@@ -59,11 +62,20 @@ class SessionChatProvider(Protocol):
         history: list[Message],
         tools: list[dict],
         *,
+        metadata: TurnMetadata | None = None,
         purpose: UsageCall = USAGE_CALL_TURN,
         thinking: Thinking | None = None,
     ) -> AssistantMessage: ...
 
-    def serialize_history(self, messages: list[Message]) -> list[dict]: ...
+    def serialize_history(
+        self, history: list[Message], *, metadata: TurnMetadata | None = None
+    ) -> list[dict]:
+        """Encode a fresh request with metadata and provider cache markers.
+
+        Chat calls and host wire logs use the same encoder so their requests
+        match. Caller-owned history is never mutated.
+        """
+        ...
 
 
 class EventSink(Protocol):
@@ -79,12 +91,12 @@ class WireSink(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class SetupContext:
-    """What the engine offers a plugin at wake — exactly what the one
-    real plugin reads, nothing speculative (grow it when a plugin reads
-    more). The sinks are the one non-serializable crossing — acceptable
-    in-process; a remote transport replaces them with events in the
-    advance response."""
+class PluginServices:
+    """Wake-time services shared by all plugins, without a model context.
+
+    The chat provider accepts caller-owned messages and holds no conversation.
+    Its lifecycle stays with the host; each plugin owns its own context.
+    """
 
     session_provider: SessionChatProvider
     events: EventSink | None = None
@@ -105,25 +117,56 @@ class SessionSetup:
 class TurnProducer:
     """Host-stamped identity; presentation and execution grants are separate."""
 
-    kind: Literal["llm", "plugin"] = "llm"
-    plugin_id: str | None = None
+    plugin_id: str
 
 
 @runtime_checkable
 class TurnPlugin(Protocol):
-    """One turn arbiter. Implementations never let an exception escape
-    `advance` — a plugin failure must degrade to "the LLM speaks", not
-    kill the session — and the engine wraps the call fail-open anyway.
-    """
+    """One neutral invocation contract for every plugin."""
 
-    async def session_setup(self, ctx: SetupContext) -> SessionSetup | None: ...
+    async def session_setup(self, ctx: PluginServices) -> SessionSetup | None: ...
 
-    # No tool-schema parameter: a plugin mints turns from its own
-    # vocabulary; the schemas ride `chat` to the provider. Add the
-    # parameter when a plugin actually arbitrates on the tool surface.
-    async def advance(self, history: list[Message]) -> AssistantMessage | None: ...
+    async def advance(
+        self, turn: TurnInput, *, metadata: TurnMetadata
+    ) -> ProposedTurn | None: ...
 
     async def aclose(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ProposedTurn:
+    """Tool calls with optional observation/target evidence, checked by the host."""
+
+    message: AssistantMessage
+    observation_id: str | None = None
+    targets: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.observation_id is not None and (
+            not isinstance(self.observation_id, str) or not self.observation_id
+        ):
+            raise ValueError("a bound proposal must reference its observation")
+        object.__setattr__(self, "targets", MappingProxyType(dict(self.targets)))
+
+    @classmethod
+    def from_action(cls, action: ActionCandidate, observation_id: str) -> ProposedTurn:
+        """Bind one selected action to a fresh local tool-call ID."""
+        if action.tool is None:
+            raise ValueError("a proposal must contain an executable action")
+        call_id = f"call_{uuid4().hex}"
+        arguments = decision_json(action.arguments)
+        assert isinstance(arguments, dict)
+        return cls(
+            message=AssistantMessage(
+                content="",
+                finish_reason=FinishReason.TOOL_CALLS,
+                tool_calls=[ToolCall(call_id, action.tool, arguments)],
+            ),
+            observation_id=observation_id,
+            targets={call_id: action.target_ref}
+            if action.target_ref is not None
+            else {},
+        )
 
 
 @dataclass(frozen=True, slots=True)

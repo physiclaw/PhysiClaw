@@ -445,18 +445,30 @@ def test_summary_adds_repeated_calls_without_billing_plugin_turns():
             trace,
             [
                 {"event": "response", "turn": 0, "elapsed_ms": 17},
+                {
+                    "event": "usage",
+                    "call": "turn",
+                    "model": "fake/model",
+                    "elapsed_ms": 17,
+                },
                 {"event": "response", "turn": 1, "elapsed_ms": 23},
+                {
+                    "event": "usage",
+                    "call": "turn",
+                    "model": "fake/model",
+                    "elapsed_ms": 23,
+                },
                 {
                     "event": "response",
                     "turn": 2,
-                    "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                    "producer": {"plugin_id": "conductor-slot"},
                     "presentation": "playbook",
                     "elapsed_ms": 100,
                 },
                 {
                     "event": "response",
                     "turn": 3,
-                    "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                    "producer": {"plugin_id": "conductor-slot"},
                     "presentation": "playbook",
                     "elapsed_ms": 200,
                 },
@@ -486,7 +498,7 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
         {
             "event": "response",
             "turn": 0,
-            "producer": {"kind": "plugin", "plugin_id": "decision-slot"},
+            "producer": {"plugin_id": "decision-slot"},
             "presentation": "plugin",
             "elapsed_ms": 200,
         }
@@ -495,7 +507,7 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
         {
             "event": "response",
             "turn": 1,
-            "producer": {"kind": "llm", "plugin_id": None},
+            "producer": {"plugin_id": None},
             "presentation": "model",
             "elapsed_ms": 50,
         }
@@ -504,7 +516,7 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
         {
             "event": "response",
             "turn": 2,
-            "producer": {"kind": "plugin", "plugin_id": "playbook-slot"},
+            "producer": {"plugin_id": "playbook-slot"},
             "presentation": "playbook",
             "elapsed_ms": 2,
         }
@@ -513,7 +525,7 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
         {
             "event": "response",
             "turn": 3,
-            "producer": {"kind": "plugin", "plugin_id": "playbook-slot"},
+            "producer": {"plugin_id": "playbook-slot"},
             "presentation": "playbook",
             "elapsed_ms": 3,
         }
@@ -522,11 +534,20 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
         {
             "event": "response",
             "turn": 4,
-            "producer": {"kind": "llm", "plugin_id": None},
+            "producer": {"plugin_id": None},
             "presentation": "model",
             "elapsed_ms": 40,
         }
     )
+    for elapsed in (50, 40):
+        trace.write(
+            {
+                "event": "usage",
+                "call": "turn",
+                "model": "fake/model",
+                "elapsed_ms": elapsed,
+            }
+        )
     trace.write({"event": "micro_call"})
     decision = {
         "event": "decision_call",
@@ -631,3 +652,30 @@ def test_image_inventory_failure_keeps_session_summary(mocker):
     )
     assert summary["images"] == 0
     assert not paths.active_session_marker().exists()
+
+
+def test_model_accounting_includes_retries_without_counting_proposals_twice():
+    trace = Trace("model-retries", Images("model-retries"))
+    trace.write({"event": "turn_started", "turn": 0})
+    for elapsed, error in [(40, "timeout"), (60, None), (90, None)]:
+        trace.write(
+            {
+                "event": "usage",
+                "call": "turn",
+                "model": "fake/model",
+                "elapsed_ms": elapsed,
+                "error": error,
+            }
+        )
+    trace.write(
+        {"event": "response", "turn": 0, "presentation": "model", "elapsed_ms": 1100}
+    )
+    trace.close()
+
+    summary = json.loads(
+        (paths.sessions_dir() / "model-retries" / "summary.json").read_text()
+    )
+    assert summary["provider_calls"] == 3
+    assert summary["provider_time_ms"] == 190
+    assert summary["usage"]["by_model"]["fake/model"]["calls"] == 3
+    assert summary["usage"]["by_model"]["fake/model"]["failed"] == 1

@@ -25,7 +25,7 @@ from physiclaw.common.logger import (
     iso_now,
     write_json_atomic,
 )
-from physiclaw.contract.dto import USAGE_BUCKETS, ImageBlock, TextBlock
+from physiclaw.contract.dto import USAGE_BUCKETS, USAGE_CALL_TURN, ImageBlock, TextBlock
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class Trace:
     @property
     def turn(self) -> int | None:
         """The turn in progress — the highest turn any event named so
-        far (the `request` event opens a turn before its model call), or
+        far (the host opens a turn before asking any producer), or
         None before the first. `write` stamps every `usage` event with
         it, whoever made the call (the loop, a conductor decision,
         curation)."""
@@ -298,8 +298,8 @@ def fold_usage(by_model: dict[str, Counter[str]], event: dict[str, Any]) -> None
 class _Summary:
     """Accumulates session metrics from the events flowing through
     `Trace.write` — zero extra plumbing in the engine; everything in
-    summary.json is derivable from the stream (loop.py enriches
-    `response.elapsed_ms`; the provider writes `usage`)."""
+    summary.json is derivable from the stream. Selected proposals count
+    turns; provider `usage` events count actual calls, timing and tokens."""
 
     def __init__(self, sid: str):
         self.sid = sid
@@ -347,15 +347,11 @@ class _Summary:
         elif name == "prefix_pinned":
             self.prompt_hash = event.get("hash") or ""
         elif name == "response":
-            producer = event.get("producer")
-            if isinstance(producer, dict) and producer.get("kind") == "plugin":
+            if event.get("presentation") in {"plugin", "playbook"}:
                 if event.get("presentation") == "playbook":
                     self.conductor_turns += 1
                 else:
                     self.plugin_turns += 1
-            else:
-                self.provider_calls += 1
-                self.provider_time_ms += int(event.get("elapsed_ms") or 0)
         elif name == "micro_call":
             # A decision on the conductor's side channel: counted apart
             # from turn-loop calls; its tokens arrive as a `usage` event
@@ -374,6 +370,9 @@ class _Summary:
             # ONE event type carries every model call's tokens (turn,
             # micro, curate), so the session's spend is one fold.
             fold_usage(self.by_model, event)
+            if event.get("call") == USAGE_CALL_TURN:
+                self.provider_calls += 1
+                self.provider_time_ms += int(event.get("elapsed_ms") or 0)
         elif name == "tool_result":
             self.tool_calls[event.get("name") or "?"] += 1
             self.tool_time_ms += int(event.get("elapsed_ms") or 0)

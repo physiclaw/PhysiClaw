@@ -1,74 +1,51 @@
-"""Turn loop — the driver (principle 7): model → tool_calls → dispatch →
-tool_results → model.
+"""Generic turn arbitration and execution, with no producer-owned context.
 
-Owns the turn-level protocol invariants — real finish_reason routing
-(principle 3), the [note, one-other] turn shape — plus the *mechanics*
-of every interception: pop-and-corrective, trace events, the corrective
-streak. The *judgment* — when to reject a turn, what to warn about —
-lives in `policy.py` as the turn gates on `EngineRun.policies`;
-tool-call execution lives in `dispatch.py`.
+Every slot receives one immutable runtime snapshot and turn metadata. The
+first valid proposal wins; tool validation, permissions, execution and the
+session budget use the same path for every producer.
 """
 
 import asyncio
-import enum
 import logging
 import time
 from dataclasses import asdict, dataclass
 
-from physiclaw.agent.engine import assemble, compact, memory, trajectory
+from physiclaw.agent.engine import memory, trajectory
 from physiclaw.agent.engine.dispatch import dispatch
 from physiclaw.agent.engine.provenance import ProducedTurn
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.runtime.sentinel import FAIL, STUCK
+from physiclaw.agent.engine.validator import validate_arguments
+from physiclaw.agent.runtime.sentinel import STUCK
 from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.agent.trace import Trace
 from physiclaw.common import daylog
-from physiclaw.common.log_style import console_text
+from physiclaw.common.bbox import parse_box
+from physiclaw.common.gesture_vocab import PRESS_TOOLS, RUN_MACRO
 from physiclaw.common.logger import (
     PLAYBOOK_ACCENT,
     bind_log_context,
     reset_log_context,
     set_tag_accent,
 )
+from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
-    Message,
     ToolCall,
-    UserMessage,
 )
-from physiclaw.provider import ProviderError, ProviderTransientError
+from physiclaw.contract.plugin import ProposedTurn
+from physiclaw.contract.turn import TurnInput, TurnMetadata
 
 log = logging.getLogger(__name__)
-
-# A model that can't hold the [note, one-other] shape burns a full
-# provider round-trip per corrective; after this many CONSECUTIVE
-# failures, end STUCK instead of paying up to max_turns of them.
-CORRECTIVE_LIMIT = 5
-
-
-class _Turn(enum.Enum):
-    """What `drive` does after a turn's finish_reason + shape checks."""
-
-    PROCEED = enum.auto()  # well-formed — go run the turn's tools
-    RETRY = enum.auto()  # rejected, corrective injected — re-loop this index
-    ABORT = enum.auto()  # terminal sentinel set — return from `drive`
 
 
 @dataclass
 class _LoopState:
-    """Loop-local counters that persist across turns within one `drive` run.
-
-    consecutive_correctives: malformed turns in a row — STUCK past the cap.
-    (Per-gate one-shot state lives on the gate objects in `run.policies`.)
-    """
-
-    consecutive_correctives: int = 0
     turn: int = 0
 
 
-async def drive(run: EngineRun, session: Session, messages: list[Message]) -> None:
+async def drive(run: EngineRun, session: Session) -> None:
     """Run turns within the time budget, including awaited calls and retries.
     Whatever ends the loop, clear the playbook's terminal colour."""
     state = _LoopState()
@@ -79,7 +56,7 @@ async def drive(run: EngineRun, session: Session, messages: list[Message]) -> No
     context = bind_log_context()
     try:
         async with budget:
-            await _drive(run, session, messages, state)
+            await _drive(run, session, state)
     except TimeoutError:
         if not budget.expired():
             raise  # An unrelated timeout must retain its own failure path.
@@ -89,25 +66,8 @@ async def drive(run: EngineRun, session: Session, messages: list[Message]) -> No
         reset_log_context(context)
 
 
-async def _drive(
-    run: EngineRun, session: Session, messages: list[Message], state: _LoopState
-) -> None:
-    """The driver (principle 7): model → tool_calls → dispatch → results → model.
-
-    Each turn runs a fixed pipeline of phase helpers; the control flow between
-    them stays here so it's auditable in one place:
-      1. `_prepare_request`    — advance clocks, pin tails, log the request.
-      2. `_call_provider`      — plugin arbitration, then the provider
-                                 with retry; None ⇒ STUCK, return.
-      3. `_enforce_shape`      — finish_reason + [note, one-other]; may RETRY/ABORT.
-      4. gates observe_turn    — accumulate per-turn evidence (memory cues).
-      5. `_apply_turn_gates`   — the policy gates in declared order; may RETRY.
-      6. `_dispatch_turn`      — run the tool_calls, append their results.
-      7. `_finalize_turn`      — snapshot trajectory, compact, reset gates.
-
-    Plugin turns skip model-output presentation checks in 3–5. Dispatch
-    permissions come from the host binding.
-    """
+async def _drive(run: EngineRun, session: Session, state: _LoopState) -> None:
+    """Ask producers in order; validate and dispatch the first accepted turn."""
     for turn in range(run.settings.max_turns):
         # drive() owns the enclosing context scope and restores it on every
         # exit. Each provider/plugin call inherits its turn, including retries.
@@ -115,51 +75,15 @@ async def _drive(
         state.turn = turn
         if _stop_if_expired(run, session, turn):
             return
-        request_messages, compaction_imminent = _prepare_request(
-            run,
-            session,
-            messages,
-            turn,
-        )
-
-        produced = await _call_provider(run, session, request_messages, turn)
+        run.tr.write({"event": "turn_started", "turn": turn})
+        session.plan.tick_turn()
+        session.guard.observe_step(session.plan.current_step())
+        produced = await _call_producer(run, session, turn)
         if _stop_if_expired(run, session, turn):
             return
         if produced is None:
-            return  # provider exhausted its retries — STUCK already set
+            return  # No accepted proposal; the session outcome is already set.
         asst = produced.message
-
-        # Principle 2: reasoning_content / thinking blocks were stripped at
-        # parse time inside the provider — append the assistant turn directly.
-        messages.append(asst)
-        called = asst.tool_names()
-
-        # Notes and model-output judgments belong to LLM turns. A plugin
-        # needs no fabricated LLM note; this grants no dispatch exemption.
-        if produced.binding is None:
-            # Only main-LLM turns advance the plan gate's meter.
-            session.model_turns += 1
-            shape = _enforce_shape(
-                messages, asst, called, state, session=session, turn=turn, tr=run.tr
-            )
-            if shape is _Turn.ABORT:
-                return
-            if shape is _Turn.RETRY:
-                continue
-
-            for gate in run.policies.turn_gates:
-                gate.observe_turn(session, asst)
-
-            if _apply_turn_gates(
-                run,
-                session,
-                messages,
-                asst,
-                called,
-                turn=turn,
-                compaction_imminent=compaction_imminent,
-            ):
-                continue
 
         session.active_plugin = produced.binding
         # The terminal's tag wears the driver's colour from here until
@@ -167,14 +91,14 @@ async def _drive(
         # record of the producer is set, so the two cannot disagree.
         set_tag_accent(PLAYBOOK_ACCENT if produced.presentation == "playbook" else None)
         try:
-            successful_calls = await _dispatch_turn(run, session, messages, asst, turn)
+            successful_calls = await _dispatch_turn(run, session, asst, turn)
         finally:
             session.active_plugin = None
         if session.budget_exhausted:
             return
         if session.sentinel_status is None and _stop_if_expired(run, session, turn):
             return
-        _finalize_turn(run, session, messages, successful_calls, turn)
+        _finalize_turn(session, successful_calls, turn)
 
         if session.sentinel_status:
             return
@@ -247,307 +171,9 @@ def log_external_stop(
 # ---------- per-turn phases ----------
 
 
-def _prepare_request(
-    run: EngineRun,
-    session: Session,
-    messages: list[Message],
-    turn: int,
-) -> tuple[list[Message], bool]:
-    """Assemble and log this turn's request; return the wire-ready message list
-    and whether a collapse is imminent this turn.
-
-    Plan + scratchpad are just-in-time tails — keeps `messages[]` cache-stable
-    across writes. Plan goes last so the model reads "what to do next" last —
-    except during first-run screen-layout setup, when the setup reminder rides
-    one step further out so the blocker is the very last thing the model sees.
-    """
-    session.plan.tick_turn()
-    # Stuck-guard counters key on the in_progress step: a step change (via last
-    # turn's update_progress) wipes the same-target history.
-    session.guard.observe_step(session.plan.current_step())
-    # Pre-compression checkpoint: when this turn's completion will collapse old
-    # turns to their note-summary lines, this is the model's last look at them —
-    # the request carries a ⚠ tail and the turn's note must bank state into the
-    # scratchpad (enforced by policy.CompactionCheckpoint).
-    compaction_imminent = compact.collapse_pending(
-        messages,
-        policy=run.collapse,
-        collapsed_once=session.collapsed_once,
-    )
-    # First-run reminder is empty once learned, and a session that started
-    # learned stays learned — so the per-turn disk read is skipped entirely
-    # unless setup was still pending at session start (`layout_incomplete`).
-    request_messages = assemble.apply_request_tails(
-        messages,
-        session,
-        layout_incomplete=run.layout_incomplete,
-        compaction_keep=(run.collapse.keep if compaction_imminent else None),
-    )
-    # The wire-form request record is NOT written here: only turns that
-    # actually reach the provider pay the full-transcript serialization
-    # (`_call_provider`) — a playbook walk of plugin turns would
-    # otherwise serialize and log the growing history once per leg.
-    run.tr.write(
-        {"event": "request", "turn": turn, "message_count": len(request_messages)}
-    )
-    log.debug("turn %d: %d messages", turn, len(request_messages))
-    return request_messages, compaction_imminent
-
-
-async def _call_provider(
-    run: EngineRun,
-    session: Session,
-    request_messages: list[Message],
-    turn: int,
-) -> ProducedTurn | None:
-    """Ask the plugins, then the provider, for the turn (transient-retry
-    on the provider only) — a plugin turn or a provider call
-    — log the response, and return its host-owned envelope. When retries
-    exhaust: mark the session STUCK, trace it, and return None — the
-    caller returns from the loop."""
-    t0 = time.perf_counter()
-    try:
-        produced = await _advance_with_retry(
-            run.plugins,
-            run.chat,
-            request_messages,
-            run.tool_schemas,
-            attempts=run.settings.provider_retry_attempts,
-            backoff=run.settings.retry_backoff_seconds,
-        )
-        presentation = produced.presentation
-        asst = produced.message
-    except Exception as e:
-        if isinstance(e, ProviderError):
-            # Expected terminal state (retries exhausted, permanent 4xx)
-            # — already handled as STUCK + session retry. One readable
-            # terminal notice; retain the cause chain in saved diagnostics.
-            log.error(
-                "Provider failed: %s",
-                e,
-                exc_info=True,
-                extra={
-                    "event": "provider.failed",
-                    "console_message": "Model request failed: " + console_text(e),
-                },
-            )
-        else:
-            log.exception("Provider call crashed", extra={"event": "provider.crashed"})
-        # The failed request's wire form is the forensic record — write
-        # it now (deferred from _prepare_request; see below).
-        run.rlog.write_request(turn, run.serialize_wire(request_messages))
-        run.tr.write({"event": "provider_failed", "turn": turn, "error": str(e)})
-        session.sentinel_status = STUCK
-        session.sentinel_recap = f"provider error: {e}"
-        return None
-
-    arbitration_elapsed_ms = int((time.perf_counter() - t0) * 1000)
-    elapsed_ms = produced.elapsed_ms
-    if produced.binding is None:
-        # Cache markers + the actual wire format are the provider's
-        # business; log the wire form by asking it to serialize once.
-        # Deferred to AFTER the advance so a plugin turn — which
-        # sent no request — never pays the full-transcript serialization.
-        run.rlog.write_request(turn, run.serialize_wire(request_messages))
-    run.rlog.write_response(
-        turn,
-        asst.raw,
-        elapsed_ms=elapsed_ms,
-        producer=produced.producer,
-        presentation=presentation,
-    )
-    run.tr.write(
-        {
-            "event": "response",
-            "turn": turn,
-            "finish_reason": asst.finish_reason,
-            "content_len": len(asst.content or ""),
-            "producer": asdict(produced.producer),
-            "presentation": presentation,
-            "arbitration_elapsed_ms": arbitration_elapsed_ms,
-            "response_id": asst.response_id,
-            "response_model": asst.response_model,
-            # Selected producer's time; earlier declines are not LLM time.
-            "elapsed_ms": elapsed_ms,
-            "tool_calls": [
-                {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                for tc in asst.tool_calls
-            ],
-        }
-    )
-    # Name the host-selected plugin slot or the main LLM once per turn.
-    calls = ", ".join(asst.tool_names()) or "no calls"
-    if produced.binding is not None:
-        # No main-LLM round trip. Any plugin inference owns its own account.
-        plugin_id = produced.binding.id
-        log.info(
-            "turn %d: %s %s → %s",
-            turn,
-            "PLAYBOOK" if presentation == "playbook" else "PLUGIN",
-            plugin_id,
-            calls,
-            extra={
-                "event": "turn.planned",
-                "turn": turn,
-                "console_message": f"Turn {turn} · {produced.binding.name} ({plugin_id}): {calls}",
-            },
-        )
-        return produced
-    # Tokens: the provider's `usage` event, rendered once by the trace.
-    log.info(
-        "turn %d: MODEL → %s (finish=%s) — %.1fs",
-        turn,
-        calls,
-        asst.finish_reason,
-        elapsed_ms / 1000,
-        extra={
-            "event": "turn.planned",
-            "turn": turn,
-            "duration_ms": elapsed_ms,
-            "console_message": f"Turn {turn} · Model: {calls} ({elapsed_ms / 1000:.1f}s)",
-        },
-    )
-    return produced
-
-
-def _enforce_shape(
-    messages: list[Message],
-    asst: AssistantMessage,
-    called: list[str],
-    state: _LoopState,
-    *,
-    session: Session,
-    turn: int,
-    tr: Trace,
-) -> _Turn:
-    """Route finish_reason and enforce the [note, one-other] turn shape.
-
-    - content_filter → FAIL, ABORT.
-    - no tool_calls, or a shape other than exactly [note, one-other] → pop the
-      rejected assistant turn (leaving orphan tool_calls breaks providers'
-      "tool_calls → matching tool messages" rule and anchors the model on its
-      own failure), inject a corrective, RETRY. After CORRECTIVE_LIMIT in a
-      row, give up STUCK rather than pay correctives up to max_turns.
-    - well-formed → reset the corrective streak, PROCEED.
-    """
-    # Principle 3: route on finish_reason.
-    if asst.finish_reason == FinishReason.CONTENT_FILTER:
-        log.error("The model provider blocked the response — stopping task")
-        session.sentinel_status = FAIL
-        session.sentinel_recap = "content filter blocked response"
-        return _Turn.ABORT
-
-    if not asst.tool_calls:
-        # Trace it like the other shape violation below, so the session
-        # summary's corrective count stays honest.
-        tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": []})
-        return _reject_shape(
-            messages,
-            state,
-            session,
-            (
-                "Your last turn had no tool_calls. Every turn must "
-                "either call tools or call end_session(status, recap) "
-                "to close. Reply again as a tool call — and include "
-                "note(summary=...) alongside."
-            ),
-        )
-
-    # Turn shape: exactly [note, one-other]. `note` keeps a permanent trace
-    # even after image tool_results are compacted away; the one-other cap
-    # forces one action per turn.
-    if len(called) != 2 or called.count("note") != 1:
-        log.warning(
-            "turn %d: bad turn shape tool_calls=%s — injecting corrective",
-            turn,
-            called,
-            extra={
-                "console_message": "Model reply has invalid tool calls — requesting a corrected reply"
-            },
-        )
-        tr.write({"event": "bad_turn_shape", "turn": turn, "tool_calls": called})
-        return _reject_shape(
-            messages, state, session, _corrective_for_bad_shape(called)
-        )
-
-    state.consecutive_correctives = 0
-    return _Turn.PROCEED
-
-
-def _reject_shape(
-    messages: list[Message],
-    state: _LoopState,
-    session: Session,
-    corrective: str,
-) -> _Turn:
-    """Count one malformed turn and RETRY it: past CORRECTIVE_LIMIT in a row,
-    give up STUCK; otherwise pop the rejected assistant turn (leaving orphan
-    tool_calls breaks providers' "tool_calls → matching tool messages" rule and
-    anchors the model on its own failure) and inject `corrective`."""
-    state.consecutive_correctives += 1
-    if state.consecutive_correctives >= CORRECTIVE_LIMIT:
-        return _give_up_on_shape(session, state)
-    messages.pop()
-    messages.append(UserMessage(content=corrective))
-    return _Turn.RETRY
-
-
-def _give_up_on_shape(session: Session, state: _LoopState) -> _Turn:
-    """Terminal STUCK when the model can't hold the turn shape after
-    CORRECTIVE_LIMIT consecutive rejections. The offending turn is left in
-    history (not popped) as the recap's evidence."""
-    log.warning(
-        "%d consecutive turn-shape correctives — giving up",
-        state.consecutive_correctives,
-        extra={
-            "console_message": "The model repeatedly returned invalid tool calls — stopping task"
-        },
-    )
-    session.sentinel_status = STUCK
-    session.sentinel_recap = (
-        f"{state.consecutive_correctives} consecutive malformed turns — "
-        "model cannot hold the [note, one-other] shape"
-    )
-    return _Turn.ABORT
-
-
-def _apply_turn_gates(
-    run: EngineRun,
-    session: Session,
-    messages: list[Message],
-    asst: AssistantMessage,
-    called: list[str],
-    *,
-    turn: int,
-    compaction_imminent: bool,
-) -> bool:
-    """Run the policy turn gates in declared order; the first Rejection wins.
-    The gate owns the judgment and its one-shot state; this owns the shared
-    mechanic — log, trace, pop the rejected assistant turn, inject the
-    corrective. Returns True if a gate rejected the turn (the caller
-    re-loops), False to proceed to dispatch."""
-    for gate in run.policies.turn_gates:
-        rej = gate.check(
-            session,
-            asst,
-            called,
-            turn=turn,
-            compaction_imminent=compaction_imminent,
-        )
-        if rej is None:
-            continue
-        log.info("turn %d: %s", turn, rej.log_msg)
-        run.tr.write({"event": rej.event, "turn": turn, **rej.extra})
-        messages.pop()
-        messages.append(UserMessage(content=rej.corrective))
-        return True
-    return False
-
-
 async def _dispatch_turn(
     run: EngineRun,
     session: Session,
-    messages: list[Message],
     asst: AssistantMessage,
     turn: int,
 ) -> list[ToolCall]:
@@ -575,24 +201,15 @@ async def _dispatch_turn(
             result = await dispatch(run, session, call, turn)
         finally:
             reset_log_context(context)
-        messages.append(result)
         if not result.is_error:
             successful_calls.append(call)
     return successful_calls
 
 
 def _finalize_turn(
-    run: EngineRun,
-    session: Session,
-    messages: list[Message],
-    successful_calls: list[ToolCall],
-    turn: int,
+    session: Session, successful_calls: list[ToolCall], turn: int
 ) -> None:
-    """Record successful writes, compact history, and reset per-turn gates.
-
-    Successful rewrites count even when the content is unchanged. Failed
-    calls must not repeat old snapshots and evict useful trajectory history.
-    """
+    """Record successful shared-state writes, independent of their producer."""
     trajectory.record(
         session,
         turn,
@@ -602,34 +219,24 @@ def _finalize_turn(
             for call in successful_calls
         ),
     )
-    compact.drop_stale_screens(messages)
-    if compact.collapse_old_turns(
-        messages,
-        policy=run.collapse,
-        collapsed_once=session.collapsed_once,
-    ):
-        session.collapsed_once = True
-    for gate in run.policies.turn_gates:
-        gate.on_turn_complete()
 
 
 # ---------- helpers ----------
 
 
-def _validate_plugin_turn(turn: AssistantMessage) -> None:
+def _validate_turn(turn: AssistantMessage) -> None:
     """Reject unusable plugin output before it can suppress the fallback.
 
     This checks transcript structure, without imposing LLM note discipline.
     Tool existence, argument schemas and action guards remain dispatch's job.
     """
     if not isinstance(turn, AssistantMessage):
-        raise TypeError("turn plugin must return AssistantMessage or None")
+        raise TypeError("proposal must contain an AssistantMessage")
     if not turn.tool_calls or turn.finish_reason in (
-        FinishReason.LENGTH,
         FinishReason.CONTENT_FILTER,
         FinishReason.ERROR,
     ):
-        raise ValueError("turn plugin returned no executable turn")
+        raise ValueError("producer returned no executable turn")
     ids: set[str] = set()
     for call in turn.tool_calls:
         if (
@@ -641,133 +248,128 @@ def _validate_plugin_turn(turn: AssistantMessage) -> None:
             or not call.name.strip()
             or not isinstance(call.arguments, dict)
         ):
-            raise ValueError("turn plugin returned invalid tool calls or duplicate IDs")
+            raise ValueError("producer returned invalid tool calls or duplicate IDs")
         ids.add(call.id)
 
 
-async def _advance_with_retry(
-    plugins,
-    chat,
-    messages: list[Message],
-    tools: list[dict],
-    *,
-    attempts: int,
-    backoff: float,
-) -> ProducedTurn:
-    """Plugin arbitration, then the provider with transient-retry.
+def _proposed_message(
+    proposal: ProposedTurn, facts: TurnInput, *, private_macros: frozenset[str]
+) -> AssistantMessage:
+    """Check an optional observation binding and its targets before accepting."""
+    if not isinstance(proposal, ProposedTurn):
+        raise TypeError("producer must return ProposedTurn or None")
+    message = proposal.message
+    _validate_turn(message)
+    observation = facts.observation
+    if proposal.observation_id is not None or proposal.targets:
+        if observation is None or proposal.observation_id != observation.id:
+            raise ValueError("proposal observation is absent or stale")
+    if proposal.targets:
+        assert (
+            observation is not None
+        )  # Checked together with the observation ID above.
+        elements = {
+            observation.element_ref(element): element
+            for element in observation.elements
+        }
+        calls = {call.id: call for call in message.tool_calls}
+        for call_id, ref in proposal.targets.items():
+            if call_id not in calls or ref not in elements:
+                raise ValueError("proposal target is not in its observation or calls")
+            call = calls[call_id]
+            if (
+                call.name in PRESS_TOOLS
+                and parse_box(call.arguments.get("bbox")) != elements[ref].bbox
+            ):
+                raise ValueError("proposal bbox differs from its observed target")
+    # Bound actions validate before arbitration; ordinary tool turns still use
+    # dispatch's schema/permission checks, with their actual refusal results.
+    if proposal.observation_id is not None:
+        for call in message.tool_calls:
+            if call.name not in facts.tools:
+                raise ValueError("proposal names an unavailable tool")
+            schema = decision_json(facts.tools[call.name])
+            assert isinstance(schema, dict)
+            validate_arguments(call.arguments, schema)
+            if call.name == RUN_MACRO:
+                name = call.arguments.get("name", "").strip()
+                if "/" in name and name not in private_macros:
+                    raise ValueError(
+                        "proposal cannot use another plugin's private macro"
+                    )
+    return message
 
-    Plugins are asked in registration order; the first to return a turn
-    has spoken and the provider is never called (arbitration, not a
-    chain — see `contract.plugin`). The protocol says a plugin never
-    raises; the wrapper here is the seam's own belt: a plugin bug must
-    degrade to "the LLM speaks", not kill the session. Only the provider
-    call retries — transient errors only (principle 3: permanent 4xx
-    fails fast)."""
-    for binding in plugins:
+
+async def _advance(
+    run: EngineRun, session: Session, metadata: TurnMetadata
+) -> ProducedTurn | None:
+    """Every slot receives the same immutable input and metadata; first accepted wins."""
+    runtime_input = session.facts.snapshot(schemas=run.schema_by_name)
+    for binding in run.plugins:
         checkpoint()
         started = time.perf_counter()
         try:
-            turn = await binding.plugin.advance(messages)
-            if turn is None:
-                continue
-            _validate_plugin_turn(turn)
-            return ProducedTurn(
-                turn, binding, int((time.perf_counter() - started) * 1000)
-            )
-        except Exception:
-            log.exception("turn plugin advance crashed — passing to the next")
-    last_err: Exception | None = None
-    started = time.perf_counter()
-    for attempt in range(1, attempts + 1):
-        checkpoint()
-        try:
-            message = await chat(messages, tools)
-            return ProducedTurn(
-                message, elapsed_ms=int((time.perf_counter() - started) * 1000)
-            )
-        except ProviderTransientError as e:
-            checkpoint()
-            last_err = e
-            if attempt < attempts:
-                log.warning(
-                    "Provider attempt %d/%d failed: %s — retrying in %.1fs",
-                    attempt,
-                    attempts,
-                    e,
-                    backoff,
-                    exc_info=True,
-                    extra={
-                        "event": "provider.retry",
-                        "attempt": attempt,
-                        "retry_in_ms": round(backoff * 1000),
-                        "console_message": f"Model request failed ({attempt}/{attempts}): {console_text(e, 140)} — retrying in {backoff:.1f}s",
-                    },
+            proposal = await binding.plugin.advance(runtime_input, metadata=metadata)
+            if proposal is not None:
+                message = _proposed_message(
+                    proposal, runtime_input, private_macros=binding.private_macros
                 )
-                await asyncio.sleep(backoff)
-    # Typed, so _call_provider can tell this expected exhaustion (one
-    # clean log line) from an engine bug (full traceback).
-    raise ProviderError(f"gave up after {attempts} attempts: {last_err}") from last_err
+                return ProducedTurn(
+                    message, binding, int((time.perf_counter() - started) * 1000)
+                )
+        except Exception:
+            log.exception("producer %s failed — trying the next slot", binding.id)
+        if session.sentinel_status is not None:
+            return None
+    return None
 
 
-def _corrective_for_bad_shape(called: list[str]) -> str:
-    """Build a turn-specific corrective for a [note, one-other] shape
-    violation.
-
-    Naming the rejected tool nudges the model to retry the same action
-    on the next turn instead of switching to whatever fits the shape.
-    Without this, models often interpret the generic "re-issue as
-    [note, one-other]" as licence to pick a different second tool —
-    silently dropping the rejected action entirely.
-    """
-    # Each branch tests (n_notes, len(others)) explicitly so the
-    # coverage matrix is readable top-to-bottom: no implicit fallthrough,
-    # no overlap. Caller filters out (0,0) and (1,1) — every other
-    # non-empty shape lands in exactly one branch below.
-    n_notes = called.count("note")
-    others = [c for c in called if c != "note"]
-    n_others = len(others)
-
-    if n_notes == 0 and n_others == 1:
-        # Most common: agent forgot note alongside its action.
-        return (
-            f"Your last turn called `{others[0]}` without `note`. Every "
-            f"turn = exactly `[note, one-other]`. Re-issue as "
-            f"`[note(summary=...), {others[0]}(...)]` with the same arguments."
-        )
-
-    if n_notes == 0 and n_others >= 2:
-        return (
-            f"Your last turn called {called!r} without `note` and with "
-            f"too many action tools. Every turn = exactly `[note, one-other]`. "
-            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
-            f"split {others[1:]!r} into later turns."
-        )
-
-    if n_notes == 1 and n_others == 0:
-        # Naming `peek()` as the default breaks the anchoring loop when
-        # the model has no concrete action in mind (e.g. ambient warm-
-        # start triggers): without a suggestion, models pick `note` again
-        # because every other tool feels unjustified.
-        return (
-            "Your last turn called `note` alone with no action tool. "
-            "Every turn = exactly `[note, one-other]`. If unsure what to "
-            "do next, `peek()` is the safe default — re-issue as "
-            "`[note(summary=...), peek()]`."
-        )
-
-    if n_notes == 1 and n_others >= 2:
-        return (
-            f"Your last turn called {called!r} — `note` plus {n_others} "
-            f"action tools. Every turn = exactly `[note, one-other]`. "
-            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
-            f"split {others[1:]!r} into later turns."
-        )
-
-    if n_notes >= 2:
-        return (
-            f"Your last turn called `note` {n_notes} times. Every turn = "
-            f"exactly `[note, one-other]`. Re-issue with `note(summary=...)` "
-            f"once plus one action tool."
-        )
-
-    raise AssertionError(f"unreachable: called={called!r}")
+async def _call_producer(
+    run: EngineRun, session: Session, turn: int
+) -> ProducedTurn | None:
+    metadata = TurnMetadata(
+        session_id=session.session_id,
+        turn=turn,
+        deadline=run.deadline,
+        turns_remaining=run.settings.max_turns - turn,
+    )
+    started = time.perf_counter()
+    produced = await _advance(run, session, metadata)
+    if produced is None:
+        if session.sentinel_status is None:
+            session.sentinel_status = STUCK
+            session.sentinel_recap = "no producer supplied an executable turn"
+        return None
+    asst = produced.message
+    run.tr.write(
+        {
+            "event": "response",
+            "turn": turn,
+            "finish_reason": asst.finish_reason,
+            "content_len": len(asst.content or ""),
+            "producer": asdict(produced.producer),
+            "presentation": produced.presentation,
+            "arbitration_elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "response_id": asst.response_id,
+            "response_model": asst.response_model,
+            "elapsed_ms": produced.elapsed_ms,
+            "tool_calls": [
+                {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                for tc in asst.tool_calls
+            ],
+        }
+    )
+    calls = ", ".join(asst.tool_names())
+    log.info(
+        "turn %d: %s → %s",
+        turn,
+        produced.binding.name,
+        calls,
+        extra={
+            "event": "turn.planned",
+            "turn": turn,
+            "duration_ms": produced.elapsed_ms,
+            "console_message": f"Turn {turn} · {produced.binding.name}: {calls}",
+        },
+    )
+    return produced

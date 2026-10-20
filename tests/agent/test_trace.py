@@ -235,7 +235,7 @@ def test_brief_content_multiple_blocks_joined_by_plus() -> None:
             {
                 "event": "response",
                 "turn": 4,
-                "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+                "producer": {"plugin_id": "conductor-slot"},
                 "presentation": "playbook",
                 "tool_calls": [{"name": "note"}, {"name": "tap"}],
             },
@@ -877,6 +877,7 @@ def _feed_session(t: Trace) -> None:
             "turn": 0,
             "call": "turn",
             "model": "qwen/qwen3.6-plus",
+            "elapsed_ms": 1500,
             "input": 1000,
             "input_new": 100,
             "cache_read": 800,
@@ -1241,11 +1242,14 @@ def test_summary_splits_conductor_turns_from_provider_calls(
             "event": "response",
             "turn": 0,
             "elapsed_ms": 3,
-            "producer": {"kind": "plugin", "plugin_id": "conductor-slot"},
+            "producer": {"plugin_id": "conductor-slot"},
             "presentation": "playbook",
         }
     )
     t.write({"event": "response", "turn": 1, "elapsed_ms": 1500})
+    t.write(
+        {"event": "usage", "call": "turn", "model": "fake/model", "elapsed_ms": 1500}
+    )
     t.close()
 
     s = json.loads((_trace_dirs / "sessions" / "s2" / "summary.json").read_text())

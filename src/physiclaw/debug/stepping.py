@@ -446,7 +446,9 @@ async def step(
             registry,
             mcp,
             emit=emit,
-            transform=lambda call, blocks: fake.intercept(call, True, blocks),
+            transform=lambda call, blocks: fake.intercept(
+                call, "physiclaw.playbook", blocks
+            ),
             macro_opts=opts,
             verbose=verbose,
             observe=observe,

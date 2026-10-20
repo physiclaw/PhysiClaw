@@ -410,8 +410,7 @@
   }
 
   function responseSource(rec) {
-    if (rec.producer?.kind !== 'plugin') return 'model';
-    return rec.presentation === 'playbook' ? 'playbook' : 'plugin';
+    return rec.presentation || 'model';
   }
 
   function renderWire(r) {

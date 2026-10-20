@@ -308,7 +308,7 @@ def _handle_run_macro_factory(
             raise ValueError(f"unknown macro {name!r}. Available: {available}")
         caller = "engine"
         if binding is not None:
-            caller = "conductor" if binding.playbook else f"plugin:{binding.id}"
+            caller = f"plugin:{binding.id}"
         result = await macro_runner.run_and_record(
             spec,
             args.get("inputs") or {},

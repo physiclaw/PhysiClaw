@@ -8,7 +8,7 @@ them.
 """
 
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Callable
 
 from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.mcp_tool import McpClient
@@ -16,12 +16,11 @@ from physiclaw.agent.engine.policy import Policies
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.trace import RawLog, Trace
 from physiclaw.common.config import CONFIG
-from physiclaw.contract.dto import AssistantMessage, CollapsePolicy, Message, ToolCall
+from physiclaw.contract.dto import ToolCall
 
 # The debug harness's result transformer (one spelling here; the loader
-# in `plugins.py` returns it): (call that RAN for real, whether the host
-# selected a plugin, the real result blocks) → replacement blocks or None.
-DebugIntercept = Callable[[ToolCall, bool, list[dict]], "list[dict] | None"]
+# in `plugins.py` returns it): (call that RAN for real, the host-selected producer ID, the real result blocks) → replacement blocks or None.
+DebugIntercept = Callable[[ToolCall, str | None, list[dict]], "list[dict] | None"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,26 +63,9 @@ class Settings:
 
 @dataclass(slots=True)
 class EngineRun:
-    """One session's immutable wiring: turn plugins (arbitration — who
-    produces each turn), the provider's chat callable, MCP client, tool
-    surface, logging sinks, settings, and the policy set. Threaded
-    through the loop instead of a parameter list so adding a dependency
-    is a one-line change.
-
-    `collapse` and `serialize_wire` are session-management wiring pulled
-    off the provider at construction — a plugin deliberately does not
-    carry them (arbitration only), and `chat` is the loop's ONLY
-    provider handle: every other provider use (curate, close) stays in
-    the session lifecycle."""
+    """Runtime wiring shared by the generic producer loop and dispatcher."""
 
     plugins: tuple[PluginBinding, ...]
-    # The session provider's chat call — the fallback when every plugin
-    # passes (and the whole story when `plugins` is empty).
-    chat: Callable[[list[Message], list[dict]], Awaitable[AssistantMessage]]
-    # Vendor-specific compaction cadence (provider.COLLAPSE).
-    collapse: CollapsePolicy
-    # Wire form of a request for the raw log (provider.serialize_history).
-    serialize_wire: Callable[[list[Message]], list[dict]]
     mcp: McpClient
     tool_schemas: list[dict]
     schema_by_name: dict[str, dict]
@@ -92,12 +74,11 @@ class EngineRun:
     rlog: RawLog
     settings: Settings
     policies: Policies
-    layout_incomplete: bool = False
     # Wall-clock cutoff (time.monotonic() value) for this session, or None
     # when `settings.max_session_seconds` is 0 — see `loop.drive`.
     deadline: float | None = None
     # The e2e debug harness's result transformer (debug mode —
     # `physiclaw debug`, env-only; loaded by dotted path like the turn
-    # plugins). The plugin-turn bit is derived from the host-selected binding.
+    # plugins). The producer ID comes from the host-selected binding.
     # None here (production) leaves dispatch untouched.
     debug_intercept: DebugIntercept | None = None

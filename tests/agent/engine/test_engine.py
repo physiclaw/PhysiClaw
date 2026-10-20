@@ -47,6 +47,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, IDLE, STUCK, WAIT
 from physiclaw.contract.dto import UserMessage
+from physiclaw.contract.plugin import ProposedTurn
 
 # ---------- _run_session ----------
 
@@ -145,7 +146,7 @@ async def test_regression_private_macro_dispatch_survives_hidden_schema(
 async def test_private_macro_hidden_schema_still_validates_arguments(private_macro_run):
     state = private_macro_run
     hand = _asst(tool_calls=[_tc("run_macro", {"name": 123})])
-    state.plugin.advance.side_effect = [hand, None]
+    state.plugin.advance.side_effect = [ProposedTurn(hand), None]
 
     outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
 

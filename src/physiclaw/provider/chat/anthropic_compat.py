@@ -60,6 +60,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     THINKING_BUDGETS,
@@ -219,6 +220,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
         history: list[Message],
         tools: list[dict],
         *,
+        metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
     ) -> AssistantMessage:
         from anthropic import (
@@ -228,7 +230,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
             RateLimitError,
         )
 
-        am_messages = self.serialize_history(history)
+        am_messages = self.serialize_history(history, metadata=metadata)
         system = _extract_system_text(history)
         payload: dict = {
             "model": self.model,

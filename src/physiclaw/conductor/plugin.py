@@ -1,4 +1,4 @@
-"""Connect the conductor to the engine's TurnPlugin interface.
+"""Build a private playbook context from the shared neutral runtime input.
 
 ``session_setup`` restores a suspended Program or builds the boot,
 registers its hidden macros, and wires its MicroCaller. ``advance``
@@ -19,9 +19,16 @@ from physiclaw.conductor.drive import setup as conductor_setup
 from physiclaw.conductor.drive.conductor import Conductor
 from physiclaw.conductor.micro.channel import MicroCaller
 from physiclaw.conductor.walk.program import Program
-from physiclaw.contract.dto import AssistantMessage, Message
-from physiclaw.contract.plugin import PluginRegistration, SessionSetup, SetupContext
-from physiclaw.provider import make_chat_provider
+from physiclaw.contract.decision import decision_json
+from physiclaw.contract.dto import Message, ToolResultMessage
+from physiclaw.contract.plugin import (
+    PluginRegistration,
+    PluginServices,
+    ProposedTurn,
+    SessionSetup,
+)
+from physiclaw.contract.turn import TurnInput, TurnMetadata
+from physiclaw.provider import make_chat_provider, mcp_blocks_to_content_blocks
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +36,9 @@ log = logging.getLogger(__name__)
 def build() -> PluginRegistration:
     """The factory `[agent] plugins` names."""
     return PluginRegistration(
-        id="physiclaw.playbook", name="Playbook", create=ConductorPlugin
+        id="physiclaw.playbook",
+        name="Playbook",
+        create=ConductorPlugin,
     )
 
 
@@ -47,8 +56,9 @@ class ConductorPlugin:
     def __init__(self) -> None:
         self._conductor: Conductor | None = None
         self._micro: MicroCaller | None = None
+        self._pending: set[str] = set()
 
-    async def session_setup(self, ctx: SetupContext) -> SessionSetup | None:
+    async def session_setup(self, ctx: PluginServices) -> SessionSetup | None:
         try:
             program, hidden = conductor_setup.session_setup(events=ctx.events)
             self._micro = _wire_micro(program, ctx)
@@ -64,11 +74,34 @@ class ConductorPlugin:
             self._conductor = None
             return SessionSetup(gated_macros={})
 
-    async def advance(self, history: list[Message]) -> AssistantMessage | None:
+    async def advance(
+        self, turn: TurnInput, *, metadata: TurnMetadata
+    ) -> ProposedTurn | None:
         if self._conductor is None:
             return None
         try:
-            return await self._conductor.advance(history)
+            # Only this plugin's pending calls enter its private execution
+            # context. Other producers' messages and reasoning never enter it.
+            history: list[Message] = []
+            for event in turn.events:
+                if event.call_id not in self._pending:
+                    continue
+                blocks = decision_json(event.result_blocks)
+                assert isinstance(blocks, list)
+                history.append(
+                    ToolResultMessage(
+                        tool_call_id=event.call_id,
+                        content=mcp_blocks_to_content_blocks(blocks),
+                        is_error=event.is_error,
+                    )
+                )
+            message = await self._conductor.advance(history, metadata=metadata)
+            self._pending = (
+                {call.id for call in message.tool_calls}
+                if message is not None
+                else set()
+            )
+            return ProposedTurn(message) if message is not None else None
         except Exception:
             # The conductor is dropped for the rest of the session: its
             # state is unknown, and the transcript so far is the model's
@@ -101,7 +134,7 @@ class ConductorPlugin:
                 log.warning("conductor micro client close failed", exc_info=True)
 
 
-def _wire_micro(program: "Program | None", ctx: SetupContext) -> MicroCaller | None:
+def _wire_micro(program: "Program | None", ctx: PluginServices) -> MicroCaller | None:
     """The micro-caller for the conductor's model calls — None only
     when NOTHING drives (no program). Any live walk can need one (the
     boot's parse_task, an agent step) — and

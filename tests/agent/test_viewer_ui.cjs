@@ -5,7 +5,7 @@ const {createViewer} = require('./viewer_ui_fixture.cjs');
 const row = (rec, src = 'events', extra = {}) => ({src, line: 1, rec, ...extra});
 
 test('test_host_bound_plugin_is_not_presented_as_a_playbook', () => {
-  const rec = {kind: 'response', producer: {kind: 'plugin', plugin_id: 'actual-slot'}, presentation: 'plugin', raw: {}};
+  const rec = {kind: 'response', producer: {plugin_id: 'actual-slot'}, presentation: 'plugin', raw: {}};
   const ui = createViewer([row(rec, 'wire')]);
   ui.select('wire-1');
   assert.match(ui.detail, /plugin actual-slot/);
@@ -13,7 +13,7 @@ test('test_host_bound_plugin_is_not_presented_as_a_playbook', () => {
 });
 
 test('test_llm_response_is_presented_as_the_main_model', () => {
-  const rec = {kind: 'response', producer: {kind: 'llm', plugin_id: null}, presentation: 'model', raw: {}};
+  const rec = {kind: 'response', producer: {plugin_id: 'physiclaw.llm'}, presentation: 'model', raw: {}};
   const ui = createViewer([row(rec, 'wire')]);
   ui.select('wire-1');
   assert.match(ui.detail, /The model replied/);
@@ -21,7 +21,7 @@ test('test_llm_response_is_presented_as_the_main_model', () => {
 });
 
 test('test_playbook_response_uses_the_host_plugin_id', () => {
-  const ui = createViewer([row({kind: 'response', producer: {kind: 'plugin', plugin_id: 'conductor-slot'}, presentation: 'playbook', raw: {}}, 'wire')]);
+  const ui = createViewer([row({kind: 'response', producer: {plugin_id: 'conductor-slot'}, presentation: 'playbook', raw: {}}, 'wire')]);
   ui.select('wire-1');
   assert.match(ui.detail, /playbook conductor-slot/);
 });

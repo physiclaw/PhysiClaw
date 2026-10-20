@@ -243,10 +243,14 @@ async def test_model_failures_save_the_full_exception_chain(
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
 
-    from physiclaw.agent.engine.loop import _call_provider
+    from physiclaw.agent.engine.loop import _call_producer
+    from physiclaw.agent.engine.policy import default_policies
+    from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.engine.session import Session
+    from physiclaw.agent.llm import LLMProducer
     from physiclaw.conductor.micro.channel import MicroCaller
     from physiclaw.conductor.micro.decision import AGENT_FIELDS, DecisionRequest
+    from physiclaw.contract.dto import CollapsePolicy
     from physiclaw.provider import ProviderTransientError
 
     setup_logging("runtime", file_dir=tmp_path, file_level=logging.DEBUG, force=False)
@@ -263,19 +267,30 @@ async def test_model_failures_save_the_full_exception_chain(
 
     monkeypatch.setattr("asyncio.sleep", AsyncMock())
     if source == "turn":
+        session = Session()
         run = SimpleNamespace(
             plugins=(),
-            chat=failed_chat,
             tool_schemas=[],
+            schema_by_name={},
+            deadline=None,
             settings=SimpleNamespace(
-                provider_retry_attempts=2, retry_backoff_seconds=0
+                provider_retry_attempts=2, retry_backoff_seconds=0, max_turns=300
             ),
+            policies=default_policies(layout_incomplete=False),
             rlog=MagicMock(),
             tr=MagicMock(),
-            serialize_wire=lambda _: [],
         )
-        session = Session()
-        assert await _call_provider(run, session, [], 0) is None
+        provider = SimpleNamespace(
+            chat=failed_chat,
+            serialize_history=lambda _, **kw: [],
+            COLLAPSE=CollapsePolicy(first_at=100, keep=10, interval=100),
+        )
+        run.plugins = (
+            PluginBinding(
+                "physiclaw.llm", LLMProducer(provider, run, session, []), "LLM"
+            ),
+        )
+        assert await _call_producer(run, session, 0) is None
         assert session.sentinel_status == "STUCK"
     else:
         caller = MicroCaller(SimpleNamespace(chat=failed_chat), confidence_floor=0.6)
