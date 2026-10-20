@@ -248,10 +248,10 @@ async def test_model_failures_save_the_full_exception_chain(
     from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.engine.session import Session
     from physiclaw.agent.llm import LLMProducer
+    from physiclaw.common.provider_errors import ProviderTransientError
     from physiclaw.conductor.micro.channel import MicroCaller
     from physiclaw.conductor.micro.decision import AGENT_FIELDS, DecisionRequest
     from physiclaw.contract.dto import CollapsePolicy
-    from physiclaw.provider import ProviderTransientError
 
     setup_logging("runtime", file_dir=tmp_path, file_level=logging.DEBUG, force=False)
 

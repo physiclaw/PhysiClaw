@@ -26,6 +26,7 @@ from typing import Any, Callable
 
 from physiclaw.common.config import CONFIG
 from physiclaw.common.log_style import console_text
+from physiclaw.common.provider_errors import ProviderTransientError
 from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.compose import messages
@@ -48,7 +49,7 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.plugin import EventSink, SessionChatProvider, WireSink
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider import ChatProvider, ProviderTransientError
+from physiclaw.provider import ChatProvider
 from physiclaw.provider.chat.wire import (
     anthropic_image_part,
     encode_content,

@@ -9,14 +9,13 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from physiclaw.contract.dto import UserMessage
-from physiclaw.provider import (
+from physiclaw.common.provider_errors import (
     ProviderPermanentError,
     ProviderRequestError,
     ProviderTransientError,
-    make_chat_provider,
-    make_decision_provider,
 )
+from physiclaw.contract.dto import UserMessage
+from physiclaw.provider import make_chat_provider, make_decision_provider
 
 URL = "https://api.openai.com/v1/decisions"
 CHAT_URL = "https://api.openai.com/v1/chat/completions"

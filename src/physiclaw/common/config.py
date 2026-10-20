@@ -288,9 +288,10 @@ class ConductorConfig:
 class DecisionConfig:
     """Decision model selection and opt-in evaluation or execution.
 
-    ``off`` skips projection and inference. ``shadow`` evaluates in the
-    background without blocking the LLM. ``active`` waits for a bounded
-    decision and proposes a tap only when all local gates pass.
+    ``off`` skips projection and inference. ``shadow`` prepares and records
+    evidence, then evaluates in the background without waiting for the result.
+    ``active`` waits for a bounded decision and proposes a tap only when all
+    local gates pass.
     """
 
     model: str = ""
@@ -485,7 +486,8 @@ _SECTION_COMMENTS: dict[str, str] = {
         "is a decision `provider/model` ref; setting it does not enable calls. "
         "`mode = 'off'` skips projection and inference. `mode = 'shadow'` "
         "evaluates in the background without retries or executing actions; "
-        "the LLM does not wait for it. `mode = 'active'` waits for a bounded "
+        "evidence preparation is synchronous, but the LLM does not wait for "
+        "the inference result. `mode = 'active'` waits for a bounded "
         "decision and proposes a guarded tap; rejection falls through to the LLM. "
         "Probability floors are provisional, not calibrated safety guarantees."
     ),

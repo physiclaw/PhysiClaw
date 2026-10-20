@@ -20,6 +20,13 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderPermanentError,
+    ProviderRequestError,
+    ProviderTransientError,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     CollapsePolicy,
@@ -38,13 +45,6 @@ from physiclaw.provider.chat.base import (
     BaseChatProvider,
     CacheMarkers,
     ChatProvider,
-)
-from physiclaw.provider.provider_base import (
-    ProviderConfigurationError,
-    ProviderError,
-    ProviderPermanentError,
-    ProviderRequestError,
-    ProviderTransientError,
 )
 
 # ---------- a minimal concrete stub for inherited-behavior tests ----------

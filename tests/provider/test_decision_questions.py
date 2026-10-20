@@ -9,14 +9,14 @@ from email.parser import BytesParser
 
 import pytest
 
-from physiclaw.contract.decision import ActionCandidate, DecisionRequest
-from physiclaw.decision.policy import CONSERVATIVE_PROMPT, question_profile
-from physiclaw.provider import make_decision_provider
-from physiclaw.provider.provider_base import (
+from physiclaw.common.provider_errors import (
     ProviderError,
     ProviderRequestError,
     ProviderTransientError,
 )
+from physiclaw.contract.decision import ActionCandidate, DecisionRequest
+from physiclaw.decision.policy import CONSERVATIVE_PROMPT, question_profile
+from physiclaw.provider import make_decision_provider
 
 
 @pytest.fixture(params=["typesafe", "openai"])
@@ -174,6 +174,31 @@ async def test_a_bad_secondary_answer_rejects_the_entire_bundle(
     with pytest.raises(ProviderTransientError, match="malformed"):
         await provider.evaluate(review, deadline=deadline())
     assert route.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "status,kind",
+    [
+        (408, ProviderTransientError),
+        (413, ProviderRequestError),
+        (422, ProviderRequestError),
+    ],
+)
+async def test_request_or_temporary_http_failure_allows_a_later_request(
+    provider, review, respx_mock, status, kind
+):
+    private_body = "private server response"
+    route = respx_mock.post(url(provider)).respond(status, text=private_body)
+    with pytest.raises(kind, match=f"HTTP {status}") as error:
+        await provider.evaluate(review, deadline=deadline())
+    assert private_body not in str(error.value)
+    assert route.call_count == 1
+
+    following = replace(review, id="next-request")
+    route.respond(json=reply(provider, following))
+    result = await provider.evaluate(following, deadline=deadline())
+    assert result.request_id == following.id
+    assert route.call_count == 2
 
 
 async def test_refused_secondary_answer_never_returns_a_partial_result(

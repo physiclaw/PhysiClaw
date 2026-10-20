@@ -382,6 +382,7 @@ def report(
             "Labels are manual judgments, not LLM agreement.",
             "Completed/changed tool results do not prove intended task success.",
             "Later LLM turns are not automatically attributed to recovery.",
+            "Latency covers model evaluation and local assessment, excluding projection, client construction and trace persistence.",
             "Shadow latency overlaps LLM work; shadow calls establish no net savings.",
             "Missing usage or rates leave total cost unknown.",
             "Ambiguous duplicate decision calls are excluded from usage and latency; incomplete traces cannot establish total cost.",

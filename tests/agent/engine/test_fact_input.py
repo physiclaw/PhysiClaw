@@ -29,6 +29,7 @@ from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE
+from physiclaw.common.verdict import MACRO_OK_META
 from physiclaw.contract.decision import ActionCandidate
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, ToolResultMessage
 from physiclaw.contract.observation import OBSERVATION_META, read_observation
@@ -36,7 +37,6 @@ from physiclaw.contract.plugin import PluginServices, ProposedTurn
 from physiclaw.core.orchestration import GestureResult
 from physiclaw.core.server import tools as tools_mod
 from physiclaw.decision.plugin import DecisionPlugin
-from physiclaw.macros.model import MACRO_OK_META
 
 
 def tap_schema():
@@ -395,7 +395,7 @@ async def test_fact_plugin_mutation_and_exception_preserve_llm_fallback(
 
 
 async def test_transport_retry_does_not_repeat_fact_arbitration(mocker):
-    from physiclaw.provider import ProviderTransientError
+    from physiclaw.common.provider_errors import ProviderTransientError
 
     plugin = SimpleNamespace(advance=mocker.AsyncMock(return_value=None))
     answer = _asst(tool_calls=[_tc("note"), _tc("peek")])

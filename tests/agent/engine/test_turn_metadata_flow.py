@@ -20,9 +20,9 @@ from physiclaw.agent.engine.loop import _advance, drive
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import DONE
+from physiclaw.common.provider_errors import ProviderTransientError
 from physiclaw.contract.dto import AssistantMessage, ToolResultMessage, UserMessage
 from physiclaw.contract.plugin import ProposedTurn
-from physiclaw.provider import ProviderTransientError
 
 
 async def test_slots_and_llm_retries_share_metadata_without_sharing_contexts(mocker):

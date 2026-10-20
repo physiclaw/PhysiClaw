@@ -29,7 +29,6 @@ from physiclaw.conductor.spec.pack import macro_app, qualified_macro
 from physiclaw.conductor.spec.pages import PagePrint
 from physiclaw.contract.dto import ToolCall
 from physiclaw.debug import thread as vthread
-from physiclaw.macros.model import MACRO_OK_META
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +98,7 @@ class FakeChannel:
             metadata = blocks[0].get("_meta") if blocks else None
             if (
                 not isinstance(metadata, dict)
-                or metadata.get(MACRO_OK_META) is not True
+                or metadata.get(verdict.MACRO_OK_META) is not True
             ):
                 self._on_thread = False
                 return None

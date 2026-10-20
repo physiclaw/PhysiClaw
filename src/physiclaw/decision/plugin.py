@@ -13,6 +13,11 @@ from uuid import uuid4
 
 from physiclaw.common import config
 from physiclaw.common.model_ref import parse_model_ref
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderPermanentError,
+    ProviderRequestError,
+)
 from physiclaw.contract.decision import DecisionProvider, DecisionRequest
 from physiclaw.contract.observation import Observation
 from physiclaw.contract.plugin import (
@@ -26,11 +31,6 @@ from physiclaw.contract.plugin import (
 from physiclaw.contract.turn import TurnInput, TurnMetadata
 from physiclaw.decision.context import project
 from physiclaw.decision.result import ProbabilityThresholds, assess
-from physiclaw.provider.provider_base import (
-    ProviderConfigurationError,
-    ProviderPermanentError,
-    ProviderRequestError,
-)
 
 log = logging.getLogger(__name__)
 

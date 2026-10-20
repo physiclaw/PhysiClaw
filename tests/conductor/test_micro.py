@@ -11,6 +11,7 @@ import pytest
 from conductor_fakes import FRAME, ScriptedProvider, Sink, agent_reply, make_screen
 
 from physiclaw.common.listing import LISTING_HEADER
+from physiclaw.common.provider_errors import ProviderTransientError
 from physiclaw.conductor.micro.blocks import act_block, act_rows
 from physiclaw.conductor.micro.channel import MicroCaller
 from physiclaw.conductor.micro.compose import canonical, user_content
@@ -35,7 +36,6 @@ from physiclaw.conductor.spec.calls import (
 )
 from physiclaw.contract.dto import ImageBlock, TextBlock
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider import ProviderTransientError
 
 
 def _fields_req(prompt: str = "the keyword, please"):
@@ -914,8 +914,6 @@ async def test_parse_task_keeps_values_that_merely_contain_a_null_word() -> None
 async def test_transient_provider_error_gets_one_retry(monkeypatch) -> None:
     # A TRANSIENT blip (the providers' own taxonomy: timeout/429/5xx)
     # must not cost the walk — one bounded retry, then the normal path.
-    from physiclaw.provider import ProviderTransientError
-
     async def _nosleep(_s):
         pass
 
@@ -929,8 +927,6 @@ async def test_transient_provider_error_gets_one_retry(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_double_transient_error_still_escalates(monkeypatch) -> None:
-    from physiclaw.provider import ProviderTransientError
-
     async def _nosleep(_s):
         pass
 

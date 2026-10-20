@@ -274,7 +274,7 @@ def recorded_run(completed_run, monkeypatch, caplog):
 async def test_provider_setup_failure_is_saved_before_session_capture_closes(
     recorded_run,
 ):
-    from physiclaw.provider import ProviderConfigurationError
+    from physiclaw.common.provider_errors import ProviderConfigurationError
 
     recorded_run.factory.side_effect = ProviderConfigurationError(
         "API credential is missing"

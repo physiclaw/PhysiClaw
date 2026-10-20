@@ -13,10 +13,10 @@ from physiclaw.common.gesture_vocab import (
     SWIPE,
     UNLOCK_PHONE,
 )
+from physiclaw.common.verdict import MACRO_OK_META
 from physiclaw.contract.dto import ToolCall
 from physiclaw.contract.observation import Observation, read_observation
 from physiclaw.contract.turn import ActionEvent, ProgressSnapshot, TurnInput
-from physiclaw.macros.model import MACRO_OK_META
 
 log = logging.getLogger(__name__)
 

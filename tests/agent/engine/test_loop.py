@@ -40,6 +40,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.llm import CORRECTIVE_LIMIT, _corrective_for_bad_shape
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
 from physiclaw.agent.trace import Trace
+from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
 from physiclaw.contract.dto import (
     AssistantMessage,
     CollapsePolicy,
@@ -51,10 +52,6 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.plugin import ProposedTurn
-from physiclaw.provider.provider_base import (
-    ProviderError,
-    ProviderTransientError,
-)
 
 # ---------- drive ----------
 

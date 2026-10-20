@@ -14,6 +14,11 @@ from uuid import uuid4
 
 import httpx
 
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderRequestError,
+    ProviderTransientError,
+)
 from physiclaw.contract.decision import (
     DecisionAnswer,
     DecisionCapabilities,
@@ -27,11 +32,6 @@ from physiclaw.provider.decision.wire import (
     check_response_status,
     parse_usage,
     unique_object,
-)
-from physiclaw.provider.provider_base import (
-    ProviderConfigurationError,
-    ProviderRequestError,
-    ProviderTransientError,
 )
 
 _IMAGE_PART = "current-frame"

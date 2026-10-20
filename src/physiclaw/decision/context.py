@@ -29,7 +29,6 @@ from physiclaw.contract.decision import (
 )
 from physiclaw.contract.turn import IN_PROGRESS, ActionEvent, TurnInput, TurnMetadata
 from physiclaw.decision.policy import QuestionProfile, question_profile
-from physiclaw.macros.model import MACRO_OK_META
 
 _INTERACTIONS = PRESS_TOOLS | NAV_TOOLS | {SWIPE, SEQUENCE, RUN_MACRO, UNLOCK_PHONE}
 _RECEIPTS = _INTERACTIONS | {PEEK, SCREENSHOT, SEND_TO_CLIPBOARD}
@@ -42,7 +41,10 @@ def _action_failed(event: ActionEvent) -> bool:
         return True
     if event.tool == RUN_MACRO and event.result_blocks:
         metadata = event.result_blocks[0].get("_meta")
-        return isinstance(metadata, Mapping) and metadata.get(MACRO_OK_META) is False
+        return (
+            isinstance(metadata, Mapping)
+            and metadata.get(verdict.MACRO_OK_META) is False
+        )
     return False
 
 

@@ -5,6 +5,11 @@ from dataclasses import replace
 
 import pytest
 
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderRequestError,
+    ProviderTransientError,
+)
 from physiclaw.contract.decision import (
     ActionCandidate,
     DecisionAnswer,
@@ -12,11 +17,6 @@ from physiclaw.contract.decision import (
     DecisionResult,
 )
 from physiclaw.provider import BaseAPIProvider, BaseChatProvider, BaseDecisionProvider
-from physiclaw.provider.provider_base import (
-    ProviderConfigurationError,
-    ProviderRequestError,
-    ProviderTransientError,
-)
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
 

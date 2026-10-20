@@ -14,19 +14,19 @@ import pytest
 
 from physiclaw.common import config
 from physiclaw.common.config import config_path
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderPermanentError,
+    ProviderRequestError,
+    ProviderTransientError,
+)
 from physiclaw.contract.decision import (
     ActionCandidate,
     DecisionRequest,
     context_to_json,
 )
 from physiclaw.decision.policy import question_profile
-from physiclaw.provider import (
-    ProviderConfigurationError,
-    ProviderPermanentError,
-    ProviderRequestError,
-    ProviderTransientError,
-    make_decision_provider,
-)
+from physiclaw.provider import make_decision_provider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
 URL = "https://api.typesafe.ai/v1/systemone"

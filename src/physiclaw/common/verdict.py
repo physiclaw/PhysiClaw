@@ -1,4 +1,4 @@
-"""Screen-change verdict — the shared vocabulary between core and agent.
+"""Tool-outcome vocabulary shared by core, macros and turn producers.
 
 After each mutating gesture the orchestrator diffs before/after camera
 frames and appends one of these markers to the gesture's result string
@@ -18,6 +18,10 @@ import re
 # both sides pin the exact bytes — reword only with a coordinated change.
 SCREEN_CHANGED = "screen: changed"
 SCREEN_UNCHANGED = "screen: no visible change"
+
+# The first text block carries this structural outcome in MCP `_meta`.
+# An aborted macro may change the screen; visible change is not macro success.
+MACRO_OK_META = "physiclaw/macro_ok"
 
 _SEPARATOR = " | "
 

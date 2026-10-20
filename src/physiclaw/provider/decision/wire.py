@@ -2,23 +2,26 @@
 
 import httpx
 
-from physiclaw.contract.decision import DecisionUsage
-from physiclaw.provider.provider_base import (
+from physiclaw.common.provider_errors import (
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
+from physiclaw.contract.decision import DecisionUsage
 
 
 def check_response_status(response: httpx.Response, *, vendor: str) -> None:
     """Classify native HTTP failures without exposing response contents."""
     if response.is_success:
         return
-    error = (
-        ProviderTransientError
-        if response.status_code == 429 or response.status_code >= 500
-        else ProviderPermanentError
-    )
-    raise error(f"{vendor} decision HTTP {response.status_code}")
+    status = response.status_code
+    message = f"{vendor} decision HTTP {status}"
+    if status in {408, 429} or status >= 500:
+        raise ProviderTransientError(message)
+    if status in {413, 422}:
+        # This payload was rejected; a later screen/request may be accepted.
+        raise ProviderRequestError(message)
+    raise ProviderPermanentError(message)
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

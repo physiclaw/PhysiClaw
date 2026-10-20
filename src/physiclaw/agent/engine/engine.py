@@ -27,16 +27,12 @@ from physiclaw.agent.trace.store import Images
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.common.logger import bind_log_context, reset_log_context
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.text import clip
 from physiclaw.contract.dto import Message
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.macros.model import Macro
-from physiclaw.provider import (
-    ChatProvider,
-    ProviderConfigurationError,
-    make_chat_provider,
-    make_decision_provider,
-)
+from physiclaw.provider import ChatProvider, make_chat_provider, make_decision_provider
 
 log = logging.getLogger(__name__)
 

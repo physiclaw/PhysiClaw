@@ -49,6 +49,10 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
+from physiclaw.common.provider_errors import (
+    ProviderPermanentError,
+    ProviderTransientError,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -69,11 +73,7 @@ from physiclaw.provider.chat.base import (
     token_count,
 )
 from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
-from physiclaw.provider.provider_base import (
-    ProviderPermanentError,
-    ProviderTransientError,
-    describe,
-)
+from physiclaw.provider.provider_base import describe
 
 # `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
 # `physiclaw --help` (and any session that doesn't pick this provider)

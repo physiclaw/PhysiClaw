@@ -1,4 +1,4 @@
-"""Shared credentials, endpoints, client lifecycle, and provider errors.
+"""Shared credentials, endpoints and client lifecycle.
 
 Inference interfaces live under chat/ and decision/. This base owns no
 chat history, cache policy, decision context, or inference endpoint.
@@ -6,25 +6,7 @@ chat history, cache policy, decision context, or inference endpoint.
 
 import httpx
 
-
-class ProviderError(Exception):
-    """Base for provider failures."""
-
-
-class ProviderTransientError(ProviderError):
-    """Transport issue, timeout, 429, or 5xx — worth retrying."""
-
-
-class ProviderPermanentError(ProviderError):
-    """4xx (except 429) — retries will keep failing, fail fast."""
-
-
-class ProviderRequestError(ProviderError):
-    """This request is unsupported or refused; other requests may succeed."""
-
-
-class ProviderConfigurationError(RuntimeError):
-    """Local provider setup needs correction before the runtime can run."""
+from physiclaw.common.provider_errors import ProviderConfigurationError
 
 
 def describe(e: BaseException) -> str:

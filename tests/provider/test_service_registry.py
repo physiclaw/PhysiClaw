@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.contract.decision import DecisionCapabilities
 from physiclaw.provider import (
     BaseChatProvider,
@@ -11,7 +12,6 @@ from physiclaw.provider import (
     DecisionProviderSpec,
     OpenAIChatProvider,
     OpenAIDecisionProvider,
-    ProviderConfigurationError,
     VendorServices,
     make_chat_provider,
     make_decision_provider,

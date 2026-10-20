@@ -27,8 +27,8 @@ from physiclaw.agent.runtime.stopping import checkpoint, stop_event
 from physiclaw.common import platform
 from physiclaw.common.config import CONFIG, server_url
 from physiclaw.common.log_style import FailureState
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.ready import check_ready
-from physiclaw.provider import ProviderConfigurationError
 
 log = logging.getLogger(__name__)
 

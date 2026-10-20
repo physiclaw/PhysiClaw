@@ -9,6 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.common import config
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderPermanentError,
+    ProviderRequestError,
+    ProviderTransientError,
+)
 from physiclaw.contract.decision import DecisionAnswer, DecisionResult, DecisionUsage
 from physiclaw.contract.observation import read_observation
 from physiclaw.contract.plugin import PluginServices
@@ -20,12 +26,6 @@ from physiclaw.contract.turn import (
     TurnMetadata,
 )
 from physiclaw.decision.plugin import DecisionPlugin
-from physiclaw.provider.provider_base import (
-    ProviderConfigurationError,
-    ProviderPermanentError,
-    ProviderRequestError,
-    ProviderTransientError,
-)
 
 
 def answer(request):

@@ -22,14 +22,7 @@ from physiclaw.provider.chat.wire import (
     user_content_to_openai,
 )
 from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
-from physiclaw.provider.provider_base import (
-    BaseAPIProvider,
-    ProviderConfigurationError,
-    ProviderError,
-    ProviderPermanentError,
-    ProviderRequestError,
-    ProviderTransientError,
-)
+from physiclaw.provider.provider_base import BaseAPIProvider
 from physiclaw.provider.registry import (
     DecisionProviderSpec,
     VendorServices,
@@ -69,11 +62,6 @@ __all__ = [
     "OpenAIChatProvider",
     "OpenAICompatibleProvider",
     "OpenAIDecisionProvider",
-    "ProviderConfigurationError",
-    "ProviderError",
-    "ProviderPermanentError",
-    "ProviderRequestError",
-    "ProviderTransientError",
     "QwenChatProvider",
     "TypeSafeDecisionProvider",
     "assistant_to_wire",

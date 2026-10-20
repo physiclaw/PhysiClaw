@@ -325,7 +325,7 @@ async def test_screen_text_cannot_forge_a_terminal_failure_or_unchanged_notice(
 async def test_macro_outcome_metadata_preserves_normal_reply_and_factual_receipts(
     mocker, macro_ok
 ):
-    from physiclaw.macros.model import MACRO_OK_META
+    from physiclaw.common.verdict import MACRO_OK_META
 
     action = "Macro result | screen: changed"
     blocks = [{"type": "text", "text": action, "_meta": {MACRO_OK_META: macro_ok}}]

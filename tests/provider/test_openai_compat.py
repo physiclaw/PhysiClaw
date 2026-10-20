@@ -14,6 +14,10 @@ import httpx
 import pytest
 import respx
 
+from physiclaw.common.provider_errors import (
+    ProviderPermanentError,
+    ProviderTransientError,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -31,10 +35,6 @@ from physiclaw.provider.chat.openai_compat import (
     OpenAICompatibleProvider,
     _normalize_finish,
     _with_cache_marker,
-)
-from physiclaw.provider.provider_base import (
-    ProviderPermanentError,
-    ProviderTransientError,
 )
 
 # ---------- a concrete subclass for testing ----------

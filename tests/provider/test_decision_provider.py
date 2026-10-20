@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from physiclaw.common import config
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.contract.decision import (
     DecisionAnswer,
     DecisionCapabilities,
@@ -12,7 +13,6 @@ from physiclaw.contract.decision import (
 )
 from physiclaw.provider import (
     DecisionProviderSpec,
-    ProviderConfigurationError,
     decision_provider_capabilities,
     in_process_provider_ids,
     make_chat_provider,

@@ -11,6 +11,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
 from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.common.log_style import console_text
+from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -23,12 +24,7 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.plugin import PluginServices, ProposedTurn, SessionSetup
 from physiclaw.contract.turn import TurnInput, TurnMetadata
-from physiclaw.provider import (
-    ChatProvider,
-    ProviderError,
-    ProviderTransientError,
-    mcp_blocks_to_content_blocks,
-)
+from physiclaw.provider import ChatProvider, mcp_blocks_to_content_blocks
 
 log = logging.getLogger(__name__)
 CORRECTIVE_LIMIT = 5

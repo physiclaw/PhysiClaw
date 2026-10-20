@@ -47,6 +47,10 @@ from typing import Any, assert_never
 
 import httpx
 
+from physiclaw.common.provider_errors import (
+    ProviderPermanentError,
+    ProviderTransientError,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -71,11 +75,7 @@ from physiclaw.provider.chat.wire import (
     tool_to_wire,
     user_content_to_openai,
 )
-from physiclaw.provider.provider_base import (
-    ProviderPermanentError,
-    ProviderTransientError,
-    describe,
-)
+from physiclaw.provider.provider_base import describe
 
 log = logging.getLogger(__name__)
 

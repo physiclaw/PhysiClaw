@@ -8,10 +8,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.contract.decision import DecisionCapabilities, DecisionProvider
 from physiclaw.contract.plugin import EventSink
 from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
-from physiclaw.provider.provider_base import ProviderConfigurationError
 from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
 from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
@@ -23,6 +23,8 @@ from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvide
 
 
 class _DecisionFactory(Protocol):
+    """Adapter class constructor; registration also checks its API methods."""
+
     @property
     def api_kind(self) -> Literal["decision"]: ...
 
@@ -31,7 +33,7 @@ class _DecisionFactory(Protocol):
 
 @dataclass(frozen=True)
 class DecisionProviderSpec:
-    """A decision adapter constructor and its credential/capability metadata."""
+    """A decision adapter class and its credential/capability metadata."""
 
     create: _DecisionFactory
     capabilities: Callable[[str], DecisionCapabilities]

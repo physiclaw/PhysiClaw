@@ -25,6 +25,10 @@ from anthropic import (
 )
 from anthropic.types import Message as AnthropicMessage
 
+from physiclaw.common.provider_errors import (
+    ProviderPermanentError,
+    ProviderTransientError,
+)
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -50,10 +54,6 @@ from physiclaw.provider.chat.anthropic_compat import (
     _tool_to_anthropic,
 )
 from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
-from physiclaw.provider.provider_base import (
-    ProviderPermanentError,
-    ProviderTransientError,
-)
 
 # ---------- a concrete subclass for testing ----------
 

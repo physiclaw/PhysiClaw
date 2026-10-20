@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+from physiclaw.common.verdict import MACRO_OK_META
 from physiclaw.contract.observation import read_observation
 from physiclaw.contract.turn import (
     ActionEvent,
@@ -14,7 +15,6 @@ from physiclaw.contract.turn import (
     TurnMetadata,
 )
 from physiclaw.decision.context import project
-from physiclaw.macros.model import MACRO_OK_META
 
 
 def event(sequence, tool, *, arguments=None, **kwargs):

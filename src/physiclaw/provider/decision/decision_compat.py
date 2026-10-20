@@ -14,18 +14,18 @@ from typing import ClassVar, Literal
 
 import httpx
 
-from physiclaw.contract.decision import (
-    DecisionCapabilities,
-    DecisionRequest,
-    DecisionResult,
-)
-from physiclaw.provider.provider_base import (
-    BaseAPIProvider,
+from physiclaw.common.provider_errors import (
     ProviderConfigurationError,
     ProviderPermanentError,
     ProviderRequestError,
     ProviderTransientError,
 )
+from physiclaw.contract.decision import (
+    DecisionCapabilities,
+    DecisionRequest,
+    DecisionResult,
+)
+from physiclaw.provider.provider_base import BaseAPIProvider
 
 
 class BaseDecisionProvider(BaseAPIProvider):

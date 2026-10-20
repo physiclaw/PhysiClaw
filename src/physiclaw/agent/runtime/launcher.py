@@ -28,8 +28,9 @@ from physiclaw.common.config import (
 )
 from physiclaw.common.log_style import report_error
 from physiclaw.common.logger import setup_logging
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.proxy import normalize_proxy_env
-from physiclaw.provider import ProviderConfigurationError, validate_model_ref
+from physiclaw.provider import validate_model_ref
 
 log = logging.getLogger(__name__)
 

@@ -511,7 +511,7 @@ async def test_invalid_plugin_output_falls_back_and_provider_retry_does_not_rear
     mocker,
     invalid_turn,
 ):
-    from physiclaw.provider import ProviderTransientError
+    from physiclaw.common.provider_errors import ProviderTransientError
 
     source = plugin(mocker)
     source.advance.return_value = (
