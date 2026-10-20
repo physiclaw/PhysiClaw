@@ -21,6 +21,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.types import ImageContent, TextContent
 
+from physiclaw.contract.observation import OBSERVATION_META, read_observation
 from physiclaw.core.server import tools as tools_mod
 
 # ---------- Fake MCP ----------
@@ -177,6 +178,77 @@ async def test_screenshot_returns_image_and_listing(registered) -> None:
         "ss-listing",
         b"SS_JPG",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["peek", "tap", "screenshot"])
+async def test_observation_age_includes_core_work_and_reader_cache(
+    registered, observation_blocks, mocker, name
+) -> None:
+    """The lower bound starts before acquisition and detection, not after."""
+    from physiclaw.core.orchestration import GestureResult
+
+    mcp, pl = registered
+    blocks = observation_blocks()
+    jpeg = base64.b64decode(blocks[0]["data"])
+    listing = blocks[1]["text"]
+    clock = mocker.patch.object(tools_mod, "time")
+    clock.time.return_value = 100.0
+
+    def core_work(*args):
+        clock.time.return_value = 110.0
+        if name == "tap":
+            return GestureResult("Tapped", jpeg, listing)
+        return jpeg, listing
+
+    getattr(pl, name).side_effect = core_work
+    args = ([0.1, 0.2, 0.3, 0.4],) if name == "tap" else ()
+    result = await mcp.tools[name](*args)
+    image = next(block for block in result if isinstance(block, ImageContent))
+    metadata = image.meta[OBSERVATION_META]
+
+    assert metadata["captured_at"] is None
+    expected = None if name == "screenshot" else 99.0
+    assert metadata["observed_after"] == expected
+    assert base64.b64decode(image.data) == jpeg
+    assert result[-1] == listing
+    # The transmitted evidence can be read without changing LLM content.
+    observation = read_observation(
+        [
+            {
+                "type": "image",
+                "data": image.data,
+                "mime_type": image.mime_type,
+                "_meta": image.meta,
+            },
+            {"type": "text", "text": listing},
+        ]
+    )
+    assert observation.observed_after == expected
+
+
+@pytest.mark.asyncio
+async def test_observation_timing_does_not_mutate_shared_metadata(
+    observation_blocks, mocker
+) -> None:
+    original = observation_blocks()[0]
+    metadata = original["_meta"][OBSERVATION_META]
+    mocker.patch.object(tools_mod, "time").time.return_value = 100.0
+    image = ImageContent(
+        type="image",
+        data=original["data"],
+        mimeType="image/jpeg",
+        _meta={OBSERVATION_META: metadata, "other": {"value": 1}},
+    )
+
+    @tools_mod._boundary
+    async def camera_view():
+        return [image]
+
+    result = await camera_view()
+    assert metadata["observed_after"] is None
+    assert result[0].meta[OBSERVATION_META]["observed_after"] == 99.0
+    assert result[0].meta["other"] == {"value": 1}
 
 
 # ---------- tap / double_tap / long_press ----------

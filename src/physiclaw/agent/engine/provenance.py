@@ -23,6 +23,7 @@ class ProducedTurn:
     message: AssistantMessage
     binding: PluginBinding
     elapsed_ms: int = 0
+    expires_at: float | None = None
 
     @property
     def producer(self) -> TurnProducer:

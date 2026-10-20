@@ -270,9 +270,13 @@ for i in range(15):
     usage = json.loads(cli("abc123", "--usage", "--json"))
     assert usage == [
         {
-            k: v
-            for k, v in next(e for e in events if e["event"] == "usage").items()
-            if k not in ("event", "t")
+            "api_kind": "chat",
+            "usage_missing": False,
+            **{
+                k: v
+                for k, v in next(e for e in events if e["event"] == "usage").items()
+                if k not in ("event", "t")
+            },
         }
     ]
     assert "test/model" in cli("abc123", "--usage")

@@ -400,27 +400,32 @@ def test_decision_config_set_and_unset(tmp_path) -> None:
     assert config.load(path).decision.model == ""
 
 
-def test_decision_mode_and_model_can_be_edited_in_either_order(tmp_path) -> None:
+@pytest.mark.parametrize("mode", ["shadow", "active"])
+def test_decision_mode_and_model_can_be_edited_in_either_order(tmp_path, mode) -> None:
     path = tmp_path / "config.toml"
-    config.set_dotted("decision.mode", "shadow", path)
+    config.set_dotted("decision.mode", mode, path)
     assert config.load(path).decision.model == ""
     config.set_dotted("decision.model", "vendor/model", path)
-    assert config.load(path).decision.mode == "shadow"
+    assert config.load(path).decision.mode == mode
     assert config.unset_dotted("decision.model", path)
-    assert config.load(path).decision == config.DecisionConfig(mode="shadow")
+    assert config.load(path).decision == config.DecisionConfig(mode=mode)
 
 
-@pytest.mark.parametrize("mode", ["active", "enabled", "SHADOW", "", " shadow "])
+@pytest.mark.parametrize("mode", ["enabled", "SHADOW", "", " shadow "])
 def test_decision_mode_rejects_unknown_load_and_set(tmp_path, mode) -> None:
     path = tmp_path / "config.toml"
     path.write_text(f'[decision]\nmode = "{mode}"\n', encoding="utf-8")
 
-    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
+    with pytest.raises(
+        config.ConfigError, match="mode: expected 'off', 'shadow' or 'active'"
+    ):
         config.load(path)
 
     original = '[decision]\nmodel = "vendor/model"\nmode = "off"\n'
     path.write_text(original, encoding="utf-8")
-    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
+    with pytest.raises(
+        config.ConfigError, match="mode: expected 'off', 'shadow' or 'active'"
+    ):
         config.set_dotted("decision.mode", mode, path)
 
     assert path.read_text(encoding="utf-8") == original
@@ -429,8 +434,10 @@ def test_decision_mode_rejects_unknown_load_and_set(tmp_path, mode) -> None:
 def test_decision_invalid_mode_does_not_create_config(tmp_path) -> None:
     path = tmp_path / "absent" / "config.toml"
 
-    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
-        config.set_dotted("decision.mode", "active", path)
+    with pytest.raises(
+        config.ConfigError, match="mode: expected 'off', 'shadow' or 'active'"
+    ):
+        config.set_dotted("decision.mode", "enabled", path)
 
     assert not path.exists()
 
@@ -456,7 +463,7 @@ def test_to_toml_emits_header_and_section_comments_when_with_comments() -> None:
     assert out.startswith("# PhysiClaw config.")
     assert "# Timeouts for `physiclaw server --warm-start`" in out
     assert "# API model selection." in out
-    assert "# Decision model selection and test-only shadow evaluation." in out
+    assert "# Decision model selection and optional execution." in out
     assert "`mode = 'off'` skips projection and inference." in out
     assert "`mode = 'shadow'` evaluates in the background" in out
 

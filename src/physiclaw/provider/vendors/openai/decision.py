@@ -26,7 +26,7 @@ from physiclaw.provider.decision.wire import (
 )
 from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
-    ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 
@@ -133,7 +133,7 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
             if name in parsed:
                 raise ValueError("duplicate question answer")
             if answer.get("type") == "refusal":
-                raise ProviderPermanentError("OpenAI decision refused")
+                raise ProviderRequestError("OpenAI decision refused")
             if answer.get("type") != "choice":
                 raise ValueError("expected Choice answer")
             raw = answer.get("probabilities")

@@ -12,6 +12,7 @@ import pytest
 from physiclaw.contract.dto import UserMessage
 from physiclaw.provider import (
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
     make_chat_provider,
     make_decision_provider,
@@ -204,17 +205,23 @@ async def test_invalid_choice_responses(provider, decision_request, respx_mock, 
         await provider.evaluate(decision_request, deadline=deadline())
 
 
-async def test_refusal_never_calls_chat(provider, decision_request, respx_mock):
+async def test_refusal_rejects_request_without_disabling_provider(
+    provider, decision_request, respx_mock
+):
     route = respx_mock.post(URL).respond(
         json={
             "model": "gpt-6-luna",
             "answers": [{"type": "refusal", "name": "next_action"}],
         }
     )
-    with pytest.raises(ProviderPermanentError, match="refused"):
+    with pytest.raises(ProviderRequestError, match="refused"):
         await provider.evaluate(decision_request, deadline=deadline())
     assert route.call_count == 1
     assert len(respx_mock.calls) == 1
+    route.respond(json=answer())
+    result = await provider.evaluate(decision_request, deadline=deadline())
+    assert result.request_id == decision_request.id
+    assert all(call.request.url.path == "/v1/decisions" for call in respx_mock.calls)
 
 
 @pytest.mark.parametrize(
@@ -269,6 +276,6 @@ async def test_question_limit_precedes_http(provider, decision_request, respx_mo
             replace(decision_request.questions[0], id=f"q{i}") for i in range(201)
         ),
     )
-    with pytest.raises(ProviderPermanentError, match="200 questions"):
+    with pytest.raises(ProviderRequestError, match="200 questions"):
         await provider.evaluate(request, deadline=deadline())
     assert not respx_mock.calls

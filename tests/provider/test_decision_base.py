@@ -14,7 +14,7 @@ from physiclaw.contract.decision import (
 from physiclaw.provider import BaseAPIProvider, BaseChatProvider, BaseDecisionProvider
 from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
-    ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
@@ -138,8 +138,10 @@ async def test_generic_base_rejects_non_result(provider, decision_request, monke
         await provider.evaluate(decision_request, deadline=deadline())
 
 
-async def test_capability_gates_precede_adapter_call(provider, image_decision_request):
-    with pytest.raises(ProviderPermanentError, match="does not support images"):
+async def test_capability_gates_reject_only_current_request(
+    provider, image_decision_request, decision_request
+):
+    with pytest.raises(ProviderRequestError, match="does not support images"):
         await provider.evaluate(image_decision_request, deadline=deadline())
     request = replace(
         image_decision_request,
@@ -153,9 +155,12 @@ async def test_capability_gates_precede_adapter_call(provider, image_decision_re
             ),
         ),
     )
-    with pytest.raises(ProviderPermanentError, match="at most 2 choices"):
+    with pytest.raises(ProviderRequestError, match="at most 2 choices"):
         await provider.evaluate(request, deadline=deadline())
     assert not provider.requests
+    result = await provider.evaluate(decision_request, deadline=deadline())
+    assert result.request_id == decision_request.id
+    assert len(provider.requests) == 1
 
 
 def test_decision_model_is_explicit_even_with_model_env(monkeypatch):

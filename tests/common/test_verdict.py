@@ -64,3 +64,28 @@ def test_parse_survives_trailing_hint() -> None:
     # verdict marker — parsing must not depend on the marker being last.
     text = "Tapped at bbox [...] | screen: no visible change — `peek` to verify"
     assert verdict.parse(text) is False
+
+
+@pytest.mark.parametrize(
+    "tool,text,expected",
+    [
+        (
+            "sequence",
+            "1 tap ok — tapped\n2 swipe FAIL (arm busy)\n3 tap FAIL (not reached)",
+            "2 swipe FAIL (arm busy)",
+        ),
+        (
+            "run_macro",
+            "macro checkout: ABORTED at step 2/4 (check failed) — steps 1-1 executed\nview",
+            "macro checkout: ABORTED at step 2/4 (check failed) — steps 1-1 executed",
+        ),
+        ("run_macro", "macro checkout: complete\nmacro x: ABORTED at step 1/2", None),
+        ("sequence", "1 tap ok — text containing 2 swipe FAIL (arm busy)", None),
+        ("tap", "2 swipe FAIL (arm busy)", None),
+        ("run_macro", "", None),
+    ],
+)
+def test_failure_line_preserves_only_supported_core_failure_markers(
+    tool, text, expected
+):
+    assert verdict.failure_line(tool, text) == expected

@@ -202,6 +202,67 @@ async def test_list_tools_asserts_session_entered() -> None:
 # ---------- call_tool ----------
 
 
+@pytest.mark.parametrize("now", [10.0, 11.0])
+async def test_expired_call_does_not_send_to_mcp(
+    patched_transport, monkeypatch, now
+) -> None:
+    monkeypatch.setattr(mcp_tool, "monotonic", lambda: now)
+
+    async with mcp_tool.McpClient() as client:
+        with pytest.raises(mcp_tool.ToolCallExpired):
+            await client.call_tool("tap", expires_at=10.0)
+
+    patched_transport.call_tool.assert_not_awaited()
+    patched_transport.initialize.assert_awaited_once()
+
+
+@pytest.mark.parametrize("pending_reconnect", [False, True])
+async def test_expiry_during_reconnect_prevents_tool_send(
+    patched_transport, monkeypatch, pending_reconnect
+) -> None:
+    clock = [10.0]
+    monkeypatch.setattr(mcp_tool, "monotonic", lambda: clock[0])
+
+    async def initialize():
+        clock[0] = 11.0
+        return SimpleNamespace(instructions="fixture")
+
+    async with mcp_tool.McpClient() as client:
+        client._reconnect_pending = pending_reconnect
+        patched_transport.initialize.side_effect = initialize
+        patched_transport.call_tool.side_effect = MCPError(
+            INVALID_REQUEST, "Session not found"
+        )
+
+        with pytest.raises(mcp_tool.ToolCallExpired):
+            await client.call_tool("tap", expires_at=11.0)
+
+    assert patched_transport.initialize.await_count == 2
+    assert patched_transport.call_tool.await_count == (0 if pending_reconnect else 1)
+
+
+async def test_expiry_does_not_discard_a_started_tools_result(
+    patched_transport, monkeypatch
+) -> None:
+    clock = [10.0]
+    monkeypatch.setattr(mcp_tool, "monotonic", lambda: clock[0])
+
+    async def complete(*args, **kwargs):
+        clock[0] = 12.0
+        await asyncio.sleep(0)
+        return SimpleNamespace(
+            content=[TextContent(type="text", text="tap completed")],
+            is_error=False,
+        )
+
+    patched_transport.call_tool.side_effect = complete
+    async with mcp_tool.McpClient() as client:
+        result = await client.call_tool("tap", {"bbox": [0, 0, 1, 1]}, expires_at=11.0)
+
+    assert result == [{"type": "text", "text": "tap completed"}]
+    patched_transport.call_tool.assert_awaited_once_with("tap", {"bbox": [0, 0, 1, 1]})
+
+
 @pytest.mark.asyncio
 async def test_call_tool_normalizes_text_blocks(patched_transport) -> None:
     patched_transport.call_tool.return_value = SimpleNamespace(

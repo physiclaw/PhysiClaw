@@ -434,7 +434,7 @@ async def test_cancellation_during_plugin_dispatch_clears_its_authority(mocker):
     source.advance.return_value = ProposedTurn(_asst(tool_calls=[_tc("peek")]))
     session = Session()
 
-    async def cancel(_name, _args):
+    async def cancel(_name, _args, *, expires_at=None):
         assert session.active_plugin is not None
         assert session.active_plugin.id == "selected"
         raise asyncio.CancelledError

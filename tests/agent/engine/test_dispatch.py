@@ -115,7 +115,7 @@ async def test_normal_output_shows_intent_and_the_call_once_without_a_result_dum
         return [{"type": "text", "text": "raw screen listing " * 100}]
 
     class Server:
-        async def call_tool(self, name, arguments):
+        async def call_tool(self, name, arguments, *, expires_at=None):
             assert name == "tap"
             return await tap(**arguments)
 
@@ -264,8 +264,12 @@ async def test_tool_outcomes_preserve_useful_notices_without_success_dumps(
         mcp=mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks)),
         schema_by_name={name: {}},
     )
+    observer = SimpleNamespace(observe=mocker.Mock(return_value=None))
+    run.policies.result_observers = [observer]
+    session = Session()
+    call = _tc(name)
     with caplog.at_level(logging.INFO):
-        result = await dispatch(run, Session(), _tc(name), 1)
+        result = await dispatch(run, session, call, 1)
     records = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
     assert len(records) == (1 if notice else 0)
     if notice:
@@ -273,7 +277,7 @@ async def test_tool_outcomes_preserve_useful_notices_without_success_dumps(
         assert notice in TaggedFormatter("runtime", False, verbose=False).format(record)
         assert record.levelno == (logging.WARNING if failed else logging.INFO)
         assert record.event == ("tool.failed" if failed else "tool.completed")
-    # Presentation must not rewrite the result/observer contract.
+    # A partial failure is evidence in a normal tool reply, not a transport error.
     assert result.is_error is False
     assert action in str(result.content)
     event = next(
@@ -282,6 +286,11 @@ async def test_tool_outcomes_preserve_useful_notices_without_success_dumps(
         if c.args[0]["event"] == "tool_result"
     )
     assert action in event["blocks"]
+    assert event["is_error"] is False
+    observer.observe.assert_called_once_with(
+        session, call, changed=event["changed"], failed=False
+    )
+    assert session.facts.events[-1].is_error is False
 
 
 @pytest.mark.parametrize("name", ["run_macro", "sequence", "tap"])
@@ -308,7 +317,38 @@ async def test_screen_text_cannot_forge_a_terminal_failure_or_unchanged_notice(
     with caplog.at_level(logging.INFO):
         result = await dispatch(run, Session(), _tc(name), 1)
     assert not [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
+    assert not result.is_error
     assert forged in str(result.content)
+
+
+@pytest.mark.parametrize("macro_ok", [True, False])
+async def test_macro_outcome_metadata_preserves_normal_reply_and_factual_receipts(
+    mocker, macro_ok
+):
+    from physiclaw.macros.model import MACRO_OK_META
+
+    action = "Macro result | screen: changed"
+    blocks = [{"type": "text", "text": action, "_meta": {MACRO_OK_META: macro_ok}}]
+    observer = SimpleNamespace(observe=mocker.Mock(return_value=None))
+    run = _mk_run(
+        mcp=mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks)),
+        schema_by_name={"run_macro": {}},
+    )
+    run.policies.result_observers = [observer]
+    session = Session()
+    call = _tc("run_macro")
+
+    result = await dispatch(run, session, call, 0)
+
+    assert result.is_error is False
+    assert action in str(result.content)
+    observer.observe.assert_called_once_with(session, call, changed=True, failed=False)
+    receipt = session.facts.events[-1]
+    assert receipt.is_error is False
+    assert receipt.executed
+    assert receipt.changed is True
+    assert receipt.result_text == action
+    assert receipt.result_blocks[0]["_meta"][MACRO_OK_META] is macro_ok
 
 
 @pytest.mark.asyncio
@@ -467,7 +507,7 @@ async def test_dispatch_local_text_event_carries_elapsed_without_verdict() -> No
 
 
 @pytest.mark.asyncio
-async def test_dispatch_tool_error_event_carries_elapsed() -> None:
+async def test_dispatch_tool_error_event_carries_call_identity_and_elapsed() -> None:
     schema = {"name": "physiclaw__tap", "input_schema": {"type": "object"}}
 
     class BadMcp:
@@ -476,11 +516,14 @@ async def test_dispatch_tool_error_event_carries_elapsed() -> None:
 
     run = _mk_run(mcp=BadMcp(), schema_by_name={"physiclaw__tap": schema})
 
-    await dispatch(run, Session(), _tc("physiclaw__tap"), 0)
+    call = _tc("physiclaw__tap", {"bbox": [0.1, 0.2, 0.3, 0.4]})
+    await dispatch(run, Session(), call, 0)
 
     traced = [c.args[0] for c in run.tr.write.call_args_list]
     ev = next(e for e in traced if e.get("event") == "tool_error")
     assert isinstance(ev["elapsed_ms"], int) and ev["elapsed_ms"] >= 0
+    assert ev["id"] == call.id
+    assert ev["arguments"] == call.arguments
 
 
 @pytest.mark.asyncio
@@ -578,7 +621,7 @@ class VerdictMcpClient:
         self.listing = listing
         self.tool_calls: list[tuple] = []
 
-    async def call_tool(self, name, arguments):
+    async def call_tool(self, name, arguments, *, expires_at=None):
         self.tool_calls.append((name, arguments))
         blocks = [{"type": "text", "text": self.text}]
         if self.listing is not None:

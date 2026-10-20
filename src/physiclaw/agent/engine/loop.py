@@ -91,7 +91,9 @@ async def _drive(run: EngineRun, session: Session, state: _LoopState) -> None:
         # record of the producer is set, so the two cannot disagree.
         set_tag_accent(PLAYBOOK_ACCENT if produced.presentation == "playbook" else None)
         try:
-            successful_calls = await _dispatch_turn(run, session, asst, turn)
+            successful_calls = await _dispatch_turn(
+                run, session, asst, turn, expires_at=produced.expires_at
+            )
         finally:
             session.active_plugin = None
         if session.budget_exhausted:
@@ -176,6 +178,8 @@ async def _dispatch_turn(
     session: Session,
     asst: AssistantMessage,
     turn: int,
+    *,
+    expires_at: float | None = None,
 ) -> list[ToolCall]:
     """Run the turn's tool_calls — principle 6: exactly one ToolResult per
     ToolCall, in order, in the very next messages. Flags a length-truncation
@@ -198,7 +202,7 @@ async def _dispatch_turn(
             return successful_calls
         context = bind_log_context(tool=call.name, tool_call_id=call.id)
         try:
-            result = await dispatch(run, session, call, turn)
+            result = await dispatch(run, session, call, turn, expires_at=expires_at)
         finally:
             reset_log_context(context)
         if not result.is_error:
@@ -297,6 +301,8 @@ def _proposed_message(
                     raise ValueError(
                         "proposal cannot use another plugin's private macro"
                     )
+    if proposal.expires_at is not None and time.monotonic() >= proposal.expires_at:
+        raise ValueError("proposal has expired")
     return message
 
 
@@ -317,7 +323,10 @@ async def _advance(
                     proposal, runtime_input, private_macros=binding.private_macros
                 )
                 return ProducedTurn(
-                    message, binding, int((time.perf_counter() - started) * 1000)
+                    message,
+                    binding,
+                    int((time.perf_counter() - started) * 1000),
+                    proposal.expires_at,
                 )
         except Exception:
             log.exception("producer %s failed — trying the next slot", binding.id)
@@ -355,6 +364,7 @@ async def _call_producer(
             "response_id": asst.response_id,
             "response_model": asst.response_model,
             "elapsed_ms": produced.elapsed_ms,
+            "expires_at": produced.expires_at,
             "tool_calls": [
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in asst.tool_calls

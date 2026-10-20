@@ -152,7 +152,7 @@ async def test_four_pipeline_configurations_preserve_baseline_requests_and_actio
         provider = CaptureProvider(([peek] if not history_enabled else []) + [closing])
         physical_calls = []
 
-        async def call_tool(name, arguments):
+        async def call_tool(name, arguments, *, expires_at=None):
             physical_calls.append((name, deepcopy(arguments)))
             return observation_blocks()
 

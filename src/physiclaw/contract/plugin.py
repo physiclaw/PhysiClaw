@@ -27,6 +27,7 @@ plugin. No plugin receives another producer's conversation or reasoning.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -79,9 +80,13 @@ class SessionChatProvider(Protocol):
 
 
 class EventSink(Protocol):
-    """`Trace.write`-shaped: one structured event into events.jsonl."""
+    """Persist one structured event and its attachments; acknowledge success.
 
-    def write(self, event: dict) -> None: ...
+    A false result leaves persistence unknown or incomplete. Ordinary callers
+    may ignore the acknowledgement; consumers requiring evidence must check it.
+    """
+
+    def write(self, event: dict) -> bool: ...
 
 
 class WireSink(Protocol):
@@ -145,21 +150,37 @@ class TurnPlugin(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ProposedTurn:
-    """Tool calls with optional observation/target evidence, checked by the host."""
+    """Tool calls with optional evidence and a host-monotonic start deadline.
+
+    ``expires_at`` limits when each tool call may start. It does not cancel an
+    action already in progress. Unset expiry leaves normal execution unchanged.
+    """
 
     message: AssistantMessage
     observation_id: str | None = None
     targets: Mapping[str, str] = field(default_factory=dict)
+    expires_at: float | None = None
 
     def __post_init__(self) -> None:
         if self.observation_id is not None and (
             not isinstance(self.observation_id, str) or not self.observation_id
         ):
             raise ValueError("a bound proposal must reference its observation")
+        if self.expires_at is not None and (
+            type(self.expires_at) not in (int, float)
+            or not math.isfinite(self.expires_at)
+        ):
+            raise ValueError("proposal expiry must be finite monotonic time")
         object.__setattr__(self, "targets", MappingProxyType(dict(self.targets)))
 
     @classmethod
-    def from_action(cls, action: ActionCandidate, observation_id: str) -> ProposedTurn:
+    def from_action(
+        cls,
+        action: ActionCandidate,
+        observation_id: str,
+        *,
+        expires_at: float | None = None,
+    ) -> ProposedTurn:
         """Bind one selected action to a fresh local tool-call ID."""
         if action.tool is None:
             raise ValueError("a proposal must contain an executable action")
@@ -176,6 +197,7 @@ class ProposedTurn:
             targets={call_id: action.target_ref}
             if action.target_ref is not None
             else {},
+            expires_at=expires_at,
         )
 
 

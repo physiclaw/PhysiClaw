@@ -43,6 +43,7 @@ from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
     ProviderError,
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 
@@ -116,6 +117,12 @@ def test_provider_permanent_error_is_provider_error_subclass() -> None:
 def test_transient_and_permanent_are_distinct() -> None:
     assert not issubclass(ProviderTransientError, ProviderPermanentError)
     assert not issubclass(ProviderPermanentError, ProviderTransientError)
+
+
+def test_request_error_does_not_imply_provider_failure() -> None:
+    assert issubclass(ProviderRequestError, ProviderError)
+    assert not issubclass(ProviderRequestError, ProviderPermanentError)
+    assert not issubclass(ProviderRequestError, ProviderTransientError)
 
 
 # ---------- Protocol & constants ----------
@@ -688,8 +695,9 @@ class _Sink:
     def __init__(self) -> None:
         self.events: list[dict] = []
 
-    def write(self, event: dict) -> None:
+    def write(self, event: dict) -> bool:
         self.events.append(event)
+        return True
 
 
 class _UsageProvider(_TestProvider):
@@ -713,7 +721,7 @@ class _UsageProvider(_TestProvider):
 
 
 class _BrokenSink:
-    def write(self, event: dict) -> None:
+    def write(self, event: dict) -> bool:
         raise OSError("trace disk full")
 
 

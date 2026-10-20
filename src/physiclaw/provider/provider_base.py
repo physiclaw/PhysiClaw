@@ -19,6 +19,10 @@ class ProviderPermanentError(ProviderError):
     """4xx (except 429) — retries will keep failing, fail fast."""
 
 
+class ProviderRequestError(ProviderError):
+    """This request is unsupported or refused; other requests may succeed."""
+
+
 class ProviderConfigurationError(RuntimeError):
     """Local provider setup needs correction before the runtime can run."""
 

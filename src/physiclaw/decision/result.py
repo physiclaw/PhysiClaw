@@ -1,10 +1,10 @@
-"""Interpret a shadow response without authorizing or executing an action.
+"""Interpret responses and gate proposals without executing actions.
 
-An offered gesture and target can form a valid tuple and still be the wrong
-thing to do. Raw proposals and threshold diagnostics remain separate so a
-local rejection cannot hide a model mistake. Neither authorizes execution.
+Raw proposals remain separate from probability gates so a local rejection
+cannot hide a model mistake. Probability floors are not proof of safety.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 from physiclaw.contract.decision import (
@@ -18,7 +18,7 @@ from physiclaw.decision.policy import REVIEW_TOOLS
 
 
 @dataclass(frozen=True, slots=True)
-class ShadowInterpretation:
+class DecisionInterpretation:
     reason: str
     action: ActionCandidate | None = None
 
@@ -34,8 +34,8 @@ class ShadowInterpretation:
 
 
 @dataclass(frozen=True, slots=True)
-class ShadowThresholds:
-    """Explicit probability floors for a diagnostic, not calibrated acceptance."""
+class ProbabilityThresholds:
+    """Independent probability floors; these are not calibrated guarantees."""
 
     phase: float
     action_type: float
@@ -48,7 +48,7 @@ class ShadowThresholds:
             or not 0 <= value <= 1
             for value in self.to_dict().values()
         ):
-            raise ValueError("shadow probability thresholds must be within [0, 1]")
+            raise ValueError("probability thresholds must be within [0, 1]")
 
     def to_dict(self) -> dict[str, float]:
         return {
@@ -58,23 +58,40 @@ class ShadowThresholds:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class DecisionAssessment:
+    interpretation: DecisionInterpretation
+    threshold_gate: dict
+
+    @property
+    def action(self) -> ActionCandidate | None:
+        if self.threshold_gate["status"] == "passed":
+            return self.interpretation.action
+        return None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "interpretation": self.interpretation.to_dict(),
+            "threshold_gate": deepcopy(self.threshold_gate),
+        }
+
+
 def assess(
     request: DecisionRequest,
     result: DecisionResult,
     *,
-    thresholds: ShadowThresholds,
-) -> dict:
-    """Retain raw interpretation and measure a separate, uncalibrated probe.
+    thresholds: ProbabilityThresholds,
+) -> DecisionAssessment:
+    """Retain raw interpretation and apply separate probability gates.
 
     All questions must meet their own floor and have a unique winner.
-    Missing distributions fail the probe; vendor confidence is not a
+    Missing distributions fail the gate; vendor confidence is not a
     substitute. Scores are neither averaged nor multiplied into a supposed
     probability that the complete action is correct.
     """
     interpretation = interpret(request, result)
     floors = thresholds.to_dict()
-    probe: dict = {
-        "purpose": "shadow_diagnostic",
+    gate: dict = {
         "calibrated": False,
         "status": "not_applicable",
         "thresholds": floors,
@@ -88,7 +105,7 @@ def assess(
             probabilities = answer.probabilities
             if probabilities is None:
                 missing = True
-                probe["failed_checks"].append(name)
+                gate["failed_checks"].append(name)
                 continue
             selected = probabilities[answer.selected_id]
             runner_up = max(
@@ -96,31 +113,30 @@ def assess(
                 for choice, value in probabilities.items()
                 if choice != answer.selected_id
             )
-            probe["scores"][name] = {
+            gate["scores"][name] = {
                 "selected_probability": selected,
                 "runner_up_probability": runner_up,
                 "margin": selected - runner_up,
             }
             if selected < floor or selected <= runner_up:
-                probe["failed_checks"].append(name)
+                gate["failed_checks"].append(name)
         if missing:
-            probe["status"] = "missing_scores"
-        elif probe["failed_checks"]:
-            probe["status"] = "fails_probe"
+            gate["status"] = "missing_scores"
+        elif gate["failed_checks"]:
+            gate["status"] = "failed"
         else:
-            probe["status"] = "passes_probe"
-    return {
-        "interpretation": interpretation.to_dict(),
-        "threshold_probe": probe,
-    }
+            gate["status"] = "passed"
+    return DecisionAssessment(interpretation, gate)
 
 
-def interpret(request: DecisionRequest, result: DecisionResult) -> ShadowInterpretation:
+def interpret(
+    request: DecisionRequest, result: DecisionResult
+) -> DecisionInterpretation:
     """Bind answers to the original request and resolve only local geometry."""
     try:
         result.validate_for(request)
     except ValueError:
-        return ShadowInterpretation("invalid_result")
+        return DecisionInterpretation("invalid_result")
 
     choices = {
         question.id: {choice.id: choice for choice in question.candidates}
@@ -143,7 +159,7 @@ def interpret(request: DecisionRequest, result: DecisionResult) -> ShadowInterpr
             for choice in question.candidates
         )
     ):
-        return ShadowInterpretation("invalid_profile")
+        return DecisionInterpretation("invalid_profile")
 
     for target_id, choice in choices["target"].items():
         if target_id == "NONE":
@@ -156,27 +172,27 @@ def interpret(request: DecisionRequest, result: DecisionResult) -> ShadowInterpr
             or str(int(index)) != index
             or choice.target_ref != f"{request.context.observation_id}:{index}"
         ):
-            return ShadowInterpretation("invalid_profile")
+            return DecisionInterpretation("invalid_profile")
 
     if result.answers["phase"].selected_id != "ROUTINE":
-        return ShadowInterpretation("non_routine")
+        return DecisionInterpretation("non_routine")
     gesture = result.answers["action_type"].selected_id
     if gesture == "YIELD":
-        return ShadowInterpretation("model_yield")
+        return DecisionInterpretation("model_yield")
     target_id = result.answers["target"].selected_id
     if target_id == "NONE":
-        return ShadowInterpretation("no_target")
+        return DecisionInterpretation("no_target")
 
     target = choices["target"][target_id]
     if target.target_ref in blocked_controls(request.context):
-        return ShadowInterpretation("consequential_control")
+        return DecisionInterpretation("consequential_control")
     # DecisionRequest already binds target refs to the original observation.
     element = next(
         element
         for element in (*request.context.ocr, *request.context.icons)
         if element.ref == target.target_ref
     )
-    return ShadowInterpretation(
+    return DecisionInterpretation(
         "hypothetical_action",
         ActionCandidate(
             id=target_id,

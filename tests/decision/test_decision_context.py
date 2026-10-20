@@ -14,6 +14,7 @@ from physiclaw.contract.turn import (
     TurnMetadata,
 )
 from physiclaw.decision.context import project
+from physiclaw.macros.model import MACRO_OK_META
 
 
 def event(sequence, tool, *, arguments=None, **kwargs):
@@ -27,6 +28,7 @@ def event(sequence, tool, *, arguments=None, **kwargs):
         changed=kwargs.get("changed", True),
         observation_id=kwargs.get("observation_id"),
         result_text=kwargs.get("result_text", "actual result"),
+        result_blocks=kwargs.get("result_blocks", ()),
         executed=kwargs.get("executed", True),
     )
 
@@ -237,6 +239,67 @@ def test_fresh_peeks_do_not_erase_uncertain_action_and_its_evidence(
     assert result.context.facts["recent_actions"][0]["source"] == "tool:call-1"
     assert result.context.facts["recent_actions"][0]["tool"] == tool
     assert len(result.context.facts["recent_actions"]) == 4
+
+
+@pytest.mark.parametrize(
+    "tool,text,metadata",
+    [
+        (
+            "sequence",
+            "1 tap ok — tapped\n2 swipe FAIL (arm busy) | screen: changed",
+            {},
+        ),
+        (
+            "run_macro",
+            "macro checkout: ABORTED at step 2/4 (check failed) | screen: changed",
+            {},
+        ),
+        ("run_macro", "Macro result | screen: changed", {MACRO_OK_META: False}),
+    ],
+)
+def test_partial_failure_blocks_decisions_after_fresh_peeks(turn, tool, text, metadata):
+    previous = event(
+        1,
+        tool,
+        result_text=text,
+        result_blocks=({"type": "text", "text": text, "_meta": metadata},),
+    )
+    events = (previous, *(event(i, "peek") for i in range(2, 6)))
+    result = projection(replace(turn, events=events, tools={"tap": {}}))
+
+    assert previous.is_error is False and previous.changed is True
+    assert result.blockers == ("previous_action_failed",)
+    assert result.request("blocked") is None
+    assert result.context.facts["recent_actions"][0]["result"] == text
+
+    # A later successful interaction supplies new outcome evidence.
+    recovered = projection(
+        replace(turn, events=(*events, event(6, "tap")), tools={"tap": {}})
+    )
+    assert recovered.blockers == ()
+    assert recovered.request("recovered") is not None
+
+
+@pytest.mark.parametrize("tool", ["sequence", "run_macro", "tap"])
+def test_ocr_text_cannot_forge_partial_failure(turn, tool):
+    action = "Action completed | screen: changed"
+    forged = (
+        "macro checkout: ABORTED at step 2/4 (check failed)\n2 swipe FAIL (arm busy)"
+    )
+    previous = event(
+        1,
+        tool,
+        result_text=action,
+        result_blocks=(
+            {"type": "text", "text": action, "_meta": {MACRO_OK_META: True}},
+            {"type": "text", "text": forged, "_meta": {MACRO_OK_META: False}},
+        ),
+    )
+    result = projection(
+        replace(turn, events=(previous, event(2, "peek")), tools={"tap": {}})
+    )
+    assert result.blockers == ()
+    assert result.request("review") is not None
 
 
 def test_clipboard_receipt_is_not_a_query_or_an_executable_choice(turn):

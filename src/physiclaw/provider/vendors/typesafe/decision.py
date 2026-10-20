@@ -30,7 +30,7 @@ from physiclaw.provider.decision.wire import (
 )
 from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
-    ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 
@@ -145,16 +145,16 @@ class TypeSafeDecisionProvider(BaseDecisionProvider):
         frame = request.context.frame
         if frame is not None:
             if not (280 <= frame.width <= 1568 and 280 <= frame.height <= 1568):
-                raise ProviderPermanentError(
+                raise ProviderRequestError(
                     "TypeSafe image dimensions must be within [280, 1568]"
                 )
             if len(frame.data) > 16 * 1024 * 1024:
-                raise ProviderPermanentError("TypeSafe image exceeds 16 MiB")
+                raise ProviderRequestError("TypeSafe image exceeds 16 MiB")
         encoded = json.dumps(
             self._body(request), ensure_ascii=False, allow_nan=False
         ).encode("utf-8")
         if len(encoded) + (len(frame.data) if frame else 0) > 32 * 1024 * 1024 - 4096:
-            raise ProviderPermanentError(
+            raise ProviderRequestError(
                 "TypeSafe request exceeds 32 MiB with multipart overhead"
             )
         timeout = min(self._timeout, self._remaining(deadline))

@@ -140,16 +140,37 @@ in the `env` event / `summary.json.env.utc_offset`.
   decision attempt, its elapsed_ms and native usage; no chat token fold),
   `decision_projection` (local-only preparation: copied task/active step,
   recent action receipts, same-frame OCR/icons, image identity/hash and
-  conservative review instructions; shadow scheduling/skip status links its
-  exact questions to a request ID). Optional shadow `decision_call` events
-  record original turn/observation, answers, hypothetical action or yield,
-  timings and reported usage, never execution. Unknown usage stays null,
+  conservative review instructions; `mode`, `limits` and `evaluation`
+  scheduling/skip status link exact questions to a request ID). Scheduled
+  projections also carry `image {path, sha256}` for the exact decision input
+  bytes, independently of chat image resizing; a missing file stays unknown.
+  `decision_call` records original turn/observation, answers, raw
+  `interpretation`, a separate uncalibrated `threshold_gate`, `view_issue`,
+  timings and reported usage. Active proposals include `proposal_call_id`
+  for joining the host's response/tool-result events; a proposal is not
+  evidence of execution or task completion. Unknown usage stays null,
   including failures whose provider returned no usable usage. Scheduled work
-  cancelled before it starts has no API-attempt event. `decision_shadow_skipped`
-  records expired work or client construction failure; `decision_shadow_disabled`
+  cancelled before it starts has no API-attempt event. `decision_skipped`
+  records expired work or client construction failure; `decision_disabled`
   records missing or invalid model configuration. With `[decision] mode = "off"`,
-  the plugin bypasses projection and inference. Shadow calls add cost; they do not
-  establish actual savings, calibrated accuracy or counterfactual recovery,
+  the plugin bypasses projection and inference. Shadow always yields; active
+  waits for its own current request and proposes only a locally bound tap.
+  Both use the same probability and view-age gates. Active also requires
+  evidence of change after its previous action and yields after three
+  consecutive proposals. Failed trace writes disable decision calls for the
+  session and leave the turn to the next producer. Permanent provider failures
+  also disable this session; temporary failures impose a five-second cooldown.
+  Request-specific rejection only yields that request. A failed `decision_call`
+  records `suppression` as `session`, `cooldown` or `request`.
+  Active proposals carry a monotonic `expires_at`, checked at acceptance and
+  before each local handler or MCP SDK invocation, including after reconnect.
+  Expiry refuses unstarted calls (`tool_blocked_expired`); started calls finish.
+  This is a host dispatch limit, not a deadline enforced inside the device.
+  The view-age bound includes
+  tool/detection latency and the camera reader's accepted cache age; it is not
+  sensor exposure time or proof that the UI stayed unchanged. Shadow calls add
+  cost; they do not establish actual savings, calibrated accuracy or
+  counterfactual recovery,
   `micro_call` (one conductor decision call: call, node,
   rows the decision saw, out or null when it escalated, confidence,
   detail, attempts, elapsed_ms), `walk` (a conductor walk's terminal moment — the
@@ -163,8 +184,10 @@ in the `env` event / `summary.json.env.utc_offset`.
   class of a failed call, else null); all-zero counts = the provider
   reported no usage; the field names follow the OpenTelemetry GenAI
   conventions' token buckets;
-  `physiclaw logs <sid> --usage` tabulates them),
-  `tool_result` (name, arguments, elapsed_ms, `text` — the result as
+  `physiclaw logs <sid> --usage` tabulates both chat usage and native
+  decision_call usage, keeping API kinds and unknown counts separate),
+  `tool_result` (id, name, arguments, elapsed_ms, is_error — the tool reply's
+  error flag, not proof of action success — and `text` — the result as
   the model received it, whole, a screen's listing included — and
   `images`, the session-relative paths of the frames it carried;
   gesture results also carry `changed`: true/false/null, the camera
@@ -173,6 +196,7 @@ in the `env` event / `summary.json.env.utc_offset`.
   that carried it: app, playbook, after — the action read after —,
   node, verdict — the prose line —, and the same reading as fields:
   kind (match / unknown / ambiguous / occluded) and page),
+  `tool_error` (id, name, arguments, elapsed_ms, error),
   `tool_blocked_no_plan|_layout|_stuck` (engine refused the call),
   `stuck_warning` (loop detector fired), `bad_turn_shape` /
   `*_checkpoint` (turn rejected, corrective sent), `done`
@@ -196,11 +220,11 @@ in the `env` event / `summary.json.env.utc_offset`.
   records, marked `call: "curate"`, with its full prompt, raw reply and timing.
 
 - `images/<HHMMSS>_<mmm>_t<turn>.<ext>` — every frame a tool result
-  carried (typically .jpg), written once when the result arrived: the
+  or exact decision attachment carried (typically .jpg), written once: the
   frames the model saw and the frames a conductor walk read without
-  ever sending them to a model. The name is the local capture time
+  ever sending them to a model. The name is the local file-write time
   (hour-minute-second `_` milliseconds) plus `_t<turn>` = the turn
-  whose tool result carried the frame, so `ls` sorts them in capture
+  whose event carried the frame, so `ls` sorts them in file-write
   order and each links back to its `tool_result` in `events.jsonl`
   (its `images` field) and to any `model.jsonl` request that carried
   it. Example: `104542_123_t20.jpg` = 10:45:42.123, turn 20.
@@ -231,6 +255,35 @@ in the `env` event / `summary.json.env.utc_offset`.
   server logged nothing, was not running, or predates this feature.
 
 ## Analysis tips
+
+Decision review is offline; these commands do not call a model or touch the phone:
+
+```
+physiclaw logs <sid> --usage --json
+physiclaw logs <sid> --decisions --label-template > labels.json
+physiclaw logs <sid> --decisions --labels labels.json --json
+physiclaw logs <sid> --decisions --labels labels.json --rates rates.json --baseline <other-sid> --json
+```
+
+Label from the exported projection and its exact image before inspecting model
+answers. Set each label's `expected` to `tap`, `yield`, or `unknown`; for `tap`,
+list all acceptable original bN IDs in `acceptable_targets`. Null is unlabelled.
+Keep identity, hashes and evidence unchanged. Missing images are unreviewable;
+duplicate/orphan records, missing calls and API failures never become correct
+yields. Raw accuracy, gated action precision and useful tap coverage have separate
+denominators. Execution results and later LLM turns do not prove task success or
+causal recovery. Baselines are side-by-side observed totals, not inferred savings.
+
+Optional rates are supplied by the reviewer, in USD per million tokens:
+`{"chat":{"provider/model":{"input_new":rate,"cache_read":rate,"cache_write":rate,"output":rate}},
+"decision":{"provider/model":{"input":rate,"output":rate}}}`.
+Replace `rate` with the applicable numeric price; no catalog prices are assumed.
+Use the recorded requested model reference and check response_model for aliases.
+Do not add total chat input or reasoning again: they overlap billed buckets.
+`--usage --rates rates.json` also estimates cost. Unknown counts, missing rates
+or incomplete decision traces leave total cost unknown while retaining a known
+subtotal. The live summary's existing usage totals remain chat-only; the offline
+usage/decision reports read both API event types directly.
 
 - Underperforming session? Check `images/` first — bad runs usually
   trace to what the model actually saw, not how it reasoned. Look for

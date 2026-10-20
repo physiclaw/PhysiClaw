@@ -286,10 +286,11 @@ class ConductorConfig:
 
 @dataclass
 class DecisionConfig:
-    """Decision model selection and opt-in shadow evaluation.
+    """Decision model selection and opt-in evaluation or execution.
 
     ``off`` skips projection and inference. ``shadow`` evaluates in the
-    background without executing actions or blocking the LLM.
+    background without blocking the LLM. ``active`` waits for a bounded
+    decision and proposes a tap only when all local gates pass.
     """
 
     model: str = ""
@@ -480,11 +481,13 @@ _SECTION_COMMENTS: dict[str, str] = {
     ),
     "memory": "Daily-log loading: bootstrap preload + on-demand `read_logs` defaults.",
     "decision": (
-        "Decision model selection and test-only shadow evaluation. `model` "
+        "Decision model selection and optional execution. `model` "
         "is a decision `provider/model` ref; setting it does not enable calls. "
         "`mode = 'off'` skips projection and inference. `mode = 'shadow'` "
         "evaluates in the background without retries or executing actions; "
-        "the LLM does not wait for it."
+        "the LLM does not wait for it. `mode = 'active'` waits for a bounded "
+        "decision and proposes a guarded tap; rejection falls through to the LLM. "
+        "Probability floors are provisional, not calibrated safety guarantees."
     ),
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "pitfalls": (
@@ -505,7 +508,7 @@ _SECTION_COMMENTS: dict[str, str] = {
 }
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
-    ("decision", "timeout_seconds"): "positive deadline for one shadow call",
+    ("decision", "timeout_seconds"): "positive deadline for one decision call",
     ("retention", "log_days"): "maximum service-log archive age in days",
     (
         "retention",
@@ -582,9 +585,13 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
                 raise ConfigError(f"[{section}] {key}: expected a positive float")
             return number
     elif isinstance(value, str):
-        if section == "decision" and key == "mode" and value not in {"off", "shadow"}:
+        if (
+            section == "decision"
+            and key == "mode"
+            and value not in {"off", "shadow", "active"}
+        ):
             raise ConfigError(
-                f"[{section}] {key}: expected 'off' or 'shadow', got {value!r}"
+                f"[{section}] {key}: expected 'off', 'shadow' or 'active', got {value!r}"
             )
         return value
     raise ConfigError(

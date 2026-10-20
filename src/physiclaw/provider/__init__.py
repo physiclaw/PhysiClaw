@@ -27,6 +27,7 @@ from physiclaw.provider.provider_base import (
     ProviderConfigurationError,
     ProviderError,
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 from physiclaw.provider.registry import (
@@ -71,6 +72,7 @@ __all__ = [
     "ProviderConfigurationError",
     "ProviderError",
     "ProviderPermanentError",
+    "ProviderRequestError",
     "ProviderTransientError",
     "QwenChatProvider",
     "TypeSafeDecisionProvider",

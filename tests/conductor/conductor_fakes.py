@@ -417,8 +417,9 @@ class Sink:
     def __init__(self) -> None:
         self.events: list[dict] = []
 
-    def write(self, event: dict) -> None:
+    def write(self, event: dict) -> bool:
         self.events.append(event)
+        return True
 
 
 def make_learned(text: str, cx: float, cy: float, *, pos_tol=0.02, variants=()):

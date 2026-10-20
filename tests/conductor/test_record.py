@@ -13,7 +13,7 @@ from physiclaw.conductor.walk.walklog import Outcome
 
 
 class _Broken:
-    def write(self, event: dict) -> None:
+    def write(self, event: dict) -> bool:
         raise OSError("disk gone")
 
 

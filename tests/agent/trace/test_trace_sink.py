@@ -7,10 +7,12 @@ same-turn assignment, or assertions over the current warning roster. Images
 already creates the session directory; the constructor always observes env.
 """
 
+import base64
 import builtins
 import json
 import logging
 from collections import Counter, defaultdict
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -66,6 +68,74 @@ def test_regression_trace_events_preserve_unpaired_surrogates(text):
         encoding="utf-8"
     )
     assert json.loads(records.splitlines()[-1])["error"] == text
+
+
+def test_event_image_preserves_exact_observation_bytes(observation_blocks):
+    from physiclaw.contract.observation import read_observation
+
+    blocks = observation_blocks()
+    observation = read_observation(blocks)
+    assert observation is not None
+    event = {
+        "event": "input_evidence",
+        "turn": 2,
+        "image": {
+            "media_type": observation.frame.media_type,
+            "data_b64": blocks[0]["data"],
+        },
+    }
+    trace = Trace("input-image", Images("input-image"))
+    try:
+        assert trace.write(event) is True
+    finally:
+        trace.close()
+
+    directory = paths.sessions_dir() / "input-image"
+    text = (directory / "events.jsonl").read_text(encoding="utf-8")
+    recorded = json.loads(text.splitlines()[-1])
+    image = recorded["image"]
+    assert image["sha256"] == observation.frame.sha256
+    assert (directory / image["path"]).read_bytes() == observation.frame.data
+    assert set(image) == {"path", "sha256"}
+    assert "data_b64" not in text
+    assert event["image"]["data_b64"] == blocks[0]["data"]
+
+
+@pytest.mark.parametrize("failure", ["invalid_base64", "save_failed"])
+def test_missing_event_image_stays_explicit_without_inline_bytes(mocker, failure):
+    data = base64.b64encode(b"exact frame").decode()
+    images = Images("missing-image")
+    if failure == "invalid_base64":
+        data = "not valid base64!"
+    else:
+        mocker.patch.object(images, "put", return_value="")
+    trace = Trace("missing-image", images)
+    try:
+        assert (
+            trace.write(
+                {
+                    "event": "input_evidence",
+                    "turn": 2,
+                    "image": {"media_type": "image/jpeg", "data_b64": data},
+                }
+            )
+            is False
+        )
+    finally:
+        trace.close()
+
+    text = (paths.sessions_dir() / "missing-image" / "events.jsonl").read_text(
+        encoding="utf-8"
+    )
+    record = json.loads(text.splitlines()[-1])
+    assert record["image"] == {
+        "path": None,
+        "sha256": (
+            None if failure == "invalid_base64" else sha256(b"exact frame").hexdigest()
+        ),
+    }
+    assert data not in text
+    assert "data_b64" not in text
 
 
 @pytest.mark.parametrize("text", ["hello\ud800", "hello\udfff", "你好😀"])
@@ -348,7 +418,7 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
     fault["armed"] = True
 
     try:
-        trace.write(
+        persisted = trace.write(
             {
                 "event": "tool_result",
                 "turn": 0,
@@ -357,7 +427,10 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
                 "text": "noted",
             }
         )
-        trace.write({"event": "request", "turn": 1, "message_count": 2})
+        assert persisted is not (
+            name == "events.jsonl" and operation in {"write", "flush"}
+        )
+        assert trace.write({"event": "request", "turn": 1, "message_count": 2}) is True
     finally:
         trace.close()
 
@@ -368,6 +441,45 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
     assert all(file.closed for file in opened)
     assert summary["turns"] == 2 and summary["tool_calls"] == {"note": 1}
     assert json.loads(events[-1])["event"] == "request"
+
+
+def test_unserializable_event_reports_failure_and_preserves_following_events():
+    trace = Trace("invalid-event", Images("invalid-event"))
+    circular = []
+    circular.append(circular)
+    try:
+        assert trace.write({"event": "evidence", "value": circular}) is False
+        assert trace.write({"event": "request", "turn": 1}) is True
+    finally:
+        trace.close()
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_tool_result_image_failure_is_acknowledged(mocker, raises):
+    from physiclaw.contract.dto import ImageBlock
+
+    images = Images("tool-image-failure")
+    trace = Trace("tool-image-failure", images)
+    mocker.patch.object(
+        images,
+        "put",
+        return_value="",
+        side_effect=OSError("disk full") if raises else None,
+    )
+    try:
+        assert (
+            trace.write(
+                {
+                    "event": "tool_result",
+                    "turn": 0,
+                    "name": "peek",
+                    "blocks": [ImageBlock("image/jpeg", "ZnJhbWU=")],
+                }
+            )
+            is False
+        )
+    finally:
+        trace.close()
 
 
 def test_trace_unavailable_notes_file_does_not_abort_session():

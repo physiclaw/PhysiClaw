@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -30,6 +31,7 @@ from physiclaw.contract.decision import (
     DecisionResult,
 )
 from physiclaw.contract.dto import UserMessage
+from physiclaw.contract.observation import OBSERVATION_META
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.decision.plugin import DecisionPlugin
 
@@ -192,6 +194,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
         ),
     ]
     blocks = observation_blocks()
+    blocks[0]["_meta"][OBSERVATION_META]["observed_after"] = time.time()
     results = []
     for mode in ("disabled", "off", "shadow"):
         monkeypatch.setattr(CONFIG.decision, "model", "fake/shadow")
@@ -270,7 +273,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             settings=_settings(max_turns=5),
         )
         plugin = DecisionPlugin()
-        events = SimpleNamespace(write=mocker.Mock())
+        events = SimpleNamespace(write=mocker.Mock(return_value=True))
         if mode != "disabled":
             await plugin.session_setup(
                 PluginServices(
@@ -290,8 +293,8 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
         assert session.sentinel_status == DONE
         assert session.plan.current_step() == "打开淘宝"
         assert mcp.call_tool.call_args_list == [
-            mocker.call("peek", {}),
-            mocker.call("tap", {"bbox": [0.4, 0.2, 0.8, 0.4]}),
+            mocker.call("peek", {}, expires_at=None),
+            mocker.call("tap", {"bbox": [0.4, 0.2, 0.8, 0.4]}, expires_at=None),
         ]
         results.append(requests)
         if mode == "shadow":

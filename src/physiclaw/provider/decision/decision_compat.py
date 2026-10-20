@@ -23,6 +23,7 @@ from physiclaw.provider.provider_base import (
     BaseAPIProvider,
     ProviderConfigurationError,
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 
@@ -58,7 +59,7 @@ class BaseDecisionProvider(BaseAPIProvider):
             or not isinstance(deadline, (int, float))
             or not math.isfinite(deadline)
         ):
-            raise ProviderPermanentError(
+            raise ProviderRequestError(
                 "decision deadline must be finite monotonic time"
             )
         remaining = deadline - asyncio.get_running_loop().time()
@@ -74,18 +75,18 @@ class BaseDecisionProvider(BaseAPIProvider):
         self._remaining(deadline)
         maximum_questions = self.capabilities.max_questions
         if maximum_questions is not None and len(request.questions) > maximum_questions:
-            raise ProviderPermanentError(
+            raise ProviderRequestError(
                 f"decision provider supports at most {maximum_questions} questions"
             )
         maximum = self.capabilities.max_choices
         if maximum is not None and any(
             len(question.candidates) > maximum for question in request.questions
         ):
-            raise ProviderPermanentError(
+            raise ProviderRequestError(
                 f"decision provider supports at most {maximum} choices per question"
             )
         if request.context.frame is not None and not self.capabilities.images:
-            raise ProviderPermanentError(
+            raise ProviderRequestError(
                 "decision provider/model does not support images"
             )
         started = asyncio.get_running_loop().time()

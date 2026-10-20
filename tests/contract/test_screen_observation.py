@@ -24,6 +24,7 @@ def test_image_and_canonical_elements_share_one_observation(observation_blocks):
     )
     assert observed.coordinate_space == COORDINATE_SPACE
     assert observed.captured_at is None
+    assert observed.observed_after is None
     assert len(observed.ocr) == len(observed.icons) == 1
     assert observed.ocr[0].label == "搜索"
     assert observed.icons[0].label == ""
@@ -44,6 +45,11 @@ def test_image_and_canonical_elements_share_one_observation(observation_blocks):
         ("image_to_screen", [0, 1, 0, 1, 0, 0]),
         ("captured_at", float("nan")),
         ("captured_at", -1),
+        ("observed_after", float("nan")),
+        ("observed_after", float("inf")),
+        ("observed_after", -1),
+        ("observed_after", True),
+        ("observed_after", "100"),
         ("source", "unknown"),
     ],
 )
@@ -52,6 +58,16 @@ def test_rejects_unbound_or_unsupported_view_metadata(observation_blocks, field,
     blocks[0]["_meta"][OBSERVATION_META][field] = value
     with pytest.raises(ValueError):
         read_observation(blocks)
+
+
+def test_observed_after_preserves_lower_bound_without_claiming_capture_time(
+    observation_blocks,
+):
+    blocks = observation_blocks()
+    blocks[0]["_meta"][OBSERVATION_META]["observed_after"] = 123.5
+    observation = read_observation(blocks)
+    assert observation.observed_after == 123.5
+    assert observation.captured_at is None
 
 
 @pytest.mark.parametrize(
@@ -130,6 +146,22 @@ def test_snapshot_copies_nested_inputs_and_exposes_no_chat_context(observation_b
 def test_control_outcomes_cannot_be_executable_proposals():
     with pytest.raises(ValueError, match="executable"):
         ProposedTurn.from_action(ActionCandidate("yield", "YIELD"), "frame")
+
+
+@pytest.mark.parametrize("expiry", [True, "soon", float("nan"), float("inf")])
+def test_proposal_expiry_must_be_finite_monotonic_time(expiry):
+    with pytest.raises(ValueError, match="expiry"):
+        ProposedTurn.from_action(
+            ActionCandidate("tap", "Tap", "tap"), "frame", expires_at=expiry
+        )
+
+
+def test_action_proposal_keeps_optional_expiry():
+    action = ActionCandidate("tap", "Tap", "tap")
+    assert ProposedTurn.from_action(action, "frame").expires_at is None
+    assert (
+        ProposedTurn.from_action(action, "frame", expires_at=123.5).expires_at == 123.5
+    )
 
 
 def test_factual_input_rejects_mutable_or_chat_shaped_nested_values():

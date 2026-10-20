@@ -14,7 +14,7 @@ from physiclaw.decision.policy import CONSERVATIVE_PROMPT, question_profile
 from physiclaw.provider import make_decision_provider
 from physiclaw.provider.provider_base import (
     ProviderError,
-    ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
 )
 
@@ -229,6 +229,6 @@ async def test_choice_limit_applies_to_every_question_before_http(
         candidates=tuple(ActionCandidate(f"c{i}", "Candidate") for i in range(256)),
     )
     request = replace(review, questions=questions)
-    with pytest.raises(ProviderPermanentError, match="choices per question"):
+    with pytest.raises(ProviderRequestError, match="choices per question"):
         await provider.evaluate(request, deadline=deadline())
     assert not respx_mock.calls

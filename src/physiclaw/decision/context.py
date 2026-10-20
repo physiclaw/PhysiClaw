@@ -6,8 +6,10 @@ In particular, a clipboard receipt is an action fact, never query intent.
 """
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 
+from physiclaw.common import verdict
 from physiclaw.common.gesture_vocab import (
     NAV_TOOLS,
     PEEK,
@@ -25,11 +27,23 @@ from physiclaw.contract.decision import (
     DecisionRequest,
     context_to_json,
 )
-from physiclaw.contract.turn import IN_PROGRESS, TurnInput, TurnMetadata
+from physiclaw.contract.turn import IN_PROGRESS, ActionEvent, TurnInput, TurnMetadata
 from physiclaw.decision.policy import QuestionProfile, question_profile
+from physiclaw.macros.model import MACRO_OK_META
 
 _INTERACTIONS = PRESS_TOOLS | NAV_TOOLS | {SWIPE, SEQUENCE, RUN_MACRO, UNLOCK_PHONE}
 _RECEIPTS = _INTERACTIONS | {PEEK, SCREENSHOT, SEND_TO_CLIPBOARD}
+
+
+def _action_failed(event: ActionEvent) -> bool:
+    if event.is_error or not event.executed:
+        return True
+    if verdict.failure_line(event.tool, event.result_text or "") is not None:
+        return True
+    if event.tool == RUN_MACRO and event.result_blocks:
+        metadata = event.result_blocks[0].get("_meta")
+        return isinstance(metadata, Mapping) and metadata.get(MACRO_OK_META) is False
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +118,7 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
         None,
     )
     if previous is not None:
-        if previous.is_error or not previous.executed:
+        if _action_failed(previous):
             blockers.append("previous_action_failed")
         elif previous.changed is not True:
             blockers.append(
@@ -153,6 +167,7 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
                 "observation": {
                     "source": observation.source,
                     "captured_at": observation.captured_at,
+                    "observed_after": observation.observed_after,
                     "issue": turn.observation_issue,
                 },
                 "recent_actions": [

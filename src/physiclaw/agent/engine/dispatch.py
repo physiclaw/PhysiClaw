@@ -14,10 +14,10 @@ into an error ToolResult.
 """
 
 import logging
-import re
 import time
 from contextlib import suppress
 
+from physiclaw.agent.engine.mcp_tool import ToolCallExpired
 from physiclaw.agent.engine.policy import DispatchGuard
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
@@ -47,6 +47,8 @@ async def dispatch(
     session: Session,
     call: ToolCall,
     turn: int,
+    *,
+    expires_at: float | None = None,
 ) -> ToolResultMessage:
     """Guards, validate, execute, observe. Pair successful calls and tool
     errors with a ToolResultMessage. Cancellation propagates so the loop
@@ -118,29 +120,35 @@ async def dispatch(
         return blocked
 
     local = run.local_registry.get(call.name)
-    session.facts.begin(call.name)
     # Clock starts after the guards: this measures the tool, not the gating.
     t0 = time.monotonic()
+    if local is not None and call.name not in {
+        "note",
+        "update_progress",
+        "end_session",
+    }:
+        # A presentation failure must not change whether a tool executes.
+        with suppress(Exception):
+            log.info(
+                "turn %d: calling %s(%s)",
+                turn,
+                call.name,
+                format_call_args(call.name, call.arguments),
+                extra={
+                    "event": "tool.started",
+                    "turn": turn,
+                    "tool": call.name,
+                    "tool_call_id": call.id,
+                    "console": True,
+                    "console_message": "Tool: "
+                    + format_tool_call(call.name, call.arguments),
+                },
+            )
     try:
+        if expires_at is not None and time.monotonic() >= expires_at:
+            raise ToolCallExpired("proposal expired before tool execution")
+        session.facts.begin(call.name)
         if local is not None:
-            if call.name not in {"note", "update_progress", "end_session"}:
-                # A presentation failure must not change whether a tool executes.
-                with suppress(Exception):
-                    log.info(
-                        "turn %d: calling %s(%s)",
-                        turn,
-                        call.name,
-                        format_call_args(call.name, call.arguments),
-                        extra={
-                            "event": "tool.started",
-                            "turn": turn,
-                            "tool": call.name,
-                            "tool_call_id": call.id,
-                            "console": True,
-                            "console_message": "Tool: "
-                            + format_tool_call(call.name, call.arguments),
-                        },
-                    )
             result = await local.handler(session, call.arguments)
             if local.returns_blocks:
                 # A local tool DECLARING raw MCP-style blocks (run_macro's
@@ -191,11 +199,28 @@ async def dispatch(
             )
             return ToolResultMessage(tool_call_id=call.id, content=result)
 
-        blocks = await run.mcp.call_tool(call.name, call.arguments)
+        blocks = await run.mcp.call_tool(
+            call.name, call.arguments, expires_at=expires_at
+        )
         return _blocks_result(
             run, session, call, blocks, turn, elapsed_ms=_ms_since(t0)
         )
 
+    except ToolCallExpired:
+        log.warning("turn %d: %s refused — proposal expired", turn, call.name)
+        run.tr.write(
+            {
+                "event": "tool_blocked_expired",
+                "turn": turn,
+                "name": call.name,
+                "id": call.id,
+                "arguments": call.arguments,
+                "expires_at": expires_at,
+            }
+        )
+        return _refused_result(
+            session, call, turn, "proposal expired; tool was not executed"
+        )
     except Exception as e:
         elapsed_ms = _ms_since(t0)
         log.error(
@@ -221,6 +246,8 @@ async def dispatch(
                 "event": "tool_error",
                 "turn": turn,
                 "name": call.name,
+                "id": call.id,
+                "arguments": call.arguments,
                 "elapsed_ms": elapsed_ms,
                 "error": str(e),
             }
@@ -289,17 +316,11 @@ def _outcome_notice(
     call: ToolCall, action: str, changed: bool | None
 ) -> tuple[str | None, bool]:
     # Only inspect the core-composed action text, never OCR/screen content.
-    header = action.splitlines()[0] if action else ""
-    if (
-        call.name == "run_macro"
-        and header.startswith("macro ")
-        and ": ABORTED at step " in header
-    ):
-        return brief(header.split(" — ", 1)[0], 220), True
-    if call.name == "sequence":
-        for line in action.splitlines():
-            if re.match(r"^\d+ \S+ FAIL \(", line):
-                return "sequence — " + brief(line, 200), True
+    failure = verdict.failure_line(call.name, action)
+    if failure is not None:
+        if call.name == "run_macro":
+            return brief(failure.split(" — ", 1)[0], 220), True
+        return "sequence — " + brief(failure, 200), True
     if changed is False:
         return f"Result: {call.name} — no visible screen change", False
     return None, False
@@ -362,6 +383,7 @@ def _blocks_result(
             "arguments": call.arguments,
             "elapsed_ms": elapsed_ms,
             "changed": changed,
+            "is_error": False,
             # The content as the model receives it (scaled frames, the
             # observer's verdict line) — the trace keeps its text whole
             # and files its frames once, and the wire log's scrub of a

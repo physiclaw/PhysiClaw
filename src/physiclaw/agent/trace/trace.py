@@ -1,9 +1,11 @@
 """`Trace` — session events, summaries, notes and diagnostic capture."""
 
+import base64
 import json
 import logging
 import time
 from collections import Counter, defaultdict
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -87,18 +89,22 @@ class Trace:
             log.debug("notes.md open failed", exc_info=True)
             return None
 
-    def write(self, event: dict[str, Any]) -> None:
+    def write(self, event: dict[str, Any]) -> bool:
+        """Record diagnostics; acknowledge the event and all attached images.
+
+        Persistence failures leave the live summary and ordinary caller running.
+        """
         if event.get("event") == "wake":
             self._primary_model = event.get("model_ref")
         if event.get("event") == "usage":
             # The trace owns turns: a model call's account is stamped
             # with the turn in progress here, whoever made the call.
             event["turn"] = self.turn
-        self._write_event(event)
+        persisted = self._write_event(event)
         self._summary.observe(event)
         self._append_note(event)
         if event.get("event") not in MIRRORED_EVENTS:
-            return
+            return persisted
         # Each provider call owns one token notice. A micro_call records
         # the decision separately, without repeating that call's account.
         is_usage = event["event"] == "usage"
@@ -119,6 +125,7 @@ class Trace:
                 duration_ms=event.get("elapsed_ms"),
             )
         log.info("%s", summarize_event(event), extra=fields)
+        return persisted
 
     def _append_note(self, event: dict[str, Any]) -> None:
         """Append a `note` tool_result's summary to notes.md — the
@@ -200,15 +207,41 @@ class Trace:
             finally:
                 self._sidecars.close()
 
-    def _write_event(self, event: dict[str, Any]) -> None:
+    def _write_event(self, event: dict[str, Any]) -> bool:
         """Append the structured event to events.jsonl. A `tool_result`'s
         blocks become what the runtime saw: its text whole and its
         frames written to `images/` now — a walk's turns send no
         request, and by the first model turn the older screens are
-        compacted away, so the wire log alone would lose them."""
+        compacted away, so the wire log alone would lose them. Return False
+        if any image could not be filed or the event could not be flushed."""
         obj: dict[str, Any] = {"t": iso_now(), **event}
+        persisted = True
+        if "image" in obj:
+            # Optional exact input attachment, independent of event type.
+            # Replace inline bytes even when persistence fails.
+            attachment = obj.pop("image")
+            image: dict[str, str | None] = {"path": None, "sha256": None}
+            obj["image"] = image
+            try:
+                raw = base64.b64decode(attachment["data_b64"], validate=True)
+                image["sha256"] = sha256(raw).hexdigest()
+                image["path"] = (
+                    self._images.put(
+                        int(obj.get("turn", -1)),
+                        attachment["media_type"],
+                        attachment["data_b64"],
+                    )
+                    or None
+                )
+                persisted = image["path"] is not None
+            except (KeyError, OSError, TypeError, ValueError):
+                persisted = False
+                log.warning("event image could not be saved")
         if event.get("event") == "tool_result" and "blocks" in obj:
-            text, images = self._view(obj.pop("blocks"), int(obj.get("turn", -1)))
+            text, images, images_saved = self._view(
+                obj.pop("blocks"), int(obj.get("turn", -1))
+            )
+            persisted = persisted and images_saved
             obj["text"] = text
             if images:
                 obj["images"] = images
@@ -218,21 +251,27 @@ class Trace:
             self._events.flush()
         except (OSError, TypeError, ValueError):
             log.warning("events.jsonl write failed", exc_info=True)
+            return False
+        return persisted
 
-    def _view(self, content: Any, turn: int) -> tuple[str, list[str]]:
+    def _view(self, content: Any, turn: int) -> tuple[str, list[str], bool]:
         """A result's text whole, and its frames' session-relative paths
         (filed on first sight). `content` is the `ToolResultMessage`
         shape: a bare string, or the engine's content blocks."""
         if isinstance(content, str):
-            return content, []
+            return content, [], True
         texts: list[str] = []
         images: list[str] = []
         for b in content if isinstance(content, list) else []:
             if isinstance(b, TextBlock):
                 texts.append(b.text)
             elif isinstance(b, ImageBlock):
-                images.append(self._images.put(turn, b.media_type, b.data_b64))
-        return "\n".join(texts), [p for p in images if p]
+                try:
+                    images.append(self._images.put(turn, b.media_type, b.data_b64))
+                except (OSError, TypeError, ValueError):
+                    log.warning("event image could not be saved")
+                    images.append("")
+        return "\n".join(texts), [p for p in images if p], all(images)
 
 
 # ---------- session summary (derived from the event stream) ----------
@@ -270,6 +309,7 @@ WARNING_WORDS: dict[str, str] = {
     "tool_blocked_no_plan": "A tool call was blocked: no plan yet",
     "tool_blocked_layout": "A tool call was blocked: layout guard",
     "tool_blocked_stuck": "A tool call was blocked: stuck guard",
+    "tool_blocked_expired": "A proposal expired before the tool could start",
     "tool_blocked_burned_macro": "A tool call was blocked: this macro already failed",
     "tool_error": "A tool failed",
     "tool_invalid_args": "A tool was called with invalid arguments",
@@ -284,9 +324,10 @@ assert _CORRECTIVE_EVENTS | _STUCK_EVENTS | frozenset(_BLOCKED_KEYS) <= WARNING_
 
 
 def fold_usage(by_model: dict[str, Counter[str]], event: dict[str, Any]) -> None:
-    """Fold one `usage` event into per-model counters: `calls`, `failed`,
-    and every bucket in `USAGE_BUCKETS`. THE fold — the session summary
-    and `physiclaw logs --usage` both total through it."""
+    """Fold one chat `usage` event into the session summary's model counters.
+
+    Offline chat and native-decision accounting lives in `accounting.py`.
+    """
     per = by_model[str(event.get("model") or "?")]
     per["calls"] += 1
     if event.get("error"):
@@ -299,7 +340,8 @@ class _Summary:
     """Accumulates session metrics from the events flowing through
     `Trace.write` — zero extra plumbing in the engine; everything in
     summary.json is derivable from the stream. Selected proposals count
-    turns; provider `usage` events count actual calls, timing and tokens."""
+    turns; provider `usage` events count chat calls, timing and tokens.
+    Native decision attempts and timing remain separate."""
 
     def __init__(self, sid: str):
         self.sid = sid
@@ -324,10 +366,8 @@ class _Summary:
         # Every walk's terminal moment, in order (the boot's hand-on, then
         # the playbook's end) — the session's playbook story in the summary.
         self.walks: list[dict[str, Any]] = []
-        # Per model, every bucket plus call counts — a session that mixes
-        # a cheap decision tier with the main model bills each at its own
-        # rate, so the summary keeps them apart; the session totals are
-        # the sums over models.
+        # Chat buckets and call counts per model, including scoped playbook
+        # calls. Native decision usage stays in its own attempt events.
         self.by_model: defaultdict[str, Counter[str]] = defaultdict(Counter)
         self.tool_calls: Counter[str] = Counter()
         self.errors: Counter[str] = Counter()
@@ -367,8 +407,8 @@ class _Summary:
                 {k: v for k, v in event.items() if k not in ("event", "t")}
             )
         elif name == "usage":
-            # ONE event type carries every model call's tokens (turn,
-            # micro, curate), so the session's spend is one fold.
+            # One event type carries chat tokens (turn, micro and curate).
+            # Native decision usage is accounted separately.
             fold_usage(self.by_model, event)
             if event.get("call") == USAGE_CALL_TURN:
                 self.provider_calls += 1

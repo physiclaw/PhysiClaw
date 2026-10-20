@@ -398,6 +398,81 @@ def test_logs_usage_without_events_says_so(sessions: Path) -> None:
     assert result.exit_code == 0 and "no usage events" in result.output
 
 
+def test_logs_usage_includes_native_decisions_and_exposes_unknown_counts(sessions):
+    sd = _write_session(sessions, "decision-abc123")
+    events = [
+        json.loads(_usage_event(0, "micro", "vendor/model", 100, 60, 40, 0, 10)),
+        {"event": "micro_call", "model": "vendor/model", "input": 5000},
+        {
+            "event": "decision_call",
+            "request_id": "answered-request",
+            "model": "vendor/model",
+            "turn": 0,
+            "mode": "shadow",
+            "status": "answered",
+            "elapsed_ms": 420,
+            "usage": {"input_tokens": 250, "output_tokens": 0},
+        },
+        {
+            "event": "decision_call",
+            "request_id": "failed-request",
+            "model": "vendor/model",
+            "turn": 1,
+            "mode": "shadow",
+            "status": "error",
+            "elapsed_ms": 2000,
+            "error": "TimeoutError",
+            "usage": {"input_tokens": None, "output_tokens": None},
+        },
+    ]
+    (sd / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+
+    result = runner.invoke(app, ["logs", "abc123", "--usage"])
+
+    assert result.exit_code == 0, result.output
+    assert "chat vendor/model  (1 calls, 0 failed)" in result.output
+    assert "decision vendor/model  (2 calls, 1 failed)" in result.output
+    assert "250 known  (1 missing)" in result.output
+    assert "?" in result.output and "TimeoutError" in result.output
+    rows = json.loads(
+        runner.invoke(app, ["logs", "abc123", "--usage", "--json"]).output
+    )
+    assert len(rows) == 3
+    assert [r["api_kind"] for r in rows] == ["chat", "decision", "decision"]
+    assert rows[1]["input"] == 250 and rows[1]["output"] == 0
+    assert rows[2]["input"] is None and rows[2]["output"] is None
+
+
+def test_usage_with_rates_reports_partial_cost_as_unknown(sessions, capsys):
+    from physiclaw.cli.logs import _show_usage
+
+    sd = _write_session(sessions, "cost-abc123")
+    events = [
+        {
+            "event": "decision_call",
+            "request_id": "known-request",
+            "model": "vendor/model",
+            "usage": {"input_tokens": 100, "output_tokens": 0},
+        },
+        {
+            "event": "decision_call",
+            "request_id": "unknown-request",
+            "model": "vendor/model",
+            "usage": None,
+        },
+    ]
+    (sd / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+    rates = {"decision": {"vendor/model": {"input": 0.042}}}
+
+    _show_usage(sd, as_json=False, rates=rates)
+    assert "total unknown (1 incomplete calls)" in capsys.readouterr().out
+    _show_usage(sd, as_json=True, rates=rates)
+    data = json.loads(capsys.readouterr().out)
+    assert len(data["rows"]) == 2
+    assert data["cost"]["known_usd"] == pytest.approx(0.0000042)
+    assert data["cost"]["total_usd"] is None
+
+
 @pytest.fixture
 def surrogate_session(sessions):
     directory = _write_session(sessions, "unicode-abc123", recap="你好\ud800")
@@ -616,6 +691,12 @@ def test_logs_json_rejects_nonfinite_data_without_partial_stdout(sessions, mode)
 
     result = runner.invoke(app, ["logs", *mode, "--json"])
 
+    if "--usage" in mode:
+        # Offline accounting excludes nonfinite lines at the strict reader;
+        # rows remain valid JSON, and priced output marks the trace incomplete.
+        assert result.exit_code == 0
+        assert json.loads(result.output) == []
+        return
     assert result.exit_code == 1
     assert result.stdout == ""
     assert "cannot render log data as JSON" in result.stderr
@@ -660,7 +741,11 @@ def test_usage_json_preserves_generated_rows_around_damaged_lines(sessions, rows
     result = runner.invoke(app, ["logs", "abc123", "--usage", "--json"])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == rows
+    actual = json.loads(result.output)
+    for row in actual:
+        assert row.pop("api_kind") == "chat"
+        assert row.pop("usage_missing") == (row["input"] == row["output"] == 0)
+    assert actual == rows
 
 
 def test_logs_crashed_session_is_distinct_from_terminal_sentinel(sessions):
@@ -766,7 +851,7 @@ def test_logs_detail_links_actual_artifact_paths(sessions):
 
 
 @pytest.mark.parametrize("turn, displayed", [(None, "-"), (0, "0"), (3, "3")])
-def test_usage_table_keeps_turn_zero_buckets_timing_and_failure(
+def test_usage_table_keeps_turn_zero_unknown_buckets_timing_and_failure(
     sessions, turn, displayed
 ):
     directory = _write_session(sessions, "columns-abc123")
@@ -788,15 +873,16 @@ def test_usage_table_keeps_turn_zero_buckets_timing_and_failure(
     )
     assert row.split() == [
         displayed,
+        "chat",
         "turn",
         "test/model",
         "1.4s",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
+        "?",
+        "?",
+        "?",
+        "?",
+        "?",
+        "?",
         "error=TimeoutError",
     ]
     assert "test/model  (1 calls, 1 failed)" in result.output

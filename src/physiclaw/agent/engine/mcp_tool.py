@@ -10,6 +10,7 @@ down at process exit.
 import asyncio
 import logging
 from contextlib import AsyncExitStack
+from time import monotonic
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
@@ -23,6 +24,10 @@ from physiclaw.common import platform
 from physiclaw.common.config import server_url
 
 log = logging.getLogger(__name__)
+
+
+class ToolCallExpired(RuntimeError):
+    """The proposal expired before a tool invocation was sent."""
 
 
 class McpClient:
@@ -199,17 +204,28 @@ class McpClient:
         ]
 
     async def call_tool(
-        self, name: str, args: dict[str, Any] | None = None
+        self,
+        name: str,
+        args: dict[str, Any] | None = None,
+        *,
+        expires_at: float | None = None,
     ) -> list[dict]:
         """Call an MCP tool and return its content as a list of normalized blocks.
 
         Each block is either:
           {"type": "text", "text": str}
           {"type": "image", "mime_type": str, "data": <base64 str>}
+
+        Check an optional monotonic expiry before every SDK invocation, including
+        after reconnecting. Expiry does not cancel a tool already in progress.
         """
-        result = await self._with_session(
-            lambda: self._live().call_tool(name, args or {})
-        )
+
+        async def invoke():
+            if expires_at is not None and monotonic() >= expires_at:
+                raise ToolCallExpired("proposal expired before tool execution")
+            return await self._live().call_tool(name, args or {})
+
+        result = await self._with_session(invoke)
         blocks: list[dict] = []
         for c in result.content:
             if isinstance(c, TextContent):

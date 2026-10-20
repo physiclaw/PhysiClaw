@@ -11,6 +11,8 @@ should drag the other's imports (cv2 on one side, provider stack on the
 other) into a string constant.
 """
 
+import re
+
 # Appended to gesture results as ` | <marker>`. The agent's doctrine
 # (PHYSICLAW § Unchanged screen) explains how to read them, and tests on
 # both sides pin the exact bytes — reword only with a coordinated change.
@@ -121,4 +123,25 @@ def parse(result_text: str) -> bool | None:
         return False
     if SCREEN_CHANGED in result_text:
         return True
+    return None
+
+
+def failure_line(tool: str, action: str) -> str | None:
+    """Read a partial failure from core-composed action text, never OCR.
+
+    A sequence or macro can return normally after some actions succeeded.
+    This identifies that outcome without changing the tool-result error flag.
+    """
+    lines = action.splitlines()
+    if (
+        tool == "run_macro"
+        and lines
+        and lines[0].startswith("macro ")
+        and ": ABORTED at step " in lines[0]
+    ):
+        return lines[0]
+    if tool == "sequence":
+        return next(
+            (line for line in lines if re.match(r"^\d+ \S+ FAIL \(", line)), None
+        )
     return None

@@ -54,7 +54,7 @@ class FakeMcpClient:
     def __init__(self):
         self.tool_calls: list[tuple] = []
 
-    async def call_tool(self, name, arguments):
+    async def call_tool(self, name, arguments, *, expires_at=None):
         self.tool_calls.append((name, arguments))
         return [{"type": "text", "text": "mcp-ok"}]
 

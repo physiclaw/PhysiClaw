@@ -347,11 +347,15 @@ async def test_engine_supplies_lazy_decision_factory_without_selecting_a_model(
 async def test_session_closes_pending_shadow_before_trace_and_chat_provider(
     completed_run, observation_blocks, mocker, monkeypatch
 ):
+    import time
+
     from physiclaw.contract.decision import DecisionCapabilities
+    from physiclaw.contract.observation import OBSERVATION_META
     from physiclaw.decision.plugin import DecisionPlugin
 
     monkeypatch.setattr(engine_mod.CONFIG.decision, "model", "fake/shadow")
     monkeypatch.setattr(engine_mod.CONFIG.decision, "mode", "shadow")
+    completed_run.tr.write.return_value = True
     started, cancelled = asyncio.Event(), asyncio.Event()
 
     async def evaluate(_request, *, deadline):
@@ -402,7 +406,9 @@ async def test_session_closes_pending_shadow_before_trace_and_chat_provider(
         user_said="打开淘宝",
         steps=[{"content": "打开淘宝", "status": "in_progress"}],
     )
-    session.facts.observe(observation_blocks(), tool="peek")
+    blocks = observation_blocks()
+    blocks[0]["_meta"][OBSERVATION_META]["observed_after"] = time.time()
+    session.facts.observe(blocks, tool="peek")
 
     await engine_mod._run_session(
         [Trigger(description="t")], model_ref="fake/model", session=session

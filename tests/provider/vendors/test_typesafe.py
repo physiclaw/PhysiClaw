@@ -23,6 +23,7 @@ from physiclaw.decision.policy import question_profile
 from physiclaw.provider import (
     ProviderConfigurationError,
     ProviderPermanentError,
+    ProviderRequestError,
     ProviderTransientError,
     make_decision_provider,
 )
@@ -350,7 +351,7 @@ async def test_model_capability_does_not_silently_drop_image(
 ):
     provider = TypeSafeDecisionProvider("unverified-model")
     try:
-        with pytest.raises(ProviderPermanentError, match="does not support images"):
+        with pytest.raises(ProviderRequestError, match="does not support images"):
             await provider.evaluate(image_decision_request, deadline=deadline())
         assert not respx_mock.calls
     finally:
@@ -424,7 +425,7 @@ async def test_expired_deadline_makes_no_request(
 
 @pytest.mark.parametrize("invalid", [nan, inf, True, "tomorrow"])
 async def test_invalid_deadline(provider, decision_request, respx_mock, invalid):
-    with pytest.raises(ProviderPermanentError, match="deadline"):
+    with pytest.raises(ProviderRequestError, match="deadline"):
         await provider.evaluate(decision_request, deadline=invalid)
     assert not respx_mock.calls
 
@@ -591,8 +592,21 @@ async def test_unsupported_image_rejected_before_http(
         image_decision_request,
         context=replace(image_decision_request.context, frame=frame),
     )
-    with pytest.raises(ProviderPermanentError, match="TypeSafe image"):
+    with pytest.raises(ProviderRequestError, match="TypeSafe image"):
         await provider.evaluate(request, deadline=deadline())
+    assert not respx_mock.calls
+    route = respx_mock.post(URL).respond(json=answer())
+    result = await provider.evaluate(image_decision_request, deadline=deadline())
+    assert result.request_id == image_decision_request.id
+    assert route.call_count == 1
+
+
+async def test_oversized_body_is_a_request_error(
+    provider, decision_request, respx_mock, monkeypatch
+):
+    monkeypatch.setattr(provider, "_body", lambda request: {"large": "x" * (32 << 20)})
+    with pytest.raises(ProviderRequestError, match="32 MiB"):
+        await provider.evaluate(decision_request, deadline=deadline())
     assert not respx_mock.calls
 
 
@@ -609,7 +623,7 @@ async def test_choice_limit_before_http(provider, decision_request, respx_mock):
             ),
         ),
     )
-    with pytest.raises(ProviderPermanentError, match="255"):
+    with pytest.raises(ProviderRequestError, match="255"):
         await provider.evaluate(request, deadline=deadline())
     assert not respx_mock.calls
 

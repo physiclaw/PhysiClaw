@@ -78,6 +78,38 @@ def logs(
             "--json for rows.",
         ),
     ] = False,
+    decisions: Annotated[
+        bool,
+        typer.Option(
+            "--decisions", help="Offline decision accuracy, execution and usage report."
+        ),
+    ] = False,
+    label_template: Annotated[
+        bool,
+        typer.Option(
+            "--label-template",
+            help="With --decisions: export blind review evidence as JSON.",
+        ),
+    ] = False,
+    labels: Annotated[
+        Path | None,
+        typer.Option(
+            "--labels", help="With --decisions: completed JSON label template."
+        ),
+    ] = None,
+    rates: Annotated[
+        Path | None,
+        typer.Option(
+            "--rates",
+            help="With --usage/--decisions: JSON rates in USD per million tokens.",
+        ),
+    ] = None,
+    baseline: Annotated[
+        str | None,
+        typer.Option(
+            "--baseline", help="With --decisions: compare a matched baseline session."
+        ),
+    ] = None,
     dest: Annotated[
         Path | None,
         typer.Argument(
@@ -88,24 +120,128 @@ def logs(
     """List recent agent sessions, or inspect one session's log artifacts."""
     from physiclaw.common import paths
 
-    if save and (usage or as_json):
-        exit_error("--save cannot be combined with --usage or --json")
+    if sum((save, usage, decisions)) > 1 or (save and as_json):
+        exit_error(
+            "--save, --usage and --decisions are separate modes; --save forbids --json"
+        )
+    if (label_template or labels is not None or baseline is not None) and not decisions:
+        exit_error("--label-template, --labels and --baseline require --decisions")
+    if label_template and (
+        labels is not None or baseline is not None or rates is not None
+    ):
+        exit_error(
+            "--label-template uses only original evidence; omit labels, baseline and rates"
+        )
+    if rates is not None and not (usage or decisions):
+        exit_error("--rates requires --usage or --decisions")
     if dest is not None and not save:
         exit_error(f"a destination needs --save: physiclaw logs {sid} --save {dest}")
     sessions_dir = paths.sessions_dir()
     if sid is None:
-        if save or usage:
+        if save or usage or decisions:
             _echo(
-                warn("that flag needs a session: physiclaw logs <sid> --save|--usage")
+                warn(
+                    "that flag needs a session: physiclaw logs <sid> --save|--usage|--decisions"
+                )
             )
             raise typer.Exit(1)
         _list_sessions(sessions_dir, n=n, as_json=as_json)
     elif usage:
-        _show_usage(_resolve(sessions_dir, sid), as_json=as_json)
+        try:
+            from physiclaw.agent.trace.accounting import read_json
+
+            _show_usage(
+                _resolve(sessions_dir, sid),
+                as_json=as_json,
+                rates=read_json(rates) if rates is not None else None,
+            )
+        except (OSError, ValueError) as exc:
+            exit_error(str(exc))
+    elif decisions:
+        _show_decisions(
+            _resolve(sessions_dir, sid),
+            as_json=as_json,
+            template=label_template,
+            labels=labels,
+            rates=rates,
+            baseline=_resolve(sessions_dir, baseline) if baseline is not None else None,
+        )
     elif save:
         _save_session(_resolve(sessions_dir, sid), dest)
     else:
         _show_session(_resolve(sessions_dir, sid), n=n, as_json=as_json)
+
+
+def _show_decisions(
+    directory: Path,
+    *,
+    as_json: bool,
+    template: bool,
+    labels: Path | None,
+    rates: Path | None,
+    baseline: Path | None,
+) -> None:
+    from physiclaw.agent.trace.accounting import read_json
+    from physiclaw.agent.trace.decisions import label_template, report
+
+    try:
+        if template:
+            _echo_json(label_template(directory))
+            return
+        rate_table = read_json(rates) if rates is not None else None
+        result = report(
+            directory,
+            labels=read_json(labels) if labels is not None else None,
+            rates=rate_table,
+        )
+        if baseline is not None:
+            if baseline.resolve() == directory.resolve():
+                raise ValueError("baseline must be a different matched session")
+            reference = report(baseline, rates=rate_table)
+            result["comparison"] = {
+                "baseline": {
+                    key: reference[key]
+                    for key in (
+                        "session_id",
+                        "events_sha256",
+                        "malformed_lines",
+                        "session",
+                        "usage",
+                        "cost",
+                    )
+                },
+                "meaning": (
+                    "Side-by-side observed totals, not causal savings. Confirm matched "
+                    "tasks and outcomes; shadow overlaps LLM work. Missing cost stays unknown."
+                ),
+            }
+    except (OSError, ValueError) as exc:
+        exit_error(str(exc))
+    if as_json:
+        _echo_json(result)
+        return
+    _echo(section(f"Decision report — {directory.name}"))
+    for key in (
+        "opportunities",
+        "accuracy",
+        "latency",
+        "session",
+        "usage",
+        "cost",
+        "comparison",
+    ):
+        if key in result:
+            _echo(f"{key}:")
+            _echo_json(result[key])
+    if result["malformed_lines"]:
+        _echo(warn(f"{result['malformed_lines']} malformed event line(s) excluded"))
+    for limitation in result["limitations"]:
+        _echo(info(limitation))
+    _echo(
+        info(
+            "--json includes each request and execution outcome; --label-template exports blind evidence."
+        )
+    )
 
 
 def _resolve(sessions_dir: Path, query: str) -> Path:
@@ -293,61 +429,92 @@ def _echo_narrative(events_path: Path, n: int) -> None:
 # ---------- usage mode ----------
 
 
-def _usage_rows(events_path: Path) -> list[dict[str, Any]]:
-    """The session's `usage` events, one per model call, in order."""
-    return [
-        {k: v for k, v in event.items() if k not in ("event", "t")}
-        for event in _events(events_path) or []
-        if event.get("event") == "usage"
-    ]
+def _show_usage(d: Path, *, as_json: bool, rates: dict | None = None) -> None:
+    """Call accounting with explicit unknowns and optional supplied prices."""
+    from physiclaw.agent.trace.accounting import (
+        prepare_accounting,
+        read_events,
+        session_cost,
+        summarize_usage,
+        token_count,
+        usage_error,
+    )
 
-
-def _show_usage(d: Path, *, as_json: bool) -> None:
-    """Every model call's token buckets, then totals per model — the
-    elements of the bill, with no price attached: each bucket times the
-    model's rate, summed, is the cost."""
-    rows = _usage_rows(d / "events.jsonl")
+    # Missing journals have no rows, but cannot establish a complete zero bill.
+    if (d / "events.jsonl").exists():
+        events, malformed, _ = read_events(d)
+    else:
+        events, malformed = [], 1
+    accounting = prepare_accounting(events, malformed_lines=malformed)
+    rows = accounting["rows"]
+    cost = session_cost(accounting, rates) if rates is not None else None
     if as_json:
-        _echo_json(rows)
+        _echo_json(rows if cost is None else {"rows": rows, "cost": cost})
         return
     if not rows:
         _echo(warn("no usage events — the provider reported no token counts"))
-        return
-    from collections import Counter, defaultdict
+        if cost is None:
+            return
+    if accounting["incomplete_trace"]:
+        _echo(warn("incomplete event trace — total cost remains unknown"))
+    if malformed:
+        _echo(warn(f"{malformed} malformed event line(s) excluded from totals"))
 
     from physiclaw.agent.trace import brief, fmt_tokens
-    from physiclaw.agent.trace.trace import fold_usage
     from physiclaw.contract.dto import USAGE_BUCKETS
 
     _echo(section(f"Model calls — {d.name}"))
     _echo(
-        f"{'turn':>4} {'call':<7} {'model':<28}{'time':>7}"
+        f"{'turn':>4} {'api':<8} {'call':<8} {'model':<28}{'time':>7}"
         + "".join(f"{c:>12}" for c in USAGE_BUCKETS)
     )
-    totals: defaultdict[str, Counter[str]] = defaultdict(Counter)
     for r in rows:
-        try:
-            turn = r.get("turn")
-            line = (
-                f"{'-' if turn is None else str(turn):>4} {str(r.get('call') or '?'):<7} "
-                f"{str(r.get('model') or '?'):<28}"
-                f"{int(r.get('elapsed_ms') or 0) / 1000:>6.1f}s"
-                + "".join(
-                    f"{fmt_tokens(int(r.get(c) or 0)):>12}" for c in USAGE_BUCKETS
-                )
-                + (f"  error={r['error']}" if r.get("error") else "")
-            )
-        except _FORMAT_ERRORS:
+        if usage_error(r) is not None:
             _echo(warn(f"unformatted usage (excluded from totals): {brief(r, 200)}"))
             continue
+        turn = r.get("turn")
+        elapsed = r.get("elapsed_ms")
+        time = "?" if elapsed is None else f"{elapsed / 1000:.1f}s"
+        counts = [token_count(r, bucket) for bucket in USAGE_BUCKETS]
+        line = (
+            f"{'-' if turn is None else str(turn):>4} {r['api_kind']:<8} "
+            f"{str(r.get('call') or '?'):<8} {str(r.get('model') or '?'):<28}"
+            f"{time:>7}"
+            + "".join(f"{'?' if n is None else fmt_tokens(n):>12}" for n in counts)
+            + (f"  error={r['error']}" if r.get("error") else "")
+        )
         _echo(line)
-        # Rendering converted every bucket before the fold can change totals.
-        fold_usage(totals, r)
     _echo("")
-    _echo(section("Totals per model (exact counts)"))
-    for model, per in totals.items():
-        _echo(f"  {model}  ({per['calls']} calls, {per['failed']} failed)")
-        for c in USAGE_BUCKETS:
-            _echo(f"    {c:<12}{per[c]:>14,}")
+    _echo(section("Known subtotals per API and model (exact counts)"))
+    summary = summarize_usage(rows)
+    for group in summary["groups"]:
+        _echo(
+            f"  {group['api_kind']} {group['model']}  "
+            f"({group['calls']} calls, {group['failed']} failed)"
+        )
+        for bucket, count in group["tokens"].items():
+            _echo(
+                f"    {bucket:<12}{count['known']:>14,} known"
+                f"  ({count['missing']} missing)"
+            )
+    if summary["excluded_rows"]:
+        _echo(warn(f"{summary['excluded_rows']} damaged row(s) excluded from totals"))
+    if cost is not None:
+        _echo("")
+        if cost["total_usd"] is None:
+            _echo(
+                warn(
+                    f"estimated known cost: ${cost['known_usd']:.8f} USD; total unknown "
+                    f"({cost['missing_calls']} incomplete calls)"
+                )
+            )
+        else:
+            _echo(info(f"estimated cost: ${cost['total_usd']:.8f} USD"))
     _echo("")
-    _echo(info("cost = Σ bucket × your model's rate per token; --json for the rows"))
+    _echo(
+        info(
+            "? = unreported; native decision cache/reasoning splits are not reported. "
+            "Chat cost uses input_new/cache_read/cache_write + output; decision uses "
+            "input + output. Do not also bill input totals or reasoning."
+        )
+    )

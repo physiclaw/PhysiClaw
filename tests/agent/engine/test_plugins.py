@@ -191,6 +191,145 @@ async def test_default_stack_without_a_playbook_or_decision_uses_the_llm(mocker)
             await binding.plugin.aclose()
 
 
+@pytest.mark.parametrize("outcome", ["accepted", "low_probability", "timeout"])
+async def test_active_decision_uses_generic_arbitration_and_private_contexts(
+    observation_blocks, mocker, monkeypatch, outcome
+):
+    import asyncio
+    import time
+
+    from engine_fakes import _asst, _tc
+
+    from physiclaw.agent.engine import loop
+    from physiclaw.contract.decision import DecisionAnswer, DecisionResult
+    from physiclaw.contract.observation import OBSERVATION_META
+    from physiclaw.decision.plugin import DecisionPlugin
+
+    monkeypatch.setattr(CONFIG.decision, "model", "test/decision")
+    monkeypatch.setattr(CONFIG.decision, "mode", "active")
+    monkeypatch.setattr(
+        CONFIG.decision, "timeout_seconds", 0.01 if outcome == "timeout" else 2.0
+    )
+    blocks = observation_blocks()
+    blocks[0]["_meta"][OBSERVATION_META]["observed_after"] = time.time()
+    session = Session()
+    session.facts.observe(blocks, tool="peek")
+    session.plan.update(
+        user_said="Open search",
+        understanding="private LLM understanding",
+        steps=[{"content": "Tap search", "status": "in_progress"}],
+    )
+
+    async def evaluate(request, *, deadline):
+        if outcome == "timeout":
+            await asyncio.Event().wait()
+        selected = {"phase": "ROUTINE", "action_type": "tap", "target": "b1"}
+        answers = {}
+        for question in request.questions:
+            probability = (
+                0.6
+                if outcome == "low_probability" and question.id == "action_type"
+                else 0.99
+            )
+            answers[question.id] = DecisionAnswer(
+                selected[question.id],
+                probabilities={
+                    choice.id: probability
+                    if choice.id == selected[question.id]
+                    else (1 - probability) / (len(question.candidates) - 1)
+                    for choice in question.candidates
+                },
+            )
+        return DecisionResult(
+            request.id,
+            answers,
+            provider_id="test",
+            model_id="decision",
+            requested_model_id="decision",
+        )
+
+    decision_provider = SimpleNamespace(
+        evaluate=mocker.AsyncMock(side_effect=evaluate), aclose=mocker.AsyncMock()
+    )
+    plugin = DecisionPlugin()
+    decision_advance = mocker.spy(plugin, "advance")
+    llm_answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    chat = mocker.AsyncMock(return_value=llm_answer)
+    run = _arbitration_run(
+        chat,
+        session=session,
+        messages=[_asst(content="private LLM conversation")],
+        plugins=(PluginBinding("physiclaw.decision", plugin, "Decision"),),
+    )
+    run.schema_by_name = {
+        "tap": {
+            "input_schema": {
+                "type": "object",
+                "properties": {"bbox": {"type": "array", "minItems": 4, "maxItems": 4}},
+                "required": ["bbox"],
+            }
+        }
+    }
+    llm_advance = mocker.spy(run.plugins[-1].plugin, "advance")
+    validate_proposal = mocker.spy(loop, "_proposed_message")
+    events = []
+
+    def write(event):
+        events.append(event)
+        return True
+
+    await plugin.session_setup(
+        PluginServices(
+            session_provider=run.plugins[-1].plugin.provider,
+            events=SimpleNamespace(write=write),
+            decision_provider_factory=lambda *args, **kwargs: decision_provider,
+        )
+    )
+    metadata = _turn_metadata()
+    try:
+        result = await loop._advance(run, session, metadata)
+        decision_provider.evaluate.assert_awaited_once()
+        request = decision_provider.evaluate.call_args.args[0]
+        assert "private LLM" not in repr(request.context)
+        assert request.context.observation_id == session.facts.observation.id
+        assert decision_advance.call_args.kwargs["metadata"] is metadata
+        validate_proposal.assert_called_once()
+
+        if outcome == "accepted":
+            assert result.binding.id == "physiclaw.decision"
+            assert result.message.tool_names() == ["tap"]
+            target = session.facts.observation.ocr[0]
+            assert result.message.tool_calls[0].arguments == {"bbox": list(target.bbox)}
+            proposal = validate_proposal.call_args.args[0]
+            assert proposal.observation_id == session.facts.observation.id
+            assert proposal.targets == {
+                result.message.tool_calls[0].id: session.facts.observation.element_ref(
+                    target
+                )
+            }
+            llm_advance.assert_not_awaited()
+            chat.assert_not_awaited()
+        else:
+            assert result.binding.id == "physiclaw.llm"
+            assert result.message is llm_answer
+            llm_advance.assert_awaited_once()
+            assert llm_advance.call_args.args[0] is decision_advance.call_args.args[0]
+            assert llm_advance.call_args.kwargs["metadata"] is metadata
+            chat.assert_awaited_once()
+            assert request.id not in repr(chat.call_args)
+        call = next(event for event in events if event["event"] == "decision_call")
+        if outcome == "timeout":
+            assert call["status"] == "error" and call["error"] == "TimeoutError"
+        else:
+            assert call["threshold_gate"]["status"] == (
+                "passed" if outcome == "accepted" else "failed"
+            )
+        assert not run.mcp.tool_calls
+    finally:
+        await plugin.aclose()
+    decision_provider.aclose.assert_awaited_once()
+
+
 def test_bad_paths_do_not_sink_good_ones(monkeypatch) -> None:
     monkeypatch.setattr(
         CONFIG.agent,

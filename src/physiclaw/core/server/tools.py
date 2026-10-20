@@ -30,15 +30,18 @@ deeper.
 
 import asyncio
 import functools
+import time
 from typing import Literal
 
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ImageContent
 
 from physiclaw.common.dumps import save_tool_call
 from physiclaw.common.logger import logged
 from physiclaw.contract.observation import OBSERVATION_META, view_metadata
 from physiclaw.core import PhysiClaw
+from physiclaw.core.hardware.frame_reader import FrameReader
 from physiclaw.core.orchestration import GestureResult
 from physiclaw.core.server.types import Bbox, ClipboardText, SequenceActions
 
@@ -136,10 +139,30 @@ def _boundary(fn):
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
+        started_at = time.time()
         try:
-            return await logged_fn(*args, **kwargs)
+            result = await logged_fn(*args, **kwargs)
         except _SURFACED as e:
             raise ToolError(str(e)) from e
+        if isinstance(result, list):
+            for block in result:
+                if not isinstance(block, ImageContent):
+                    continue
+                metadata = (block.meta or {}).get(OBSERVATION_META)
+                if isinstance(metadata, dict) and metadata.get("source") == "camera":
+                    # Every camera view acquires through FrameReader. Start
+                    # before the whole tool so queueing, settling and detection
+                    # count toward age; include the reader's accepted cache age.
+                    block.meta = {
+                        **(block.meta or {}),
+                        OBSERVATION_META: {
+                            **metadata,
+                            "observed_after": (
+                                started_at - FrameReader.FRESH_MAX_AGE_SECONDS
+                            ),
+                        },
+                    }
+        return result
 
     return wrapper
 

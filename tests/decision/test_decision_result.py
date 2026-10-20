@@ -1,4 +1,4 @@
-"""Shadow interpretation preserves binding and never treats scores as safety."""
+"""Decision assessment preserves binding and never treats scores as safety."""
 
 from dataclasses import FrozenInstanceError, replace
 
@@ -13,7 +13,7 @@ from physiclaw.contract.decision import (
     DecisionResult,
 )
 from physiclaw.decision.policy import question_profile
-from physiclaw.decision.result import ShadowThresholds, assess, interpret
+from physiclaw.decision.result import ProbabilityThresholds, assess, interpret
 
 
 @pytest.fixture
@@ -314,37 +314,43 @@ def scored_response(decision_request, **selected_probabilities):
 
 
 @pytest.mark.parametrize("question", ["phase", "action_type", "target"])
-def test_shadow_probe_checks_each_probability_floor(decision_request, question):
+def test_threshold_gate_checks_each_probability_floor(decision_request, question):
     result = scored_response(decision_request, **{question: 0.89})
     assessment = assess(
-        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.9)
+        decision_request, result, thresholds=ProbabilityThresholds(0.9, 0.9, 0.9)
     )
-    assert assessment["interpretation"] == interpret(decision_request, result).to_dict()
-    probe = assessment["threshold_probe"]
-    assert probe["purpose"] == "shadow_diagnostic"
-    assert probe["calibrated"] is False
-    assert probe["status"] == "fails_probe"
-    assert probe["failed_checks"] == [question]
-    assert set(probe["scores"]) == {"phase", "action_type", "target"}
+    assert assessment.action is None
+    assert (
+        assessment.interpretation.to_dict()
+        == interpret(decision_request, result).to_dict()
+    )
+    gate = assessment.threshold_gate
+    assert gate["calibrated"] is False
+    assert gate["status"] == "failed"
+    assert gate["failed_checks"] == [question]
+    assert set(gate["scores"]) == {"phase", "action_type", "target"}
 
 
-def test_shadow_probe_accepts_exact_floors_without_using_vendor_confidence(
+def test_threshold_gate_accepts_exact_floors_without_using_vendor_confidence(
     decision_request,
 ):
-    thresholds = ShadowThresholds(0.9, 0.8, 0.7)
+    thresholds = ProbabilityThresholds(0.9, 0.8, 0.7)
     result = scored_response(decision_request, phase=0.9, action_type=0.8, target=0.7)
-    probe = assess(decision_request, result, thresholds=thresholds)["threshold_probe"]
+    assessment = assess(decision_request, result, thresholds=thresholds)
+    assert assessment.action is assessment.interpretation.action
+    assert assessment.action.arguments == {"bbox": decision_request.context.ocr[0].bbox}
+    gate = assessment.threshold_gate
     assert all(answer.confidence == 0.0 for answer in result.answers.values())
-    assert probe["status"] == "passes_probe"
-    assert probe["thresholds"] == thresholds.to_dict()
-    assert probe["failed_checks"] == []
+    assert gate["status"] == "passed"
+    assert gate["thresholds"] == thresholds.to_dict()
+    assert gate["failed_checks"] == []
 
 
 @pytest.mark.parametrize(
     "question,rival",
     [("phase", "SEMANTIC"), ("action_type", "YIELD"), ("target", "NONE")],
 )
-def test_shadow_probe_rejects_ties_even_when_the_floor_is_met(
+def test_threshold_gate_rejects_ties_even_when_the_floor_is_met(
     decision_request, question, rival
 ):
     result = scored_response(decision_request)
@@ -358,19 +364,21 @@ def test_shadow_probe_rejects_ties_even_when_the_floor_is_met(
         },
     )
     result = replace(result, answers=answers)
-    probe = assess(
-        decision_request, result, thresholds=ShadowThresholds(0.5, 0.5, 0.5)
-    )["threshold_probe"]
-    assert probe["status"] == "fails_probe"
-    assert probe["failed_checks"] == [question]
-    assert probe["scores"][question] == {
+    assessment = assess(
+        decision_request, result, thresholds=ProbabilityThresholds(0.5, 0.5, 0.5)
+    )
+    assert assessment.action is None
+    gate = assessment.threshold_gate
+    assert gate["status"] == "failed"
+    assert gate["failed_checks"] == [question]
+    assert gate["scores"][question] == {
         "selected_probability": 0.5,
         "runner_up_probability": 0.5,
         "margin": 0.0,
     }
 
 
-def test_shadow_probe_includes_none_as_a_competing_target(decision_request):
+def test_threshold_gate_includes_none_as_a_competing_target(decision_request):
     result = scored_response(decision_request)
     result = replace(
         result,
@@ -381,11 +389,11 @@ def test_shadow_probe_includes_none_as_a_competing_target(decision_request):
             ),
         },
     )
-    probe = assess(
-        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.6)
-    )["threshold_probe"]
-    assert probe["status"] == "passes_probe"
-    assert probe["scores"]["target"] == pytest.approx(
+    gate = assess(
+        decision_request, result, thresholds=ProbabilityThresholds(0.9, 0.9, 0.6)
+    ).threshold_gate
+    assert gate["status"] == "passed"
+    assert gate["scores"]["target"] == pytest.approx(
         {
             "selected_probability": 0.6,
             "runner_up_probability": 0.4,
@@ -394,7 +402,7 @@ def test_shadow_probe_includes_none_as_a_competing_target(decision_request):
     )
 
 
-def test_shadow_probe_missing_scores_cannot_use_vendor_confidence(
+def test_threshold_gate_missing_scores_cannot_use_vendor_confidence(
     decision_request,
 ):
     result = scored_response(decision_request, phase=0.8)
@@ -406,13 +414,14 @@ def test_shadow_probe_missing_scores_cannot_use_vendor_confidence(
         },
     )
     assessment = assess(
-        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.9)
+        decision_request, result, thresholds=ProbabilityThresholds(0.9, 0.9, 0.9)
     )
-    assert assessment["interpretation"]["reason"] == "hypothetical_action"
-    probe = assessment["threshold_probe"]
-    assert probe["status"] == "missing_scores"
-    assert set(probe["scores"]) == {"phase", "action_type"}
-    assert probe["failed_checks"] == ["phase", "target"]
+    assert assessment.action is None
+    assert assessment.interpretation.reason == "hypothetical_action"
+    gate = assessment.threshold_gate
+    assert gate["status"] == "missing_scores"
+    assert set(gate["scores"]) == {"phase", "action_type"}
+    assert gate["failed_checks"] == ["phase", "target"]
 
 
 @pytest.mark.parametrize(
@@ -425,7 +434,7 @@ def test_shadow_probe_missing_scores_cannot_use_vendor_confidence(
         ("none", "no_target"),
     ],
 )
-def test_shadow_probe_preserves_non_action_precedence(
+def test_threshold_gate_preserves_non_action_precedence(
     decision_request, problem, reason
 ):
     result = response(decision_request)
@@ -448,11 +457,12 @@ def test_shadow_probe_preserves_non_action_precedence(
                 "none": {"target": "NONE"},
             }[problem],
         )
-    thresholds = ShadowThresholds(0.9, 0.9, 0.9)
-    assert assess(decision_request, result, thresholds=thresholds) == {
+    thresholds = ProbabilityThresholds(0.9, 0.9, 0.9)
+    assessment = assess(decision_request, result, thresholds=thresholds)
+    assert assessment.action is None
+    assert assessment.to_dict() == {
         "interpretation": {"reason": reason, "action": None},
-        "threshold_probe": {
-            "purpose": "shadow_diagnostic",
+        "threshold_gate": {
             "calibrated": False,
             "status": "not_applicable",
             "thresholds": thresholds.to_dict(),
@@ -462,7 +472,7 @@ def test_shadow_probe_preserves_non_action_precedence(
     }
 
 
-def test_shadow_probe_interprets_once_and_returns_independent_copies(
+def test_threshold_gate_interprets_once_and_returns_independent_copies(
     decision_request, monkeypatch
 ):
     calls = []
@@ -472,13 +482,16 @@ def test_shadow_probe_interprets_once_and_returns_independent_copies(
         return interpret(request, result)
 
     monkeypatch.setattr("physiclaw.decision.result.interpret", counted_interpret)
-    thresholds = ShadowThresholds(0.9, 0.9, 0.9)
+    thresholds = ProbabilityThresholds(0.9, 0.9, 0.9)
     result = scored_response(decision_request)
     assessment = assess(decision_request, result, thresholds=thresholds)
     assert calls == [(decision_request, result)]
-    assessment["interpretation"]["action"]["arguments"]["bbox"][0] = 0
-    assessment["threshold_probe"]["thresholds"]["target"] = 0
-    assessment["threshold_probe"]["scores"]["target"]["selected_probability"] = 0
+    payload = assessment.to_dict()
+    payload["interpretation"]["action"]["arguments"]["bbox"][0] = 0
+    payload["threshold_gate"]["thresholds"]["target"] = 0
+    payload["threshold_gate"]["scores"]["target"]["selected_probability"] = 0
+    assert assessment.threshold_gate["thresholds"]["target"] == 0.9
+    assert assessment.threshold_gate["scores"]["target"]["selected_probability"] == 0.99
     exported = thresholds.to_dict()
     exported["target"] = 0
     assert thresholds.target == 0.9
@@ -504,14 +517,14 @@ def test_shadow_probe_interprets_once_and_returns_independent_copies(
         -float("inf"),
     ],
 )
-def test_shadow_thresholds_reject_invalid_values(question, value):
+def test_probability_thresholds_reject_invalid_values(question, value):
     values = {"phase": 0.9, "action_type": 0.9, "target": 0.9, question: value}
     with pytest.raises(ValueError):
-        ShadowThresholds(**values)
+        ProbabilityThresholds(**values)
 
 
-def test_shadow_thresholds_allow_probability_endpoints():
-    assert ShadowThresholds(0, 1, 0.5).to_dict() == {
+def test_probability_thresholds_allow_probability_endpoints():
+    assert ProbabilityThresholds(0, 1, 0.5).to_dict() == {
         "phase": 0,
         "action_type": 1,
         "target": 0.5,

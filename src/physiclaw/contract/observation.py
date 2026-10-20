@@ -36,6 +36,7 @@ def view_metadata(jpeg: bytes, listing: str, *, source: str) -> dict:
         "height": height,
         "source": source,
         "captured_at": None,
+        "observed_after": None,
         "coordinate_space": COORDINATE_SPACE,
         "image_to_screen": list(IDENTITY_TRANSFORM),
     }
@@ -47,12 +48,16 @@ class Observation:
 
     An empty detection channel does not prove that no target is visible.
     Capture time stays unknown when the source does not expose it.
+    ``observed_after`` is a conservative Unix-time lower bound on when
+    the host camera reader published this frame, not its sensor exposure.
+    It includes acquisition and detection latency in subsequent age checks.
     """
 
     frame: DecisionFrame
     elements: tuple[Element, ...]
     source: str
     captured_at: float | None
+    observed_after: float | None
     coordinate_space: str
     image_to_screen: tuple[float, ...]
 
@@ -71,12 +76,13 @@ class Observation:
             raise ValueError("unsupported image-to-screen coordinates")
         if self.source not in {"camera", "screenshot", "debug"}:
             raise ValueError("unknown observation source")
-        if self.captured_at is not None and (
-            type(self.captured_at) not in (int, float)
-            or not math.isfinite(self.captured_at)
-            or self.captured_at < 0
-        ):
-            raise ValueError("invalid capture time")
+        for timestamp in (self.captured_at, self.observed_after):
+            if timestamp is not None and (
+                type(timestamp) not in (int, float)
+                or not math.isfinite(timestamp)
+                or timestamp < 0
+            ):
+                raise ValueError("invalid observation time")
         if len({e.id for e in self.elements}) != len(self.elements):
             raise ValueError("duplicate observation element ID")
         for element in self.elements:
@@ -138,6 +144,7 @@ def read_observation(blocks: list[dict]) -> Observation | None:
         elements=tuple(decode_elements(listing)),
         source=metadata["source"],
         captured_at=metadata["captured_at"],
+        observed_after=metadata["observed_after"],
         coordinate_space=metadata["coordinate_space"],
         image_to_screen=metadata["image_to_screen"],
     )
