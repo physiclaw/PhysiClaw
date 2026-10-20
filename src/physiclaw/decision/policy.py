@@ -64,7 +64,7 @@ def question_profile(
     No goal-based target preselection, invented icon labels, Cartesian product
     or silent truncation. Label vetoes affect both gestures. A provider rejects
     requests beyond its limits before HTTP. No image/tools/targets means no
-    billable questions. Live model calls remain a later phase.
+    billable questions. These choices do not authorize execution.
     """
     gestures = tuple(tool for tool in REVIEW_TOOLS if tool in tools)
     if context.frame is None or not gestures:

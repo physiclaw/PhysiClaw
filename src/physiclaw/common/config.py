@@ -285,6 +285,19 @@ class ConductorConfig:
 
 
 @dataclass
+class DecisionConfig:
+    """Decision model selection and opt-in shadow evaluation.
+
+    ``off`` skips projection and inference. ``shadow`` evaluates in the
+    background without executing actions or blocking the LLM.
+    """
+
+    model: str = ""
+    mode: str = "off"
+    timeout_seconds: float = 2.0
+
+
+@dataclass
 class RetentionConfig:
     # Per-session artifact dirs (engine sessions, macro run
     # dirs) and terminal cron jobs: a month covers a post-mortem on a
@@ -364,6 +377,7 @@ class Config:
     compact: CompactConfig = field(default_factory=CompactConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     conductor: ConductorConfig = field(default_factory=ConductorConfig)
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
     pitfalls: PitfallsConfig = field(default_factory=PitfallsConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
@@ -465,6 +479,13 @@ _SECTION_COMMENTS: dict[str, str] = {
         "smaller blurs fine print."
     ),
     "memory": "Daily-log loading: bootstrap preload + on-demand `read_logs` defaults.",
+    "decision": (
+        "Decision model selection and test-only shadow evaluation. `model` "
+        "is a decision `provider/model` ref; setting it does not enable calls. "
+        "`mode = 'off'` skips projection and inference. `mode = 'shadow'` "
+        "evaluates in the background without retries or executing actions; "
+        "the LLM does not wait for it."
+    ),
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "pitfalls": (
         "Agent-flagged turn-wasting traps (~/.physiclaw/learned/pitfalls/), "
@@ -484,6 +505,7 @@ _SECTION_COMMENTS: dict[str, str] = {
 }
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
+    ("decision", "timeout_seconds"): "positive deadline for one shadow call",
     ("retention", "log_days"): "maximum service-log archive age in days",
     (
         "retention",
@@ -556,8 +578,14 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
                 number = math.inf
             if not math.isfinite(number):
                 raise ConfigError(f"[{section}] {key}: expected a finite float")
+            if section == "decision" and key == "timeout_seconds" and number <= 0:
+                raise ConfigError(f"[{section}] {key}: expected a positive float")
             return number
     elif isinstance(value, str):
+        if section == "decision" and key == "mode" and value not in {"off", "shadow"}:
+            raise ConfigError(
+                f"[{section}] {key}: expected 'off' or 'shadow', got {value!r}"
+            )
         return value
     raise ConfigError(
         f"[{section}] {key}: expected {declared.__name__}, "

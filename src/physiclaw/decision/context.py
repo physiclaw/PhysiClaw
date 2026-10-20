@@ -44,7 +44,6 @@ class ContextProjection:
         context = self.context
         frame = context.frame if context is not None else None
         return {
-            "mode": "projection_only",
             "blockers": list(self.blockers),
             "state": context_to_json(context) if context is not None else None,
             "image": {

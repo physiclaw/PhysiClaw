@@ -92,6 +92,10 @@ def test_config_error_is_value_error_subclass() -> None:
         ("engine", "plan_required_after", 8),
         # AgentConfig
         ("agent", "model", ""),
+        # DecisionConfig
+        ("decision", "model", ""),
+        ("decision", "mode", "off"),
+        ("decision", "timeout_seconds", 2.0),
         # ProviderConfig
         ("provider", "qwen_api_key", ""),
         ("provider", "moonshot_api_key", ""),
@@ -288,6 +292,9 @@ def test_to_toml_round_trips_through_load(tmp_path: Path) -> None:
     cfg.server.port = 1234
     cfg.engine.max_turns = 42
     cfg.agent.model = "qwen/qwen3-plus"
+    cfg.decision.model = "vendor/decision-model"
+    cfg.decision.mode = "shadow"
+    cfg.decision.timeout_seconds = 1.5
 
     p = tmp_path / "config.toml"
     p.write_text(config.to_toml(cfg))
@@ -338,12 +345,120 @@ def test_set_nonfinite_value_does_not_create_config(tmp_path) -> None:
     assert not path.exists()
 
 
+@pytest.mark.parametrize("value", ["0", "-0.1", "nan", "inf", "-inf", "1e999"])
+def test_decision_timeout_rejects_invalid_load_and_set(tmp_path, value) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f"[decision]\ntimeout_seconds = {value}\n", encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match="timeout_seconds.*float"):
+        config.load(path)
+
+    original = '[decision]\nmodel = "vendor/model"\ntimeout_seconds = 3\n'
+    path.write_text(original, encoding="utf-8")
+    with pytest.raises(config.ConfigError, match="timeout_seconds.*float"):
+        config.set_dotted("decision.timeout_seconds", value, path)
+
+    assert path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(
+    "key, value, expected_type",
+    [
+        ("model", "true", "str"),
+        ("model", "2", "str"),
+        ("mode", "true", "str"),
+        ("mode", "2", "str"),
+        ("timeout_seconds", "true", "float"),
+        ("timeout_seconds", '"2"', "float"),
+    ],
+)
+def test_decision_config_rejects_wrong_types(
+    tmp_path, key, value, expected_type
+) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f"[decision]\n{key} = {value}\n", encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match=f"{key}: expected {expected_type}"):
+        config.load(path)
+
+
+def test_decision_config_set_and_unset(tmp_path) -> None:
+    path = tmp_path / "config.toml"
+    config.set_dotted("decision.model", "vendor/model", path)
+    assert config.load(path).decision.mode == "off"
+    config.set_dotted("decision.mode", "shadow", path)
+    config.set_dotted("decision.timeout_seconds", "3", path)
+
+    assert config.load(path).decision == config.DecisionConfig(
+        model="vendor/model", mode="shadow", timeout_seconds=3.0
+    )
+    assert isinstance(config.load(path).decision.timeout_seconds, float)
+    assert config.unset_dotted("decision.mode", path)
+    assert config.load(path).decision.mode == "off"
+    assert config.load(path).decision.model == "vendor/model"
+    assert config.unset_dotted("decision.model", path)
+    assert config.load(path).decision.model == ""
+
+
+def test_decision_mode_and_model_can_be_edited_in_either_order(tmp_path) -> None:
+    path = tmp_path / "config.toml"
+    config.set_dotted("decision.mode", "shadow", path)
+    assert config.load(path).decision.model == ""
+    config.set_dotted("decision.model", "vendor/model", path)
+    assert config.load(path).decision.mode == "shadow"
+    assert config.unset_dotted("decision.model", path)
+    assert config.load(path).decision == config.DecisionConfig(mode="shadow")
+
+
+@pytest.mark.parametrize("mode", ["active", "enabled", "SHADOW", "", " shadow "])
+def test_decision_mode_rejects_unknown_load_and_set(tmp_path, mode) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f'[decision]\nmode = "{mode}"\n', encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
+        config.load(path)
+
+    original = '[decision]\nmodel = "vendor/model"\nmode = "off"\n'
+    path.write_text(original, encoding="utf-8")
+    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
+        config.set_dotted("decision.mode", mode, path)
+
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_decision_invalid_mode_does_not_create_config(tmp_path) -> None:
+    path = tmp_path / "absent" / "config.toml"
+
+    with pytest.raises(config.ConfigError, match="mode: expected 'off' or 'shadow'"):
+        config.set_dotted("decision.mode", "active", path)
+
+    assert not path.exists()
+
+
+def test_decision_shadow_model_is_unknown_on_load_and_set(tmp_path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text('[decision]\nshadow_model = "vendor/model"\n', encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match=r"unknown key.*shadow_model"):
+        config.load(path)
+
+    original = '[decision]\nmodel = "vendor/model"\nmode = "off"\n'
+    path.write_text(original, encoding="utf-8")
+    with pytest.raises(config.ConfigError, match=r"unknown key.*shadow_model"):
+        config.set_dotted("decision.shadow_model", "vendor/other", path)
+
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_to_toml_emits_header_and_section_comments_when_with_comments() -> None:
     out = config.to_toml(config.Config(), with_comments=True)
 
     assert out.startswith("# PhysiClaw config.")
     assert "# Timeouts for `physiclaw server --warm-start`" in out
     assert "# API model selection." in out
+    assert "# Decision model selection and test-only shadow evaluation." in out
+    assert "`mode = 'off'` skips projection and inference." in out
+    assert "`mode = 'shadow'` evaluates in the background" in out
 
 
 @pytest.mark.parametrize(

@@ -110,7 +110,6 @@ def test_all_observed_targets_and_available_gestures_are_previewed_without_execu
             element
         )
         assert str(list(element.bbox)) in targets[f"b{element.id}"]["description"]
-    assert data["mode"] == "projection_only"
     assert data["blockers"] == []
     request = result.request("review-0")
     assert request.context is result.context

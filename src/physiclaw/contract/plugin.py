@@ -33,7 +33,7 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
-from physiclaw.contract.decision import ActionCandidate, decision_json
+from physiclaw.contract.decision import ActionCandidate, DecisionProvider, decision_json
 from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
     AssistantMessage,
@@ -90,17 +90,27 @@ class WireSink(Protocol):
     def write_micro(self, rec: MicroRecord) -> None: ...
 
 
+class DecisionProviderFactory(Protocol):
+    """Create an owned decision transport without sharing any model context."""
+
+    def __call__(
+        self, provider_id: str, model_id: str, *, require_images: bool = False
+    ) -> DecisionProvider: ...
+
+
 @dataclass(frozen=True, slots=True)
 class PluginServices:
     """Wake-time services shared by all plugins, without a model context.
 
     The chat provider accepts caller-owned messages and holds no conversation.
     Its lifecycle stays with the host; each plugin owns its own context.
+    A client created through the decision factory belongs to its caller.
     """
 
     session_provider: SessionChatProvider
     events: EventSink | None = None
     wire: WireSink | None = None
+    decision_provider_factory: DecisionProviderFactory | None = None
 
 
 @dataclass(frozen=True, slots=True)

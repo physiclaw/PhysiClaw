@@ -35,6 +35,7 @@ from physiclaw.provider import (
     ChatProvider,
     ProviderConfigurationError,
     make_chat_provider,
+    make_decision_provider,
 )
 
 log = logging.getLogger(__name__)
@@ -166,6 +167,7 @@ async def _run_session(
             session_provider=provider,
             events=tr,
             wire=rlog,
+            decision_provider_factory=make_decision_provider,
         )
         gated_macros: dict[str, Macro] = {}
         active_plugins: list[PluginBinding] = []

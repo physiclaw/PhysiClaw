@@ -140,7 +140,16 @@ in the `env` event / `summary.json.env.utc_offset`.
   decision attempt, its elapsed_ms and native usage; no chat token fold),
   `decision_projection` (local-only preparation: copied task/active step,
   recent action receipts, same-frame OCR/icons, image identity/hash and
-  conservative review instructions; no model call or physical action),
+  conservative review instructions; shadow scheduling/skip status links its
+  exact questions to a request ID). Optional shadow `decision_call` events
+  record original turn/observation, answers, hypothetical action or yield,
+  timings and reported usage, never execution. Unknown usage stays null,
+  including failures whose provider returned no usable usage. Scheduled work
+  cancelled before it starts has no API-attempt event. `decision_shadow_skipped`
+  records expired work or client construction failure; `decision_shadow_disabled`
+  records missing or invalid model configuration. With `[decision] mode = "off"`,
+  the plugin bypasses projection and inference. Shadow calls add cost; they do not
+  establish actual savings, calibrated accuracy or counterfactual recovery,
   `micro_call` (one conductor decision call: call, node,
   rows the decision saw, out or null when it escalated, confidence,
   detail, attempts, elapsed_ms), `walk` (a conductor walk's terminal moment — the

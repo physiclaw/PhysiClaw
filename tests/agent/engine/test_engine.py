@@ -328,6 +328,95 @@ async def test_run_plugin_without_setup_contribution_still_advances(completed_ru
     plugin.aclose.assert_awaited_once()
 
 
+async def test_engine_supplies_lazy_decision_factory_without_selecting_a_model(
+    completed_run, mocker, monkeypatch
+):
+    monkeypatch.setattr(engine_mod.CONFIG.decision, "model", "fake/shadow")
+    monkeypatch.setattr(engine_mod.CONFIG.decision, "mode", "shadow")
+    factory = mocker.patch.object(engine_mod, "make_decision_provider")
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    services = completed_run.plugin.session_setup.call_args.args[0]
+    assert services.session_provider is completed_run.provider
+    assert services.decision_provider_factory is factory
+    factory.assert_not_called()
+
+
+async def test_session_closes_pending_shadow_before_trace_and_chat_provider(
+    completed_run, observation_blocks, mocker, monkeypatch
+):
+    from physiclaw.contract.decision import DecisionCapabilities
+    from physiclaw.decision.plugin import DecisionPlugin
+
+    monkeypatch.setattr(engine_mod.CONFIG.decision, "model", "fake/shadow")
+    monkeypatch.setattr(engine_mod.CONFIG.decision, "mode", "shadow")
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def evaluate(_request, *, deadline):
+        assert deadline > asyncio.get_running_loop().time()
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    async def close_decision():
+        assert cancelled.is_set()
+        assert not completed_run.provider.closed
+        completed_run.tr.close.assert_not_called()
+
+    decision_provider = SimpleNamespace(
+        api_kind="decision",
+        capabilities=DecisionCapabilities(images=True),
+        evaluate=mocker.AsyncMock(side_effect=evaluate),
+        aclose=mocker.AsyncMock(side_effect=close_decision),
+    )
+    mocker.patch.object(
+        engine_mod, "make_decision_provider", return_value=decision_provider
+    )
+    plugin = DecisionPlugin()
+    close = mocker.spy(plugin, "aclose")
+    mocker.patch.object(
+        engine_mod.plugin_loader,
+        "load_plugins",
+        return_value=(PluginBinding("physiclaw.decision", plugin, name="Decision"),),
+    )
+    mocker.patch.object(
+        engine_mod,
+        "list_tools_cached",
+        new=mocker.AsyncMock(
+            return_value=[{"name": "tap", "input_schema": {"type": "object"}}]
+        ),
+    )
+    original_chat = completed_run.provider.chat
+
+    async def chat(messages, tools, *, metadata):
+        await asyncio.wait_for(started.wait(), 1)
+        return await original_chat(messages, tools, metadata=metadata)
+
+    completed_run.provider.chat = chat
+    session = Session()
+    session.plan.update(
+        user_said="打开淘宝",
+        steps=[{"content": "打开淘宝", "status": "in_progress"}],
+    )
+    session.facts.observe(observation_blocks(), tool="peek")
+
+    await engine_mod._run_session(
+        [Trigger(description="t")], model_ref="fake/model", session=session
+    )
+
+    assert session.sentinel_status == DONE
+    assert cancelled.is_set()
+    decision_provider.evaluate.assert_awaited_once()
+    decision_provider.aclose.assert_awaited_once()
+    close.assert_awaited_once()
+    assert completed_run.provider.closed
+    completed_run.tr.close.assert_called_once()
+
+
 async def test_plugin_cleanup_keeps_the_borrowed_provider_open(completed_run):
     provider_open_during_cleanup = []
 

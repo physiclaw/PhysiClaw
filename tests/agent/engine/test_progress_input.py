@@ -1,5 +1,6 @@
-"""P4 shares existing outputs without changing how the LLM plans or acts."""
+"""Decision projection and shadow calls preserve how the LLM plans and acts."""
 
+import asyncio
 import json
 from copy import deepcopy
 from types import SimpleNamespace
@@ -22,6 +23,12 @@ from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import DONE
+from physiclaw.common.config import CONFIG
+from physiclaw.contract.decision import (
+    DecisionAnswer,
+    DecisionCapabilities,
+    DecisionResult,
+)
 from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.decision.plugin import DecisionPlugin
@@ -136,8 +143,9 @@ async def test_unusable_progress_cannot_break_existing_llm_workflow(content, moc
     chat.assert_awaited_once()
 
 
-async def test_real_workflow_and_requests_match_with_and_without_decision_slot(
-    observation_blocks, mocker
+@pytest.mark.parametrize("shadow_finishes", [False, True])
+async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
+    observation_blocks, mocker, monkeypatch, shadow_finishes
 ):
     responses = [
         _asst(
@@ -172,26 +180,80 @@ async def test_real_workflow_and_requests_match_with_and_without_decision_slot(
         ),
         _asst(
             tool_calls=[
-                _tc("note", {"summary": "finished"}, tcid="note-2"),
-                _tc("end_session", {"status": DONE, "recap": "finished"}, tcid="end-2"),
+                _tc("note", {"summary": "tap the search field"}, tcid="note-2"),
+                _tc("tap", {"bbox": [0.4, 0.2, 0.8, 0.4]}, tcid="tap-2"),
+            ]
+        ),
+        _asst(
+            tool_calls=[
+                _tc("note", {"summary": "finished"}, tcid="note-3"),
+                _tc("end_session", {"status": DONE, "recap": "finished"}, tcid="end-3"),
             ]
         ),
     ]
     blocks = observation_blocks()
     results = []
-    for enabled in (False, True):
+    for mode in ("disabled", "off", "shadow"):
+        monkeypatch.setattr(CONFIG.decision, "model", "fake/shadow")
+        monkeypatch.setattr(
+            CONFIG.decision, "mode", "shadow" if mode == "shadow" else "off"
+        )
         session = Session()
         provider = FakeProvider(deepcopy(responses))
         requests = []
         original_chat = provider.chat
+        started, release, finished, cancelled = (asyncio.Event() for _ in range(4))
+
+        async def evaluate(request, *, deadline):
+            assert deadline > asyncio.get_running_loop().time()
+            started.set()
+            try:
+                await release.wait()
+                return DecisionResult(
+                    request.id,
+                    {
+                        "phase": DecisionAnswer("ROUTINE", confidence=0.99),
+                        "action_type": DecisionAnswer("long_press", confidence=0.99),
+                        "target": DecisionAnswer("b0", confidence=0.99),
+                    },
+                    "fake",
+                    "shadow",
+                    "shadow",
+                )
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            finally:
+                finished.set()
+
+        decision_provider = SimpleNamespace(
+            api_kind="decision",
+            capabilities=DecisionCapabilities(images=True),
+            evaluate=mocker.AsyncMock(side_effect=evaluate),
+            aclose=mocker.AsyncMock(),
+        )
+        decision_factory = mocker.Mock(return_value=decision_provider)
 
         async def capture(messages, tools, *, metadata):
             requests.append((deepcopy(messages), deepcopy(tools)))
+            if mode == "shadow" and metadata.turn == 2:
+                # The LLM reaches its normal call while shadow inference waits.
+                await asyncio.wait_for(started.wait(), 1)
+                if shadow_finishes:
+                    release.set()
+                    await asyncio.wait_for(finished.wait(), 1)
             return await original_chat(messages, tools, metadata=metadata)
 
         provider.chat = capture
         registry = build_registry({})
-        mcp = SimpleNamespace(call_tool=mocker.AsyncMock(return_value=deepcopy(blocks)))
+        mcp = SimpleNamespace(
+            call_tool=mocker.AsyncMock(
+                side_effect=[
+                    deepcopy(blocks),
+                    [{"type": "text", "text": "tap completed"}],
+                ]
+            )
+        )
         run = _mk_run(
             provider,
             session=session,
@@ -209,26 +271,42 @@ async def test_real_workflow_and_requests_match_with_and_without_decision_slot(
         )
         plugin = DecisionPlugin()
         events = SimpleNamespace(write=mocker.Mock())
-        if enabled:
-            await plugin.session_setup(PluginServices(provider, events=events))
+        if mode != "disabled":
+            await plugin.session_setup(
+                PluginServices(
+                    provider,
+                    events=events,
+                    decision_provider_factory=decision_factory,
+                )
+            )
             run.plugins = (
                 PluginBinding("physiclaw.decision", plugin, "Decision"),
                 *run.plugins,
             )
-        await drive(run, session)
+        try:
+            await drive(run, session)
+        finally:
+            await plugin.aclose()
         assert session.sentinel_status == DONE
         assert session.plan.current_step() == "打开淘宝"
-        assert mcp.call_tool.call_args_list == [mocker.call("peek", {})]
+        assert mcp.call_tool.call_args_list == [
+            mocker.call("peek", {}),
+            mocker.call("tap", {"bbox": [0.4, 0.2, 0.8, 0.4]}),
+        ]
         results.append(requests)
-        if enabled:
-            assert len(events.write.call_args_list) == 3
-            data = events.write.call_args.args[0]["projection"]
+        if mode == "shadow":
+            projected = [
+                call.args[0]
+                for call in events.write.call_args_list
+                if call.args[0]["event"] == "decision_projection"
+            ]
+            assert len(projected) == 4
+            data = projected[2]["projection"]
             preview = json.dumps(data, ensure_ascii=False)
             assert data["state"]["facts"]["current_step"]["text"] == "打开淘宝"
             assert "private initial prompt" not in preview
             assert "private scratchpad" not in preview
             assert "private interpretation" not in preview
-            assert data["mode"] == "projection_only"
             assert data["blockers"] == []
             questions = data["profile"]["questions"]
             assert set(questions) == {"phase", "action_type", "target"}
@@ -238,4 +316,20 @@ async def test_real_workflow_and_requests_match_with_and_without_decision_slot(
                 "long_press",
             ]
             assert list(questions["target"]["options"]) == ["NONE", "b0", "b1"]
-    assert results[0] == results[1]
+        if mode == "shadow":
+            decision_provider.evaluate.assert_awaited_once()
+            decision_provider.aclose.assert_awaited_once()
+            assert cancelled.is_set() is not shadow_finishes
+            decision_request = decision_provider.evaluate.call_args.args[0]
+            facts = decision_request.context.facts
+            assert facts["turn"] == 2
+            assert facts["current_step"]["text"] == "打开淘宝"
+            assert "private initial prompt" not in repr(decision_request)
+            assert "private scratchpad" not in repr(decision_request)
+            assert "private interpretation" not in repr(decision_request)
+        else:
+            decision_factory.assert_not_called()
+            decision_provider.evaluate.assert_not_awaited()
+            decision_provider.aclose.assert_not_awaited()
+            events.write.assert_not_called()
+    assert results[0] == results[1] == results[2]
