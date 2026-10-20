@@ -15,7 +15,7 @@ from physiclaw.common.gesture_vocab import (
 )
 from physiclaw.contract.dto import ToolCall
 from physiclaw.contract.observation import Observation, read_observation
-from physiclaw.contract.turn import ActionEvent, TurnInput
+from physiclaw.contract.turn import ActionEvent, ProgressSnapshot, TurnInput
 from physiclaw.macros.model import MACRO_OK_META
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,8 @@ SCREEN_CALLS = (
     | NAV_TOOLS
     | {SWIPE, SEQUENCE, UNLOCK_PHONE, RUN_MACRO, PEEK, SCREENSHOT}
 )
-# Notes/scratchpad and model planning stay private to the producer context.
+# Keep private notes/interpretation out of receipts. Declared progress is
+# copied from the existing plan separately when constructing TurnInput.
 CONTEXT_CALLS = frozenset({"note", "update_progress"})
 
 
@@ -82,7 +83,7 @@ class FactualState:
         private = call.name in CONTEXT_CALLS
         if private:
             # Acknowledgements pair a producer's own tool calls without sharing
-            # another producer's notes, plan text or scratchpad.
+            # another producer's notes, interpretation or scratchpad.
             result_text = "context update failed" if failed else "context updated"
             result_blocks = None
             notices = ()
@@ -139,6 +140,7 @@ class FactualState:
         self,
         *,
         schemas: dict[str, dict],
+        progress: ProgressSnapshot | None = None,
     ) -> TurnInput:
         return TurnInput(
             observation=self.observation,
@@ -148,4 +150,5 @@ class FactualState:
                 name: schema.get("input_schema") or {}
                 for name, schema in schemas.items()
             },
+            progress=progress,
         )

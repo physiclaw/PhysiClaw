@@ -1,7 +1,7 @@
 """The session's working plan — pinned at the tail of every request.
 
 The plan lives on `Session`, never in `messages[]`. Before each
-`conductor.advance(...)` call the engine appends `plan.render()` as a final
+chat call the LLM producer appends `plan.render()` as a final
 `UserMessage` so the model sees its current plan on every turn without
 being lost in the scroll of tool_results. After the model responds, the
 plan message is discarded; only the assistant reply lands in history.
@@ -18,11 +18,13 @@ from dataclasses import dataclass, field
 
 from physiclaw.common.config import CONFIG
 from physiclaw.contract.dto import Message, UserMessage
-
-PENDING = "pending"
-IN_PROGRESS = "in_progress"
-COMPLETED = "completed"
-STATUSES: frozenset[str] = frozenset({PENDING, IN_PROGRESS, COMPLETED})
+from physiclaw.contract.turn import (
+    COMPLETED,
+    IN_PROGRESS,
+    PENDING,
+    ProgressSnapshot,
+    ProgressStep,
+)
 
 STATUS_ICON = {PENDING: "- ", IN_PROGRESS: "▸ ", COMPLETED: "✓ "}
 
@@ -160,6 +162,26 @@ class Plan:
     def progress(self) -> tuple[int, int]:
         """(completed, total) step counts."""
         return sum(1 for s in self.steps if s.status == COMPLETED), len(self.steps)
+
+    def runtime_snapshot(self) -> ProgressSnapshot | None:
+        """Copy declared outputs; keep interpretation, tips and counters private."""
+        if not self.is_drafted():
+            return None
+        try:
+            return ProgressSnapshot(
+                user_said=None
+                if self.user_said == DEFAULT_USER_SAID
+                else self.user_said,
+                steps=tuple(
+                    ProgressStep(step.content, step.status)
+                    for step in self.steps
+                    if step.content != DEFAULT_SEED_STEP
+                ),
+            )
+        except ValueError:
+            # Projection must not add new restrictions to the LLM workflow.
+            # An unusable declaration remains unknown to other producers.
+            return None
 
     def render(self) -> str:
         done, total = self.progress()

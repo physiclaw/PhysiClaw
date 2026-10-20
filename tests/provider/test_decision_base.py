@@ -7,6 +7,7 @@ import pytest
 
 from physiclaw.contract.decision import (
     ActionCandidate,
+    DecisionAnswer,
     DecisionCapabilities,
     DecisionResult,
 )
@@ -35,7 +36,7 @@ class StubDecisionProvider(BaseDecisionProvider):
         self.requests.append((request, deadline))
         return DecisionResult(
             request.id,
-            request.candidates[1].id,
+            {q.id: DecisionAnswer(q.candidates[1].id) for q in request.questions},
             self.PROVIDER_ID,
             self.model,
             self.model,
@@ -98,7 +99,8 @@ async def test_generic_evaluate_adds_timing_without_inventing_scores(
     result = await provider.evaluate(decision_request, deadline=limit)
     assert provider.requests == [(decision_request, limit)]
     assert result.elapsed_seconds >= 0
-    assert result.confidence is result.probabilities is None
+    answer = result.answers["next_action"]
+    assert answer.confidence is answer.probabilities is None
     assert result.usage.input_tokens is None
 
 
@@ -108,7 +110,7 @@ async def test_generic_evaluate_adds_timing_without_inventing_scores(
         {"provider_id": "other-vendor"},
         {"requested_model_id": "other-requested-model"},
         {"request_id": "other-request"},
-        {"selected_id": "invented-action"},
+        {"answers": {"next_action": DecisionAnswer("invented-action")}},
     ],
 )
 async def test_generic_base_rejects_adapter_identity_and_choice_mismatch(
@@ -141,9 +143,14 @@ async def test_capability_gates_precede_adapter_call(provider, image_decision_re
         await provider.evaluate(image_decision_request, deadline=deadline())
     request = replace(
         image_decision_request,
-        candidates=(
-            *image_decision_request.candidates,
-            ActionCandidate("a3", "Third alternative"),
+        questions=(
+            replace(
+                image_decision_request.questions[0],
+                candidates=(
+                    *image_decision_request.questions[0].candidates,
+                    ActionCandidate("a3", "Third alternative"),
+                ),
+            ),
         ),
     )
     with pytest.raises(ProviderPermanentError, match="at most 2 choices"):

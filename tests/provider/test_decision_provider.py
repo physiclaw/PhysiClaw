@@ -5,7 +5,11 @@ import asyncio
 import pytest
 
 from physiclaw.common import config
-from physiclaw.contract.decision import DecisionCapabilities, DecisionResult
+from physiclaw.contract.decision import (
+    DecisionAnswer,
+    DecisionCapabilities,
+    DecisionResult,
+)
 from physiclaw.provider import (
     DecisionProviderSpec,
     ProviderConfigurationError,
@@ -36,7 +40,11 @@ class FakeDecisionProvider:
     async def evaluate(self, request, *, deadline):
         assert deadline > asyncio.get_running_loop().time()
         return DecisionResult(
-            request.id, request.candidates[1].id, "fake", self.model, self.model
+            request.id,
+            {q.id: DecisionAnswer(q.candidates[1].id) for q in request.questions},
+            "fake",
+            self.model,
+            self.model,
         )
 
     async def aclose(self):
@@ -66,9 +74,10 @@ async def test_fake_provider_substitution(
         decision_request, deadline=asyncio.get_running_loop().time() + 1
     )
     result.validate_for(decision_request)
-    assert result.selected_id == "a1"
+    assert result.answers["next_action"].selected_id == "a1"
     assert result.provider_id == "fake"
-    assert result.confidence is result.probabilities is None
+    answer = result.answers["next_action"]
+    assert answer.confidence is answer.probabilities is None
     assert result.usage.input_tokens is None
     await provider.aclose()
     assert provider.closed

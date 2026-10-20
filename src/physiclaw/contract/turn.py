@@ -7,6 +7,44 @@ from dataclasses import dataclass, field
 from physiclaw.contract.decision import DecisionValue, freeze_mapping
 from physiclaw.contract.observation import Observation
 
+PENDING = "pending"
+IN_PROGRESS = "in_progress"
+COMPLETED = "completed"
+STATUSES = frozenset({PENDING, IN_PROGRESS, COMPLETED})
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressStep:
+    """Declared work, not a verified outcome or an execution grant."""
+
+    content: str
+    status: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.content, str) or not self.content.strip():
+            raise ValueError("progress step content must be nonblank text")
+        if not isinstance(self.status, str) or self.status not in STATUSES:
+            raise ValueError("invalid progress step status")
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressSnapshot:
+    """Existing task/step outputs, without interpretation or scratchpad."""
+
+    user_said: str | None
+    steps: tuple[ProgressStep, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "steps", tuple(self.steps))
+        if self.user_said is not None and (
+            not isinstance(self.user_said, str) or not self.user_said.strip()
+        ):
+            raise ValueError("task quote must be nonblank text or unknown")
+        if any(not isinstance(step, ProgressStep) for step in self.steps):
+            raise ValueError("progress requires immutable ProgressStep instances")
+        if sum(step.status == IN_PROGRESS for step in self.steps) > 1:
+            raise ValueError("progress has more than one active step")
+
 
 @dataclass(frozen=True, slots=True)
 class TurnMetadata:
@@ -74,12 +112,13 @@ class ActionEvent:
 
 @dataclass(frozen=True, slots=True)
 class TurnInput:
-    """Factual context; invocation metadata is supplied separately."""
+    """Observations, receipts and declared progress; metadata stays separate."""
 
     observation: Observation | None
     observation_issue: str | None
     events: tuple[ActionEvent, ...] = ()
     tools: Mapping[str, DecisionValue] = field(default_factory=dict)
+    progress: ProgressSnapshot | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "events", tuple(self.events))
@@ -89,4 +128,8 @@ class TurnInput:
             self.observation, Observation
         ):
             raise ValueError("turn observation must be an immutable Observation")
+        if self.progress is not None and not isinstance(
+            self.progress, ProgressSnapshot
+        ):
+            raise ValueError("turn progress must be an immutable ProgressSnapshot")
         object.__setattr__(self, "tools", freeze_mapping(self.tools))

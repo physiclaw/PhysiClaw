@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import traceback
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -64,11 +65,11 @@ async def test_choice_request_and_normalized_reply(
         json=answer(choice), headers={"x-request-id": "openai-native-r1"}
     )
     result = await provider.evaluate(decision_request, deadline=deadline())
-    assert result.selected_id == choice
+    assert result.answers["next_action"].selected_id == choice
     assert result.provider_id == "openai"
     assert result.requested_model_id == result.model_id == "gpt-6-luna"
-    assert result.confidence == 0.81
-    assert set(result.probabilities) == {"YIELD", "a1"}
+    assert result.answers["next_action"].confidence == 0.81
+    assert set(result.answers["next_action"].probabilities) == {"YIELD", "a1"}
     assert result.usage.input_tokens == 300
     assert result.usage.output_tokens == 0
     assert result.provider_request_id == "openai-native-r1"
@@ -77,16 +78,16 @@ async def test_choice_request_and_normalized_reply(
     assert set(body) == {"model", "input", "questions"}
     state = json.loads(body["input"][0]["content"][0]["text"])
     assert state["facts"]["resolved_inputs"] == {"app_name": "微信"}
-    assert state["observation"]["ocr"][0]["ref"] == "o17:e1"
+    assert state["observation"]["ocr"][0]["ref"] == "o17:0"
     assert state["observation"]["icons"][0]["text"] is None
     (question,) = body["questions"]
     assert question["type"] == "choice"
-    assert question["instructions"] == decision_request.instructions
+    assert question["instructions"] == decision_request.questions[0].instructions
     assert [c["value"] for c in question["choices"]] == ["YIELD", "a1"]
     candidate = json.loads(question["choices"][1]["description"])
     assert candidate["tool"] == "tap"
     assert candidate["arguments"] == {"bbox": [0.1, 0.6, 0.3, 0.8]}
-    assert candidate["target_ref"] == "o17:e1"
+    assert candidate["target_ref"] == "o17:0"
     request = route.calls[0].request
     assert request.headers["authorization"] == f"Bearer {SECRET}"
     assert "typesafe-danger-zone-images" not in request.headers
@@ -134,7 +135,7 @@ async def test_same_model_chat_and_decision_call_different_endpoints(
         chat_reply = await chat.chat([UserMessage(content="Read this request")], [])
         decision_reply = await provider.evaluate(decision_request, deadline=deadline())
         assert chat_reply.content == "Interpret the purchase request"
-        assert decision_reply.selected_id == "a1"
+        assert decision_reply.answers["next_action"].selected_id == "a1"
         assert "questions" not in json.loads(chat_route.calls[0].request.content)
         assert "messages" not in json.loads(decision_route.calls[0].request.content)
         assert chat_route.call_count == decision_route.call_count == 1
@@ -254,4 +255,20 @@ async def test_missing_accounting_and_scores_stay_unknown(
     respx_mock.post(URL).respond(json=payload)
     result = await provider.evaluate(decision_request, deadline=deadline())
     assert result.usage.input_tokens is result.usage.output_tokens is None
-    assert result.confidence is result.probabilities is None
+    assert (
+        result.answers["next_action"].confidence
+        is result.answers["next_action"].probabilities
+        is None
+    )
+
+
+async def test_question_limit_precedes_http(provider, decision_request, respx_mock):
+    request = replace(
+        decision_request,
+        questions=tuple(
+            replace(decision_request.questions[0], id=f"q{i}") for i in range(201)
+        ),
+    )
+    with pytest.raises(ProviderPermanentError, match="200 questions"):
+        await provider.evaluate(request, deadline=deadline())
+    assert not respx_mock.calls

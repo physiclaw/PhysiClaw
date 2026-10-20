@@ -304,7 +304,9 @@ async def _advance(
     run: EngineRun, session: Session, metadata: TurnMetadata
 ) -> ProducedTurn | None:
     """Every slot receives the same immutable input and metadata; first accepted wins."""
-    runtime_input = session.facts.snapshot(schemas=run.schema_by_name)
+    runtime_input = session.facts.snapshot(
+        schemas=run.schema_by_name, progress=session.plan.runtime_snapshot()
+    )
     for binding in run.plugins:
         checkpoint()
         started = time.perf_counter()

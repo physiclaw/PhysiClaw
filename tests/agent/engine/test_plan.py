@@ -30,12 +30,12 @@ from physiclaw.agent.engine.plan import (
     IN_PROGRESS,
     PENDING,
     STATUS_ICON,
-    STATUSES,
     Plan,
     Step,
     inject_tail,
 )
 from physiclaw.contract.dto import UserMessage
+from physiclaw.contract.turn import STATUSES
 
 # ---------- protocol constants ----------
 

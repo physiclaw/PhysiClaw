@@ -8,20 +8,22 @@ here. Errors deliberately omit server bodies, headers and transport text.
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from uuid import uuid4
 
 import httpx
 
 from physiclaw.contract.decision import (
+    DecisionAnswer,
     DecisionCapabilities,
     DecisionRequest,
     DecisionResult,
+    candidate_to_json,
+    context_to_json,
 )
 from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
 from physiclaw.provider.decision.wire import (
-    candidate_to_json,
     check_response_status,
-    context_to_json,
     parse_usage,
     unique_object,
 )
@@ -31,7 +33,6 @@ from physiclaw.provider.provider_base import (
     ProviderTransientError,
 )
 
-_QUESTION = "next_action"
 _IMAGE_PART = "current-frame"
 # Image support is experimental. Extend this set only with verified vendor
 # support; an arbitrary new model ID must not silently inherit that modality.
@@ -57,29 +58,72 @@ class TypeSafeDecisionProvider(BaseDecisionProvider):
 
     def _body(self, request: DecisionRequest) -> dict[str, object]:
         context = request.context
-        criteria = {c.id: candidate_to_json(c) for c in request.candidates}
-        state = context_to_json(context)
+        # Aliases exist only in this wire copy. Answers select unchanged
+        # candidate IDs, so execution still binds to the full internal refs.
+        aliases: dict[str, str] = {}
+
+        def short_id(value: str) -> str:
+            if value not in aliases:
+                alias = value[:7]
+                salt = 0
+                while alias in aliases.values():
+                    salt += 1
+                    alias = sha256(f"{value}:{salt}".encode()).hexdigest()[:7]
+                aliases[value] = alias
+            return aliases[value]
+
+        observation_id = short_id(context.observation_id)
+
+        def short_refs(text: str) -> str:
+            return text.replace(context.observation_id + ":", observation_id + ":")
+
+        state: dict = context_to_json(context)
+        state["observation"]["id"] = observation_id
+        for element in (*state["observation"]["ocr"], *state["observation"]["icons"]):
+            element["ref"] = short_refs(element["ref"])
+        # Receipt provenance is a reference; literal text and action arguments
+        # remain evidence and must not be rewritten.
+        recent = state["facts"].get("recent_actions")
+        if isinstance(recent, list):
+            for receipt in recent:
+                if isinstance(receipt, dict) and isinstance(
+                    receipt.get("observation_id"), str
+                ):
+                    receipt["observation_id"] = short_id(receipt["observation_id"])
+
+        def criterion(candidate) -> dict:
+            option = candidate_to_json(candidate)
+            option["description"] = short_refs(candidate.description)
+            if candidate.target_ref is not None:
+                option["target_ref"] = short_refs(candidate.target_ref)
+            return option
+
         body: dict[str, object] = {
             "model": self.model,
             "state": state,
             "questions": {
-                _QUESTION: {
+                question.id: {
                     "type": "choice",
-                    "instructions": request.instructions,
-                    "criteria": criteria,
+                    "instructions": short_refs(question.instructions),
+                    "criteria": {c.id: criterion(c) for c in question.candidates},
                 }
+                for question in request.questions
             },
         }
         if frame := context.frame:
-            # One asset definition and one reference in the current state.
-            image_ref = str(uuid4())
-            body["assets"] = {image_ref: {"type": "image", "part": _IMAGE_PART}}
             state["current_image"] = {
-                "image": image_ref,
                 "width": frame.width,
                 "height": frame.height,
                 "sha256": frame.sha256,
             }
+            # TypeSafe substitutes asset keys wherever they occur. Keep this
+            # short placeholder absent from all evidence, hashes and refs.
+            wire_text = json.dumps(body, ensure_ascii=False, allow_nan=False)
+            image_ref = uuid4().hex[:7]
+            while image_ref in wire_text:
+                image_ref = uuid4().hex[:7]
+            body["assets"] = {image_ref: {"type": "image", "part": _IMAGE_PART}}
+            state["current_image"]["image"] = image_ref
         return body
 
     async def _evaluate(
@@ -138,25 +182,26 @@ class TypeSafeDecisionProvider(BaseDecisionProvider):
         if not isinstance(payload, dict):
             raise ValueError("expected response object")
         answers = payload.get("answers")
-        if not isinstance(answers, dict) or set(answers) != {_QUESTION}:
-            raise ValueError("expected exactly the requested answer")
-        answer = answers[_QUESTION]
-        if not isinstance(answer, dict) or answer.get("type") != "choice":
-            raise ValueError("expected Choice answer")
-        probabilities = answer.get("probabilities")
-        if probabilities is not None and not isinstance(probabilities, dict):
-            raise ValueError("expected probability object")
-        choice, model = answer.get("choice"), payload.get("model")
-        if not isinstance(choice, str) or not isinstance(model, str):
-            raise ValueError("expected choice and actual model IDs")
+        if not isinstance(answers, dict):
+            raise ValueError("expected named answers")
+        parsed = {}
+        for name, answer in answers.items():
+            if not isinstance(answer, dict) or answer.get("type") != "choice":
+                raise ValueError("expected Choice answer")
+            probabilities = answer.get("probabilities")
+            if probabilities is not None and not isinstance(probabilities, dict):
+                raise ValueError("expected probability object")
+            parsed[name] = DecisionAnswer(
+                selected_id=answer["choice"],
+                confidence=answer.get("confidence"),
+                probabilities=probabilities,
+            )
         return DecisionResult(
             request_id=request.id,
-            selected_id=choice,
+            answers=parsed,
             provider_id=self.PROVIDER_ID,
-            model_id=model,
+            model_id=payload["model"],
             requested_model_id=self.model,
-            confidence=answer.get("confidence"),
-            probabilities=probabilities,
             usage=parse_usage(payload.get("usage")),
             provider_request_id=response.headers.get("x-request-id"),
         )

@@ -72,10 +72,17 @@ class BaseDecisionProvider(BaseAPIProvider):
         if self._closed:
             raise ProviderPermanentError("decision provider is closed")
         self._remaining(deadline)
-        maximum = self.capabilities.max_choices
-        if maximum is not None and len(request.candidates) > maximum:
+        maximum_questions = self.capabilities.max_questions
+        if maximum_questions is not None and len(request.questions) > maximum_questions:
             raise ProviderPermanentError(
-                f"decision provider supports at most {maximum} choices"
+                f"decision provider supports at most {maximum_questions} questions"
+            )
+        maximum = self.capabilities.max_choices
+        if maximum is not None and any(
+            len(question.candidates) > maximum for question in request.questions
+        ):
+            raise ProviderPermanentError(
+                f"decision provider supports at most {maximum} choices per question"
             )
         if request.context.frame is not None and not self.capabilities.images:
             raise ProviderPermanentError(

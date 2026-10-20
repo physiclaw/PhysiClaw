@@ -138,12 +138,12 @@ def test_decision_contract_and_base_are_vendor_and_chat_independent() -> None:
 
 
 def test_factual_input_and_decision_plugin_do_not_import_chat_messages() -> None:
-    for relative in (
-        "contract/turn.py",
-        "contract/observation.py",
-        "decision/plugin.py",
+    for path in (
+        PKG_ROOT / "contract/turn.py",
+        PKG_ROOT / "contract/observation.py",
+        *_files("decision"),
     ):
-        imports = _imported_modules(PKG_ROOT / relative)
+        imports = _imported_modules(path)
         assert "physiclaw.contract.dto" not in imports
         assert not any(module.startswith("physiclaw.provider") for module in imports)
 
@@ -200,16 +200,18 @@ def test_shared_agent_packages_do_not_import_the_engine() -> None:
     )
 
 
-# ─── The plugin seam: conductor / contract / macros / provider ───────
+# ─── The plugin seam: conductor / decision / contract / macros / provider ───────
 #
-# The conductor is a peer of the agent behind the turn-plugin seam
+# Conductor and decision are peers of the agent behind the turn-plugin seam
 # (`contract.plugin`): the engine loads it from a config-listed dotted
 # path and knows the protocol, never the name. These allowlists pin
 # each package's TOTAL first-party import surface so no edge grows back
 # silently; the two directional guards below them are the seam itself.
 
 _EDGE_ALLOWLISTS = {
-    "decision": ("physiclaw.contract",),
+    # Projection/review uses shared gesture/bbox utilities and DTO codecs,
+    # without importing engine state, providers or any producer's messages.
+    "decision": ("physiclaw.common", "physiclaw.contract"),
     # package dir → allowed physiclaw import prefixes (self always allowed)
     # contract may name macro types (SessionSetup.gated_macros) — data
     # shapes only, never agent or conductor (both import contract).
@@ -256,8 +258,8 @@ def test_package_edge_allowlists() -> None:
     assert not bad, "migration allowlist violated:\n" + "\n".join(bad)
 
 
-def test_agent_does_not_import_the_conductor() -> None:
-    """The seam's own rule: the agent reaches the conductor ONLY through
+def test_agent_does_not_import_plugin_implementations() -> None:
+    """The agent reaches conductor and decision only through
     the plugin loader's dotted-path import (`[agent] plugins` — a config
     string, invisible to this AST scan by design). The debug harness
     rides the same seam (debug mode → dotted path), so it
@@ -265,12 +267,12 @@ def test_agent_does_not_import_the_conductor() -> None:
     re-couple what the seams decoupled. The reverse direction is covered
     by each package's allowlist above; the CLI is the composition root
     and may import both."""
-    bad = _violations("agent", "physiclaw.conductor") + _violations(
-        "agent", "physiclaw.debug"
-    )
-    assert not bad, (
-        "agent must not import the conductor or the debug harness:\n" + "\n".join(bad)
-    )
+    bad = [
+        edge
+        for package in ("conductor", "decision", "debug")
+        for edge in _violations("agent", f"physiclaw.{package}")
+    ]
+    assert not bad, "agent must not import plugin implementations:\n" + "\n".join(bad)
 
 
 def test_agent_does_not_touch_conductor_owned_storage() -> None:

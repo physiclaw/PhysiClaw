@@ -121,11 +121,12 @@ class DecisionElement:
 
 @dataclass(frozen=True, slots=True)
 class DecisionContext:
-    """A current observation and canonical facts, projected by the host.
+    """A consumer's projection of neutral facts and one current observation.
 
     ``observation_id`` also supports explicitly evaluated text-only inputs.
     Frame identity and all element references must refer to this observation.
-    Capture freshness/transforms and provenance are later host responsibilities.
+    The consumer owns context construction and eligibility. The runtime owns
+    neutral observation provenance and final execution checks.
     """
 
     observation_id: str
@@ -150,10 +151,12 @@ class DecisionContext:
 
 @dataclass(frozen=True, slots=True)
 class ActionCandidate:
-    """An offered action, or a control outcome when ``tool`` is absent.
+    """An offered action, or a non-executable choice when ``tool`` is absent.
 
     This is a transport contract, not a tool schema/permission validator.
-    The same immutable object must later bind the local executable action.
+    A target-only choice may reference an observation, but arguments require
+    a tool. Selecting a gesture and a target separately is only a proposal;
+    their composed action still needs consumer-side verification.
     """
 
     id: str
@@ -168,18 +171,42 @@ class ActionCandidate:
         object.__setattr__(self, "arguments", freeze_mapping(self.arguments))
         if self.tool is not None:
             _text(self.tool)
-        elif self.arguments or self.target_ref is not None:
-            raise ValueError("a control outcome cannot carry an executable action")
+        elif self.arguments:
+            raise ValueError("a choice without a tool cannot carry action arguments")
         if self.target_ref is not None:
             _text(self.target_ref)
 
 
+def context_to_json(context: DecisionContext) -> dict[str, object]:
+    """Canonical plain state shared by provider encoders and local previews."""
+    observation: dict[str, object] = {"id": context.observation_id}
+    for channel, elements in (("ocr", context.ocr), ("icons", context.icons)):
+        observation[channel] = [
+            {"ref": e.ref, "bbox": list(e.bbox), "text": e.text} for e in elements
+        ]
+    return {
+        "facts": decision_json(context.facts),
+        "observation": observation,
+    }
+
+
+def candidate_to_json(candidate: ActionCandidate) -> dict[str, object]:
+    """Canonical choice description; no permissions or execution."""
+    option: dict[str, object] = {"description": candidate.description}
+    if candidate.tool is not None:
+        option.update(tool=candidate.tool, arguments=decision_json(candidate.arguments))
+    if candidate.target_ref is not None:
+        option["target_ref"] = candidate.target_ref
+    return option
+
+
 @dataclass(frozen=True, slots=True)
-class DecisionRequest:
+class DecisionQuestion:
+    """One named choice over supplied actions or non-executable outcomes."""
+
     id: str
-    context: DecisionContext
-    candidates: tuple[ActionCandidate, ...]
     instructions: str
+    candidates: tuple[ActionCandidate, ...]
 
     def __post_init__(self) -> None:
         _text(self.id)
@@ -188,12 +215,37 @@ class DecisionRequest:
         ids = {candidate.id for candidate in self.candidates}
         if len(ids) < 2 or len(ids) != len(self.candidates):
             raise ValueError(
-                "a decision requires at least two uniquely identified choices"
+                "a question requires at least two uniquely identified choices"
             )
+
+
+def question_to_json(question: DecisionQuestion) -> dict[str, object]:
+    """Provider-neutral question preview, built from the actual request DTO."""
+    return {
+        "instructions": question.instructions,
+        "options": {c.id: candidate_to_json(c) for c in question.candidates},
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionRequest:
+    """Independent questions evaluated against one shared context and image."""
+
+    id: str
+    context: DecisionContext
+    questions: tuple[DecisionQuestion, ...]
+
+    def __post_init__(self) -> None:
+        _text(self.id)
+        object.__setattr__(self, "questions", tuple(self.questions))
+        ids = {question.id for question in self.questions}
+        if not ids or len(ids) != len(self.questions):
+            raise ValueError("a decision requires uniquely identified questions")
         refs = {e.ref for e in (*self.context.ocr, *self.context.icons)}
         if any(
             c.target_ref is not None and c.target_ref not in refs
-            for c in self.candidates
+            for question in self.questions
+            for c in question.candidates
         ):
             raise ValueError(
                 "decision target must be an element in the current observation"
@@ -206,12 +258,17 @@ class DecisionCapabilities:
     probabilities: bool = False
     confidence: bool = False
     max_choices: int | None = None
+    max_questions: int | None = None
 
     def __post_init__(self) -> None:
         if self.max_choices is not None and (
             type(self.max_choices) is not int or self.max_choices < 2
         ):
             raise ValueError("max_choices must be at least two or unknown")
+        if self.max_questions is not None and (
+            type(self.max_questions) is not int or self.max_questions < 1
+        ):
+            raise ValueError("max_questions must be positive or unknown")
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,27 +289,15 @@ class DecisionUsage:
 
 
 @dataclass(frozen=True, slots=True)
-class DecisionResult:
-    request_id: str
+class DecisionAnswer:
+    """One choice and its own optional scores; no request-level accounting."""
+
     selected_id: str
-    provider_id: str
-    model_id: str
-    requested_model_id: str
     confidence: float | None = None
     probabilities: Mapping[str, float] | None = None
-    usage: DecisionUsage = field(default_factory=DecisionUsage)
-    elapsed_seconds: float | None = None
-    provider_request_id: str | None = None
 
     def __post_init__(self) -> None:
-        for identifier in (
-            self.request_id,
-            self.selected_id,
-            self.provider_id,
-            self.model_id,
-            self.requested_model_id,
-        ):
-            _text(identifier)
+        _text(self.selected_id)
         if self.confidence is not None:
             _finite(self.confidence)
             if not 0 <= self.confidence <= 1:
@@ -270,6 +315,48 @@ class DecisionResult:
             ):
                 raise ValueError("decision probabilities must sum to one within 1e-6")
             object.__setattr__(self, "probabilities", MappingProxyType(probabilities))
+
+    def validate_for(self, question: DecisionQuestion) -> None:
+        """Bind the answer and full distribution to this question's choices."""
+        ids = {candidate.id for candidate in question.candidates}
+        if self.selected_id not in ids:
+            raise ValueError("decision answer does not match the offered choices")
+        if self.probabilities is not None:
+            if set(self.probabilities) != ids:
+                raise ValueError(
+                    "decision probability keys must match the offered choices"
+                )
+            if self.probabilities[self.selected_id] < max(self.probabilities.values()):
+                raise ValueError("selected decision must have maximal probability")
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionResult:
+    request_id: str
+    answers: Mapping[str, DecisionAnswer]
+    provider_id: str
+    model_id: str
+    requested_model_id: str
+    usage: DecisionUsage = field(default_factory=DecisionUsage)
+    elapsed_seconds: float | None = None
+    provider_request_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for identifier in (
+            self.request_id,
+            self.provider_id,
+            self.model_id,
+            self.requested_model_id,
+        ):
+            _text(identifier)
+        answers = dict(self.answers)
+        for name, answer in answers.items():
+            _text(name)
+            if not isinstance(answer, DecisionAnswer):
+                raise ValueError(
+                    "decision answers must be immutable DecisionAnswer values"
+                )
+        object.__setattr__(self, "answers", MappingProxyType(answers))
         if self.elapsed_seconds is not None:
             _finite(self.elapsed_seconds)
             if self.elapsed_seconds < 0:
@@ -278,19 +365,13 @@ class DecisionResult:
             _text(self.provider_request_id)
 
     def validate_for(self, request: DecisionRequest) -> None:
-        """Bind a reply to exactly this request's offered choice set."""
-        ids = {candidate.id for candidate in request.candidates}
-        if self.request_id != request.id or self.selected_id not in ids:
-            raise ValueError(
-                "decision reply does not match the request or offered choices"
-            )
-        if self.probabilities is not None:
-            if set(self.probabilities) != ids:
-                raise ValueError(
-                    "decision probability keys must match the offered choices"
-                )
-            if self.probabilities[self.selected_id] < max(self.probabilities.values()):
-                raise ValueError("selected decision must have maximal probability")
+        """Require exactly one valid answer for every requested question."""
+        if self.request_id != request.id or set(self.answers) != {
+            question.id for question in request.questions
+        }:
+            raise ValueError("decision answers do not match the requested questions")
+        for question in request.questions:
+            self.answers[question.id].validate_for(question)
 
 
 class DecisionProvider(Protocol):

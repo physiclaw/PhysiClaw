@@ -11,15 +11,16 @@ import json
 import httpx
 
 from physiclaw.contract.decision import (
+    DecisionAnswer,
     DecisionCapabilities,
     DecisionRequest,
     DecisionResult,
+    candidate_to_json,
+    context_to_json,
 )
 from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
 from physiclaw.provider.decision.wire import (
-    candidate_to_json,
     check_response_status,
-    context_to_json,
     parse_usage,
     unique_object,
 )
@@ -28,8 +29,6 @@ from physiclaw.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
-
-_QUESTION = "next_action"
 
 
 class OpenAIDecisionProvider(BaseDecisionProvider):
@@ -43,7 +42,11 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
         if model != "gpt-6-luna":
             raise ProviderConfigurationError("unsupported OpenAI decision model")
         return DecisionCapabilities(
-            images=True, probabilities=True, confidence=True, max_choices=255
+            images=True,
+            probabilities=True,
+            confidence=True,
+            max_choices=255,
+            max_questions=200,
         )
 
     def _body(self, request: DecisionRequest) -> dict[str, object]:
@@ -77,8 +80,8 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
             "questions": [
                 {
                     "type": "choice",
-                    "name": _QUESTION,
-                    "instructions": request.instructions,
+                    "name": question.id,
+                    "instructions": question.instructions,
                     "choices": [
                         {
                             "value": c.id,
@@ -88,9 +91,10 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
                                 allow_nan=False,
                             ),
                         }
-                        for c in request.candidates
+                        for c in question.candidates
                     ],
                 }
+                for question in request.questions
             ],
         }
 
@@ -119,39 +123,45 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
         if not isinstance(payload, dict):
             raise ValueError("expected response object")
         answers = payload.get("answers")
-        if not isinstance(answers, list) or len(answers) != 1:
-            raise ValueError("expected one answer")
-        answer = answers[0]
-        if not isinstance(answer, dict) or answer.get("name") != _QUESTION:
-            raise ValueError("unexpected answer identity")
-        if answer.get("type") == "refusal":
-            raise ProviderPermanentError("OpenAI decision refused")
-        if answer.get("type") != "choice":
-            raise ValueError("expected Choice answer")
-        choice, model = answer.get("choice"), payload.get("model")
-        if not isinstance(choice, str) or not isinstance(model, str):
-            raise ValueError("expected string choice and actual model")
-        raw = answer.get("probabilities")
-        probabilities: dict[str, float] | None = None
-        if raw is not None:
-            if not isinstance(raw, list):
-                raise ValueError("expected probability array")
-            probabilities = {}
-            for item in raw:
-                if not isinstance(item, dict) or not isinstance(item.get("value"), str):
-                    raise ValueError("expected string option value")
-                key = item["value"]
-                if key in probabilities:
-                    raise ValueError("duplicate probability option")
-                probabilities[key] = item["probability"]
+        if not isinstance(answers, list):
+            raise ValueError("expected answer array")
+        parsed = {}
+        for answer in answers:
+            if not isinstance(answer, dict) or not isinstance(answer.get("name"), str):
+                raise ValueError("expected named answer")
+            name = answer["name"]
+            if name in parsed:
+                raise ValueError("duplicate question answer")
+            if answer.get("type") == "refusal":
+                raise ProviderPermanentError("OpenAI decision refused")
+            if answer.get("type") != "choice":
+                raise ValueError("expected Choice answer")
+            raw = answer.get("probabilities")
+            probabilities: dict[str, float] | None = None
+            if raw is not None:
+                if not isinstance(raw, list):
+                    raise ValueError("expected probability array")
+                probabilities = {}
+                for item in raw:
+                    if not isinstance(item, dict) or not isinstance(
+                        item.get("value"), str
+                    ):
+                        raise ValueError("expected string option value")
+                    key = item["value"]
+                    if key in probabilities:
+                        raise ValueError("duplicate probability option")
+                    probabilities[key] = item["probability"]
+            parsed[name] = DecisionAnswer(
+                selected_id=answer["choice"],
+                confidence=answer.get("confidence"),
+                probabilities=probabilities,
+            )
         return DecisionResult(
             request_id=request.id,
-            selected_id=choice,
+            answers=parsed,
             provider_id=self.PROVIDER_ID,
-            model_id=model,
+            model_id=payload["model"],
             requested_model_id=self.model,
-            confidence=answer.get("confidence"),
-            probabilities=probabilities,
             usage=parse_usage(payload.get("usage")),
             provider_request_id=response.headers.get("x-request-id"),
         )

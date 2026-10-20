@@ -1,13 +1,8 @@
-"""Provider-neutral JSON projection and strict decision-response helpers."""
+"""Strict HTTP/response helpers for decision providers."""
 
 import httpx
 
-from physiclaw.contract.decision import (
-    ActionCandidate,
-    DecisionContext,
-    DecisionUsage,
-    decision_json,
-)
+from physiclaw.contract.decision import DecisionUsage
 from physiclaw.provider.provider_base import (
     ProviderPermanentError,
     ProviderTransientError,
@@ -24,32 +19,6 @@ def check_response_status(response: httpx.Response, *, vendor: str) -> None:
         else ProviderPermanentError
     )
     raise error(f"{vendor} decision HTTP {response.status_code}")
-
-
-def context_to_json(context: DecisionContext) -> dict[str, object]:
-    return {
-        "facts": decision_json(context.facts),
-        "observation": {
-            "id": context.observation_id,
-            "ocr": [
-                {"ref": e.ref, "bbox": list(e.bbox), "text": e.text}
-                for e in context.ocr
-            ],
-            "icons": [
-                {"ref": e.ref, "bbox": list(e.bbox), "text": e.text}
-                for e in context.icons
-            ],
-        },
-    }
-
-
-def candidate_to_json(candidate: ActionCandidate) -> dict[str, object]:
-    option: dict[str, object] = {"description": candidate.description}
-    if candidate.tool is not None:
-        option.update(tool=candidate.tool, arguments=decision_json(candidate.arguments))
-    if candidate.target_ref is not None:
-        option["target_ref"] = candidate.target_ref
-    return option
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

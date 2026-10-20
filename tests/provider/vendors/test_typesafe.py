@@ -7,13 +7,19 @@ from dataclasses import replace
 from email import policy
 from email.parser import BytesParser
 from math import inf, nan
+from uuid import UUID
 
 import httpx
 import pytest
 
 from physiclaw.common import config
 from physiclaw.common.config import config_path
-from physiclaw.contract.decision import ActionCandidate
+from physiclaw.contract.decision import (
+    ActionCandidate,
+    DecisionRequest,
+    context_to_json,
+)
+from physiclaw.decision.policy import question_profile
 from physiclaw.provider import (
     ProviderConfigurationError,
     ProviderPermanentError,
@@ -66,13 +72,13 @@ async def test_native_choice_and_yield(provider, decision_request, respx_mock, c
         json=answer(choice), headers={"x-request-id": "native-r1"}
     )
     result = await provider.evaluate(decision_request, deadline=deadline())
-    assert result.selected_id == choice
+    assert result.answers["next_action"].selected_id == choice
     assert result.request_id == "r17"
     assert result.provider_id == "typesafe"
     assert result.model_id == result.requested_model_id == "jev-1.14.0"
-    assert result.confidence == 0.81
+    assert result.answers["next_action"].confidence == 0.81
     assert (
-        dict(result.probabilities)
+        dict(result.answers["next_action"].probabilities)
         == answer(choice)["answers"]["next_action"]["probabilities"]
     )
     assert result.usage.input_tokens == 300
@@ -90,19 +96,19 @@ async def test_native_choice_and_yield(provider, decision_request, respx_mock, c
     assert observation["id"] == "o17"
     assert observation["ocr"][0]["text"] == "微信"
     assert observation["icons"][0] == {
-        "ref": "o17:e2",
+        "ref": "o17:1",
         "bbox": [0.1, 0.3, 0.3, 0.5],
         "text": None,
     }
     question = body["questions"]["next_action"]
     assert question["type"] == "choice"
-    assert question["instructions"] == decision_request.instructions
+    assert question["instructions"] == decision_request.questions[0].instructions
     assert list(question["criteria"]) == ["YIELD", "a1"]
     assert question["criteria"]["a1"] == {
         "description": "Tap the observed WeChat text",
         "tool": "tap",
         "arguments": {"bbox": [0.1, 0.6, 0.3, 0.8]},
-        "target_ref": "o17:e1",
+        "target_ref": "o17:0",
     }
     assert SECRET not in request.content.decode()
     assert route.call_count == 1
@@ -144,6 +150,107 @@ async def test_complete_image_ocr_icons_multipart(
     assert body["state"]["observation"]["ocr"]
     assert body["state"]["observation"]["icons"]
     assert SECRET not in json.dumps(body)
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+def test_short_wire_refs_keep_internal_uuids_and_literal_evidence(
+    provider, image_decision_request, with_image
+):
+    full = "6b3b908aebcc465aba35a485662ca353"
+    older = "6b3b908fffffffffffffffffffffffff"  # Same seven-character prefix.
+    original = image_decision_request.context
+    context = replace(
+        original,
+        observation_id=full,
+        frame=replace(original.frame, id=full),
+        ocr=tuple(replace(e, ref=f"{full}:0", text=full) for e in original.ocr),
+        icons=tuple(replace(e, ref=f"{full}:1") for e in original.icons),
+        facts={
+            "task": {"text": full},
+            "recent_actions": [
+                {"observation_id": full, "arguments": {"text": full}, "result": full},
+                {"observation_id": older},
+                {"observation_id": older},
+                {"observation_id": None},
+            ],
+        },
+    )
+    profile = question_profile(context, tools={"tap", "long_press"})
+    # Exercise reference shortening in both descriptions and instructions.
+    target = profile.questions[2]
+    target = replace(
+        target,
+        instructions=target.instructions + f" Inspect {full}:1.",
+        candidates=(
+            *target.candidates[:2],
+            replace(
+                target.candidates[2], description=f"Select observed icon {full}:1."
+            ),
+        ),
+    )
+    if not with_image:
+        context = replace(context, frame=None)
+    request = DecisionRequest(
+        "request-with-full-ids", context, (*profile.questions[:2], target)
+    )
+    before = context_to_json(request.context)
+
+    body = provider._body(request)
+
+    observation = body["state"]["observation"]
+    assert observation["id"] == full[:7]
+    assert observation["ocr"][0]["ref"] == f"{full[:7]}:0"
+    assert observation["icons"][0]["ref"] == f"{full[:7]}:1"
+    assert observation["ocr"][0]["text"] == full
+    criteria = body["questions"]["target"]["criteria"]
+    assert list(criteria) == ["NONE", "b0", "b1"]
+    assert criteria["b1"]["target_ref"] == f"{full[:7]}:1"
+    assert criteria["b1"]["description"] == f"Select observed icon {full[:7]}:1."
+    check = body["questions"]["target"]["instructions"]
+    assert full not in check
+    assert f"{full[:7]}:1" in check
+    facts = body["state"]["facts"]
+    assert facts["task"]["text"] == full
+    recent = facts["recent_actions"]
+    assert recent[0] == {
+        "observation_id": full[:7],
+        "arguments": {"text": full},
+        "result": full,
+    }
+    assert len(recent[1]["observation_id"]) == 7
+    assert recent[1]["observation_id"] != recent[0]["observation_id"]
+    assert recent[1] == recent[2]
+    assert recent[3]["observation_id"] is None
+    if with_image:
+        (asset,) = body["assets"]
+        assert len(asset) == 7
+        assert body["state"]["current_image"]["image"] == asset
+        assert body["state"]["current_image"]["sha256"] == context.frame.sha256
+        assert request.context.frame.id == full
+    else:
+        assert "assets" not in body
+    assert context_to_json(request.context) == before
+    assert request.questions[2].candidates[2].target_ref == f"{full}:1"
+    assert full in request.questions[2].instructions
+
+
+def test_short_image_placeholder_cannot_match_existing_payload_text(
+    provider, image_decision_request, monkeypatch
+):
+    values = iter(("abcdef0" + "0" * 25, "1234567" + "0" * 25))
+    monkeypatch.setattr(
+        "physiclaw.provider.vendors.typesafe.decision.uuid4",
+        lambda: UUID(next(values)),
+    )
+    request = replace(
+        image_decision_request,
+        context=replace(
+            image_decision_request.context, facts={"text": "literal abcdef0 stays text"}
+        ),
+    )
+    body = provider._body(request)
+    assert set(body["assets"]) == {"1234567"}
+    assert body["state"]["facts"]["text"] == "literal abcdef0 stays text"
 
 
 async def test_png_multipart(provider, image_decision_request, respx_mock):
@@ -284,9 +391,9 @@ async def test_cancellation_propagates_and_client_remains_usable(
         await task
     assert len(attempts) == 1
     route.respond(json=answer())
-    assert (
-        await provider.evaluate(decision_request, deadline=deadline())
-    ).selected_id == "a1"
+    assert (await provider.evaluate(decision_request, deadline=deadline())).answers[
+        "next_action"
+    ].selected_id == "a1"
 
 
 @pytest.mark.parametrize(
@@ -380,7 +487,7 @@ async def test_unknown_usage_does_not_discard_valid_choice(
     payload["usage"] = usage
     respx_mock.post(URL).respond(json=payload)
     result = await provider.evaluate(decision_request, deadline=deadline())
-    assert result.selected_id == "a1"
+    assert result.answers["next_action"].selected_id == "a1"
     assert result.usage.input_tokens is result.usage.output_tokens is None
 
 
@@ -393,7 +500,11 @@ async def test_missing_scores_and_partial_usage_remain_unknown(
     payload["usage"] = {"input_tokens": 0}
     respx_mock.post(URL).respond(json=payload)
     result = await provider.evaluate(decision_request, deadline=deadline())
-    assert result.confidence is result.probabilities is None
+    assert (
+        result.answers["next_action"].confidence
+        is result.answers["next_action"].probabilities
+        is None
+    )
     assert result.usage.input_tokens == 0
     assert result.usage.output_tokens is None
 
@@ -421,8 +532,14 @@ async def test_unsupported_image_rejected_before_http(
 async def test_choice_limit_before_http(provider, decision_request, respx_mock):
     request = replace(
         decision_request,
-        candidates=tuple(
-            ActionCandidate(f"a{i}", "Offered control outcome") for i in range(256)
+        questions=(
+            replace(
+                decision_request.questions[0],
+                candidates=tuple(
+                    ActionCandidate(f"a{i}", "Offered control outcome")
+                    for i in range(256)
+                ),
+            ),
         ),
     )
     with pytest.raises(ProviderPermanentError, match="255"):

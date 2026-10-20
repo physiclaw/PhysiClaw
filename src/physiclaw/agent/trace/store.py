@@ -138,6 +138,9 @@ in the `env` event / `summary.json.env.utc_offset`.
   granted private macros and model-guard exemptions), `plugin_macro_collision`
   (conflicting registration skipped), `decision_call` (one native
   decision attempt, its elapsed_ms and native usage; no chat token fold),
+  `decision_projection` (local-only preparation: copied task/active step,
+  recent action receipts, same-frame OCR/icons, image identity/hash and
+  conservative review instructions; no model call or physical action),
   `micro_call` (one conductor decision call: call, node,
   rows the decision saw, out or null when it escalated, confidence,
   detail, attempts, elapsed_ms), `walk` (a conductor walk's terminal moment — the
