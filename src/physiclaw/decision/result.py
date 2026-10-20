@@ -1,7 +1,8 @@
 """Interpret a shadow response without authorizing or executing an action.
 
 An offered gesture and target can form a valid tuple and still be the wrong
-thing to do. These results are benchmark evidence, never live acceptance.
+thing to do. Raw proposals and threshold diagnostics remain separate so a
+local rejection cannot hide a model mistake. Neither authorizes execution.
 """
 
 from dataclasses import dataclass
@@ -30,6 +31,88 @@ class ShadowInterpretation:
                 else None
             ),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowThresholds:
+    """Explicit probability floors for a diagnostic, not calibrated acceptance."""
+
+    phase: float
+    action_type: float
+    target: float
+
+    def __post_init__(self) -> None:
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not 0 <= value <= 1
+            for value in self.to_dict().values()
+        ):
+            raise ValueError("shadow probability thresholds must be within [0, 1]")
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "phase": self.phase,
+            "action_type": self.action_type,
+            "target": self.target,
+        }
+
+
+def assess(
+    request: DecisionRequest,
+    result: DecisionResult,
+    *,
+    thresholds: ShadowThresholds,
+) -> dict:
+    """Retain raw interpretation and measure a separate, uncalibrated probe.
+
+    All questions must meet their own floor and have a unique winner.
+    Missing distributions fail the probe; vendor confidence is not a
+    substitute. Scores are neither averaged nor multiplied into a supposed
+    probability that the complete action is correct.
+    """
+    interpretation = interpret(request, result)
+    floors = thresholds.to_dict()
+    probe: dict = {
+        "purpose": "shadow_diagnostic",
+        "calibrated": False,
+        "status": "not_applicable",
+        "thresholds": floors,
+        "scores": {},
+        "failed_checks": [],
+    }
+    if interpretation.action is not None:
+        missing = False
+        for name, floor in floors.items():
+            answer = result.answers[name]
+            probabilities = answer.probabilities
+            if probabilities is None:
+                missing = True
+                probe["failed_checks"].append(name)
+                continue
+            selected = probabilities[answer.selected_id]
+            runner_up = max(
+                value
+                for choice, value in probabilities.items()
+                if choice != answer.selected_id
+            )
+            probe["scores"][name] = {
+                "selected_probability": selected,
+                "runner_up_probability": runner_up,
+                "margin": selected - runner_up,
+            }
+            if selected < floor or selected <= runner_up:
+                probe["failed_checks"].append(name)
+        if missing:
+            probe["status"] = "missing_scores"
+        elif probe["failed_checks"]:
+            probe["status"] = "fails_probe"
+        else:
+            probe["status"] = "passes_probe"
+    return {
+        "interpretation": interpretation.to_dict(),
+        "threshold_probe": probe,
+    }
 
 
 def interpret(request: DecisionRequest, result: DecisionResult) -> ShadowInterpretation:

@@ -1,6 +1,6 @@
 """Shadow interpretation preserves binding and never treats scores as safety."""
 
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -13,7 +13,7 @@ from physiclaw.contract.decision import (
     DecisionResult,
 )
 from physiclaw.decision.policy import question_profile
-from physiclaw.decision.result import interpret
+from physiclaw.decision.result import ShadowThresholds, assess, interpret
 
 
 @pytest.fixture
@@ -293,3 +293,226 @@ def test_descriptions_are_not_used_as_coordinates(decision_request):
         0.9,
         0.3,
     )
+
+
+def scored_response(decision_request, **selected_probabilities):
+    result = response(decision_request)
+    answers = {}
+    for question in decision_request.questions:
+        answer = result.answers[question.id]
+        probability = selected_probabilities.get(question.id, 0.99)
+        remainder = (1 - probability) / (len(question.candidates) - 1)
+        answers[question.id] = replace(
+            answer,
+            confidence=0.0,
+            probabilities={
+                choice.id: probability if choice.id == answer.selected_id else remainder
+                for choice in question.candidates
+            },
+        )
+    return replace(result, answers=answers)
+
+
+@pytest.mark.parametrize("question", ["phase", "action_type", "target"])
+def test_shadow_probe_checks_each_probability_floor(decision_request, question):
+    result = scored_response(decision_request, **{question: 0.89})
+    assessment = assess(
+        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.9)
+    )
+    assert assessment["interpretation"] == interpret(decision_request, result).to_dict()
+    probe = assessment["threshold_probe"]
+    assert probe["purpose"] == "shadow_diagnostic"
+    assert probe["calibrated"] is False
+    assert probe["status"] == "fails_probe"
+    assert probe["failed_checks"] == [question]
+    assert set(probe["scores"]) == {"phase", "action_type", "target"}
+
+
+def test_shadow_probe_accepts_exact_floors_without_using_vendor_confidence(
+    decision_request,
+):
+    thresholds = ShadowThresholds(0.9, 0.8, 0.7)
+    result = scored_response(decision_request, phase=0.9, action_type=0.8, target=0.7)
+    probe = assess(decision_request, result, thresholds=thresholds)["threshold_probe"]
+    assert all(answer.confidence == 0.0 for answer in result.answers.values())
+    assert probe["status"] == "passes_probe"
+    assert probe["thresholds"] == thresholds.to_dict()
+    assert probe["failed_checks"] == []
+
+
+@pytest.mark.parametrize(
+    "question,rival",
+    [("phase", "SEMANTIC"), ("action_type", "YIELD"), ("target", "NONE")],
+)
+def test_shadow_probe_rejects_ties_even_when_the_floor_is_met(
+    decision_request, question, rival
+):
+    result = scored_response(decision_request)
+    answers = dict(result.answers)
+    answer = answers[question]
+    answers[question] = replace(
+        answer,
+        probabilities={
+            choice: 0.5 if choice in {answer.selected_id, rival} else 0.0
+            for choice in answer.probabilities
+        },
+    )
+    result = replace(result, answers=answers)
+    probe = assess(
+        decision_request, result, thresholds=ShadowThresholds(0.5, 0.5, 0.5)
+    )["threshold_probe"]
+    assert probe["status"] == "fails_probe"
+    assert probe["failed_checks"] == [question]
+    assert probe["scores"][question] == {
+        "selected_probability": 0.5,
+        "runner_up_probability": 0.5,
+        "margin": 0.0,
+    }
+
+
+def test_shadow_probe_includes_none_as_a_competing_target(decision_request):
+    result = scored_response(decision_request)
+    result = replace(
+        result,
+        answers={
+            **result.answers,
+            "target": DecisionAnswer(
+                "b62", probabilities={"NONE": 0.4, "b4": 0.0, "b62": 0.6}
+            ),
+        },
+    )
+    probe = assess(
+        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.6)
+    )["threshold_probe"]
+    assert probe["status"] == "passes_probe"
+    assert probe["scores"]["target"] == pytest.approx(
+        {
+            "selected_probability": 0.6,
+            "runner_up_probability": 0.4,
+            "margin": 0.2,
+        }
+    )
+
+
+def test_shadow_probe_missing_scores_cannot_use_vendor_confidence(
+    decision_request,
+):
+    result = scored_response(decision_request, phase=0.8)
+    result = replace(
+        result,
+        answers={
+            **result.answers,
+            "target": DecisionAnswer("b62", confidence=1.0),
+        },
+    )
+    assessment = assess(
+        decision_request, result, thresholds=ShadowThresholds(0.9, 0.9, 0.9)
+    )
+    assert assessment["interpretation"]["reason"] == "hypothetical_action"
+    probe = assessment["threshold_probe"]
+    assert probe["status"] == "missing_scores"
+    assert set(probe["scores"]) == {"phase", "action_type"}
+    assert probe["failed_checks"] == ["phase", "target"]
+
+
+@pytest.mark.parametrize(
+    "problem,reason",
+    [
+        ("binding", "invalid_result"),
+        ("guard", "consequential_control"),
+        ("semantic", "non_routine"),
+        ("yield", "model_yield"),
+        ("none", "no_target"),
+    ],
+)
+def test_shadow_probe_preserves_non_action_precedence(
+    decision_request, problem, reason
+):
+    result = response(decision_request)
+    if problem == "binding":
+        result = replace(result, request_id="unrelated")
+    elif problem == "guard":
+        decision_request = replace(
+            decision_request,
+            context=replace(
+                decision_request.context,
+                ocr=(replace(decision_request.context.ocr[0], text="支付"),),
+            ),
+        )
+    else:
+        result = response(
+            decision_request,
+            **{
+                "semantic": {"phase": "SEMANTIC"},
+                "yield": {"gesture": "YIELD"},
+                "none": {"target": "NONE"},
+            }[problem],
+        )
+    thresholds = ShadowThresholds(0.9, 0.9, 0.9)
+    assert assess(decision_request, result, thresholds=thresholds) == {
+        "interpretation": {"reason": reason, "action": None},
+        "threshold_probe": {
+            "purpose": "shadow_diagnostic",
+            "calibrated": False,
+            "status": "not_applicable",
+            "thresholds": thresholds.to_dict(),
+            "scores": {},
+            "failed_checks": [],
+        },
+    }
+
+
+def test_shadow_probe_interprets_once_and_returns_independent_copies(
+    decision_request, monkeypatch
+):
+    calls = []
+
+    def counted_interpret(request, result):
+        calls.append((request, result))
+        return interpret(request, result)
+
+    monkeypatch.setattr("physiclaw.decision.result.interpret", counted_interpret)
+    thresholds = ShadowThresholds(0.9, 0.9, 0.9)
+    result = scored_response(decision_request)
+    assessment = assess(decision_request, result, thresholds=thresholds)
+    assert calls == [(decision_request, result)]
+    assessment["interpretation"]["action"]["arguments"]["bbox"][0] = 0
+    assessment["threshold_probe"]["thresholds"]["target"] = 0
+    assessment["threshold_probe"]["scores"]["target"]["selected_probability"] = 0
+    exported = thresholds.to_dict()
+    exported["target"] = 0
+    assert thresholds.target == 0.9
+    assert result.answers["target"].probabilities["b62"] == 0.99
+    assert decision_request.context.ocr[0].bbox[0] == 0.6
+    with pytest.raises(FrozenInstanceError):
+        thresholds.target = 0
+
+
+@pytest.mark.parametrize("question", ["phase", "action_type", "target"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        None,
+        "0.9",
+        -0.01,
+        1.01,
+        10**1000,
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+    ],
+)
+def test_shadow_thresholds_reject_invalid_values(question, value):
+    values = {"phase": 0.9, "action_type": 0.9, "target": 0.9, question: value}
+    with pytest.raises(ValueError):
+        ShadowThresholds(**values)
+
+
+def test_shadow_thresholds_allow_probability_endpoints():
+    assert ShadowThresholds(0, 1, 0.5).to_dict() == {
+        "phase": 0,
+        "action_type": 1,
+        "target": 0.5,
+    }

@@ -21,9 +21,13 @@ from physiclaw.contract.plugin import (
 )
 from physiclaw.contract.turn import TurnInput, TurnMetadata
 from physiclaw.decision.context import project
-from physiclaw.decision.result import interpret
+from physiclaw.decision.result import ShadowThresholds, assess
 
 log = logging.getLogger(__name__)
+
+# Uncalibrated shadow-only floors, recorded with the actual model on each call.
+# At .90 the probability floor already enforces a large winning margin.
+_SHADOW_THRESHOLDS = ShadowThresholds(phase=0.90, action_type=0.90, target=0.90)
 
 
 def build() -> PluginRegistration:
@@ -205,7 +209,8 @@ class DecisionPlugin:
             ):
                 raise ValueError("decision provider/model mismatch")
             event.update(
-                status="answered", interpretation=interpret(request, result).to_dict()
+                status="answered",
+                **assess(request, result, thresholds=_SHADOW_THRESHOLDS),
             )
         except asyncio.CancelledError:
             event.update(status="cancelled")

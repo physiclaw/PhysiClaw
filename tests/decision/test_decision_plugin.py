@@ -117,8 +117,56 @@ async def test_shadow_preserves_request_identity_geometry_and_reported_usage(
     target = next(element for element in turn.observation.elements if element.id == 1)
     assert action["target_ref"] == turn.observation.element_ref(target)
     assert action["arguments"]["bbox"] == list(target.bbox)
+    probe = record["threshold_probe"]
+    assert probe["status"] == "missing_scores"
+    assert probe["failed_checks"] == ["phase", "action_type", "target"]
+    assert probe["scores"] == {}
     json.dumps(shadow.events, allow_nan=False)
     shadow.services.session_provider.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "tap_probability,status,failed_checks",
+    [(0.95, "passes_probe", []), (0.60, "fails_probe", ["action_type"])],
+)
+async def test_threshold_probe_is_trace_only_and_preserves_raw_proposal(
+    shadow, turn, metadata, tap_probability, status, failed_checks
+):
+    def evaluate(request, **kwargs):
+        result = answer(request)
+        answers = {}
+        for question in request.questions:
+            selected = result.answers[question.id].selected_id
+            probability = tap_probability if question.id == "action_type" else 0.95
+            answers[question.id] = DecisionAnswer(
+                selected,
+                probabilities={
+                    candidate.id: probability
+                    if candidate.id == selected
+                    else (1 - probability) / (len(question.candidates) - 1)
+                    for candidate in question.candidates
+                },
+            )
+        return replace(result, answers=answers)
+
+    shadow.provider.evaluate.side_effect = evaluate
+    assert await shadow.plugin.advance(turn, metadata=metadata) is None
+    await shadow.plugin._task
+    record = calls(shadow)[0]
+    assert record["interpretation"]["reason"] == "hypothetical_action"
+    assert record["interpretation"]["action"]["tool"] == "tap"
+    assert record["answers"]["action_type"]["probabilities"]["tap"] == tap_probability
+    probe = record["threshold_probe"]
+    assert probe["purpose"] == "shadow_diagnostic"
+    assert probe["calibrated"] is False
+    assert probe["status"] == status
+    assert probe["failed_checks"] == failed_checks
+    assert probe["thresholds"] == {"phase": 0.90, "action_type": 0.90, "target": 0.90}
+    assert probe["scores"]["action_type"]["selected_probability"] == tap_probability
+    assert record["response_model"] == "actual-model"
+    shadow.provider.evaluate.assert_awaited_once()
+    shadow.services.session_provider.assert_not_called()
+    json.dumps(record, allow_nan=False)
 
 
 @pytest.mark.parametrize("ref", ["", "   ", "missing-slash", "test/"])
@@ -303,8 +351,10 @@ async def test_malformed_or_mismatched_answers_are_trace_only(
     if expected == "error":
         assert record["status"] == "error"
         assert "interpretation" not in record
+        assert "threshold_probe" not in record
     else:
         assert record["interpretation"] == {"reason": expected, "action": None}
+        assert record["threshold_probe"]["status"] == "not_applicable"
 
 
 async def test_outer_deadline_bounds_a_structural_provider(shadow, turn, metadata):
