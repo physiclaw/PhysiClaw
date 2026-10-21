@@ -243,12 +243,13 @@ def test_unoffered_long_press_cannot_be_selected(decision_request):
 
 
 @pytest.mark.parametrize("channel", ["ocr", "icons"])
+@pytest.mark.parametrize("text", ["支付", "加入购物车", "我知道了"])
 def test_local_label_veto_still_rejects_an_offered_dangerous_target(
-    decision_request, channel
+    decision_request, channel, text
 ):
     # A malformed producer included a consequential target. Do not trust its
     # eligibility, even with unanimous model answers.
-    label = replace(decision_request.context.ocr[0], text="支付")
+    label = replace(decision_request.context.ocr[0], text=text)
     context = replace(
         decision_request.context,
         ocr=(label,) if channel == "ocr" else (),

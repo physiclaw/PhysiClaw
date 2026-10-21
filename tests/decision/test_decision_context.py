@@ -60,17 +60,10 @@ def test_projection_copies_current_work_and_complete_same_frame_evidence(turn):
     assert context.frame is turn.observation.frame
     assert context.observation_id == turn.observation.id
     assert context.facts["turn"] == 0
-    assert context.facts["task"] == {
-        "text": "按小王的微信要求买东西",
-        "source": "progress.user_said",
-    }
-    assert context.facts["current_step"] == {
-        "index": 1,
-        "text": "打开淘宝",
-        "source": "progress.steps[1].content",
-    }
+    assert context.facts["task"] == "按小王的微信要求买东西"
+    assert context.facts["current_step"] == "打开淘宝"
+    assert set(context.facts) == {"turn", "task", "current_step", "recent_actions"}
     assert "比较商品" not in repr(context.facts)
-    assert context.facts["observation"]["captured_at"] is None
     for projected, observed in zip(
         (*context.ocr, *context.icons),
         (*turn.observation.ocr, *turn.observation.icons),
@@ -93,8 +86,8 @@ def test_preview_is_plain_complete_projected_data_and_image_identity(turn):
     assert data["state"]["observation"]["icons"][0]["bbox"] == [0.1, 0.2, 0.3, 0.4]
     assert data["profile"]["questions"] == {}
     assert "data" not in data["image"]
-    data["state"]["facts"]["current_step"]["text"] = "changed"
-    assert result.context.facts["current_step"]["text"] == "打开淘宝"
+    data["state"]["facts"]["current_step"] = "changed"
+    assert result.context.facts["current_step"] == "打开淘宝"
 
 
 def test_all_observed_targets_and_available_gestures_are_previewed_without_execution(
@@ -111,7 +104,10 @@ def test_all_observed_targets_and_available_gestures_are_previewed_without_execu
         assert targets[f"b{element.id}"]["target_ref"] == turn.observation.element_ref(
             element
         )
-        assert str(list(element.bbox)) in targets[f"b{element.id}"]["description"]
+        assert (
+            f"Observed element {element.id}:"
+            in targets[f"b{element.id}"]["description"]
+        )
     assert data["blockers"] == []
     request = result.request("review-0")
     assert request.context is result.context
@@ -200,7 +196,6 @@ def test_screenshot_requires_camera_refresh_without_erasing_action_outcome(
     )
     result = projection(turn)
     assert result.blockers == ("screenshot_requires_peek", *remaining)
-    assert result.context.facts["observation"]["source"] == "screenshot"
     assert result.profile.questions == ()
     assert result.request("screenshot") is None
 
@@ -236,7 +231,6 @@ def test_fresh_peeks_do_not_erase_uncertain_action_and_its_evidence(
     events = (failed, *(event(i, "peek") for i in range(2, 8)))
     result = projection(replace(turn, events=events))
     assert reason in result.blockers
-    assert result.context.facts["recent_actions"][0]["source"] == "tool:call-1"
     assert result.context.facts["recent_actions"][0]["tool"] == tool
     assert len(result.context.facts["recent_actions"]) == 4
 
@@ -270,7 +264,7 @@ def test_partial_failure_blocks_decisions_after_fresh_peeks(turn, tool, text, me
     assert previous.is_error is False and previous.changed is True
     assert result.blockers == ("previous_action_failed",)
     assert result.request("blocked") is None
-    assert result.context.facts["recent_actions"][0]["result"] == text
+    assert "result" not in result.context.facts["recent_actions"][0]
 
     # A later successful interaction supplies new outcome evidence.
     recovered = projection(
@@ -320,6 +314,31 @@ def test_clipboard_receipt_is_not_a_query_or_an_executable_choice(turn):
     assert "private notes" not in result.preview()
     assert "private interpretation" not in result.preview()
     assert data["profile"]["questions"] == {}
+
+
+def test_recent_outcomes_remain_structured_without_trace_ids_or_result_prose(turn):
+    result = projection(
+        replace(
+            turn,
+            events=(
+                event(
+                    1,
+                    "tap",
+                    arguments={"bbox": [0.1, 0.2, 0.3, 0.4]},
+                    result_text="long tool output is kept in the trace",
+                ),
+            ),
+        )
+    )
+    assert result.to_dict()["state"]["facts"]["recent_actions"] == [
+        {
+            "tool": "tap",
+            "arguments": {"bbox": [0.1, 0.2, 0.3, 0.4]},
+            "executed": True,
+            "is_error": False,
+            "changed": True,
+        }
+    ]
 
 
 def test_rejected_progress_publication_blocks_stale_intent(turn):

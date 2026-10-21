@@ -49,7 +49,13 @@ def _run_one_tick(r: FrameReader, mocker) -> None:
 
 def test_read_failure_burst_warns_once_and_reports_recovery(mocker, caplog):
     clock = {"now": 100.0}
-    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    mocker.patch.object(
+        fr_mod,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock["now"], time=lambda: clock["now"] + 1000
+        ),
+    )
     r = _reader(raise_on_read=True)
     r._frame_time = clock["now"]
 
@@ -74,7 +80,9 @@ def test_read_failure_burst_warns_once_and_reports_recovery(mocker, caplog):
 def test_changed_read_error_is_reported_during_an_existing_empty_frame_outage(
     mocker, caplog
 ):
-    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0))
+    mocker.patch.object(
+        fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0, time=lambda: 1100.0)
+    )
     reader = FrameReader(
         mocker.Mock(
             side_effect=[
@@ -128,7 +136,7 @@ def test_publish_and_fresh_frame_roundtrip() -> None:
 
     r.publish(f)
 
-    assert r.fresh_frame() is f
+    assert r.fresh_frame().frame is f
 
 
 def test_fresh_frame_returns_none_when_nothing_published(mocker) -> None:
@@ -138,9 +146,31 @@ def test_fresh_frame_returns_none_when_nothing_published(mocker) -> None:
     assert r.fresh_frame() is None
 
 
+def test_returned_frame_keeps_its_time_after_another_publish(mocker) -> None:
+    reader = _reader()
+    wall = mocker.patch.object(fr_mod.time, "time", return_value=1000.0)
+    first, second = _frame(), _frame()
+    reader.publish(first)
+    sample = reader.fresh_frame()
+    wall.return_value = 1001.0
+    reader.publish(second)
+
+    assert sample.frame is first
+    assert sample.published_at == 1000.0
+    latest = reader.fresh_frame()
+    assert latest.frame is second
+    assert latest.published_at == 1001.0
+
+
 def test_fresh_frame_rejects_stale_capture_and_recovers(mocker) -> None:
     clock = {"now": 100.0}
-    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    mocker.patch.object(
+        fr_mod,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock["now"], time=lambda: clock["now"] + 1000
+        ),
+    )
     reader = _reader()
     reader.FRAME_WAIT_SECONDS = 0
     reader.publish(_frame())
@@ -150,7 +180,7 @@ def test_fresh_frame_rejects_stale_capture_and_recovers(mocker) -> None:
 
     recovered = _frame()
     reader.publish(recovered)
-    assert reader.fresh_frame() is recovered
+    assert reader.fresh_frame().frame is recovered
 
 
 def test_reopen_cannot_make_cached_capture_fresh_or_healthy(mocker) -> None:
@@ -167,7 +197,7 @@ def test_reopen_cannot_make_cached_capture_fresh_or_healthy(mocker) -> None:
 
     recovered = _frame()
     reader.publish(recovered)
-    assert reader.fresh_frame() is recovered
+    assert reader.fresh_frame().frame is recovered
     assert reader.healthy()
 
 
@@ -326,7 +356,13 @@ def test_loop_backs_off_on_fail_path() -> None:
 def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> None:
     blocked, release = threading.Event(), threading.Event()
     clock = {"now": 100.0}
-    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    mocker.patch.object(
+        fr_mod,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock["now"], time=lambda: clock["now"] + 1000
+        ),
+    )
     reopen = mocker.Mock()
     interrupt = mocker.patch.object(fr_mod._thread, "interrupt_main")
     calls = 0

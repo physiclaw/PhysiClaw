@@ -62,7 +62,7 @@ class PhysiClaw:
         # implementation is honored for the observer too.
         self._observer = GestureObserver(
             park=self.rig.park,
-            grab=lambda: self.perception.cropped_view(),
+            grab=lambda: self.perception.cropped_snapshot(),
             detect=lambda frame: self.perception.detect(frame),
             on_quality=lambda report, streak: self.perception.on_quality_report(
                 report, streak
@@ -116,7 +116,7 @@ class PhysiClaw:
 
     # ─── Screen views ─────────────────────────────────────────
 
-    def peek(self) -> tuple[bytes, str]:
+    def peek(self) -> tuple[bytes, str, float | None]:
         """Overhead camera snapshot + icon detection + OCR.
 
         A blurry or blown first frame waits 2s and re-grabs once; a
@@ -125,20 +125,25 @@ class PhysiClaw:
         before the view ships (``GestureObserver.peek_frame`` owns that
         acquisition policy).
 
-        Returns an annotated JPEG (icon bboxes drawn on the cropped
-        camera view) and the matching element listing — same shape as
-        screenshot(), but from the camera rather than the phone's own
-        screenshot.
+        Returns an annotated JPEG, the matching element listing and the
+        frame's host publication time. MCP carries the time as metadata;
+        its image/listing content stays the same as screenshot().
         """
         with self.rig.engaged(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
-            cropped, report, retuned = self._observer.peek_frame()
-            listing, annotated = self.perception.detect(cropped)
-            warning = self._observer.observe_quality("peek", report, retuned=retuned)
+            grab = self._observer.peek_frame()
+            listing, annotated = self.perception.detect(grab.frame)
+            warning = self._observer.observe_quality(
+                "peek", grab.report, retuned=grab.retuned
+            )
             if warning is not None:
                 listing = f"{listing}\n{warning}"
             # detect() types the annotated frame as `object`; it is always
             # the bbox-drawn ndarray from detect_ui_elements.
-            return encode_view_jpeg(cast("np.ndarray", annotated)), listing
+            return (
+                encode_view_jpeg(cast("np.ndarray", annotated)),
+                listing,
+                grab.observed_after,
+            )
 
     def screenshot(self) -> tuple[bytes, str]:
         """Pixel-perfect phone screenshot + icon detection + OCR.

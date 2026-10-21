@@ -289,7 +289,7 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
 
     assert original.released
     assert not replacement.released
-    assert cam._reader.fresh_frame() is recovered
+    assert cam._reader.fresh_frame().frame is recovered
     assert cam._reader._first_fail_time is None
     reset.assert_called_once_with()
 
@@ -313,7 +313,7 @@ def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) ->
 
     cam._reopen()
 
-    assert cam._reader.fresh_frame() is recovered
+    assert cam._reader.fresh_frame().frame is recovered
     assert cam._reader._first_fail_time is None
 
 
@@ -346,8 +346,9 @@ def test_fresh_frame_returns_recent_copy(mocker) -> None:
 
     # Should be a copy of cam._frame.
     assert out is not None
-    assert out is not cam._reader._frame
-    np.testing.assert_array_equal(out, cam._reader._frame)
+    assert out.frame is not cam._reader._frame
+    np.testing.assert_array_equal(out.frame, cam._reader._frame)
+    assert out.published_at == cam._reader._published_at
 
 
 def test_fresh_frame_returns_none_when_no_frame(mocker) -> None:
@@ -430,6 +431,29 @@ def test_snapshot_no_bbox(mocker) -> None:
     out = cam.snapshot()
 
     np.testing.assert_array_equal(out, cam._reader._frame)
+
+
+def test_snapshot_keeps_selected_frame_time_when_reader_publishes_during_copy(mocker):
+    cam, _ = _ready_camera(mocker)
+    wall = mocker.patch(
+        "physiclaw.core.hardware.frame_reader.time.time", return_value=1000.0
+    )
+    selected = MagicMock()
+    pixels = _frame(h=2, w=4)
+
+    def copy():
+        wall.return_value = 1001.0
+        cam._reader.publish(_frame())
+        return pixels.copy()
+
+    selected.copy.side_effect = copy
+    cam._reader.publish(selected)
+    cam.rotation = cv2.ROTATE_90_CLOCKWISE
+    sample = cam.snapshot_with_time()
+
+    np.testing.assert_array_equal(sample.frame, cv2.rotate(pixels, cam.rotation))
+    assert sample.published_at == 1000.0
+    assert cam._reader.fresh_frame().published_at == 1001.0
 
 
 # ---------- close ----------

@@ -21,11 +21,14 @@ COORDINATE_SPACE = "phone_screen_normalized"
 IDENTITY_TRANSFORM = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 
 
-def view_metadata(jpeg: bytes, listing: str, *, source: str) -> dict:
+def view_metadata(
+    jpeg: bytes, listing: str, *, source: str, observed_after: float | None = None
+) -> dict:
     """Bind the atomic image/listing pair at the server's view boundary.
 
     The packaging ID identifies this observation, not a hardware frame
-    counter. The current acquisition API exposes no capture timestamp.
+    counter. Camera views carry the reader's host publication time;
+    sensor capture time remains unknown.
     """
     width, height = image_dimensions(jpeg)
     return {
@@ -36,7 +39,7 @@ def view_metadata(jpeg: bytes, listing: str, *, source: str) -> dict:
         "height": height,
         "source": source,
         "captured_at": None,
-        "observed_after": None,
+        "observed_after": observed_after,
         "coordinate_space": COORDINATE_SPACE,
         "image_to_screen": list(IDENTITY_TRANSFORM),
     }

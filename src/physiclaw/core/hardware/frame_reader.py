@@ -19,6 +19,18 @@ import _thread
 import logging
 import threading
 import time
+from typing import Any, NamedTuple
+
+
+class PublishedFrame(NamedTuple):
+    """Pixels and their host publication time, bound under the reader lock.
+
+    This Unix timestamp is not the camera sensor's exposure timestamp.
+    """
+
+    frame: Any
+    published_at: float
+
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +74,7 @@ class FrameReader:
         self._label = label
         self._frame = None
         self._frame_time = 0.0
+        self._published_at = 0.0
         # Monotonic count of published frames — the settle primitive for
         # exposure tuning (`wait_frames`): after a property set, "wait N
         # frames" is deterministic where "sleep N/fps" is not.
@@ -118,6 +131,7 @@ class FrameReader:
             self._frame = frame
             self._first_fail_time = None
             self._frame_time = time.monotonic()
+            self._published_at = time.time()
             self._frame_seq += 1
             self._cond.notify_all()
             attempts, self._reconnect_attempts = self._reconnect_attempts, 0
@@ -163,13 +177,13 @@ class FrameReader:
                 timeout=timeout,
             )
 
-    def fresh_frame(self):
-        """The latest published frame, or ``None``.
+    def fresh_frame(self) -> PublishedFrame | None:
+        """The latest published frame and its time, or ``None``.
 
         Waits up to ``FRAME_WAIT_SECONDS`` for a frame fresher than
         ``FRESH_MAX_AGE_SECONDS``; otherwise returns ``None``. Returns the
-        internal reference — the owner copies outside the lock so the copy
-        can't stall the next publish."""
+        internal reference and its publication time atomically — the owner
+        copies outside the lock so the copy can't stall the next publish."""
         with self._cond:
             fresh = self._cond.wait_for(
                 lambda: (
@@ -178,7 +192,7 @@ class FrameReader:
                 ),
                 timeout=self.FRAME_WAIT_SECONDS,
             )
-            return self._frame if fresh else None
+            return PublishedFrame(self._frame, self._published_at) if fresh else None
 
     # ─── The loop ───────────────────────────────────────────────
 

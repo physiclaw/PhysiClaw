@@ -143,7 +143,7 @@ def test_all_tools_disable_structured_output(registered) -> None:
 @pytest.mark.asyncio
 async def test_peek_returns_image_and_listing(registered) -> None:
     mcp, pl = registered
-    pl.peek.return_value = (b"PEEK_JPG", "peek-listing")
+    pl.peek.return_value = (b"PEEK_JPG", "peek-listing", 105.0)
 
     out = await mcp.tools["peek"]()
 
@@ -182,37 +182,32 @@ async def test_screenshot_returns_image_and_listing(registered) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", ["peek", "tap", "screenshot"])
-async def test_observation_age_includes_core_work_and_reader_cache(
-    registered, observation_blocks, mocker, name
+async def test_observation_age_is_bound_to_selected_frame(
+    registered, observation_blocks, name
 ) -> None:
-    """The lower bound starts before acquisition and detection, not after."""
+    """Core time before capture does not age the returned frame; detection still does."""
     from physiclaw.core.orchestration import GestureResult
 
     mcp, pl = registered
     blocks = observation_blocks()
     jpeg = base64.b64decode(blocks[0]["data"])
     listing = blocks[1]["text"]
-    clock = mocker.patch.object(tools_mod, "time")
-    clock.time.return_value = 100.0
-
-    def core_work(*args):
-        clock.time.return_value = 110.0
-        if name == "tap":
-            return GestureResult("Tapped", jpeg, listing)
-        return jpeg, listing
-
-    getattr(pl, name).side_effect = core_work
+    if name == "tap":
+        pl.tap.return_value = GestureResult("Tapped", jpeg, listing, 105.0)
+    elif name == "peek":
+        pl.peek.return_value = (jpeg, listing, 105.0)
+    else:
+        pl.screenshot.return_value = (jpeg, listing)
     args = ([0.1, 0.2, 0.3, 0.4],) if name == "tap" else ()
     result = await mcp.tools[name](*args)
     image = next(block for block in result if isinstance(block, ImageContent))
     metadata = image.meta[OBSERVATION_META]
 
     assert metadata["captured_at"] is None
-    expected = None if name == "screenshot" else 99.0
+    expected = None if name == "screenshot" else 105.0
     assert metadata["observed_after"] == expected
     assert base64.b64decode(image.data) == jpeg
     assert result[-1] == listing
-    # The transmitted evidence can be read without changing LLM content.
     observation = read_observation(
         [
             {
@@ -228,12 +223,9 @@ async def test_observation_age_includes_core_work_and_reader_cache(
 
 
 @pytest.mark.asyncio
-async def test_observation_timing_does_not_mutate_shared_metadata(
-    observation_blocks, mocker
-) -> None:
+async def test_boundary_does_not_invent_missing_camera_timing(observation_blocks):
     original = observation_blocks()[0]
     metadata = original["_meta"][OBSERVATION_META]
-    mocker.patch.object(tools_mod, "time").time.return_value = 100.0
     image = ImageContent(
         type="image",
         data=original["data"],
@@ -246,8 +238,7 @@ async def test_observation_timing_does_not_mutate_shared_metadata(
         return [image]
 
     result = await camera_view()
-    assert metadata["observed_after"] is None
-    assert result[0].meta[OBSERVATION_META]["observed_after"] == 99.0
+    assert result[0].meta[OBSERVATION_META]["observed_after"] is None
     assert result[0].meta["other"] == {"value": 1}
 
 
@@ -551,7 +542,7 @@ async def test_real_mcpserver_serializes_gesture_reply(real) -> None:
 async def test_real_mcpserver_serializes_text_fallback_and_view_tools(real) -> None:
     mcp, pl = real
     pl.go_back.return_value = _gr("Went back", with_view=False)
-    pl.peek.return_value = (b"PEEK_JPG", "peek-listing")
+    pl.peek.return_value = (b"PEEK_JPG", "peek-listing", 105.0)
 
     fallback = (await mcp.call_tool("go_back", {})).content
     assert isinstance(fallback[0], TextContent)

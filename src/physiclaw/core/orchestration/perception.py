@@ -21,6 +21,7 @@ import time
 from physiclaw.common.config import CONFIG
 from physiclaw.common.listing import format_elements
 from physiclaw.core.hardware import exposure
+from physiclaw.core.hardware.frame_reader import PublishedFrame
 from physiclaw.core.orchestration.rig import HardwareRig
 from physiclaw.core.vision import quality
 from physiclaw.core.vision.icon_detect import IconDetector
@@ -121,10 +122,14 @@ class Perception:
             raise RuntimeError("Camera capture failed")
         return frame
 
-    def cropped_view(self):
-        """The camera view cropped to the phone screen (0-1 span) — the
-        frame shape `detect` expects and the observer grabs."""
-        return crop_to_phone_screen(self.camera_view(), self._rig.transforms)
+    def cropped_snapshot(self) -> PublishedFrame:
+        """A phone-screen crop with the publication time of those exact pixels."""
+        sample = self._rig.require_cam().snapshot_with_time()
+        if sample is None:
+            raise RuntimeError("Camera capture failed")
+        return sample._replace(
+            frame=crop_to_phone_screen(sample.frame, self._rig.transforms)
+        )
 
     # ─── Detection ────────────────────────────────────────────
 
@@ -132,7 +137,7 @@ class Perception:
         """Icon detection + OCR on a frame. Caller holds the lock.
 
         ``frame`` must already span the phone screen (0-1) — camera
-        views need to be cropped via ``cropped_view`` first.
+        views need the phone-screen crop from ``cropped_snapshot`` first.
         Returns (formatted element listing, annotated frame).
         """
         # The lazy cache constructs RapidOCR here, BEFORE _detect_texts'

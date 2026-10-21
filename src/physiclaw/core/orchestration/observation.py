@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from physiclaw.common import verdict
+from physiclaw.core.hardware.frame_reader import PublishedFrame
 from physiclaw.core.vision import quality
 from physiclaw.core.vision.change import frames_changed
 from physiclaw.core.vision.util import encode_view_jpeg
@@ -47,6 +48,7 @@ class GestureResult:
     text: str
     jpeg: bytes | None = None
     listing: str | None = None
+    observed_after: float | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,7 @@ class Grab:
     report: quality.QualityReport | None
     sharp: bool
     retuned: bool
+    observed_after: float | None = None
 
     def comparable_to(self, other: "Grab") -> bool:
         """Whether this grab and ``other`` are trustworthy for a
@@ -127,7 +130,7 @@ class GestureObserver:
     def __init__(
         self,
         park: Callable[[], None],
-        grab: Callable[[], Any],
+        grab: Callable[[], PublishedFrame],
         detect: Callable[[Any], tuple[str, Any]],
         monitor: quality.QualityMonitor | None = None,
         on_quality: Callable[[quality.QualityReport, int], None] | None = None,
@@ -135,7 +138,7 @@ class GestureObserver:
         needs_fix: Callable[[quality.QualityReport], bool] | None = None,
     ):
         self._park = park
-        self._grab = grab  # () -> cropped phone-screen BGR frame
+        self._grab = grab  # cropped pixels and their host publication time
         self._detect = detect  # frame -> (element listing, annotated frame)
         self._quality = monitor if monitor is not None else quality.QualityMonitor()
         self._quality_notice: tuple[bool, bool, bool] | None = None
@@ -155,11 +158,11 @@ class GestureObserver:
         """The injected predicate says this grab warrants a tune
         (mis-exposed with no hold, a held scene that moved, or an
         in-band view clearing a stale hold) — run it and grab the
-        corrected frame. Returns `(frame, report, tuned)`: `frame` is
+        corrected sample. Returns `(sample, report, tuned)`: `sample` is
         None when the fix or the regrab failed (the original report is
         kept — fail-open, the view still ships). `tuned` mirrors
         `Grab.retuned`: True when the tune was INVOKED, not when it
-        succeeded."""
+        succeeded. Pixels and their publication time stay together."""
         if self._fix_exposure is None:
             return None, report, False
         cause = (
@@ -178,8 +181,8 @@ class GestureObserver:
         )
         try:
             self._fix_exposure()
-            frame = self._grab()
-            return frame, quality.assess(frame), True
+            sample = self._grab()
+            return sample, quality.assess(sample.frame), True
         except Exception:
             log.warning("inline exposure fix failed", exc_info=True)
             return None, report, True
@@ -267,7 +270,7 @@ class GestureObserver:
         site from ever pairing one path's label with the other's
         threshold.
 
-        Returns `(frame, report, retuned)` — the report always describes
+        Returns a `Grab` — its report and publication time describe
         the returned frame, so the caller's quality judgment
         (`observe_quality`) reuses it instead of re-measuring, and
         `retuned` says the inline tune already ran on this grab (the
@@ -275,8 +278,8 @@ class GestureObserver:
         peek = source == "peek"
         threshold = self.PEEK_BLUR_THRESHOLD if peek else self.GRAB_BLUR_THRESHOLD
         retry_seconds = self.PEEK_RETRY_SECONDS if peek else self.GRAB_RETRY_SECONDS
-        frame = self._grab()
-        report = quality.assess(frame)
+        sample = self._grab()
+        report = quality.assess(sample.frame)
         blurry = report.sharpness < threshold
         if blurry or report.blown:
             kind = "blurry" if blurry else "blown"
@@ -290,18 +293,24 @@ class GestureObserver:
             else:
                 log.debug("gesture frame %s — waiting for AF/AE", kind)
             time.sleep(retry_seconds)
-            frame = self._grab()
-            report = quality.assess(frame)
+            sample = self._grab()
+            report = quality.assess(sample.frame)
         retuned = False
         if self._needs_fix(report):
-            fixed_frame, report, retuned = self._fix_exposure_grab(source, report)
-            if fixed_frame is not None:
-                frame = fixed_frame
-        return frame, report, retuned
+            fixed, report, retuned = self._fix_exposure_grab(source, report)
+            if fixed is not None:
+                sample = fixed
+        return Grab(
+            sample.frame,
+            report,
+            report.sharpness >= threshold,
+            retuned,
+            sample.published_at,
+        )
 
     def peek_frame(self):
         """Park, then run the acquisition ladder (`_acquire_frame`) —
-        peek's path. Returns `(frame, report, retuned)`.
+        peek's path. Returns the selected frame, quality and timing in a `Grab`.
 
         Unlike `grab_screen`, failures propagate (a peek with no frame is
         a tool error, not a withheld verdict). Caller must hold the lock."""
@@ -325,11 +334,10 @@ class GestureObserver:
             self._park()
             if settle:
                 time.sleep(settle)
-            frame, report, retuned = self._acquire_frame("gesture view")
-            sharp = report.sharpness >= self.GRAB_BLUR_THRESHOLD
-            if not sharp:
+            grab = self._acquire_frame("gesture view")
+            if not grab.sharp:
                 log.debug("gesture frame blurry — verdict withheld")
-            return Grab(frame=frame, report=report, sharp=sharp, retuned=retuned)
+            return grab
         except Exception:
             log.warning("screen frame grab failed", exc_info=True)
             return Grab(frame=None, report=None, sharp=False, retuned=False)
@@ -423,4 +431,6 @@ class GestureObserver:
                 # CAUSE of the failed view, and the agent needs to hear it
                 # before blindly re-peeking.
                 text = f"{text}\n{warning}"
-        return GestureResult(text=text, jpeg=jpeg, listing=listing)
+        return GestureResult(
+            text=text, jpeg=jpeg, listing=listing, observed_after=after.observed_after
+        )

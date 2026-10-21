@@ -90,11 +90,7 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
     progress = turn.progress
     steps = progress.steps if progress is not None else ()
     current = next(
-        (
-            (index, step)
-            for index, step in enumerate(steps)
-            if step.status == IN_PROGRESS
-        ),
+        (step for step in steps if step.status == IN_PROGRESS),
         None,
     )
     blockers = []
@@ -153,35 +149,15 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
             ),
             facts={
                 "turn": metadata.turn,
-                "task": {
-                    "text": progress.user_said,
-                    "source": "progress.user_said",
-                }
-                if progress is not None and progress.user_said is not None
-                else None,
-                "current_step": {
-                    "index": current[0],
-                    "text": current[1].content,
-                    "source": f"progress.steps[{current[0]}].content",
-                }
-                if current is not None
-                else None,
-                "observation": {
-                    "source": observation.source,
-                    "captured_at": observation.captured_at,
-                    "observed_after": observation.observed_after,
-                    "issue": turn.observation_issue,
-                },
+                "task": progress.user_said if progress is not None else None,
+                "current_step": current.content if current is not None else None,
                 "recent_actions": [
                     {
-                        "source": f"tool:{event.call_id}",
                         "tool": event.tool,
                         "arguments": event.arguments,
                         "executed": event.executed,
                         "is_error": event.is_error,
                         "changed": event.changed,
-                        "result": event.result_text,
-                        "observation_id": event.observation_id,
                     }
                     for event in recent
                 ],

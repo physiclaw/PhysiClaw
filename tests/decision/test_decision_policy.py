@@ -45,8 +45,10 @@ def test_all_boxes_are_offered_once_and_gestures_are_a_separate_question(context
     assert list(targets) == ["NONE", "b0", "b1"]
     for index, element in ((0, context.icons[0]), (1, context.ocr[0])):
         assert targets[f"b{index}"]["target_ref"] == element.ref
-        assert str(list(element.bbox)) in targets[f"b{index}"]["description"]
+        assert f"Observed element {index}:" in targets[f"b{index}"]["description"]
     assert context.icons[0].text is None  # No invented icon description.
+    assert "搜索" in targets["b1"]["description"]
+    assert "icon; identify it from the image" in targets["b0"]["description"]
     assert all(
         question.instructions.startswith(CONSERVATIVE_PROMPT + "\n\n")
         for question in profile.questions

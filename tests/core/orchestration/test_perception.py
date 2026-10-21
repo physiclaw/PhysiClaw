@@ -84,17 +84,23 @@ def test_camera_view_returns_frame(rig, per: Perception) -> None:
     assert per.camera_view() is frame
 
 
-def test_cropped_view_crops_with_current_transforms(
-    mocker, rig, per: Perception
-) -> None:
+def test_cropped_snapshot_preserves_the_selected_pixels_publication_time(
+    mocker, rig, per
+):
+    from physiclaw.core.hardware.frame_reader import PublishedFrame
+
     frame = np.zeros((4, 4, 3), dtype=np.uint8)
     cropped = np.zeros((2, 2, 3), dtype=np.uint8)
-    rig._cam.snapshot.return_value = frame
+    rig._cam.snapshot_with_time.side_effect = None
+    rig._cam.snapshot_with_time.return_value = PublishedFrame(frame, 123.0)
     crop = mocker.patch.object(
         perception_mod, "crop_to_phone_screen", return_value=cropped
     )
 
-    assert per.cropped_view() is cropped
+    sample = per.cropped_snapshot()
+
+    assert sample.frame is cropped
+    assert sample.published_at == 123.0
     crop.assert_called_once_with(frame, rig.transforms)
 
 

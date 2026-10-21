@@ -306,7 +306,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             assert len(projected) == 4
             data = projected[2]["projection"]
             preview = json.dumps(data, ensure_ascii=False)
-            assert data["state"]["facts"]["current_step"]["text"] == "打开淘宝"
+            assert data["state"]["facts"]["current_step"] == "打开淘宝"
             assert "private initial prompt" not in preview
             assert "private scratchpad" not in preview
             assert "private interpretation" not in preview
@@ -321,7 +321,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             decision_request = decision_provider.evaluate.call_args.args[0]
             facts = decision_request.context.facts
             assert facts["turn"] == 2
-            assert facts["current_step"]["text"] == "打开淘宝"
+            assert facts["current_step"] == "打开淘宝"
             assert "private initial prompt" not in repr(decision_request)
             assert "private scratchpad" not in repr(decision_request)
             assert "private interpretation" not in repr(decision_request)

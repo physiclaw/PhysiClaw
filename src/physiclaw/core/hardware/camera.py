@@ -26,7 +26,7 @@ from physiclaw.common import platform
 from physiclaw.common.config import CONFIG
 from physiclaw.common.dumps import save_raw_camera, save_snapshot
 from physiclaw.core.hardware.device import DeviceNotFound, DeviceTimeout
-from physiclaw.core.hardware.frame_reader import FrameReader
+from physiclaw.core.hardware.frame_reader import FrameReader, PublishedFrame
 
 log = logging.getLogger(__name__)
 
@@ -521,8 +521,8 @@ class Camera:
 
     # ─── Frame accessors ────────────────────────────────────────
 
-    def _fresh_frame(self) -> np.ndarray | None:
-        """Return the latest raw (unrotated) BGR frame, or ``None``.
+    def _fresh_frame(self) -> PublishedFrame | None:
+        """Return the latest raw BGR frame and publication time, or ``None``.
 
         Waits up to ``FrameReader.FRAME_WAIT_SECONDS`` for a frame
         fresher than ``FRESH_MAX_AGE_SECONDS``; otherwise returns ``None``.
@@ -532,9 +532,9 @@ class Camera:
         # ~8 ms at 4K) would otherwise stall the next publish for that long.
         if frame is None:
             return None
-        out = frame.copy()
+        out = frame.frame.copy()
         save_raw_camera(out)  # no-op unless --save-raw-camera
-        return out
+        return PublishedFrame(out, frame.published_at)
 
     def raw_frame(self) -> np.ndarray | None:
         """Return a fresh BGR frame without applying calibration rotation.
@@ -543,7 +543,8 @@ class Camera:
         rotation isn't known yet. For normal use see ``peek`` and
         ``snapshot`` which apply ``self.rotation`` before returning.
         """
-        return self._fresh_frame()
+        sample = self._fresh_frame()
+        return sample.frame if sample is not None else None
 
     def _rotate(self, frame: np.ndarray) -> np.ndarray:
         """Apply ``self.rotation`` to a raw frame. No-op when rotation is -1."""
@@ -560,7 +561,7 @@ class Camera:
         frame = self._fresh_frame()
         if frame is None:
             return None
-        return self._rotate(frame)
+        return self._rotate(frame.frame)
 
     def snapshot(
         self, bbox: tuple[tuple[int, int], tuple[int, int]] | None = None
@@ -571,13 +572,21 @@ class Camera:
         is drawn on the returned frame. When ``PHYSICLAW_SAVE_SNAPSHOTS``
         is set, every frame is also written to ``data/snapshots/``.
         """
-        frame = self.peek()
-        if frame is None:
+        sample = self.snapshot_with_time(bbox)
+        return sample.frame if sample is not None else None
+
+    def snapshot_with_time(
+        self, bbox: tuple[tuple[int, int], tuple[int, int]] | None = None
+    ) -> PublishedFrame | None:
+        """A rotated snapshot bound to the reader's host publication time."""
+        sample = self._fresh_frame()
+        if sample is None:
             return None
+        frame = self._rotate(sample.frame)
         if bbox is not None:
             cv2.rectangle(frame, bbox[0], bbox[1], (0, 255, 0), 2)
         save_snapshot(frame)
-        return frame
+        return PublishedFrame(frame, sample.published_at)
 
     def close(self) -> None:
         self._closing = True

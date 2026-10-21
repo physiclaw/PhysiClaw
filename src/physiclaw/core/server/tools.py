@@ -30,18 +30,15 @@ deeper.
 
 import asyncio
 import functools
-import time
 from typing import Literal
 
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ImageContent
 
 from physiclaw.common.dumps import save_tool_call
 from physiclaw.common.logger import logged
 from physiclaw.contract.observation import OBSERVATION_META, view_metadata
 from physiclaw.core import PhysiClaw
-from physiclaw.core.hardware.frame_reader import FrameReader
 from physiclaw.core.orchestration import GestureResult
 from physiclaw.core.server.types import Bbox, ClipboardText, SequenceActions
 
@@ -88,7 +85,9 @@ HINT_VIEW_AFTER_SEQUENCE = "— the attached view shows the state after the fina
 NO_VIEW_FALLBACK = "(auto-view unavailable — `peek` to see the screen)"
 
 
-def _view_reply(name: str, jpeg: bytes, listing: str) -> list:
+def _view_reply(
+    name: str, jpeg: bytes, listing: str, *, observed_after: float | None = None
+) -> list:
     """`[Image, listing]` — the wire shape every screen view ships in —
     and dump the pair to the tool-call log."""
     save_tool_call(name, listing, jpeg)
@@ -99,6 +98,7 @@ def _view_reply(name: str, jpeg: bytes, listing: str) -> list:
                 jpeg,
                 listing,
                 source="screenshot" if name == "screenshot" else "camera",
+                observed_after=observed_after,
             )
         }
     except ValueError:
@@ -115,7 +115,10 @@ def _gesture_reply(name: str, res: GestureResult, hint: str) -> str | list:
     text = f"{res.text} {hint}"
     if res.jpeg is None or res.listing is None:
         return f"{text} {NO_VIEW_FALLBACK}"
-    return [text, *_view_reply(name, res.jpeg, res.listing)]
+    return [
+        text,
+        *_view_reply(name, res.jpeg, res.listing, observed_after=res.observed_after),
+    ]
 
 
 # The rig's declared failure vocabulary. `HardwareError` and
@@ -139,30 +142,10 @@ def _boundary(fn):
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
-        started_at = time.time()
         try:
-            result = await logged_fn(*args, **kwargs)
+            return await logged_fn(*args, **kwargs)
         except _SURFACED as e:
             raise ToolError(str(e)) from e
-        if isinstance(result, list):
-            for block in result:
-                if not isinstance(block, ImageContent):
-                    continue
-                metadata = (block.meta or {}).get(OBSERVATION_META)
-                if isinstance(metadata, dict) and metadata.get("source") == "camera":
-                    # Every camera view acquires through FrameReader. Start
-                    # before the whole tool so queueing, settling and detection
-                    # count toward age; include the reader's accepted cache age.
-                    block.meta = {
-                        **(block.meta or {}),
-                        OBSERVATION_META: {
-                            **metadata,
-                            "observed_after": (
-                                started_at - FrameReader.FRESH_MAX_AGE_SECONDS
-                            ),
-                        },
-                    }
-        return result
 
     return wrapper
 
@@ -186,8 +169,8 @@ def register(mcp: MCPServer, physiclaw: PhysiClaw) -> None:
         plain-text listing, one row per element:
             id [kind] "label" [left,top,right,bottom] conf
         """
-        jpeg, listing = await asyncio.to_thread(physiclaw.peek)
-        return _view_reply("peek", jpeg, listing)
+        jpeg, listing, observed_after = await asyncio.to_thread(physiclaw.peek)
+        return _view_reply("peek", jpeg, listing, observed_after=observed_after)
 
     @mcp.tool(structured_output=False)
     @_boundary

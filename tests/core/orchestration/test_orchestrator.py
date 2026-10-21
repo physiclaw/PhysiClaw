@@ -275,7 +275,7 @@ def _wire_peek(mocker, pc, wire_rig, *, listing: str = "ok", sharpness=200.0):
 def test_peek_retries_on_blurry_frame(mocker, pc: PhysiClaw, wire_rig) -> None:
     _wire_peek(mocker, pc, wire_rig, sharpness=[10.0, 100.0])
 
-    jpg, listing = pc.peek()
+    jpg, listing, published_at = pc.peek()
 
     assert jpg == b"JPG"
     assert listing == "ok"
@@ -862,7 +862,7 @@ def test_peek_appends_quality_warning_to_listing(
     _wire_peek(mocker, pc, wire_rig, listing="rows")
     pc._observer._quality.observe.return_value = "⚠ camera: bad"
 
-    _, listing = pc.peek()
+    _, listing, _ = pc.peek()
 
     assert listing == "rows\n⚠ camera: bad"
 

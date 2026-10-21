@@ -63,7 +63,7 @@ async def test_real_server_client_and_dispatch_preserve_a_single_view(
     blocks = observation_blocks()
     jpeg = base64.b64decode(blocks[0]["data"])
     rig = SimpleNamespace(
-        peek=mocker.Mock(return_value=(jpeg, blocks[1]["text"])),
+        peek=mocker.Mock(return_value=(jpeg, blocks[1]["text"], 123.0)),
         screenshot=mocker.Mock(return_value=(jpeg, blocks[1]["text"])),
         tap=mocker.Mock(
             return_value=GestureResult(

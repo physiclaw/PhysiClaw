@@ -18,6 +18,7 @@ import pytest
 from physiclaw.core.bridge.state import BridgeState
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.camera import Camera
+from physiclaw.core.hardware.frame_reader import PublishedFrame
 
 
 def _bridge_double():
@@ -37,6 +38,12 @@ def _cam_double():
     real attribute (at its real initial value)."""
     cam = MagicMock(spec=Camera)
     cam.rotation = -1
+
+    def timed_snapshot():
+        frame = cam.snapshot()
+        return PublishedFrame(frame, 100.0) if frame is not None else None
+
+    cam.snapshot_with_time.side_effect = timed_snapshot
     return cam
 
 

@@ -15,13 +15,14 @@ from physiclaw.contract.decision import DecisionContext, DecisionElement
 _CHINESE_CONTROLS = frozenset(
     "发送 传送 转发 支付 付款 转账 转帐 汇款 购买 下单 订单 结算 订阅 续费 收货 "
     "删除 清空 清除 重置 恢复出厂 确认 确定 提交 同意 取消 授权 允许 登录 登入 登出 "
-    "发布 发表 分享 上传 拨打 呼叫 按住说话 录音 录制".split()
+    "发布 发表 分享 上传 拨打 呼叫 按住说话 录音 录制 加入购物车 加购 "
+    "知道了 明白了 好的 开通".split()
 )
 _ENGLISH_CONTROLS = frozenset(
     "send resend sending pay payment purchase buy checkout subscribe unsubscribe "
     "renew delete remove erase clear reset discard confirm submit agree cancel "
     "authorize allow grant login logout publish post share upload call dial "
-    "record recording transfer donate".split()
+    "record recording transfer donate ok okay".split()
 )
 _ENGLISH_PHRASES = (
     "sign in",
@@ -31,6 +32,8 @@ _ENGLISH_PHRASES = (
     "place order",
     "place an order",
     "add to cart",
+    "add to bag",
+    "got it",
     "hold to talk",
     "hold to record",
 )
