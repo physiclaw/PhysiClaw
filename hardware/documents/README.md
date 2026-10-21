@@ -43,6 +43,7 @@ uv run --locked --group cad pytest tests/hardware
 ```
 
 Document builders and static checks use only the Python standard library.
+`make hw-drawing` generates HTML and PDFs by default.
 The manual requires existing assembly SVGs; PDF builds require a Chromium-family
 browser. Generated files remain in `hardware/output/{manual,sourcing,drawing}`
 or the output tree selected by `PHYSICLAW_HW_OUTPUT`. Release preparation builds

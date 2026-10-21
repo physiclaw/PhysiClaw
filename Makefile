@@ -199,7 +199,7 @@ hw-help:
 	@echo "    make hw-manual                      Build bilingual manual HTML"
 	@echo "    make hw-manual-pdf                   Build bilingual manual HTML and PDFs"
 	@echo "    make hw-sourcing                    Build bilingual sourcing guides"
-	@echo "    make hw-drawing [ARGS=--pdf]         Build extrusion drawings; add --pdf for PDFs"
+	@echo "    make hw-drawing                     Build extrusion drawings as HTML and PDFs"
 	@echo "    make hw-mark ARGS=<svg|json>         Open the drawing annotation tool"
 	@echo "    make hw-replay [ARGS=file]           Apply saved drawing annotations"
 	@echo "    pbpaste | make hw-camera            Convert a FreeCAD view to a Camera() literal"
@@ -241,9 +241,9 @@ hw-sourcing:
 
 # The supplier's sheet for the frame extrusions — drawn from the same
 # constants the assembly cuts and drills with, so it can't drift from the
-# model. --pdf prints it through headless Chrome like the manual.
+# model. PDFs print through headless Chrome like the manual.
 hw-drawing:
-	@$(HW_DOC) drawing $(ARGS)
+	@$(HW_DOC) drawing --pdf $(ARGS)
 
 hw-mark:
 	$(call need-args,<svg|json>)

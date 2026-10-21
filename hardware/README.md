@@ -357,7 +357,7 @@ make hw-print                     # 3D-print package (zip)
 make hw-manual                    # build the assembly manual (HTML)
 make hw-manual-pdf                # build the assembly manual, also as PDF
 make hw-sourcing                  # build sourcing guide
-make hw-drawing ARGS=--pdf        # build the extrusion tech drawing (HTML, and PDF)
+make hw-drawing                  # build the extrusion tech drawing (HTML and PDF)
 make hw-mark ARGS=<svg|json>      # annotate a step drawing
 pbpaste | make hw-camera          # FreeCAD view → Camera() literal
 make hw-rebuild ARGS="--bom"      # same as hw-build --bom, bypass CAD cache
