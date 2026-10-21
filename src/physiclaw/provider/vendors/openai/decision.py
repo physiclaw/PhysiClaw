@@ -11,7 +11,6 @@ import json
 import httpx
 
 from physiclaw.common.provider_errors import (
-    ProviderConfigurationError,
     ProviderRequestError,
     ProviderTransientError,
 )
@@ -23,7 +22,7 @@ from physiclaw.contract.decision import (
     candidate_to_json,
     context_to_json,
 )
-from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
+from physiclaw.provider.decision.base import BaseDecisionProvider
 from physiclaw.provider.decision.wire import (
     check_response_status,
     parse_usage,
@@ -37,10 +36,6 @@ class OpenAIDecisionProvider(BaseDecisionProvider):
 
     @staticmethod
     def capabilities_for(model: str) -> DecisionCapabilities:
-        # Native Decisions currently supports only this model. Keep this
-        # explicit rather than accepting a chat model and changing endpoints.
-        if model != "gpt-6-luna":
-            raise ProviderConfigurationError("unsupported OpenAI decision model")
         return DecisionCapabilities(
             images=True,
             probabilities=True,

@@ -233,7 +233,7 @@ class ProviderConfig:
     clients use these same credential rules.
 
     Field names match the provider id (qwen/moonshot/openai/anthropic/
-    google/deepseek/typesafe) — same convention OpenClaw uses.
+    google/deepseek/typesafe/openrouter/liquid).
     """
 
     qwen_api_key: str = ""
@@ -243,6 +243,8 @@ class ProviderConfig:
     google_api_key: str = ""
     deepseek_api_key: str = ""
     typesafe_api_key: str = ""
+    openrouter_api_key: str = ""
+    liquid_api_key: str = ""
 
 
 @dataclass

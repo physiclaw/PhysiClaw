@@ -129,7 +129,7 @@ def test_common_is_a_leaf() -> None:
 
 def test_decision_contract_and_base_are_vendor_and_chat_independent() -> None:
     """Vendor wiring belongs at the registry composition root, not in DTOs."""
-    for relative in ("contract/decision.py", "provider/decision/decision_compat.py"):
+    for relative in ("contract/decision.py", "provider/decision/base.py"):
         imports = _imported_modules(PKG_ROOT / relative)
         assert not any(
             module.startswith("physiclaw.provider.vendors") for module in imports

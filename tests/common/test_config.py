@@ -1060,7 +1060,7 @@ def test_parse_model_ref_raises_on_no_slash() -> None:
     assert str(exc_info.value) == expected
 
 
-@pytest.mark.parametrize("bad", ["/model", "provider/", "/"])
+@pytest.mark.parametrize("bad", ["/model", "provider/", "/", "openai/ \t", " /model"])
 def test_parse_model_ref_raises_on_empty_segment(bad: str) -> None:
     with pytest.raises(ValueError, match=r"empty provider or model segment"):
         config.parse_model_ref(bad)

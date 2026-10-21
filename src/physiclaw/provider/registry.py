@@ -15,9 +15,12 @@ from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
 from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
 from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
+from physiclaw.provider.vendors.liquid.decision import LiquidDecisionProvider
 from physiclaw.provider.vendors.moonshot.chat import MoonshotChatProvider
 from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
 from physiclaw.provider.vendors.openai.decision import OpenAIDecisionProvider
+from physiclaw.provider.vendors.openrouter.chat import OpenRouterChatProvider
+from physiclaw.provider.vendors.openrouter.decision import OpenRouterDecisionProvider
 from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
@@ -70,6 +73,23 @@ _VENDORS: dict[str, VendorServices] = {
             TypeSafeDecisionProvider.capabilities_for,
             TypeSafeDecisionProvider._env_vars(),
             TypeSafeDecisionProvider._config_key(),
+        )
+    ),
+    "openrouter": VendorServices(
+        chat=OpenRouterChatProvider,
+        decision=DecisionProviderSpec(
+            OpenRouterDecisionProvider,
+            OpenRouterDecisionProvider.capabilities_for,
+            OpenRouterDecisionProvider._env_vars(),
+            OpenRouterDecisionProvider._config_key(),
+        ),
+    ),
+    "liquid": VendorServices(
+        decision=DecisionProviderSpec(
+            LiquidDecisionProvider,
+            LiquidDecisionProvider.capabilities_for,
+            LiquidDecisionProvider._env_vars(),
+            LiquidDecisionProvider._config_key(),
         )
     ),
 }

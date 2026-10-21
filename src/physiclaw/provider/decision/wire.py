@@ -18,7 +18,7 @@ def check_response_status(response: httpx.Response, *, vendor: str) -> None:
     message = f"{vendor} decision HTTP {status}"
     if status in {408, 429} or status >= 500:
         raise ProviderTransientError(message)
-    if status in {413, 422}:
+    if status in {400, 413, 422}:
         # This payload was rejected; a later screen/request may be accepted.
         raise ProviderRequestError(message)
     raise ProviderPermanentError(message)

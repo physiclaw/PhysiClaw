@@ -21,7 +21,7 @@ from physiclaw.provider.chat.wire import (
     tool_to_wire,
     user_content_to_openai,
 )
-from physiclaw.provider.decision.decision_compat import BaseDecisionProvider
+from physiclaw.provider.decision.base import BaseDecisionProvider
 from physiclaw.provider.provider_base import BaseAPIProvider
 from physiclaw.provider.registry import (
     DecisionProviderSpec,
@@ -40,9 +40,12 @@ from physiclaw.provider.registry import (
 from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
 from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
+from physiclaw.provider.vendors.liquid.decision import LiquidDecisionProvider
 from physiclaw.provider.vendors.moonshot.chat import MoonshotChatProvider
 from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
 from physiclaw.provider.vendors.openai.decision import OpenAIDecisionProvider
+from physiclaw.provider.vendors.openrouter.chat import OpenRouterChatProvider
+from physiclaw.provider.vendors.openrouter.decision import OpenRouterDecisionProvider
 from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
@@ -58,10 +61,13 @@ __all__ = [
     "VendorServices",
     "DeepSeekChatProvider",
     "GoogleChatProvider",
+    "LiquidDecisionProvider",
     "MoonshotChatProvider",
     "OpenAIChatProvider",
     "OpenAICompatibleProvider",
     "OpenAIDecisionProvider",
+    "OpenRouterChatProvider",
+    "OpenRouterDecisionProvider",
     "QwenChatProvider",
     "TypeSafeDecisionProvider",
     "assistant_to_wire",

@@ -50,6 +50,7 @@ class BaseDecisionProvider(BaseAPIProvider):
 
     @staticmethod
     def capabilities_for(model: str) -> DecisionCapabilities:
+        """Adapter support and local limits; the API validates model availability."""
         raise NotImplementedError("decision adapter must declare model capabilities")
 
     @staticmethod

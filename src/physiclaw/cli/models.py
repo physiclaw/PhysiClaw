@@ -10,7 +10,8 @@ model-relevant TOML fields:
 Models come from each vendor's live ``/v1/models`` endpoint, cached
 locally by ``physiclaw models discover <provider>`` (and automatically
 by ``models key`` right after writing the key). PhysiClaw doesn't ship
-a curated model list — discovery is the source of truth.
+a curated model list. Discovery supplies browsing candidates; exact refs
+can be selected without a cache entry and are validated by the provider API.
 
 Subcommands:
 
@@ -151,10 +152,8 @@ def _use(
         ),
     ],
 ) -> None:
-    """Switch the active model — validates the `provider/model` ref
-    against the discovery cache and writes to `[agent] model`. Run
-    `physiclaw models discover <provider>` first if the cache is empty."""
-    from physiclaw.provider import discovered, validate_model_ref
+    """Save an exact `provider/model` ref; the provider API validates the model."""
+    from physiclaw.provider import validate_model_ref
 
     if "/" not in ref:
         exit_error(
@@ -167,13 +166,6 @@ def _use(
         provider_id, model_id = validate_model_ref(ref)
     except ValueError as e:
         exit_error(str(e))
-
-    if not discovered.is_cached(provider_id, model_id):
-        exit_error(
-            f"model {model_id!r} not in {provider_id} discovery cache.\n"
-            f"  hint: run `physiclaw models discover {provider_id}` "
-            "to refresh the live list, then retry."
-        )
 
     try:
         _config.set_dotted("agent.model", ref)

@@ -19,11 +19,18 @@ from physiclaw.decision.policy import CONSERVATIVE_PROMPT, question_profile
 from physiclaw.provider import make_decision_provider
 
 
-@pytest.fixture(params=["typesafe", "openai"])
+@pytest.fixture(
+    params=[
+        ("typesafe", "jev-1.14.0"),
+        ("openai", "gpt-6-luna"),
+        ("openrouter", "typesafe/jev-1.14"),
+        ("openrouter", "liquid/d1-ultra"),
+        ("liquid", "d1-ultra"),
+    ]
+)
 async def provider(request, monkeypatch):
-    vendor = request.param
+    vendor, model = request.param
     monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "fixture-only")
-    model = "jev-1.14.0" if vendor == "typesafe" else "gpt-6-luna"
     instance = make_decision_provider(vendor, model, require_images=True)
     yield instance
     await instance.aclose()
@@ -37,9 +44,12 @@ def review(image_decision_request):
 
 
 def url(provider):
-    if provider.PROVIDER_ID == "typesafe":
-        return "https://api.typesafe.ai/v1/systemone"
-    return "https://api.openai.com/v1/decisions"
+    return {
+        "typesafe": "https://api.typesafe.ai/v1/systemone",
+        "openai": "https://api.openai.com/v1/decisions",
+        "openrouter": "https://openrouter.ai/api/alpha/decisions",
+        "liquid": "https://api.liquid.ai/decisions/v1/systemone",
+    }[provider.PROVIDER_ID]
 
 
 def deadline():
@@ -68,7 +78,7 @@ def reply(provider, request, *, phase="ROUTINE", target="b0"):
     return {
         "model": provider.model,
         "answers": answers
-        if provider.PROVIDER_ID == "typesafe"
+        if provider.PROVIDER_ID != "openai"
         else list(answers.values()),
         "usage": {"input_tokens": 450, "output_tokens": 0},
     }
@@ -81,7 +91,7 @@ def named_answers(payload):
     return answers
 
 
-async def test_preview_questions_reach_both_adapters_with_one_image(
+async def test_preview_questions_reach_all_adapters_with_one_image(
     provider, review, respx_mock
 ):
     payload = reply(provider, review)
@@ -113,9 +123,7 @@ async def test_preview_questions_reach_both_adapters_with_one_image(
         assert parts[1].get_payload(decode=True) == review.context.frame.data
         assert len(body["assets"]) == 1
         questions = body["questions"]
-        for question in questions.values():
-            question["options"] = question.pop("criteria")
-    else:
+    elif provider.PROVIDER_ID == "openai":
         body = json.loads(wire.content)
         text, image = body["input"][0]["content"]
         state = json.loads(text["text"])
@@ -129,6 +137,25 @@ async def test_preview_questions_reach_both_adapters_with_one_image(
             question["options"] = {
                 c["value"]: json.loads(c["description"]) for c in question["choices"]
             }
+    else:
+        body = json.loads(wire.content)
+        if provider.PROVIDER_ID == "liquid":
+            state = body["state"]
+            assert len(body["images"]) == 1
+            image_url = body["images"][0]
+        else:
+            text, image = body["state"]
+            state = json.loads(text)
+            assert image["type"] == "image_url"
+            image_url = image["image_url"]["url"]
+            assert "images" not in body
+        assert state["observation"]["id"] == review.context.observation_id
+        assert base64.b64decode(image_url.split(",", 1)[1]) == review.context.frame.data
+        assert "assets" not in body
+        questions = body["questions"]
+    if provider.PROVIDER_ID != "openai":
+        for question in questions.values():
+            question["options"] = question.pop("criteria")
     assert set(questions) == {"phase", "action_type", "target"}
     for question in review.questions:
         assert questions[question.id]["instructions"] == question.instructions
@@ -162,14 +189,14 @@ async def test_a_bad_secondary_answer_rejects_the_entire_bundle(
         probabilities = {"tap": 1.0, "YIELD": 0.0}
         answers["target"]["probabilities"] = (
             probabilities
-            if provider.PROVIDER_ID == "typesafe"
+            if provider.PROVIDER_ID != "openai"
             else [
                 {"value": key, "probability": value}
                 for key, value in probabilities.items()
             ]
         )
     payload["answers"] = (
-        answers if provider.PROVIDER_ID == "typesafe" else list(answers.values())
+        answers if provider.PROVIDER_ID != "openai" else list(answers.values())
     )
     route = respx_mock.post(url(provider)).respond(json=payload)
     with pytest.raises(ProviderTransientError, match="malformed"):
@@ -180,6 +207,7 @@ async def test_a_bad_secondary_answer_rejects_the_entire_bundle(
 @pytest.mark.parametrize(
     "status,kind",
     [
+        (400, ProviderRequestError),
         (408, ProviderTransientError),
         (413, ProviderRequestError),
         (422, ProviderRequestError),

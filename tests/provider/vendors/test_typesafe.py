@@ -346,14 +346,18 @@ async def test_model_id_pass_through_and_actual_identity(
         await provider.aclose()
 
 
-async def test_model_capability_does_not_silently_drop_image(
+async def test_new_model_receives_image_without_a_local_allowlist(
     image_decision_request, respx_mock
 ):
-    provider = TypeSafeDecisionProvider("unverified-model")
+    provider = make_decision_provider("typesafe", "jev-next", require_images=True)
     try:
-        with pytest.raises(ProviderRequestError, match="does not support images"):
-            await provider.evaluate(image_decision_request, deadline=deadline())
-        assert not respx_mock.calls
+        route = respx_mock.post(URL).respond(json=answer(model="jev-next-build"))
+        result = await provider.evaluate(image_decision_request, deadline=deadline())
+        sent = route.calls[0].request.content
+        assert b'"model": "jev-next"' in sent
+        assert image_decision_request.context.frame.data in sent
+        assert result.requested_model_id == "jev-next"
+        assert result.model_id == "jev-next-build"
     finally:
         await provider.aclose()
 
@@ -361,7 +365,7 @@ async def test_model_capability_does_not_silently_drop_image(
 @pytest.mark.parametrize(
     "status,kind",
     [
-        (400, ProviderPermanentError),
+        (400, ProviderRequestError),
         (401, ProviderPermanentError),
         (403, ProviderPermanentError),
         (429, ProviderTransientError),

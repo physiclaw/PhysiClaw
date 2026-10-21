@@ -222,25 +222,6 @@ def test_model_ids_returns_empty_set_when_no_cache() -> None:
     assert discovered.model_ids("openai") == set()
 
 
-# ---------- is_cached ----------
-
-
-def test_is_cached_true_when_model_in_cache(_dir_fixture: Path) -> None:
-    discovered.save("openai", [{"id": "gpt-5"}])
-
-    assert discovered.is_cached("openai", "gpt-5") is True
-
-
-def test_is_cached_false_when_model_absent(_dir_fixture: Path) -> None:
-    discovered.save("openai", [{"id": "gpt-5"}])
-
-    assert discovered.is_cached("openai", "gpt-9000") is False
-
-
-def test_is_cached_false_when_no_cache_at_all() -> None:
-    assert discovered.is_cached("openai", "gpt-5") is False
-
-
 # ---------- import-time _DIR resolution ----------
 
 

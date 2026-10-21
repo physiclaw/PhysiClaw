@@ -71,7 +71,7 @@ def parse_model_ref(ref: str) -> tuple[str, str]:
             f"model ref {ref!r} must be 'provider/model' (e.g. 'openai/gpt-5')"
         )
     provider_id, model_id = ref.split("/", 1)
-    if not (provider_id and model_id):
+    if not (provider_id.strip() and model_id.strip()):
         raise ValueError(f"model ref {ref!r} has empty provider or model segment")
     return provider_id, model_id
 

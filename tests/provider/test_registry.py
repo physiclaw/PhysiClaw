@@ -28,12 +28,13 @@ from physiclaw.provider.vendors.moonshot.chat import (
     MoonshotChatProvider,
 )
 from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
+from physiclaw.provider.vendors.openrouter.chat import OpenRouterChatProvider
 from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 
 # ---------- constants ----------
 
 
-def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
+def test_provider_classes_match_registered_chat_services() -> None:
     assert set(in_process_provider_ids()) == {
         "qwen",
         "moonshot",
@@ -41,6 +42,7 @@ def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
         "anthropic",
         "google",
         "deepseek",
+        "openrouter",
     }
 
 
@@ -53,6 +55,7 @@ def test_provider_classes_dict_has_exactly_six_known_ids() -> None:
         ("anthropic", AnthropicChatProvider),
         ("google", GoogleChatProvider),
         ("deepseek", DeepSeekChatProvider),
+        ("openrouter", OpenRouterChatProvider),
     ],
 )
 def test_provider_classes_each_id_maps_to_its_vendor_class(

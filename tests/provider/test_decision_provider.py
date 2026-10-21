@@ -1,11 +1,15 @@
 """A second implementation must fit without TypeSafe-shaped scores or state."""
 
 import asyncio
+import json
 
 import pytest
 
 from physiclaw.common import config
-from physiclaw.common.provider_errors import ProviderConfigurationError
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderPermanentError,
+)
 from physiclaw.contract.decision import (
     DecisionAnswer,
     DecisionCapabilities,
@@ -94,7 +98,7 @@ def test_capabilities_per_model_without_constructing_client(
     assert decision_provider_capabilities("fake", "visual").images is True
     assert decision_provider_capabilities("typesafe", "jev-1.14.0").images is True
     assert (
-        decision_provider_capabilities("typesafe", "unverified-version").images is False
+        decision_provider_capabilities("typesafe", "unverified-version").images is True
     )
     assert decision_provider_capabilities("unknown", "x") is None
     with pytest.raises(ProviderConfigurationError, match="does not support images"):
@@ -109,6 +113,7 @@ def test_decision_only_provider_cannot_be_main_agent(fake_registration):
         "anthropic",
         "google",
         "deepseek",
+        "openrouter",
     )
     for provider_id in ("typesafe", "fake"):
         with pytest.raises(ValueError, match="unknown provider"):
@@ -117,10 +122,70 @@ def test_decision_only_provider_cannot_be_main_agent(fake_registration):
             make_chat_provider(provider_id, "model")
     with pytest.raises(ValueError, match="unknown decision provider"):
         make_decision_provider("qwen", "chat-only")
-    with pytest.raises(
-        ProviderConfigurationError, match="unsupported OpenAI decision model"
-    ):
-        make_decision_provider("openai", "chat-only")
+
+
+@pytest.mark.parametrize(
+    "vendor,model,url",
+    [
+        ("typesafe", "jev-next", "https://api.typesafe.ai/v1/systemone"),
+        ("liquid", "d1-next", "https://api.liquid.ai/decisions/v1/systemone"),
+        ("openai", "future-model", "https://api.openai.com/v1/decisions"),
+        ("openrouter", "vendor/future", "https://openrouter.ai/api/alpha/decisions"),
+        ("openrouter", "cloudflare/clef", "https://openrouter.ai/api/alpha/decisions"),
+    ],
+)
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_model_ids_pass_through_and_api_rejection_never_switches_service(
+    vendor,
+    model,
+    url,
+    with_image,
+    decision_request,
+    image_decision_request,
+    monkeypatch,
+    respx_mock,
+):
+    monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "fixture-only")
+    provider = make_decision_provider(vendor, model, require_images=with_image)
+    request = image_decision_request if with_image else decision_request
+    route = respx_mock.post(url).respond(404)
+    deadline = asyncio.get_running_loop().time() + 5
+    try:
+        with pytest.raises(ProviderPermanentError, match="HTTP 404"):
+            await provider.evaluate(request, deadline=deadline)
+        assert route.call_count == 1
+        answer = {
+            "type": "choice",
+            "choice": "YIELD",
+            "probabilities": {"YIELD": 1.0, "a1": 0.0},
+        }
+        if vendor == "openai":
+            answer["name"] = "next_action"
+            answer["probabilities"] = [
+                {"value": key, "probability": value}
+                for key, value in answer["probabilities"].items()
+            ]
+        route.respond(
+            json={
+                "model": "resolved-version",
+                "answers": [answer] if vendor == "openai" else {"next_action": answer},
+            }
+        )
+        result = await provider.evaluate(request, deadline=deadline)
+        assert result.requested_model_id == model
+        assert result.model_id == "resolved-version"
+        sent = route.calls[-1].request
+        if vendor == "typesafe" and with_image:
+            assert f'"model": "{model}"'.encode() in sent.content
+            assert request.context.frame.data in sent.content
+        else:
+            body = json.loads(sent.content)
+            assert body["model"] == model
+            if with_image:
+                assert b"data:image/jpeg;base64," in sent.content
+        assert len(respx_mock.calls) == route.call_count == 2
+    finally:
+        await provider.aclose()
 
 
 def test_registration_cannot_overwrite_vendor(fake_registration):

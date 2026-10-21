@@ -1,10 +1,9 @@
 """Live model-list cache.
 
 Each provider's `/v1/models` response is JSON-cached at
-`~/.physiclaw/discovered/<provider>.json` so subsequent commands can
-answer "does the user actually have access to this model?" without
-hitting the network. Refreshed by `physiclaw models key` (after a key
-write) and `physiclaw models discover` (explicit re-fetch).
+`~/.physiclaw/discovered/<provider>.json` for model browsing and capability
+metadata without hitting the network. Refreshed by `physiclaw models key`
+(after a key write) and `physiclaw models discover` (explicit re-fetch).
 
 Cache shape:
     {
@@ -12,9 +11,8 @@ Cache shape:
       "models":      [{"id": "...", ...}, ...]
     }
 
-The cache is the source of truth for `models use` validation —
-PhysiClaw doesn't ship a curated model list, so anything the
-provider's API returns is fair game.
+The cache does not restrict model selection. The inference API validates
+the requested model and account access.
 """
 
 from __future__ import annotations
@@ -91,7 +89,3 @@ def load(provider_id: str) -> list[dict]:
 
 def model_ids(provider_id: str) -> set[str]:
     return {m["id"] for m in load(provider_id)}
-
-
-def is_cached(provider_id: str, model_id: str) -> bool:
-    return model_id in model_ids(provider_id)

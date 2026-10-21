@@ -135,16 +135,12 @@ def test_same_vendor_rejects_divergent_credential_settings():
     assert registry._VENDORS["qwen"].decision is None
 
 
-def test_unsupported_service_or_model_does_not_fall_back(monkeypatch):
+def test_unsupported_service_does_not_fall_back(monkeypatch):
     def forbidden(*args, **kwargs):
-        pytest.fail("unsupported service/model must not create a fallback client")
+        pytest.fail("unsupported service must not create a fallback client")
 
     monkeypatch.setattr("httpx.AsyncClient", forbidden)
     with pytest.raises(ValueError, match="unknown provider"):
         make_chat_provider("typesafe", "jev-1.14.0")
     with pytest.raises(ValueError, match="unknown decision provider"):
         make_decision_provider("anthropic", "chat-model")
-    with pytest.raises(
-        ProviderConfigurationError, match="unsupported OpenAI decision model"
-    ):
-        make_decision_provider("openai", "gpt-6-astra")

@@ -186,11 +186,13 @@ def test_unknown_provider_fails_before_any_client_or_config_write(
 
 
 @pytest.mark.parametrize("command", ["use", "set"])
-def test_use_cached_model_persists_exact_ref_and_preserves_comments(command):
+@pytest.mark.parametrize("cached", [False, True])
+def test_use_model_persists_exact_ref_and_preserves_comments(command, cached):
     config.config_path().write_text(
         '# keep this comment\n[agent]\nmodel = "old/model"\n'
     )
-    discovered.save("openai", [{"id": "org/model-v1"}])
+    if cached:
+        discovered.save("openai", [{"id": "org/model-v1"}])
 
     result = runner.invoke(models_app, [command, "openai/org/model-v1"])
 
@@ -207,9 +209,9 @@ def test_use_cached_model_persists_exact_ref_and_preserves_comments(command):
         ("bare", "is not a `provider/model`"),
         ("/model", "empty provider"),
         ("openai/", "empty provider"),
+        ("openai/ \t", "empty provider"),
         ("unknown/model", "unknown provider"),
         ("claude-code/model", "unknown provider"),
-        ("openai/missing", "not in openai discovery cache"),
     ],
 )
 def test_use_invalid_ref_preserves_config(ref, message):

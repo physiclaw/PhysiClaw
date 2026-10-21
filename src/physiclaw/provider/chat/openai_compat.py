@@ -117,6 +117,10 @@ class OpenAICompatibleProvider(BaseChatProvider):
 
     CACHE_MARKERS: CacheMarkers = OpenAICacheMarkers()
 
+    def _request_params(self, *, metadata: TurnMetadata | None) -> dict[str, Any]:
+        """Additional vendor request fields; empty for the standard protocol."""
+        return {}
+
     async def _chat(
         self,
         history: list[Message],
@@ -129,6 +133,7 @@ class OpenAICompatibleProvider(BaseChatProvider):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": wire,
+            **self._request_params(metadata=metadata),
             # The vendor's spelling of a declared thinking level (nothing
             # for the vendor default, or a model the vendor's table omits).
             **(self.thinking_params(thinking) if thinking is not None else {}),
