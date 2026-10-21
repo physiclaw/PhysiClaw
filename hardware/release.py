@@ -313,7 +313,7 @@ def prepare(version: str) -> Path:
             "sources": sources,
             "toolchain": {
                 name: package_version(name)
-                for name in ("build123d", "cadquery-ocp", "shapely")
+                for name in ("build123d", "cadquery-ocp-novtk", "shapely")
             },
             "python": sys.version,
             "artifacts": {name: digest(bundle / name) for name in sorted(ASSETS)},

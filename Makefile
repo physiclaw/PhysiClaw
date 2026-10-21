@@ -205,7 +205,7 @@ hw-help:
 	@echo "    pbpaste | make hw-camera            Convert a FreeCAD view to a Camera() literal"
 	@echo ""
 	@echo "  Force rebuild:"
-	@echo "    make hw-rebuild                      Rebuild all local outputs without CAD cache"
+	@echo "    make hw-rebuild [ARGS=--bom]         Same as hw-build; bypass CAD cache"
 	@echo ""
 	@echo "  Options: make hw-build ARGS=--help (also works for other build commands)"
 	@echo "  Guide: hardware/README.md"
@@ -257,17 +257,9 @@ hw-replay:
 hw-camera:
 	@$(HW) camera $(ARGS)
 
-# Full rebuild — STEPs → steps+BOM → print package → manual (HTML+PDF) →
-# sourcing → extrusion tech drawing (HTML+PDF) in the interactive output tree.
-# Use hw-prepare to build a versioned release bundle with its manifest.
+# Same assembly build and flags as hw-build, bypassing persistent cache reads.
 hw-rebuild:
-	@$(HW_DOC) check
-	@$(HW) parts --custom --standard
-	@$(HW) build --bom --no-cache
-	@$(HW) print
-	@$(HW_DOC) manual --pdf
-	@$(HW_DOC) sourcing
-	@$(HW_DOC) drawing --pdf
+	@$(HW) build --no-cache $(ARGS)
 
 # All release entry points delegate to the same guarded Python workflow.
 # Each is a single recipe, so make -j cannot reorder preflight/build/publish.

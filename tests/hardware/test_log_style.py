@@ -138,18 +138,19 @@ def test_live_rows_fit_after_resize_and_keep_full_names_on_disk(
     )
 
 
-def test_task_progress_without_a_total_and_early_close_leave_a_clean_prompt(
-    tmp_path, terminal_output
-):
+def test_interactive_tasks_print_separate_rows(tmp_path, terminal_output):
     terminal_output = terminal_output()
     with buildlog.session(tmp_path):
         with buildlog.step("Build the print package"):
             pass
         with buildlog.step("Render the manual"):
             pass
-    (row,) = [line for line in visible_lines(terminal_output.getvalue()) if line]
-    assert "[2] Render the manual" in row
-    assert terminal_output.getvalue().endswith("\n")
+    output = terminal_output.getvalue()
+    first, second = output.splitlines()
+    assert "[1] Build the print package" in first
+    assert "[2] Render the manual" in second
+    assert "\r" not in output
+    assert output.endswith("\n")
 
 
 @pytest.mark.parametrize("mode", ["pipe", "verbose", "json", "worker", "dumb", "ci"])

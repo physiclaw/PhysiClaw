@@ -231,7 +231,7 @@ renderer: a title, progress with elapsed time in the last column, and one
 individual task durations are saved in JSON. CAD builds count completed assemblies,
 including cache restores, so parallel workers can finish out of source order.
 Repeated verification does not repeat successful rows. In normal interactive
-output, completions update the same row in place; errors and the final result
+output, CAD completions reuse one row; other tasks, errors and the final result
 print on separate lines. Long names shorten to fit the live row; full names
 remain in the saved events. Pipes, CI, `TERM=dumb` and `--verbose` append each
 completion separately.
@@ -342,8 +342,9 @@ Run `make hw-help` for the hardware commands, grouped by task. The main workflow
 | `make hw-release HW_VERSION=X.Y` | Prepare, verify, publish and trigger the docs hook in one command. |
 
 Commit and push main before preparing a bundle intended for publication.
-Use `make docs-deploy` to retry only the docs hook. `hw-rebuild` explicitly bypasses
-the CAD cache; routine builds and releases use the cache.
+Use `make docs-deploy` to retry only the docs hook. `hw-rebuild` is `hw-build`
+with `--no-cache`; both accept the same `ARGS` and refresh the CAD cache.
+Routine builds and releases reuse cached outputs.
 
 For individual outputs, pass flags through `ARGS`:
 
@@ -359,7 +360,7 @@ make hw-sourcing                  # build sourcing guide
 make hw-drawing ARGS=--pdf        # build the extrusion tech drawing (HTML, and PDF)
 make hw-mark ARGS=<svg|json>      # annotate a step drawing
 pbpaste | make hw-camera          # FreeCAD view → Camera() literal
-make hw-rebuild                   # all local stages, bypass CAD cache
+make hw-rebuild ARGS="--bom"      # same as hw-build --bom, bypass CAD cache
 make hw-help                      # show commands by task
 ```
 

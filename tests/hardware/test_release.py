@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import zipfile
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 import pytest
@@ -58,7 +59,6 @@ def preparation(tmp_path, monkeypatch):
     monkeypatch.setattr(rel, "source_digest", lambda: "source-digest")
     monkeypatch.setattr(rel, "find_chrome", lambda: "/fake/chrome")
     monkeypatch.setattr(rel, "render_pdf", lambda *args: True)
-    monkeypatch.setattr(rel, "package_version", lambda name: "1.0")
     monkeypatch.setattr(rel, "run_tests", lambda: None)
     monkeypatch.setattr(rel, "run", lambda *args, **kwargs: COMMIT)
     calls = []
@@ -106,6 +106,10 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
     assert verified == bundle
     assert manifest["commit"] == COMMIT
     assert set(manifest["artifacts"]) == rel.ASSETS
+    assert manifest["toolchain"] == {
+        name: package_version(name)
+        for name in ("build123d", "cadquery-ocp-novtk", "shapely")
+    }
     roots = {root for root, _ in preparation}
     assert len(roots) == 1 and not next(iter(roots)).exists()
     assert [args for _, args in preparation] == [

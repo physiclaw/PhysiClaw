@@ -404,7 +404,7 @@ class ConsoleHandler(logging.StreamHandler):
         if (
             self.live
             and _live_terminal(self.stream)
-            and event["event"] in {"step_finished", "task_finished"}
+            and event["event"] == "step_finished"
             and event.get("status") == "success"
         ):
             columns = max(1, shutil.get_terminal_size(fallback=(120, 24)).columns - 1)
