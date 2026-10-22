@@ -243,7 +243,9 @@ def test_unoffered_long_press_cannot_be_selected(decision_request):
 
 
 @pytest.mark.parametrize("channel", ["ocr", "icons"])
-@pytest.mark.parametrize("text", ["支付", "加入购物车", "我知道了"])
+@pytest.mark.parametrize(
+    "text", ["支付", "加入购物车", "我知道了", "Continue", "Next", "继续"]
+)
 def test_local_label_veto_still_rejects_an_offered_dangerous_target(
     decision_request, channel, text
 ):
@@ -312,6 +314,26 @@ def scored_response(decision_request, **selected_probabilities):
             },
         )
     return replace(result, answers=answers)
+
+
+def test_unanimous_answers_cannot_approve_an_explicit_consequential_step(
+    decision_request,
+):
+    # Preserve an already-offered profile to exercise the final local gate.
+    request = replace(
+        decision_request,
+        context=replace(
+            decision_request.context,
+            facts={"current_step": "Tap the arrow to send hello."},
+        ),
+    )
+    result = scored_response(request, phase=1.0, action_type=1.0, target=1.0)
+    assessment = assess(
+        request, result, thresholds=ProbabilityThresholds(0.9, 0.9, 0.9)
+    )
+    assert assessment.action is None
+    assert assessment.interpretation.reason == "consequential_step"
+    assert assessment.threshold_gate["status"] == "not_applicable"
 
 
 @pytest.mark.parametrize("question", ["phase", "action_type", "target"])

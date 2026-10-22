@@ -276,9 +276,10 @@ class DecisionPlugin:
         }
         proposal = None
         try:
-            # Enforce the deadline for structural providers as well as our base.
-            async with asyncio.timeout_at(deadline):
-                result = await self._provider.evaluate(request, deadline=deadline)
+            # Once the view expires, no answer can produce a current proposal.
+            # Bound structural providers and our base by that same deadline.
+            async with asyncio.timeout_at(valid_until):
+                result = await self._provider.evaluate(request, deadline=valid_until)
             event.update(
                 response_model=result.model_id,
                 provider_request_id=result.provider_request_id,
@@ -331,11 +332,14 @@ class DecisionPlugin:
             raise
         except Exception as exc:
             event.update(status="error", error=type(exc).__name__)
-            if isinstance(exc, ProviderRequestError):
-                event["suppression"] = "request"
-            elif isinstance(exc, (ProviderPermanentError, ProviderConfigurationError)):
+            if isinstance(exc, (ProviderPermanentError, ProviderConfigurationError)):
                 self._factory = None
                 event["suppression"] = "session"
+            elif clock() >= expires_at and expires_at < deadline:
+                # The request's evidence expired; fresh views may still work.
+                event.update(reason="stale_view", suppression="request")
+            elif isinstance(exc, ProviderRequestError):
+                event["suppression"] = "request"
             else:
                 self._retry_after = clock() + _FAILURE_COOLDOWN_SECONDS
                 event.update(

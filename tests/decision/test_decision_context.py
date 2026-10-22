@@ -348,6 +348,88 @@ def test_rejected_progress_publication_blocks_stale_intent(turn):
     assert "progress_update_failed" in result.blockers
 
 
+@pytest.mark.parametrize("executed", [False, True])
+def test_failed_clipboard_update_requires_recovery_even_after_fresh_peeks(
+    turn, executed
+):
+    events = (
+        event(1, "tap"),
+        event(2, "send_to_clipboard", is_error=True, executed=executed),
+        event(3, "peek"),
+        event(4, "peek"),
+        event(5, "peek"),
+    )
+    result = projection(replace(turn, tools={"tap": {}}, events=events))
+    assert "clipboard_update_failed" in result.blockers
+    assert result.request("failed-clipboard") is None
+
+
+@pytest.mark.parametrize(
+    "recovery,changed", [("send_to_clipboard", None), ("tap", True)]
+)
+def test_successful_recovery_clears_clipboard_failure(turn, recovery, changed):
+    result = projection(
+        replace(
+            turn,
+            tools={"tap": {}},
+            events=(
+                event(1, "send_to_clipboard", is_error=True),
+                event(2, recovery, changed=changed),
+            ),
+        )
+    )
+    assert result.blockers == ()
+    assert result.request("recovered-clipboard") is not None
+
+
+def test_successful_clipboard_write_cannot_hide_failed_interaction(turn):
+    result = projection(
+        replace(
+            turn,
+            events=(
+                event(1, "tap", is_error=True),
+                event(2, "send_to_clipboard", changed=None),
+            ),
+        )
+    )
+    assert "previous_action_failed" in result.blockers
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "Tap Continue to transfer $10.",
+        "Tap the arrow to send hello.",
+        "Tap the bin to delete all photos.",
+        "点击继续转账10元",
+        "点击箭头发送消息",
+        "删除所有照片",
+        "Do not send anything yet; open the chat.",
+    ],
+)
+def test_explicit_consequential_or_mixed_step_yields_before_inference(turn, step):
+    turn = replace(
+        turn,
+        tools={"tap": {}},
+        progress=ProgressSnapshot("user task", (ProgressStep(step, "in_progress"),)),
+    )
+    result = projection(turn)
+    assert "consequential_step" in result.blockers
+    assert result.context.facts["current_step"] == step
+    assert result.request("consequential-work") is None
+
+
+def test_routine_step_remains_eligible_within_consequential_overall_task(turn):
+    turn = replace(
+        turn,
+        tools={"tap": {}},
+        progress=ProgressSnapshot(
+            "Send hello to Alice.", (ProgressStep("Open Messages.", "in_progress"),)
+        ),
+    )
+    assert projection(turn).request("routine-navigation") is not None
+
+
 def test_duplicate_labels_are_not_pruned_or_guessed(turn):
     first = turn.observation.ocr[0]
     duplicate = replace(first, id=2, bbox=(0.4, 0.6, 0.8, 0.8))

@@ -788,6 +788,37 @@ async def test_view_that_ages_during_inference_never_becomes_proposal(
     assert "proposal_call_id" not in record
 
 
+@pytest.mark.parametrize("shadow", ["shadow", "active"], indirect=True)
+async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
+    scored_provider, turn, metadata, monkeypatch
+):
+    monkeypatch.setattr("physiclaw.decision.plugin._MAX_VIEW_AGE_SECONDS", 0.05)
+    turn = replace(
+        turn, observation=replace(turn.observation, observed_after=time.time())
+    )
+    cancelled = asyncio.Event()
+
+    async def evaluate(request, **kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    scored_provider.provider.evaluate.side_effect = evaluate
+
+    async with asyncio.timeout(0.5):
+        assert await scored_provider.plugin.advance(turn, metadata=metadata) is None
+        await scored_provider.plugin._task
+    assert cancelled.is_set()
+    record = calls(scored_provider)[0]
+    assert record["status"] == "error"
+    assert record["reason"] == "stale_view"
+    assert record["suppression"] == "request"
+    assert scored_provider.plugin._retry_after == 0.0
+    assert scored_provider.plugin._factory is not None
+    assert "proposal_call_id" not in record
+
+
 def after_action(turn, proposal, *, outcome="changed", index=1):
     observation = turn.observation
     if outcome != "same_image":

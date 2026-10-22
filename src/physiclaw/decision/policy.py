@@ -17,7 +17,7 @@ from physiclaw.contract.decision import (
     freeze_mapping,
     question_to_json,
 )
-from physiclaw.decision.guard import blocked_controls
+from physiclaw.decision.guard import blocked_controls, consequential_step
 
 CONSERVATIVE_PROMPT = (
     "Use the published current step and observed evidence only. Decide the immediate "
@@ -71,7 +71,7 @@ def question_profile(
     These choices do not authorize execution.
     """
     gestures = tuple(tool for tool in REVIEW_TOOLS if tool in tools)
-    if context.frame is None or not gestures:
+    if context.frame is None or not gestures or consequential_step(context):
         return QuestionProfile()
 
     def listing_index(element):

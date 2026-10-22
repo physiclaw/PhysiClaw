@@ -1,4 +1,4 @@
-"""Local keyword veto for observed targets, independent of model answers.
+"""Local keyword vetoes for declared work and observed targets.
 
 This is a backstop, not a safety classifier: OCR may miss a label, and an
 unlabelled icon or an innocent label can still have consequential effects.
@@ -16,13 +16,13 @@ _CHINESE_CONTROLS = frozenset(
     "发送 传送 转发 支付 付款 转账 转帐 汇款 购买 下单 订单 结算 订阅 续费 收货 "
     "删除 清空 清除 重置 恢复出厂 确认 确定 提交 同意 取消 授权 允许 登录 登入 登出 "
     "发布 发表 分享 上传 拨打 呼叫 按住说话 录音 录制 加入购物车 加购 "
-    "知道了 明白了 好的 开通".split()
+    "知道了 明白了 好的 开通 继续 下一步 完成".split()
 )
 _ENGLISH_CONTROLS = frozenset(
     "send resend sending pay payment purchase buy checkout subscribe unsubscribe "
     "renew delete remove erase clear reset discard confirm submit agree cancel "
     "authorize allow grant login logout publish post share upload call dial "
-    "record recording transfer donate ok okay".split()
+    "record recording transfer donate ok okay continue next proceed finish done complete".split()
 )
 _ENGLISH_PHRASES = (
     "sign in",
@@ -79,3 +79,15 @@ def blocked_controls(context: DecisionContext) -> dict[str, DecisionElement]:
                 blocked[target.ref] = label
                 break
     return blocked
+
+
+def consequential_step(context: DecisionContext) -> bool:
+    """Yield explicit consequential work even when its control has no label.
+
+    Check only the published current step, not the overall task: opening a
+    named app can still be routine within a purchase task. Keyword matches
+    are a conservative veto, including negations and multi-action steps;
+    the LLM must resolve them. An unmatched step is not an execution grant.
+    """
+    step = context.facts.get("current_step")
+    return isinstance(step, str) and _consequential_label(step)

@@ -74,6 +74,11 @@ def test_only_tap_is_offered_among_available_tools(context):
     assert list(questions["action_type"]["options"]) == ["YIELD", "tap"]
 
 
+def test_consequential_work_cannot_be_offered_by_a_direct_policy_caller(context):
+    context = replace(context, facts={"current_step": "Tap the arrow to send."})
+    assert question_profile(context, tools={"tap"}).questions == ()
+
+
 @pytest.mark.parametrize(
     "problem", ["no_frame", "no_tools", "no_targets", "other_tools"]
 )

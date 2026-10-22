@@ -113,6 +113,34 @@ async def test_real_server_client_and_dispatch_preserve_a_single_view(
     assert screenshot.id not in {before.id, after.id}
 
 
+def test_camera_quality_warning_cannot_become_eligible_decision_evidence(
+    observation_blocks,
+):
+    from physiclaw.contract.turn import ProgressSnapshot, ProgressStep
+    from physiclaw.core.vision.quality import QualityMonitor, QualityReport
+    from physiclaw.decision.context import project
+
+    warning = QualityMonitor().observe(
+        QualityReport(sharpness=1, clip_pct=0, median_luma=100, p99_luma=180)
+    )
+    assert warning is not None
+    listing = observation_blocks()[1]["text"] + "\n" + warning
+    blocks = observation_blocks(listing=listing)
+    facts = FactualState()
+    facts.observe(blocks, tool="peek")
+    turn = facts.snapshot(
+        schemas={"tap": tap_schema()},
+        progress=ProgressSnapshot(
+            "Open Maps", (ProgressStep("Open Maps", "in_progress"),)
+        ),
+    )
+    projection = project(turn, metadata=_turn_metadata())
+    assert "invalid_view" in projection.blockers
+    assert projection.request("bad-camera") is None
+    # Reject only decision eligibility; the actual tool output is untouched.
+    assert blocks[1]["text"].endswith(warning)
+
+
 @pytest.mark.parametrize("history_enabled", [False, True])
 async def test_four_pipeline_configurations_preserve_baseline_requests_and_actions(
     private_macro_run,

@@ -13,7 +13,7 @@ from physiclaw.contract.decision import (
     DecisionResult,
     candidate_to_json,
 )
-from physiclaw.decision.guard import blocked_controls
+from physiclaw.decision.guard import blocked_controls, consequential_step
 from physiclaw.decision.policy import REVIEW_TOOLS
 
 
@@ -183,6 +183,8 @@ def interpret(
     if target_id == "NONE":
         return DecisionInterpretation("no_target")
 
+    if consequential_step(request.context):
+        return DecisionInterpretation("consequential_step")
     target = choices["target"][target_id]
     if target.target_ref in blocked_controls(request.context):
         return DecisionInterpretation("consequential_control")

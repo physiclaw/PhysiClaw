@@ -76,6 +76,15 @@ def control(observation_blocks):
         "Upload",
         "Share",
         "Call",
+        "Continue",
+        "Next",
+        "Proceed",
+        "Finish",
+        "Done",
+        "Complete",
+        "继续",
+        "下一步",
+        "完成",
     ],
 )
 def test_known_consequential_labels_return_actual_observed_evidence(control, text):

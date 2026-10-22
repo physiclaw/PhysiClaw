@@ -28,6 +28,7 @@ from physiclaw.contract.decision import (
     context_to_json,
 )
 from physiclaw.contract.turn import IN_PROGRESS, ActionEvent, TurnInput, TurnMetadata
+from physiclaw.decision.guard import consequential_step
 from physiclaw.decision.policy import QuestionProfile, question_profile
 
 _INTERACTIONS = PRESS_TOOLS | NAV_TOOLS | {SWIPE, SEQUENCE, RUN_MACRO, UNLOCK_PHONE}
@@ -110,11 +111,15 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
     if publication is not None and (publication.is_error or not publication.executed):
         blockers.append("progress_update_failed")
 
-    # A fresh view must not erase a failed interaction.
-    previous = next(
-        (event for event in reversed(turn.events) if event.tool in _INTERACTIONS),
-        None,
-    )
+    # Check the last interaction and any later clipboard write independently.
+    # Peeks cannot clear either failure.
+    previous = latest_clipboard = None
+    for event in reversed(turn.events):
+        if event.tool in _INTERACTIONS:
+            previous = event
+            break
+        if latest_clipboard is None and event.tool == SEND_TO_CLIPBOARD:
+            latest_clipboard = event
     if previous is not None:
         if _action_failed(previous):
             blockers.append("previous_action_failed")
@@ -124,6 +129,9 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
                 if previous.changed is False
                 else "previous_outcome_unknown"
             )
+
+    if latest_clipboard is not None and _action_failed(latest_clipboard):
+        blockers.append("clipboard_update_failed")
 
     context = None
     if observation := turn.observation:
@@ -163,6 +171,8 @@ def project(turn: TurnInput, *, metadata: TurnMetadata) -> ContextProjection:
                 ],
             },
         )
+        if consequential_step(context):
+            blockers.append("consequential_step")
     profile = QuestionProfile()
     if context is not None and not blockers:
         profile = question_profile(context, tools=turn.tools.keys())
