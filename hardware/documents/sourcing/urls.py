@@ -315,19 +315,18 @@ def load_state(path: Path) -> dict:
         state = json.loads(path.read_text(encoding="utf-8"))
         if state["version"] != 1:
             raise ValueError("unsupported version")
-        round_index = state.get("round_index", 0)
+        round_index = state["round_index"]
         if type(round_index) is not int or round_index < 0:
             raise ValueError("invalid recommendation round")
         for url, check in state["checks"].items():
             if not isinstance(url, str) or not isinstance(check["fingerprint"], str):
                 raise ValueError("invalid check record")
             parse_time(check["checked_at"])
-            if "recommendations" in check:
-                if not isinstance(check["recommendations"], list):
-                    raise ValueError("invalid recommendation history")
-                for timestamp in check["recommendations"]:
-                    parse_time(timestamp)
-            last_round = check.get("last_round", 0)
+            if not isinstance(check["shown_at"], list):
+                raise ValueError("invalid shown_at history")
+            for timestamp in check["shown_at"]:
+                parse_time(timestamp)
+            last_round = check["last_round"]
             if type(last_round) is not int or not 0 <= last_round <= round_index:
                 raise ValueError("invalid URL recommendation round")
         return {"version": 1, "round_index": round_index, "checks": state["checks"]}
@@ -375,7 +374,7 @@ def recent_recommendations(
     check: dict, cutoff: datetime, *, until: datetime | None = None
 ) -> list[str]:
     timestamps = []
-    for timestamp in check.get("recommendations", [check["checked_at"]]):
+    for timestamp in check["shown_at"]:
         when = parse_time(timestamp)
         if when > cutoff and (until is None or when <= until):
             timestamps.append(timestamp)
@@ -419,7 +418,7 @@ def select_round(
         return (
             checked is not None,
             -score * draws[candidate.url][0],
-            state["checks"][candidate.url].get("last_round", 0) if checked else 0,
+            state["checks"][candidate.url]["last_round"] if checked else 0,
             draws[candidate.url][1],
             first[0],
             first[1],
@@ -445,7 +444,7 @@ def select_round(
 
 
 def record_round(selected: dict[str, Candidate], state: dict, now: datetime) -> dict:
-    round_index = state.get("round_index", 0) + 1
+    round_index = state["round_index"] + 1
     timestamp = now.isoformat()
     checks = dict(state["checks"])
     for candidate in selected.values():
@@ -460,7 +459,7 @@ def record_round(selected: dict[str, Candidate], state: dict, now: datetime) -> 
             "fingerprint": fingerprint,
             "checked_at": timestamp,
             "last_round": round_index,
-            "recommendations": [*timestamps, timestamp],
+            "shown_at": [*timestamps, timestamp],
         }
     return {
         "version": 1,

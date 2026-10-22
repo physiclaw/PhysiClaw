@@ -64,14 +64,16 @@ def inventory(count=8):
 
 
 def checked_state(candidates, days=1):
+    timestamp = (NOW - timedelta(days=days)).isoformat()
     return {
         "version": 1,
         "round_index": 1,
         "checks": {
             candidate.url: {
                 "fingerprint": candidate.fingerprint,
-                "checked_at": (NOW - timedelta(days=days)).isoformat(),
+                "checked_at": timestamp,
                 "last_round": 1,
+                "shown_at": [timestamp],
             }
             for candidate in candidates
         },
@@ -106,7 +108,8 @@ def test_elapsed_time_can_outweigh_bom_and_vendor_importance():
     candidates = inventory()
     state = checked_state(candidates, days=1)
     last = candidates[23]  # Last BOM row's third Taobao vendor.
-    state["checks"][last.url]["checked_at"] = (NOW - timedelta(days=30)).isoformat()
+    timestamp = (NOW - timedelta(days=20)).isoformat()
+    state["checks"][last.url].update(checked_at=timestamp, shown_at=[timestamp])
     assert urls.select_round(candidates, state, NOW)["T1"] == last
 
 
@@ -353,9 +356,8 @@ def test_rolling_30_day_cutoff_is_recomputed_each_run(offset):
     candidates = inventory(2)
     state = checked_state(candidates)
     last = candidates[5]  # Last Taobao row's third vendor.
-    state["checks"][last.url]["checked_at"] = (
-        NOW - timedelta(days=30) + timedelta(seconds=offset)
-    ).isoformat()
+    timestamp = (NOW - timedelta(days=30) + timedelta(seconds=offset)).isoformat()
+    state["checks"][last.url].update(checked_at=timestamp, shown_at=[timestamp])
     selected = urls.select_round(candidates, state, NOW)
     taobao = [item for item in selected.values() if item.platform == "taobao"]
     assert len(taobao) == (1 if offset <= 0 else 3)
@@ -367,18 +369,16 @@ def test_individual_recommendations_expire_without_resetting_recent_ones():
     candidates = inventory(2)
     state = checked_state(candidates)
     for check in state["checks"].values():
-        check["recommendations"] = [
+        check["shown_at"] = [
             (NOW - timedelta(days=29)).isoformat(),
             check["checked_at"],
         ]
     last = candidates[5]
-    state["checks"][last.url]["recommendations"][0] = (
-        NOW - timedelta(days=31)
-    ).isoformat()
+    state["checks"][last.url]["shown_at"][0] = (NOW - timedelta(days=31)).isoformat()
     selected = urls.select_round(candidates, state, NOW)
     assert [item for item in selected.values() if item.platform == "taobao"] == [last]
     state = urls.record_round(selected, state, NOW)
-    assert state["checks"][last.url]["recommendations"] == [
+    assert state["checks"][last.url]["shown_at"] == [
         (NOW - timedelta(days=1)).isoformat(),
         NOW.isoformat(),
     ]
@@ -394,12 +394,12 @@ def test_future_dates_do_not_count_as_recent_checks_or_erase_history():
     future = (NOW + timedelta(days=1)).isoformat()
     future_urls = {candidates[5].url, candidates[11].url}
     for url in future_urls:
-        state["checks"][url].update(checked_at=future, recommendations=[future] * 3)
+        state["checks"][url].update(checked_at=future, shown_at=[future] * 3)
     selected = urls.select_round(candidates, state, NOW)
     assert {item.url for item in selected.values()} == future_urls
     state = urls.record_round(selected, state, NOW)
     assert all(
-        state["checks"][url]["recommendations"] == [future] * 3 + [NOW.isoformat()]
+        state["checks"][url]["shown_at"] == [future] * 3 + [NOW.isoformat()]
         for url in future_urls
     )
     selected = urls.select_round(candidates, state, NOW)
@@ -480,14 +480,14 @@ def test_lower_rolling_count_outweighs_bom_vendor_and_time_scores():
     candidates = inventory()
     state = checked_state(candidates, days=10)
     for check in state["checks"].values():
-        check["recommendations"] = [
+        check["shown_at"] = [
             (NOW - timedelta(days=20)).isoformat(),
             check["checked_at"],
         ]
     last = candidates[23]  # Lowest BOM/vendor importance on Taobao.
     state["checks"][last.url].update(
         checked_at=(NOW - timedelta(days=1)).isoformat(),
-        recommendations=[(NOW - timedelta(days=1)).isoformat()],
+        shown_at=[(NOW - timedelta(days=1)).isoformat()],
     )
     selected = urls.select_round(candidates, state, NOW)
     assert [item for item in selected.values() if item.platform == "taobao"] == [last]
@@ -545,7 +545,7 @@ def test_real_inventory_is_complete_and_rolling_rounds_reach_every_url(tmp_path)
     assert expected <= {item.url for item in candidates}
     all_urls = {item.url for item in candidates}
     counts = Counter(item.platform for item in candidates)
-    state = {"version": 1, "checks": {}}
+    state = {"version": 1, "round_index": 0, "checks": {}}
     path = tmp_path / "checks.json"
     runs_per_sweep = max((count + 2) // 3 for count in counts.values())
     # Audit three full rounds against the catalog, with persisted progress and
@@ -575,35 +575,15 @@ def test_real_inventory_is_complete_and_rolling_rounds_reach_every_url(tmp_path)
         state = urls.record_round(selected, state, now)
 
 
-@pytest.mark.parametrize("fixed_window", [False, True])
-def test_legacy_history_preserves_dates_and_joins_persisted_rotation(
-    tmp_path, fixed_window
-):
-    candidates = inventory()
-    legacy = checked_state(candidates)
-    del legacy["round_index"]
-    if fixed_window:
-        legacy.update(
-            window_started_at=(NOW - timedelta(days=60)).isoformat(),
-            window_start_round=0,
-        )
-    for check in legacy["checks"].values():
-        del check["last_round"]
-    path = tmp_path / "history.json"
-    path.write_text(json.dumps(legacy))
-    state = urls.load_state(path)
-    assert state["round_index"] == 0
-    assert state["checks"] == legacy["checks"]
-    selected = urls.select_round(candidates, state, NOW)
-    state = urls.record_round(selected, state, NOW)
-    urls.save_state(path, state)
-    restored = urls.load_state(path)
-    assert restored["round_index"] == 1
-    for item in selected.values():
-        assert restored["checks"][item.url]["last_round"] == 1
-    for item in candidates:
-        if item.url not in {chosen.url for chosen in selected.values()}:
-            assert restored["checks"][item.url] == legacy["checks"][item.url]
+@pytest.mark.parametrize("field", ["round_index", "last_round", "shown_at"])
+def test_history_requires_current_fields(tmp_path, field):
+    state = checked_state(inventory(1))
+    record = state if field == "round_index" else next(iter(state["checks"].values()))
+    del record[field]
+    path = tmp_path / "checks.json"
+    path.write_text(json.dumps(state))
+    with pytest.raises(BuildError, match="Cannot read URL review history"):
+        urls.load_state(path)
 
 
 @pytest.mark.parametrize(
@@ -614,26 +594,6 @@ def test_legacy_history_preserves_dates_and_joins_persisted_rotation(
         '{"version": 2}',
         '{"version": 1, "round_index": -1, "checks": {}}',
         '{"version": 1, "round_index": true, "checks": {}}',
-        json.dumps(
-            {
-                "version": 1,
-                "round_index": 1,
-                "checks": {
-                    "url": {
-                        "fingerprint": "abc",
-                        "checked_at": NOW.isoformat(),
-                        "last_round": 2,
-                    }
-                },
-            }
-        ),
-        json.dumps(
-            {
-                "version": 1,
-                "checks": {"url": {"fingerprint": "abc", "checked_at": "2026-10-22"}},
-                "round": {},
-            }
-        ),
     ],
 )
 def test_malformed_history_is_not_silently_discarded(tmp_path, content):
@@ -644,12 +604,19 @@ def test_malformed_history_is_not_silently_discarded(tmp_path, content):
     assert path.read_text() == content
 
 
-@pytest.mark.parametrize("recommendations", [None, "invalid", ["2026-10-22"]])
-def test_invalid_recommendation_times_fail_without_erasing_history(
-    tmp_path, recommendations
-):
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("last_round", 2),
+        ("checked_at", "2026-10-22"),
+        ("shown_at", None),
+        ("shown_at", "invalid"),
+        ("shown_at", ["2026-10-22"]),
+    ],
+)
+def test_invalid_check_record_preserves_history(tmp_path, field, value):
     state = checked_state(inventory(1))
-    next(iter(state["checks"].values()))["recommendations"] = recommendations
+    next(iter(state["checks"].values()))[field] = value
     path = tmp_path / "history.json"
     content = json.dumps(state)
     path.write_text(content)
