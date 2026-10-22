@@ -174,6 +174,7 @@ The subcommands — each forwarding its flags to the stage it wraps:
 | `print` | 3D-print package → `output/print_3d/*.zip` |
 | `manual` | bilingual HTML / PDF manual → `output/manual/` |
 | `sourcing` | sourcing guide → `output/sourcing/` |
+| `url` | recommend 3 Taobao and 3 AliExpress sourcing links; record this round |
 | `drawing` | A4 extrusion cut-and-drill drawings (`--pdf`) → `output/drawing/` |
 | `release` | prepare, verify, preflight, publish or deploy a verified release bundle |
 | `mark` / `replay` | annotate step SVGs / replay saved patches |

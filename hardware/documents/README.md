@@ -37,6 +37,7 @@ make hw-manual
 make hw-manual-pdf
 make hw-sourcing
 make hw-sourcing ARGS=--scaffold
+make hw-url
 make hw-drawing
 make hw-check
 uv run --locked --group cad pytest tests/hardware
@@ -51,3 +52,14 @@ fresh documents in its private tree, using the validated persistent CAD cache.
 
 Direct Python entry points are `hardware.documents.manual.build`,
 `hardware.documents.sourcing.build`, and `hardware.documents.drawing.extrusion`.
+
+## Manual supplier URL review
+
+`make hw-url` shows up to three Taobao/Tmall and three AliExpress links, including
+notes and optional tools. Shown links are recorded as checked; no pages are fetched.
+
+Each pool picks URLs shown the fewest times in the rolling last 30 days.
+Age, BOM order and vendor order rank ties, with slight randomness.
+
+History: `hardware/output/.url-checks.json` (follows `PHYSICLAW_HW_OUTPUT`).
+Use `ARGS=--verbose` for full specs or `ARGS="--state /path/to/history.json"`.

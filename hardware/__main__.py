@@ -14,6 +14,7 @@ still apply:
     uv run            python -m hardware check                                static consistency check (CI-friendly)
     uv run            python -m hardware manual     [--pdf] [--lang …] …      bilingual build manual
     uv run            python -m hardware sourcing   [--lang …] [--scaffold]   sourcing guide
+    uv run            python -m hardware url                                recommend sourcing URLs; record this round
     uv run            python -m hardware drawing    [--pdf] [--lang …]        extrusion tech drawing (cut & drill)
     uv run --group cad python -m hardware release prepare --version X.Y       build a verified local release bundle
     uv run            python -m hardware release verify --version X.Y        verify a prepared bundle
@@ -53,6 +54,7 @@ _DELEGATED: dict[str, list[str]] = {
     "camera": ["-m", "hardware.assembly.projection"],
     "manual": ["-m", "hardware.documents.manual.build"],
     "sourcing": ["-m", "hardware.documents.sourcing.build"],
+    "url": ["-m", "hardware.documents.sourcing.urls"],
     "drawing": ["-m", "hardware.documents.drawing.extrusion"],
     "release": ["-m", "hardware.release"],
 }

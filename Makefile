@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help bump build publish release docs-deploy \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
+        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
 
@@ -183,6 +183,7 @@ hw-help:
 	@echo "  Local work (no upload):"
 	@echo "    make hw-build [ARGS=--bom]           Build CAD drawings and STEPs; reuse cache"
 	@echo "    make hw-check                       Check hardware source consistency"
+	@echo "    make hw-url                         Show 3 Taobao and 3 AliExpress URLs"
 	@echo "    make hw-prepare HW_VERSION=X.Y       Build and verify a local release bundle; reuse cache"
 	@echo "    make hw-verify HW_VERSION=X.Y        Verify an existing bundle without rebuilding"
 	@echo ""
@@ -238,6 +239,9 @@ hw-manual-pdf:
 
 hw-sourcing:
 	@$(HW_DOC) sourcing $(ARGS)
+
+hw-url:
+	@$(HW_DOC) url $(ARGS)
 
 # The supplier's sheet for the frame extrusions — drawn from the same
 # constants the assembly cuts and drills with, so it can't drift from the
