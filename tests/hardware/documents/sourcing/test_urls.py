@@ -5,9 +5,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import pty
 import random
+import select
+import signal
 import subprocess
 import sys
+import termios
+import time
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
@@ -682,6 +687,113 @@ def test_shared_history_is_locked_across_output_directories(tmp_path):
 
 
 @pytest.mark.parametrize(
+    ("keys", "browser_result"),
+    [
+        (" x\rabc", True),
+        (("\x1b[A", "\x1b[15~", "é", "中", "q"), True),
+        ("xq", True),
+        ("q", True),
+        ("\x1b", True),
+        ("Q", True),
+        ("\x04", True),
+        ("xq", False),
+        (None, True),
+    ],
+)
+def test_terminal_opens_one_link_per_key_and_restores_input(
+    tmp_path, keys, browser_result
+):
+    state_path = tmp_path / "checks.json"
+    master, slave = pty.openpty()
+    settings = termios.tcgetattr(slave)
+    script = """
+import sys
+from hardware.documents.sourcing import urls
+
+def open_url(url, **kwargs):
+    print("BROWSER " + url, flush=True)
+    return sys.argv[2] == "True"
+
+urls.webbrowser.open = open_url
+try:
+    result = urls.main(["--state", sys.argv[1]])
+except KeyboardInterrupt:
+    result = 130
+print("REVIEW_EXIT", flush=True)
+sys.exit(result)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-u", "-c", script, str(state_path), str(browser_result)],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "PHYSICLAW_HW_OUTPUT": str(tmp_path / "output"),
+            "NO_COLOR": "1",
+        },
+    )
+    output = b""
+
+    def wait_for(text):
+        nonlocal output
+        deadline = time.monotonic() + 10
+        while text.encode() not in output:
+            remaining = max(0, deadline - time.monotonic())
+            assert select.select([master], [], [], remaining)[0], output.decode()
+            output += os.read(master, 65536)
+
+    try:
+        wait_for("Open 1/6")
+        # Recording is complete before waiting, even if the user quits immediately.
+        recorded = state_path.read_bytes()
+        state = json.loads(recorded)
+        listed = [
+            line for line in output.decode().splitlines() if line.startswith("https://")
+        ]
+        assert len(listed) == 6
+        assert set(state["checks"]) == set(listed)
+        assert state["round_index"] == 1
+        count = 0
+        if keys is None:
+            child.send_signal(signal.SIGINT)
+        else:
+            for key in keys:
+                os.write(master, key.encode())
+                if key in {"q", "Q", "\x1b", "\x04"}:
+                    break
+                wait_for("BROWSER " + listed[count])
+                count += 1
+                if count < 6:
+                    wait_for(f"Open {count + 1}/6")
+        wait_for("REVIEW_EXIT")
+        assert child.wait(timeout=10) == (130 if keys is None else 0)
+        while select.select([master], [], [], 0)[0]:
+            output += os.read(master, 65536)
+        opened = [
+            line.split("BROWSER ", 1)[1]
+            for line in output.decode().splitlines()
+            if "BROWSER " in line
+        ]
+        assert opened == listed[:count]
+        restored = termios.tcgetattr(slave)
+        # macOS sets PENDIN when canonical input is restored.
+        restored[3] &= ~termios.PENDIN
+        settings[3] &= ~termios.PENDIN
+        assert restored == settings
+        assert state_path.read_bytes() == recorded
+        if not browser_result:
+            assert "failed; use the URL above" in output.decode()
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+        os.close(master)
+        os.close(slave)
+
+
+@pytest.mark.parametrize(
     ("url", "platform"),
     [
         ("https://detail.tmall.com/item.htm?id=1", "taobao"),
@@ -728,6 +840,7 @@ def test_real_make_target_automatically_records_marketplaces_and_rotates(tmp_pat
     assert len(state["checks"]) == 6
     assert all(urls.platform_for(url) in urls.PLATFORMS for url in state["checks"])
     assert "--checked" not in result.stdout
+    assert "any key" not in result.stdout
     assert sum(line.startswith("https://") for line in result.stdout.splitlines()) == 6
     detailed = invoke("--verbose")
     assert detailed.returncode == 0, detailed.stderr

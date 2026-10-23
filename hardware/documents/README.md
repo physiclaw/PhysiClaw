@@ -56,7 +56,9 @@ Direct Python entry points are `hardware.documents.manual.build`,
 ## Manual supplier URL review
 
 `make hw-url` shows up to three Taobao/Tmall and three AliExpress links, including
-notes and optional tools. Shown links are recorded as checked; no pages are fetched.
+notes and optional tools. All shown links are recorded as checked before interaction.
+In a terminal, any key opens the next browser tab; `q` or Esc quits.
+Piped output only lists links.
 
 Each pool picks URLs shown the fewest times in the rolling last 30 days.
 Age, BOM order and vendor order rank ties, with slight randomness.

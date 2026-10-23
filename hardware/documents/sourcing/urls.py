@@ -1,6 +1,6 @@
 """Recommend sourcing-guide URLs in small groups and record them as checked.
 
-No vendor pages are requested. Unchecked or changed selections come first;
+Vendor pages open only on keypress. Unchecked or changed selections come first;
 otherwise priority is elapsed days * BOM weight (2..1) * vendor weight (3..1).
 Each pool completes rounds using recommendation counts from the last 30 days.
 Recommendation history is local and independent of generated document cleanup.
@@ -9,14 +9,20 @@ Recommendation history is local and independent of generated document cleanup.
 from __future__ import annotations
 
 import argparse
+import codecs
 import fcntl
 import hashlib
 import json
+import os
 import random
 import re
+import select
 import shutil
 import sys
 import tempfile
+import termios
+import tty
+import webbrowser
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -555,6 +561,56 @@ def print_round(
         print(styled(f"History: {state_path}", "muted"))
 
 
+def _read_key(fd: int) -> str:
+    decoder = codecs.getincrementaldecoder(sys.stdin.encoding or "utf-8")("replace")
+
+    def character() -> str:
+        while chunk := os.read(fd, 1):
+            if text := decoder.decode(chunk):
+                return text
+        return ""
+
+    key = character()
+    if key != "\x1b" or not select.select([fd], [], [], 0.05)[0]:
+        return key
+    # Arrow/function keys send an escape sequence; only a bare Esc quits.
+    following = character()
+    if following == "\x1b":
+        return following
+    if following in {"[", "O"}:
+        while select.select([fd], [], [], 0.05)[0]:
+            if "@" <= character() <= "~":
+                break
+    return "special"
+
+
+def open_round(selected: dict[str, Candidate]) -> None:
+    """Open one listed URL per keypress when running in a terminal."""
+    if not selected or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return
+    fd = sys.stdin.fileno()
+    settings = termios.tcgetattr(fd)
+
+    def redraw(message: str) -> None:
+        columns = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns - 1)
+        print("\r" + _fit_line(message, columns).ljust(columns), end="", flush=True)
+
+    print()
+    try:
+        tty.setcbreak(fd)
+        for index, candidate in enumerate(selected.values(), 1):
+            label = PLATFORMS[candidate.platform][0]
+            prompt = f"Open {index}/{len(selected)} · {label} · any key (q/Esc quits): "
+            redraw(prompt)
+            if _read_key(fd) in {"", "q", "Q", "\x1b", "\x04"}:
+                break
+            opened = webbrowser.open(candidate.url, new=2, autoraise=False)
+            redraw(prompt + ("opened" if opened else "failed; use the URL above"))
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, settings)
+        print()
+
+
 @locked_main
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -579,7 +635,9 @@ def main(argv: list[str] | None = None) -> int:
             selected = select_round(candidates, state, now)
             print_round(selected, state, now, state_path, verbose=args.verbose)
             sys.stdout.flush()
+            # Record every shown URL before optional browser interaction.
             save_state(state_path, record_round(selected, state, now))
+        open_round(selected)
         return 0
     except (BuildError, OSError) as exc:
         print(f"hw-url: {exc}", file=sys.stderr)
