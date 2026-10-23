@@ -114,7 +114,7 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
     assert len(roots) == 1 and not next(iter(roots)).exists()
     assert [args for _, args in preparation] == [
         ("check",),
-        ("build", "--bom"),
+        ("build",),
         ("print",),
         ("manual", "--pdf"),
         ("sourcing",),

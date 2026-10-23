@@ -430,7 +430,7 @@ make hw-verify HW_VERSION=X.Y
 ```
 
 Preparation runs the hardware regression tests and static consistency gate, restores
-or builds **all procedures** with BOMs, exports the custom parts, and renders both
+or builds **all procedures**, exports the custom parts, and renders both
 language editions of the manual, sourcing guide and extrusion drawings. It uses a
 private output directory and shares only the persistent CAD cache. Source keys,
 required files and SHA-256 checksums must match before any cached output is restored;
@@ -438,6 +438,11 @@ changed or damaged entries rebuild automatically. Manual-only edits reuse CAD wo
 Interactive output files are never packaged. Dependencies use `uv --locked`.
 Missing Chrome, failed PDFs, annotation errors and incomplete CAD outputs stop the
 command. A small PDF render checks browser launch permissions before CAD work starts.
+
+Release preparation does not request per-step BOMs: they are not packaged or
+consumed by the release documents, which use `documents/bom/bom.json`. Valid
+STEP/SVG caches from ordinary builds remain reusable without generated BOM files.
+Per-step BOMs are still available through `make hw-build ARGS=--bom`.
 
 The resulting bundle is stored at
 `hardware/output/release/physiclaw-hardware-vX.Y/`: four zips, two PDFs and

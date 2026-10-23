@@ -279,7 +279,10 @@ def prepare(version: str) -> Path:
         try:
             for args in (
                 ("check",),
-                ("build", "--bom"),
+                # Release documents use the authored purchasing list; per-step
+                # BOMs are not packaged. Requiring them would reject otherwise
+                # valid STEP/SVG caches populated by ordinary builds.
+                ("build",),
                 ("print",),
                 ("manual", "--pdf"),
                 ("sourcing",),
