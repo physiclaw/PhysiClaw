@@ -8,6 +8,7 @@ under ``REPO_ROOT``) and its store/restore run against tmp files only.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from types import SimpleNamespace
 
@@ -79,6 +80,36 @@ def test_source_key_changes_when_imported_dependency_changes(repo):
     repo.helper.write_text("SIZE = 2\n")
 
     assert cache.source_key(STEM) != before
+
+
+def test_import_edits_with_unchanged_size_and_mtime_follow_current_dependencies(repo):
+    cache.source_key(STEM)  # Populate the parsed-import lookup.
+    second = repo.helper.with_name("second.py")
+    second.write_text("SIZE = 1\n")
+    original = repo.procedure.stat()
+    repo.procedure.write_text("import hardware.parts.second\n")
+    assert repo.procedure.stat().st_size == original.st_size
+    os.utime(repo.procedure, ns=(original.st_atime_ns, original.st_mtime_ns))
+    before = cache.source_key(STEM)
+
+    original = second.stat()
+    second.write_text("SIZE = 2\n")
+    os.utime(second, ns=(original.st_atime_ns, original.st_mtime_ns))
+    after = cache.source_key(STEM)
+    assert after != before
+
+    repo.helper.write_text("SIZE = 3\n")
+    assert cache.source_key(STEM) == after  # The old dependency is no longer used.
+
+
+def test_unchanged_imports_resolve_new_and_removed_modules_on_every_check(repo):
+    repo.procedure.write_text("import hardware.parts.later\n")
+    before = cache.source_key(STEM)
+    later = repo.helper.with_name("later.py")
+    later.write_text("SIZE = 1\n")
+    assert cache.source_key(STEM) != before
+    later.unlink()
+    assert cache.source_key(STEM) == before
 
 
 def test_source_key_changes_when_shared_arm_travel_changes(repo, tmp_path):

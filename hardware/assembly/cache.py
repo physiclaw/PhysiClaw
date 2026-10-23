@@ -89,14 +89,20 @@ def _module_to_path(mod: str) -> Path | None:
     return init if init.is_file() else None
 
 
-def _imports(path: Path) -> set[str]:
-    """Absolute imports, filtered to project files by ``_module_to_path``."""
+def _imports(path: Path) -> frozenset[str]:
+    """Read current bytes on every check, including edits that preserve mtime."""
+    return _parsed_imports(path, path.read_bytes(), REPO_ROOT)
+
+
+@functools.lru_cache(maxsize=256)
+def _parsed_imports(path: Path, source: bytes, repo_root: Path) -> frozenset[str]:
+    """Cache parsing only; dependency resolution and hashing remain live."""
     mods: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
+    for node in ast.walk(ast.parse(source, filename=str(path))):
         if isinstance(node, ast.ImportFrom):
             module = node.module
             if node.level:
-                package = list(path.relative_to(REPO_ROOT).parts[:-1])
+                package = list(path.relative_to(repo_root).parts[:-1])
                 package = package[: len(package) - node.level + 1]
                 module = ".".join(package + ([module] if module else []))
             if module:
@@ -108,7 +114,7 @@ def _imports(path: Path) -> set[str]:
                 mods.update(f"{module}.{a.name}" for a in node.names)
         elif isinstance(node, ast.Import):
             mods.update(a.name for a in node.names)
-    return mods
+    return frozenset(mods)
 
 
 def _closure(*paths: Path) -> frozenset[Path]:

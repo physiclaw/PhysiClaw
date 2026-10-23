@@ -504,6 +504,41 @@ def test_forced_build_does_not_cache_unrequested_stale_boms(
     assert len(builds) == (1 if len(flags) == 2 else 2)
 
 
+def test_rebuild_bypasses_existing_cache_and_next_build_restores_fresh_outputs(
+    cache_pipeline, outputs, tmp_path, monkeypatch
+):
+    builds = []
+
+    def run(batch, flags):
+        builds.append(batch)
+        for stem in batch:
+            cache_pipeline.write(stem, flags)
+            (outputs.step / f"{stem}_assembled.step").write_text(f"build {len(builds)}")
+        return 0
+
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5) == 0
+    assert len(builds) == 1
+
+    with monkeypatch.context() as forced:
+        forced.setattr(
+            bp.stepcache,
+            "source_cached",
+            lambda *args, **kwargs: pytest.fail("rebuild must not read the CAD cache"),
+        )
+        with bp.buildlog.session(tmp_path):
+            assert bp._dispatch(5, use_cache=False) == 0
+    assert len(builds) == 2
+
+    target = outputs.step / f"{STEM}_assembled.step"
+    target.unlink()
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5) == 0
+    assert len(builds) == 2  # A normal build always reuses the valid entry.
+    assert target.read_text() == "build 2"
+
+
 @pytest.mark.parametrize("edited", ["sources", "annotations"])
 @pytest.mark.parametrize("cancelled", [False, True])
 def test_inputs_edited_during_build_are_not_cached_as_current(

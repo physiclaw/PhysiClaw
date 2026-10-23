@@ -204,6 +204,9 @@ a manifest, including when saving completed work after cancellation. Input edits
 during a build fail the run. Only requested BOM kinds are cached, so an old BOM
 left on disk cannot satisfy a later `--bom` or `--bom-delta` request.
 
+Source checks reuse parsed imports for unchanged contents within each process;
+file reads, dependency resolution and hashing still run on every check.
+
 Full builds run two independent CAD batch processes by default. Use
 `build --jobs 1` on a low-memory machine, or up to `--jobs 4` when more
 memory and CPU cores are available. Each heavy worker can use about 1.2 GB.
