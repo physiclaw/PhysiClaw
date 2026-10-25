@@ -1,29 +1,28 @@
-"""One playbook mid-walk — the walk's core.
+"""Execute one playbook as a state machine.
 
-A `Program` is one playbook being executed. The conductor asks it for
-each turn; it answers with a synthesized ``[note, one-other]`` turn, a
-``DecisionRequest`` to broker through the micro-caller (fed back via
-``resolve()``), or ``None`` — spent for good: the transcript of its
-turns is the model's handoff, and every handover or completion mints
-ONE last ``[note, peek]`` brief turn first (`brief.py`).
+Public entry points:
+* ``advance(history)`` settles the pending tool result, observes its screen,
+  and passes the result to the current step.
+* ``resolve(outcome)`` passes a validated model decision to that step.
+* ``state()`` serializes a resumable position; it never serializes an
+  in-flight tool call.
 
-This file is the walk alone: the phase, the cursor on the route
-(`course.py`; the walk says when a run expands, a round ends, a
-revision re-plans, and `rounds.py` computes what those moments
-produce), the one action in flight (`turns.py`), the page verdict
-every step judges against, the sequencing of declared recovery toward
-a page (`recover.py` holds its rules and counts), the terminal
-moments, and the record they write (`record.py`). The money state is
-the gate's (`gate.py`), its guard `money.py`'s. What each STEP does is
-its executor's (`walk/surface.py` is the contract), one per route line
-kind: `steps.do`, `steps.agent`, `steps.ask`, `steps.tell`,
-`steps.select`.
+Both execution entry points return an assistant tool turn, a DecisionRequest,
+a stepping Paused marker, or None when finished. Conductor handles model
+requests; the engine dispatches tool turns. Steps never dispatch tools here.
 
-What the playbook declares is what runs: the walk opens with one peek,
-starts at the route's first unsettled node (never below a resumed
-suspension's cursor), runs a page's own `recover:` hand on a failed
-check or hands over, and hands over on every blocked or errored call.
-Money never recovers.
+Startup is FRESH -> OPENING -> LIVE. OPENING lasts through the first screen
+reading, including a resumed ask's reply check. A suspended walk may unlock
+once during startup. Later results always reach their step's verification;
+startup must never reopen an action that already ran.
+
+Node behavior lives in ``steps/`` behind the ``Walk`` and ``Step`` interfaces
+in ``surface.py``. The package overview documents state ownership.
+
+Only declared recovery actions may run after startup. Missing or failed tool
+results hand over; payment actions never recover. A handover emits a brief
+and returns control to the general model. Completion closes the session;
+an unanswered ask can save its position and request WAIT for the next wake.
 """
 
 import logging
@@ -497,10 +496,14 @@ class Program:
         in flight."""
         if kind == KIND_UNLOCK:
             return self._opening()
+        if self.phase is Phase.OPENING:
+            # Both the opening peek and a resumed ask's first reading
+            # finish startup. Later results belong to their step, even
+            # if the phone locks; reopening here could repeat an action.
+            self.phase = Phase.LIVE
         if kind == "peek":
             # Past the settled pure-text prefix (a stepped walk may seed
             # an agent's answer), never below a restored cursor.
-            self.phase = Phase.LIVE
             self.course.skip_to(self.spec.first_unsettled(self.outputs))
             return self.next()
         if kind == KIND_RECOVER:

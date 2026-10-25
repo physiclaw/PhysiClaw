@@ -26,7 +26,7 @@ from physiclaw.common.paths import (
 from physiclaw.common.placeholders import placeholder_values, resolve_placeholders
 from physiclaw.common.text import read_text
 from physiclaw.conductor.load import scaffold
-from physiclaw.conductor.load.files import load_pack_doc, load_playbook_docs
+from physiclaw.conductor.load.files import load_pack_doc, load_playbook_docs, pack_path
 from physiclaw.conductor.load.prints import prints_for_app
 from physiclaw.conductor.route.playbook import playbook_by_id
 from physiclaw.conductor.route.recover import manifest_recovers
@@ -147,7 +147,9 @@ def load_pack(
         else [PagePrint(app=app, decl=decl) for decl in pages.values()]
     )
     page_of = page_resolver(app, pages, prints)
-    macros = _scan_macros(root / PACK_MACROS_DIRNAME, page_of, values=values)
+    macros = _scan_macros(
+        root / PACK_MACROS_DIRNAME, page_of, pack_root=root, values=values
+    )
     shared = macro_resolver(macros.ok, macros.errors)
     pack = Pack(
         app=app,
@@ -157,13 +159,19 @@ def load_pack(
         macro_errors=macros.errors,
         playbook_docs=docs,
         playbook_errors=pb_errors,
-        prompts=_scan_prompts(root / PACK_PROMPTS_DIRNAME, values),
+        prompts=_scan_prompts(root / PACK_PROMPTS_DIRNAME, values, pack_root=root),
         local={
             name: Files(
                 macros=_scan_macros(
-                    root / name / PACK_MACROS_DIRNAME, page_of, shared, values=values
+                    root / name / PACK_MACROS_DIRNAME,
+                    page_of,
+                    shared,
+                    pack_root=root,
+                    values=values,
                 ),
-                prompts=_scan_prompts(root / name / PACK_PROMPTS_DIRNAME, values),
+                prompts=_scan_prompts(
+                    root / name / PACK_PROMPTS_DIRNAME, values, pack_root=root
+                ),
             )
             for name in {paths.entry_of(n) for n in docs}  # an entry's serve its own
         },
@@ -181,9 +189,11 @@ def _scan_macros(
     pages: macro_parse.PageResolver,
     fallback: macro_parse.MacroResolver | None = None,
     *,
+    pack_root: Path,
     values: dict[str, str] | None = None,
 ) -> Scanned[Macro]:
     """The macro files under one `macros/` root, folded from `store.scan`."""
+    pack_path(pack_root, root, PlaybookError)
     out: Scanned[Macro] = Scanned()
     for entry in macro_store.scan(root, pages, fallback, values=values):
         if entry.spec is not None:
@@ -193,17 +203,23 @@ def _scan_macros(
     return out
 
 
-def _scan_prompts(root: Path, values: dict[str, str]) -> Scanned[str]:
+def _scan_prompts(
+    root: Path, values: dict[str, str], *, pack_root: Path
+) -> Scanned[str]:
     """The prompt files under one `prompts/` root — `<name>.md`, the
     whole file verbatim as the model's prose: placeholders filled,
     trailing whitespace trimmed. An empty file, an unfillable token, or
     a name the grammar refuses rides as its error, so the route naming
     it fails with the cause. Nothing else in the folder is read."""
+    pack_path(pack_root, root, PlaybookError)
     out: Scanned[str] = Scanned()
     for path in paths.leaf_files(root, PROMPT_SUFFIX):
         try:
             check_name(path.stem, "prompt file name")
-            text = resolve_placeholders(read_text(path), PlaybookError, values).rstrip()
+            resolved = pack_path(pack_root, path, PlaybookError)
+            text = resolve_placeholders(
+                read_text(resolved), PlaybookError, values
+            ).rstrip()
             if not text:
                 raise PlaybookError("the prompt file is empty")
             out.ok[path.stem] = text

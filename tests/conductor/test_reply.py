@@ -58,6 +58,13 @@ def test_only_the_declared_words_count() -> None:
     assert reply.classify("sure", frozenset({"sure"}), NO) == "confirm"
 
 
+@pytest.mark.parametrize("text", ["", "   ", "???", "👍", "👎"])
+def test_empty_normalized_replies_never_decide_even_with_legacy_words(text) -> None:
+    # Older suspensions may contain an empty normalized approval word.
+    assert reply.classify(text, frozenset({""}), NO) is None
+    assert reply.classify(text, YES, frozenset({""})) is None
+
+
 def test_new_incoming_filters_baseline_and_own_ask() -> None:
     ask = "「买牛奶」已到付款页，合计 ¥45。回复 好的 确认支付，或 不用 取消。"
     screen = make_screen(

@@ -24,8 +24,10 @@ log = logging.getLogger(__name__)
 
 
 class Conductor:
-    """Turn arbiter: the live program produces turns while it can, then
-    its baton does; None means the LLM produces this one."""
+    """Drive the active Program, then its selected successor (`baton`).
+
+    Returning None gives control back to the engine's general model.
+    """
 
     def __init__(
         self,
@@ -36,12 +38,11 @@ class Conductor:
         self._micro = micro
 
     def abandon(self) -> None:
-        """Session teardown (the plugin's aclose): a walk still in
-        flight records its abandoned row and breadcrumb —
-        `Program.abandon` is latched, so a walk that closed properly is
-        a no-op. An un-taken baton counts too (built at the boot's
-        resolve, session died before the next advance). Fail-open:
-        teardown must never raise."""
+        """Record unfinished programs during session teardown.
+
+        Include a successor selected before the session ended. Program.abandon
+        is idempotent; recording failures must not prevent other cleanup.
+        """
         walk = self._program
         while walk is not None:
             try:
@@ -53,11 +54,7 @@ class Conductor:
     async def advance(
         self, history: list[Message], *, metadata: TurnMetadata
     ) -> AssistantMessage | None:
-        """Produce the next assistant turn, or None ("the LLM speaks"):
-        the live program's turn, brokering any decision requests it
-        raises; when it goes quiet, its baton's — the boot hands the
-        activated program on this way; no walk, or one that handed over
-        → None."""
+        """Return the next turn, following any successor, or None when finished."""
         while self._program is not None:
             turn = await self._drive(self._program, history, metadata)
             if turn is not None:
@@ -71,17 +68,12 @@ class Conductor:
     async def _drive(
         self, program: Program, history: list[Message], metadata: TurnMetadata
     ) -> AssistantMessage | None:
-        """Run one walk for one turn, brokering every decision request
-        it raises. None = it produced no turn (it went quiet) and the
-        caller decides what that means.
+        """Advance one program and resolve model requests until it yields.
 
-        The brokering rule lives here once — in particular the rule
-        that an unwired micro-caller resolves as NO outcome: the walk
-        then hands over like any failed decision (the boot finishes
-        empty like `not_a_task`). A program bug is caught here, once:
-        the walk is crashed (recorded, quiet from here) and the model
-        takes the session, because a session must survive the conductor
-        while every tool and test sees the traceback."""
+        Without a MicroCaller, resolve with no outcome and let the step
+        apply its failure policy. Unexpected errors retire the program
+        and preserve the traceback; the engine can continue the session.
+        """
         try:
             step = program.advance(history)
             while isinstance(step, DecisionRequest):

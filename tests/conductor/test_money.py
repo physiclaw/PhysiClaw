@@ -191,6 +191,45 @@ def test_declared_total_reads_thousands_separators() -> None:
     assert money.declared_total(sheet, ("合计",)) == 1234.56
 
 
+@pytest.mark.parametrize("price", ["9" * 400, "9007199254740993", "100000000000000.01"])
+def test_total_that_cannot_preserve_its_cents_is_unreadable(price) -> None:
+    sheet = make_screen((f"合计 ¥{price}", 0.5, 0.9))
+
+    assert money.declared_total(sheet, ("合计",)) is None
+
+
+def test_infinite_consent_cannot_authorize_an_overflowing_total() -> None:
+    sheet = make_screen((f"合计 ¥{'9' * 400}", 0.5, 0.9))
+
+    assert money.fire_block(consented=float("inf"), total_label=("合计",), screen=sheet)
+
+
+@pytest.mark.parametrize("price", ["9" * 400, "100000000000000.01"])
+def test_unreadable_split_total_cannot_borrow_a_farther_price(price) -> None:
+    sheet = make_screen(("合计", 0.2, 0.9), (f"¥{price}", 0.4, 0.9), ("¥45", 0.8, 0.9))
+
+    assert money.declared_total(sheet, ("合计",)) is None
+    assert money.fire_block(consented=45, total_label=("合计",), screen=sheet)
+
+
+@pytest.mark.parametrize(
+    ("prices", "expected"),
+    [
+        (("¥40", "¥60"), None),
+        (("¥60", "¥40"), None),
+        (("¥40", "¥40.00"), 40),
+        (("¥100000000000000.01", "¥45"), None),
+        (("¥45", "¥100000000000000.01"), None),
+    ],
+)
+def test_equally_near_prices_must_agree_on_a_readable_total(prices, expected) -> None:
+    sheet = make_screen(
+        ("合计", 0.5, 0.9), (prices[0], 0.3, 0.9), (prices[1], 0.7, 0.9)
+    )
+
+    assert money.declared_total(sheet, ("合计",)) == expected
+
+
 def test_declared_total_prefers_the_exact_label_and_the_footer() -> None:
     # "商品合计" is a subtotal wearing the total's characters; the payable
     # total is the bare label, and among bare labels the lowest row.

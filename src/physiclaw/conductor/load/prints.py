@@ -10,6 +10,7 @@ matcher reads.
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from physiclaw.common import paths
 from physiclaw.common.logger import write_json_atomic
@@ -76,26 +77,41 @@ def load_learned(app: str) -> dict[str, LearnedPage]:
             return {}
         out: dict[str, LearnedPage] = {}
         for name, lp in data["pages"].items():
-            anchors = {
-                a["text"]: LearnedAnchor(
-                    text=a["text"],
-                    cx=float(a["cx"]),
-                    cy=float(a["cy"]),
-                    pos_tol=float(a["pos_tol"]),
-                    freq=float(a["freq"]),
-                    variants=tuple(a.get("variants", ())),
-                )
-                for a in lp["anchors"]
-            }
+            anchors = {}
+            for raw in lp["anchors"]:
+                anchor = _learned_anchor(raw)
+                anchors[anchor.text] = anchor
+            observations = lp["observations"]
+            if type(observations) is not int or observations < 1:
+                raise ValueError("observations must be a positive integer")
             # A file written before scores were retired carries
             # `threshold` and per-anchor `weight`; both are ignored.
-            out[name] = LearnedPage(
-                anchors=anchors, observations=int(lp["observations"])
-            )
+            out[name] = LearnedPage(anchors=anchors, observations=observations)
         return out
     except Exception:
         log.warning("learned pages %s unreadable; ignoring", p, exc_info=True)
         return {}
+
+
+def _learned_anchor(raw: dict[str, Any]) -> LearnedAnchor:
+    """Validate cached text and geometry before the matcher can use them."""
+    text = raw["text"]
+    variants = raw.get("variants", [])
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("anchor text must be a non-empty string")
+    if not isinstance(variants, list) or not all(
+        isinstance(v, str) and v.strip() for v in variants
+    ):
+        raise ValueError("anchor variants must be a list of non-empty strings")
+    geometry = {}
+    for key in ("cx", "cy", "pos_tol", "freq"):
+        value = raw[key]
+        # The interval check also rejects NaN and infinities. Booleans
+        # are JSON flags, not geometry, even though bool subclasses int.
+        if type(value) not in (int, float) or not 0 <= value <= 1:
+            raise ValueError(f"anchor {key} must be a number between 0 and 1")
+        geometry[key] = float(value)
+    return LearnedAnchor(text=text, variants=tuple(variants), **geometry)
 
 
 def save_learned(app: str, pages: dict[str, LearnedPage]) -> None:

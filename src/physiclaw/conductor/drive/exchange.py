@@ -59,21 +59,21 @@ def exchanges(drained: list[dict], req: DecisionRequest, decision: str) -> list[
 
 
 def exchange_lines(record: dict) -> list[str]:
-    """One round-trip for the eye: the system message and the newest
-    exchange with their roles — an episode's replayed turns, a user
-    block and a reply per turn right after the system message, are
-    folded, since the calls that first showed them did — then the
-    reply's text (or the whole raw reply when its shape is unknown),
-    then the decision."""
+    """Show the system message, current request, repair messages, and reply.
+
+    ``history`` counts individual messages, matching DecisionRequest.history.
+    Hide only that prefix after the system message; keep the full request
+    in the record for inspection.
+    """
     head = f"── model {record['call']} ({record['node']})"
     if record["attempts"] > 1:
         head += f" attempt {record['attempt']}/{record['attempts']}"
-    replayed = record["history"]
-    if replayed:
-        head += f" · {replayed} replayed turn(s) folded"
+    history_messages = record["history"]
+    if history_messages:
+        head += f" · {history_messages} replayed message(s) folded"
     lines = [head]
     request = record["request"]
-    shown = request[:1] + request[1 + 2 * replayed :] if replayed else request
+    shown = request[:1] + request[1 + history_messages :]
     for m in shown:
         lines.append(f"[{m.get('role', '?')}]")
         lines.extend(_message_text(m).splitlines())

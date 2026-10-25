@@ -700,7 +700,7 @@ def test_exchange_lines_folds_the_replayed_turns_and_reads_both_shapes() -> None
         "node": "pick",
         "attempt": 2,
         "attempts": 2,
-        "history": 1,
+        "history": 2,
         "request": [
             {"role": "system", "content": "contract"},
             {"role": "user", "content": "earlier screen"},
@@ -714,9 +714,43 @@ def test_exchange_lines_folds_the_replayed_turns_and_reads_both_shapes() -> None
     lines = exchange.exchange_lines(record)
 
     assert (
-        lines[0] == "── model agent_act (pick) attempt 2/2 · 1 replayed turn(s) folded"
+        lines[0]
+        == "── model agent_act (pick) attempt 2/2 · 2 replayed message(s) folded"
     )
     assert lines[1:5] == ["[system]", "contract", "[user]", "block"]
     assert lines[5:7] == ["── reply", "hi"]
     assert lines[-1] == "── decision: act → 'row'"
     assert exchange.reply_text({"odd": 1}) == '{"odd": 1}'
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_exchanges_keep_the_current_request_after_folding_history(repair) -> None:
+    from physiclaw.conductor.micro.decision import DecisionRequest
+
+    history = (("user", "old screen"), ("assistant", "old reply"))
+    req = DecisionRequest(
+        call="agent_act", node_id="pick", outcomes=(), material={}, history=history
+    )
+    request = [
+        {"role": "system", "content": "contract"},
+        *({"role": role, "content": content} for role, content in history),
+        {"role": "user", "content": "current screen"},
+    ]
+    if repair:
+        request.extend(
+            [
+                {"role": "assistant", "content": "invalid reply"},
+                {"role": "user", "content": "repair instructions"},
+            ]
+        )
+
+    (record,) = exchange.exchanges(
+        [{"call": "agent_act", "request": request, "reply": {}}], req, "done"
+    )
+
+    assert "current screen" in record["lines"]
+    assert "old screen" not in record["lines"]
+    assert "old reply" not in record["lines"]
+    if repair:
+        assert "invalid reply" in record["lines"]
+        assert "repair instructions" in record["lines"]

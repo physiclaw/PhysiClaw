@@ -16,6 +16,21 @@ from physiclaw.conductor.spec.model import PlaybookError
 from physiclaw.conductor.spec.specfile import bind, load_yaml, yaml_loader
 
 
+def pack_path(root: Path, path: Path, error_cls: type[ValueError]) -> Path:
+    """Resolve a pack member without following a link outside the pack.
+
+    The selected root may itself be a symlink. Internal links are allowed;
+    a member cannot expand that root's read or write boundary.
+    """
+    try:
+        resolved = path.resolve()
+        if resolved.is_relative_to(root.resolve()):
+            return resolved
+    except (OSError, RuntimeError, ValueError) as e:
+        raise error_cls(f"invalid pack path: {path}") from e
+    raise error_cls(f"pack path resolves outside the pack: {path}")
+
+
 def load_pack_doc(
     app: str,
     error_cls: type[ValueError],
@@ -30,11 +45,13 @@ def load_pack_doc(
     file doesn't exist (not a pack). Section contents are validated by
     their owners (`pages.py`, `model.py`) — this is just the shared
     front door."""
-    path = (paths.pack_root(app) if root is None else root) / PACK_FILENAME
+    root = paths.pack_root(app) if root is None else root
+    path = root / PACK_FILENAME
+    resolved = pack_path(root, path, error_cls)
     if not path.exists():
         return None
     data = load_yaml(
-        read_text(path), error_cls, where=f"{app}/{PACK_FILENAME}", values=values
+        read_text(resolved), error_cls, where=f"{app}/{PACK_FILENAME}", values=values
     )
     if data is None:
         return {}
@@ -88,7 +105,8 @@ def load_playbook_docs(
         where = f"{app}/{paths.playbook_file(playbook)}"
         try:
             name_check(paths.own_name(playbook), f"{where}: {role}")
-            data = load_yaml(read_text(path), error_cls, where=where, values=values)
+            resolved = pack_path(root, path, error_cls)
+            data = load_yaml(read_text(resolved), error_cls, where=where, values=values)
             if not isinstance(data, dict):
                 raise error_cls(
                     f"{where} must be a YAML mapping (name, description, enabled, "
@@ -108,6 +126,11 @@ def load_playbook_docs(
     for folder in paths.leaf_dirs(root):
         name = folder.name
         if name in RESERVED_PACK_DIRS:
+            continue
+        try:
+            pack_path(root, folder, error_cls)
+        except ValueError as e:
+            errors[name] = str(e)
             continue
         path = folder / PLAYBOOK_FILENAME
         if not path.is_file():
@@ -139,10 +162,11 @@ def read_template_manifest(src: Path) -> dict:
     loud PlaybookError on bad YAML or a malformed `placeholders:`
     section, so install fails BEFORE it mutates anything."""
     path = src / PACK_FILENAME
+    resolved = pack_path(src, path, PlaybookError)
     if not path.exists():
         return {}
     try:
-        data = yaml_loader.load(read_text(path))
+        data = yaml_loader.load(read_text(resolved))
     except Exception as e:  # loader errors are not confined to YAMLError
         raise PlaybookError(f"{path}: invalid YAML: {e or type(e).__name__}") from e
     if data is None:

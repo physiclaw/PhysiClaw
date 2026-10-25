@@ -48,6 +48,8 @@ State and ownership
     Record      terminal outcome and diagnostic/daily-log writes
 
 Phases are FRESH -> OPENING -> LIVE, then DONE or a stepping PAUSED.
+Both a normal opening peek and a resumed ask's first reading enter LIVE;
+the one automatic resume-unlock is available only during OPENING.
 An ask can instead save ``Program.state()`` and request session WAIT.
 That suspension is consumed once on the next wake. If its end_session
 fails to end the current session, the next advance discards the file.
@@ -58,7 +60,9 @@ Important invariants
   Recovery runs only declared actions, within their attempt limits.
 * Both literal and model-read approval require the current ask's position
   on the thread. A payment additionally requires a verified app page and
-  the exact quoted total at execution time. Its first action spends consent.
+  an unambiguous total that preserves the quoted cents at execution time.
+  Its first action spends consent. Normalized yes/no words must be nonempty
+  and distinct; an empty normalized reply cannot decide an ask.
 * A run's budget counts distinct recorded/planned rounds, including work
   from earlier revisions; restoring an unfinished round does not spend it twice.
 * A model reply is validated before use. Malformed replies get one repair
@@ -66,6 +70,9 @@ Important invariants
 * The live MicroCaller borrows the session provider and owns only its
   optional micro provider. A rehearsal owns its standalone provider.
   Diagnostic sink failures must not change a validated decision.
+* Pack members resolve inside the selected pack; replay frames resolve
+  inside the session's images directory. Invalid learned geometry is
+  discarded so matching can use the authored page declarations.
 
 Failure policy is explicit: run miss/on_fail overrides a page's policy,
 which overrides the node's. ``stop`` requests WAIT; ``handover`` returns

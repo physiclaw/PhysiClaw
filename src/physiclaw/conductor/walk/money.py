@@ -23,7 +23,9 @@ Consent itself — quoting, binding, consuming — stays with the gate
 (`gate.Gate`): consent is a conversation, these are arithmetic.
 """
 
+import math
 import re
+from decimal import Decimal
 
 from physiclaw.common.bbox import Bbox, center_of, same_line
 from physiclaw.common.listing import Screen, label_hit
@@ -48,9 +50,13 @@ def plain(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def amount(text: str) -> float:
-    """One `PRICE_RE` group as a number — thousands separators stripped."""
-    return float(text.replace(",", ""))
+def amount(text: str) -> float | None:
+    """Read a PRICE_RE group only if storing it preserves the quoted cents."""
+    exact = Decimal(text.replace(",", ""))
+    value = float(exact)
+    if not math.isfinite(value) or Decimal(plain(value)) != exact:
+        return None
+    return value
 
 
 def _is_label_row(label: str, readings: tuple[str, ...]) -> tuple[bool, bool]:
@@ -81,7 +87,10 @@ def _label_amount(text: str, readings: tuple[str, ...]) -> float | None:
                 before = re.sub(r"[\s:：]+$", "", text[: label.start()].lstrip())
                 price = PRICE_RE.fullmatch(before)
             if price is not None:
-                amounts.add(amount(price.group(1)))
+                value = amount(price.group(1))
+                if value is None:
+                    return None
+                amounts.add(value)
     return next(iter(amounts)) if len(amounts) == 1 else None
 
 
@@ -94,7 +103,8 @@ def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
     equals the lowest on screen wins (the footer); a label row with no
     amount on its line yields to the next. A priced label row must
     identify one adjacent total: ambiguity returns None immediately,
-    without borrowing a price from another row."""
+    without borrowing a price from another row. Equally close prices must
+    agree; listing order and floating-point ties cannot choose a total."""
     priced = [
         (r.bbox, amount(m[0]))
         for r in screen.rows
@@ -113,16 +123,17 @@ def declared_total(screen: Screen, readings: tuple[str, ...]) -> float | None:
     for _, _, row in sorted(ranked, key=lambda t: (t[0], t[1])):
         if PRICE_RE.search(row.label):
             return _label_amount(row.label, readings)
-        beside = min(
-            (
-                (_gap(row.bbox, bbox), amt)
-                for bbox, amt in priced
-                if same_line(row.bbox, bbox)
-            ),
-            default=None,
-        )
-        if beside is not None:
-            return beside[1]
+        beside = [
+            (_gap(row.bbox, bbox), amt)
+            for bbox, amt in priced
+            if same_line(row.bbox, bbox)
+        ]
+        if beside:
+            nearest = min(gap for gap, _ in beside)
+            totals = {
+                amt for gap, amt in beside if math.isclose(gap, nearest, abs_tol=1e-9)
+            }
+            return next(iter(totals)) if len(totals) == 1 else None
     return None
 
 
@@ -140,6 +151,8 @@ def fire_block(
     was guarding."""
     if consented is None:
         return "reached without a confirmed total"
+    if not math.isfinite(consented) or consented < 0:
+        return "reached with an invalid confirmed total"
     total = declared_total(screen, total_label)
     # Both values come directly from the same two-decimal parser (and
     # JSON preserves the consented value). A tolerance can admit a

@@ -512,6 +512,44 @@ def test_gate_resume_off_thread_reopens_via_channel_open() -> None:
     assert back.tool_calls[1].arguments["name"] == "demo/open-app"
 
 
+@pytest.mark.parametrize("payment", [True, False])
+@pytest.mark.parametrize("locked_on_resume", [True, False])
+def test_resumed_gate_never_reopens_an_action_that_lands_locked(
+    payment, locked_on_resume
+) -> None:
+    flow = GATED
+    if not payment:
+        flow = (
+            flow.replace("approve: payment", "approve: proceed")
+            .replace('    total_label: "合计"\n', "")
+            .replace("{ask.total}", "45")
+            .replace("    irreversible: payment\n", "")
+        )
+    p, h, send = _at_gate(playbook=flow)
+    ask = _suspend_via_silence(p, h, send)
+    resumed = setup.load_suspended()
+    assert resumed is not None
+    h2 = _history()
+    opening = resumed.advance(h2)
+    if locked_on_resume:
+        _feed(h2, opening, LOCKED_MID)
+        unlock = resumed.advance(h2)
+        assert unlock.tool_names() == ["note", "unlock_phone"]
+        _feed(h2, unlock, _thread())
+        opening = resumed.advance(h2)
+    _feed(h2, opening, _thread((ask, 0.75, 0.3), ("好的", 0.25, 0.5)))
+    back = resumed.advance(h2)
+    assert resumed.phase is program.Phase.LIVE
+    _feed(h2, back, _sheet())
+    action = resumed.advance(h2)
+    assert action.tool_calls[1].arguments["name"] == "demo/add-cart"
+    _feed(h2, action, LOCKED_MID)
+
+    summary = _finish(resumed, h2, resumed.advance(h2))
+
+    assert "move 'pay' did not land on 'home'" in summary
+
+
 TELLING = """\
 description: 汇报进展
 inputs:

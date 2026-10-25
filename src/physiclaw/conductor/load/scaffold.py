@@ -16,6 +16,7 @@ from physiclaw.common.paths import (
     PLAYBOOK_FILENAME,
 )
 from physiclaw.common.text import write_text
+from physiclaw.conductor.load.files import pack_path
 from physiclaw.conductor.load.stubs import (
     CHANNEL_OPEN_STUB,
     CHANNEL_PACK_STUB,
@@ -84,7 +85,7 @@ def ensure_channel_boot(root: Path) -> None:
     was a file must not lose its wake. Written once, then never
     touched. Fail-open."""
     _ensure_file(
-        root / BOOT_PLAYBOOK / PLAYBOOK_FILENAME,
+        pack_path(root, root / BOOT_PLAYBOOK / PLAYBOOK_FILENAME, PlaybookError),
         channel_boot_stub(root),
         "no boot at wake",
     )

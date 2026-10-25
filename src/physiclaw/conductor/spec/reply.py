@@ -123,6 +123,8 @@ def classify(text: str, yes: AbstractSet[str], no: AbstractSet[str]) -> Answer |
     `yes`/`no` are the ask's words already in `normalize` space (the
     parser normalizes them once)."""
     norm = normalize(text)
+    if not norm:
+        return None
     if norm in no:
         return Answer.DENY
     if norm in yes:

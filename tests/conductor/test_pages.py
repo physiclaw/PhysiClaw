@@ -3,6 +3,8 @@ the learned store."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from conductor_fakes import make_learned
 
@@ -247,6 +249,35 @@ def test_load_learned_missing_or_garbage_is_empty() -> None:
     (paths.learned_pages_dir() / "bad.json").write_text("{nope", encoding="utf-8")
 
     assert prints.load_learned("bad") == {}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        (field, value)
+        for field in ("cx", "cy", "pos_tol", "freq")
+        for value in (float("nan"), float("inf"), "NaN", -0.1, 1.1, True)
+    ]
+    + [
+        ("text", 3),
+        ("text", ""),
+        ("variants", "wrong shape"),
+        ("variants", [3]),
+    ],
+)
+def test_invalid_learned_anchors_fall_back_to_declarations(field, value) -> None:
+    _write_pack("taobao", VALID)
+    learned = LearnedPage(
+        anchors={"综合": make_learned("综合", 0.2, 0.11)}, observations=7
+    )
+    prints.save_learned("taobao", {"results": learned})
+    path = prints.learned_file("taobao")
+    data = json.loads(path.read_text())
+    data["pages"]["results"]["anchors"][0][field] = value
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert prints.load_learned("taobao") == {}
+    assert all(p.learned is None for p in prints.prints_for_app("taobao"))
 
 
 def test_parse_pages_rejects_unpopulated_placeholder() -> None:

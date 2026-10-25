@@ -472,11 +472,40 @@ def test_payment_agent_episode_takes_the_ask_total() -> None:
         ('    yes: ["ok"]\n', "", "`yes` must be a list"),
         ('    yes: ["ok"]\n', "    yes: []\n", "at least one reply word"),
         ('    no: ["no"]\n', "    no: [3]\n", "must be a string"),
+        ('    yes: ["ok"]\n', '    yes: ["👍"]\n', "empty after normalization"),
+        ('    no: ["no"]\n', '    no: ["???"]\n', "empty after normalization"),
+        ('    no: ["no"]\n', '    no: ["ＯＫ！"]\n', "both `yes` and `no`"),
     ],
 )
 def test_ask_reply_words_are_declared(old, new, fragment) -> None:
     with pytest.raises(PlaybookError, match=fragment):
         playbook.parse_playbook(_mutate(old, new), "buy", _pack())
+
+
+def test_inline_recovery_branches_have_distinct_dispatch_names() -> None:
+    from physiclaw.conductor.walk.recover import action
+
+    text = """kind: entry
+schema: 1
+name: flow
+description: recover home
+route:
+  - page: app.pages.home
+    recover:
+      covered: {macro: {steps: [go_back]}}
+      elsewhere: {macro: {steps: [home_screen]}}
+  - tell: done
+    message: done
+"""
+    spec = playbook.parse_playbook(text, "flow", _pack())
+    recovery = spec.recovers["home"]
+    assert recovery.covered.macro != recovery.elsewhere.macro
+    for hand, tool in (
+        (recovery.covered, "go_back"),
+        (recovery.elsewhere, "home_screen"),
+    ):
+        assert [step.tool for step in spec.inline_macros[hand.macro].steps] == [tool]
+        assert action(hand, "demo", {}) == ("run_macro", {"name": f"demo/{hand.macro}"})
 
 
 def test_agent_context_is_declared_and_checked() -> None:

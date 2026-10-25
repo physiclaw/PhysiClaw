@@ -168,6 +168,48 @@ def test_load_without_a_wire_log_raises() -> None:
         decisions.load(d)
 
 
+@pytest.mark.parametrize(
+    "reference", ["traversal", "absolute", "symlink", "images-link"]
+)
+def test_load_never_replays_files_outside_session_images(tmp_path, reference) -> None:
+    outside = tmp_path / "private.png"
+    outside.write_bytes(b"private bytes must not be sent to a provider")
+    d = _session([])
+    images = d / "images"
+    if reference == "images-link":
+        images.symlink_to(tmp_path, target_is_directory=True)
+        ref = "images/private.png"
+    else:
+        images.mkdir()
+        if reference == "symlink":
+            (images / "linked.png").symlink_to(outside)
+            ref = "images/linked.png"
+        elif reference == "absolute":
+            ref = str(outside)
+        else:
+            (d.parent / "private.png").write_bytes(outside.read_bytes())
+            ref = "../private.png"
+    _session(
+        [
+            _micro_record(
+                request=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "safe listing"},
+                            {"type": "image", "source": {"type": "ref", "ref": ref}},
+                        ],
+                    }
+                ]
+            )
+        ]
+    )
+
+    (recorded,) = decisions.load(d)
+
+    assert recorded.messages[0].content == "safe listing"
+
+
 # ---------- ask ----------
 
 

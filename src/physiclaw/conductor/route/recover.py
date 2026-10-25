@@ -192,7 +192,9 @@ def parse_recover(scope: Scope, fields: dict, where: str, page: str) -> Recovery
                     f"({', '.join(RECOVER_READINGS)}), not both"
                 )
             hands = {
-                k: _parse_hand(scope, raw[k], f"{where}: `recover.{k}`", page)
+                k: _parse_hand(
+                    scope, raw[k], f"{where}: `recover.{k}`", page, role=f"recover.{k}"
+                )
                 for k in keyed
             }
             return Recovery(
@@ -210,7 +212,9 @@ def parse_recover(scope: Scope, fields: dict, where: str, page: str) -> Recovery
     )
 
 
-def _parse_hand(scope: Scope, raw: Any, where: str, page: str) -> RecoverHand:
+def _parse_hand(
+    scope: Scope, raw: Any, where: str, page: str, *, role: str = "recover"
+) -> RecoverHand:
     """One recovery hand, in a step's shape: a bare gesture that takes no
     object (`go_back`), `{tap: app.landmarks.<name>}` (the declared spot,
     as declared), or `{macro: app.macros.<name>}` (argument-less)."""
@@ -232,9 +236,7 @@ def _parse_hand(scope: Scope, raw: Any, where: str, page: str) -> RecoverHand:
         )
     if "macro" in raw:
         return RecoverHand(
-            macro=argless_macro(
-                raw["macro"], "recover", where, page, scope.resolve
-            ).name
+            macro=argless_macro(raw["macro"], role, where, page, scope.resolve).name
         )
     return RecoverHand(
         tool="tap", landmark=landmark_name(scope, raw["tap"], f"{where}: `tap`")

@@ -42,6 +42,10 @@ def reply_words(entry: dict, key: str, where: str) -> list[str]:
     )
     if not out:
         raise PlaybookError(f"{where}: `{key}` must list at least one reply word")
+    if "" in out:
+        raise PlaybookError(
+            f"{where}: `{key}` contains a reply word that is empty after normalization"
+        )
     return out
 
 
@@ -89,12 +93,19 @@ def parse_ask(scope: Scope, line: Line) -> AskNode:
         resume = argless_macro(
             entry["resume"], "resume", where, nid, scope.resolve
         ).name
+    yes = tuple(reply_words(entry, "yes", where))
+    no = tuple(reply_words(entry, "no", where))
+    overlap = sorted(set(yes) & set(no))
+    if overlap:
+        raise PlaybookError(
+            f"{where}: reply words appear in both `yes` and `no`: {', '.join(overlap)}"
+        )
     return AskNode(
         id=nid,
         approve=approve,
         message=message,
-        yes=tuple(reply_words(entry, "yes", where)),
-        no=tuple(reply_words(entry, "no", where)),
+        yes=yes,
+        no=no,
         denied=denied,
         resume=resume,
         enter=before or "",

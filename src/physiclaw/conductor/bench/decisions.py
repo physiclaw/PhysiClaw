@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from physiclaw.common.logger.session_artifacts import mime_for
+from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.text import iter_jsonl
 from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.moves import move_key, reply_args
@@ -125,7 +125,9 @@ def _messages(
         for b in leaf_blocks(content):
             ref = image_ref(b)
             if ref is not None:
-                path = session_dir / ref
+                path = resolve_image(session_dir, ref)
+                if path is None:
+                    continue
                 if path not in frames:
                     frames[path] = _frame(path)
                 frame = frames[path]

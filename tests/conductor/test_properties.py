@@ -5,7 +5,9 @@ line; hypothesis searches for the input that breaks it."""
 
 from __future__ import annotations
 
+import json
 import unicodedata
+from decimal import Decimal
 
 from conductor_fakes import make_screen
 from hypothesis import example, given, settings
@@ -104,6 +106,27 @@ def _grouped(a) -> str:
     frac = frac.rstrip("0")
     grouped = f"{int(whole):,}"
     return f"{grouped}.{frac}" if frac else grouped
+
+
+@given(st.integers(min_value=0, max_value=10**20))
+@example(cents=10**16)
+@example(cents=10**16 + 1)
+@settings(max_examples=300)
+def test_saved_consent_preserves_cents_and_cannot_authorize_a_cent_more(cents) -> None:
+    text = f"{cents // 100}.{cents % 100:02d}"
+    screen = make_screen((f"Total ${text}", 0.5, 0.9))
+    total = money.declared_total(screen, ("Total",))
+    if total is None:
+        return  # Unrepresentable totals must never produce a quote.
+    assert Decimal(money.plain(total)) * 100 == cents
+    saved = json.loads(json.dumps(total))
+    assert (
+        money.fire_block(consented=saved, total_label=("Total",), screen=screen) is None
+    )
+
+    changed = cents + 1
+    screen = make_screen((f"Total ${changed // 100}.{changed % 100:02d}", 0.5, 0.9))
+    assert money.fire_block(consented=saved, total_label=("Total",), screen=screen)
 
 
 @given(st.text(alphabet=st.characters(blacklist_categories=("Cc", "Cs")), max_size=40))
