@@ -4,6 +4,42 @@ const {createViewer} = require('./viewer_ui_fixture.cjs');
 
 const row = (rec, src = 'events', extra = {}) => ({src, line: 1, rec, ...extra});
 
+for (const path of [
+  'https://attacker.example/track?session=private', '//attacker.example/frame.jpg',
+  'file:///private/frame.jpg', 'data:image/svg+xml,<svg/>',
+  'images/../../../api/screenshot', 'images/../outside.jpg',
+  'images/%2e%2e/outside.jpg', 'images/%252e%252e/outside.jpg',
+  'images/..\\outside.jpg', 'images/frame.jpg?next=outside',
+  'images/frame.jpg#fragment', 'images/frame\n.jpg', 'images/frame.svg',
+]) {
+  test(`test_recorded_image_paths_cannot_escape_the_viewer_${JSON.stringify(path)}`, () => {
+    const records = [
+      row({event: 'tool_result', name: 'screenshot', images: [path]}, 'events', {frames: [path]}),
+      row({kind: 'request', messages: [{role: 'user', content: [{type: 'image_url', image_url: {url: path}}]}]}, 'wire', {frames: [path]}),
+    ];
+    const ui = createViewer(records, {files: [{name: path, bytes: 10}]});
+
+    assert.equal(ui.document.querySelectorAll('img').length, 0);
+    for (const id of ['events-1', 'wire-1']) {
+      ui.select(id);
+      assert.equal(ui.document.querySelectorAll('img').length, 0);
+      assert.ok(ui.detail.includes(path));
+    }
+  });
+}
+
+test('test_session_images_render_in_thumbnails_details_and_filmstrip', () => {
+  const path = 'images/120000_123_t7.jpg';
+  const ui = createViewer([
+    row({event: 'tool_result', name: 'screenshot', images: [path]}, 'events', {frames: [path]}),
+  ], {files: [{name: path, bytes: 10}]});
+
+  ui.select('events-1');
+
+  assert.equal(ui.document.querySelectorAll('img').length, 3);
+  for (const image of ui.document.querySelectorAll('img')) assert.equal(image.getAttribute('src'), path);
+});
+
 test('test_host_bound_plugin_is_not_presented_as_a_playbook', () => {
   const rec = {kind: 'response', producer: {plugin_id: 'actual-slot'}, presentation: 'plugin', raw: {}};
   const ui = createViewer([row(rec, 'wire')]);

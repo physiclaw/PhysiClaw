@@ -231,8 +231,12 @@
     if (!Number.isFinite(d)) return '';
     return `+${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`;
   }
+  // Recorded references are data. All image surfaces use the same restricted
+  // session-relative path grammar; reject URLs, traversal and URL escapes.
+  const isFramePath = (src) => typeof src === 'string' && /^images\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:jpg|jpeg|png|gif|webp)$/i.test(src);
+  const framePaths = S.files.map((f) => f.name).filter(isFramePath);
   function frame(src) {
-    if (typeof src !== 'string' || !src.startsWith('images/')) return el('div', { class: 'note', text: `image: ${src}` });
+    if (!isFramePath(src)) return el('div', { class: 'note', text: 'image: ' + shown(src) });
     const img = el('img', { src, alt: src, loading: 'lazy', onclick: () => img.classList.toggle('full') });
     return el('figure', null, img, el('figcaption', { text: src }));
   }
@@ -315,7 +319,7 @@
     const row = el('div', { class: 'rec' + (warn ? ' warn' : '') });
     row.dataset.cat = cat;
     row.title = clock(rec.t);
-    const thumb = (r.frames || [])[0];
+    const thumb = Array.isArray(r.frames) ? r.frames.find(isFramePath) : null;
     row.append(el('span', { class: 't', text: since(rec.t) }), el('span', { class: 'g ' + cat, text: GLYPH[cat] }),
       el('span', { class: 'body' }, el('span', { class: 'title', text: title || '' }), sub ? el('span', { class: 'sub', text: sub }) : null),
       el('span', { class: 'dur', text: rec.elapsed_ms ? ms(rec.elapsed_ms) : '' }),
@@ -553,7 +557,7 @@
       chip('quick decisions', s.micro_calls || null),
       chip(`tokens in${Number.isFinite(u.cache_hit_pct) ? ` · ${Math.round(u.cache_hit_pct)}% cached` : ''}`, S.words.tokens.input_tokens),
       chip('tokens out', S.words.tokens.output_tokens),
-      chip('screen frames', S.files.filter((f) => f.name.startsWith('images/')).length));
+      chip('screen frames', framePaths.length));
     story.append(left, stats);
     h.append(story);
     h.append(el('div', { class: 'film', id: 'film' }), el('div', { class: 'minimap', id: 'minimap' }), el('div', { class: 'scale', id: 'scale' }));
@@ -569,14 +573,14 @@
     // The first row that carries each frame — a tool result's own before the request that re-sent it.
     const carrier = new Map();
     for (const row of document.querySelectorAll('.rec')) for (const path of row.detail.r.frames || []) if (!carrier.has(path)) carrier.set(path, row);
-    const frames = S.files.map((f) => f.name).filter((n) => n.startsWith('images/'));  // capture order: the name is the clock
-    for (const path of frames) {
+    // Capture order: the name is the clock.
+    for (const path of framePaths) {
       const row = carrier.get(path);
       const img = el('img', { src: path, loading: 'lazy', decoding: 'async', title: row ? `${since(row.detail.r.rec.t)}  ${row.detail.title}` : path, alt: '' });
       if (row) { img.dataset.row = row.id; img.addEventListener('click', () => select(row)); }
       film.append(img);
     }
-    if (!frames.length) film.append(el('span', { class: 'empty', text: 'no frames were recorded' }));
+    if (!framePaths.length) film.append(el('span', { class: 'empty', text: 'no frames were recorded' }));
     const map = document.getElementById('minimap');
     const end = S.groups.length ? Date.parse(S.groups[S.groups.length - 1].t_end) : null;
     const span = end != null && t0 != null ? Math.max(1, end - t0) : null;

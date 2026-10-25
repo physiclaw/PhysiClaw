@@ -288,6 +288,62 @@ async def test_provider_setup_failure_is_saved_before_session_capture_closes(
     assert "Traceback" in text
 
 
+@pytest.mark.parametrize("phase", ["chat", "serialize_history"])
+async def test_late_provider_configuration_failure_propagates_without_retry(
+    completed_run, mocker, phase
+):
+    from physiclaw.common.provider_errors import ProviderConfigurationError
+
+    failure = mocker.patch.object(
+        completed_run.provider,
+        phase,
+        side_effect=ProviderConfigurationError("fix setup"),
+    )
+
+    with pytest.raises(ProviderConfigurationError, match="fix setup"):
+        await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    failure.assert_called_once()
+    completed_run.factory.assert_called_once()
+    assert completed_run.provider.closed
+    completed_run.plugin.aclose.assert_awaited_once()
+    completed_run.tr.close.assert_called_once()
+    completed_run.rlog.close.assert_called_once()
+
+
+async def test_shutdown_after_last_action_skips_curation_and_preserves_done(
+    completed_run, mocker
+):
+    from physiclaw.agent.runtime.stopping import stop_event
+
+    event = asyncio.Event()
+    token = stop_event.set(event)
+    mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
+    curate = mocker.patch.object(engine_mod.curate, "curate", new=mocker.AsyncMock())
+
+    async def finish(_run, session):
+        session.sentinel_status = DONE
+        session.sentinel_recap = "finished"
+        session.added_pitfalls = True
+        event.set()
+
+    mocker.patch.object(engine_mod.loop, "drive", side_effect=finish)
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+    finally:
+        stop_event.reset(token)
+
+    curate.assert_not_awaited()
+    assert completed_run.provider.closed
+    completed_run.plugin.aclose.assert_awaited_once()
+    completed_run.tr.write.assert_any_call(
+        {"event": "done", "sentinel": DONE, "recap": "finished"}
+    )
+    completed_run.tr.close.assert_called_once()
+    completed_run.rlog.close.assert_called_once()
+
+
 async def test_wire_close_failure_stays_in_the_session_diagnostics(
     recorded_run, monkeypatch
 ):

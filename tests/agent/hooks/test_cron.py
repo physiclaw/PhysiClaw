@@ -656,7 +656,9 @@ def test_regression_purge_reports_io_failure_without_a_traceback(
 ):
     _jobs_path.write_text(_job_text(job_id="closed", kind="one-time", status="done"))
     before = _jobs_path.read_bytes()
-    mocker.patch.object(job_store, "write_text", side_effect=OSError("disk full"))
+    mocker.patch.object(
+        job_store, "write_text_atomic", side_effect=OSError("disk full")
+    )
 
     status = _run_module(monkeypatch, "purge")
 

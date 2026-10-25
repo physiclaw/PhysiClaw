@@ -27,7 +27,7 @@ from croniter import CroniterError, croniter
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.text import read_text, write_text_atomic
 
 log = logging.getLogger(__name__)
 
@@ -262,21 +262,27 @@ def format_minute(t: dt.datetime) -> str:
 def min_fire_gap(
     schedule: str, start: dt.datetime, samples: int = 5
 ) -> dt.timedelta | None:
-    """Smallest gap between consecutive fires over the next `samples` fires.
+    """Smallest sampled gap, covering at least a complete daily firing cycle.
 
-    Sampling (rather than parsing the cron fields) handles mixed
-    schedules like `0,10 9 * * *` whose gaps vary."""
-    prev = next_fire(schedule, start)
-    if prev is None:
-        return None
+    Five fires can miss a short gap later in a mixed schedule. Two days' worth
+    of permitted clock times cover a full day even when `start` is mid-day.
+    Calendar gaps still come from croniter, so sparse dates aren't treated as
+    consecutive days. Reuse one iterator instead of reparsing each occurrence.
+    """
+    clock = croniter(schedule, start)
+    minutes, hours = clock.expanded[:2]
+    fires_per_day = (60 if minutes == ["*"] else len(minutes)) * (
+        24 if hours == ["*"] else len(hours)
+    )
+    prev = clock.get_next(dt.datetime)
     smallest: dt.timedelta | None = None
-    for _ in range(samples):
-        nxt = next_fire(schedule, prev)
-        if nxt is None:
-            break
+    for _ in range(max(samples, 2 * fires_per_day)):
+        nxt = clock.get_next(dt.datetime)
         gap = nxt - prev
         if smallest is None or gap < smallest:
             smallest = gap
+        if smallest <= dt.timedelta(minutes=1):
+            break  # Five-field cron cannot fire more frequently.
         prev = nxt
     return smallest
 
@@ -386,7 +392,7 @@ def update_fields(path: Path, updates: dict[str, dict[str, str]]) -> None:
     for job_id, fields in updates.items():
         for field_name, value in fields.items():
             text = _update_field(text, job_id, field_name, value)
-    write_text(path, text)
+    write_text_atomic(path, text)
 
 
 # ---------- auto-purge stale jobs ----------
@@ -414,7 +420,7 @@ def _remove_sections(path: Path, job_ids: set[str]) -> None:
         text = pattern.sub("", text)
     # Clean up any resulting triple+ blank lines.
     text = re.sub(r"\n{3,}", "\n\n", text)
-    write_text(path, text)
+    write_text_atomic(path, text)
 
 
 # A fired job no session ever closed sits outside both find_due (not

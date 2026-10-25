@@ -54,6 +54,21 @@ async def dispatch(
     errors with a ToolResultMessage. Cancellation propagates so the loop
     can enforce its time budget and the runtime can stop."""
     checkpoint()
+    if session.sentinel_status is not None:
+        # A producer may batch calls. Closing is final even within that batch;
+        # pair the remaining calls with refusals without invoking any handler.
+        run.tr.write(
+            {
+                "event": "tool_blocked_closed",
+                "turn": turn,
+                "name": call.name,
+                "id": call.id,
+                "arguments": call.arguments,
+            }
+        )
+        return _refused_result(
+            session, call, turn, "session is closed; tool was not executed"
+        )
     log.debug(
         "turn %d: calling %s(%s)",
         turn,
@@ -344,9 +359,15 @@ def _blocks_result(
         # only (errors never reach this tail), riding the same verdict /
         # observer / trace machinery — marked, so a forensic read can
         # never mistake a virtual thread for a real one.
-        faked = run.debug_intercept(
-            call, session.active_plugin.id if session.active_plugin else None, blocks
-        )
+        try:
+            faked = run.debug_intercept(
+                call,
+                session.active_plugin.id if session.active_plugin else None,
+                blocks,
+            )
+        except Exception:
+            log.exception("debug observation transform failed — retaining real result")
+            faked = None
         if faked is not None:
             run.tr.write(
                 {
@@ -465,7 +486,13 @@ def _observe_result(
         factual_result = content
     notices: list[str] = []
     for obs in run.policies.result_observers:
-        advisory = obs.observe(session, call, changed=changed, failed=failed)
+        try:
+            advisory = obs.observe(session, call, changed=changed, failed=failed)
+        except Exception:
+            # The tool already ran. An advisory failure must not erase its
+            # receipt or turn a completed action into a retryable tool error.
+            log.exception("result observer %s failed — skipped", type(obs).__name__)
+            continue
         if advisory is None:
             continue
         run.tr.write(

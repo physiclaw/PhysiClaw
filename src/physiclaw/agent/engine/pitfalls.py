@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 from physiclaw.agent.runtime.sentinel import DONE
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
-from physiclaw.common.text import append_line, read_text, write_text
+from physiclaw.common.text import append_line, read_text, write_text_atomic
 
 if TYPE_CHECKING:
     from physiclaw.agent.engine.session import Session
@@ -102,7 +102,7 @@ def _commit(op: str, items: list[str]) -> None:
     path = _file()
     path.parent.mkdir(parents=True, exist_ok=True)
     _append_history(op, items)
-    write_text(path, "".join(f"- {x}\n" for x in items))
+    write_text_atomic(path, "".join(f"- {x}\n" for x in items))
 
 
 def add(items: list[str]) -> dict:

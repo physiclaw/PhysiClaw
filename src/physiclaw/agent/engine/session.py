@@ -19,6 +19,7 @@ from physiclaw.agent.engine.facts import FactualState
 from physiclaw.agent.engine.plan import Plan
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.stuck import StuckGuard
+from physiclaw.contract.dto import ToolResultMessage
 
 
 @dataclass
@@ -75,6 +76,12 @@ class Session:
     # Host-selected binding while dispatch runs; no message can supply it.
     active_plugin: PluginBinding | None = None
     facts: FactualState = field(default_factory=FactualState)
+    # Latest private context-write receipts per producer. Shared facts redact
+    # notes and interpretation; their author still needs its validation errors.
+    # The LLM consumes its own entry. These never enter a TurnInput snapshot.
+    context_receipts: dict[str, dict[str, ToolResultMessage]] = field(
+        default_factory=dict
+    )
     # Turns the main LLM produced (plugin turns excluded) — the meter
     # gates like PlanGate read, so a long playbook prefix never leaves
     # the model instantly overdue on its first real turn.

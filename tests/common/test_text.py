@@ -12,6 +12,7 @@ from physiclaw.common.text import (
     iter_jsonl,
     read_text,
     write_text,
+    write_text_atomic,
 )
 
 
@@ -22,6 +23,42 @@ def test_write_then_read_roundtrips_utf8(tmp_path: Path) -> None:
     assert read_text(path) == "伦敦 — 14°"
     # Bytes are UTF-8, not a locale codepage.
     assert path.read_bytes().decode("utf-8") == "伦敦 — 14°"
+
+
+@pytest.mark.parametrize("failure", ["write", "replace", "unicode"])
+def test_atomic_text_failure_preserves_existing_file(tmp_path, mocker, failure):
+    directory = tmp_path / "records"
+    directory.mkdir()
+    path = directory / "memory.md"
+    path.write_bytes("已有记忆\r\n".encode())
+    original = path.read_bytes()
+    if failure == "write":
+        write_bytes = Path.write_bytes
+
+        def partial_write(target, data):
+            write_bytes(target, data[:3])
+            raise OSError("disk full")
+
+        mocker.patch.object(Path, "write_bytes", partial_write)
+    elif failure == "replace":
+        mocker.patch.object(Path, "replace", side_effect=OSError("cannot replace"))
+
+    with pytest.raises((OSError, UnicodeEncodeError)):
+        write_text_atomic(path, "\ud800" if failure == "unicode" else "new memory")
+
+    assert path.read_bytes() == original
+    assert list(directory.iterdir()) == [path]
+
+
+def test_atomic_text_roundtrips_utf8_and_replaces_complete_contents(tmp_path):
+    directory = tmp_path / "records"
+    directory.mkdir()
+    path = directory / "memory.md"
+    write_text_atomic(path, "旧记忆\n")
+    write_text_atomic(path, "新记忆\nsecond line\n")
+
+    assert path.read_bytes() == "新记忆\nsecond line\n".encode()
+    assert list(directory.iterdir()) == [path]
 
 
 def test_append_text_utf8(tmp_path: Path) -> None:

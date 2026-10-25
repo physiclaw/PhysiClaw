@@ -22,6 +22,7 @@ from physiclaw.agent.llm import LLMProducer
 from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import STUCK
+from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.agent.trace import RawLog, Trace, new_sid
 from physiclaw.agent.trace.store import Images
 from physiclaw.common import paths
@@ -90,8 +91,8 @@ async def _run_session(
     session: Session,
     settings: Settings | None = None,
 ) -> None:
-    """One session attempt. Fresh sid / Trace / RawLog / MCP / Provider /
-    policy set per call. Writes outcome to `session.sentinel_*`; invalid
+    """One attempt with fresh logs, provider and policies; MCP is process-scoped.
+    Writes outcome to `session.sentinel_*`; invalid
     model references, provider configuration errors, and cancellation propagate;
     runtime crashes close STUCK."""
     provider_id, model_id = parse_model_ref(model_ref)
@@ -153,7 +154,9 @@ async def _run_session(
         # until the first chat call.
         provider = make_chat_provider(provider_id, model_id, usage_sink=tr)
         mcp = await get_mcp()
+        checkpoint()
         mcp_tools = await list_tools_cached()
+        checkpoint()
         # Turn-plugin wake-time setup, fail-open throughout: each
         # config-listed plugin loads blindly and contributes its gated
         # macros (dispatchable only by their owner). Nothing model-visible
@@ -168,6 +171,7 @@ async def _run_session(
         gated_macros: dict[str, Macro] = {}
         active_plugins: list[PluginBinding] = []
         for binding in plugins:
+            checkpoint()
             try:
                 contribution = await binding.plugin.session_setup(services)
                 owned = (
@@ -316,6 +320,7 @@ async def _run_session(
         # provider) that consolidates the list + enforces the cap when the agent
         # added traps this session. Fail-open — never affects the outcome.
         if CONFIG.pitfalls.curate_enabled and session.added_pitfalls:
+            checkpoint()
             await curate.curate(provider, tr=tr, rlog=rlog)
     except asyncio.CancelledError:
         loop.log_external_stop(session, tr)

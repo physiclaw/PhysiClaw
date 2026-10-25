@@ -80,6 +80,34 @@ async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
 # ---------- dispatch basics ----------
 
 
+@pytest.mark.parametrize("local", [False, True])
+async def test_closed_session_refuses_calls_without_execution(mocker, local):
+    from physiclaw.agent.engine.policy import Policies
+
+    handler = mocker.AsyncMock(return_value="must not run")
+    mcp = mocker.Mock(call_tool=mocker.AsyncMock())
+    run = _mk_run(
+        mcp=mcp,
+        schema_by_name={"probe": {}},
+        local_registry={"probe": LocalTool("probe", "probe", {}, handler)}
+        if local
+        else {},
+        policies=Policies(turn_gates=[], dispatch_guards=[], result_observers=[]),
+    )
+    session = Session(sentinel_status="DONE", sentinel_recap="finished")
+    call = _tc("probe")
+
+    result = await dispatch(run, session, call, 0)
+
+    assert result.is_error and result.tool_call_id == call.id
+    assert "session is closed" in result.content
+    handler.assert_not_awaited()
+    mcp.call_tool.assert_not_awaited()
+    assert session.sentinel_status == "DONE"
+    assert session.sentinel_recap == "finished"
+    assert session.facts.events[-1].executed is False
+
+
 async def test_dispatch_reports_a_note_once_with_turn_and_duration(caplog):
     summary = "Observed the phone and found the search field"
 
@@ -208,6 +236,63 @@ async def test_logging_failure_preserves_the_executed_tool_result(mocker, kind, 
     assert not any(
         c.args[0]["event"] == "tool_error" for c in run.tr.write.call_args_list
     )
+
+
+@pytest.mark.parametrize("tool_fails", [False, True])
+async def test_result_observer_failure_preserves_one_actual_receipt(mocker, tool_fails):
+    from physiclaw.agent.engine.policy import Advisory, Policies
+
+    blocks = [{"type": "text", "text": "Action completed | screen: changed"}]
+    mcp = mocker.Mock(
+        call_tool=mocker.AsyncMock(
+            return_value=blocks,
+            side_effect=RuntimeError("device unavailable") if tool_fails else None,
+        )
+    )
+    broken = mocker.Mock()
+    broken.observe.side_effect = RuntimeError("observer crashed")
+    healthy = mocker.Mock()
+    healthy.observe.return_value = Advisory("check the result")
+    run = _mk_run(
+        mcp=mcp,
+        schema_by_name={"tap": {}},
+        policies=Policies(
+            turn_gates=[], dispatch_guards=[], result_observers=[broken, healthy]
+        ),
+    )
+    session = Session()
+    call = _tc("tap", {"bbox": [0.1, 0.1, 0.2, 0.2]})
+
+    result = await dispatch(run, session, call, 0)
+
+    assert result.is_error is tool_fails
+    assert "check the result" in str(result.content)
+    assert ("device unavailable" if tool_fails else "Action completed") in str(
+        result.content
+    )
+    mcp.call_tool.assert_awaited_once()
+    broken.observe.assert_called_once()
+    healthy.observe.assert_called_once()
+    assert len(session.facts.events) == 1
+    receipt = session.facts.events[0]
+    assert receipt.call_id == call.id and receipt.executed
+    assert receipt.is_error is tool_fails
+
+
+async def test_debug_transform_failure_retains_the_real_action_result(mocker):
+    blocks = [{"type": "text", "text": "Action completed | screen: changed"}]
+    mcp = mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks))
+    run = _mk_run(mcp=mcp, schema_by_name={"tap": {}})
+    run.debug_intercept = mocker.Mock(side_effect=RuntimeError("debug failed"))
+    session = Session()
+
+    result = await dispatch(run, session, _tc("tap"), 0)
+
+    assert result.is_error is False
+    assert "Action completed" in str(result.content)
+    mcp.call_tool.assert_awaited_once()
+    assert len(session.facts.events) == 1
+    assert session.facts.events[0].is_error is False
 
 
 async def test_start_notice_failure_preserves_the_actual_tool_error(mocker):

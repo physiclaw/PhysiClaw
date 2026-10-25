@@ -6,14 +6,16 @@ Windows, cp1252 on Western Windows. That's bricked PhysiClaw twice
 already (config.toml in 58aa00d, SKILL.md after). Route every short-
 lived text I/O through these helpers so UTF-8 is the only default.
 
-Long-lived append handles (daily logs in agent/trace and agent/engine/jobs.py) keep an explicit
+Long-lived append handles (session logs in agent/trace) keep an explicit
 ``open(path, "a", encoding="utf-8")`` inline — wrapping a stateful
 file handle in a helper would be more indirection than it's worth.
 """
 
 import json
+import tempfile
 import unicodedata
 from collections.abc import Iterator
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +65,25 @@ def write_text(path: Path, data: str) -> None:
     # Encode before opening: invalid Unicode must not truncate existing state.
     # Binary output also preserves LF without Windows newline translation.
     path.write_bytes(data.encode("utf-8"))
+
+
+def write_text_atomic(path: Path, data: str) -> None:
+    """Replace a text file only after its complete UTF-8 contents are written.
+
+    Each writer owns a sibling temporary file; the last rename wins. A failed
+    write or rename preserves the previous file and removes the temporary one.
+    The parent directory must exist. This does not serialize read/modify/write.
+    """
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as f:
+        tmp = Path(f.name)
+    try:
+        write_text(tmp, data)
+        tmp.replace(path)
+    finally:
+        with suppress(OSError):
+            tmp.unlink(missing_ok=True)
 
 
 def append_text(path: Path, data: str) -> None:

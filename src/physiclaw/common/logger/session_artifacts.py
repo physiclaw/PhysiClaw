@@ -10,13 +10,11 @@ import base64
 import datetime as dt
 import json
 import logging
-import tempfile
-from contextlib import suppress
 from pathlib import Path
 from typing import Any, Mapping
 
 from physiclaw.common.logger.logger import _open_log_file
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.text import read_text, write_text, write_text_atomic
 
 log = logging.getLogger(__name__)
 
@@ -122,16 +120,7 @@ def write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
     """
     # ASCII JSON escapes preserve every code point, including lone surrogates.
     text = json.dumps(obj, indent=2, default=repr) + "\n"
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
-    ) as f:
-        tmp = Path(f.name)
-    try:
-        write_text(tmp, text)
-        tmp.replace(path)
-    finally:
-        with suppress(OSError):
-            tmp.unlink(missing_ok=True)
+    write_text_atomic(path, text)
 
 
 def append_stats(log_dir: Path, summary: dict[str, Any]) -> None:

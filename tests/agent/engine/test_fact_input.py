@@ -634,11 +634,13 @@ async def test_result_observer_failure_records_one_actual_attempt(
 
     result = await dispatch(run, session, _tc("peek"), 0)
 
-    assert result.is_error
+    assert not result.is_error
     run.mcp.call_tool.assert_awaited_once()
+    observer.observe.assert_called_once()
     assert len(session.facts.events) == 1
-    assert session.facts.events[0].is_error
-    assert "observer failed" in session.facts.events[0].result_text
+    assert not session.facts.events[0].is_error
+    assert session.facts.events[0].observation_id == session.facts.observation.id
+    assert "observer failed" not in (session.facts.events[0].result_text or "")
 
 
 @pytest.mark.parametrize(

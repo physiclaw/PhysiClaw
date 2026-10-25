@@ -24,7 +24,7 @@ import re
 
 from physiclaw.common import daylog, paths
 from physiclaw.common.config import CONFIG
-from physiclaw.common.text import append_line, read_text, write_text
+from physiclaw.common.text import append_line, read_text, write_text_atomic
 
 MEMORY_DIR = paths.memory_dir()
 MEMORY_FILE = paths.memory_file()
@@ -203,4 +203,4 @@ def update_fact(old: str, new: str) -> None:
         updated = "".join(
             line for line in text.splitlines(keepends=True) if old not in line
         )
-    write_text(MEMORY_FILE, updated)
+    write_text_atomic(MEMORY_FILE, updated)

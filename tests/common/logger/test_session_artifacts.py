@@ -96,7 +96,7 @@ def test_write_json_atomic_write_failure_preserves_previous_file(
     path = directory / "state.json"
     path.write_text('{"previous": true}', encoding="utf-8")
     mocker.patch(
-        "physiclaw.common.logger.session_artifacts.write_text",
+        "physiclaw.common.text.write_text",
         side_effect=OSError("disk full"),
     )
 

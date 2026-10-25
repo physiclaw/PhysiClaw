@@ -1,9 +1,9 @@
 """Behavioral policies — the judgment layer of the engine loop.
 
-`loop.py` and `dispatch.py` own the protocol invariants (API-legal
-transcript, one ToolResult per ToolCall, finish_reason routing, retries)
-and the *mechanics* of every interception (pop-and-corrective, blocked
-ToolResults, trace events). Everything that is a product decision — WHEN
+`llm.py` owns conversation shape, corrective turns and provider retries.
+`loop.py` arbitrates producers; `dispatch.py` validates and executes their
+calls and records receipts. These callers apply each policy's decision
+and emit its trace events. Everything that is a product decision — WHEN
 to reject a turn, WHEN to refuse a call, WHAT to warn about — lives here
 as a policy object. Three interception shapes:
 

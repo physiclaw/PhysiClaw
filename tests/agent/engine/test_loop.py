@@ -31,6 +31,7 @@ from physiclaw.agent.engine.builtin_tool import LocalTool, build_registry
 from physiclaw.agent.engine.loop import (
     _advance,
     _call_producer,
+    _dispatch_turn,
     drive,
     log_external_stop,
 )
@@ -102,6 +103,84 @@ async def test_loop_closes_cleanly_on_end_session(patched_loop_deps) -> None:
         call.id for call in asst.tool_calls
     ]
     assert all(not event.is_error for event in session.facts.events)
+
+
+@pytest.mark.parametrize("restart", [False, True])
+async def test_closing_a_batch_refuses_later_actions_and_preserves_receipts(
+    budget_clock, restart
+):
+    registry = _registry()
+
+    async def close(session, _args):
+        session.sentinel_status = IDLE if restart else DONE
+        session.restart_for_setup = restart
+        budget_clock.tick(2)
+        return "closed"
+
+    name = "report_screen_layout" if restart else "end_session"
+    registry[name] = LocalTool(name, "close", {}, close)
+    calls = [_tc(name), _tc("tap"), _tc("end_session", {"status": STUCK})]
+    session = Session()
+    run = _mk_run(
+        local_registry=registry,
+        schema_by_name={**{name: {} for name in registry}, "tap": {}},
+        deadline=time.monotonic() + 1,
+    )
+
+    successful = await _dispatch_turn(run, session, _asst(tool_calls=calls), 0)
+
+    assert successful == calls[:1]
+    assert run.mcp.tool_calls == []
+    assert session.sentinel_status == (IDLE if restart else DONE)
+    assert session.restart_for_setup is restart
+    assert session.budget_exhausted is False
+    assert [event.call_id for event in session.facts.events] == [c.id for c in calls]
+    assert [event.executed for event in session.facts.events] == [True, False, False]
+    assert [event.is_error for event in session.facts.events] == [False, True, True]
+
+
+@pytest.mark.parametrize(
+    "call, expected",
+    [
+        (_tc("note", {"summary": 42}), "expected string"),
+        (_tc("update_progress", {"user_said": "   "}), "user_said must not be blank"),
+    ],
+)
+async def test_llm_keeps_its_own_context_errors_private_and_actionable(
+    patched_loop_deps, call, expected
+):
+    registry = build_registry({})
+    companion = (
+        _tc("read_memory")
+        if call.name == "note"
+        else _tc("note", {"summary": "drafting"})
+    )
+    session = Session()
+    provider = FakeProvider(
+        [
+            _asst(tool_calls=[companion, call]),
+            _asst(
+                tool_calls=[
+                    _tc("note", {"summary": "closing"}),
+                    _tc("end_session", {"status": IDLE}),
+                ]
+            ),
+        ]
+    )
+    run = _loop_run(provider, registry, session=session)
+
+    await drive(run, session)
+
+    reply = next(
+        message
+        for message in _llm(run).messages
+        if isinstance(message, ToolResultMessage) and message.tool_call_id == call.id
+    )
+    assert reply.is_error and expected in reply.content
+    shared = next(event for event in session.facts.events if event.call_id == call.id)
+    assert shared.result_text == "context update failed"
+    assert shared.arguments == {}
+    assert expected not in str(session.facts.snapshot(schemas=run.schema_by_name))
 
 
 @pytest.mark.asyncio
@@ -449,7 +528,7 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
     assert any(
         isinstance(m, ToolResultMessage)
         and m.is_error
-        and m.content == "context update failed"
+        and "Summarize before writing" in m.content
         for m in provider.requests[3]
     )
     assert session.scratchpad == "previous"

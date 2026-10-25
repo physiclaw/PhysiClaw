@@ -429,6 +429,30 @@ def test_min_fire_gap_uses_smallest_gap_of_mixed_schedule() -> None:
     assert gap == dt.timedelta(minutes=10)
 
 
+@pytest.mark.parametrize("start_hour", [0, 5, 10, 13, 23])
+def test_periodic_schedule_checks_short_gaps_late_in_the_daily_cycle(
+    _jobs_path, start_hour
+):
+    with (
+        freeze_time(dt.datetime(2026, 10, 25, start_hour)),
+        pytest.raises(ValueError, match="every 20 min"),
+    ):
+        jobs.create_job(
+            id="bursty-job",
+            description="mixed schedule",
+            schedule="0,40 0,2,4,6,8,10,11 * * *",
+            context="ten chars at least",
+            kind=KIND_PERIODIC,
+        )
+
+    assert not _jobs_path.exists()
+
+
+def test_min_fire_gap_does_not_invent_midnight_fires_on_unscheduled_days():
+    gap = job_store.min_fire_gap("0,40 0,23 * * 1", dt.datetime(2026, 10, 25))
+    assert gap == dt.timedelta(minutes=40)
+
+
 def test_create_job_periodic_kind_records_periodic(_jobs_path: Path) -> None:
     with freeze_time("2026-04-28T07:00:00"):
         jobs.create_job(

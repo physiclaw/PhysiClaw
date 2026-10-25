@@ -310,6 +310,7 @@ WARNING_WORDS: dict[str, str] = {
     "tool_blocked_layout": "A tool call was blocked: layout guard",
     "tool_blocked_stuck": "A tool call was blocked: stuck guard",
     "tool_blocked_expired": "A proposal expired before the tool could start",
+    "tool_blocked_closed": "A tool call was blocked: the session already closed",
     "tool_blocked_burned_macro": "A tool call was blocked: this macro already failed",
     "tool_error": "A tool failed",
     "tool_invalid_args": "A tool was called with invalid arguments",

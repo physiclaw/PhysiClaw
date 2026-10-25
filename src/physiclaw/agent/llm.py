@@ -6,12 +6,17 @@ import logging
 import time
 
 from physiclaw.agent.engine import assemble, compact
+from physiclaw.agent.engine.facts import CONTEXT_CALLS
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
 from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.common.log_style import console_text
-from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
+from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderTransientError,
+)
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -23,7 +28,7 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.plugin import PluginServices, ProposedTurn, SessionSetup
-from physiclaw.contract.turn import TurnInput, TurnMetadata
+from physiclaw.contract.turn import ActionEvent, TurnInput, TurnMetadata
 from physiclaw.provider import ChatProvider, mcp_blocks_to_content_blocks
 
 log = logging.getLogger(__name__)
@@ -65,6 +70,7 @@ class LLMProducer:
         pass
 
     def _ingest(self, turn: TurnInput) -> None:
+        context_receipts = self.session.context_receipts.pop("physiclaw.llm", {})
         events = [
             event for event in turn.events if event.sequence > self._seen_sequence
         ]
@@ -91,7 +97,7 @@ class LLMProducer:
         for event in events:
             self._seen_sequence = event.sequence
             own = event.call_id in self._pending
-            if not own and event.tool in {"note", "update_progress"}:
+            if not own and event.tool in CONTEXT_CALLS:
                 continue
             if not own:
                 arguments = decision_json(event.arguments)
@@ -103,20 +109,10 @@ class LLMProducer:
                         tool_calls=[ToolCall(event.call_id, event.tool, arguments)],
                     )
                 )
-            blocks = decision_json(event.result_blocks)
-            assert isinstance(blocks, list)
-            content = mcp_blocks_to_content_blocks(blocks)
-            if event.notices:
-                content = (
-                    "\n".join([content, *event.notices])
-                    if isinstance(content, str)
-                    else [*content, *(TextBlock(text=text) for text in event.notices)]
-                )
-            self.messages.append(
-                ToolResultMessage(
-                    tool_call_id=event.call_id, content=content, is_error=event.is_error
-                )
-            )
+            result = context_receipts.get(event.call_id) if own else None
+            if result is None:
+                result = _event_result(event)
+            self.messages.append(result)
             self._pending.discard(event.call_id)
         compact.drop_stale_screens(self.messages)
 
@@ -130,6 +126,8 @@ class LLMProducer:
             request, imminent = self._prepare_request(metadata.turn)
             try:
                 asst = await self._chat_with_retry(request, metadata)
+            except ProviderConfigurationError:
+                raise  # The launcher reports setup errors; a fresh session cannot fix them.
             except Exception as exc:
                 self.run.tr.write(
                     {
@@ -304,6 +302,22 @@ class LLMProducer:
                 self.messages.append(UserMessage(content=rejection.corrective))
                 return True
         return False
+
+
+def _event_result(event: ActionEvent) -> ToolResultMessage:
+    """Render a shared execution receipt, including host diagnostics."""
+    blocks = decision_json(event.result_blocks)
+    assert isinstance(blocks, list)
+    content = mcp_blocks_to_content_blocks(blocks)
+    if event.notices:
+        content = (
+            "\n".join([content, *event.notices])
+            if isinstance(content, str)
+            else [*content, *(TextBlock(text=text) for text in event.notices)]
+        )
+    return ToolResultMessage(
+        tool_call_id=event.call_id, content=content, is_error=event.is_error
+    )
 
 
 def _corrective_for_bad_shape(called: list[str]) -> str:

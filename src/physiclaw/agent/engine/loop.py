@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 
 from physiclaw.agent.engine import memory, trajectory
 from physiclaw.agent.engine.dispatch import dispatch
+from physiclaw.agent.engine.facts import CONTEXT_CALLS
 from physiclaw.agent.engine.provenance import ProducedTurn
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
@@ -28,11 +29,13 @@ from physiclaw.common.logger import (
     reset_log_context,
     set_tag_accent,
 )
+from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
     ToolCall,
+    ToolResultMessage,
 )
 from physiclaw.contract.plugin import ProposedTurn
 from physiclaw.contract.turn import TurnInput, TurnMetadata
@@ -181,8 +184,8 @@ async def _dispatch_turn(
     *,
     expires_at: float | None = None,
 ) -> list[ToolCall]:
-    """Run the turn's tool_calls — principle 6: exactly one ToolResult per
-    ToolCall, in order, in the very next messages. Flags a length-truncation
+    """Dispatch in order and record one receipt per call for the producers.
+    A closed session refuses the rest of the batch. Flags a length-truncation
     warning first: if finish=length the final tool_call's arguments may be cut
     off — the validator catches it and pairs an error result, same path as any
     bad args. Returns the calls that succeeded for trajectory bookkeeping."""
@@ -197,14 +200,21 @@ async def _dispatch_turn(
         run.tr.write({"event": "finish_length_warning", "turn": turn})
 
     successful_calls: list[ToolCall] = []
+    context_receipts: dict[str, ToolResultMessage] = {}
+    if session.active_plugin is not None:
+        session.context_receipts[session.active_plugin.id] = context_receipts
     for call in asst.tool_calls:
-        if _stop_if_expired(run, session, turn):
+        # Once closed, dispatch only records refusals for the remaining calls.
+        # A deadline crossed by the closing call must not replace its outcome.
+        if session.sentinel_status is None and _stop_if_expired(run, session, turn):
             return successful_calls
         context = bind_log_context(tool=call.name, tool_call_id=call.id)
         try:
             result = await dispatch(run, session, call, turn, expires_at=expires_at)
         finally:
             reset_log_context(context)
+        if call.name in CONTEXT_CALLS:
+            context_receipts[call.id] = result
         if not result.is_error:
             successful_calls.append(call)
     return successful_calls
@@ -328,6 +338,12 @@ async def _advance(
                     int((time.perf_counter() - started) * 1000),
                     proposal.expires_at,
                 )
+        except ProviderConfigurationError:
+            if binding.id == "physiclaw.llm":
+                raise
+            log.exception(
+                "producer %s is not configured — trying the next slot", binding.id
+            )
         except Exception:
             log.exception("producer %s failed — trying the next slot", binding.id)
         if session.sentinel_status is not None:
