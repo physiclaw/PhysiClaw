@@ -912,6 +912,26 @@ def test_refused_apply_focus_is_not_remembered(mocker) -> None:
     apply_spy.assert_called_once()  # only the refused explicit call
 
 
+@pytest.mark.parametrize("failure", [False, OSError("USB lost")])
+def test_failed_focus_change_invalidates_previous_pin(mocker, failure):
+    camera, cap = _ready_camera(mocker)
+    apply = mocker.patch.object(
+        camera_mod.platform, "camera_apply_focus", return_value=True
+    )
+    unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+    assert camera.apply_focus(137.0)
+    apply.side_effect = [failure]
+
+    if isinstance(failure, Exception):
+        with pytest.raises(OSError, match="USB lost"):
+            camera.apply_focus(200.0)
+    else:
+        assert camera.apply_focus(200.0) is False
+        unlock.assert_called_once_with(cap)
+    assert camera.focus_pinned is False
+    assert camera._focus_value == 137.0
+
+
 def test_unlock_focus_clears_the_remembered_value(mocker) -> None:
     vc1 = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     cam = _open_camera_no_thread(mocker, vc=vc1)

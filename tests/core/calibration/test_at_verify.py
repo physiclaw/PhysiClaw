@@ -278,6 +278,7 @@ def test_verify_assistive_touch_clipboard_timeout(mocker, caplog) -> None:
     cal = _make_cal(viewport_shift=vshift)
     bridge = MagicMock()
     bridge.wait_clipboard.return_value = False
+    bridge.expire_text.return_value = False
     bridge.connectivity_hint.return_value = None
     img = np.zeros((400, 400, 3), dtype=np.uint8)
     ok, buf = cv2.imencode(".png", img)
@@ -353,6 +354,28 @@ def test_regression_at_retry_rejects_photo_from_previous_attempt(mocker) -> None
     assert first["passed"] is True
     assert second["passed"] is False
     assert second["screenshot"] == {"passed": False, "matched": 0, "total": 64}
+
+
+@pytest.mark.parametrize("fetched_at_timeout", [True, False])
+def test_clipboard_timeout_resolves_fetch_and_retirement_atomically(
+    mocker, fetched_at_timeout
+):
+    at, cal, bridge, phone = _real_at_setup(mocker)
+    at.long_press.side_effect = None
+
+    def wait_clipboard(*, timeout):
+        if fetched_at_timeout:
+            assert bridge.fetch_text() is not None
+        return False
+
+    mocker.patch.object(bridge, "wait_clipboard", side_effect=wait_clipboard)
+    result = at_verify_mod.verify_assistive_touch(
+        MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
+    )
+
+    assert result["clipboard"]["fetched"] is fetched_at_timeout
+    assert result["passed"] is fetched_at_timeout
+    assert bridge.fetch_text() is None
 
 
 @pytest.mark.parametrize(

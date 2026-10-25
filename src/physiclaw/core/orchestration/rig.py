@@ -606,9 +606,7 @@ class HardwareRig:
         """Move arm to the center of a bbox [left, top, right, bottom] (0-1).
         Caller must hold the hardware lock."""
         self.assert_locked()
-        t = self.transforms
-        if t is None:
-            raise RuntimeError("Screen calibration not done")
+        t = self.require_transforms()
         cx, cy = t.bbox_center_pct(bbox)
         gx, gy = t.pct_to_grbl_mm(cx, cy)
         arm = self.require_arm()
@@ -631,9 +629,7 @@ class HardwareRig:
         endpoint (see ``StylusArm.swipe_to``). Caller must hold the
         hardware lock."""
         self.assert_locked()
-        t = self.transforms
-        if t is None:
-            raise RuntimeError("Screen calibration not done")
+        t = self.require_transforms()
         ex, ey = t.swipe_end_pct(bbox, direction, dist)
         ex_mm, ey_mm = t.pct_to_grbl_mm(ex, ey)
         self.move_to_bbox_center(bbox)

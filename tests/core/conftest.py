@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from types import SimpleNamespace
+
+
+def stream_request(data: bytes, **fields) -> SimpleNamespace:
+    """Minimal request with a streamed body and caller-supplied metadata."""
+
+    async def stream():
+        yield data
+
+    return SimpleNamespace(stream=stream, **fields)
 
 
 def wire_locked(rig):

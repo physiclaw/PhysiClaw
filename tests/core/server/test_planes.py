@@ -22,8 +22,10 @@ async def _call(
     app,
     path: str = "/api/x",
     *,
-    headers: dict[str, str] | None = None,
+    headers: dict[str, str] | list[tuple[str, str]] | None = None,
     client: tuple[str, int] | None = ("192.168.1.5", 40000),
+    method: str = "GET",
+    scheme: str = "http",
 ) -> int:
     sent: dict = {}
 
@@ -34,15 +36,15 @@ async def _call(
         if msg["type"] == "http.response.start":
             sent["status"] = msg["status"]
 
+    header_items = headers.items() if isinstance(headers, dict) else headers or []
     scope = {
         "type": "http",
-        "method": "GET",
+        "method": method,
+        "scheme": scheme,
         "path": path,
         "raw_path": path.encode(),
         "query_string": b"",
-        "headers": [
-            (k.lower().encode(), v.encode()) for k, v in (headers or {}).items()
-        ],
+        "headers": [(k.lower().encode(), v.encode()) for k, v in header_items],
         "client": client,
         "server": ("127.0.0.1", 8048),
     }
@@ -124,6 +126,108 @@ async def test_control_gate_stands_down_on_wildcard_bind(bind: str) -> None:
     assert await _call(gate, headers={"host": "192.168.1.7:8048"}) == 200
 
 
+@pytest.mark.parametrize("bind", ["127.0.0.1", "0.0.0.0", "::"])
+@pytest.mark.parametrize("method", ["GET", "POST", "OPTIONS"])
+async def test_control_gate_blocks_cross_origin_before_routing(bind, method):
+    gate = ControlGate(_inner_ok, host=bind)
+
+    assert (
+        await _call(
+            gate,
+            path="/api/connect-arm",
+            method=method,
+            headers={"host": "127.0.0.1:8048", "origin": "https://attacker.example"},
+        )
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "null",
+        "",
+        "http://127.0.0.1:8049",
+        "https://127.0.0.1:8048",
+        "http://127.0.0.1:8048/",
+        "http://127.0.0.1:8048?x",
+        "http://127.0.0.1:8048#x",
+        "http://user@127.0.0.1:8048",
+        "http://127.0.0.1:8048 https://attacker.example",
+    ],
+)
+async def test_control_gate_rejects_invalid_or_different_origin(origin):
+    assert (
+        await _call(
+            ControlGate(_inner_ok),
+            headers={"host": "127.0.0.1:8048", "origin": origin},
+        )
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    ("host", "origin", "scheme"),
+    [
+        ("LOCALHOST:8048", "http://localhost:8048", "http"),
+        ("[::1]:8048", "http://[0:0:0:0:0:0:0:1]:8048", "http"),
+        ("127.0.0.1", "http://127.0.0.1:80", "http"),
+        ("localhost:443", "https://localhost", "https"),
+    ],
+)
+async def test_control_gate_accepts_same_origin(host, origin, scheme):
+    assert (
+        await _call(
+            ControlGate(_inner_ok),
+            method="POST",
+            scheme=scheme,
+            headers={"host": host, "origin": origin, "sec-fetch-site": "same-origin"},
+        )
+        == 200
+    )
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+async def test_control_gate_blocks_foreign_browser_get_without_origin(site):
+    assert (
+        await _call(
+            ControlGate(_inner_ok),
+            headers={"host": "127.0.0.1:8048", "sec-fetch-site": site},
+        )
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "[::1]evil:8048",
+        "[::1",
+        "localhost:",
+        "localhost:99999",
+        "localhost:0",
+        "localhost:abc",
+        "user@localhost",
+        "localhost/path",
+    ],
+)
+async def test_control_gate_rejects_malformed_authorities(host):
+    assert await _call(ControlGate(_inner_ok), headers={"host": host}) == 421
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "status"),
+    [("host", "localhost:8048", 421), ("origin", "http://localhost:8048", 403)],
+)
+async def test_control_gate_rejects_duplicate_boundary_headers(name, value, status):
+    headers = [
+        ("host", "localhost:8048"),
+        ("origin", "http://localhost:8048"),
+        (name, value),
+    ]
+    assert await _call(ControlGate(_inner_ok), headers=headers) == status
+
+
 # ---------- PhoneApp ----------
 
 
@@ -148,8 +252,8 @@ def test_phone_app_collects_routes_and_builds_starlette() -> None:
 
 
 def test_build_bridge_app_is_the_plain_phone_app() -> None:
-    # No gate on the LAN plane: nothing secret crosses the bridge, and
-    # the upload guards live in the handler (see planes.py module doc).
+    # The LAN plane retains its trusted-network model; upload guards
+    # live in the handler (see planes.py module doc).
     from starlette.applications import Starlette
 
     assert isinstance(build_bridge_app(PhoneApp()), Starlette)

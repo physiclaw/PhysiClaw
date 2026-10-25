@@ -1,13 +1,14 @@
 """Tests for `physiclaw.core.bridge.handler` — Starlette route handlers.
 
 Each handler takes a Starlette `request` plus state objects. Tests
-construct minimal fake requests (with `body()` and `json()` async
-methods) and use real `BridgeState` / `CalibrationState` / `PageState`
+construct minimal fake requests (with streamed bodies) and use real
+`BridgeState` / `CalibrationState` / `PageState`
 instances.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -30,18 +31,12 @@ from physiclaw.core.bridge.handler import (
 from physiclaw.core.bridge.page import PageState
 from physiclaw.core.bridge.state import BridgeState
 from physiclaw.core.calibration.transforms import ViewportShift
+from tests.core.conftest import stream_request
 
 
 @pytest.fixture(autouse=True)
 def _no_real_save_screenshot(mocker) -> None:
     mocker.patch("physiclaw.core.bridge.state.save_screenshot")
-
-
-def _async_returning(value: Any):
-    async def _coro():
-        return value
-
-    return _coro
 
 
 def _fake_request(
@@ -51,24 +46,86 @@ def _fake_request(
     client_host: str = "127.0.0.1",
     headers: dict[str, str] | None = None,
 ):
-    req = SimpleNamespace()
-    data = body_bytes if body_bytes is not None else b""
-    req.body = _async_returning(data)
-    req.json = _async_returning(json_obj)
-    req.url = SimpleNamespace(port=url_port)
-    req.client = SimpleNamespace(host=client_host)
-    req.headers = headers or {}
-
-    async def _stream():
-        if data:
-            yield data
-
-    req.stream = _stream
-    return req
+    data = body_bytes if body_bytes is not None else json.dumps(json_obj).encode()
+    return stream_request(
+        data,
+        url=SimpleNamespace(port=url_port),
+        client=SimpleNamespace(host=client_host),
+        headers=headers or {},
+    )
 
 
 # A minimal body that passes the upload magic-byte check.
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake png payload"
+
+
+@pytest.mark.parametrize("declared", [None, "1", "1000000"])
+async def test_json_stream_is_bounded_before_state_changes(monkeypatch, declared):
+    from starlette.exceptions import HTTPException
+
+    monkeypatch.setattr(handler, "MAX_JSON_BYTES", 32)
+    request = _fake_request(
+        headers={} if declared is None else {"content-length": declared}
+    )
+
+    async def stream():
+        yield b" " * 32
+        yield b" "
+        pytest.fail("oversized JSON stream must stop being read")
+
+    request.stream = stream
+    cal = CalibrationState()
+    with pytest.raises(HTTPException) as error:
+        await handle_screen_dimension(request, cal)
+
+    assert error.value.status_code == 413
+    assert cal.screen_dimension is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (b"", {}),
+        (b"null", None),
+        (b"[]", None),
+        (b"false", None),
+        (b"not json", None),
+        (b"\xff", None),
+        (b" ", None),
+    ],
+)
+async def test_optional_json_defaults_only_for_absent_body(payload, expected):
+    assert (
+        await handler.json_or_none(_fake_request(body_bytes=payload), allow_empty=True)
+        == expected
+    )
+
+
+async def test_json_stream_accepts_exact_limit_and_split_utf8(monkeypatch):
+    data = '{"text":"你好"}'.encode()
+    monkeypatch.setattr(handler, "MAX_JSON_BYTES", len(data))
+    request = _fake_request()
+
+    async def stream():
+        for value in data:
+            yield bytes([value])
+
+    request.stream = stream
+    assert await handler.json_or_none(request) == {"text": "你好"}
+
+
+def test_oversized_json_returns_http_413_without_mutating_bridge(monkeypatch):
+    from starlette.testclient import TestClient
+
+    from physiclaw.core.server.app import build_server
+
+    monkeypatch.setattr(handler, "MAX_JSON_BYTES", 32)
+    bundle = build_server()
+    with TestClient(bundle.phone_app.build()) as client:
+        response = client.post("/api/bridge/screen-dimension", content=b" " * 33)
+
+    assert response.status_code == 413
+    assert bundle.calib.screen_dimension is None
 
 
 # ---------- serve_bridge_page ----------
@@ -562,19 +619,11 @@ async def test_handle_calib_touch_409_when_no_step_waiting() -> None:
 # ---------- malformed-input guards (400/409, never 500) ----------
 
 
-def _raising_json_request():
-    req = _fake_request()
-
-    async def _bad_json():
-        raise ValueError("not json")
-
-    req.json = _bad_json
-    return req
-
-
 @pytest.mark.asyncio
 async def test_handle_screen_dimension_400_on_malformed_json() -> None:
-    resp = await handle_screen_dimension(_raising_json_request(), CalibrationState())
+    resp = await handle_screen_dimension(
+        _fake_request(body_bytes=b"not json"), CalibrationState()
+    )
 
     assert resp.status_code == 400
 
@@ -593,7 +642,9 @@ async def test_mode_switch_400_on_malformed_json() -> None:
     bridge = BridgeState()
     cal = CalibrationState()
 
-    resp = await handle_mode_switch(_raising_json_request(), PageState(bridge, cal))
+    resp = await handle_mode_switch(
+        _fake_request(body_bytes=b"not json"), PageState(bridge, cal)
+    )
 
     assert resp.status_code == 400
 
@@ -722,9 +773,9 @@ async def test_regression_touch_body_read_cannot_cross_collection_boundary(trans
 
     async def read_body():
         actions[transition]()
-        return body
+        yield json.dumps(body).encode()
 
-    request.json = read_body
+    request.stream = read_body
 
     response = await handle_calib_touch(request, cal)
 

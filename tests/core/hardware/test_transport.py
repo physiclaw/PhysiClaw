@@ -51,6 +51,35 @@ class _FakeSerial:
         self.closed = True
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "",
+        " ",
+        "G0 X1\nG0 X2",
+        "G0 X1\r",
+        "G0\x00",
+        "G0\x18",
+        "G0?",
+        "G0!",
+        "G0~",
+        "G0\x7f",
+        "G0 é",
+        None,
+    ],
+)
+def test_invalid_command_never_writes_or_poison_acknowledgments(command):
+    serial = _FakeSerial([b"ok\n"])
+    transport = SerialTransport(serial)
+
+    with pytest.raises(ValueError, match="one ASCII line"):
+        transport.send(command)
+    assert serial.writes == []
+
+    transport.send("G90")
+    assert serial.writes == [b"G90\n"]
+
+
 def test_send_raises_typed_timeout() -> None:
     t = SerialTransport(_FakeSerial(responses=[b""] * 10))
 

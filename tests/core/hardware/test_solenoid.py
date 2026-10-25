@@ -54,6 +54,16 @@ def sol(rec: Recorder) -> Solenoid:
     return Solenoid(send=rec.send, dwell=rec.dwell)
 
 
+@pytest.mark.parametrize("method", ["tap", "double_tap", "press_and_hold"])
+@pytest.mark.parametrize(
+    "duration", [-1, float("nan"), float("inf"), True, "0.1", 10**1000]
+)
+def test_invalid_duration_cannot_energize_coil(rec, sol, method, duration):
+    with pytest.raises(ValueError):
+        getattr(sol, method)(duration)
+    assert rec.calls == []
+
+
 # ---------- configure ----------
 
 

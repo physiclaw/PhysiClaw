@@ -579,6 +579,35 @@ def test_sequence_stops_on_first_failure(pc: PhysiClaw, wire_rig) -> None:
     assert len(lines) == 2  # third step skipped
 
 
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "bad tool",
+        "",
+        "tap\nforged",
+        "tap\rforged",
+        None,
+        ["bad", "tool"],
+        {"bad": "tool"},
+    ],
+)
+def test_malformed_sequence_names_remain_detectable_failures(pc, wire_rig, tool):
+    from physiclaw.common.verdict import failure_line
+
+    wire_rig(pc.rig)
+    out = pc.sequence(
+        [
+            {"tool_name": "tap", "arg": [0.1, 0.1, 0.2, 0.2]},
+            {"tool_name": tool},
+            {"tool_name": "tap", "arg": [0.3, 0.3, 0.4, 0.4]},
+        ]
+    )
+
+    failure = failure_line("sequence", out.text)
+    assert failure is not None and failure.startswith("2 ? FAIL (")
+    pc.rig._arm.tap.assert_called_once()
+
+
 def test_sequence_step_missing_tool_name_fails_that_step_only(
     pc: PhysiClaw, wire_rig
 ) -> None:

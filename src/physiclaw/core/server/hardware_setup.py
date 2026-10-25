@@ -93,14 +93,12 @@ async def handle_connect_camera(
     Body: ``{"index": "auto"}`` (or body omitted) — auto-pick via the
     RGBM corner markers (see ``camera_pick.resolve_auto_index``).
     """
-    body = await json_or_none(request)
+    body = await json_or_none(request, allow_empty=True)
     if body is None:
-        if await request.body():
-            return JSONResponse(
-                {"status": "error", "message": "body must be a JSON object"},
-                status_code=400,
-            )
-        body = {}
+        return JSONResponse(
+            {"status": "error", "message": "body must be a JSON object"},
+            status_code=400,
+        )
     index = body.get("index")
     if index is None or index == "auto":
         index = None

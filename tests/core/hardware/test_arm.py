@@ -102,6 +102,73 @@ def _arm(
     return StylusArm(), fake
 
 
+# ---------- input validation ----------
+
+
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), -float("inf"), True, "1", 10**1000]
+)
+@pytest.mark.parametrize(
+    "method", ["rapid_to", "_linear_move", "jog", "set_work_position", "swipe_to"]
+)
+def test_non_numeric_or_nonfinite_coordinates_never_touch_hardware(
+    mocker, method, value
+):
+    arm, serial = _arm(mocker)
+    with pytest.raises(ValueError, match="finite number"):
+        getattr(arm, method)(value, 0)
+    assert serial.writes == []
+
+
+@pytest.mark.parametrize(
+    "speed", [0, -1, float("nan"), float("inf"), True, "8000\nG91G0 X100"]
+)
+@pytest.mark.parametrize("method", ["rapid_to", "_linear_move"])
+def test_invalid_feedrate_never_writes_gcode(mocker, method, speed):
+    arm, serial = _arm(mocker)
+    with pytest.raises(ValueError):
+        getattr(arm, method)(1, 2, speed=speed)
+    assert serial.writes == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"speed": "invalid"},
+        {"start_dwell": -1},
+        {"end_dwell": -1},
+        {"start_dwell": float("nan")},
+        {"end_dwell": float("inf")},
+        {"end_dwell": "0.1\nM3 S1000"},
+    ],
+)
+def test_invalid_swipe_is_rejected_before_stylus_contact(mocker, kwargs):
+    arm, serial = _arm(mocker)
+    with pytest.raises((ValueError, KeyError)):
+        arm.swipe_to(1, 2, **kwargs)
+    assert serial.writes == []
+
+
+@pytest.mark.parametrize(
+    "seconds", [-1, float("nan"), float("inf"), True, "0.1\nG0 X10"]
+)
+def test_invalid_dwell_never_writes_gcode(mocker, seconds):
+    arm, serial = _arm(mocker)
+    with pytest.raises(ValueError):
+        arm._dwell(seconds)
+    assert serial.writes == []
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_invalid_relative_swipe_never_makes_contact(mocker, value):
+    arm, serial = _arm(mocker)
+    arm.set_direction_mapping((value, 0), (0, 1))
+
+    with pytest.raises(ValueError, match="finite number"):
+        arm.swipe("right")
+    assert serial.writes == []
+
+
 # ---------- __init__ ----------
 
 
@@ -294,6 +361,24 @@ def test_wait_idle_raises_on_timeout(mocker) -> None:
 
 
 # ---------- position ----------
+
+
+@pytest.mark.parametrize("field", ["WPos", "MPos", "WCO"])
+@pytest.mark.parametrize(
+    "coordinates",
+    ["1,2garbage", "1,nan", "inf,2", "1,2,3junk", "1,2,3,4", "1", "1,1e999"],
+)
+def test_position_rejects_whole_corrupt_coordinate_field(mocker, field, coordinates):
+    status = f"<Idle|{field}:{coordinates}|FS:0,0>\n".encode()
+    arm, _ = _arm(mocker, status_replies=[status])
+    with pytest.raises(arm_mod.ProtocolError, match="Cannot parse"):
+        arm.position()
+
+
+def test_position_rejects_overflow_in_work_offset(mocker):
+    arm, _ = _arm(mocker, status_replies=[b"<Idle|MPos:1e308,0|WCO:-1e308,0>\n"])
+    with pytest.raises(arm_mod.ProtocolError, match="Nonfinite work position"):
+        arm.position()
 
 
 def test_position_parses_wpos(mocker) -> None:

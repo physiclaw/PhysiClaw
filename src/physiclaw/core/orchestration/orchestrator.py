@@ -345,20 +345,17 @@ class PhysiClaw:
         def act() -> str:
             lines = []
             for i, s in enumerate(steps, 1):
-                # Read the tool name INSIDE the try: the schema is only
-                # list[dict], so a malformed step (missing "tool_name",
-                # non-dict junk) must surface as a per-step FAIL line
-                # (keeping the results of steps already run + the fused
-                # view), not a bare error that discards the whole batch's
-                # report. The "?" seed covers the case where the read
-                # itself is what failed.
-                tool = "?"
+                # Keep malformed steps inside the try so prior results survive.
+                # The failure parser requires a single-token tool label.
+                label = "?"
                 try:
                     tool = s[STEP_TOOL]
+                    if isinstance(tool, str) and tool.isidentifier():
+                        label = tool
                     result = self._run_step(tool, s.get(STEP_ARG))
-                    lines.append(f"{i} {tool} ok — {result}")
+                    lines.append(f"{i} {label} ok — {result}")
                 except Exception as e:
-                    lines.append(f"{i} {tool} FAIL ({e})")
+                    lines.append(f"{i} {label} FAIL ({e})")
                     break
             return "\n".join(lines)
 

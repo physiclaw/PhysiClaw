@@ -5,10 +5,13 @@ bridge page, accept screenshot uploads, handle clipboard confirmations,
 and report calibration touch events.
 """
 
+import json
 import logging
 import math
 from pathlib import Path
 
+from starlette.exceptions import HTTPException
+from starlette.requests import ClientDisconnect, Request
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from physiclaw.common.text import read_text
@@ -25,21 +28,30 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 # PNG is 2–8 MiB; 10 MiB is generous headroom, small enough that a
 # malicious poster can't balloon the process.
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_JSON_BYTES = 64 * 1024
 _IMAGE_MAGICS = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")  # PNG, JPEG
 
 
-async def json_or_none(request) -> dict | None:
-    """Parse the request body as a JSON object, or None on anything else.
+async def json_or_none(request: Request, *, allow_empty: bool = False) -> dict | None:
+    """Read a bounded JSON object; return None for malformed input.
 
-    LAN clients (Safari, iOS Shortcuts) and CLI wrappers can send junk
-    or empty bodies; a malformed body is the caller's error (a 4xx at
-    the call site), never a handler crash that surfaces as a 500. The
-    one body parser for every handler family — the calibration handlers
-    import it too, so the policy lives here alone.
+    Only an absent body can opt into defaults with ``allow_empty``. Invalid
+    JSON and non-object values must never select a default hardware action.
+    Bound the stream itself, including requests without Content-Length.
     """
+    data = bytearray()
     try:
-        body = await request.json()
-    except Exception:
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_JSON_BYTES:
+                raise HTTPException(status_code=413, detail="JSON body too large")
+            data.extend(chunk)
+    except ClientDisconnect:
+        return None
+    if not data and allow_empty:
+        return {}
+    try:
+        body = json.loads(data)
+    except (ValueError, RecursionError):
         return None
     return body if isinstance(body, dict) else None
 
@@ -96,9 +108,8 @@ async def handle_clipboard_copied(request, bridge: BridgeState):
     Body: {"text_id": int}, from the poll that supplied the copied text.
     Stale acknowledgements return 409 without confirming the current text.
 
-    Deliberately NOT gated by the phone-IP set (see
-    ``BridgeState.upload_ip_allowed``): the trust model for this route
-    is the documented one (planes.py) — nothing secret crosses it."""
+    This route relies on the trusted LAN described in ``server/planes.py``;
+    the text ID identifies the operation, not an authenticated sender."""
     body = await json_or_none(request)
     if body is None or type(body.get("text_id")) is not int:
         return _bad_request("text_id must be an integer from the phone state")
@@ -225,8 +236,8 @@ async def handle_clipboard_fetch(request, bridge: BridgeState):
 
     Deliberately NOT gated by the phone-IP set: this flow needs no
     /bridge page open at all (BridgeState flow 2), so the phone may not
-    be a recent poller. The queued text is the agent reporting its own
-    activity — the documented bridge trust model (planes.py).
+    be a recent poller. Any client on the trusted LAN can fetch this text;
+    see the bridge trust model in ``server/planes.py``.
     """
     text = bridge.fetch_text()
     if text is None:

@@ -18,7 +18,7 @@ from physiclaw.core.calibration import validate as validate_mod
 from physiclaw.core.calibration.handler import (
     _err,
     _ok,
-    _read_body,
+    _read_flag,
     _run_blocking,
     handle_calibrate_arm,
     handle_calibrate_camera_frame,
@@ -31,21 +31,7 @@ from physiclaw.core.calibration.handler import (
 )
 from physiclaw.core.calibration.transforms import ViewportShift
 from physiclaw.core.orchestration import rig as rig_mod
-from tests.core.conftest import wire_locked
-
-
-def _async(value: Any):
-    async def _coro():
-        return value
-
-    return _coro
-
-
-def _async_raise(exc: Exception):
-    async def _coro():
-        raise exc
-
-    return _coro
+from tests.core.conftest import stream_request, wire_locked
 
 
 def _rig_mock() -> MagicMock:
@@ -56,13 +42,11 @@ def _rig_mock() -> MagicMock:
     return wire_locked(MagicMock(name="rig"))
 
 
-def _fake_request(json_obj: Any = None, raise_on_json: bool = False):
-    req = SimpleNamespace()
-    if raise_on_json:
-        req.json = _async_raise(RuntimeError("bad body"))
-    else:
-        req.json = _async(json_obj)
-    return req
+def _fake_request(json_obj: Any = None, *, body_bytes: bytes | None = None):
+    if body_bytes is not None:
+        return stream_request(body_bytes)
+    data = b"" if json_obj is None else json.dumps(json_obj).encode()
+    return stream_request(data)
 
 
 def _read_json(response) -> dict:
@@ -92,17 +76,46 @@ def test_err_custom_status_code() -> None:
 
 
 @pytest.mark.asyncio
-async def test_read_body_parses_json() -> None:
-    out = await _read_body(_fake_request(json_obj={"x": 1}))
-
-    assert out == {"x": 1}
+async def test_read_flag_parses_json() -> None:
+    assert await _read_flag(_fake_request(json_obj={"fresh": True}), "fresh") is True
 
 
 @pytest.mark.asyncio
-async def test_read_body_returns_empty_dict_on_failure() -> None:
-    out = await _read_body(_fake_request(raise_on_json=True))
+async def test_read_flag_rejects_malformed_body() -> None:
+    with pytest.raises(ValueError, match="JSON object"):
+        await _read_flag(_fake_request(body_bytes=b"not json"), "fresh")
 
-    assert out == {}
+
+@pytest.mark.parametrize("flag", ["fresh", "from_park"])
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, None, [], {}])
+async def test_invalid_calibration_flag_cannot_start_hardware(flag, value):
+    rig = _rig_mock()
+    request = _fake_request({flag: value})
+    if flag == "fresh":
+        response = await handle_measure_viewport_shift(
+            request, rig, MagicMock(), MagicMock(), MagicMock()
+        )
+    else:
+        response = await handle_calibrate_arm(request, rig, MagicMock(), MagicMock())
+
+    assert response.status_code == 400
+    assert _read_json(response)["message"] == f"{flag} must be a boolean"
+    assert rig.mock_calls == []
+
+
+@pytest.mark.parametrize("flag", ["fresh", "from_park"])
+async def test_malformed_calibration_body_cannot_start_hardware(flag):
+    rig = _rig_mock()
+    request = _fake_request(body_bytes=b"not json")
+    if flag == "fresh":
+        response = await handle_measure_viewport_shift(
+            request, rig, MagicMock(), MagicMock(), MagicMock()
+        )
+    else:
+        response = await handle_calibrate_arm(request, rig, MagicMock(), MagicMock())
+
+    assert response.status_code == 400
+    assert rig.mock_calls == []
 
 
 @pytest.mark.asyncio
@@ -161,7 +174,7 @@ async def test_handle_measure_viewport_shift_default_fresh_false(mocker) -> None
     spy = mocker.patch.object(handler, "measure_viewport_shift", return_value=vs)
 
     await handle_measure_viewport_shift(
-        _fake_request(raise_on_json=True),
+        _fake_request(),
         rig,
         calib,
         bridge,

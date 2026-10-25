@@ -1,36 +1,32 @@
 """Two ASGI planes, one process — the bind split that isolates the arm.
 
 The control plane (``/mcp`` + every setup/calibrate/watch route) binds
-``127.0.0.1`` only: the LAN cannot reach the surface that drives the
-stylus. The phone bridge (the handful of routes Safari and the iOS
+``127.0.0.1`` by default, keeping arm control off the LAN. The phone
+bridge (the handful of routes Safari and the iOS
 Shortcuts touch) binds ``0.0.0.0`` on the next port up.
 
-There is deliberately no credential on either plane. Nothing secret
-crosses the bridge — screenshots and clipboard text are the agent
-reporting its own activity, and calibration is routine rig work — so a
-token would only add setup friction (hand-typing it into iOS Shortcut
-URLs) without moving the threat model: the bind split keeps the
-arm-driving surface off the LAN (structurally — see
-``PHONE_PLANE_PATHS``), the data-injecting routes are gated (screenshot
-upload: arming window + IP pin + size cap + magic bytes; touch
-reports: phase gate — accepted only while a calibration step has a
-visual on screen; see ``bridge/handler.py``), and hostile-Wi-Fi safety
-is a transport problem (Tailscale/WireGuard), not a token problem.
+Neither plane uses credentials. The phone plane assumes a trusted LAN:
+its clipboard and calibration state are available to connected clients.
+``PHONE_PLANE_PATHS`` keeps arm-control routes off that listener. Upload
+and phase guards reject unsolicited or stale data; they do not authenticate
+the sender. An explicit wildcard control bind also exposes control to LAN
+clients, while retaining the browser same-origin check.
 
 MCPServer's own ``transport_security`` covers only the ``/mcp`` route —
-``@mcp.custom_route`` routes are explicitly exempt from SDK auth. So
-instead of ``mcp.run()`` we take ``streamable_http_app()`` (a plain
-Starlette app) and wrap it in ``ControlGate``, which validates the Host
-header on *all* control routes: a DNS-rebinding page reaches 127.0.0.1
-but presents the attacker's hostname, so it is refused before routing.
+``@mcp.custom_route`` routes are explicitly exempt from SDK auth.
+``ControlGate`` therefore protects every control route: the Host allowlist
+blocks DNS rebinding, and same-origin checks block browser requests from
+foreign pages. Native CLI/MCP clients may omit browser origin headers.
 """
 
 import ipaddress
 import logging
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -100,20 +96,35 @@ def _normalize_host(host: str) -> str:
         return host.lower()
 
 
-def _host_name(scope: Scope) -> str:
-    """Hostname from the Host header, port stripped (IPv6-bracket aware)."""
-    raw = ""
-    for k, v in scope.get("headers", []):
-        if k == b"host":
-            raw = v.decode("latin-1")
-            break
-    if raw.startswith("["):
-        return _normalize_host(raw.split("]", 1)[0] + "]")
-    return _normalize_host(raw.rsplit(":", 1)[0])
+def _authority(value: str, scheme: str) -> tuple[str, str, int] | None:
+    """Parse an HTTP authority into a comparable (scheme, host, port).
+
+    Host and Origin share this parser. Reject credentials, paths, ambiguous
+    IPv6, and malformed ports instead of stripping untrusted suffixes.
+    """
+    if scheme not in ("http", "https"):
+        return None
+    match = re.fullmatch(
+        r"(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::([0-9]{1,5}))?", value
+    )
+    if match is None:
+        return None
+    host, port_text = match.groups()
+    if host.startswith("["):
+        try:
+            host = str(ipaddress.IPv6Address(host[1:-1]))
+        except ValueError:
+            return None
+    port = (
+        int(port_text) if port_text is not None else (443 if scheme == "https" else 80)
+    )
+    if not 0 < port <= 65535:
+        return None
+    return scheme, _normalize_host(host), port
 
 
 class ControlGate:
-    """ASGI wrapper for the loopback plane: Host-header allowlist.
+    """Control-plane Host allowlist and browser same-origin boundary.
 
     ``host`` is the bind address — admitted as a Host value so a user
     exposing the control plane via a non-default ``--host`` still passes.
@@ -123,17 +134,36 @@ class ControlGate:
         self.app = app
         # A wildcard bind is the user's explicit opt-in to LAN exposure:
         # clients then send Host: <whichever interface IP they dialed>,
-        # which can't be enumerated here — so the gate (a defense for the
-        # loopback bind's rebinding hole) stands down instead of 421-ing
-        # every real client. Concrete-IP binds keep the allowlist.
+        # which can't be enumerated here. Skip the Host allowlist for this
+        # bind, while still checking authority syntax and browser origin.
         self._wildcard = host in WILDCARD_HOSTS
         self._allowed = {_normalize_host(h) for h in LOOPBACK_HOST_HEADERS | {host}}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        if not self._wildcard and _host_name(scope) not in self._allowed:
+        headers = Headers(scope=scope)
+        hosts = headers.getlist("host")
+        target = (
+            _authority(hosts[0], scope.get("scheme", "http"))
+            if len(hosts) == 1
+            else None
+        )
+        if target is None or (not self._wildcard and target[1] not in self._allowed):
             reject = JSONResponse({"error": "unrecognized Host"}, status_code=421)
+            return await reject(scope, receive, send)
+        origins = headers.getlist("origin")
+        same_origin = True
+        if origins:
+            scheme, _, authority = origins[0].partition("://")
+            same_origin = len(origins) == 1 and _authority(authority, scheme) == target
+        # Browser GETs can omit Origin. They still must not invoke control
+        # routes from a foreign page; native clients omit Fetch Metadata too.
+        if not same_origin or headers.get("sec-fetch-site", "none") not in (
+            "same-origin",
+            "none",
+        ):
+            reject = JSONResponse({"error": "cross-origin request"}, status_code=403)
             return await reject(scope, receive, send)
         return await self.app(scope, receive, send)
 

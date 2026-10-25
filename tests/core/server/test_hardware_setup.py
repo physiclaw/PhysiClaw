@@ -22,7 +22,7 @@ from physiclaw.core.server.hardware_setup import (
     handle_setup_page,
     handle_status,
 )
-from tests.core.conftest import wire_locked
+from tests.core.conftest import stream_request, wire_locked
 
 
 @pytest.mark.asyncio
@@ -52,35 +52,15 @@ async def test_handle_setup_page_serves_wizard(mocker) -> None:
     assert b"<iframe" not in body
 
 
-def _async(value: Any):
-    async def _coro():
-        return value
-
-    return _coro
-
-
-def _async_raise(exc: Exception):
-    async def _coro():
-        raise exc
-
-    return _coro
-
-
 def _fake_request(
     json_obj: Any = None,
-    raise_on_json: bool = False,
     path_params: dict | None = None,
     query_params: dict | None = None,
 ):
-    req = SimpleNamespace()
-    if raise_on_json:
-        req.json = _async_raise(RuntimeError("bad body"))
-    else:
-        req.json = _async(json_obj)
-    req.path_params = path_params or {}
-    req.query_params = query_params or {}
-    req.body = _async(b"")
-    return req
+    data = b"" if json_obj is None else json.dumps(json_obj).encode()
+    return stream_request(
+        data, path_params=path_params or {}, query_params=query_params or {}
+    )
 
 
 def _read_json(response) -> dict:
@@ -227,7 +207,7 @@ async def test_handle_connect_camera_auto_pick_treats_missing_body_as_auto(
     mocker.patch.object(hardware_setup, "resolve_auto_index", return_value=1)
 
     resp = await handle_connect_camera(
-        _fake_request(raise_on_json=True),
+        _fake_request(),
         rig,
         phone,
     )

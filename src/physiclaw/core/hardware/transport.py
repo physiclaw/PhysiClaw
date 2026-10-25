@@ -55,6 +55,16 @@ class SerialTransport:
         ownership unknown: reconnect before sending another command. M5
         remains available as an unacknowledged emergency release.
         """
+        if (
+            not isinstance(cmd, str)
+            or not cmd.strip()
+            or not cmd.isascii()
+            or not cmd.isprintable()
+            or any(char in cmd for char in "?!~")
+        ):
+            raise ValueError(
+                "GRBL command must be one ASCII line without realtime controls"
+            )
         with self._lock:
             if not self._synchronized:
                 # An unacknowledged command makes subsequent replies ambiguous.

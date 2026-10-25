@@ -40,6 +40,8 @@ import logging
 from contextlib import contextmanager
 from typing import Callable, Iterator
 
+from physiclaw.core.hardware._validation import validate_dwell
+
 log = logging.getLogger(__name__)
 
 DwellFn = Callable[[float], None]
@@ -195,6 +197,7 @@ class Solenoid:
         forced off if the dwell or release fails, so a tap can never leave it
         hot. :meth:`release` adds the spring-rebound dwell on the clean path.
         """
+        validate_dwell(duration)
         with self._energized():
             self._send(self.GCODE_ON.format(s=self.HIT_S))
             self._dwell(duration)
@@ -211,6 +214,7 @@ class Solenoid:
         :meth:`tap` calls, each with its 200ms release) holds down-to-down
         under the iOS double-tap window so the strikes don't read as two taps.
         """
+        validate_dwell(duration)
         with self._energized():
             self._send(self.GCODE_ON.format(s=self.HIT_S))
             self._dwell(duration)
@@ -225,5 +229,6 @@ class Solenoid:
         drop to ``HOLD_S``, hold, lift. For a long-press, where the coil must
         stay seated past the brief strike window. Release is guaranteed via
         :meth:`held`."""
+        validate_dwell(duration)
         with self.held():
             self._dwell(duration)

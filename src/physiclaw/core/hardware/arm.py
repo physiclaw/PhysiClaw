@@ -21,11 +21,17 @@ to arm axes automatically.
 """
 
 import logging
+import math
 import re
 import time
 
 import serial
 
+from physiclaw.core.hardware._validation import (
+    require_finite,
+    validate_dwell,
+    validate_move,
+)
 from physiclaw.core.hardware.device import (
     DeviceNotFound,
     DeviceTimeout,
@@ -59,6 +65,21 @@ GCODE_LINEAR_MOVE = "G90G1 X{x:.3f}Y{y:.3f}F{f}"  # controlled XY (G1)
 GCODE_REL_FAST = "G91G0 X{x:.3f}Y{y:.3f}"  # relative rapid
 GCODE_REL_LINEAR = "G91G1 X{x:.3f}Y{y:.3f}F{f}"  # relative linear
 GCODE_DWELL = "G4 P{s}"  # dwell for s seconds (planner-side)
+
+
+def _position_field(status: str, field: str) -> tuple[float, float] | None:
+    """Read a complete XY[Z] status field, never a numeric prefix of junk."""
+    match = re.search(rf"\|{field}:([^|>]*)", status)
+    if match is None:
+        return None
+    try:
+        coordinates = [float(value) for value in match[1].split(",")]
+        if len(coordinates) not in (2, 3) or not all(map(math.isfinite, coordinates)):
+            raise ValueError("invalid coordinates")
+    except ValueError as exc:
+        raise ProtocolError(f"Cannot parse {field} position from: {status}") from exc
+    return coordinates[0], coordinates[1]
+
 
 # ─── Main class ──────────────────────────────────────────────
 
@@ -163,25 +184,26 @@ class StylusArm:
         status = self._query_status()
 
         # Try WPos first (GRBL $10=0)
-        m = re.search(r"WPos:([-\d.]+),([-\d.]+)", status)
-        if m:
-            return float(m.group(1)), float(m.group(2))
+        work = _position_field(status, "WPos")
+        if work is not None:
+            return work
 
         # Fall back to MPos - WCO
-        m_mpos = re.search(r"MPos:([-\d.]+),([-\d.]+)", status)
-        m_wco = re.search(r"WCO:([-\d.]+),([-\d.]+)", status)
-        if m_mpos and m_wco:
-            mx, my = float(m_mpos.group(1)), float(m_mpos.group(2))
-            wx, wy = float(m_wco.group(1)), float(m_wco.group(2))
-            return mx - wx, my - wy
+        machine = _position_field(status, "MPos")
+        offset = _position_field(status, "WCO")
+        if machine is not None and offset is not None:
+            x, y = machine[0] - offset[0], machine[1] - offset[1]
+            if not math.isfinite(x) or not math.isfinite(y):
+                raise ProtocolError(f"Nonfinite work position from: {status}")
+            return x, y
 
-        if m_mpos:
+        if machine is not None:
             # No WCO available — configure GRBL to report WPos with $10=0
             log.warning(
                 "[GRBL] board not reporting WPos or WCO — position may be "
                 "wrong; set $10=0 for WPos reporting"
             )
-            return float(m_mpos.group(1)), float(m_mpos.group(2))
+            return machine
 
         raise ProtocolError(f"Cannot parse position from: {status}")
 
@@ -257,6 +279,7 @@ class StylusArm:
         warm-start reconnect to re-pin the calibrated frame from the known
         park-spot resting position (see ``HardwareRig.restore_park_origin``).
         """
+        require_finite(x=x, y=y)
         self._send(GCODE_SET_WORK_POS.format(x=x, y=y))
         log.debug("Work position set to (%.3f, %.3f)", x, y)
 
@@ -272,17 +295,20 @@ class StylusArm:
         G4 is a sync barrier: drains the planner first, then dwells.
         _send() blocks until the dwell completes.
         """
+        validate_dwell(seconds)
         self._send(GCODE_DWELL.format(s=seconds))
 
     def rapid_to(self, x: float, y: float, speed: int = 8000) -> None:
         """Rapid move to a work coordinate without touching the screen (G0).
         Pen must be up first. Public: the orchestration and calibration
         layers drive every calibrated-coordinate positioning move with it."""
+        validate_move(x, y, speed)
         self._send(GCODE_FAST_MOVE.format(x=x, y=y, f=speed))
 
     def _linear_move(self, x: float, y: float, speed: int = 8000) -> None:
         """Linear move at controlled speed (G1) — used for a swipe slide while
         the solenoid holds the tip down."""
+        validate_move(x, y, speed)
         self._send(GCODE_LINEAR_MOVE.format(x=x, y=y, f=speed))
 
     def jog(self, dx: float, dy: float) -> None:
@@ -295,6 +321,7 @@ class StylusArm:
         absolute moves — in a finally, because the G91 may have latched
         even when the ack was lost (DeviceTimeout), and a later bare
         absolute move would then execute as a ~30mm relative one."""
+        require_finite(dx=dx, dy=dy)
         try:
             self._send(GCODE_REL_FAST.format(x=dx, y=dy))
         finally:
@@ -351,6 +378,7 @@ class StylusArm:
         dx = mx / mag * d
         dy = my / mag * d
         f = self.SWIPE_SPEEDS[speed]
+        validate_move(dx, dy, f)
         # pressed() holds the tip down (at HOLD_S) for the slide and guarantees
         # release even on error, so a failed slide can't leave the coil hot.
         with self.solenoid.held():
@@ -386,10 +414,14 @@ class StylusArm:
         switcher", while releasing on arrival reads as "go home". G4 is a sync
         barrier, so the dwell runs after the slide finishes and the release
         M-code queues after the dwell."""
+        feed = self.SWIPE_SPEEDS[speed]
+        validate_move(x, y, feed)
+        validate_dwell(start_dwell)
+        validate_dwell(end_dwell)
         with self.solenoid.held():
             if start_dwell:
                 self._dwell(start_dwell)
-            self._linear_move(x, y, speed=self.SWIPE_SPEEDS[speed])
+            self._linear_move(x, y, speed=feed)
             if end_dwell:
                 self._dwell(end_dwell)
         self.wait_idle()

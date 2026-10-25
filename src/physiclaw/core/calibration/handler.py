@@ -58,12 +58,15 @@ def _ok(payload: dict) -> JSONResponse:
     return JSONResponse({"status": "ok", **payload})
 
 
-async def _read_body(request: Request) -> dict:
-    """Parse JSON body, returning {} for empty/malformed input. Used by
-    handlers whose body fields are ALL optional (e.g. `{"fresh": bool}`)
-    — an empty POST is a legitimate "all defaults" request here, unlike
-    the bridge routes where a body is required."""
-    return (await json_or_none(request)) or {}
+async def _read_flag(request: Request, name: str) -> bool:
+    """Read an optional boolean without coercing invalid input into motion."""
+    body = await json_or_none(request, allow_empty=True)
+    if body is None:
+        raise ValueError("body must be a JSON object")
+    value = body.get(name, False)
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be a boolean")
+    return value
 
 
 def _err(message: str, status_code: int = 500) -> JSONResponse:
@@ -162,7 +165,10 @@ async def handle_measure_viewport_shift(
     and waits for a fresh upload; interactive `physiclaw setup hardware`
     sends this so the operator gets a real measurement, not a stale one.
     """
-    fresh = bool((await _read_body(request)).get("fresh"))
+    try:
+        fresh = await _read_flag(request, "fresh")
+    except ValueError as exc:
+        return _err(str(exc), status_code=400)
 
     def _precheck() -> None:
         require_screen_dimension(calib)
@@ -253,7 +259,10 @@ async def handle_calibrate_arm(
     over the screen. We use the saved calibration to drive it onto the screen
     center first, so the probe triangle lands on-screen — needs a prior bundle.
     """
-    from_park = bool((await _read_body(request)).get("from_park"))
+    try:
+        from_park = await _read_flag(request, "from_park")
+    except ValueError as exc:
+        return _err(str(exc), status_code=400)
 
     def _precheck() -> None:
         if rig.arm is None:

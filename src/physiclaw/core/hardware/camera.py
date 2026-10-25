@@ -507,11 +507,17 @@ class Camera:
         with self._cap_lock:
             self._require_open()
             self._focus_needs_restore = True
-            ok = platform.camera_apply_focus(self.cap, value)
-            if ok:
+            self._focus_applied = False
+            self._focus_applied = platform.camera_apply_focus(self.cap, value)
+            if self._focus_applied:
                 self._focus_value = value
-                self._focus_applied = True
-            return ok
+            else:
+                # A refused apply may have disabled AF or moved the lens.
+                # Keep the last accepted position for reconnect, but do not
+                # report it as pinned on the current capture handle.
+                platform.camera_unlock_focus(self.cap)
+                self._focus_needs_restore = False
+            return self._focus_applied
 
     def wait_frames(self, n: int, timeout: float = 5.0) -> bool:
         """Block until the reader publishes `n` MORE frames (or timeout).
