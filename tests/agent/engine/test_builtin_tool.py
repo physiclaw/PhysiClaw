@@ -974,6 +974,7 @@ async def test_add_pitfall_handler_sets_flag_even_when_nothing_added() -> None:
 
 
 def test_build_registry_includes_all_tool_categories(mocker) -> None:
+    mocker.patch("physiclaw.agent.engine.builtin_tool.CONFIG.pitfalls.enabled", True)
     # First run (layout not learned): the setup tool is present.
     mocker.patch("physiclaw.agent.layout.is_learned", return_value=False)
     keys = set(build_registry({}).keys())

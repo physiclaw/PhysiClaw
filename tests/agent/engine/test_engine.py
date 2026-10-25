@@ -311,6 +311,20 @@ async def test_late_provider_configuration_failure_propagates_without_retry(
     completed_run.rlog.close.assert_called_once()
 
 
+async def test_disabled_pitfalls_skip_curation(completed_run, mocker):
+    curate = mocker.patch.object(engine_mod.curate, "curate", new=mocker.AsyncMock())
+
+    async def finish(_run, session):
+        session.sentinel_status = DONE
+        session.added_pitfalls = True
+
+    mocker.patch.object(engine_mod.loop, "drive", side_effect=finish)
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == DONE
+    curate.assert_not_awaited()
+
+
 async def test_shutdown_after_last_action_skips_curation_and_preserves_done(
     completed_run, mocker
 ):
@@ -318,7 +332,7 @@ async def test_shutdown_after_last_action_skips_curation_and_preserves_done(
 
     event = asyncio.Event()
     token = stop_event.set(event)
-    mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
+    mocker.patch.object(engine_mod.CONFIG.pitfalls, "enabled", True)
     curate = mocker.patch.object(engine_mod.curate, "curate", new=mocker.AsyncMock())
 
     async def finish(_run, session):
@@ -568,7 +582,7 @@ async def test_regression_curate_read_error_does_not_retry_completed_task(
 
     registry["note"] = replace(registry["note"], handler=note)
     mocker.patch.object(builtin_tool_mod, "build_registry", return_value=registry)
-    mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
+    mocker.patch.object(engine_mod.CONFIG.pitfalls, "enabled", True)
 
     outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
 
@@ -867,7 +881,7 @@ async def test_done_is_recorded_before_the_curation_pass(mocker) -> None:
     mocker.patch.object(
         engine_mod, "make_chat_provider", return_value=FakeProvider([asst])
     )
-    mocker.patch.object(engine_mod.CONFIG.pitfalls, "curate_enabled", True)
+    mocker.patch.object(engine_mod.CONFIG.pitfalls, "enabled", True)
     curate = mocker.patch.object(
         engine_mod.curate, "curate", side_effect=asyncio.CancelledError()
     )

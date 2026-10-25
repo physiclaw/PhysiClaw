@@ -202,7 +202,9 @@ def test_tail_reminder_lists_missing_fields_per_page_when_nothing_captured() -> 
     # every page appears with its full field list, in _PAGE_FIELDS order
     for page, fields in layout.store._PAGE_FIELDS.items():
         assert f"{page}: {', '.join(fields)}" in out
-    assert "`screen-layout` skill" in out  # defers the how-to to the skill
+    assert "`screen-layout` under Built-in Skills" in out
+    assert "already loaded" in out
+    assert "load it with the Skill" not in out
 
 
 def test_tail_reminder_reports_done_and_missing_when_partial() -> None:

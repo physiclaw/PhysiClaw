@@ -1,20 +1,12 @@
-"""Post-session pitfalls curator — a separate lightweight LLM pass that
-consolidates the learned-pitfalls list and enforces its cap.
+"""Optional post-session consolidation of learned pitfalls.
 
-The agent authors traps mid-run (0–3/session, append-only) and their quality
-varies, so over time the list accumulates near-duplicates, over-specific one-offs,
-vague/low-signal lines, and stale entries. Once a session that added traps closes,
-`curate(...)` runs one throwaway LLM call over the whole list with a fixed prompt:
-merge duplicates, tighten wording, drop the weak/stale entries, and return
-**≤`max_items`** items ordered best-first (most durable, broadly-useful traps on
-top). Merging (not wholesale rewriting) guards the Hermes lesson — a from-scratch
-rewrite is where good lines get lost, so the prompt keeps both when two might be
-distinct and forbids *inventing* traps. The best-first order is load-bearing:
-`pitfalls.replace` hard-cuts to the cap from the bottom, so the lowest-quality
-lines are the ones dropped. It also snapshots history, so a prune is recoverable.
+When pitfalls are enabled and `add_pitfall` was called (up to three items per
+call, including an empty list), the engine invokes this pass on the saved list.
+It reuses the session provider without tools. The curator can merge and rank
+lesson text, but cannot verify it against the original observations.
 
-Reuses the session's still-open provider, makes NO tool calls, and is fully
-fail-open: a parse error or empty result leaves the list untouched.
+`pitfalls.replace` caps the result and snapshots it for recovery. Provider or
+parse errors leave the list untouched; curation never changes the task outcome.
 """
 
 import logging

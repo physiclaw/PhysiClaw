@@ -42,11 +42,10 @@ _ADAPTIVE_OFF_MODES = {
 
 class AnthropicChatProvider(AnthropicCompatibleProvider):
     PROVIDER_ID = "anthropic"
+    # Native tool schemas already carry names, descriptions, and parameters.
+    INLINE_TOOL_INDEX = False
     # Informational only — `AsyncAnthropic` manages the URL itself.
     BASE_URL = "https://api.anthropic.com/v1"
-    # INLINE_TOOL_INDEX stays default-True: Claude reads the native
-    # `tools=` schema fine, but the ~800-token card is kept as cheap
-    # insurance that every tool stays visible in SYSTEM.
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         model = re.sub(r"-\d{8}$", "", self.model)

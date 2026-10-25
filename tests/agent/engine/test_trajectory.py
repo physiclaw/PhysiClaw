@@ -16,6 +16,12 @@ from hypothesis import strategies as st
 
 from physiclaw.agent.engine import trajectory
 from physiclaw.agent.engine.session import Session
+from physiclaw.common.config import CONFIG
+
+
+@pytest.fixture(autouse=True)
+def enable_pitfalls(monkeypatch):
+    monkeypatch.setattr(CONFIG.pitfalls, "enabled", True)
 
 
 def _drafted_plan(session: Session, understanding: str, steps: list[str]) -> None:

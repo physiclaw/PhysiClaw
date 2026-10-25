@@ -1,9 +1,5 @@
 # Macros
 
-`## Available Macros` lists gesture sequences your user rehearsed on this rig. When one covers the next stretch of work, one `run_macro(name, inputs)` call replaces every turn that stretch would cost: macro > `sequence` (a skill's bundled fast path is one) > single gesture.
+Prefer a matching Available Macro over manual gestures; treat it as one plan step. Use `start_at` for an already-partially-completed route. Never invent macro names.
 
-- **Plan with the list.** A covered stretch is ONE plan step (`Run send-report macro`), not a step per gesture.
-- **Steps already done by hand don't disqualify a macro** — pass `start_at` with the step you'd continue from.
-- On `ABORTED`, the completed steps already happened — finish the stretch with gestures; that macro is blocked for the session.
-- Macros never pause for judgment. Confirmations, payments, and choices stay yours — before or after, never assumed done.
-- None fits → gesture normally. Never guess a name not in the list.
+On ABORTED, inspect the completed steps and current view. If any gesture ran, continue manually; that macro is blocked for this session. A zero-gesture abort may be retried after correcting the mismatch. Macros cannot make choices or obtain approval; resolve those before executing the affected stretch.

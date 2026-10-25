@@ -28,6 +28,7 @@ stub via the typed flag — no string parsing across modules.
 
 import json
 import logging
+from dataclasses import replace
 
 from physiclaw.agent.engine import memory
 from physiclaw.common.listing import is_header, parse_row
@@ -44,6 +45,43 @@ from physiclaw.contract.dto import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def omit_repeated_scratchpads(messages: list[Message]) -> list[Message]:
+    """Omit consecutive unchanged scratchpad writes from outgoing history.
+
+    Preserve explicit clears and provider-native replay blocks. Copy changed
+    calls/messages so persisted history stays intact and appending a turn keeps
+    the preceding projected prefix stable.
+    """
+    previous: str | None = None
+    out: list[Message] = []
+    for message in messages:
+        if isinstance(message, AssistantMessage):
+            if message.vendor_extra:
+                # Native replay blocks are authoritative over normalized calls.
+                previous = None
+                out.append(message)
+                continue
+            calls = []
+            for call in message.tool_calls:
+                value = (
+                    call.arguments.get("scratchpad")
+                    if isinstance(call.arguments, dict)
+                    else None
+                )
+                if call.name == "note" and isinstance(value, str):
+                    if value.strip() and value == previous:
+                        arguments = call.arguments.copy()
+                        del arguments["scratchpad"]
+                        call = replace(call, arguments=arguments)
+                    previous = value
+                calls.append(call)
+            if calls != message.tool_calls:
+                message = replace(message, tool_calls=calls)
+        out.append(message)
+    return out
+
 
 # Human-readable lead-in for the stubbed content. Operators reading raw
 # logs see `(superseded peek)` / `(superseded tap)` and immediately know
@@ -185,13 +223,12 @@ def inject_checkpoint_tail(messages: list[Message], *, keep: int) -> list[Messag
     return messages + [
         UserMessage(
             content=(
-                f"⚠ Context compresses after this turn: every turn except the "
-                f"newest {keep} folds to its note summary line — screens, "
-                "listings and results there are erased. Your `note` this turn "
-                "REQUIRES `scratchpad`: rewrite it (full replacement) with what "
-                "your future self needs — facts and values collected (IDs, "
-                "prices, counts), the current situation, and what remains. "
-                "Scratchpad and plan survive compression in full."
+                f"⚠ Context compresses after this turn: turns older than the "
+                f"newest {keep} retain note summaries, loaded skills, and "
+                "memory/log reads; their screens and other results are removed. "
+                "Your `note` this turn REQUIRES `scratchpad`: replace its full "
+                "text with the facts, exact values, and unresolved issues still "
+                "needed. Scratchpad and plan survive in full."
             )
         )
     ]

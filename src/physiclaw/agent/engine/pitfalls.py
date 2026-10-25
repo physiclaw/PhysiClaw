@@ -1,23 +1,9 @@
-"""Learned pitfalls — a single, always-on list of turn-wasting traps.
+"""Opt-in learned lessons stored in `learned/pitfalls/pitfalls.md`.
 
-An agent that authors a whole *working flow* self-congratulates (it thinks the
-flow worked even when it didn't), so such notes rot. Pitfalls don't have that
-failure mode — "X wasted turns → avoid it" is grounded in real friction, not
-self-praise. So the agent's *only* power here is to **append ≤3 traps** it hit;
-it never writes a how-to, and never edits or prunes.
-
-Shape: one flat file `learned/pitfalls/pitfalls.md`, one `- item` per line,
-**newest on top**. Always injected into SYSTEM right after user skills
-(`render_section`), so there is no `Skill()` load to forget. Three bounds keep
-it prompt-lean: ≤3 per call (the tool), ≤`max_item_chars` per line (clamped
-here), ≤`max_items` total (the curator consolidates toward it; `add`/`replace`
-hard-cut from the bottom/oldest as a backstop). Every write appends a full
-snapshot to `history.jsonl`, so a curator prune is always recoverable.
-
-This module owns the write (`add`, `replace`), read (`read`, `render_section`),
-and the pre-close gate (`should_capture`, `corrective`) that forces an
-`add_pitfall(...)` before a long DONE. The curator (`curate.py`) is the only
-caller of `replace`; `policy.PitfallCheckpoint` is the only caller of the gate.
+When enabled, assembly injects the list and exposes `add_pitfall`; a long DONE
+prompts capture, then a separate curator consolidates the list. These are
+model-authored claims, not verified fixes. Writes deduplicate and cap entries,
+with full snapshots in `history.jsonl`. Disabling leaves stored data intact.
 """
 
 import datetime as dt
@@ -37,7 +23,8 @@ _FILE = "pitfalls.md"
 _HISTORY = "history.jsonl"
 _HEADER = "## Learned pitfalls"
 _DOCTRINE = (
-    "Traps past runs hit — don't repeat a listed one; ignore ones for other apps."
+    "Lessons from past runs; use only those relevant to this app. "
+    "Re-ground any mentioned coordinates from the current view before acting."
 )
 _BULLET_RE = re.compile(r"^\s*-\s+(.*\S)\s*$")
 
@@ -146,26 +133,15 @@ def render_section(items: list[str] | None = None) -> str:
     return "\n".join([_HEADER, "", _DOCTRINE, "", *(f"- {x}" for x in items)])
 
 
-# --- Pre-close gate: force `add_pitfall(...)` before a long DONE ------------
-#
-# A pitfall is `trap → fix`, and you can only write the fix if you actually got
-# PAST the trap — so we capture only on a long DONE (at least `capture_turn_floor`
-# turns): the task succeeded, and a run that long almost always stumbled over
-# something worth banking. The agent judges what (it may add 0). A STUCK / FAIL
-# session never escaped the trap (the "fix" would be a guess) and a short DONE
-# sailed through — neither captures. `policy.PitfallCheckpoint` intercepts the
-# closing `end_session`, rejects it once, and injects `corrective(seed)`.
-
-
 def should_capture(status: str, turn: int, session: "Session") -> tuple[bool, str]:
     """Whether to force `add_pitfall(...)` before this close, plus a diagnostic
-    seed. Capture only on a DONE with at least `capture_turn_floor` turns — the
-    task succeeded and the length says it hit friction; the agent decides what
-    (0–3 traps). STUCK / FAIL never escaped the trap; a short DONE sailed
-    through; IDLE / WAIT wakes never do."""
-    if not CONFIG.pitfalls.capture_enabled:
-        return False, ""
-    if status != DONE or turn < CONFIG.pitfalls.capture_turn_floor:
+    seed. When enabled, capture on DONE at or above `capture_turn_floor`.
+    Other closing statuses never trigger capture."""
+    if (
+        not CONFIG.pitfalls.enabled
+        or status != DONE
+        or turn < CONFIG.pitfalls.capture_turn_floor
+    ):
         return False, ""
     seed = f"{turn} turns"
     if session.stuck_events:

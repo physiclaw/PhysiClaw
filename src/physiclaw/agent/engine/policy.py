@@ -261,10 +261,8 @@ class StuckReflection(TurnGate):
 
 
 class PitfallCheckpoint(TurnGate):
-    """Pre-close pitfalls checkpoint: on a long DONE (a run that length
-    almost always hit a trap), force `add_pitfall(...)` first so the traps —
-    with the fix that worked — land for next time. The agent may add 0. One
-    forced retry, then fail open."""
+    """Opt-in reflection before a long DONE. The agent may add no lessons.
+    One forced retry, then fail open."""
 
     def __init__(self) -> None:
         self._retried = False

@@ -34,12 +34,7 @@ DEFAULT_UNDERSTANDING = (
     "Unknown — open IM, read the latest message, then call update_progress."
 )
 
-DEFAULT_SEED_STEP = (
-    "(no plan yet — after reading the user's IM, call update_progress "
-    "with the full step list through end_session; see CONVENTION § "
-    "'The plan' for rules, update_progress docstring for the worked "
-    "example)"
-)
+DEFAULT_SEED_STEP = "Read the user's IM, then plan the task if needed."
 
 
 @dataclass
@@ -145,7 +140,7 @@ class Plan:
                 names = ", ".join(repr(s.content) for s in active)
                 raise ValueError(
                     f"{len(active)} steps in_progress ({names}); "
-                    "exactly one step may be in_progress at a time — "
+                    "at most one step may be in_progress at a time — "
                     "mark the others pending or completed"
                 )
         before = self.current_step()
@@ -230,9 +225,9 @@ class Plan:
                 )
             if self.step_turns >= STEP_STUCK_WARN:
                 return (
-                    f"⚠ Step ▸ {shown!r} has run {self.step_turns} turns with "
-                    "no tick — you are likely stuck. Escalate per CONVENTION "
-                    "§ Stuck: re-plan → back out → force-quit → ask the user."
+                    f"⚠ Step ▸ {shown!r} has run {self.step_turns} turns "
+                    "without progress — check the outcome, then change approach "
+                    "or report the blocker."
                 )
         if is_default and self.turns_since_update >= DEFAULT_STATE_AFTER:
             return (

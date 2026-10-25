@@ -41,6 +41,7 @@ from physiclaw.agent.engine.session import Session
 from physiclaw.agent.llm import CORRECTIVE_LIMIT, _corrective_for_bad_shape
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
 from physiclaw.agent.trace import Trace
+from physiclaw.common import config
 from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -286,8 +287,9 @@ def _state_write_turn() -> AssistantMessage:
     ],
 )
 async def test_regression_failed_writes_do_not_replace_trajectory_history(
-    note_args, progress_args
+    note_args, progress_args, monkeypatch
 ) -> None:
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     registry = build_registry({})
     provider = FakeProvider(
         [
@@ -319,9 +321,10 @@ async def test_regression_failed_writes_do_not_replace_trajectory_history(
     assert any(isinstance(m, ToolResultMessage) and m.is_error for m in messages)
 
 
-async def test_loop_records_successful_rewrites_even_when_content_is_unchanged() -> (
-    None
-):
+async def test_loop_records_successful_rewrites_even_when_content_is_unchanged(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     registry = build_registry({})
     provider = FakeProvider(
         [
@@ -613,7 +616,10 @@ async def test_checkpoint_requires_scratchpad_then_collapses() -> None:
     assert len(provider.calls) == 4
     # ⚠ tail rides the imminent turn's requests only (1 = first attempt,
     # 2 = retry) — not turn 0, not the post-collapse turn.
-    tails = ["newest 1 folds" in _req_texts(r) for r in provider.requests]
+    tails = [
+        "⚠ Context compresses after this turn:" in _req_texts(r)
+        for r in provider.requests
+    ]
     assert tails == [False, True, True, False]
     # The retry request carries the checkpoint corrective.
     assert "Re-issue the SAME turn" in _req_texts(provider.requests[2])
@@ -901,25 +907,9 @@ async def test_loop_finish_length_logs_warning(patched_loop_deps) -> None:
 # ---------- pre-close pitfalls gate ----------
 
 
-def _pitfall_tool() -> LocalTool:
-    from physiclaw.agent.engine.builtin_tool import _handle_add_pitfall
-
-    return LocalTool(
-        name="add_pitfall",
-        description="add_pitfall",
-        input_schema={
-            "type": "object",
-            "properties": {"items": {"type": "array", "items": {"type": "string"}}},
-            "required": ["items"],
-        },
-        handler=_handle_add_pitfall,
-    )
-
-
 def _registry_with_pitfall() -> dict[str, LocalTool]:
     reg = _registry()
-    pt = _pitfall_tool()
-    reg[pt.name] = pt
+    reg["add_pitfall"] = build_registry({})["add_pitfall"]
     return reg
 
 
@@ -959,9 +949,22 @@ def _pitfall_correctives(messages) -> list:
 
 def _floor0(monkeypatch) -> None:
     # Drop capture_turn_floor to 0 so a short scripted DONE (turn 0) trips the gate.
-    from physiclaw.common import config
-
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     monkeypatch.setattr(config.CONFIG.pitfalls, "capture_turn_floor", 0)
+
+
+async def test_disabled_pitfalls_skip_close_gate_and_trajectory(
+    patched_loop_deps, monkeypatch
+):
+    monkeypatch.setattr(config.CONFIG.pitfalls, "capture_turn_floor", 0)
+    provider = FakeProvider([_close(DONE)])
+    session = Session(scratchpad="facts to retain")
+
+    messages = await _run_close_loop(provider, session, build_registry({}))
+
+    assert not _pitfall_correctives(messages)
+    assert session.sentinel_status == DONE
+    assert session.plan_log == session.scratchpad_log == []
 
 
 @pytest.mark.asyncio
@@ -1038,8 +1041,11 @@ async def test_loop_no_pitfall_gate_on_stuck(patched_loop_deps, monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_loop_no_pitfall_gate_on_short_done(patched_loop_deps) -> None:
+async def test_loop_no_pitfall_gate_on_short_done(
+    patched_loop_deps, monkeypatch
+) -> None:
     # A short DONE (below capture_turn_floor) sailed through → no gate.
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     registry = _registry_with_pitfall()
     provider = FakeProvider([_close(DONE)])  # closes at turn 0, far below the floor
     session = Session()

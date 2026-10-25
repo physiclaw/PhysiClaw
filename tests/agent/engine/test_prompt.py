@@ -111,7 +111,7 @@ def test_regression_tool_index_keeps_only_first_description_line(separator) -> N
 
     rendered = prompt.dump(local_tool_schemas=schemas)
 
-    assert "- **probe** — First line\n" in rendered
+    assert "- **probe** — First line" in rendered.splitlines()
     assert "SECOND_LINE_SENTINEL" not in rendered
 
 
@@ -133,7 +133,7 @@ def test_tool_index_preserves_unicode_first_line_without_following_lines(
 
     rendered = prompt.render_system_prompts(local_tool_schemas=schemas)
 
-    assert f"- **probe** — {text}\n" in rendered
+    assert f"- **probe** — {text}" in rendered.splitlines()
     assert "SECOND_LINE_SENTINEL" not in rendered
 
 
@@ -440,14 +440,20 @@ def test_render_tooling_kept_for_unknown_provider(
     assert "## Tooling" in out
 
 
-def test_render_tooling_kept_via_real_anthropic_provider() -> None:
-    # Deliberate: AnthropicChatProvider keeps the default INLINE_TOOL_INDEX=True —
-    # the card is cheap insurance even though Claude reads the tools= schema.
+def test_anthropic_omits_duplicate_tool_index() -> None:
     out = "\n".join(
         prompt._render_tooling([{"name": "tap", "description": "Tap."}], "anthropic")
     )
 
-    assert "## Tooling" in out
+    assert out == ""
+
+
+def test_deepseek_retains_tool_index_after_replay_review() -> None:
+    out = "\n".join(
+        prompt._render_tooling([{"name": "tap", "description": "Tap."}], "deepseek")
+    )
+
+    assert "- **tap** — Tap." in out
 
 
 def test_render_tooling_includes_mcp_inventory_tools(
@@ -478,9 +484,6 @@ def test_render_section_passes_prerendered_block_through() -> None:
     # The skill module already emits the `##` header + framing; the prompt
     # just drops it in with a trailing blank line.
     assert prompt._render_section("## Skills\n\nbody") == ["## Skills\n\nbody", ""]
-
-
-# ---------- _render_examples ----------
 
 
 # ---------- _render_screen_layout ----------
@@ -522,15 +525,6 @@ def test_render_screen_layout_says_not_set_when_learned_but_md_missing(
 
     assert "## Screen layout" in out
     assert "not set yet" in out
-
-
-def test_render_examples_returns_non_empty_block() -> None:
-    out = prompt._render_examples()
-
-    text = "\n".join(out)
-    assert text.startswith("## Examples")
-    assert "❌" in text
-    assert "✅" in text
 
 
 # ---------- _render_reasoning_format ----------
@@ -659,24 +653,25 @@ def test_render_system_assembles_all_present_sections(
     assert "im body" in out  # built-in body inlined
     assert "## Available skills" in out
     assert "**taobao** — shop" in out  # user index entry
-    assert "## Examples" in out
+    assert "## Examples" not in out
     assert "## memory.md" in out
     assert "recent fact" in out
 
 
-def test_render_system_places_macros_between_skills_and_examples(
+def test_render_system_places_macros_between_skills_and_memory(
     _isolate_context_dir,
 ) -> None:
     out = prompt.render_system_prompts(
         user_skills_ctx="## Available skills\n\n- **taobao** — shop",
         macros_ctx="## Available Macros\n\n- **notify-user** — ping (2 steps)",
+        memory_ctx="Persistent facts",
     )
 
     assert "- **notify-user** — ping (2 steps)" in out
     assert (
         out.index("## Available skills")
         < out.index("## Available Macros")
-        < out.index("## Examples")
+        < out.index("## memory.md")
     )
 
 
@@ -703,14 +698,7 @@ def test_render_system_returns_empty_when_all_sections_disabled(
 ) -> None:
     out = prompt.render_system_prompts()
 
-    # Examples is the only section that always emits.
-    assert "## Examples" in out
-    # No doctrine, no tooling, no skills, no memory.
-    assert "# Doctrine" not in out
-    assert "## Tooling" not in out
-    assert "## Built-in Skills" not in out
-    assert "## Available skills" not in out
-    assert "## memory.md" not in out
+    assert out == ""
 
 
 def test_dump_delegates_to_render_system_with_same_args(

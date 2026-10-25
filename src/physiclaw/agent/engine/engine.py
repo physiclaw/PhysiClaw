@@ -318,8 +318,8 @@ async def _run_session(
         )
         # Post-session pitfalls curation: a separate LLM pass (still-open
         # provider) that consolidates the list + enforces the cap when the agent
-        # added traps this session. Fail-open — never affects the outcome.
-        if CONFIG.pitfalls.curate_enabled and session.added_pitfalls:
+        # called add_pitfall this session. Fail-open — never affects the outcome.
+        if CONFIG.pitfalls.enabled and session.added_pitfalls:
             checkpoint()
             await curate.curate(provider, tr=tr, rlog=rlog)
     except asyncio.CancelledError:

@@ -1,26 +1,9 @@
-"""Session trajectory — the turn-tagged history of plan + scratchpad states.
+"""Opt-in plan and scratchpad history for pitfall reflection.
 
-The plan and scratchpad tails only ever hold the CURRENT value; a rewrite
-overwrites the old one. But the pre-close pitfall checkpoint wants the *evolution* —
-how the plan churned, which scratchpad approaches were tried and abandoned —
-because that churn IS the turn-wasting-trap signal the agent should bank.
-
-So the engine calls `record(session, turn, plan_updated=..., scratchpad_written=...)`
-once per turn (after dispatch): the plan is snapshotted on every successful
-`update_progress` call and the scratchpad on every successful
-`note(scratchpad=...)` write — each is an
-explicit agent act (a re-plan, a re-write), even one that repeats the prior
-content, and worth its own turn-tagged entry. A safety net also logs a drafted
-plan / non-blank scratchpad that changed without the corresponding call (e.g.
-the closing turn). At a hard close the pre-close gate injects `render(session)`
-— plan re-plans and scratchpad writes merged into ONE `[t0]..[tN]` timeline
-(oldest→newest, labelled by kind) — into the reflect corrective, so the model
-reflects on the whole run as it unfolded.
-
-In-memory only (like `Session`), never in `messages[]` and never on disk: it is
-read exactly once, at reflect time. Both the retained-snapshot count and the
-rendered char count are capped (`CONFIG.engine`), so a long session with a
-full (8KB) scratchpad stays bounded in memory and in the prompt.
+After dispatch, `record` keeps turn-tagged snapshots in memory. The pre-close
+checkpoint injects `render`'s chronological timeline into its corrective so the
+model can review earlier approaches. Snapshot count and rendered text are capped
+by `CONFIG.engine`; these observations do not verify that a lesson is reusable.
 """
 
 from physiclaw.common.config import CONFIG
@@ -43,6 +26,8 @@ def record(
     As a safety net, a drafted plan / non-blank scratchpad that changed WITHOUT
     the corresponding call (e.g. the closing turn) is logged once, deduped. A
     blank scratchpad is never logged."""
+    if not CONFIG.pitfalls.enabled:
+        return
     cap = CONFIG.engine.trajectory_max_snapshots
 
     snap = session.plan.snapshot()

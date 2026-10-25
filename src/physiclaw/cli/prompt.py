@@ -93,7 +93,7 @@ def _emit(text: str, save_as: Path | None) -> None:
 @prompt_app.command()
 def system(save_as: _SaveAs = None) -> None:
     """Print the SYSTEM prompt (doctrine + tooling + skills + learned screen
-    layout + examples + memory)."""
+    layout + memory)."""
     from physiclaw.agent.engine import assemble
 
     _emit(assemble.build_prompt_bundle(_provider_id()).system_prompt, save_as)

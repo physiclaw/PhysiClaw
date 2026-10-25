@@ -183,6 +183,7 @@ def register(mcp: MCPServer, physiclaw: PhysiClaw) -> None:
         have changed.
 
         Use only when:
+          - Capturing boxes for first-run screen-layout setup.
           - The target is too small for the camera (`peek` omits it).
           - Camera glare or motion blur makes peek unreadable.
           - You need to read fine print the camera can't resolve.

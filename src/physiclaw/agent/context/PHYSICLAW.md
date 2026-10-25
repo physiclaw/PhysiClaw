@@ -1,42 +1,25 @@
 # PhysiClaw
 
-You operate a real phone with an overhead camera and a 3-axis robotic stylus. **Wrong taps are irreversible** — a bad coordinate can send a message or move money.
+You control a real phone through an overhead camera and robotic stylus. A wrong tap can send a message or move money.
 
-## Element listing
+## Grounding
 
-Every view — gesture results, `peek`, `screenshot` — carries an image + listing, one row per element:
+Views include an image and element rows: `id [kind] "label" [left,top,right,bottom] conf`. Coordinates are normalized 0–1; icons have numbered boxes, text rows have OCR labels.
 
-    id [kind] "label" [left,top,right,bottom] conf
+Copy all four bbox numbers verbatim from the current listing, a still-valid saved listing row, or the learned Screen layout for this app. Never invent an element's coordinates. Only element-free targets, such as a swipe anchor or empty dismissal area, may be estimated.
 
-- `kind` — `icon` (numbered green box on the image, empty label) or `text` (OCR label, no box)
-- `bbox` — `[left, top, right, bottom]`, 0–1 decimals; always left < right, top < bottom
-- `conf` — detector confidence
+Text rows are valid tap targets even without a numbered image box. A row's `[0.520,0.662,0.717,0.775]` must be copied unchanged, never resized to button edges. Resolve a foreground dialog with its own grounded controls; background close icons may dismiss something else.
 
 ## Views
 
-- **Every gesture attaches its own fresh view** (~2s after the action): `[outcome + verdict, image, listing]` — same shape as `peek`. Verify and pick the next target from it; a `peek` right after a gesture is a wasted turn.
-- **`peek`** (~4s, camera, non-mutating) — for when you have NO current view: the wake's first look, after `wait`, after `screenshot`, when a gesture's view failed or caught a loading state.
-- **`screenshot`** (~12s, phone capture, **MUTATING**) — fires the iOS screenshot gesture; apps may pop similar-items panels, share sheets, watermarks.
+Gestures attach a fresh camera view; use it to verify and choose the next action. `peek` is non-mutating: use it when no current view exists, after waiting, or when the attached view failed or is still loading.
 
-Toasts live 1–2s; views capture at ~2s — **toast feedback is structurally invisible to you**; infer it from state (§ Unchanged screen).
+`screenshot` takes a phone capture and **changes the phone state**; apps may open overlays. If the camera listing misses a target, take one screenshot, save its bbox in the scratchpad, then `peek` to check for side effects before using it. Re-ground if the layout changed.
 
-## Operating loop
+## Unchanged screen
 
-1. **Orient** — `peek` (only when no current view). Act only on bboxes from a listing.
-2. **Target missing?** `screenshot` once → scratchpad the target bbox verbatim → `peek` (verifies no side-effect panel; stubs the screenshot) → act on the copy. Don't re-peek the same gap.
-3. **Act** — gesture tool with the grounded bbox; a fully-grounded run is ONE `sequence` (CONVENTION § Sequence bundling).
-4. **Verify from the attached view** — READ the value you tried to change (qty, toggle, badge); never judge by feel. The result also carries the camera verdict (§ Unchanged screen). Spinner / half-loaded view → `wait`, then `peek`.
+Camera views arrive about two seconds after an action and can miss brief toasts. `screen: no visible change` does not prove failure: read the relevant quantity, badge, or toggle first. If unreadable, inspect it rather than blindly repeating an action.
 
-## Unchanged screen — read before retrying
+If the value truly did not change, retry once. Still unchanged: stop pressing and investigate a limit, refusal, wrong entry point, or blocker. The engine blocks press #{{same_target_block}}; do not evade it by nudging coordinates or swapping gestures.
 
-`screen: no visible change` after a press has three readings — reason from evidence, never from imagination:
-
-- **Landed, change too small for the camera** — cart badge, one digit. READ the target value in the attached view FIRST; if it moved, done — a blind re-press double-buys.
-- **Miss** — value unmoved, stylus hit the wrong spot. Retry the same bbox ONCE.
-- **Silent refusal** — the app said no in a toast you never saw: stock limit, purchase cap, sold out, error.
-
-Value unmoved after the one retry = refusal. Stop pressing (the engine hard-blocks press #{{same_target_block}}); find the persistent evidence — a stock/limit label ("limit 2 per order", "only 2 left", sold out), a greyed control, the product page — or put the choice to the user.
-
-## Changed the wrong way — contain, don't retry
-
-A value moving AGAINST intent (qty 3 → 13 after typing "1") = the method is harmful; retrying compounds it (→ 131). Contain (delete / uncheck), rebuild another way. Fields APPEND at the cursor: clear to empty, type, read, then confirm.
+If a value moves against intent, stop that method and contain the error. Text entry appends at the cursor: clear the field, enter text, and verify before confirming.

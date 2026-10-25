@@ -54,7 +54,7 @@ def format_call_result(tool_name: str, text: str) -> str:
     """Render a tool's result text for the human log. `note` bypasses
     the default 80-char truncation — its result is `noted: <summary>`,
     a literal echo of the summary that's the sole turn-survivor under
-    compaction (CONVENTION § Compaction); truncating the result hides
+    compaction (CONVENTION § Scratchpad); truncating the result hides
     the canonical record of what the agent committed to."""
     if tool_name == "note":
         return text

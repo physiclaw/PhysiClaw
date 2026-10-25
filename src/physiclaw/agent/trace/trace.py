@@ -303,7 +303,7 @@ WARNING_WORDS: dict[str, str] = {
     "bad_turn_shape": "The model's turn was malformed — a corrective was sent",
     "checkpoint_corrective": "The model skipped a checkpoint — a corrective was sent",
     "stuck_reflection": "The model was asked to reflect on being stuck",
-    "pitfall_checkpoint": "A known pitfall was pointed out to the model",
+    "pitfall_checkpoint": "The model was asked to save lessons before closing",
     "memory_cue_checkpoint": "A memory cue was pointed out to the model",
     "stuck_warning": "The loop detector warned",
     "tool_blocked_no_plan": "A tool call was blocked: no plan yet",

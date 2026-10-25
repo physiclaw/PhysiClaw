@@ -1,64 +1,27 @@
 ---
 name: screen-layout
-description: First-run setup — learn the bboxes of your three key input boxes (Spotlight search, chat input keyboard-down, chat input keyboard-up) plus the keyboard keys and Paste buttons. Run once when SYSTEM shows the first-run notice, before opening apps by search or sending messages. Screenshot each page, read the box coordinates off the returned elements, report via report_screen_layout.
+description: First-run capture of Spotlight, chat input, Paste, and keyboard boxes when the setup notice is present.
 ---
 
 # Learn the screen layout
 
-Opening apps (Spotlight) and messaging the user (IM) both need exact input-box positions. First run only, capture the three pages below.
+Use the system keyboard. Capture each page below with `screenshot`; copy element bboxes verbatim into `report_screen_layout`, one field per call. Use gesture views / `peek` to verify navigation and screenshot side effects. Re-read a rejected box rather than adjusting its coordinates.
 
-Read coordinates from `screenshot` (pixel-perfect), never camera `peek` — but DO `peek` to confirm what a tap did (keyboard up, chat open). Copy each element's `bbox` **verbatim** into `report_screen_layout` — the exact `[left, top, right, bottom]` (0–1, 3 decimals) the screenshot returned; never eyeball, re-estimate, or re-round. The keyboard must be the system default (no third-party keyboard).
+If an input has no detected box, report other detected fields or recapture; never infer its edges from neighboring elements.
 
-The tool sanity-checks each box and saves it to `~/.physiclaw/screen-layout/`; each call confirms the save and how many boxes remain (the first-run notice lists which). A box rejected as out-of-region means you picked a neighbouring element — re-read and call again.
-
-## How to report
-
-One box per call:
-
-```text
-report_screen_layout(
-  page="<spotlight | chat-no-keyboard | chat-keyboard>",
-  field="<one field name for that page>",
-  bbox=[left, top, right, bottom],   # verbatim from the element
-  app="<chat app>",                  # chat pages only; omit for spotlight
-)
-```
-
-`app` = whatever chat app you opened (`wechat`, `whatsapp`, `telegram`, `signal`, …) — it just labels the chat boxes.
-
-## Page 1 — Spotlight (keyboard up)
-
-Fields: `spotlight_input`, `space`, `backspace`, `return`, `spotlight_paste`.
-
-1. `home_screen` (skip if already on home — it opens the App Switcher there) → `swipe` down from mid-screen → Spotlight opens.
-2. `tap` the search field; `peek` — keyboard up.
-3. `screenshot`; read the search field (`spotlight_input`) and the keyboard's `space`, `backspace`, and `return` keys.
-4. `spotlight_paste`: put any text on the clipboard, **long-press** the search field, `screenshot`, read the **Paste** button.
-5. Report each, e.g.:
+| Page | Fields | How to expose them |
+| --- | --- | --- |
+| `spotlight` | `spotlight_input`, `space`, `backspace`, `return` | Go home if needed, swipe down mid-screen, focus the search field, capture the keyboard. |
+| `spotlight` | `spotlight_paste` | Copy text, long-press the empty search field, capture Paste. |
+| `chat-no-keyboard` | `chat_input_kb_hidden` | Open the IM app and a real thread with keyboard hidden. |
+| `chat-keyboard` | `chat_input_kb_visible`, `send` | Tap the chat input, capture the fully raised keyboard. If Send is hidden, enter one character, then clear it. |
+| `chat-keyboard` | `chat_paste` | With empty input and keyboard raised, copy text, long-press the input, capture Paste. |
 
 ```text
-report_screen_layout(page="spotlight", field="spotlight_input", bbox=[0.020, 0.582, 0.958, 0.660])
+report_screen_layout(page="spotlight", field="spotlight_input", bbox=[left, top, right, bottom])
+report_screen_layout(page="chat-keyboard", field="send", bbox=[left, top, right, bottom], app="wechat")
 ```
 
-## Page 2 — Chat input, keyboard DOWN
+Pass the same actual IM app name for both chat pages. The tool reports remaining fields; captured boxes are saved automatically. Keyboard geometry is system-wide, chat boxes are app-specific. Home-screen gestures are state-sensitive: skip `home_screen` when already home (it opens the App Switcher there).
 
-Field: `chat_input_kb_hidden`. Pass `app`.
-
-1. `home_screen`, then open the dock's IM app; if the dock has none, open one via `im` / `open-app` using the Spotlight boxes you just read. Enter any real thread, keyboard hidden.
-2. `screenshot`; read the **chat input bar**.
-3. `report_screen_layout(page="chat-no-keyboard", field="chat_input_kb_hidden", bbox=[…], app="wechat")`
-
-## Page 3 — Chat input, keyboard UP
-
-Fields: `chat_input_kb_visible`, `send`, `chat_paste`. Same `app` as Page 2.
-
-1. `tap` the chat input box; `peek` — keyboard fully up (all rows, no predictive-bar collapse).
-2. `screenshot`; read the **input bar** and **Send** — either a bottom-right **keyboard key** (WeChat-style) or an **input-bar button** on the right (WhatsApp-style). Send hidden while the input is empty → tap any key so it appears (step 3 clears it).
-3. `chat_paste`: **clear the input** (backspace until empty — a non-empty box shifts Paste in the popover), put text on the clipboard → **long-press** the input box → `screenshot` → read **Paste**.
-4. Report each with the same `app`.
-
-## Done
-
-When every box is in, the session restarts with the layout loaded. Proceed with the original task, or `end_session(IDLE)` if learning the layout was the only reason you woke.
-
-**Note:** keyboard geometry is device-global — learned once from Spotlight, it holds in every app. Input/Send boxes are per-context but stable.
+After every field is captured, the session restarts with the layout loaded. Continue the original task, or close IDLE if setup was the only task.

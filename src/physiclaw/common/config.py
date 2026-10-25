@@ -320,19 +320,14 @@ class RetentionConfig:
 
 @dataclass
 class PitfallsConfig:
-    """Agent-flagged turn-wasting traps (`add_pitfall`, 0–3 per long DONE
-    session, append-only, newest on top). Always injected after user skills.
-    `max_items` caps the list (curator consolidates toward it; a hard cut from
-    the bottom/oldest enforces it); `max_item_chars` clamps each line.
-    `capture_turn_floor` = the turn count above which a DONE close forces the
-    capture nudge (a long run almost always hit a trap worth banking; the agent
-    may still add 0). `capture_enabled` / `curate_enabled` gate the two passes."""
+    """Opt-in learned lessons: prompt injection, capture and post-run curation.
+    Disabling preserves saved lessons. The length threshold prompts reflection;
+    it does not verify that a run produced a reusable lesson."""
 
+    enabled: bool = False
     max_items: int = 20
     max_item_chars: int = 120
     capture_turn_floor: int = 50
-    capture_enabled: bool = True
-    curate_enabled: bool = True
 
 
 @dataclass
@@ -495,9 +490,9 @@ _SECTION_COMMENTS: dict[str, str] = {
     ),
     "retention": "Purge window for on-disk engine trace logs + cron job history.",
     "pitfalls": (
-        "Agent-flagged turn-wasting traps (~/.physiclaw/learned/pitfalls/), "
-        "0–3 appended per long DONE session, always shown after user skills. "
-        "`max_items` / `max_item_chars` bound the list; a curator consolidates."
+        "Opt-in learned lessons (~/.physiclaw/learned/pitfalls/). "
+        "`enabled` controls prompt injection, the add_pitfall tool, capture "
+        "and curation. Off by default; saved lessons are preserved."
     ),
     "skills": (
         "`physiclaw skills`. `default_source`: repo for `install` (empty = "

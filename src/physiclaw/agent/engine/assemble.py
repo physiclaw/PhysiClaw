@@ -27,6 +27,7 @@ from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.common import gesture_vocab
+from physiclaw.common.config import CONFIG
 from physiclaw.contract.dto import Message, SystemMessage, UserMessage
 from physiclaw.macros import store as macro_store
 from physiclaw.macros.model import Macro
@@ -77,14 +78,13 @@ def build_prompt_bundle(
         for schema in builtin_tool.schemas(local_registry)
         if macros or schema["name"] != gesture_vocab.RUN_MACRO
     ]
-    pitfall_items = pitfalls.read()  # read once; render + count both use it
+    pitfall_items = pitfalls.read() if CONFIG.pitfalls.enabled else []
     system_prompt = prompt.render_system_prompts(
         local_tool_schemas=local_schemas,
         memory_ctx=memory.load_persistent(),
         builtin_skills_ctx=skill.render_builtin(builtin_skills),
         user_skills_ctx=skill.render_section(user_skills),
         macros_ctx=macro_store.render_section(macros),
-        # Agent-flagged traps, always-on right after user skills (no Skill() load).
         pitfalls_ctx=pitfalls.render_section(pitfall_items),
         provider_id=provider_id,
     )
@@ -133,7 +133,8 @@ def apply_request_tails(
     layout reminder — the LAST things the model sees. Shared by
     `LLMProducer._prepare_request` and the `prompt` dump so a turn-0 dump matches
     the wire the engine sends. Does not mutate `messages`."""
-    out = scratchpad.inject_tail(messages, session.scratchpad)
+    out = compact.omit_repeated_scratchpads(messages)
+    out = scratchpad.inject_tail(out, session.scratchpad)
     out = plan.inject_tail(out, session.plan)
     if compaction_keep is not None:
         out = compact.inject_checkpoint_tail(out, keep=compaction_keep)

@@ -109,6 +109,7 @@ def test_config_error_is_value_error_subclass() -> None:
         # MemoryConfig
         ("memory", "default_log_entries", 20),
         ("memory", "bootstrap_log_entries", 10),
+        ("pitfalls", "enabled", False),
         # RetentionConfig
         ("retention", "log_max_bytes", 10 * 1024 * 1024),
         ("retention", "log_backup_count", 5),

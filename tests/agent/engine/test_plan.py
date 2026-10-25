@@ -63,12 +63,7 @@ def test_default_understanding_is_pinned_literal() -> None:
 
 
 def test_default_seed_step_is_pinned_literal() -> None:
-    assert DEFAULT_SEED_STEP == (
-        "(no plan yet — after reading the user's IM, call update_progress "
-        "with the full step list through end_session; see CONVENTION § "
-        "'The plan' for rules, update_progress docstring for the worked "
-        "example)"
-    )
+    assert DEFAULT_SEED_STEP == "Read the user's IM, then plan the task if needed."
 
 
 def test_statuses_frozenset_is_exactly_three_members() -> None:
@@ -184,7 +179,7 @@ def test_update_with_two_in_progress_steps_raises_with_both_names() -> None:
     with pytest.raises(
         ValueError,
         match=(
-            r"^2 steps in_progress \('step-A', 'step-B'\); exactly one step "
+            r"^2 steps in_progress \('step-A', 'step-B'\); at most one step "
             r"may be in_progress at a time — mark the others pending or completed$"
         ),
     ):
@@ -379,7 +374,7 @@ def test_step_stuck_warn_tip_fires_at_threshold() -> None:
     out = p.render()
 
     assert f"has run {plan_mod.STEP_STUCK_WARN} turns" in out
-    assert "CONVENTION" in out
+    assert "change approach" in out
 
 
 def test_step_stuck_urgent_tip_supersedes_warn() -> None:

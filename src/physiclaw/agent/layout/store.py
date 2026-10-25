@@ -176,9 +176,8 @@ def tail_reminder() -> str:
     lines.append("Still to capture (page → missing fields):")
     lines += [f"  • {p}: {', '.join(fs)}" for p, fs in missing.items()]
     lines.append(
-        "Follow the `screen-layout` skill (under `## Built-in Skills` when "
-        "inlined in your system prompt; otherwise load it with the Skill "
-        "tool) to capture each field above."
+        "Follow `screen-layout` under Built-in Skills to capture these fields; "
+        "it is already loaded."
     )
     return "\n".join(lines)
 

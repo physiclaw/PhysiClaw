@@ -78,8 +78,7 @@ def render_system_prompts(
                            name+description index (load on demand via Skill)
       ## Available Macros  enabled user macros — name/description/inputs
                            index (executed as one step via run_macro)
-      ## Learned pitfalls  agent-flagged traps, always-on (add_pitfall appends)
-      ## Examples          ❌/✅ for the most common per-turn failures
+      ## Learned pitfalls  opt-in lessons from past runs (add_pitfall appends)
       ## Reasoning Format  provider-specific reasoning wrapper (e.g. Qwen
                            `<think>...</think>`); pulled from
                            `BaseChatProvider.system_prompt_fragment()`
@@ -105,7 +104,6 @@ def render_system_prompts(
         *_render_section(user_skills_ctx),
         *_render_section(macros_ctx),
         *_render_section(pitfalls_ctx),
-        *_render_examples(),
         *_render_reasoning_format(provider_id),
         *_render_memory(memory_ctx),
     ]
@@ -169,7 +167,7 @@ def _render_tooling(local_tool_schemas: list[dict], provider_id: str = "") -> li
     Why the inline card at all: open-weight models (Qwen, Moonshot)
     routinely forget tools that appear only in the native `tools=` payload.
     A provider can skip the card with `INLINE_TOOL_INDEX = False`.
-    Unknown/empty provider keeps it, as do the current built-in providers."""
+    Unknown/empty providers keep it; tested native-tool providers opt out."""
     if not _wants_tool_index(provider_id):
         return []
     all_tools = mcp_inventory.discover_mcp_tools() + local_tool_schemas
@@ -224,33 +222,6 @@ def _render_screen_layout() -> list[str]:
         return []
     md = layout.load_layout_md() or "not set yet"
     return ["## Screen layout", "", md, ""]
-
-
-def _render_examples() -> list[str]:
-    """Concrete ❌ Wrong / ✅ Right patterns for the most common per-turn
-    failure modes. Each pairs a doctrine rule with a worked example; rules
-    the engine already corrects mid-run (turn shape aside) aren't repeated
-    here — AGENT.md / CONVENTION.md carry them once."""
-    return [
-        "## Examples",
-        "",
-        "**Bbox transcription** — verbatim from the listing's bracket contents.",
-        '❌ Row `45 [icon] "" [0.520,0.662,0.717,0.775] 0.56` → `tap(bbox=[0.518, …])` — the regenerated `0.518` lands on the neighbor.',
-        "✅ All four numbers exactly — `0.520` stays `0.520`. Not in any grounded source → `screenshot`, never fabricate.",
-        "",
-        "**Screenshot escalation** — re-peeking a missed target returns the same gap.",
-        '❌ `peek` home, no JD icon → `peek` again → tap a Safari link labeled "JD" → wrong page, STUCK.',
-        "✅ `screenshot` next turn → scratchpad the icon's bbox → `peek` → tap the copy. The icon was always there; the camera couldn't resolve it.",
-        "",
-        "**Unchanged screen** — read the value: a small change (top-right cart badge 2 → 3, page stays put) means landed; a value unmoved through two presses is the app saying no (the toast already vanished).",
-        "❌ Cart badge unread → tap again → duplicates. Or qty stays 2 → 20 tap/double_tap/nudged-bbox retries across cart and checkout.",
-        '✅ tap `+` → qty still 2 in the attached view → retry once → still 2 = refusal. Find the evidence ("limit 2 per order", greyed `+`), scratchpad `TRIED: + stepper ×2, qty stuck at 2`, ask the user: "Store caps this at 2 — take 2, or switch brands?" and WAIT. Badge unreadable → open the cart and check.',
-        "",
-        "**Scratchpad accumulates** — plan-relevant payloads go in as you see them; navigation doesn't.",
-        "❌ Scroll 2 orders across 4 pages, scratchpad nothing → views stubbed by compaction, items lost, re-scrape.",
-        '✅ `note(..., scratchpad="order 1: cable ¥45, clips ¥17")` → scroll → reissue with `tape ¥22` appended → order 2 → append its lines. Reaching WeChat, the scratchpad is the full reply.',
-        "",
-    ]
 
 
 def _render_reasoning_format(provider_id: str) -> list[str]:

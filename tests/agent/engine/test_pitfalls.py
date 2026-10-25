@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.agent.engine.pitfalls` — the always-on, append-only
+"""Tests for `physiclaw.agent.engine.pitfalls` — the opt-in, append-only
 learned-pitfalls list.
 
 The autouse `physiclaw_home` fixture points `paths.HOME` at a per-test tmp dir,
@@ -262,7 +262,7 @@ def test_render_section_has_header_doctrine_and_items() -> None:
     pitfalls.add(["京东: avoid Ai搜索"])
     out = pitfalls.render_section()
     assert out.startswith("## Learned pitfalls")
-    assert "don't repeat" in out
+    assert "Re-ground any mentioned coordinates" in out
     assert "- 京东: avoid Ai搜索" in out
 
 
@@ -272,7 +272,7 @@ def test_render_section_keeps_heading_paragraph_and_bullet_structure() -> None:
     lines = result.splitlines()
     assert lines[0] == "## Learned pitfalls"
     assert lines[1] == lines[3] == ""
-    assert "don't repeat" in lines[2]
+    assert "relevant to this app" in lines[2]
     assert lines[4:] == ["- first trap", "- 第二个陷阱"]
 
 
@@ -334,6 +334,7 @@ def test_corrective_without_trajectory_matches_explicit_empty_trajectory() -> No
 def test_should_capture_skips_non_done_or_short_sessions(
     monkeypatch, status, turn
 ) -> None:
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     monkeypatch.setattr(config.CONFIG.pitfalls, "capture_turn_floor", 50)
 
     result = pitfalls.should_capture(status, turn, Session())
@@ -346,6 +347,7 @@ def test_should_capture_skips_non_done_or_short_sessions(
 def test_should_capture_includes_threshold_and_preserves_all_diagnostic_counts(
     monkeypatch, turn, stuck_events
 ) -> None:
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     monkeypatch.setattr(config.CONFIG.pitfalls, "capture_turn_floor", 50)
     session = Session()
     session.stuck_events = stuck_events
@@ -359,7 +361,7 @@ def test_should_capture_includes_threshold_and_preserves_all_diagnostic_counts(
 
 
 def test_should_capture_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(config.CONFIG.pitfalls, "capture_enabled", False)
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", False)
 
     result = pitfalls.should_capture(DONE, 999, Session())
 

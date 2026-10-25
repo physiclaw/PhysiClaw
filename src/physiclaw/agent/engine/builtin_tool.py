@@ -30,7 +30,7 @@ from physiclaw.agent.engine.job_store import (
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import IDLE, STATUSES
 from physiclaw.common import gesture_vocab, runtime_state
-from physiclaw.common.config import MACRO_FAILURE_ENV_VAR
+from physiclaw.common.config import CONFIG, MACRO_FAILURE_ENV_VAR
 from physiclaw.common.text import clip
 from physiclaw.macros import runner as macro_runner
 from physiclaw.macros.model import Macro
@@ -342,17 +342,10 @@ def _handle_run_macro_factory(
 _NOTE = LocalTool(
     name="note",
     description=(
-        "MUST be called every turn alongside whatever other tool you call. "
-        "`summary` is one line (≤20 words): the LAST result + this turn's "
-        "action (`qty still 2 after retry — opening product page`), never "
-        "intent alone. Your `summary` represents that turn after compaction: "
-        "screens and ordinary tool results are erased; loaded memory and "
-        "skills are preserved separately. Intent-only summaries hide a retry "
-        "loop from your future self.\n"
-        "\n"
-        "Optional `scratchpad` field — see CONVENTION § Scratchpad. "
-        "REQUIRED on a ⚠ pre-compression checkpoint turn (a tail notice "
-        "tells you when)."
+        "Call together with exactly one other tool in the same response, including "
+        "end_session. Record the last result and next action. "
+        "Summary survives compaction. Supply the full scratchpad when updating it "
+        "or when a compression checkpoint requests it."
     ),
     input_schema={
         "type": "object",
@@ -378,15 +371,9 @@ _NOTE = LocalTool(
 _UPDATE_PROGRESS = LocalTool(
     name="update_progress",
     description=(
-        "Mutate the plan pinned at the tail of every request. Pass "
-        "any subset of `user_said` (IM verbatim), `understanding` (one-line "
-        "read), `steps` (full ordered list of `{content, status}`). Status is "
-        "`pending` / `in_progress` / `completed`; **exactly one step may be "
-        "`in_progress`** — engine rejects violators.\n"
-        "\n"
-        "Rules — when to call (draft once → tick after each step → re-plan "
-        "on shift), step granularity (one objective per step), and the "
-        "skip-if-≤4-steps shortcut — all in CONVENTION § The plan."
+        "Update the pinned plan when starting work, completing an objective, "
+        "or changing approach. Pass changed fields only; steps replaces the "
+        "full list. At most one step may be in_progress."
     ),
     input_schema={
         "type": "object",
@@ -428,9 +415,7 @@ _UPDATE_PROGRESS = LocalTool(
                     "required": ["content", "status"],
                 },
                 "description": (
-                    "Full ordered step list. Exactly one step may be "
-                    "in_progress at a time; the engine rejects plans that "
-                    "violate this."
+                    "Full ordered step list, with at most one in_progress step."
                 ),
             },
         },
@@ -443,9 +428,8 @@ _UPDATE_PROGRESS = LocalTool(
 _APPEND_LOG = LocalTool(
     name="append_log",
     description=(
-        "Append one line to today's `memory/YYYY-MM-DD.md` daily log. See "
-        "PERSISTENCE § When to write for trigger rules and § Format for the "
-        "line shape."
+        "Append a factual action or outcome to today's daily log. "
+        "Include exact purchase details; see PERSISTENCE."
     ),
     input_schema={
         "type": "object",
@@ -636,11 +620,9 @@ _FINISH_JOB = LocalTool(
 _WAIT = LocalTool(
     name="wait",
     description=(
-        "Block 1–60s, then return. For short in-session waits when the "
-        "user is actively engaged. **Your next call must be `peek`** — "
-        "chaining `wait → wait` without observing is a bug. See CONVENTION "
-        "§ Wait-retry for the full pattern (max 3 attempts, escalate via "
-        "`end_session(WAIT)` + `create_job`)."
+        "Block 1–60s for a short wait while the user is engaged. "
+        "Next turn, call note + peek. Follow CONVENTION § Wait-retry; "
+        "schedule the resume with create_job before end_session(WAIT)."
     ),
     input_schema={
         "type": "object",
@@ -656,11 +638,9 @@ _WAIT = LocalTool(
 _ADD_PITFALL = LocalTool(
     name="add_pitfall",
     description=(
-        "Bank up to 3 traps you hit AND got past this session, so a future run "
-        "skips them (append-only, joins the always-on `## Learned pitfalls`). "
-        "Each: **lead with the app**, then `trap → the fix that worked`, one "
-        "terse line. Empty list if none worth banking. Required before a long "
-        "DONE close."
+        "Save up to 3 new lessons from this session as `app: trap → fix`. "
+        "Use fixes you observed working; skip duplicates and untested advice. "
+        "Required before a long DONE close; pass an empty list if none."
     ),
     input_schema={
         "type": "object",
@@ -779,7 +759,7 @@ _SKILL_SCHEMA = {
     "properties": {
         "name": {
             "type": "string",
-            "description": "Skill name, e.g. `wechat`.",
+            "description": "Exact name from Available skills.",
         },
         "reference": {
             "type": "string",
@@ -847,6 +827,8 @@ def build_registry(
     # layout brings both back.
     if layout.is_learned():
         tools.pop(_REPORT_SCREEN_LAYOUT.name, None)
+    if not CONFIG.pitfalls.enabled:
+        tools.pop(_ADD_PITFALL.name)
     if skill_registry:
         tools["Skill"] = LocalTool(
             name="Skill",

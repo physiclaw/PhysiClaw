@@ -334,10 +334,9 @@ def render_builtin(builtin: dict[str, Skill]) -> str:
     lines = [
         "## Built-in Skills",
         "",
-        "Always active — no loading. If one matches the task, follow its "
-        "steps in order. `{{…}}` boxes name learned elements — resolve from "
-        "SYSTEM § Screen layout; code templates already carry the "
-        "substituted coordinates.",
+        "Already loaded; follow the applicable workflow. Code templates use "
+        "learned coordinates when available. Unresolved `{{…}}` boxes are "
+        "not coordinates: complete setup or ground the target from a live view.",
         "",
     ]
     for s in builtin.values():

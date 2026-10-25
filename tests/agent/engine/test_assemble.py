@@ -12,7 +12,7 @@ from freezegun import freeze_time
 from hypothesis import given
 from hypothesis import strategies as st
 
-from physiclaw.agent.engine import compact, jobs
+from physiclaw.agent.engine import compact, jobs, pitfalls
 from physiclaw.agent.engine.assemble import (
     apply_request_tails,
     build_initial_messages,
@@ -21,7 +21,7 @@ from physiclaw.agent.engine.assemble import (
 )
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
-from physiclaw.common import paths
+from physiclaw.common import config, paths
 from physiclaw.contract.dto import SystemMessage, UserMessage
 
 MACRO = """kind: macro
@@ -100,7 +100,7 @@ def test_apply_request_tails_orders_scratchpad_plan_checkpoint_and_layout(keep):
     assert len(messages) == 2
     assert request[2].content == "<scratchpad>\ncurrent notes\n</scratchpad>"
     assert request[3].content == session.plan.render()
-    assert f"newest {keep} folds" in request[4].content
+    assert request[4] == compact.inject_checkpoint_tail([], keep=keep)[0]
     assert "First-run setup needed" in request[5].content
     assert len(request) == 6
 
@@ -156,6 +156,27 @@ def test_build_prompt_bundle_learned_layout_disables_first_run_reminder(mocker):
 
     assert bundle.layout_incomplete is False
     assert "report_screen_layout" not in bundle.local_registry
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("provider_id", ["deepseek", "anthropic", "openai"])
+def test_pitfalls_switch_controls_entire_prompt_surface(
+    monkeypatch, enabled, provider_id
+):
+    pitfalls.add(["Example app: old trap → observed fix"])
+    monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", enabled)
+    if not enabled:
+        monkeypatch.setattr(pitfalls, "read", lambda: pytest.fail("disabled read"))
+
+    bundle = build_prompt_bundle(provider_id)
+
+    assert ("add_pitfall" in bundle.local_registry) is enabled
+    assert ("add_pitfall" in {s["name"] for s in bundle.local_schemas}) is enabled
+    assert ("pitfall" in bundle.system_prompt.casefold()) is enabled
+    assert ("## Learned pitfalls" in bundle.system_prompt) is enabled
+    assert ("old trap" in bundle.system_prompt) is enabled
+    assert bundle.pitfall_count == int(enabled)
+    assert "old trap" in (paths.pitfalls_dir() / "pitfalls.md").read_text()
 
 
 def test_format_triggers_includes_now_and_each_trigger() -> None:
