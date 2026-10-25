@@ -54,8 +54,8 @@ def load_suspended(
     consumed on load (a crash mid-resume loses the suspension, and the next
     wake runs as a plain session — fail-open, never a loop). The WAIT
     job that may also fire is just the alarm clock; ANY wake resumes.
-    `channel` avoids a second channel load when the caller (session_setup)
-    already holds one."""
+    `channel` lets callers reuse a channel they already hold. Otherwise
+    it loads only after the saved playbook is confirmed live."""
     p = suspension.suspended_path()
     if not p.exists():
         return None
@@ -69,7 +69,7 @@ def load_suspended(
             spec,
             pack,
             {str(k): str(v) for k, v in (data.get("values") or {}).items()},
-            channel if channel is not None else load_channel(),
+            channel if channel is not None else load_channel(load_boot=False),
             suspended=data,
             events=events,
         )
@@ -120,17 +120,19 @@ def session_setup(
     playbook on disk with its state) and one decision line — the boot
     drives and what it offers, or the plain session and the one reason.
     A playbook not running is the first thing to know about a wake."""
-    channel = load_channel()
-    program = load_suspended(channel, events)
+    program = load_suspended(events=events)
     if program is not None:
         # A live program names only its own pack + the channel — the
         # full cross-pack discovery below is the boot's need, and the
         # boot is off while a program drives (a suspended walk
         # navigates to the thread on its own account; it logged the
         # resume itself).
-        return program, walk_registry(program, channel)
+        return program, walk_registry(program, program.channel)
     found = discover()
     log.debug("Playbooks on disk: %s", ", ".join(found.roster) or "none")
+    # The optional channel is still loaded for the hidden registry, but
+    # missing setup matters to the user only when a live playbook needs it.
+    channel = load_channel(warn=bool(found.entries))
     hidden: dict[str, Macro] = {}
     if channel is not None:
         hidden.update(channel.macros)
@@ -140,20 +142,18 @@ def session_setup(
             hidden.update(found.macros)
 
     def quiet(reason: str) -> tuple[None, dict[str, Macro]]:
-        # The first gap in the chain the boot needs — a usable channel
-        # pack, a live boot in it, a task pack on disk, a live playbook
-        # in one — each naming the door that closes it.
         log.debug("Plain model session: %s", reason)
         return None, hidden
 
-    if channel is None:
-        return quiet("no usable channel pack (`physiclaw playbooks init channel`)")
-    if channel.boot is None:
-        return quiet("the channel has no live boot (see above)")
+    # Report inactive playbooks before unused channel setup.
     if not found.roster:
         return quiet("no task pack on disk (`physiclaw playbooks init <app>`)")
     if not found.entries:
         return quiet("no live playbook — none of the roster above is enabled and valid")
+    if channel is None:
+        return quiet("no usable channel pack (`physiclaw playbooks init channel/<im>`)")
+    if channel.boot is None:
+        return quiet("the channel has no live boot (see above)")
     # The lock screen is matched by shape; `ensure_ios_pack` materializes
     # the OS declarations on first look so a device that prints a hint
     # gets the sharper belt without the user having run `playbooks init
