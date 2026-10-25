@@ -90,6 +90,10 @@ packages = ["src/physiclaw"]
 [project.scripts]
 physiclaw = "physiclaw.cli:app"
 
+[tool.ruff]
+# Exclude generated hardware diagnostic scripts from source checks.
+extend-exclude = ["hardware/output"]
+
 [tool.ruff.lint]
 # Ruff's defaults (pycodestyle errors + pyflakes) made explicit, plus
 # import sorting. Wider rule sets (ANN/ARG/BLE/C901) are deliberately

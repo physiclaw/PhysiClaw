@@ -423,7 +423,7 @@ def test_render_keeps_newest_nonblank_lines_within_screen():
 
     assert [r.label for r in screen.rows] == list(map(str, range(3, 15)))
     assert [center_of(r.bbox)[1] for r in screen.rows] == pytest.approx(
-        [0.2 + 0.06 * i for i in range(12)], abs=0.001
+        [0.2 + 0.03 * i for i in range(12)], abs=0.001
     )
 
 

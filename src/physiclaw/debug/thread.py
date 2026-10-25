@@ -50,6 +50,9 @@ _BUBBLE_MAX_W = 0.64  # the widest a bubble's line runs
 _CHAR_W = 0.04  # one character's width
 _BUBBLE_TOP = 0.20  # first bubble's center y, below the anchor chrome
 _BUBBLE_STEP = 0.06
+# Wrapped rows must stay close enough for the production reply reader to
+# recognize one message. Separate bubbles retain the larger gap above.
+_LINE_STEP = 0.03
 _BUBBLE_BOTTOM = 0.95
 
 # Anchor extents are cosmetic (the matcher verifies centers, not
@@ -246,19 +249,22 @@ def render_listing(bubbles: list[Bubble], pp: PagePrint | None, incoming: Bbox) 
     anchors, then the newest bubbles that fit, oldest first — a thread
     scrolled to its tail, the way every real peek reads it."""
     elements = _anchor_elements(pp)
-    lines: list[tuple[str, str]] = [
-        (b.sender, line.strip())
-        for b in bubbles
+    lines: list[tuple[int, str, str]] = [
+        (bubble_id, b.sender, line.strip())
+        for bubble_id, b in enumerate(bubbles)
         for line in b.text.splitlines()
         if line.strip()
     ]
     fit = int((_BUBBLE_BOTTOM - _BUBBLE_TOP) / _BUBBLE_STEP)
     y = _BUBBLE_TOP
     user_left = (incoming[0] + incoming[2]) / 2 < 0.5  # the user's side
-    for sender, line in lines[-fit:]:
+    previous_bubble = None
+    for bubble_id, sender, line in lines[-fit:]:
+        if previous_bubble is not None:
+            y += _LINE_STEP if bubble_id == previous_bubble else _BUBBLE_STEP
         cx, half_w = _line_geometry(line, from_left=(sender == USER) == user_left)
         elements.append(_element(len(elements), line, cx, y, half_w))
-        y += _BUBBLE_STEP
+        previous_bubble = bubble_id
     return format_elements(elements)
 
 
