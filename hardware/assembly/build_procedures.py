@@ -44,6 +44,7 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from functools import cache
 from pathlib import Path
 from threading import Event, Thread
@@ -778,12 +779,17 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)
 
-    with buildlog.session(
-        OUTPUT_DIR,
-        log_format=args.log_format,
-        verbose=args.verbose,
-        worker=args.worker_events,
-    ) as log:
+    # The CLI can forward another SIGINT after workers have stopped. Keep the
+    # handler active until the final result is written and the log is closed.
+    with (
+        nullcontext() if args.worker_events else cancel_on_interrupt(_CANCELLED),
+        buildlog.session(
+            OUTPUT_DIR,
+            log_format=args.log_format,
+            verbose=args.verbose,
+            worker=args.worker_events,
+        ) as log,
+    ):
         level = "debug" if args.worker_events else "info"
         buildlog.event(
             "worker_started" if args.worker_events else "build_started",
@@ -803,12 +809,9 @@ def main(argv: list[str] | None = None) -> int:
                 crash_log=str(log.crash_path),
             )
         try:
-            if args.worker_events:
-                rc = _execute(args)
-            else:
-                with cancel_on_interrupt(_CANCELLED):
-                    rc = _execute(args)
-                    _check_cancelled()
+            rc = _execute(args)
+            if not args.worker_events:
+                _check_cancelled()
         except KeyboardInterrupt:
             buildlog.event(
                 "build_interrupted",

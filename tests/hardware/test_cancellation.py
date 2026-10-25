@@ -138,6 +138,79 @@ raise SystemExit(cli.main(['build']))
     assert acquired.stdout.strip() == "released"
 
 
+def test_repeated_ctrl_c_during_cancellation_reporting(tmp_path):
+    pytest.importorskip("build123d", reason="CAD dependencies required")
+    script = """
+import signal
+from hardware.assembly import build_procedures as bp
+
+interrupted = []
+
+def interrupt_at(name):
+    if stage == name:
+        interrupted.append(name)
+        # The wrapper can forward SIGINT after the dispatcher has already
+        # handled the terminal's signal and stopped all its workers.
+        signal.raise_signal(signal.SIGINT)
+
+def execute(args):
+    signal.raise_signal(signal.SIGINT)
+    bp._check_cancelled()
+
+format_exc = bp.traceback.format_exc
+def report_traceback():
+    interrupt_at('traceback')
+    return format_exc()
+
+event = bp.buildlog.event
+def report_event(name, *args, **kwargs):
+    interrupt_at(name)
+    return event(name, *args, **kwargs)
+
+close = bp.buildlog.BuildLog.__exit__
+def close_log(self, *args):
+    interrupt_at('log_close')
+    return close(self, *args)
+
+bp._execute = execute
+bp.traceback.format_exc = report_traceback
+bp.buildlog.event = report_event
+bp.buildlog.BuildLog.__exit__ = close_log
+previous = signal.getsignal(signal.SIGINT)
+stages = ['traceback', 'build_finished', 'log_close']
+# Exercise each phase with its own second SIGINT, importing CAD only once.
+for stage in stages:
+    rc = bp.main([])
+    assert rc == 130, stage
+    assert signal.getsignal(signal.SIGINT) == previous, stage
+    assert not bp._CANCELLED.is_set(), stage
+assert interrupted == stages
+raise SystemExit(rc)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    terminal = result.stdout + result.stderr
+    assert result.returncode == 130, terminal
+    assert result.stdout.count("CANCELLED") == 3
+    assert "Traceback" not in terminal and "KeyboardInterrupt" not in terminal
+    logs = list((tmp_path / "logs").glob("*.jsonl"))
+    assert len(logs) == 3
+    for log in logs:
+        events = [json.loads(line) for line in log.read_text().splitlines()]
+        interrupted = [e for e in events if e["event"] == "build_interrupted"]
+        assert len(interrupted) == 1
+        assert "KeyboardInterrupt" in interrupted[0]["traceback"]
+        finished = [e for e in events if e["event"] == "build_finished"]
+        assert finished == [events[-1]]
+        assert finished[0]["status"] == "cancelled"
+        assert finished[0]["exit_code"] == 130
+
+
 def test_repeated_ctrl_c_cannot_reenter_cancellation_event():
     script = """
 import signal
