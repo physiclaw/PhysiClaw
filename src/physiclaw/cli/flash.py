@@ -33,11 +33,14 @@ so this command does not touch those.
 from __future__ import annotations
 
 import io
+import os
 import stat
 import subprocess
 import tempfile
 import zipfile
 import zlib
+from collections import deque
+from collections.abc import Callable
 from contextlib import suppress
 from http.client import HTTPException
 from pathlib import Path, PurePosixPath
@@ -46,8 +49,10 @@ from urllib.error import HTTPError
 
 import typer
 
-from physiclaw.cli._format import exit_error, next_hint, ok
+from physiclaw.cli._flash_output import FlashOutput
+from physiclaw.cli._format import exit_error, info, next_hint, ok, section, warn
 from physiclaw.cli._http import http_get, stream
+from physiclaw.common.terminal import plain_text
 
 # Version-stable URL — the served bundle is whichever release the site last
 # published (see firmware/README.md for the build + publish flow).
@@ -156,11 +161,45 @@ def _detect_port() -> str | None:
     if not ports:
         return None
     if len(ports) > 1:
-        typer.echo(f"  (several ports found — using {ports[0]}; override with --port)")
+        typer.echo(warn("several ports found"))
+        typer.echo(info(f"using {ports[0]}; override with --port"))
     return ports[0]
 
 
-def _uv_esptool(args: list[str]) -> None:
+def _run_esptool(cmd: list[str], on_line: Callable[[str], None]) -> None:
+    """Drain both child streams together; UTF-8 and pipes work on every host."""
+    tail: deque[str] = deque(maxlen=12)
+    with subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"},
+    ) as process:
+        assert process.stdout is not None
+        try:
+            for raw in process.stdout:
+                line = plain_text(raw).strip()
+                if line:
+                    tail.append(line)
+                    on_line(line)
+            code = process.wait()
+        except BaseException:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            raise
+    if code:
+        raise subprocess.CalledProcessError(code, cmd, output="\n".join(tail))
+
+
+def _uv_esptool(args: list[str], *, verbose: bool = False) -> None:
     cmd = [
         "uv",
         "run",
@@ -172,17 +211,30 @@ def _uv_esptool(args: list[str]) -> None:
         _ESPTOOL_RUN,
         *args,
     ]
+    output = FlashOutput(verbose=verbose)
+    if not verbose:
+        typer.echo(info("Preparing flasher and connecting to board …"))
     try:
-        subprocess.run(cmd, check=True)
+        try:
+            _run_esptool(cmd, output.feed)
+        finally:
+            output.close()
     except FileNotFoundError:
-        typer.secho("`uv` not found on PATH — esptool runs inside uv.", fg="red")
-        raise typer.Exit(1)
+        exit_error("`uv` not found on PATH — esptool runs inside uv.")
     except subprocess.CalledProcessError as e:
-        typer.secho(
-            "\n✗ Couldn't reach the board. The 12 V power adaptor MUST be switched on.",
-            fg="red",
+        detail = (
+            "\n".join(f"  {line}" for line in e.output.splitlines()) + "\n"
+            if e.output and not verbose
+            else ""
         )
-        raise typer.Exit(e.returncode or 1)
+        exit_error(
+            "Flashing failed.\n"
+            + detail
+            + "  Check the USB connection and close any app using the serial port.\n"
+            "  Switch on the 12 V power adaptor.\n"
+            "  Full output: physiclaw flash --verbose",
+            code=e.returncode or 1,
+        )
 
 
 def flash(
@@ -198,40 +250,59 @@ def flash(
     ] = False,
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", help="Print the esptool command without flashing."),
+        typer.Option("--dry-run", help="Preview firmware images without flashing."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show the full uv and esptool output."),
     ] = False,
 ) -> None:
     """Flash FluidNC firmware onto the MKS DLC32 control board."""
-    typer.secho(
-        "Flash FluidNC firmware to the MKS DLC32 V2.1 control board\n", bold=True
-    )
+    typer.echo(section("PhysiClaw · Firmware flash"))
+    typer.echo(info("MKS DLC32 V2.1 · FluidNC firmware"))
+    if dry_run:
+        typer.echo(warn("Dry run — preview only; the board will not be changed."))
+    typer.echo()
+    steps = 4 if erase and not dry_run else 3
 
     with tempfile.TemporaryDirectory(prefix="physiclaw-fw-") as td:
-        typer.echo("→ Downloading firmware …")
+        typer.echo(section(f"[1/{steps}] Downloading firmware …"))
         files, version = _fetch_bundle(Path(td))
-        if version:
-            typer.echo(f"→ Firmware: FluidNC {version}")
+        typer.echo(
+            ok(f"Firmware: FluidNC {version}" if version else "Firmware bundle ready.")
+        )
 
+        typer.echo()
+        typer.echo(section(f"[2/{steps}] Selecting control board"))
         dev = port or _detect_port() or ("auto-detect" if dry_run else None)
         if not dev:
-            typer.secho(
-                "\n✗ No board found. Switch on the 12 V power adaptor and connect "
-                "the MKS DLC32 over USB — install the CH340 driver if needed, or pass --port.",
-                fg="red",
+            exit_error(
+                "No board found.\n"
+                "  Switch on the 12 V power adaptor and connect the MKS DLC32 over USB.\n"
+                "  Install the CH340 driver if needed, or pass --port."
             )
-            raise typer.Exit(1)
-        typer.echo(f"→ Board: {dev}")
+        if dev == "auto-detect" and dry_run:
+            typer.echo(info(f"Board: {dev} (no board detected)"))
+        else:
+            typer.echo(ok(f"Board: {dev}"))
 
         if dry_run:
-            typer.secho("\nDry run — would flash these images:", bold=True)
+            typer.echo()
+            typer.echo(section("[3/3] Dry run — would flash these images:"))
+            typer.echo(info(f"{'Image':<18} {'Address':>10}"))
             for offset, p in files:
-                typer.echo(f"    {offset:>9}  {p.name}")
+                typer.echo(info(f"{p.name:<18} {offset:>10}"))
+            if erase:
+                typer.echo()
+                typer.echo(info("--erase: would erase the chip before writing."))
             return
 
         base = ["--chip", CHIP, "--port", dev, "--baud", str(BAUD)]
         if erase:
-            typer.echo("→ Erasing flash …")
-            _uv_esptool([*base, "erase_flash"])
+            typer.echo()
+            typer.echo(section(f"[3/{steps}] Erasing flash …"))
+            _uv_esptool([*base, "erase_flash"], verbose=verbose)
+            typer.echo(ok("Flash erased."))
 
         write = [
             *base,
@@ -251,10 +322,15 @@ def flash(
         for offset, p in files:
             write += [offset, str(p)]
 
-        typer.echo("→ Flashing … takes about a minute; don't unplug the board.\n")
-        _uv_esptool(write)
+        typer.echo()
+        typer.echo(section(f"[{steps}/{steps}] Flashing firmware …"))
+        typer.echo(info("About a minute. Keep the board connected."))
+        typer.echo()
+        _uv_esptool(write, verbose=verbose)
 
-    typer.echo("")
+    typer.echo()
     typer.echo(ok("Done — the board now runs as a PhysiClaw machine."))
-    typer.echo("  FluidNC firmware and config.yaml are both on the board.\n")
-    typer.echo(next_hint("physiclaw testdrive — take the board for a spin.\n"))
+    typer.echo()
+    typer.echo(
+        next_hint("physiclaw testdrive", description="take the board for a spin.")
+    )

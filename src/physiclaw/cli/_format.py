@@ -33,9 +33,13 @@ def warn(msg: str) -> str:
     return _style("! ", fg=typer.colors.YELLOW) + stdout_text(msg)
 
 
-def next_hint(line: str) -> str:
-    """Bold ``Next:`` prefix + the rest of the line."""
-    return _style("Next:", fg=typer.colors.CYAN, bold=True) + " " + stdout_text(line)
+def next_hint(line: str, *, description: str | None = None) -> str:
+    """Cyan ``Next:``; optionally highlight a command apart from its description."""
+    body = stdout_text(line)
+    if description is not None:
+        body = _style(line, fg=typer.colors.MAGENTA, bold=True)
+        body += stdout_text(f" — {description}")
+    return _style("Next:", fg=typer.colors.CYAN, bold=True) + " " + body
 
 
 def info(msg: str) -> str:

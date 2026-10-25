@@ -20,10 +20,11 @@ def test_warn_includes_bang_prefix_and_message() -> None:
 
 
 def test_next_hint_includes_next_prefix() -> None:
-    out = next_hint("run something")
+    out = next_hint("run something", description="try it now")
 
     assert "Next:" in out
     assert "run something" in out
+    assert " — try it now" in out
 
 
 def test_info_indents_with_two_spaces() -> None:
@@ -69,7 +70,7 @@ def test_cli_decorations_respect_encoding_and_no_color(monkeypatch):
             step_ok(),
             step_warn("retry"),
             step_fail("stopped"),
-            next_hint("physiclaw status"),
+            next_hint("physiclaw status", description="check the board → continue"),
         ]
     )
     rendered.encode("ascii", "strict")

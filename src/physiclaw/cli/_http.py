@@ -26,6 +26,7 @@ from contextlib import nullcontext
 import typer
 
 from physiclaw.common import platform
+from physiclaw.common.terminal import color_enabled, stdout_text
 
 # Cloudflare's WAF 403s the default Python-urllib User-Agent, so every request
 # to the physiclaw.ai mirror must set one. Applied to all CLI downloads for
@@ -89,8 +90,9 @@ def http_get(url: str, timeout: int = 120):
 
 def stream(resp, write, label: str, *, progress: bool = True) -> None:
     """Read ``resp`` in 64 KiB chunks into ``write``, drawing a progress bar
-    sized from Content-Length (quietly streams if the length is unknown, or if
-    ``progress=False`` — for small downloads where only the result matters).
+    sized from Content-Length, or a plain status line without terminal control
+    codes when ANSI output is unavailable or disabled. Quietly streams if the
+    length is unknown, or if ``progress=False``.
 
     Raises ``urllib.error.ContentTooShortError`` (a ``URLError``, so every
     caller's fallback path catches it) when the body ends short of the
@@ -107,14 +109,16 @@ def stream(resp, write, label: str, *, progress: bool = True) -> None:
     received = 0
     # width=0 keeps the bar within the terminal. Absurd declared sizes still
     # undergo the truncation check, but must not overflow the progress display.
-    progress_context = (
-        typer.progressbar(
-            length=total, label=f"{label} ({total / 1048576:.1f} MiB)", width=0
-        )
-        if progress and total is not None and total <= sys.maxsize
-        else nullcontext()
-    )
-    with progress_context as bar:
+    bar = None
+    if progress and total is not None and total <= sys.maxsize:
+        progress_label = stdout_text(f"{label} ({total / 1048576:.1f} MiB)")
+        # Click's animated bar writes cursor-control codes even with color=False.
+        # Keep unsupported consoles, NO_COLOR and redirected logs fully plain.
+        if color_enabled(sys.stdout):
+            bar = typer.progressbar(length=total, label=progress_label, width=0)
+        else:
+            typer.echo(progress_label)
+    with bar if bar is not None else nullcontext():
         for chunk in iter(lambda: resp.read(1 << 16), b""):
             write(chunk)
             received += len(chunk)
