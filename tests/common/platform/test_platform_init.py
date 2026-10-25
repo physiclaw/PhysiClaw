@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from physiclaw.common import platform
 
 
@@ -35,6 +37,10 @@ def test_public_api_surface_is_exhaustive() -> None:
         assert hasattr(platform, name), name
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Cross-backend comparison imports POSIX grp; native API is tested above",
+)
 def test_all_backends_export_the_same_api() -> None:
     from physiclaw.common.platform import darwin, linux, windows
 

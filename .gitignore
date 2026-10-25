@@ -15,6 +15,7 @@ wheels/
 # Captured photos
 *.jpg
 *.png
+!tests/agent/runtime/fixtures/observation.png
 
 # Data (models, calibration, captures — all machine-specific)
 /data/

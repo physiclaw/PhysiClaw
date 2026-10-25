@@ -1,9 +1,7 @@
-# Lint + test on every push / PR. Runs the full hermetic suite with branch
-# coverage (fail_under gates in pyproject; @integration is reserved for
-# tests needing a real port/camera) on Linux and macOS, so the platform
-# backends — including the Linux one — are exercised on a real host of each
-# OS. Windows isn't run here yet (no hosted rig); install.ps1 + the windows
-# backend are validated manually.
+# Lint + fast hermetic tests with branch coverage on Linux and macOS.
+# The slow managed first-image/EOF regression runs on all three OSes.
+# Windows also runs the full runtime suite, platform dispatch checks and mocked
+# Windows backend tests. Installation and real hardware need manual validation.
 name: CI
 
 on:
@@ -80,3 +78,31 @@ jobs:
       # pyproject, keeping one source of truth.
       - name: Test
         run: uv run --locked --group cad pytest --cov
+
+      - name: Managed first image and EOF shutdown
+        # The main suite excludes slow tests; exercise this subprocess on POSIX too.
+        run: uv run --locked pytest -m slow tests/agent/runtime/test_managed_startup.py
+
+  windows-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --group dev
+
+      - name: Runtime and Windows backend regressions
+        # Include the slow fresh-process test: pytest's default excludes it.
+        # Only POSIX cross-backend API parity skips here; native dispatch runs.
+        run: >-
+          uv run --locked pytest -m "not integration"
+          tests/agent/runtime
+          tests/common/platform/test_windows.py
+          tests/common/platform/test_platform_init.py

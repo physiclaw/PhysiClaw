@@ -6,6 +6,8 @@ Accepted mutation variants only change help, error, or log wording.
 from __future__ import annotations
 
 import asyncio
+import builtins
+from types import SimpleNamespace
 
 import pytest
 
@@ -328,3 +330,63 @@ async def test_cleanup_keeps_original_failure_and_task(mocker):
         await launcher._run_runtime(runtime)
     assert error.value is failure
     assert closed == ["mcp", "status"]
+
+
+@pytest.mark.parametrize(
+    "platform, managed, expected",
+    [
+        ("win32", True, ["numpy", "control", "runtime"]),
+        ("win32", False, ["runtime"]),
+        ("darwin", True, ["control", "runtime"]),
+        ("linux", True, ["control", "runtime"]),
+    ],
+)
+async def test_native_preload_before_managed_reader(
+    mocker, platform, managed, expected
+):
+    # Exercise the platform branches without changing Python's own sys.platform.
+    mocker.patch.object(launcher, "sys", SimpleNamespace(platform=platform))
+    events = []
+    real_import = builtins.__import__
+
+    def importing(name, *args, **kwargs):
+        if name == "numpy":
+            events.append("numpy")
+            return SimpleNamespace()
+        return real_import(name, *args, **kwargs)
+
+    mocker.patch.object(builtins, "__import__", new=importing)
+    thread = mocker.patch.object(launcher.threading, "Thread")
+    thread.return_value.start.side_effect = lambda: events.append("control")
+    runtime = mocker.Mock()
+
+    async def start():
+        events.append("runtime")
+
+    runtime.start = start
+    await launcher._run_runtime(runtime, managed=managed)
+    assert events == expected
+
+
+async def test_native_preload_failure_surfaces_before_managed_startup(mocker):
+    mocker.patch.object(launcher, "sys", SimpleNamespace(platform="win32"))
+    failure = ImportError("numpy initialization failed")
+    real_import = builtins.__import__
+
+    def importing(name, *args, **kwargs):
+        if name == "numpy":
+            raise failure
+        return real_import(name, *args, **kwargs)
+
+    mocker.patch.object(builtins, "__import__", new=importing)
+    thread = mocker.patch.object(launcher.threading, "Thread")
+    signal = mocker.patch.object(launcher.signal, "signal")
+    runtime = mocker.Mock(start=mocker.AsyncMock())
+
+    with pytest.raises(ImportError) as error:
+        await launcher._run_runtime(runtime, managed=True)
+
+    assert error.value is failure
+    runtime.start.assert_not_awaited()
+    thread.assert_not_called()
+    signal.assert_not_called()

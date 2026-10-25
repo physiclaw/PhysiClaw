@@ -8,7 +8,6 @@ of where the suite is run.
 from __future__ import annotations
 
 import socket
-import sys
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -104,16 +103,12 @@ def test_quit_camera_aim_app_runs_taskkill_and_settles(mocker) -> None:
 # ---------- open_image_files ----------
 
 
-@pytest.mark.skipif(
-    sys.platform != "win32",
-    reason="os.startfile only exists on Windows; can't import it on macOS/Linux.",
-)
-def test_open_image_files_calls_startfile_for_each(mocker) -> None:  # pragma: no cover
+def test_open_image_files_calls_startfile_for_each(mocker) -> None:
     spy = mocker.patch.object(windows.os, "startfile", create=True)
 
     windows.open_image_files(["a.jpg", "b.jpg"])
 
-    assert spy.call_count == 2
+    assert spy.call_args_list == [call("a.jpg"), call("b.jpg")]
 
 
 def test_open_image_files_swallows_oserror_when_startfile_available(mocker) -> None:

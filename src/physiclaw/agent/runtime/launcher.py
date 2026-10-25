@@ -69,6 +69,12 @@ async def _run_runtime(runtime: Runtime, *, managed: bool = False) -> None:
         loop.call_soon_threadsafe(runtime.stop)
 
     if managed:
+        if sys.platform == "win32":
+            # NumPy's first native import can block on Windows while another
+            # thread reads piped stdin. Initialize it in this child before
+            # starting runtime-control: https://github.com/numpy/numpy/issues/24290
+            import numpy  # noqa: F401
+
         for sig in (signal.SIGINT, signal.SIGTERM):
             previous[sig] = signal.signal(sig, request_stop)
 
