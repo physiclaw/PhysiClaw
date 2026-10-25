@@ -15,8 +15,8 @@ make firmware ARGS="--help"
 make firmware ARGS="--tag v4.1.0"
 ```
 
-`DEFAULT_TAG` in `firmware.py` selects the default FluidNC release. The standalone
-script declares its image-building dependencies through PEP 723; uv installs
+The default FluidNC release is **v4.1.0**, set by `DEFAULT_TAG` in `firmware.py`.
+The standalone script declares its image-building dependencies through PEP 723; uv installs
 them without requiring the PhysiClaw package. To run without Make or choose a
 custom destination:
 
@@ -33,7 +33,7 @@ firmware/output/
 ├── fluidnc.zip          # completed flash bundle
 └── .cache/             # preserved between builds
     ├── .build.lock     # prevents overlapping builds; unlocked automatically on exit
-    └── v4.0.3/         # release metadata and downloaded ZIP/ELF
+    └── v4.1.0/         # release metadata and downloaded ZIP/ELF
 ```
 
 Every build clears generated files from `output/`, **preserving `.cache/`**.
@@ -53,8 +53,8 @@ For an offline build, supply both inputs from the same release. Keep them
 outside the cleaned output folder or inside `.cache/`:
 
 ```bash
-uv run firmware/firmware.py --tag v4.0.3 \
-  --posix-zip /path/to/fluidnc-v4.0.3-posix.zip \
+uv run firmware/firmware.py --tag v4.1.0 \
+  --posix-zip /path/to/fluidnc-v4.1.0-posix.zip \
   --elf /path/to/esp32-noradio-firmware.elf
 ```
 

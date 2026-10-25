@@ -37,7 +37,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote
 
-DEFAULT_TAG = "v4.0.3"
+DEFAULT_TAG = "v4.1.0"
 BUNDLE_NAME = "fluidnc.zip"  # version-free; fluidnc_version.txt inside records it
 FIRMWARE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = FIRMWARE_DIR / "output"
@@ -344,7 +344,9 @@ def build_bundle(*, tag: str, posix_zip: Path, elf: Path, out: Path) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI options without downloading or importing image build tools."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--tag", default=DEFAULT_TAG, help="FluidNC release tag")
+    parser.add_argument(
+        "--tag", default=DEFAULT_TAG, help="FluidNC release tag (default: %(default)s)"
+    )
     parser.add_argument(
         "--out",
         type=Path,
@@ -355,7 +357,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--elf", type=Path, help="local esp32-noradio-firmware.elf")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.tag):
-        parser.error("--tag must be a release name such as v4.0.3 (no path separators)")
+        parser.error(
+            f"--tag must be a release name such as {DEFAULT_TAG} (no path separators)"
+        )
     return args
 
 

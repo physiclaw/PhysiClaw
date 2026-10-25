@@ -783,10 +783,10 @@ def test_main_downloads_release_and_uses_default_output(
 def test_main_default_release_preserves_and_verifies_cache(
     bundle, compilers, mocker, capsys
 ):
-    cache = bundle.CACHE_DIR / "v4.0.3"
+    cache = bundle.CACHE_DIR / "v4.1.0"
     cache.mkdir(parents=True)
-    release = _release_zip(tag="v4.0.3")
-    posix = cache / "fluidnc-v4.0.3-posix.zip"
+    release = _release_zip(tag="v4.1.0")
+    posix = cache / "fluidnc-v4.1.0-posix.zip"
     posix.write_bytes(release)
     timestamp = posix.stat().st_mtime_ns
     (cache / "esp32-noradio-firmware.elf").write_bytes(b"ELF")
@@ -795,7 +795,7 @@ def test_main_default_release_preserves_and_verifies_cache(
     download = mocker.patch.object(
         bundle.urllib.request,
         "urlopen",
-        return_value=_metadata(bundle, release, tag="v4.0.3"),
+        return_value=_metadata(bundle, release, tag="v4.1.0"),
     )
 
     bundle.main([])
@@ -807,13 +807,13 @@ def test_main_default_release_preserves_and_verifies_cache(
     download.assert_called_once()
     assert (
         download.call_args.args[0].full_url
-        == "https://api.github.com/repos/bdring/FluidNC/releases/tags/v4.0.3"
+        == "https://api.github.com/repos/bdring/FluidNC/releases/tags/v4.1.0"
     )
     assert posix.stat().st_mtime_ns == timestamp
     assert (cache / "keep.txt").read_text() == "preserve cache contents"
     assert not (bundle.OUTPUT_DIR / "stale.zip").exists()
     with zipfile.ZipFile(bundle.DEFAULT_OUTPUT) as archive:
-        assert archive.read("fluidnc_version.txt") == b"v4.0.3\n"
+        assert archive.read("fluidnc_version.txt") == b"v4.1.0\n"
         assert archive.read("firmware.bin") == b"firmware:ELF"
 
 
