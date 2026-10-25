@@ -17,9 +17,9 @@ plus, for reference only: ``config.yaml`` and ``fluidnc_version.txt`` —
 the bundle name and URL are version-free; the txt records what's inside.
 
 To build the bundle from a FluidNC release, run
-``uv run scripts/firmware/build_bundle.py`` in a repo checkout — it
+``make firmware`` (or ``uv run firmware/firmware.py``) in a repo checkout — it
 assembles the zip from upstream release assets plus
-``scripts/firmware/config.yaml`` (pass ``--tag`` for a newer FluidNC).
+``firmware/config.yaml`` (pass ``--tag`` for a newer FluidNC).
 
 esptool runs in an ephemeral ``uv`` environment, so it isn't a permanent
 dependency of the CLI.
@@ -50,7 +50,7 @@ from physiclaw.cli._format import exit_error, next_hint, ok
 from physiclaw.cli._http import http_get, stream
 
 # Version-stable URL — the served bundle is whichever release the site last
-# published (see scripts/firmware/build_bundle.py for the build + publish flow).
+# published (see firmware/README.md for the build + publish flow).
 FIRMWARE_URL = "https://physiclaw.ai/downloads/firmware/fluidnc.zip"
 CHIP = "esp32"  # MKS DLC32 V2.1
 BAUD = 115200  # matches the firmware guide's install speed

@@ -57,8 +57,8 @@ jobs:
       # everywhere (hardware/ is style-star-import CAD code, format-only).
       - name: Lint
         run: |
-          uv run ruff check src/ tests/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
-          uv run ruff format --check src/ tests/ hardware/ scripts/
+          uv run ruff check src/ tests/ firmware/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+          uv run ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
       # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
       # pyproject (src/physiclaw only; tests and hardware/ aren't gated yet).

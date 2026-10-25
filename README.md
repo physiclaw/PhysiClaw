@@ -63,6 +63,11 @@ physiclaw doctor                       # check your environment
 physiclaw                              # start the server — opens the hardware-setup wizard, then runs the agent
 ```
 
+## Firmware development
+
+Run `make firmware` to build the FluidNC bundle used by `physiclaw flash`.
+See [`firmware/README.md`](firmware/README.md) for options, testing, and publishing.
+
 ## License
 
 [MIT](LICENSE) — both the CAD-as-code hardware and the agent software.
