@@ -154,12 +154,13 @@ def test_calibrate_camera_frame_returns_diagnostic_dict(
     cam = MagicMock()
     cam.raw_frame.return_value = np.zeros((480, 640, 3), np.uint8)
     cal = MagicMock()
+    issues = [] if setup_ok else ["Phone tilted"]
     mocker.patch.object(
         camera_frame_mod,
         "check_phone_in_frame",
         return_value={
             "ok": setup_ok,
-            "issues": [] if setup_ok else ["Phone tilted"],
+            "issues": issues,
             "coverage": 0.9,
             "aspect_ratio": 16 / 9,
             "image_size": (480, 640),
@@ -178,19 +179,22 @@ def test_calibrate_camera_frame_returns_diagnostic_dict(
     assert out["rotation"] == cv2.ROTATE_90_CLOCKWISE
     assert out["rotation_name"] == "90° clockwise"
     assert out["setup_ok"] is setup_ok
+    assert out["issues"] == issues
     assert out["coverage"] == 0.9
     cal.set_phase.assert_called_once_with("markers")
-    records = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
+    console_filter = ConsoleFilter(verbose=False)
+    formatter = TaggedFormatter("physiclaw", False, verbose=False)
     lines = [
-        TaggedFormatter("physiclaw", False, verbose=False).format(r) for r in records
+        formatter.format(record)
+        for record in caplog.records
+        if console_filter.filter(record)
     ]
-    assert len(lines) == 2
+    assert len(lines) == (2 if setup_ok else 1)
     assert "checking camera alignment" in lines[0]
     if setup_ok:
         assert "Camera alignment ready" in lines[1]
-    else:
-        assert "needs adjustment" in lines[1] and "setup wizard" in lines[1]
-        assert records[1].levelno == logging.WARNING
+    assert all(record.levelno < logging.WARNING for record in caplog.records)
+    assert f"setup_ok={setup_ok}" in caplog.text
 
 
 # ---------- _pick_rotation_from_markers — synthetic frames ----------

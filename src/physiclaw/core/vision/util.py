@@ -61,6 +61,7 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
     """Shape/coverage/straightness diagnostic from one overhead frame.
 
     Returns ``{ok, issues, coverage, aspect_ratio, image_size, phone_region}``.
+    Setup callers display ``issues``; server logs retain them as diagnostics.
     Saves an annotated frame to ``<tempdir>/physiclaw_camera_rotation.jpg``.
     Raises if no bright region is detected (camera read failed or phone off).
     """
@@ -127,7 +128,8 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
             f"Camera may be tilted — phone aspect {phone_ratio:.2f} (diff {ratio_diff:.0%})"
         )
 
-    # Coverage: phone should fill ≥ 25% of frame.
+    # Coverage is setup advice, not a runtime image-quality failure: a 4K
+    # frame can retain ample screen detail below this framing target.
     if coverage < 0.25:
         issues.append(
             f"Move camera closer — phone covers only {coverage:.0%} of image (need ≥25%)"
@@ -138,7 +140,7 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
         f"edge dev {rotation_dev:.1f}°, aspect {phone_ratio:.2f}, coverage {coverage:.0%}"
     )
     if issues:
-        log.warning(f"  Camera setup issues: {'; '.join(issues)}")
+        log.info(f"  Camera setup issues: {'; '.join(issues)}")
 
     return {
         "ok": not issues,

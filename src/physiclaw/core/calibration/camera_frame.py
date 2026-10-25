@@ -96,15 +96,15 @@ def calibrate_camera_frame(cam: Camera, cal: CalibrationState) -> dict:
 
     checks = check_phone_in_frame(frame)
     rotation, rot_label = _pick_rotation_from_markers(frame)
-    log.log(
-        logging.INFO if checks["ok"] else logging.WARNING,
+    # The CLI/browser setup surfaces the returned issues as warnings. Keep
+    # advisory checks in server diagnostics instead of duplicating them as
+    # production warnings; actual capture/marker failures still raise.
+    log.info(
         f"  ✓ Camera frame: rotation={rot_label}, setup_ok={checks['ok']}",
         extra={
             "event": "calibration.checked",
-            "console": True,
-            "console_message": "Camera alignment ready"
-            if checks["ok"]
-            else "Camera alignment needs adjustment — check the setup wizard",
+            "console": checks["ok"],
+            "console_message": "Camera alignment ready",
         },
     )
     return {

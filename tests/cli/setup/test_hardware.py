@@ -1324,6 +1324,32 @@ def test_setup_missing_camera_index_defaults_to_zero_on_reopen(wizard_server):
     ]
 
 
+@pytest.mark.parametrize("args", [[], ["--auto"]])
+def test_setup_shows_low_coverage_warning_during_calibration(args, wizard_server):
+    issue = "Move camera closer — phone covers only 23% of image (need ≥25%)"
+    wizard_server.overrides["/api/calibrate/camera"] = {
+        "status": "ok",
+        "setup_ok": False,
+        "rotation_name": "90°",
+        "coverage": 0.23,
+        "issues": [issue],
+    }
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count(issue) == 1
+    assert "Camera calibrated — found all 15 dots" in result.output
+    assert "PhysiClaw is ready" in result.output
+
+    # A ready rig skips calibration, so the advice is not replayed.
+    previous_calls = len(wizard_server.calls)
+    resumed = runner.invoke(app, args)
+    assert resumed.exit_code == 0, resumed.output
+    assert issue not in resumed.output
+    assert wizard_server.paths()[previous_calls:] == ["/api/status"]
+
+
 @pytest.mark.parametrize("aligned", [True, False])
 def test_setup_reports_rotation_only_when_alignment_failed(aligned, wizard_server):
     wizard_server.overrides["/api/calibrate/arm"] = {

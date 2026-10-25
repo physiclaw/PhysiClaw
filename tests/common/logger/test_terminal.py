@@ -74,6 +74,55 @@ def test_legacy_message_indentation_does_not_shift_normal_notices(output_logs, v
     assert "|     Camera needs attention" in saved
 
 
+@pytest.mark.parametrize("mode", ["normal", "verbose", "json"])
+async def test_camera_advice_reaches_setup_and_diagnostics_only(
+    output_logs, mocker, monkeypatch, mode
+):
+    import numpy as np
+
+    from physiclaw.core.calibration import camera_frame, handler
+    from tests.core.conftest import stream_request, wire_locked
+
+    if mode == "json":
+        monkeypatch.setenv("PHYSICLAW_LOG_FORMAT", "json")
+    console, directory = output_logs(
+        logging.DEBUG if mode == "verbose" else logging.INFO
+    )
+    # Real detection on a 4K frame with a ~23% phone region and both markers.
+    frame = np.zeros((2160, 3840, 3), dtype=np.uint8)
+    frame[600:1548, 900:2938] = 255
+    frame[970:1030, 2470:2530] = (255, 100, 0)  # Blue UP.
+    frame[1170:1230, 1870:1930] = (0, 50, 255)  # Red RIGHT.
+    mocker.patch.object(camera_frame.time, "sleep")
+    mocker.patch.object(camera_frame.cv2, "imwrite")
+    rig = wire_locked(mocker.MagicMock())
+    rig.cam.raw_frame.return_value = frame
+
+    response = await handler.handle_calibrate_camera_frame(
+        stream_request(b""), rig, mocker.MagicMock()
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["setup_ok"] is False
+    assert body["coverage"] == 0.23
+    (issue,) = body["issues"]
+    assert "Move camera closer" in issue
+    terminal = console.getvalue()
+    saved = (directory / "runtime.log").read_text()
+    assert issue in saved
+    assert "setup_ok=False" in saved
+    assert "Camera alignment ready" not in terminal
+    if mode == "json":
+        records = [json.loads(line) for line in terminal.splitlines()]
+        assert any(issue in record["message"] for record in records)
+        assert all(record["level"] == "info" for record in records)
+    else:
+        assert (issue in terminal) is (mode == "verbose")
+        assert "WARN" not in terminal
+
+
 def test_task_recap_stays_with_its_outcome_and_retains_full_saved_text(output_logs):
     from physiclaw.agent.trace import Trace
     from physiclaw.agent.trace.store import Images

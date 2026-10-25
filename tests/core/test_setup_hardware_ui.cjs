@@ -5,6 +5,28 @@ const {createSetup} = require('./setup_ui_fixture.cjs');
 const posts = ui => ui.requests.filter(request => request.method === 'POST');
 const calls = (ui, url) => posts(ui).filter(request => request.url === url);
 
+test('camera coverage advice appears in setup without blocking calibration', async () => {
+  const ui = await createSetup();
+  const issue = 'Move camera closer — phone covers only 23% of image (need ≥25%)';
+  const pending = Promise.withResolvers();
+  ui.overrides.set('/api/calibrate/camera', () => ({
+    status: 'ok', setup_ok: false, rotation_name: '90°', coverage: 0.23, issues: [issue],
+  }));
+  ui.overrides.set('/api/calibrate/camera-mapping', () => pending.promise);
+
+  await ui.startAuto();
+
+  assert.equal(ui.state().current, 6);
+  assert.ok(ui.el('panel').querySelector('.note.warn').textContent.includes(issue));
+  assert.equal(ui.el('panel').querySelectorAll('.note.err').length, 0);
+  assert.equal(calls(ui, '/api/calibrate/camera-mapping').length, 1);
+
+  ui.status.steps.mapping_b = 'OK';
+  pending.resolve({status: 'ok', dots: 15});
+  await ui.drain();
+  assert.equal(ui.status.ready, true);
+});
+
 test('saved calibration completes the automatic setup in order, once per action', async () => {
   const ui = await createSetup();
 

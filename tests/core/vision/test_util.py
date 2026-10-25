@@ -9,6 +9,7 @@ keep the host clean.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import cv2
@@ -190,8 +191,7 @@ def test_check_phone_in_frame_raises_when_no_bright_region(mocker) -> None:
 
 def test_check_phone_in_frame_reports_ok_for_well_aligned_phone(mocker) -> None:
     mocker.patch.object(cv2, "imwrite")
-    # Aspect ratio ~2 (long axis 400, short 200), coverage = 80000 / 480000 ≈ 17%.
-    # Coverage too low — pad to bigger phone.
+    # Aligned 2:1 phone covering roughly 37% of the frame.
     img = _phone_like_frame(800, 600, phone_w=600, phone_h=300)
 
     result = check_phone_in_frame(img)
@@ -201,19 +201,33 @@ def test_check_phone_in_frame_reports_ok_for_well_aligned_phone(mocker) -> None:
     assert result["coverage"] >= 0.30
 
 
-def test_check_phone_in_frame_flags_low_coverage(mocker) -> None:
+@pytest.mark.parametrize(
+    "img_w,img_h,phone_w,phone_h",
+    [
+        (800, 600, 200, 100),
+        (3840, 2160, 2038, 948),  # Real rig: ~23%, with a 1.9 MP phone region.
+    ],
+)
+def test_check_phone_in_frame_returns_low_coverage_advice_without_warning_logs(
+    mocker, caplog, img_w, img_h, phone_w, phone_h
+) -> None:
     mocker.patch.object(cv2, "imwrite")
-    img = _phone_like_frame(800, 600, phone_w=200, phone_h=100)  # tiny phone
+    img = _phone_like_frame(img_w, img_h, phone_w=phone_w, phone_h=phone_h)
 
-    result = check_phone_in_frame(img)
+    with caplog.at_level(logging.INFO):
+        result = check_phone_in_frame(img)
 
     assert result["ok"] is False
-    assert any("Move camera closer" in s for s in result["issues"])
+    assert len(result["issues"]) == 1
+    assert "Move camera closer" in result["issues"][0]
+    assert result["coverage"] == pytest.approx(
+        phone_w * phone_h / (img_w * img_h), abs=0.01
+    )
+    assert result["issues"][0] in caplog.text
+    assert all(record.levelno < logging.WARNING for record in caplog.records)
 
 
 def test_check_phone_in_frame_accepts_coverage_just_above_25pct(mocker) -> None:
-    # 510×255 / (800×600) ≈ 27% — above the 25% floor but below the old 30%.
-    # Pins the threshold: a bump back to 0.30 would flag this as too small.
     mocker.patch.object(cv2, "imwrite")
     img = _phone_like_frame(800, 600, phone_w=510, phone_h=255)
 
