@@ -17,17 +17,25 @@ import pytest
 def test_first_image_completes_before_control_pipe_eof(tmp_path):
     app = Path(__file__).with_name("managed_image_app.py").resolve()
     src = Path(__file__).resolve().parents[3] / "src"
-    # -I -S excludes inherited PYTHONPATH, .pth files and sitecustomize, even
-    # when diagnostics have installed a preload hook. Add dependencies directly
-    # without executing site hooks or relying on an editable/global install.
+    # Keep native imports cold: bypass PYTHONPATH, .pth files and sitecustomize.
+    # Add the checkout and its dependencies explicitly for the -I -S child.
     paths = list(
         dict.fromkeys(
             [str(src), sysconfig.get_path("purelib"), sysconfig.get_path("platlib")]
         )
     )
+    pywin32_setup = ""
+    if sys.platform == "win32":
+        # Restore pywin32.pth's paths and DLL setup without other preload hooks.
+        paths.extend(
+            str(Path(site_path) / subdir)
+            for site_path in paths[1:]
+            for subdir in ("win32", "win32/lib", "Pythonwin")
+        )
+        pywin32_setup = "import pywin32_bootstrap; "
     bootstrap = (
         f"import sys, runpy; sys.path[:0] = {paths!r}; "
-        f"runpy.run_path({str(app)!r}, run_name='__main__')"
+        f"{pywin32_setup}runpy.run_path({str(app)!r}, run_name='__main__')"
     )
     env = {
         key: value
