@@ -16,9 +16,8 @@ export HW_VERSION
 # ARGS is empty. $(1) describes the expected value.
 need-args = @if [ -z "$(ARGS)" ]; then echo 'usage: make $@ ARGS=$(1)'; exit 2; fi
 
-# Version currently declared in pyproject.toml — used by `build` and `publish`
-# so the user only types it once (in `make bump`).
-PKG_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' pyproject.toml)
+# Release options are passed as data, including to the sequential sub-makes.
+export VERSION VERBOSE RELEASE_FLOW
 
 help:
 	@echo "Targets:"
@@ -38,10 +37,11 @@ help:
 	@echo "                          component split by '.' (0.0.7 → 0.0.8). Override with"
 	@echo "                          VERSION for major/minor jumps. Commits LOCALLY."
 	@echo "  build                 — uv build wheel + sdist for the version in pyproject.toml"
-	@echo "  publish               — upload dist/* to PyPI, tag vX.Y.Z, push. Irreversible."
+	@echo "  publish               — upload current wheel + sdist to PyPI, tag, push. Irreversible."
 	@echo "                          Reads version from pyproject.toml. Needs UV_PUBLISH_TOKEN."
 	@echo "  release [VERSION=X.Y.Z]"
 	@echo "                        — full release: bump + build + publish in one shot."
+	@echo "                          VERBOSE=1 shows command logs; NO_COLOR=1 disables color."
 	@echo ""
 	@$(MAKE) --no-print-directory hw-help
 
@@ -103,80 +103,83 @@ firmware:
 # never released.
 
 bump:
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "✗ working tree dirty — commit or stash first"; exit 1; fi
-	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
-		echo "✗ not on main branch"; exit 1; fi
-	@set -e; \
-	if [ -n "$(VERSION)" ]; then \
-		NEW="$(VERSION)"; \
+	@set -e; . ./scripts/release-output.sh; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		release_error "Working tree dirty — commit or stash first"; fi; \
+	if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
+		release_error "Not on main branch"; fi; \
+	CURRENT=$$(release_version); \
+	if [ -n "$$VERSION" ]; then \
+		NEW=$$VERSION; \
 	else \
-		LAST="$$(echo $(PKG_VERSION) | awk -F. '{print $$NF}')"; \
+		LAST=$${CURRENT##*.}; \
 		case "$$LAST" in *[!0-9]*|"") \
-			echo "✗ can't auto-bump non-numeric last component '$$LAST' of $(PKG_VERSION)"; \
-			echo "  use 'make bump VERSION=X.Y.Z' explicitly"; exit 1;; \
+			release_error "Can't auto-bump '$$CURRENT'; use make bump VERSION=X.Y.Z";; \
 		esac; \
-		NEW="$$(echo $(PKG_VERSION) | awk 'BEGIN{FS=OFS="."} {$$NF = $$NF + 1; print}')"; \
-		echo "Auto-incrementing $(PKG_VERSION) → $$NEW"; \
+		NEW="$$(printf '%s\n' "$$CURRENT" | awk 'BEGIN{FS=OFS="."} {$$NF = $$NF + 1; print}')"; \
 	fi; \
+	case "$$NEW" in *[!0-9a-zA-Z.+!_-]*) release_error "Invalid version: $$NEW";; esac; \
 	if git rev-parse "v$$NEW" >/dev/null 2>&1; then \
-		echo "✗ tag v$$NEW already exists"; exit 1; fi; \
+		release_error "Tag v$$NEW already exists"; fi; \
+	release_stage "$${RELEASE_FLOW:+[1/4] }Version $$CURRENT → $$NEW"; \
 	sed -i.bak "s/^version = \"[^\"]*\"$$/version = \"$$NEW\"/" pyproject.toml; \
 	rm pyproject.toml.bak; \
-	uv lock; \
-	git add pyproject.toml uv.lock; \
-	git commit -m "chore: bump version to $$NEW"; \
-	printf '\n\033[32m✓\033[0m Bumped to %s.\n' "$$NEW"; \
-	printf 'Next:  make build  &&  make publish\n\n'
+	release_run uv lock; \
+	release_run git add pyproject.toml uv.lock; \
+	release_run git commit -m "chore: bump version to $$NEW"; \
+	release_done "Lockfile updated; version committed locally"; \
+	if [ -z "$$RELEASE_FLOW" ]; then printf '\n  Next: make build && make publish\n\n'; fi
 
 build:
-	@if [ -z "$(PKG_VERSION)" ]; then \
-		echo "✗ couldn't read version from pyproject.toml"; exit 1; fi
-	@rm -f dist/physiclaw-$(PKG_VERSION)*
-	uv build
-	@printf '\n\033[32m✓\033[0m Built $(PKG_VERSION):\n'
-	@echo "  dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl"
-	@echo "  dist/physiclaw-$(PKG_VERSION).tar.gz"
+	@set -e; . ./scripts/release-output.sh; \
+	CURRENT=$$(release_version); \
+	[ -n "$$CURRENT" ] || release_error "Couldn't read version from pyproject.toml"; \
+	WHEEL="dist/physiclaw-$$CURRENT-py3-none-any.whl"; \
+	SDIST="dist/physiclaw-$$CURRENT.tar.gz"; \
+	release_stage "$${RELEASE_FLOW:+[2/4] }Build packages · $$CURRENT"; \
+	rm -f "$$WHEEL" "$$SDIST"; \
+	release_run uv build; \
+	release_artifact "$$WHEEL"; \
+	release_artifact "$$SDIST"; \
+	release_done "Built wheel + source archive"; \
+	if [ -z "$$RELEASE_FLOW" ]; then printf '\n  Next: make publish\n\n'; fi
 
 publish:
-	@if [ -z "$(PKG_VERSION)" ]; then \
-		echo "✗ couldn't read version from pyproject.toml"; exit 1; fi
-	@if [ -z "$$UV_PUBLISH_TOKEN" ]; then \
-		echo "✗ UV_PUBLISH_TOKEN not set"; \
-		echo "  Create a PyPI API token: https://pypi.org/manage/account/token/"; \
-		echo "  Then: export UV_PUBLISH_TOKEN=pypi-AgEI..."; \
-		exit 1; fi
-	@if [ ! -f "dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl" ]; then \
-		echo "✗ dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl not found"; \
-		echo "  Run 'make build' first"; exit 1; fi
-	@if git rev-parse "v$(PKG_VERSION)" >/dev/null 2>&1; then \
-		echo "✗ tag v$(PKG_VERSION) already exists — was this version already published?"; \
-		exit 1; fi
-	@printf 'Uploading to PyPI:\n'
-	@printf '  dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl\n'
-	@printf '  dist/physiclaw-$(PKG_VERSION).tar.gz\n'
-	@COUNT=$$(ls dist/physiclaw-*.whl 2>/dev/null | grep -vc "physiclaw-$(PKG_VERSION)-py3" || true); \
-	 if [ "$$COUNT" -gt 0 ]; then \
-		printf '  (%s older wheels in dist/ ignored)\n' "$$COUNT"; \
-	 fi
-	@printf '\n'
-	uv publish dist/physiclaw-$(PKG_VERSION)-py3-none-any.whl dist/physiclaw-$(PKG_VERSION).tar.gz
-	git tag -a v$(PKG_VERSION) -m "physiclaw v$(PKG_VERSION)"
-	git push origin main
-	git push origin v$(PKG_VERSION)
-	@printf '\n\033[32m✓\033[0m Published $(PKG_VERSION) to PyPI and pushed to GitHub.\n'
-	@echo "  https://pypi.org/project/physiclaw/$(PKG_VERSION)/"
+	@set -e; . ./scripts/release-output.sh; \
+	CURRENT=$$(release_version); \
+	[ -n "$$CURRENT" ] || release_error "Couldn't read version from pyproject.toml"; \
+	WHEEL="dist/physiclaw-$$CURRENT-py3-none-any.whl"; \
+	SDIST="dist/physiclaw-$$CURRENT.tar.gz"; \
+	if [ -z "$$UV_PUBLISH_TOKEN" ]; then \
+		release_error "UV_PUBLISH_TOKEN not set. Create a token at https://pypi.org/manage/account/token/ and export UV_PUBLISH_TOKEN"; fi; \
+	for FILE in "$$WHEEL" "$$SDIST"; do \
+		[ -f "$$FILE" ] || release_error "$$FILE not found — run make build first"; \
+	done; \
+	if git rev-parse "v$$CURRENT" >/dev/null 2>&1; then \
+		release_error "Tag v$$CURRENT already exists — was this version already published?"; fi; \
+	release_stage "$${RELEASE_FLOW:+[3/4] }Publish to PyPI · $$CURRENT"; \
+	release_run uv publish "$$WHEEL" "$$SDIST"; \
+	release_done "Uploaded 2 files to PyPI"; \
+	release_stage "$${RELEASE_FLOW:+[4/4] }Push to GitHub"; \
+	release_run git tag -a "v$$CURRENT" -m "physiclaw v$$CURRENT"; \
+	release_run git push origin main; \
+	release_run git push origin "v$$CURRENT"; \
+	release_done "Pushed main and tag v$$CURRENT"; \
+	if [ -z "$$RELEASE_FLOW" ]; then release_summary "$$CURRENT"; fi
 
 # `make release [VERSION=X.Y.Z]` — bump + build + publish in one shot.
 #
 # Make reserves `-p` (print database), so a `make bump -p` style custom
 # flag isn't possible — this meta-target is the equivalent.
 #
-# Make runs prerequisites left-to-right (no -j); the deferred-eval
-# PKG_VERSION re-reads pyproject.toml at recipe time, so build and
-# publish pick up the freshly-bumped version that bump just wrote.
-release: bump build publish
-	@printf '\n\033[32m✓\033[0m Release flow complete for $(PKG_VERSION).\n'
+# Sequential sub-makes also preserve ordering under make -j. Each target reads
+# the version at execution time and hides standalone "Next" hints in this flow.
+release:
+	@. ./scripts/release-output.sh; printf '\n  %sPhysiClaw · release%s\n' "$$release_bold" "$$release_reset"
+	@$(MAKE) --no-print-directory bump RELEASE_FLOW=1
+	@$(MAKE) --no-print-directory build RELEASE_FLOW=1
+	@$(MAKE) --no-print-directory publish RELEASE_FLOW=1
+	@. ./scripts/release-output.sh; release_summary "$$(release_version)"
 
 # --- Hardware CAD pipeline ----------------------------------------------------
 # Thin wrappers over `python -m hardware <subcommand>` (see `make hw-help` and
