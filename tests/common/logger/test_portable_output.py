@@ -15,6 +15,7 @@ import pytest
 
 from physiclaw.common import log_style, terminal
 from physiclaw.common.platform import windows
+from tests.terminal_fakes import Console
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -68,24 +69,6 @@ def test_clipboard_redaction_is_shared_and_does_not_change_arguments(secret):
     assert clean["actions"][1] == sequence["actions"][1]
     assert secret not in log_style.format_tool_call("sequence", sequence)
     assert direct["text"] == secret and sequence["actions"][0]["arg"] == secret
-
-
-class Console(io.StringIO):
-    def __init__(self, encoding="utf-8", *, tty=True):
-        super().__init__()
-        self.codec = encoding
-        self.tty = tty
-
-    @property
-    def encoding(self):
-        return self.codec
-
-    def isatty(self):
-        return self.tty
-
-    def write(self, text):
-        text.encode(self.encoding, "strict")
-        return super().write(text)
 
 
 @pytest.fixture

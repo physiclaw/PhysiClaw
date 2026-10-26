@@ -101,6 +101,15 @@ jobs:
       - name: Sync dependencies
         run: uv sync --locked --group dev
 
+      - name: Doctor and terminal output regressions
+        # macOS/Linux run these in the full suite; also exercise native Windows.
+        run: >-
+          uv run --locked pytest
+          tests/cli/test_doctor.py
+          tests/cli/test_doctor_report.py
+          tests/cli/test__format.py
+          tests/common/logger/test_portable_output.py
+
       - name: Runtime and Windows backend regressions
         # Include the slow fresh-process test: pytest's default excludes it.
         # Only POSIX cross-backend API parity skips here; native dispatch runs.

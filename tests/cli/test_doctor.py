@@ -10,10 +10,12 @@ outcomes without freezing every piece of display wording.
 from __future__ import annotations
 
 import base64
+import contextlib
 import importlib
 import io
 import json
 import logging
+import re
 import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +32,13 @@ doctor_mod = importlib.import_module("physiclaw.cli.doctor")
 app = typer.Typer()
 app.command()(doctor_mod.doctor)
 runner = CliRunner()
+
+
+def _render_check(check):
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        doctor_mod.DoctorReport().check(check)
+    return output.getvalue()
 
 
 # ---------- _list_cameras ----------
@@ -138,9 +147,9 @@ def test_probe_vision_model_deep_ok(mocker) -> None:
     fake_ort.InferenceSession.return_value = fake_session
     mocker.patch.dict("sys.modules", {"onnxruntime": fake_ort})
 
-    out = doctor_mod._probe_vision_model_deep()
+    out = _render_check(doctor_mod._probe_vision_model_deep())
 
-    assert "loads OK" in out
+    assert "Loaded successfully" in out
 
 
 def test_probe_vision_model_deep_failure(mocker) -> None:
@@ -148,9 +157,9 @@ def test_probe_vision_model_deep_failure(mocker) -> None:
     fake_ort.InferenceSession.side_effect = RuntimeError("bad model")
     mocker.patch.dict("sys.modules", {"onnxruntime": fake_ort})
 
-    out = doctor_mod._probe_vision_model_deep()
+    out = _render_check(doctor_mod._probe_vision_model_deep())
 
-    assert "load failed" in out
+    assert "Could not load the vision model" in out
     assert "RuntimeError" in out
 
 
@@ -170,9 +179,9 @@ def test_probe_camera_frame_ok(mocker) -> None:
         return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda *a: None),
     )
 
-    out = doctor_mod._probe_camera_frame(0)
+    out = _render_check(doctor_mod._probe_camera_frame(0))
 
-    assert "frame OK" in out
+    assert "Frame captured" in out
     assert "640x480" in out
 
 
@@ -187,7 +196,7 @@ def test_probe_camera_frame_no_frame(mocker) -> None:
         return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda *a: None),
     )
 
-    out = doctor_mod._probe_camera_frame(2)
+    out = _render_check(doctor_mod._probe_camera_frame(2))
 
     assert "no frame" in out
 
@@ -198,9 +207,9 @@ def test_probe_camera_frame_no_frame(mocker) -> None:
 def test_probe_calibration_deep_no_bundle(mocker) -> None:
     mocker.patch.object(doctor_mod.paths, "load_calibration_bundle", return_value=None)
 
-    out = doctor_mod._probe_calibration_deep()
+    out = _render_check(doctor_mod._probe_calibration_deep())
 
-    assert "parse failed" in out
+    assert "Could not read a valid JSON object" in out
 
 
 def test_probe_calibration_deep_unreadable(mocker) -> None:
@@ -216,9 +225,9 @@ def test_probe_calibration_deep_unreadable(mocker) -> None:
         {"physiclaw.core.calibration.state": fake_cal_module},
     )
 
-    out = doctor_mod._probe_calibration_deep()
+    out = _render_check(doctor_mod._probe_calibration_deep())
 
-    assert "unreadable" in out
+    assert "Could not read calibration" in out
 
 
 def test_probe_calibration_deep_complete(mocker) -> None:
@@ -235,9 +244,9 @@ def test_probe_calibration_deep_complete(mocker) -> None:
         {"physiclaw.core.calibration.state": fake_cal_module},
     )
 
-    out = doctor_mod._probe_calibration_deep()
+    out = _render_check(doctor_mod._probe_calibration_deep())
 
-    assert "bundle complete" in out
+    assert "Complete" in out
 
 
 def test_probe_calibration_deep_partial_with_missing(mocker) -> None:
@@ -254,10 +263,10 @@ def test_probe_calibration_deep_partial_with_missing(mocker) -> None:
         {"physiclaw.core.calibration.state": fake_cal_module},
     )
 
-    out = doctor_mod._probe_calibration_deep()
+    out = _render_check(doctor_mod._probe_calibration_deep())
 
-    assert "partial" in out
-    assert "'a'" in out and "'c'" in out
+    assert "Incomplete" in out
+    assert "Missing values: a, c" in out
 
 
 def test_probe_calibration_deep_partial_no_missing(mocker) -> None:
@@ -274,9 +283,9 @@ def test_probe_calibration_deep_partial_no_missing(mocker) -> None:
         {"physiclaw.core.calibration.state": fake_cal_module},
     )
 
-    out = doctor_mod._probe_calibration_deep()
+    out = _render_check(doctor_mod._probe_calibration_deep())
 
-    assert "keys:" in out
+    assert "Finish the hardware setup wizard" in out
 
 
 # ---------- _probe_bridge_deep ----------
@@ -287,9 +296,9 @@ def test_probe_bridge_deep_connected(mocker) -> None:
         doctor_mod._http, "fetch_json", return_value={"connected": True}
     )
 
-    out = doctor_mod._probe_bridge_deep("localhost", 8048)
+    out = _render_check(doctor_mod._probe_bridge_deep("localhost", 8048))
 
-    assert "phone connected" in out
+    assert "Phone connected" in out
 
 
 def test_probe_bridge_deep_not_paired(mocker) -> None:
@@ -297,7 +306,7 @@ def test_probe_bridge_deep_not_paired(mocker) -> None:
         doctor_mod._http, "fetch_json", return_value={"connected": False}
     )
 
-    out = doctor_mod._probe_bridge_deep("localhost", 8048)
+    out = _render_check(doctor_mod._probe_bridge_deep("localhost", 8048))
 
     assert "not paired" in out
 
@@ -310,7 +319,7 @@ def test_probe_bridge_deep_http_error(mocker) -> None:
         side_effect=urllib.error.URLError("x"),
     )
 
-    out = doctor_mod._probe_bridge_deep("localhost", 8048)
+    out = _render_check(doctor_mod._probe_bridge_deep("localhost", 8048))
 
     assert "URLError" in out
 
@@ -327,10 +336,10 @@ def test_skills_lines_empty(mocker, tmp_path: Path) -> None:
     fake_skills.PROVENANCE_FILE = ".installed-from"
     mocker.patch.dict("sys.modules", {"physiclaw.cli.skills": fake_skills})
 
-    lines = doctor_mod._skills_lines()
+    lines = [_render_check(check) for check in doctor_mod._skills_lines()]
 
     assert len(lines) == 1
-    assert "none installed" in lines[0]
+    assert "None installed" in lines[0]
 
 
 def test_skills_lines_with_provenance(mocker, tmp_path: Path) -> None:
@@ -347,7 +356,7 @@ def test_skills_lines_with_provenance(mocker, tmp_path: Path) -> None:
     fake_skills.PROVENANCE_FILE = ".installed-from"
     mocker.patch.dict("sys.modules", {"physiclaw.cli.skills": fake_skills})
 
-    lines = doctor_mod._skills_lines()
+    lines = [_render_check(check) for check in doctor_mod._skills_lines()]
 
     assert any("alpha" in line and "owner/repo" in line for line in lines)
 
@@ -366,7 +375,7 @@ def test_skills_lines_uses_sha_when_no_ref(mocker, tmp_path: Path) -> None:
     fake_skills.PROVENANCE_FILE = ".installed-from"
     mocker.patch.dict("sys.modules", {"physiclaw.cli.skills": fake_skills})
 
-    lines = doctor_mod._skills_lines()
+    lines = [_render_check(check) for check in doctor_mod._skills_lines()]
 
     assert any("abcdef0" in line for line in lines)
 
@@ -381,9 +390,9 @@ def test_skills_lines_local_skill(mocker, tmp_path: Path) -> None:
     fake_skills.PROVENANCE_FILE = ".installed-from"
     mocker.patch.dict("sys.modules", {"physiclaw.cli.skills": fake_skills})
 
-    lines = doctor_mod._skills_lines()
+    lines = [_render_check(check) for check in doctor_mod._skills_lines()]
 
-    assert any("myown" in line and "(local)" in line for line in lines)
+    assert any("myown" in line and "Local skill" in line for line in lines)
 
 
 def test_skills_lines_unparseable_provenance(mocker, tmp_path: Path) -> None:
@@ -397,9 +406,9 @@ def test_skills_lines_unparseable_provenance(mocker, tmp_path: Path) -> None:
     fake_skills.PROVENANCE_FILE = ".installed-from"
     mocker.patch.dict("sys.modules", {"physiclaw.cli.skills": fake_skills})
 
-    lines = doctor_mod._skills_lines()
+    lines = [_render_check(check) for check in doctor_mod._skills_lines()]
 
-    assert any("provenance unreadable" in line for line in lines)
+    assert any("Install source could not be read" in line for line in lines)
 
 
 # ---------- doctor command (smoke) ----------
@@ -454,24 +463,21 @@ def _patch_doctor_environment(
     )
     mocker.patch.object(doctor_mod, "_list_cameras", return_value=[0])
     mocker.patch.object(
-        doctor_mod, "_skills_lines", return_value=["  (none installed)"]
+        doctor_mod,
+        "_skills_lines",
+        return_value=[doctor_mod._fmt_info("Skills", "None installed (optional)")],
     )
 
     fake_launcher = MagicMock()
-    fake_launcher.engine_label.return_value = "engine=openai"
     fake_launcher.resolve.return_value = ("openai/gpt-5", "config")
     mocker.patch.dict(
         "sys.modules",
         {"physiclaw.agent.runtime.launcher": fake_launcher},
     )
 
-    fake_provider = MagicMock()
-    fake_provider.provider_key_status.return_value = (
-        (None, "config") if key_unset else ("sk-***x", "env")
-    )
-    mocker.patch.dict(
-        "sys.modules",
-        {"physiclaw.provider": fake_provider},
+    mocker.patch(
+        "physiclaw.provider.provider_key_status",
+        return_value=(None, "config") if key_unset else ("sk-***x", "env"),
     )
 
     fake_grbl = MagicMock()
@@ -501,7 +507,30 @@ def test_doctor_server_running_and_ready(mocker) -> None:
 
     assert result.exit_code == 0
     assert "PhysiClaw doctor" in result.output
-    assert "Checks complete" in result.output
+    assert "checks passed" in result.output
+
+
+def test_doctor_optional_defaults_do_not_require_action(mocker) -> None:
+    _patch_doctor_environment(
+        mocker,
+        server_status={"arm": True, "camera": True, "calibrated": True, "ready": True},
+        model_exists=True,
+        bundle_exists=True,
+        key_unset=False,
+    )
+    config_path = mocker.Mock()
+    config_path.exists.return_value = False
+    mocker.patch("physiclaw.common.config.config_path", return_value=config_path)
+    mocker.patch.object(doctor_mod.shutil, "which", return_value=None)
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.exception
+    assert "Using built-in defaults" in result.output
+    assert "Not installed (optional)" in result.output
+    assert "None installed (optional)" in result.output
+    assert not re.search(r"\b(?:OK|INFO|WARN|ERROR)\b", result.output)
+    assert "Next steps" not in result.output
 
 
 def test_doctor_server_not_running_probes_locally(mocker) -> None:
@@ -515,10 +544,13 @@ def test_doctor_server_not_running_probes_locally(mocker) -> None:
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "server: not running" in result.output
-    assert "GRBL arm" in result.output
+    assert "Not running" in result.output
+    assert "Arm" in result.output
     assert "physiclaw setup local-vision-model" in result.output
-    assert "starts the server and opens the hardware-setup wizard" in result.output
+    assert "Start the server and open the hardware setup wizard" in result.output
+    steps = result.output.split("Next steps", 1)[1]
+    assert "physiclaw models key openai" in steps
+    assert "physiclaw setup hardware" not in steps
 
 
 def test_doctor_no_cameras_detected_offline(mocker) -> None:
@@ -527,7 +559,7 @@ def test_doctor_no_cameras_detected_offline(mocker) -> None:
 
     result = runner.invoke(app, [])
 
-    assert "cameras: none detected" in result.output
+    assert "None detected" in result.output
 
 
 def test_doctor_no_grbl_detected(mocker) -> None:
@@ -542,7 +574,7 @@ def test_doctor_no_grbl_detected(mocker) -> None:
 
     result = runner.invoke(app, [])
 
-    assert "no serial ports detected" in result.output
+    assert "No serial ports detected" in result.output
 
 
 def test_doctor_no_grbl_with_candidate_ports(mocker) -> None:
@@ -557,7 +589,7 @@ def test_doctor_no_grbl_with_candidate_ports(mocker) -> None:
 
     result = runner.invoke(app, [])
 
-    assert "no GRBL detected" in result.output
+    assert "No GRBL controller responded" in result.output
 
 
 def test_doctor_warns_about_bind_all(mocker) -> None:
@@ -605,7 +637,7 @@ def test_doctor_engine_invalid_when_resolve_fails(mocker) -> None:
 
     result = runner.invoke(app, [])
 
-    assert "engine: invalid" in result.output
+    assert "Invalid configuration" in result.output
 
 
 def test_doctor_uses_live_engine_ref(mocker) -> None:
@@ -620,7 +652,7 @@ def test_doctor_uses_live_engine_ref(mocker) -> None:
     assert "live server" in result.output
 
 
-def test_doctor_no_config_warns(mocker) -> None:
+def test_doctor_no_config_uses_defaults(mocker) -> None:
     _patch_doctor_environment(mocker, server_status=None)
     cp = MagicMock(spec=Path)
     cp.exists.return_value = False
@@ -628,7 +660,7 @@ def test_doctor_no_config_warns(mocker) -> None:
 
     result = runner.invoke(app, [])
 
-    assert "no config yet" in result.output
+    assert "Using built-in defaults" in result.output
 
 
 def test_doctor_deep_runs_probes(mocker) -> None:
@@ -642,22 +674,22 @@ def test_doctor_deep_runs_probes(mocker) -> None:
     vision_spy = mocker.patch.object(
         doctor_mod,
         "_probe_vision_model_deep",
-        return_value="✓ vision OK",
+        return_value=doctor_mod._fmt_ok("vision", "Passed"),
     )
     bridge_spy = mocker.patch.object(
         doctor_mod,
         "_probe_bridge_deep",
-        return_value="✓ bridge OK",
+        return_value=doctor_mod._fmt_ok("bridge", "Passed"),
     )
     calib_spy = mocker.patch.object(
         doctor_mod,
         "_probe_calibration_deep",
-        return_value="✓ calib OK",
+        return_value=doctor_mod._fmt_ok("calib", "Passed"),
     )
     provider_spy = mocker.patch.object(
         doctor_mod,
         "_probe_provider_deep",
-        return_value="✓ provider OK",
+        return_value=doctor_mod._fmt_ok("provider", "Passed"),
     )
 
     runner.invoke(app, ["--deep"])
@@ -666,6 +698,46 @@ def test_doctor_deep_runs_probes(mocker) -> None:
     bridge_spy.assert_called_once()
     calib_spy.assert_called_once()
     provider_spy.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "failed_probe",
+    [
+        "_probe_vision_model_deep",
+        "_probe_bridge_deep",
+        "_probe_calibration_deep",
+        "_probe_provider_deep",
+    ],
+)
+def test_doctor_summary_includes_deep_failures_when_server_is_ready(
+    mocker, failed_probe
+):
+    _patch_doctor_environment(
+        mocker,
+        server_status={"arm": True, "camera": True, "calibrated": True, "ready": True},
+        model_exists=True,
+        bundle_exists=True,
+        key_unset=False,
+    )
+    for probe in (
+        "_probe_vision_model_deep",
+        "_probe_bridge_deep",
+        "_probe_calibration_deep",
+        "_probe_provider_deep",
+    ):
+        check = (
+            doctor_mod._fmt_error("Test", "Failed")
+            if probe == failed_probe
+            else doctor_mod._fmt_ok("Test", "Passed")
+        )
+        mocker.patch.object(doctor_mod, probe, return_value=check)
+
+    result = runner.invoke(app, ["--deep"])
+
+    assert result.exit_code == 0, result.exception
+    summary = result.output.split("Summary", 1)[1]
+    assert "1 check needs attention" in summary
+    assert "checks passed." not in summary
 
 
 # ---------- _probe_provider_deep ----------
@@ -678,7 +750,7 @@ def _make_async(value):
     return _coro
 
 
-def test_probe_provider_deep_setup_error_returns_warn(mocker) -> None:
+def test_probe_provider_deep_setup_error_returns_error(mocker) -> None:
     fake_provider = MagicMock()
     fake_provider.make_chat_provider.side_effect = ValueError("missing api key")
     mocker.patch.dict(
@@ -686,13 +758,13 @@ def test_probe_provider_deep_setup_error_returns_warn(mocker) -> None:
         {"physiclaw.provider": fake_provider},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
     assert "setup" in out
     assert "missing api key" in out
 
 
-def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
+def test_probe_provider_deep_chat_exception_returns_error(mocker) -> None:
     """Non-empty reply check happens before this; the chat itself raises."""
 
     fake_prov = MagicMock()
@@ -706,13 +778,13 @@ def test_probe_provider_deep_chat_exception_returns_warn(mocker) -> None:
         {"physiclaw.provider": fake_module},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
     assert "RuntimeError" in out
     assert "network" in out
 
 
-def test_probe_provider_deep_empty_reply_returns_warn(mocker) -> None:
+def test_probe_provider_deep_empty_reply_returns_error(mocker) -> None:
     from physiclaw.contract.dto import (
         AssistantMessage,
         FinishReason,
@@ -734,7 +806,7 @@ def test_probe_provider_deep_empty_reply_returns_warn(mocker) -> None:
         {"physiclaw.provider": fake_module},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
     assert "empty reply" in out
 
@@ -763,9 +835,9 @@ def test_probe_provider_deep_vision_check_fails(mocker) -> None:
         {"physiclaw.provider": fake_module},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
-    assert "vision check failed" in out
+    assert "Image recognition failed" in out
     assert "PhysiClaw" in out
 
 
@@ -793,11 +865,11 @@ def test_probe_provider_deep_success_with_usage(mocker) -> None:
         {"physiclaw.provider": fake_module},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
     # Success rendered as ok.
     assert "PhysiClaw" in out
-    assert "200p+2c" in out
+    assert "200 input + 2 output tokens" in out
 
 
 def test_probe_provider_deep_success_no_usage(mocker) -> None:
@@ -824,9 +896,9 @@ def test_probe_provider_deep_success_no_usage(mocker) -> None:
         {"physiclaw.provider": fake_module},
     )
 
-    out = doctor_mod._probe_provider_deep("openai", "gpt-5")
+    out = _render_check(doctor_mod._probe_provider_deep("openai", "gpt-5"))
 
-    assert "no usage" in out
+    assert "Token usage unavailable" in out
 
 
 def test_doctor_invalid_active_model_ref(mocker) -> None:
@@ -858,7 +930,7 @@ def test_doctor_warns_when_config_invalid(mocker) -> None:
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "config.toml invalid" in result.output
+    assert "Invalid config.toml" in result.output
     assert "portt" in result.output
 
 
@@ -934,9 +1006,9 @@ def test_regression_doctor_corrupt_onnx_reports_failure_and_continues(doctor_io)
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "vision model: load failed" in result.output
+    assert "Could not load the vision model" in result.output
     assert "Next steps" in result.output
-    assert "All set" not in result.output
+    assert "No issues found" not in result.output
 
 
 @pytest.mark.parametrize(
@@ -965,8 +1037,8 @@ def test_regression_doctor_bad_bridge_state_reports_failure_and_continues(
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "! bridge:" in result.output
-    assert "phone connected" not in result.output
+    assert re.search(r"Phone bridge\s+ERROR\s", result.output)
+    assert "Phone connected" not in result.output
     assert "Next steps" in result.output
 
 
@@ -977,7 +1049,7 @@ def test_regression_doctor_invalid_status_does_not_open_hardware(doctor_io, payl
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "invalid status" in result.output
+    assert "Invalid status" in result.output
     doctor_io.detect.assert_not_called()
     doctor_io.camera.assert_not_called()
     assert "Next steps" in result.output
@@ -1005,7 +1077,7 @@ def test_regression_doctor_camera_enumeration_failure_releases_capture(doctor_io
 
     assert result.exit_code == 0, result.exception
     assert capture.released == 1
-    assert "cameras:" in result.output and "isOpened failed" in result.output
+    assert "Cameras" in result.output and "isOpened failed" in result.output
     assert "Next steps" in result.output
 
 
@@ -1033,7 +1105,7 @@ def test_regression_doctor_serial_failure_does_not_abort_report(doctor_io):
 
     assert result.exit_code == 0, result.exception
     assert "serial disconnected" in result.output
-    assert "cameras:" in result.output
+    assert "Cameras" in result.output
     assert "Next steps" in result.output
 
 
@@ -1051,8 +1123,8 @@ def test_regression_doctor_bad_skill_provenance_preserves_other_results(
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert "broken: provenance unreadable" in result.output
-    assert "healthy  (local)" in result.output
+    assert re.search(r"broken\s+WARN\s+Install source could not be read", result.output)
+    assert re.search(r"healthy\s+Local skill", result.output)
     assert "Next steps" in result.output
 
 
@@ -1098,10 +1170,14 @@ def test_doctor_status_flags_require_json_true(doctor_io, value, verdict):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert f"arm: {verdict}" in result.output
-    assert f"camera: {verdict}" in result.output
-    assert f"calibrated: {verdict}" in result.output
-    assert f"ready: {verdict}" in result.output
+    for label, message in (
+        ("Arm", "Connected"),
+        ("Camera", "Connected"),
+        ("Calibration", "Complete"),
+        ("Hardware setup", "Ready"),
+    ):
+        expected = message if verdict == "yes" else "WARN"
+        assert re.search(rf"^  {label} +{expected}\b", result.output, re.MULTILINE)
 
 
 def _use_camera_frame(doctor_io, frame):
@@ -1114,7 +1190,7 @@ def _use_camera_frame(doctor_io, frame):
 
 
 @pytest.mark.parametrize(
-    "luma, verdict", [(0, "DARK"), (127, "BLURRY"), (255, "BLOWN")]
+    "luma, verdict", [(0, "Too dark"), (127, "Blurry"), (255, "Overexposed")]
 )
 def test_doctor_frame_quality_reports_actionable_cause(doctor_io, luma, verdict):
     import numpy as np
@@ -1124,19 +1200,19 @@ def test_doctor_frame_quality_reports_actionable_cause(doctor_io, luma, verdict)
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert f"quality {verdict}" in result.output
-    assert "! camera 0:" in result.output
-    assert "whole frame — no calibration crop" in result.output
+    assert verdict in result.output
+    assert re.search(r"Camera 0\s+WARN\s", result.output)
+    assert "whole frame; no calibration crop" in result.output
     assert capture.released == 1
 
 
 @pytest.mark.parametrize(
     "cam_size, rotation, scope",
     [
-        ((64, 48), -1, "phone-screen crop)"),
-        ((128, 96), -1, "phone-screen crop (calibrated 128x96, rescaled to 64x48)"),
-        ((48, 64), -1, "aspect 64x48 != calibrated 48x64; recalibrate"),
-        ((48, 64), 0, "phone-screen crop)"),
+        ((64, 48), -1, "phone screen."),
+        ((128, 96), -1, "phone screen (calibrated 128x96, rescaled to 64x48)"),
+        ((48, 64), -1, "aspect ratio changed from 48x64 to 64x48; recalibrate"),
+        ((48, 64), 0, "phone screen."),
     ],
 )
 def test_doctor_frame_quality_respects_calibrated_geometry(
@@ -1159,9 +1235,9 @@ def test_doctor_frame_quality_respects_calibrated_geometry(
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "quality ok" in result.output
-    assert "✓ camera 0:" in result.output
-    assert scope in result.output
+    assert "Image quality passed" in result.output
+    assert re.search(r"Camera 0\s+Frame captured", result.output)
+    assert scope in " ".join(result.output.split())
 
 
 @pytest.mark.parametrize("hint", ["", "install OpenCV system libraries"])
@@ -1173,7 +1249,7 @@ def test_doctor_missing_opencv_still_finishes_report(doctor_io, mocker, hint):
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "OpenCV (cv2) import failed" in result.output
+    assert "OpenCV could not load" in result.output
     assert hint in result.output
     assert "Next steps" in result.output
     doctor_io.camera.assert_not_called()
@@ -1186,7 +1262,7 @@ def test_regression_doctor_invalid_live_model_ref_is_reported(doctor_io, ref):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert "engine: invalid" in result.output
+    assert "Invalid configuration" in result.output
     doctor_io.key_status.assert_not_called()
     assert "Next steps" in result.output
 
@@ -1200,14 +1276,14 @@ def test_regression_doctor_bridge_http_error_body_is_closed(doctor_io):
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "bridge: HTTPError" in result.output
+    assert "HTTPError" in result.output
     assert body.closed
 
 
 @pytest.mark.parametrize(
     "failure, summary",
     [
-        (None, "reply='PhysiClaw ok' (2500ms,"),
+        (None, "Image recognized · 2500 ms"),
         (RuntimeError("disconnected"), "RuntimeError"),
     ],
 )
@@ -1251,7 +1327,7 @@ def test_doctor_enumerates_only_bounded_camera_indices(doctor_io):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert "cameras: 5 detected" in result.output
+    assert "5 detected" in result.output
     assert [call.args[0] for call in doctor_io.camera.call_args_list] == [0, 1, 2, 3, 4]
     assert capture.released == 5
 
@@ -1306,7 +1382,7 @@ def test_doctor_model_probe_uses_cpu_and_reports_input_shape(doctor_io, mocker):
 
     assert result.exit_code == 0, result.exception
     factory.assert_called_once_with(str(model), providers=["CPUExecutionProvider"])
-    assert "input [1, 3, 320, 320]" in result.output
+    assert "Input shape: [1, 3, 320, 320]" in result.output
 
 
 def test_doctor_ignores_frames_from_failed_camera_reads(doctor_io, mocker):
@@ -1319,8 +1395,8 @@ def test_doctor_ignores_frames_from_failed_camera_reads(doctor_io, mocker):
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "opens but no frame" in result.output
-    assert "frame OK" not in result.output
+    assert "Opened, but no frame" in result.output
+    assert "Frame captured" not in result.output
 
 
 def test_doctor_partial_calibration_names_missing_values(doctor_io):
@@ -1331,7 +1407,8 @@ def test_doctor_partial_calibration_names_missing_values(doctor_io):
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "partial (missing: ['pct_to_cam'])" in result.output
+    assert "Missing values: pct_to_cam" in result.output
+    assert "physiclaw setup hardware" in result.output.split("Next steps", 1)[1]
 
 
 def test_doctor_bridge_requires_explicit_connection_flag(doctor_io):
@@ -1340,17 +1417,17 @@ def test_doctor_bridge_requires_explicit_connection_flag(doctor_io):
     result = runner.invoke(app, ["--deep"])
 
     assert result.exit_code == 0, result.exception
-    assert "phone not paired yet" in result.output
-    assert "phone connected" not in result.output
+    assert "Phone not paired" in result.output
+    assert "Phone connected" not in result.output
 
 
 @pytest.mark.parametrize(
     "provenance, suffix",
     [
-        ({"source": "owner/repo", "ref": "stable", "sha": "abcdef012345"}, "@ stable"),
-        ({"source": "owner/repo", "sha": "abcdef012345"}, "@ abcdef0"),
-        ({"source": "owner/repo"}, "@ ?"),
-        ({"source": "owner/repo", "ref": None, "sha": None}, "@ ?"),
+        ({"source": "owner/repo", "ref": "stable", "sha": "abcdef012345"}, "stable"),
+        ({"source": "owner/repo", "sha": "abcdef012345"}, "abcdef0"),
+        ({"source": "owner/repo"}, "revision unknown"),
+        ({"source": "owner/repo", "ref": None, "sha": None}, "revision unknown"),
     ],
 )
 def test_doctor_skill_provenance_describes_installed_revision(
@@ -1363,7 +1440,7 @@ def test_doctor_skill_provenance_describes_installed_revision(
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert f"installed  ← owner/repo {suffix}" in result.output
+    assert f"owner/repo · {suffix}" in result.output
 
 
 def test_doctor_reports_python_and_uv_context(doctor_io, mocker):
@@ -1374,9 +1451,36 @@ def test_doctor_reports_python_and_uv_context(doctor_io, mocker):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert f"python:     {sys.version.split()[0]} ({sys.executable})" in result.output
-    assert "uv:         /test/bin/uv" in result.output
-    assert "provider=openai, model=test-model (from test)" in result.output
+    assert sys.version.split()[0] in result.output
+    assert sys.executable in result.output
+    assert "/test/bin/uv" in result.output
+    assert "openai/test-model" in result.output
+
+
+@pytest.mark.parametrize(
+    "system,release,machine,mac_version,expected",
+    [
+        ("Windows", "11", "AMD64", "", "Windows 11 · AMD64"),
+        ("Linux", "6.8.0", "x86_64", "", "Linux 6.8.0 · x86_64"),
+        ("Darwin", "24.6.0", "arm64", "15.6", "macOS 15.6 · arm64"),
+        ("Darwin", "24.6.0", "arm64", "", "Darwin 24.6.0 · arm64"),
+    ],
+)
+def test_doctor_reports_system_version_on_each_platform(
+    doctor_io, mocker, system, release, machine, mac_version, expected
+):
+    mocker.patch.object(doctor_mod.platform, "system", return_value=system)
+    mocker.patch.object(doctor_mod.platform, "release", return_value=release)
+    mocker.patch.object(doctor_mod.platform, "machine", return_value=machine)
+    mac_probe = mocker.patch.object(
+        doctor_mod.platform, "mac_ver", return_value=(mac_version, (), "")
+    )
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0, result.exception
+    assert expected in result.output
+    assert mac_probe.call_count == (system == "Darwin")
 
 
 def test_doctor_model_size_uses_megabytes(doctor_io):
@@ -1402,10 +1506,7 @@ def test_doctor_live_engine_metadata_takes_precedence(doctor_io):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert (
-        "provider=deepseek, model=live-model (live server, environment)"
-        in result.output
-    )
+    assert "Source: live server, environment" in result.output
     doctor_io.key_status.assert_called_once_with("deepseek")
 
 
@@ -1422,8 +1523,8 @@ def test_doctor_shallow_check_does_not_contact_provider(doctor_io, mocker):
 @pytest.mark.parametrize(
     "status, recommendation",
     [
-        (None, "  2. physiclaw   (starts the server"),
-        ({"ready": False}, "  2. finish setup in the browser"),
+        (None, "Start the server and open the hardware setup wizard."),
+        ({"ready": False}, "Complete the hardware setup wizard."),
     ],
 )
 def test_doctor_next_step_distinguishes_offline_from_unready_server(
@@ -1434,7 +1535,7 @@ def test_doctor_next_step_distinguishes_offline_from_unready_server(
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert "\n  1. physiclaw setup local-vision-model\n" in result.output
+    assert "\n     physiclaw setup local-vision-model\n" in result.output
     assert recommendation in result.output.split("Next steps", 1)[1]
 
 
@@ -1448,7 +1549,7 @@ def test_doctor_surfaces_platform_hardware_permission_hints(doctor_io, mocker):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.exception
-    assert "! camera permission requires attention" in result.output
+    assert "camera permission requires attention" in result.output
 
 
 @pytest.mark.parametrize("arguments", [[], ["--deep"]])
@@ -1464,7 +1565,7 @@ def test_doctor_external_mode_needs_no_agent_provider(doctor_io, mocker, argumen
     result = runner.invoke(app, arguments)
 
     assert result.exit_code == 0
-    assert "external MCP client" in result.stdout
+    assert "External MCP client" in result.stdout
     resolve.assert_not_called()
     doctor_io.key_status.assert_not_called()
     provider_probe.assert_not_called()

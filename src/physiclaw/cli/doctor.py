@@ -19,17 +19,18 @@ import typer
 
 from physiclaw import __version__
 from physiclaw.cli import _http
-from physiclaw.cli._format import info as _fmt_info
-from physiclaw.cli._format import ok as _fmt_ok
-from physiclaw.cli._format import section as _fmt_section
-from physiclaw.cli._format import warn as _fmt_warn
+from physiclaw.cli._doctor_report import Check, DoctorReport
+from physiclaw.cli._doctor_report import error as _fmt_error
+from physiclaw.cli._doctor_report import info as _fmt_info
+from physiclaw.cli._doctor_report import ok as _fmt_ok
+from physiclaw.cli._doctor_report import warn as _fmt_warn
 from physiclaw.cli._update_check import maybe_print_update_banner
 from physiclaw.common import paths, runtime_state
 from physiclaw.common.ready import STATUS_PATH, ready_from_status
 
 
-def _opencv_import_error() -> str | None:
-    """Return a formatted hint if ``import cv2`` fails, else None.
+def _opencv_import_error() -> Check | None:
+    """Return a diagnostic if ``import cv2`` fails, else None.
 
     The platform backend augments with OS-specific remediation (e.g. the
     libGL/glib system libs the manylinux wheel needs on minimal Linux).
@@ -39,11 +40,9 @@ def _opencv_import_error() -> str | None:
     except ImportError as e:
         from physiclaw.common import platform as os_platform
 
-        line = f"OpenCV (cv2) import failed — {e}"
         extra = os_platform.opencv_import_hint(e)
-        if extra:
-            line += extra
-        return _fmt_warn(line)
+        details = (str(e), extra.strip()) if extra else (str(e),)
+        return _fmt_error("Camera library", "OpenCV could not load", *details)
     return None
 
 
@@ -72,7 +71,7 @@ def _list_cameras(max_index: int = 4) -> list[int]:
     return found
 
 
-def _offline_hardware_lines(deep: bool) -> Iterator[str]:
+def _offline_hardware_lines(deep: bool) -> Iterator[Check]:
     """Probe devices only after the caller has ruled out a live server.
 
     Yield the progress line before touching hardware; isolate serial and
@@ -81,8 +80,8 @@ def _offline_hardware_lines(deep: bool) -> Iterator[str]:
     from physiclaw.common import platform as os_platform
     from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
 
-    yield _fmt_warn("server: not running")
-    yield "  Probing serial ports for GRBL (active $I query, ~2s/port)…"
+    yield _fmt_info("Server", "Not running", "Checking connected hardware directly.")
+    yield _fmt_info("USB scan", "Checking for the arm; about 2 seconds per port.")
     grbl_logger = logging.getLogger("physiclaw.core.hardware.grbl")
     prev_level = grbl_logger.level
     grbl_logger.setLevel(logging.CRITICAL)
@@ -92,21 +91,24 @@ def _offline_hardware_lines(deep: bool) -> Iterator[str]:
         finally:
             grbl_logger.setLevel(prev_level)
         if grbl_port:
-            yield _fmt_ok(f"GRBL arm: {grbl_port}")
+            yield _fmt_ok("Arm", "Detected", grbl_port)
         else:
             relevant = candidate_ports()
             if relevant:
                 yield _fmt_warn(
-                    f"no GRBL detected (saw {len(relevant)} candidate port(s): "
-                    f"{', '.join(relevant)})"
+                    "Arm",
+                    "No GRBL controller responded",
+                    f"Ports checked: {', '.join(relevant)}",
+                    "Check the USB connection and the control board's 12V power.",
                 )
             else:
                 yield _fmt_warn(
-                    "no serial ports detected — is the control board "
-                    "plugged into USB and its 12V power on?"
+                    "Arm",
+                    "No serial ports detected",
+                    "Connect the control board by USB and turn on its 12V power.",
                 )
     except Exception as e:
-        yield _fmt_warn(f"GRBL arm: {type(e).__name__}: {e}")
+        yield _fmt_error("Arm", "Connection check failed", f"{type(e).__name__}: {e}")
 
     cv2_err = _opencv_import_error()
     if cv2_err is not None:
@@ -115,22 +117,26 @@ def _offline_hardware_lines(deep: bool) -> Iterator[str]:
         try:
             cams = _list_cameras()
         except Exception as e:
-            yield _fmt_warn(f"cameras: {type(e).__name__}: {e}")
+            yield _fmt_error("Cameras", "Detection failed", f"{type(e).__name__}: {e}")
         else:
             if cams:
-                yield _fmt_ok(f"cameras: {len(cams)} detected")
+                yield _fmt_ok("Cameras", f"{len(cams)} detected")
                 if deep:
                     for idx in cams:
                         try:
                             yield _probe_camera_frame(idx)
                         except Exception as e:
-                            yield _fmt_warn(f"camera {idx}: {type(e).__name__}: {e}")
+                            yield _fmt_error(
+                                f"Camera {idx}",
+                                "Frame check failed",
+                                f"{type(e).__name__}: {e}",
+                            )
             else:
                 yield _fmt_warn(
-                    f"cameras: none detected ({os_platform.camera_denied_hint()})"
+                    "Cameras", "None detected", os_platform.camera_denied_hint()
                 )
     for hint in os_platform.hardware_permission_hints():
-        yield _fmt_warn(hint)
+        yield _fmt_warn("Permissions", hint)
 
 
 def _probe_server(live: dict | None) -> tuple[str, int, bool, object]:
@@ -167,11 +173,11 @@ def _probe_server(live: dict | None) -> tuple[str, int, bool, object]:
 
 
 # --- Deep probes (only run with --deep). ------------------------------------
-# Each returns a pre-formatted line ready for typer.echo. Failures are
+# Each returns a check for the report. Failures are
 # non-fatal — doctor reports them and moves on.
 
 
-def _probe_vision_model_deep() -> str:
+def _probe_vision_model_deep() -> Check:
     try:
         import onnxruntime as ort
 
@@ -179,14 +185,16 @@ def _probe_vision_model_deep() -> str:
             str(paths.omniparser_onnx()), providers=["CPUExecutionProvider"]
         )
         shape = sess.get_inputs()[0].shape
-        return _fmt_ok(f"vision model: loads OK (input {shape})")
+        return _fmt_ok("Model load", "Loaded successfully", f"Input shape: {shape}")
     except Exception as e:
         # ONNX Runtime's native errors (e.g. InvalidProtobuf) do not share
         # a narrower base class. A failed model must not abort diagnostics.
-        return _fmt_warn(f"vision model: load failed — {type(e).__name__}: {e}")
+        return _fmt_error(
+            "Model load", "Could not load the vision model", f"{type(e).__name__}: {e}"
+        )
 
 
-def _probe_camera_frame(index: int) -> str:
+def _probe_camera_frame(index: int) -> Check:
     """cap.read() catches the macOS-TCC-denied case (isOpened lies).
 
     Reproduces the server's real capture negotiation (backend + FOURCC +
@@ -214,16 +222,19 @@ def _probe_camera_frame(index: int) -> str:
                 if ok and got is not None:
                     frame = got
             if frame is None:
-                return _fmt_warn(
-                    f"camera {index}: opens but no frame "
-                    f"({os_platform.camera_denied_hint()})"
+                return _fmt_error(
+                    f"Camera {index}",
+                    "Opened, but no frame received",
+                    os_platform.camera_denied_hint(),
                 )
         finally:
             cap.release()
     h, w = frame.shape[:2]
     good, clause = _frame_quality_verdict(frame)
-    line = f"camera {index}: frame OK ({w}x{h}) — {clause}"
-    return _fmt_ok(line) if good else _fmt_warn(line)
+    if good:
+        return _fmt_ok(f"Camera {index}", f"Frame captured ({w}x{h})", clause)
+    issue, _, metrics = clause.partition("\n")
+    return _fmt_warn(f"Camera {index}", issue, f"Frame captured ({w}x{h})", metrics)
 
 
 def _frame_quality_verdict(frame) -> tuple[bool, str]:
@@ -238,7 +249,7 @@ def _frame_quality_verdict(frame) -> tuple[bool, str]:
     from physiclaw.core.vision import quality
     from physiclaw.core.vision.preprocess import crop_to_phone_screen
 
-    scope = "whole frame — no calibration crop"
+    scope = "whole frame; no calibration crop"
     cal = Calibration.load()  # None on missing/unreadable bundle, logged
     # The cam_size check restates what transforms_ready already implies;
     # it narrows the Optional for the unpack below.
@@ -249,29 +260,30 @@ def _frame_quality_verdict(frame) -> tuple[bool, str]:
         cal_w, cal_h = cal.cam_size
         if cal.reconcile_cam_size((w, h)):
             frame = crop_to_phone_screen(frame, cal.transforms())
-            scope = "phone-screen crop"
+            scope = "phone screen"
             if (w, h) != (cal_w, cal_h):
                 scope += f" (calibrated {cal_w}x{cal_h}, rescaled to {w}x{h})"
         else:
             scope = (
-                f"whole frame — aspect {w}x{h} != calibrated "
-                f"{cal_w}x{cal_h}; recalibrate"
+                f"whole frame; aspect ratio changed from {cal_w}x{cal_h} "
+                f"to {w}x{h}; recalibrate"
             )
     r = quality.assess(frame)
     stats = (
-        f"sharpness {r.sharpness:.0f}, clip {r.clip_pct:.0%}, "
-        f"median {r.median_luma:.0f}, burned-icon blobs {r.white_blobs} ({scope})"
+        f"Sharpness {r.sharpness:.0f}, clipped pixels {r.clip_pct:.0%}, "
+        f"median brightness {r.median_luma:.0f}, bright regions {r.white_blobs}. "
+        f"Measured: {scope}."
     )
     if r.blown:
-        return False, f"quality BLOWN — overexposed/glare: {stats}"
+        return False, f"Overexposed. Reduce exposure or glare.\n{stats}"
     if r.dark:
-        return False, f"quality DARK — check lighting/exposure: {stats}"
+        return False, f"Too dark. Check lighting and exposure.\n{stats}"
     if r.blurry:
-        return False, f"quality BLURRY — check focus: {stats}"
-    return True, f"quality ok: {stats}"
+        return False, f"Blurry. Adjust the camera focus.\n{stats}"
+    return True, f"Image quality passed.\n{stats}"
 
 
-def _probe_calibration_deep() -> str:
+def _probe_calibration_deep() -> Check:
     # `complete` is a @property on `Calibration`, not a serialized field,
     # so `data.get("complete")` was always None — bundles that finished
     # the full setup were still reported as "partial". Reconstruct the
@@ -280,22 +292,24 @@ def _probe_calibration_deep() -> str:
 
     data = paths.load_calibration_bundle()
     if data is None:
-        return _fmt_warn("calibration: parse failed or not a JSON object")
+        return _fmt_error("Calibration data", "Could not read a valid JSON object")
     try:
         cal = Calibration.from_dict(data)
     except (TypeError, ValueError, KeyError) as e:
-        return _fmt_warn(f"calibration: bundle unreadable — {e}")
+        return _fmt_error("Calibration data", "Could not read calibration", str(e))
     if cal.complete:
-        return _fmt_ok("calibration: bundle complete")
+        return _fmt_ok("Calibration data", "Complete")
     missing = [k for k, v in data.items() if v is None]
     return _fmt_warn(
-        f"calibration: partial (missing: {missing})"
+        "Calibration data",
+        "Incomplete",
+        f"Missing values: {', '.join(missing)}"
         if missing
-        else f"calibration: partial (keys: {sorted(data.keys())})"
+        else "Finish the hardware setup wizard.",
     )
 
 
-def _probe_bridge_deep(host: str, port: int) -> str:
+def _probe_bridge_deep(host: str, port: int) -> Check:
     """``port`` is the control port; the bridge listens on port+1 (see
     ``core/bridge/lan.bridge_port``). The bridge plane is ungated, so a
     plain loopback GET works here."""
@@ -317,19 +331,20 @@ def _probe_bridge_deep(host: str, port: int) -> str:
         if not isinstance(connected, bool):
             raise ValueError("invalid bridge state: connected must be a boolean")
     except (OSError, ValueError) as e:
-        # Network/parse failure is a real problem — keep the warn.
-        return _fmt_warn(f"bridge: {type(e).__name__}: {e}")
+        # Network/parse failures are errors, unlike an unpaired phone.
+        return _fmt_error(
+            "Phone bridge", "Connection check failed", f"{type(e).__name__}: {e}"
+        )
     if connected:
-        return _fmt_ok("bridge: phone connected")
-    # "not paired yet" is a transient state (phone hasn't opened /bridge),
-    # not a broken configuration — surface the fact without `!`.
-    return _fmt_info("bridge: phone not paired yet")
+        return _fmt_ok("Phone bridge", "Phone connected")
+    # An unpaired phone is an informational state, not a failed check.
+    return _fmt_info("Phone bridge", "Phone not paired")
 
 
-def _skills_lines() -> list[str]:
-    """One formatted line per installed skill. CLI-installed skills carry
+def _skills_lines() -> list[Check]:
+    """One check per installed skill. CLI-installed skills carry
     a ``.installed-from`` JSON marker (see ``cli/skills.py``); user-authored
-    dirs are valid too and render as ``(local)``."""
+    directories are reported as local skills."""
     from physiclaw.cli.skills import (
         PROVENANCE_FILE,
         installed_skill_dirs,
@@ -338,22 +353,32 @@ def _skills_lines() -> list[str]:
 
     entries = installed_skill_dirs()
     if not entries:
-        return [f"  (none installed in {paths.skills_dir()})"]
-    out: list[str] = []
+        return [
+            _fmt_info("Skills", "None installed (optional)", str(paths.skills_dir()))
+        ]
+    out: list[Check] = []
     for d in entries:
         prov = read_provenance(d)
         if isinstance(prov, dict) and all(
             prov.get(key) is None or isinstance(prov[key], str)
             for key in ("source", "ref", "sha")
         ):
-            ref = prov.get("ref") or (prov.get("sha", "") or "")[:7] or "?"
-            out.append(_fmt_ok(f"{d.name}  ← {prov.get('source', '?')} @ {ref}"))
+            ref = (
+                prov.get("ref") or (prov.get("sha", "") or "")[:7] or "revision unknown"
+            )
+            out.append(
+                _fmt_ok(
+                    d.name,
+                    "Installed",
+                    f"{prov.get('source') or 'Source unknown'} · {ref}",
+                )
+            )
         elif (d / PROVENANCE_FILE).exists():
             # Marker present but unparseable — rare, worth flagging
             # separately from user-authored so the user can fix it.
-            out.append(_fmt_warn(f"{d.name}: provenance unreadable"))
+            out.append(_fmt_warn(d.name, "Install source could not be read"))
         else:
-            out.append(_fmt_ok(f"{d.name}  (local)"))
+            out.append(_fmt_ok(d.name, "Local skill"))
     return out
 
 
@@ -389,18 +414,26 @@ _PROBE_IMAGE_B64 = (
 _PROBE_IMAGE_WORD = "PhysiClaw"
 
 
-def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[str]:
+def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[Check]:
     """Report the live engine selection, or resolve locally when offline."""
     if live and live.get("no_runtime") is True:
-        yield _fmt_ok("external MCP client — built-in runtime disabled")
+        yield _fmt_info(
+            "Runtime",
+            "External MCP client",
+            "Built-in runtime disabled; no provider key required here.",
+        )
         return
     if live and live.get("model_error"):
-        yield _fmt_warn(f"engine: invalid — {live['model_error']} (live server)")
+        yield _fmt_error(
+            "Model",
+            "Invalid configuration on the live server",
+            str(live["model_error"]),
+            action=("physiclaw config edit", "Correct the model configuration."),
+        )
         return
 
-    from physiclaw.agent.runtime.launcher import engine_label, resolve
-    from physiclaw.common.config import parse_model_ref
-    from physiclaw.provider import provider_key_status
+    from physiclaw.agent.runtime.launcher import resolve
+    from physiclaw.provider import provider_key_status, validate_model_ref
 
     # A running server's environment may differ from this shell's.
     live_ref = live.get("model_ref") if live else None
@@ -408,33 +441,44 @@ def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[str]:
     try:
         if live_ref:
             active_ref = live_ref
-            ref_source = f"live server, {live_src or '?'}"
+            ref_source = f"live server, {live_src or 'source unknown'}"
         else:
             active_ref, ref_source = resolve()
-            ref_source = f"from {ref_source}"
         if not isinstance(active_ref, str):
             raise ValueError("model ref must be a string")
-        label = engine_label(active_ref)
-        provider, model = parse_model_ref(active_ref)
+        provider, model = validate_model_ref(active_ref)
     except (RuntimeError, ValueError) as e:
-        yield _fmt_warn(f"engine: invalid — {e}")
-        return
-
-    yield _fmt_ok(f"{label} ({ref_source})")
-    masked, source = provider_key_status(provider)
-    if masked is None:
-        yield _fmt_warn(
-            f"{provider} api key: (unset) — required for the active model. "
-            f"Set via `physiclaw models key {provider}` or env var."
+        yield _fmt_error(
+            "Model",
+            "Invalid configuration",
+            str(e),
+            action=(
+                "physiclaw config edit",
+                "Set a valid provider/model in agent.model.",
+            ),
         )
         return
 
-    yield _fmt_ok(f"{provider} api key: {masked} ({source})")
+    yield _fmt_ok("Model", active_ref, f"Source: {ref_source}")
+    masked, source = provider_key_status(provider)
+    if masked is None:
+        yield _fmt_warn(
+            "API key",
+            f"Missing for {provider}",
+            "Required for the selected model.",
+            action=(
+                f"physiclaw models key {provider}",
+                f"Add your {provider} API key.",
+            ),
+        )
+        return
+
+    yield _fmt_ok("API key", f"Configured for {provider}", f"Source: {source}")
     if deep:
         yield _probe_provider_deep(provider, model)
 
 
-def _probe_provider_deep(provider_id: str, model_id: str) -> str:
+def _probe_provider_deep(provider_id: str, model_id: str) -> Check:
     """One round-trip with text + a tiny inline image — exercises the
     full path PhysiClaw needs (network, auth, billing, vision input,
     text output). PhysiClaw requires vision on every peek, so a text-
@@ -463,7 +507,9 @@ def _probe_provider_deep(provider_id: str, model_id: str) -> str:
     try:
         prov = make_chat_provider(provider_id, model_id)
     except (ValueError, RuntimeError) as e:
-        return _fmt_warn(f"{provider_id}/{model_id}: setup — {e}")
+        return _fmt_error(
+            "API test", "Provider setup failed", f"{provider_id}/{model_id}: {e}"
+        )
 
     history: list[Message] = [
         SystemMessage(content="You are a one-word reply bot."),
@@ -485,31 +531,37 @@ def _probe_provider_deep(provider_id: str, model_id: str) -> str:
     try:
         asst = asyncio.run(_run())
     except Exception as e:
-        return _fmt_warn(
-            f"{provider_id}/{model_id}: {type(e).__name__}: {brief(str(e), 140)}"
+        return _fmt_error(
+            "API test",
+            "Request failed",
+            f"{provider_id}/{model_id}: {type(e).__name__}: {brief(str(e), 140)}",
         )
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
     reply = (asst.content or "").strip().replace("\n", " ")
     if not reply:
-        return _fmt_warn(
-            f"{provider_id}/{model_id}: empty reply "
-            f"(finish={asst.finish_reason}, {elapsed_ms}ms)"
+        return _fmt_error(
+            "API test",
+            "Model returned an empty reply",
+            f"{provider_id}/{model_id} · {elapsed_ms} ms · Finish reason: {asst.finish_reason}",
         )
     if _PROBE_IMAGE_WORD.lower() not in reply.lower():
-        return _fmt_warn(
-            f"{provider_id}/{model_id}: vision check failed — expected "
-            f"{_PROBE_IMAGE_WORD!r} in reply, got {brief(reply, 60)!r} "
-            f"({elapsed_ms}ms). Likely a text-only model that silently "
-            "drops images."
+        return _fmt_error(
+            "API test",
+            "Image recognition failed",
+            f"Expected {_PROBE_IMAGE_WORD!r}; received {brief(reply, 60)!r} ({elapsed_ms} ms).",
+            "Check that the selected model supports image input.",
         )
     u = asst.usage
     usage_str = (
-        f"{u.prompt_tokens}p+{u.completion_tokens}c" if u.prompt_tokens else "no usage"
+        f"{u.prompt_tokens} input + {u.completion_tokens} output tokens"
+        if u.prompt_tokens
+        else "Token usage unavailable"
     )
     return _fmt_ok(
-        f"{provider_id}/{model_id}: reply={brief(reply, 40)!r} "
-        f"({elapsed_ms}ms, {usage_str})"
+        "API test",
+        f"Image recognized · {elapsed_ms} ms",
+        f"Reply: {brief(reply, 40)!r} · {usage_str}",
     )
 
 
@@ -518,152 +570,155 @@ def doctor(
         bool,
         typer.Option(
             "--deep",
-            help="Run active probes (model load, camera frame, API call). "
-            "May take several seconds.",
+            help="Also load the vision model, check camera frames, and test the model API. "
+            "Sends one API request that may incur a small charge. May take several seconds.",
         ),
     ] = False,
 ) -> None:
-    """Check environment, hardware, and assets. Report what's missing."""
+    """Check your setup and show what needs attention."""
     paths.ensure_dirs()
+    report = DoctorReport()
+    report.header(__version__, deep=deep)
 
-    typer.echo(_fmt_section("PhysiClaw doctor"))
-    typer.echo(f"  physiclaw:  {__version__}")
-    typer.echo(f"  python:     {sys.version.split()[0]} ({sys.executable})")
-    typer.echo(
-        f"  platform:   {platform.system()} {platform.release()} ({platform.machine()})"
-    )
+    report.section("Environment")
+    system, release = platform.system(), platform.release()
+    if system == "Darwin" and (mac_version := platform.mac_ver()[0]):
+        system, release = "macOS", mac_version
+    report.check(_fmt_info("System", f"{system} {release} · {platform.machine()}"))
+    report.check(_fmt_info("Python", sys.version.split()[0], sys.executable))
     uv = shutil.which("uv")
-    typer.echo(f"  uv:         {uv or '(not found — not required for runtime)'}")
+    report.check(_fmt_info("uv", uv or "Not installed (optional)"))
+    report.check(_fmt_info("Data directory", str(paths.HOME)))
 
-    typer.echo()
-    typer.echo(_fmt_section("Paths"))
-    typer.echo(f"  home: {paths.HOME}")
-
-    typer.echo()
-    typer.echo(_fmt_section("Config"))
-    # Parse the file NOW rather than trusting that the import-time load
-    # succeeded — the user may have edited config.toml since this process
-    # (or the server it queries) started.
+    report.section("Local setup")
+    # Re-read the file: it may have changed since the process started.
     from physiclaw.common import config as _cfg
 
     cp = _cfg.config_path()
     if cp.exists():
         try:
             _cfg.load()
-            typer.echo(_fmt_ok(f"config.toml: {cp}"))
+            report.check(_fmt_ok("Config", "Valid", str(cp)))
         except _cfg.ConfigError as e:
-            typer.echo(_fmt_warn(f"config.toml invalid: {e}"))
-    else:
-        typer.echo(
-            _fmt_warn(
-                f"no config yet — using built-in defaults. Edit via `physiclaw config edit` ({cp})"
+            report.check(
+                _fmt_error(
+                    "Config",
+                    "Invalid config.toml",
+                    str(e),
+                    action=("physiclaw config edit", "Correct the configuration file."),
+                )
             )
+    else:
+        report.check(
+            _fmt_info("Config", "Using built-in defaults", f"No config file at {cp}")
         )
 
-    typer.echo()
-    typer.echo(_fmt_section("Assets"))
     model = paths.omniparser_onnx()
     if model.exists():
         size_mb = model.stat().st_size / 1024 / 1024
-        typer.echo(_fmt_ok(f"vision model: {model}  ({size_mb:.1f} MB)"))
+        report.check(
+            _fmt_ok("Vision model", f"Installed · {size_mb:.1f} MB", str(model))
+        )
         if deep:
-            typer.echo(_probe_vision_model_deep())
+            report.note("Loading the vision model…")
+            report.check(_probe_vision_model_deep())
     else:
-        typer.echo(
+        report.check(
             _fmt_warn(
-                f"vision model missing: {model}\n"
-                "    Run: physiclaw setup local-vision-model"
+                "Vision model",
+                "Not installed",
+                str(model),
+                action=(
+                    "physiclaw setup local-vision-model",
+                    "Download the local vision model.",
+                ),
             )
         )
 
-    typer.echo()
-    typer.echo(_fmt_section("Hardware"))
-    # One read_live() per doctor run — reused by _probe_server and the
-    # Provider section below.
+    bundle = paths.calibration_bundle()
+    calibration_problem = not bundle.exists()
+    if not calibration_problem:
+        report.check(_fmt_ok("Calibration file", "Saved", str(bundle)))
+        if deep:
+            calibration_check = _probe_calibration_deep()
+            calibration_problem = calibration_check.status in {"WARN", "ERROR"}
+            report.check(calibration_check)
+    else:
+        report.check(_fmt_warn("Calibration file", "Not found", str(bundle)))
+
+    report.section("Hardware")
+    # Read once; the server's device state and model selection take precedence.
     live = runtime_state.read_live()
     host, port, bind_all, status = _probe_server(live)
     status_problem = None
     if status is None and live:
-        status_problem = "live process found, status unavailable"
+        status_problem = "Process running, but status unavailable"
     elif status is not None and not isinstance(status, dict):
-        status_problem = "invalid status response"
+        status_problem = "Invalid status response"
     if status_problem:
-        typer.echo(
-            _fmt_warn(f"server: {status_problem}; skipping local hardware probes")
+        report.check(
+            _fmt_error(
+                "Server",
+                status_problem,
+                "Local hardware checks skipped because the server may be using the devices.",
+                action=(
+                    None,
+                    f"Review {paths.LOG_DIR / 'server.log'} and the server's /api/status response.",
+                ),
+            )
         )
     elif isinstance(status, dict):
-        # Server is up — its view of arm/camera/calibration is authoritative.
-        typer.echo(_fmt_ok(f"server: running on {host}:{port}"))
+        from physiclaw.common.config import url_host
+
+        report.check(_fmt_ok("Server", "Running", f"http://{url_host(host)}:{port}"))
+        report.note("Device status reported by the running server.")
         if bind_all:
-            # Since the plane split the phone bridge has its own 0.0.0.0
-            # listener on port+1 — the CONTROL plane (MCP, setup, calibrate)
-            # should stay loopback. A wildcard bind here means someone
-            # overrode that, exposing the arm-driving surface to the LAN.
-            typer.echo(
+            report.check(
                 _fmt_warn(
-                    "bind: control plane on 0.0.0.0 — LAN-reachable. The phone "
-                    "bridge has its own port+1 listener; use host=127.0.0.1 "
-                    "unless you meant to expose MCP/setup."
+                    "Network access",
+                    "Server control is exposed to the local network",
+                    "A wildcard address (0.0.0.0 or ::) allows other devices to control the arm.",
+                    "The phone bridge uses a separate port; it does not need this setting.",
+                    action=(
+                        "physiclaw config edit",
+                        'Use server.host = "127.0.0.1" unless remote control is intended.',
+                    ),
                 )
             )
-        for label in ("arm", "camera", "calibrated", "ready"):
-            if status.get(label) is True:
-                typer.echo(_fmt_ok(f"{label}: yes"))
-            else:
-                typer.echo(_fmt_warn(f"{label}: no"))
+        for key, label, yes, no in (
+            ("arm", "Arm", "Connected", "Not connected"),
+            ("camera", "Camera", "Connected", "Not connected"),
+            ("calibrated", "Calibration", "Complete", "Incomplete"),
+            ("ready", "Hardware setup", "Ready", "Not ready; finish hardware setup"),
+        ):
+            passed = status.get(key) is True
+            result = _fmt_ok if passed else _fmt_warn
+            report.check(result(label, yes if passed else no))
         if deep:
-            typer.echo(_probe_bridge_deep(host, port))
+            report.check(_probe_bridge_deep(host, port))
     else:
-        for line in _offline_hardware_lines(deep):
-            typer.echo(line)
+        for check in _offline_hardware_lines(deep):
+            report.check(check)
 
-    typer.echo()
-    typer.echo(_fmt_section("Calibration"))
-    bundle = paths.calibration_bundle()
-    if bundle.exists():
-        typer.echo(_fmt_ok(f"calibration bundle: {bundle}"))
-        if deep:
-            typer.echo(_probe_calibration_deep())
-    else:
-        typer.echo(
-            _fmt_warn(
-                f"no calibration yet: {bundle}\n"
-                "    Run: physiclaw  (starts the server and opens the hardware-setup wizard)"
-            )
-        )
-
-    typer.echo()
-    typer.echo(_fmt_section("Engine"))
-
-    for line in _engine_lines(live, deep=deep):
-        typer.echo(line)
-
-    typer.echo()
-    typer.echo(_fmt_section("Skills"))
-    for line in _skills_lines():
-        typer.echo(line)
-
-    typer.echo()
-    typer.echo(_fmt_section("Next steps"))
-    steps = []
-    if not model.exists():
-        steps.append("physiclaw setup local-vision-model")
-    if status_problem:
-        steps.append("check the running server logs and /api/status response")
-    elif not ready_from_status(status):
+    if not status_problem:
         if status is None:
-            steps.append(
-                "physiclaw   (starts the server and opens the hardware-setup wizard)"
+            report.add_action(
+                "physiclaw", "Start the server and open the hardware setup wizard."
             )
-        else:
-            steps.append(
-                "finish setup in the browser wizard (or run: physiclaw setup hardware)"
+        elif not ready_from_status(status) or calibration_problem:
+            report.add_action(
+                "physiclaw setup hardware", "Complete the hardware setup wizard."
             )
-    for i, step in enumerate(steps, 1):
-        typer.echo(f"  {i}. {step}")
-    if not steps:
-        # Setup hints are not a health verdict: a deep probe above may fail
-        # even when model files exist and the server reports ready.
-        typer.echo("  Checks complete.")
 
+    report.section("AI model")
+    if deep:
+        report.note("The API test sends an image to the selected model.")
+    for check in _engine_lines(live, deep=deep):
+        report.check(check)
+
+    report.section("Skills")
+    for check in _skills_lines():
+        report.check(check)
+
+    report.finish(deep=deep)
     maybe_print_update_banner()
