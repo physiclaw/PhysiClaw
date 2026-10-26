@@ -16,7 +16,7 @@ You can flash FluidNC with a single command, or manually with FluidNC's web inst
 
 ## Command-line flash (recommended)
 
-Connect the board over USB (12 V power on, **stepper motors disconnected**), then run:
+Connect the board over USB, turn on the 12 V power supply, then run:
 
 ```bash
 physiclaw flash
@@ -24,7 +24,7 @@ physiclaw flash
 
 ### Verification
 
-Connect the two motors and the solenoid, then drive the machine by hand to confirm everything works:
+Make sure the two motors and the solenoid are connected, then drive the machine by hand to confirm everything works:
 
 ```bash
 physiclaw testdrive
@@ -62,7 +62,7 @@ If `physiclaw flash` succeeds, you can skip this part.
 
 <Steps>
 
-1. **Power up the board.** Connect **12 V** power, then connect **USB** to the computer.
+1. **Power up the board.** Connect the board to the computer over **USB**, then turn on the **12 V** power supply.
 
 2. **Open the installer.** Open the [FluidNC web installer](https://installer.fluidnc.com) in Chrome. The page shows two products. Click **Continue** under **FluidNC**.
 

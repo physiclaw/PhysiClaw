@@ -24,10 +24,10 @@ assembles the zip from upstream release assets plus
 esptool runs in an ephemeral ``uv`` environment, so it isn't a permanent
 dependency of the CLI.
 
-NOTE — disconnect the stepper motors before flashing: the board can back-feed
-odd voltages during the bootloader reset. Standard MKS DLC32 boards flash
-fine; a board with secure-boot / flash-encryption eFuses burned would brick,
-so this command does not touch those.
+Connect the board over USB and turn on the 12 V power supply before flashing.
+
+Standard MKS DLC32 boards flash fine; a board with secure-boot /
+flash-encryption eFuses burned would brick, so this command does not touch those.
 """
 
 from __future__ import annotations
