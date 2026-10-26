@@ -29,7 +29,11 @@ from physiclaw.core.orchestration.clipboard import (
     ClipboardSyncError,
     ClipboardSyncState,
 )
-from physiclaw.core.orchestration.observation import GestureObserver, GestureResult
+from physiclaw.core.orchestration.observation import (
+    GestureObserver,
+    GestureResult,
+    ViewResult,
+)
 from physiclaw.core.orchestration.perception import Perception
 from physiclaw.core.orchestration.rig import TOOL_LOCK_WAIT_SECONDS, HardwareRig
 from physiclaw.core.vision.util import (
@@ -116,7 +120,7 @@ class PhysiClaw:
 
     # ─── Screen views ─────────────────────────────────────────
 
-    def peek(self) -> tuple[bytes, str, float | None]:
+    def peek(self) -> ViewResult:
         """Overhead camera snapshot + icon detection + OCR.
 
         A blurry or blown first frame waits 2s and re-grabs once; a
@@ -125,9 +129,9 @@ class PhysiClaw:
         before the view ships (``GestureObserver.peek_frame`` owns that
         acquisition policy).
 
-        Returns an annotated JPEG, the matching element listing and the
-        frame's host publication time. MCP carries the time as metadata;
-        its image/listing content stays the same as screenshot().
+        Returns an annotated JPEG, the matching element listing, the frame's
+        host publication time and a separate camera notice. MCP keeps the
+        image/listing adjacent and carries the time as metadata.
         """
         with self.rig.engaged(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
             grab = self._observer.peek_frame()
@@ -135,14 +139,13 @@ class PhysiClaw:
             warning = self._observer.observe_quality(
                 "peek", grab.report, retuned=grab.retuned
             )
-            if warning is not None:
-                listing = f"{listing}\n{warning}"
             # detect() types the annotated frame as `object`; it is always
             # the bbox-drawn ndarray from detect_ui_elements.
-            return (
-                encode_view_jpeg(cast("np.ndarray", annotated)),
-                listing,
-                grab.observed_after,
+            return ViewResult(
+                jpeg=encode_view_jpeg(cast("np.ndarray", annotated)),
+                listing=listing,
+                observed_after=grab.observed_after,
+                warning=warning,
             )
 
     def screenshot(self) -> tuple[bytes, str]:

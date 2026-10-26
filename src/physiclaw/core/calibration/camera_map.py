@@ -145,9 +145,16 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
         return score
 
     result = focus.lock(meter, cam.lock_focus, cam.unlock_focus)
-    log.info(f"  Focus pin: {result.detail}")
     if not result.locked:
+        log.warning(
+            "  Focus pin: %s",
+            result.detail,
+            extra={
+                "console_message": "Camera focus could not be pinned — using autofocus"
+            },
+        )
         return None
+    log.info("  Focus pin: %s", result.detail)
     # Persist only what a reconnect can actually replay: read the
     # position back and prove the absolute-write channel now, at
     # calibration. A freeze nothing can replay would give this session
@@ -155,7 +162,12 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
     value = cam.read_focus()
     if value is None or not cam.apply_focus(value):
         cam.unlock_focus()
-        log.info("  Focus pin: position not replayable — lens left on autofocus")
+        log.warning(
+            "  Focus pin: position not replayable — lens left on autofocus",
+            extra={
+                "console_message": "Camera focus could not be saved — using autofocus"
+            },
+        )
         return None
     # Verify the APPLIED state by pixels before persisting: the freeze
     # was sharpness-verified, but this read-back + re-apply is a second
@@ -166,7 +178,12 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
     after = meter()
     if after is None or after < focus.BLUR_THRESHOLD:
         cam.unlock_focus()
-        log.info("  Focus pin: applied position metered soft — lens left on autofocus")
+        log.warning(
+            "  Focus pin: applied position metered soft — lens left on autofocus",
+            extra={
+                "console_message": "Saved camera focus failed verification — using autofocus"
+            },
+        )
         return None
     log.info(f"  ✓ Focus pinned @ {value:g} — stored in the calibration bundle")
     return value

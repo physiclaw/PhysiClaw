@@ -1,6 +1,7 @@
 """``physiclaw server`` — run the MCP server (and the agent runtime subprocess)."""
 
 import _thread
+import asyncio
 import logging
 import os
 import signal
@@ -18,6 +19,11 @@ import typer
 from physiclaw.cli.runtime_process import ManagedRuntime
 from physiclaw.cli.runtime_process import terminate_child as terminate_child
 from physiclaw.common.config import CONFIG, WILDCARD_HOSTS, url_host
+
+# Keep both the request drain and ASGI lifespan inside the bridge join budget.
+BRIDGE_DRAIN_SECONDS = 2
+BRIDGE_SHUTDOWN_SECONDS = 3
+SERVER_JOIN_SECONDS = 5
 
 
 def server(
@@ -308,7 +314,25 @@ def _serve(
             logging.getLogger(__name__).info("Control service stopping")
             await super().shutdown(sockets=sockets)
 
-    bridge_server = uvicorn.Server(
+    class BridgeServer(uvicorn.Server):
+        async def shutdown(self, sockets=None) -> None:
+            deadline = asyncio.timeout(BRIDGE_SHUTDOWN_SECONDS)
+            try:
+                async with deadline:
+                    await super().shutdown(sockets=sockets)
+            except TimeoutError:
+                if not deadline.expired():
+                    raise
+                self.force_exit = True
+                logging.getLogger(__name__).warning(
+                    "Phone bridge shutdown exceeded %ss",
+                    BRIDGE_SHUTDOWN_SECONDS,
+                    extra={
+                        "console_message": "Phone bridge shutdown timed out — forcing it to stop"
+                    },
+                )
+
+    bridge_server = BridgeServer(
         uvicorn.Config(
             bridge_app,
             host="0.0.0.0",
@@ -316,6 +340,11 @@ def _serve(
             log_level="warning",
             log_config=None,
             access_log=False,
+            # This HTTP-only loop needs no subprocess support. Selector
+            # transports avoid Windows Proactor's shutdown()/detach leak on
+            # peer resets, without patching CPython's private cleanup methods.
+            loop="asyncio:SelectorEventLoop",
+            timeout_graceful_shutdown=BRIDGE_DRAIN_SECONDS,
         )
     )
     control_server = ControlServer(
@@ -386,7 +415,7 @@ def _serve(
             bridge_server.should_exit = True
             for thread in threads:
                 if thread.ident is not None:
-                    thread.join(timeout=5)
+                    thread.join(timeout=SERVER_JOIN_SECONDS)
             if runtime is not None:
                 AppStatus.enable_automatic_graceful_drain = automatic_drain
                 AppStatus.should_exit = was_exiting
@@ -394,7 +423,9 @@ def _serve(
         exit_error(failures[0])
     for thread in threads:
         if thread.is_alive():
-            exit_error(f"{thread.name} did not stop within 5 seconds")
+            exit_error(
+                f"{thread.name} did not stop within {SERVER_JOIN_SECONDS} seconds"
+            )
     if interrupted:
         raise KeyboardInterrupt
     if not control_server.started:

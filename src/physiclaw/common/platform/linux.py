@@ -122,7 +122,7 @@ def camera_backend() -> int:
 
     The exposure setters below encode raw V4L2 menu values — pinning the
     backend makes that invariant real instead of hoping OpenCV doesn't
-    pick GStreamer (symmetric with windows.py pinning MSMF)."""
+    pick GStreamer (symmetric with windows.py pinning DirectShow)."""
     import cv2
 
     return cv2.CAP_V4L2

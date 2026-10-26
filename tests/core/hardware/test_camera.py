@@ -129,6 +129,10 @@ def capture_controls(request, mocker):
     """Exercise property-based controls even when the host uses macOS UVC."""
     if request.param == "native":
         return
+    if request.param == "linux" and os.name == "nt":
+        pytest.skip(
+            "Linux controls import POSIX grp; native Windows controls still run"
+        )
     backend = importlib.import_module(f"physiclaw.common.platform.{request.param}")
     for name in (
         "camera_set_auto_exposure",

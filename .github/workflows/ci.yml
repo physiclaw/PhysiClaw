@@ -1,7 +1,7 @@
 # Lint + fast hermetic tests with branch coverage on Linux and macOS.
-# The slow managed first-image/EOF regression runs on all three OSes.
-# Windows also runs the full runtime suite, platform dispatch checks and mocked
-# Windows backend tests. Installation and real hardware need manual validation.
+# Slow managed first-image/EOF and bridge shutdown regressions run on all three OSes.
+# Windows also runs runtime, camera/focus, bridge shutdown and observation
+# regressions. Installation and real hardware need manual validation.
 name: CI
 
 on:
@@ -79,9 +79,12 @@ jobs:
       - name: Test
         run: uv run --locked --group cad pytest --cov
 
-      - name: Managed first image and EOF shutdown
-        # The main suite excludes slow tests; exercise this subprocess on POSIX too.
-        run: uv run --locked pytest -m slow tests/agent/runtime/test_managed_startup.py
+      - name: Managed first image and shutdown regressions
+        # The main suite excludes slow tests; exercise subprocess and bridge cleanup too.
+        run: >-
+          uv run --locked pytest -m slow
+          tests/agent/runtime/test_managed_startup.py
+          tests/cli/test_bridge_shutdown.py
 
   windows-runtime:
     runs-on: windows-latest
@@ -106,3 +109,23 @@ jobs:
           tests/agent/runtime
           tests/common/platform/test_windows.py
           tests/common/platform/test_platform_init.py
+
+      - name: Camera focus and bridge shutdown regressions
+        # Keep slow TCP-reset, request-drain and lifespan tests enabled.
+        # Camera tests fake hardware; only Linux-control variants skip on Windows.
+        run: >-
+          uv run --locked pytest -m "not integration"
+          tests/cli/test_server.py
+          tests/cli/test_bridge_shutdown.py
+          tests/core/calibration/test_camera_map.py
+          tests/core/hardware/test_camera.py
+          tests/core/hardware/test_focus.py
+
+      - name: Camera observation and warning regressions
+        run: >-
+          uv run --locked pytest -m "not integration"
+          tests/core/orchestration/test_observation.py
+          tests/core/orchestration/test_orchestrator.py
+          tests/core/server/test_tools.py
+          tests/contract/test_screen_observation.py
+          tests/agent/engine/test_fact_input.py

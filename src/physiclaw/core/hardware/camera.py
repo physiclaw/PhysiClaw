@@ -428,7 +428,7 @@ class Camera:
     @property
     def exposure_tunable(self) -> bool:
         """Whether exposure can be controlled on this rig. Always true on
-        Linux/Windows (V4L2/MSMF); on macOS true only when the vendored
+        Linux/Windows (V4L2/DirectShow); on macOS true only when the vendored
         UVC helper compiled and unambiguously controls the camera —
         AVFoundation itself ignores exposure properties."""
         return platform.camera_exposure_tunable()
@@ -456,7 +456,7 @@ class Camera:
     @property
     def focus_lockable(self) -> bool:
         """Whether the lens can be frozen on this rig. Always true on
-        Linux/Windows (V4L2/MSMF expose the AF toggle; a camera that
+        Linux/Windows (V4L2/DirectShow expose the AF toggle; a camera that
         ignores it fails the lock's measured verify instead); on macOS
         true only when the UVC channel is live AND the camera answers
         for its focus controls (fixed-focus cameras don't)."""

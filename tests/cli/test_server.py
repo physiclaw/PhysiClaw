@@ -1413,15 +1413,10 @@ def test_server_reports_bridge_that_will_not_stop(mocker, capsys):
 def test_server_resumes_hardware_only_after_both_asgi_servers_start(mode, mocker):
     deps, servers = _serving_pair(mocker, mode)
     observed = []
-    workers = []
+    started = mocker.spy(threading.Thread, "start")
 
     def resume(*args, **kwargs):
         observed.append([server.started for server in servers])
-        workers.extend(
-            thread.daemon
-            for thread in threading.enumerate()
-            if thread.name in {"bridge-http", "server-startup"}
-        )
         deps["bringup_completed"].set()
         return True
 
@@ -1430,7 +1425,15 @@ def test_server_resumes_hardware_only_after_both_asgi_servers_start(mode, mocker
     server_mod.server(port=8048, host="127.0.0.1", warm_start=True)
 
     assert observed == [[True, True]]
-    assert workers == [True, True]
+    # The startup coordinator can finish before the warm-start worker runs.
+    # Check the launched threads, not a racing snapshot of currently live ones.
+    workers = [
+        call.args[0]
+        for call in started.call_args_list
+        if call.args[0].name in {"bridge-http", "server-startup"}
+    ]
+    assert len(workers) == 2
+    assert all(thread.daemon for thread in workers)
 
 
 @pytest.mark.parametrize("mode", ["bridge-error", "bridge-return", "control-startup"])

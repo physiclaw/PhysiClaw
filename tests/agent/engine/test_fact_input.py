@@ -34,7 +34,7 @@ from physiclaw.contract.decision import ActionCandidate
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, ToolResultMessage
 from physiclaw.contract.observation import OBSERVATION_META, read_observation
 from physiclaw.contract.plugin import PluginServices, ProposedTurn
-from physiclaw.core.orchestration import GestureResult
+from physiclaw.core.orchestration import GestureResult, ViewResult
 from physiclaw.core.server import tools as tools_mod
 from physiclaw.decision.plugin import DecisionPlugin
 
@@ -57,17 +57,23 @@ def tap_schema():
     }
 
 
+@pytest.mark.parametrize("warning", [None, "⚠ camera: frame is blurry"])
 async def test_real_server_client_and_dispatch_preserve_a_single_view(
-    observation_blocks, mocker
+    observation_blocks, mocker, warning
 ):
     blocks = observation_blocks()
     jpeg = base64.b64decode(blocks[0]["data"])
+    action_text = "Tapped | screen: changed"
+    if warning is not None:
+        action_text += "\n" + warning
     rig = SimpleNamespace(
-        peek=mocker.Mock(return_value=(jpeg, blocks[1]["text"], 123.0)),
+        peek=mocker.Mock(
+            return_value=ViewResult(jpeg, blocks[1]["text"], 123.0, warning)
+        ),
         screenshot=mocker.Mock(return_value=(jpeg, blocks[1]["text"])),
         tap=mocker.Mock(
             return_value=GestureResult(
-                "Tapped | screen: changed", jpeg, blocks[1]["text"]
+                action_text, jpeg, blocks[1]["text"], warning=warning
             )
         ),
     )
@@ -87,10 +93,14 @@ async def test_real_server_client_and_dispatch_preserve_a_single_view(
 
     first = await dispatch(run, session, _tc("peek", tcid="peek"), 0)
     before = session.facts.observation
+    assert before.quality_warning == warning
+    assert session.facts.observation_issue == ("unreliable_view" if warning else None)
     tapped = await dispatch(
         run, session, _tc("tap", {"bbox": [0.1, 0.2, 0.3, 0.4]}, tcid="tap"), 1
     )
     after = session.facts.observation
+    assert after.quality_warning == warning
+    assert session.facts.observation_issue == ("unreliable_view" if warning else None)
 
     assert before.id != after.id
     assert after.frame.data == jpeg
@@ -100,11 +110,16 @@ async def test_real_server_client_and_dispatch_preserve_a_single_view(
     assert after.captured_at is None
     assert not first.is_error and not tapped.is_error
     assert any(isinstance(block, ImageBlock) for block in first.content)
+    if warning is not None:
+        assert any(
+            warning in getattr(block, "text", "").splitlines()
+            for block in first.content
+        )
     assert [e.tool for e in session.facts.events] == ["peek", "tap"]
     assert session.facts.events[-1].changed is True
     assert (
         session.facts.events[-1].result_text
-        == f"Tapped | screen: changed {tools_mod.HINT_VIEW_AFTER_TAP}"
+        == f"{action_text} {tools_mod.HINT_VIEW_AFTER_TAP}"
     )
     assert session.facts.events[-1].observation_id == after.id
     rig.tap.assert_called_once_with([0.1, 0.2, 0.3, 0.4])
@@ -124,8 +139,9 @@ def test_camera_quality_warning_cannot_become_eligible_decision_evidence(
         QualityReport(sharpness=1, clip_pct=0, median_luma=100, p99_luma=180)
     )
     assert warning is not None
-    listing = observation_blocks()[1]["text"] + "\n" + warning
-    blocks = observation_blocks(listing=listing)
+    blocks = observation_blocks()
+    blocks[0]["_meta"][OBSERVATION_META]["quality_warning"] = warning
+    blocks.append({"type": "text", "text": warning})
     facts = FactualState()
     facts.observe(blocks, tool="peek")
     turn = facts.snapshot(
@@ -135,10 +151,14 @@ def test_camera_quality_warning_cannot_become_eligible_decision_evidence(
         ),
     )
     projection = project(turn, metadata=_turn_metadata())
-    assert "invalid_view" in projection.blockers
+    assert facts.observation is not None
+    assert facts.observation.quality_warning == warning
+    assert "unreliable_view" in projection.blockers
     assert projection.request("bad-camera") is None
     # Reject only decision eligibility; the actual tool output is untouched.
-    assert blocks[1]["text"].endswith(warning)
+    assert blocks[2]["text"] == warning
+    facts.observe(observation_blocks(), tool="peek")
+    assert facts.observation_issue is None
 
 
 @pytest.mark.parametrize("history_enabled", [False, True])

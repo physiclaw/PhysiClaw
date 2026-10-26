@@ -53,8 +53,7 @@ def enable_terminal_color(stream: TextIO | None) -> bool:
 
 
 def ensure_camera_permission() -> None:
-    """No-op on Windows — MediaFoundation surfaces the camera-access prompt
-    itself when the device is opened."""
+    """Windows camera access is managed through system privacy settings."""
 
 
 def local_hostname() -> str | None:
@@ -109,7 +108,7 @@ def open_image_files(paths: list[str]) -> None:
 
 
 def camera_exposure_tunable() -> bool:
-    """MSMF exposes exposure control via IAMCameraControl."""
+    """DirectShow exposes exposure control via IAMCameraControl."""
     return True
 
 
@@ -120,10 +119,16 @@ def camera_size_cap() -> tuple[int, int] | None:
 
 
 def camera_backend() -> int:
-    """Use Media Foundation for Windows capture and camera controls."""
+    """Use DirectShow's current-value reads and focus-preserving AF toggle.
+
+    MSMF's readComplexProperty overwrites the current value with GetRange's
+    default, and its AF-off writes focus 0 (OpenCV 4.14.0 cap_msmf.cpp).
+    DirectShow keeps current/default separate and switches to manual at the
+    current focus (cap_dshow.cpp). Pixel verification still guards drivers.
+    """
     import cv2
 
-    return cv2.CAP_MSMF
+    return cv2.CAP_DSHOW
 
 
 def camera_reset_controls() -> None:
@@ -133,8 +138,8 @@ def camera_reset_controls() -> None:
 def camera_set_auto_exposure(cap) -> None:
     """Ask the driver for firmware auto-exposure.
 
-    MSMF maps CAP_PROP_AUTO_EXPOSURE nonzero → VideoProcAmp_Flags_Auto,
-    0 → Manual (cap_msmf.cpp). set()/get() are unreliable across drivers —
+    DirectShow maps CAP_PROP_AUTO_EXPOSURE 1 → Auto, 0 → Manual
+    (cap_dshow.cpp). set()/get() are unreliable across drivers —
     verification is measured frame brightness, never the return value."""
     import cv2
 
@@ -146,7 +151,7 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
     CameraControl_Exposure spec (-6 ≈ 1/64s; indoors -4..-8) — though
     drivers may deviate, which the caller's measured-brightness stall
     check catches. Setting CAP_PROP_EXPOSURE already carries the Manual
-    flag on MSMF; the explicit AE-off keeps intent obvious."""
+    mode after the explicit AE-off through DirectShow."""
     import cv2
 
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)
@@ -154,7 +159,7 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
 
 
 def camera_focus_lockable() -> bool:
-    """MSMF maps CAP_PROP_AUTOFOCUS onto the CameraControl_Focus flags —
+    """DirectShow maps CAP_PROP_AUTOFOCUS onto the CameraControl_Focus flags —
     the lock is always worth ATTEMPTING here. Whether this camera honors
     it is judged at lock time: the set() return, then (as always)
     measured frame sharpness."""
@@ -162,19 +167,15 @@ def camera_focus_lockable() -> bool:
 
 
 def camera_lock_focus(cap) -> bool:
-    """Freeze autofocus at its current position: read the converged
-    position, then re-pin it through `camera_apply_focus` — the AF-off
-    ordering lives there. No readable position (see
-    `camera_read_focus`) → AF off alone, rather than risk racking an
-    unsupported lens to its stop; disabling AF holds the lens on most
-    cameras, and the caller's measured-sharpness verify covers the
-    rest."""
+    """DirectShow reads the current position and writes it in manual mode.
+
+    A failed driver read returns False without writing. Let that backend
+    operation freeze the lens; calibration verifies it by pixels and proves
+    the read-back/reapply path separately before persisting the position.
+    """
     import cv2
 
-    cur = camera_read_focus(cap)
-    if cur is None:
-        return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
-    return camera_apply_focus(cap, cur)
+    return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
 
 
 def camera_unlock_focus(cap) -> None:
@@ -196,7 +197,7 @@ def camera_read_focus(cap) -> float | None:
 
 def camera_apply_focus(cap, value: float) -> bool:
     """Drive the lens to a caller-supplied absolute position. AF off
-    first, then the absolute write — MSMF maps both onto
+    first, then the absolute write — DirectShow maps both onto
     CameraControl_Focus."""
     import cv2
 

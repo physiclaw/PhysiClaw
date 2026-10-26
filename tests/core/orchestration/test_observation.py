@@ -517,15 +517,16 @@ def test_with_view_fails_open_when_detection_raises(mocker) -> None:
 # ---------- with_view: quality warning ----------
 
 
-def test_with_view_warning_joins_listing(mocker) -> None:
+def test_with_view_warning_preserves_listing(mocker) -> None:
     mocker.patch.object(observation, "encode_view_jpeg", return_value=b"VIEW_JPG")
     obs = _observer([_flat(128), _flat(30)])
     obs._quality.observe.return_value = "⚠ camera: bad"
 
     out = obs.with_view(lambda: "Acted")
 
-    assert out.listing == "LISTING\n⚠ camera: bad"
-    assert out.text == "Acted | screen: changed"  # verdict untouched
+    assert out.listing == "LISTING"
+    assert out.text == "Acted | screen: changed\n⚠ camera: bad"
+    assert out.warning == "⚠ camera: bad"
 
 
 def test_with_view_warning_rides_action_text_when_detect_fails(mocker) -> None:

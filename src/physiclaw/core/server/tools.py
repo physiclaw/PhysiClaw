@@ -86,10 +86,14 @@ NO_VIEW_FALLBACK = "(auto-view unavailable — `peek` to see the screen)"
 
 
 def _view_reply(
-    name: str, jpeg: bytes, listing: str, *, observed_after: float | None = None
+    name: str,
+    jpeg: bytes,
+    listing: str,
+    *,
+    observed_after: float | None = None,
+    warning: str | None = None,
 ) -> list:
-    """`[Image, listing]` — the wire shape every screen view ships in —
-    and dump the pair to the tool-call log."""
+    """Bind `[Image, listing]`; quality metadata keeps notices outside the codec."""
     save_tool_call(name, listing, jpeg)
     image = Image(data=jpeg, format="jpeg").to_image_content()
     try:
@@ -99,6 +103,7 @@ def _view_reply(
                 listing,
                 source="screenshot" if name == "screenshot" else "camera",
                 observed_after=observed_after,
+                quality_warning=warning,
             )
         }
     except ValueError:
@@ -117,7 +122,13 @@ def _gesture_reply(name: str, res: GestureResult, hint: str) -> str | list:
         return f"{text} {NO_VIEW_FALLBACK}"
     return [
         text,
-        *_view_reply(name, res.jpeg, res.listing, observed_after=res.observed_after),
+        *_view_reply(
+            name,
+            res.jpeg,
+            res.listing,
+            observed_after=res.observed_after,
+            warning=res.warning,
+        ),
     ]
 
 
@@ -169,8 +180,17 @@ def register(mcp: MCPServer, physiclaw: PhysiClaw) -> None:
         plain-text listing, one row per element:
             id [kind] "label" [left,top,right,bottom] conf
         """
-        jpeg, listing, observed_after = await asyncio.to_thread(physiclaw.peek)
-        return _view_reply("peek", jpeg, listing, observed_after=observed_after)
+        view = await asyncio.to_thread(physiclaw.peek)
+        reply = _view_reply(
+            "peek",
+            view.jpeg,
+            view.listing,
+            observed_after=view.observed_after,
+            warning=view.warning,
+        )
+        if view.warning is not None:
+            reply.append(view.warning)
+        return reply
 
     @mcp.tool(structured_output=False)
     @_boundary

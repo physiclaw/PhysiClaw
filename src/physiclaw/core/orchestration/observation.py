@@ -37,6 +37,16 @@ log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class ViewResult:
+    """One image/listing pair; camera notices are outside the element codec."""
+
+    jpeg: bytes
+    listing: str
+    observed_after: float | None = None
+    warning: str | None = None
+
+
+@dataclass(frozen=True)
 class GestureResult:
     """What a screen-mutating gesture hands to the MCP tool layer: the
     action text (screen-change verdict attached) plus the fused
@@ -49,6 +59,7 @@ class GestureResult:
     jpeg: bytes | None = None
     listing: str | None = None
     observed_after: float | None = None
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -423,14 +434,13 @@ class GestureObserver:
             warning = None
         text = verdict.attach(result, changed)
         if warning is not None:
-            if listing is not None:
-                listing = f"{listing}\n{warning}"
-            else:
-                # Detection failed, so there's no listing to carry the line —
-                # ride the action text: a blurry/blown frame is a plausible
-                # CAUSE of the failed view, and the agent needs to hear it
-                # before blindly re-peeking.
-                text = f"{text}\n{warning}"
+            # The listing is a strict codec, also bound to the image by hash.
+            # Carry notices in the action text even when detection succeeds.
+            text = f"{text}\n{warning}"
         return GestureResult(
-            text=text, jpeg=jpeg, listing=listing, observed_after=after.observed_after
+            text=text,
+            jpeg=jpeg,
+            listing=listing,
+            observed_after=after.observed_after,
+            warning=warning,
         )

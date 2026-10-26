@@ -238,7 +238,7 @@ def test_pin_focus_locks_reads_and_reapplies() -> None:
     cam.apply_focus.assert_called_once_with(123.0)
 
 
-def test_pin_focus_returns_none_when_scene_never_sharp() -> None:
+def test_pin_focus_returns_none_when_scene_never_sharp(caplog) -> None:
     # A blank frame can't converge AF — the lock defers and nothing is
     # persisted (the bundle's cam_focus stays None; AF stays live).
     cam = _lockable_cam(np.zeros((900, 600, 3), dtype=np.uint8))
@@ -247,9 +247,14 @@ def test_pin_focus_returns_none_when_scene_never_sharp() -> None:
 
     assert value is None
     cam.read_focus.assert_not_called()
+    assert any(
+        record.levelname == "WARNING"
+        and "could not be pinned" in getattr(record, "console_message", "")
+        for record in caplog.records
+    )
 
 
-def test_pin_focus_returns_none_when_position_unreadable() -> None:
+def test_pin_focus_returns_none_when_position_unreadable(caplog) -> None:
     # The freeze verified but the driver reports no position — nothing
     # a reconnect could replay, so the lens goes back to live AF and
     # every session behaves the same.
@@ -260,7 +265,64 @@ def test_pin_focus_returns_none_when_position_unreadable() -> None:
 
     assert value is None
     cam.apply_focus.assert_not_called()
-    cam.unlock_focus.assert_called()
+    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
+    assert any(
+        record.levelname == "WARNING"
+        and "could not be saved" in getattr(record, "console_message", "")
+        for record in caplog.records
+    )
+
+
+def test_windows_focus_pin_preserves_and_replays_the_current_position() -> None:
+    """Model the verified OpenCV MSMF/DirectShow control differences.
+
+    MSMF reads the default and resets the lens on AF-off; DirectShow reads
+    the current value and preserves it. Run the real Windows helpers and
+    calibration pixel checks so a backend regression cannot persist a bad pin.
+    """
+    from physiclaw.common.platform import windows
+
+    backend = windows.camera_backend()
+
+    class Capture:
+        position = 137.0
+        autofocus = True
+
+        def get(self, prop):
+            assert prop == cv2.CAP_PROP_FOCUS
+            return 42.0 if backend == cv2.CAP_MSMF else self.position
+
+        def set(self, prop, value):
+            if prop == cv2.CAP_PROP_AUTOFOCUS:
+                self.autofocus = bool(value)
+                if self.autofocus:
+                    self.position = 137.0
+                elif backend == cv2.CAP_MSMF:
+                    self.position = 0.0
+            elif prop == cv2.CAP_PROP_FOCUS:
+                self.position = value
+            else:
+                raise AssertionError(prop)
+            return True
+
+    capture = Capture()
+    sharp = _sharp_frame()
+    cam = _lockable_cam(sharp)
+    cam.raw_frame.side_effect = lambda: (
+        sharp if capture.position == 137.0 else np.zeros_like(sharp)
+    )
+    cam.lock_focus.side_effect = lambda: windows.camera_lock_focus(capture)
+    cam.unlock_focus.side_effect = lambda: windows.camera_unlock_focus(capture)
+    cam.read_focus.side_effect = lambda: windows.camera_read_focus(capture)
+    cam.apply_focus.side_effect = lambda value: windows.camera_apply_focus(
+        capture, value
+    )
+
+    assert camera_map_mod._pin_focus(cam, -1, None) == 137.0
+    assert capture.position == 137.0
+    assert capture.autofocus is False
+    cam.apply_focus.assert_called_once_with(137.0)
+    cam.unlock_focus.assert_called_once()
 
 
 def test_pin_focus_returns_none_when_apply_refused() -> None:
@@ -274,7 +336,7 @@ def test_pin_focus_returns_none_when_apply_refused() -> None:
     value = camera_map_mod._pin_focus(cam, -1, None)
 
     assert value is None
-    cam.unlock_focus.assert_called()
+    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
 
 
 def test_pin_focus_returns_none_when_applied_position_meters_soft() -> None:
@@ -295,7 +357,7 @@ def test_pin_focus_returns_none_when_applied_position_meters_soft() -> None:
     value = camera_map_mod._pin_focus(cam, -1, None)
 
     assert value is None
-    cam.unlock_focus.assert_called()
+    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
 
 
 def test_pin_focus_meters_only_the_screen_region() -> None:

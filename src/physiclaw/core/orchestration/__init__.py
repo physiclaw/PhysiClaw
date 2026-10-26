@@ -7,9 +7,9 @@ exposing the agent-facing tool operations. Image-output helpers
 (drawing, encoding, watermarking) live in physiclaw.core.vision.render.
 """
 
-from physiclaw.core.orchestration.observation import GestureResult
+from physiclaw.core.orchestration.observation import GestureResult, ViewResult
 from physiclaw.core.orchestration.orchestrator import PhysiClaw
 from physiclaw.core.orchestration.perception import Perception
 from physiclaw.core.orchestration.rig import HardwareRig
 
-__all__ = ["GestureResult", "HardwareRig", "Perception", "PhysiClaw"]
+__all__ = ["GestureResult", "HardwareRig", "Perception", "PhysiClaw", "ViewResult"]

@@ -22,6 +22,7 @@ from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.types import ImageContent, TextContent
 
 from physiclaw.contract.observation import OBSERVATION_META, read_observation
+from physiclaw.core.orchestration import ViewResult
 from physiclaw.core.server import tools as tools_mod
 
 # ---------- Fake MCP ----------
@@ -143,7 +144,7 @@ def test_all_tools_disable_structured_output(registered) -> None:
 @pytest.mark.asyncio
 async def test_peek_returns_image_and_listing(registered) -> None:
     mcp, pl = registered
-    pl.peek.return_value = (b"PEEK_JPG", "peek-listing", 105.0)
+    pl.peek.return_value = ViewResult(b"PEEK_JPG", "peek-listing", 105.0)
 
     out = await mcp.tools["peek"]()
 
@@ -195,7 +196,7 @@ async def test_observation_age_is_bound_to_selected_frame(
     if name == "tap":
         pl.tap.return_value = GestureResult("Tapped", jpeg, listing, 105.0)
     elif name == "peek":
-        pl.peek.return_value = (jpeg, listing, 105.0)
+        pl.peek.return_value = ViewResult(jpeg, listing, 105.0)
     else:
         pl.screenshot.return_value = (jpeg, listing)
     args = ([0.1, 0.2, 0.3, 0.4],) if name == "tap" else ()
@@ -542,7 +543,7 @@ async def test_real_mcpserver_serializes_gesture_reply(real) -> None:
 async def test_real_mcpserver_serializes_text_fallback_and_view_tools(real) -> None:
     mcp, pl = real
     pl.go_back.return_value = _gr("Went back", with_view=False)
-    pl.peek.return_value = (b"PEEK_JPG", "peek-listing", 105.0)
+    pl.peek.return_value = ViewResult(b"PEEK_JPG", "peek-listing", 105.0)
 
     fallback = (await mcp.call_tool("go_back", {})).content
     assert isinstance(fallback[0], TextContent)

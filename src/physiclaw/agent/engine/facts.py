@@ -61,7 +61,9 @@ class FactualState:
                 self.observation_issue = "unverified_macro_view"
                 return
             self.observation = observation
-            self.observation_issue = None
+            self.observation_issue = (
+                "unreliable_view" if observation.quality_warning is not None else None
+            )
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             # Evidence failure must not discard the actual tool result.
             self.observation = None

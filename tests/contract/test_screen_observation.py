@@ -51,6 +51,8 @@ def test_image_and_canonical_elements_share_one_observation(observation_blocks):
         ("observed_after", True),
         ("observed_after", "100"),
         ("source", "unknown"),
+        ("quality_warning", False),
+        ("quality_warning", []),
     ],
 )
 def test_rejects_unbound_or_unsupported_view_metadata(observation_blocks, field, value):
@@ -68,6 +70,12 @@ def test_observed_after_preserves_lower_bound_without_claiming_capture_time(
     observation = read_observation(blocks)
     assert observation.observed_after == 123.5
     assert observation.captured_at is None
+
+
+def test_older_view_metadata_without_quality_warning_is_supported(observation_blocks):
+    blocks = observation_blocks()
+    del blocks[0]["_meta"][OBSERVATION_META]["quality_warning"]
+    assert read_observation(blocks).quality_warning is None
 
 
 @pytest.mark.parametrize(

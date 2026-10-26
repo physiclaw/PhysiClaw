@@ -275,10 +275,10 @@ def _wire_peek(mocker, pc, wire_rig, *, listing: str = "ok", sharpness=200.0):
 def test_peek_retries_on_blurry_frame(mocker, pc: PhysiClaw, wire_rig) -> None:
     _wire_peek(mocker, pc, wire_rig, sharpness=[10.0, 100.0])
 
-    jpg, listing, published_at = pc.peek()
+    view = pc.peek()
 
-    assert jpg == b"JPG"
-    assert listing == "ok"
+    assert view.jpeg == b"JPG"
+    assert view.listing == "ok"
     # Snapshot called twice (initial + retry after blur).
     assert pc.rig._cam.snapshot.call_count == 2
 
@@ -885,15 +885,16 @@ def test_force_quit_open_swipe_holds_before_lift(pc: PhysiClaw, wire_rig) -> Non
 # ---------- camera-quality warning (AF/AE failure) ----------
 
 
-def test_peek_appends_quality_warning_to_listing(
+def test_peek_keeps_quality_warning_outside_listing(
     mocker, pc: PhysiClaw, wire_rig
 ) -> None:
     _wire_peek(mocker, pc, wire_rig, listing="rows")
     pc._observer._quality.observe.return_value = "⚠ camera: bad"
 
-    _, listing, _ = pc.peek()
+    view = pc.peek()
 
-    assert listing == "rows\n⚠ camera: bad"
+    assert view.listing == "rows"
+    assert view.warning == "⚠ camera: bad"
 
 
 def test_gesture_view_carries_quality_warning(mocker, pc: PhysiClaw, wire_rig) -> None:
@@ -905,8 +906,9 @@ def test_gesture_view_carries_quality_warning(mocker, pc: PhysiClaw, wire_rig) -
 
     out = pc.tap([0.1, 0.1, 0.2, 0.2])
 
-    assert out.listing == "LISTING\n⚠ camera: bad"
-    assert out.text.endswith("| screen: changed")  # verdict untouched
+    assert out.listing == "LISTING"
+    assert out.text.endswith("| screen: changed\n⚠ camera: bad")
+    assert out.warning == "⚠ camera: bad"
 
 
 def test_gesture_warning_rides_action_text_when_detect_fails(

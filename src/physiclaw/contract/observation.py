@@ -22,7 +22,12 @@ IDENTITY_TRANSFORM = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 
 
 def view_metadata(
-    jpeg: bytes, listing: str, *, source: str, observed_after: float | None = None
+    jpeg: bytes,
+    listing: str,
+    *,
+    source: str,
+    observed_after: float | None = None,
+    quality_warning: str | None = None,
 ) -> dict:
     """Bind the atomic image/listing pair at the server's view boundary.
 
@@ -40,6 +45,7 @@ def view_metadata(
         "source": source,
         "captured_at": None,
         "observed_after": observed_after,
+        "quality_warning": quality_warning,
         "coordinate_space": COORDINATE_SPACE,
         "image_to_screen": list(IDENTITY_TRANSFORM),
     }
@@ -54,6 +60,8 @@ class Observation:
     ``observed_after`` is a conservative Unix-time lower bound on when
     the host camera reader published this frame, not its sensor exposure.
     It includes acquisition and detection latency in subsequent age checks.
+    ``quality_warning`` preserves a parseable view while withholding unreliable
+    pixels from decision evidence; the human/model notice stays outside the listing.
     """
 
     frame: DecisionFrame
@@ -63,6 +71,7 @@ class Observation:
     observed_after: float | None
     coordinate_space: str
     image_to_screen: tuple[float, ...]
+    quality_warning: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "elements", tuple(self.elements))
@@ -79,6 +88,10 @@ class Observation:
             raise ValueError("unsupported image-to-screen coordinates")
         if self.source not in {"camera", "screenshot", "debug"}:
             raise ValueError("unknown observation source")
+        if self.quality_warning is not None and not isinstance(
+            self.quality_warning, str
+        ):
+            raise ValueError("invalid observation quality warning")
         for timestamp in (self.captured_at, self.observed_after):
             if timestamp is not None and (
                 type(timestamp) not in (int, float)
@@ -150,4 +163,5 @@ def read_observation(blocks: list[dict]) -> Observation | None:
         observed_after=metadata["observed_after"],
         coordinate_space=metadata["coordinate_space"],
         image_to_screen=metadata["image_to_screen"],
+        quality_warning=metadata.get("quality_warning"),
     )

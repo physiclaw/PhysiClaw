@@ -48,7 +48,7 @@ def test_trust_proxy_env_is_false_on_windows() -> None:
 
 
 def test_ensure_camera_permission_is_noop() -> None:
-    # Returns None and never raises — MediaFoundation prompts natively.
+    # Access is managed through Windows privacy settings.
     assert windows.ensure_camera_permission() is None
 
 
@@ -139,15 +139,15 @@ def test_no_camera_size_cap_on_windows() -> None:
     assert windows.camera_size_cap() is None
 
 
-def test_camera_backend_is_msmf() -> None:
+def test_camera_backend_avoids_msmf_focus_readback_bug() -> None:
     # Keep capture consistent with the Windows camera-control implementation.
     import cv2
 
-    assert windows.camera_backend() == cv2.CAP_MSMF
+    assert windows.camera_backend() == cv2.CAP_DSHOW
 
 
-def test_set_auto_exposure_msmf_encoding() -> None:
-    # cap_msmf.cpp: nonzero → VideoProcAmp_Flags_Auto.
+def test_set_auto_exposure_dshow_encoding() -> None:
+    # cap_dshow.cpp: round(value) == 1 enables auto exposure.
     import cv2
 
     cap = MagicMock()
@@ -156,7 +156,7 @@ def test_set_auto_exposure_msmf_encoding() -> None:
     assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTO_EXPOSURE, 1)]
 
 
-def test_set_manual_exposure_msmf_encoding() -> None:
+def test_set_manual_exposure_dshow_encoding() -> None:
     import cv2
 
     cap = MagicMock()
@@ -177,39 +177,18 @@ def test_camera_focus_lockable_on_windows() -> None:
     assert windows.camera_focus_lockable() is True
 
 
-def test_lock_focus_disables_af_then_pins_position() -> None:
+@pytest.mark.parametrize("accepted", [True, False])
+def test_lock_focus_uses_backend_current_position(accepted) -> None:
     import cv2
 
     cap = MagicMock()
-    cap.set.return_value = True
-    cap.get.return_value = 42.0
+    cap.set.return_value = accepted
 
-    assert windows.camera_lock_focus(cap) is True
-    assert cap.set.call_args_list == [
-        call(cv2.CAP_PROP_AUTOFOCUS, 0),
-        call(cv2.CAP_PROP_FOCUS, 42.0),
-    ]
-
-
-def test_lock_focus_skips_pin_when_focus_unreadable() -> None:
-    # get() returns 0.0 when CAP_PROP_FOCUS is unsupported — never risk
-    # racking an unsupported lens to its stop.
-    import cv2
-
-    cap = MagicMock()
-    cap.set.return_value = True
-    cap.get.return_value = 0.0
-
-    assert windows.camera_lock_focus(cap) is True
-    assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 0)]
-
-
-def test_lock_focus_fails_when_af_toggle_refused() -> None:
-    cap = MagicMock()
-    cap.set.return_value = False
-    cap.get.return_value = 42.0
-
-    assert windows.camera_lock_focus(cap) is False
+    # DirectShow reads the current focus internally and refuses the toggle if
+    # that read fails. Propagate its result without guessing another position.
+    assert windows.camera_lock_focus(cap) is accepted
+    cap.set.assert_called_once_with(cv2.CAP_PROP_AUTOFOCUS, 0)
+    cap.get.assert_not_called()
 
 
 def test_unlock_focus_reenables_af() -> None:
