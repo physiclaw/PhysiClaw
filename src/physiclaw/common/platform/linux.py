@@ -129,7 +129,7 @@ def camera_backend() -> int:
 
 
 def camera_reset_controls() -> None:
-    """Controls belong to the capture handle; reopening it resets them."""
+    """No separately cached control channel to clear."""
 
 
 def camera_set_auto_exposure(cap) -> None:

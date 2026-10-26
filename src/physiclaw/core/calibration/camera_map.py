@@ -94,30 +94,19 @@ def _focus_region(frame: np.ndarray, poly: np.ndarray | None) -> np.ndarray:
 
 
 def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | None:
-    """Converge-freeze-verify the lens on the ``focus`` page (a
-    full-screen checkerboard; the caller flips the phase), then read the
-    absolute position back for the bundle — the once-per-rig focus
-    calibration. Sharpness is metered on the corner-fenced screen crop
-    of that page; why the pin needs the checkerboard, and the measured
-    numbers, live in the `hardware/focus.py` doctrine.
+    """Calibrate a replayable focus position before measuring the dot grid.
 
-    Runs BEFORE dot detection so Mapping B is measured under the exact
-    lens state every later session replays. Returns None — with the
-    lens back on live AF, so every session behaves the same — when the
-    rig can't lock (fixed-focus camera), the scene never metered sharp,
-    the position can't be read back and re-applied, or the applied
-    position doesn't meter sharp."""
-    if not cam.focus_lockable:
-        log.info("  Focus pin: rig can't lock focus — lens left on auto")
-        return None
-
-    # Start from live AF: a re-run (mapping retried after a failed
-    # validate, or a setup re-run over a warm-started session) arrives
-    # with the lens still pinned at the OLD position — frozen, AF can't
-    # re-converge, and if the rig moved that position never meters
-    # sharp. Unlocking also clears the remembered value, so a mid-step
-    # reopen can't re-pin the stale position while AF re-converges.
+    On the caller's checkerboard page, settle AF, freeze, then read/reapply
+    the position. Verify screen-crop sharpness after both writes before
+    returning a value for the bundle. Unsupported controls, rejected writes,
+    or failed verification return None and request AF (best-effort).
+    """
+    # Release any previous pin so AF can converge again. Clearing its
+    # remembered value also prevents reconnect from replaying it mid-step.
     cam.unlock_focus()
+    if not cam.focus_lockable:
+        log.info("  Focus pin: focus control unavailable — no position saved")
+        return None
 
     def meter() -> float | None:
         if not cam.wait_frames(focus.SETTLE_FRAMES, timeout=5.0):
@@ -150,42 +139,35 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             "  Focus pin: %s",
             result.detail,
             extra={
-                "console_message": "Camera focus could not be pinned — using autofocus"
+                "console_message": "Camera focus could not be pinned — autofocus requested"
             },
         )
         return None
     log.info("  Focus pin: %s", result.detail)
-    # Persist only what a reconnect can actually replay: read the
-    # position back and prove the absolute-write channel now, at
-    # calibration. A freeze nothing can replay would give this session
-    # a lens state no later session gets — hand it back to AF instead.
+    # A successful freeze is useful only if a later session can replay it.
     value = cam.read_focus()
     if value is None or not cam.apply_focus(value):
         cam.unlock_focus()
         log.warning(
-            "  Focus pin: position not replayable — lens left on autofocus",
+            "  Focus pin: position not replayable — autofocus requested",
             extra={
-                "console_message": "Camera focus could not be saved — using autofocus"
+                "console_message": "Camera focus could not be saved — autofocus requested"
             },
         )
         return None
-    # Verify the APPLIED state by pixels before persisting: the freeze
-    # was sharpness-verified, but this read-back + re-apply is a second
-    # driver round-trip — an intermittent junk readback (uvc.py's
-    # measured firmware quirks) would drive the lens elsewhere and put
-    # the junk in the bundle on the driver's word alone. Same gate the
-    # freeze verify used, so the two can't diverge.
+    # Re-check sharpness: a junk readback can move the lens despite an
+    # accepted write. Use the same gate as the freeze verification.
     after = meter()
     if after is None or after < focus.BLUR_THRESHOLD:
         cam.unlock_focus()
         log.warning(
-            "  Focus pin: applied position metered soft — lens left on autofocus",
+            "  Focus pin: applied position metered soft — autofocus requested",
             extra={
-                "console_message": "Saved camera focus failed verification — using autofocus"
+                "console_message": "Saved camera focus failed verification — autofocus requested"
             },
         )
         return None
-    log.info(f"  ✓ Focus pinned @ {value:g} — stored in the calibration bundle")
+    log.info(f"  ✓ Focus position verified @ {value:g}")
     return value
 
 
@@ -254,31 +236,40 @@ def compute_camera_mapping(
         dtype=np.float64,
     )
 
-    # 1. Fence the screen via the corner blocks (camera is static, so one
-    #    capture serves the whole grid pass). A separate frame from the grid:
-    #    a corner cluster's red block would otherwise read as a 16th dot.
-    cal.set_phase("corners")
-    time.sleep(1.0)
-    screen_poly = _detect_screen_region(cam, rotation)
-
-    # 1.5 Pin the lens BEFORE dot detection — the dots (and everything
-    #     after) are then measured under the exact lens state every
-    #     session replays from the bundle. The pin gets its own page:
-    #     the other pages are too flat to meter (see hardware/focus.py).
-    cal.set_phase("focus")
-    time.sleep(1.0)
     try:
+        # 1. Fence the screen via the corner blocks (camera is static, so one
+        #    capture serves the whole grid pass). A separate frame from the grid:
+        #    a corner cluster's red block would otherwise read as a 16th dot.
+        cal.set_phase("corners")
+        time.sleep(1.0)
+        screen_poly = _detect_screen_region(cam, rotation)
+
+        # Calibrate focus before the dot grid so a saved position matches
+        # the mapping's lens state. The checkerboard supplies the texture
+        # needed to judge sharpness (see hardware/focus.py).
+        cal.set_phase("focus")
+        time.sleep(1.0)
         cam_focus = _pin_focus(cam, rotation, screen_poly)
         pct_to_cam, cam_size = _detect_grid_mapping(
             cam, cal, rotation, screen_pcts, screen_poly, expected
         )
+        # The reader can reconnect while verification/grid frames arrive.
+        # Sharp pixels alone do not prove that the focus restore succeeded.
+        if cam_focus is not None and not cam.focus_pinned:
+            cam.unlock_focus()
+            cam_focus = None
+            log.warning(
+                "  Focus pin lost during mapping — no position saved",
+                extra={
+                    "console_message": "Camera focus lock was lost — autofocus requested"
+                },
+            )
         return pct_to_cam, cam_size, cam_focus
     except BaseException:
-        # No mapping was committed: retain no new lens pin whose metadata
-        # the caller never received. Native cleanup may itself fail.
+        # No mapping was committed: retain no old or new pin. Always try
+        # cleanup, even if focus controls became unavailable mid-step.
         try:
-            if cam.focus_lockable:
-                cam.unlock_focus()
+            cam.unlock_focus()
         except Exception:
             log.exception("Camera mapping failed; restoring autofocus also failed")
         raise

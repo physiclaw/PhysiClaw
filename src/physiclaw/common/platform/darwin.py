@@ -234,8 +234,8 @@ def camera_unlock_focus(cap) -> None:
 
 def camera_read_focus(cap) -> float | None:
     """Current absolute focus position via UVC (`cap` unused). None when
-    the channel is absent or the readback is unusable; <= 0 reads as
-    "no usable position", matching the other backends."""
+    the channel is absent or the readback is unusable; this UVC path
+    conservatively treats non-positive readbacks as unusable."""
     channel = _camera_terminal()
     if channel is None:
         return None

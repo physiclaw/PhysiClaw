@@ -1,39 +1,20 @@
-"""Software focus lock — freeze autofocus once it has converged.
+"""Calibrate a fixed focus position for the fixed-distance camera/phone rig.
 
-The rig is rigid: the camera is bolted at a fixed position and the
-phone screen sits at a constant distance, so the correct lens position
-is a constant of the rig — a calibration value, like the affine
-transforms. `lock` runs ONCE, during the camera-mapping calibration
-step (`camera_map._pin_focus`), against the dedicated ``focus`` page:
-a full-screen checkerboard, the one scene where the absolute sharpness
-gate is trustworthy. The other calibration pages are mostly flat and
-meter far below the gate even in perfect focus on a far camera — the
-corners page measured 14-34 against the 80 gate on a rig at minimum
-phone coverage, while the checkerboard meters like session content
-(hundreds). The verified position is read back, re-applied and
-re-verified by pixels, then persisted in the calibration bundle and
-seeded into every fresh `Camera`
-(`rig.connect_camera`); `configure_capture` — the remembered-state
-choke point — re-applies it at the first open and every reconnect.
-Nothing re-locks at runtime: continuous AF
-hunts (the stylus crossing the lens re-triggers one after every
-gesture) can't happen under a pinned lens, and persistent blur means
-the rig physically changed — recalibrate, don't adjust.
+`camera_map._pin_focus` runs this lock on a checkerboard, then reads,
+re-applies, and verifies the position before saving it. The checkerboard
+provides enough texture for the sharpness gate; flatter calibration pages
+can score below it even in focus (the corners page measured 14–34 against
+the default gate of 80).
 
-Like `exposure.converge`, `lock` is pure logic over injected
-callables — `meter` (capture + score the focus page's
-sharpness), `freeze`, `unfreeze` — so the whole flow is unit-testable
-with a fake camera. And like exposure, it trusts only measured
-pixels: focus writes can be silently ignored just as exposure writes
-are, and a UVC GET_CUR readback can be junk (see uvc.py's measured
-firmware quirks) — the freeze is judged by the sharpness of the frame
-it produced, never by the driver's word.
+`Camera` restores the position at startup and reconnect. A failed apply
+selects AF for that camera session, including later reconnects. Persistent
+blur calls for checking the rig and recalibrating; there is no runtime
+focus search.
 
-A scene that never meters sharp is no reference to lock against: the
-lens may be mid-hunt, or the screen may be dark/blank with nothing to
-focus on — the lock fails, AF stays in charge, and no position is
-persisted. A freeze whose verification meter comes back soft is
-reverted (`unfreeze`): firmware AF beats a lens frozen mid-hunt.
+Driver acceptance and sharp pixels are both required, but cannot prove
+that firmware honored AF-off. Unreadable or soft frames fail the lock;
+after any freeze attempt, failure requests AF again. Injected meter,
+freeze, and unfreeze callables keep this logic testable without hardware.
 """
 
 import logging
@@ -58,7 +39,7 @@ SETTLE_FRAMES = 5
 # reads before the freeze — one sharp read can be the instant an AF
 # hunt sweeps through focus. Sharpness clears BLUR_THRESHOLD with a
 # wide margin on a focused phone-screen crop (300+ vs the 80 floor),
-# so two agreeing reads mean converged, not lucky.
+# so two agreeing reads reduce the risk of freezing during a hunt.
 CONFIRM_METERS = 4
 
 
@@ -66,7 +47,7 @@ CONFIRM_METERS = 4
 class LockResult:
     """Outcome of one lock attempt — for the log, and for tests."""
 
-    locked: bool  # True = AF frozen and the frozen frame metered sharp
+    locked: bool  # True = driver accepted the freeze and the frame metered sharp
     detail: str  # human line for the lock log
 
 
@@ -75,46 +56,37 @@ def lock(
     freeze: Callable[[], bool],
     unfreeze: Callable[[], None],
 ) -> LockResult:
-    """Freeze autofocus at its converged position; verify by pixels.
+    """Wait for two consecutive sharp readings, freeze, and verify once more.
 
-    Phases:
-      1. Wait for AF to settle: meter until two consecutive reads are
-         sharp (>= BLUR_THRESHOLD), bounded by CONFIRM_METERS. A scene
-         that never gets there — dark screen, AF still hunting — fails
-         the lock; AF stays in charge.
-      2. Freeze. `freeze` disables continuous AF (and pins the current
-         absolute focus where the channel allows). A refused freeze
-         restores AF, including a partially applied freeze, with no retry loop.
-      3. Verify from the frozen frame: still sharp means the lens was
-         held where AF converged; a collapse means the freeze wedged a
-         mid-hunt position — `unfreeze` and leave AF in charge.
-
-    A `meter` returning None (no frame) fails open immediately.
+    The caller must first request AF and clear any remembered pin. Settling
+    is bounded by CONFIRM_METERS; a missing frame fails immediately. After
+    attempting a freeze, any failure or interruption requests AF again.
+    Recovery is best-effort when the driver is unavailable.
     """
     prev: float | None = None
     for _ in range(CONFIRM_METERS):
         cur = meter()
         if cur is None:
-            return LockResult(False, "no frame — focus left on auto")
+            return LockResult(False, "no frame — no focus lock attempted")
         if prev is not None and prev >= BLUR_THRESHOLD and cur >= BLUR_THRESHOLD:
             break
         prev = cur
     else:
         return LockResult(
             False,
-            f"scene never metered sharp (last {cur:.0f} < "
+            f"scene did not stay sharp (last {cur:.0f}, threshold "
             f"{BLUR_THRESHOLD:.0f}) — no converged focus to freeze",
         )
     locked = False
     try:
         if not freeze():
-            return LockResult(False, "driver refused the focus lock — reverted to AF")
+            return LockResult(
+                False, "driver refused the focus lock — autofocus requested"
+            )
         after = meter()
         if after is None or after < BLUR_THRESHOLD:
             got = "no frame" if after is None else f"sharpness {after:.0f}"
-            return LockResult(
-                False, f"frozen frame soft ({got}) — reverted to autofocus"
-            )
+            return LockResult(False, f"frozen frame soft ({got}) — autofocus requested")
         locked = True
         return LockResult(True, f"focus locked (sharpness {after:.0f})")
     finally:

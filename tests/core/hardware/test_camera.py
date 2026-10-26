@@ -916,7 +916,9 @@ def test_refused_apply_focus_is_not_remembered(mocker) -> None:
     apply_spy.assert_called_once()  # only the refused explicit call
 
 
-@pytest.mark.parametrize("failure", [False, OSError("USB lost")])
+@pytest.mark.parametrize(
+    "failure", [False, OSError("USB lost"), KeyboardInterrupt("USB lost")]
+)
 def test_failed_focus_change_invalidates_previous_pin(mocker, failure):
     camera, cap = _ready_camera(mocker)
     apply = mocker.patch.object(
@@ -926,14 +928,22 @@ def test_failed_focus_change_invalidates_previous_pin(mocker, failure):
     assert camera.apply_focus(137.0)
     apply.side_effect = [failure]
 
-    if isinstance(failure, Exception):
-        with pytest.raises(OSError, match="USB lost"):
+    if isinstance(failure, BaseException):
+        with pytest.raises(type(failure), match="USB lost"):
             camera.apply_focus(200.0)
     else:
         assert camera.apply_focus(200.0) is False
-        unlock.assert_called_once_with(cap)
+    unlock.assert_called_once_with(cap)
     assert camera.focus_pinned is False
-    assert camera._focus_value == 137.0
+    assert camera._focus_value is None
+
+    replacement = FakeVideoCapture(index=0, read_results=[(True, _frame())])
+    mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
+    camera._reopen()
+
+    assert apply.call_count == 2  # accepted original, failed change; no replay
+    unlock.assert_called_with(replacement)
+    assert not camera.focus_pinned
 
 
 def test_unlock_focus_clears_the_remembered_value(mocker) -> None:
@@ -974,6 +984,49 @@ def test_configure_capture_applies_seeded_focus(mocker) -> None:
     )
 
     apply_spy.assert_called_once_with(cap, 137.0)
+
+
+@pytest.mark.parametrize("capture_controls", ["linux", "windows"], indirect=True)
+def test_configure_without_saved_focus_resets_inherited_manual_mode(
+    mocker, capture_controls
+):
+    cap = FakeVideoCapture(index=0)
+    cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+    cap.set(cv2.CAP_PROP_FOCUS, 137)
+
+    pinned = camera_mod.configure_capture(cap, exposure_auto=True, exposure=-6)
+
+    assert not pinned
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == 1
+
+
+@pytest.mark.parametrize("error_type", [OSError, KeyboardInterrupt])
+@pytest.mark.parametrize("rollback_fails", [False, True])
+def test_interrupted_open_focus_apply_requests_autofocus_before_release(
+    mocker, error_type, rollback_fails
+):
+    cap = FakeVideoCapture(index=0)
+    mocker.patch.object(cv2, "VideoCapture", return_value=cap)
+    mocker.patch.object(
+        camera_mod.platform,
+        "camera_apply_focus",
+        side_effect=error_type("focus failed"),
+    )
+
+    def restore(capture):
+        assert not capture.released
+        if rollback_fails:
+            raise OSError("rollback failed")
+
+    unlock = mocker.patch.object(
+        camera_mod.platform, "camera_unlock_focus", side_effect=restore
+    )
+
+    with pytest.raises(error_type, match="focus failed"):
+        Camera(index=0, focus_value=137.0)
+
+    unlock.assert_called_once_with(cap)
+    assert cap.released
 
 
 def test_constructor_seed_pins_focus_at_first_open(mocker) -> None:
@@ -1033,15 +1086,15 @@ def test_refused_open_apply_hands_the_lens_back_to_autofocus(mocker) -> None:
     unlock_spy.assert_called()
 
 
-def test_focus_pinned_self_heals_when_a_reopen_apply_lands(mocker) -> None:
-    # A transient refusal at first open must not condemn the session:
-    # _focus_value keeps the replay, so a reconnect whose apply succeeds
-    # flips focus_pinned back to True on its own.
+def test_refused_focus_restore_stays_auto_through_warmup_and_reopen(mocker) -> None:
+    # A failed restore selects AF for this session, including resolution
+    # renegotiation and reconnect. Neither should silently re-pin it.
     vc1 = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     mocker.patch.object(cv2, "VideoCapture", return_value=vc1)
     apply_spy = mocker.patch.object(
         camera_mod.platform, "camera_apply_focus", return_value=False
     )
+    unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
     cam = Camera(index=0, focus_value=137.0)
     cam._reader.stop()
     assert cam.focus_pinned is False
@@ -1051,7 +1104,10 @@ def test_focus_pinned_self_heals_when_a_reopen_apply_lands(mocker) -> None:
     mocker.patch.object(cv2, "VideoCapture", return_value=vc2)
     cam._reopen()
 
-    assert cam.focus_pinned is True
+    assert cam.focus_pinned is False
+    assert cam._focus_value is None
+    apply_spy.assert_called_once_with(vc1, 137.0)
+    unlock.assert_called_with(vc2)
 
 
 def test_focus_pinned_drops_when_a_reopen_apply_is_refused(mocker) -> None:
@@ -1318,6 +1374,9 @@ def test_regression_close_restores_unremembered_focus_attempt(
     unlock = mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
 
     getattr(camera, method)(*args)
+    if method == "apply_focus" and not accepted:
+        unlock.assert_called_once_with(cap)  # immediate rollback
+    unlock.reset_mock()
     camera.close()
 
     unlock.assert_called_once_with(cap)
@@ -1339,6 +1398,9 @@ def test_regression_close_restores_interrupted_focus_attempt(
 
     with pytest.raises(OSError, match="USB lost"):
         getattr(camera, method)(*args)
+    if method == "apply_focus":
+        unlock.assert_called_once_with(cap)  # immediate rollback
+    unlock.reset_mock()
     camera.close()
 
     unlock.assert_called_once_with(cap)

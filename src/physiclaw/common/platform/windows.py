@@ -4,12 +4,15 @@ Imported by ``physiclaw.common.platform`` on win32 only. Callers should
 never import this module directly — go through ``physiclaw.common.platform``.
 """
 
+import logging
 import math
 import os
 import socket
 import subprocess
 import time
 from typing import TextIO
+
+log = logging.getLogger(__name__)
 
 # Windows registry's ProxyOverride is unreliable for loopback bypass —
 # corporate ProxyOverride often lacks `<local>` / `localhost`, and an
@@ -113,8 +116,7 @@ def camera_exposure_tunable() -> bool:
 
 
 def camera_size_cap() -> tuple[int, int] | None:
-    """No cap — exposure is always tunable here, so any capture mode a
-    bad firmware AE picks can be corrected by `exposure.converge`."""
+    """No platform size cap; capture negotiation supplies fallbacks."""
     return None
 
 
@@ -132,7 +134,11 @@ def camera_backend() -> int:
 
 
 def camera_reset_controls() -> None:
-    """Controls belong to the capture handle; reopening it resets them."""
+    """No separate native control cache to clear.
+
+    Device settings can survive reopening; configure_capture reapplies the
+    requested settings instead of relying on a driver reset.
+    """
 
 
 def camera_set_auto_exposure(cap) -> None:
@@ -150,8 +156,9 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
     """Hold a fixed exposure. Value is log2 seconds per the DirectShow
     CameraControl_Exposure spec (-6 ≈ 1/64s; indoors -4..-8) — though
     drivers may deviate, which the caller's measured-brightness stall
-    check catches. Setting CAP_PROP_EXPOSURE already carries the Manual
-    mode after the explicit AE-off through DirectShow."""
+    check catches. The AE-off toggle explicitly selects Manual; the following
+    absolute write passes flags=0 in OpenCV, so driver support still matters.
+    """
     import cv2
 
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)
@@ -159,10 +166,10 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
 
 
 def camera_focus_lockable() -> bool:
-    """DirectShow maps CAP_PROP_AUTOFOCUS onto the CameraControl_Focus flags —
-    the lock is always worth ATTEMPTING here. Whether this camera honors
-    it is judged at lock time: the set() return, then (as always)
-    measured frame sharpness."""
+    """DirectShow exposes the AF toggle, so a lock can be attempted.
+
+    Calibration checks driver acceptance and sharpness separately.
+    """
     return True
 
 
@@ -170,35 +177,49 @@ def camera_lock_focus(cap) -> bool:
     """DirectShow reads the current position and writes it in manual mode.
 
     A failed driver read returns False without writing. Let that backend
-    operation freeze the lens; calibration verifies it by pixels and proves
-    the read-back/reapply path separately before persisting the position.
+    operation request the freeze; calibration checks sharpness and the
+    read-back/reapply path separately before persisting the position.
+    A successful write and sharp frame cannot prove a driver honored AF-off.
     """
     import cv2
 
+    # OpenCV's setter takes 0/1. Its DirectShow getter instead returns raw
+    # CameraControlFlags (Auto=1, Manual=2), which must not be read as bool.
     return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
 
 
 def camera_unlock_focus(cap) -> None:
-    """Hand the lens back to continuous autofocus."""
+    """Request continuous autofocus; restoration is best-effort."""
     import cv2
 
-    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+    if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 1):
+        log.warning(
+            "DirectShow: could not re-enable autofocus; lens state is unknown",
+            extra={
+                "console_message": "Camera could not re-enable autofocus — lens state is unknown"
+            },
+        )
 
 
 def camera_read_focus(cap) -> float | None:
-    """Current absolute focus position, or None when the driver reports
-    none. get() returns 0.0 when CAP_PROP_FOCUS is unsupported and 0
-    is also a legal focus value — <= 0 reads as "no usable position"."""
+    """Current absolute focus position, including zero.
+
+    OpenCV's DirectShow backend returns -1 when CAP_PROP_FOCUS is unavailable
+    (cap_dshow.cpp, OpenCV 4.10–4.14), unlike VideoCapture's generic 0 fallback.
+    """
     import cv2
 
     cur = cap.get(cv2.CAP_PROP_FOCUS)
-    return cur if math.isfinite(cur) and cur > 0 else None
+    return cur if math.isfinite(cur) and cur >= 0 else None
 
 
 def camera_apply_focus(cap, value: float) -> bool:
-    """Drive the lens to a caller-supplied absolute position. AF off
-    first, then the absolute write — DirectShow maps both onto
-    CameraControl_Focus."""
+    """Request AF-off, then an absolute position, propagating either refusal.
+
+    OpenCV's AF toggle explicitly writes Manual, but its CAP_PROP_FOCUS write
+    passes flags=0. Some drivers may reject that write even after AF-off;
+    callers must restore AF on failure and verify calibration sharpness.
+    """
     import cv2
 
     if not math.isfinite(value) or value < 0:

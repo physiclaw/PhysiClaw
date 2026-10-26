@@ -114,7 +114,7 @@ def test_soft_frozen_frame_reverts_to_autofocus() -> None:
     res = lock(rig.meter, rig.freeze, rig.unfreeze)
 
     assert not res.locked
-    assert "reverted" in res.detail
+    assert "autofocus requested" in res.detail
     assert rig.unfreeze_calls == 1
     assert rig.frozen is False
 

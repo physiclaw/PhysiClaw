@@ -135,7 +135,7 @@ def test_camera_exposure_tunable_on_windows() -> None:
 
 
 def test_no_camera_size_cap_on_windows() -> None:
-    # Exposure is always correctable here, so no mode is unsafe.
+    # Capture negotiation supplies the generic resolution fallbacks.
     assert windows.camera_size_cap() is None
 
 
@@ -191,42 +191,51 @@ def test_lock_focus_uses_backend_current_position(accepted) -> None:
     cap.get.assert_not_called()
 
 
-def test_unlock_focus_reenables_af() -> None:
+@pytest.mark.parametrize("accepted", [True, False])
+def test_unlock_focus_requests_af_and_reports_refusal(accepted, caplog) -> None:
     import cv2
 
     cap = MagicMock()
+    cap.set.return_value = accepted
     windows.camera_unlock_focus(cap)
 
     assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 1)]
+    assert ("could not re-enable autofocus" in caplog.text) is (not accepted)
 
 
-def test_read_focus_returns_position() -> None:
+@pytest.mark.parametrize("position", [0.0, 42.0])
+def test_read_focus_returns_position(position) -> None:
     import cv2
 
     cap = MagicMock()
-    cap.get.return_value = 42.0
+    cap.get.return_value = position
 
-    assert windows.camera_read_focus(cap) == 42.0
+    assert windows.camera_read_focus(cap) == position
     cap.get.assert_called_once_with(cv2.CAP_PROP_FOCUS)
 
 
 def test_read_focus_none_when_unreadable() -> None:
     cap = MagicMock()
-    cap.get.return_value = 0.0
+    # cap_dshow.cpp returns -1 when the property read fails, not zero.
+    cap.get.return_value = -1.0
 
     assert windows.camera_read_focus(cap) is None
 
 
-def test_apply_focus_disables_af_then_drives_the_lens() -> None:
+@pytest.mark.parametrize("position", [0.0, 137.0])
+@pytest.mark.parametrize("accepted", [True, False])
+def test_apply_focus_disables_af_and_propagates_position_write_result(
+    position, accepted
+) -> None:
     import cv2
 
     cap = MagicMock()
-    cap.set.return_value = True
+    cap.set.side_effect = [True, accepted]
 
-    assert windows.camera_apply_focus(cap, 137.0) is True
+    assert windows.camera_apply_focus(cap, position) is accepted
     assert cap.set.call_args_list == [
         call(cv2.CAP_PROP_AUTOFOCUS, 0),
-        call(cv2.CAP_PROP_FOCUS, 137.0),
+        call(cv2.CAP_PROP_FOCUS, position),
     ]
 
 

@@ -207,6 +207,7 @@ def test_pin_focus_returns_none_when_not_lockable() -> None:
 
     assert camera_map_mod._pin_focus(cam, -1, None) is None
     cam.lock_focus.assert_not_called()
+    cam.unlock_focus.assert_called_once()
 
 
 def test_pin_focus_releases_a_stale_pin_before_relocking() -> None:
@@ -273,19 +274,27 @@ def test_pin_focus_returns_none_when_position_unreadable(caplog) -> None:
     )
 
 
-def test_windows_focus_pin_preserves_and_replays_the_current_position() -> None:
+@pytest.mark.parametrize("focused_position", [0.0, 137.0])
+@pytest.mark.parametrize(
+    "absolute_write_accepted, rollback_accepted",
+    [(True, True), (False, True), (False, False)],
+)
+def test_windows_focus_pin_preserves_and_replays_the_current_position(
+    focused_position, absolute_write_accepted, rollback_accepted, caplog
+) -> None:
     """Model the verified OpenCV MSMF/DirectShow control differences.
 
     MSMF reads the default and resets the lens on AF-off; DirectShow reads
     the current value and preserves it. Run the real Windows helpers and
-    calibration pixel checks so a backend regression cannot persist a bad pin.
+    calibration pixel checks. A driver may reject DirectShow's flags=0
+    absolute write even after accepting the explicit manual-mode toggle.
     """
     from physiclaw.common.platform import windows
 
     backend = windows.camera_backend()
 
     class Capture:
-        position = 137.0
+        position = focused_position
         autofocus = True
 
         def get(self, prop):
@@ -294,12 +303,16 @@ def test_windows_focus_pin_preserves_and_replays_the_current_position() -> None:
 
         def set(self, prop, value):
             if prop == cv2.CAP_PROP_AUTOFOCUS:
+                if value and not self.autofocus and not rollback_accepted:
+                    return False
                 self.autofocus = bool(value)
                 if self.autofocus:
-                    self.position = 137.0
+                    self.position = focused_position
                 elif backend == cv2.CAP_MSMF:
                     self.position = 0.0
             elif prop == cv2.CAP_PROP_FOCUS:
+                if not absolute_write_accepted:
+                    return False
                 self.position = value
             else:
                 raise AssertionError(prop)
@@ -309,7 +322,7 @@ def test_windows_focus_pin_preserves_and_replays_the_current_position() -> None:
     sharp = _sharp_frame()
     cam = _lockable_cam(sharp)
     cam.raw_frame.side_effect = lambda: (
-        sharp if capture.position == 137.0 else np.zeros_like(sharp)
+        sharp if capture.position == focused_position else np.zeros_like(sharp)
     )
     cam.lock_focus.side_effect = lambda: windows.camera_lock_focus(capture)
     cam.unlock_focus.side_effect = lambda: windows.camera_unlock_focus(capture)
@@ -318,11 +331,15 @@ def test_windows_focus_pin_preserves_and_replays_the_current_position() -> None:
         capture, value
     )
 
-    assert camera_map_mod._pin_focus(cam, -1, None) == 137.0
-    assert capture.position == 137.0
-    assert capture.autofocus is False
-    cam.apply_focus.assert_called_once_with(137.0)
-    cam.unlock_focus.assert_called_once()
+    value = camera_map_mod._pin_focus(cam, -1, None)
+
+    assert value == (focused_position if absolute_write_accepted else None)
+    assert capture.position == focused_position
+    assert capture.autofocus is (not absolute_write_accepted and rollback_accepted)
+    cam.apply_focus.assert_called_once_with(focused_position)
+    assert cam.unlock_focus.call_count == (1 if absolute_write_accepted else 2)
+    if not rollback_accepted:
+        assert "could not re-enable autofocus" in caplog.text
 
 
 def test_pin_focus_returns_none_when_apply_refused() -> None:
@@ -413,6 +430,10 @@ class _PhaseCamera:
     """Device boundary fake: real images/focus metering, no native hardware."""
 
     focus_lockable = True
+
+    @property
+    def focus_pinned(self):
+        return self.applied
 
     def __init__(self, cal, *, corners=None, grid=None):
         self.cal = cal
@@ -587,6 +608,32 @@ def test_regression_exhausted_grid_fit_releases_successful_focus_pin(mocker) -> 
     assert cam.applied is False
 
 
+@pytest.mark.parametrize("stage", ["verification", "grid"])
+def test_mapping_does_not_save_focus_lost_during_reconnect(mocker, stage):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    read = cam.raw_frame
+
+    def reconnected_frame():
+        # Model a reconnect whose focus restore failed. AF still produces
+        # sharp pixels and a usable grid; neither proves a surviving pin.
+        if (stage == "verification" and cam.applied) or (
+            stage == "grid" and cal.phase == "grid"
+        ):
+            cam.frozen = cam.applied = False
+        return read()
+
+    mocker.patch.object(cam, "raw_frame", side_effect=reconnected_frame)
+
+    affine, size, position = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert affine is not None and size == (600, 900)
+    assert position is None
+    assert not cam.frozen and not cam.applied
+    assert cam.unlocks == 2
+
+
 def test_mapping_cleanup_failure_preserves_original_exception(mocker) -> None:
     mocker.patch.object(camera_map_mod.time, "sleep")
     cal = _real_cal()
@@ -602,12 +649,12 @@ def test_mapping_cleanup_failure_preserves_original_exception(mocker) -> None:
     assert cleanup.call_count == 2
 
 
-def test_mapping_cleanup_capability_failure_preserves_original_exception(mocker):
+def test_mapping_cleanup_does_not_depend_on_current_focus_capability(mocker):
     mocker.patch.object(camera_map_mod.time, "sleep")
     cal = _real_cal()
     cam = _PhaseCamera(cal)
     mocker.patch.object(cam, "read_focus", side_effect=KeyboardInterrupt("original"))
-    mocker.patch.object(
+    capability = mocker.patch.object(
         _PhaseCamera,
         "focus_lockable",
         new_callable=PropertyMock,
@@ -616,6 +663,32 @@ def test_mapping_cleanup_capability_failure_preserves_original_exception(mocker)
 
     with pytest.raises(KeyboardInterrupt, match="original"):
         camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    capability.assert_called_once()
+    assert not cam.frozen and not cam.applied
+    assert cam.unlocks == 2
+
+
+@pytest.mark.parametrize("stage", ["corners", "focus"])
+def test_mapping_failure_before_focus_step_releases_previous_pin(mocker, stage):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _PhaseCamera(cal)
+    cam.frozen = cam.applied = True
+    set_phase = cal.set_phase
+
+    def fail_phase(phase):
+        if phase == stage:
+            raise OSError("phone disconnected")
+        set_phase(phase)
+
+    mocker.patch.object(cal, "set_phase", side_effect=fail_phase)
+
+    with pytest.raises(OSError, match="phone disconnected"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert not cam.frozen and not cam.applied
+    assert cam.unlocks == 1
 
 
 @pytest.mark.parametrize(
