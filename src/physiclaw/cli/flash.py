@@ -50,7 +50,7 @@ from urllib.error import HTTPError
 import typer
 
 from physiclaw.cli._flash_output import FlashOutput
-from physiclaw.cli._format import exit_error, info, next_hint, ok, section, warn
+from physiclaw.cli._format import exit_error, info, next_hint, ok, section
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common.terminal import plain_text
 
@@ -120,7 +120,7 @@ def _bundle_members(zf: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
 
 
 def _fetch_bundle(into: Path) -> tuple[list[tuple[str, Path]], str | None]:
-    """Prepare every image and its version before any board operation starts."""
+    """Prepare every image and its version before erasing or writing the board."""
     buf = io.BytesIO()
     try:
         with http_get(FIRMWARE_URL) as r:
@@ -153,16 +153,24 @@ def _fetch_bundle(into: Path) -> tuple[list[tuple[str, Path]], str | None]:
         exit_error(f"Could not prepare firmware bundle: {e}")
 
 
-def _detect_port() -> str | None:
-    """Best-guess USB-serial port. Doesn't probe (a blank board won't reply)."""
+def _detect_port() -> str:
+    """Select one USB-serial port without probing (a blank board won't reply)."""
     from physiclaw.core.hardware.grbl import candidate_ports
 
     ports = candidate_ports()
     if not ports:
-        return None
+        exit_error(
+            "No USB serial port detected.\n"
+            "  Check the 12 V power supply, USB data cable, and CH340 driver.\n\n"
+            "  Retry: physiclaw flash"
+        )
     if len(ports) > 1:
-        typer.echo(warn("several ports found"))
-        typer.echo(info(f"using {ports[0]}; override with --port"))
+        choices = "\n".join(f"    physiclaw flash --port {port}" for port in ports)
+        exit_error(
+            "Multiple USB serial ports detected.\n"
+            "  Select the MKS DLC32 port:\n\n"
+            f"{choices}"
+        )
     return ports[0]
 
 
@@ -250,7 +258,9 @@ def flash(
     ] = False,
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", help="Preview firmware images without flashing."),
+        typer.Option(
+            "--dry-run", help="Download and preview firmware; no board required."
+        ),
     ] = False,
     verbose: Annotated[
         bool,
@@ -261,40 +271,41 @@ def flash(
     typer.echo(section("PhysiClaw · Firmware flash"))
     typer.echo(info("MKS DLC32 V2.1 · FluidNC firmware"))
     if dry_run:
-        typer.echo(warn("Dry run — preview only; the board will not be changed."))
+        typer.echo(info("Dry run — download and preview only; no board required."))
     typer.echo()
-    steps = 4 if erase and not dry_run else 3
+    if dry_run:
+        steps = 2
+        if port:
+            typer.echo(info(f"Preview port: {port} (not checked)"))
+            typer.echo()
+    else:
+        steps = 4 if erase else 3
+        typer.echo(section(f"[1/{steps}] Finding control board …"))
+        dev = port or _detect_port()
+        if port:
+            typer.echo(info(f"Using port: {dev} (--port)"))
+        else:
+            typer.echo(ok(f"USB serial port found: {dev}"))
+        typer.echo()
 
     with tempfile.TemporaryDirectory(prefix="physiclaw-fw-") as td:
-        typer.echo(section(f"[1/{steps}] Downloading firmware …"))
+        typer.echo(section(f"[{1 if dry_run else 2}/{steps}] Downloading firmware …"))
         files, version = _fetch_bundle(Path(td))
         typer.echo(
             ok(f"Firmware: FluidNC {version}" if version else "Firmware bundle ready.")
         )
 
-        typer.echo()
-        typer.echo(section(f"[2/{steps}] Selecting control board"))
-        dev = port or _detect_port() or ("auto-detect" if dry_run else None)
-        if not dev:
-            exit_error(
-                "No board found.\n"
-                "  Switch on the 12 V power adaptor and connect the MKS DLC32 over USB.\n"
-                "  Install the CH340 driver if needed, or pass --port."
-            )
-        if dev == "auto-detect" and dry_run:
-            typer.echo(info(f"Board: {dev} (no board detected)"))
-        else:
-            typer.echo(ok(f"Board: {dev}"))
-
         if dry_run:
             typer.echo()
-            typer.echo(section("[3/3] Dry run — would flash these images:"))
+            typer.echo(section("[2/2] Preview — would flash these images:"))
             typer.echo(info(f"{'Image':<18} {'Address':>10}"))
             for offset, p in files:
                 typer.echo(info(f"{p.name:<18} {offset:>10}"))
             if erase:
                 typer.echo()
                 typer.echo(info("--erase: would erase the chip before writing."))
+            typer.echo()
+            typer.echo(ok("Preview complete. The board was not changed."))
             return
 
         base = ["--chip", CHIP, "--port", dev, "--baud", str(BAUD)]
@@ -329,7 +340,7 @@ def flash(
         _uv_esptool(write, verbose=verbose)
 
     typer.echo()
-    typer.echo(ok("Done — the board now runs as a PhysiClaw machine."))
+    typer.echo(ok("Done — firmware and machine configuration installed."))
     typer.echo()
     typer.echo(
         next_hint("physiclaw testdrive", description="take the board for a spin.")

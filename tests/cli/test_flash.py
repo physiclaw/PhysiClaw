@@ -347,86 +347,128 @@ def test_flash_failed_erase_does_not_write(mocker):
     assert "Done" not in result.output
 
 
-def test_flash_dry_run_overrides_erase(mocker):
-    _mock_download(mocker)
-    run_spy = mocker.patch.object(flash_mod, "_run_esptool")
-
-    result = runner.invoke(app, ["--port", "fake-port", "--erase", "--dry-run"])
-
-    assert result.exit_code == 0
-    run_spy.assert_not_called()
-
-
 # ---------- dry run ----------
 
 
-def test_flash_dry_run_lists_images_without_flashing(mocker) -> None:
+@pytest.mark.parametrize("port_args", [[], ["--port", "COM12"]])
+@pytest.mark.parametrize("erase", [False, True])
+def test_flash_dry_run_previews_images_without_using_board(mocker, port_args, erase):
     _mock_download(mocker)
+    detect = mocker.patch.object(flash_mod, "_detect_port")
     run_spy = mocker.patch.object(flash_mod, "_run_esptool")
 
-    result = runner.invoke(app, ["--port", "/dev/cu.usbserial-X", "--dry-run"])
+    result = runner.invoke(
+        app, ["--dry-run", *port_args, *(["--erase"] if erase else [])]
+    )
 
     assert result.exit_code == 0
     assert "Dry run" in result.output
+    assert "no board required" in result.output
+    assert "[1/2] Downloading firmware" in result.output
+    assert "[2/2] Preview" in result.output
+    assert "Preview complete. The board was not changed." in result.output
     assert "firmware.bin" in result.output
     assert "littlefs.bin" in result.output
-    flash_mod.http_get.assert_called_once_with(
-        "https://physiclaw.ai/downloads/firmware/fluidnc.zip"
-    )
+    assert ("would erase the chip" in result.output) is erase
+    flash_mod.http_get.assert_called_once_with(flash_mod.FIRMWARE_URL)
+    detect.assert_not_called()
     run_spy.assert_not_called()
-
-
-def test_flash_dry_run_without_board_uses_autodetect_placeholder(mocker) -> None:
-    _mock_download(mocker)
-    mocker.patch("physiclaw.core.hardware.grbl.candidate_ports", return_value=[])
-
-    result = runner.invoke(app, ["--dry-run"])
-
-    assert result.exit_code == 0
-    assert "Board: auto-detect" in result.output
 
 
 # ---------- port detection ----------
 
 
-def test_flash_no_port_found_exits_with_checklist(mocker) -> None:
-    _mock_download(mocker)
-    mocker.patch("physiclaw.core.hardware.grbl.candidate_ports", return_value=[])
+@pytest.mark.parametrize(
+    "ports, messages",
+    [
+        (
+            [],
+            [
+                "No USB serial port detected.",
+                "Check the 12 V power supply, USB data cable, and CH340 driver.",
+                "Retry: physiclaw flash",
+            ],
+        ),
+        (
+            ["COM12", "COM13"],
+            [
+                "Multiple USB serial ports detected.",
+                "Select the MKS DLC32 port:",
+                "physiclaw flash --port COM12",
+                "physiclaw flash --port COM13",
+            ],
+        ),
+    ],
+    ids=["missing-port", "multiple-ports"],
+)
+@pytest.mark.parametrize("erase", [False, True])
+def test_flash_port_selection_failure_stops_before_download(
+    mocker, ports, messages, erase
+):
+    download = mocker.patch.object(flash_mod, "http_get")
+    run_spy = mocker.patch.object(flash_mod, "_run_esptool")
+    mocker.patch("physiclaw.core.hardware.grbl.candidate_ports", return_value=ports)
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, ["--erase"] if erase else [])
 
     assert result.exit_code == 1
-    assert "No board found" in result.output
-    assert "--port" in result.output
+    for message in messages:
+        assert message in result.output
+    assert "Downloading firmware" not in result.output
+    assert "Flashing firmware" not in result.output
+    download.assert_not_called()
+    run_spy.assert_not_called()
 
 
-def test_flash_auto_detect_single_port_is_used_silently(mocker) -> None:
+@pytest.mark.parametrize("erase", [False, True])
+def test_flash_detects_board_before_downloading_and_flashing(mocker, erase):
     _mock_download(mocker)
-    mocker.patch(
+    calls = mocker.Mock()
+    detect = mocker.patch(
         "physiclaw.core.hardware.grbl.candidate_ports",
         return_value=["/dev/cu.usbserial-A"],
     )
+    run_spy = mocker.patch.object(flash_mod, "_run_esptool")
+    calls.attach_mock(detect, "detect")
+    calls.attach_mock(flash_mod.http_get, "download")
+    calls.attach_mock(run_spy, "flash")
 
-    result = runner.invoke(app, ["--dry-run"])
+    result = runner.invoke(app, ["--erase"] if erase else [])
 
     assert result.exit_code == 0
-    assert "Board: /dev/cu.usbserial-A" in result.output
-    assert "several ports found" not in result.output
+    assert [call[0] for call in calls.mock_calls] == [
+        "detect",
+        "download",
+        *(["flash"] if erase else []),
+        "flash",
+    ]
+    steps = 4 if erase else 3
+    stages = [
+        f"[1/{steps}] Finding control board",
+        "USB serial port found: /dev/cu.usbserial-A",
+        f"[2/{steps}] Downloading firmware",
+        "Firmware: FluidNC v9.9.9",
+        *(["[3/4] Erasing flash"] if erase else []),
+        f"[{steps}/{steps}] Flashing firmware",
+        "Done",
+    ]
+    positions = [result.output.index(stage) for stage in stages]
+    assert positions == sorted(positions)
 
 
-def test_flash_auto_detect_uses_first_of_several_ports(mocker) -> None:
+def test_flash_explicit_port_bypasses_auto_detection(mocker):
     _mock_download(mocker)
-    mocker.patch(
-        "physiclaw.core.hardware.grbl.candidate_ports",
-        return_value=["/dev/cu.usbserial-A", "/dev/cu.usbserial-B"],
-    )
+    detect = mocker.patch.object(flash_mod, "_detect_port")
+    run_spy = mocker.patch.object(flash_mod, "_run_esptool")
 
-    result = runner.invoke(app, ["--dry-run"])
+    result = runner.invoke(app, ["--port", "COM12"])
 
     assert result.exit_code == 0
-    assert "several ports found" in result.output
-    assert "using /dev/cu.usbserial-A; override with --port" in result.output
-    assert "Board: /dev/cu.usbserial-A" in result.output
+    assert "Using port: COM12 (--port)" in result.output
+    assert "USB serial port found" not in result.output
+    detect.assert_not_called()
+    cmd = run_spy.call_args.args[0]
+    assert cmd[cmd.index("--port") + 1] == "COM12"
 
 
 # ---------- bundle fetch ----------
@@ -702,7 +744,7 @@ def test_flash_detects_platform_ports_and_preserves_unicode_paths(
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert f"Board: {port}" in result.output
+    assert f"USB serial port found: {port}" in result.output
     process.assert_called_once()
     serial.assert_not_called()
     assert not list(root.iterdir())  # Temporary images are released after flashing.
