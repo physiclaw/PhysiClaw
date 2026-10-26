@@ -1,6 +1,6 @@
 ---
 title: 固件
-description: 用一条命令或网页安装器给控制板烧录 FluidNC，以及控制板加载的配置文件。
+description: 用一条命令给控制板烧录 FluidNC。
 ---
 
 PhysiClaw 的硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与电脑通信。电脑发送 [G-code](https://en.wikipedia.org/wiki/G-code)（GRBL 协议）驱动电机、开关电磁铁，完成点击、滑动等手势。
@@ -10,11 +10,8 @@ PhysiClaw 的硬件通过 [FluidNC](https://github.com/bdring/FluidNC) 固件与
 - [MKS DLC32 V2.1](https://github.com/makerbase-mks/mks-dlc32) 控制板。
 - USB-B 转 USB-A 数据线。
 - 12 V 2 A 电源。
-- Chrome 浏览器（仅手动烧录需要）。
 
-烧录 FluidNC 可以用一条命令，也可以用 FluidNC 的网页安装器手动完成。
-
-## 命令行烧录（推荐）
+## 烧录
 
 用 USB 连接控制板，接通 12 V 电源，运行：
 
@@ -24,7 +21,7 @@ physiclaw flash
 
 ### 验证
 
-确认两个电机和电磁铁已连接，手动操控机器，确认一切正常：
+确认两个电机和电磁铁已连接，然后运行：
 
 ```bash
 physiclaw testdrive
@@ -52,136 +49,3 @@ physiclaw testdrive
 :::tip
 电机 A 接控制板的 Y1 口，电机 B 接 X 口，电磁铁接主轴（spindle）端子。
 :::
-
-## 手动烧录
-
-如果 `physiclaw flash` 成功，可跳过这部分。
-
-<details>
-<summary>手动烧录流程</summary>
-
-<Steps>
-
-1. **给控制板上电。** 用 **USB** 将控制板连接到电脑，再接通 **12 V** 电源。
-
-2. **打开安装器。** 在 Chrome 里打开 [FluidNC 网页安装器](https://installer.fluidnc.com)。页面显示两个产品，点击 **FluidNC** 下方的 **Continue**。
-
-3. **连接控制板。** 点击 **Connect**，弹出的对话框会列出可用串口，选择 **USB Serial**，再点击 **Connect**。
-
-4. **进入 Install。** Home 页出现后，点击左侧栏的 **Install**。
-
-5. **选择固件变体。** 在下拉框中选择最新版本，出现三个变体，选择 **`noradio`**。
-
-6. **选择安装类型。** 选择 **fresh-install**。
-
-7. **确认。** 弹出确认框，确认 **Installation speed** 为 **115200 baud**，再点击 **Install**。
-
-8. **等待。** 出现进度条，等待完成。
-
-9. **安装完成。** 弹出 "Done" 对话框，点击 **Continue**。
-
-10. **打开 File browser。** Home 页显示红色的 **"invalid configuration"** 警告，因为控制板已有固件但还没有配置文件。点击左侧栏的 **File browser**。
-
-11. **创建配置文件。** File browser 提示创建配置文件，点击 **Create config**。对话框中文件名已预填为 `config.yaml`，点击 **OK**。
-
-12. **打开 Source 标签页。** 编辑器打开时停在 **General** 标签，点击最右侧的 **Source** 标签。
-
-13. **粘贴配置。** 全选并删除已有文本，再粘贴下面[配置文件](#配置文件)一节的**全部内容**。
-
-14. **保存。** 点击 **Save**。
-
-15. **进入 Terminal。** 点击左侧栏的 **Terminal**。
-
-16. **重启控制板。** 点击红色的 **Restart** 按钮，控制板重启并打印启动日志。
-
-17. **验证。** 每条消息都应为**绿色**，最后一行应为 `<Idle|...>`，表示固件烧录和配置加载成功。
-
-</Steps>
-
-</details>
-
-## 配置文件
-
-命令行烧录会自动写入这份配置；手动烧录则在第 13 步粘贴。FluidNC 配置如下：
-
-<details>
-<summary>config.yaml</summary>
-
-```yaml
-# FluidNC config — MKS DLC32 v2.1 — CoreXY + Solenoid
-# Comments ONLY on their own lines (FluidNC YAML subset rule)
-# Tune: steps_per_mm, max_travel_mm, acceleration, direction pins
-
-board: MKS-DLC32 V2.1
-name: PhysiClaw
-
-# I2S bus — hardwired on DLC32 v2.1, do not change
-i2so:
-  bck_pin: gpio.16
-  data_pin: gpio.21
-  ws_pin: gpio.17
-
-# I2S_STATIC only — I2S_STREAM causes drift on this board
-stepping:
-  engine: I2S_STATIC
-  idle_ms: 250
-  pulse_us: 4
-  dir_delay_us: 1
-  disable_delay_us: 0
-
-kinematics:
-  corexy:
-
-axes:
-  shared_stepper_disable_pin: I2SO.0
-
-  x:
-    # Tune: (motor_steps x microsteps) / mm_per_rev
-    # e.g. 200 x 16 / 40mm (20T GT2) = 80
-    steps_per_mm: 80.000
-    max_rate_mm_per_min: 10000.000
-    acceleration_mm_per_sec2: 1000.000
-    # Set max_travel_mm to your actual X travel
-    max_travel_mm: 200.000
-    soft_limits: false
-
-    motor0:
-      hard_limits: false
-      stepstick:
-        step_pin: I2SO.1
-        # Add :low after I2SO.2 if X runs backwards
-        direction_pin: I2SO.2:low
-
-  y:
-    steps_per_mm: 80.000
-    max_rate_mm_per_min: 10000.000
-    acceleration_mm_per_sec2: 1000.000
-    # Set max_travel_mm to your actual Y travel
-    max_travel_mm: 200.000
-    soft_limits: false
-
-    motor0:
-      hard_limits: false
-      stepstick:
-        step_pin: I2SO.5
-        # Add :low after I2SO.6 if Y runs backwards
-        direction_pin: I2SO.6:low
-
-PWM:
-  pwm_hz: 1000
-  output_pin: gpio.32
-  enable_pin: NO_PIN
-  direction_pin: NO_PIN
-  disable_with_s0: false
-  s0_with_disable: true
-  spinup_ms: 0
-  spindown_ms: 0
-  tool_num: 0
-  speed_map: 0=0% 1000=100%
-  off_on_alarm: true
-
-start:
-  must_home: false
-```
-
-</details>

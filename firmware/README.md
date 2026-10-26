@@ -89,8 +89,7 @@ fixed for reproducible packaging.
 ## Change and verify
 
 Keep config comments on their own lines: FluidNC's YAML subset does not support
-inline comments. Update the YAML examples in both setup guides when changing
-`config.yaml`. Keep flash offsets aligned with
+inline comments. Keep flash offsets aligned with
 [`physiclaw.cli.flash.FLASH_LAYOUT`](../src/physiclaw/cli/flash.py).
 
 ```bash
@@ -100,8 +99,8 @@ uv run ruff format --check firmware/ tests/firmware/
 ```
 
 Tests cover cache integrity, cleanup, concurrency, download failures, image
-layout, deterministic packaging, and config consistency without flashing a
-board. Site contract checks require a sibling `PhysiClaw-site` checkout.
+layout and deterministic packaging without flashing a board. Site contract
+checks require a sibling `PhysiClaw-site` checkout.
 
 ## Publish
 
