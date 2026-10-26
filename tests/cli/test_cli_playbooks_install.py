@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.cli import app
@@ -227,7 +228,7 @@ def test_regression_invalid_inactive_channel_is_checked_instead_of_active_one(te
 def test_install_rejects_file_symlink_outside_template(template, tmp_path):
     outside = tmp_path / "private.md"
     outside.write_text("private contents", encoding="utf-8")
-    (template / "leaked.md").symlink_to(outside)
+    symlink_to(template / "leaked.md", outside)
 
     result = _install(template, "--set", "CONTACT=Alice")
 

@@ -439,7 +439,7 @@ def test_update_fact_with_empty_new_deletes_the_containing_line(
 
 
 def test_update_fact_raises_FileNotFoundError_when_memory_md_missing() -> None:
-    with pytest.raises(FileNotFoundError, match=r"^.+/memory\.md does not exist$"):
+    with pytest.raises(FileNotFoundError, match=r"^.+[/\\]memory\.md does not exist$"):
         memory.update_fact("anything", "anything")
 
 

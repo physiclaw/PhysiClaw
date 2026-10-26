@@ -112,7 +112,9 @@ def test_regression_reading_one_wake_cannot_delete_a_later_wake(_enabled, mocker
     assert first is not None and first.description == "original wake"
     assert second is not None and second.description == "new wake"
     assert third is None
-    assert list(wake_path().parent.iterdir()) == []
+    assert [
+        p for p in wake_path().parent.iterdir() if p.name != "wake.claim.lock"
+    ] == []
 
 
 def _another_consumer_takes_wake(path, target):
@@ -131,7 +133,9 @@ def test_concurrent_consumer_winning_the_claim_does_not_duplicate_a_wake(
     trigger = debug_wake()
 
     assert trigger is None
-    assert list(wake_path().parent.iterdir()) == []
+    assert [
+        p for p in wake_path().parent.iterdir() if p.name != "wake.claim.lock"
+    ] == []
 
 
 def test_failed_claim_preserves_the_pending_wake_for_retry(_enabled, mocker):
@@ -166,7 +170,9 @@ def test_invalid_utf8_wake_is_consumed_with_a_default_description(_enabled):
     trigger = debug_wake()
 
     assert trigger is not None and trigger.description == "debug wake"
-    assert list(wake_path().parent.iterdir()) == []
+    assert [
+        p for p in wake_path().parent.iterdir() if p.name != "wake.claim.lock"
+    ] == []
 
 
 @pytest.mark.asyncio

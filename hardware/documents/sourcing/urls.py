@@ -9,21 +9,15 @@ Recommendation history is local and independent of generated document cleanup.
 from __future__ import annotations
 
 import argparse
-import codecs
-import fcntl
 import hashlib
 import json
-import os
 import random
 import re
-import select
 import shutil
 import sys
 import tempfile
-import termios
-import tty
 import webbrowser
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
@@ -44,6 +38,8 @@ from hardware.documents.sourcing.build import (
     sync_entries,
 )
 from hardware.log_style import _color_enabled, _fit_line
+from hardware.port import terminal
+from hardware.port.locks import file_lock
 from hardware.scheme import OUTPUT_DIR
 
 STATE_FILE = OUTPUT_DIR / ".url-checks.json"
@@ -361,9 +357,9 @@ def history_lock(path: Path):
     path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     # Keep the sidecar: replacing the JSON must not replace the locked inode.
-    with path.with_name(path.name + ".lock").open("a") as lock:
+    with ExitStack() as resources:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            resources.enter_context(file_lock(path.with_name(path.name + ".lock")))
         except BlockingIOError:
             raise BuildError(f"URL history already in use: {path}") from None
         yield path
@@ -561,35 +557,10 @@ def print_round(
         print(styled(f"History: {state_path}", "muted"))
 
 
-def _read_key(fd: int) -> str:
-    decoder = codecs.getincrementaldecoder(sys.stdin.encoding or "utf-8")("replace")
-
-    def character() -> str:
-        while chunk := os.read(fd, 1):
-            if text := decoder.decode(chunk):
-                return text
-        return ""
-
-    key = character()
-    if key != "\x1b" or not select.select([fd], [], [], 0.05)[0]:
-        return key
-    # Arrow/function keys send an escape sequence; only a bare Esc quits.
-    following = character()
-    if following == "\x1b":
-        return following
-    if following in {"[", "O"}:
-        while select.select([fd], [], [], 0.05)[0]:
-            if "@" <= character() <= "~":
-                break
-    return "special"
-
-
 def open_round(selected: dict[str, Candidate]) -> None:
     """Open one listed URL per keypress when running in a terminal."""
     if not selected or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
-    fd = sys.stdin.fileno()
-    settings = termios.tcgetattr(fd)
 
     def redraw(message: str) -> None:
         columns = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns - 1)
@@ -597,17 +568,18 @@ def open_round(selected: dict[str, Candidate]) -> None:
 
     print()
     try:
-        tty.setcbreak(fd)
-        for index, candidate in enumerate(selected.values(), 1):
-            label = PLATFORMS[candidate.platform][0]
-            prompt = f"Open {index}/{len(selected)} · {label} · any key (q/Esc quits): "
-            redraw(prompt)
-            if _read_key(fd) in {"", "q", "Q", "\x1b", "\x04"}:
-                break
-            opened = webbrowser.open(candidate.url, new=2, autoraise=False)
-            redraw(prompt + ("opened" if opened else "failed; use the URL above"))
+        with terminal.key_input():
+            for index, candidate in enumerate(selected.values(), 1):
+                label = PLATFORMS[candidate.platform][0]
+                prompt = (
+                    f"Open {index}/{len(selected)} · {label} · any key (q/Esc quits): "
+                )
+                redraw(prompt)
+                if terminal.read_key() in {"", "q", "Q", "\x1b", "\x04"}:
+                    break
+                opened = webbrowser.open(candidate.url, new=2, autoraise=False)
+                redraw(prompt + ("opened" if opened else "failed; use the URL above"))
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, settings)
         print()
 
 

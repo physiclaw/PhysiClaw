@@ -16,14 +16,15 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.agent.hooks.debug import wake_path
 from physiclaw.cli import app
 from physiclaw.common import runtime_state
 from physiclaw.common.config import DEBUG_ENV_VAR, MACRO_FAILURE_ENV_VAR
-from physiclaw.common.file_lock import FileLockBusy
 from physiclaw.debug import thread as vthread
+from physiclaw.port.locks import FileLockBusy
 
 runner = CliRunner()
 
@@ -201,7 +202,7 @@ def test_regression_clear_tolerates_wake_consumed_concurrently(mocker) -> None:
 def test_regression_clear_removes_dangling_markers(tmp_path, marker) -> None:
     wake_path().parent.mkdir(parents=True)
     path = wake_path().with_name(marker)
-    path.symlink_to(tmp_path / "missing")
+    symlink_to(path, tmp_path / "missing")
 
     result = runner.invoke(app, ["debug", "--clear"])
 

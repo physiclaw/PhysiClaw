@@ -13,8 +13,8 @@ import logging
 
 import httpx
 
+from physiclaw import port as platform
 from physiclaw.agent.runtime.hook import Trigger, register
-from physiclaw.common import platform
 from physiclaw.common.config import server_url
 from physiclaw.common.log_style import FailureState
 

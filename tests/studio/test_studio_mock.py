@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pytest
+from symlink_helpers import symlink_to
 
 from physiclaw.common.listing import LISTING_HEADER
 from physiclaw.studio import mock
@@ -324,7 +325,7 @@ def test_regression_replay_skips_external_image_symlinks(recorded_views, tmp_pat
     )
     external = tmp_path / "private.jpg"
     external.write_bytes(b"private")
-    (directory / "images" / "link.jpg").symlink_to(external)
+    symlink_to(directory / "images" / "link.jpg", external)
 
     frames = mock.session_frames(directory)
 

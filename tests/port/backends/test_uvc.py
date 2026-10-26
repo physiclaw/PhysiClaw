@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.common.platform.uvc` — IOKit UVC exposure control.
+"""Tests for `physiclaw.port.backends.uvc` — IOKit UVC exposure control.
 
 Fake IOKit functions and COM vtables exercise discovery, ctypes dispatch,
 cleanup and UVC framing without touching hardware. Smaller doubles cover
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from physiclaw.common.platform import uvc
+from physiclaw.port.backends import uvc
 
 
 def test_regression_partial_framework_load_does_not_cache_success(mocker) -> None:

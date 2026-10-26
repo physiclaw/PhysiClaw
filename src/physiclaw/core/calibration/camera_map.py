@@ -12,6 +12,7 @@ bad while tolerating lens distortion and mild perspective.
 """
 
 import logging
+import math
 import time
 
 import cv2
@@ -158,7 +159,7 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
     # Re-check sharpness: a junk readback can move the lens despite an
     # accepted write. Use the same gate as the freeze verification.
     after = meter()
-    if after is None or after < focus.BLUR_THRESHOLD:
+    if after is None or not math.isfinite(after) or after < focus.BLUR_THRESHOLD:
         cam.unlock_focus()
         log.warning(
             "  Focus pin: applied position metered soft — autofocus requested",

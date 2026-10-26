@@ -22,6 +22,7 @@ from urllib.error import HTTPError
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 
 @pytest.fixture
@@ -623,7 +624,7 @@ def test_local_inputs_build_complete_bundle_without_network(
     assert sibling.read_text() == "keep"
     assert isinstance(compilers.littlefs.call_args.kwargs["block_count"], int)
     output = capsys.readouterr().out
-    assert "output/bundle.zip" in output and "7 files" in output
+    assert str(Path("output/bundle.zip")) in output and "7 files" in output
     assert bundle.file_sha256(out) in output
     assert len(output.splitlines()) <= 5
     with zipfile.ZipFile(out) as archive:
@@ -716,10 +717,10 @@ def test_main_cleanup_does_not_follow_output_symlinks(
     output_dir = bundle.OUTPUT_DIR
     output_dir.parent.mkdir()
     if symlink_at_root:
-        output_dir.symlink_to(external, target_is_directory=True)
+        symlink_to(output_dir, external, target_is_directory=True)
     else:
         output_dir.mkdir()
-        (output_dir / "linked-folder").symlink_to(external, target_is_directory=True)
+        symlink_to(output_dir / "linked-folder", external, target_is_directory=True)
 
     bundle.main(["--tag", "v-test", "--posix-zip", str(posix), "--elf", str(elf)])
 
@@ -737,7 +738,9 @@ def test_main_aborts_if_managed_output_cannot_be_cleared(bundle, mocker):
     mocker.patch.object(bundle.shutil, "rmtree", side_effect=PermissionError("denied"))
     download = mocker.patch.object(bundle.urllib.request, "urlopen")
 
-    with pytest.raises(SystemExit, match="Could not clear .*firmware/output: denied"):
+    with pytest.raises(
+        SystemExit, match=r"Could not clear .*firmware[/\\]output: denied"
+    ):
         bundle.main([])
 
     download.assert_not_called()
@@ -1007,7 +1010,7 @@ def test_local_inputs_in_generated_output_are_rejected_before_cleanup(
     source = local
     if use_alias:
         source = tmp_path / "local.elf"
-        source.symlink_to(local)
+        symlink_to(source, local)
 
     with pytest.raises(SystemExit, match="Local input would be deleted"):
         bundle.main(["--elf", str(source)])
@@ -1122,7 +1125,7 @@ def test_cache_symlink_cannot_redirect_downloads_outside_output(
     external = tmp_path / "external"
     external.mkdir()
     (external / "keep.txt").write_text("keep")
-    (bundle.CACHE_DIR / "v-test").symlink_to(external, target_is_directory=True)
+    symlink_to(bundle.CACHE_DIR / "v-test", external, target_is_directory=True)
     download = mocker.patch.object(bundle.urllib.request, "urlopen")
 
     with pytest.raises(SystemExit, match="must not be a symlink"):

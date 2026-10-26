@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from physiclaw.common import config
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.logger import logger as logger_mod
 from physiclaw.common.logger.retention import purge_log_archives
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 ROOT = Path(__file__).resolve().parents[3]
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
+from symlink_helpers import symlink_to
 
 from physiclaw.common import config
 
@@ -100,7 +101,9 @@ def test_legacy_header_is_retired_even_without_default_values(tmp_path, settings
 def test_legacy_upgrade_is_silent_preserves_settings_and_is_idempotent(
     legacy_config, monkeypatch, caplog
 ):
-    original = legacy_config.read_bytes().replace(b"\n", b"\r\n")
+    original = (
+        legacy_config.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    )
     legacy_config.write_bytes(original)
 
     cfg = config.load(legacy_config)
@@ -387,7 +390,7 @@ def test_unset_removes_override_and_inherits_defaults(tmp_path):
 def test_upgrade_preserves_symlink(legacy_config):
     original = legacy_config.read_bytes()
     link = legacy_config.parent / "linked.toml"
-    link.symlink_to(legacy_config)
+    symlink_to(link, legacy_config)
     config.load(link)
     assert link.is_symlink()
     assert link.read_bytes() == legacy_config.read_bytes() != original
@@ -520,7 +523,8 @@ config.set_dotted('server.port', '9123')
 """
     second_script = """
 from contextlib import contextmanager
-from physiclaw.common import config, file_lock
+from physiclaw.common import config
+from physiclaw.port import locks as file_lock
 try_lock = file_lock._try_lock
 reported = False
 @contextmanager

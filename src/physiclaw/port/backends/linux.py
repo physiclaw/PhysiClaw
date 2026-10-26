@@ -1,7 +1,7 @@
 """Linux implementations of platform-specific helpers.
 
-Imported by ``physiclaw.common.platform`` on linux only. Callers should
-never import this module directly — go through ``physiclaw.common.platform``.
+Imported by ``physiclaw.port`` on linux only. Callers should
+never import this module directly — go through ``physiclaw.port``.
 
 The browser setup wizard (``/setup-hardware``) drives Linux entirely over
 HTTP and needs none of the GUI helpers below — only ``ensure_camera_permission``
@@ -11,14 +11,22 @@ hardware`` flow and degrade gracefully when no desktop app is available.
 """
 
 import glob
-import grp
+import importlib
 import math
 import os
 import shutil
 import socket
 import subprocess
 import time
+from types import ModuleType
 from typing import TextIO
+
+# Keep pure backend helpers importable by cross-platform unit tests.
+grp: ModuleType | None
+try:
+    grp = importlib.import_module("grp")
+except ModuleNotFoundError:
+    grp = None
 
 # urllib/httpx read proxy config from env vars on Linux and honor `no_proxy`
 # for loopback — which is only guaranteed because `normalize_proxy_env()`
@@ -158,7 +166,7 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
     ticks (the stall check reads either case as "no effect")."""
     import cv2
 
-    from physiclaw.common.platform import uvc
+    from physiclaw.port.backends import uvc
 
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
     cap.set(cv2.CAP_PROP_EXPOSURE, uvc.ticks_from_log2_seconds(exposure))
@@ -255,10 +263,12 @@ def _in_group(name: str) -> bool:
     """True if the current user belongs to group ``name``. False if the group
     doesn't exist on this distro."""
     try:
+        if grp is None:
+            return False
         gid = grp.getgrnam(name).gr_gid
     except KeyError:
         return False
-    return gid == os.getegid() or gid in os.getgroups()
+    return gid == getattr(os, "getegid")() or gid in getattr(os, "getgroups")()
 
 
 def hardware_permission_hints() -> list[str]:
@@ -284,6 +294,8 @@ def hardware_permission_hints() -> list[str]:
 
 def _group_exists(name: str) -> bool:
     try:
+        if grp is None:
+            return False
         grp.getgrnam(name)
         return True
     except KeyError:

@@ -7,38 +7,14 @@ library. Callers fail when PDF was requested but Chrome is unavailable.
 
 from __future__ import annotations
 
-import contextlib
-import os
-import shutil
-import signal
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
 from hardware import buildlog
-from hardware.process import ignore_interrupts
-
-CHROME_APP_PATHS = (
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-)
-
-
-def find_chrome() -> str | None:
-    """Path to a Chromium-family browser, or None if none is installed."""
-    for name in (
-        "google-chrome",
-        "google-chrome-stable",
-        "chromium",
-        "chromium-browser",
-        "chrome",
-    ):
-        if found := shutil.which(name):
-            return found
-    return next((p for p in CHROME_APP_PATHS if Path(p).exists()), None)
-
+from hardware.port.desktop import find_chrome as find_chrome
+from hardware.port.processes import ignore_interrupts, owned_process
 
 PDF_TIMEOUT = 90  # s per attempt — a clean print is ~40s; this is generous
 PDF_ATTEMPTS = 2  # a fresh process retry covers the rare launch that never
@@ -59,10 +35,11 @@ def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bo
     def written() -> bool:
         return pdf_path.exists() and pdf_path.stat().st_size > 0
 
-    with tempfile.TemporaryFile(
-        mode="w+", encoding="utf-8", errors="replace"
-    ) as diagnostics:
-        proc = subprocess.Popen(
+    with (
+        tempfile.TemporaryFile(
+            mode="w+", encoding="utf-8", errors="replace"
+        ) as diagnostics,
+        owned_process(
             [
                 chrome,
                 "--headless=new",
@@ -78,8 +55,9 @@ def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bo
             ],
             stdout=diagnostics,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        ) as owner,
+    ):
+        proc = owner.process
         try:
             deadline = time.monotonic() + PDF_TIMEOUT
             last_size, stable = -1, 0
@@ -97,9 +75,7 @@ def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bo
             # Helpers may outlive an already-exited browser leader. Reap and
             # clean its private group before closing the diagnostic stream.
             with ignore_interrupts():
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(proc.pid, signal.SIGKILL)
-                proc.wait()
+                owner.stop(timeout=0)
             diagnostics.seek(0)
             output = diagnostics.read()
             if output:
@@ -133,7 +109,7 @@ def render_pdf(html: str, pdf_path: Path, chrome: str) -> bool:
         ):
             tmp_path = Path(tmp.name)
             tmp.write(html)
-            tmp.flush()
+            tmp.close()  # Windows cannot reopen/delete an open temporary file.
             try:
                 staged_pdf = Path(staging) / pdf_path.name
                 result = _chrome_print(chrome, tmp_path.as_uri(), profile, staged_pdf)

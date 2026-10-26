@@ -22,6 +22,7 @@ import pytest
 from freezegun import freeze_time
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 skills_mod = importlib.import_module("physiclaw.cli.skills")
@@ -62,6 +63,7 @@ def test_normalize_source_passes_url_forms_through(inp: str, expected: str) -> N
 
 def test_normalize_source_expands_user_home(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
 
     out = skills_mod._normalize_source("~/repos")
 
@@ -69,7 +71,7 @@ def test_normalize_source_expands_user_home(tmp_path: Path, monkeypatch) -> None
 
 
 def test_normalize_source_passes_absolute_path() -> None:
-    assert skills_mod._normalize_source("/tmp/x") == "/tmp/x"
+    assert skills_mod._normalize_source("/tmp/x") == str(Path("/tmp/x"))
 
 
 def test_normalize_source_handles_relative_paths() -> None:
@@ -719,7 +721,7 @@ def test_regression_source_symlink_cannot_copy_outside_clone(
     (external / "SKILL.md").write_text("synthetic private contents")
     link = source_repo / "skills" / "myskill" / entry
     link.unlink(missing_ok=True)
-    link.symlink_to(external)
+    symlink_to(link, external)
 
     result = runner.invoke(
         skills_app, ["install", "myskill", "--from", str(source_repo)]
@@ -760,14 +762,14 @@ def test_regression_installed_frontmatter_name_matches_runtime(
 def test_install_copy_failure_is_clean_error_and_keeps_previous_skill(
     previous_skill, source_repo, mocker
 ):
-    copy = skills_mod.shutil.copyfile
+    copy = skills_mod.shutil.copytree
 
-    def fail(source, dest, **kwargs):
+    def fail(source, dest, *args, **kwargs):
         if ".installing-" in str(dest) and "repo" not in Path(dest).parts:
             raise OSError("copy blocked")
-        return copy(source, dest, **kwargs)
+        return copy(source, dest, *args, **kwargs)
 
-    mocker.patch.object(skills_mod.shutil, "copyfile", side_effect=fail)
+    mocker.patch.object(skills_mod.shutil, "copytree", side_effect=fail)
 
     result = runner.invoke(
         skills_app, ["install", "myskill", "--from", str(source_repo), "--force"]
@@ -781,11 +783,11 @@ def test_install_copy_failure_is_clean_error_and_keeps_previous_skill(
 def _link_skill(target, external, marker_only):
     if marker_only:
         target.mkdir()
-        (target / skills_mod.PROVENANCE_FILE).symlink_to(
-            external / skills_mod.PROVENANCE_FILE
+        symlink_to(
+            target / skills_mod.PROVENANCE_FILE, external / skills_mod.PROVENANCE_FILE
         )
     else:
-        target.symlink_to(external, target_is_directory=True)
+        symlink_to(target, external, target_is_directory=True)
 
 
 @pytest.mark.parametrize("marker_link", [False, True])
@@ -816,7 +818,9 @@ def test_blank_source_is_a_clean_error(fake_home, source):
 
 @pytest.mark.parametrize("authority", ["", "localhost", "server"])
 def test_local_file_uri_inside_state_directory_is_refused(fake_home, authority):
-    source = f"file://{authority}{skills_mod.paths.HOME}/source"
+    source = (
+        f"file://{authority}/{skills_mod.paths.HOME.as_posix().lstrip(chr(47))}/source"
+    )
 
     result = runner.invoke(skills_app, ["install", "myskill", "--from", source])
 
@@ -829,7 +833,7 @@ def test_local_file_uri_inside_state_directory_is_refused(fake_home, authority):
     [["install", "myskill", "--from", "o/r"], ["uninstall", "myskill", "--force"]],
 )
 def test_overlapping_mutation_is_refused_before_changing_skill(previous_skill, command):
-    from physiclaw.common.file_lock import exclusive_file_lock
+    from physiclaw.port.locks import exclusive_file_lock
 
     with exclusive_file_lock(previous_skill.parent / ".install.lock"):
         result = runner.invoke(skills_app, command)
@@ -870,7 +874,7 @@ def test_failed_restoration_keeps_recoverable_backup(
 
 @pytest.mark.parametrize("target", [".", "cycle"])
 def test_source_symlink_cycle_is_refused(fake_home, source_repo, target, mocker):
-    (source_repo / "skills/myskill/cycle").symlink_to(target)
+    symlink_to(source_repo / "skills/myskill/cycle", target)
     walk = mocker.spy(Path, "iterdir")
 
     result = runner.invoke(
@@ -886,7 +890,7 @@ def test_source_symlink_cycle_is_refused(fake_home, source_repo, target, mocker)
 def test_internal_symlink_is_copied_as_an_independent_file(fake_home, source_repo):
     skill = source_repo / "skills/myskill"
     (skill / "reference.txt").write_text("reference")
-    (skill / "alias.txt").symlink_to("reference.txt")
+    symlink_to(skill / "alias.txt", "reference.txt")
 
     result = runner.invoke(
         skills_app, ["install", "myskill", "--from", str(source_repo)]
@@ -928,7 +932,7 @@ def test_forced_uninstall_of_link_keeps_external_tree(fake_home, tmp_path):
     external = tmp_path / "external"
     external.mkdir()
     fake_home.mkdir()
-    (fake_home / "myskill").symlink_to(external, target_is_directory=True)
+    symlink_to(fake_home / "myskill", external, target_is_directory=True)
 
     result = runner.invoke(skills_app, ["uninstall", "myskill", "--force"])
 
@@ -1080,7 +1084,9 @@ def test_parent_relative_source_is_not_rewritten_as_github_shorthand(
     result = runner.invoke(skills_app, ["install", "myskill", "--from", "../repo"])
 
     assert result.exit_code == 0
-    assert skills_mod.read_provenance(fake_home / "myskill")["source"] == "../repo"
+    assert skills_mod.read_provenance(fake_home / "myskill")["source"] == str(
+        Path("../repo")
+    )
 
 
 def test_install_without_ref_records_empty_ref(fake_home, source_repo):

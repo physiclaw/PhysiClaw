@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 from physiclaw.common import paths
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.placeholders import (
     PLACEHOLDER_VALUES_FILENAME,
     placeholder_values,
@@ -27,6 +27,7 @@ from physiclaw.common.placeholders import (
 from physiclaw.conductor.load.install import install_template, read_template
 from physiclaw.conductor.load.pack import load_pack
 from physiclaw.conductor.spec.model import PlaybookError
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 
 def _values_path():
@@ -218,7 +219,7 @@ def test_forced_symlink_replacement_does_not_modify_link_target(template, tmp_pa
     (external / "keep.md").write_text("untouched", encoding="utf-8")
     paths.playbooks_dir().mkdir(parents=True)
     dest = paths.playbooks_dir() / "demo"
-    dest.symlink_to(external, target_is_directory=True)
+    symlink_to(dest, external, target_is_directory=True)
 
     install_template(template, {"CONTACT": "Alice"}, force=True)
 
@@ -318,8 +319,8 @@ def test_template_reader_follows_internal_file_and_directory_links(template_root
     internal = template_root / "_shared"
     internal.mkdir()
     (internal / "greeting.md").write_text("Hello", encoding="utf-8")
-    (template_root / "prompts").symlink_to(internal, target_is_directory=True)
-    (template_root / "alias.md").symlink_to(template_root / "README.md")
+    symlink_to(template_root / "prompts", internal, target_is_directory=True)
+    symlink_to(template_root / "alias.md", template_root / "README.md")
 
     template = read_template(template_root)
 
@@ -328,7 +329,7 @@ def test_template_reader_follows_internal_file_and_directory_links(template_root
 
 
 def test_template_reader_rejects_directory_cycle(template_root):
-    (template_root / "loop").symlink_to(template_root, target_is_directory=True)
+    symlink_to(template_root / "loop", template_root, target_is_directory=True)
 
     with pytest.raises(PlaybookError, match="symlink cycle"):
         read_template(template_root)
@@ -341,14 +342,14 @@ def test_template_reader_rejects_nested_cycle_at_first_repeated_directory(
 ):
     nested = template_root / "notes" / "nested"
     nested.mkdir(parents=True)
-    (nested / "back").symlink_to(template_root, target_is_directory=True)
+    symlink_to(nested / "back", template_root, target_is_directory=True)
 
     with pytest.raises(PlaybookError, match="symlink cycle"):
         read_template(template_root)
 
 
 def test_template_reader_reports_broken_eligible_link(template_root):
-    (template_root / "missing.md").symlink_to(template_root / "absent.md")
+    symlink_to(template_root / "missing.md", template_root / "absent.md")
 
     with pytest.raises(FileNotFoundError, match="absent.md"):
         read_template(template_root)
@@ -486,7 +487,7 @@ def test_successful_install_survives_temporary_directory_cleanup_error(
 
 def test_template_reader_rejects_file_symlink_cycle(template_root):
     cycle = template_root / "loop.md"
-    cycle.symlink_to(cycle)
+    symlink_to(cycle, cycle)
 
     with pytest.raises(PlaybookError, match="symlink cycle"):
         read_template(template_root)
@@ -496,7 +497,7 @@ def test_template_reader_rejects_file_symlink_cycle(template_root):
 
 def test_template_reader_rejects_cyclic_source_root(tmp_path):
     cycle = tmp_path / "loop"
-    cycle.symlink_to(cycle)
+    symlink_to(cycle, cycle)
 
     with pytest.raises(PlaybookError, match="invalid template path"):
         read_template(cycle)
@@ -523,7 +524,7 @@ def test_install_rejects_escaping_channel_parent(template_root, tmp_path):
     external = tmp_path / "external"
     external.mkdir()
     paths.playbooks_dir().mkdir(parents=True)
-    (paths.playbooks_dir() / "channel").symlink_to(external, target_is_directory=True)
+    symlink_to(paths.playbooks_dir() / "channel", external, target_is_directory=True)
 
     with pytest.raises(PlaybookError, match="parent resolves outside"):
         install_template(template, {"CONTACT": "Alice"})

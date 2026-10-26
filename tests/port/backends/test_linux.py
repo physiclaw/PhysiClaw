@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.common.platform.linux`.
+"""Tests for `physiclaw.port.backends.linux`.
 
 The module only imports stdlib, so it imports and runs on any host — the
 OS calls (`shutil.which`, `subprocess`) are mocked so nothing actually
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from physiclaw.common.platform import linux
+from physiclaw.port.backends import linux
 
 
 def test_regression_aim_viewer_tries_next_after_launch_failure(mocker) -> None:
@@ -53,9 +53,11 @@ def test_regression_primary_video_group_does_not_warn(mocker) -> None:
         "glob",
         side_effect=lambda pattern: ["/dev/video0"] if pattern == "/dev/video*" else [],
     )
-    mocker.patch.object(linux.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=123))
-    mocker.patch.object(linux.os, "getegid", return_value=123)
-    mocker.patch.object(linux.os, "getgroups", return_value=[])
+    mocker.patch.object(
+        linux, "grp", SimpleNamespace(getgrnam=lambda name: SimpleNamespace(gr_gid=123))
+    )
+    mocker.patch.object(linux.os, "getegid", return_value=123, create=True)
+    mocker.patch.object(linux.os, "getgroups", return_value=[], create=True)
 
     hints = linux.hardware_permission_hints()
 

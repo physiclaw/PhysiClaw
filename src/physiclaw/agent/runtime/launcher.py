@@ -30,6 +30,7 @@ from physiclaw.common.log_style import report_error
 from physiclaw.common.logger import setup_logging
 from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.proxy import normalize_proxy_env
+from physiclaw.port import processes as process_port
 from physiclaw.provider import validate_model_ref
 
 log = logging.getLogger(__name__)
@@ -69,11 +70,7 @@ async def _run_runtime(runtime: Runtime, *, managed: bool = False) -> None:
         loop.call_soon_threadsafe(runtime.stop)
 
     if managed:
-        if sys.platform == "win32":
-            # NumPy's first native import can block on Windows while another
-            # thread reads piped stdin. Initialize it in this child before
-            # starting runtime-control: https://github.com/numpy/numpy/issues/24290
-            import numpy  # noqa: F401
+        process_port.prepare_managed_runtime()
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             previous[sig] = signal.signal(sig, request_stop)

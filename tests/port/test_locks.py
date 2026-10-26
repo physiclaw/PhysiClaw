@@ -15,8 +15,9 @@ from types import SimpleNamespace
 import pytest
 from freezegun import freeze_time
 
-from physiclaw.common import file_lock
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
+from physiclaw.port import locks as file_lock
+from physiclaw.port.backends import windows
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 
 def test_lock_creates_parents_and_rejects_competing_holder(tmp_path, mocker):
@@ -58,7 +59,7 @@ def test_windows_lock_covers_byte_zero_and_closes_handle(
     def locking(fd, mode, size):
         calls.append((fd, mode, size, os.lseek(fd, 0, os.SEEK_CUR)))
 
-    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setattr(file_lock, "_native", windows)
     monkeypatch.setitem(
         sys.modules, "msvcrt", SimpleNamespace(locking=locking, LK_NBLCK=2)
     )
@@ -75,7 +76,7 @@ def test_windows_lock_covers_byte_zero_and_closes_handle(
 def test_windows_contention_is_reported_before_entering_body(
     tmp_path, monkeypatch, mocker
 ):
-    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setattr(file_lock, "_native", windows)
     monkeypatch.setitem(
         sys.modules,
         "msvcrt",

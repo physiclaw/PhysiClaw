@@ -19,6 +19,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from physiclaw.port import filesystem
+
 
 def json_span(text: str, opener: str, closer: str) -> Any | None:
     """Parse the outermost JSON span (`opener`..`closer`) out of an LLM
@@ -74,13 +76,14 @@ def write_text_atomic(path: Path, data: str) -> None:
     write or rename preserves the previous file and removes the temporary one.
     The parent directory must exist. This does not serialize read/modify/write.
     """
+    # A fixed prefix fits even when the destination name fills the filename limit.
     with tempfile.NamedTemporaryFile(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+        dir=path.parent, prefix=".physiclaw-", suffix=".tmp", delete=False
     ) as f:
         tmp = Path(f.name)
     try:
         write_text(tmp, data)
-        tmp.replace(path)
+        filesystem.replace_file(tmp, path)
     finally:
         with suppress(OSError):
             tmp.unlink(missing_ok=True)

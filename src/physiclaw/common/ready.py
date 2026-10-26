@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 
 if TYPE_CHECKING:
     import httpx

@@ -10,15 +10,15 @@ output can't drift from what the running agent actually sends. Pass
 
 from __future__ import annotations
 
-import tempfile
-from contextlib import suppress
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 
 from physiclaw.cli._format import exit_error
 from physiclaw.contract.dto import ContentBlock
+from physiclaw.port import filesystem
 
 prompt_app = typer.Typer(
     no_args_is_help=True,
@@ -64,29 +64,19 @@ def _emit(text: str, save_as: Path | None) -> None:
     Stdout stays verbatim; saved files end with exactly one newline.
     """
     if save_as is None:
-        typer.echo(text, nl=False)
+        click.get_binary_stream("stdout").write(text.encode("utf-8"))
         return
 
-    from physiclaw.common.text import write_text
+    from physiclaw.common.text import write_text_atomic
 
     content = text.rstrip("\n") + "\n"
-    temporary: Path | None = None
     try:
         # Follow destination symlinks as the previous direct write did.
-        target = save_as.resolve()
-        with tempfile.NamedTemporaryFile(
-            dir=target.parent, prefix=".physiclaw-prompt-", suffix=".tmp", delete=False
-        ) as f:
-            temporary = Path(f.name)
-        write_text(temporary, content)
-        temporary.replace(target)
+        target = filesystem.native_path(save_as.resolve())
+        write_text_atomic(target, content)
     except (OSError, UnicodeError, RuntimeError) as e:
         # resolve() raises RuntimeError for symlink loops on Python 3.12.
         exit_error(f"could not save prompt to {save_as}: {e}")
-    finally:
-        if temporary is not None:
-            with suppress(OSError):
-                temporary.unlink(missing_ok=True)
     typer.echo(f"Wrote {len(content)} chars to {save_as}")
 
 

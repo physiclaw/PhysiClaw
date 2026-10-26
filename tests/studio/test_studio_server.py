@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from symlink_helpers import symlink_to
 
 from physiclaw.studio import server
 
@@ -204,7 +205,7 @@ async def test_selected_review_does_not_expose_siblings_or_external_frame_links(
     (selected / "summary.json").write_text('{"outcome":{"sentinel":"CHOSEN"}}')
     secret = tmp_path / "private.jpg"
     secret.write_bytes(b"private frame")
-    (selected / "images" / "linked.jpg").symlink_to(secret)
+    symlink_to(selected / "images" / "linked.jpg", secret)
     app = server.build_app(FakeSession(), review_dir=selected)
 
     async with httpx.AsyncClient(
@@ -658,7 +659,7 @@ def test_regression_session_image_cannot_follow_external_symlink(
     recorded = _recorded()
     external = tmp_path / "private.jpg"
     external.write_bytes(b"private bytes")
-    (recorded / "images" / "linked.jpg").symlink_to(external)
+    symlink_to(recorded / "images" / "linked.jpg", external)
 
     response = server.handle_session_image(
         _path_request(sid="abc123", name="linked.jpg")
@@ -684,7 +685,7 @@ def test_regression_session_page_rejects_external_directory_alias(
     external = tmp_path / "private"
     external.mkdir()
     (external / "notes.md").write_text("private notes", encoding="utf-8")
-    (recorded.parent / "linked").symlink_to(external, target_is_directory=True)
+    symlink_to(recorded.parent / "linked", external, target_is_directory=True)
 
     response = server.handle_session_page(_path_request(sid="linked"))
 

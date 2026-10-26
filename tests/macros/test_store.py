@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from symlink_helpers import symlink_to
 
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
@@ -161,7 +162,7 @@ def test_scan_rejects_symlink_escaping_root(tmp_path: Path) -> None:
     outside = tmp_path / "escape.yml"
     outside.write_text(VALID.format(name="escape", enabled="true"), encoding="utf-8")
     paths.macros_dir().mkdir(parents=True)
-    (paths.macros_dir() / "escape.yml").symlink_to(outside)
+    symlink_to(paths.macros_dir() / "escape.yml", outside)
 
     entries = scan()
 

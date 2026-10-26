@@ -9,12 +9,13 @@ invokes tools dynamically via ``list_tools`` / ``call_tool``. Neither
 package imports the other's Python modules.
 
 Shared, domain-agnostic infrastructure lives in ``physiclaw.common``
-(``platform``, ``logger``, ``paths``, ``config``, ``text``, …) so both
+(``logger``, ``paths``, ``config``, ``text``, …) so both
 layers can depend on it *downward* without depending on *each other*.
 ``common`` is a leaf: it imports neither ``core`` nor ``agent``, which
 keeps the dependency graph acyclic. ``physiclaw.cli`` is the
 composition root and is allowed to import everything — it is not
-covered by these guards.
+covered by these guards. Native mechanisms live in the separate leaf
+``physiclaw.port``; its independence is guarded in ``test_port_architecture``.
 
 These tests parse the AST of every source file (so docstring / comment
 mentions of the other package don't count — only real ``import`` and
@@ -226,6 +227,7 @@ _EDGE_ALLOWLISTS = {
         "physiclaw.contract",
         "physiclaw.macros",
         "physiclaw.provider",
+        "physiclaw.port",
     ),
     # The e2e debug harness: renders the virtual thread against the
     # channel pack's fingerprint (conductor) and speaks contract shapes.
@@ -240,6 +242,7 @@ _EDGE_ALLOWLISTS = {
         "physiclaw.contract",
         "physiclaw.conductor",
         "physiclaw.macros",
+        "physiclaw.port",
     ),
 }
 

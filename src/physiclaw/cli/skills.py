@@ -26,15 +26,16 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 import typer
 
 from physiclaw.cli._format import exit_error, ok, warn
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.text import read_text, write_text
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 skills_app = typer.Typer(
     help="Install, list, and remove skills from a git-repo source.",
@@ -142,7 +143,7 @@ def _reject_physiclaw_home_source(source: str) -> None:
     """Keep local paths and file:// sources outside PhysiClaw's state directory."""
     if source.startswith("file://"):
         # Git's local file transport ignores the URL hostname.
-        source = unquote(urlsplit(source).path)
+        source = url2pathname(urlsplit(source).path)
     elif "://" in source or source.startswith("git@"):
         return
     try:

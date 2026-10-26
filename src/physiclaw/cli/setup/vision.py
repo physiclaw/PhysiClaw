@@ -27,7 +27,7 @@ import typer
 from physiclaw.cli._format import exit_error, ok
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 _PT_URL = (
     "https://huggingface.co/microsoft/OmniParser-v2.0/resolve/main/icon_detect/model.pt"
@@ -295,7 +295,7 @@ def _install(onnx: Path, *, force: bool, build: bool) -> None:
             # Ctrl-C) it drops the partial so the retry re-fetches.
             tmp_path.unlink(missing_ok=True)
 
-    script_path.write_text(_CONVERT_SCRIPT)
+    script_path.write_text(_CONVERT_SCRIPT, encoding="utf-8")
     # A prior failed export must never satisfy this attempt's output check.
     onnx_in_scratch.unlink(missing_ok=True)
 

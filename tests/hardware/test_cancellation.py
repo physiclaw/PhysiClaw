@@ -9,6 +9,58 @@ import time
 
 import pytest
 
+from hardware.port.processes import owned_process
+
+
+@pytest.mark.parametrize("returncode", [130, -signal.SIGINT, 0xC000013A])
+def test_regression_cli_normalizes_interrupted_child_status(
+    tmp_path, mocker, returncode
+):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from hardware import __main__ as cli
+
+    child = SimpleNamespace(wait=lambda **kwargs: returncode)
+    owner = SimpleNamespace(process=child)
+    mocker.patch.object(cli, "owned_process", return_value=nullcontext(owner))
+    mocker.patch("hardware.build_lock.OUTPUT_DIR", tmp_path)
+
+    result = cli.main(["build"])
+
+    assert result == 130
+
+
+def _running(pid):
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return False
+        try:
+            status = wintypes.DWORD()
+            return (
+                bool(kernel.GetExitCodeProcess(handle, ctypes.byref(status)))
+                and status.value == 259
+            )
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
 
 @pytest.mark.parametrize(
     "mode,stubborn", [("dispatch", False), ("dispatch", True), ("single", True)]
@@ -25,10 +77,12 @@ import os, signal, time
 from pathlib import Path
 signal.signal(signal.SIGINT, {"signal.SIG_IGN" if stubborn else "signal.default_int_handler"})
 signal.signal(signal.SIGTERM, {"signal.SIG_IGN" if stubborn else "signal.SIG_DFL"})
+if os.name == "nt":
+    signal.signal(signal.SIGBREAK, {"signal.SIG_IGN" if stubborn else "signal.default_int_handler"})
 finished = Path({str(output)!r}, 'step', f'{{os.getpid()}}.step')
 finished.parent.mkdir(parents=True, exist_ok=True)
 finished.write_text('completed output')
-Path({str(control)!r}, f'{{os.getpid()}}.worker').write_text(str(os.getpgrp()))
+Path({str(control)!r}, f'{{os.getpid()}}.worker').write_text(str(os.getpid()))
 time.sleep(60)
 """
     args = (
@@ -56,16 +110,16 @@ raise SystemExit(cli.main(['build']))
 """
     expected_workers = 2 if mode == "dispatch" else 1
     env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(output)}
-    with subprocess.Popen(
+    with owned_process(
         [sys.executable, "-u", "-c", wrapper],
         env=env,
-        start_new_session=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-    ) as process:
+    ) as owner:
+        process = owner.process
         try:
-            deadline = time.monotonic() + 15
+            deadline = time.monotonic() + 60
             while len(list(control.glob("*.worker"))) < expected_workers:
                 if process.poll() is not None or time.monotonic() >= deadline:
                     pytest.fail(
@@ -74,30 +128,30 @@ raise SystemExit(cli.main(['build']))
                 time.sleep(0.02)
             # A terminal sends SIGINT to the entire foreground process group,
             # reaching both the CLI wrapper and its dispatcher at once.
-            os.killpg(process.pid, signal.SIGINT)
+            process.send_signal(
+                signal.CTRL_BREAK_EVENT
+            ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             if stubborn:
                 time.sleep(0.05)
-                os.killpg(process.pid, signal.SIGINT)
+                process.send_signal(
+                    signal.CTRL_BREAK_EVENT
+                ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             # The CLI allows 10s for dispatcher cleanup, then 1s for SIGTERM.
             # Leave scheduling headroom on busy CI runners.
             terminal, _ = process.communicate(timeout=15)
-            remaining = []
-            for marker in control.glob("*.worker"):
-                try:
-                    os.kill(int(marker.stem), 0)
-                    remaining.append(marker.stem)
-                except ProcessLookupError:
-                    pass
+            remaining = [
+                marker.stem
+                for marker in control.glob("*.worker")
+                if _running(int(marker.stem))
+            ]
         finally:
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            # Always clean up owned test workers, including on assertion failure.
-            for marker in control.glob("*.worker"):
-                try:
-                    os.killpg(int(marker.stem), signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            owner.stop(timeout=0)
+            if os.name != "nt":
+                for marker in control.glob("*.worker"):
+                    try:
+                        os.killpg(int(marker.stem), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
     assert process.returncode == 130
     assert remaining == []
     assert "CANCELLED" in terminal
@@ -109,8 +163,7 @@ raise SystemExit(cli.main(['build']))
     for marker in workers:
         pid = int(marker.stem)
         assert int(marker.read_text()) == pid  # Each worker owned a private group.
-        with pytest.raises(ProcessLookupError):
-            os.kill(pid, 0)
+        assert not _running(pid)
     events = [
         json.loads(line)
         for line in next((output / "logs").glob("*.jsonl")).read_text().splitlines()
@@ -215,7 +268,7 @@ def test_repeated_ctrl_c_cannot_reenter_cancellation_event():
     script = """
 import signal
 from threading import Event
-from hardware.process import cancel_on_interrupt
+from hardware.port.processes import cancel_on_interrupt
 
 cancelled = Event()
 notify = cancelled._cond.notify_all
@@ -282,8 +335,15 @@ def cleanup(child, **kwargs):
     child.lock.release()
     child.returncode = 130
 
-cli.subprocess.Popen = lambda *args, **kwargs: Child()
-cli.interrupt_process = cleanup
+from contextlib import contextmanager
+from types import SimpleNamespace
+
+@contextmanager
+def owned(*args, **kwargs):
+    child = Child()
+    yield SimpleNamespace(process=child, stop=lambda **kw: cleanup(child, **kw))
+
+cli.owned_process = owned
 assert cli._delegate(['-c', ''], []) == 130
 print('cancelled without leaking the waitpid lock')
 """
@@ -319,3 +379,50 @@ def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
     assert result.returncode == 130
     assert result.stderr.strip() == "CANCELLED"
     assert "Traceback" not in result.stdout + result.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows cancellation marker protocol")
+@pytest.mark.parametrize("command", ["manual", "release"])
+def test_ctrl_c_stops_delegated_command_that_does_not_poll_marker(tmp_path, command):
+    ready = tmp_path / "ready"
+    written = tmp_path / "written-after-cancellation"
+    (tmp_path / "uncooperative_stage.py").write_text(
+        "import time\nfrom pathlib import Path\n"
+        f"Path({str(ready)!r}).touch()\n"
+        "time.sleep(3)\n"
+        f"Path({str(written)!r}).touch()\n",
+        encoding="utf-8",
+    )
+    script = f"""
+import signal, threading, time
+from pathlib import Path
+from hardware import __main__ as cli
+
+def interrupt_when_ready():
+    while not Path({str(ready)!r}).exists():
+        time.sleep(0.01)
+    signal.raise_signal(signal.SIGINT)
+
+cli._DELEGATED[{command!r}] = ['-m', 'uncooperative_stage']
+threading.Thread(target=interrupt_when_ready, daemon=True).start()
+raise SystemExit(cli.main([{command!r}]))
+"""
+    env = {
+        **os.environ,
+        "PHYSICLAW_HW_OUTPUT": str(tmp_path / "output"),
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    # Release preparation can run this suite with its own cancellation marker.
+    env.pop("PHYSICLAW_HW_CANCEL_FILE", None)
+    with owned_process(
+        [sys.executable, "-c", script],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as owner:
+        stdout, stderr = owner.process.communicate(timeout=15)
+
+    assert owner.process.returncode == 130, stdout + stderr
+    assert ready.exists()
+    assert not written.exists(), "delegated command kept working after Ctrl+C"

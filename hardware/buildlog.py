@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import shutil
-import signal
 import subprocess
 import threading
 import time
@@ -301,7 +300,7 @@ def step(label):
 
 def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
     """Stream child diagnostics to the run log and clean up its process group."""
-    from hardware.process import ignore_interrupts, interrupt_process
+    from hardware.port.processes import ignore_interrupts, is_interrupted, owned_process
 
     log = _current
     stdout, stderr = [], []
@@ -336,15 +335,15 @@ def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
             reader_errors.append(exc)
             child.kill()
 
-    with subprocess.Popen(
+    with owned_process(
         args,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
         text=True,
         errors="replace",
-        start_new_session=True,
         **kwargs,
-    ) as child:
+    ) as owner:
+        child = owner.process
         readers = [
             threading.Thread(target=collect, args=(child.stdout, stdout, "stdout"))
         ]
@@ -352,13 +351,17 @@ def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
             readers.append(
                 threading.Thread(target=collect, args=(child.stderr, stderr, "stderr"))
             )
+        timed_out = False
         try:
             for reader in readers:
                 reader.start()
             child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            raise
         finally:
             with ignore_interrupts():
-                interrupt_process(child, group=True, timeout=5)
+                owner.stop(timeout=5)
                 for reader in readers:
                     if reader.ident is not None:
                         reader.join()
@@ -366,13 +369,14 @@ def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
                 "subprocess_exited",
                 str(args[0]),
                 level="debug",
-                returncode=child.returncode,
+                returncode=124 if timed_out else child.returncode,
+                process_returncode=child.returncode,
                 child_pid=child.pid,
             )
         if reader_errors:
             raise reader_errors[0]
         output = "".join(stdout)
-        if child.returncode in (130, -signal.SIGINT):
+        if is_interrupted(child.returncode):
             raise KeyboardInterrupt
         if child.returncode:
             raise subprocess.CalledProcessError(

@@ -44,18 +44,21 @@ def _render_check(check):
 # ---------- _list_cameras ----------
 
 
-def test_list_cameras_returns_open_indices(mocker) -> None:
+@pytest.mark.parametrize("backend", [700, 200, 0])  # DSHOW, V4L2, CAP_ANY
+def test_list_cameras_returns_open_indices(mocker, backend) -> None:
     import cv2
 
     captures = {}
 
-    def make_cap(i):
+    def make_cap(i, selected_backend):
+        assert selected_backend == backend
         cap = MagicMock()
         cap.isOpened.return_value = i in (0, 2)
         captures[i] = cap
         return cap
 
     mocker.patch.object(cv2, "VideoCapture", side_effect=make_cap)
+    mocker.patch("physiclaw.port.camera_backend", return_value=backend)
     mocker.patch(
         "physiclaw.core.hardware.camera.silenced_stderr",
         return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda *a: None),
@@ -64,12 +67,13 @@ def test_list_cameras_returns_open_indices(mocker) -> None:
     out = doctor_mod._list_cameras(max_index=5)
 
     assert out == [0, 2]
+    assert all(cap.release.call_count == 1 for cap in captures.values())
 
 
 def test_list_cameras_breaks_after_two_misses(mocker) -> None:
     import cv2
 
-    def make_cap(i):
+    def make_cap(i, backend):
         cap = MagicMock()
         cap.isOpened.return_value = i == 0
         return cap
@@ -173,7 +177,8 @@ def test_probe_camera_frame_ok(mocker) -> None:
     fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     fake_cap = MagicMock()
     fake_cap.read.return_value = (True, fake_frame)
-    mocker.patch.object(cv2, "VideoCapture", return_value=fake_cap)
+    capture = mocker.patch.object(cv2, "VideoCapture", return_value=fake_cap)
+    mocker.patch("physiclaw.port.camera_backend", return_value=cv2.CAP_DSHOW)
     mocker.patch(
         "physiclaw.core.hardware.camera.silenced_stderr",
         return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda *a: None),
@@ -183,6 +188,7 @@ def test_probe_camera_frame_ok(mocker) -> None:
 
     assert "Frame captured" in out
     assert "640x480" in out
+    capture.assert_called_once_with(0, cv2.CAP_DSHOW)
 
 
 def test_probe_camera_frame_no_frame(mocker) -> None:
@@ -945,7 +951,7 @@ def doctor_io(mocker, monkeypatch):
     key_status = mocker.patch(
         "physiclaw.provider.provider_key_status", return_value=(None, "test")
     )
-    mocker.patch("physiclaw.common.platform.hardware_permission_hints", return_value=[])
+    mocker.patch("physiclaw.port.hardware_permission_hints", return_value=[])
     mocker.patch("physiclaw.core.hardware.grbl.candidate_ports", return_value=[])
     return SimpleNamespace(
         key_status=key_status,
@@ -1085,9 +1091,14 @@ def test_regression_doctor_camera_enumeration_failure_releases_capture(doctor_io
 def test_regression_doctor_camera_frame_failure_is_contained(doctor_io, failure):
     doctor_io.api.return_value = None
     capture = _Capture(opened=True, failure=failure)
-    doctor_io.camera.side_effect = lambda index, *backend: (
-        capture if backend else _Capture(opened=index == 0)
-    )
+    # Enumeration (0 present, 1/2 absent), followed by the deep probe of 0.
+    # Both paths now explicitly select the platform capture backend.
+    doctor_io.camera.side_effect = [
+        _Capture(opened=True),
+        _Capture(),
+        _Capture(),
+        capture,
+    ]
 
     result = runner.invoke(app, ["--deep"])
 
@@ -1183,9 +1194,12 @@ def test_doctor_status_flags_require_json_true(doctor_io, value, verdict):
 def _use_camera_frame(doctor_io, frame):
     doctor_io.api.return_value = None
     capture = _Capture(opened=True, frame=frame)
-    doctor_io.camera.side_effect = lambda index, *backend: (
-        capture if backend else _Capture(opened=index == 0)
-    )
+    doctor_io.camera.side_effect = [
+        _Capture(opened=True),
+        _Capture(),
+        _Capture(),
+        capture,
+    ]
     return capture
 
 
@@ -1244,7 +1258,7 @@ def test_doctor_frame_quality_respects_calibrated_geometry(
 def test_doctor_missing_opencv_still_finishes_report(doctor_io, mocker, hint):
     doctor_io.api.return_value = None
     mocker.patch.dict("sys.modules", {"cv2": None})
-    mocker.patch("physiclaw.common.platform.opencv_import_hint", return_value=hint)
+    mocker.patch("physiclaw.port.opencv_import_hint", return_value=hint)
 
     result = runner.invoke(app, ["--deep"])
 
@@ -1542,7 +1556,7 @@ def test_doctor_next_step_distinguishes_offline_from_unready_server(
 def test_doctor_surfaces_platform_hardware_permission_hints(doctor_io, mocker):
     doctor_io.api.return_value = None
     mocker.patch(
-        "physiclaw.common.platform.hardware_permission_hints",
+        "physiclaw.port.hardware_permission_hints",
         return_value=["camera permission requires attention"],
     )
 

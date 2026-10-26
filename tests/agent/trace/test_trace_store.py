@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 from physiclaw.agent.trace import store
 
@@ -139,7 +140,7 @@ def test_regression_resolve_session_rejects_external_directory_symlink(tmp_path,
     outside = tmp_path / "outside"
     root.mkdir()
     outside.mkdir()
-    (root / "outside-abc123").symlink_to(outside, target_is_directory=True)
+    symlink_to(root / "outside-abc123", outside, target_is_directory=True)
 
     with pytest.raises(LookupError, match="no session matches"):
         store.resolve_session(root, ref)
@@ -150,7 +151,7 @@ def test_regression_recent_sessions_ignores_external_directory_symlinks(tmp_path
     outside = tmp_path / "outside"
     root.mkdir()
     outside.mkdir()
-    (root / "linked").symlink_to(outside, target_is_directory=True)
+    symlink_to(root / "linked", outside, target_is_directory=True)
     (root / "README.md").write_text("not a session", encoding="utf-8")
 
     rows = store.recent_sessions(root, 10)
@@ -163,9 +164,9 @@ def test_resolve_session_keeps_internal_aliases_and_symlinked_roots(tmp_path):
     real = root / "session-abc123"
     real.mkdir(parents=True)
     alias = root / "linked"
-    alias.symlink_to(real, target_is_directory=True)
+    symlink_to(alias, real, target_is_directory=True)
     linked_root = tmp_path / "linked-root"
-    linked_root.symlink_to(root, target_is_directory=True)
+    symlink_to(linked_root, root, target_is_directory=True)
 
     resolved = store.resolve_session(linked_root, "linked")
 

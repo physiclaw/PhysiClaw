@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from physiclaw.common import paths, text
-from physiclaw.common.file_lock import exclusive_file_lock
 from physiclaw.common.placeholders import (
     PLACEHOLDER_VALUES_FILENAME,
     find_placeholders,
@@ -25,6 +24,7 @@ from physiclaw.conductor.load.files import read_template_manifest
 from physiclaw.conductor.load.pack import load_pack, scan_playbooks
 from physiclaw.conductor.spec.model import PlaybookError, check_name
 from physiclaw.conductor.spec.pack import Pack
+from physiclaw.port.locks import exclusive_file_lock
 
 log = logging.getLogger(__name__)
 

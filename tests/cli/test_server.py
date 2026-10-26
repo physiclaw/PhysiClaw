@@ -1246,7 +1246,7 @@ def test_server_interrupt_cleans_both_planes_and_restores_signal(mode, mocker):
 
 def test_server_refuses_concurrent_start_before_opening_listeners(mocker, capsys):
     from physiclaw.common import paths
-    from physiclaw.common.file_lock import exclusive_file_lock
+    from physiclaw.port.locks import exclusive_file_lock
 
     deps = _patch_server_runtime_deps(mocker)
     with exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")):
@@ -1261,7 +1261,7 @@ def test_server_refuses_concurrent_start_before_opening_listeners(mocker, capsys
 
 def test_server_startup_failure_releases_listeners_and_lock(mocker):
     from physiclaw.common import paths
-    from physiclaw.common.file_lock import exclusive_file_lock
+    from physiclaw.port.locks import exclusive_file_lock
 
     deps = _patch_server_runtime_deps(mocker)
     deps["core_server"].build_apps.side_effect = RuntimeError("build failed")
@@ -1346,7 +1346,7 @@ def test_server_ipv6_listener_and_endpoint_logs_use_the_same_host(mocker, caplog
 def test_server_reports_lock_permission_error_before_opening_listeners(mocker, capsys):
     deps = _patch_server_runtime_deps(mocker)
     mocker.patch(
-        "physiclaw.common.file_lock.exclusive_file_lock",
+        "physiclaw.port.locks.exclusive_file_lock",
         side_effect=PermissionError("read-only home"),
     )
 

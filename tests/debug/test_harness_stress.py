@@ -261,7 +261,7 @@ def test_killed_writer_releases_lock_without_losing_published_script():
             "-c",
             """
 import sys
-from physiclaw.common.file_lock import exclusive_file_lock
+from physiclaw.port.locks import exclusive_file_lock
 from physiclaw.debug.thread import thread_path
 with exclusive_file_lock(thread_path().with_suffix('.lock')):
     thread_path().with_name('writer-ready').touch()

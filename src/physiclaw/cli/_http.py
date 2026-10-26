@@ -25,7 +25,7 @@ from contextlib import nullcontext
 
 import typer
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 from physiclaw.common.terminal import color_enabled, stdout_text
 
 # Cloudflare's WAF 403s the default Python-urllib User-Agent, so every request
@@ -34,7 +34,7 @@ from physiclaw.common.terminal import color_enabled, stdout_text
 USER_AGENT = "physiclaw"
 
 # Trust the system proxy for loopback only on platforms where the bypass
-# list reliably excludes localhost (see physiclaw.common.platform).
+# list reliably excludes localhost (see physiclaw.port).
 _OPENER = (
     urllib.request.build_opener()
     if platform.TRUST_PROXY_ENV

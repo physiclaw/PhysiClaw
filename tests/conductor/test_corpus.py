@@ -7,6 +7,7 @@ values, and removing dataclass freezing (this module never mutates items).
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -129,7 +130,7 @@ def test_regression_invalid_corpus_record_names_file_and_line(tmp_path, record):
     path = tmp_path / "bad.jsonl"
     path.write_text("\n" + json.dumps(record) + "\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match=rf"{path}:2: bad corpus line"):
+    with pytest.raises(ValueError, match=rf"{re.escape(str(path))}:2: bad corpus line"):
         corpus.read_corpus(path)
 
 

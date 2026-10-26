@@ -344,7 +344,9 @@ def _store_layer(
         files[f.name] = digest
     if current_key(stem) != key_value:
         raise RuntimeError(f"Build inputs changed while caching: {stem}")
-    (entry / key_file).write_text(json.dumps({"key": key_value, "files": files}))
+    (entry / key_file).write_text(
+        json.dumps({"key": key_value, "files": files}), encoding="utf-8"
+    )
 
 
 def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
@@ -355,7 +357,7 @@ def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
     if not p.is_file():
         return None, {}
     try:
-        m = json.loads(p.read_text())
+        m = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
             return None, {}
         if not isinstance(m.get("key"), str):
@@ -463,7 +465,7 @@ def snapshots_cached(stem: str) -> bool:
     expected = {
         f"{patch.stem}_{leaf['id']}.svg"
         for patch in _patch_files(stem)
-        for leaf in find_leaves(json.loads(patch.read_text()))
+        for leaf in find_leaves(json.loads(patch.read_text(encoding="utf-8")))
     }
     if set(files) != expected:
         return False

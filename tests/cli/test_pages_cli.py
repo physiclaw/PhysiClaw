@@ -126,7 +126,9 @@ def test_regression_missing_listing_reports_path(pack, tmp_path, command):
     result = runner.invoke(pages.pages_app, command + ["--listing", str(missing)])
 
     assert result.exit_code == 1
-    assert "ERROR [" in result.stderr and str(missing) in result.output
+    assert "ERROR [" in result.stderr and (
+        str(missing) in result.output or repr(str(missing)) in result.output
+    )
     assert isinstance(result.exception, SystemExit)
 
 
@@ -249,7 +251,9 @@ def test_regression_extract_write_failure_reports_destination(recording, tmp_pat
     result = runner.invoke(pages.pages_app, ["extract", "abcdef", "--out", str(output)])
 
     assert result.exit_code == 1
-    assert "ERROR [" in result.stderr and str(output) in result.output
+    assert "ERROR [" in result.stderr and (
+        str(output) in result.output or repr(str(output)) in result.output
+    )
     assert "wrote" not in result.stdout
 
 
@@ -390,7 +394,9 @@ def test_regression_missing_corpus_reports_path(pack, tmp_path):
     result = runner.invoke(pages.pages_app, ["calibrate", "sample", str(path)])
 
     assert result.exit_code == 1
-    assert "ERROR [" in result.stderr and str(path) in result.output
+    assert "ERROR [" in result.stderr and (
+        str(path) in result.output or repr(str(path)) in result.output
+    )
 
 
 def test_regression_failed_learned_save_is_reported(pack, labeled_corpus):

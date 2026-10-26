@@ -21,7 +21,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from physiclaw.common.file_lock import exclusive_file_lock
+from physiclaw.port.locks import exclusive_file_lock
 
 vision_mod = importlib.import_module("physiclaw.cli.setup.vision")
 runner = CliRunner()

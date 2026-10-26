@@ -45,7 +45,7 @@ def save(directory: Path, solid, ghost, views: dict) -> None:
 def load(directory: Path, view_indices: list[int]):
     """Return intact layers and cameras, or rebuild if a checkpoint is damaged."""
     try:
-        data = json.loads((directory / "checkpoint.json").read_text())
+        data = json.loads((directory / "checkpoint.json").read_text(encoding="utf-8"))
         layers, views = data["layers"], data["views"]
         if (
             not isinstance(layers, dict)

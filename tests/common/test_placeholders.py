@@ -75,7 +75,8 @@ def test_regression_write_placeholder_question_prefix_round_trips() -> None:
     assert placeholder_values() == {"CONTACT": "?Alice"}
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+# This checks a filesystem round trip, not a 200ms disk-latency guarantee.
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(st.dictionaries(st.text(), st.text(), max_size=5))
 def test_write_placeholder_values_preserves_string_keys_and_values(values) -> None:
     write_placeholder_values(values)

@@ -30,8 +30,8 @@ from physiclaw.cli._format import info, ok, warn
 from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.text import read_text, write_text
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger(__name__)
 

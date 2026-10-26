@@ -583,7 +583,7 @@ def test_now_default_is_task_level_but_every_detail_is_saved(output_logs, verbos
     diagnostics = [
         ("physiclaw.core.server.warm_start", "loaded bundle rotation=2 complete=True"),
         ("physiclaw.core.hardware.iphone", "AT screen position CSS (39,260)"),
-        ("physiclaw.common.platform.darwin", "UVC IOKit control live"),
+        ("physiclaw.port.backends.darwin", "UVC IOKit control live"),
         ("physiclaw.core.hardware.arm", "Arm connected /dev/cu.usbserial-1110"),
         ("physiclaw.core.hardware.arm", "Arm setup complete"),
         ("physiclaw.core.hardware.camera", "capture=3840x2160 requested=3840x2160"),

@@ -111,7 +111,7 @@ class FakeVideoCapture:
 
 
 def _frame(h: int = 480, w: int = 640) -> np.ndarray:
-    return np.zeros((h, w, 3), dtype=np.uint8)
+    return np.full((h, w, 3), 127, dtype=np.uint8)
 
 
 def _open_camera_no_thread(mocker, *, vc: FakeVideoCapture) -> Camera:
@@ -124,16 +124,35 @@ def _open_camera_no_thread(mocker, *, vc: FakeVideoCapture) -> Camera:
     return cam
 
 
+@pytest.mark.parametrize(
+    "frame",
+    [None, np.empty((0, 0, 3), dtype=np.uint8), np.zeros((8, 8, 3), dtype=np.uint8)],
+)
+def test_successful_read_with_no_image_is_rejected_for_stream_recovery(mocker, frame):
+    cam, cap = _ready_camera(mocker)
+    cap._reads = [(True, frame)]
+
+    with pytest.raises(camera_mod.DeviceTimeout, match="empty or all-zero"):
+        cam._locked_read()
+
+
+def test_dim_frame_with_one_nonzero_pixel_is_preserved(mocker):
+    cam, cap = _ready_camera(mocker)
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    frame[4, 4, 0] = 1
+    cap._reads = [(True, frame)]
+
+    ok, received = cam._locked_read()
+
+    assert ok and received is frame
+
+
 @pytest.fixture(params=["native", "linux", "windows"])
 def capture_controls(request, mocker):
     """Exercise property-based controls even when the host uses macOS UVC."""
     if request.param == "native":
         return
-    if request.param == "linux" and os.name == "nt":
-        pytest.skip(
-            "Linux controls import POSIX grp; native Windows controls still run"
-        )
-    backend = importlib.import_module(f"physiclaw.common.platform.{request.param}")
+    backend = importlib.import_module(f"physiclaw.port.backends.{request.param}")
     for name in (
         "camera_set_auto_exposure",
         "camera_set_manual_exposure",
@@ -146,6 +165,101 @@ def capture_controls(request, mocker):
 
 
 # ---------- Camera construction ----------
+
+
+@pytest.mark.parametrize("size", [(3840, 2160), (2560, 1440), (1920, 1080)])
+@pytest.mark.parametrize("exposure_auto", [False, True])
+@pytest.mark.parametrize("focus_value", [None, 555.0])
+def test_directshow_negotiation_preserves_mjpg_and_controls(
+    mocker, size, exposure_auto, focus_value
+):
+    """Model Ugreen's size-induced YUY2 switch and negotiation control resets."""
+    from physiclaw.port.backends import windows
+
+    mjpg = cv2.VideoWriter.fourcc(*"MJPG")
+    yuy2 = cv2.VideoWriter.fourcc(*"YUY2")
+
+    class NegotiatingCapture(FakeVideoCapture):
+        def get(self, prop):
+            if prop == cv2.CAP_PROP_BACKEND:
+                return cv2.CAP_DSHOW
+            return super().get(prop)
+
+        def set(self, prop, value):
+            accepted = super().set(prop, value)
+            if prop in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT):
+                self._properties[cv2.CAP_PROP_FOURCC] = yuy2
+            if prop == cv2.CAP_PROP_FOURCC:
+                self._properties[cv2.CAP_PROP_EXPOSURE] = -7
+                self._properties[cv2.CAP_PROP_AUTO_EXPOSURE] = 0
+                self._properties[cv2.CAP_PROP_FOCUS] = 0
+                self._properties[cv2.CAP_PROP_AUTOFOCUS] = 0
+            return accepted
+
+        def read(self):
+            frame = _frame(8, 8)
+            if self.get(cv2.CAP_PROP_FOURCC) != mjpg:
+                frame.fill(0)
+            return True, frame
+
+    for name in (
+        "camera_set_auto_exposure",
+        "camera_set_manual_exposure",
+        "camera_apply_focus",
+        "camera_unlock_focus",
+    ):
+        mocker.patch.object(camera_mod.platform, name, getattr(windows, name))
+    mocker.patch.object(camera_mod.CONFIG.camera, "fourcc", "MJPG")
+    cap = NegotiatingCapture(0)
+
+    pinned = camera_mod.configure_capture(
+        cap,
+        size=size,
+        exposure_auto=exposure_auto,
+        exposure=-6,
+        focus_value=focus_value,
+    )
+
+    assert cap.read()[1].any()
+    assert cap.get(cv2.CAP_PROP_FOURCC) == mjpg
+    assert cap.get(cv2.CAP_PROP_FRAME_WIDTH) == size[0]
+    assert cap.get(cv2.CAP_PROP_FRAME_HEIGHT) == size[1]
+    assert cap.get(cv2.CAP_PROP_AUTO_EXPOSURE) == int(exposure_auto)
+    if not exposure_auto:
+        assert cap.get(cv2.CAP_PROP_EXPOSURE) == -6
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == int(focus_value is None)
+    assert pinned == (focus_value is not None)
+    if focus_value is not None:
+        assert cap.get(cv2.CAP_PROP_FOCUS) == focus_value
+
+
+def test_other_backends_keep_requested_size_when_format_resets_dimensions(mocker):
+    class FormatResetsSizeCapture(FakeVideoCapture):
+        def get(self, prop):
+            if prop == cv2.CAP_PROP_BACKEND:
+                return cv2.CAP_MSMF
+            return super().get(prop)
+
+        def set(self, prop, value):
+            accepted = super().set(prop, value)
+            if prop == cv2.CAP_PROP_FOURCC:
+                self._properties[cv2.CAP_PROP_FRAME_WIDTH] = 640
+                self._properties[cv2.CAP_PROP_FRAME_HEIGHT] = 480
+            return accepted
+
+    cap = FormatResetsSizeCapture(0)
+    mocker.patch.object(camera_mod.platform, "camera_set_auto_exposure")
+    mocker.patch.object(camera_mod.platform, "camera_unlock_focus")
+
+    camera_mod.configure_capture(
+        cap,
+        size=(1920, 1080),
+        exposure_auto=True,
+        exposure=-6,
+    )
+
+    assert cap.get(cv2.CAP_PROP_FRAME_WIDTH) == 1920
+    assert cap.get(cv2.CAP_PROP_FRAME_HEIGHT) == 1080
 
 
 def test_camera_init_warms_up_and_starts_reader(mocker) -> None:
@@ -182,12 +296,19 @@ def test_camera_init_warms_up_and_starts_reader(mocker) -> None:
 def test_camera_init_retries_on_first_open_failure(mocker) -> None:
     closed = FakeVideoCapture(index=0, is_open=False)
     open_ = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
-    mocker.patch.object(cv2, "VideoCapture", side_effect=[closed, open_])
+    capture = mocker.patch.object(cv2, "VideoCapture", side_effect=[closed, open_])
+    mocker.patch.object(
+        camera_mod.platform, "camera_backend", return_value=cv2.CAP_DSHOW
+    )
     perm_spy = mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
 
     cam = Camera(index=0)
     try:
         perm_spy.assert_called_once()
+        assert capture.call_args_list == [
+            mocker.call(0, cv2.CAP_DSHOW),
+            mocker.call(0, cv2.CAP_DSHOW),
+        ]
     finally:
         cam._reader.stop()
 
@@ -201,9 +322,12 @@ def test_camera_init_raises_when_open_keeps_failing(mocker) -> None:
         Camera(index=0)
 
 
-def test_camera_warmup_retries_on_bad_read(mocker) -> None:
+@pytest.mark.parametrize(
+    "bad_read", [(False, None), (True, np.zeros((8, 8, 3), dtype=np.uint8))]
+)
+def test_camera_warmup_retries_on_bad_read(mocker, bad_read) -> None:
     """First open returns a cap whose reads all fail; second open works."""
-    bad = FakeVideoCapture(index=0, read_results=[(False, None)] * 200)
+    bad = FakeVideoCapture(index=0, read_results=[bad_read] * 200)
     good = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     mocker.patch.object(cv2, "VideoCapture", side_effect=[bad, good])
     mocker.patch.object(camera_mod.platform, "ensure_camera_permission")
@@ -248,6 +372,20 @@ def _ready_camera(mocker) -> tuple[Camera, FakeVideoCapture]:
 # ---------- _reopen ----------
 
 
+def test_reopen_rejects_zero_buffers_before_publishing_recovery(mocker):
+    cam, _ = _ready_camera(mocker)
+    blank = np.zeros((8, 8, 3), dtype=np.uint8)
+    broken = FakeVideoCapture(index=0, read_results=[(True, blank)] * 3)
+    mocker.patch.object(cv2, "VideoCapture", return_value=broken)
+    publish = mocker.spy(cam._reader, "publish")
+
+    cam._reopen()
+
+    assert broken.released
+    assert cam._reader._frame is None
+    publish.assert_not_called()
+
+
 def test_reopen_swallows_release_failure(mocker) -> None:
     cam, _ = _ready_camera(mocker)
     bad_cap = MagicMock()
@@ -280,13 +418,16 @@ def test_reopen_logs_when_open_raises(
 
 
 def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
+    mocker.patch.object(
+        camera_mod.platform, "camera_backend", return_value=cv2.CAP_DSHOW
+    )
     cam, original = _ready_camera(mocker)
     recovered = _frame()
     replacement = FakeVideoCapture(
         index=0, read_results=[(False, None), (False, None), (True, recovered)]
     )
     reset = mocker.patch.object(camera_mod.platform, "camera_reset_controls")
-    mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
+    capture = mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
     cam._reader._first_fail_time = time.monotonic() - 30
 
     cam._reopen()
@@ -296,6 +437,7 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
     assert cam._reader.fresh_frame().frame is recovered
     assert cam._reader._first_fail_time is None
     reset.assert_called_once_with()
+    capture.assert_called_once_with(0, cv2.CAP_DSHOW)
 
 
 def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) -> None:

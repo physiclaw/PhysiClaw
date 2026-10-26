@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.common import paths
@@ -165,7 +166,7 @@ def test_regression_clear_root_symlink_reports_refusal_without_touching_target(
     outside = tmp_path / "outside"
     _seed(outside)
     directory = paths.snapshots_dir()
-    directory.symlink_to(outside, target_is_directory=True)
+    symlink_to(directory, outside, target_is_directory=True)
 
     result = runner.invoke(app, ["--yes"])
 

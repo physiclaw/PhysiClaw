@@ -148,12 +148,12 @@ def install(
     like the IM contact name — go to playbooks/placeholders.yml, where
     every parser fills them at load. Shared templates ship disabled:
     rehearse, then enable. Each file's enabled flag is preserved."""
-    from physiclaw.common.file_lock import FileLockBusy
     from physiclaw.common.placeholders import (
         PLACEHOLDER_VALUES_FILENAME,
         placeholder_values,
     )
     from physiclaw.conductor.load.install import install_template, read_template
+    from physiclaw.port.locks import FileLockBusy
 
     try:
         template = read_template(src)

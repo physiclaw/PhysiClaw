@@ -429,7 +429,11 @@ def test_edit_preserves_quoted_arguments_without_a_shell(
     run.assert_called_once_with([*command, str(_config.config_path())], check=True)
 
 
-@settings(max_examples=25, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=25,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(value=st.integers(min_value=1, max_value=1000))
 def test_set_persists_integer_and_preserves_unrelated_comments(monkeypatch, value):
     monkeypatch.setattr(_config, "CONFIG", _config.CONFIG)

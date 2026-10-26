@@ -22,7 +22,7 @@ from collections.abc import Iterator
 import cv2
 import numpy as np
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 from physiclaw.common.config import CONFIG
 from physiclaw.common.dumps import save_raw_camera, save_snapshot
 from physiclaw.core.hardware.device import DeviceNotFound, DeviceTimeout
@@ -99,9 +99,9 @@ def configure_capture(
 ) -> bool:
     """Configure capture size, exposure, and focus; return focus acceptance.
 
-    Set FOURCC before dimensions: format changes can renegotiate the stream,
-    and MJPG avoids uncompressed USB bandwidth limits. Apply exposure and
-    focus afterward because negotiation can change device controls.
+    Set FOURCC before dimensions, then reassert it for DirectShow, whose
+    dimension writes can switch MJPG back to uncompressed YUY2. Apply
+    exposure and focus after all negotiation because it can reset controls.
 
     ``size`` overrides CONFIG for warmup's resolution fallback ladder;
     `apply_size_cap` enforces platform limits. ``focus_value`` restores the
@@ -127,9 +127,15 @@ def configure_capture(
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     # VideoWriter.fourcc is the stub-visible spelling of VideoWriter_fourcc
     # (same function at runtime since OpenCV 3).
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*CONFIG.camera.fourcc))
+    fourcc = cv2.VideoWriter.fourcc(*CONFIG.camera.fourcc)
+    cap.set(cv2.CAP_PROP_FOURCC, fourcc)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    # Ugreen 4K + DirectShow can accept 1080p/1440p dimensions but silently
+    # select YUY2, yielding all-zero buffers over USB. Reassert the format
+    # at the final size. Other backends retain their format-first ordering.
+    if cap.get(cv2.CAP_PROP_BACKEND) == cv2.CAP_DSHOW:
+        cap.set(cv2.CAP_PROP_FOURCC, fourcc)
     if exposure_auto:
         platform.camera_set_auto_exposure(cap)
     else:
@@ -186,6 +192,17 @@ def _apply_focus(cap: cv2.VideoCapture, value: float) -> bool:
 # worse than it did before the default moved.
 RESOLUTION_FALLBACKS = [(2560, 1440), (1920, 1080)]
 BASELINE_LONG_EDGE = 1920
+
+
+def _has_image(frame: np.ndarray | None) -> bool:
+    """Reject empty/all-zero capture buffers without rejecting a dim scene.
+
+    Drivers can return success with a zero-filled buffer after a USB or
+    capture failure. Publishing it would keep the stale-stream supervisor
+    healthy forever. Test the entire raw frame: a black phone-screen crop
+    alone is not evidence of a capture failure. Any nonzero pixel is valid.
+    """
+    return frame is not None and bool(frame.any())
 
 
 # ─── Reusable Camera class ──────────────────────────────────────
@@ -275,7 +292,12 @@ class Camera:
         """One serialized ``cap.read()`` — the reader's injected pump."""
         with self._cap_lock:
             self._require_open()
-            return self.cap.read()
+            ok, frame = self.cap.read()
+            if ok and not _has_image(frame):
+                raise DeviceTimeout(
+                    "Camera returned an empty or all-zero capture buffer"
+                )
+            return ok, frame
 
     def _require_open(self) -> None:
         """Reject queued operations after close was requested; cap lock held."""
@@ -347,7 +369,7 @@ class Camera:
             for _ in range(15):
                 self.cap.read()
             ret, frame = self.cap.read()
-            if ret and frame is not None:
+            if ret and _has_image(frame):
                 return frame
             # Read returned no frame — likely macOS perm denied silently.
             self.cap.release()
@@ -415,7 +437,7 @@ class Camera:
                     ok, frame = self.cap.read()
                     if self._closing:
                         return
-                    if ok and frame is not None:
+                    if ok and _has_image(frame):
                         self._reader.publish(frame)
                         log.debug("Camera %s: capture recovered", self.index)
                         return

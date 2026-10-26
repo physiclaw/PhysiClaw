@@ -19,6 +19,7 @@ import typer
 from physiclaw.cli.runtime_process import ManagedRuntime
 from physiclaw.cli.runtime_process import terminate_child as terminate_child
 from physiclaw.common.config import CONFIG, WILDCARD_HOSTS, url_host
+from physiclaw.port import processes as process_port
 
 # Keep both the request drain and ASGI lifespan inside the bridge join budget.
 BRIDGE_DRAIN_SECONDS = 2
@@ -144,13 +145,13 @@ def server(
     from physiclaw import __version__
     from physiclaw.cli._format import exit_error
     from physiclaw.common import paths, runtime_state
-    from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
     from physiclaw.common.logger import (
         SERVER_LOG_TAG,
         attach_server_mcp_tee,
         setup_logging,
     )
     from physiclaw.core.bridge.lan import bridge_port
+    from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
     # Direct callers (mcp/now/auto) bypass Typer's option validation.
     if not 1 <= port <= 65534:
@@ -772,13 +773,6 @@ def _spawn_runtime(host: str, port: int, verbose: bool, label: str) -> subproces
     if verbose:
         cmd.append("--verbose")
     # The parent owns terminal signals; the child receives EOF instead.
-    if sys.platform == "win32":
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
-    else:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, start_new_session=True)
+    proc = process_port.spawn_managed(cmd)
     log.debug("Runtime loop started as subprocess (pid=%s, %s)", proc.pid, label)
     return proc

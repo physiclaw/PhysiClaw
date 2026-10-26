@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.common.platform.darwin` — macOS-specific helpers.
+"""Tests for `physiclaw.port.backends.darwin` — macOS-specific helpers.
 
 Tests run on every platform: subprocess and socket calls are mocked, so
 we exercise the dispatch logic regardless of where the suite is run.
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from physiclaw.common.platform import darwin
+from physiclaw.port.backends import darwin
 
 # ---------- TRUST_PROXY_ENV ----------
 
@@ -194,7 +194,7 @@ class _FakeTerminal:
 
 
 def _reset_probe(monkeypatch, channel) -> None:
-    from physiclaw.common.platform import uvc
+    from physiclaw.port.backends import uvc
 
     monkeypatch.setattr(darwin, "_uvc_terminal", None)
     monkeypatch.setattr(uvc, "camera_terminal", lambda: channel)
@@ -214,7 +214,7 @@ def test_exposure_not_tunable_without_uvc_terminal(monkeypatch) -> None:
     ids=["live-channel", "failed-probe"],
 )
 def test_probe_verdict_is_cached_either_way(monkeypatch, channel, tunable) -> None:
-    from physiclaw.common.platform import uvc
+    from physiclaw.port.backends import uvc
 
     calls = 0
 
@@ -233,7 +233,7 @@ def test_probe_verdict_is_cached_either_way(monkeypatch, channel, tunable) -> No
 
 @pytest.mark.parametrize("cached", [False, None, "live"])
 def test_reconnect_discards_cached_control_interface(mocker, monkeypatch, cached):
-    from physiclaw.common.platform import uvc
+    from physiclaw.port.backends import uvc
 
     old = mocker.Mock() if cached == "live" else cached
     fresh = mocker.Mock()

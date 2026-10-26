@@ -116,7 +116,33 @@ def test_worker_timeout_returns_failure(tmp_path, monkeypatch):
     assert records[-1]["returncode"] == 124
 
 
-def test_external_output_path_is_safe_to_log(tmp_path):
+@pytest.mark.parametrize("returncode", [130, -2, 0xC000013A])
+def test_regression_interrupted_worker_finishes_as_cancelled(
+    tmp_path, mocker, capsys, returncode
+):
+    from contextlib import nullcontext
+    from io import StringIO
+
+    child = SimpleNamespace(
+        pid=123,
+        stdout=StringIO(),
+        returncode=returncode,
+        wait=lambda **kwargs: returncode,
+    )
+    owner = SimpleNamespace(process=child, stop=mocker.Mock())
+    mocker.patch.object(bp, "owned_process", return_value=nullcontext(owner))
+    mocker.patch.object(bp, "OUTPUT_DIR", tmp_path)
+    mocker.patch("hardware.build_lock.OUTPUT_DIR", tmp_path)
+
+    result = bp.main(["--stems", STEM])
+
+    assert result == 130
+    assert "CANCELLED" in capsys.readouterr().out
+    owner.stop.assert_called_once()
+
+
+def test_external_output_path_is_safe_to_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(bp, "REPO_ROOT", tmp_path / "repo")
     assert bp._shown(tmp_path / "crash.log") == tmp_path / "crash.log"
 
 

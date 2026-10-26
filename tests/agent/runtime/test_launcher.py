@@ -362,7 +362,11 @@ async def test_native_preload_before_managed_reader(
     mocker, platform, managed, expected
 ):
     # Exercise the platform branches without changing Python's own sys.platform.
-    mocker.patch.object(launcher, "sys", SimpleNamespace(platform=platform))
+    from physiclaw.port.backends import posix, windows
+
+    mocker.patch.object(
+        launcher.process_port, "_native", windows if platform == "win32" else posix
+    )
     events = []
     real_import = builtins.__import__
 
@@ -386,7 +390,9 @@ async def test_native_preload_before_managed_reader(
 
 
 async def test_native_preload_failure_surfaces_before_managed_startup(mocker):
-    mocker.patch.object(launcher, "sys", SimpleNamespace(platform="win32"))
+    from physiclaw.port.backends import windows
+
+    mocker.patch.object(launcher.process_port, "_native", windows)
     failure = ImportError("numpy initialization failed")
     real_import = builtins.__import__
 

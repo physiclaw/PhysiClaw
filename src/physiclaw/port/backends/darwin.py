@@ -1,7 +1,7 @@
 """macOS implementations of platform-specific helpers.
 
-Imported by ``physiclaw.common.platform`` on Darwin only. Callers should
-never import this module directly — go through ``physiclaw.common.platform``.
+Imported by ``physiclaw.port`` on Darwin only. Callers should
+never import this module directly — go through ``physiclaw.port``.
 """
 
 import logging
@@ -136,7 +136,7 @@ def _camera_terminal():
     global _uvc_terminal
     with _uvc_lock:
         if _uvc_terminal is None:
-            from physiclaw.common.platform import uvc
+            from physiclaw.port.backends import uvc
 
             _uvc_terminal = uvc.camera_terminal() or False
             if _uvc_terminal:
@@ -195,7 +195,7 @@ def camera_set_manual_exposure(cap, exposure: int) -> None:
     linux.py). The channel clamps to the device's published range; a
     refused write is logged and `converge`'s luma-stall check reverts
     to auto, so it degrades, never wedges."""
-    from physiclaw.common.platform import uvc
+    from physiclaw.port.backends import uvc
 
     channel = _camera_terminal()
     if channel is None:

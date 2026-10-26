@@ -14,11 +14,12 @@ import json
 import os
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from physiclaw.common import paths, runtime_state
+from physiclaw.port import processes
+from physiclaw.port.backends import posix, windows
 
 # ---------- write ----------
 
@@ -159,6 +160,7 @@ def test_pid_alive_calls_os_kill_with_signal_zero(physiclaw_home: Path, mocker) 
     # Pytest runs tests in file order; keep this first in the read_live
     # section so the mutation is detected via mock-arg inspection,
     # never via real signal delivery.
+    mocker.patch.object(processes, "_native", posix)
     runtime_state.write("h", 1)
     kill = mocker.patch("os.kill")
 
@@ -216,6 +218,7 @@ def test_read_live_returns_none_when_pid_field_is_not_int(
 def test_read_live_returns_none_when_pid_lookup_raises_process_lookup_error(
     physiclaw_home: Path, mocker
 ) -> None:
+    mocker.patch.object(processes, "_native", posix)
     runtime_state.write("h", 1)
 
     mocker.patch("os.kill", side_effect=ProcessLookupError)
@@ -241,6 +244,7 @@ def test_read_live_returns_none_when_pid_lookup_raises_oserror(
     physiclaw_home: Path, mocker
 ) -> None:
     # Generic OSError (e.g. EINVAL) — falls through to "not alive".
+    mocker.patch.object(processes, "_native", posix)
     runtime_state.write("h", 1)
 
     mocker.patch("os.kill", side_effect=OSError("EINVAL"))
@@ -252,9 +256,8 @@ def test_read_live_returns_none_when_pid_lookup_raises_oserror(
 
 
 def test_request_shutdown_signals_the_live_pid(mocker) -> None:
+    mocker.patch.object(processes, "_native", posix)
     import signal
-
-    from physiclaw.common import runtime_state
 
     mocker.patch.object(runtime_state, "read_live", return_value={"pid": 4242})
     kill = mocker.patch.object(runtime_state.os, "kill")
@@ -264,8 +267,6 @@ def test_request_shutdown_signals_the_live_pid(mocker) -> None:
 
 
 def test_request_shutdown_without_a_live_server_is_false(mocker) -> None:
-    from physiclaw.common import runtime_state
-
     mocker.patch.object(runtime_state, "read_live", return_value=None)
     kill = mocker.patch.object(runtime_state.os, "kill")
 
@@ -329,7 +330,7 @@ def test_read_live_rejects_malformed_server_address(field, value, mocker) -> Non
 
 def test_read_live_treats_os_pid_overflow_as_invalid(mocker) -> None:
     runtime_state.write("localhost", 8048)
-    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="linux"))
+    mocker.patch.object(processes, "_native", posix)
     mocker.patch.object(runtime_state.os, "kill", side_effect=OverflowError)
 
     live = runtime_state.read_live()
@@ -361,7 +362,7 @@ def test_read_live_ignores_damaged_state_bytes(payload, mocker) -> None:
 
 def test_request_shutdown_failed_signal_returns_false(mocker) -> None:
     runtime_state.write("localhost", 8048)
-    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="linux"))
+    mocker.patch.object(processes, "_native", posix)
     mocker.patch.object(
         runtime_state.os, "kill", side_effect=[None, ProcessLookupError]
     )
@@ -375,7 +376,7 @@ def test_read_live_windows_queries_process_without_signaling(mocker) -> None:
     import ctypes
 
     runtime_state.write("localhost", 8048)
-    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    mocker.patch.object(processes, "_native", windows)
     kernel = mocker.Mock()
     kernel.OpenProcess.return_value = 1234
     mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
@@ -396,7 +397,7 @@ def test_read_live_windows_distinguishes_access_denied_from_missing(
     import ctypes
 
     runtime_state.write("localhost", 8048)
-    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    mocker.patch.object(processes, "_native", windows)
     kernel = mocker.Mock()
     kernel.OpenProcess.return_value = 0
     mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
@@ -414,7 +415,7 @@ def test_request_shutdown_windows_does_not_terminate_process(mocker) -> None:
     import ctypes
 
     runtime_state.write("localhost", 8048)
-    mocker.patch.object(runtime_state, "sys", SimpleNamespace(platform="win32"))
+    mocker.patch.object(processes, "_native", windows)
     kernel = mocker.Mock()
     kernel.OpenProcess.return_value = 1234
     mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)

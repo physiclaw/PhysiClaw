@@ -28,9 +28,8 @@ from debug_fakes import write_channel_pages
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from physiclaw.common import file_lock, paths
+from physiclaw.common import paths
 from physiclaw.common.bbox import center_of
-from physiclaw.common.file_lock import exclusive_file_lock
 from physiclaw.common.listing import Screen
 from physiclaw.conductor.load.prints import prints_for_app
 from physiclaw.conductor.spec import reply
@@ -45,6 +44,8 @@ from physiclaw.conductor.spec.pages import (
 )
 from physiclaw.conductor.spec.reply import INCOMING_LEFT
 from physiclaw.debug import thread as vthread
+from physiclaw.port import locks as file_lock
+from physiclaw.port.locks import exclusive_file_lock
 
 
 def _render(bubbles) -> Screen:

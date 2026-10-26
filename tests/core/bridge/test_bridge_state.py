@@ -520,7 +520,10 @@ def test_take_pending_screenshot_returns_none_when_nothing_pending(
     assert bs.take_pending_screenshot() is None
 
 
-def test_take_pending_screenshot_consumes_recent_upload(bs: BridgeState) -> None:
+def test_take_pending_screenshot_consumes_recent_upload(
+    bs: BridgeState, mocker
+) -> None:
+    mocker.patch("time.monotonic", side_effect=[10.0, 11.0])
     cutoff = time.monotonic()
     bs.receive_screenshot(b"early-upload")
 
@@ -561,8 +564,9 @@ def test_upload_ip_gate_always_allows_loopback(bs: BridgeState) -> None:
 
 
 def test_upload_ip_gate_readmits_when_everyone_expires(
-    bs: BridgeState, monkeypatch: pytest.MonkeyPatch
+    bs: BridgeState, monkeypatch: pytest.MonkeyPatch, mocker
 ) -> None:
+    mocker.patch.object(state_mod.time, "monotonic", side_effect=[10.0, 11.0])
     # DHCP heal: every known IP aging past the TTL lets the next sender in
     # trust-on-first-use instead of being locked out until restart.
     assert bs.upload_ip_allowed("192.168.1.30")

@@ -1,25 +1,12 @@
-"""Platform-specific helpers — single source of truth for OS branching.
+"""Application portability boundary: device and desktop capabilities.
 
-Imports the right backend at import time and re-exports a flat API.
-Callers do ``from physiclaw.common import platform`` and call
-``platform.local_hostname()`` etc.; they never check ``sys.platform``
-themselves. New helpers go in ``darwin.py`` + ``windows.py`` (matching
-``sys.platform`` literals) and get re-exported here.
+Callers import this API or the focused ``filesystem``, ``locks``, and
+``processes`` modules. Only ``_select`` chooses OS implementations, under
+``backends``; workflow policy stays with the caller. This leaf package
+depends on neither application workflows nor the independent hardware tools.
 """
 
-import sys
-
-if sys.platform == "darwin":
-    from . import darwin as _impl
-elif sys.platform == "win32":
-    from . import windows as _impl
-elif sys.platform.startswith("linux"):
-    from . import linux as _impl
-else:
-    raise RuntimeError(
-        f"PhysiClaw does not support sys.platform={sys.platform!r}. "
-        "Supported: 'darwin', 'win32', 'linux'."
-    )
+from physiclaw.port._select import device as _impl
 
 ensure_camera_permission = _impl.ensure_camera_permission
 local_hostname = _impl.local_hostname

@@ -38,7 +38,7 @@ def _opencv_import_error() -> Check | None:
     try:
         import cv2  # noqa: F401
     except ImportError as e:
-        from physiclaw.common import platform as os_platform
+        from physiclaw import port as os_platform
 
         extra = os_platform.opencv_import_hint(e)
         details = (str(e), extra.strip()) if extra else (str(e),)
@@ -51,13 +51,15 @@ def _list_cameras(max_index: int = 4) -> list[int]:
     # after a couple of consecutive misses.
     import cv2
 
+    from physiclaw import port as os_platform
     from physiclaw.core.hardware.camera import silenced_stderr
 
     found: list[int] = []
     misses = 0
+    backend = os_platform.camera_backend()
     with silenced_stderr():
         for i in range(max_index + 1):
-            cap = cv2.VideoCapture(i)
+            cap = cv2.VideoCapture(i, backend)
             try:
                 if cap.isOpened():
                     found.append(i)
@@ -77,7 +79,7 @@ def _offline_hardware_lines(deep: bool) -> Iterator[Check]:
     Yield the progress line before touching hardware; isolate serial and
     camera failures so one unavailable device does not hide later checks.
     """
-    from physiclaw.common import platform as os_platform
+    from physiclaw import port as os_platform
     from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
 
     yield _fmt_info("Server", "Not running", "Checking connected hardware directly.")
@@ -203,7 +205,7 @@ def _probe_camera_frame(index: int) -> Check:
     catching a blown/blurry rig at doctor time instead of mid-task."""
     import cv2
 
-    from physiclaw.common import platform as os_platform
+    from physiclaw import port as os_platform
     from physiclaw.common.config import CONFIG
     from physiclaw.core.hardware.camera import configure_capture, silenced_stderr
 

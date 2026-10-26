@@ -18,7 +18,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, TextIO, TypeVar, cast
 
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.log_style import PLAYBOOK_ACCENT as PLAYBOOK_ACCENT
 from physiclaw.common.log_style import (
     FailureState,
@@ -41,6 +40,7 @@ from physiclaw.common.logger.structured import (
 
 # common.text has no logging/config dependencies.
 from physiclaw.common.text import read_text, write_text
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger("physiclaw.tools")
 

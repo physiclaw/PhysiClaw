@@ -21,6 +21,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 from physiclaw.agent.engine import skill as skill_mod
 from physiclaw.agent.engine.skill import (
@@ -204,8 +205,8 @@ def test_regression_skill_file_symlink_cannot_escape_root(
     outside = tmp_path / "outside.md"
     outside.write_text("outside contents")
     (folder / "SKILL.md").unlink()
-    (folder / "SKILL.md").symlink_to(outside)
-    (skill_mod.BUILTIN_SKILLS_DIR / "escape.md").symlink_to(outside)
+    symlink_to(folder / "SKILL.md", outside)
+    symlink_to(skill_mod.BUILTIN_SKILLS_DIR / "escape.md", outside)
     discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
 
     found = discover_skills()
@@ -218,10 +219,11 @@ def test_discover_accepts_skill_file_symlink_inside_root(_skill_roots, flat) -> 
     home, _ = _skill_roots
     folder = _write_skill(home, "linked")
     (folder / "SKILL.md").rename(folder / "body.txt")
-    (folder / "SKILL.md").symlink_to(folder / "body.txt")
+    symlink_to(folder / "SKILL.md", folder / "body.txt")
     (skill_mod.BUILTIN_SKILLS_DIR / "body.txt").write_text("built-in body")
-    (skill_mod.BUILTIN_SKILLS_DIR / "linked.md").symlink_to(
-        skill_mod.BUILTIN_SKILLS_DIR / "body.txt"
+    symlink_to(
+        skill_mod.BUILTIN_SKILLS_DIR / "linked.md",
+        skill_mod.BUILTIN_SKILLS_DIR / "body.txt",
     )
     discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
 
@@ -388,8 +390,8 @@ def test_discover_rejects_outside_directory_even_with_inside_skill_file(
     (home / "body.txt").write_text("body")
     outside = tmp_path / "outside"
     outside.mkdir()
-    (outside / "SKILL.md").symlink_to(home / "body.txt")
-    (home / "escape").symlink_to(outside, target_is_directory=True)
+    symlink_to(outside / "SKILL.md", home / "body.txt")
+    symlink_to(home / "escape", outside, target_is_directory=True)
 
     found = discover_user_skills()
 
@@ -404,7 +406,7 @@ def test_discover_inside_directory_symlink_keeps_references_scoped(
         home, "_storage", extra_files={"references/guide.txt": "guide"}
     )
     (target / "SKILL.md").write_text("body without frontmatter")
-    (home / "linked").symlink_to(target, target_is_directory=True)
+    symlink_to(home / "linked", target, target_is_directory=True)
 
     found = discover_user_skills()
     guide = dispatch(found, {"name": "linked", "reference": "guide.txt"})
@@ -515,7 +517,7 @@ def test_discover_rejects_symlink_resolving_outside_root(
     outside = tmp_path / "outside"
     _write_skill(outside, "evil")
     symlink_path = home / "evil-link"
-    symlink_path.symlink_to(outside / "evil")
+    symlink_to(symlink_path, outside / "evil")
 
     out = discover_user_skills()
 

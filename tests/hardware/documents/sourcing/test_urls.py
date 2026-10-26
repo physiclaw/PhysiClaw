@@ -5,13 +5,11 @@ from __future__ import annotations
 import io
 import json
 import os
-import pty
 import random
 import select
 import signal
 import subprocess
 import sys
-import termios
 import time
 from collections import Counter
 from copy import deepcopy
@@ -686,6 +684,17 @@ def test_shared_history_is_locked_across_output_directories(tmp_path):
     assert urls.load_state(path)["round_index"] == 1
 
 
+def test_history_body_io_error_is_not_reported_as_lock_contention(tmp_path):
+    path = tmp_path / "checks.json"
+
+    with pytest.raises(BlockingIOError, match="output pipe blocked"):
+        with urls.history_lock(path):
+            raise BlockingIOError("output pipe blocked")
+
+    with urls.history_lock(path):
+        assert not path.exists()
+
+
 @pytest.mark.parametrize(
     ("keys", "browser_result"),
     [
@@ -703,6 +712,13 @@ def test_shared_history_is_locked_across_output_directories(tmp_path):
 def test_terminal_opens_one_link_per_key_and_restores_input(
     tmp_path, keys, browser_result
 ):
+    if os.name == "nt":
+        pytest.skip(
+            "POSIX terminal restoration; Windows key handling is tested separately"
+        )
+    import pty
+    import termios
+
     state_path = tmp_path / "checks.json"
     master, slave = pty.openpty()
     settings = termios.tcgetattr(slave)

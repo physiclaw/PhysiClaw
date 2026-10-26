@@ -21,10 +21,10 @@ from typing import Awaitable, Callable, Union
 
 import httpx
 
+from physiclaw import port as platform
 from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger, check_hooks, load_hooks
 from physiclaw.agent.runtime.stopping import checkpoint, stop_event
-from physiclaw.common import platform
 from physiclaw.common.config import CONFIG, server_url
 from physiclaw.common.log_style import FailureState
 from physiclaw.common.provider_errors import ProviderConfigurationError

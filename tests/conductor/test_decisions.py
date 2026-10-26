@@ -8,6 +8,7 @@ import json
 
 import pytest
 from conductor_fakes import ScriptedProvider, agent_reply
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.cli.playbooks import playbooks_app
@@ -177,12 +178,12 @@ def test_load_never_replays_files_outside_session_images(tmp_path, reference) ->
     d = _session([])
     images = d / "images"
     if reference == "images-link":
-        images.symlink_to(tmp_path, target_is_directory=True)
+        symlink_to(images, tmp_path, target_is_directory=True)
         ref = "images/private.png"
     else:
         images.mkdir()
         if reference == "symlink":
-            (images / "linked.png").symlink_to(outside)
+            symlink_to(images / "linked.png", outside)
             ref = "images/linked.png"
         elif reference == "absolute":
             ref = str(outside)

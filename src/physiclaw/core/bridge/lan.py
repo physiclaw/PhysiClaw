@@ -3,7 +3,7 @@
 import socket
 import threading
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 
 
 def get_lan_ip() -> str:

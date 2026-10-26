@@ -21,7 +21,7 @@ TEMPLATES_ROOT = Path(__file__).resolve().parent.parent / "playbooks"
 # A template is a folder holding a manifest: the app packs at the top,
 # and the channel's IM folders one level down (`channel/wechat`).
 PACKS = sorted(
-    str(m.parent.relative_to(TEMPLATES_ROOT))
+    m.parent.relative_to(TEMPLATES_ROOT).as_posix()
     for m in (
         *TEMPLATES_ROOT.glob("*/APP.yml"),
         *TEMPLATES_ROOT.glob("channel/*/APP.yml"),

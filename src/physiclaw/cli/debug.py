@@ -35,8 +35,8 @@ import typer
 from physiclaw.agent.hooks.debug import wake_path
 from physiclaw.cli._format import exit_error
 from physiclaw.common.config import DEBUG_ENV_VAR, MACRO_FAILURE_ENV_VAR
-from physiclaw.common.file_lock import FileLockBusy
 from physiclaw.common.logger import write_json_atomic
+from physiclaw.port.locks import FileLockBusy
 
 
 def debug(

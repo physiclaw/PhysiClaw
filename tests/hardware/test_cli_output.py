@@ -219,7 +219,7 @@ def test_subprocess_collector_failure_stops_child_and_fails_run(
 
 @pytest.mark.parametrize(
     "child",
-    ["raise SystemExit(130)", "import os, signal; os.kill(os.getpid(), signal.SIGINT)"],
+    ["raise SystemExit(130)", "import signal; signal.raise_signal(signal.SIGINT)"],
 )
 def test_interrupted_child_produces_cancelled_parent_result(
     tmp_path, monkeypatch, capsys, child

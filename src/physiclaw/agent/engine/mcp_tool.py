@@ -19,8 +19,8 @@ from mcp import ClientSession, MCPError
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import INVALID_REQUEST, ImageContent, TextContent
 
+from physiclaw import port as platform
 from physiclaw.agent.runtime.stopping import checkpoint
-from physiclaw.common import platform
 from physiclaw.common.config import server_url
 
 log = logging.getLogger(__name__)

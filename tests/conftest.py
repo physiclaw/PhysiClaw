@@ -15,12 +15,23 @@ Two non-obvious pieces:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
+
+
+def pytest_make_parametrize_id(config, val, argname):
+    """Keep large payloads out of Windows' bounded per-variable environment."""
+    if isinstance(val, str) and len(val) > 256:
+        digest = hashlib.sha256(
+            val.encode("utf-8", errors="surrogatepass")
+        ).hexdigest()[:12]
+        return f"{argname}-{len(val)}chars-{digest}"
+    return None
 
 
 @pytest.fixture
@@ -103,10 +114,10 @@ def _no_real_uvc(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
     if sys.platform == "darwin":
-        from physiclaw.common.platform import darwin
+        from physiclaw.port.backends import darwin
 
         monkeypatch.setattr(darwin, "_uvc_terminal", False)
-    from physiclaw.common import platform as _platform
+    from physiclaw import port as _platform
 
     monkeypatch.setattr(_platform, "camera_size_cap", lambda: None)
     monkeypatch.setattr(_platform, "camera_reset_controls", lambda: None)

@@ -7,7 +7,7 @@ import sys
 import unicodedata
 from typing import TextIO
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 
 # CSI colors/cursor commands, OSC titles/hyperlinks, and short ESC commands.
 ANSI_RE = re.compile(r"\x1b(?:\][^\x07\x1b]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])")

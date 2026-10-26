@@ -128,6 +128,28 @@ def test_no_frame_after_freeze_reverts_to_autofocus() -> None:
     assert rig.unfreeze_calls == 1
 
 
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_sharpness_does_not_start_a_focus_freeze(score):
+    rig = Rig([score])
+
+    result = lock(rig.meter, rig.freeze, rig.unfreeze)
+
+    assert not result.locked
+    assert not rig.frozen
+    assert rig.unfreeze_calls == 0
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_verification_restores_autofocus(score):
+    rig = Rig([SHARP, SHARP, score])
+
+    result = lock(rig.meter, rig.freeze, rig.unfreeze)
+
+    assert not result.locked
+    assert not rig.frozen
+    assert rig.unfreeze_calls == 1
+
+
 def test_regression_partial_focus_freeze_restores_autofocus() -> None:
     rig = Rig([SHARP, SHARP])
 

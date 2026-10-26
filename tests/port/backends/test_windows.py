@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.common.platform.windows` — Windows-specific helpers.
+"""Tests for `physiclaw.port.backends.windows` — Windows-specific helpers.
 
 These run on every platform: subprocess, socket, and os.startfile are
 mocked, so the windows module's dispatch logic is exercised regardless
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from physiclaw.common.platform import windows
+from physiclaw.port.backends import windows
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])

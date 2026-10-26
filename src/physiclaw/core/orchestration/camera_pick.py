@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from physiclaw.common import platform
+from physiclaw import port as platform
 from physiclaw.common.config import CONFIG
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.hardware.device import DeviceNotFound

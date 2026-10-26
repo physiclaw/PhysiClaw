@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -62,6 +63,10 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
     assert [event["event"] for event in pdf_events] == ["task_started", "task_failed"]
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX FIFO/browser fixture; native tree cleanup covered by test_process",
+)
 def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
     import os
     import select

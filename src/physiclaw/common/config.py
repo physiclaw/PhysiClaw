@@ -28,8 +28,8 @@ from typing import Any, get_type_hints
 
 from physiclaw.common import paths
 from physiclaw.common.config_compat import apply_compatibility
-from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
 from physiclaw.common.text import write_text_atomic
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 
 class ConfigError(ValueError):

@@ -1,7 +1,7 @@
 """Windows implementations of platform-specific helpers.
 
-Imported by ``physiclaw.common.platform`` on win32 only. Callers should
-never import this module directly — go through ``physiclaw.common.platform``.
+Imported by ``physiclaw.port`` on win32 only. Callers should
+never import this module directly — go through ``physiclaw.port``.
 """
 
 import logging
@@ -10,7 +10,8 @@ import os
 import socket
 import subprocess
 import time
-from typing import TextIO
+from pathlib import Path
+from typing import BinaryIO, TextIO
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def open_image_files(paths: list[str]) -> None:
     """Open one or more image files in the user's default viewer."""
     for p in paths:
         try:
-            os.startfile(p)  # type: ignore[attr-defined]
+            getattr(os, "startfile")(p)
         except OSError:
             pass
 
@@ -255,3 +256,71 @@ def opencv_import_hint(_exc: ImportError) -> str | None:
 def hardware_permission_hints() -> list[str]:
     """Windows surfaces device-access prompts itself — no group advice."""
     return []
+
+
+# Native process/filesystem mechanisms. Workflow policy stays with the caller.
+REMOTE_SHUTDOWN_SUPPORTED = False
+
+
+def process_group_options() -> dict:
+    return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP")}
+
+
+def prepare_managed_runtime() -> None:
+    """Load NumPy before a thread reads piped stdin (numpy/numpy#24290)."""
+    import numpy  # noqa: F401
+
+
+def pid_alive(pid: int) -> bool:
+    """Query a process handle; os.kill(pid, 0) can terminate it on Windows."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, pid)
+    if handle:
+        kernel.CloseHandle(handle)
+        return True
+    return getattr(ctypes, "get_last_error")() == 5
+
+
+def request_shutdown(pid: int) -> None:
+    raise NotImplementedError("Remote graceful shutdown is unavailable on Windows")
+
+
+def native_path(path: Path) -> Path:
+    name = str(path)
+    if name.startswith("\\\\?\\"):
+        return path
+    if name.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + name[2:])
+    return Path("\\\\?\\" + name)
+
+
+def replace_file(source: Path, target: Path) -> None:
+    """Retry only transient Windows sharing/access errors, within 200 ms."""
+    for attempt in range(41):
+        try:
+            source.replace(target)
+            return
+        except PermissionError as exc:
+            if getattr(exc, "winerror", None) not in (5, 32, 33) or attempt == 40:
+                raise
+            time.sleep(0.005)
+
+
+def lock_stream(stream: BinaryIO) -> None:
+    import importlib
+
+    msvcrt = importlib.import_module("msvcrt")
+    if stream.tell() == 0:
+        stream.write(b"\0")
+        stream.flush()
+    stream.seek(0)
+    try:
+        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError as exc:
+        raise BlockingIOError(str(exc)) from exc

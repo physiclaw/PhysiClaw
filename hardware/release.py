@@ -24,12 +24,13 @@ from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree
 
 from hardware import buildlog
-from hardware.build_lock import inherited_fds, locked_main
+from hardware.build_lock import locked_main
 from hardware.documents.drawing.extrusion import LANG_FILENAME as DRAWINGS
 from hardware.documents.drawing.extrusion import PDF_FILENAME as DRAWING_PDFS
 from hardware.documents.manual.build import LANG_FILENAME as MANUALS
 from hardware.documents.pdf import find_chrome, render_pdf
 from hardware.documents.sourcing.build import LANG_FILENAME as SOURCING
+from hardware.port import filesystem
 from hardware.scheme import CACHE_DIR, REPO_ROOT
 
 # This location is deliberately independent of the subprocess output override.
@@ -170,7 +171,7 @@ def _read_zip(path: Path) -> dict[str, bytes]:
 def _required_documents(mapping: dict[str, str], directory: str, pdf: bool) -> set[str]:
     names = {f"{directory}/{name}" for name in mapping.values()}
     if pdf:
-        names |= {str(Path(name).with_suffix(".pdf")) for name in names}
+        names |= {Path(name).with_suffix(".pdf").as_posix() for name in names}
     return names
 
 
@@ -224,7 +225,6 @@ def _stage(output: Path, *args: str) -> None:
             [sys.executable, "-m", "hardware", *args, "--log-format", "json"],
             cwd=REPO_ROOT,
             env=env,
-            pass_fds=inherited_fds(),
         )
 
 
@@ -233,7 +233,6 @@ def run_tests() -> None:
         buildlog.run_process(
             [sys.executable, "-m", "pytest", "tests/hardware", "-q"],
             cwd=REPO_ROOT,
-            pass_fds=inherited_fds(),
             timeout=600,
         )
 
@@ -275,7 +274,7 @@ def prepare(version: str) -> Path:
         bundle.mkdir()
         output.mkdir()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        (output / ".cache").symlink_to(CACHE_DIR.resolve(), target_is_directory=True)
+        filesystem.link_directory(CACHE_DIR, output / ".cache")
         try:
             for args in (
                 ("check",),
@@ -335,7 +334,7 @@ def verify(version: str) -> tuple[Path, dict]:
     bundle = RELEASE_DIR / tag_for(version)
     _regular(bundle / MANIFEST)
     try:
-        manifest = json.loads((bundle / MANIFEST).read_text())
+        manifest = json.loads((bundle / MANIFEST).read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
         raise ReleaseError(f"Unreadable release manifest: {exc}") from exc
     if (

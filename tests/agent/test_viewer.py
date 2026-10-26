@@ -15,6 +15,7 @@ import pytest
 from freezegun import freeze_time
 from hypothesis import example, given
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 from physiclaw.agent.trace import viewer
 
@@ -515,7 +516,7 @@ def test_regression_viewer_does_not_read_artifact_links_outside_session(
     session.mkdir()
     outside = tmp_path / "private.txt"
     outside.write_text('{"event":"other","secret":"PRIVATE_MARKER"}\n')
-    (session / filename).symlink_to(outside)
+    symlink_to(session / filename, outside)
 
     model = viewer.load(session)
 
@@ -525,7 +526,7 @@ def test_regression_viewer_does_not_read_artifact_links_outside_session(
 
 def test_viewer_keeps_artifact_links_within_the_selected_session(tmp_path):
     (tmp_path / "actual.txt").write_text("retained narrative")
-    (tmp_path / "notes.md").symlink_to("actual.txt")
+    symlink_to(tmp_path / "notes.md", "actual.txt")
 
     model = viewer.load(tmp_path)
 

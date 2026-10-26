@@ -51,6 +51,7 @@ hardware/
 ├── scheme.py              Shared naming scheme: output dirs, stem convention,
 │                          variant/filename builders + their matching regexes
 ├── check.py               Static cross-artifact consistency check (CI gate)
+├── port/                  OS mechanisms: process trees, locks, links, terminal, browsers
 │
 ├── parts/                 Parametric part definitions
 │   ├── base.py            BasePart: build/export, geometry cache, BOM registry
@@ -106,6 +107,36 @@ The manual owns figure registration and refreshes its figure cache at each build
 
 ## Design
 
+**Each product owns its portability boundary.** The installed application uses
+`src/physiclaw/port/`; repository-only CAD and document tools use `hardware/port/`.
+They do not import one another. The hardware port uses only the standard library,
+so document builders do not need the application or CAD dependencies.
+
+Callers import focused public modules such as `hardware.port.processes` and
+`hardware.port.locks`. `_select.py` chooses the implementation once; native APIs
+and OS flags stay under `port/backends/`. Build policy, logs, timeouts and artifact
+paths belong to the workflows. Add a port operation only for a capability a
+caller needs; there is no platform service registry or generic driver framework.
+
+`with owned_process(argv, ...) as owner:` owns the child, descendants and pipes.
+Normal return and exceptions both clean up the whole tree. POSIX uses a private
+process group; Windows assigns a suspended child to a kill-on-close Job Object
+before resuming it, preventing fast descendants from escaping ownership. Native
+handles remain in the owner rather than being attached to `Popen` instances.
+An output lock stays held through delegated child work; only explicitly selected
+children inherit it, with handle inheritance restored immediately after spawning.
+
+`tests/test_port_architecture.py` enforces independence and public API use.
+Port tests exercise cleanup and lock contention with real subprocesses; CI runs
+the suite and a CAD smoke build on Windows, macOS and Linux. These are software
+checks; real camera behavior is verified separately on the connected rig.
+
+The boundaries follow [Google's design review guidance](https://google.github.io/eng-practices/review/reviewer/looking-for.html):
+judge how the pieces fit, keep complexity proportional to current needs, and test
+failure paths. Context-managed ownership follows the
+[Google Python style guide](https://google.github.io/styleguide/pyguide.html).
+The two `port` directory names are a project choice, not a Google naming rule.
+
 **Parts register themselves.** Every `BasePart.build()` does two things beyond
 returning geometry: it pushes one row (`bom_key`, `qty`, `category`) into a
 process-wide BOM registry, and — for leaf parts — it caches the built solid by
@@ -149,6 +180,22 @@ motor → linear → belt → tapz → phone → board → camera → wire`.
   geometry (parts, assemblies, BOM). The manual and sourcing builders are
   standard-library only and need no group.
 - **A Chromium-family browser** is required when `--pdf` is requested and for release preparation. HTML-only builds do not need it.
+
+The CAD pipeline supports Windows, macOS, and Linux. The `make` targets require
+GNU Make on `PATH`; the Python entry point works directly in PowerShell without
+Make or a POSIX shell:
+
+```powershell
+uv sync --locked --group dev --group cad
+uv run --locked --group cad python -m hardware build --bom
+# With GNU Make installed:
+make hw-build ARGS="--bom"
+```
+
+Windows uses inherited OS handles for build locks and job objects for worker
+cleanup. Release preparation shares the CAD cache through a directory junction,
+which needs no administrator or Developer Mode privilege. PDF builds discover
+Chrome or Edge in standard Windows installation directories.
 
 Run all commands **from the repo root**.
 
@@ -497,8 +544,11 @@ make hw-check
 uv run --locked --group cad pytest tests/hardware
 ```
 
-CI installs the CAD group on Linux and macOS, runs these tests as part of the
-suite, and builds a real fastener STEP/SVG/BOM as a smoke test. Release preparation
+CI installs the CAD group on Windows, Linux and macOS, runs the fast tests,
+and builds a real fastener STEP/SVG/BOM on each OS. POSIX terminal tests run
+on Linux/macOS; native Windows key handling and process-tree cleanup have
+separate coverage. Tests creating real symlinks report a capability skip when
+Windows Developer Mode or symlink privilege is unavailable. Release preparation
 uses the same validated CAD cache as normal builds; documents and packaging are fresh.
 The gates catch build and packaging mistakes; they do not prove physical fit
 or replace engineering review of changed geometry. Repository administrators

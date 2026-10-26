@@ -25,13 +25,13 @@ from pathlib import Path
 
 from physiclaw.common import paths
 from physiclaw.common.bbox import Bbox
-from physiclaw.common.file_lock import exclusive_file_lock
 from physiclaw.common.listing import Element, format_elements
 from physiclaw.common.logger import write_json_atomic
 from physiclaw.common.text import read_text
 from physiclaw.conductor.spec.conventions import CHANNEL_APP, THREAD_PAGE
 from physiclaw.conductor.spec.pages import PagePrint
 from physiclaw.conductor.spec.reply import INCOMING_LEFT, incoming_box
+from physiclaw.port.locks import exclusive_file_lock
 
 log = logging.getLogger(__name__)
 

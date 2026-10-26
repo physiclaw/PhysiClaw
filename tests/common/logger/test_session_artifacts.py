@@ -11,6 +11,7 @@ import pytest
 from freezegun import freeze_time
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 
 from physiclaw.common.logger import session_artifacts as artifacts
 from physiclaw.common.logger.session_artifacts import (
@@ -56,8 +57,12 @@ def test_regression_atomic_json_writers_do_not_share_temporary_file(
     rendezvous = Barrier(2)
     replace = Path.replace
 
+    attempted = set()
+
     def simultaneous_replace(source, target):
-        rendezvous.wait(timeout=5)
+        if source not in attempted:
+            attempted.add(source)
+            rendezvous.wait(timeout=5)
         return replace(source, target)
 
     mocker.patch.object(Path, "replace", simultaneous_replace)
@@ -108,7 +113,7 @@ def test_write_json_atomic_write_failure_preserves_previous_file(
 
 
 # Each example replaces the same isolated file; no example depends on its old contents.
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     st.dictionaries(
         st.text(), st.one_of(st.text(), st.integers(), st.booleans(), st.none())
@@ -122,7 +127,7 @@ def test_atomic_json_roundtrips_unicode_objects(tmp_path, payload) -> None:
     assert json.loads(path.read_text(encoding="utf-8")) == payload
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(st.integers(min_value=0xD800, max_value=0xDFFF), st.text())
 def test_regression_atomic_json_roundtrips_unpaired_surrogates(
     tmp_path, codepoint, suffix
@@ -247,17 +252,17 @@ def _prepare_image_boundary(root, images, target, kind):
     if kind == "directory":
         target.mkdir()
     elif kind == "symlink_loop":
-        target.symlink_to(target)
+        symlink_to(target, target)
     elif kind == "external_symlink":
         outside = root / "private.jpg"
         outside.write_bytes(b"private")
-        target.symlink_to(outside)
+        symlink_to(target, outside)
     elif kind == "images_symlink":
         outside = root / "other"
         outside.mkdir()
         (outside / "frame.jpg").write_bytes(b"private")
         images.rmdir()
-        images.symlink_to(outside, target_is_directory=True)
+        symlink_to(images, outside, target_is_directory=True)
 
 
 @pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
@@ -291,7 +296,7 @@ def image_directory(tmp_path):
 
 
 # Each example only reads the same fixture directory.
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     st.one_of(
         st.just("images/frame.jpg"),

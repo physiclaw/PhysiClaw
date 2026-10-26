@@ -8,6 +8,7 @@ import importlib
 
 import pytest
 import typer
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.common import paths
@@ -119,7 +120,7 @@ def test_regression_reset_root_symlink_reports_refusal_without_touching_target(
     outside = tmp_path / "outside"
     state = _seed(outside)
     directory = paths.calibration_dir()
-    directory.symlink_to(outside, target_is_directory=True)
+    symlink_to(directory, outside, target_is_directory=True)
 
     result = runner.invoke(app, ["--yes"])
 

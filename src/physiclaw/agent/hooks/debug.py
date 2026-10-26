@@ -19,6 +19,7 @@ from physiclaw.agent.runtime.hook import Trigger, register
 from physiclaw.common import paths
 from physiclaw.common.config import DEBUG_ENV_VAR
 from physiclaw.common.text import read_text
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger(__name__)
 
@@ -36,8 +37,12 @@ def debug_wake() -> Trigger | None:
         return None
     claimed = p.with_name(f".{p.name}.{uuid4().hex}.claimed")
     try:
-        p.replace(claimed)
-    except FileNotFoundError:
+        # Concurrent MoveFileEx calls on Windows can open the same source
+        # before either rename finishes. Serialize claims so exactly one
+        # consumer owns the file; release before reading to admit new wakes.
+        with exclusive_file_lock(p.with_suffix(".claim.lock")):
+            p.replace(claimed)
+    except (FileNotFoundError, FileLockBusy):
         return None  # another consumer or CLI clear already took this wake
     description = "debug wake"
     try:

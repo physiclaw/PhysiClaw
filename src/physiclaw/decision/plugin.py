@@ -275,10 +275,11 @@ class DecisionPlugin:
             "usage": {"input_tokens": None, "output_tokens": None},
         }
         proposal = None
+        timeout = asyncio.timeout_at(valid_until)
         try:
             # Once the view expires, no answer can produce a current proposal.
             # Bound structural providers and our base by that same deadline.
-            async with asyncio.timeout_at(valid_until):
+            async with timeout:
                 result = await self._provider.evaluate(request, deadline=valid_until)
             event.update(
                 response_model=result.model_id,
@@ -309,7 +310,7 @@ class DecisionPlugin:
             task = asyncio.current_task()
             if self._closed or (task is not None and task.cancelling()):
                 raise asyncio.CancelledError
-            if clock() >= deadline:
+            if clock() >= deadline or (timeout.expired() and deadline <= expires_at):
                 raise TimeoutError
             if (
                 result.provider_id != provider_id
@@ -319,7 +320,7 @@ class DecisionPlugin:
             assessment = assess(request, result, thresholds=_THRESHOLDS)
             action = assessment.action
             issue = _view_issue(observation)
-            if issue is None and clock() >= expires_at:
+            if issue is None and (clock() >= expires_at or timeout.expired()):
                 issue = "stale_view"
             event.update(status="answered", **assessment.to_dict(), view_issue=issue)
             if self._mode == "active" and action is not None and issue is None:
@@ -335,8 +336,10 @@ class DecisionPlugin:
             if isinstance(exc, (ProviderPermanentError, ProviderConfigurationError)):
                 self._factory = None
                 event["suppression"] = "session"
-            elif clock() >= expires_at and expires_at < deadline:
+            elif expires_at < deadline and (clock() >= expires_at or timeout.expired()):
                 # The request's evidence expired; fresh views may still work.
+                # Event-loop timers may fire up to one clock-resolution early.
+                # The timeout scope is authoritative even before clock() crosses.
                 event.update(reason="stale_view", suppression="request")
             elif isinstance(exc, ProviderRequestError):
                 event["suppression"] = "request"

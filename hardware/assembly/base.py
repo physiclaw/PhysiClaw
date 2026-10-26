@@ -222,7 +222,10 @@ class BaseAssembly(BasePart):
                 tmp = path.with_suffix(".tmp")
                 exporter.write(str(tmp))
                 tmp.write_text(
-                    inject_non_scaling_strokes(strip_root_dims(tmp.read_text()))
+                    inject_non_scaling_strokes(
+                        strip_root_dims(tmp.read_text(encoding="utf-8"))
+                    ),
+                    encoding="utf-8",
                 )
                 tmp.replace(path)
         render_checkpoint.clear(checkpoint)

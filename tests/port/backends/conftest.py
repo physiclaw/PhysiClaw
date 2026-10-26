@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from physiclaw.common.platform import uvc
+from physiclaw.port.backends import uvc
 
 
 class UsbBus:

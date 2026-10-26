@@ -18,6 +18,7 @@ freeze, and unfreeze callables keep this logic testable without hardware.
 """
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -68,6 +69,8 @@ def lock(
         cur = meter()
         if cur is None:
             return LockResult(False, "no frame — no focus lock attempted")
+        if not math.isfinite(cur):
+            return LockResult(False, "invalid sharpness — no focus lock attempted")
         if prev is not None and prev >= BLUR_THRESHOLD and cur >= BLUR_THRESHOLD:
             break
         prev = cur
@@ -84,7 +87,7 @@ def lock(
                 False, "driver refused the focus lock — autofocus requested"
             )
         after = meter()
-        if after is None or after < BLUR_THRESHOLD:
+        if after is None or not math.isfinite(after) or after < BLUR_THRESHOLD:
             got = "no frame" if after is None else f"sharpness {after:.0f}"
             return LockResult(False, f"frozen frame soft ({got}) — autofocus requested")
         locked = True

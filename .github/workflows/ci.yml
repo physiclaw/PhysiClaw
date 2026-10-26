@@ -1,7 +1,6 @@
 # Lint + fast hermetic tests with branch coverage on Linux and macOS.
 # Slow managed first-image/EOF and bridge shutdown regressions run on all three OSes.
-# Windows also runs runtime, camera/focus, bridge shutdown and observation
-# regressions. Installation and real hardware need manual validation.
+# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke. Installation and real hardware need manual validation.
 name: CI
 
 on:
@@ -55,11 +54,11 @@ jobs:
       # everywhere (hardware/ is style-star-import CAD code, format-only).
       - name: Lint
         run: |
-          uv run ruff check src/ tests/ firmware/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+          uv run ruff check src/ tests/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
           uv run ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
       # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
-      # pyproject (src/physiclaw only; tests and hardware/ aren't gated yet).
+      # pyproject (application and hardware/port; CAD workflows are not gated yet).
       - name: Type check
         run: uv run mypy
 
@@ -88,7 +87,9 @@ jobs:
 
   windows-runtime:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v5
 
@@ -99,7 +100,30 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --locked --group dev
+        run: uv sync --locked --group dev --group cad
+
+      - name: Install GNU Make
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make --yes --no-progress
+          }
+
+      - name: Type check Windows
+        run: uv run --locked mypy --platform win32
+
+      - name: Hardware consistency check
+        env:
+          PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
+        run: uv run --locked python -m hardware check
+
+      - name: Hardware CAD smoke build
+        env:
+          PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
+        run: make hw-build ARGS="--stems fastener_10_BHCS --bom"
+
+      - name: Full fast suite on Windows
+        run: uv run --locked --group cad pytest
 
       - name: Doctor and terminal output regressions
         # macOS/Linux run these in the full suite; also exercise native Windows.
@@ -116,12 +140,12 @@ jobs:
         run: >-
           uv run --locked pytest -m "not integration"
           tests/agent/runtime
-          tests/common/platform/test_windows.py
-          tests/common/platform/test_platform_init.py
+          tests/port/backends/test_windows.py
+          tests/port/test_port.py
 
       - name: Camera focus and bridge shutdown regressions
         # Keep slow TCP-reset, request-drain and lifespan tests enabled.
-        # Camera tests fake hardware; only Linux-control variants skip on Windows.
+        # Camera tests fake hardware and exercise Linux/Windows controls on every OS.
         run: >-
           uv run --locked pytest -m "not integration"
           tests/cli/test_server.py

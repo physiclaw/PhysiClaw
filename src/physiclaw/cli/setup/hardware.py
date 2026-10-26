@@ -16,9 +16,10 @@ from urllib.parse import urlsplit
 
 import typer
 
+from physiclaw import port as platform
 from physiclaw.cli import _http
 from physiclaw.cli._format import step_fail, step_ok, step_warn
-from physiclaw.common import config, paths, platform
+from physiclaw.common import config, paths
 from physiclaw.common.ready import STATUS_PATH, ready_from_status
 
 BASE = config.server_url().rstrip("/")
@@ -64,7 +65,7 @@ def _camera_aim_adjust(prompt: str) -> None:
     """Release the server's camera, open the OS camera-preview app for
     aim, wait for the user, then quit the aim app so the next
     ``/api/connect-camera`` can reacquire. Platform-specific app
-    choices live in ``physiclaw.common.platform``.
+    choices live in ``physiclaw.port``.
 
     Used by the camera-calibration step to re-aim before reading the
     frame. The leading disconnect releases the camera the server has

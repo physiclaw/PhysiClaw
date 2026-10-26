@@ -819,6 +819,32 @@ async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
     assert "proposal_call_id" not in record
 
 
+async def test_early_view_expiry_timer_does_not_impose_provider_cooldown(
+    shadow, turn, metadata, monkeypatch
+):
+    monkeypatch.setattr("physiclaw.decision.plugin._MAX_VIEW_AGE_SECONDS", 1.0)
+    turn = replace(
+        turn, observation=replace(turn.observation, observed_after=time.time())
+    )
+    monkeypatch.setattr(
+        "physiclaw.decision.plugin.asyncio.timeout_at",
+        lambda deadline: asyncio.Timeout(asyncio.get_running_loop().time() - 1),
+    )
+
+    async def evaluate(request, **kwargs):
+        await asyncio.Event().wait()
+
+    shadow.provider.evaluate.side_effect = evaluate
+
+    await shadow.plugin.advance(turn, metadata=metadata)
+    await shadow.plugin._task
+
+    record = calls(shadow)[0]
+    assert record["reason"] == "stale_view"
+    assert record["suppression"] == "request"
+    assert shadow.plugin._retry_after == 0.0
+
+
 def after_action(turn, proposal, *, outcome="changed", index=1):
     observation = turn.observation
     if outcome != "same_image":

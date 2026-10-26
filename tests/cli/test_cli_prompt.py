@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.agent.engine import assemble as assemble_mod
@@ -331,7 +332,7 @@ def test_system_preserves_stdout_and_normalizes_saved_unicode(tmp_path, mocker, 
 def test_prompt_save_follows_destination_symlink(tmp_path, mocker, existing):
     target = _seed_symlink_target(tmp_path / "target.txt", existing)
     link = tmp_path / "link.txt"
-    link.symlink_to(target.name)
+    symlink_to(link, target.name)
     expected_files = set(tmp_path.iterdir()) | {target}
     mocker.patch.object(
         assemble_mod,
@@ -355,7 +356,7 @@ def _seed_symlink_target(path: Path, existing: bool) -> Path:
 
 def test_prompt_save_symlink_loop_reports_error(tmp_path):
     link = tmp_path / "loop"
-    link.symlink_to(link.name)
+    symlink_to(link, link.name)
 
     result = runner.invoke(prompt_app, ["system", "--save-as", str(link)])
 
@@ -441,6 +442,8 @@ def test_prompt_interrupted_write_preserves_previous_dump(tmp_path, mocker):
 
 def test_prompt_supports_long_valid_destination_filename(tmp_path):
     dest = tmp_path / ("p" * 240 + ".txt")
+    if __import__("os").name == "nt":
+        dest = Path("\\\\?\\" + str(dest))
 
     result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
 

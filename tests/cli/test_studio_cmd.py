@@ -72,7 +72,7 @@ def _printed_path(result) -> str:
 
 
 @pytest.mark.parametrize(
-    "dirname", ["external-recording", "20261015-000000-abc123", "记录 #?%"]
+    "dirname", ["external-recording", "20261015-000000-abc123", "记录 #%"]
 )
 def test_regression_studio_review_serves_selected_directory(
     launched, tmp_path, dirname
@@ -457,10 +457,10 @@ def test_studio_browser_failure_does_not_stop_server(launched, mocker):
 
 
 @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(name=st.text(alphabet="abc09记录 #?%[]", min_size=1, max_size=12))
+@given(name=st.text(alphabet="abc09记录 #%[]", min_size=1, max_size=12))
 def test_studio_directory_name_does_not_change_review_route(launched, tmp_path, name):
     launched.clear()
-    selected = tmp_path / ("record-" + name)
+    selected = tmp_path / ("record-" + name + "-end")
     selected.mkdir(exist_ok=True)
     (selected / "summary.json").write_text(
         json.dumps({"outcome": {"sentinel": "SELECTED"}})

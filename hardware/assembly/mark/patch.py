@@ -89,7 +89,7 @@ def load_patch(source_svg: Path) -> list[dict]:
     if not path.exists():
         return []
     try:
-        loaded = json.loads(path.read_text() or "[]")
+        loaded = json.loads(path.read_text(encoding="utf-8") or "[]")
     except json.JSONDecodeError as exc:
         raise ValueError(f"existing patch file isn't valid JSON: {exc}") from exc
     if not isinstance(loaded, list):
@@ -102,7 +102,7 @@ def write_patch(source_svg: Path, entries: list[dict]) -> Path:
     validation — this just persists what it's handed."""
     path = patch_path(source_svg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(entries, indent=2))
+    path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
     return path
 
 

@@ -1,11 +1,12 @@
 """Process locks with optional bounded waiting and handle-scoped lifetime."""
 
-import importlib
 import math
 import time
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
+
+from physiclaw.port._select import native as _native
 
 
 class FileLockBusy(RuntimeError):
@@ -43,20 +44,7 @@ def _try_lock(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as lock:
         try:
-            import fcntl
-        except ImportError:  # Windows
-            msvcrt = importlib.import_module("msvcrt")
-            if lock.tell() == 0:
-                lock.write(b"\0")
-                lock.flush()
-            lock.seek(0)
-            try:
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as e:
-                raise FileLockBusy(f"lock is held: {path}") from e
-        else:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as e:
-                raise FileLockBusy(f"lock is held: {path}") from e
+            _native.lock_stream(lock)
+        except BlockingIOError as exc:
+            raise FileLockBusy(f"lock is held: {path}") from exc
         yield

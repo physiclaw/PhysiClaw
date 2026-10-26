@@ -47,7 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from functools import cache
 from pathlib import Path
-from threading import Event, Thread
+from threading import Thread
 
 from hardware import buildlog
 from hardware.assembly import cache as stepcache
@@ -65,8 +65,13 @@ from hardware.assembly.dispatch import (
 )
 from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
-from hardware.build_lock import inherited_fds, locked_main
-from hardware.process import cancel_on_interrupt, interrupt_process
+from hardware.build_lock import locked_main
+from hardware.port.processes import (
+    CancellationEvent,
+    cancel_on_interrupt,
+    is_interrupted,
+    owned_process,
+)
 from hardware.scheme import (
     BOM_DIR,
     OUTPUT_DIR,
@@ -85,7 +90,7 @@ from hardware.scheme import (
 CRASH_LOG = OUTPUT_DIR / "crash.log"
 WORKER_TIMEOUT = 900
 WORKER_HEARTBEAT = 30
-_CANCELLED = Event()
+_CANCELLED = CancellationEvent()
 
 
 def _check_cancelled() -> None:
@@ -293,7 +298,7 @@ def _run_subprocess(
     only_missing: bool = False,
 ) -> int:
     _check_cancelled()
-    with subprocess.Popen(
+    with owned_process(
         [
             sys.executable,
             "-u",
@@ -305,7 +310,6 @@ def _run_subprocess(
             *bom_flags,
             *(("--only-missing",) if only_missing else ()),
         ],
-        pass_fds=inherited_fds(),
         env={**os.environ, "PYTHONFAULTHANDLER": "1"},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -313,8 +317,8 @@ def _run_subprocess(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        start_new_session=True,
-    ) as process:
+    ) as owner:
+        process = owner.process
         reader_errors = []
 
         def collect():
@@ -366,7 +370,7 @@ def _run_subprocess(
             _CANCELLED.set()
             rc = 130
         finally:
-            interrupt_process(process, group=True)
+            owner.stop(cooperative_cancel=True)
             if reader.ident is not None:
                 reader.join()
             exit_code = rc if rc is not None else process.returncode
@@ -382,7 +386,7 @@ def _run_subprocess(
             )
             if reader_errors:
                 raise reader_errors[0]
-        if rc in (130, -signal.SIGINT):
+        if is_interrupted(rc):
             _CANCELLED.set()
         _check_cancelled()
         return rc
@@ -600,7 +604,7 @@ def _dispatch(
             family=family_of(misses[0]),
         )
         rc = _run_subprocess(misses, bom_flags)
-        if rc in (130, -signal.SIGINT):
+        if is_interrupted(rc):
             _CANCELLED.set()
         _check_cancelled()
         if rc != 0:

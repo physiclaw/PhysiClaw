@@ -14,7 +14,7 @@ from unittest.mock import Mock
 import pytest
 
 from physiclaw.common import log_style, terminal
-from physiclaw.common.platform import windows
+from physiclaw.port.backends import windows
 from tests.terminal_fakes import Console
 
 ROOT = Path(__file__).resolve().parents[3]

@@ -289,7 +289,7 @@ def test_windows_focus_pin_preserves_and_replays_the_current_position(
     calibration pixel checks. A driver may reject DirectShow's flags=0
     absolute write even after accepting the explicit manual-mode toggle.
     """
-    from physiclaw.common.platform import windows
+    from physiclaw.port.backends import windows
 
     backend = windows.camera_backend()
 

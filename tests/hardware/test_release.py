@@ -10,6 +10,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 
 import pytest
+from symlink_helpers import symlink_to
 
 from hardware import buildlog, scheme
 from hardware import release as rel
@@ -66,7 +67,7 @@ def preparation(tmp_path, monkeypatch):
     def stage(output, *args):
         calls.append((output, args))
         if args[0] == "build":
-            assert (output / ".cache").is_symlink()
+            assert (output / ".cache").samefile(rel.CACHE_DIR)
             assert (output / ".cache").resolve() == rel.CACHE_DIR
             assert not (output / "step").exists()
             (output / ".cache" / "marker").write_text("retained")
@@ -184,7 +185,7 @@ def test_bundle_damage_blocks_verification(bundle, damage):
         (bundle / "unexpected.zip").write_bytes(b"extra")
     elif damage == "symlink":
         asset.unlink()
-        asset.symlink_to(bundle / rel.FRAME_ZIP)
+        symlink_to(asset, bundle / rel.FRAME_ZIP)
     else:
         (bundle / rel.MANIFEST).write_text("[]")
     with pytest.raises(rel.ReleaseError):

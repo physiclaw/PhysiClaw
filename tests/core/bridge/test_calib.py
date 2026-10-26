@@ -95,7 +95,8 @@ def test_set_phase_invalid_raises_value_error() -> None:
         cs.set_phase("bogus")
 
 
-def test_set_phase_stamps_entry_time_only_on_change() -> None:
+def test_set_phase_stamps_entry_time_only_on_change(mocker) -> None:
+    mocker.patch("time.monotonic", side_effect=[10.0, 11.0])
     # Re-setting the current phase must keep the original entry time —
     # measure_viewport_shift re-sets screenshot_cal after the wizard already
     # switched to it, and the pending-upload cutoff relies on the earlier

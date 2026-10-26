@@ -2,6 +2,7 @@
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
+PYTHON ?= $(PY) python
 
 # Hardware CAD pipeline (see hardware/README.md). Geometry stages need the
 # `cad` group; the manual / sourcing / drawing builders are standard-library only.
@@ -14,7 +15,7 @@ export HW_VERSION
 
 # Guard for hw-* targets that need a positional: fail with a usage hint when
 # ARGS is empty. $(1) describes the expected value.
-need-args = @if [ -z "$(ARGS)" ]; then echo 'usage: make $@ ARGS=$(1)'; exit 2; fi
+need-args = $(if $(strip $(ARGS)),,$(error usage: make $@ ARGS=$(1)))
 
 # Release options are passed as data, including to the sequential sub-makes.
 export VERSION VERBOSE RELEASE_FLOW
@@ -31,7 +32,7 @@ help:
 	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
 	@echo "  lint                  — ruff check + format check"
 	@echo "  fmt                   — ruff format (src, tests, hardware, firmware, scripts)"
-	@echo "  typecheck             — mypy on src/physiclaw (scope in [tool.mypy])"
+	@echo "  typecheck             — mypy on application and hardware port (scope in [tool.mypy])"
 	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
 	@echo "  bump [VERSION=X.Y.Z]  — bump version. Defaults to incrementing the last"
 	@echo "                          component split by '.' (0.0.7 → 0.0.8). Override with"
@@ -70,13 +71,13 @@ mutate:
 	$(PY) mutmut run --paths-to-mutate $(MOD)
 
 lint:
-	$(PY) ruff check src/ tests/ firmware/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+	$(PY) ruff check src/ tests/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
 	$(PY) ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
 fmt:
 	$(PY) ruff format src/ tests/ hardware/ firmware/ scripts/
 
-# Scope (src/physiclaw) and settings live in [tool.mypy] in pyproject.toml.
+# Scope and settings live in [tool.mypy] in pyproject.toml.
 typecheck:
 	$(PY) mypy
 
@@ -300,9 +301,4 @@ _hw-package: hw-publish
 # The Cloudflare Pages deploy hook URL is a secret (anyone holding it can
 # trigger a deploy), so it lives in the gitignored .docs-deploy-hook, one line.
 docs-deploy:
-	@[ -s .docs-deploy-hook ] || { echo "✗ .docs-deploy-hook missing — put the Cloudflare Pages deploy hook URL in it"; exit 1; }
-	@status=$$(curl -sS --connect-timeout 10 --max-time 90 -o /dev/null -w '%{http_code}' -X POST "$$(cat .docs-deploy-hook)") || exit 1; \
-	case "$$status" in \
-	  2??) printf '\033[32m✓\033[0m docs-site deploy triggered.\n' ;; \
-	  *) printf 'Docs deploy hook failed: HTTP %s\n' "$$status" >&2; exit 1 ;; \
-	esac
+	@$(PYTHON) "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/docs_deploy.py"

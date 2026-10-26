@@ -36,11 +36,15 @@ subcommands are a convenience wrapper, not a replacement.
 import argparse
 import subprocess
 import sys
-from threading import Event
 
 from hardware import buildlog
-from hardware.build_lock import inherited_fds, locked_main
-from hardware.process import cancel_on_interrupt, interrupt_process
+from hardware.build_lock import locked_main
+from hardware.port.processes import (
+    CancellationEvent,
+    cancel_on_interrupt,
+    is_interrupted,
+    owned_process,
+)
 
 # Subcommand → argv it delegates to (after ``sys.executable``), every one a
 # ``-m`` module run.
@@ -88,19 +92,20 @@ def _parts(argv: list[str]) -> int:
     return 0
 
 
-def _delegate(prefix: list[str], argv: list[str]) -> int:
+def _delegate(
+    prefix: list[str], argv: list[str], *, cooperative_cancel: bool = False
+) -> int:
     """Run a sibling entry point in its own process, forwarding ``argv``.
     A subprocess (rather than an in-process import) keeps each script's
     behaviour, sys.path, and exit code identical to its standalone form."""
     if prefix[:1] == ["-m"]:
         prefix = ["-m", "hardware._run", *prefix[1:]]
-    cancelled = Event()
+    cancelled = CancellationEvent()
     with (
         cancel_on_interrupt(cancelled),
-        subprocess.Popen(
-            [sys.executable, *prefix, *argv], pass_fds=inherited_fds()
-        ) as child,
+        owned_process([sys.executable, *prefix, *argv]) as owner,
     ):
+        child = owner.process
         # Record signals without raising inside Popen.wait: an interrupt during
         # lock acquisition can otherwise leave its waitpid lock held forever.
         while not cancelled.is_set():
@@ -108,11 +113,13 @@ def _delegate(prefix: list[str], argv: list[str]) -> int:
                 returncode = child.wait(timeout=0.1)
                 if cancelled.is_set():
                     break
+                if is_interrupted(returncode):
+                    return 130
                 return 128 - returncode if returncode < 0 else returncode
             except subprocess.TimeoutExpired:
                 pass
         # Allow the child to finish its worker cleanup and saved summary.
-        interrupt_process(child, timeout=10)
+        owner.stop(timeout=10, cooperative_cancel=cooperative_cancel)
         return 130
 
 
@@ -144,9 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         return _delegate(
             ["-m", "hardware.assembly.build_procedures", "--bom", "--stems", stem],
             step_args,
+            cooperative_cancel=True,
         )
     if cmd in _DELEGATED:
-        return _delegate(_DELEGATED[cmd], rest)
+        # The CAD dispatcher polls CancellationEvent. Other stages need an
+        # actual interrupt even though they inherit its cancellation marker.
+        return _delegate(_DELEGATED[cmd], rest, cooperative_cancel=cmd == "build")
 
     print(f"python -m hardware: unknown command {cmd!r}\n", file=sys.stderr)
     print(__doc__, file=sys.stderr)

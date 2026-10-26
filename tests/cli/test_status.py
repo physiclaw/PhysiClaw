@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.cli import app
@@ -337,7 +338,7 @@ def test_status_accepts_symlink_to_regular_file(resource, tmp_path, capsys):
     target.write_bytes(b"data")
     path = getattr(status_mod.paths, resource)()
     path.parent.mkdir(parents=True)
-    path.symlink_to(target)
+    symlink_to(path, target)
 
     status()
 
@@ -350,7 +351,7 @@ def test_status_accepts_symlink_to_regular_file(resource, tmp_path, capsys):
 def test_status_dangling_symlink_is_missing(resource, tmp_path, capsys):
     path = getattr(status_mod.paths, resource)()
     path.parent.mkdir(parents=True)
-    path.symlink_to(tmp_path / "missing")
+    symlink_to(path, tmp_path / "missing")
 
     status()
 
