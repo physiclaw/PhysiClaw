@@ -237,7 +237,7 @@ def test_regression_config_write_failure_has_diagnostic_and_no_success(
     discovered.save("openai", [{"id": "test-model"}])
     config.write_default()
     before = config.config_path().read_bytes()
-    mocker.patch("physiclaw.common.config.write_text", side_effect=error)
+    mocker.patch("physiclaw.common.config.write_text_atomic", side_effect=error)
 
     result = runner.invoke(models_app, arguments)
 

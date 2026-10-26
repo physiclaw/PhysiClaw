@@ -127,11 +127,11 @@ def _unset(
 
 @config_app.command("edit")
 def _edit() -> None:
-    """Open the config file in ``$EDITOR`` (creates it from the template if
+    """Open the config file in ``$EDITOR`` (creates an empty overrides file if
     missing). Editor commands may include arguments such as ``code --wait``."""
     try:
         path = _config.write_default()
-    except OSError as e:
+    except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
     if not editor:

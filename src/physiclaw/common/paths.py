@@ -7,6 +7,10 @@ at import, so set it *before* the first ``import physiclaw`` in tests).
 Layout::
 
     ~/.physiclaw/
+    ├── config.toml                    (explicit user overrides only)
+    ├── backups/
+    │   ├── config.toml.lock            (serializes config writers)
+    │   └── config.toml.<timestamp>.<id>.bak  (five recent private backups)
     ├── calibration/{bundle.json, cache/}
     ├── memory/{memory.md, USER.md, YYYY-MM-DD.md}
     ├── jobs/jobs.md

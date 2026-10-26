@@ -69,3 +69,25 @@ def test_no_subcommand_runs_server(mocker) -> None:
 
     assert result.exit_code == 0
     mock_server.assert_called_once_with()
+
+
+@pytest.mark.parametrize("args", [[], ["server"], ["now"], ["auto"], ["mcp"]])
+def test_invalid_config_blocks_startup_instead_of_using_defaults(
+    physiclaw_home, mocker, args
+):
+    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    server = mocker.patch("physiclaw.cli.server")
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "portt" in result.stderr
+    assert "config edit" in result.stderr
+    server.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "args", [["--help"], ["--version"], ["config", "path"], ["update"]]
+)
+def test_invalid_config_keeps_recovery_commands_available(physiclaw_home, args):
+    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    assert runner.invoke(app, args).exit_code == 0

@@ -181,8 +181,9 @@ def test_load_raises_friendly_ConfigError_when_file_isnt_utf8(
     msg = str(exc_info.value)
     assert "not valid UTF-8" in msg
     assert "0xa1" in msg  # the offending byte the user actually saw
-    assert "delete the file" in msg  # recovery hint
-    assert str(p) in msg  # path so the user knows where to delete
+    assert "backup" in msg
+    assert "save as UTF-8" in msg
+    assert str(p) in msg  # path identifies the file to repair
 
 
 def test_load_parses_valid_toml(tmp_path: Path) -> None:
@@ -616,14 +617,15 @@ def test_to_toml_raises_on_unsupported_value_type() -> None:
 # ---------- write_default ----------
 
 
-def test_write_default_creates_file_with_commented_template(tmp_path: Path) -> None:
+def test_write_default_creates_empty_overrides_file(tmp_path: Path) -> None:
     p = tmp_path / "nested" / "config.toml"
 
     config.write_default(p)
 
     text = p.read_text()
     assert text.startswith("# PhysiClaw config.")
-    assert "[server]" in text
+    assert tomllib.loads(text) == {}
+    assert "physiclaw config show" in text
 
 
 def test_write_default_creates_intermediate_parent_directories(
@@ -1222,9 +1224,10 @@ def test_load_coerces_toml_int_for_float_field(tmp_path: Path) -> None:
     assert isinstance(cfg.engine.retry_backoff_seconds, float)
 
 
-def test_load_rejects_removed_claude_section(tmp_path):
+def test_load_accepts_removed_claude_section(tmp_path, caplog):
     path = tmp_path / "config.toml"
     path.write_text("[claude]\nmax_attempts = 3\n", encoding="utf-8")
 
-    with pytest.raises(config.ConfigError, match="unknown section.*claude"):
-        config.load(path)
+    assert config.load(path) == config.Config()
+    assert "claude" not in path.read_text()
+    assert not caplog.text

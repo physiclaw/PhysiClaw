@@ -64,6 +64,23 @@ def test_resolve_raises_runtime_error_for_slashless_ref(
 # ---------- launch() ----------
 
 
+def test_launch_rejects_invalid_config_before_resolving_model(
+    physiclaw_home, monkeypatch, mocker, capsys
+):
+    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    monkeypatch.setattr("sys.argv", ["runtime"])
+    resolve_model = mocker.patch.object(launcher, "resolve")
+    runtime = mocker.patch.object(launcher, "Runtime")
+
+    with pytest.raises(SystemExit) as error:
+        launcher.launch()
+
+    assert error.value.code == 1
+    assert "portt" in capsys.readouterr().err
+    resolve_model.assert_not_called()
+    runtime.assert_not_called()
+
+
 @pytest.mark.parametrize("interval", ["-1", "nan", "inf", "-inf"])
 def test_launch_rejects_invalid_interval_before_startup(monkeypatch, capsys, interval):
     monkeypatch.setattr("sys.argv", ["runtime", f"--interval={interval}"])

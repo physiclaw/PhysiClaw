@@ -20,7 +20,7 @@ from functools import partial
 from physiclaw.agent.engine.mcp_tool import close_mcp
 from physiclaw.agent.runtime import Runtime
 from physiclaw.agent.runtime.runtime import close_status_client
-from physiclaw.common import paths
+from physiclaw.common import config, paths
 from physiclaw.common.config import (
     SERVER_ENV_VAR,
     model_ref_with_source,
@@ -136,8 +136,9 @@ def launch() -> None:
     if not math.isfinite(args.interval) or args.interval < 0:
         parser.error("interval must be finite and non-negative")
     try:
+        config.load()
         ref, source = resolve()
-    except RuntimeError as e:
+    except (config.ConfigError, RuntimeError) as e:
         # Friendly exit: print the (already actionable) message to stderr
         # and bail. No Python stack trace bleeds into the parent shell.
         report_error(str(e), tag="runtime")

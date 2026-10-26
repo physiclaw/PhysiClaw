@@ -1,12 +1,11 @@
 """User-tunable configuration loaded from ``~/.physiclaw/config.toml``.
 
-Defaults live on the ``@dataclass`` sections — ``to_toml()`` + ``write_default()``
-render the commented template from those same defaults, so bumping a default
-doesn't need two edits.
+Defaults live on the ``@dataclass`` sections. The file stores only explicit
+overrides; ``to_toml()`` renders the full effective configuration for inspection.
 
-Unknown top-level sections, unknown keys inside a section, and
-wrong-typed values (a quoted number, a bool for an int), and non-finite floats raise
-``ConfigError`` on load. The CLI catches this and points users at
+Known legacy settings are upgraded automatically, with an original backup.
+Unknown sections/keys, wrong-typed values (a quoted number or a bool for an int),
+and non-finite floats raise ``ConfigError`` on load. The CLI points users at
 ``physiclaw config edit``.
 
 Layering (first match wins):
@@ -15,16 +14,22 @@ Layering (first match wins):
 
 import dataclasses
 import json
+import logging
 import math
 import os
+import tempfile
 import tomllib
-from collections.abc import MutableMapping
+from collections.abc import Iterator, MutableMapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
+from datetime import datetime
 from pathlib import Path
 from typing import Any, get_type_hints
 
 from physiclaw.common import paths
-from physiclaw.common.text import read_text, write_text
+from physiclaw.common.config_compat import apply_compatibility
+from physiclaw.common.file_lock import FileLockBusy, exclusive_file_lock
+from physiclaw.common.text import write_text_atomic
 
 
 class ConfigError(ValueError):
@@ -432,6 +437,14 @@ _FILE_HEADER = """\
 # default. Unknown keys / sections / wrong-typed values fail loudly on load.
 """
 
+_OVERRIDES_HEADER = """\
+# PhysiClaw config. Only your explicit settings are stored here.
+# Defaults are supplied by PhysiClaw. View them with `physiclaw config show`.
+# Set a value: physiclaw config set server.port 9000
+# Restore its default: physiclaw config unset server.port
+# Changes apply on the next server start.
+"""
+
 _SECTION_COMMENTS: dict[str, str] = {
     "update": (
         "Update check. `check = true` checks PyPI in the background while "
@@ -614,13 +627,18 @@ def _build_section(name: str, cls: type, overrides: dict[str, Any]) -> Any:
     return cls(**checked)
 
 
-def load(path: Path | None = None) -> Config:
-    path = path or config_path()
-    if not path.exists():
-        return Config()
+def _read_config(path: Path) -> bytes | None:
     try:
-        with open(path, "rb") as f:
-            raw = tomllib.load(f)
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        raise ConfigError(f"failed to read {path}: {e}") from e
+
+
+def _parse_config(data: bytes, path: Path) -> dict[str, Any]:
+    try:
+        return tomllib.loads(data.decode("utf-8"))
     except UnicodeDecodeError as e:
         # TOML mandates UTF-8. On non-UTF-8 Windows codepages (cp936, cp1252)
         # an editor or an old physiclaw build that called write_text without
@@ -629,13 +647,13 @@ def load(path: Path | None = None) -> Config:
         raise ConfigError(
             f"{path} is not valid UTF-8 (got byte 0x{e.object[e.start]:02x} at "
             f"position {e.start}). TOML requires UTF-8.\n"
-            f"  Recover: delete the file and re-run.\n"
-            f'      Windows: Remove-Item "{path}"\n'
-            f'      macOS/Linux: rm "{path}"'
+            "  Keep a backup, then open the file in your editor and save as UTF-8."
         ) from e
-    except (OSError, tomllib.TOMLDecodeError) as e:
+    except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"failed to read {path}: {e}") from e
 
+
+def _build_config(raw: dict[str, Any], path: Path) -> Config:
     unknown_sections = set(raw) - set(_SECTION_TYPES) - _FREEFORM_SECTIONS
     if unknown_sections:
         raise ConfigError(
@@ -655,6 +673,191 @@ def load(path: Path | None = None) -> Config:
         built[key] = _build_section(key, cls, overrides)
 
     return Config(**built)
+
+
+_UPGRADE_WARNINGS: set[Path] = set()
+_BACKUP_LIMIT = 5
+
+
+def _prune_defaults(raw: MutableMapping[str, Any]) -> bool:
+    """One-time compaction of generated legacy files, after strict validation.
+
+    Never apply this to an overrides file: a CLI-set value equal to the
+    current default is still an explicit choice. Free-form provider tables stay.
+    """
+    changed = False
+    defaults = Config()
+    for name in _SECTION_TYPES:
+        table = raw.get(name)
+        if not isinstance(table, MutableMapping):
+            continue
+        section = getattr(defaults, name)
+        for key in list(table):
+            if table[key] == getattr(section, key):
+                del table[key]
+                changed = True
+    return changed
+
+
+def _is_legacy_template(data: bytes) -> bool:
+    # Only the old generator's header identifies a full template;
+    # handwritten overrides stay explicit.
+    return data.startswith(_FILE_HEADER.splitlines()[0].encode("utf-8"))
+
+
+def load(path: Path | None = None, *, auto_migrate: bool = True) -> Config:
+    """Read compatible settings and quietly persist safe upgrades.
+
+    Import-time loading uses ``auto_migrate=False``. If persistence
+    fails, validated settings still work in memory; never fall back to defaults.
+    """
+    path = path or config_path()
+    data = _read_config(path)
+    if data is None:
+        return Config()
+    raw = _parse_config(data, path)
+    changes = apply_compatibility(raw)
+    cfg = _build_config(raw, path)
+    if not auto_migrate:
+        return cfg
+    try:
+        compact = _is_legacy_template(data)
+        resolved_path = path.resolve()
+        with _config_lock(resolved_path):
+            # Another writer may have finished while we waited. Never
+            # persist our earlier snapshot over its newer settings.
+            if _read_config(resolved_path) == data:
+                _relocate_backups(resolved_path)
+                _migrate_loaded(resolved_path, data, changes, compact=compact)
+    except (OSError, ConfigError) as e:
+        if path not in _UPGRADE_WARNINGS:
+            logging.getLogger(__name__).warning(
+                "Config upgrade could not be saved: %s. "
+                "Your settings are applied for this run; will retry next time.",
+                e,
+            )
+            _UPGRADE_WARNINGS.add(path)
+    return cfg
+
+
+def _backup_dir(path: Path) -> Path:
+    return path.parent / "backups"
+
+
+@contextmanager
+def _config_lock(path: Path) -> Iterator[None]:
+    directory = _backup_dir(path)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        with exclusive_file_lock(directory / f"{path.name}.lock", timeout=5):
+            yield
+    except FileLockBusy as e:
+        raise ConfigError(
+            "Config is being updated by another process; retry shortly."
+        ) from e
+
+
+def _relocate_backups(path: Path) -> None:
+    """Bring backups from the earlier sibling-file layout into one folder."""
+    directory = _backup_dir(path)
+    for source in path.parent.glob(f"{path.name}.*.bak"):
+        target = directory / source.name
+        if source.is_file() and not source.is_symlink() and not target.exists():
+            source.rename(target)
+
+
+def _migrate_loaded(
+    path: Path, original: bytes, changes: bool, *, compact: bool
+) -> None:
+    if not changes and not compact:
+        _prune_backups(path)
+        return
+
+    doc = _config_document(original, path)
+    text = doc.as_string()
+    if compact:
+        text = _OVERRIDES_HEADER + "\n" + text.removeprefix(_FILE_HEADER)
+    _commit_config(path, original, text.encode("utf-8"))
+
+
+def _config_document(original: bytes, path: Path) -> Any:
+    """Validate before normalizing a comment-preserving document for a write."""
+    import tomlkit
+
+    raw = _parse_config(original, path)
+    apply_compatibility(raw)
+    _build_config(raw, path)
+    doc = tomlkit.parse(original.decode("utf-8"))
+    changes = apply_compatibility(doc)
+    if _is_legacy_template(original):
+        changes = _prune_defaults(doc) or changes
+    if changes:
+        for name in _SECTION_TYPES:
+            table = doc.get(name)
+            if isinstance(table, MutableMapping) and not table:
+                del doc[name]
+    return doc
+
+
+def _backup_config(path: Path, original: bytes) -> Path:
+    # mkstemp is exclusive and owner-only (0600); never overwrite an earlier
+    # backup or expose copied API keys through the process's default umask.
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    fd, name = tempfile.mkstemp(
+        prefix=f"{path.name}.{timestamp}.", suffix=".bak", dir=_backup_dir(path)
+    )
+    backup = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(original)
+            f.flush()
+            os.fsync(f.fileno())
+    except OSError:
+        backup.unlink(missing_ok=True)
+        raise
+    logging.getLogger(__name__).debug("Config backup saved to %s", backup)
+    return backup
+
+
+def _prune_backups(path: Path, *, newest: Path | None = None) -> None:
+    """Rotate only this config's regular backups, after a successful operation."""
+    try:
+        backups = sorted(
+            (
+                p
+                for p in _backup_dir(path).glob(f"{path.name}.*.bak")
+                if p.is_file() and not p.is_symlink()
+            ),
+            # Keep this write's recovery copy even if the clock moved back.
+            key=lambda p: (p == newest, p.stat().st_mtime_ns, p.name),
+            reverse=True,
+        )
+        for backup in backups[_BACKUP_LIMIT:]:
+            backup.unlink()
+    except OSError:
+        logging.getLogger(__name__).debug(
+            "Could not rotate config backups", exc_info=True
+        )
+
+
+def _commit_config(path: Path, original: bytes | None, updated: bytes) -> Config:
+    """Caller holds the config lock across read, edit, backup and write."""
+    cfg = _build_config(_parse_config(updated, path), path)
+    if _read_config(path) != original:
+        raise ConfigError(f"{path} changed during update; no changes applied. Retry.")
+    if updated == original:
+        return cfg
+    backup = None
+    if original is not None:
+        backup = _backup_config(path, original)
+        # Editors do not participate in our lock. Check again after backup.
+        if _read_config(path) != original:
+            raise ConfigError(
+                f"{path} changed during update; no changes applied. Retry."
+            )
+    write_text_atomic(path, updated.decode("utf-8"))
+    _prune_backups(path, newest=backup)
+    return cfg
 
 
 def _toml_scalar(v: Any) -> str:
@@ -697,12 +900,38 @@ def to_toml(cfg: Config, *, with_comments: bool = False) -> str:
 
 
 def write_default(path: Path | None = None) -> Path:
-    """Write a commented default ``config.toml`` if absent. No-op if present."""
+    """Create an empty overrides file with usage comments. No-op if present."""
     path = path or config_path()
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_text(path, to_toml(Config(), with_comments=True))
+        target = path.resolve()
+        with _config_lock(target):
+            if not target.exists():
+                _commit_config(target, None, _OVERRIDES_HEADER.encode("utf-8"))
     return path
+
+
+def _edit_override(path: Path, section: str, key: str, value: Any) -> bool:
+    """Set a scalar, or remove it when value is None, in one locked transaction."""
+    path = path.resolve()
+    with _config_lock(path):
+        original = _read_config(path)
+        if original is None and value is None:
+            return False
+        doc = _config_document(original or b"", path)
+        if value is None:
+            if section not in doc or key not in doc[section]:
+                return False
+            del doc[section][key]
+        else:
+            doc.setdefault(section, {})
+            doc[section][key] = value
+        text = doc.as_string().removeprefix(_FILE_HEADER)
+        if not text.startswith(_OVERRIDES_HEADER):
+            text = _OVERRIDES_HEADER + "\n" + text
+        _relocate_backups(path)
+        global CONFIG
+        CONFIG = _commit_config(path, original, text.encode("utf-8"))
+    return True
 
 
 def get(cfg: Config, dotted: str) -> Any:
@@ -772,33 +1001,16 @@ def set_dotted(dotted: str, raw_value: str, path: Path | None = None) -> None:
     """Update one ``section.field`` in ``config.toml`` in place.
 
     Preserves comments + ordering via tomlkit. The new value is coerced to
-    the field's default type. Re-validates by reloading via the strict
-    ``load()`` so the file is never left unparseable.
+    the field's default type. Validates the result before atomically
+    replacing the file.
     """
-    import tomlkit
-
     path = path or config_path()
     section, field_name = _validate_dotted(dotted)
-    current = getattr(getattr(load(path), section), field_name)
+    default = getattr(getattr(Config(), section), field_name)
     coerced = _check_scalar_type(
-        section, field_name, type(current), _coerce(raw_value, current)
+        section, field_name, type(default), _coerce(raw_value, default)
     )
-
-    if not path.exists():
-        write_default(path)
-    doc = tomlkit.parse(read_text(path))
-    if section not in doc:
-        doc.add(section, tomlkit.table())
-    section_tbl = doc[section]
-    if not isinstance(section_tbl, MutableMapping):
-        # Unreachable: the strict load() above rejects non-table sections.
-        raise ConfigError(f"[{section}] is not a table in {path}")
-    section_tbl[field_name] = coerced
-    write_text(path, tomlkit.dumps(doc))
-    # Refresh module-level CONFIG so same-process callers see the write
-    # (re-import wouldn't trigger between CLI commands and immediate use).
-    global CONFIG
-    CONFIG = load(path)
+    _edit_override(path, section, field_name, coerced)
 
 
 SERVER_ENV_VAR = "PHYSICLAW_SERVER"
@@ -854,30 +1066,11 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
     """Remove one ``section.field`` from ``config.toml`` so the built-in
     default applies. Returns True if a key was actually removed.
     """
-    import tomlkit
-
     path = path or config_path()
     section, field_name = _validate_dotted(dotted)
     if not path.exists():
         return False
-    # Same strict-load guard as set_dotted: a malformed file (e.g. a
-    # non-table `camera = 3`) surfaces the schema ConfigError instead of
-    # a raw TypeError from indexing the tomlkit doc below.
-    load(path)
-    doc = tomlkit.parse(read_text(path))
-    if section not in doc:
-        return False
-    section_tbl = doc[section]
-    if not isinstance(section_tbl, MutableMapping):
-        # Unreachable: the strict load() above rejects non-table sections.
-        raise ConfigError(f"[{section}] is not a table in {path}")
-    if field_name not in section_tbl:
-        return False
-    del section_tbl[field_name]
-    write_text(path, tomlkit.dumps(doc))
-    global CONFIG
-    CONFIG = load(path)
-    return True
+    return _edit_override(path, section, field_name, None)
 
 
 # Module-level singleton, evaluated once at import. See CONFIG usage in the
@@ -888,17 +1081,11 @@ def unset_dotted(dotted: str, path: Path | None = None) -> bool:
 # doesn't brick the entire CLI — without this, ``physiclaw uninstall`` and
 # even ``physiclaw config edit`` would crash with a stack trace before they
 # ever start, leaving the user no in-band recovery path. We fall back to
-# defaults and emit ONE clear stderr line; the user still sees the error
-# the moment they run a command that actually depends on their config.
+# defaults only to finish imports; CLI/runtime entry points validate before
+# running. Recovery commands remain available without running on defaults.
 try:
-    CONFIG: Config = load()
-except ConfigError as _e:
-    from physiclaw.common.log_style import report_error
-
-    report_error(
-        f"{_e} — continuing with default config; fix the file or delete it.",
-        exit_code=0,
-    )
+    CONFIG: Config = load(auto_migrate=False)
+except ConfigError:
     CONFIG = Config()
 
 

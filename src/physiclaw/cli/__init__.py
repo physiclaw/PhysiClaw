@@ -114,6 +114,16 @@ def _root(
     # rewrite it, and pin loopback into NO_PROXY, before any command
     # builds an HTTP client.
     normalize_proxy_env()
+    # Import-time defaults only keep recovery commands reachable. Never run
+    # against them when the user's config is invalid (including bare startup).
+    if ctx.invoked_subcommand not in {"config", "doctor", "update", "uninstall"}:
+        from physiclaw.cli._format import exit_error
+        from physiclaw.common import config
+
+        try:
+            config.load()
+        except config.ConfigError as e:
+            exit_error(f"{e}\nFix with `physiclaw config edit`.")
     from physiclaw.common import paths
     from physiclaw.common.logger import setup_logging
 
