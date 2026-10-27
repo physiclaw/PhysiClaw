@@ -78,7 +78,9 @@ Colors are disabled for redirected output and when `NO_COLOR` is set.
 The POSIX ZIP lacks the `noradio` variant, so the builder converts its ELF with
 ESP32, DIO flash mode, 80 MHz flash frequency, and 4 MB flash size. LittleFS uses
 4096-byte blocks and the library's default disk version. Its size comes from
-the partition table; a moved offset or invalid size stops the build.
+the partition table. The builder rejects incompatible partition addresses,
+overlaps, and regions outside the 4 MB layout before conversion. Each image must
+fit its flash region, and the filesystem image must fill its partition exactly.
 
 `main()` parses options, locks and cleans the workspace, resolves release
 assets, then calls `build_bundle()`. That function accepts local inputs and

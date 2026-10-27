@@ -24,6 +24,8 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from symlink_helpers import symlink_to
 
+FILESYSTEM_IMAGE = b"filesystem".ljust(0x30000, b"\xff")
+
 
 @pytest.fixture
 def bundle(mocker, tmp_path):
@@ -38,9 +40,19 @@ def bundle(mocker, tmp_path):
     return module
 
 
-def _partition(ptype=1, subtype=0x82, offset=0x3D0000):
-    return struct.pack(
-        "<HBBII16sI", 0x50AA, ptype, subtype, offset, 0x30000, b"data", 0
+def _partition(ptype=1, subtype=0x82, offset=0x3D0000, size=0x30000):
+    return struct.pack("<HBBII16sI", 0x50AA, ptype, subtype, offset, size, b"data", 0)
+
+
+def _flash_table(app_offset=0x10000, app_size=0x1E0000, fs_size=0x30000):
+    return b"".join(
+        [
+            _partition(1, 2, 0x9000, 0x5000),
+            _partition(1, 0, 0xE000, 0x2000),
+            _partition(0, 0x10, app_offset, app_size),
+            _partition(0, 0x11, 0x1F0000, 0x1E0000),
+            _partition(size=fs_size),
+        ]
     )
 
 
@@ -50,7 +62,7 @@ def _release_zip(table=None, tag="v-test"):
         archive.writestr(f"fluidnc-{tag}-posix/wifi/bootloader.bin", b"boot")
         archive.writestr(
             f"fluidnc-{tag}-posix/wifi/partitions.bin",
-            _partition() if table is None else table,
+            _flash_table() if table is None else table,
         )
         archive.writestr(f"fluidnc-{tag}-posix/common/boot_app0.bin", b"app0")
     return data.getvalue()
@@ -69,7 +81,7 @@ def compilers(mocker):
     fs = SimpleNamespace(
         open=mocker.Mock(return_value=stream),
         unmount=mocker.Mock(),
-        context=SimpleNamespace(buffer=bytearray(b"filesystem")),
+        context=SimpleNamespace(buffer=bytearray(FILESYSTEM_IMAGE)),
     )
     littlefs = mocker.Mock(return_value=fs)
     mocker.patch.dict(
@@ -553,7 +565,7 @@ def test_build_littlefs_flushes_config_before_writing_image(
     compilers.fs.open.assert_called_once_with("/config.yaml", "wb")
     compilers.stream.write.assert_called_once_with(config)
     compilers.fs.unmount.assert_called_once()
-    assert out.read_bytes() == b"filesystem"
+    assert out.read_bytes() == FILESYSTEM_IMAGE
 
 
 def test_write_bundle_is_deterministic_and_replaces_complete_archive(bundle, tmp_path):
@@ -630,10 +642,10 @@ def test_local_inputs_build_complete_bundle_without_network(
     with zipfile.ZipFile(out) as archive:
         assert {name: archive.read(name) for name in archive.namelist()} == {
             "bootloader.bin": b"boot",
-            "partitions.bin": _partition(),
+            "partitions.bin": _flash_table(),
             "boot_app0.bin": b"app0",
             "firmware.bin": b"firmware:ELF",
-            "littlefs.bin": b"filesystem",
+            "littlefs.bin": FILESYSTEM_IMAGE,
             "config.yaml": bundle.CONFIG_YAML.read_bytes(),
             "fluidnc_version.txt": b"v-test\n",
         }
@@ -1141,3 +1153,124 @@ def test_failed_build_releases_lock_for_next_attempt(bundle):
             raise RuntimeError("failed build")
     with bundle.build_workspace():
         assert bundle.CACHE_DIR.is_dir()
+
+
+@pytest.fixture
+def local_release(tmp_path):
+    posix = tmp_path / "release.zip"
+    elf = tmp_path / "app.elf"
+    out = tmp_path / "out.zip"
+    posix.write_bytes(_release_zip())
+    elf.write_bytes(b"ELF")
+    out.write_bytes(b"previous bundle")
+    return posix, elf, out
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        _flash_table(app_offset=0x20000, app_size=0x1D0000),
+        _flash_table(app_size=0x1F0000),
+        _flash_table(fs_size=0x40000),
+    ],
+    ids=["moved-app", "overlapping-apps", "filesystem-beyond-flash"],
+)
+def test_incompatible_flash_layout_is_rejected_before_conversion(
+    bundle, compilers, local_release, table
+):
+    posix, elf, out = local_release
+    posix.write_bytes(_release_zip(table))
+
+    with pytest.raises(SystemExit):
+        bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
+
+    compilers.elf.assert_not_called()
+    assert out.read_bytes() == b"previous bundle"
+
+
+def test_firmware_larger_than_app_partition_is_rejected(
+    bundle, compilers, local_release
+):
+    posix, elf, out = local_release
+    posix.write_bytes(_release_zip(_flash_table(app_size=0x1000)))
+    elf.write_bytes(b"x" * 4096)
+
+    with pytest.raises(SystemExit, match="firmware.bin"):
+        bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
+
+    assert out.read_bytes() == b"previous bundle"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        _partition(1, 2, 0x8000, 0x1000),
+        _partition(1, 2, 0x11000, 0),
+        _partition(1, 2, 0x11001, 0x1000),
+        _partition(1, 2, 0x11000, 1),
+        _partition(0, 0x10, 0x20000, 0x1000),
+        _partition(1, 0, 0x20000, 0x1000),
+    ],
+    ids=[
+        "reserved-flash",
+        "empty",
+        "unaligned-offset",
+        "unaligned-size",
+        "duplicate-app",
+        "duplicate-ota-data",
+    ],
+)
+def test_invalid_partition_records_are_rejected(bundle, extra):
+    with pytest.raises(SystemExit):
+        bundle.image_capacities(_flash_table(app_size=0x1000) + extra)
+
+
+@pytest.mark.parametrize("missing_index", [1, 2])
+def test_missing_boot_partition_is_rejected(bundle, missing_index):
+    table = _flash_table()
+    table = table[: missing_index * 32] + table[(missing_index + 1) * 32 :]
+
+    with pytest.raises(SystemExit, match="Expected one partition"):
+        bundle.image_capacities(table)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "bootloader.bin",
+        "partitions.bin",
+        "boot_app0.bin",
+        "firmware.bin",
+        "littlefs.bin",
+    ],
+)
+@pytest.mark.parametrize("invalid_size", ["empty", "too-large"])
+def test_images_cannot_exceed_their_flash_regions(bundle, name, invalid_size):
+    capacities = bundle.image_capacities(_flash_table())
+    data = b"" if invalid_size == "empty" else b"x" * (capacities[name] + 1)
+
+    with pytest.raises(SystemExit, match=name):
+        bundle.validate_image_sizes({name: data}, capacities)
+
+
+def test_truncated_filesystem_cannot_be_published(bundle, compilers, local_release):
+    posix, elf, out = local_release
+    compilers.fs.context.buffer = bytearray(b"truncated filesystem")
+
+    with pytest.raises(SystemExit, match="littlefs.bin must fill"):
+        bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
+
+    assert out.read_bytes() == b"previous bundle"
+
+
+def test_firmware_can_exactly_fill_its_application_slot(
+    bundle, compilers, local_release
+):
+    posix, elf, out = local_release
+    posix.write_bytes(_release_zip(_flash_table(app_size=0x1000)))
+    elf.write_bytes(b"x" * (4096 - len(b"firmware:")))
+
+    bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
+
+    with zipfile.ZipFile(out) as archive:
+        assert archive.getinfo("firmware.bin").file_size == 4096

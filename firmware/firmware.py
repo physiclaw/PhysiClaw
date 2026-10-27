@@ -32,6 +32,7 @@ import tempfile
 import time
 import urllib.request
 import zipfile
+from collections.abc import Iterator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from urllib.error import HTTPError
@@ -52,9 +53,16 @@ BOOT_IMAGES = {
     "boot_app0.bin": "common/boot_app0.bin",
 }
 
-# Mirrors FLASH_LAYOUT in physiclaw.cli.flash (littlefs.bin offset) —
-# pinned to it by tests/firmware/test_consistency.py.
-LITTLEFS_OFFSET = 0x3D0000
+# Keep every address aligned with physiclaw.cli.flash.FLASH_LAYOUT.
+FLASH_OFFSETS = {
+    "bootloader.bin": 0x1000,
+    "partitions.bin": 0x8000,
+    "boot_app0.bin": 0xE000,
+    "firmware.bin": 0x10000,
+    "littlefs.bin": 0x3D0000,
+}
+FLASH_SIZE = 4 * 1024 * 1024
+LITTLEFS_OFFSET = FLASH_OFFSETS["littlefs.bin"]
 LFS_BLOCK_SIZE = 4096
 
 ORDER = [
@@ -216,18 +224,77 @@ def elf2image(elf: Path, out: Path) -> None:
         raise
 
 
-def data_partition(partitions: bytes) -> tuple[int, int]:
-    """(offset, size) of the spiffs/littlefs data partition in the table."""
+def _partition_entries(partitions: bytes) -> Iterator[tuple[int, int, int, int]]:
+    """Read complete partition records, stopping at the MD5 or end marker."""
     entry_size = 32
     for i in range(0, len(partitions) - entry_size + 1, entry_size):
         entry = partitions[i : i + entry_size]
         if entry[:2] != b"\xaaP":  # end of table
             break
-        ptype, subtype = entry[2], entry[3]
-        offset, size = struct.unpack_from("<II", entry, 4)
+        yield struct.unpack_from("<BBII", entry, 2)
+
+
+def data_partition(partitions: bytes) -> tuple[int, int]:
+    """(offset, size) of the spiffs/littlefs data partition in the table."""
+    for ptype, subtype, offset, size in _partition_entries(partitions):
         if ptype == 1 and subtype == 0x82:  # data / spiffs
             return offset, size
     fail("no spiffs/littlefs data partition found in partitions.bin")
+
+
+def image_capacities(partitions: bytes) -> dict[str, int]:
+    """Reject layouts incompatible with the fixed flash addresses and 4 MB image."""
+    offset, size = data_partition(partitions)
+    if offset != LITTLEFS_OFFSET:
+        fail(
+            f"data partition moved to {offset:#x} — "
+            f"physiclaw.cli.flash writes littlefs.bin at {LITTLEFS_OFFSET:#x}; "
+            "update FLASH_LAYOUT first"
+        )
+    if size <= 0 or size % LFS_BLOCK_SIZE:
+        fail(f"Invalid LittleFS partition size: {size} bytes")
+
+    entries = sorted(_partition_entries(partitions), key=lambda entry: entry[2])
+    end = FLASH_OFFSETS["partitions.bin"] + LFS_BLOCK_SIZE
+    for ptype, _, offset, size in entries:
+        alignment = 0x10000 if ptype == 0 else LFS_BLOCK_SIZE
+        if size <= 0 or size % LFS_BLOCK_SIZE or offset % alignment:
+            fail(f"Invalid partition alignment or size at {offset:#x}")
+        if offset < end:
+            fail(
+                f"Partition at {offset:#x} overlaps another partition or reserved flash"
+            )
+        if offset + size > FLASH_SIZE:
+            fail(f"Partition at {offset:#x} extends beyond the 4 MB flash layout")
+        end = offset + size
+
+    capacities = {
+        "bootloader.bin": FLASH_OFFSETS["partitions.bin"]
+        - FLASH_OFFSETS["bootloader.bin"],
+        "partitions.bin": LFS_BLOCK_SIZE,
+    }
+    for name, kind in (
+        ("boot_app0.bin", (1, 0)),  # OTA selection data
+        ("firmware.bin", (0, 0x10)),  # first OTA application slot
+        ("littlefs.bin", (1, 0x82)),
+    ):
+        matches = [entry for entry in entries if entry[:2] == kind]
+        if len(matches) != 1 or matches[0][2] != FLASH_OFFSETS[name]:
+            fail(f"Expected one partition for {name} at {FLASH_OFFSETS[name]:#x}")
+        capacities[name] = matches[0][3]
+    return capacities
+
+
+def validate_image_sizes(files: dict[str, bytes], capacities: dict[str, int]) -> None:
+    """Check each image before it can overwrite an adjacent flash region."""
+    for name, data in files.items():
+        size, capacity = len(data), capacities[name]
+        if not 0 < size <= capacity:
+            fail(f"{name} is {size} bytes; its flash region allows 1–{capacity} bytes")
+        if name == "littlefs.bin" and size != capacity:
+            fail(
+                f"littlefs.bin must fill its {capacity}-byte partition, got {size} bytes"
+            )
 
 
 def build_littlefs(config: bytes, block_count: int, out: Path) -> None:
@@ -312,25 +379,20 @@ def build_bundle(*, tag: str, posix_zip: Path, elf: Path, out: Path) -> None:
             for name, member in BOOT_IMAGES.items()
         }
 
-    offset, size = data_partition(files["partitions.bin"])
-    if offset != LITTLEFS_OFFSET:
-        fail(
-            f"data partition moved to {offset:#x} in {tag} — "
-            f"physiclaw.cli.flash writes littlefs.bin at "
-            f"{LITTLEFS_OFFSET:#x}; update FLASH_LAYOUT first"
-        )
-    if size <= 0 or size % LFS_BLOCK_SIZE:
-        fail(f"Invalid LittleFS partition size: {size} bytes")
-    block_count = size // LFS_BLOCK_SIZE
+    capacities = image_capacities(files["partitions.bin"])
+    validate_image_sizes(files, capacities)
+    block_count = capacities["littlefs.bin"] // LFS_BLOCK_SIZE
     config = CONFIG_YAML.read_bytes()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".build-", dir=OUTPUT_DIR) as td:
         work = Path(td)
         elf2image(elf, work / "firmware.bin")
-        build_littlefs(config, block_count, work / "littlefs.bin")
         files["firmware.bin"] = (work / "firmware.bin").read_bytes()
+        validate_image_sizes(files, capacities)
+        build_littlefs(config, block_count, work / "littlefs.bin")
         files["littlefs.bin"] = (work / "littlefs.bin").read_bytes()
+        validate_image_sizes(files, capacities)
 
     files["config.yaml"] = config
     files["fluidnc_version.txt"] = f"{tag}\n".encode()
