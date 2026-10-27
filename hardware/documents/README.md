@@ -53,6 +53,17 @@ fresh documents in its private tree, using the validated persistent CAD cache.
 Direct Python entry points are `hardware.documents.manual.build`,
 `hardware.documents.sourcing.build`, and `hardware.documents.drawing.extrusion`.
 
+The manual builder's `--browser` option accepts `chrome` (default, Chrome/Chromium)
+or `edge` (Windows only). macOS and Linux use Chrome/Chromium. The selection
+applies only when `--pdf` is requested; a missing or unsupported selected browser
+fails before existing manual outputs are cleared.
+
+```sh
+uv run python -m hardware.documents.manual.build --pdf --browser chrome
+```
+
+The existing Make targets and `ARGS` forwarding are unchanged.
+
 ## Manual supplier URL review
 
 `make hw-url` shows up to three Taobao/Tmall and three AliExpress links, including

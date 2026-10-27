@@ -123,18 +123,19 @@ def link_directory(source: Path, target: Path) -> None:
     winapi.CreateJunction(str(source), str(target))
 
 
-def browser_locations() -> list[Path]:
+def browser_locations(browser: str | None = None) -> list[Path]:
     locations = []
     for name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
         root = os.environ.get(name)
         if not root:
             continue
-        for relative in (
-            "Google/Chrome/Application/chrome.exe",
-            "Microsoft/Edge/Application/msedge.exe",
-            "Chromium/Application/chrome.exe",
+        for family, relative in (
+            ("chrome", "Google/Chrome/Application/chrome.exe"),
+            ("edge", "Microsoft/Edge/Application/msedge.exe"),
+            ("chrome", "Chromium/Application/chrome.exe"),
         ):
-            locations.append(Path(root) / relative)
+            if browser is None or browser == family:
+                locations.append(Path(root) / relative)
     return locations
 
 

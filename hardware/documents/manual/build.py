@@ -23,13 +23,16 @@ Run under ``uv`` from the repo root (standard library only, Python 3.12+)::
 
     uv run python -m hardware.documents.manual.build                  # en + zh, external assets, HTML only
     uv run python -m hardware.documents.manual.build --pdf            # also render a PDF per language
+    uv run python -m hardware.documents.manual.build --pdf --browser chrome  # select the PDF browser
     uv run python -m hardware.documents.manual.build --lang en        # English only -> physiclaw_manual.html
     uv run python -m hardware.documents.manual.build --assets inline  # single self-contained file
     uv run python -m hardware.documents.manual.build --out /tmp/out   # custom output directory
 
-PDF output requires an installed Chromium-family browser (Chrome / Chromium
-/ Edge). A requested PDF fails the build if no browser is available or rendering
-fails (see ``hardware.documents.pdf``).
+PDF output uses Chrome / Chromium by default. ``--browser`` also supports Edge
+on Windows.
+A requested PDF fails the build if the selected browser is unavailable or
+rendering fails (see ``hardware.documents.pdf``). HTML-only builds do not need
+a browser.
 """
 
 from __future__ import annotations
@@ -63,7 +66,8 @@ from hardware.documents.manual.assets import (
 from hardware.documents.manual.pages import load_pages
 from hardware.documents.manual.paginate import assign_page_numbers, paginate_bom_pages
 from hardware.documents.manual.style_checks import inline_style_unit_warnings
-from hardware.documents.pdf import find_chrome, render_pdf
+from hardware.documents.pdf import render_pdf
+from hardware.port.desktop import find_browser
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 
 # Note "icon" keys -> SVG accessors for the leading icon of a flex callout.
@@ -548,19 +552,24 @@ def _clear_output_dir(out_dir: Path) -> None:
 
 
 def build(
-    langs: list[str], out_dir: Path, inline: bool, pdf: bool = False
+    langs: list[str],
+    out_dir: Path,
+    inline: bool,
+    pdf: bool = False,
+    *,
+    browser: str = "chrome",
 ) -> list[Path]:
     """Render the requested languages into ``out_dir`` and return written files.
 
     Writes HTML and, when requested, a PDF per language. PDF requests require
-    a Chromium-family browser before any existing output is cleared.
+    the selected browser before any existing output is cleared.
     The PDF is printed from the
-    just-written HTML — in external mode (default) Chrome loads the figures
+    just-written HTML — in external mode (default) the browser loads the figures
     from the emitted ``assets/`` dir and embeds them into the PDF; in inline
     mode they are already data URIs."""
-    chrome = find_chrome() if pdf else None
-    if pdf and chrome is None:
-        raise BuildError("PDF requested but no Chrome/Chromium found")
+    browser_path = find_browser(browser) if pdf else None
+    if pdf and browser_path is None:
+        raise BuildError(f"PDF requested but browser '{browser}' was not found")
     _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
     out_dir.mkdir(parents=True, exist_ok=True)
     prepare_figures()
@@ -590,14 +599,14 @@ def build(
         assets.emit(out_dir)  # external mode writes the shared assets/ dir once.
 
     # PDFs print from the just-written HTML against the on-disk assets/, so
-    # Chrome parses a light ~100 KB document (not a multi-MB inline one) and
+    # the browser parses a light ~100 KB document (not a multi-MB inline one) and
     # loads each figure as its own file; the rendered PDF still embeds them.
-    if chrome is not None:
+    if browser_path is not None:
         for lang in langs:
             path, html = docs[lang]
             pdf_path = path.with_suffix(".pdf")
             with _step(f"Render PDF [{lang}]"):
-                if not render_pdf(html, pdf_path, chrome):
+                if not render_pdf(html, pdf_path, browser_path):
                     raise BuildError(f"PDF render failed: {pdf_path.name}")
             written.append(pdf_path)
     return written
@@ -628,7 +637,13 @@ def main() -> None:
         "--pdf",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="also render a PDF per language via headless Chrome (default: off — HTML only)",
+        help="also render a PDF per language (default: off — HTML only)",
+    )
+    parser.add_argument(
+        "--browser",
+        choices=("chrome", "edge"),
+        default="chrome",
+        help="browser for --pdf: Chrome/Chromium or Edge on Windows (default: chrome)",
     )
     buildlog.add_arguments(parser)
     args = parser.parse_args()
@@ -638,7 +653,13 @@ def main() -> None:
     with buildlog.command(
         "Hardware manual", args, name="manual", output_dir=out
     ) as run:
-        written = build(langs, out, inline=args.assets == "inline", pdf=args.pdf)
+        written = build(
+            langs,
+            out,
+            inline=args.assets == "inline",
+            pdf=args.pdf,
+            browser=args.browser,
+        )
         run.artifacts(written)
 
 

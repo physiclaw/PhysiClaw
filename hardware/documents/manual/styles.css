@@ -17,8 +17,10 @@
     --page-bg:       #ffffff;
     --link:          #4a8bc7;
 
-    --font-sans:     "Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
-    --font-mono:     "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    /* Explicit CJK families avoid browser-dependent generic font fallback. */
+    --font-cjk:      "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC";
+    --font-sans:     "Inter", "Helvetica Neue", "Segoe UI", Arial, var(--font-cjk), sans-serif;
+    --font-mono:     "JetBrains Mono", "SF Mono", Menlo, Consolas, var(--font-cjk), monospace;
   }
 
   * { box-sizing: border-box; }

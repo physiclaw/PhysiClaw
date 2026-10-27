@@ -125,13 +125,14 @@ def link_directory(source: Path, target: Path) -> None:
     target.symlink_to(source, target_is_directory=True)
 
 
-def browser_locations() -> list[Path]:
+def browser_locations(browser: str | None = None) -> list[Path]:
+    if browser == "edge":
+        raise ValueError("Edge PDF rendering is supported only on Windows")
     return [
         Path(f"/Applications/{app}.app/Contents/MacOS/{executable}")
         for app, executable in (
             ("Google Chrome", "Google Chrome"),
             ("Chromium", "Chromium"),
-            ("Microsoft Edge", "Microsoft Edge"),
         )
     ]
 

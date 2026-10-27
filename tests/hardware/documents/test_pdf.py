@@ -46,7 +46,8 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
     from hardware.documents.manual import build as manual
 
     builder = manual if document == "manual" else extrusion
-    monkeypatch.setattr(builder, "find_chrome", lambda: "chrome")
+    finder = "find_browser" if document == "manual" else "find_chrome"
+    monkeypatch.setattr(builder, finder, lambda *args: "chrome")
     monkeypatch.setattr(builder, "render_pdf", lambda *args: False)
     if document == "manual":
         monkeypatch.setattr(manual, "load_pages", lambda: [])

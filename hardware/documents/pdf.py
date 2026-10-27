@@ -43,6 +43,11 @@ def _chrome_print(chrome: str, src_uri: str, profile: str, pdf_path: Path) -> bo
             [
                 chrome,
                 "--headless=new",
+                "--no-first-run",
+                "--no-default-browser-check",
+                # Edge's Windows compatibility relaunch drops the print
+                # process and its diagnostic handles. Keep the owned process.
+                "--edge-skip-compat-layer-relaunch",
                 "--disable-gpu",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",

@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -20,6 +21,65 @@ def test_windows_browser_discovery_uses_install_directory(tmp_path, monkeypatch)
     found = desktop.find_chrome()
 
     assert found == str(browser)
+
+
+@pytest.mark.parametrize(
+    "selection,installed,expected",
+    [
+        ("chrome", ("chrome", "edge"), "chrome"),
+        ("edge", ("chrome", "edge"), "edge"),
+        ("chrome", ("edge",), None),
+        ("edge", ("chrome",), None),
+        ("chrome", ("chromium",), "chromium"),
+    ],
+)
+def test_windows_browser_selection_does_not_fall_back_to_other_browser(
+    tmp_path, monkeypatch, selection, installed, expected
+):
+    paths = {
+        "chrome": tmp_path / "Google/Chrome/Application/chrome.exe",
+        "edge": tmp_path / "Microsoft/Edge/Application/msedge.exe",
+        "chromium": tmp_path / "Chromium/Application/chrome.exe",
+    }
+    for name in installed:
+        paths[name].parent.mkdir(parents=True, exist_ok=True)
+        paths[name].touch()
+    monkeypatch.setattr(desktop, "_native", windows)
+    monkeypatch.setattr(desktop.shutil, "which", lambda name: None)
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path))
+    monkeypatch.delenv("PROGRAMFILES(X86)", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+
+    assert desktop.find_browser(selection) == (
+        str(paths[expected]) if expected else None
+    )
+
+
+def test_edge_selection_ignores_chrome_on_path(monkeypatch):
+    executables = {"google-chrome": "/bin/chrome", "msedge": "/bin/edge"}
+    monkeypatch.setattr(desktop, "_native", windows)
+    monkeypatch.setattr(desktop.shutil, "which", executables.get)
+
+    assert desktop.find_browser("edge") == "/bin/edge"
+
+
+def test_macos_chrome_discovery(monkeypatch):
+    monkeypatch.setattr(desktop, "_native", posix)
+    monkeypatch.setattr(desktop.shutil, "which", lambda name: None)
+    monkeypatch.setattr(Path, "is_file", lambda path: True)
+
+    assert Path(desktop.find_browser("chrome")).name == "Google Chrome"
+
+
+def test_posix_rejects_edge_before_searching_path(monkeypatch):
+    finder = Mock(return_value="/bin/msedge")
+    monkeypatch.setattr(desktop, "_native", posix)
+    monkeypatch.setattr(desktop.shutil, "which", finder)
+
+    with pytest.raises(ValueError, match="only on Windows"):
+        desktop.find_browser("edge")
+
+    finder.assert_not_called()
 
 
 @pytest.fixture
