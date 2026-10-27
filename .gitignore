@@ -8,6 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+/.uv-cache/
+/.uv-python/
 
 # macOS
 .DS_Store
@@ -36,6 +38,11 @@ wheels/
 log/
 
 # Test runtime artifacts
+/.test-tmp/
+/.hypothesis/
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
 .coverage
 .mutmut-cache
 htmlcov/

@@ -73,6 +73,8 @@ cad = [
     "shapely>=2.1.2,<3",
 ]
 dev = [
+    # Exercise the real package backend in offline packaging regression tests.
+    "hatchling>=1.32.4,<2",
     "ruff>=0.15.9",
     "pytest>=8",
     "pytest-cov>=5",
@@ -86,6 +88,10 @@ dev = [
     "types-pyserial>=3.5.0.20260712",
     "types-croniter>=6.2.4.20260711",
 ]
+
+[tool.hatch.build.targets.sdist]
+# Do not descend into ignored test trees, caches, or generated hardware outputs.
+skip-excluded-dirs = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/physiclaw"]

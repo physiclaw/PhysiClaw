@@ -1,4 +1,4 @@
-"""Package releases must work without a POSIX shell and stop on failed steps."""
+"""Software releases work without a POSIX shell and stop on failed steps."""
 
 import os
 import subprocess
