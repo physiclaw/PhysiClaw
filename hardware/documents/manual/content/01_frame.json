@@ -264,19 +264,7 @@
           "zh": "橡胶脚垫是机器的支脚。装在框架底面四角。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:100mm; width:78mm;"
-      },
-      {
-        "h3": {
-          "en": "Bumper screws",
-          "zh": "脚垫螺栓"
-        },
-        "body": {
-          "en": "If the bumpers came with their own screws, use those screws. They are the right size.",
-          "zh": "如果脚垫自带螺栓，直接使用自带螺栓，尺寸相符。"
-        },
-        "classes": "note overlay sm",
-        "style": "left:135mm; top:30mm; width:70mm;"
+        "style": "left:140mm; top:90mm; width:78mm;"
       }
     ],
     "bom": {
