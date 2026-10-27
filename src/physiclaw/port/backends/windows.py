@@ -258,8 +258,15 @@ def hardware_permission_hints() -> list[str]:
     return []
 
 
-# Native process/filesystem mechanisms. Workflow policy stays with the caller.
+# Native desktop/process/filesystem mechanisms. Workflow policy stays with the caller.
 REMOTE_SHUTDOWN_SUPPORTED = False
+EDITOR_CANDIDATES = ("notepad",)
+
+
+def editor_command(editor: str, filename: str) -> str:
+    # Popen passes a string to CreateProcess unchanged when shell=False.
+    # Preserve the user's Windows quoting; quote only the appended filename.
+    return f"{editor} {subprocess.list2cmdline([filename])}"
 
 
 def process_group_options() -> dict:

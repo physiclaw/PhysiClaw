@@ -1,12 +1,18 @@
-"""POSIX implementations of application process, file, and lock operations."""
+"""POSIX implementations of application desktop, process, file, and lock operations."""
 
 import importlib
 import os
+import shlex
 import signal
 from pathlib import Path
 from typing import BinaryIO
 
 REMOTE_SHUTDOWN_SUPPORTED = True
+EDITOR_CANDIDATES = ("vim", "vi", "nano")
+
+
+def editor_command(editor: str, filename: str) -> list[str]:
+    return [*shlex.split(editor), filename]
 
 
 def process_group_options() -> dict:

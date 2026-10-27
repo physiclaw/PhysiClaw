@@ -1,6 +1,6 @@
 """Application portability boundary: device and desktop capabilities.
 
-Callers import this API or the focused ``filesystem``, ``locks``, and
+Callers import this API or the focused ``desktop``, ``filesystem``, ``locks``, and
 ``processes`` modules. Only ``_select`` chooses OS implementations, under
 ``backends``; workflow policy stays with the caller. This leaf package
 depends on neither application workflows nor the independent hardware tools.

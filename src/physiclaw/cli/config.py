@@ -7,8 +7,6 @@ to keep them out of shell history.
 
 import dataclasses
 import os
-import shlex
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated
@@ -17,6 +15,7 @@ import typer
 
 from physiclaw.cli._format import exit_error, ok
 from physiclaw.common import config as _config
+from physiclaw.port import desktop
 
 config_app = typer.Typer(
     help="Show or edit the user config file.",
@@ -134,24 +133,8 @@ def _edit() -> None:
     except (_config.ConfigError, OSError) as e:
         exit_error(str(e))
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
-    if not editor:
-        for candidate in ("nano", "vim", "vi"):
-            if shutil.which(candidate):
-                editor = candidate
-                break
-    if not editor:
-        typer.echo(
-            f"no $EDITOR set and no nano/vim/vi on PATH. Edit by hand: {path}",
-            err=True,
-        )
-        raise typer.Exit(code=1)
     try:
-        # Preserve bare executable paths (including spaces/backslashes).
-        # Otherwise parse shell-style quoting without invoking a shell.
-        command = [editor] if Path(editor).is_file() else shlex.split(editor)
-        if not command:
-            exit_error("editor command is empty")
-        subprocess.run([*command, str(path)], check=True)
+        desktop.edit_file(path, editor=editor)
     except (OSError, ValueError, subprocess.CalledProcessError) as e:
         exit_error(f"could not edit {path}: {e}")
     _load_or_exit(path)

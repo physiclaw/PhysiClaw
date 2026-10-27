@@ -20,11 +20,18 @@ from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 from physiclaw.common import config as _config
+from physiclaw.port.backends import posix, windows
 
 config_mod = importlib.import_module("physiclaw.cli.config")
 config_app = config_mod.config_app
 
 runner = CliRunner()
+
+
+@pytest.fixture
+def posix_editor_commands(mocker):
+    """Exercise the existing POSIX command contract on every test host."""
+    mocker.patch.object(config_mod.desktop, "_native", posix)
 
 
 # ---------- path ----------
@@ -201,7 +208,9 @@ def test_unset_exit_1_on_error(mocker) -> None:
 # ---------- edit ----------
 
 
-def test_edit_uses_editor_env(mocker, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_edit_uses_editor_env(
+    mocker, monkeypatch: pytest.MonkeyPatch, posix_editor_commands
+) -> None:
     mocker.patch.object(
         config_mod._config, "write_default", return_value="/tmp/cfg.toml"
     )
@@ -216,7 +225,9 @@ def test_edit_uses_editor_env(mocker, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "config OK" in result.stdout
 
 
-def test_edit_falls_back_to_visual(mocker, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_edit_falls_back_to_visual(
+    mocker, monkeypatch: pytest.MonkeyPatch, posix_editor_commands
+) -> None:
     mocker.patch.object(
         config_mod._config, "write_default", return_value="/tmp/cfg.toml"
     )
@@ -231,12 +242,22 @@ def test_edit_falls_back_to_visual(mocker, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.parametrize(
-    ("available", "expected"),
-    [(("nano", "vim", "vi"), "nano"), (("vim", "vi"), "vim"), (("vi",), "vi")],
+    ("backend", "available", "expected"),
+    [
+        (posix, ("nano", "vim", "vi"), "vim"),
+        (posix, ("nano", "vi"), "vi"),
+        (posix, ("nano",), "nano"),
+        (windows, ("notepad",), "notepad"),
+    ],
 )
 def test_edit_falls_back_to_first_available_editor(
-    mocker, monkeypatch: pytest.MonkeyPatch, available: tuple[str, ...], expected: str
+    mocker,
+    monkeypatch: pytest.MonkeyPatch,
+    backend,
+    available: tuple[str, ...],
+    expected: str,
 ) -> None:
+    mocker.patch.object(config_mod.desktop, "_native", backend)
     mocker.patch.object(
         config_mod._config, "write_default", return_value="/tmp/cfg.toml"
     )
@@ -244,32 +265,62 @@ def test_edit_falls_back_to_first_available_editor(
     monkeypatch.delenv("EDITOR", raising=False)
     monkeypatch.delenv("VISUAL", raising=False)
     mocker.patch.object(
-        config_mod.shutil,
+        config_mod.desktop.shutil,
         "which",
-        side_effect=lambda c: f"/usr/bin/{c}" if c in available else None,
+        side_effect=lambda name: name if name in available else None,
     )
     spy = mocker.patch.object(config_mod.subprocess, "run")
 
-    runner.invoke(config_app, ["edit"])
+    result = runner.invoke(config_app, ["edit"])
 
-    assert spy.call_args.args[0] == [expected, "/tmp/cfg.toml"]
+    assert result.exit_code == 0
+    spy.assert_called_once_with([expected, "/tmp/cfg.toml"], check=True)
 
 
+@pytest.mark.parametrize("backend", [posix, windows])
 def test_edit_exit_1_when_no_editor_found(
-    mocker, monkeypatch: pytest.MonkeyPatch
+    mocker, monkeypatch: pytest.MonkeyPatch, backend
 ) -> None:
+    mocker.patch.object(config_mod.desktop, "_native", backend)
     mocker.patch.object(
         config_mod._config, "write_default", return_value="/tmp/cfg.toml"
     )
     monkeypatch.delenv("EDITOR", raising=False)
     monkeypatch.delenv("VISUAL", raising=False)
-    mocker.patch.object(config_mod.shutil, "which", return_value=None)
+    mocker.patch.object(config_mod.desktop.shutil, "which", return_value=None)
 
     result = runner.invoke(config_app, ["edit"])
 
     assert result.exit_code == 1
     assert "no $EDITOR" in result.stderr
     assert "/tmp/cfg.toml" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "editor",
+    [
+        r"C:\Tools\editor.exe --wait",
+        r'"C:\Program Files\My Editor\editor.exe" --wait',
+        r'"\\server\shared tools\editor.exe" --label "hello world"',
+        r'C:\Tools\editor.exe --label "a&b" --directory "C:\work dir\\"',
+    ],
+)
+def test_edit_preserves_windows_command_and_quotes_config_path(
+    mocker, monkeypatch, editor
+):
+    mocker.patch.object(config_mod.desktop, "_native", windows)
+    path = Path(r"C:\Users\Example User\config.toml")
+    mocker.patch.object(config_mod._config, "write_default", return_value=path)
+    load = mocker.patch.object(config_mod._config, "load")
+    monkeypatch.setenv("EDITOR", editor)
+    monkeypatch.setenv("VISUAL", "ignored-editor")
+    run = mocker.patch.object(config_mod.subprocess, "run")
+
+    result = runner.invoke(config_app, ["edit"])
+
+    assert result.exit_code == 0
+    run.assert_called_once_with(f'{editor} "{path}"', check=True)
+    load.assert_called_once_with(path)
 
 
 def test_edit_validates_after_save(mocker, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -332,7 +383,11 @@ def test_regression_edit_checks_editor_exit_status(
     ],
 )
 def test_regression_edit_accepts_editor_arguments(
-    mocker, monkeypatch: pytest.MonkeyPatch, editor: str, arguments: list[str]
+    mocker,
+    monkeypatch: pytest.MonkeyPatch,
+    editor: str,
+    arguments: list[str],
+    posix_editor_commands,
 ) -> None:
     monkeypatch.setenv("EDITOR", editor)
     run = mocker.patch.object(config_mod.subprocess, "run")
@@ -345,7 +400,7 @@ def test_regression_edit_accepts_editor_arguments(
 
 @pytest.mark.parametrize("editor", ["   ", "'unterminated"])
 def test_regression_edit_invalid_editor_reports_error(
-    mocker, monkeypatch: pytest.MonkeyPatch, editor: str
+    mocker, monkeypatch: pytest.MonkeyPatch, editor: str, posix_editor_commands
 ) -> None:
     monkeypatch.setenv("EDITOR", editor)
     run = mocker.patch.object(config_mod.subprocess, "run")
@@ -397,10 +452,12 @@ def test_regression_config_io_failure_reports_error(
     assert "Restart" not in result.stdout
 
 
+@pytest.mark.parametrize("backend", [posix, windows])
 @pytest.mark.parametrize("editor_name", ["My Editor.exe", "editor"])
 def test_edit_preserves_existing_executable_path(
-    tmp_path: Path, mocker, monkeypatch: pytest.MonkeyPatch, editor_name: str
+    tmp_path: Path, mocker, monkeypatch: pytest.MonkeyPatch, editor_name: str, backend
 ) -> None:
+    mocker.patch.object(config_mod.desktop, "_native", backend)
     editor = tmp_path / editor_name
     editor.touch()
     monkeypatch.setenv("EDITOR", str(editor))
@@ -417,7 +474,7 @@ def test_edit_preserves_existing_executable_path(
     arguments=st.lists(st.text(alphabet="abc xyz012-_$;\\\"'", max_size=15), max_size=4)
 )
 def test_edit_preserves_quoted_arguments_without_a_shell(
-    mocker, monkeypatch, arguments
+    mocker, monkeypatch, posix_editor_commands, arguments
 ):
     command = ["fixture-editor", *arguments]
     monkeypatch.setenv("EDITOR", shlex.join(command))
