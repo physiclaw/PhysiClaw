@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import zipfile
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -161,6 +162,40 @@ def test_failed_regression_gate_blocks_build(preparation, monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         rel.prepare(VERSION)
     assert preparation == []
+
+
+@pytest.mark.parametrize("probe", ["utf8", "cancellation"])
+def test_regression_gate_isolates_test_environment(tmp_path, monkeypatch, probe):
+    marker = tmp_path / "release.cancel"
+    monkeypatch.setenv("PHYSICLAW_HW_CANCEL_FILE", str(marker))
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path / "output")
+    source = tmp_path / "utf8.txt"
+    source.write_text("硬件", encoding="utf-8")
+    scripts = {
+        "utf8": (
+            "import sys; from pathlib import Path; "
+            "assert sys.flags.utf8_mode == 1; "
+            f"assert Path({str(source)!r}).read_text() == '硬件'"
+        ),
+        "cancellation": (
+            "import signal\n"
+            "from hardware.port.processes import CancellationEvent, cancel_on_interrupt\n"
+            "cancelled = CancellationEvent()\n"
+            "with cancel_on_interrupt(cancelled):\n"
+            "    signal.raise_signal(signal.SIGINT)\n"
+            "    assert cancelled.is_set()\n"
+        ),
+    }
+    run_process = buildlog.run_process
+
+    def run_probe(args, **kwargs):
+        return run_process([sys.executable, "-c", scripts[probe]], **kwargs)
+
+    monkeypatch.setattr(buildlog, "run_process", run_probe)
+    with buildlog.command("Release regression gate"):
+        rel.run_tests()
+    assert not marker.exists()
 
 
 def test_installed_but_unusable_browser_fails_before_build(preparation, monkeypatch):

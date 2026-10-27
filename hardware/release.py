@@ -229,10 +229,14 @@ def _stage(output: Path, *args: str) -> None:
 
 
 def run_tests() -> None:
+    env = {**os.environ, "PYTHONUTF8": "1"}
+    # Cancellation tests must not signal the enclosing release workflow.
+    env.pop("PHYSICLAW_HW_CANCEL_FILE", None)
     with buildlog.step("Hardware tests"):
         buildlog.run_process(
             [sys.executable, "-m", "pytest", "tests/hardware", "-q"],
             cwd=REPO_ROOT,
+            env=env,
             timeout=600,
         )
 
