@@ -30,7 +30,17 @@ class ProcessTree:
     def stop(self, timeout: float, *, cooperative_cancel: bool = False) -> None:
         def send(sig: int) -> None:
             try:
-                getattr(os, "killpg")(self.process.pid, sig)
+                try:
+                    getattr(os, "killpg")(self.process.pid, sig)
+                except PermissionError as exc:
+                    # macOS can return EPERM while the leader is still exiting.
+                    # Reap it with a bounded wait, then signal any descendants.
+                    # A live leader or a denied retry is a real permission error.
+                    try:
+                        self.process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        raise exc
+                    getattr(os, "killpg")(self.process.pid, sig)
             except ProcessLookupError:
                 pass
 

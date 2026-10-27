@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from hardware.port import processes
+from hardware.port.backends import posix
 from hardware.port.processes import owned_process
 
 
@@ -77,3 +78,49 @@ def test_native_setup_failure_reaps_child_and_closes_pipes(mocker):
     process = started[0]
     assert process.poll() is not None
     assert process.stdout.closed and process.stderr.closed
+
+
+def test_posix_cleanup_reaps_exited_leader_after_signal_denied(mocker):
+    # Exercise the POSIX backend even on Windows, which has no SIGKILL.
+    mocker.patch.object(posix.signal, "SIGKILL", 9, create=True)
+    reaped = False
+
+    def wait(timeout=None):
+        nonlocal reaped
+        reaped = True
+        return 0
+
+    def signal_group(pid, sig):
+        if not reaped:
+            raise PermissionError("group contains only an unreaped child")
+        raise ProcessLookupError("reaping removed the empty group")
+
+    process = mocker.Mock(pid=1234)
+    process.wait.side_effect = wait
+    mocker.patch.object(posix.os, "killpg", side_effect=signal_group, create=True)
+
+    posix.ProcessTree(process).stop(timeout=0)
+
+    assert reaped
+    process.wait.assert_called()
+
+
+@pytest.mark.parametrize("returncode", [None, 0])
+def test_posix_cleanup_preserves_permission_errors_for_existing_group(
+    mocker, returncode
+):
+    mocker.patch.object(posix.signal, "SIGKILL", 9, create=True)
+    process = mocker.Mock(pid=1234)
+    if returncode is None:
+        process.wait.side_effect = subprocess.TimeoutExpired("child", 1)
+    else:
+        process.wait.return_value = returncode
+    mocker.patch.object(
+        posix.os,
+        "killpg",
+        side_effect=PermissionError("cannot signal live group members"),
+        create=True,
+    )
+
+    with pytest.raises(PermissionError, match="cannot signal live group members"):
+        posix.ProcessTree(process).stop(timeout=0)

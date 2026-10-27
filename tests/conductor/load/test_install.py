@@ -349,10 +349,15 @@ def test_template_reader_rejects_nested_cycle_at_first_repeated_directory(
 
 
 def test_template_reader_reports_broken_eligible_link(template_root):
-    symlink_to(template_root / "missing.md", template_root / "absent.md")
+    link = template_root / "missing.md"
+    target = template_root / "absent.md"
+    symlink_to(link, target)
 
-    with pytest.raises(FileNotFoundError, match="absent.md"):
+    with pytest.raises(FileNotFoundError) as error:
         read_template(template_root)
+
+    # Windows reports the link; POSIX reports its missing target.
+    assert Path(error.value.filename) in {link, target}
 
 
 def test_install_preserves_deeply_nested_notes(template_root):

@@ -409,14 +409,16 @@ async def test_remaining_absolute_deadline_caps_entire_call(
 
     respx_mock.post(URL).mock(side_effect=blocked)
     before = asyncio.get_running_loop().time()
+    call_deadline = before + 0.1
     with pytest.raises(ProviderTransientError, match="timeout"):
-        await provider.evaluate(decision_request, deadline=before + 0.1)
+        await provider.evaluate(decision_request, deadline=call_deadline)
     assert started.is_set()
     # respx records completed calls; a cancelled handler needs its own counter.
     assert len(attempts) == 1
     assert asyncio.get_running_loop().time() - before < 2
     request_timeout = attempts[0].extensions["timeout"]
-    assert 0 < request_timeout["read"] <= 0.1
+    # Compare the actual deadline interval: adding 0.1 can round upward.
+    assert 0 < request_timeout["read"] <= call_deadline - before
 
 
 async def test_expired_deadline_makes_no_request(

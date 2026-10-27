@@ -37,6 +37,9 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from typer.testing import CliRunner
 
+from physiclaw.port import locks as file_lock
+from physiclaw.port.backends import windows
+
 osk = importlib.import_module("physiclaw.cli.sync_official_skills")
 skills_mod = importlib.import_module("physiclaw.cli.skills")
 
@@ -1054,7 +1057,7 @@ def test_windows_lock_uses_byte_zero_and_closes_handle(
     def locking(fd, mode, size):
         observed.append((fd, mode, size, os.lseek(fd, 0, os.SEEK_CUR)))
 
-    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setattr(file_lock, "_native", windows)
     monkeypatch.setitem(
         sys.modules, "msvcrt", SimpleNamespace(locking=locking, LK_NBLCK=2)
     )
@@ -1070,7 +1073,7 @@ def test_windows_lock_uses_byte_zero_and_closes_handle(
 
 def test_windows_lock_contention_prevents_fetch(official_home, monkeypatch, mocker):
     locking = mocker.Mock(side_effect=OSError("locked"))
-    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setattr(file_lock, "_native", windows)
     monkeypatch.setitem(
         sys.modules, "msvcrt", SimpleNamespace(locking=locking, LK_NBLCK=2)
     )
