@@ -17,7 +17,7 @@ export HW_VERSION
 # ARGS is empty. $(1) describes the expected value.
 need-args = $(if $(strip $(ARGS)),,$(error usage: make $@ ARGS=$(1)))
 
-# Release options are passed as data, including to the sequential sub-makes.
+# Release options are passed as data, never interpolated into shell commands.
 export VERSION VERBOSE RELEASE_FLOW
 
 help:
@@ -103,84 +103,16 @@ firmware:
 # abandoned attempt doesn't leave a stale local tag for a version that was
 # never released.
 
-bump:
-	@set -e; . ./scripts/release-output.sh; \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		release_error "Working tree dirty — commit or stash first"; fi; \
-	if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
-		release_error "Not on main branch"; fi; \
-	CURRENT=$$(release_version); \
-	if [ -n "$$VERSION" ]; then \
-		NEW=$$VERSION; \
-	else \
-		LAST=$${CURRENT##*.}; \
-		case "$$LAST" in *[!0-9]*|"") \
-			release_error "Can't auto-bump '$$CURRENT'; use make bump VERSION=X.Y.Z";; \
-		esac; \
-		NEW="$$(printf '%s\n' "$$CURRENT" | awk 'BEGIN{FS=OFS="."} {$$NF = $$NF + 1; print}')"; \
-	fi; \
-	case "$$NEW" in *[!0-9a-zA-Z.+!_-]*) release_error "Invalid version: $$NEW";; esac; \
-	if git rev-parse "v$$NEW" >/dev/null 2>&1; then \
-		release_error "Tag v$$NEW already exists"; fi; \
-	release_stage "$${RELEASE_FLOW:+[1/4] }Version $$CURRENT → $$NEW"; \
-	sed -i.bak "s/^version = \"[^\"]*\"$$/version = \"$$NEW\"/" pyproject.toml; \
-	rm pyproject.toml.bak; \
-	release_run uv lock; \
-	release_run git add pyproject.toml uv.lock; \
-	release_run git commit -m "chore: bump version to $$NEW"; \
-	release_done "Lockfile updated; version committed locally"; \
-	if [ -z "$$RELEASE_FLOW" ]; then printf '\n  Next: make build && make publish\n\n'; fi
-
-build:
-	@set -e; . ./scripts/release-output.sh; \
-	CURRENT=$$(release_version); \
-	[ -n "$$CURRENT" ] || release_error "Couldn't read version from pyproject.toml"; \
-	WHEEL="dist/physiclaw-$$CURRENT-py3-none-any.whl"; \
-	SDIST="dist/physiclaw-$$CURRENT.tar.gz"; \
-	release_stage "$${RELEASE_FLOW:+[2/4] }Build packages · $$CURRENT"; \
-	rm -f "$$WHEEL" "$$SDIST"; \
-	release_run uv build; \
-	release_artifact "$$WHEEL"; \
-	release_artifact "$$SDIST"; \
-	release_done "Built wheel + source archive"; \
-	if [ -z "$$RELEASE_FLOW" ]; then printf '\n  Next: make publish\n\n'; fi
-
-publish:
-	@set -e; . ./scripts/release-output.sh; \
-	CURRENT=$$(release_version); \
-	[ -n "$$CURRENT" ] || release_error "Couldn't read version from pyproject.toml"; \
-	WHEEL="dist/physiclaw-$$CURRENT-py3-none-any.whl"; \
-	SDIST="dist/physiclaw-$$CURRENT.tar.gz"; \
-	if [ -z "$$UV_PUBLISH_TOKEN" ]; then \
-		release_error "UV_PUBLISH_TOKEN not set. Create a token at https://pypi.org/manage/account/token/ and export UV_PUBLISH_TOKEN"; fi; \
-	for FILE in "$$WHEEL" "$$SDIST"; do \
-		[ -f "$$FILE" ] || release_error "$$FILE not found — run make build first"; \
-	done; \
-	if git rev-parse "v$$CURRENT" >/dev/null 2>&1; then \
-		release_error "Tag v$$CURRENT already exists — was this version already published?"; fi; \
-	release_stage "$${RELEASE_FLOW:+[3/4] }Publish to PyPI · $$CURRENT"; \
-	release_run uv publish "$$WHEEL" "$$SDIST"; \
-	release_done "Uploaded 2 files to PyPI"; \
-	release_stage "$${RELEASE_FLOW:+[4/4] }Push to GitHub"; \
-	release_run git tag -a "v$$CURRENT" -m "physiclaw v$$CURRENT"; \
-	release_run git push origin main; \
-	release_run git push origin "v$$CURRENT"; \
-	release_done "Pushed main and tag v$$CURRENT"; \
-	if [ -z "$$RELEASE_FLOW" ]; then release_summary "$$CURRENT"; fi
-
 # `make release [VERSION=X.Y.Z]` — bump + build + publish in one shot.
 #
 # Make reserves `-p` (print database), so a `make bump -p` style custom
 # flag isn't possible — this meta-target is the equivalent.
 #
-# Sequential sub-makes also preserve ordering under make -j. Each target reads
-# the version at execution time and hides standalone "Next" hints in this flow.
-release:
-	@. ./scripts/release-output.sh; printf '\n  %sPhysiClaw · release%s\n' "$$release_bold" "$$release_reset"
-	@$(MAKE) --no-print-directory bump RELEASE_FLOW=1
-	@$(MAKE) --no-print-directory build RELEASE_FLOW=1
-	@$(MAKE) --no-print-directory publish RELEASE_FLOW=1
-	@. ./scripts/release-output.sh; release_summary "$$(release_version)"
+# The stdlib driver works with cmd.exe and POSIX shells. Skip project discovery
+# so starting a release cannot sync dependencies before checking the working tree.
+# One process keeps the full release sequential even under make -j.
+bump build publish release:
+	@$(PY) --no-project python scripts/release.py $@
 
 # --- Hardware CAD pipeline ----------------------------------------------------
 # Thin wrappers over `python -m hardware <subcommand>` (see `make hw-help` and
