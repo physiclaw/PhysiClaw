@@ -57,9 +57,17 @@ def test_gaussian_blur_matches_cv2_square_kernel() -> None:
     rng = np.random.default_rng(3)
     gray = rng.integers(0, 255, size=(32, 32), dtype=np.uint8)
 
-    out = gaussian_blur(gray, 5)
-
-    assert np.array_equal(out, cv2.GaussianBlur(gray, (5, 5), 0))
+    # OpenCV 4.13 races when splitting a small image across many workers
+    # (opencv/opencv#28370). Check exact pixels, even on low-core CI hosts.
+    previous_threads = cv2.getNumThreads()
+    try:
+        cv2.setNumThreads(1)
+        expected = cv2.GaussianBlur(gray, (5, 5), 0)
+        cv2.setNumThreads(32)
+        for _ in range(100):
+            np.testing.assert_array_equal(gaussian_blur(gray, 5), expected)
+    finally:
+        cv2.setNumThreads(previous_threads)
 
 
 # ---------- resize_to_max_edge ----------

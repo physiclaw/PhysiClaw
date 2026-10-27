@@ -26,8 +26,9 @@ dependencies = [
     # Stable APIs have a major-version ceiling; pre-1.0 APIs stay on
     # their tested minor line. uv.lock pins the complete development graph.
     "pyserial>=3.5,<4",
-    # 4.10.0.84 supports both NumPy 1.26 and 2.x wheels.
-    "opencv-python>=4.10.0.84,<5",
+    # 4.14 fixes the GaussianBlur race on small images with many threads:
+    # https://github.com/opencv/opencv/issues/28370.
+    "opencv-python>=4.14,<5",
     "numpy>=1.26,<3",
     # Our MCPServer/ToolError APIs require SDK 2. Version 2.2 fixes unbounded
     # StreamableHTTP sessions (GHSA-84m7-p3x7-pcfv).
