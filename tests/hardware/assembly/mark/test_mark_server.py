@@ -1,9 +1,9 @@
 """Tests for hardware/assembly/mark/server.py — the /save handler.
 
 No real socket: a ``Handler`` is built bare (``__new__`` plus the
-attributes ``BaseHTTPRequestHandler``'s send path needs) and ``do_POST``
-is invoked directly, with the patch persistence monkeypatched to an
-in-memory store so the read→modify→write window is observable.
+attributes ``BaseHTTPRequestHandler``'s send path needs). Regression tests
+use real patch files and replay; concurrency tests use an in-memory store
+so the read→modify→write window is observable.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from hardware import buildlog
-from hardware.assembly.mark import server
+from hardware.assembly.mark import patch, replay, server
 
 SAVE_BODY = json.dumps({"shapes": [], "viewBox": "0 0 10 10", "preop": "orig"}).encode()
 
@@ -86,6 +86,76 @@ def test_save_appends_the_op_and_replies_with_its_id(store):
     assert b" 200 " in response.splitlines()[0]
     assert b"X-Op-Id: aaaa" in response
     assert [e["id"] for e in store.entries] == ["aaaa"]
+
+
+@pytest.mark.parametrize("preop", ["orig", "aaaa"])
+def test_browser_save_preserves_parts_through_reopen_and_replay(
+    tmp_path, monkeypatch, preop
+):
+    monkeypatch.setattr(patch, "PATCH_DIR", tmp_path / "patch")
+    src = tmp_path / "linear_10_y_exploded_cam0.svg"
+    original = b'<svg viewBox="0 0 100 100"><g id="art"/></svg>'
+    src.write_bytes(original)
+    monkeypatch.setattr(server.Handler, "src_path", src, raising=False)
+    parents = (
+        [patch.make_entry("aaaa", "orig", [], "0 0 80 80")] if preop != "orig" else []
+    )
+    entry = patch.make_entry("bbbb", preop, [], None)
+    entry["parts"] = ["Screw", "TNut"]
+    patch.write_patch(src, [*parents, entry])
+    snapshot = patch.snapshot_path(src, "bbbb")
+
+    for x, fill in [(10, "#1e88ff"), (20, "#e53935")]:
+        shape = {
+            "type": "rect",
+            "geom": {"x": x, "y": 10, "w": 5, "h": 5, "rx": 0},
+            "color": {"fill": fill, "opacity": 0.35},
+            "outlined": False,
+        }
+        # The browser sends only editable fields, not refit's parts metadata.
+        payload = {
+            "id": "bbbb",
+            "preop": preop,
+            "shapes": [shape],
+            "viewBox": "0 0 50 50",
+        }
+        handler = make_handler(json.dumps(payload).encode())
+        handler.do_POST()
+        response, image = handler.wfile.getvalue().split(b"\r\n\r\n", 1)
+
+        assert b" 200 " in response.splitlines()[0]
+        assert b"X-Op-Id: bbbb" in response
+        saved = patch.load_patch(src)
+        assert saved == [*parents, {**payload, "parts": ["Screw", "TNut"]}]
+        assert snapshot.read_bytes() == image
+        assert f'x="{x:.4f}"'.encode() in image
+        assert f'fill="{fill}"'.encode() in image
+        assert replay.replay_one(src) == [snapshot]
+        assert snapshot.read_bytes() == image
+
+        reopened = make_handler(b"")
+        reopened.command = "GET"
+        reopened.path = "/patch"
+        reopened.requestline = "GET /patch HTTP/1.1"
+        reopened.do_GET()
+        response, body = reopened.wfile.getvalue().split(b"\r\n\r\n", 1)
+        assert b" 200 " in response.splitlines()[0]
+        assert json.loads(body)["edit"] == saved[-1]
+
+    # A new chained op must not inherit the edited op's part selection.
+    appended = make_handler(
+        json.dumps({"preop": "bbbb", "shapes": [], "viewBox": "0 0 40 40"}).encode()
+    )
+    appended.do_POST()
+    response, image = appended.wfile.getvalue().split(b"\r\n\r\n", 1)
+    assert b" 200 " in response.splitlines()[0]
+    updated = patch.load_patch(src)
+    assert updated[:-1] == saved
+    assert updated[-1]["preop"] == "bbbb"
+    assert "parts" not in updated[-1]
+    (new_snapshot,) = replay.replay_one(src)
+    assert new_snapshot.read_bytes() == image
+    assert src.read_bytes() == original
 
 
 def test_save_failure_keeps_response_and_traceback_in_run_log(

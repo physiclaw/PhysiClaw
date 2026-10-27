@@ -135,11 +135,14 @@ def make_entry(
 
 
 def upsert_entry(src, entries, edit_id, preop, shapes, viewbox):
-    """Append a new op (``edit_id is None``) or replace the op with id
-    ``edit_id`` in place. Returns ``(op_id, updated_entries)``. The caller
-    validates ``edit_id`` (format / existence) first; this just mutates."""
+    """Append a new op or update its editable fields, preserving metadata.
+
+    Return ``(op_id, updated_entries)`` without mutating the input entries.
+    The caller validates ``edit_id`` (format / existence) first.
+    """
     if edit_id is not None:
         entry = make_entry(edit_id, preop, shapes, viewbox)
-        return edit_id, [entry if e["id"] == edit_id else e for e in entries]
+        # Keep metadata such as refit's ``parts`` that the browser doesn't edit.
+        return edit_id, [{**e, **entry} if e["id"] == edit_id else e for e in entries]
     op_id = new_id(src, taken={e["id"] for e in entries})
     return op_id, [*entries, make_entry(op_id, preop, shapes, viewbox)]
