@@ -35,9 +35,8 @@ def interrupt_signals() -> tuple[int, ...]:
 
 def lock_stream(stream: BinaryIO) -> None:
     msvcrt = importlib.import_module("msvcrt")
-    if stream.tell() == 0:
-        stream.write(b"\0")
-        stream.flush()
+    # Windows can lock past EOF. Writing a padding byte before acquiring
+    # the lock races with another holder and can raise PermissionError.
     stream.seek(0)
     try:
         msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)

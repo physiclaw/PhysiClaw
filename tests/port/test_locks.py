@@ -1,8 +1,8 @@
 """Stable file locks serialize writers and release handles on every exit.
 
-Mutation review accepts diagnostic wording and Windows lock-file initialization
-variants: the lock covers byte zero regardless of initial length/content, since
-Windows byte-range locks may extend past EOF. See Microsoft's locking reference:
+Mutation review accepts diagnostic wording variants. The lock covers byte zero
+without modifying the file, since Windows byte-range locks may extend past EOF.
+See Microsoft's locking reference:
 https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/locking
 The deadline equality variant is also accepted: a zero-duration retry before
 the advancing monotonic clock exceeds the deadline does not extend the budget.
@@ -35,6 +35,21 @@ def test_lock_creates_parents_and_rejects_competing_holder(tmp_path, mocker):
 
     assert path.is_file()
     sleep.assert_not_called()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows byte-range locks")
+def test_regression_empty_locked_file_reports_contention(tmp_path):
+    import msvcrt
+
+    path = tmp_path / "operation.lock"
+    with path.open("w+b", buffering=0) as holder:
+        msvcrt.locking(holder.fileno(), msvcrt.LK_NBLCK, 1)
+
+        with pytest.raises(FileLockBusy, match="lock is held"):
+            with exclusive_file_lock(path):
+                pytest.fail("a second caller acquired the empty-file lock")
+
+    assert path.read_bytes() == b""
 
 
 def test_lock_is_released_after_body_raises(tmp_path):

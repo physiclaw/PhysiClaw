@@ -9,6 +9,22 @@ from hardware.port import locks
 from hardware.port.backends import windows
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows byte-range locks")
+@pytest.mark.parametrize("acquire", [locks.file_lock, locks.output_lock])
+def test_regression_empty_locked_file_reports_contention(tmp_path, acquire):
+    import msvcrt
+
+    path = tmp_path / "output.lock"
+    with path.open("w+b", buffering=0) as holder:
+        msvcrt.locking(holder.fileno(), msvcrt.LK_NBLCK, 1)
+
+        with pytest.raises(BlockingIOError):
+            with acquire(path):
+                pytest.fail("a second caller acquired the empty-file lock")
+
+    assert path.read_bytes() == b""
+
+
 def test_windows_startup_failure_restores_handle_inheritability(mocker, monkeypatch):
     native_os = SimpleNamespace(
         environ={"PHYSICLAW_HW_LOCK_HANDLE": "123"},
