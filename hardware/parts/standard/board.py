@@ -53,6 +53,22 @@ label_depth = 0.5 * MM  # engrave depth
 label_cx = 24 * MM  # center X
 label_cy = -17 * MM  # center Y
 
+
+def _label_font() -> str:
+    """Choose a real text font instead of OCCT's arbitrary missing-font fallback."""
+    installed = {
+        font.name for font in available_fonts() if FontStyle.REGULAR in font.styles
+    }
+    for name in ("Arial", "Liberation Sans", "DejaVu Sans", "Noto Sans", "Helvetica"):
+        if name in installed:
+            return name
+    raise RuntimeError(
+        "The controller-board label needs a regular sans-serif font. "
+        "Install Arial, Liberation Sans, DejaVu Sans, Noto Sans or Helvetica "
+        "and rerun the hardware build."
+    )
+
+
 # Connector pitches and sizes. HDR_PITCH / DRIVER_ROW_PITCH come from _fits
 # (shared with the TMC2209 driver module so the two mate).
 XH_PITCH = 2.5 * MM  # JST XH series (motor connectors)
@@ -332,7 +348,7 @@ class MksBoard(BaseStandardPart):
             # Engrave the board label into the top face.
             with BuildSketch(Plane.XY.offset(pcb_th)):
                 with Locations((label_cx, label_cy)):
-                    Text(label_text, font_size=label_size)
+                    Text(label_text, font_size=label_size, font=_label_font())
             extrude(amount=-label_depth, mode=Mode.SUBTRACT)
         pcb_part = pcb.part
         pcb_part.color = COL_PCB

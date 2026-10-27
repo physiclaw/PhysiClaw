@@ -144,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
         if not rest:
             print("usage: python -m hardware step <procedure_stem>", file=sys.stderr)
             return 2
+        if rest[0] in ("-h", "--help"):
+            return _delegate(_DELEGATED["build"], rest)
         stem, *step_args = rest
         # One stem through the full `build` pipeline (STEP + SVG + patch replay
         # + its BOM) — i.e. `build --bom --stems <stem>`, reusing build's own

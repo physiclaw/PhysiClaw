@@ -1,18 +1,38 @@
 """POSIX mechanisms for hardware tooling; no build or application policy."""
 
 import codecs
+import ctypes
 import importlib
 import os
 import select
 import signal
 import subprocess
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import cache
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
 
 CANCELLATION_MARKER_REQUIRED = False
 _LOCK_FD_ENV = "PHYSICLAW_HW_LOCK_FD"
+
+
+@cache
+def load_system_fontconfig() -> object | None:
+    """Load Linux's parser before OCCT and retain its handle for the process."""
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        library = ctypes.CDLL("libfontconfig.so.1")
+        version = library.FcGetVersion
+        version.argtypes = []
+        version.restype = ctypes.c_int
+        if version() < 21301:  # Older than OCCT's bundled Fontconfig.
+            return None
+        return ctypes.CDLL("libfontconfig.so.1", mode=ctypes.RTLD_GLOBAL)
+    except (OSError, AttributeError):
+        return None
 
 
 def process_group_options() -> dict[str, Any]:

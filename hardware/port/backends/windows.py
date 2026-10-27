@@ -19,6 +19,10 @@ _HANDLE_ENV = "PHYSICLAW_HW_LOCK_HANDLE"
 _SPAWN_LOCK = Lock()
 
 
+def load_system_fontconfig() -> None:
+    """Windows font discovery does not use the Linux Fontconfig library."""
+
+
 def process_group_options() -> dict[str, Any]:
     return {
         "creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP") | 0x00000004

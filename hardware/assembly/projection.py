@@ -164,9 +164,15 @@ if __name__ == "__main__":
     #     pbpaste | uv run --group cad python -m hardware.assembly.projection
     #     echo  '<paste>' | uv run --group cad python -m hardware.assembly.projection
     #
+    import argparse
     import sys
 
-    s = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
+    parser = argparse.ArgumentParser(
+        description="Convert a FreeCAD camera view to a Camera() literal."
+    )
+    parser.add_argument("view", nargs="?", help="quoted camera view (default: stdin)")
+    args = parser.parse_args()
+    s = args.view if args.view is not None else sys.stdin.read()
     try:
         cam = Camera.from_freecad_view(s)
     except Exception as err:

@@ -8,13 +8,14 @@ import re
 import subprocess
 import sys
 from argparse import Namespace
+from importlib.util import find_spec
 
 import pytest
 
 from hardware import buildlog, scheme
 
 
-def invoke(tmp_path, *args):
+def invoke(tmp_path, *args, input=None, timeout=60):
     if args[0] == "manual":
         # Supply isolated figure fixtures; this test exercises the real CLI
         # without requiring an entire generated CAD assembly tree.
@@ -38,9 +39,10 @@ def invoke(tmp_path, *args):
             "NO_COLOR": "",
             "COLUMNS": "60",
         },
+        input=input,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=timeout,
     )
 
 
@@ -308,3 +310,45 @@ def test_make_check_forwards_format_flags_without_recipe_noise(tmp_path):
     events = [json.loads(line) for line in result.stdout.splitlines()]
     assert events[0]["event"] == "command_started"
     assert events[-1]["status"] == "success"
+
+
+@pytest.mark.parametrize("command", ["step", "camera"])
+@pytest.mark.parametrize("flag", ["-h", "--help"])
+def test_make_camera_and_step_help_without_positional_or_stdin(tmp_path, command, flag):
+    if find_spec("build123d") is None:
+        pytest.skip("CAD group not installed")
+    result = subprocess.run(
+        [
+            "make",
+            "--no-print-directory",
+            f"hw-{command}",
+            f"HW={sys.executable} -m hardware",
+            f"ARGS={flag}",
+        ],
+        cwd=scheme.REPO_ROOT,
+        env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "usage:" in result.stdout
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("piped", [False, True])
+def test_camera_accepts_quoted_view_or_stdin(tmp_path, piped):
+    if find_spec("build123d") is None:
+        pytest.skip("CAD group not installed")
+    view = "#Inventor V2.1 ascii\nPerspectiveCamera { orientation 1 0 0 1.5707963267948966 }"
+    result = invoke(
+        tmp_path,
+        "camera",
+        *([] if piped else [view]),
+        input=view if piped else "",
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout == "Camera(0.00, 0.00, 0.00)\n"
+    assert result.stderr == ""
