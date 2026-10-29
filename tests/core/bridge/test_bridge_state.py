@@ -498,7 +498,7 @@ def test_clear_screenshot_arms_and_receive_consumes(bs: BridgeState) -> None:
 
 
 def test_arm_upload_opens_window_without_touching_pending(bs: BridgeState) -> None:
-    # Calibrate steps arm ahead of the user's manual double-tap; a pending
+    # Calibrate steps arm ahead of the user's manual tap; a pending
     # screenshot must survive (arming is not a consume/clear).
     bs.receive_screenshot(b"pending")
     bs.arm_upload()

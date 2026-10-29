@@ -20,12 +20,12 @@ RECENT_SCREENSHOTS_MAX = 3
 # Upload arming: POST /api/bridge/screenshot is only accepted while a
 # consumer is expecting one. `clear_screenshot()` (the tap-AT choke point)
 # opens this window; `wait_screenshot()` extends it past its own timeout so
-# manual flows (viewport pre-cal's "double-tap AT yourself") stay covered.
+# manual flows (viewport pre-cal's "tap AT yourself") stay covered.
 UPLOAD_WINDOW_SECONDS = 60.0
 # Slack past a waiter's timeout: an upload racing the waiter's last poll
 # should still land rather than 403.
 UPLOAD_WINDOW_GRACE_SECONDS = 5.0
-# Calibration asks the user to double-tap AssistiveTouch themselves; eager
+# Calibration asks the user to tap AssistiveTouch once; eager
 # taps land before wait_screenshot() arms, so entering calibrate mode opens
 # a wider window up front (see PageState.set_mode).
 CAL_UPLOAD_WINDOW_SECONDS = 120.0
@@ -320,7 +320,7 @@ class BridgeState:
     def arm_upload(self, seconds: float = UPLOAD_WINDOW_SECONDS):
         """Open the upload window ahead of an expected manual upload,
         without touching any pending screenshot. Entering calibrate mode
-        calls this so a user's eager double-tap isn't 403'd."""
+        calls this so a user's eager tap isn't 403'd."""
         with self.lock:
             self._arm_upload_locked(seconds)
 
@@ -328,7 +328,7 @@ class BridgeState:
         """Consume the pending screenshot if it arrived after `received_after`
         (monotonic), else return None and leave state untouched.
 
-        Lets a step use an upload the user already sent — e.g. double-tapping
+        Lets a step use an upload the user already sent — e.g. tapping
         while the calibrate page shows the orange square, before pressing
         Measure — instead of making them upload again. The cutoff excludes
         shots that predate whatever the step needs on screen."""
@@ -428,7 +428,7 @@ class BridgeState:
 
         Called from the blocking MCP tool thread. Arms the upload window
         for its own duration (some flows wait without a prior
-        `clear_screenshot`, e.g. viewport pre-cal's manual double-tap).
+        `clear_screenshot`, e.g. viewport pre-cal's manual tap).
         Waits on the event without holding the lock (otherwise
         receive_screenshot couldn't acquire it to store data). Once
         signaled, grabs the lock briefly to read the data safely.

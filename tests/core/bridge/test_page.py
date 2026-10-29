@@ -107,7 +107,7 @@ def test_set_mode_calibrate_without_phase_does_not_call_set_phase() -> None:
 
 
 def test_set_mode_calibrate_arms_upload_window() -> None:
-    # The user may double-tap before pressing the step's button — entering
+    # The user may tap before pressing the step's button — entering
     # calibrate mode must open the upload window right away.
     from physiclaw.core.bridge.state import CAL_UPLOAD_WINDOW_SECONDS
 

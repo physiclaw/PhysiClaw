@@ -526,7 +526,7 @@ class HardwareRig:
     # the hardware lock.
 
     def take_screenshot(self, timeout: float = 60.0) -> bytes | None:
-        """Trigger the iOS screenshot + upload Shortcuts via AssistiveTouch;
+        """Trigger the iOS capture-and-upload Shortcut via AssistiveTouch;
         return the uploaded image bytes, or None on upload timeout."""
         self.assert_locked()
         at = self.require_assistive_touch()

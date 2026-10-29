@@ -1,7 +1,7 @@
 """Pre-cal: screenshot coordinate mapping (viewport CSS → screenshot 0-1).
 
 The phone page draws an orange square at a known viewport CSS position;
-the user uploads a phone screenshot (double-tap AssistiveTouch) and the
+the user uploads a phone screenshot (tap AssistiveTouch once) and the
 server locates the square in it. Square size vs known CSS size yields
 the device pixel ratio; expected vs detected center yields the status
 bar / safe-area offset. Everything downstream (arm grid, camera grid,
@@ -120,7 +120,7 @@ def measure_viewport_shift(
     """Measure the viewport→screenshot pixel offset and DPR.
 
     Shows an orange square at a known viewport CSS position. User takes a
-    phone screenshot (double-tap AssistiveTouch). Server detects the square
+    phone screenshot (tap AssistiveTouch once). Server detects the square
     in the screenshot and derives:
       - dpr (device pixel ratio)
       - offset_x, offset_y (status bar / safe-area shift)
@@ -178,7 +178,7 @@ def measure_viewport_shift(
             log.warning(f"  Viewport cache unusable ({exc}) — waiting for an upload")
             cached = None
     if decoded is None:
-        # Best case: the user already double-tapped while the square was on
+        # Best case: the user already tapped while the square was on
         # screen (the wizard says to upload before pressing Measure) — use
         # that shot straight away. The phase-entry cutoff excludes uploads
         # that predate the square; a shot that decodes but shows no square
@@ -193,11 +193,11 @@ def measure_viewport_shift(
         if data is None or decoded is None:
             bridge.clear_screenshot()
             log.info(
-                "  Waiting for phone screenshot (double-tap AssistiveTouch)...",
+                "  Waiting for phone screenshot (tap AssistiveTouch once)...",
                 extra={
                     "event": "calibration.waiting_for_user",
                     "console": True,
-                    "console_message": "Waiting for phone screenshot — double-tap AssistiveTouch",
+                    "console_message": "Waiting for phone screenshot — tap AssistiveTouch once",
                 },
             )
             data = bridge.wait_screenshot(timeout=30.0)
@@ -207,7 +207,7 @@ def measure_viewport_shift(
                     f"Timeout — no screenshot received; {hint}."
                     if hint
                     else "Timeout — no screenshot received. "
-                    "Double-tap AssistiveTouch to upload."
+                    "Tap AssistiveTouch once to upload."
                 )
             log.info(f"  Screenshot received: {len(data)} bytes")
             decoded = _decode_screenshot_square(data)

@@ -1,8 +1,8 @@
-"""AssistiveTouch verification — tap, double-tap, long-press end-to-end.
+"""AssistiveTouch verification — single-tap and long-press end-to-end.
 
-The runtime depends on three iOS Shortcuts wired to AssistiveTouch
+The runtime depends on two iOS Shortcuts wired to AssistiveTouch
 gestures; this step proves each one actually fires from an arm-driven
-press. Single-tap takes an iOS screenshot, double-tap uploads it — the
+press. Single-tap captures and uploads the current screen — the
 uploaded image must contain the grey nonce grid the server generated,
 so a stale photo from the camera roll can't pass. Long-press makes the
 phone fetch the server's queued clipboard text; the fetch event (plus
@@ -44,13 +44,11 @@ def verify_assistive_touch(
     pct_to_grbl: np.ndarray,
     phone: PageState,
 ) -> dict:
-    """Verify all three AT gestures end-to-end.
+    """Verify both AT shortcuts end-to-end.
 
-    1. Single-tap → "PhysiClaw Tap" Shortcut takes a screenshot (saved to Photos).
-    2. Wait 5s for the screenshot animation to finish.
-    3. Double-tap → "PhysiClaw Screenshot" Shortcut uploads the latest photo.
+    1. Single-tap → "PhysiClaw Upload Screenshot" captures and uploads the screen.
        Verify the uploaded image contains the grey nonce grid.
-    4. Long-press → "PhysiClaw Clipboard" Shortcut GETs /api/bridge/clipboard.
+    2. Long-press → "PhysiClaw Clipboard" Shortcut GETs /api/bridge/clipboard.
        Verify the server's clipboard-copied event fires within the timeout.
        Return the queued text so the user can paste-verify downstream.
 
@@ -98,14 +96,8 @@ def verify_assistive_touch(
     phone.set_mode("calibrate", "assistive_touch", nonce_bits=nonce)
     time.sleep(0.5)  # let the phone poll and render the grid before the shot
 
-    log.info("  Single-tap AT (iOS screenshot)...")
+    log.info("  Single-tap AT (capture and upload)...")
     at.tap(arm, pct_to_grbl)
-
-    log.info("  Waiting 5s for screenshot animation...")
-    time.sleep(5.0)
-
-    log.info("  Double-tap AT (screenshot + upload)...")
-    at.double_tap(arm, pct_to_grbl)
 
     log.info("  Waiting for screenshot upload...")
     data = bridge.wait_screenshot(timeout=10.0)
@@ -193,7 +185,7 @@ def verify_assistive_touch(
     passed = shot_passed and clip_fetched
     if passed:
         log.info(
-            "  ✓ AssistiveTouch done: tap + double-tap + long-press all verified",
+            "  ✓ AssistiveTouch done: single-tap + long-press verified",
             extra={
                 "event": "calibration.checked",
                 "console": True,

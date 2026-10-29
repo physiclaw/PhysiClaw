@@ -2,7 +2,7 @@
 
 `verify_assistive_touch` is exercised over its precondition errors (AT
 position / viewport-shift unset), the screenshot-timeout and
-decode-failure records, the full tap + double-tap + long-press success
+decode-failure records, the full tap + long-press success
 path, the phone-mode choreography (grid up front, plain bridge page at
 the end), and the clipboard-timeout partial failure.
 """
@@ -332,9 +332,13 @@ def _real_at_setup(mocker):
     cal.screen_dimension = {"viewport_width": 400, "viewport_height": 800}
     phone = PageState(bridge, cal)
     at = MagicMock(at_screen=(0.1, 0.3))
-    at.double_tap.side_effect = lambda *_: bridge.receive_screenshot(
-        _render_nonce(phone)
-    )
+
+    def upload(*_):
+        token = bridge.screenshot_upload_token()
+        assert token is not None
+        assert bridge.receive_screenshot(_render_nonce(phone), upload_token=token)
+
+    at.tap.side_effect = upload
     at.long_press.side_effect = lambda *_: bridge.fetch_text()
     return at, cal, bridge, phone
 
@@ -344,14 +348,18 @@ def test_regression_at_retry_rejects_photo_from_previous_attempt(mocker) -> None
     first = at_verify_mod.verify_assistive_touch(
         MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
     )
+    assert first["passed"] is True
+    at.tap.assert_called_once()
+    at.double_tap.assert_not_called()
+    at.long_press.assert_called_once()
+
     old_photo = bridge.recent_screenshots(1)[0]
-    at.double_tap.side_effect = lambda *_: bridge.receive_screenshot(old_photo)
+    at.tap.side_effect = lambda *_: bridge.receive_screenshot(old_photo)
 
     second = at_verify_mod.verify_assistive_touch(
         MagicMock(), at, bridge, cal, _identity_pct_to_grbl(), phone
     )
 
-    assert first["passed"] is True
     assert second["passed"] is False
     assert second["screenshot"] == {"passed": False, "matched": 0, "total": 64}
 

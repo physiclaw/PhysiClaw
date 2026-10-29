@@ -142,12 +142,12 @@ def test_measure_viewport_shift_raises_when_screenshot_timeout(
     def wait_screenshot(*args, **kwargs):
         # The instruction must be visible BEFORE the blocking wait.
         notices = [r for r in caplog.records if getattr(r, "console", False)]
-        assert any("double-tap AssistiveTouch" in r.console_message for r in notices)
+        assert any("tap AssistiveTouch once" in r.console_message for r in notices)
         return None
 
     bridge.wait_screenshot.side_effect = wait_screenshot
     with caplog.at_level(logging.INFO):
-        with pytest.raises(RuntimeError, match="Double-tap AssistiveTouch"):
+        with pytest.raises(RuntimeError, match="Tap AssistiveTouch once"):
             measure_viewport_shift(cal, bridge, fresh=True)
 
 
@@ -246,7 +246,7 @@ def test_measure_viewport_shift_uses_pending_upload_without_waiting(
     mocker,
     tmp_path: Path,
 ) -> None:
-    # Best-UX path: the user double-tapped while the square was showing,
+    # Best-UX path: the user tapped while the square was showing,
     # before pressing Measure — that shot is used straight away.
     mocker.patch.object(viewport_mod.time, "sleep")
     mocker.patch.object(viewport_mod, "VIEWPORT_CACHE_STEM", tmp_path / "viewport")

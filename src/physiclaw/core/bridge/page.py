@@ -35,7 +35,7 @@ class PageState:
                 self.mode = mode
                 log.info(f"Phone mode → {mode}")
             if mode == "calibrate":
-                # Calibration asks the user to double-tap AssistiveTouch;
+                # Calibration asks the user to tap AssistiveTouch once;
                 # open the upload window right away so an eager upload —
                 # even one sent before the step's button is pressed —
                 # is accepted instead of 403'd.

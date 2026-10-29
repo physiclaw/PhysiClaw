@@ -10,6 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from physiclaw.core.bridge import BridgeState
 from physiclaw.core.calibration.transforms import ViewportShift
 from physiclaw.core.hardware.iphone import AssistiveTouch
 
@@ -326,8 +327,7 @@ def test_long_press_calls_arm_long_press(caplog: pytest.LogCaptureFixture) -> No
 # ---------- take_screenshot ----------
 
 
-def test_take_screenshot_returns_bytes_on_success(mocker) -> None:
-    mocker.patch("physiclaw.core.hardware.iphone.time.sleep")
+def test_take_screenshot_returns_bytes_on_success() -> None:
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()
@@ -339,14 +339,13 @@ def test_take_screenshot_returns_bytes_on_success(mocker) -> None:
     assert out == b"\x89PNG"
     bridge.clear_screenshot.assert_called_once()
     arm.tap.assert_called_once()
-    arm.double_tap.assert_called_once()
+    arm.double_tap.assert_not_called()
     bridge.wait_screenshot.assert_called_once_with(timeout=0.5)
 
 
 def test_take_screenshot_warns_and_returns_none_on_timeout(
-    mocker, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    mocker.patch("physiclaw.core.hardware.iphone.time.sleep")
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()
@@ -362,9 +361,8 @@ def test_take_screenshot_warns_and_returns_none_on_timeout(
 
 
 def test_take_screenshot_timeout_warning_carries_connectivity_hint(
-    mocker, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    mocker.patch("physiclaw.core.hardware.iphone.time.sleep")
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()
@@ -381,21 +379,31 @@ def test_take_screenshot_timeout_warning_carries_connectivity_hint(
     assert any("may be off Wi-Fi" in r.getMessage() for r in caplog.records)
 
 
-def test_take_screenshot_sleeps_5s_between_taps(mocker) -> None:
-    sleep_spy = mocker.patch("physiclaw.core.hardware.iphone.time.sleep")
+def test_take_screenshot_accepts_immediate_upload_from_one_tap(mocker) -> None:
+    sleep = mocker.patch("time.sleep")
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()
-    bridge = MagicMock()
-    bridge.wait_screenshot.return_value = b"\x00"
+    bridge = BridgeState()
+    bridge.receive_screenshot(b"stale screenshot")
 
-    at.take_screenshot(arm, bridge, _identity_pct_to_grbl())
+    def upload():
+        token = bridge.screenshot_upload_token()
+        assert token is not None
+        assert bridge.receive_screenshot(b"current screenshot", upload_token=token)
 
-    sleep_spy.assert_called_once_with(5.0)
+    arm.tap.side_effect = upload
+
+    assert (
+        at.take_screenshot(arm, bridge, _identity_pct_to_grbl(), timeout=0.1)
+        == b"current screenshot"
+    )
+    arm.tap.assert_called_once()
+    arm.double_tap.assert_not_called()
+    sleep.assert_not_called()
 
 
-def test_take_screenshot_default_timeout_is_10s(mocker) -> None:
-    mocker.patch("physiclaw.core.hardware.iphone.time.sleep")
+def test_take_screenshot_default_timeout_is_10s() -> None:
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()

@@ -256,14 +256,12 @@ def _step_locate_screen(auto: bool) -> None:
             print(
                 f"  Cached screenshot at {vp_cache} ignored (interactive: fresh measurement)."
             )
-        print(
-            "  The phone shows an orange square. Tap AssistiveTouch once (screenshot),"
-        )
-        print("  then double-tap it (upload).")
+        print("  The phone shows an orange square.")
+        print("  Tap AssistiveTouch once to capture and upload a screenshot.")
     calibrate_retry(
         "viewport-shift",
         "Couldn't read the screenshot",
-        "Tap AT once, then double-tap. Retry?",
+        "Tap AssistiveTouch once to capture and upload. Retry?",
         auto,
         timeout=35,
         body={"fresh": not auto},

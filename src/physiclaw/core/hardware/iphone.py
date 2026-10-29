@@ -2,13 +2,11 @@
 AssistiveTouch driver — control the iOS AssistiveTouch floating button.
 
 Knows where the AT button sits on the phone screen and taps it via the arm
-(single-tap → iOS screenshot, double-tap → iOS Shortcut runs and uploads
-the latest screenshot to the server). Pure driver — calibration and
-screenshot-pipeline verification logic live in `physiclaw.core.calibration`.
+(single-tap → capture and upload, long-press → copy to clipboard).
+Calibration and screenshot verification live in `physiclaw.core.calibration`.
 """
 
 import logging
-import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -26,15 +24,14 @@ class AssistiveTouch:
     """AssistiveTouch button driver.
 
     Knows where the AT button is in screen 0-1 coordinates.
-    Single-tap: iOS takes a screenshot (saved to Photos).
-    Double-tap: iOS Shortcut gets the latest screenshot from Photos and uploads it.
+    Single-tap: iOS Shortcut captures and uploads the current screen.
+    Long-press: iOS Shortcut fetches text and copies it to the clipboard.
 
     Usage:
         at = AssistiveTouch()
         at.compute_at_screen_pos(cal.viewport_shift)  # after pre-cal
-        at.tap(arm, pct_to_grbl)              # iOS screenshot
-        at.double_tap(arm, pct_to_grbl)       # screenshot + upload
         img_bytes = at.take_screenshot(arm, bridge, pct_to_grbl)
+        at.long_press(arm, pct_to_grbl)       # copy queued text to clipboard
     """
 
     # AT button geometry (CSS viewport px) — from the shared
@@ -128,13 +125,13 @@ class AssistiveTouch:
         return sx, sy
 
     def tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
-        """Single-tap AT — iOS takes a screenshot (saved to Photos)."""
+        """Single-tap AT — iOS Shortcut captures and uploads the current screen."""
         sx, sy = self._move_to_at(arm, pct_to_grbl)
         arm.tap()
         log.info(f"AT single-tap at screen ({sx:.3f}, {sy:.3f})")
 
     def double_tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
-        """Double-tap AT — iOS Shortcut gets latest screenshot and uploads it."""
+        """Double-tap the AssistiveTouch button."""
         sx, sy = self._move_to_at(arm, pct_to_grbl)
         arm.double_tap()
         log.info(f"AT double-tap at screen ({sx:.3f}, {sy:.3f})")
@@ -152,11 +149,9 @@ class AssistiveTouch:
         pct_to_grbl: np.ndarray,
         timeout: float = 10.0,
     ) -> bytes | None:
-        """Single-tap (take screenshot) + double-tap (upload latest), return image bytes."""
+        """Single-tap to capture and upload the current screen, then await the image."""
         bridge.clear_screenshot()
         self.tap(arm, pct_to_grbl)
-        time.sleep(5.0)
-        self.double_tap(arm, pct_to_grbl)
         data = bridge.wait_screenshot(timeout=timeout)
         if data is None:
             hint = bridge.connectivity_hint()
