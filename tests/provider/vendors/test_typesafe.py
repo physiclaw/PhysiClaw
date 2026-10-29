@@ -666,7 +666,10 @@ async def test_shared_config_credentials_and_endpoint_override(
     monkeypatch.setattr(config.CONFIG.provider, "typesafe_api_key", "config-fixture")
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('[providers.typesafe]\nbase_url = "https://proxy.example/custom"\n')
+    path.write_text(
+        '[providers.typesafe]\nbase_url = "https://proxy.example/custom"\n',
+        encoding="utf-8",
+    )
     provider = make_decision_provider("typesafe", "jev-1.14.0")
     try:
         route = respx_mock.post("https://proxy.example/custom/systemone").respond(

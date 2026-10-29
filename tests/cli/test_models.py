@@ -189,7 +189,7 @@ def test_unknown_provider_fails_before_any_client_or_config_write(
 @pytest.mark.parametrize("cached", [False, True])
 def test_use_model_persists_exact_ref_and_preserves_comments(command, cached):
     config.config_path().write_text(
-        '# keep this comment\n[agent]\nmodel = "old/model"\n'
+        '# keep this comment\n[agent]\nmodel = "old/model"\n', encoding="utf-8"
     )
     if cached:
         discovered.save("openai", [{"id": "org/model-v1"}])
@@ -199,7 +199,7 @@ def test_use_model_persists_exact_ref_and_preserves_comments(command, cached):
     assert result.exit_code == 0
     assert config.load().agent.model == "openai/org/model-v1"
     assert config.CONFIG.agent.model == "openai/org/model-v1"
-    assert "# keep this comment" in config.config_path().read_text()
+    assert "# keep this comment" in config.config_path().read_text(encoding="utf-8")
     assert "Restart" in result.stdout
 
 
@@ -254,14 +254,14 @@ def test_regression_config_write_failure_has_diagnostic_and_no_success(
 )
 def test_invalid_config_is_reported_without_overwriting_it(arguments, client):
     discovered.save("openai", [{"id": "test-model"}])
-    config.config_path().write_text("[broken")
+    config.config_path().write_text("[broken", encoding="utf-8")
 
     result = runner.invoke(models_app, arguments)
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert "config.toml" in result.stderr
-    assert config.config_path().read_text() == "[broken"
+    assert config.config_path().read_text(encoding="utf-8") == "[broken"
     client.lookup.assert_not_called()
 
 
@@ -442,7 +442,7 @@ def test_discover_client_construction_failure_has_clear_error(mocker):
 
 
 def test_discover_cache_write_failure_keeps_live_list(client, physiclaw_home, caplog):
-    (physiclaw_home / "discovered").write_text("not a directory")
+    (physiclaw_home / "discovered").write_text("not a directory", encoding="utf-8")
 
     result = runner.invoke(models_app, ["discover", "openai"])
 

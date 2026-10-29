@@ -89,7 +89,9 @@ def test_load_user_returns_empty_string_when_file_missing() -> None:
 
 def test_load_user_returns_stripped_content(_memory_paths: Path) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "USER.md").write_text("\n\n  Profile: power user  \n\n")
+    (_memory_paths / "USER.md").write_text(
+        "\n\n  Profile: power user  \n\n", encoding="utf-8"
+    )
 
     assert memory.load_user() == "Profile: power user"
 
@@ -98,7 +100,7 @@ def test_load_user_returns_empty_string_for_whitespace_only_file(
     _memory_paths: Path,
 ) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "USER.md").write_text("   \n\n\t  \n")
+    (_memory_paths / "USER.md").write_text("   \n\n\t  \n", encoding="utf-8")
 
     assert memory.load_user() == ""
 
@@ -112,7 +114,9 @@ def test_load_persistent_returns_empty_string_when_file_missing() -> None:
 
 def test_load_persistent_returns_stripped_content(_memory_paths: Path) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "memory.md").write_text("\n  fact one\nfact two  \n\n")
+    (_memory_paths / "memory.md").write_text(
+        "\n  fact one\nfact two  \n\n", encoding="utf-8"
+    )
 
     assert memory.load_persistent() == "fact one\nfact two"
 
@@ -130,7 +134,8 @@ def test_load_recent_entries_reads_today_with_most_recent_first(
 ) -> None:
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "2026-04-28.md").write_text(
-        "# 2026-04-28\n\n[09:00] first\n[10:00] second\n[11:00] third\n"
+        "# 2026-04-28\n\n[09:00] first\n[10:00] second\n[11:00] third\n",
+        encoding="utf-8",
     )
 
     with freeze_time("2026-04-28"):
@@ -146,9 +151,11 @@ def test_load_recent_entries_walks_back_when_today_underfilled(
     _memory_paths: Path,
 ) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "2026-04-28.md").write_text("# 2026-04-28\n[09:00] today-1\n")
+    (_memory_paths / "2026-04-28.md").write_text(
+        "# 2026-04-28\n[09:00] today-1\n", encoding="utf-8"
+    )
     (_memory_paths / "2026-04-27.md").write_text(
-        "# 2026-04-27\n[14:00] yesterday-1\n[15:00] yesterday-2\n"
+        "# 2026-04-27\n[14:00] yesterday-1\n[15:00] yesterday-2\n", encoding="utf-8"
     )
 
     with freeze_time("2026-04-28"):
@@ -172,7 +179,8 @@ def test_load_recent_entries_skips_header_and_blank_lines(
         "[09:00] real entry\n"
         "  \n"  # whitespace-only
         "## a sub-header — also skipped\n"
-        "[10:00] another\n"
+        "[10:00] another\n",
+        encoding="utf-8",
     )
 
     with freeze_time("2026-04-28"):
@@ -186,7 +194,7 @@ def test_load_recent_entries_passes_through_lines_with_no_time_prefix(
 ) -> None:
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "2026-04-28.md").write_text(
-        "# 2026-04-28\n[09:00] timed\nfreeform note\n"
+        "# 2026-04-28\n[09:00] timed\nfreeform note\n", encoding="utf-8"
     )
 
     with freeze_time("2026-04-28"):
@@ -202,7 +210,8 @@ def test_load_recent_entries_stops_at_n_even_with_more_available(
 ) -> None:
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "2026-04-28.md").write_text(
-        "# 2026-04-28\n" + "".join(f"[09:0{i}] entry-{i}\n" for i in range(5))
+        "# 2026-04-28\n" + "".join(f"[09:0{i}] entry-{i}\n" for i in range(5)),
+        encoding="utf-8",
     )
 
     with freeze_time("2026-04-28"):
@@ -219,10 +228,10 @@ def test_load_recent_entries_outer_loop_does_not_overshoot_when_today_fills_n(
     # not `> n` (which would let one extra entry from yesterday slip in).
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "2026-04-28.md").write_text(
-        "# 2026-04-28\n[09:00] today-a\n[10:00] today-b\n"
+        "# 2026-04-28\n[09:00] today-a\n[10:00] today-b\n", encoding="utf-8"
     )
     (_memory_paths / "2026-04-27.md").write_text(
-        "# 2026-04-27\n[10:00] yesterday-extra\n"
+        "# 2026-04-27\n[10:00] yesterday-extra\n", encoding="utf-8"
     )
 
     with freeze_time("2026-04-28"):
@@ -239,10 +248,12 @@ def test_load_recent_entries_skips_missing_day_to_continue_walking_back(
     # FileNotFoundError handler must `continue` (not `break`), otherwise
     # day-before's entries are never read.
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "2026-04-28.md").write_text("# 2026-04-28\n[09:00] today\n")
+    (_memory_paths / "2026-04-28.md").write_text(
+        "# 2026-04-28\n[09:00] today\n", encoding="utf-8"
+    )
     # 2026-04-27.md intentionally missing
     (_memory_paths / "2026-04-26.md").write_text(
-        "# 2026-04-26\n[14:00] day-before-a\n[15:00] day-before-b\n"
+        "# 2026-04-26\n[14:00] day-before-a\n[15:00] day-before-b\n", encoding="utf-8"
     )
 
     with freeze_time("2026-04-28"):
@@ -259,7 +270,9 @@ def test_load_recent_entries_uses_default_n_when_omitted(
     # Default is `DEFAULT_LOG_ENTRIES`. Just verify the path is reachable
     # — exact value depends on user config.
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "2026-04-28.md").write_text("# 2026-04-28\n[09:00] entry\n")
+    (_memory_paths / "2026-04-28.md").write_text(
+        "# 2026-04-28\n[09:00] entry\n", encoding="utf-8"
+    )
 
     with freeze_time("2026-04-28"):
         out = memory.load_recent_entries()
@@ -275,7 +288,7 @@ def test_append_log_creates_file_with_date_header(_memory_paths: Path) -> None:
         memory.append_log("[10:30] first entry")
 
     path = _memory_paths / "2026-04-28.md"
-    assert path.read_text() == "# 2026-04-28\n\n[10:30] first entry\n"
+    assert path.read_text(encoding="utf-8") == "# 2026-04-28\n\n[10:30] first entry\n"
 
 
 def test_append_log_does_not_repeat_header_on_existing_file(
@@ -285,7 +298,7 @@ def test_append_log_does_not_repeat_header_on_existing_file(
         memory.append_log("[10:30] first")
         memory.append_log("[11:00] second")
 
-    text = (_memory_paths / "2026-04-28.md").read_text()
+    text = (_memory_paths / "2026-04-28.md").read_text(encoding="utf-8")
     assert text.count("# 2026-04-28") == 1
     assert text.endswith("[10:30] first\n[11:00] second\n")
 
@@ -319,7 +332,7 @@ def test_append_log_strips_entry_before_writing(_memory_paths: Path) -> None:
     with freeze_time("2026-04-28T10:30:00"):
         memory.append_log("  [10:30] padded entry  \n\n")
 
-    text = (_memory_paths / "2026-04-28.md").read_text()
+    text = (_memory_paths / "2026-04-28.md").read_text(encoding="utf-8")
     # Stripped — no surrounding whitespace, single trailing newline.
     assert "[10:30] padded entry\n" in text
     assert "  [10:30]" not in text
@@ -342,7 +355,7 @@ def test_save_fact_appends_to_memory_md(_memory_paths: Path) -> None:
     memory.save_fact("user prefers metric units")
     memory.save_fact("user uses AssistiveTouch")
 
-    text = (_memory_paths / "memory.md").read_text()
+    text = (_memory_paths / "memory.md").read_text(encoding="utf-8")
     assert text == "user prefers metric units\nuser uses AssistiveTouch\n"
 
 
@@ -380,7 +393,7 @@ def test_save_fact_empty_or_whitespace_only_is_noop(
 def test_save_fact_strips_text_before_writing(_memory_paths: Path) -> None:
     memory.save_fact("  surrounded  ")
 
-    assert (_memory_paths / "memory.md").read_text() == "surrounded\n"
+    assert (_memory_paths / "memory.md").read_text(encoding="utf-8") == "surrounded\n"
 
 
 @pytest.mark.parametrize("ending", ["", "\n", "\r\n", "\r"])
@@ -417,12 +430,12 @@ def test_regression_save_fact_after_update_removed_final_newline(_memory_paths):
 def test_update_fact_replaces_single_occurrence(_memory_paths: Path) -> None:
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "memory.md").write_text(
-        "user is qiaoqian\nuser uses metric units\n"
+        "user is qiaoqian\nuser uses metric units\n", encoding="utf-8"
     )
 
     memory.update_fact("metric", "imperial")
 
-    assert (_memory_paths / "memory.md").read_text() == (
+    assert (_memory_paths / "memory.md").read_text(encoding="utf-8") == (
         "user is qiaoqian\nuser uses imperial units\n"
     )
 
@@ -431,11 +444,15 @@ def test_update_fact_with_empty_new_deletes_the_containing_line(
     _memory_paths: Path,
 ) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "memory.md").write_text("fact-one\nfact-to-remove\nfact-three\n")
+    (_memory_paths / "memory.md").write_text(
+        "fact-one\nfact-to-remove\nfact-three\n", encoding="utf-8"
+    )
 
     memory.update_fact("fact-to-remove", "")
 
-    assert (_memory_paths / "memory.md").read_text() == "fact-one\nfact-three\n"
+    assert (_memory_paths / "memory.md").read_text(
+        encoding="utf-8"
+    ) == "fact-one\nfact-three\n"
 
 
 def test_update_fact_raises_FileNotFoundError_when_memory_md_missing() -> None:
@@ -447,7 +464,7 @@ def test_update_fact_raises_ValueError_when_old_text_not_present(
     _memory_paths: Path,
 ) -> None:
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "memory.md").write_text("present text\n")
+    (_memory_paths / "memory.md").write_text("present text\n", encoding="utf-8")
 
     with pytest.raises(
         ValueError, match=r"^old text not found in memory\.md: 'absent'$"
@@ -461,7 +478,9 @@ def test_update_fact_raises_ValueError_when_old_text_matches_exactly_two_places(
     # `count > 1` boundary — exactly 2 occurrences must raise. Mutating
     # to `count > 2` would incorrectly let this case through.
     _memory_paths.mkdir(parents=True)
-    (_memory_paths / "memory.md").write_text("user uses bot\nuser trusts bot\n")
+    (_memory_paths / "memory.md").write_text(
+        "user uses bot\nuser trusts bot\n", encoding="utf-8"
+    )
 
     with pytest.raises(
         ValueError,
@@ -478,7 +497,7 @@ def test_update_fact_raises_ValueError_when_old_text_matches_three_places(
 ) -> None:
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "memory.md").write_text(
-        "user uses bot\nuser likes bot\nuser trusts bot\n"
+        "user uses bot\nuser likes bot\nuser trusts bot\n", encoding="utf-8"
     )
 
     with pytest.raises(
@@ -499,12 +518,12 @@ def test_update_fact_with_empty_new_only_removes_first_match_and_keeps_others(
     # Pre-validate: only one occurrence, on its own line.
     _memory_paths.mkdir(parents=True)
     (_memory_paths / "memory.md").write_text(
-        "keep this line\nremove unique-marker\nkeep this too\n"
+        "keep this line\nremove unique-marker\nkeep this too\n", encoding="utf-8"
     )
 
     memory.update_fact("unique-marker", "")
 
-    assert (_memory_paths / "memory.md").read_text() == (
+    assert (_memory_paths / "memory.md").read_text(encoding="utf-8") == (
         "keep this line\nkeep this too\n"
     )
 

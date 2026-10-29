@@ -62,7 +62,9 @@ def load_case(case: dict):
     variants = []
     model = None
     for variant in ("before", "after"):
-        payload = json.loads(Path(case[variant]).expanduser().read_text())
+        payload = json.loads(
+            Path(case[variant]).expanduser().read_text(encoding="utf-8")
+        )
         if not isinstance(payload, dict) or set(payload) != {
             "model",
             "messages",
@@ -151,7 +153,7 @@ def contains_box(value, bbox):
 async def evaluate(args):
     from physiclaw.provider import OpenAICompatibleProvider, make_chat_provider
 
-    cases = json.loads(args.cases.read_text())
+    cases = json.loads(args.cases.read_text(encoding="utf-8"))
     prepared = [(case, load_case(case)) for case in cases]
     report = {
         "scope": "Recorded next-turn replay; no tool execution",
@@ -197,7 +199,8 @@ async def evaluate(args):
             row["seconds"] = round(time.monotonic() - started, 2)
             report["results"].append(row)
             args.output.write_text(
-                json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
             )
             status = row.get("error") or (
                 "FAIL " + str(row["failures"]) if row["failures"] else "PASS"

@@ -54,7 +54,7 @@ def test_typing_and_paste_regions_preserve_up_belief(learned_layout, field):
         if key not in {"im_app", "layout_learned"}
     }
     boxes[field] = [0.7, 0.7, 0.8, 0.8]
-    paths.screen_layout_json().write_text(json.dumps(boxes))
+    paths.screen_layout_json().write_text(json.dumps(boxes), encoding="utf-8")
     tracker = KeyboardTracker(state="up")
 
     tracker.observe("tap", {"bbox": boxes[field]}, True)

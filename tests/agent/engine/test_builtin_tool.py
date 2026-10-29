@@ -267,7 +267,7 @@ async def test_save_memory_accepts_single_character_fact(mem_paths, text) -> Non
 
     assert result.is_error is False
     assert session.saved_memory is True
-    assert memory.MEMORY_FILE.read_text() == text + "\n"
+    assert memory.MEMORY_FILE.read_text(encoding="utf-8") == text + "\n"
 
 
 @pytest.mark.parametrize("text", ["x", "界"])

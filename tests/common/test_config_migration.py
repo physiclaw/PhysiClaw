@@ -46,11 +46,11 @@ def legacy_config(tmp_path):
 def test_cli_writes_only_explicit_overrides(tmp_path):
     path = tmp_path / "config.toml"
     config.set_dotted("server.port", "9000", path)
-    assert tomllib.loads(path.read_text()) == {"server": {"port": 9000}}
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {"server": {"port": 9000}}
     assert not list((tmp_path / "backups").glob("*.bak"))
     first = path.read_bytes()
     config.set_dotted("update.check", "false", path)
-    assert tomllib.loads(path.read_text()) == {
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {
         "server": {"port": 9000},
         "update": {"check": False},
     }
@@ -70,7 +70,7 @@ def test_old_full_file_becomes_only_nondefault_overrides(tmp_path, caplog):
     path.write_bytes(original)
 
     assert config.load(path) == cfg
-    assert tomllib.loads(path.read_text()) == {
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {
         "server": {"port": 9123},
         "agent": {"model": "moonshot/my-model"},
     }
@@ -87,7 +87,7 @@ def test_legacy_header_is_retired_even_without_default_values(tmp_path, settings
 
     expected = config.load(path, auto_migrate=False)
     assert config.load(path) == expected
-    assert path.read_text().startswith(config._OVERRIDES_HEADER)
+    assert path.read_text(encoding="utf-8").startswith(config._OVERRIDES_HEADER)
     assert [p.read_bytes() for p in (tmp_path / "backups").glob("*.bak")] == [original]
 
     # A later manual choice equal to a default must remain explicit.
@@ -121,7 +121,7 @@ def test_legacy_upgrade_is_silent_preserves_settings_and_is_idempotent(
     assert cfg.pitfalls.max_items == 12
     assert cfg.pitfalls.enabled is False
     assert cfg.memory.default_log_entries == 20
-    text = legacy_config.read_text()
+    text = legacy_config.read_text(encoding="utf-8")
     assert "# My rig — keep this comment" in text
     assert "port = 9123 # custom port" in text
     assert "check = false # stay offline" in text
@@ -143,7 +143,8 @@ def test_current_spelling_wins_even_when_empty_or_false(tmp_path, caplog):
     path.write_text(
         "[update]\nauto = true\ncheck = false\n"
         '[provider]\nkimi_api_key = "old-secret"\nmoonshot_api_key = ""\n'
-        "[pitfalls]\ncapture_enabled = false\nenabled = true\n"
+        "[pitfalls]\ncapture_enabled = false\nenabled = true\n",
+        encoding="utf-8",
     )
     cfg = config.load(path)
     assert cfg.update.check is False
@@ -185,7 +186,7 @@ def test_legacy_qwen_selection_and_key_reach_runtime(
     provider = make_chat_provider("qwen", model)
     assert client.call_args.args[0] == "synthetic-legacy-key"
     assert provider._resolved_base_url() == "https://proxy.example.test/v1"
-    assert tomllib.loads(path.read_text()) == {
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {
         "agent": {"model": ref},
         "provider": {"qwen_api_key": "synthetic-legacy-key"},
         "providers": {"qwen": {"base_url": "https://proxy.example.test/v1"}},
@@ -199,7 +200,8 @@ def test_legacy_provider_does_not_replace_explicit_model(tmp_path, model):
     path = tmp_path / "config.toml"
     path.write_text(
         f'[agent]\nmodel = "{model}"\n'
-        '[provider]\nname = "qwen"\nqwen_api_key = "synthetic-key"\n'
+        '[provider]\nname = "qwen"\nqwen_api_key = "synthetic-key"\n',
+        encoding="utf-8",
     )
     cfg = config.load(path)
     assert cfg.agent.model == model
@@ -241,7 +243,7 @@ def test_full_file_preserves_all_credentials_and_custom_providers(
 
     config.CONFIG = config.load(path)
     assert config.CONFIG == cfg
-    saved = tomllib.loads(path.read_text())
+    saved = tomllib.loads(path.read_text(encoding="utf-8"))
     assert saved["provider"] == asdict(cfg.provider)
     assert saved["providers"] == provider_overrides
     assert saved["agent"]["model"] == cfg.agent.model
@@ -257,8 +259,11 @@ def test_full_file_preserves_all_credentials_and_custom_providers(
     assert config.model_ref() == (
         "openai/env-model" if env_override else cfg.agent.model
     )
-    assert "synthetic-env-key" not in path.read_text()
-    assert next((physiclaw_home / "backups").glob("*.bak")).read_text() == original
+    assert "synthetic-env-key" not in path.read_text(encoding="utf-8")
+    assert (
+        next((physiclaw_home / "backups").glob("*.bak")).read_text(encoding="utf-8")
+        == original
+    )
     assert not caplog.text
     assert config.load(path) == cfg
     assert len(list((physiclaw_home / "backups").glob("*.bak"))) == 1
@@ -274,11 +279,11 @@ def test_read_only_import_loading_never_changes_files(legacy_config):
 def test_current_or_missing_file_is_not_rewritten(tmp_path, contents):
     path = tmp_path / "config.toml"
     if contents is not None:
-        path.write_text(contents)
+        path.write_text(contents, encoding="utf-8")
     config.load(path)
     assert path.exists() is (contents is not None)
     if contents is not None:
-        assert path.read_text() == contents
+        assert path.read_text(encoding="utf-8") == contents
     assert not list((tmp_path / "backups").glob("*.bak"))
 
 
@@ -346,11 +351,13 @@ def test_explicit_default_stays_pinned_in_new_overrides_file(tmp_path, edited):
     path = tmp_path / "config.toml"
     config.set_dotted("server.port", "8048", path)
     if edited:
-        path.write_text(path.read_text() + "# manual comment\n")
+        path.write_text(
+            path.read_text(encoding="utf-8") + "# manual comment\n", encoding="utf-8"
+        )
     before = path.read_bytes()
     config.load(path)
     assert path.read_bytes() == before
-    assert tomllib.loads(path.read_text())["server"]["port"] == 8048
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["server"]["port"] == 8048
     assert not list((tmp_path / "backups").glob("*.bak"))
 
 
@@ -374,16 +381,16 @@ def test_manual_edits_are_backed_up_before_the_next_write(tmp_path):
     assert cfg.provider.openai_api_key == "manual-secret"
     assert cfg.agent.model == "openai/custom-model"
     assert cfg.server.port == 9123
-    assert "# keep this key" in path.read_text()
+    assert "# keep this key" in path.read_text(encoding="utf-8")
 
 
 def test_unset_removes_override_and_inherits_defaults(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text("[update]\nauto = false\n")
+    path.write_text("[update]\nauto = false\n", encoding="utf-8")
     config.set_dotted("update.check", "true", path)
     assert config.unset_dotted("update.check", path) is True
     assert config.load(path).update.check is True
-    assert tomllib.loads(path.read_text()).get("update", {}) == {}
+    assert tomllib.loads(path.read_text(encoding="utf-8")).get("update", {}) == {}
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need Windows privileges")
@@ -406,8 +413,8 @@ def test_handwritten_defaults_stay_explicit(tmp_path):
     config.load(path)
     assert path.read_bytes() == original
     config.set_dotted("update.check", "false", path)
-    assert tomllib.loads(path.read_text())["server"]["port"] == 8048
-    assert "port = 8048 # keep this port" in path.read_text()
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["server"]["port"] == 8048
+    assert "port = 8048 # keep this port" in path.read_text(encoding="utf-8")
 
 
 def test_old_backups_move_without_rewriting_config(tmp_path):
@@ -432,7 +439,7 @@ def test_timestamped_history_keeps_five_backups_and_noop_writes_are_idle(tmp_pat
     config.set_dotted("server.port", "9000", path)
     state = tmp_path / "backups"
     other = state / "other.toml.20260101T120000.abcdefgh.bak"
-    other.write_text("keep unrelated history")
+    other.write_text("keep unrelated history", encoding="utf-8")
     originals = []
     with freeze_time("2026-10-26 15:30:45"):
         for port in range(9001, 9008):
@@ -448,7 +455,7 @@ def test_timestamped_history_keeps_five_backups_and_noop_writes_are_idle(tmp_pat
     if os.name != "nt":
         assert state.stat().st_mode & 0o777 == 0o700
         assert all(p.stat().st_mode & 0o777 == 0o600 for p in backups)
-    assert other.read_text() == "keep unrelated history"
+    assert other.read_text(encoding="utf-8") == "keep unrelated history"
 
     files = {p: p.stat().st_mtime_ns for p in tmp_path.rglob("*")}
     config.load(path)
@@ -464,7 +471,7 @@ def test_rotation_keeps_new_backup_when_older_backups_have_future_times(tmp_path
     future = path.stat().st_mtime_ns + 10**15
     for index in range(5):
         backup = directory / f"config.toml.20990101T000000.{index}.bak"
-        backup.write_text(f"older snapshot {index}")
+        backup.write_text(f"older snapshot {index}", encoding="utf-8")
         os.utime(backup, ns=(future, future))
 
     config.set_dotted("server.port", "9123", path)

@@ -269,7 +269,7 @@ def test_credentials_are_vendor_scoped_and_services_stay_separate(
     with pytest.raises(ProviderConfigurationError, match=f"{vendor.upper()}_API_KEY"):
         make_decision_provider(vendor, model)
     path = tmp_path / "config.toml"
-    path.write_text(f'[provider]\n{vendor}_api_key = "{SECRET}"\n')
+    path.write_text(f'[provider]\n{vendor}_api_key = "{SECRET}"\n', encoding="utf-8")
     monkeypatch.setattr(config, "CONFIG", config.load(path))
     assert provider_key_status(vendor) == (
         "********",
@@ -296,7 +296,8 @@ async def test_custom_endpoint_and_config_credentials(
     path = config.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        f'[providers.{vendor}]\nbase_url = "https://proxy.example/custom/v1"\n'
+        f'[providers.{vendor}]\nbase_url = "https://proxy.example/custom/v1"\n',
+        encoding="utf-8",
     )
     provider = make_decision_provider(vendor, model)
     try:

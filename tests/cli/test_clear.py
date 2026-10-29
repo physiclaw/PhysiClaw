@@ -94,7 +94,7 @@ def test_clear_leaves_unrelated_home_dirs() -> None:
     _seed_all()
     calibration = paths.calibration_bundle()
     calibration.parent.mkdir(parents=True)
-    calibration.write_text("{}")
+    calibration.write_text("{}", encoding="utf-8")
 
     result = runner.invoke(app, ["--yes"])
 

@@ -66,9 +66,9 @@ def world(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(check, "HAND_FIGURES", {"wire_splice.svg": "<svg/>"})
 
-    (procedures / "frame_10_base.py").write_text(BASE_PROCEDURE)
+    (procedures / "frame_10_base.py").write_text(BASE_PROCEDURE, encoding="utf-8")
     (patches / "frame_10_base_exploded_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}])
+        json.dumps([{"id": "abcd", "preop": "orig"}]), encoding="utf-8"
     )
     (content / "01_frame.json").write_text(
         json.dumps(
@@ -81,7 +81,8 @@ def world(tmp_path, monkeypatch):
                     ]
                 }
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     write_bom(content, vendors, [{"part_id": "p1"}, {"part_id": "p2"}])
     return SimpleNamespace(
@@ -99,9 +100,11 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
     of them."""
     rows = rows + extrusions
     (content / "11_bom.json").write_text(
-        json.dumps([{"type": "bom", "rows_source": "bom"}])
+        json.dumps([{"type": "bom", "rows_source": "bom"}]), encoding="utf-8"
     )
-    (content.parent.parent / "bom" / "bom.json").write_text(json.dumps(rows))
+    (content.parent.parent / "bom" / "bom.json").write_text(
+        json.dumps(rows), encoding="utf-8"
+    )
     for filename in ("cn.json", "global.json"):
         (vendors / filename).write_text(
             json.dumps(
@@ -110,7 +113,8 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
                     for r in rows
                     if isinstance(r, dict) and "part_id" in r
                 ]
-            )
+            ),
+            encoding="utf-8",
         )
 
 
@@ -148,7 +152,7 @@ def test_main_on_consistent_world_returns_zero(world, capsys):
 
 
 def test_main_with_findings_returns_one(world, capsys):
-    (world.procedures / "badname.py").write_text("")
+    (world.procedures / "badname.py").write_text("", encoding="utf-8")
 
     assert (check.main([]), "1 consistency findings" in capsys.readouterr().out) == (
         1,
@@ -160,19 +164,19 @@ def test_main_with_findings_returns_one(world, capsys):
 
 
 def test_misnamed_procedure_file_is_flagged(world):
-    (world.procedures / "frame_clamp.py").write_text("")
+    (world.procedures / "frame_clamp.py").write_text("", encoding="utf-8")
 
     assert_finding("frame_clamp.py doesn't match")
 
 
 def test_unknown_family_is_flagged(world):
-    (world.procedures / "zzz_10_x.py").write_text("")
+    (world.procedures / "zzz_10_x.py").write_text("", encoding="utf-8")
 
     assert_finding("zzz_10_x.py doesn't match")
 
 
 def test_underscore_prefixed_file_is_exempt(world):
-    (world.procedures / "_helpers.py").write_text("nonsense =")
+    (world.procedures / "_helpers.py").write_text("nonsense =", encoding="utf-8")
 
     assert run_check() == []
 
@@ -180,21 +184,25 @@ def test_underscore_prefixed_file_is_exempt(world):
 def test_procedure_with_two_assembly_classes_is_flagged(world):
     (world.procedures / "frame_20_twin.py").write_text(
         "class A(BaseAssembly):\n    views = []\n"
-        "class B(BaseAssembly):\n    views = []\n"
+        "class B(BaseAssembly):\n    views = []\n",
+        encoding="utf-8",
     )
 
     assert_finding("frame_20_twin.py defines 2 assembly classes")
 
 
 def test_procedure_with_no_assembly_class_is_flagged(world):
-    (world.procedures / "frame_20_none.py").write_text("class A:\n    pass\n")
+    (world.procedures / "frame_20_none.py").write_text(
+        "class A:\n    pass\n", encoding="utf-8"
+    )
 
     assert_finding("frame_20_none.py defines 0 assembly classes")
 
 
 def test_duplicate_view_tags_are_flagged(world):
     (world.procedures / "frame_20_dup.py").write_text(
-        "class A(BaseAssembly):\n    views = [EXPLODED_CAM0, EXPLODED_CAM0]\n"
+        "class A(BaseAssembly):\n    views = [EXPLODED_CAM0, EXPLODED_CAM0]\n",
+        encoding="utf-8",
     )
 
     assert_finding("frame_20_dup.py A: duplicate view tags")
@@ -202,7 +210,7 @@ def test_duplicate_view_tags_are_flagged(world):
 
 def test_unknown_view_tag_is_flagged(world):
     (world.procedures / "frame_20_bad.py").write_text(
-        'class A(BaseAssembly):\n    views = [("weird", 0)]\n'
+        'class A(BaseAssembly):\n    views = [("weird", 0)]\n', encoding="utf-8"
     )
 
     assert_finding("unknown view tag ('weird', 0)")
@@ -210,7 +218,7 @@ def test_unknown_view_tag_is_flagged(world):
 
 def test_computed_views_expression_is_flagged(world):
     (world.procedures / "frame_20_dyn.py").write_text(
-        "class A(BaseAssembly):\n    views = make_views()\n"
+        "class A(BaseAssembly):\n    views = make_views()\n", encoding="utf-8"
     )
 
     assert_finding("views is not a plain list literal")
@@ -219,18 +227,23 @@ def test_computed_views_expression_is_flagged(world):
 def test_subclassing_procedure_inherits_parent_views(world):
     (world.procedures / "frame_20_child.py").write_text(
         "from hardware.assembly.procedures.frame_10_base import FR10Base\n"
-        "class FR20Child(FR10Base):\n    pass\n"
+        "class FR20Child(FR10Base):\n    pass\n",
+        encoding="utf-8",
     )
-    (world.patches / "frame_20_child_assembled_cam0.json").write_text("[]")
+    (world.patches / "frame_20_child_assembled_cam0.json").write_text(
+        "[]", encoding="utf-8"
+    )
 
     assert run_check() == []
 
 
 def test_explicit_views_none_renders_all_and_is_permissive(world):
     (world.procedures / "frame_20_all.py").write_text(
-        "class A(BaseAssembly):\n    views = None\n"
+        "class A(BaseAssembly):\n    views = None\n", encoding="utf-8"
     )
-    (world.patches / "frame_20_all_assembled_cam3.json").write_text("[]")
+    (world.patches / "frame_20_all_assembled_cam3.json").write_text(
+        "[]", encoding="utf-8"
+    )
 
     assert run_check() == []
 
@@ -239,38 +252,47 @@ def test_explicit_views_none_renders_all_and_is_permissive(world):
 
 
 def test_patch_naming_unknown_procedure_is_flagged(world):
-    (world.patches / "ghost_10_gone_exploded_cam0.json").write_text("[]")
+    (world.patches / "ghost_10_gone_exploded_cam0.json").write_text(
+        "[]", encoding="utf-8"
+    )
 
     assert_finding("names unknown procedure 'ghost_10_gone'")
 
 
 def test_patch_on_undeclared_view_is_flagged(world):
-    (world.patches / "frame_10_base_exploded_cam1.json").write_text("[]")
+    (world.patches / "frame_10_base_exploded_cam1.json").write_text(
+        "[]", encoding="utf-8"
+    )
 
     assert_finding("targets exploded_cam1, which frame_10_base doesn't declare")
 
 
 def test_patch_with_malformed_name_is_flagged(world):
-    (world.patches / "frame_10_base_cam0.json").write_text("[]")
+    (world.patches / "frame_10_base_cam0.json").write_text("[]", encoding="utf-8")
 
     assert_finding("doesn't match <stem>_<variant>_cam<i>.json")
 
 
 def test_patch_with_invalid_json_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text("{nope")
+    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
+        "{nope", encoding="utf-8"
+    )
 
     assert_finding("is not valid JSON")
 
 
 def test_patch_with_non_array_body_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text('{"id": "abcd"}')
+    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
+        '{"id": "abcd"}', encoding="utf-8"
+    )
 
     assert_finding("must be a JSON array of ops")
 
 
 def test_patch_with_duplicate_op_ids_is_flagged(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "abcd", "preop": "orig"}])
+        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "abcd", "preop": "orig"}]),
+        encoding="utf-8",
     )
 
     assert_finding("duplicate op ids")
@@ -278,7 +300,7 @@ def test_patch_with_duplicate_op_ids_is_flagged(world):
 
 def test_patch_op_without_valid_id_is_flagged(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "TOOLONGID", "preop": "orig"}])
+        json.dumps([{"id": "TOOLONGID", "preop": "orig"}]), encoding="utf-8"
     )
 
     assert_finding("op(s) without a valid id")
@@ -289,7 +311,7 @@ def test_patch_op_named_orig_is_flagged(world):
     # source-SVG sentinel — an op that adopts it is silently dropped at
     # replay, so the gate must reject it.
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "orig", "preop": "orig"}])
+        json.dumps([{"id": "orig", "preop": "orig"}]), encoding="utf-8"
     )
 
     assert_finding("op(s) without a valid id")
@@ -297,7 +319,7 @@ def test_patch_op_named_orig_is_flagged(world):
 
 def test_patch_op_with_unknown_preop_is_flagged(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "gone"}])
+        json.dumps([{"id": "abcd", "preop": "gone"}]), encoding="utf-8"
     )
 
     assert_finding("chains to unknown preop 'gone'")
@@ -305,7 +327,8 @@ def test_patch_op_with_unknown_preop_is_flagged(world):
 
 def test_patch_preop_cycle_is_flagged(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "efgh"}, {"id": "efgh", "preop": "abcd"}])
+        json.dumps([{"id": "abcd", "preop": "efgh"}, {"id": "efgh", "preop": "abcd"}]),
+        encoding="utf-8",
     )
 
     assert_finding("preop chain loops")
@@ -313,7 +336,7 @@ def test_patch_preop_cycle_is_flagged(world):
 
 def test_patch_op_missing_its_id_is_reported_not_crashed(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"preop": "orig"}])
+        json.dumps([{"preop": "orig"}]), encoding="utf-8"
     )
 
     assert_finding("op(s) without a valid id")
@@ -321,7 +344,7 @@ def test_patch_op_missing_its_id_is_reported_not_crashed(world):
 
 def test_patch_op_missing_its_preop_is_reported_not_crashed(world):
     (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd"}])
+        json.dumps([{"id": "abcd"}]), encoding="utf-8"
     )
 
     assert_finding("chains to unknown preop None")
@@ -332,7 +355,8 @@ def test_patch_op_missing_its_preop_is_reported_not_crashed(world):
 
 def test_manual_reference_to_unknown_render_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "ghost_10_gone_exploded_cam0.svg"}]}])
+        json.dumps([{"figures": [{"src": "ghost_10_gone_exploded_cam0.svg"}]}]),
+        encoding="utf-8",
     )
 
     assert_finding("neither a procedure render nor a hand figure")
@@ -340,7 +364,8 @@ def test_manual_reference_to_unknown_render_is_flagged(world):
 
 def test_manual_reference_to_undeclared_view_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "frame_10_base_exploded_cam7.svg"}]}])
+        json.dumps([{"figures": [{"src": "frame_10_base_exploded_cam7.svg"}]}]),
+        encoding="utf-8",
     )
 
     assert_finding("doesn't declare exploded_cam7 in views")
@@ -348,7 +373,8 @@ def test_manual_reference_to_undeclared_view_is_flagged(world):
 
 def test_manual_snapshot_without_patch_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "frame_10_base_assembled_cam0_abcd.svg"}]}])
+        json.dumps([{"figures": [{"src": "frame_10_base_assembled_cam0_abcd.svg"}]}]),
+        encoding="utf-8",
     )
 
     assert_finding("has no patch JSON")
@@ -356,20 +382,21 @@ def test_manual_snapshot_without_patch_is_flagged(world):
 
 def test_manual_snapshot_of_non_leaf_op_is_flagged(world):
     (world.patches / "frame_10_base_exploded_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "efgh", "preop": "abcd"}])
+        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "efgh", "preop": "abcd"}]),
+        encoding="utf-8",
     )
 
     assert_finding("'abcd' is not a leaf op")
 
 
 def test_manual_content_with_invalid_json_is_flagged(world):
-    (world.content / "02_x.json").write_text("{nope")
+    (world.content / "02_x.json").write_text("{nope", encoding="utf-8")
 
     assert_finding("02_x.json is not valid JSON")
 
 
 def test_malformed_manual_chapter_reports_a_finding(world):
-    (world.content / "02_x.json").write_text("[null]")
+    (world.content / "02_x.json").write_text("[null]", encoding="utf-8")
     assert_finding("manual chapter must be a JSON array of page objects")
 
 
@@ -394,9 +421,9 @@ def test_duplicate_bom_part_ids_are_flagged(world):
 
 
 def test_unhashable_bom_part_id_is_flagged_not_crashed(world):
-    rows = json.loads(world.bom.read_text())
+    rows = json.loads(world.bom.read_text(encoding="utf-8"))
     rows.append({"part_id": []})
-    world.bom.write_text(json.dumps(rows))
+    world.bom.write_text(json.dumps(rows), encoding="utf-8")
     assert_finding("missing a part_id (non-empty string required)")
 
 
@@ -415,7 +442,7 @@ def test_missing_shared_bom_is_flagged(world):
 
 @pytest.mark.parametrize("contents", ["{broken", "{}"])
 def test_unreadable_shared_bom_is_flagged(world, contents):
-    world.bom.write_text(contents)
+    world.bom.write_text(contents, encoding="utf-8")
     assert any(finding.startswith("bom:") for finding in run_check())
 
 
@@ -423,14 +450,16 @@ def test_manual_cannot_override_shared_bom_rows(world):
     (world.content / "11_bom.json").write_text(
         json.dumps(
             [{"type": "bom", "rows_source": "bom", "rows": [{"part_id": "other"}]}]
-        )
+        ),
+        encoding="utf-8",
     )
     assert_finding("use rows_source instead of duplicating BOM rows")
 
 
 def test_stale_vendor_part_id_is_flagged(world, vendor_filename):
     (world.vendors / vendor_filename).write_text(
-        json.dumps([{"part_id": i} for i in ["p1", "p2", *EXTRUSION_IDS, "gone"]])
+        json.dumps([{"part_id": i} for i in ["p1", "p2", *EXTRUSION_IDS, "gone"]]),
+        encoding="utf-8",
     )
 
     assert_finding("stale part_id(s) with no BOM row: gone")
@@ -438,7 +467,7 @@ def test_stale_vendor_part_id_is_flagged(world, vendor_filename):
 
 def test_bom_row_missing_from_vendors_is_flagged(world, vendor_filename):
     (world.vendors / vendor_filename).write_text(
-        json.dumps([{"part_id": i} for i in ["p1", *EXTRUSION_IDS]])
+        json.dumps([{"part_id": i} for i in ["p1", *EXTRUSION_IDS]]), encoding="utf-8"
     )
 
     assert_finding(f"missing from {vendor_filename}: p2")
@@ -451,14 +480,15 @@ def test_missing_vendor_file_is_flagged(world, vendor_filename):
 
 
 def test_vendor_file_with_invalid_json_is_flagged(world, vendor_filename):
-    (world.vendors / vendor_filename).write_text("{nope")
+    (world.vendors / vendor_filename).write_text("{nope", encoding="utf-8")
 
     assert_finding(f"{vendor_filename} is not valid JSON")
 
 
 def test_duplicate_vendor_part_ids_are_flagged(world, vendor_filename):
     (world.vendors / vendor_filename).write_text(
-        json.dumps([{"part_id": i} for i in ["p1", "p1", "p2", *EXTRUSION_IDS]])
+        json.dumps([{"part_id": i} for i in ["p1", "p1", "p2", *EXTRUSION_IDS]]),
+        encoding="utf-8",
     )
 
     assert_finding(f"duplicate part_id(s) in {vendor_filename}: p1")

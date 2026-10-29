@@ -117,7 +117,7 @@ def test_wire_keeps_host_identity_outside_untrusted_raw_metadata():
     )
     wire.close()
 
-    record = json.loads(wire.path.read_text())
+    record = json.loads(wire.path.read_text(encoding="utf-8"))
     assert record["producer"] == {"plugin_id": "actual-slot"}
     assert record["presentation"] == "plugin" and record["raw"] == raw
 

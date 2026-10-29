@@ -418,7 +418,8 @@ def test_build_uses_and_scaffolds_only_selected_vendor_files(
     originals = {}
     for lang, path in files.items():
         path.write_text(
-            json.dumps([{"part_id": "p1", "suppliers": [{"name": f"shop-{lang}"}]}])
+            json.dumps([{"part_id": "p1", "suppliers": [{"name": f"shop-{lang}"}]}]),
+            encoding="utf-8",
         )
         originals[lang] = path.read_bytes()
     monkeypatch.setattr(bsg, "VENDOR_FILES", files)
@@ -435,7 +436,7 @@ def test_build_uses_and_scaffolds_only_selected_vendor_files(
     assert {p.name for p in written} == {bsg.LANG_FILENAME[lang] for lang in langs}
     for lang, path in files.items():
         if scaffold and lang in langs:
-            assert json.loads(path.read_text())[-1] == {"part_id": "p2"}
+            assert json.loads(path.read_text(encoding="utf-8"))[-1] == {"part_id": "p2"}
         else:
             assert path.read_bytes() == originals[lang]
 
@@ -529,16 +530,16 @@ def test_rebuild_follows_supplier_changes(
     ]
     files = {lang: tmp_path / f"vendors.{lang}.json" for lang in ("en", "zh")}
     other_lang = "zh" if guide_lang == "en" else "en"
-    files[guide_lang].write_text(json.dumps(entries))
+    files[guide_lang].write_text(json.dumps(entries), encoding="utf-8")
     files[other_lang].write_text(
-        json.dumps([{"part_id": row["part_id"]} for row in rows])
+        json.dumps([{"part_id": row["part_id"]} for row in rows]), encoding="utf-8"
     )
     monkeypatch.setattr(bsg, "VENDOR_FILES", files)
     monkeypatch.setattr(bsg, "load_bom_rows", lambda: rows)
     output = tmp_path / "output"
     bsg.build(["en", "zh"], output, scaffold=False)
     path = output / bsg.LANG_FILENAME[guide_lang]
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     other_before = (output / bsg.LANG_FILENAME[other_lang]).read_bytes()
     assert before.count('<dialog class="supplier-guide"') == 1
     assert 'data-q="PART-123"' in before
@@ -553,9 +554,9 @@ def test_rebuild_follows_supplier_changes(
         replacement["name"] = "Replacement shop"
         replacement["details"]["parts"][0]["part_number"] = "NEW-456"
         suppliers[0] = replacement
-    files[guide_lang].write_text(json.dumps(entries))
+    files[guide_lang].write_text(json.dumps(entries), encoding="utf-8")
     bsg.build(["en", "zh"], output, scaffold=False)
-    after = path.read_text()
+    after = path.read_text(encoding="utf-8")
 
     assert "PART-123" not in after
     assert after.count("data-pid=") == 2

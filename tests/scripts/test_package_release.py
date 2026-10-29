@@ -191,7 +191,9 @@ def test_invalid_version_never_reaches_commands(
 
 
 def test_non_numeric_last_component_needs_explicit_version(project, commands, capsys):
-    (project / "pyproject.toml").write_text('[project]\nversion = "1.0rc1"\n')
+    (project / "pyproject.toml").write_text(
+        '[project]\nversion = "1.0rc1"\n', encoding="utf-8"
+    )
 
     assert release.main(["bump"]) == 1
 
@@ -354,7 +356,7 @@ def test_command_logging_and_exit_status(project, monkeypatch, capfd, verbose):
 def test_native_make_enters_python_workflow(project, action, error):
     # Real make + Git, but a temporary repository and a guard that prevents edits.
     # This unavailable dependency must not be resolved before the release guard.
-    with (project / "pyproject.toml").open("a") as source:
+    with (project / "pyproject.toml").open("a", encoding="utf-8") as source:
         source.write('dependencies = ["physiclaw-missing-release-fixture==0"]\n')
     subprocess.run(["git", "init", "--quiet", str(project)], check=True)
     result = run_make(project, action)
@@ -377,7 +379,7 @@ def test_native_make_bump_commits_version_and_lockfile(project):
         ("core.hooksPath", str(project / "no-hooks")),
     ):
         subprocess.run(["git", "config", "--local", key, value], check=True)
-    (project / ".gitignore").write_text("cache/\n")
+    (project / ".gitignore").write_text("cache/\n", encoding="utf-8")
     subprocess.run(
         ["git", "add", "pyproject.toml", ".gitignore", "Makefile", "scripts"],
         check=True,
@@ -402,7 +404,8 @@ def test_native_make_build_without_unix_utilities(project):
     # Let the real uv build a tiny stdlib-only backend, with no network or app deps.
     (project / "pyproject.toml").write_text(
         '[project]\nname = "physiclaw"\nversion = "0.8.4"\n'
-        '[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-path = ["."]\n'
+        '[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-path = ["."]\n',
+        encoding="utf-8",
     )
     (project / "backend.py").write_text(
         dedent("""\
@@ -420,7 +423,8 @@ def test_native_make_build_without_unix_utilities(project):
                 name = "physiclaw-0.8.4-py3-none-any.whl"
                 (Path(wheel_directory) / name).write_bytes(b"wheel fixture")
                 return name
-            """)
+            """),
+        encoding="utf-8",
     )
     result = run_make(project, "build")
 

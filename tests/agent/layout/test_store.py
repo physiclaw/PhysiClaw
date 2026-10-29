@@ -21,7 +21,7 @@ from physiclaw.common.text import write_text
 
 
 def _saved():
-    return json.loads(paths.screen_layout_json().read_text())
+    return json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
 
 
 def _fail_card_write(path, text):
@@ -94,7 +94,7 @@ def test_chat_app_labels_are_canonical_and_trimmed(app, expected):
 
 def test_custom_app_case_variation_preserves_captured_chat_boxes(learned_layout):
     learned_layout["im_app"] = "Custom IM"
-    paths.screen_layout_json().write_text(json.dumps(learned_layout))
+    paths.screen_layout_json().write_text(json.dumps(learned_layout), encoding="utf-8")
 
     layout.record("chat-keyboard", "send", [0.85, 0.586, 0.95, 0.634], "CUSTOM IM")
 
@@ -118,7 +118,7 @@ def test_regression_invalid_saved_boxes_do_not_count_as_learned(
     learned_layout, bad_box
 ):
     learned_layout["space"] = bad_box
-    paths.screen_layout_json().write_text(json.dumps(learned_layout))
+    paths.screen_layout_json().write_text(json.dumps(learned_layout), encoding="utf-8")
 
     complete = layout.is_learned()
     missing = layout.missing_pages()
@@ -130,8 +130,8 @@ def test_regression_invalid_saved_boxes_do_not_count_as_learned(
 
 @pytest.mark.parametrize("payload", ["[]", "{broken", '{"space": "bad"}'])
 def test_unusable_json_does_not_expose_a_stale_markdown_card(learned_layout, payload):
-    paths.screen_layout_json().write_text(payload)
-    paths.screen_layout_md().write_text("STALE BOXES")
+    paths.screen_layout_json().write_text(payload, encoding="utf-8")
+    paths.screen_layout_md().write_text("STALE BOXES", encoding="utf-8")
 
     card = layout.load_layout_md()
 
@@ -139,7 +139,7 @@ def test_unusable_json_does_not_expose_a_stale_markdown_card(learned_layout, pay
 
 
 def test_regression_layout_card_is_rendered_from_current_json(learned_layout):
-    paths.screen_layout_md().write_text("STALE BOXES")
+    paths.screen_layout_md().write_text("STALE BOXES", encoding="utf-8")
 
     card = layout.load_layout_md()
 
@@ -244,7 +244,7 @@ def _seed_legacy_card(contents):
     if contents is not None:
         path = paths.screen_layout_md()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(contents)
+        path.write_text(contents, encoding="utf-8")
 
 
 def test_unreadable_saved_layout_fails_open(learned_layout, mocker):
@@ -259,7 +259,7 @@ def test_unreadable_saved_layout_fails_open(learned_layout, mocker):
 def test_legacy_markdown_without_json_remains_readable(tmp_path):
     path = paths.screen_layout_md()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("Legacy layout card\n")
+    path.write_text("Legacy layout card\n", encoding="utf-8")
 
     card = layout.load_layout_md()
 

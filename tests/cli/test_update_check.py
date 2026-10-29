@@ -152,7 +152,7 @@ def test_read_cache_returns_none_when_missing(physiclaw_home: Path) -> None:
 def test_read_cache_returns_none_on_corrupt_json(physiclaw_home: Path) -> None:
     cache_file = physiclaw_home / "run" / "version-check.json"
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text("not json {")
+    cache_file.write_text("not json {", encoding="utf-8")
     assert uc._read_cache() is None
 
 
@@ -161,7 +161,7 @@ def test_read_cache_returns_none_when_top_level_is_not_object(
 ) -> None:
     cache_file = physiclaw_home / "run" / "version-check.json"
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(json.dumps([1, 2, 3]))
+    cache_file.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
     assert uc._read_cache() is None
 
 
@@ -205,7 +205,8 @@ def test_resolve_latest_refetches_when_stale(
                 ).isoformat(),
                 "latest_version": "0.0.4",
             }
-        )
+        ),
+        encoding="utf-8",
     )
     mocker.patch.object(uc, "_fetch_pypi_version", return_value="0.0.9")
 
@@ -229,7 +230,7 @@ def test_resolve_latest_falls_back_to_network_on_corrupt_cache(
 ) -> None:
     cache_file = physiclaw_home / "run" / "version-check.json"
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text("garbage")
+    cache_file.write_text("garbage", encoding="utf-8")
     mocker.patch.object(uc, "_fetch_pypi_version", return_value="2.0.0")
 
     assert uc._resolve_latest() == "2.0.0"

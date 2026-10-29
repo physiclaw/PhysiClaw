@@ -27,6 +27,17 @@ PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/n
 def test_logs_reads_and_exports_complete_session_after_service_rotation(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("PYTHONIOENCODING", "gbk")
+    # A conflicting inherited setting must not undo the mode being tested.
+    monkeypatch.setenv("PYTHONUTF8", str(1 - sys.flags.utf8_mode))
+    python = [sys.executable, "-X", f"utf8={sys.flags.utf8_mode}"]
+    if sys.flags.warn_default_encoding:
+        python += ["-X", "warn_default_encoding", "-W", "error::EncodingWarning"]
+    check_flags = (
+        "import sys\n"
+        f"assert sys.flags.utf8_mode == {sys.flags.utf8_mode}\n"
+        f"assert sys.flags.warn_default_encoding == {sys.flags.warn_default_encoding}\n"
+    )
     monkeypatch.setenv("PHYSICLAW_LOG_FORMAT", "pretty")
     monkeypatch.setenv("PHYSICLAW_LOG_COMPONENTS", "engine.dispatch")
     monkeypatch.setattr(config.CONFIG.retention, "log_max_bytes", 256)
@@ -139,14 +150,17 @@ def test_logs_reads_and_exports_complete_session_after_service_rotation(
         env = {
             **os.environ,
             "PYTHONPATH": str(ROOT / "src"),
+            # Match the parent's decoder even when Windows defaults to GBK.
+            "PYTHONIOENCODING": "utf-8",
             "PHYSICLAW_HOME": str(paths.HOME),
         }
         server = subprocess.run(
             [
-                sys.executable,
+                *python,
                 "-S",
                 "-c",
-                """
+                check_flags
+                + """
 import logging
 from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
@@ -236,9 +250,9 @@ for i in range(15):
     def cli(*args):
         result = subprocess.run(
             [
-                sys.executable,
+                *python,
                 "-c",
-                "from physiclaw.cli import app; app()",
+                check_flags + "from physiclaw.cli import app; app()",
                 "logs",
                 *args,
             ],

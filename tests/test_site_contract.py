@@ -39,7 +39,7 @@ pytestmark = pytest.mark.skipif(
 
 def _site_downloads() -> dict[str, tuple[str, int | None]]:
     """fetch-downloads.mjs entries as {dest: (release asset path, parts)}."""
-    text = (SITE / "scripts" / "fetch-downloads.mjs").read_text()
+    text = (SITE / "scripts" / "fetch-downloads.mjs").read_text(encoding="utf-8")
     entries = re.findall(
         r"src: `\$\{RELEASES\}/([^`]+)`,\s*"
         r"dest: '([^']+)',\s*"
@@ -71,5 +71,7 @@ def test_vision_model_parts_match_site_split():
 
 def test_official_skills_namespace_built_by_site():
     namespace = _url_path(SkillsConfig.official_base_url)
-    builder = (SITE / "scripts" / "build-official-skills.mjs").read_text()
+    builder = (SITE / "scripts" / "build-official-skills.mjs").read_text(
+        encoding="utf-8"
+    )
     assert namespace in builder

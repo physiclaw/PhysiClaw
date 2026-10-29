@@ -480,7 +480,7 @@ def test_incomplete_trace_cannot_claim_complete_cost(tmp_path, damage):
         events.append(copy.deepcopy(call))
     _write(tmp_path, events)
     if damage == "bad_json":
-        with (tmp_path / "events.jsonl").open("a") as stream:
+        with (tmp_path / "events.jsonl").open("a", encoding="utf-8") as stream:
             stream.write('{"event":\n')
 
     result = report(
@@ -502,7 +502,7 @@ def test_incomplete_trace_cannot_claim_complete_cost(tmp_path, damage):
 @pytest.mark.parametrize("text", ['{"cases":[],"cases":[]}', '{"cost":NaN}'])
 def test_ambiguous_or_nonfinite_label_files_are_rejected(tmp_path, text):
     path = tmp_path / "labels.json"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
     with pytest.raises(ValueError):
         read_json(path)

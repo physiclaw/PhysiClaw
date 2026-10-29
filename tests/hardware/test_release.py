@@ -71,7 +71,7 @@ def preparation(tmp_path, monkeypatch):
             assert (output / ".cache").samefile(rel.CACHE_DIR)
             assert (output / ".cache").resolve() == rel.CACHE_DIR
             assert not (output / "step").exists()
-            (output / ".cache" / "marker").write_text("retained")
+            (output / ".cache" / "marker").write_text("retained", encoding="utf-8")
             build_outputs(output)
 
     monkeypatch.setattr(rel, "_stage", stage)
@@ -123,7 +123,7 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
         ("drawing", "--pdf"),
         ("check",),
     ]
-    assert (rel.CACHE_DIR / "marker").read_text() == "retained"
+    assert (rel.CACHE_DIR / "marker").read_text(encoding="utf-8") == "retained"
     count = len(preparation)
     assert rel.prepare(VERSION) == bundle
     assert len(preparation) == count
@@ -222,7 +222,7 @@ def test_bundle_damage_blocks_verification(bundle, damage):
         asset.unlink()
         symlink_to(asset, bundle / rel.FRAME_ZIP)
     else:
-        (bundle / rel.MANIFEST).write_text("[]")
+        (bundle / rel.MANIFEST).write_text("[]", encoding="utf-8")
     with pytest.raises(rel.ReleaseError):
         rel.prepare(VERSION)
 
@@ -240,9 +240,9 @@ def test_manifest_cannot_bless_broken_offline_document(bundle):
     name = f"manual/{rel.MANUALS['en']}"
     members[name] = b'<html><img src="assets/missing.svg"></html>'
     write_zip(path, members)
-    manifest = json.loads((bundle / rel.MANIFEST).read_text())
+    manifest = json.loads((bundle / rel.MANIFEST).read_text(encoding="utf-8"))
     manifest["artifacts"][rel.MANUAL_ZIP] = rel.digest(path)
-    (bundle / rel.MANIFEST).write_text(json.dumps(manifest))
+    (bundle / rel.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(rel.ReleaseError, match="Missing or unsafe"):
         rel.verify(VERSION)
 
@@ -658,9 +658,9 @@ def test_source_digest_includes_untracked_files_and_renames(
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     source = tmp_path / name
     source.parent.mkdir(parents=True, exist_ok=True)
-    source.write_text("SIZE = 1")
+    source.write_text("SIZE = 1", encoding="utf-8")
     first = rel.source_digest()
-    source.write_text("SIZE = 2")
+    source.write_text("SIZE = 2", encoding="utf-8")
     assert rel.source_digest() != first
     second = rel.source_digest()
     source.rename(tmp_path / "renamed.py")
@@ -679,8 +679,12 @@ def test_preparation_retains_child_logs_once_before_cleanup(
         logs = output / "logs"
         logs.mkdir(exist_ok=True)
         stem = f"build-child-{len(preparation)}"
-        (logs / f"{stem}.jsonl").write_text('{"event":"build_started"}\n')
-        (logs / f"{stem}.crash.log").write_text("Native crash stack\n")
+        (logs / f"{stem}.jsonl").write_text(
+            '{"event":"build_started"}\n', encoding="utf-8"
+        )
+        (logs / f"{stem}.crash.log").write_text(
+            "Native crash stack\n", encoding="utf-8"
+        )
         if failed and args[0] == "build":
             raise subprocess.CalledProcessError(1, "build")
 
@@ -699,8 +703,10 @@ def test_preparation_retains_child_logs_once_before_cleanup(
     retained = parent_log.with_suffix(".children")
     assert len(list(retained.glob("*.jsonl"))) == len(preparation)
     for path in retained.glob("*.crash.log"):
-        assert path.read_text() == "Native crash stack\n"
-    events = [json.loads(line) for line in parent_log.read_text().splitlines()]
+        assert path.read_text(encoding="utf-8") == "Native crash stack\n"
+    events = [
+        json.loads(line) for line in parent_log.read_text(encoding="utf-8").splitlines()
+    ]
     assert len(
         [event for event in events if event["event"] == "diagnostic_saved"]
     ) == 2 * len(preparation)

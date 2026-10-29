@@ -188,12 +188,20 @@ def channel_gap(request) -> str:
     write_channel(CHANNEL_OPEN)
     manifest = channel_root() / "APP.yml"
     if request.param == "placeholder":
-        manifest.write_text(manifest.read_text().replace("MyChat", "<<CONTACT>>"))
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace("MyChat", "<<CONTACT>>"),
+            encoding="utf-8",
+        )
         return "unpopulated template placeholder(s) CONTACT"
     if request.param == "thread":
-        manifest.write_text(manifest.read_text().replace("thread:", "other:"))
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace("thread:", "other:"),
+            encoding="utf-8",
+        )
         return "declares no 'thread' page"
-    (channel_root() / "boot" / "PLAYBOOK.yml").write_text("route: 7\n")
+    (channel_root() / "boot" / "PLAYBOOK.yml").write_text(
+        "route: 7\n", encoding="utf-8"
+    )
     return "channel boot is invalid"
 
 
@@ -209,7 +217,7 @@ def test_unused_channel_setup_is_silent_but_saved(
 
     assert program is None
     assert capsys.readouterr().err == ""
-    saved = (tmp_path / "runtime.log").read_text()
+    saved = (tmp_path / "runtime.log").read_text(encoding="utf-8")
     assert channel_gap in saved
     assert (
         "no task pack on disk" if playbooks == "absent" else "no live playbook"
@@ -237,7 +245,9 @@ def test_live_playbooks_warn_once_with_fallback_and_action(
     assert setup.session_setup()[0] is None
     assert capsys.readouterr().err == ""
     # Every wake retains the full cause even while the notice is suppressed.
-    assert (tmp_path / "runtime.log").read_text().count(channel_gap) == 2
+    assert (tmp_path / "runtime.log").read_text(encoding="utf-8").count(
+        channel_gap
+    ) == 2
 
 
 def test_channel_warning_returns_after_recovery_or_reenable(wake_log) -> None:
@@ -247,19 +257,19 @@ def test_channel_warning_returns_after_recovery_or_reenable(wake_log) -> None:
     assert setup.session_setup()[0] is not None
 
     manifest = channel_root() / "APP.yml"
-    original = manifest.read_text()
-    manifest.write_text(original.replace("MyChat", "<<CONTACT>>"))
+    original = manifest.read_text(encoding="utf-8")
+    manifest.write_text(original.replace("MyChat", "<<CONTACT>>"), encoding="utf-8")
     setup.session_setup()
-    manifest.write_text(original)
+    manifest.write_text(original, encoding="utf-8")
     assert setup.session_setup()[0] is not None
-    manifest.write_text(original.replace("MyChat", "<<CONTACT>>"))
+    manifest.write_text(original.replace("MyChat", "<<CONTACT>>"), encoding="utf-8")
     setup.session_setup()
 
     playbook = root / "flow" / "PLAYBOOK.yml"
-    original = playbook.read_text()
-    playbook.write_text(original + "enabled: false\n")
+    original = playbook.read_text(encoding="utf-8")
+    playbook.write_text(original + "enabled: false\n", encoding="utf-8")
     setup.session_setup()
-    playbook.write_text(original)
+    playbook.write_text(original, encoding="utf-8")
     setup.session_setup()
 
     warnings = [r for r in wake_log.records if r.levelno >= logging.WARNING]
@@ -273,10 +283,12 @@ def test_resuming_warns_only_about_setup_it_needs_without_loading_other_packs(
     write_pack(playbooks={"flow": FLOW})
     if channel_status == "broken_boot":
         write_channel(CHANNEL_OPEN)
-        (channel_root() / "boot" / "PLAYBOOK.yml").write_text("route: 7\n")
+        (channel_root() / "boot" / "PLAYBOOK.yml").write_text(
+            "route: 7\n", encoding="utf-8"
+        )
     unrelated = paths.playbooks_dir() / "unrelated"
     unrelated.mkdir()
-    (unrelated / "APP.yml").write_text("app: [\n")
+    (unrelated / "APP.yml").write_text("app: [\n", encoding="utf-8")
     suspension.write_suspended(
         {
             "schema": suspension.SUSPENDED_SCHEMA,
@@ -313,7 +325,7 @@ def test_resuming_warns_only_about_setup_it_needs_without_loading_other_packs(
 
 def test_disabled_task_macro_keeps_unused_channel_quiet(wake_log, capsys) -> None:
     root = write_pack(playbooks={"flow": FLOW})
-    (root / "macros" / "open-app.yml").write_text(DISABLED_MACRO)
+    (root / "macros" / "open-app.yml").write_text(DISABLED_MACRO, encoding="utf-8")
     setup_logging("runtime", force=False)
 
     program, _ = setup.session_setup()
@@ -329,24 +341,24 @@ def test_boot_warning_tracks_changed_causes_and_resets(wake_log, reset) -> None:
     root = write_pack(playbooks={"flow": FLOW})
     boot = channel_root() / "boot" / "PLAYBOOK.yml"
     assert setup.session_setup()[0] is not None
-    valid_boot = boot.read_text()
+    valid_boot = boot.read_text(encoding="utf-8")
     first_error = "route: 7\n"
     second_error = valid_boot.replace("route:", "route: 7\ninvalid_route:")
 
     for text in (first_error, first_error, second_error, second_error):
-        boot.write_text(text)
+        boot.write_text(text, encoding="utf-8")
         assert setup.session_setup()[0] is None
     assert len([r for r in wake_log.records if r.levelno >= logging.WARNING]) == 2
 
     playbook = root / "flow" / "PLAYBOOK.yml"
-    valid_playbook = playbook.read_text()
+    valid_playbook = playbook.read_text(encoding="utf-8")
     if reset == "recovery":
-        boot.write_text(valid_boot)
+        boot.write_text(valid_boot, encoding="utf-8")
         assert setup.session_setup()[0] is not None
     else:
-        playbook.write_text(valid_playbook + "enabled: false\n")
+        playbook.write_text(valid_playbook + "enabled: false\n", encoding="utf-8")
         assert setup.session_setup()[0] is None
-        playbook.write_text(valid_playbook)
-    boot.write_text(second_error)
+        playbook.write_text(valid_playbook, encoding="utf-8")
+    boot.write_text(second_error, encoding="utf-8")
     assert setup.session_setup()[0] is None
     assert len([r for r in wake_log.records if r.levelno >= logging.WARNING]) == 3

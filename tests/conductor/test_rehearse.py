@@ -141,7 +141,7 @@ async def test_regression_dispatch_records_pack_macros_separately():
         "beta/open-app": 1,
     }
     assert {
-        json.loads(p.read_text().splitlines()[0])["macro"]
+        json.loads(p.read_text(encoding="utf-8").splitlines()[0])["macro"]
         for p in paths.macros_log_dir().glob("*/events.jsonl")
     } == {"alpha/open-app", "beta/open-app"}
 

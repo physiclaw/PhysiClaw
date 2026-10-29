@@ -227,7 +227,9 @@ def test_fresh_install_mounts_and_records_state(
     assert (official_home / "skills" / "wechat" / "SKILL.md").is_file()
     assert (official_home / "source.json").is_file()
 
-    state = json.loads((official_home / osk.SYNC_STATE_FILE).read_text())
+    state = json.loads(
+        (official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8")
+    )
     assert state["commit"] == "a" * 40
     assert state["skillCount"] == 2
     assert state["zipHash"] == f"sha256:{hexd}"
@@ -245,8 +247,10 @@ def test_fresh_install_mounts_and_records_state(
 def test_up_to_date_skips_download(official_home: Path, mocker, capsys) -> None:
     official_home.mkdir(parents=True)
     (official_home / "skills").mkdir()
-    (official_home / "source.json").write_text("{}")
-    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "a" * 40}))
+    (official_home / "source.json").write_text("{}", encoding="utf-8")
+    (official_home / osk.SYNC_STATE_FILE).write_text(
+        json.dumps({"commit": "a" * 40}), encoding="utf-8"
+    )
     calls: list[str] = []
     _patch_net(mocker, _routes("a" * 40, ["jd"]), calls)
 
@@ -258,7 +262,9 @@ def test_up_to_date_skips_download(official_home: Path, mocker, capsys) -> None:
 
 def test_force_re_syncs_when_up_to_date(official_home: Path, mocker, capsys) -> None:
     official_home.mkdir(parents=True)
-    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "a" * 40}))
+    (official_home / osk.SYNC_STATE_FILE).write_text(
+        json.dumps({"commit": "a" * 40}), encoding="utf-8"
+    )
     calls: list[str] = []
     _patch_net(mocker, _routes("a" * 40, ["jd"]), calls)
 
@@ -282,7 +288,9 @@ def test_changed_commit_replaces_and_drops_removed_skills(
 
     assert (official_home / "skills" / "jd").is_dir()
     assert not (official_home / "skills" / "wechat").exists()
-    state = json.loads((official_home / osk.SYNC_STATE_FILE).read_text())
+    state = json.loads(
+        (official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8")
+    )
     assert state["commit"] == "b" * 40
     assert state["skillCount"] == 1
 
@@ -315,7 +323,7 @@ def test_swap_reclaims_stale_trash_from_a_crashed_run(
     official_home.mkdir(parents=True)
     stale = official_home / ".sync-trash"
     stale.mkdir()
-    (stale / "somefile").write_text("leaked by a crashed swap")
+    (stale / "somefile").write_text("leaked by a crashed swap", encoding="utf-8")
     _patch_net(mocker, _routes("a" * 40, ["jd"]))
 
     osk.sync()
@@ -349,8 +357,15 @@ def test_resync_over_existing_source_json_windows_rename_semantics(
     _patch_net(mocker, _routes("b" * 40, ["jd"]))
     osk.sync()
 
-    assert json.loads((official_home / "source.json").read_text())["commit"] == "b" * 40
-    state = json.loads((official_home / osk.SYNC_STATE_FILE).read_text())
+    assert (
+        json.loads((official_home / "source.json").read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "b" * 40
+    )
+    state = json.loads(
+        (official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8")
+    )
     assert state["commit"] == "b" * 40
 
 
@@ -449,7 +464,9 @@ def test_skill_hash_mismatch_warns_but_mounts(
     assert "jd:" in mismatch_lines[0]
     # The skill still mounts — the zip .sha256 already vouched for the bytes.
     assert (official_home / "skills" / "jd" / "SKILL.md").is_file()
-    state = json.loads((official_home / osk.SYNC_STATE_FILE).read_text())
+    state = json.loads(
+        (official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8")
+    )
     assert state["skillCount"] == 2
 
 
@@ -495,8 +512,10 @@ def test_dry_run_reports_install_without_downloading(
 def test_dry_run_reports_up_to_date(official_home: Path, mocker, capsys) -> None:
     official_home.mkdir(parents=True)
     (official_home / "skills").mkdir()
-    (official_home / "source.json").write_text("{}")
-    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "a" * 40}))
+    (official_home / "source.json").write_text("{}", encoding="utf-8")
+    (official_home / osk.SYNC_STATE_FILE).write_text(
+        json.dumps({"commit": "a" * 40}), encoding="utf-8"
+    )
     _patch_net(mocker, _routes("a" * 40, ["jd"]))
 
     osk.sync(dry_run=True)
@@ -707,7 +726,9 @@ def test_regression_missing_tree_is_reinstalled_despite_current_marker(
     official_home, mocker
 ):
     official_home.mkdir(parents=True)
-    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": "same"}))
+    (official_home / osk.SYNC_STATE_FILE).write_text(
+        json.dumps({"commit": "same"}), encoding="utf-8"
+    )
     _patch_net(mocker, _routes("same", ["jd"]))
 
     osk.sync()
@@ -999,7 +1020,10 @@ def test_nonobject_source_metadata_uses_latest_commit(official_home, mocker, sou
     osk.sync()
 
     assert (
-        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["commit"] == "new"
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "new"
     )
 
 
@@ -1017,7 +1041,10 @@ def test_malformed_source_json_uses_latest_commit(official_home, mocker):
     osk.sync()
 
     assert (
-        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["commit"] == "new"
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "new"
     )
 
 
@@ -1126,7 +1153,12 @@ def test_missing_installed_manifest_triggers_repair(official_home, installed, mo
 
     osk.sync()
 
-    assert json.loads((official_home / "source.json").read_text())["commit"] == "old"
+    assert (
+        json.loads((official_home / "source.json").read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "old"
+    )
 
 
 def test_first_install_failure_leaves_no_partial_install(official_home, mocker):
@@ -1224,7 +1256,10 @@ def test_landed_count_ignores_hidden_directories_and_plain_files(official_home, 
     osk.sync()
 
     assert (
-        json.loads((official_home / osk.SYNC_STATE_FILE).read_text())["skillCount"] == 1
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8"))[
+            "skillCount"
+        ]
+        == 1
     )
 
 
@@ -1325,7 +1360,9 @@ def test_dry_run_invalid_cached_commit_reports_install(
     official_home, mocker, capsys, commit
 ):
     official_home.mkdir(parents=True)
-    (official_home / osk.SYNC_STATE_FILE).write_text(json.dumps({"commit": commit}))
+    (official_home / osk.SYNC_STATE_FILE).write_text(
+        json.dumps({"commit": commit}), encoding="utf-8"
+    )
     _patch_net(mocker, _routes("new", ["jd"]))
 
     osk.sync(dry_run=True)

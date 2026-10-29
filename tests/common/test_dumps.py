@@ -93,7 +93,7 @@ def test_save_tool_call_writes_listing(
     files = list(fake_dirs["tool_calls"].iterdir())
     assert len(files) == 1
     assert files[0].suffix == ".txt"
-    assert files[0].read_text() == "abc"
+    assert files[0].read_text(encoding="utf-8") == "abc"
     assert "_peek." in files[0].name
 
 
@@ -209,7 +209,7 @@ def test_regression_tool_dumps_same_tick_preserve_both_pairs(
     dumps.save_tool_call("peek", "second", b"second")
 
     text_files = sorted(fake_dirs["tool_calls"].glob("*.txt"))
-    assert {p.read_text() for p in text_files} == {"first", "second"}
+    assert {p.read_text(encoding="utf-8") for p in text_files} == {"first", "second"}
     assert {p.with_suffix(".jpg").read_bytes() for p in text_files} == {
         b"first",
         b"second",

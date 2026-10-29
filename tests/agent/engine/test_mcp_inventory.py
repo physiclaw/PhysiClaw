@@ -19,7 +19,7 @@ from physiclaw.agent.engine import mcp_inventory
 
 def _write(tmp_path: Path, name: str, content: str) -> Path:
     p = tmp_path / name
-    p.write_text(content)
+    p.write_text(content, encoding="utf-8")
     return p
 
 

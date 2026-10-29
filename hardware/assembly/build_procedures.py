@@ -874,7 +874,7 @@ def _execute(args: argparse.Namespace) -> int:
         # line ties each dumped stack to the worker's stems.
         crash_path = _crash_log()
         crash_path.parent.mkdir(parents=True, exist_ok=True)
-        with crash_path.open("a") as crash_log:
+        with crash_path.open("a", encoding="utf-8") as crash_log:
             crash_log.write(
                 f"=== {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} pid={os.getpid()} worker --stems {' '.join(args.stems)}\n"
             )

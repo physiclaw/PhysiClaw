@@ -40,7 +40,7 @@ def test_save_writes_models_with_fetched_at_timestamp(_dir_fixture: Path) -> Non
 
     discovered.save("openai", models)
 
-    payload = json.loads((_dir_fixture / "openai.json").read_text())
+    payload = json.loads((_dir_fixture / "openai.json").read_text(encoding="utf-8"))
     assert payload["models"] == models
     # ISO 8601 with seconds precision and UTC timezone
     assert payload["fetched_at"].endswith("+00:00")
@@ -86,7 +86,7 @@ def test_save_creates_intermediate_parents(
 def test_save_serializes_with_two_space_indent(_dir_fixture: Path) -> None:
     discovered.save("openai", [{"id": "gpt-5"}])
 
-    text = (_dir_fixture / "openai.json").read_text()
+    text = (_dir_fixture / "openai.json").read_text(encoding="utf-8")
     # Byte-for-byte equality with json.dumps(indent=2) — kills any
     # mutation on the indent argument.
     import json as _json
@@ -149,7 +149,7 @@ def test_load_returns_models_list_when_cache_present(_dir_fixture: Path) -> None
 def test_load_returns_empty_list_when_models_key_absent(_dir_fixture: Path) -> None:
     _dir_fixture.mkdir(parents=True)
     (_dir_fixture / "openai.json").write_text(
-        json.dumps({"fetched_at": "2026-04-28T00:00:00+00:00"})
+        json.dumps({"fetched_at": "2026-04-28T00:00:00+00:00"}), encoding="utf-8"
     )
 
     assert discovered.load("openai") == []
@@ -160,7 +160,8 @@ def test_load_returns_empty_when_models_key_is_null(_dir_fixture: Path) -> None:
     # falsy, so the `or []` fallback fires.
     _dir_fixture.mkdir(parents=True)
     (_dir_fixture / "openai.json").write_text(
-        json.dumps({"fetched_at": "2026-04-28T00:00:00+00:00", "models": None})
+        json.dumps({"fetched_at": "2026-04-28T00:00:00+00:00", "models": None}),
+        encoding="utf-8",
     )
 
     assert discovered.load("openai") == []
@@ -170,7 +171,7 @@ def test_load_returns_empty_and_logs_on_malformed_json(
     _dir_fixture: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     _dir_fixture.mkdir(parents=True)
-    (_dir_fixture / "openai.json").write_text("{not valid json")
+    (_dir_fixture / "openai.json").write_text("{not valid json", encoding="utf-8")
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.discovered"):
         out = discovered.load("openai")
@@ -188,7 +189,7 @@ def test_load_returns_empty_and_logs_on_oserror(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     _dir_fixture.mkdir(parents=True)
-    (_dir_fixture / "openai.json").write_text("{}")
+    (_dir_fixture / "openai.json").write_text("{}", encoding="utf-8")
     mocker.patch.object(Path, "read_text", side_effect=OSError("permission denied"))
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.provider.chat.discovered"):

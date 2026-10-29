@@ -464,7 +464,7 @@ def test_trace_writes_per_turn_note_history(_trace_dirs: Path) -> None:
     t.write({"event": "tool_result", "turn": 4, "name": "tap", "text": "Tapped"})
     t.close()
 
-    notes = (_trace_dirs / "sessions" / "s1" / "notes.md").read_text()
+    notes = (_trace_dirs / "sessions" / "s1" / "notes.md").read_text(encoding="utf-8")
     assert "# Session s1 — note history" in notes
     assert "- turn 3 — In WeChat, sending the London weather reply" in notes
     assert "Tapped" not in notes
@@ -480,7 +480,9 @@ def test_trace_mirrors_process_log_into_session_runtime_log(_trace_dirs: Path) -
     logging.getLogger("physiclaw.test.trace").debug("captured-debug-line")
     t.close()
 
-    runtime_log = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_text()
+    runtime_log = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_text(
+        encoding="utf-8"
+    )
     assert "captured-debug-line" in runtime_log  # our DEBUG despite console INFO
 
 
@@ -510,7 +512,7 @@ def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
 
     line = (
         (_trace_dirs / "sessions" / "sess-A" / "model.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     obj = json.loads(line)
@@ -526,7 +528,7 @@ def test_rawlog_writes_request_with_turn_index(_trace_dirs: Path) -> None:
 
     line = (
         (_trace_dirs / "sessions" / "sess-B" / "model.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     obj = json.loads(line)
@@ -542,7 +544,7 @@ def test_rawlog_writes_response_with_elapsed(_trace_dirs: Path) -> None:
 
     line = (
         (_trace_dirs / "sessions" / "sess-C" / "model.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     obj = json.loads(line)
@@ -636,7 +638,7 @@ def test_rawlog_files_a_micro_records_frame_like_a_turns(_trace_dirs: Path) -> N
 
     (rec,) = [
         json.loads(line)
-        for line in log.path.read_text().splitlines()
+        for line in log.path.read_text(encoding="utf-8").splitlines()
         if '"micro"' in line
     ]
     image = rec["request"][1]["content"][1]
@@ -817,7 +819,7 @@ def test_purge_old_returns_silently_when_dir_missing() -> None:
 
 def _events(log_dir: Path, sid: str) -> list[dict]:
     path = log_dir / "sessions" / sid / "events.jsonl"
-    return [json.loads(x) for x in path.read_text().splitlines()]
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
 
 
 def test_trace_writes_every_event_to_events_jsonl(_trace_dirs: Path) -> None:
@@ -929,7 +931,9 @@ def test_summary_json_derived_from_event_stream(_trace_dirs: Path) -> None:
     _feed_session(t)
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["schema"] == 1
     assert s["sid"] == "s1"
     assert s["model_ref"] == "moonshot/kimi-k3"
@@ -975,7 +979,9 @@ def test_summary_marks_crashed_sessions(_trace_dirs: Path) -> None:
     t.write({"event": "crashed"})
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["outcome"]["crashed"] is True
     assert s["outcome"]["sentinel"] is None
 
@@ -989,7 +995,7 @@ def test_close_records_session_metrics_in_runtime_log(
         _feed_session(t)
         t.close()
 
-    text = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_text()
+    text = (_trace_dirs / "sessions" / "s1" / "runtime.log").read_text(encoding="utf-8")
     assert "END session=s1 outcome=DONE turns=4" in text
     assert "tokens=1.0k/50 cache=80% tools=2" in text
 
@@ -1002,16 +1008,22 @@ def test_close_counts_images_from_session_dir(_trace_dirs: Path) -> None:
     (img_dir / "120001_500_t1.jpg").write_bytes(b"y")
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["images"] == 2
 
 
 def test_close_writes_summary_only_once(_trace_dirs: Path) -> None:
     t = Trace("s1", Images("s1"))
     t.close()
-    first = (_trace_dirs / "sessions" / "s1" / "summary.json").read_text()
+    first = (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(
+        encoding="utf-8"
+    )
     t.close()  # idempotent — no rewrite, no raise
-    assert (_trace_dirs / "sessions" / "s1" / "summary.json").read_text() == first
+    assert (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(
+        encoding="utf-8"
+    ) == first
 
 
 def test_fmt_tokens_scales() -> None:
@@ -1044,7 +1056,7 @@ def test_write_request_tags_images_with_turn(_trace_dirs: Path) -> None:
 
     line = (
         (_trace_dirs / "sessions" / "sess-T" / "model.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     url = json.loads(line)["messages"][0]["content"][0]["image_url"]["url"]
@@ -1079,12 +1091,12 @@ def test_purge_old_removes_stale_session_dirs(_trace_dirs: Path) -> None:
     old = _trace_dirs / "sessions" / "20260101_000000"
     old.mkdir(parents=True)
     f = old / "events.jsonl"
-    f.write_text("{}")
+    f.write_text("{}", encoding="utf-8")
     _age(f, trace.store._RETENTION_DAYS + 1)
     _age(old, trace.store._RETENTION_DAYS + 1)
     young = _trace_dirs / "sessions" / "20990101_000000"
     young.mkdir(parents=True)
-    (young / "events.jsonl").write_text("{}")
+    (young / "events.jsonl").write_text("{}", encoding="utf-8")
 
     trace.store._purge_old()
 
@@ -1098,9 +1110,9 @@ def test_purge_old_spares_session_dir_with_a_recent_file(_trace_dirs: Path) -> N
     d = _trace_dirs / "sessions" / "20260101_000000"
     d.mkdir(parents=True)
     old_f = d / "events.jsonl"
-    old_f.write_text("{}")
+    old_f.write_text("{}", encoding="utf-8")
     _age(old_f, trace.store._RETENTION_DAYS + 1)
-    (d / "summary.json").write_text("{}")  # fresh
+    (d / "summary.json").write_text("{}", encoding="utf-8")  # fresh
     _age(d, trace.store._RETENTION_DAYS + 1)
 
     trace.store._purge_old()
@@ -1151,7 +1163,7 @@ def test_first_event_of_every_session_is_the_env_snapshot(_trace_dirs: Path) -> 
 def test_env_snapshot_never_carries_secrets(_trace_dirs: Path) -> None:
     Trace("s1", Images("s1")).close()
 
-    raw = (_trace_dirs / "sessions" / "s1" / "events.jsonl").read_text()
+    raw = (_trace_dirs / "sessions" / "s1" / "events.jsonl").read_text(encoding="utf-8")
     assert "api_key" not in raw
     assert "provider_config" not in raw
 
@@ -1161,7 +1173,9 @@ def test_summary_includes_env(_trace_dirs: Path) -> None:
     t.write({"event": "done", "sentinel": "DONE", "recap": "ok"})
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["env"]["os"] in ("darwin", "win32", "linux")
     assert s["env"]["config"]["camera"]["width"] > 0
 
@@ -1252,7 +1266,9 @@ def test_summary_splits_conductor_turns_from_provider_calls(
     )
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s2" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s2" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["provider_calls"] == 1
     assert s["conductor_turns"] == 1
     # Synthesized turns sent no request — their time never inflates the
@@ -1289,7 +1305,9 @@ def test_summary_counts_micro_calls_and_folds_their_tokens(
     )
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s3" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s3" / "summary.json").read_text(encoding="utf-8")
+    )
     assert s["micro_calls"] == 1
     assert s["usage"]["input_tokens"] == 1500
     assert s["usage"]["output_tokens"] == 30
@@ -1356,7 +1374,9 @@ def test_summary_lists_every_walk_in_order(_trace_dirs: Path) -> None:
     )
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert [(w["playbook"], w["outcome"]) for w in s["walks"]] == [
         ("boot", "completed"),
         ("flow", "handover"),
@@ -1368,7 +1388,9 @@ def test_summary_omits_walks_when_no_playbook_ran(_trace_dirs: Path) -> None:
     t = Trace("s1", Images("s1"))
     t.close()
 
-    s = json.loads((_trace_dirs / "sessions" / "s1" / "summary.json").read_text())
+    s = json.loads(
+        (_trace_dirs / "sessions" / "s1" / "summary.json").read_text(encoding="utf-8")
+    )
     assert "walks" not in s
 
 
@@ -1402,7 +1424,7 @@ def test_tool_result_keeps_its_text_whole_and_writes_its_frame(
     d = _trace_dirs / "sessions" / "sess-VIEW"
     (event,) = [
         json.loads(line)
-        for line in (d / "events.jsonl").read_text().splitlines()
+        for line in (d / "events.jsonl").read_text(encoding="utf-8").splitlines()
         if '"tool_result"' in line
     ]
     assert "blocks" not in event and "result_summary" not in event
@@ -1454,7 +1476,7 @@ def test_a_frame_is_written_once_and_the_wire_references_it(
     assert len(files) == 1 and files[0].endswith("_t2.jpg")  # the capture turn
     (req,) = [
         json.loads(line)
-        for line in (d / "model.jsonl").read_text().splitlines()
+        for line in (d / "model.jsonl").read_text(encoding="utf-8").splitlines()
         if '"request"' in line
     ]
     assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{files[0]}"

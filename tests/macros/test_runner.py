@@ -1854,7 +1854,7 @@ async def test_the_run_log_numbers_the_callees_steps_under_the_run_step(
     events = [
         json.loads(line)
         for line in (macro_runlog.run_dir(result.run_id) / "events.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()
     ]
     steps = [e for e in events if e["event"] == "step"]
@@ -1907,7 +1907,7 @@ async def test_the_run_steps_event_reports_its_own_gate_reads(physiclaw_home) ->
     events = [
         json.loads(line)
         for line in (macro_runlog.run_dir(result.run_id) / "events.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()
     ]
     run_step = next(e for e in events if e.get("name") == "idx1-run-open")

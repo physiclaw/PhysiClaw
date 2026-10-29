@@ -29,7 +29,7 @@ def _isolate_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _write_layout(fields: dict) -> None:
     d = paths.screen_layout_dir()
     d.mkdir(parents=True, exist_ok=True)
-    paths.screen_layout_json().write_text(json.dumps(fields))
+    paths.screen_layout_json().write_text(json.dumps(fields), encoding="utf-8")
 
 
 # Real-ish boxes that pass each field's region check.
@@ -83,7 +83,7 @@ def test_load_layout_md_returns_content_or_empty() -> None:
     assert layout.load_layout_md() == ""
     d = paths.screen_layout_dir()
     d.mkdir(parents=True, exist_ok=True)
-    paths.screen_layout_md().write_text("LAYOUT CARD\n")
+    paths.screen_layout_md().write_text("LAYOUT CARD\n", encoding="utf-8")
     assert layout.load_layout_md() == "LAYOUT CARD"
 
 
@@ -298,7 +298,7 @@ def test_record_rejects_out_of_region_box() -> None:
 def test_record_saves_one_box_and_confirms() -> None:
     out = layout.record("spotlight", "spotlight_input", [0.02, 0.582, 0.958, 0.66])
 
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["spotlight_input"] == [0.02, 0.582, 0.958, 0.66]  # rounded, stored
     assert "Saved `spotlight_input`" in out
     assert "still to capture" in out.lower()  # incomplete; count only, no field list
@@ -312,7 +312,7 @@ def test_record_saves_paste_buttons() -> None:
     layout.record("spotlight", "spotlight_paste", [0.090, 0.512, 0.205, 0.560])
     layout.record("chat-keyboard", "chat_paste", [0.120, 0.520, 0.300, 0.566], "wechat")
 
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["spotlight_paste"] == [0.09, 0.512, 0.205, 0.56]
     assert saved["chat_paste"] == [0.12, 0.52, 0.3, 0.566]
 
@@ -334,7 +334,7 @@ def test_record_merges_without_clobber_and_labels_app() -> None:
         "chat-no-keyboard", "chat_input_kb_hidden", [0.098, 0.9, 0.716, 0.95], "wechat"
     )
 
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["spotlight_input"] == [0.02, 0.582, 0.958, 0.66]  # preserved
     assert saved["chat_input_kb_hidden"] == [0.098, 0.9, 0.716, 0.95]
     assert saved["im_app"] == "WeChat"  # app labelled
@@ -342,13 +342,13 @@ def test_record_merges_without_clobber_and_labels_app() -> None:
 
 def test_record_rounds_coordinates() -> None:
     layout.record("spotlight", "spotlight_input", [0.0201, 0.5822, 0.9578, 0.6601])
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["spotlight_input"] == [0.02, 0.582, 0.958, 0.66]
 
 
 def test_record_ignores_app_on_spotlight() -> None:
     layout.record("spotlight", "spotlight_input", [0.02, 0.582, 0.958, 0.66], "wechat")
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert "im_app" not in saved  # spotlight isn't app-specific
 
 
@@ -358,7 +358,7 @@ def test_record_completes_setup_wechat() -> None:
 
     assert "All boxes captured" in out
     assert layout.is_learned() is True
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["send"] == [0.752, 0.868, 0.99, 0.918]  # keyboard key
     assert saved["im_app"] == "WeChat"
     # The `layout_learned` marker is persisted for out-of-module readers (the
@@ -369,7 +369,7 @@ def test_record_completes_setup_wechat() -> None:
 def test_record_writes_learned_false_while_incomplete() -> None:
     layout.record("spotlight", "spotlight_input", [0.02, 0.582, 0.958, 0.66])
 
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["layout_learned"] is False
 
 
@@ -380,7 +380,7 @@ def test_record_completes_setup_whatsapp_send_from_mic() -> None:
     )
 
     assert "All boxes captured" in out
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["send"] == [0.85, 0.586, 0.95, 0.634]  # mic position
     assert saved["im_app"] == "WhatsApp"
 
@@ -393,7 +393,7 @@ def test_record_accepts_any_chat_app() -> None:
     out = layout.record("chat-keyboard", "send", [0.90, 0.586, 0.98, 0.634], "telegram")
 
     assert "All boxes captured" in out
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["im_app"] == "Telegram"
 
 
@@ -404,7 +404,7 @@ def test_record_labels_unknown_app_verbatim() -> None:
         [0.098, 0.9, 0.716, 0.95],
         "SomeNewChatApp",
     )
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["im_app"] == "SomeNewChatApp"  # not in the nice-case map → as passed
 
 
@@ -419,7 +419,7 @@ def test_record_same_field_twice_overwrites() -> None:
     layout.record("spotlight", "spotlight_input", [0.02, 0.582, 0.958, 0.66])
     layout.record("spotlight", "spotlight_input", [0.03, 0.585, 0.955, 0.655])
 
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["spotlight_input"] == [
         0.03,
         0.585,
@@ -447,7 +447,7 @@ def test_record_after_complete_says_no_restart() -> None:
 
     assert "No restart needed" in out
     assert "will now restart" not in out
-    saved = json.loads(paths.screen_layout_json().read_text())
+    saved = json.loads(paths.screen_layout_json().read_text(encoding="utf-8"))
     assert saved["send"] == [0.76, 0.868, 0.995, 0.918]  # correction saved
 
 

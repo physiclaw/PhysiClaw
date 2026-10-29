@@ -338,7 +338,7 @@ def test_load_returns_none_on_version_mismatch(tmp_path) -> None:
     import json
 
     p = tmp_path / "bundle.json"
-    p.write_text(json.dumps({"version": 99}))
+    p.write_text(json.dumps({"version": 99}), encoding="utf-8")
 
     assert Calibration.load(p) is None
 
@@ -379,7 +379,7 @@ def test_save_writes_two_space_indented_json_to_disk(tmp_path: Path) -> None:
     c.save(bundle_path)
 
     assert bundle_path.is_file()
-    text = bundle_path.read_text()
+    text = bundle_path.read_text(encoding="utf-8")
     # Byte-for-byte equality with write_json_atomic's rendering — kills
     # any mutation on the indent argument, and pins the atomic writer as
     # the single serialization path.
@@ -402,7 +402,7 @@ def test_load_returns_none_when_file_missing(tmp_path: Path) -> None:
 
 def test_load_returns_none_on_malformed_json(tmp_path: Path) -> None:
     p = tmp_path / "bad.json"
-    p.write_text("{not valid json")
+    p.write_text("{not valid json", encoding="utf-8")
 
     assert Calibration.load(p) is None
 
@@ -411,7 +411,7 @@ def test_load_returns_none_on_payload_missing_required_keys(tmp_path: Path) -> N
     # ViewportShift(**vs) raises TypeError if vs is missing required
     # kwargs — load must catch it and return None.
     p = tmp_path / "partial.json"
-    p.write_text(json.dumps({"viewport_shift": {"offset_x": 0}}))
+    p.write_text(json.dumps({"viewport_shift": {"offset_x": 0}}), encoding="utf-8")
 
     assert Calibration.load(p) is None
 
@@ -422,7 +422,7 @@ def test_load_logs_warning_on_corrupt_bundle(
     import logging
 
     p = tmp_path / "bad.json"
-    p.write_text("{not valid json")
+    p.write_text("{not valid json", encoding="utf-8")
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.core.calibration.state"):
         Calibration.load(p)
@@ -516,7 +516,7 @@ def test_reconcile_cam_size_handles_rotated_portrait_sizes() -> None:
 @pytest.mark.parametrize("payload", [[], [1], "bundle", 1, True, None])
 def test_regression_load_rejects_non_object_json(tmp_path, payload) -> None:
     path = tmp_path / "bundle.json"
-    path.write_text(json.dumps(payload))
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
     result = Calibration.load(path)
 
@@ -716,7 +716,7 @@ def test_regression_load_rejects_dimensions_that_overflow_coordinate_math(
         ),
     }
     path = tmp_path / "bundle.json"
-    path.write_text(json.dumps({field: values[field]}))
+    path.write_text(json.dumps({field: values[field]}), encoding="utf-8")
 
     result = Calibration.load(path)
 

@@ -196,7 +196,7 @@ def test_status_reports_jobs_file_present(
     capsys: pytest.CaptureFixture,
 ) -> None:
     jobs = tmp_path / "jobs.md"
-    jobs.write_text("")
+    jobs.write_text("", encoding="utf-8")
     mocker.patch.object(
         status_mod.paths,
         "omniparser_onnx",
@@ -360,7 +360,12 @@ def test_status_dangling_symlink_is_missing(resource, tmp_path, capsys):
     assert "jobs file     none yet" in output
 
 
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+# File creation/truncation measures the host filesystem, not formatting speed.
+@settings(
+    max_examples=30,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(size=st.integers(min_value=0, max_value=128 * 1024 * 1024))
 @example(size=3 * 1024 * 1024 // 2 + 1)
 def test_status_formats_regular_model_size(size, capsys):

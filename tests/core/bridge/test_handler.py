@@ -137,7 +137,7 @@ async def test_serve_bridge_page_reads_html_and_sets_no_store(
 ) -> None:
     static = tmp_path / "static"
     static.mkdir()
-    (static / "bridge.html").write_text("<html>bridge</html>")
+    (static / "bridge.html").write_text("<html>bridge</html>", encoding="utf-8")
     monkeypatch.setattr(handler, "STATIC_DIR", static)
 
     resp = await serve_bridge_page(_fake_request())
@@ -530,7 +530,7 @@ async def test_serve_qr_page_substitutes_phone_url(
     static = tmp_path / "static"
     static.mkdir()
     (static / "qr.html").write_text(
-        "<html>__PHONE_URL__ / __PHONE_URL_FALLBACK__</html>"
+        "<html>__PHONE_URL__ / __PHONE_URL_FALLBACK__</html>", encoding="utf-8"
     )
     monkeypatch.setattr(handler, "STATIC_DIR", static)
     mocker.patch.object(
@@ -551,7 +551,7 @@ async def test_serve_qr_page_uses_default_port_when_url_port_none(
 ) -> None:
     static = tmp_path / "static"
     static.mkdir()
-    (static / "qr.html").write_text("<html></html>")
+    (static / "qr.html").write_text("<html></html>", encoding="utf-8")
     monkeypatch.setattr(handler, "STATIC_DIR", static)
     base_urls = mocker.patch.object(
         handler,

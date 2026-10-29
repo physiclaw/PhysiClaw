@@ -59,7 +59,9 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
         pytest.raises(BuildError, match="PDF render failed"),
     ):
         builder.build(["en"], tmp_path / "out", pdf=True, **kwargs)
-    events = [json.loads(line) for line in log.path.read_text().splitlines()]
+    events = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     pdf_events = [event for event in events if event.get("item") == "Render PDF [en]"]
     assert [event["event"] for event in pdf_events] == ["task_started", "task_failed"]
 
@@ -94,7 +96,8 @@ def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
         f"helper = subprocess.Popen([sys.executable, '-c', {helper!r}])\n"
         f"Path({str(marker)!r}).write_text(str(helper.pid))\n"
         f"while not Path({str(ready)!r}).exists(): time.sleep(0.01)\n"
-        "print('Browser diagnostics', file=sys.stderr)\n"
+        "print('Browser diagnostics', file=sys.stderr)\n",
+        encoding="utf-8",
     )
     browser.chmod(0o755)
     try:
@@ -110,7 +113,10 @@ def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
         # systems that briefly retain an orphan's PID as a zombie.
         assert select.select([reader], [], [], 2)[0] == [reader]
         assert os.read(reader, 100) == b""
-        events = [json.loads(line) for line in log.path.read_text().splitlines()]
+        events = [
+            json.loads(line)
+            for line in log.path.read_text(encoding="utf-8").splitlines()
+        ]
         assert (
             "Browser diagnostics"
             in next(event for event in events if event["event"] == "pdf_diagnostics")[
@@ -121,6 +127,6 @@ def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
         os.close(reader)
         if marker.exists():
             try:
-                os.kill(int(marker.read_text()), signal.SIGKILL)
+                os.kill(int(marker.read_text(encoding="utf-8")), signal.SIGKILL)
             except ProcessLookupError:
                 pass

@@ -202,7 +202,7 @@ def test_hidden_input_paste_batch_explains_the_keyboard_evidence(learned_layout)
 def test_partial_capture_cannot_diagnose_a_wrong_input_box(learned_layout, missing):
     hidden = learned_layout["chat_input_kb_hidden"]
     learned_layout.pop(missing)
-    paths.screen_layout_json().write_text(json.dumps(learned_layout))
+    paths.screen_layout_json().write_text(json.dumps(learned_layout), encoding="utf-8")
     actions = [_step("long_press", hidden), _step("send_to_clipboard", "text")]
 
     standalone = lint_gesture("long_press", {"bbox": hidden}, keyboard_up=True)
@@ -217,7 +217,7 @@ def test_missing_paste_box_does_not_invent_a_paste_flow(learned_layout):
     from physiclaw.common import paths
 
     learned_layout.pop("chat_paste")
-    paths.screen_layout_json().write_text(json.dumps(learned_layout))
+    paths.screen_layout_json().write_text(json.dumps(learned_layout), encoding="utf-8")
     actions = [
         _step("long_press", learned_layout["chat_input_kb_hidden"]),
         _step("send_to_clipboard", "text"),

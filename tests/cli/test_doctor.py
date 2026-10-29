@@ -404,7 +404,7 @@ def test_skills_lines_local_skill(mocker, tmp_path: Path) -> None:
 def test_skills_lines_unparseable_provenance(mocker, tmp_path: Path) -> None:
     skill_dir = tmp_path / "broken"
     skill_dir.mkdir()
-    (skill_dir / ".installed-from").write_text("not json")
+    (skill_dir / ".installed-from").write_text("not json", encoding="utf-8")
 
     fake_skills = MagicMock()
     fake_skills.installed_skill_dirs.return_value = [skill_dir]

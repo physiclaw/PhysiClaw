@@ -216,6 +216,6 @@ def test_decision_key_status_is_shared_and_masked(monkeypatch):
 
 def test_typesafe_credential_is_valid_config(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text('[provider]\ntypesafe_api_key = "fixture-only"\n')
+    path.write_text('[provider]\ntypesafe_api_key = "fixture-only"\n', encoding="utf-8")
     loaded = config.load(path)
     assert loaded.provider.typesafe_api_key == "fixture-only"

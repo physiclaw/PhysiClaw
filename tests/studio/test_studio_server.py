@@ -202,7 +202,9 @@ async def test_selected_review_does_not_expose_siblings_or_external_frame_links(
 ):
     selected = tmp_path / "selected"
     (selected / "images").mkdir(parents=True)
-    (selected / "summary.json").write_text('{"outcome":{"sentinel":"CHOSEN"}}')
+    (selected / "summary.json").write_text(
+        '{"outcome":{"sentinel":"CHOSEN"}}', encoding="utf-8"
+    )
     secret = tmp_path / "private.jpg"
     secret.write_bytes(b"private frame")
     symlink_to(selected / "images" / "linked.jpg", secret)
@@ -228,8 +230,12 @@ async def test_selected_review_routes_belong_to_one_app_only(tmp_path):
     second = tmp_path / "second"
     first.mkdir()
     second.mkdir()
-    (first / "summary.json").write_text('{"outcome":{"sentinel":"FIRST"}}')
-    (second / "summary.json").write_text('{"outcome":{"sentinel":"SECOND"}}')
+    (first / "summary.json").write_text(
+        '{"outcome":{"sentinel":"FIRST"}}', encoding="utf-8"
+    )
+    (second / "summary.json").write_text(
+        '{"outcome":{"sentinel":"SECOND"}}', encoding="utf-8"
+    )
     first_app = server.build_app(FakeSession(), review_dir=first)
     second_app = server.build_app(FakeSession(), review_dir=second)
     ordinary_app = server.build_app(FakeSession())
@@ -574,9 +580,12 @@ def _recorded(sid: str = "20260908-100000-abc123"):
     (d / "images" / "100001_000_t0.jpg").write_bytes(b"\xff\xd8\xff\xd9")
     (d / "events.jsonl").write_text(
         '{"t": "2026-09-08T10:00:01.500", "event": "tool_result", "turn": 0, '
-        '"name": "peek", "text": "Screen", "images": ["images/100001_000_t0.jpg"]}\n'
+        '"name": "peek", "text": "Screen", "images": ["images/100001_000_t0.jpg"]}\n',
+        encoding="utf-8",
     )
-    (d / "summary.json").write_text(json.dumps({"outcome": {"sentinel": "DONE"}}))
+    (d / "summary.json").write_text(
+        json.dumps({"outcome": {"sentinel": "DONE"}}), encoding="utf-8"
+    )
     return d
 
 

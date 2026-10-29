@@ -176,7 +176,7 @@ def test_load_calibration_bundle_returns_none_on_malformed_json(
 ) -> None:
     bundle = paths.calibration_bundle()
     bundle.parent.mkdir(parents=True, exist_ok=True)
-    bundle.write_text("{not valid json")
+    bundle.write_text("{not valid json", encoding="utf-8")
 
     assert paths.load_calibration_bundle() is None
 
@@ -186,7 +186,7 @@ def test_load_calibration_bundle_returns_none_when_root_is_not_dict(
 ) -> None:
     bundle = paths.calibration_bundle()
     bundle.parent.mkdir(parents=True, exist_ok=True)
-    bundle.write_text(json.dumps([1, 2, 3]))  # JSON valid, but a list
+    bundle.write_text(json.dumps([1, 2, 3]), encoding="utf-8")  # JSON valid, but a list
 
     assert paths.load_calibration_bundle() is None
 
@@ -197,7 +197,7 @@ def test_load_calibration_bundle_returns_parsed_dict_on_valid_json(
     bundle = paths.calibration_bundle()
     bundle.parent.mkdir(parents=True, exist_ok=True)
     payload = {"version": 1, "screen": {"width": 1170, "height": 2532}}
-    bundle.write_text(json.dumps(payload))
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
 
     assert paths.load_calibration_bundle() == payload
 
@@ -207,7 +207,7 @@ def test_load_calibration_bundle_returns_none_when_read_text_raises_oserror(
 ) -> None:
     bundle = paths.calibration_bundle()
     bundle.parent.mkdir(parents=True, exist_ok=True)
-    bundle.write_text("{}")
+    bundle.write_text("{}", encoding="utf-8")
 
     mocker.patch.object(Path, "read_text", side_effect=OSError("permission denied"))
 

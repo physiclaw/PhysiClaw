@@ -272,7 +272,7 @@ def test_invalid_learned_anchors_fall_back_to_declarations(field, value) -> None
     )
     prints.save_learned("taobao", {"results": learned})
     path = prints.learned_file("taobao")
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data["pages"]["results"]["anchors"][0][field] = value
     path.write_text(json.dumps(data), encoding="utf-8")
 

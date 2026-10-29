@@ -78,6 +78,9 @@ jobs:
       - name: Test
         run: uv run --locked --group cad pytest --cov
 
+      - name: Encoding regressions in both UTF-8 modes
+        run: make test-encoding "PY=uv run --locked"
+
       - name: Managed first image and shutdown regressions
         # The main suite excludes slow tests; exercise subprocess and bridge cleanup too.
         run: >-
@@ -123,7 +126,13 @@ jobs:
         run: make hw-build ARGS="--stems fastener_10_BHCS --bom"
 
       - name: Full fast suite on Windows
+        # Keep file/subprocess encoding bugs visible under the native locale.
+        env:
+          PYTHONUTF8: "0"
         run: uv run --locked --group cad pytest
+
+      - name: Encoding regressions in both UTF-8 modes
+        run: make test-encoding "PY=uv run --locked"
 
       - name: Doctor and terminal output regressions
         # macOS/Linux run these in the full suite; also exercise native Windows.

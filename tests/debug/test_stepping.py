@@ -298,7 +298,9 @@ def test_macro_catalog_reports_bad_pack_and_macro():
 
 
 def test_macro_catalog_preserves_input_and_macro_descriptions():
-    text = (Path(__file__).parents[1] / "data/debug/catalog-macro.yml").read_text()
+    text = (Path(__file__).parents[1] / "data/debug/catalog-macro.yml").read_text(
+        encoding="utf-8"
+    )
     _user_macro("example").write_text(text, encoding="utf-8")
 
     (item,) = stepping.macro_catalog()
@@ -518,7 +520,7 @@ async def test_run_user_macro_defaults_to_its_own_recording_name():
     assert (
         json.loads(
             (runlog.run_dir(result["run_id"]) / "events.jsonl")
-            .read_text()
+            .read_text(encoding="utf-8")
             .splitlines()[0]
         )["caller"]
         == "cli"
@@ -742,7 +744,9 @@ async def test_step_suspends_an_unanswered_ask_and_persists_gate(pack, mocker):
     write_channel()
     write_pack(
         playbooks={
-            "flow": (Path(__file__).parents[1] / "data/debug/asking.yml").read_text()
+            "flow": (Path(__file__).parents[1] / "data/debug/asking.yml").read_text(
+                encoding="utf-8"
+            )
         },
         macros=("open-app",),
     )
@@ -758,7 +762,7 @@ async def test_step_suspends_an_unanswered_ask_and_persists_gate(pack, mocker):
     assert result.to_dict()["outcome"] == "suspended"
     assert result.position.awaiting is True and result.position.idx == 1
     assert stepping.load_state("demo", "flow")["awaiting"] is True
-    assert suspended_path().read_text() == "real wake pending"
+    assert suspended_path().read_text(encoding="utf-8") == "real wake pending"
 
 
 async def test_run_macro_emits_the_step_log_and_shows_the_view(pack, mocker) -> None:
@@ -821,13 +825,13 @@ async def test_regression_macro_history_and_observer_keep_qualified_names():
     assert {
         json.loads(line)["macro"]
         for line in (runlog.run_dir(first["run_id"]) / "events.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()
     } == {"alpha/open-app"}
     assert {
         json.loads(line)["macro"]
         for line in (runlog.run_dir(second["run_id"]) / "events.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()
     } == {"beta/open-app"}
 

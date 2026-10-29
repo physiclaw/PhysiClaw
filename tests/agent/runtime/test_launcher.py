@@ -67,7 +67,9 @@ def test_resolve_raises_runtime_error_for_slashless_ref(
 def test_launch_rejects_invalid_config_before_resolving_model(
     physiclaw_home, monkeypatch, mocker, capsys
 ):
-    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    (physiclaw_home / "config.toml").write_text(
+        "[server]\nportt = 9000\n", encoding="utf-8"
+    )
     monkeypatch.setattr("sys.argv", ["runtime"])
     resolve_model = mocker.patch.object(launcher, "resolve")
     runtime = mocker.patch.object(launcher, "Runtime")

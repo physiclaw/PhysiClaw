@@ -31,11 +31,11 @@ def runner() -> CliRunner:
 @pytest.fixture
 def populated_home(physiclaw_home: Path) -> Path:
     """Drop a few placeholder files under HOME so deletion has something to remove."""
-    (physiclaw_home / "config.toml").write_text("# fake config\n")
+    (physiclaw_home / "config.toml").write_text("# fake config\n", encoding="utf-8")
     (physiclaw_home / "calibration").mkdir()
-    (physiclaw_home / "calibration" / "bundle.json").write_text("{}")
+    (physiclaw_home / "calibration" / "bundle.json").write_text("{}", encoding="utf-8")
     (physiclaw_home / "models").mkdir()
-    (physiclaw_home / "models" / "marker").write_text("x")
+    (physiclaw_home / "models" / "marker").write_text("x", encoding="utf-8")
     return physiclaw_home
 
 

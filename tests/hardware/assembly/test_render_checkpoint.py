@@ -94,7 +94,8 @@ def test_corrupt_checkpoint_is_rebuilt_instead_of_loaded(output):
 
 def test_checkpoint_rejects_unexpected_layer_paths(tmp_path):
     (tmp_path / "checkpoint.json").write_text(
-        json.dumps({"layers": {"../other": "abc"}, "views": {"0": CAMERA}})
+        json.dumps({"layers": {"../other": "abc"}, "views": {"0": CAMERA}}),
+        encoding="utf-8",
     )
     assert render_checkpoint.load(tmp_path, [0]) is None
 
@@ -111,7 +112,7 @@ def test_checkpoint_rejects_unexpected_layer_paths(tmp_path):
 def test_damaged_checkpoint_metadata_is_rejected(tmp_path, damage):
     render_checkpoint.save(tmp_path, Box(1, 2, 3), None, {"0": CAMERA})
     manifest = tmp_path / "checkpoint.json"
-    data = json.loads(manifest.read_text())
+    data = json.loads(manifest.read_text(encoding="utf-8"))
     data.update(damage)
-    manifest.write_text(json.dumps(data))
+    manifest.write_text(json.dumps(data), encoding="utf-8")
     assert render_checkpoint.load(tmp_path, [0]) is None

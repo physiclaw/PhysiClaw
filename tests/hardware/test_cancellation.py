@@ -162,11 +162,15 @@ raise SystemExit(cli.main(['build']))
     assert len(list((output / "step").glob("*.step"))) == expected_workers
     for marker in workers:
         pid = int(marker.stem)
-        assert int(marker.read_text()) == pid  # Each worker owned a private group.
+        assert (
+            int(marker.read_text(encoding="utf-8")) == pid
+        )  # Each worker owned a private group.
         assert not _running(pid)
     events = [
         json.loads(line)
-        for line in next((output / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((output / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert events[-1]["event"] == "build_finished"
     assert events[-1]["status"] == "cancelled"
@@ -254,7 +258,9 @@ raise SystemExit(rc)
     logs = list((tmp_path / "logs").glob("*.jsonl"))
     assert len(logs) == 3
     for log in logs:
-        events = [json.loads(line) for line in log.read_text().splitlines()]
+        events = [
+            json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()
+        ]
         interrupted = [e for e in events if e["event"] == "build_interrupted"]
         assert len(interrupted) == 1
         assert "KeyboardInterrupt" in interrupted[0]["traceback"]
@@ -358,7 +364,9 @@ print('cancelled without leaking the waitpid lock')
 
 
 def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
-    (tmp_path / "interrupted_stage.py").write_text("raise KeyboardInterrupt\n")
+    (tmp_path / "interrupted_stage.py").write_text(
+        "raise KeyboardInterrupt\n", encoding="utf-8"
+    )
     script = (
         "from hardware import __main__ as cli\n"
         "cli._DELEGATED['build'] = ['-m', 'interrupted_stage']\n"

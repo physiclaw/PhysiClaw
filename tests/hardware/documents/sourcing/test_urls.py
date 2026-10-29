@@ -584,7 +584,7 @@ def test_history_requires_current_fields(tmp_path, field):
     record = state if field == "round_index" else next(iter(state["checks"].values()))
     del record[field]
     path = tmp_path / "checks.json"
-    path.write_text(json.dumps(state))
+    path.write_text(json.dumps(state), encoding="utf-8")
     with pytest.raises(BuildError, match="Cannot read URL review history"):
         urls.load_state(path)
 
@@ -601,10 +601,10 @@ def test_history_requires_current_fields(tmp_path, field):
 )
 def test_malformed_history_is_not_silently_discarded(tmp_path, content):
     path = tmp_path / "history.json"
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
     with pytest.raises(BuildError, match="Cannot read URL review history"):
         urls.load_state(path)
-    assert path.read_text() == content
+    assert path.read_text(encoding="utf-8") == content
 
 
 @pytest.mark.parametrize(
@@ -622,10 +622,10 @@ def test_invalid_check_record_preserves_history(tmp_path, field, value):
     next(iter(state["checks"].values()))[field] = value
     path = tmp_path / "history.json"
     content = json.dumps(state)
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
     with pytest.raises(BuildError, match="Cannot read URL review history"):
         urls.load_state(path)
-    assert path.read_text() == content
+    assert path.read_text(encoding="utf-8") == content
 
 
 @pytest.mark.parametrize("failure", ["render", "flush"])
@@ -852,7 +852,7 @@ def test_real_make_target_automatically_records_marketplaces_and_rotates(tmp_pat
     assert "Need:" not in result.stdout
     assert "URLs recorded as checked" not in result.stdout
     assert "\033[" not in result.stdout
-    state = json.loads(state_path.read_text())
+    state = json.loads(state_path.read_text(encoding="utf-8"))
     assert len(state["checks"]) == 6
     assert all(urls.platform_for(url) in urls.PLATFORMS for url in state["checks"])
     assert "--checked" not in result.stdout
@@ -862,7 +862,7 @@ def test_real_make_target_automatically_records_marketplaces_and_rotates(tmp_pat
     assert detailed.returncode == 0, detailed.stderr
     assert "Need:" in detailed.stdout
     assert str(state_path) in detailed.stdout
-    updated = json.loads(state_path.read_text())
+    updated = json.loads(state_path.read_text(encoding="utf-8"))
     assert len(updated["checks"]) == 12
     assert all(
         updated["checks"][url] == check for url, check in state["checks"].items()

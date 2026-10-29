@@ -76,7 +76,9 @@ def test_no_subcommand_runs_server(mocker) -> None:
 def test_invalid_config_blocks_startup_instead_of_using_defaults(
     physiclaw_home, mocker, args
 ):
-    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    (physiclaw_home / "config.toml").write_text(
+        "[server]\nportt = 9000\n", encoding="utf-8"
+    )
     server = mocker.patch("physiclaw.cli.server")
     result = runner.invoke(app, args)
 
@@ -90,5 +92,7 @@ def test_invalid_config_blocks_startup_instead_of_using_defaults(
     "args", [["--help"], ["--version"], ["config", "path"], ["update"]]
 )
 def test_invalid_config_keeps_recovery_commands_available(physiclaw_home, args):
-    (physiclaw_home / "config.toml").write_text("[server]\nportt = 9000\n")
+    (physiclaw_home / "config.toml").write_text(
+        "[server]\nportt = 9000\n", encoding="utf-8"
+    )
     assert runner.invoke(app, args).exit_code == 0

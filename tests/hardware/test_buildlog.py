@@ -12,7 +12,7 @@ from hardware import buildlog, log_style
 
 
 def records(path):
-    return [json.loads(line) for line in path.read_text().splitlines()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 def test_terminal_is_concise_but_file_keeps_diagnostics(tmp_path, capsys):
@@ -110,18 +110,18 @@ def test_crash_path_is_inherited_and_restored_without_overwriting_previous_runs(
     monkeypatch.setenv(buildlog.CRASH_LOG_ENV, previous)
     with buildlog.session(tmp_path) as first:
         assert os.environ[buildlog.CRASH_LOG_ENV] == str(first.crash_path)
-        first.crash_path.write_text("First run native stack\n")
+        first.crash_path.write_text("First run native stack\n", encoding="utf-8")
         with buildlog.session(None, worker=True) as worker:
             assert worker.crash_path == first.crash_path
         assert os.environ[buildlog.CRASH_LOG_ENV] == str(first.crash_path)
     assert os.environ[buildlog.CRASH_LOG_ENV] == previous
     with pytest.raises(ValueError), buildlog.session(tmp_path) as second:
         assert second.crash_path != first.crash_path
-        second.crash_path.write_text("Second run native stack\n")
+        second.crash_path.write_text("Second run native stack\n", encoding="utf-8")
         raise ValueError("Build failed")
     assert os.environ[buildlog.CRASH_LOG_ENV] == previous
-    assert first.crash_path.read_text() == "First run native stack\n"
-    assert second.crash_path.read_text() == "Second run native stack\n"
+    assert first.crash_path.read_text(encoding="utf-8") == "First run native stack\n"
+    assert second.crash_path.read_text(encoding="utf-8") == "Second run native stack\n"
 
 
 def test_worker_batch_size_does_not_replace_build_total(tmp_path, capsys):

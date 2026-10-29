@@ -49,10 +49,11 @@ def running(tmp_path, mode):
         **os.environ,
         "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
         "PYTHONUNBUFFERED": "1",
+        "PYTHONIOENCODING": "utf-8",
         "NO_PROXY": "127.0.0.1,localhost,::1",
         "no_proxy": "127.0.0.1,localhost,::1",
     }
-    with path.open("a") as output:
+    with path.open("a", encoding="utf-8") as output:
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -72,7 +73,7 @@ def running(tmp_path, mode):
                 proc.kill()
             proc.wait(timeout=5)
             # Do not leave a child behind even when a regression fails a test.
-            match = re.search(r"CHILD_PID=(\d+)", path.read_text())
+            match = re.search(r"CHILD_PID=(\d+)", path.read_text(encoding="utf-8"))
             if match:
                 try:
                     os.kill(int(match[1]), signal.SIGKILL)
@@ -83,17 +84,17 @@ def running(tmp_path, mode):
 def wait_for(proc, path, text):
     deadline = time.monotonic() + 12
     while time.monotonic() < deadline:
-        output = path.read_text()
+        output = path.read_text(encoding="utf-8")
         if text in output:
             return output
         assert proc.poll() is None, output
         time.sleep(0.02)
-    pytest.fail(path.read_text())
+    pytest.fail(path.read_text(encoding="utf-8"))
 
 
 def finished(proc, path, port):
     proc.wait(timeout=8)
-    output = path.read_text()
+    output = path.read_text(encoding="utf-8")
     assert "Runtime child reaped" in output, output
     child = int(re.search(r"CHILD_PID=(\d+)", output)[1])
     with pytest.raises(ProcessLookupError):
@@ -192,7 +193,7 @@ def test_server_first_negative_control_detects_wrong_order(tmp_path):
 def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_path):
     with running(tmp_path, "external") as (parent, path, port):
         wait_for(parent, path, "MCP tools live")
-        with path.open("a") as output:
+        with path.open("a", encoding="utf-8") as output:
             child = subprocess.Popen(
                 [
                     sys.executable,
@@ -203,7 +204,12 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
                 ],
                 stdout=output,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "NO_PROXY": "*", "no_proxy": "*"},
+                env={
+                    **os.environ,
+                    "PYTHONIOENCODING": "utf-8",
+                    "NO_PROXY": "*",
+                    "no_proxy": "*",
+                },
             )
             try:
                 wait_for(child, path, "REACT_DONE")
@@ -215,7 +221,7 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
                     child.wait(timeout=5)
         parent.send_signal(signal.SIGINT)
         parent.wait(timeout=5)
-    output = path.read_text()
+    output = path.read_text(encoding="utf-8")
     assert child.returncode == 0, output
     assert "CLOSE_MCP_DONE" in output
     assert parent.returncode == 0, output

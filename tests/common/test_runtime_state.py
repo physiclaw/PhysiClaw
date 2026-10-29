@@ -28,7 +28,7 @@ def test_write_creates_file_with_required_fields(physiclaw_home: Path) -> None:
     runtime_state.write("127.0.0.1", 8048)
 
     path = paths.runtime_state_file()
-    state = json.loads(path.read_text())
+    state = json.loads(path.read_text(encoding="utf-8"))
     assert state["pid"] == os.getpid()
     assert state["host"] == "127.0.0.1"
     assert state["port"] == 8048
@@ -44,7 +44,7 @@ def test_write_records_started_at_close_to_current_time(physiclaw_home: Path) ->
     runtime_state.write("h", 1)
     after = time.time()
 
-    state = json.loads(paths.runtime_state_file().read_text())
+    state = json.loads(paths.runtime_state_file().read_text(encoding="utf-8"))
     assert before <= state["started_at"] <= after
 
 
@@ -64,7 +64,7 @@ def test_write_records_model_ref_and_source_when_supplied(
         "h", 1, model_ref="anthropic/claude-opus-4-7", model_source="config"
     )
 
-    state = json.loads(paths.runtime_state_file().read_text())
+    state = json.loads(paths.runtime_state_file().read_text(encoding="utf-8"))
     assert state["model_ref"] == "anthropic/claude-opus-4-7"
     assert state["model_source"] == "config"
 
@@ -99,7 +99,7 @@ def test_write_overwrites_prior_file(physiclaw_home: Path) -> None:
 
     runtime_state.write("second", 2222)
 
-    state = json.loads(paths.runtime_state_file().read_text())
+    state = json.loads(paths.runtime_state_file().read_text(encoding="utf-8"))
     assert state["host"] == "second"
     assert state["port"] == 2222
 
@@ -123,7 +123,9 @@ def test_clear_refuses_to_remove_file_owned_by_other_pid(
     # Stand-in for a stale file from a different process.
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"pid": os.getpid() + 1, "host": "h", "port": 1}))
+    path.write_text(
+        json.dumps({"pid": os.getpid() + 1, "host": "h", "port": 1}), encoding="utf-8"
+    )
 
     runtime_state.clear()
 
@@ -138,7 +140,7 @@ def test_clear_silently_passes_when_file_missing(physiclaw_home: Path) -> None:
 def test_clear_silently_passes_on_malformed_json(physiclaw_home: Path) -> None:
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{not json")
+    path.write_text("{not json", encoding="utf-8")
 
     runtime_state.clear()  # JSONDecodeError swallowed
 
@@ -152,7 +154,9 @@ def test_clear_silently_passes_when_file_disappears_before_unlink(
     # Race: file exists when read_text runs, gone by the time unlink does.
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"pid": os.getpid(), "host": "h", "port": 1}))
+    path.write_text(
+        json.dumps({"pid": os.getpid(), "host": "h", "port": 1}), encoding="utf-8"
+    )
 
     mocker.patch.object(Path, "unlink", side_effect=FileNotFoundError)
 
@@ -198,7 +202,7 @@ def test_read_live_returns_none_when_file_missing(physiclaw_home: Path) -> None:
 def test_read_live_returns_none_on_malformed_json(physiclaw_home: Path) -> None:
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{not json")
+    path.write_text("{not json", encoding="utf-8")
 
     assert runtime_state.read_live() is None
 
@@ -219,7 +223,9 @@ def test_read_live_returns_none_when_pid_field_is_not_int(
 ) -> None:
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"pid": bad_pid, "host": "h", "port": 1}))
+    path.write_text(
+        json.dumps({"pid": bad_pid, "host": "h", "port": 1}), encoding="utf-8"
+    )
 
     assert runtime_state.read_live() is None
 
@@ -302,7 +308,9 @@ def test_regression_runtime_state_non_object_is_ignored(state, mocker) -> None:
 def test_regression_shutdown_rejects_non_process_pids(pid, mocker) -> None:
     path = paths.runtime_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"pid": pid, "host": "localhost", "port": 8048}))
+    path.write_text(
+        json.dumps({"pid": pid, "host": "localhost", "port": 8048}), encoding="utf-8"
+    )
     kill = mocker.patch.object(runtime_state.os, "kill")
 
     sent = runtime_state.request_shutdown()

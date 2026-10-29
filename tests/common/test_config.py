@@ -188,7 +188,9 @@ def test_load_raises_friendly_ConfigError_when_file_isnt_utf8(
 
 def test_load_parses_valid_toml(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[server]\nport = 9999\n\n[engine]\nmax_turns = 500\n")
+    p.write_text(
+        "[server]\nport = 9999\n\n[engine]\nmax_turns = 500\n", encoding="utf-8"
+    )
 
     cfg = config.load(p)
 
@@ -200,7 +202,7 @@ def test_load_parses_valid_toml(tmp_path: Path) -> None:
 
 def test_load_raises_ConfigError_on_unknown_section(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[mystery]\nx = 1\n")
+    p.write_text("[mystery]\nx = 1\n", encoding="utf-8")
 
     # End-anchored to catch XX-wrap on the trailing "valid sections: …"
     # fragment.
@@ -218,7 +220,7 @@ def test_load_raises_ConfigError_on_unknown_key_in_known_section(
     tmp_path: Path,
 ) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[server]\nbogus = 1\n")
+    p.write_text("[server]\nbogus = 1\n", encoding="utf-8")
 
     with pytest.raises(
         config.ConfigError, match=r"^unknown key\(s\) in \[server\]: \['bogus'\]"
@@ -230,7 +232,7 @@ def test_load_raises_ConfigError_when_section_is_not_a_table(
     tmp_path: Path,
 ) -> None:
     p = tmp_path / "config.toml"
-    p.write_text('server = "string-not-a-table"\n')
+    p.write_text('server = "string-not-a-table"\n', encoding="utf-8")
 
     with pytest.raises(
         config.ConfigError, match=r"^\[server\] must be a table, got str$"
@@ -240,7 +242,7 @@ def test_load_raises_ConfigError_when_section_is_not_a_table(
 
 def test_load_raises_ConfigError_on_malformed_toml(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[server\nport = 9999\n")  # missing closing bracket
+    p.write_text("[server\nport = 9999\n", encoding="utf-8")  # missing closing bracket
 
     with pytest.raises(config.ConfigError, match=r"^failed to read"):
         config.load(p)
@@ -252,7 +254,8 @@ def test_load_accepts_wellformed_providers_section(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     p.write_text(
         '[providers.openai]\nbase_url = "https://proxy.example/v1"\n'
-        '[providers.custom-vendor]\nbase_url = "https://alt.example"\nextra = 1\n'
+        '[providers.custom-vendor]\nbase_url = "https://alt.example"\nextra = 1\n',
+        encoding="utf-8",
     )
 
     cfg = config.load(p)
@@ -264,7 +267,9 @@ def test_load_rejects_flat_providers_entry(tmp_path: Path) -> None:
     # The natural typo: flattening the documented sub-table shape. Used
     # to pass load() and AttributeError at provider construction.
     p = tmp_path / "config.toml"
-    p.write_text('[providers]\nmoonshot = "https://api.moonshot.ai/v1"\n')
+    p.write_text(
+        '[providers]\nmoonshot = "https://api.moonshot.ai/v1"\n', encoding="utf-8"
+    )
 
     with pytest.raises(config.ConfigError, match=r"moonshot: expected a sub-table"):
         config.load(p)
@@ -272,7 +277,7 @@ def test_load_rejects_flat_providers_entry(tmp_path: Path) -> None:
 
 def test_load_rejects_non_table_providers_section(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("providers = 3\n")
+    p.write_text("providers = 3\n", encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match=r"\[providers\] must be a table"):
         config.load(p)
@@ -280,7 +285,7 @@ def test_load_rejects_non_table_providers_section(tmp_path: Path) -> None:
 
 def test_load_rejects_non_string_base_url(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[providers.openai]\nbase_url = 42\n")
+    p.write_text("[providers.openai]\nbase_url = 42\n", encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match=r"base_url: expected str"):
         config.load(p)
@@ -299,7 +304,7 @@ def test_to_toml_round_trips_through_load(tmp_path: Path) -> None:
     cfg.decision.timeout_seconds = 1.5
 
     p = tmp_path / "config.toml"
-    p.write_text(config.to_toml(cfg))
+    p.write_text(config.to_toml(cfg), encoding="utf-8")
     reloaded = config.load(p)
 
     assert reloaded == cfg
@@ -622,7 +627,7 @@ def test_write_default_creates_empty_overrides_file(tmp_path: Path) -> None:
 
     config.write_default(p)
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert text.startswith("# PhysiClaw config.")
     assert tomllib.loads(text) == {}
     assert "physiclaw config show" in text
@@ -642,11 +647,13 @@ def test_write_default_creates_intermediate_parent_directories(
 
 def test_write_default_is_noop_when_file_already_exists(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("# user-written content\n[server]\nport = 1\n")
+    p.write_text("# user-written content\n[server]\nport = 1\n", encoding="utf-8")
 
     config.write_default(p)
 
-    assert p.read_text() == "# user-written content\n[server]\nport = 1\n"
+    assert (
+        p.read_text(encoding="utf-8") == "# user-written content\n[server]\nport = 1\n"
+    )
 
 
 def test_write_default_returns_path_argument(tmp_path: Path) -> None:
@@ -787,11 +794,11 @@ def test_validate_dotted_rejects_unknown_field_within_known_section() -> None:
 
 def test_set_dotted_writes_value_to_existing_section(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nmax_turns = 300\n")
+    p.write_text("[engine]\nmax_turns = 300\n", encoding="utf-8")
 
     config.set_dotted("engine.max_turns", "500", path=p)
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "max_turns = 500" in text
 
 
@@ -801,7 +808,7 @@ def test_set_dotted_creates_section_when_absent(tmp_path: Path) -> None:
     config.set_dotted("engine.max_turns", "200", path=p)
 
     assert p.is_file()
-    assert "max_turns = 200" in p.read_text()
+    assert "max_turns = 200" in p.read_text(encoding="utf-8")
 
 
 def test_set_dotted_coerces_to_field_type(tmp_path: Path) -> None:
@@ -828,11 +835,11 @@ def test_set_dotted_adds_section_to_existing_file_that_lacks_it(
     # File exists with one section; setting a key in a different section
     # must add the new [section] block via tomlkit, not error out.
     p = tmp_path / "config.toml"
-    p.write_text("[server]\nport = 8048\n")
+    p.write_text("[server]\nport = 8048\n", encoding="utf-8")
 
     config.set_dotted("engine.max_turns", "200", path=p)
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "[engine]" in text
     assert "max_turns = 200" in text
 
@@ -876,12 +883,12 @@ def test_log_rotation_limit_can_be_configured_and_invalid_set_keeps_file(tmp_pat
 
 def test_unset_dotted_removes_existing_key(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nmax_turns = 999\n")
+    p.write_text("[engine]\nmax_turns = 999\n", encoding="utf-8")
 
     removed = config.unset_dotted("engine.max_turns", path=p)
 
     assert removed is True
-    assert "max_turns" not in p.read_text()
+    assert "max_turns" not in p.read_text(encoding="utf-8")
 
 
 def test_unset_dotted_returns_false_when_file_missing(tmp_path: Path) -> None:
@@ -892,14 +899,14 @@ def test_unset_dotted_returns_false_when_file_missing(tmp_path: Path) -> None:
 
 def test_unset_dotted_returns_false_when_key_absent(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nmax_turns = 999\n")
+    p.write_text("[engine]\nmax_turns = 999\n", encoding="utf-8")
 
     assert config.unset_dotted("engine.max_attempts", path=p) is False
 
 
 def test_unset_dotted_returns_false_when_section_absent(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[server]\nport = 8048\n")
+    p.write_text("[server]\nport = 8048\n", encoding="utf-8")
 
     assert config.unset_dotted("engine.max_turns", path=p) is False
 
@@ -910,7 +917,7 @@ def test_unset_dotted_surfaces_schema_error_on_non_table_section(
     # Same strict-load guard as set_dotted — `camera = 3` must raise the
     # schema ConfigError, not a raw TypeError from indexing the tomlkit doc.
     p = tmp_path / "config.toml"
-    p.write_text("camera = 3\n")
+    p.write_text("camera = 3\n", encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match=r"must be a table"):
         config.unset_dotted("camera.width", path=p)
@@ -918,7 +925,7 @@ def test_unset_dotted_surfaces_schema_error_on_non_table_section(
 
 def test_unset_dotted_refreshes_CONFIG_to_default(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nmax_turns = 999\n")
+    p.write_text("[engine]\nmax_turns = 999\n", encoding="utf-8")
 
     config.unset_dotted("engine.max_turns", path=p)
 
@@ -939,7 +946,7 @@ def test_provider_base_url_override_returns_none_on_malformed_toml(
 ) -> None:
     p = config.config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("[providers.openai\nbase_url = ...\n")  # malformed
+    p.write_text("[providers.openai\nbase_url = ...\n", encoding="utf-8")  # malformed
 
     assert config.provider_base_url_override("openai") is None
 
@@ -949,7 +956,7 @@ def test_provider_base_url_override_returns_none_when_provider_absent(
 ) -> None:
     p = config.config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text('[providers.qwen]\nbase_url = "https://x.com"\n')
+    p.write_text('[providers.qwen]\nbase_url = "https://x.com"\n', encoding="utf-8")
 
     assert config.provider_base_url_override("openai") is None
 
@@ -959,7 +966,9 @@ def test_provider_base_url_override_returns_string_when_present(
 ) -> None:
     p = config.config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text('[providers.openai]\nbase_url = "https://proxy.example/v1"\n')
+    p.write_text(
+        '[providers.openai]\nbase_url = "https://proxy.example/v1"\n', encoding="utf-8"
+    )
 
     assert config.provider_base_url_override("openai") == "https://proxy.example/v1"
 
@@ -969,7 +978,7 @@ def test_provider_base_url_override_returns_none_for_non_string_value(
 ) -> None:
     p = config.config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("[providers.openai]\nbase_url = 42\n")
+    p.write_text("[providers.openai]\nbase_url = 42\n", encoding="utf-8")
 
     assert config.provider_base_url_override("openai") is None
 
@@ -982,7 +991,7 @@ def test_provider_base_url_override_returns_none_for_flat_providers_table(
     # fail soft here, not AttributeError at provider construction.
     p = config.config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text('[providers]\nopenai = "https://proxy.example/v1"\n')
+    p.write_text('[providers]\nopenai = "https://proxy.example/v1"\n', encoding="utf-8")
 
     assert config.provider_base_url_override("openai") is None
 
@@ -1182,7 +1191,7 @@ def test_server_url_respects_custom_host_and_port(
 
 def test_load_rejects_quoted_number_for_float_field(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text('[vision]\nblur_threshold = "80"\n')
+    p.write_text('[vision]\nblur_threshold = "80"\n', encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match=r"\[vision\] blur_threshold"):
         config.load(p)
@@ -1190,7 +1199,7 @@ def test_load_rejects_quoted_number_for_float_field(tmp_path: Path) -> None:
 
 def test_load_rejects_string_for_int_field(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text('[server]\nport = "8048"\n')
+    p.write_text('[server]\nport = "8048"\n', encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match="expected int, got str"):
         config.load(p)
@@ -1199,7 +1208,7 @@ def test_load_rejects_string_for_int_field(tmp_path: Path) -> None:
 def test_load_rejects_bool_for_int_field(tmp_path: Path) -> None:
     # TOML `true` is a Python bool, and bool subclasses int — must not pass.
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nmax_turns = true\n")
+    p.write_text("[engine]\nmax_turns = true\n", encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match="expected int, got bool"):
         config.load(p)
@@ -1207,7 +1216,7 @@ def test_load_rejects_bool_for_int_field(tmp_path: Path) -> None:
 
 def test_load_rejects_int_for_bool_field(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
-    p.write_text("[camera]\nauto_exposure = 1\n")
+    p.write_text("[camera]\nauto_exposure = 1\n", encoding="utf-8")
 
     with pytest.raises(config.ConfigError, match="expected bool, got int"):
         config.load(p)
@@ -1217,7 +1226,7 @@ def test_load_coerces_toml_int_for_float_field(tmp_path: Path) -> None:
     # `retry_backoff_seconds = 5` is the natural way to write a
     # whole-number float in TOML — accepted and coerced.
     p = tmp_path / "config.toml"
-    p.write_text("[engine]\nretry_backoff_seconds = 5\n")
+    p.write_text("[engine]\nretry_backoff_seconds = 5\n", encoding="utf-8")
 
     cfg = config.load(p)
     assert cfg.engine.retry_backoff_seconds == 5.0
@@ -1229,5 +1238,5 @@ def test_load_accepts_removed_claude_section(tmp_path, caplog):
     path.write_text("[claude]\nmax_attempts = 3\n", encoding="utf-8")
 
     assert config.load(path) == config.Config()
-    assert "claude" not in path.read_text()
+    assert "claude" not in path.read_text(encoding="utf-8")
     assert not caplog.text

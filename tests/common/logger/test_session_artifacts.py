@@ -44,7 +44,7 @@ def test_write_json_atomic_leaves_no_tmp_file(tmp_path: Path) -> None:
     d.mkdir()
     path = d / "summary.json"
     write_json_atomic(path, {"a": 1})
-    assert json.loads(path.read_text()) == {"a": 1}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}
     assert list(d.iterdir()) == [path]
 
 
@@ -73,7 +73,10 @@ def test_regression_atomic_json_writers_do_not_share_temporary_file(
         first.result(timeout=5)
         second.result(timeout=5)
 
-    assert json.loads(path.read_text()) in [{"writer": 1}, {"writer": 2}]
+    assert json.loads(path.read_text(encoding="utf-8")) in [
+        {"writer": 1},
+        {"writer": 2},
+    ]
     assert list(directory.iterdir()) == [path]
 
 
@@ -89,7 +92,7 @@ def test_write_json_atomic_replace_failure_preserves_previous_file(
     with pytest.raises(PermissionError, match="cannot replace"):
         write_json_atomic(path, {"new": True})
 
-    assert json.loads(path.read_text()) == {"previous": True}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"previous": True}
     assert list(directory.iterdir()) == [path]
 
 
@@ -108,7 +111,7 @@ def test_write_json_atomic_write_failure_preserves_previous_file(
     with pytest.raises(OSError, match="disk full"):
         write_json_atomic(path, {"new": True})
 
-    assert json.loads(path.read_text()) == {"previous": True}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"previous": True}
     assert list(directory.iterdir()) == [path]
 
 

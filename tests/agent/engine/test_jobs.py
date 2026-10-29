@@ -70,7 +70,7 @@ def _job_text(
 
 def _write_jobs(_jobs_path: Path, *sections: str) -> None:
     _jobs_path.parent.mkdir(parents=True, exist_ok=True)
-    _jobs_path.write_text("\n".join(sections))
+    _jobs_path.write_text("\n".join(sections), encoding="utf-8")
 
 
 # ---------- fired_job_ids ----------
@@ -323,7 +323,7 @@ def test_create_job_writes_block_with_jobs_header_when_file_missing(
             context="morning greeting context",
         )
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert text.startswith("# Jobs\n")
     assert "## user-greet" in text
     assert "- Type: one-time" in text  # default kind
@@ -343,7 +343,7 @@ def test_create_job_appends_block_when_file_already_exists(
             context="another context here",
         )
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     # "# Jobs" header NOT re-added on append.
     assert text.count("# Jobs") == 0
     assert "## existing" in text
@@ -359,7 +359,7 @@ def test_create_job_records_create_time_from_now(_jobs_path: Path) -> None:
             context="ten chars at least",
         )
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Create time: 2026-04-28T14:30" in text
 
 
@@ -377,7 +377,7 @@ def test_create_job_records_next_fire_from_cron_schedule(
             context="ten chars at least",
         )
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Next fire time: 2026-04-28T15:00" in text
     record = next(
         r for r in caplog.records if getattr(r, "event", "") == "task.scheduled"
@@ -419,7 +419,7 @@ def test_create_job_one_time_allows_high_frequency_schedule(
             context="ten chars at least",
         )
 
-    assert "- Type: one-time" in _jobs_path.read_text()
+    assert "- Type: one-time" in _jobs_path.read_text(encoding="utf-8")
 
 
 def test_min_fire_gap_uses_smallest_gap_of_mixed_schedule() -> None:
@@ -463,7 +463,7 @@ def test_create_job_periodic_kind_records_periodic(_jobs_path: Path) -> None:
             kind=KIND_PERIODIC,
         )
 
-    assert "- Type: periodic" in _jobs_path.read_text()
+    assert "- Type: periodic" in _jobs_path.read_text(encoding="utf-8")
 
 
 # ---------- upsert_auto_wait_check ----------
@@ -482,7 +482,7 @@ def test_upsert_auto_wait_creates_when_absent(_jobs_path: Path, caplog) -> None:
     # The session-outcome contract owns the one user-facing follow-up notice.
     assert not [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert f"## {jobs.AUTO_WAIT_JOB_ID}" in text
     assert "- Schedule: `30 14 28 4 *`" in text
     assert "- Next fire time: 2026-04-28T14:30" in text
@@ -509,7 +509,7 @@ def test_upsert_auto_wait_updates_existing_to_pend_with_new_schedule(
     with freeze_time("2026-04-28T14:00:00"):
         jobs.upsert_auto_wait_check(target)
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Status: pend" in text
     assert "- Schedule: `30 14 28 4 *`" in text
     assert "- Next fire time: 2026-04-28T14:30" in text
@@ -609,7 +609,7 @@ def test_finish_job_one_time_done_marks_done(_jobs_path: Path) -> None:
     with freeze_time("2026-04-28T08:00:00"):
         jobs.finish_job(id="one-time", status=STATUS_DONE, recap="all good")
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Status: done" in text
     assert "- Execution time: 2026-04-28T08:00" in text
     assert "- Execution result: all good" in text
@@ -628,7 +628,7 @@ def test_finish_job_periodic_done_resets_to_pend(_jobs_path: Path) -> None:
     with freeze_time("2026-04-28T08:00:00"):
         jobs.finish_job(id="periodic", status=STATUS_DONE, recap="ok")
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Status: pend" in text
 
 
@@ -691,7 +691,7 @@ def test_finish_job_periodic_fail_also_resets_to_pend(_jobs_path: Path) -> None:
     with freeze_time("2026-04-28T08:00:00"):
         jobs.finish_job(id="periodic", status=STATUS_FAIL, recap="boom")
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Status: pend" in text
 
 
@@ -709,7 +709,7 @@ def test_finish_job_periodic_cancel_stays_canceled(_jobs_path: Path) -> None:
     with freeze_time("2026-04-28T08:00:00"):
         jobs.finish_job(id="periodic", status=STATUS_CANCEL, recap="stop")
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     assert "- Status: cancel" in text
 
 
@@ -728,7 +728,7 @@ def test_finish_job_uses_status_as_recap_when_recap_blank(
     with freeze_time("2026-04-28T08:00:00"):
         jobs.finish_job(id="x", status=STATUS_DONE, recap="   ")
 
-    text = _jobs_path.read_text()
+    text = _jobs_path.read_text(encoding="utf-8")
     # Empty recap → status name as recap.
     assert "- Execution result: done" in text
 

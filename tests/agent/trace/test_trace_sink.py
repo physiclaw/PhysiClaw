@@ -672,7 +672,7 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
     trace.close()
 
     directory = paths.sessions_dir() / "host-producers"
-    summary = json.loads((directory / "summary.json").read_text())
+    summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     assert summary["plugin_turns"] == 1
     assert summary["provider_calls"] == summary["conductor_turns"] == 2
     assert summary["provider_time_ms"] == 90
@@ -682,13 +682,20 @@ def test_host_producer_accounting_separates_plugins_decisions_and_llm_calls():
     assert "vendor/bounded" not in summary["usage"]["by_model"]
     saved = [
         json.loads(line)
-        for line in (directory / "events.jsonl").read_text().splitlines()
+        for line in (directory / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert (
         next(e for e in saved if e["event"] == "decision_call")["usage"]
         == decision["usage"]
     )
-    assert (directory / "notes.md").read_text().strip().endswith("note history")
+    assert (
+        (directory / "notes.md")
+        .read_text(encoding="utf-8")
+        .strip()
+        .endswith("note history")
+    )
 
 
 @pytest.mark.parametrize(
@@ -785,7 +792,9 @@ def test_model_accounting_includes_retries_without_counting_proposals_twice():
     trace.close()
 
     summary = json.loads(
-        (paths.sessions_dir() / "model-retries" / "summary.json").read_text()
+        (paths.sessions_dir() / "model-retries" / "summary.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert summary["provider_calls"] == 3
     assert summary["provider_time_ms"] == 190

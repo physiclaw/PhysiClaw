@@ -43,7 +43,9 @@ def test_external_manifest_is_rejected(pack_root, tmp_path) -> None:
 def test_external_playbook_is_reported(pack_root, tmp_path, directory) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
-    (outside / "PLAYBOOK.yml").write_text("description: outside\nroute: []\n")
+    (outside / "PLAYBOOK.yml").write_text(
+        "description: outside\nroute: []\n", encoding="utf-8"
+    )
     entry = pack_root / "task"
     if directory:
         symlink_to(entry, outside, target_is_directory=True)
@@ -62,7 +64,9 @@ def test_external_asset_directory_is_rejected(pack_root, tmp_path, folder) -> No
     outside = tmp_path / "outside"
     outside.mkdir()
     (pack_root / "task").mkdir()
-    (pack_root / "task" / "PLAYBOOK.yml").write_text("description: task\nroute: []\n")
+    (pack_root / "task" / "PLAYBOOK.yml").write_text(
+        "description: task\nroute: []\n", encoding="utf-8"
+    )
     symlink_to(pack_root / folder, outside, target_is_directory=True)
 
     with pytest.raises(PlaybookError, match="outside"):

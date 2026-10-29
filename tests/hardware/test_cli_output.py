@@ -25,10 +25,12 @@ def invoke(tmp_path, *args, input=None, timeout=60):
             "*.json"
         ):
             for name in re.findall(
-                r'"(?:src|render)"\s*:\s*"([^"/]+\.svg)"', content.read_text()
+                r'"(?:src|render)"\s*:\s*"([^"/]+\.svg)"',
+                content.read_text(encoding="utf-8"),
             ):
                 (figures / name).write_text(
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>'
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>',
+                    encoding="utf-8",
                 )
     return subprocess.run(
         [sys.executable, "-m", "hardware", *args],
@@ -61,7 +63,9 @@ def test_document_and_check_clis_emit_only_saved_json_events(tmp_path, command):
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     saved = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert saved == events
     assert any(event["event"] == "task_finished" for event in events)
@@ -125,7 +129,9 @@ def test_shared_lifecycle_saves_failure_and_cancellation_without_terminal_traceb
     assert "Details:" in output
     events = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert events[-1]["status"] == ("cancelled" if interrupted else "failed")
     assert any(event.get("traceback") for event in events)
@@ -170,7 +176,9 @@ def test_subprocess_timeout_retains_partial_diagnostics(tmp_path, monkeypatch):
             )
     events = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert any(event["message"] == "partial diagnostics" for event in events)
     exited = next(event for event in events if event["event"] == "subprocess_exited")
@@ -206,7 +214,9 @@ def test_subprocess_collector_failure_stops_child_and_fails_run(
     assert "FAILED" in output.out and "SUCCESS" not in output.out
     events = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert any(
         "Cannot save child output" in event.get("traceback", "") for event in events
@@ -235,7 +245,9 @@ def test_interrupted_child_produces_cancelled_parent_result(
     assert "CANCELLED" in output and "FAILED" not in output
     events = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert events[-1]["status"] == "cancelled"
 
@@ -248,7 +260,7 @@ def test_replay_missing_inputs_cannot_report_success(
 
     monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path)
     src, patch = tmp_path / "source.svg", tmp_path / "patch.json"
-    (src if missing == "patch" else patch).write_text("fixture")
+    (src if missing == "patch" else patch).write_text("fixture", encoding="utf-8")
     monkeypatch.setattr(replay, "_resolve_targets", lambda argv: [(src, patch)])
     assert replay.main(["replay"]) == 1
     output = capsys.readouterr().out

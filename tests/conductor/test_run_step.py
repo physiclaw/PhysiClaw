@@ -47,7 +47,9 @@ def _pack_with_send(open_enabled: bool = True):
     (root / "macros" / "send.yml").write_text(SEND, encoding="utf-8")
     if not open_enabled:
         mp = root / "macros" / "open-app.yml"
-        mp.write_text(mp.read_text(encoding="utf-8") + "enabled: false\n")
+        mp.write_text(
+            mp.read_text(encoding="utf-8") + "enabled: false\n", encoding="utf-8"
+        )
     return root, pb.load_pack("demo")
 
 

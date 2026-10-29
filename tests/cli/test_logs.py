@@ -66,7 +66,7 @@ def sessions(physiclaw_home) -> Path:
 def _write_session(d: Path, sid: str, **kw) -> Path:
     sd = d / sid
     sd.mkdir(parents=True, exist_ok=True)
-    (sd / "summary.json").write_text(json.dumps(_summary(sid, **kw)))
+    (sd / "summary.json").write_text(json.dumps(_summary(sid, **kw)), encoding="utf-8")
     return sd
 
 
@@ -145,7 +145,9 @@ def test_logs_detail_prints_summary_and_narrative(sessions: Path) -> None:
             "recap": "finished",
         },
     ]
-    (sd / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
+    (sd / "events.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
+    )
 
     result = runner.invoke(app, ["logs", "20260710_090000"])
 
@@ -205,8 +207,8 @@ def test_logs_unmatched_suffix_reports_missing(sessions: Path) -> None:
 
 
 def _populate(sd: Path) -> None:
-    (sd / "events.jsonl").write_text('{"event": "env"}\n')
-    (sd / "model.jsonl").write_text('{"kind": "session_start"}\n')
+    (sd / "events.jsonl").write_text('{"event": "env"}\n', encoding="utf-8")
+    (sd / "model.jsonl").write_text('{"kind": "session_start"}\n', encoding="utf-8")
     img = sd / "images"
     img.mkdir(exist_ok=True)
     (img / "090000_000_t0.jpg").write_bytes(b"jpeg")
@@ -370,7 +372,8 @@ def test_logs_usage_tabulates_every_model_call_and_totals_per_model(
                 _usage_event(1, "turn", "moonshot/kimi-k3", 21000, 1000, 20000, 0, 250),
             ]
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
 
     result = runner.invoke(app, ["logs", "20260710_090000", "--usage"])
@@ -425,7 +428,9 @@ def test_logs_usage_includes_native_decisions_and_exposes_unknown_counts(session
             "usage": {"input_tokens": None, "output_tokens": None},
         },
     ]
-    (sd / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+    (sd / "events.jsonl").write_text(
+        "\n".join(map(json.dumps, events)), encoding="utf-8"
+    )
 
     result = runner.invoke(app, ["logs", "abc123", "--usage"])
 
@@ -461,7 +466,9 @@ def test_usage_with_rates_reports_partial_cost_as_unknown(sessions, capsys):
             "usage": None,
         },
     ]
-    (sd / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+    (sd / "events.jsonl").write_text(
+        "\n".join(map(json.dumps, events)), encoding="utf-8"
+    )
     rates = {"decision": {"vendor/model": {"input": 0.042}}}
 
     _show_usage(sd, as_json=False, rates=rates)

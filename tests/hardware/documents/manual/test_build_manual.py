@@ -142,7 +142,9 @@ def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
 
     output = capsys.readouterr()
     assert "warning:" not in output.out + output.err
-    saved = [json.loads(line) for line in log.path.read_text().splitlines()]
+    saved = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     warnings = [record for record in saved if record["event"] == "style_warning"]
     assert len(warnings) == 1
     warning = warnings[0]["message"]

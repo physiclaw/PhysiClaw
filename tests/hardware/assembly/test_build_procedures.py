@@ -64,7 +64,9 @@ def test_bom_write_success_keeps_the_build_green(worker, monkeypatch, tmp_path, 
     assert "Building assembly" not in output
     assert "Done in" not in output
     assert len(output.splitlines()) == 1
-    records = [json.loads(line) for line in log.path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     assert next(r for r in records if r["event"] == "step_started")["level"] == "debug"
     assert (
         next(r for r in records if r["event"] == "step_finished")["status"] == "success"
@@ -91,7 +93,7 @@ def test_first_step_delta_bom_is_written(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(bom, "predecessor_module", lambda name: None)
     bom.write_bom(STEM, cumulative=False, want_delta=True)
-    assert "Screw M3" in (tmp_path / f"{STEM}_delta.md").read_text()
+    assert "Screw M3" in (tmp_path / f"{STEM}_delta.md").read_text(encoding="utf-8")
 
 
 def test_worker_timeout_returns_failure(tmp_path, monkeypatch):
@@ -109,7 +111,9 @@ def test_worker_timeout_returns_failure(tmp_path, monkeypatch):
         assert bp._run_subprocess([STEM]) == 124
     import json
 
-    records = [json.loads(line) for line in log.path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     timeout = next(r for r in records if r["event"] == "worker_timeout")
     assert timeout["timeout_s"] == 0.05
     assert records[-1]["event"] == "worker_exited"
@@ -178,7 +182,9 @@ def test_crashed_batch_with_complete_files_still_requires_successful_verificatio
 
     with bp.buildlog.session(tmp_path, log_format="json") as log:
         assert bp._dispatch(2, use_cache=False) == verification_exit
-    records = [json.loads(line) for line in log.path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     assert records[-1]["event"] == "build_summary"
     assert records[-1]["status"] == ("failed" if verification_exit else "success")
     assert records[-1]["failed_batches"] == verification_exit
@@ -198,7 +204,9 @@ def test_main_logs_failure_and_final_status(tmp_path, monkeypatch):
     assert bp.main(["--log-format", "json"]) == 1
     records = [
         json.loads(line)
-        for line in next((tmp_path / "logs").glob("*.jsonl")).read_text().splitlines()
+        for line in next((tmp_path / "logs").glob("*.jsonl"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert records[-1]["event"] == "build_finished"
     assert records[-1]["status"] == "failed"
@@ -269,7 +277,9 @@ def test_worker_collector_failure_records_exit_before_raising(tmp_path, monkeypa
         pytest.raises(OSError, match="Cannot collect CAD output"),
     ):
         bp._run_subprocess([STEM])
-    events = [json.loads(line) for line in log.path.read_text().splitlines()]
+    events = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     assert events[-1]["event"] == "worker_exited"
     assert events[-1]["returncode"] == events[-1]["process_returncode"]
     assert events[-1]["process_returncode"] != 0
@@ -301,7 +311,10 @@ def test_worker_warnings_and_native_dumps_are_saved_per_run(
         with bp.buildlog.session(tmp_path) as log:
             assert bp._run_subprocess([STEM]) == 7
             assert bp._crash_log() == log.crash_path
-        saved = [json.loads(line) for line in log.path.read_text().splitlines()]
+        saved = [
+            json.loads(line)
+            for line in log.path.read_text(encoding="utf-8").splitlines()
+        ]
         assert any("RuntimeWarning: kernel diagnostic" in r["message"] for r in saved)
         exited = saved[-1]
         assert exited["returncode"] == 7
@@ -309,7 +322,7 @@ def test_worker_warnings_and_native_dumps_are_saved_per_run(
         assert exited["crash_log"] == str(log.crash_path)
         paths.append(log.crash_path)
     assert paths[0] != paths[1]
-    assert all('File "<string>"' in path.read_text() for path in paths)
+    assert all('File "<string>"' in path.read_text(encoding="utf-8") for path in paths)
     assert capsys.readouterr().out == ""
 
 
@@ -367,8 +380,12 @@ def test_cancelled_batch_caches_only_verified_successes_and_resumes_them(
 
     def write(stem, variants=("exploded", "assembled")):
         for variant in variants:
-            (outputs.step / f"{stem}_{variant}.step").write_text("step")
-            (outputs.svg / f"{stem}_{variant}_cam0.svg").write_text("svg")
+            (outputs.step / f"{stem}_{variant}.step").write_text(
+                "step", encoding="utf-8"
+            )
+            (outputs.svg / f"{stem}_{variant}_cam0.svg").write_text(
+                "svg", encoding="utf-8"
+            )
 
     def interrupted(batch, flags):
         for stem in stems[:-1]:
@@ -389,7 +406,9 @@ def test_cancelled_batch_caches_only_verified_successes_and_resumes_them(
     with bp.buildlog.session(tmp_path) as first:
         with pytest.raises(KeyboardInterrupt), bp.cancel_on_interrupt(bp._CANCELLED):
             bp._dispatch(5, use_cache=False)
-    saved = [json.loads(line) for line in first.path.read_text().splitlines()]
+    saved = [
+        json.loads(line) for line in first.path.read_text(encoding="utf-8").splitlines()
+    ]
     assert [event["stem"] for event in saved if event["event"] == "cache_saved"] == [
         STEM
     ]
@@ -410,7 +429,10 @@ def test_cancelled_batch_caches_only_verified_successes_and_resumes_them(
     monkeypatch.setattr(bp, "_run_subprocess", resume)
     with bp.buildlog.session(tmp_path) as second:
         assert bp._dispatch(5) == 0
-    saved = [json.loads(line) for line in second.path.read_text().splitlines()]
+    saved = [
+        json.loads(line)
+        for line in second.path.read_text(encoding="utf-8").splitlines()
+    ]
     assert (
         next(event for event in saved if event["event"] == "cache_checked")["cached"]
         == 1
@@ -480,11 +502,17 @@ def cache_pipeline(outputs, tmp_path, monkeypatch):
 
     def write(stem, flags=()):
         for variant in ("exploded", "assembled"):
-            (outputs.step / f"{stem}_{variant}.step").write_text("geometry")
-            (outputs.svg / f"{stem}_{variant}_cam0.svg").write_text("drawing")
+            (outputs.step / f"{stem}_{variant}.step").write_text(
+                "geometry", encoding="utf-8"
+            )
+            (outputs.svg / f"{stem}_{variant}_cam0.svg").write_text(
+                "drawing", encoding="utf-8"
+            )
         for flag, suffix in (("--bom", ""), ("--bom-delta", "_delta")):
             if flag in flags:
-                (outputs.bom / f"{stem}{suffix}.md").write_text("fresh BOM")
+                (outputs.bom / f"{stem}{suffix}.md").write_text(
+                    "fresh BOM", encoding="utf-8"
+                )
         bp.buildlog.event("step_finished", "Finished", stem=stem, status="success")
 
     return SimpleNamespace(
@@ -504,7 +532,7 @@ def test_forced_build_does_not_cache_unrequested_stale_boms(
     import json
 
     for suffix in ("", "_delta"):
-        (outputs.bom / f"{STEM}{suffix}.md").write_text("stale BOM")
+        (outputs.bom / f"{STEM}{suffix}.md").write_text("stale BOM", encoding="utf-8")
     builds = []
 
     def run(batch, bom_flags):
@@ -516,14 +544,16 @@ def test_forced_build_does_not_cache_unrequested_stale_boms(
     monkeypatch.setattr(bp, "_run_subprocess", run)
     with bp.buildlog.session(tmp_path):
         assert bp._dispatch(1, flags, use_cache=False) == 0
-    manifest = json.loads((bp.stepcache.CACHE_DIR / STEM / "source.key").read_text())[
-        "files"
-    ]
+    manifest = json.loads(
+        (bp.stepcache.CACHE_DIR / STEM / "source.key").read_text(encoding="utf-8")
+    )["files"]
     assert (f"{STEM}.md" in manifest) == ("--bom" in flags)
     assert (f"{STEM}_delta.md" in manifest) == ("--bom-delta" in flags)
     for name in manifest:
         if name.endswith(".md"):
-            assert (bp.stepcache.CACHE_DIR / STEM / name).read_text() == "fresh BOM"
+            assert (bp.stepcache.CACHE_DIR / STEM / name).read_text(
+                encoding="utf-8"
+            ) == "fresh BOM"
     # A later request for both BOM kinds must rebuild if either was omitted.
     with bp.buildlog.session(tmp_path):
         assert bp._dispatch(1, ("--bom", "--bom-delta")) == 0
@@ -539,7 +569,9 @@ def test_rebuild_bypasses_existing_cache_and_next_build_restores_fresh_outputs(
         builds.append(batch)
         for stem in batch:
             cache_pipeline.write(stem, flags)
-            (outputs.step / f"{stem}_assembled.step").write_text(f"build {len(builds)}")
+            (outputs.step / f"{stem}_assembled.step").write_text(
+                f"build {len(builds)}", encoding="utf-8"
+            )
         return 0
 
     monkeypatch.setattr(bp, "_run_subprocess", run)
@@ -562,7 +594,7 @@ def test_rebuild_bypasses_existing_cache_and_next_build_restores_fresh_outputs(
     with bp.buildlog.session(tmp_path):
         assert bp._dispatch(5) == 0
     assert len(builds) == 2  # A normal build always reuses the valid entry.
-    assert target.read_text() == "build 2"
+    assert target.read_text(encoding="utf-8") == "build 2"
 
 
 @pytest.mark.parametrize("edited", ["sources", "annotations"])
@@ -590,7 +622,10 @@ def test_inputs_edited_during_build_are_not_cached_as_current(
     assert not bp.stepcache.snapshots_cached(STEM)
     assert bp.stepcache.source_cached(STEM, want_bom=False) == (edited == "annotations")
     if cancelled:
-        events = [json.loads(line) for line in log.path.read_text().splitlines()]
+        events = [
+            json.loads(line)
+            for line in log.path.read_text(encoding="utf-8").splitlines()
+        ]
         assert not any(event["event"] == "cache_saved" for event in events)
         assert any(
             event["event"] == "cache_store_failed"
@@ -630,8 +665,8 @@ def suffix(exploded: bool) -> str:
 def write_variants(outputs) -> None:
     """Materialize a complete STEP + SVG set for both variants of STEM."""
     for variant in ("exploded", "assembled"):
-        (outputs.step / f"{STEM}_{variant}.step").write_text("step")
-        (outputs.svg / f"{STEM}_{variant}_cam0.svg").write_text("svg")
+        (outputs.step / f"{STEM}_{variant}.step").write_text("step", encoding="utf-8")
+        (outputs.svg / f"{STEM}_{variant}_cam0.svg").write_text("svg", encoding="utf-8")
 
 
 def test_incomplete_flags_a_missing_requested_bom(outputs):
@@ -650,21 +685,21 @@ def test_incomplete_without_a_bom_request_ignores_the_absent_bom(outputs):
 
 def test_incomplete_with_every_output_present_is_empty(outputs):
     write_variants(outputs)
-    (outputs.bom / f"{STEM}.md").write_text("| bom |")
+    (outputs.bom / f"{STEM}.md").write_text("| bom |", encoding="utf-8")
 
     assert bp._incomplete(STEM, ("--bom",)) == []
 
 
 def test_incomplete_flags_a_missing_delta_bom(outputs):
     write_variants(outputs)
-    (outputs.bom / f"{STEM}.md").write_text("| bom |")
+    (outputs.bom / f"{STEM}.md").write_text("| bom |", encoding="utf-8")
 
     assert bp._incomplete(STEM, ("--bom", "--bom-delta")) == ["bom"]
 
 
 def test_incomplete_still_reports_a_missing_variant(outputs):
     write_variants(outputs)
-    (outputs.bom / f"{STEM}.md").write_text("| bom |")
+    (outputs.bom / f"{STEM}.md").write_text("| bom |", encoding="utf-8")
     (outputs.step / f"{STEM}_exploded.step").unlink()
 
     assert bp._incomplete(STEM, ("--bom",)) == ["exploded"]

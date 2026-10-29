@@ -218,7 +218,7 @@ def test_setup_logging_file_level_debug_keeps_own_debug(tmp_path, mocker) -> Non
         for h in logging.getLogger().handlers:
             h.flush()
 
-    text = (tmp_path / "server.log").read_text()
+    text = (tmp_path / "server.log").read_text(encoding="utf-8")
     assert "[physiclaw]" in text  # File names do not change the console/service tag.
     assert "tune-debug-line" in text  # our DEBUG persisted
     assert "dep-debug-line" not in text  # third-party DEBUG filtered out
@@ -250,7 +250,7 @@ def test_attach_session_log_failopen_on_bad_path(tmp_path) -> None:
     from physiclaw.common.logger.logger import attach_session_log, detach_session_log
 
     blocker = tmp_path / "blocked"
-    blocker.write_text("a file where a dir must go")
+    blocker.write_text("a file where a dir must go", encoding="utf-8")
 
     handler = attach_session_log(blocker / "sub" / "runtime.log")
 
@@ -302,7 +302,9 @@ def test_server_mcp_tee_writes_to_active_session(tmp_path) -> None:
         logging.getLogger().removeHandler(tee)
         tee.close()
 
-    assert "exposure tune: in band" in (session_dir / "server.log").read_text()
+    assert "exposure tune: in band" in (session_dir / "server.log").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_server_mcp_tee_drops_between_sessions(tmp_path) -> None:
@@ -342,9 +344,11 @@ def test_server_mcp_tee_repoints_on_marker_change(tmp_path) -> None:
         logging.getLogger().removeHandler(tee)
         tee.close()
 
-    assert "line-A" in (a / "server.log").read_text()
-    assert "line-B" in (b / "server.log").read_text()
-    assert "line-B" not in (a / "server.log").read_text()  # repointed, no leak
+    assert "line-A" in (a / "server.log").read_text(encoding="utf-8")
+    assert "line-B" in (b / "server.log").read_text(encoding="utf-8")
+    assert "line-B" not in (a / "server.log").read_text(
+        encoding="utf-8"
+    )  # repointed, no leak
 
 
 def test_regression_server_tee_retries_failed_open(mocker) -> None:
@@ -365,7 +369,7 @@ def test_regression_server_tee_retries_failed_open(mocker) -> None:
     finally:
         logger_mod.detach_session_log(tee)
 
-    assert "after recovery" in (session_dir / "server.log").read_text()
+    assert "after recovery" in (session_dir / "server.log").read_text(encoding="utf-8")
 
 
 def test_regression_server_tee_retries_when_session_directory_appears() -> None:
@@ -382,7 +386,9 @@ def test_regression_server_tee_retries_when_session_directory_appears() -> None:
     finally:
         logger_mod.detach_session_log(tee)
 
-    assert "directory available" in (session_dir / "server.log").read_text()
+    assert "directory available" in (session_dir / "server.log").read_text(
+        encoding="utf-8"
+    )
 
 
 @pytest.mark.parametrize("sid", ["..", "../escape", "."])
@@ -730,7 +736,7 @@ def test_service_file_handler_writes_uncolored_tagged_lines(tmp_path) -> None:
         logger.info("hello \033[31mred\033[0m world")
         handler.close()
 
-    text = (tmp_path / "runtime.log").read_text()
+    text = (tmp_path / "runtime.log").read_text(encoding="utf-8")
     assert "[runtime] t.service.plain:" in text
     assert "| hello red world" in text
     assert "\033[" not in text.split("hello")[0]  # prefix uncolored
@@ -748,7 +754,7 @@ def test_service_file_handler_reopens_after_close(tmp_path) -> None:
         logger.info(">>> M5")  # a teardown G-code line after close
         handler.close()
 
-    text = (tmp_path / "runtime.log").read_text()
+    text = (tmp_path / "runtime.log").read_text(encoding="utf-8")
     assert "before shutdown" in text
     assert ">>> M5" in text  # captured after reopen, no "closed file" error
 
@@ -763,7 +769,7 @@ def test_service_file_handler_keeps_same_file_across_midnight(tmp_path) -> None:
         logger.info("after midnight")
         handler.close()
 
-    text = (tmp_path / "runtime.log").read_text()
+    text = (tmp_path / "runtime.log").read_text(encoding="utf-8")
     assert "before midnight" in text and "after midnight" in text
     assert list(tmp_path.glob("*.log")) == [tmp_path / "runtime.log"]
 
@@ -777,9 +783,9 @@ def test_service_file_handler_purges_old_archives_at_construction(tmp_path) -> N
     archive = tmp_path / "archive"
     archive.mkdir()
     old = archive / "runtime.log.1"
-    old.write_text("x")
+    old.write_text("x", encoding="utf-8")
     active = tmp_path / "runtime.log"
-    active.write_text("startup evidence")
+    active.write_text("startup evidence", encoding="utf-8")
     ago = (
         dt.datetime.now() - dt.timedelta(days=CONFIG.retention.log_days + 1)
     ).timestamp()
@@ -790,7 +796,7 @@ def test_service_file_handler_purges_old_archives_at_construction(tmp_path) -> N
     handler.close()
 
     assert not old.exists()
-    assert active.read_text() == "startup evidence"
+    assert active.read_text(encoding="utf-8") == "startup evidence"
 
 
 def test_setup_logging_with_unwritable_dir_falls_back_to_stderr(tmp_path) -> None:
@@ -799,7 +805,7 @@ def test_setup_logging_with_unwritable_dir_falls_back_to_stderr(tmp_path) -> Non
     from physiclaw.common.logger.logger import setup_logging
 
     blocker = tmp_path / "blocked"
-    blocker.write_text("a file where a dir must go")
+    blocker.write_text("a file where a dir must go", encoding="utf-8")
 
     setup_logging("runtime", logging.INFO, file_dir=blocker / "sub")  # no raise
 

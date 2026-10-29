@@ -74,7 +74,7 @@ def test_new_id_skips_taken_ids(tmp_path, mocker):
 
 def test_new_id_skips_ids_with_an_existing_snapshot(tmp_path, mocker):
     src = tmp_path / "x.svg"
-    patch.snapshot_path(src, "aaaa").write_text("")
+    patch.snapshot_path(src, "aaaa").write_text("", encoding="utf-8")
     mocker.patch.object(
         patch.random, "choices", side_effect=[list("aaaa"), list("bbbb")]
     )
@@ -101,7 +101,7 @@ def test_load_patch_without_file_returns_empty_list(patch_dir):
 
 
 def test_load_patch_with_empty_file_returns_empty_list(patch_dir):
-    (patch_dir / "x.json").write_text("")
+    (patch_dir / "x.json").write_text("", encoding="utf-8")
 
     assert patch.load_patch(Path("x.svg")) == []
 
@@ -114,14 +114,14 @@ def test_load_patch_round_trips_write_patch(patch_dir):
 
 
 def test_load_patch_with_invalid_json_raises(patch_dir):
-    (patch_dir / "x.json").write_text("{nope")
+    (patch_dir / "x.json").write_text("{nope", encoding="utf-8")
 
     with pytest.raises(ValueError, match="isn't valid JSON"):
         patch.load_patch(Path("x.svg"))
 
 
 def test_load_patch_with_non_array_json_raises(patch_dir):
-    (patch_dir / "x.json").write_text('{"id": "abcd"}')
+    (patch_dir / "x.json").write_text('{"id": "abcd"}', encoding="utf-8")
 
     with pytest.raises(ValueError, match="not a JSON array"):
         patch.load_patch(Path("x.svg"))

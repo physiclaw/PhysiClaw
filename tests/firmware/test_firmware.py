@@ -611,10 +611,12 @@ def test_local_inputs_build_complete_bundle_without_network(
     elf.write_bytes(b"ELF")
     out.parent.mkdir()
     sibling = out.parent / "unrelated.txt"
-    sibling.write_text("keep")
+    sibling.write_text("keep", encoding="utf-8")
     download = mocker.patch.object(bundle.urllib.request, "urlopen")
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "config.yaml").write_text("unrelated config in working directory")
+    (tmp_path / "config.yaml").write_text(
+        "unrelated config in working directory", encoding="utf-8"
+    )
 
     if entry_point == "cli":
         bundle.main(
@@ -633,7 +635,7 @@ def test_local_inputs_build_complete_bundle_without_network(
         bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
 
     download.assert_not_called()
-    assert sibling.read_text() == "keep"
+    assert sibling.read_text(encoding="utf-8") == "keep"
     assert isinstance(compilers.littlefs.call_args.kwargs["block_count"], int)
     output = capsys.readouterr().out
     assert str(Path("output/bundle.zip")) in output and "7 files" in output
@@ -725,7 +727,7 @@ def test_main_cleanup_does_not_follow_output_symlinks(
     elf.write_bytes(b"ELF")
     external = tmp_path / "external"
     external.mkdir()
-    (external / "keep.txt").write_text("keep")
+    (external / "keep.txt").write_text("keep", encoding="utf-8")
     output_dir = bundle.OUTPUT_DIR
     output_dir.parent.mkdir()
     if symlink_at_root:
@@ -739,7 +741,7 @@ def test_main_cleanup_does_not_follow_output_symlinks(
     assert not output_dir.is_symlink()
     assert set(output_dir.iterdir()) == {bundle.CACHE_DIR, output_dir / "fluidnc.zip"}
     assert list(external.iterdir()) == [external / "keep.txt"]
-    assert (external / "keep.txt").read_text() == "keep"
+    assert (external / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
 def test_main_aborts_if_managed_output_cannot_be_cleared(bundle, mocker):
@@ -805,7 +807,7 @@ def test_main_default_release_preserves_and_verifies_cache(
     posix.write_bytes(release)
     timestamp = posix.stat().st_mtime_ns
     (cache / "esp32-noradio-firmware.elf").write_bytes(b"ELF")
-    (cache / "keep.txt").write_text("preserve cache contents")
+    (cache / "keep.txt").write_text("preserve cache contents", encoding="utf-8")
     (bundle.OUTPUT_DIR / "stale.zip").touch()
     download = mocker.patch.object(
         bundle.urllib.request,
@@ -825,7 +827,7 @@ def test_main_default_release_preserves_and_verifies_cache(
         == "https://api.github.com/repos/bdring/FluidNC/releases/tags/v4.1.0"
     )
     assert posix.stat().st_mtime_ns == timestamp
-    assert (cache / "keep.txt").read_text() == "preserve cache contents"
+    assert (cache / "keep.txt").read_text(encoding="utf-8") == "preserve cache contents"
     assert not (bundle.OUTPUT_DIR / "stale.zip").exists()
     with zipfile.ZipFile(bundle.DEFAULT_OUTPUT) as archive:
         assert archive.read("fluidnc_version.txt") == b"v4.1.0\n"
@@ -974,7 +976,7 @@ def test_missing_release_metadata_or_asset_preserves_cache_but_clears_outputs(
     cache = bundle.CACHE_DIR / "v-test"
     cache.mkdir(parents=True)
     sentinel = cache / "keep.txt"
-    sentinel.write_text("preserve")
+    sentinel.write_text("preserve", encoding="utf-8")
     bundle.DEFAULT_OUTPUT.write_bytes(b"old bundle")
     if missing == "release":
         response = HTTPError(
@@ -995,7 +997,7 @@ def test_missing_release_metadata_or_asset_preserves_cache_but_clears_outputs(
 
     download.assert_called_once()
     bundle.time.sleep.assert_not_called()
-    assert sentinel.read_text() == "preserve"
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
     assert not bundle.DEFAULT_OUTPUT.exists()
 
 
@@ -1136,7 +1138,7 @@ def test_cache_symlink_cannot_redirect_downloads_outside_output(
     bundle.CACHE_DIR.mkdir(parents=True)
     external = tmp_path / "external"
     external.mkdir()
-    (external / "keep.txt").write_text("keep")
+    (external / "keep.txt").write_text("keep", encoding="utf-8")
     symlink_to(bundle.CACHE_DIR / "v-test", external, target_is_directory=True)
     download = mocker.patch.object(bundle.urllib.request, "urlopen")
 

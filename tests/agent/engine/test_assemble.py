@@ -176,7 +176,9 @@ def test_pitfalls_switch_controls_entire_prompt_surface(
     assert ("## Learned pitfalls" in bundle.system_prompt) is enabled
     assert ("old trap" in bundle.system_prompt) is enabled
     assert bundle.pitfall_count == int(enabled)
-    assert "old trap" in (paths.pitfalls_dir() / "pitfalls.md").read_text()
+    assert "old trap" in (paths.pitfalls_dir() / "pitfalls.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_format_triggers_includes_now_and_each_trigger() -> None:

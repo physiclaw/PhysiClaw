@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help firmware bump build publish release docs-deploy \
+.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help firmware bump build publish release docs-deploy \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -25,6 +25,7 @@ help:
 	@echo "  test                  — fast unit suite (default; excludes slow + integration)"
 	@echo "  test-cov              — fast suite with coverage report (term + html)"
 	@echo "  test-fast             — alias for test"
+	@echo "  test-encoding         — strict encoding regressions with UTF-8 mode off and on"
 	@echo "  test-slow             — only @pytest.mark.slow"
 	@echo "  test-integration      — only @pytest.mark.integration"
 	@echo "  test-all              — every test, including slow and integration"
@@ -53,6 +54,13 @@ test-cov:
 	$(PY) pytest --cov=src/physiclaw --cov-report=term-missing --cov-report=html --cov-branch
 
 test-fast: test
+
+# PEP 597 catches implicit encodings at runtime; PEP 686 recommends testing
+# with UTF-8 mode disabled and enabled. Subprocess regressions forward the flags.
+test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/cli/test_session_debug.py
+test-encoding:
+	$(PYTHON) -X utf8=0 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
+	$(PYTHON) -X utf8=1 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
 
 test-slow:
 	$(PY) pytest -m slow

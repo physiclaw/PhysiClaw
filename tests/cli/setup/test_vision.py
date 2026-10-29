@@ -137,7 +137,9 @@ class InstallerIO:
         return BytesResponse(response) if isinstance(response, bytes) else response
 
     def convert(self, cmd, cwd):
-        self.commands.append((cmd, Path(cwd), (Path(cwd) / "convert.py").read_text()))
+        self.commands.append(
+            (cmd, Path(cwd), (Path(cwd) / "convert.py").read_text(encoding="utf-8"))
+        )
         if self.export_error is not None:
             raise self.export_error
         output = Path(cwd) / "model.onnx"

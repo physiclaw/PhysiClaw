@@ -51,7 +51,9 @@ def _manifest(pack: str) -> dict:
 def test_templates_exist() -> None:
     assert "taobao" in PACKS and "channel/wechat" in PACKS
     # The channel catalogue names its active folder, and it is shipped.
-    assert (TEMPLATES_ROOT / "channel" / "ACTIVE.txt").read_text().strip() == "wechat"
+    assert (TEMPLATES_ROOT / "channel" / "ACTIVE.txt").read_text(
+        encoding="utf-8"
+    ).strip() == "wechat"
 
 
 @pytest.mark.parametrize("app", PACKS)

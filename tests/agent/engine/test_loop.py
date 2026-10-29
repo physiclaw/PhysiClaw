@@ -390,7 +390,7 @@ async def test_regression_blank_memory_save_keeps_close_checkpoint_active(
 
     assert len(provider.calls) == 4
     assert session.sentinel_recap == "saved"
-    assert memory_mod.MEMORY_FILE.read_text() == "use metric units\n"
+    assert memory_mod.MEMORY_FILE.read_text(encoding="utf-8") == "use metric units\n"
     assert any(
         isinstance(m, UserMessage) and "haven't saved it" in str(m.content)
         for m in messages

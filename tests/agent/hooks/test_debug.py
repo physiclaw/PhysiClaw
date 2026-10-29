@@ -145,7 +145,9 @@ def test_failed_claim_preserves_the_pending_wake_for_retry(_enabled, mocker):
     with pytest.raises(PermissionError, match="claim denied"):
         debug_wake()
 
-    assert json.loads(wake_path().read_text()) == {"description": "pending"}
+    assert json.loads(wake_path().read_text(encoding="utf-8")) == {
+        "description": "pending"
+    }
 
 
 def test_claim_cleanup_failure_does_not_drop_or_replay_the_trigger(
@@ -181,7 +183,9 @@ async def test_debug_hook_registers_and_consumes_the_persisted_wake_filename(
 ):
     path = paths.debug_dir() / "wake.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"description": "persisted before startup"}))
+    path.write_text(
+        json.dumps({"description": "persisted before startup"}), encoding="utf-8"
+    )
     fresh_hook_module(debug, "debug_wake")
 
     triggers = await check_hooks()

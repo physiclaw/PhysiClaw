@@ -364,7 +364,7 @@ async def test_plugin_usage_is_stamped_with_current_host_turn():
     events = [
         json.loads(line)
         for line in (paths.sessions_dir() / "plugin-usage" / "events.jsonl")
-        .read_text()
+        .read_text(encoding="utf-8")
         .splitlines()
     ]
     assert [event["turn"] for event in events if event["event"] == "usage"] == [0, 1]

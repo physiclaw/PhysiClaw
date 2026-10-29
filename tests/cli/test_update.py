@@ -78,12 +78,14 @@ def boundary(mocker):
 def _marker(version="1.1.0"):
     path = paths.cache_dir() / "update.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"version": version}))
+    path.write_text(json.dumps({"version": version}), encoding="utf-8")
     return path
 
 
 def _version_cache():
-    return json.loads((paths.HOME / "run" / "version-check.json").read_text())
+    return json.loads(
+        (paths.HOME / "run" / "version-check.json").read_text(encoding="utf-8")
+    )
 
 
 def _deny_marker_stat(marker):
@@ -355,7 +357,7 @@ def test_stage_network_failure_preserves_existing_marker(boundary, error):
 
     up.maybe_stage_update()
 
-    assert json.loads(marker.read_text())["version"] == "1.1.0"
+    assert json.loads(marker.read_text(encoding="utf-8"))["version"] == "1.1.0"
     assert len(boundary.calls) == 1
 
 
@@ -385,7 +387,7 @@ def test_stage_same_release_skips_redundant_warm(boundary):
 
     up.maybe_stage_update()
 
-    assert json.loads(marker.read_text())["version"] == "1.1.0"
+    assert json.loads(marker.read_text(encoding="utf-8"))["version"] == "1.1.0"
     assert _version_cache()["latest_version"] == "1.1.0"
     assert len(boundary.calls) == 1
 
@@ -428,7 +430,7 @@ def test_stage_new_release_warms_separate_environment_then_records_it(boundary, 
             },
         ),
     ]
-    assert json.loads(marker.read_text()) == {
+    assert json.loads(marker.read_text(encoding="utf-8")) == {
         "version": "1.1.0",
         "staged_at": "2026-10-15T01:00:00+00:00",
     }
@@ -446,7 +448,7 @@ def test_stage_warm_exception_preserves_previous_marker(boundary, caplog, error)
     with caplog.at_level(logging.INFO, logger=up.__name__):
         up.maybe_stage_update()
 
-    assert json.loads(marker.read_text())["version"] == "1.0.1"
+    assert json.loads(marker.read_text(encoding="utf-8"))["version"] == "1.0.1"
     assert "will retry" in caplog.text
     assert "staged for" not in caplog.text
 
@@ -484,7 +486,9 @@ def test_background_stage_runs_as_named_daemon(boundary, threads):
     assert threads[0].daemon is True
     assert threads[0].name == "physiclaw-stage-update"
     assert (
-        json.loads((paths.cache_dir() / "update.json").read_text())["version"]
+        json.loads((paths.cache_dir() / "update.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
         == "1.1.0"
     )
     assert len(boundary.calls) == 2

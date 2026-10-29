@@ -77,7 +77,10 @@ def test_no_pack_declares_a_thread_section() -> None:
     write_channel()
     for root in (write_pack("demo"), channel_root()):
         mp = root / "APP.yml"
-        mp.write_text(mp.read_text(encoding="utf-8") + "thread:\n  incoming: left\n")
+        mp.write_text(
+            mp.read_text(encoding="utf-8") + "thread:\n  incoming: left\n",
+            encoding="utf-8",
+        )
     with pytest.raises(PlaybookError, match="unknown key.*thread"):
         pb.load_pack("demo")
     with pytest.raises(PlaybookError, match="unknown key.*thread"):
@@ -123,7 +126,10 @@ def test_install_keeps_an_im_folder_under_channel(tmp_path: Path) -> None:
 def test_the_channel_manifest_names_its_im_not_the_role() -> None:
     write_channel()
     mp = channel_root() / "APP.yml"
-    mp.write_text(mp.read_text(encoding="utf-8").replace("app: wechat", "app: channel"))
+    mp.write_text(
+        mp.read_text(encoding="utf-8").replace("app: wechat", "app: channel"),
+        encoding="utf-8",
+    )
 
     with pytest.raises(PlaybookError, match="must equal the pack directory 'wechat'"):
         pb.load_pack("channel")
@@ -136,8 +142,10 @@ def test_a_home_channel_dir_is_never_shadowed_by_the_tree(
     # still reports its gap rather than falling through to the template.
     tree = tmp_path / "tree"
     (tree / "channel" / "wechat").mkdir(parents=True)
-    (tree / "channel" / "wechat" / "APP.yml").write_text("app: wechat\n")
-    (tree / "channel" / "ACTIVE.txt").write_text("wechat\n")
+    (tree / "channel" / "wechat" / "APP.yml").write_text(
+        "app: wechat\n", encoding="utf-8"
+    )
+    (tree / "channel" / "ACTIVE.txt").write_text("wechat\n", encoding="utf-8")
     home = paths.playbooks_dir()
     monkeypatch.setattr(paths, "playbooks_dirs", lambda: [home, tree])
 

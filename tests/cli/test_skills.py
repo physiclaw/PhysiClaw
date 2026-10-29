@@ -126,6 +126,7 @@ def test_read_provenance_returns_none_when_missing(tmp_path: Path) -> None:
 def test_read_provenance_returns_dict_when_valid(tmp_path: Path) -> None:
     (tmp_path / skills_mod.PROVENANCE_FILE).write_text(
         json.dumps({"source": "x", "sha": "abc"}),
+        encoding="utf-8",
     )
 
     out = skills_mod.read_provenance(tmp_path)
@@ -134,7 +135,7 @@ def test_read_provenance_returns_dict_when_valid(tmp_path: Path) -> None:
 
 
 def test_read_provenance_returns_none_on_corrupt_json(tmp_path: Path) -> None:
-    (tmp_path / skills_mod.PROVENANCE_FILE).write_text("not json")
+    (tmp_path / skills_mod.PROVENANCE_FILE).write_text("not json", encoding="utf-8")
 
     assert skills_mod.read_provenance(tmp_path) is None
 
@@ -160,7 +161,7 @@ def test_installed_skill_dirs_lists_dirs_skipping_dotfiles(fake_home: Path) -> N
     (fake_home / "alpha").mkdir()
     (fake_home / "beta").mkdir()
     (fake_home / ".hidden").mkdir()
-    (fake_home / "not-a-dir.txt").write_text("x")
+    (fake_home / "not-a-dir.txt").write_text("x", encoding="utf-8")
 
     out = skills_mod.installed_skill_dirs()
 
@@ -261,28 +262,28 @@ def test_git_exits_1_on_nonzero(mocker) -> None:
 
 def test_read_skill_name_no_frontmatter_uses_fallback(tmp_path: Path) -> None:
     md = tmp_path / "SKILL.md"
-    md.write_text("# Title\n\nbody")
+    md.write_text("# Title\n\nbody", encoding="utf-8")
 
     assert skills_mod._read_skill_name(md, "dirname") == "dirname"
 
 
 def test_read_skill_name_extracts_from_frontmatter(tmp_path: Path) -> None:
     md = tmp_path / "SKILL.md"
-    md.write_text("---\nname: actual\nother: x\n---\n\nbody")
+    md.write_text("---\nname: actual\nother: x\n---\n\nbody", encoding="utf-8")
 
     assert skills_mod._read_skill_name(md, "dirname") == "actual"
 
 
 def test_read_skill_name_strips_quotes(tmp_path: Path) -> None:
     md = tmp_path / "SKILL.md"
-    md.write_text('---\nname: "with-quotes"\n---\n')
+    md.write_text('---\nname: "with-quotes"\n---\n', encoding="utf-8")
 
     assert skills_mod._read_skill_name(md, "fallback") == "with-quotes"
 
 
 def test_read_skill_name_unclosed_frontmatter(tmp_path: Path) -> None:
     md = tmp_path / "SKILL.md"
-    md.write_text("---\nname: x")  # no closing ---
+    md.write_text("---\nname: x", encoding="utf-8")  # no closing ---
 
     assert skills_mod._read_skill_name(md, "fb") == "fb"
 
@@ -302,7 +303,7 @@ def test_list_with_provenance_and_local(fake_home: Path) -> None:
     a = fake_home / "alpha"
     a.mkdir()
     (a / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": "x/y", "ref": "main", "sha": "abcdef0"})
+        json.dumps({"source": "x/y", "ref": "main", "sha": "abcdef0"}), encoding="utf-8"
     )
     (fake_home / "beta").mkdir()  # no provenance
 
@@ -320,7 +321,7 @@ def test_list_uses_sha_when_no_ref(fake_home: Path) -> None:
     a = fake_home / "alpha"
     a.mkdir()
     (a / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": "x/y", "sha": "abcdef01234"})
+        json.dumps({"source": "x/y", "sha": "abcdef01234"}), encoding="utf-8"
     )
 
     result = runner.invoke(skills_app, ["list"])
@@ -364,7 +365,9 @@ def test_uninstall_provenanced_skill_removes(fake_home: Path) -> None:
     fake_home.mkdir(parents=True)
     skill = fake_home / "alpha"
     skill.mkdir()
-    (skill / skills_mod.PROVENANCE_FILE).write_text(json.dumps({"source": "x"}))
+    (skill / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps({"source": "x"}), encoding="utf-8"
+    )
 
     result = runner.invoke(skills_app, ["uninstall", "alpha"])
 
@@ -393,9 +396,11 @@ def _populate_clone(
     sk.mkdir(parents=True)
     if skill_md:
         if declared_name is not None:
-            (sk / "SKILL.md").write_text(f"---\nname: {declared_name}\n---\n")
+            (sk / "SKILL.md").write_text(
+                f"---\nname: {declared_name}\n---\n", encoding="utf-8"
+            )
         else:
-            (sk / "SKILL.md").write_text("# Title\nbody\n")
+            (sk / "SKILL.md").write_text("# Title\nbody\n", encoding="utf-8")
 
 
 def _stub_clone(mocker, populate):
@@ -418,7 +423,9 @@ def test_install_happy_path(fake_home: Path, mocker) -> None:
 
     assert result.exit_code == 0
     assert (fake_home / "myskill" / "SKILL.md").exists()
-    prov = json.loads((fake_home / "myskill" / skills_mod.PROVENANCE_FILE).read_text())
+    prov = json.loads(
+        (fake_home / "myskill" / skills_mod.PROVENANCE_FILE).read_text(encoding="utf-8")
+    )
     assert prov["source"] == "https://github.com/owner/repo.git"
     assert prov["sha"].startswith("abcdef")
 
@@ -437,7 +444,7 @@ def test_install_existing_provenanced_without_force(
     target = fake_home / "myskill"
     target.mkdir()
     (target / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": "x/y", "ref": "main"})
+        json.dumps({"source": "x/y", "ref": "main"}), encoding="utf-8"
     )
 
     result = runner.invoke(skills_app, ["install", "myskill", "--from", "o/r"])
@@ -525,9 +532,9 @@ def test_install_force_overwrites_existing(fake_home: Path, mocker) -> None:
     fake_home.mkdir(parents=True)
     target = fake_home / "myskill"
     target.mkdir()
-    (target / "OLD").write_text("old")
+    (target / "OLD").write_text("old", encoding="utf-8")
     (target / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": "old", "ref": "main"})
+        json.dumps({"source": "old", "ref": "main"}), encoding="utf-8"
     )
 
     _stub_clone(mocker, lambda d: _populate_clone(d, name="myskill"))
@@ -618,8 +625,10 @@ def source_repo(tmp_path, mocker):
 def previous_skill(fake_home):
     target = fake_home / "myskill"
     target.mkdir(parents=True)
-    (target / "SKILL.md").write_text("previous skill")
-    (target / skills_mod.PROVENANCE_FILE).write_text('{"source":"old"}')
+    (target / "SKILL.md").write_text("previous skill", encoding="utf-8")
+    (target / skills_mod.PROVENANCE_FILE).write_text(
+        '{"source":"old"}', encoding="utf-8"
+    )
     return target
 
 
@@ -637,13 +646,15 @@ def previous_skill(fake_home):
     ],
 )
 def test_regression_corrupt_provenance_does_not_allow_uninstall(previous_skill, marker):
-    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(json.dumps(marker))
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps(marker), encoding="utf-8"
+    )
 
     result = runner.invoke(skills_app, ["uninstall", "myskill"])
 
     assert result.exit_code == 1
     assert "--force" in result.output
-    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+    assert (previous_skill / "SKILL.md").read_text(encoding="utf-8") == "previous skill"
 
 
 @pytest.mark.parametrize(
@@ -656,7 +667,9 @@ def test_regression_corrupt_provenance_does_not_allow_uninstall(previous_skill, 
     ],
 )
 def test_regression_corrupt_provenance_does_not_crash_list(previous_skill, marker):
-    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(json.dumps(marker))
+    (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps(marker), encoding="utf-8"
+    )
 
     result = runner.invoke(skills_app, ["list"])
 
@@ -684,7 +697,7 @@ def test_regression_failed_replacement_preserves_previous_skill(
     )
 
     assert result.exit_code != 0
-    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+    assert (previous_skill / "SKILL.md").read_text(encoding="utf-8") == "previous skill"
     assert not list(previous_skill.parent.glob("*.installing*"))
 
 
@@ -698,7 +711,7 @@ def test_regression_target_created_during_clone_requires_force(
         result = git(args, **kwargs)
         if args[1] == "clone":
             target.mkdir(parents=True)
-            (target / "SKILL.md").write_text("competing skill")
+            (target / "SKILL.md").write_text("competing skill", encoding="utf-8")
         return result
 
     mocker.patch.object(skills_mod.subprocess, "run", side_effect=competing_install)
@@ -709,7 +722,7 @@ def test_regression_target_created_during_clone_requires_force(
 
     assert result.exit_code == 1
     assert "--force" in result.output
-    assert (target / "SKILL.md").read_text() == "competing skill"
+    assert (target / "SKILL.md").read_text(encoding="utf-8") == "competing skill"
 
 
 @pytest.mark.parametrize("entry", ["outside.txt", "SKILL.md", "references"])
@@ -718,7 +731,7 @@ def test_regression_source_symlink_cannot_copy_outside_clone(
 ):
     external = tmp_path / "external"
     external.mkdir()
-    (external / "SKILL.md").write_text("synthetic private contents")
+    (external / "SKILL.md").write_text("synthetic private contents", encoding="utf-8")
     link = source_repo / "skills" / "myskill" / entry
     link.unlink(missing_ok=True)
     symlink_to(link, external)
@@ -747,7 +760,9 @@ def test_regression_installed_frontmatter_name_matches_runtime(
 ):
     from physiclaw.agent.engine import skill
 
-    (source_repo / "skills/myskill/SKILL.md").write_text(f"---\n{header}\n---\nbody\n")
+    (source_repo / "skills/myskill/SKILL.md").write_text(
+        f"---\n{header}\n---\nbody\n", encoding="utf-8"
+    )
     mocker.patch.object(skill, "HOME_SKILLS_DIR", fake_home)
     mocker.patch.object(skill, "OFFICIAL_SKILLS_DIR", source_repo / "absent")
 
@@ -777,7 +792,7 @@ def test_install_copy_failure_is_clean_error_and_keeps_previous_skill(
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+    assert (previous_skill / "SKILL.md").read_text(encoding="utf-8") == "previous skill"
 
 
 def _link_skill(target, external, marker_only):
@@ -794,7 +809,9 @@ def _link_skill(target, external, marker_only):
 def test_linked_provenance_does_not_authorize_removal(fake_home, tmp_path, marker_link):
     external = tmp_path / "external-skill"
     external.mkdir()
-    (external / skills_mod.PROVENANCE_FILE).write_text('{"source":"outside"}')
+    (external / skills_mod.PROVENANCE_FILE).write_text(
+        '{"source":"outside"}', encoding="utf-8"
+    )
     target = fake_home / "myskill"
     fake_home.mkdir()
     _link_skill(target, external, marker_link)
@@ -840,7 +857,7 @@ def test_overlapping_mutation_is_refused_before_changing_skill(previous_skill, c
 
     assert result.exit_code == 1
     assert "already running" in result.output
-    assert (previous_skill / "SKILL.md").read_text() == "previous skill"
+    assert (previous_skill / "SKILL.md").read_text(encoding="utf-8") == "previous skill"
 
 
 @pytest.mark.parametrize(
@@ -867,7 +884,7 @@ def test_failed_restoration_keeps_recoverable_backup(
     backups = list(previous_skill.parent.glob(".myskill.backup-*/skill"))
     assert result.exit_code != 0
     assert len(backups) == 1
-    assert (backups[0] / "SKILL.md").read_text() == "previous skill"
+    assert (backups[0] / "SKILL.md").read_text(encoding="utf-8") == "previous skill"
     assert str(backups[0]) in result.stderr
     assert "restore blocked" in result.output
 
@@ -889,7 +906,7 @@ def test_source_symlink_cycle_is_refused(fake_home, source_repo, target, mocker)
 
 def test_internal_symlink_is_copied_as_an_independent_file(fake_home, source_repo):
     skill = source_repo / "skills/myskill"
-    (skill / "reference.txt").write_text("reference")
+    (skill / "reference.txt").write_text("reference", encoding="utf-8")
     symlink_to(skill / "alias.txt", "reference.txt")
 
     result = runner.invoke(
@@ -897,7 +914,7 @@ def test_internal_symlink_is_copied_as_an_independent_file(fake_home, source_rep
     )
 
     assert result.exit_code == 0
-    assert (fake_home / "myskill/alias.txt").read_text() == "reference"
+    assert (fake_home / "myskill/alias.txt").read_text(encoding="utf-8") == "reference"
     assert not (fake_home / "myskill/alias.txt").is_symlink()
 
 
@@ -981,7 +998,9 @@ def test_source_starting_with_dash_is_after_git_option_terminator(
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_provenance_roundtrips_string_metadata(tmp_path, source, ref, sha):
     data = {"source": source, "ref": ref, "sha": sha}
-    (tmp_path / skills_mod.PROVENANCE_FILE).write_text(json.dumps(data))
+    (tmp_path / skills_mod.PROVENANCE_FILE).write_text(
+        json.dumps(data), encoding="utf-8"
+    )
 
     result = skills_mod.read_provenance(tmp_path)
 
@@ -1021,7 +1040,7 @@ def test_nonregular_source_entry_is_refused(fake_home, source_repo, mocker):
     def special(path):
         return False if path.name == "special" else is_file(path)
 
-    (source_repo / "skills/myskill/special").write_text("fixture")
+    (source_repo / "skills/myskill/special").write_text("fixture", encoding="utf-8")
     mocker.patch.object(Path, "is_file", special)
 
     result = runner.invoke(
@@ -1046,7 +1065,7 @@ def test_unresolvable_source_is_clean_cli_error(fake_home, mocker, operation):
 
 def test_legacy_null_optional_provenance_is_treated_as_missing(tmp_path):
     (tmp_path / skills_mod.PROVENANCE_FILE).write_text(
-        '{"source":"owner/repo","ref":null,"sha":null}'
+        '{"source":"owner/repo","ref":null,"sha":null}', encoding="utf-8"
     )
 
     provenance = skills_mod.read_provenance(tmp_path)
@@ -1057,7 +1076,7 @@ def test_legacy_null_optional_provenance_is_treated_as_missing(tmp_path):
 @pytest.mark.parametrize("source", ["", "  ", "\t\n"])
 def test_blank_provenance_source_does_not_authorize_uninstall(previous_skill, source):
     (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": source})
+        json.dumps({"source": source}), encoding="utf-8"
     )
 
     result = runner.invoke(skills_app, ["uninstall", "myskill"])
@@ -1111,7 +1130,7 @@ def test_installed_revision_is_shown_to_user(
     previous_skill, command, metadata, revision
 ):
     (previous_skill / skills_mod.PROVENANCE_FILE).write_text(
-        json.dumps({"source": "owner/repo", **metadata})
+        json.dumps({"source": "owner/repo", **metadata}), encoding="utf-8"
     )
 
     result = runner.invoke(skills_app, command)

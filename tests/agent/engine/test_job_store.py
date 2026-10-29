@@ -116,7 +116,9 @@ def _job_section(
 
 def _write_jobs(tmp_path: Path, *sections: str, header: str = "") -> Path:
     p = tmp_path / "jobs.md"
-    p.write_text((header + "\n" if header else "") + "\n".join(sections))
+    p.write_text(
+        (header + "\n" if header else "") + "\n".join(sections), encoding="utf-8"
+    )
     return p
 
 
@@ -174,7 +176,7 @@ def test_load_jobs_returns_empty_when_file_missing(tmp_path: Path) -> None:
 
 def test_load_jobs_returns_empty_for_empty_file(tmp_path: Path) -> None:
     p = tmp_path / "jobs.md"
-    p.write_text("")
+    p.write_text("", encoding="utf-8")
 
     assert load_jobs(p) == []
 
@@ -184,7 +186,7 @@ def test_load_jobs_returns_empty_when_only_documentation_section(
 ) -> None:
     # heading not matching ID_RE → silently skipped, no fields → not a job.
     p = tmp_path / "jobs.md"
-    p.write_text("## How To Use\n\nFree-form notes here.\n")
+    p.write_text("## How To Use\n\nFree-form notes here.\n", encoding="utf-8")
 
     assert load_jobs(p) == []
 
@@ -195,7 +197,7 @@ def test_load_jobs_skips_section_with_valid_id_but_only_a_description(
     # Heading matches ID_RE but body has no recognized fields — treated as
     # documentation, silently skipped.
     p = tmp_path / "jobs.md"
-    p.write_text("## job-id\nJust a description, no fields here.\n")
+    p.write_text("## job-id\nJust a description, no fields here.\n", encoding="utf-8")
 
     assert load_jobs(p) == []
 
@@ -204,7 +206,7 @@ def test_load_jobs_skips_section_with_no_body_lines(tmp_path: Path) -> None:
     # Heading immediately followed by another heading — empty body, no
     # fields, skipped.
     p = tmp_path / "jobs.md"
-    p.write_text("## empty-one\n## empty-two\n")
+    p.write_text("## empty-one\n## empty-two\n", encoding="utf-8")
 
     assert load_jobs(p) == []
 
@@ -461,7 +463,7 @@ def test_load_jobs_handles_heading_at_eof_without_trailing_body(
     # fires and must yield an empty string (mutations would IndexError
     # or substitute a placeholder body).
     p = tmp_path / "jobs.md"
-    p.write_text("## empty-end")
+    p.write_text("## empty-end", encoding="utf-8")
 
     assert load_jobs(p) == []
 
@@ -702,7 +704,7 @@ def test_update_fields_replaces_named_field_value(tmp_path: Path) -> None:
 
     update_fields(p, {"user-greet-2026-04-28": {"Status": "fired"}})
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert re.search(r"^- Status: fired$", text, re.MULTILINE)
     # Other fields untouched.
     assert "- Type: periodic" in text
@@ -720,7 +722,7 @@ def test_regression_update_fields_accepts_parser_field_spacing(
     update_fields(p, {"target": {"Status": STATUS_DONE}})
 
     assert load_jobs(p)[0].status == STATUS_DONE
-    assert p.read_text().endswith(other)
+    assert p.read_text(encoding="utf-8").endswith(other)
 
 
 @pytest.mark.parametrize("offset_hours", [-12, 14])
@@ -813,11 +815,11 @@ def test_daily_schedule_next_fire_survives_minute_serialization(
 
 def test_update_fields_with_empty_dict_is_noop(tmp_path: Path) -> None:
     p = _write_jobs(tmp_path, _job_section())
-    before = p.read_text()
+    before = p.read_text(encoding="utf-8")
 
     update_fields(p, {})
 
-    assert p.read_text() == before
+    assert p.read_text(encoding="utf-8") == before
 
 
 def test_update_fields_handles_multiple_fields_per_job(tmp_path: Path) -> None:
@@ -833,7 +835,7 @@ def test_update_fields_handles_multiple_fields_per_job(tmp_path: Path) -> None:
         },
     )
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "- Status: done" in text
     assert "- Execution result: Greeted user successfully" in text
 
@@ -853,7 +855,7 @@ def test_update_fields_handles_multiple_jobs(tmp_path: Path) -> None:
         },
     )
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     # Each job's field is set independently — anchor on the section.
     a_section = re.search(r"## job-a.*?(?=## |$)", text, re.DOTALL).group(0)
     b_section = re.search(r"## job-b.*?(?=## |$)", text, re.DOTALL).group(0)
@@ -893,7 +895,7 @@ def test_expire_stale_fired_fails_one_time_zombie_after_24h(
     expired = expire_stale_fired(now=dt.datetime(2026, 4, 28, 0, 0), path=p)
 
     assert expired == ["zombie"]
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "- Status: fail" in text
     assert "auto-failed: fired 2026-04-26T12:00 but never finished" in text
     assert "- Execution time: 2026-04-28T00:00" in text
@@ -916,7 +918,7 @@ def test_expire_stale_fired_rearms_periodic_zombie(tmp_path: Path) -> None:
     expired = expire_stale_fired(now=dt.datetime(2026, 4, 28, 0, 0), path=p)
 
     assert expired == ["routine"]
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "- Status: pend" in text
     assert "auto-re-armed: fired 2026-04-26T12:00 but never finished" in text
 
@@ -933,7 +935,7 @@ def test_expire_stale_fired_keeps_recently_fired_jobs(tmp_path: Path) -> None:
     expired = expire_stale_fired(now=dt.datetime(2026, 4, 28, 0, 0), path=p)
 
     assert expired == []
-    assert "- Status: fired" in p.read_text()
+    assert "- Status: fired" in p.read_text(encoding="utf-8")
 
 
 def test_expire_stale_fired_ignores_non_fired_and_unparsable(
@@ -951,7 +953,7 @@ def test_expire_stale_fired_ignores_non_fired_and_unparsable(
     expired = expire_stale_fired(now=dt.datetime(2026, 4, 28, 0, 0), path=p)
 
     assert expired == []
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert "- Status: pend" in text
     assert "- Status: fired" in text
 
@@ -975,7 +977,7 @@ def test_purge_stale_removes_terminal_jobs_older_than_window(
     # The file must end up empty (no XX placeholder, no leftover content)
     # — kills both the substitution-string and the cleanup-regex
     # mutations in `_remove_sections`.
-    assert p.read_text() == ""
+    assert p.read_text(encoding="utf-8") == ""
 
 
 def test_purge_stale_keeps_other_jobs_when_purging_one(tmp_path: Path) -> None:
@@ -997,7 +999,7 @@ def test_purge_stale_keeps_other_jobs_when_purging_one(tmp_path: Path) -> None:
     with freeze_time("2026-04-28T00:00"):
         purged = purge_stale(p)
 
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert purged == ["purge-me"]
     assert "## purge-me" not in text
     assert "## keep-me" in text
@@ -1048,7 +1050,7 @@ def test_purge_stale_continues_past_non_terminal_jobs_to_purge_later_terminal(
     )
     # Use the preloaded-jobs path so we control the order exactly.
     p = tmp_path / "jobs.md"
-    p.write_text("")  # exists but empty; jobs supplied via param
+    p.write_text("", encoding="utf-8")  # exists but empty; jobs supplied via param
 
     with freeze_time("2026-04-28T00:00"):
         purged = purge_stale(p, jobs=[pend, old_done])
@@ -1096,7 +1098,7 @@ def test_purge_stale_keeps_recent_terminal_jobs(tmp_path: Path) -> None:
         purged = purge_stale(p)
 
     assert purged == []
-    assert "young-done" in p.read_text()
+    assert "young-done" in p.read_text(encoding="utf-8")
 
 
 def test_purge_stale_keeps_non_terminal_jobs_regardless_of_age(
@@ -1147,7 +1149,9 @@ def test_purge_stale_returns_empty_when_file_missing(tmp_path: Path) -> None:
 
 def test_purge_stale_returns_empty_when_file_unparseable(tmp_path: Path) -> None:
     p = tmp_path / "jobs.md"
-    p.write_text("## bad-job\n- Type: hourly\n")  # malformed → ValueError
+    p.write_text(
+        "## bad-job\n- Type: hourly\n", encoding="utf-8"
+    )  # malformed → ValueError
 
     assert purge_stale(p) == []
 

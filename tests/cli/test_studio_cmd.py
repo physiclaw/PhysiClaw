@@ -56,9 +56,9 @@ def _recording(directory: Path, marker: str) -> Path:
     (directory / "images").mkdir(parents=True)
     (directory / "images" / "frame.jpg").write_bytes(b"\xff\xd8\xff\xd9")
     (directory / "summary.json").write_text(
-        json.dumps({"outcome": {"sentinel": marker}})
+        json.dumps({"outcome": {"sentinel": marker}}), encoding="utf-8"
     )
-    (directory / "events.jsonl").write_text("")
+    (directory / "events.jsonl").write_text("", encoding="utf-8")
     return directory
 
 
@@ -289,7 +289,8 @@ def test_studio_recorded_driver_uses_selected_frames_without_mcp(
                 "images": ["images/frame.jpg"],
             }
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     probe = mocker.patch("physiclaw.common.ready.check_ready_once")
 
@@ -463,7 +464,7 @@ def test_studio_directory_name_does_not_change_review_route(launched, tmp_path, 
     selected = tmp_path / ("record-" + name + "-end")
     selected.mkdir(exist_ok=True)
     (selected / "summary.json").write_text(
-        json.dumps({"outcome": {"sentinel": "SELECTED"}})
+        json.dumps({"outcome": {"sentinel": "SELECTED"}}), encoding="utf-8"
     )
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])

@@ -169,9 +169,9 @@ def test_public_render_includes_provider_fragment_before_memory(
 
 def test_public_render_rereads_doctrine_between_sessions(_isolate_context_dir) -> None:
     identity = _isolate_context_dir / "IDENTITY.md"
-    identity.write_text("Original identity")
+    identity.write_text("Original identity", encoding="utf-8")
     first = prompt.dump()
-    identity.write_text("Updated identity")
+    identity.write_text("Updated identity", encoding="utf-8")
 
     second = prompt.dump()
 
@@ -209,8 +209,12 @@ def test_prefix_hash_matches_sha256_utf8_vector() -> None:
 def test_disabled_macro_doctrine_keeps_later_convention_slot(
     _isolate_context_dir,
 ) -> None:
-    (_isolate_context_dir / "MACRO.md").write_text("Macro instructions")
-    (_isolate_context_dir / "CONVENTION.md").write_text("Always follow the convention")
+    (_isolate_context_dir / "MACRO.md").write_text(
+        "Macro instructions", encoding="utf-8"
+    )
+    (_isolate_context_dir / "CONVENTION.md").write_text(
+        "Always follow the convention", encoding="utf-8"
+    )
 
     rendered = prompt.dump()
 
@@ -281,8 +285,10 @@ def test_render_doctrine_empty_when_no_files_exist(_isolate_context_dir) -> None
 def test_render_doctrine_emits_section_per_existing_file(
     _isolate_context_dir: Path,
 ) -> None:
-    (_isolate_context_dir / "IDENTITY.md").write_text("I am PhysiClaw.\n")
-    (_isolate_context_dir / "AGENT.md").write_text("Be helpful.\n\n")
+    (_isolate_context_dir / "IDENTITY.md").write_text(
+        "I am PhysiClaw.\n", encoding="utf-8"
+    )
+    (_isolate_context_dir / "AGENT.md").write_text("Be helpful.\n\n", encoding="utf-8")
 
     out = prompt._render_doctrine()
 
@@ -297,8 +303,8 @@ def test_render_doctrine_emits_section_per_existing_file(
 def test_render_doctrine_emits_files_in_pinned_order(
     _isolate_context_dir: Path,
 ) -> None:
-    (_isolate_context_dir / "AGENT.md").write_text("agent body")
-    (_isolate_context_dir / "IDENTITY.md").write_text("identity body")
+    (_isolate_context_dir / "AGENT.md").write_text("agent body", encoding="utf-8")
+    (_isolate_context_dir / "IDENTITY.md").write_text("identity body", encoding="utf-8")
 
     out = "\n".join(prompt._render_doctrine())
 
@@ -326,7 +332,8 @@ def test_render_doctrine_substitutes_config_tokens(
 
     (_isolate_context_dir / "CONVENTION.md").write_text(
         "Blocked after {{plan_required_after}} turns; "
-        "warn at press #{{same_target_warn}}."
+        "warn at press #{{same_target_warn}}.",
+        encoding="utf-8",
     )
 
     out = "\n".join(prompt._render_doctrine())
@@ -360,7 +367,9 @@ def test_render_doctrine_warns_on_unresolved_token(
 ) -> None:
     import logging
 
-    (_isolate_context_dir / "AGENT.md").write_text("Cap: {{no_such_token}}.")
+    (_isolate_context_dir / "AGENT.md").write_text(
+        "Cap: {{no_such_token}}.", encoding="utf-8"
+    )
 
     with caplog.at_level(logging.WARNING, logger="physiclaw.agent.engine.prompt"):
         prompt._render_doctrine()
@@ -369,8 +378,8 @@ def test_render_doctrine_warns_on_unresolved_token(
 
 
 def test_render_doctrine_skips_empty_files(_isolate_context_dir: Path) -> None:
-    (_isolate_context_dir / "IDENTITY.md").write_text("")
-    (_isolate_context_dir / "AGENT.md").write_text("body")
+    (_isolate_context_dir / "IDENTITY.md").write_text("", encoding="utf-8")
+    (_isolate_context_dir / "AGENT.md").write_text("body", encoding="utf-8")
 
     out = "\n".join(prompt._render_doctrine())
 
@@ -633,7 +642,7 @@ def test_prefix_hash_raises_on_non_string_input() -> None:
 def test_render_system_assembles_all_present_sections(
     _isolate_context_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (_isolate_context_dir / "IDENTITY.md").write_text("ID body")
+    (_isolate_context_dir / "IDENTITY.md").write_text("ID body", encoding="utf-8")
     monkeypatch.setattr(memory, "load_user", lambda: "user profile")
 
     out = prompt.render_system_prompts(
@@ -684,7 +693,9 @@ def test_render_system_omits_macros_section_when_empty(_isolate_context_dir) -> 
 def test_macro_doctrine_renders_only_with_macros(_isolate_context_dir) -> None:
     # Pay only for what's used: the MACRO.md slot is keyed on the same
     # condition as the `## Available Macros` section.
-    (_isolate_context_dir / "MACRO.md").write_text("macro doctrine body")
+    (_isolate_context_dir / "MACRO.md").write_text(
+        "macro doctrine body", encoding="utf-8"
+    )
 
     with_macros = prompt.render_system_prompts(macros_ctx="## Available Macros\n\n- x")
     without = prompt.render_system_prompts(macros_ctx="")

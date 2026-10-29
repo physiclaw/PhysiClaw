@@ -25,15 +25,15 @@ def _make_app() -> typer.Typer:
 def _seed_layout() -> None:
     d = paths.screen_layout_dir()
     d.mkdir(parents=True, exist_ok=True)
-    (d / "layout.json").write_text("{}")
-    (d / "layout.md").write_text("card")
+    (d / "layout.json").write_text("{}", encoding="utf-8")
+    (d / "layout.md").write_text("card", encoding="utf-8")
 
 
 def _seed_calibration() -> None:
     d = paths.calibration_dir()
     (d / "cache").mkdir(parents=True, exist_ok=True)
-    paths.calibration_bundle().write_text("{}")
-    (d / "cache" / "snap.jpg").write_text("x")
+    paths.calibration_bundle().write_text("{}", encoding="utf-8")
+    (d / "cache" / "snap.jpg").write_text("x", encoding="utf-8")
 
 
 def test_reset_noop_when_nothing_present() -> None:

@@ -80,13 +80,14 @@ def _write_skill(
     skill_dir = root / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n"
+        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n",
+        encoding="utf-8",
     )
     if extra_files:
         for relpath, content in extra_files.items():
             target = skill_dir / relpath
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content)
+            target.write_text(content, encoding="utf-8")
     return skill_dir
 
 
@@ -187,7 +188,9 @@ def test_regression_invalid_utf8_does_not_hide_healthy_skills(
     _write_skill(home, "healthy", body="healthy body")
     (skill_mod.BUILTIN_SKILLS_DIR / "bad.md").write_bytes(b"\xff")
     (bad_dir / "SKILL.md").write_bytes(b"\xff")
-    (skill_mod.BUILTIN_SKILLS_DIR / "healthy.md").write_text("healthy body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy.md").write_text(
+        "healthy body", encoding="utf-8"
+    )
     discover_skills = {False: discover_user_skills, True: discover_builtin_skills}[flat]
 
     found = discover_skills()
@@ -203,7 +206,7 @@ def test_regression_skill_file_symlink_cannot_escape_root(
     home, _ = _skill_roots
     folder = _write_skill(home, "escape")
     outside = tmp_path / "outside.md"
-    outside.write_text("outside contents")
+    outside.write_text("outside contents", encoding="utf-8")
     (folder / "SKILL.md").unlink()
     symlink_to(folder / "SKILL.md", outside)
     symlink_to(skill_mod.BUILTIN_SKILLS_DIR / "escape.md", outside)
@@ -220,7 +223,9 @@ def test_discover_accepts_skill_file_symlink_inside_root(_skill_roots, flat) -> 
     folder = _write_skill(home, "linked")
     (folder / "SKILL.md").rename(folder / "body.txt")
     symlink_to(folder / "SKILL.md", folder / "body.txt")
-    (skill_mod.BUILTIN_SKILLS_DIR / "body.txt").write_text("built-in body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "body.txt").write_text(
+        "built-in body", encoding="utf-8"
+    )
     symlink_to(
         skill_mod.BUILTIN_SKILLS_DIR / "linked.md",
         skill_mod.BUILTIN_SKILLS_DIR / "body.txt",
@@ -247,9 +252,9 @@ def test_discover_rejects_unsafe_frontmatter_name(
 ) -> None:
     home, _ = _skill_roots
     folder = _write_skill(home, "normal")
-    (folder / "SKILL.md").write_text(f"---\nname: {name}\n---\nbody")
+    (folder / "SKILL.md").write_text(f"---\nname: {name}\n---\nbody", encoding="utf-8")
     (skill_mod.BUILTIN_SKILLS_DIR / "normal.md").write_text(
-        f"---\nname: {name}\n---\nbody"
+        f"---\nname: {name}\n---\nbody", encoding="utf-8"
     )
 
     found = discover_skills()
@@ -275,12 +280,16 @@ def test_discover_ignores_private_paths_even_with_public_frontmatter(
 ) -> None:
     home, _ = _skill_roots
     hidden = _write_skill(home, "_hidden")
-    (hidden / "SKILL.md").write_text("---\nname: public\n---\nhidden body")
+    (hidden / "SKILL.md").write_text(
+        "---\nname: public\n---\nhidden body", encoding="utf-8"
+    )
     (skill_mod.BUILTIN_SKILLS_DIR / "_hidden.md").write_text(
-        "---\nname: public\n---\nhidden body"
+        "---\nname: public\n---\nhidden body", encoding="utf-8"
     )
     _write_skill(home, "healthy")
-    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text("body")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text(
+        "body", encoding="utf-8"
+    )
 
     found = discover_skills()
 
@@ -293,7 +302,7 @@ def test_discover_ignores_private_paths_even_with_public_frontmatter(
 def test_discover_optional_metadata_preserves_body(_skill_roots, text) -> None:
     home, _ = _skill_roots
     folder = _write_skill(home, "plain")
-    (folder / "SKILL.md").write_text(text)
+    (folder / "SKILL.md").write_text(text, encoding="utf-8")
 
     found = discover_user_skills()
 
@@ -366,8 +375,10 @@ def test_discover_stat_error_does_not_hide_healthy_skills(
     bad = _write_skill(home, "bad") / "SKILL.md"
     _write_skill(home, "healthy")
     bad_flat = skill_mod.BUILTIN_SKILLS_DIR / "bad.md"
-    bad_flat.write_text("body")
-    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text("body")
+    bad_flat.write_text("body", encoding="utf-8")
+    (skill_mod.BUILTIN_SKILLS_DIR / "healthy-flat.md").write_text(
+        "body", encoding="utf-8"
+    )
     is_file = Path.is_file
 
     def is_file_or_deny(path):
@@ -387,7 +398,7 @@ def test_discover_rejects_outside_directory_even_with_inside_skill_file(
 ) -> None:
     home, _ = _skill_roots
     home.mkdir()
-    (home / "body.txt").write_text("body")
+    (home / "body.txt").write_text("body", encoding="utf-8")
     outside = tmp_path / "outside"
     outside.mkdir()
     symlink_to(outside / "SKILL.md", home / "body.txt")
@@ -405,7 +416,7 @@ def test_discover_inside_directory_symlink_keeps_references_scoped(
     target = _write_skill(
         home, "_storage", extra_files={"references/guide.txt": "guide"}
     )
-    (target / "SKILL.md").write_text("body without frontmatter")
+    (target / "SKILL.md").write_text("body without frontmatter", encoding="utf-8")
     symlink_to(home / "linked", target, target_is_directory=True)
 
     found = discover_user_skills()
@@ -421,10 +432,10 @@ def test_discover_inside_directory_symlink_keeps_references_scoped(
 )
 def test_discover_ignores_non_directory_roots(_skill_roots, discover_skills) -> None:
     home, _ = _skill_roots
-    home.write_text("not a directory")
-    skill_mod.OFFICIAL_SKILLS_DIR.write_text("not a directory")
+    home.write_text("not a directory", encoding="utf-8")
+    skill_mod.OFFICIAL_SKILLS_DIR.write_text("not a directory", encoding="utf-8")
     skill_mod.BUILTIN_SKILLS_DIR.rmdir()
-    skill_mod.BUILTIN_SKILLS_DIR.write_text("not a directory")
+    skill_mod.BUILTIN_SKILLS_DIR.write_text("not a directory", encoding="utf-8")
 
     found = discover_skills()
 
@@ -481,7 +492,7 @@ def test_discover_skips_skills_without_skill_md(_skill_roots) -> None:
     home, _ = _skill_roots
     skill_dir = home / "no-md"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "README.md").write_text("not a skill")
+    (skill_dir / "README.md").write_text("not a skill", encoding="utf-8")
 
     assert discover_user_skills() == {}
 
@@ -489,7 +500,7 @@ def test_discover_skips_skills_without_skill_md(_skill_roots) -> None:
 def test_discover_skips_non_directory_entries(_skill_roots) -> None:
     home, _ = _skill_roots
     home.mkdir()
-    (home / "stray.txt").write_text("not a dir")
+    (home / "stray.txt").write_text("not a dir", encoding="utf-8")
 
     assert discover_user_skills() == {}
 
@@ -500,7 +511,9 @@ def test_discover_uses_directory_name_when_frontmatter_lacks_name(
     home, _ = _skill_roots
     skill_dir = home / "no-name"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text("---\ndescription: only desc\n---\nbody\n")
+    (skill_dir / "SKILL.md").write_text(
+        "---\ndescription: only desc\n---\nbody\n", encoding="utf-8"
+    )
 
     out = discover_user_skills()
 
@@ -531,7 +544,8 @@ def test_discover_strips_frontmatter_whitespace_from_description_and_body(
     skill_dir = home / "trimmed"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\nname: trimmed\ndescription: padded around\n---\n\n  body\n"
+        "---\nname: trimmed\ndescription: padded around\n---\n\n  body\n",
+        encoding="utf-8",
     )
 
     out = discover_user_skills()
@@ -550,7 +564,8 @@ def _write_flat(
     root = skill_mod.BUILTIN_SKILLS_DIR
     root.mkdir(parents=True, exist_ok=True)
     (root / f"{name}.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n"
+        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n",
+        encoding="utf-8",
     )
 
 
@@ -573,7 +588,7 @@ def test_load_reference_rejects_flat_skill() -> None:
 
 def test_discover_flat_uses_filename_stem_when_name_missing() -> None:
     (skill_mod.BUILTIN_SKILLS_DIR / "open-app.md").write_text(
-        "---\ndescription: launch apps\n---\nbody\n"
+        "---\ndescription: launch apps\n---\nbody\n", encoding="utf-8"
     )
 
     assert "open-app" in discover_builtin_skills()
@@ -581,7 +596,7 @@ def test_discover_flat_uses_filename_stem_when_name_missing() -> None:
 
 def test_discover_flat_skips_underscore_prefixed_files() -> None:
     (skill_mod.BUILTIN_SKILLS_DIR / "_draft.md").write_text(
-        "---\nname: _draft\ndescription: wip\n---\nbody\n"
+        "---\nname: _draft\ndescription: wip\n---\nbody\n", encoding="utf-8"
     )
 
     assert discover_builtin_skills() == {}
@@ -816,7 +831,7 @@ def test_load_reference_raises_on_path_traversal(_skill_roots, tmp_path: Path) -
     home, _ = _skill_roots
     _write_skill(home, "foo")
     # Place an "escape" file outside the references dir.
-    (home / "secret.md").write_text("don't read me")
+    (home / "secret.md").write_text("don't read me", encoding="utf-8")
     skills = discover_user_skills()
 
     with pytest.raises(

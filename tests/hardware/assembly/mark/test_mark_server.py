@@ -169,7 +169,9 @@ def test_save_failure_keeps_response_and_traceback_in_run_log(
     with buildlog.session(tmp_path) as log:
         handler.do_POST()
     assert b" 500 " in handler.wfile.getvalue().splitlines()[0]
-    events = [json.loads(line) for line in log.path.read_text().splitlines()]
+    events = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
     error = next(event for event in events if event["event"] == "http_error")
     assert error["status_code"] == 500
     assert "Cannot write annotation patch" in error["message"]

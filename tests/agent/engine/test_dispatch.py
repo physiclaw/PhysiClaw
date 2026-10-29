@@ -1154,14 +1154,14 @@ async def test_a_frame_is_filed_at_dispatch_and_the_wire_reuses_it(
     assert filed.endswith("_t7.jpg")  # the capture turn, not the request's
     (event,) = [
         json.loads(line)
-        for line in (d / "events.jsonl").read_text().splitlines()
+        for line in (d / "events.jsonl").read_text(encoding="utf-8").splitlines()
         if '"tool_result"' in line
     ]
     assert event["images"] == [f"images/{filed}"]
     assert event["text"].startswith("Tapped | screen: changed")
     (req,) = [
         json.loads(line)
-        for line in (d / "model.jsonl").read_text().splitlines()
+        for line in (d / "model.jsonl").read_text(encoding="utf-8").splitlines()
         if '"request"' in line
     ]
     assert req["messages"][0]["content"][0]["image_url"]["url"] == f"images/{filed}"

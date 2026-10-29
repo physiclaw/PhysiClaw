@@ -20,7 +20,7 @@ def request_fixture():
     return {
         "model": "test-model",
         "messages": [
-            {"role": "system", "content": "Exact system"},
+            {"role": "system", "content": "Exact system — 中文 🦀"},
             {"role": "user", "content": "Exact plan, history and memory"},
         ],
         "tools": [
@@ -45,7 +45,7 @@ def write_case(tmp_path, before, after):
     case = {"provider": "deepseek", "session": str(tmp_path), "turn": 1}
     for variant, payload in [("before", before), ("after", after)]:
         path = tmp_path / f"{variant}.json"
-        path.write_text(json.dumps(payload))
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         case[variant] = str(path)
     return case
 
@@ -91,8 +91,9 @@ async def test_evaluate_sends_explicit_payloads_without_prompt_rewrites(
     after["messages"][0]["content"] = "Revised system"
     case = write_case(tmp_path, before, after)
     case["actions"] = [{"tool": "peek"}]
+    case["name"] = "现场回放 — 🦀"
     cases = tmp_path / "cases.json"
-    cases.write_text(json.dumps([case]))
+    cases.write_text(json.dumps([case], ensure_ascii=False), encoding="utf-8")
     route = respx_mock.post("https://api.deepseek.com/v1/chat/completions").respond(
         200,
         json={
@@ -123,6 +124,9 @@ async def test_evaluate_sends_explicit_payloads_without_prompt_rewrites(
     )
     assert await replay.evaluate(args) == 0
     assert [json.loads(call.request.content) for call in route.calls] == [before, after]
+    report = json.loads(args.output.read_bytes().decode("utf-8"))
+    assert len(report["results"]) == 2
+    assert all(row["case"] == case["name"] for row in report["results"])
 
 
 def test_restore_keeps_image_bytes_exact_and_confines_reads(tmp_path):

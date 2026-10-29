@@ -357,8 +357,8 @@ def test_fresh_hook_loader_discovers_public_modules_once(
     fresh_runtime_module, tmp_path, mocker
 ):
     state = fresh_runtime_module(hook, "load_hooks")
-    (tmp_path / "_hidden.py").write_text("")
-    (tmp_path / "visible.py").write_text("")
+    (tmp_path / "_hidden.py").write_text("", encoding="utf-8")
+    (tmp_path / "visible.py").write_text("", encoding="utf-8")
     imported = mocker.patch.object(
         hook.importlib,
         "import_module",

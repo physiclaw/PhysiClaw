@@ -125,7 +125,8 @@ def session_dir(tmp_path: Path) -> Path:
                 "turn": 2,
                 "message_count": 2,
             },
-        )
+        ),
+        encoding="utf-8",
     )
     (d / "model.jsonl").write_text(
         _lines(
@@ -182,12 +183,14 @@ def session_dir(tmp_path: Path) -> Path:
                 "messages": rewritten,
             },
         )
-        + "not json\n"
+        + "not json\n",
+        encoding="utf-8",
     )
     (d / "runtime.log").write_text(
-        "10:00 [runtime] turn plugins: none\n10:00 [runtime] turn 0: 2 messages\n10:00 [runtime] turn 1: 4 messages\n"
+        "10:00 [runtime] turn plugins: none\n10:00 [runtime] turn 0: 2 messages\n10:00 [runtime] turn 1: 4 messages\n",
+        encoding="utf-8",
     )
-    (d / "notes.md").write_text("# notes\n")
+    (d / "notes.md").write_text("# notes\n", encoding="utf-8")
     (d / "summary.json").write_text(
         json.dumps(
             {
@@ -195,7 +198,8 @@ def session_dir(tmp_path: Path) -> Path:
                 "outcome": {"sentinel": "DONE", "recap": "fine"},
                 "model_ref": "p/m",
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return d
 
@@ -348,9 +352,10 @@ def test_recent_lists_the_newest_first_with_what_the_summary_says(
     (newer / "summary.json").write_text(
         json.dumps(
             {"outcome": {"sentinel": "WAIT", "recap": "asked"}, "model_ref": "p/m"}
-        )
+        ),
+        encoding="utf-8",
     )
-    (root / "stray.txt").write_text("")
+    (root / "stray.txt").write_text("", encoding="utf-8")
     # The order is by mtime, so say which is newer instead of trusting
     # two mkdirs to land in different ticks of the filesystem clock.
     os.utime(older, (1_000_000, 1_000_000))
@@ -515,7 +520,9 @@ def test_regression_viewer_does_not_read_artifact_links_outside_session(
     session = tmp_path / "recording"
     session.mkdir()
     outside = tmp_path / "private.txt"
-    outside.write_text('{"event":"other","secret":"PRIVATE_MARKER"}\n')
+    outside.write_text(
+        '{"event":"other","secret":"PRIVATE_MARKER"}\n', encoding="utf-8"
+    )
     symlink_to(session / filename, outside)
 
     model = viewer.load(session)
@@ -525,7 +532,7 @@ def test_regression_viewer_does_not_read_artifact_links_outside_session(
 
 
 def test_viewer_keeps_artifact_links_within_the_selected_session(tmp_path):
-    (tmp_path / "actual.txt").write_text("retained narrative")
+    (tmp_path / "actual.txt").write_text("retained narrative", encoding="utf-8")
     symlink_to(tmp_path / "notes.md", "actual.txt")
 
     model = viewer.load(tmp_path)
@@ -546,9 +553,9 @@ def test_viewer_skips_files_when_their_location_cannot_be_verified(
     tmp_path, mocker, error
 ):
     (tmp_path / "events.jsonl").write_text(
-        '{"event":"other","secret":"PRIVATE_MARKER"}\n'
+        '{"event":"other","secret":"PRIVATE_MARKER"}\n', encoding="utf-8"
     )
-    (tmp_path / "notes.md").write_text("PRIVATE_MARKER")
+    (tmp_path / "notes.md").write_text("PRIVATE_MARKER", encoding="utf-8")
     mocker.patch.object(Path, "resolve", side_effect=error)
 
     model = viewer.load(tmp_path)
