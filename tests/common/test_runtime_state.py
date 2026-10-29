@@ -48,6 +48,13 @@ def test_write_records_started_at_close_to_current_time(physiclaw_home: Path) ->
     assert before <= state["started_at"] <= after
 
 
+def test_standalone_service_identity_is_removed_on_main_server_start():
+    runtime_state.write("127.0.0.1", 8048, no_runtime=True, service="test-assistive-touch")
+    assert runtime_state.read_live()["service"] == "test-assistive-touch"
+    runtime_state.write("127.0.0.1", 8048)
+    assert "service" not in runtime_state.read_live()
+
+
 def test_write_records_model_ref_and_source_when_supplied(
     physiclaw_home: Path,
 ) -> None:

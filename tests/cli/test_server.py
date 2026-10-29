@@ -1259,6 +1259,30 @@ def test_server_refuses_concurrent_start_before_opening_listeners(mocker, capsys
     deps["state"].write.assert_not_called()
 
 
+def test_server_stops_assistive_touch_before_acquiring_lock_and_binding(mocker):
+    from contextlib import ExitStack
+
+    from physiclaw.common import paths
+    from physiclaw.port.locks import exclusive_file_lock
+
+    deps = _patch_server_runtime_deps(mocker)
+    live = {"pid": 42, "port": 8048, "service": "test-assistive-touch"}
+    deps["state"].read_live.side_effect = [live, None]
+    # Simulate the standalone test holding the shared lock until stopped.
+    with ExitStack() as held:
+        held.enter_context(exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")))
+
+        def stop(record):
+            assert record == live
+            assert deps["listeners"] == []
+            held.close()
+
+        stopped = mocker.patch("physiclaw.cli._service_handoff.stop_service", side_effect=stop)
+        server_mod.server(**_server_kwargs())
+    stopped.assert_called_once_with(live)
+    assert len(deps["listeners"]) == 2
+
+
 def test_server_startup_failure_releases_listeners_and_lock(mocker):
     from physiclaw.common import paths
     from physiclaw.port.locks import exclusive_file_lock

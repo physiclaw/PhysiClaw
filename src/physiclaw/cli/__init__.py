@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from physiclaw import __version__ as _pkg_version
+from physiclaw.cli.assistive_touch import test_assistive_touch
 from physiclaw.cli.auto import auto
 from physiclaw.cli.clear import clear
 from physiclaw.cli.config import config_app
@@ -47,6 +48,7 @@ app.command()(studio)
 app.command()(update)
 app.command()(flash)
 app.command()(testdrive)
+app.command("test-assistive-touch")(test_assistive_touch)
 app.command()(debug)
 app.command()(logs)
 app.command()(clear)

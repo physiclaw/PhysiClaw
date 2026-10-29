@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#16151a">
+<title>PhysiClaw · Test AssistiveTouch</title>
+<style>
+:root{
+  --bg:#16151a;--bg2:#1c1b21;--card:#212026;--card2:#292831;
+  --line:#33323b;--line2:#413f4a;--txt:#efece7;--muted:#a6a199;--strong:#fff;
+  --accent-lt:#e8804f;--red:#e0685f;--copy-icon:#a5a2ab;
+  --shadow:0 4px 18px rgba(7,5,3,.12);--glow:#2c1d14;
+}
+body.theme-light{
+  --bg:#f7f3ee;--bg2:#efe9e1;--card:#fff;--card2:#f3eee7;
+  --line:#e6e0d6;--line2:#d8d1c5;--txt:#221f1b;--muted:#6b655c;--strong:#1a1714;
+  --red:#9c332b;--accent-lt:#b8440f;--copy-icon:#b8b5b0;
+  --shadow:0 3px 14px rgba(60,45,30,.035);--glow:#f3e7dc;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  color:var(--txt);background:radial-gradient(1000px 650px at 85% -10%,var(--glow),var(--bg) 65%);
+  min-height:100vh;line-height:1.6;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;color:var(--txt);border:1px solid var(--line2);background:var(--card2);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible{outline:2px solid var(--accent-lt);outline-offset:4px}
+button:hover:not(:disabled){border-color:var(--accent-lt)}
+.wrap{max-width:1200px;margin:auto;padding:16px 32px}
+header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:16px;margin-bottom:40px;border-bottom:1px solid var(--line)}
+.brand{font-size:17px;font-weight:700;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
+.brand svg{width:46px;height:auto;display:block;flex:none;filter:drop-shadow(0 3px 9px rgba(212,81,26,.38))}
+.theme{width:34px;height:34px;padding:0;font-size:17px;background:none;border-color:var(--line)}
+.header-tools{display:flex;align-items:center;gap:16px;flex:none}
+.intro-copy{min-width:0}
+h1{font-size:22px;line-height:1.3;font-weight:650;letter-spacing:-.6px;color:var(--strong);margin:0 0 5px}
+.intro-copy p{margin:0;color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
+.side-column{display:grid;gap:12px;min-width:0;align-content:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:18px;min-width:0}
+.card-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.card-icon{display:grid;place-items:center;width:32px;height:32px;background:var(--card2);border-radius:8px;color:var(--accent-lt);flex:none}
+.card-icon svg{width:18px;height:18px}
+.direction{color:var(--muted);font-size:12px;line-height:1.5;margin:3px 0 0}
+h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);letter-spacing:-.2px}
+.screenshot-card{display:flex;flex-direction:column;align-items:center;justify-content:center;container-type:size;min-height:0}
+.preview{position:relative;width:min(100%,calc((100cqh - 30px)/2));aspect-ratio:1/2;flex:none;border:1px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--bg2);padding:8px;overflow:hidden}
+.empty{text-align:center;color:var(--muted);max-width:260px}
+.empty svg{width:32px;height:42px;color:var(--muted);margin-bottom:12px;opacity:.55}
+.empty b{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.preview img{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);object-fit:contain;border-radius:5px;display:block}
+.meta{color:var(--muted);font-size:12px;margin:10px 0 0;min-height:20px}
+.test-code-panel{padding:16px 18px;background:var(--card2);border:1px solid var(--line);border-radius:8px}
+.test-code-panel,.screenshot-card{outline:2px solid transparent;outline-offset:2px}
+.test-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(17px,2vw,22px);letter-spacing:.02em;font-weight:600;color:var(--strong);background:none;border:0;border-radius:0;padding:0;text-align:left;max-width:100%}
+.test-code:hover:not(:disabled){color:var(--accent-lt)}
+.lan-fields{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;align-items:center;margin:0}
+.lan-fields dt{font-size:12px;font-weight:500;color:var(--muted)}
+.lan-fields dd{margin:0;text-align:right}
+.lan-address code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;user-select:all}
+.network-note{margin:0;padding:14px 18px;color:var(--muted);font-size:12px;line-height:1.6;background:var(--bg2);box-shadow:none}
+.method{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.04em;color:var(--accent-lt);padding:2px 6px;border:1px solid var(--line);border-radius:4px}
+.endpoint-address{display:flex;align-items:flex-start;gap:10px;margin:0 0 18px}
+.endpoint-address:last-child{margin-bottom:0}
+.endpoint-address code{flex:1;min-width:0;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.7;overflow-wrap:anywhere;user-select:all}
+.url-part{display:inline-block;max-width:100%;overflow-wrap:anywhere}
+.endpoint-address code[data-unavailable="true"]{color:var(--muted);font-family:inherit;user-select:auto}
+.copy-url{position:relative;flex:none;display:grid;place-items:center;width:24px;height:24px;padding:5px;border:0;border-radius:4px;color:var(--copy-icon);background:none}
+.copy-url svg{width:14px;height:14px}
+.copy-url:hover:not(:disabled),.copy-url:focus-visible,.copy-url.copied{color:var(--accent-lt)}
+.copy-url .copy-check,.copy-url.copied .copy-symbol{display:none}
+.copy-url.copied .copy-check{display:block}
+.copy-feedback{position:absolute;right:0;bottom:calc(100% + 6px);padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:var(--card);color:var(--txt);font-size:11px;white-space:nowrap;pointer-events:none}
+.copy-feedback:empty{display:none}
+.offline{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;white-space:nowrap}
+.offline:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--red)}
+@media(max-width:800px){.wrap{padding:16px}header{flex-wrap:wrap;gap:12px}.header-tools{margin-left:auto}.grid{grid-template-columns:1fr}.screenshot-card{container-type:normal}.preview{width:min(100%,280px)}}
+@media(prefers-reduced-motion:no-preference){button{transition:border-color .15s,opacity .15s}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 280" fill="none">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="48%">
+      <stop offset="0%" stop-color="#d4511a" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#d4511a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="180" cy="115" r="110" fill="url(#bg)"/>
+
+  <!-- ======= CLAWS — behind body, smooth pincers ======= -->
+
+  <!-- Left claw — below body -->
+  <g>
+    <path d="M68 182 C50 156, 26 120, 14 102 C10 96, 18 92, 26 98 C36 106, 46 128, 46 150 C46 160, 42 168, 36 172" fill="#d4511a"/>
+    <path d="M68 192 C44 198, 10 190, -2 166 C-8 152, 0 140, 14 142 C28 144, 38 156, 40 170 C42 176, 46 180, 52 182" fill="#d4511a"/>
+  </g>
+
+  <!-- Right claw — below body, mirrored -->
+  <g>
+    <path d="M292 182 C310 156, 334 120, 346 102 C350 96, 342 92, 334 98 C324 106, 314 128, 314 150 C314 160, 318 168, 324 172" fill="#d4511a"/>
+    <path d="M292 192 C316 198, 350 190, 362 166 C368 152, 360 140, 346 142 C332 144, 322 156, 320 170 C318 176, 314 180, 308 182" fill="#d4511a"/>
+  </g>
+
+  <!-- ======= BODY — wide dome, covers the claw arms ======= -->
+  <path
+    d="M180 55
+       C248 55, 300 85, 300 125
+       C300 160, 252 182, 180 182
+       C108 182, 60 160, 60 125
+       C60 85, 112 55, 180 55Z"
+    fill="#d4511a"
+  />
+
+  <!-- Shell subtle shading -->
+  <path
+    d="M180 62
+       C242 62, 290 88, 290 125
+       C290 155, 248 176, 180 176
+       C112 176, 70 155, 70 125
+       C70 88, 118 62, 180 62Z"
+    fill="none" stroke="#e07a45" stroke-width="1.5" opacity="0.2"
+  />
+  <line x1="180" y1="60" x2="180" y2="178" stroke="#b8440f" stroke-width="1" opacity="0.1"/>
+
+  <!-- ======= ROBOT EARS ======= -->
+  <rect x="128" y="24" width="12" height="34" rx="4" fill="#d4511a"/>
+  <rect x="220" y="24" width="12" height="34" rx="4" fill="#d4511a"/>
+
+  <!-- ======= EYES ======= -->
+  <circle cx="148" cy="105" r="14" fill="#1a1a1e"/>
+  <circle cx="212" cy="105" r="14" fill="#1a1a1e"/>
+  <circle cx="150" cy="103" r="5.5" fill="#34d399"/>
+  <circle cx="214" cy="103" r="5.5" fill="#34d399"/>
+  <circle cx="153" cy="100" r="2" fill="white" opacity="0.25"/>
+  <circle cx="217" cy="100" r="2" fill="white" opacity="0.25"/>
+
+
+</svg>PhysiClaw</div>
+    <div class="header-tools">
+      <span id="offline" class="offline" role="status" title="Run physiclaw test-assistive-touch to continue." aria-label="Disconnected. Run physiclaw test-assistive-touch to continue." hidden>Disconnected</span>
+      <button id="theme" class="theme" type="button" aria-label="Switch to light theme" title="Switch theme">☀</button>
+    </div>
+  </header>
+  <div class="grid">
+    <div class="side-column">
+    <div class="intro-copy"><h1>Test AssistiveTouch</h1><p>Upload screenshots and copy text using AssistiveTouch.</p></div>
+    <section class="card" aria-labelledby="upload-title">
+      <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 16V7m-3 3 3-3 3 3M10 19h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><h2 id="upload-title">Upload screenshot</h2></div>
+      <div id="upload-primary" class="endpoint-address" hidden>
+        <span class="method">POST</span><code id="upload-hostname" title="Preferred host name URL"></code>
+        <button id="upload-copy" class="copy-url" type="button" aria-label="Copy screenshot upload URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="copy-feedback" role="status"></span></button>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="clipboard-title">
+      <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="8" y="2" width="8" height="5" rx="2" stroke="currentColor" stroke-width="1.5"/></svg></span><div><h2 id="clipboard-title">Copy to clipboard</h2><p class="direction">Use the shortcut to copy this code to your iPhone’s clipboard.</p></div></div>
+      <div id="clipboard-primary" class="endpoint-address" hidden>
+        <span class="method">GET</span><code id="clipboard-hostname" title="Preferred host name URL"></code>
+        <button id="clipboard-copy" class="copy-url" type="button" aria-label="Copy clipboard shortcut URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="copy-feedback" role="status"></span></button>
+      </div>
+      <div id="code-panel" class="test-code-panel">
+        <button id="test-code" class="test-code" type="button" aria-label="Generate another test code" title="Click to generate another code" disabled>PhysiClaw-···-···</button>
+      </div>
+    </section>
+    <section id="shortcut-addresses" class="card lan-address" aria-label="Shortcut connection" hidden>
+      <dl class="lan-fields">
+        <dt>LAN IP</dt><dd><code id="lan-address"></code></dd>
+        <dt>Port</dt><dd><code id="lan-port"></code></dd>
+      </dl>
+    </section>
+    <p class="card network-note">Make sure your iPhone and computer are connected to the same Wi-Fi network.</p>
+    </div>
+    <section id="screenshot-panel" class="card screenshot-card" aria-label="Screenshot preview">
+      <div class="preview">
+        <div id="empty" class="empty"><svg viewBox="0 0 40 52" fill="none" aria-hidden="true"><rect x="6" y="2" width="28" height="48" rx="7" stroke="currentColor" stroke-width="1.5"/><path d="M16 7h8M16 44h8M20 33V19m-6 6 6-6 6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Your screenshot will appear here</b></div>
+        <img id="screenshot" alt="Latest image uploaded by your iPhone" hidden>
+      </div>
+      <p id="image-meta" class="meta" aria-live="polite" hidden></p>
+    </section>
+  </div>
+</main>
+<script>
+const API = '/api/test-assistive-touch';
+const el = id => document.getElementById(id);
+const codeButton = el('test-code');
+let instance = null, seenSequence = 0, seenClipboardReads = 0, codeRevision = -1;
+let preparing = false, connected = false, stopped = false, timer = null;
+let imageVersion = 0, syncVersion = 0;
+
+function applyTheme(light) {
+  document.body.classList.toggle('theme-light', light);
+  el('theme').textContent = light ? '☾' : '☀';
+  el('theme').setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
+}
+try { applyTheme(localStorage.getItem('physiclaw-theme') === 'light'); } catch {}
+el('theme').onclick = () => {
+  const light = !document.body.classList.contains('theme-light');
+  applyTheme(light);
+  try { localStorage.setItem('physiclaw-theme', light ? 'light' : 'dark'); } catch {}
+};
+
+async function request(path = '', body) {
+  const options = {cache: 'no-store', signal: AbortSignal.timeout(5000)};
+  if (body !== undefined) {
+    options.method = 'POST';
+    options.headers = {'Content-Type': 'application/json'};
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(API + path, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed. Try again.');
+  return data;
+}
+
+function showAddresses(connection) {
+  el('shortcut-addresses').hidden = !connection;
+  el('upload-primary').hidden = !connection;
+  el('clipboard-primary').hidden = !connection;
+  if (!connection) return;
+  el('lan-address').textContent = connection.ip || 'Unavailable';
+  el('lan-port').textContent = String(connection.port);
+  const host = connection.hostname;
+  for (const [kind, endpoint] of [['upload', 'screenshot'], ['clipboard', 'clipboard']]) {
+    const output = el(kind + '-hostname');
+    output.dataset.unavailable = String(!host);
+    el(kind + '-copy').disabled = !host;
+    if (!host) {
+      output.textContent = 'Unavailable';
+      continue;
+    }
+    const base = document.createElement('span'), path = document.createElement('span');
+    base.className = path.className = 'url-part';
+    base.textContent = `http://${host}:${connection.port}`;
+    path.textContent = `/api/bridge/${endpoint}`;
+    output.replaceChildren(base, document.createElement('wbr'), path);
+  }
+}
+
+for (const kind of ['upload', 'clipboard']) {
+  const button = el(kind + '-copy'), feedback = button.querySelector('.copy-feedback');
+  let reset;
+  button.onclick = async () => {
+    if (button.disabled) return;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(el(kind + '-hostname').textContent);
+      copied = true;
+    } catch {}
+    clearTimeout(reset);
+    button.classList.toggle('copied', copied);
+    feedback.textContent = copied ? 'Copied' : 'Copy failed';
+    button.title = copied ? 'Copied' : 'Select the URL and copy it manually.';
+    reset = setTimeout(() => {
+      button.classList.remove('copied');
+      feedback.textContent = '';
+      button.title = 'Copy URL';
+    }, 1800);
+  };
+}
+
+function highlight(id) {
+  const panel = el(id);
+  for (const animation of panel.getAnimations()) animation.cancel();
+  const accent = {outlineColor: 'color-mix(in srgb, var(--accent-lt) 55%, transparent)'};
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  panel.animate(reduced ? [accent, accent] : [
+    {outlineColor: 'transparent'}, {...accent, offset: 0.15}, {outlineColor: 'transparent'},
+  ], {duration: reduced ? 700 : 1400, easing: 'ease-out'});
+}
+
+function resetPreview() {
+  imageVersion++;
+  const img = el('screenshot');
+  img.onload = null;
+  img.onerror = null;
+  img.removeAttribute('src');
+  img.hidden = true;
+  el('empty').hidden = false;
+  el('image-meta').hidden = true;
+}
+
+function showScreenshot(shot) {
+  seenSequence = shot.sequence;
+  const version = ++imageVersion, img = el('screenshot'), meta = el('image-meta');
+  img.onload = () => {
+    if (version !== imageVersion) return;
+    img.hidden = false;
+    el('empty').hidden = true;
+    meta.hidden = true;
+    highlight('screenshot-panel');
+  };
+  img.onerror = () => {
+    if (version !== imageVersion) return;
+    img.hidden = true;
+    el('empty').hidden = false;
+    meta.textContent = 'Unable to display this image. Upload another PNG or JPEG.';
+    meta.hidden = false;
+  };
+  img.src = API + '/screenshot/' + shot.sequence + '?instance=' + encodeURIComponent(instance);
+}
+
+function clearCode() {
+  codeButton.textContent = 'PhysiClaw-···-···';
+  codeButton.setAttribute('aria-label', 'Waiting for server');
+  codeButton.disabled = true;
+}
+
+function disconnect() {
+  connected = false;
+  el('offline').hidden = false;
+  clearCode();
+}
+
+function showState(data) {
+  const {screenshot, clipboard} = data;
+  if (data.instance_id !== instance) {
+    instance = data.instance_id;
+    seenSequence = screenshot.sequence;
+    seenClipboardReads = clipboard.read_sequence;
+    codeRevision = -1;
+    resetPreview();
+    showAddresses(data.connection);
+  } else if (screenshot.sequence > seenSequence) {
+    showScreenshot(screenshot);
+  }
+  if (clipboard.read_sequence > seenClipboardReads) {
+    seenClipboardReads = clipboard.read_sequence;
+    highlight('code-panel');
+  }
+  if (clipboard.text_id >= codeRevision) {
+    codeRevision = clipboard.text_id;
+    const text = clipboard.text;
+    if (codeButton.textContent !== text) {
+      codeButton.textContent = text;
+      codeButton.setAttribute('aria-label', `Test code ${text}. Generate another test code`);
+    }
+  }
+  connected = true;
+  el('offline').hidden = true;
+}
+
+async function syncState(generateCode = false) {
+  if (stopped || preparing || (generateCode && !connected)) return;
+  if (generateCode) {
+    preparing = true;
+    syncVersion++;
+    clearTimeout(timer);
+    clearCode();
+  }
+  const version = syncVersion;
+  try {
+    const data = await (generateCode ? request('/clipboard', {}) : request());
+    if (!stopped && version === syncVersion) showState(data);
+  } catch {
+    if (!stopped && version === syncVersion) disconnect();
+  } finally {
+    if (version === syncVersion) {
+      if (generateCode) preparing = false;
+      codeButton.disabled = !connected || preparing;
+      if (!stopped) timer = setTimeout(syncState, connected ? 750 : 2000);
+    }
+  }
+}
+codeButton.onclick = () => syncState(true);
+window.addEventListener('pagehide', () => {
+  stopped = true;
+  syncVersion++;
+  preparing = false;
+  clearTimeout(timer);
+  disconnect();
+});
+window.addEventListener('pageshow', event => { if (event.persisted) { stopped = false; syncState(); } });
+syncState();
+</script>
+</body>
+</html>

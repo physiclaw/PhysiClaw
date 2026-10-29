@@ -23,6 +23,7 @@ runner = CliRunner()
         "auto",
         "mcp",
         "testdrive",
+        "test-assistive-touch",
         "status",
         "setup",
         "config",

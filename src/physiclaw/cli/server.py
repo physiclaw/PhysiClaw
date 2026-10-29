@@ -144,6 +144,7 @@ def server(
     """
     from physiclaw import __version__
     from physiclaw.cli._format import exit_error
+    from physiclaw.cli._service_handoff import ASSISTIVE_TOUCH_SERVICE, stop_service
     from physiclaw.common import paths, runtime_state
     from physiclaw.common.logger import (
         SERVER_LOG_TAG,
@@ -193,6 +194,9 @@ def server(
         },
     )
     _require_vision_model()
+    live = runtime_state.read_live()
+    if live and live.get("service") == ASSISTIVE_TOUCH_SERVICE:
+        stop_service(live)
     with ExitStack() as resources:
         # Uvicorn replays SIGTERM after graceful shutdown. Translate that replay
         # into KeyboardInterrupt so Python cleanup runs before restoring it.

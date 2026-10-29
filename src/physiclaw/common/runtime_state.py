@@ -29,6 +29,7 @@ def write(
     model_source: str | None = None,
     model_error: str | None = None,
     no_runtime: bool = False,
+    service: str | None = None,
 ) -> None:
     """Record this process as the running server. Overwrites any prior file.
 
@@ -38,6 +39,7 @@ def write(
     against a shell that doesn't have the env var set. ``model_error``
     preserves a failed startup selection for the same reason. ``no_runtime``
     identifies an external MCP session, which needs no provider credentials.
+    ``service`` identifies a standalone CLI listener for graceful handoff.
     """
     p = paths.runtime_state_file()
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -53,6 +55,7 @@ def write(
                 "model_error": model_error,
                 "no_runtime": no_runtime,
                 "started_at": time.time(),
+                **({"service": service} if service else {}),
             }
         ),
     )
