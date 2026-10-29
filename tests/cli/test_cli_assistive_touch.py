@@ -213,7 +213,7 @@ def test_real_command_serves_both_ports_and_releases_them_on_interrupt(mocker):
 
     def ready(url, connection, open_browser):
         assert command.runtime_state.read_live()["service"] == "test-assistive-touch"
-        assert b"Test AssistiveTouch" in request(port, "GET", http.PAGE_PATH)
+        assert b"AssistiveTouch Test" in request(port, "GET", http.PAGE_PATH)
         code = request(port + 1, "GET", "/api/bridge/clipboard")
         image = b"\x89PNG\r\n\x1a\ncurrent screenshot"
         reply = request(port + 1, "POST", "/api/bridge/screenshot", image)

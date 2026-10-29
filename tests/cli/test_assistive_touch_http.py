@@ -286,7 +286,7 @@ def test_local_page_controls_and_phone_routes_are_separate(clients):
     page = desktop("GET", service.PAGE_PATH)
     assert page.status == 200
     assert page.headers["Cache-Control"] == "no-store"
-    assert "Test AssistiveTouch" in page.text
+    assert "AssistiveTouch Test" in page.text
 
 
 def test_graceful_interrupt_closes_both_loops():

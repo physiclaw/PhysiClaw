@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#16151a">
-<title>PhysiClaw · Test AssistiveTouch</title>
+<title>PhysiClaw · AssistiveTouch Test</title>
 <style>
 :root{
   --bg:#16151a;--bg2:#1c1b21;--card:#212026;--card2:#292831;
@@ -53,17 +53,18 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
 .meta{color:var(--muted);font-size:12px;margin:10px 0 0;min-height:20px}
 .test-code-panel{padding:16px 18px;background:var(--card2);border:1px solid var(--line);border-radius:8px}
 .test-code-panel,.screenshot-card{outline:2px solid transparent;outline-offset:2px}
-.test-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(17px,2vw,22px);letter-spacing:.02em;font-weight:600;color:var(--strong);background:none;border:0;border-radius:0;padding:0;text-align:left;max-width:100%}
+.test-code,.lan-address code,.method,.endpoint-address code{font-family:SFMono-Regular,Menlo,Consolas,"Liberation Mono",ui-monospace,monospace}
+.test-code{font-size:clamp(17px,2vw,22px);letter-spacing:.02em;font-weight:600;color:var(--strong);background:none;border:0;border-radius:0;padding:0;text-align:left;max-width:100%}
 .test-code:hover:not(:disabled){color:var(--accent-lt)}
 .lan-fields{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;align-items:center;margin:0}
 .lan-fields dt{font-size:12px;font-weight:500;color:var(--muted)}
 .lan-fields dd{margin:0;text-align:right}
-.lan-address code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;user-select:all}
+.lan-address code{font-size:13px;user-select:all}
 .network-note{margin:0;padding:14px 18px;color:var(--muted);font-size:12px;line-height:1.6;background:var(--bg2);box-shadow:none}
-.method{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.04em;color:var(--accent-lt);padding:2px 6px;border:1px solid var(--line);border-radius:4px}
+.method{font-size:10px;letter-spacing:.04em;color:var(--accent-lt);padding:2px 6px;border:1px solid var(--line);border-radius:4px}
 .endpoint-address{display:flex;align-items:flex-start;gap:10px;margin:0 0 18px}
 .endpoint-address:last-child{margin-bottom:0}
-.endpoint-address code{flex:1;min-width:0;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.7;overflow-wrap:anywhere;user-select:all}
+.endpoint-address code{flex:1;min-width:0;display:block;font-size:12px;line-height:1.7;overflow-wrap:anywhere;user-select:all}
 .url-part{display:inline-block;max-width:100%;overflow-wrap:anywhere}
 .endpoint-address code[data-unavailable="true"]{color:var(--muted);font-family:inherit;user-select:auto}
 .copy-url{position:relative;flex:none;display:grid;place-items:center;width:24px;height:24px;padding:5px;border:0;border-radius:4px;color:var(--copy-icon);background:none}
@@ -148,7 +149,7 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
   </header>
   <div class="grid">
     <div class="side-column">
-    <div class="intro-copy"><h1>Test AssistiveTouch</h1><p>Upload screenshots and copy text using AssistiveTouch.</p></div>
+    <div class="intro-copy"><h1>AssistiveTouch Test</h1><p>Upload screenshots and copy text using AssistiveTouch.</p></div>
     <section class="card" aria-labelledby="upload-title">
       <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 16V7m-3 3 3-3 3 3M10 19h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><h2 id="upload-title">Upload screenshot</h2></div>
       <div id="upload-primary" class="endpoint-address" hidden>
@@ -168,6 +169,7 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
     </section>
     <section id="shortcut-addresses" class="card lan-address" aria-label="Shortcut connection" hidden>
       <dl class="lan-fields">
+        <dt>Host name</dt><dd><code id="lan-hostname"></code></dd>
         <dt>LAN IP</dt><dd><code id="lan-address"></code></dd>
         <dt>Port</dt><dd><code id="lan-port"></code></dd>
       </dl>
@@ -221,6 +223,7 @@ function showAddresses(connection) {
   el('upload-primary').hidden = !connection;
   el('clipboard-primary').hidden = !connection;
   if (!connection) return;
+  el('lan-hostname').textContent = (connection.hostname || '').replace(/\.local$/, '') || 'Unavailable';
   el('lan-address').textContent = connection.ip || 'Unavailable';
   el('lan-port').textContent = String(connection.port);
   const host = connection.hostname || connection.ip;
