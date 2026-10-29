@@ -9,6 +9,7 @@ import math
 import os
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import BinaryIO, TextIO
@@ -142,6 +143,16 @@ def camera_reset_controls() -> None:
     """
 
 
+def camera_capture_lock(*, timeout_error=TimeoutError):
+    """Retain the existing DirectShow capture mutex."""
+    return threading.Lock()
+
+
+def camera_focus_search_range(index: int) -> tuple[int, int, int] | None:
+    """Retain the existing DirectShow freeze/read/reapply calibration."""
+    return None
+
+
 def camera_set_auto_exposure(cap) -> None:
     """Ask the driver for firmware auto-exposure.
 
@@ -189,7 +200,7 @@ def camera_lock_focus(cap) -> bool:
     return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
 
 
-def camera_unlock_focus(cap) -> None:
+def camera_unlock_focus(cap) -> bool | None:
     """Request continuous autofocus; restoration is best-effort."""
     import cv2
 
@@ -200,6 +211,7 @@ def camera_unlock_focus(cap) -> None:
                 "console_message": "Camera could not re-enable autofocus — lens state is unknown"
             },
         )
+    return None
 
 
 def camera_read_focus(cap) -> float | None:

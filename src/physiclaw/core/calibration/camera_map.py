@@ -97,10 +97,10 @@ def _focus_region(frame: np.ndarray, poly: np.ndarray | None) -> np.ndarray:
 def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | None:
     """Calibrate a replayable focus position before measuring the dot grid.
 
-    On the caller's checkerboard page, settle AF, freeze, then read/reapply
-    the position. Verify screen-crop sharpness after both writes before
-    returning a value for the bundle. Unsupported controls, rejected writes,
-    or failed verification return None and request AF (best-effort).
+    On the caller's checkerboard page, either search a backend-advertised MF
+    range or settle AF, freeze, and read/reapply its position. Verify the
+    screen-crop sharpness before returning a value for the bundle. Unsupported
+    controls, rejected writes, or failed verification request AF (best-effort).
     """
     # Release any previous pin so AF can converge again. Clearing its
     # remembered value also prevents reconnect from replaying it mid-step.
@@ -123,7 +123,7 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             return None
         gray = grayscale(region)
         score = laplacian_variance(gray)
-        # The gate itself is voiced by focus.lock's verdict, not here.
+        # The caller reports the focus verdict after metering.
         # Guarded: the full-res median costs more than the (downscaled)
         # sharpness measurement it decorates.
         if log.isEnabledFor(logging.DEBUG):
@@ -133,6 +133,23 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
                 float(np.median(gray)),
             )
         return score
+
+    bounds = cam.focus_search_range
+    if bounds is not None:
+        # Some backends report a cached MF register during AF. An explicit,
+        # optically verified calibration search establishes a replayable value.
+        value = focus.search(bounds, meter, cam.apply_focus, cam.unlock_focus)
+        if value is None or not cam.focus_pinned:
+            cam.unlock_focus()
+            log.warning(
+                "  Focus search did not verify a position — autofocus requested",
+                extra={
+                    "console_message": "Camera focus could not be pinned — autofocus requested"
+                },
+            )
+            return None
+        log.info("  ✓ Focus position verified @ %g", value)
+        return value
 
     result = focus.lock(meter, cam.lock_focus, cam.unlock_focus)
     if not result.locked:

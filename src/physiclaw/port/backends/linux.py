@@ -12,6 +12,7 @@ hardware`` flow and degrade gracefully when no desktop app is available.
 
 import glob
 import importlib
+import logging
 import math
 import os
 import shutil
@@ -20,6 +21,8 @@ import subprocess
 import time
 from types import ModuleType
 from typing import TextIO
+
+log = logging.getLogger(__name__)
 
 # Keep pure backend helpers importable by cross-platform unit tests.
 grp: ModuleType | None
@@ -140,6 +143,20 @@ def camera_reset_controls() -> None:
     """No separately cached control channel to clear."""
 
 
+def camera_capture_lock(*, timeout_error=TimeoutError):
+    """Keep V4L2's continuous reader from starving queued device controls."""
+    from physiclaw.port.backends.v4l2 import CaptureLock
+
+    return CaptureLock(timeout_error=timeout_error)
+
+
+def camera_focus_search_range(index: int) -> tuple[int, int, int] | None:
+    """V4L2 may report a cached MF register during AF; calibrate by pixels."""
+    from physiclaw.port.backends.v4l2 import focus_range
+
+    return focus_range(index)
+
+
 def camera_set_auto_exposure(cap) -> None:
     """Ask the driver for auto-exposure.
 
@@ -181,36 +198,45 @@ def camera_focus_lockable() -> bool:
 
 
 def camera_lock_focus(cap) -> bool:
-    """Freeze autofocus at its current position: read the converged
-    position, then re-pin it through `camera_apply_focus` — the AF-off
-    ordering rule lives there. No readable position (see
-    `camera_read_focus`) → AF off alone, rather than risk racking an
-    unsupported lens to its stop; disabling AF holds the lens on most
-    cameras, and the caller's measured-sharpness verify covers the
-    rest."""
+    """Disable AF without moving the lens to a stale manual-focus register.
+
+    UGREEN reports the last MF write even when AF has moved the physical lens.
+    Reapplying that register destroys focus. Calibration verifies the frozen
+    pixels separately and searches MF positions when a replayable pin is needed.
+    """
     import cv2
 
-    cur = camera_read_focus(cap)
-    if cur is None:
-        return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
-    return camera_apply_focus(cap, cur)
+    return bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 0))
 
 
-def camera_unlock_focus(cap) -> None:
-    """Hand the lens back to continuous autofocus."""
+def camera_unlock_focus(cap) -> bool | None:
+    """Request continuous AF and report whether the driver confirms it."""
     import cv2
 
-    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+    restored = (
+        bool(cap.set(cv2.CAP_PROP_AUTOFOCUS, 1))
+        and cap.get(cv2.CAP_PROP_AUTOFOCUS) == 1
+    )
+    if not restored:
+        log.warning(
+            "V4L2: could not re-enable autofocus; lens state is unknown",
+            extra={
+                "console_message": "Camera could not re-enable autofocus — lens state is unknown"
+            },
+        )
+    return restored
 
 
 def camera_read_focus(cap) -> float | None:
-    """Current absolute focus position, or None when the driver reports
-    none. get() returns 0.0 when unsupported and 0 is also a legal
-    focus value — <= 0 reads as "no usable position"."""
+    """Manual-focus register, including zero; not the lens position during AF.
+
+    OpenCV's V4L2 backend returns -1 for a failed/unsupported control read
+    (cap_v4l.cpp, getProperty), unlike VideoCapture's generic zero fallback.
+    """
     import cv2
 
     cur = cap.get(cv2.CAP_PROP_FOCUS)
-    return cur if math.isfinite(cur) and cur > 0 else None
+    return cur if math.isfinite(cur) and cur >= 0 else None
 
 
 def camera_apply_focus(cap, value: float) -> bool:
@@ -219,11 +245,15 @@ def camera_apply_focus(cap, value: float) -> bool:
     undefined/ignored while FOCUS_AUTO is on."""
     import cv2
 
-    if not math.isfinite(value) or value < 0:
+    if not math.isfinite(value) or not 0 <= value <= 2**31 - 1 or int(value) != value:
         return False
-    if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 0):
+    if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 0) or cap.get(cv2.CAP_PROP_AUTOFOCUS) != 0:
         return False
-    return bool(cap.set(cv2.CAP_PROP_FOCUS, value))
+    if not cap.set(cv2.CAP_PROP_FOCUS, value):
+        return False
+    # V4L2 can accept S_CTRL while clamping/rounding it. Never remember a
+    # requested position different from the accepted register or a live AF mode.
+    return camera_read_focus(cap) == value and cap.get(cv2.CAP_PROP_AUTOFOCUS) == 0
 
 
 # ─── doctor diagnostics ─────────────────────────────────────

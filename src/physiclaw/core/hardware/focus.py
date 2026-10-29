@@ -1,7 +1,8 @@
 """Calibrate a fixed focus position for the fixed-distance camera/phone rig.
 
-`camera_map._pin_focus` runs this lock on a checkerboard, then reads,
-re-applies, and verifies the position before saving it. The checkerboard
+`camera_map._pin_focus` uses a bounded MF search on backends whose AF
+readback can be stale; other backends freeze, read, reapply, and verify.
+Both paths use the checkerboard before saving a position. The checkerboard
 provides enough texture for the sharpness gate; flatter calibration pages
 can score below it even in focus (the corners page measured 14–34 against
 the default gate of 80).
@@ -12,13 +13,14 @@ blur calls for checking the rig and recalibrating; there is no runtime
 focus search.
 
 Driver acceptance and sharp pixels are both required, but cannot prove
-that firmware honored AF-off. Unreadable or soft frames fail the lock;
-after any freeze attempt, failure requests AF again. Injected meter,
+that firmware honored AF-off. Unreadable or soft frames fail calibration;
+a failed freeze or manual search requests AF again. Injected meter, apply,
 freeze, and unfreeze callables keep this logic testable without hardware.
 """
 
 import logging
 import math
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -42,6 +44,83 @@ SETTLE_FRAMES = 5
 # wide margin on a focused phone-screen crop (300+ vs the 80 floor),
 # so two agreeing reads reduce the risk of freezing during a hunt.
 CONFIRM_METERS = 4
+
+# Only calibration invokes this search, and only when the platform advertises
+# a manual range. There is no runtime focus hunt on Windows, macOS, or Linux.
+# Leave headroom for page changes and grid detection in the setup request.
+SEARCH_SECONDS = 20.0
+SEARCH_SAMPLES = 64
+
+
+def search(
+    bounds: tuple[int, int, int],
+    meter: Callable[[], float | None],
+    apply: Callable[[float], bool],
+    unfreeze: Callable[[], None],
+) -> float | None:
+    """Find and verify a replayable MF position without trusting AF readback.
+
+    Sample at most 17 coarse positions, then refine the best neighborhood in
+    control-step units. All writes and meters must succeed. Two fresh readings
+    of the final re-applied position must clear the gate and retain at least
+    80% of the measured peak. Refusal, timeout, missing frames, cancellation,
+    or a moving/unstable scene restores AF and never saves a candidate.
+    """
+    low, high, step = bounds
+    if low < 0 or high < low or step <= 0:
+        return None  # caller has already selected AF
+    last = (high - low) // step
+    deadline = time.monotonic() + SEARCH_SECONDS
+    scores: dict[int, float] = {}
+    verified = False
+    try:
+        best = 0
+        left, right = 0, last
+        stride = max(1, math.ceil(last / 16))
+        while True:
+            points = sorted({*range(left, right + 1, stride), right})
+            for point in points:
+                if point in scores:
+                    continue
+                if len(scores) >= SEARCH_SAMPLES or time.monotonic() >= deadline:
+                    return None
+                if not apply(float(low + point * step)):
+                    return None
+                if time.monotonic() >= deadline:
+                    return None
+                score = meter()
+                if score is None or not math.isfinite(score):
+                    return None
+                scores[point] = score
+            best = max(scores, key=lambda point: scores[point])
+            if stride == 1:
+                break
+            left, right = max(0, best - stride), min(last, best + stride)
+            stride = max(1, stride // 4)
+        if scores[best] < BLUR_THRESHOLD or time.monotonic() >= deadline:
+            return None
+        value = float(low + best * step)
+        if not apply(value):
+            return None
+        for _ in range(2):
+            if time.monotonic() >= deadline:
+                return None
+            score = meter()
+            if score is None or not math.isfinite(score):
+                return None
+            if score < max(BLUR_THRESHOLD, scores[best] * 0.8):
+                return None
+        if time.monotonic() >= deadline:
+            return None
+        verified = True
+        log.info("Manual focus calibrated @ %g (sharpness %.0f)", value, score)
+        return value
+    finally:
+        if not verified:
+            try:
+                unfreeze()
+            except Exception:
+                log.warning("focus search rollback to autofocus failed", exc_info=True)
 
 
 @dataclass(frozen=True)

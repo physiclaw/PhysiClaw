@@ -14,7 +14,6 @@ import logging
 import os
 import threading
 import time
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import cv2
@@ -614,6 +613,109 @@ def test_focus_controls_roundtrip_capture_properties(mocker, capture_controls):
 
     assert applied is True
     assert position == 137.0
+
+
+def test_capture_timeout_does_not_kill_reconnect_or_release_busy_handle(mocker):
+    from physiclaw.port.backends.v4l2 import CaptureLock
+
+    cam, cap = _ready_camera(mocker)
+    # This tests lock recovery; AVFoundation without a UVC channel legitimately
+    # cannot apply focus, so don't depend on the host's focus capability.
+    mocker.patch.object(camera_mod.platform, "camera_apply_focus", return_value=True)
+    cam._cap_lock = CaptureLock(timeout_error=camera_mod.DeviceTimeout, timeout=0)
+    cam._cap_lock.acquire()
+    try:
+        cam._reopen()
+        assert not cap.released
+        with pytest.raises(camera_mod.DeviceTimeout):
+            cam.apply_focus(500)
+        assert not cam.focus_pinned
+    finally:
+        cam._cap_lock.release()
+    assert cam.apply_focus(500)
+    cam.close()
+
+
+@pytest.mark.parametrize("capture_controls", ["linux"], indirect=True)
+def test_linux_clamped_position_is_not_remembered(mocker, capture_controls):
+    cam, cap = _ready_camera(mocker)
+    original = cap.set
+
+    def clamp(prop, value):
+        return original(prop, min(value, 1023) if prop == cv2.CAP_PROP_FOCUS else value)
+
+    cap.set = clamp
+    assert cam.apply_focus(0)
+    assert cam.read_focus() == 0
+    assert not cam.apply_focus(1024)
+    assert cam._focus_value is None and not cam.focus_pinned
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == 1
+    cam.close()
+
+
+@pytest.mark.parametrize("refused", [False, True], ids=["ignored", "refused"])
+@pytest.mark.parametrize("capture_controls", ["linux"], indirect=True)
+def test_linux_failed_af_restore_is_retried_on_close(mocker, capture_controls, refused):
+    cam, cap = _ready_camera(mocker)
+    assert cam.apply_focus(137)
+    original = cap.set
+    restores = []
+
+    def first_restore_fails(prop, value):
+        if prop == cv2.CAP_PROP_AUTOFOCUS and value == 1:
+            restores.append(value)
+            if len(restores) == 1:
+                # Report success without changing the mode, or refuse.
+                return not refused
+        return original(prop, value)
+
+    cap.set = first_restore_fails
+    try:
+        cam.unlock_focus()
+        assert not cam.focus_pinned
+        assert cam._focus_value is None
+        assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == 0
+        assert cam._focus_needs_restore
+    finally:
+        cam.close()
+    assert restores == [1, 1]
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == 1
+    assert cap.released
+
+
+@pytest.mark.parametrize(
+    "restored", [True, None], ids=["confirmed", "legacy-best-effort"]
+)
+def test_completed_af_request_does_not_add_another_restore_on_close(mocker, restored):
+    cam, cap = _ready_camera(mocker)
+    mocker.patch.object(camera_mod.platform, "camera_apply_focus", return_value=True)
+    assert cam.apply_focus(137)
+    unlock = mocker.patch.object(
+        camera_mod.platform, "camera_unlock_focus", return_value=restored
+    )
+
+    cam.unlock_focus()
+    cam.close()
+
+    assert not cam.focus_pinned
+    unlock.assert_called_once_with(cap)
+
+
+def test_focus_range_uses_port_inside_capture_lock(mocker):
+    cam, _ = _ready_camera(mocker)
+
+    def query(index):
+        assert index == cam.index
+        assert cam._cap_lock.locked()
+        return 0, 1023, 1
+
+    mocker.patch.object(
+        camera_mod.platform, "camera_focus_search_range", side_effect=query
+    )
+    assert cam.focus_search_range == (0, 1023, 1)
+    cam.close()
+    with pytest.raises(camera_mod.DeviceNotFound):
+        _ = cam.focus_search_range
 
 
 def test_close_stops_thread_and_releases(mocker) -> None:
@@ -1383,7 +1485,7 @@ def _scheduled_camera(mocker, *, focus_value=None):
         return reader
 
     gate = ScheduledLock()
-    mocker.patch.object(camera_mod, "threading", SimpleNamespace(Lock=lambda: gate))
+    mocker.patch.object(camera_mod.platform, "camera_capture_lock", lambda **kw: gate)
     mocker.patch.object(camera_mod, "FrameReader", side_effect=make_reader)
     mocker.patch.object(cv2, "VideoCapture", side_effect=captures)
     camera = Camera(index=0, focus_value=focus_value)

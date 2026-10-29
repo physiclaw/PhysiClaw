@@ -14,10 +14,14 @@ camera_exposure_tunable = _impl.camera_exposure_tunable
 camera_size_cap = _impl.camera_size_cap
 camera_backend = _impl.camera_backend
 camera_reset_controls = _impl.camera_reset_controls
+camera_capture_lock = _impl.camera_capture_lock
+camera_focus_search_range = _impl.camera_focus_search_range
 camera_set_auto_exposure = _impl.camera_set_auto_exposure
 camera_set_manual_exposure = _impl.camera_set_manual_exposure
 camera_focus_lockable = _impl.camera_focus_lockable
 camera_lock_focus = _impl.camera_lock_focus
+# AF restoration: True/False reports acceptance where verified; None is the
+# legacy best-effort request. Callers may retain cleanup on explicit refusal.
 camera_unlock_focus = _impl.camera_unlock_focus
 camera_read_focus = _impl.camera_read_focus
 camera_apply_focus = _impl.camera_apply_focus
@@ -38,6 +42,8 @@ __all__ = [
     "camera_size_cap",
     "camera_backend",
     "camera_reset_controls",
+    "camera_capture_lock",
+    "camera_focus_search_range",
     "camera_set_auto_exposure",
     "camera_set_manual_exposure",
     "camera_focus_lockable",

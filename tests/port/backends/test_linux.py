@@ -74,7 +74,7 @@ def test_regression_read_nonfinite_focus_is_unavailable(value) -> None:
     assert focus is None
 
 
-@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0, 0.5, 2**31, 1e100])
 def test_regression_apply_invalid_focus_preserves_autofocus(value) -> None:
     cap = MagicMock()
 
@@ -249,31 +249,17 @@ def test_camera_focus_lockable_on_linux() -> None:
     assert linux.camera_focus_lockable() is True
 
 
-def test_lock_focus_disables_af_before_pinning() -> None:
-    # Order is load-bearing: the kernel ignores manual focus writes
-    # while FOCUS_AUTO is on.
+@pytest.mark.parametrize("register", [42.0, -1.0], ids=["stale", "unreadable"])
+def test_lock_focus_does_not_use_the_manual_register(register) -> None:
     import cv2
 
     cap = MagicMock()
     cap.set.return_value = True
-    cap.get.return_value = 42.0
-
-    assert linux.camera_lock_focus(cap) is True
-    assert cap.set.call_args_list == [
-        call(cv2.CAP_PROP_AUTOFOCUS, 0),
-        call(cv2.CAP_PROP_FOCUS, 42.0),
-    ]
-
-
-def test_lock_focus_skips_pin_when_focus_unreadable() -> None:
-    import cv2
-
-    cap = MagicMock()
-    cap.set.return_value = True
-    cap.get.return_value = 0.0
+    cap.get.return_value = register
 
     assert linux.camera_lock_focus(cap) is True
     assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 0)]
+    cap.get.assert_not_called()
 
 
 def test_lock_focus_fails_when_af_toggle_refused() -> None:
@@ -288,9 +274,12 @@ def test_unlock_focus_reenables_af() -> None:
     import cv2
 
     cap = MagicMock()
-    linux.camera_unlock_focus(cap)
+    cap.set.return_value = True
+    cap.get.return_value = 1
+    assert linux.camera_unlock_focus(cap) is True
 
     assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 1)]
+    cap.get.assert_called_once_with(cv2.CAP_PROP_AUTOFOCUS)
 
 
 def test_read_focus_returns_position() -> None:
@@ -303,11 +292,11 @@ def test_read_focus_returns_position() -> None:
     cap.get.assert_called_once_with(cv2.CAP_PROP_FOCUS)
 
 
-def test_read_focus_none_when_unreadable() -> None:
+def test_read_focus_accepts_zero_on_v4l2() -> None:
     cap = MagicMock()
     cap.get.return_value = 0.0
 
-    assert linux.camera_read_focus(cap) is None
+    assert linux.camera_read_focus(cap) == 0.0
 
 
 def test_apply_focus_disables_af_then_drives_the_lens() -> None:
@@ -315,6 +304,7 @@ def test_apply_focus_disables_af_then_drives_the_lens() -> None:
 
     cap = MagicMock()
     cap.set.return_value = True
+    cap.get.side_effect = lambda prop: 137.0 if prop == cv2.CAP_PROP_FOCUS else 0.0
 
     assert linux.camera_apply_focus(cap, 137.0) is True
     assert cap.set.call_args_list == [
@@ -329,3 +319,49 @@ def test_apply_focus_fails_when_af_toggle_refused() -> None:
 
     assert linux.camera_apply_focus(cap, 137.0) is False
     assert cap.set.call_count == 1  # never writes a position over live AF
+
+
+@pytest.mark.parametrize("autofocus", [1.0, -1.0, float("nan")])
+def test_manual_focus_never_writes_before_confirming_af_off(autofocus):
+    import cv2
+
+    cap = MagicMock()
+    cap.set.return_value = True  # The driver claims to accept AF-off.
+    cap.get.side_effect = lambda prop: (
+        autofocus if prop == cv2.CAP_PROP_AUTOFOCUS else 137
+    )
+
+    assert not linux.camera_apply_focus(cap, 137)
+    assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 0)]
+
+
+@pytest.mark.parametrize(
+    "requested,readback,af,accepted",
+    [
+        (0, 0, 0, True),
+        (1024, 1023, 0, False),
+        (137, 137, 1, False),
+        (137, -1, 0, False),
+        (137, float("nan"), 0, False),
+    ],
+)
+def test_manual_focus_requires_exact_readback_and_af_off(
+    requested, readback, af, accepted
+):
+    import cv2
+
+    cap = MagicMock()
+    cap.set.return_value = True
+    # AF-off is initially confirmed; the absolute write can still change it.
+    af_reads = iter([0, af])
+    cap.get.side_effect = lambda prop: (
+        readback if prop == cv2.CAP_PROP_FOCUS else next(af_reads)
+    )
+    assert linux.camera_apply_focus(cap, requested) is accepted
+
+
+def test_refused_linux_af_restore_is_reported(caplog):
+    cap = MagicMock()
+    cap.set.return_value = False
+    assert linux.camera_unlock_focus(cap) is False
+    assert "could not re-enable autofocus" in caplog.text

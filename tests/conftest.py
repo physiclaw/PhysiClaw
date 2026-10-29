@@ -109,8 +109,9 @@ def _no_real_uvc(monkeypatch: pytest.MonkeyPatch) -> None:
     combination is deliberately unrealistic (on a real darwin rig
     "not tunable" implies the 1080p cap): "unavailable" is the hardware
     guard, "no cap" is the resolution default that keeps CONFIG-sized
-    tests platform-independent. Tests of the probe/cap logic patch
-    their own state on top."""
+    tests platform-independent. Disable the focus-range probe as well so
+    Linux tests never query a connected V4L2 device. Tests of these probes
+    patch their own state on top."""
     import sys
 
     if sys.platform == "darwin":
@@ -121,6 +122,7 @@ def _no_real_uvc(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(_platform, "camera_size_cap", lambda: None)
     monkeypatch.setattr(_platform, "camera_reset_controls", lambda: None)
+    monkeypatch.setattr(_platform, "camera_focus_search_range", lambda index: None)
 
 
 @pytest.fixture(autouse=True)

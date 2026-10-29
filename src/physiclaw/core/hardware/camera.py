@@ -245,7 +245,7 @@ class Camera:
         # this lock serializes the reader's cap.read() against exposure
         # setters, _reopen, and close. Non-reentrant, never nested; _open
         # does NOT take it (callers hold it, or run before the thread).
-        self._cap_lock = threading.Lock()
+        self._cap_lock = platform.camera_capture_lock(timeout_error=DeviceTimeout)
         # A close request forbids reconnect even if a native read outlives
         # the join budget. A later close may still release a wedged handle.
         self._closing = False
@@ -423,6 +423,15 @@ class Camera:
         Keep the negotiated resolution and remembered exposure/focus.
         An open handle alone does not mean its stream is delivering frames.
         """
+        try:
+            self._reopen_with_lock()
+        except DeviceTimeout:
+            # A backend with bounded lock acquisition may still be waiting
+            # behind a native call. Keep the supervisor alive for its next
+            # attempt; never release a handle owned by that call.
+            log.debug("Camera %s: reopen waiting for capture access", self.index)
+
+    def _reopen_with_lock(self) -> None:
         log.debug("Camera %s: reopening capture", self.index)
         with self._cap_lock:
             if self._closing:
@@ -479,6 +488,13 @@ class Camera:
     # ─── Focus control ──────────────────────────────────────────
 
     @property
+    def focus_search_range(self) -> tuple[int, int, int] | None:
+        """A device-supported calibration search range, when needed by its backend."""
+        with self._cap_lock:
+            self._require_open()
+            return platform.camera_focus_search_range(self.index)
+
+    @property
     def focus_lockable(self) -> bool:
         """Whether focus locking can be attempted.
 
@@ -513,12 +529,16 @@ class Camera:
             self._require_open()
             self._focus_value = None
             self._focus_applied = False
-            platform.camera_unlock_focus(self.cap)
-            self._focus_needs_restore = False
+            # An explicit refusal needs another hand-back attempt on close.
+            # None preserves backends whose AF request remains best-effort.
+            self._focus_needs_restore = platform.camera_unlock_focus(self.cap) is False
 
     def read_focus(self) -> float | None:
-        """Current absolute lens position, or None when the driver
-        doesn't report a usable one."""
+        """Driver-reported focus value, or None when unavailable.
+
+        During AF some backends report a cached manual-focus register rather
+        than the physical lens position. Calibration must verify sharpness.
+        """
         with self._cap_lock:
             self._require_open()
             return platform.camera_read_focus(self.cap)
@@ -646,8 +666,9 @@ class Camera:
                             )
                     if self._focus_needs_restore:
                         try:
-                            platform.camera_unlock_focus(self.cap)
-                            self._focus_needs_restore = False
+                            self._focus_needs_restore = (
+                                platform.camera_unlock_focus(self.cap) is False
+                            )
                         except Exception:
                             log.warning(
                                 "focus hand-back on close failed", exc_info=True

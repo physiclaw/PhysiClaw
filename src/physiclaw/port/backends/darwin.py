@@ -132,6 +132,16 @@ def camera_reset_controls() -> None:
             channel.close()
 
 
+def camera_capture_lock(*, timeout_error=TimeoutError):
+    """Retain the existing AVFoundation capture mutex."""
+    return threading.Lock()
+
+
+def camera_focus_search_range(index: int) -> tuple[int, int, int] | None:
+    """Retain the existing UVC freeze/read/reapply calibration."""
+    return None
+
+
 def _camera_terminal():
     global _uvc_terminal
     with _uvc_lock:
@@ -223,13 +233,14 @@ def camera_lock_focus(cap) -> bool:
     return channel is not None and channel.lock_focus()
 
 
-def camera_unlock_focus(cap) -> None:
+def camera_unlock_focus(cap) -> bool | None:
     """Hand the lens back to continuous autofocus via UVC."""
     channel = _camera_terminal()
     if channel is None:
-        return
+        return None
     if not channel.unlock_focus():
         log.warning("UVC: could not re-enable autofocus")
+    return None
 
 
 def camera_read_focus(cap) -> float | None:
