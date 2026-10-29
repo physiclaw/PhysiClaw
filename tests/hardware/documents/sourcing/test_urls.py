@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -665,20 +666,120 @@ def test_failed_atomic_save_preserves_history(tmp_path, monkeypatch):
     assert set(tmp_path.iterdir()) == entries
 
 
+@pytest.mark.parametrize("encoding", ["cp1252", "gbk", "ascii", "utf-8"])
+@pytest.mark.parametrize("verbose", [False, True])
+def test_round_display_respects_stream_encoding(
+    tmp_path, monkeypatch, encoding, verbose
+):
+    candidate = inventory(1)[0]
+    usage = replace(
+        candidate.usages[0],
+        part_id="零件",
+        supplier="商店 🦀",
+        component="écran 中文",
+        spec="5 μm",
+        qty="二",
+        product="款 🦀",
+    )
+    candidate.usages = [usage]
+    original = deepcopy(candidate)
+    state = {"version": 1, "round_index": 0, "checks": {}}
+    path = tmp_path / "记录.json"
+    data = io.BytesIO()
+    with io.TextIOWrapper(data, encoding=encoding, errors="strict") as stream:
+        with monkeypatch.context() as patch:
+            patch.setattr(sys, "stdout", stream)
+            patch.setenv("NO_COLOR", "1")
+            patch.setenv("COLUMNS", "60")
+            urls.print_round({"T1": candidate}, state, NOW, path, verbose=verbose)
+            stream.flush()
+        rendered = data.getvalue().decode(encoding)
+        assert stream.errors == "strict"
+    lines = rendered.splitlines()
+    assert lines[0] == "Taobao (1)"
+    assert lines[2] == candidate.url
+    if verbose:
+        for value in (
+            usage.supplier,
+            usage.component,
+            usage.spec,
+            usage.qty,
+            usage.product,
+            str(path),
+        ):
+            assert (
+                value.encode(encoding, "backslashreplace").decode(encoding) in rendered
+            )
+    else:
+        assert lines[1].startswith(
+            usage.part_id.encode(encoding, "backslashreplace").decode(encoding)
+        )
+        assert urls._fit_line(lines[1], 59) == lines[1]
+    assert candidate == original
+    assert state == {"version": 1, "round_index": 0, "checks": {}}
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "gbk", "ascii", "utf-8"])
+def test_cli_error_respects_stderr_encoding(monkeypatch, encoding):
+    message = "Cannot read 供应商 🦀"
+
+    def fail():
+        raise BuildError(message)
+
+    monkeypatch.setattr(urls, "load_bom_rows", fail)
+    data = io.BytesIO()
+    with io.TextIOWrapper(data, encoding=encoding, errors="strict") as stream:
+        with monkeypatch.context() as patch:
+            patch.setattr(sys, "stderr", stream)
+            assert urls.main.__wrapped__([]) == 1
+            stream.flush()
+        rendered = data.getvalue().decode(encoding)
+    assert rendered.splitlines() == [
+        f"hw-url: {message}".encode(encoding, "backslashreplace").decode(encoding)
+    ]
+
+
+def test_key_prompt_respects_ascii_terminal(monkeypatch):
+    class Terminal(io.TextIOWrapper):
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(urls.terminal, "key_input", nullcontext)
+    monkeypatch.setattr(urls.terminal, "read_key", lambda: "q")
+    monkeypatch.setattr(
+        urls.webbrowser, "open", lambda *a, **kw: pytest.fail("Opened after quit")
+    )
+    monkeypatch.setenv("COLUMNS", "100")
+    data = io.BytesIO()
+    with Terminal(data, encoding="ascii", errors="strict") as stream:
+        with monkeypatch.context() as patch:
+            patch.setattr(sys, "stdout", stream)
+            urls.open_round({"T1": inventory(1)[0]})
+            stream.flush()
+        rendered = data.getvalue().decode("ascii")
+    assert "Open 1/1 \\xb7 Taobao \\xb7 any key" in rendered
+
+
 def test_shared_history_is_locked_across_output_directories(tmp_path):
     path = tmp_path / "checks.json"
     command = [sys.executable, "-m", "hardware", "url", "--state", str(path)]
-    env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path / "other-output")}
+    env = {
+        **os.environ,
+        "PHYSICLAW_HW_OUTPUT": str(tmp_path / "other-output"),
+        "PYTHONUTF8": "0",
+        "PYTHONIOENCODING": "cp1252:strict",
+    }
     with urls.history_lock(path):
         rejected = subprocess.run(
-            command, env=env, capture_output=True, text=True, timeout=20
+            command, env=env, capture_output=True, encoding="cp1252", timeout=20
         )
         assert rejected.returncode != 0
         assert "URL history already in use" in rejected.stderr
         assert not rejected.stdout
         assert not path.exists()
     accepted = subprocess.run(
-        command, env=env, capture_output=True, text=True, timeout=20
+        command, env=env, capture_output=True, encoding="cp1252", timeout=20
     )
     assert accepted.returncode == 0, accepted.stderr
     assert urls.load_state(path)["round_index"] == 1
@@ -824,7 +925,10 @@ def test_platform_grouping_uses_real_domain_boundaries(url, platform):
     assert urls.platform_for(url) == platform
 
 
-def test_real_make_target_automatically_records_marketplaces_and_rotates(tmp_path):
+@pytest.mark.parametrize("encoding", ["cp1252", "gbk", "utf-8"])
+def test_real_make_target_automatically_records_marketplaces_and_rotates(
+    tmp_path, encoding
+):
     state_path = tmp_path / "checks.json"
 
     def invoke(*arguments):
@@ -837,9 +941,14 @@ def test_real_make_target_automatically_records_marketplaces_and_rotates(tmp_pat
                 f"ARGS=--state {state_path} {' '.join(arguments)}",
             ],
             cwd=REPO_ROOT,
-            env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path / "output")},
+            env={
+                **os.environ,
+                "PHYSICLAW_HW_OUTPUT": str(tmp_path / "output"),
+                "PYTHONUTF8": "0",
+                "PYTHONIOENCODING": f"{encoding}:strict",
+            },
             capture_output=True,
-            text=True,
+            encoding=encoding,
             timeout=20,
         )
 

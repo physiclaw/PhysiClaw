@@ -57,7 +57,7 @@ test-fast: test
 
 # PEP 597 catches implicit encodings at runtime; PEP 686 recommends testing
 # with UTF-8 mode disabled and enabled. Subprocess regressions forward the flags.
-test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/cli/test_session_debug.py
+test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/cli/test_session_debug.py tests/hardware/documents/sourcing/test_urls.py
 test-encoding:
 	$(PYTHON) -X utf8=0 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
 	$(PYTHON) -X utf8=1 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)

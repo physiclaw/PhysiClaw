@@ -37,7 +37,7 @@ from hardware.documents.sourcing.build import (
     supplier_columns,
     sync_entries,
 )
-from hardware.log_style import _color_enabled, _fit_line
+from hardware.log_style import _color_enabled, _encode, _fit_line
 from hardware.port import terminal
 from hardware.port.locks import file_lock
 from hardware.scheme import OUTPUT_DIR
@@ -481,7 +481,8 @@ def print_round(
     color = _color_enabled()
     columns = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns - 1)
 
-    def styled(text: str, tone: str | None) -> str:
+    def styled(text: str, tone: str | None = None) -> str:
+        text = _encode(text, sys.stdout)
         return f"\033[{PALETTE[tone]}m{text}\033[0m" if color and tone else text
 
     printed_group = False
@@ -532,6 +533,8 @@ def print_round(
             ]
             if option_text and not verbose:
                 spans.extend([(" | ", "muted"), (option_text, None)])
+            # Escapes take display space too; fit what the stream can render.
+            spans = [(_encode(text, sys.stdout), tone) for text, tone in spans]
             summary = "".join(text for text, _ in spans)
             if not verbose:
                 summary = _fit_line(summary, columns)
@@ -547,12 +550,18 @@ def print_round(
             if verbose:
                 for usage in usages:
                     print(
-                        f"  BOM #{usage.bom_position}, vendor {usage.vendor_position}: "
-                        f"{usage.part_id} — {usage.supplier}"
+                        styled(
+                            f"  BOM #{usage.bom_position}, vendor {usage.vendor_position}: "
+                            f"{usage.part_id} — {usage.supplier}"
+                        )
                     )
-                    print(f"    Need: {usage.component}; {usage.spec}; qty {usage.qty}")
+                    print(
+                        styled(
+                            f"    Need: {usage.component}; {usage.spec}; qty {usage.qty}"
+                        )
+                    )
                     if usage.product:
-                        print(f"    {usage.product}")
+                        print(styled(f"    {usage.product}"))
     if verbose:
         print(styled(f"History: {state_path}", "muted"))
 
@@ -564,6 +573,7 @@ def open_round(selected: dict[str, Candidate]) -> None:
 
     def redraw(message: str) -> None:
         columns = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns - 1)
+        message = _encode(message, sys.stdout)
         print("\r" + _fit_line(message, columns).ljust(columns), end="", flush=True)
 
     print()
@@ -612,7 +622,7 @@ def main(argv: list[str] | None = None) -> int:
         open_round(selected)
         return 0
     except (BuildError, OSError) as exc:
-        print(f"hw-url: {exc}", file=sys.stderr)
+        print(_encode(f"hw-url: {exc}", sys.stderr), file=sys.stderr)
         return 1
 
 
