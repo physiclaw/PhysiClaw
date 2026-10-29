@@ -300,6 +300,20 @@ test('shows both shortcut URLs using the phone port and updates after restart', 
   assert.equal(ui.el('clipboard-hostname').textContent, 'http://new-mac.local:8049/api/bridge/clipboard');
 });
 
+test('LAN IP URLs remain usable when the hostname is unavailable', async () => {
+  const ui = await createTestPage();
+  ui.state.instance_id = 'second';
+  ui.state.connection = {hostname: null, ip: '192.168.1.42', port: 8049};
+  await ui.poll();
+  for (const [kind, endpoint] of [['upload', 'screenshot'], ['clipboard', 'clipboard']]) {
+    const url = `http://192.168.1.42:8049/api/bridge/${endpoint}`;
+    assert.equal(ui.el(kind + '-hostname').textContent, url);
+    assert.equal(ui.el(kind + '-copy').disabled, false);
+    await ui.el(kind + '-copy').onclick();
+    assert.equal(ui.clipboard.text, url);
+  }
+});
+
 test('unavailable addresses are not replaced with a misleading local URL', async () => {
   const ui = await createTestPage();
   ui.state.instance_id = 'second';

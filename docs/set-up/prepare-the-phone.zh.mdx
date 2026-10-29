@@ -1,6 +1,6 @@
 ---
 title: 准备手机
-description: 在专用手机上做一次性 iOS 配置，让 PhysiClaw 能看见并操作它。三个快捷指令、辅助触控，以及专用锁屏密码。
+description: 在专用手机上做一次性 iOS 配置，让 PhysiClaw 能看见并操作它。两个快捷指令、辅助触控，以及专用锁屏密码。
 ---
 
 给 PhysiClaw 准备一部**专用 iPhone**。不需要旗舰或最新机型，便宜的二手 iPhone 即可。
@@ -38,45 +38,17 @@ PhysiClaw 通过微信和你交流。
 把 iPhone 和运行 PhysiClaw 的电脑接入**同一个 WiFi**，快捷指令通过局域网和电脑通信。
 :::
 
-先获取运行 PhysiClaw 的电脑的主机名：
-
-<Tabs syncKey="os">
-<TabItem label="macOS">
+在电脑终端运行：
 
 ```bash
-scutil --get LocalHostName
+physiclaw test-assistive-touch
 ```
 
-</TabItem>
-<TabItem label="Windows">
+运行后会在终端显示主机名（hostname），并自动打开测试页面，用于验证截图上传和剪贴板功能。
 
-```powershell
-hostname
-```
+### 上传截图
 
-</TabItem>
-<TabItem label="Linux">
-
-```bash
-hostname
-```
-
-</TabItem>
-</Tabs>
-
-手机桥接地址为 `<hostname>.local:8049`（控制端口 + 1）。也可以用电脑的局域网 IP（例如 `192.168.1.20:8049`），但 IP 由 DHCP 动态分配，电脑重启后可能改变，因此推荐使用 `.local`。
-
-:::note[如果 `.local` 无法解析]
-`.local` 依赖 mDNS（macOS 原生支持）。如果 iPhone 始终无法连接，改用局域网 IP。
-:::
-
-:::tip
-下文的 `<hostname>` 都替换成你的主机名。
-:::
-
-### 屏幕截图
-
-截取当前屏幕并保存到「照片」，供「上传最新的截屏」使用。
+截取当前屏幕并直接上传到电脑，供智能体查看更清晰的画面。
 
 <Steps>
 
@@ -84,23 +56,9 @@ hostname
 
 2. 添加「**截屏**」。
 
-3. 重命名为 `PhysiClaw Take Screenshot`。
-
-</Steps>
-
-### 上传最新的截屏
-
-摄像头画面不够清晰、智能体需要更高分辨率的图像时使用。
-
-<Steps>
-
-1. 在**快捷指令** App 里，点击 **+** 新建。
-
-2. 添加「**获取最新的截屏**」。
-
 3. 添加「**获取 URL 内容**」：
    - URL：`http://<hostname>.local:8049/api/bridge/screenshot`
-   - **显示更多** → 方法 **POST**，请求体 **文件**，文件 →「**最新截屏**」变量
+   - **显示更多** → 方法 **POST**，请求体 **文件**，文件选择上一步「**截屏**」的输出
 
 4. 重命名为 `PhysiClaw Upload Screenshot`。
 
@@ -124,18 +82,22 @@ hostname
 
 ## 开启辅助触控
 
-辅助触控是 iOS 屏幕上的悬浮按钮「小白点」，机械臂点击它来触发快捷指令。开启辅助触控，再把三种手势映射到三个快捷指令。
+辅助触控是 iOS 屏幕上的悬浮按钮「小白点」，机械臂单点即可截屏并上传，长按则将文字拷贝到剪贴板。
 
 <Steps>
 
 1. **设置 → 辅助功能 → 触控 → 辅助触控** → 打开。
 
 2. 在**自定操作**里设置：
-   - **单点** → **PhysiClaw Take Screenshot**
-   - **轻点两下** → **PhysiClaw Upload Screenshot**
+   - **单点** → **PhysiClaw Upload Screenshot**
    - **长按** → **PhysiClaw Clipboard**
 
 </Steps>
+
+### 验证设置
+
+1. 单点辅助触控，确认电脑页面显示的是 iPhone 当前屏幕的截图。
+2. 长按辅助触控，再在 iPhone 的「备忘录」中粘贴，确认文字与测试页面上的代码一致。
 
 ## 设置锁屏密码
 

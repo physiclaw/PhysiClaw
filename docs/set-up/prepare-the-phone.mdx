@@ -1,6 +1,6 @@
 ---
 title: Prepare the phone
-description: A one-time iOS setup on a dedicated phone so PhysiClaw can see and operate it. Three Shortcuts, AssistiveTouch, and a dedicated passcode.
+description: A one-time iOS setup on a dedicated phone so PhysiClaw can see and operate it. Two Shortcuts, AssistiveTouch, and a dedicated passcode.
 ---
 
 Use a **dedicated iPhone** for PhysiClaw. It doesn't need to be a flagship or the latest model. A cheap second-hand iPhone is perfectly fine.
@@ -38,45 +38,17 @@ This app is PhysiClaw's only channel for reaching you. Keeping the icon and the 
 Connect the iPhone and the computer running PhysiClaw to the **same WiFi**. The Shortcuts talk to the computer over the local network.
 :::
 
-First, get the host name of the computer running PhysiClaw:
-
-<Tabs syncKey="os">
-<TabItem label="macOS">
+Run this in your computer's terminal:
 
 ```bash
-scutil --get LocalHostName
+physiclaw test-assistive-touch
 ```
 
-</TabItem>
-<TabItem label="Windows">
+This prints your computer's hostname in the terminal and automatically opens a test page in your browser to verify screenshot uploads and clipboard transfer.
 
-```powershell
-hostname
-```
+### Upload a screenshot
 
-</TabItem>
-<TabItem label="Linux">
-
-```bash
-hostname
-```
-
-</TabItem>
-</Tabs>
-
-With the host name, the phone bridge address is `<hostname>.local:8049` (the control port + 1). You can also reach it by the computer's LAN IP (e.g. `192.168.1.20:8049`), but the IP is assigned dynamically by DHCP and may change after a reboot, so `.local` is preferred.
-
-:::note[If `.local` doesn't resolve]
-`.local` relies on mDNS (built in on macOS). If the iPhone still can't connect, use the LAN IP instead.
-:::
-
-:::tip
-Replace every `<hostname>` below with your own host name.
-:::
-
-### Take a screenshot
-
-Capture the current screen to Photos, for *Upload the latest screenshot* to send.
+Capture the current screen and upload it directly to the computer so the agent can inspect a sharper image.
 
 <Steps>
 
@@ -84,23 +56,9 @@ Capture the current screen to Photos, for *Upload the latest screenshot* to send
 
 2. Add **Take Screenshot**.
 
-3. Rename it to `PhysiClaw Take Screenshot`.
-
-</Steps>
-
-### Upload the latest screenshot
-
-Used when the camera's view isn't sharp enough and the agent needs a higher-resolution image.
-
-<Steps>
-
-1. In the **Shortcuts** app, tap **+** to create a new one.
-
-2. Add **Get Latest Screenshots**.
-
 3. Add **Get Contents of URL**:
    - URL: `http://<hostname>.local:8049/api/bridge/screenshot`
-   - **Show More** → Method **POST**, Request Body **File**, File → the **Latest Screenshots** variable
+   - **Show More** → Method **POST**, Request Body **File**, File → the output of the previous **Take Screenshot** action
 
 4. Rename it to `PhysiClaw Upload Screenshot`.
 
@@ -124,18 +82,22 @@ The agent sends text to the phone's clipboard and pastes it. That's faster and m
 
 ## Turn on AssistiveTouch
 
-AssistiveTouch is the floating on-screen button in iOS. The arm taps *it* to fire a Shortcut. Turn it on, then map the three gestures to the three Shortcuts.
+AssistiveTouch is the floating on-screen button in iOS. The arm taps it once to capture and upload a screenshot, or long-presses it to copy text to the clipboard.
 
 <Steps>
 
 1. **Settings → Accessibility → Touch → AssistiveTouch** → turn it **on**.
 
 2. Under **Custom Actions**, set:
-   - **Single-Tap** → **PhysiClaw Take Screenshot**
-   - **Double-Tap** → **PhysiClaw Upload Screenshot**
+   - **Single-Tap** → **PhysiClaw Upload Screenshot**
    - **Long Press** → **PhysiClaw Clipboard**
 
 </Steps>
+
+### Verify the setup
+
+1. Tap AssistiveTouch once. Check that the computer's page shows a screenshot of your iPhone's current screen.
+2. Long-press AssistiveTouch, then paste into Notes on your iPhone. Check that the text matches the code on the test page.
 
 ## Set the passcode
 

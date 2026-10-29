@@ -4,7 +4,7 @@ import time
 
 import typer
 
-from physiclaw.cli._format import exit_error
+from physiclaw.cli._format import exit_error, info
 from physiclaw.port import processes
 
 ASSISTIVE_TOUCH_SERVICE = "test-assistive-touch"
@@ -23,7 +23,7 @@ def stop_service(live: dict) -> None:
         return
     if not processes.remote_shutdown_supported():
         exit_error(f"Stop the {label} with Ctrl-C in its terminal, then try again.")
-    typer.echo(f"Stopping {label} (pid {pid})…")
+    typer.echo(info(f"Stopping {label} (pid {pid})…"))
     try:
         processes.request_shutdown(pid)
     except ProcessLookupError:

@@ -3,6 +3,7 @@
 import http.client
 import json
 import re
+import socket
 import threading
 from contextlib import ExitStack
 from types import SimpleNamespace
@@ -13,6 +14,29 @@ from physiclaw.cli import _assistive_touch_http as service
 
 PNG = b"\x89PNG\r\n\x1a\nimage"
 API = service.API_PATH
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_port_binding_does_not_depend_on_a_connection_probe(mocker, platform):
+    mocker.patch.object(service.sys, "platform", platform)
+    mocker.patch.object(service.socket, "create_connection", side_effect=TimeoutError)
+    with service.open_server(
+        "127.0.0.1", 0, service.TestSession(), desktop=True
+    ) as server:
+        assert server.server_port > 0
+        with pytest.raises(OSError) as error:
+            service.open_server(
+                "127.0.0.1", server.server_port, service.TestSession(), desktop=True
+            )
+        assert not isinstance(error.value, TimeoutError)
+
+
+def test_wildcard_listener_does_not_hide_an_existing_loopback_server(mocker):
+    mocker.patch.object(service.sys, "platform", "darwin")
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        port = listener.getsockname()[1]
+        with pytest.raises(OSError, match="already in use"):
+            service.open_server("0.0.0.0", port, service.TestSession(), desktop=False)
 
 
 def test_connection_info_uses_local_name_and_phone_port(mocker):

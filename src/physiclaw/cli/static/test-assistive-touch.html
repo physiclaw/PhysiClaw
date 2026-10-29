@@ -223,7 +223,7 @@ function showAddresses(connection) {
   if (!connection) return;
   el('lan-address').textContent = connection.ip || 'Unavailable';
   el('lan-port').textContent = String(connection.port);
-  const host = connection.hostname;
+  const host = connection.hostname || connection.ip;
   for (const [kind, endpoint] of [['upload', 'screenshot'], ['clipboard', 'clipboard']]) {
     const output = el(kind + '-hostname');
     output.dataset.unavailable = String(!host);

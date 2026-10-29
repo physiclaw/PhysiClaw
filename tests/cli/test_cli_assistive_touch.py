@@ -1,6 +1,10 @@
 """Standalone startup and graceful handoff, without loading the main server."""
 
 import importlib
+import socket
+import sys
+from contextlib import closing
+from http.client import HTTPConnection
 
 import pytest
 import typer
@@ -8,6 +12,8 @@ from typer.testing import CliRunner
 
 from physiclaw.cli import _assistive_touch_http as http
 from physiclaw.cli import _service_handoff as handoff
+from physiclaw.common import terminal
+from tests.terminal_fakes import Console
 
 command = importlib.import_module("physiclaw.cli.assistive_touch")
 app = typer.Typer()
@@ -116,6 +122,21 @@ def test_explicit_port_still_stops_running_server(service, mocker):
     assert service["listener"].call_args_list[0].args[:2] == ("127.0.0.1", 8123)
 
 
+def test_handoff_notice_supports_ascii_terminals(monkeypatch, mocker):
+    stream = Console("ascii", tty=False)
+    monkeypatch.setattr(sys, "stdout", stream)
+    mocker.patch.object(handoff.processes, "pid_alive", side_effect=[True, False])
+    mocker.patch.object(
+        handoff.processes, "remote_shutdown_supported", return_value=True
+    )
+    shutdown = mocker.patch.object(handoff.processes, "request_shutdown")
+
+    handoff.stop_service({"pid": 42})
+
+    shutdown.assert_called_once_with(42)
+    assert "Stopping PhysiClaw server (pid 42)" in stream.getvalue()
+
+
 def test_ctrl_c_cleans_up_service_record(service):
     service["serve"].side_effect = KeyboardInterrupt
     assert runner.invoke(app, ["--no-open"]).exit_code == 0
@@ -141,13 +162,104 @@ def test_concurrent_start_is_refused_before_binding(service):
     service["listener"].assert_not_called()
 
 
-def test_browser_failure_prints_manual_url(service):
+@pytest.mark.parametrize(
+    "failure", [None, OSError("no browser"), command.webbrowser.Error("no browser")]
+)
+def test_browser_failure_prints_manual_url(service, failure):
     service["browser"].return_value = False
+    service["browser"].side_effect = failure
     result = runner.invoke(app, [])
     assert result.exit_code == 0
-    assert "Open the URL above" in result.output
+    assert "Open in your browser: http://127.0.0.1:" in result.output
+    assert "/test-assistive-touch" in result.output
 
 
 def test_port_must_leave_room_for_phone_bridge(service):
     assert runner.invoke(app, ["--port", "65535"]).exit_code == 2
     service["listener"].assert_not_called()
+
+
+def test_real_command_serves_both_ports_and_releases_them_on_interrupt(mocker):
+    # Reserve a free adjacent pair without touching the user's configured ports.
+    for _ in range(20):
+        with socket.create_server(("127.0.0.1", 0)) as first:
+            port = first.getsockname()[1]
+            if port == 65535:
+                continue
+            try:
+                with socket.create_server(("0.0.0.0", port + 1)):
+                    break
+            except OSError:
+                continue
+    else:
+        pytest.fail("Could not find adjacent free ports")
+
+    mocker.patch.object(
+        http,
+        "connection_info",
+        return_value={
+            "hostname": "desktop.local",
+            "ip": "192.168.1.42",
+            "port": port + 1,
+        },
+    )
+
+    def request(number, method, path, body=None):
+        with closing(HTTPConnection("127.0.0.1", number, timeout=3)) as client:
+            client.request(method, path, body)
+            response = client.getresponse()
+            assert response.status == 200
+            return response.read()
+
+    def ready(url, connection, open_browser):
+        assert command.runtime_state.read_live()["service"] == "test-assistive-touch"
+        assert b"Test AssistiveTouch" in request(port, "GET", http.PAGE_PATH)
+        code = request(port + 1, "GET", "/api/bridge/clipboard")
+        image = b"\x89PNG\r\n\x1a\ncurrent screenshot"
+        reply = request(port + 1, "POST", "/api/bridge/screenshot", image)
+        assert reply == b"Screenshot uploaded.\nCode: " + code
+        assert request(port, "GET", http.API_PATH + "/screenshot/1") == image
+        raise KeyboardInterrupt
+
+    mocker.patch.object(command, "_open_page", side_effect=ready)
+    result = runner.invoke(app, ["--port", str(port), "--no-open"])
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert command.runtime_state.read_live() is None
+    assert not command.paths.runtime_state_file().exists()
+    for host, number in (("127.0.0.1", port), ("0.0.0.0", port + 1)):
+        with socket.create_server((host, number)):
+            pass
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "cp1252", "ascii"])
+@pytest.mark.parametrize("mode", ["color", "no_color", "pipe", "no_vt"])
+def test_connection_output_supports_native_console_modes(monkeypatch, encoding, mode):
+    if sys.platform == "win32":
+        from colorama import ansitowin32
+
+        monkeypatch.setattr(ansitowin32, "winapi_test", lambda: False)
+    stream = Console(encoding, tty=mode != "pipe")
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    if mode == "no_color":
+        monkeypatch.setenv("NO_COLOR", "")
+    monkeypatch.setattr(
+        terminal.platform, "enable_terminal_color", lambda stream: mode != "no_vt"
+    )
+
+    command._open_page(
+        "http://127.0.0.1:8123/test-assistive-touch",
+        {"hostname": "desktop.local", "ip": "192.168.1.42", "port": 8124},
+        False,
+    )
+    output = stream.getvalue()
+    assert ("\x1b[" in output) is (mode == "color")
+    plain = terminal.ANSI_RE.sub("", output)
+    assert "http://desktop.local:8124/api/bridge/screenshot" in plain
+    assert "http://desktop.local:8124/api/bridge/clipboard" in plain
+    assert next(line for line in plain.splitlines() if "Host name" in line).endswith(
+        "desktop"
+    )
+    assert "192.168.1.42" in plain
+    assert "127.0.0.1" not in plain

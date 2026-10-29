@@ -1,6 +1,7 @@
 """Run a standalone AssistiveTouch test on the usual PhysiClaw ports."""
 
 import signal
+import sys
 import threading
 import webbrowser
 from collections.abc import Callable
@@ -12,6 +13,7 @@ import typer
 from physiclaw.cli._format import exit_error, info, section
 from physiclaw.cli._service_handoff import ASSISTIVE_TOUCH_SERVICE, stop_service
 from physiclaw.common import config, paths, runtime_state
+from physiclaw.common.terminal import color_enabled, stdout_text
 from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 
@@ -39,16 +41,35 @@ def _serve(servers, on_started: Callable[[], None]) -> None:
         exit_error("The AssistiveTouch test stopped unexpectedly.")
 
 
-def _open_page(url: str, open_browser: bool) -> None:
+def _open_page(url: str, connection: dict, open_browser: bool) -> None:
+    hostname = connection.get("hostname") or ""
+    host = hostname or connection.get("ip")
+    base = f"http://{host}:{connection['port']}/api/bridge" if host else None
+    use_color = color_enabled(sys.stdout)
     typer.echo(section("Test AssistiveTouch"))
-    typer.echo(info(url))
+    for label, value in (
+        ("Upload screenshot", f"{base}/screenshot" if base else "Unavailable"),
+        ("Copy to clipboard", f"{base}/clipboard" if base else "Unavailable"),
+        ("Host name", hostname.removesuffix(".local") or "Unavailable"),
+        ("LAN IP", connection.get("ip") or "Unavailable"),
+        ("Port", connection["port"]),
+    ):
+        label = f"{label:<19}"
+        text = stdout_text(str(value))
+        if use_color:
+            label = typer.style(label, bold=True)
+            if value == "Unavailable":
+                text = typer.style(text, dim=True)
+            else:
+                text = typer.style(text, fg=typer.colors.CYAN)
+        typer.echo(f"  {label}{text}")
     if open_browser:
         try:
             opened = webbrowser.open(url)
         except (OSError, webbrowser.Error):
             opened = False
         if not opened:
-            typer.echo(info("Open the URL above in your browser."))
+            typer.echo(info(f"Open in your browser: {url}"))
 
 
 def test_assistive_touch(
@@ -69,6 +90,7 @@ def test_assistive_touch(
 
     Runs a small Python HTTP server on the usual ports. A running PhysiClaw
     server stops gracefully first; starting PhysiClaw again stops this test.
+    On Windows, stop the current command with Ctrl-C before switching.
     No hardware or agent is needed. Ctrl-C ends the test.
     """
     live = runtime_state.read_live()
@@ -104,7 +126,8 @@ def test_assistive_touch(
             phone = resources.enter_context(
                 open_server("0.0.0.0", selected_port + 1, state, desktop=False)
             )
-            state.connection = connection_info(selected_port + 1)
+            connection = connection_info(selected_port + 1)
+            state.connection = connection
             resources.callback(runtime_state.clear)
             url = f"http://127.0.0.1:{selected_port}{PAGE_PATH}"
 
@@ -115,7 +138,7 @@ def test_assistive_touch(
                     no_runtime=True,
                     service=ASSISTIVE_TOUCH_SERVICE,
                 )
-                _open_page(url, open_browser)
+                _open_page(url, connection, open_browser)
 
             _serve((desktop, phone), started)
     except KeyboardInterrupt:
