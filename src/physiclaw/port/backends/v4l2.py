@@ -81,7 +81,7 @@ def focus_range(index: int) -> tuple[int, int, int] | None:
         return None  # OpenCV auto-selection does not identify an unambiguous node.
     try:
         fcntl = importlib.import_module("fcntl")
-        fd = os.open(f"/dev/video{index}", os.O_RDONLY | os.O_NONBLOCK)
+        fd = os.open(f"/dev/video{index}", os.O_RDONLY | getattr(os, "O_NONBLOCK"))
         try:
             data = bytearray(_QUERYCTRL.size)
             struct.pack_into("=I", data, 0, _FOCUS_ABSOLUTE)
