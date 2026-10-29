@@ -1270,14 +1270,18 @@ def test_server_stops_assistive_touch_before_acquiring_lock_and_binding(mocker):
     deps["state"].read_live.side_effect = [live, None]
     # Simulate the standalone test holding the shared lock until stopped.
     with ExitStack() as held:
-        held.enter_context(exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")))
+        held.enter_context(
+            exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock"))
+        )
 
         def stop(record):
             assert record == live
             assert deps["listeners"] == []
             held.close()
 
-        stopped = mocker.patch("physiclaw.cli._service_handoff.stop_service", side_effect=stop)
+        stopped = mocker.patch(
+            "physiclaw.cli._service_handoff.stop_service", side_effect=stop
+        )
         server_mod.server(**_server_kwargs())
     stopped.assert_called_once_with(live)
     assert len(deps["listeners"]) == 2

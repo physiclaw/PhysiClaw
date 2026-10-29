@@ -64,7 +64,7 @@ test-all:
 	$(PY) pytest -m ""
 
 test-studio-ui:
-	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs
+	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs tests/cli/test_assistive_touch_ui.cjs
 
 mutate:
 	@if [ -z "$(MOD)" ]; then echo "usage: make mutate MOD=src/physiclaw/<path>"; exit 2; fi

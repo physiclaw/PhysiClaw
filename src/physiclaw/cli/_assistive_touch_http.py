@@ -207,7 +207,8 @@ class TestHandler(BaseHTTPRequestHandler):
                     data = (
                         state.image
                         if path.rsplit("/", 1)[-1] == str(state.sequence)
-                        and query.get("instance", [state.instance_id]) == [state.instance_id]
+                        and query.get("instance", [state.instance_id])
+                        == [state.instance_id]
                         else b""
                     )
                 if not data:

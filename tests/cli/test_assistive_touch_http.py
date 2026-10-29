@@ -119,7 +119,8 @@ def test_page_and_phone_share_server_generated_code(clients):
     previous = state.text
     for text_id in range(3):
         snapshot = (
-            desktop("GET", API) if text_id == 0
+            desktop("GET", API)
+            if text_id == 0
             else desktop("POST", API + "/clipboard", "{}")
         ).json()
         code = snapshot["clipboard"]
@@ -185,9 +186,7 @@ def test_desktop_reports_phone_connection_addresses(clients):
     assert desktop("GET", API).json()["connection"] == state.connection
 
 
-@pytest.mark.parametrize(
-    "body", [None, [], "code", 42, {"text": "ignored"}]
-)
+@pytest.mark.parametrize("body", [None, [], "code", 42, {"text": "ignored"}])
 def test_invalid_generation_request_does_not_replace_code(clients, body):
     state, desktop, _ = clients
     state.text = "keep this"
