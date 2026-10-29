@@ -11,14 +11,15 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.cli import _assistive_touch_http as service
+from physiclaw.port.backends import darwin, linux, windows
 
 PNG = b"\x89PNG\r\n\x1a\nimage"
 API = service.API_PATH
 
 
-@pytest.mark.parametrize("platform", ["linux", "win32"])
-def test_port_binding_does_not_depend_on_a_connection_probe(mocker, platform):
-    mocker.patch.object(service.sys, "platform", platform)
+@pytest.mark.parametrize("backend", [linux, windows], ids=["linux", "windows"])
+def test_port_binding_does_not_depend_on_a_connection_probe(mocker, backend):
+    mocker.patch.object(service.platform, "check_tcp_port", backend.check_tcp_port)
     mocker.patch.object(service.socket, "create_connection", side_effect=TimeoutError)
     with service.open_server(
         "127.0.0.1", 0, service.TestSession(), desktop=True
@@ -32,7 +33,7 @@ def test_port_binding_does_not_depend_on_a_connection_probe(mocker, platform):
 
 
 def test_wildcard_listener_does_not_hide_an_existing_loopback_server(mocker):
-    mocker.patch.object(service.sys, "platform", "darwin")
+    mocker.patch.object(service.platform, "check_tcp_port", darwin.check_tcp_port)
     with socket.create_server(("127.0.0.1", 0)) as listener:
         port = listener.getsockname()[1]
         with pytest.raises(OSError, match="already in use"):

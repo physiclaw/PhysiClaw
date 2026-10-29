@@ -23,6 +23,8 @@ def test_dispatch_binds_correct_backend_for_this_os() -> None:
         return
     assert platform.ensure_camera_permission is expected.ensure_camera_permission
     assert platform.local_hostname is expected.local_hostname
+    assert platform.TCP_REUSE_ADDRESS == expected.TCP_REUSE_ADDRESS
+    assert platform.check_tcp_port is expected.check_tcp_port
     assert platform.open_camera_aim_app is expected.open_camera_aim_app
     assert platform.quit_camera_aim_app is expected.quit_camera_aim_app
     assert platform.open_image_files is expected.open_image_files

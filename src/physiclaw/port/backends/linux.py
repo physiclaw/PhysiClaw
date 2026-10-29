@@ -35,6 +35,11 @@ except ModuleNotFoundError:
 # for loopback — which is only guaranteed because `normalize_proxy_env()`
 # (common/proxy.py) pins loopback into NO_PROXY first; users rarely set it.
 TRUST_PROXY_ENV = True
+TCP_REUSE_ADDRESS = True
+
+
+def check_tcp_port(port: int) -> None:
+    """No preflight needed: bind rejects existing TCP listeners."""
 
 
 def enable_terminal_color(stream: TextIO | None) -> bool:

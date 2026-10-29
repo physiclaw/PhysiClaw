@@ -7,7 +7,6 @@ the LAN listener accepts the same two URLs used by the iPhone shortcuts.
 import json
 import secrets
 import socket
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -91,8 +90,7 @@ class RequestError(Exception):
 class TestHTTPServer(ThreadingHTTPServer):
     # Requests time out independently; shutdown never waits on an idle client.
     daemon_threads = True
-    # Windows SO_REUSEADDR can let another listener take over the same port.
-    allow_reuse_address = sys.platform != "win32"
+    allow_reuse_address = platform.TCP_REUSE_ADDRESS
 
     def __init__(
         self, address: tuple[str, int], session: TestSession, *, desktop: bool
@@ -259,12 +257,5 @@ class TestHandler(BaseHTTPRequestHandler):
 def open_server(
     host: str, port: int, session: TestSession, *, desktop: bool
 ) -> TestHTTPServer:
-    # macOS can allow wildcard/specific SO_REUSEADDR listeners to coexist.
-    # Other platforms rely on bind(), avoiding Windows' slow refused connects.
-    if sys.platform == "darwin":
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-                raise OSError(f"port {port} is already in use")
-        except ConnectionRefusedError:
-            pass
+    platform.check_tcp_port(port)
     return TestHTTPServer((host, port), session, desktop=desktop)

@@ -10,6 +10,8 @@ from physiclaw.port._select import device as _impl
 
 ensure_camera_permission = _impl.ensure_camera_permission
 local_hostname = _impl.local_hostname
+TCP_REUSE_ADDRESS = _impl.TCP_REUSE_ADDRESS
+check_tcp_port = _impl.check_tcp_port
 camera_exposure_tunable = _impl.camera_exposure_tunable
 camera_size_cap = _impl.camera_size_cap
 camera_backend = _impl.camera_backend
@@ -38,6 +40,8 @@ enable_terminal_color = _impl.enable_terminal_color
 __all__ = [
     "ensure_camera_permission",
     "local_hostname",
+    "TCP_REUSE_ADDRESS",
+    "check_tcp_port",
     "camera_exposure_tunable",
     "camera_size_cap",
     "camera_backend",

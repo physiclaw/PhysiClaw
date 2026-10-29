@@ -21,6 +21,20 @@ log = logging.getLogger(__name__)
 # config, so trusting env is only safe because `normalize_proxy_env()`
 # (common/proxy.py) pins loopback into NO_PROXY first.
 TRUST_PROXY_ENV = True
+TCP_REUSE_ADDRESS = True
+
+
+def check_tcp_port(port: int) -> None:
+    """Reject an existing listener before a reusable TCP bind.
+
+    macOS can allow wildcard/specific SO_REUSEADDR listeners to coexist.
+    The caller still binds afterward to reserve the port.
+    """
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+            raise OSError(f"port {port} is already in use")
+    except ConnectionRefusedError:
+        pass
 
 
 def enable_terminal_color(stream: TextIO | None) -> bool:

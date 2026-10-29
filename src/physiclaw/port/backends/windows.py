@@ -21,6 +21,12 @@ log = logging.getLogger(__name__)
 # `HTTP_PROXY` env var bypasses no-proxy rules entirely. Tell urllib /
 # httpx to skip system proxy when calling our own server.
 TRUST_PROXY_ENV = False
+# SO_REUSEADDR can let another listener take over the same port on Windows.
+TCP_REUSE_ADDRESS = False
+
+
+def check_tcp_port(port: int) -> None:
+    """Rely on bind; probing a free port can time out on Windows."""
 
 
 def enable_terminal_color(stream: TextIO | None) -> bool:
