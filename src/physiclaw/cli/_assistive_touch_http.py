@@ -1,7 +1,7 @@
 """Small, in-memory HTTP server for the standalone AssistiveTouch command.
 
-The HTTP server uses the standard library. The desktop listener serves the page;
-the LAN listener accepts the same two URLs used by the iPhone shortcuts.
+The HTTP server uses the standard library. Both listeners serve the test page;
+the LAN listener also accepts the two URLs used by the iPhone shortcuts.
 """
 
 import json
@@ -22,6 +22,7 @@ API_PATH = "/api/test-assistive-touch"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_JSON_BYTES = 64 * 1024
 PAGE_FILE = Path(__file__).with_name("static") / "test-assistive-touch.html"
+QR_FILE = PAGE_FILE.parent / "vendor" / "qrcode-1.4.4.min.js"
 
 
 def random_code(previous: str = "") -> str:
@@ -164,25 +165,48 @@ class TestHandler(BaseHTTPRequestHandler):
             raise RequestError(413, "Request body too large")
         return self._read_exact(size)
 
-    def _check_desktop_origin(self) -> None:
-        host = self.headers.get("Host", "")
-        allowed = {
-            f"{name}:{self.server.server_port}" for name in ("127.0.0.1", "localhost")
-        }
+    def _check_page_origin(self) -> None:
+        host = self.headers.get("Host", "").lower()
+        names = {"127.0.0.1", "localhost"}
+        if not self.server.desktop:
+            connection = self.server.session.connection or {}
+            names.update(
+                str(connection[key]).lower()
+                for key in ("hostname", "ip")
+                if connection.get(key)
+            )
+        allowed = {f"{name}:{self.server.server_port}" for name in names}
+        if self.server.server_port == 80:
+            allowed.update(names)
         if host not in allowed:
-            raise RequestError(421, "Use the local page URL printed in the terminal")
+            raise RequestError(421, "Use the test page URL from this computer")
         origin = self.headers.get("Origin")
         if origin is not None and origin != f"http://{host}":
-            raise RequestError(403, "Open the test page on this computer")
+            raise RequestError(403, "Use the same origin as the test page")
 
     def _dispatch(self) -> None:
         url = urlsplit(self.path)
         path = url.path
         state = self.server.session
-        if self.server.desktop:
-            self._check_desktop_origin()
+        page_route = path in (
+            "/",
+            PAGE_PATH,
+            API_PATH,
+            API_PATH + "/clipboard",
+            API_PATH + "/qrcode.js",
+        )
+        if self.server.desktop or page_route:
+            self._check_page_origin()
             if self.command == "GET" and path in ("/", PAGE_PATH):
-                self._reply(200, PAGE_FILE.read_bytes(), "text/html; charset=utf-8")
+                page = PAGE_FILE.read_bytes()
+                if not self.server.desktop:
+                    page = page.replace(
+                        b"<body>", b'<body class="phone-view" data-phone-view="true">'
+                    )
+                self._reply(200, page, "text/html; charset=utf-8")
+                return
+            if self.command == "GET" and path == API_PATH + "/qrcode.js":
+                self._reply(200, QR_FILE.read_bytes(), "text/javascript; charset=utf-8")
                 return
             if self.command == "GET" and path == API_PATH:
                 with state.lock:
@@ -202,7 +226,11 @@ class TestHandler(BaseHTTPRequestHandler):
                     snapshot = state.snapshot()
                 self._json(snapshot)
                 return
-            if self.command == "GET" and path.startswith(API_PATH + "/screenshot/"):
+            if (
+                self.server.desktop
+                and self.command == "GET"
+                and path.startswith(API_PATH + "/screenshot/")
+            ):
                 query = parse_qs(url.query, keep_blank_values=True)
                 with state.lock:
                     data = (

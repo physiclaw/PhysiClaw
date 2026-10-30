@@ -5,12 +5,18 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {setImmediate} = require('node:timers/promises');
 const {documentFrom} = require('../studio/ui_fixture.cjs');
+const qrcode = require('../../src/physiclaw/cli/static/vendor/qrcode-1.4.4.min.js');
 
-async function createTestPage(initialSequence = 0, sharedState = null, reducedMotion = false) {
+async function createTestPage(initialSequence = 0, sharedState = null, reducedMotion = false, phonePage = false) {
   const filename = path.join(__dirname, '../../src/physiclaw/cli/static/test-assistive-touch.html');
   const html = fs.readFileSync(filename, 'utf8');
   const document = documentFrom(html), timers = new Map(), events = new Map();
   document.body = document.querySelector('body');
+  document.body.dataset.phoneView = String(phonePage);
+  const layout = {matches: false, addEventListener: (_, fn) => { layout.change = fn; }};
+  const dialog = document.getElementById('qr-dialog');
+  dialog.showModal = () => { dialog.open = true; };
+  dialog.close = () => { dialog.open = false; };
   const image = document.getElementById('screenshot');
   image.removeAttribute = name => { delete image[name]; };
   const animations = [];
@@ -31,16 +37,34 @@ async function createTestPage(initialSequence = 0, sharedState = null, reducedMo
   };
   const network = {failed: false, clipboardFailed: false, responseLost: false, holdRead: null, holdWrite: null};
   const codeRequests = [];
-  const clipboard = {text: '', denied: false};
+  const clipboard = {text: '', denied: false, legacy: false};
+  const createElement = document.createElement;
+  document.createElement = tag => {
+    const element = createElement(tag);
+    element.focus = () => { document.activeElement = element; };
+    element.select = () => {};
+    element.setSelectionRange = () => {};
+    return element;
+  };
+  document.execCommand = command => {
+    assert.equal(command, 'copy');
+    if (!clipboard.legacy) return false;
+    clipboard.text = document.activeElement.value;
+    return true;
+  };
+  const navigator = {clipboard: {writeText: async text => {
+    if (clipboard.denied) throw new Error('clipboard denied');
+    clipboard.text = text;
+  }}};
   const context = vm.createContext({
     document, window: {
       addEventListener: (name, fn) => events.set(name, fn),
-      matchMedia: () => ({matches: reducedMotion}),
+      matchMedia: query => query.includes('max-width') ? layout : {
+        matches: query.includes('reduced-motion') && reducedMotion,
+        addEventListener() {},
+      },
     },
-    navigator: {clipboard: {writeText: async text => {
-      if (clipboard.denied) throw new Error('clipboard denied');
-      clipboard.text = text;
-    }}},
+    navigator, qrcode,
     localStorage: {getItem: () => null, setItem() {}}, console, AbortSignal,
     setTimeout: callback => { const id = Symbol(); timers.set(id, callback); return id; },
     clearTimeout: id => timers.delete(id),
@@ -74,7 +98,7 @@ async function createTestPage(initialSequence = 0, sharedState = null, reducedMo
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context, {filename});
   await setImmediate();
   return {
-    state, network, image, events, timers, codeRequests, clipboard, animations,
+    state, network, image, events, timers, codeRequests, clipboard, animations, layout, document, navigator,
     el: id => document.getElementById(id),
     poll: async () => {
       const callbacks = [...timers.values()]; timers.clear();
@@ -348,10 +372,79 @@ test('copy failure does not claim success and allows retry', async () => {
   const ui = await createTestPage(), button = ui.el('upload-copy');
   ui.clipboard.denied = true;
   await button.onclick();
-  assert.equal(button.querySelector('.copy-feedback').textContent, 'Copy failed');
+  assert.equal(button.querySelector('.copy-feedback').textContent, 'Select URL to copy');
   assert.equal(button.classList.contains('copied'), false);
   assert.equal(ui.clipboard.text, '');
   ui.clipboard.denied = false;
   await button.onclick();
   assert.equal(button.querySelector('.copy-feedback').textContent, 'Copied');
 });
+
+test('QR opens the phone page using the LAN port, follows restart, and closes', async () => {
+  const ui = await createTestPage();
+  const qrImage = url => {
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    return qr.createDataURL(6, 24);
+  };
+  const dialog = ui.el('qr-dialog');
+  ui.el('qr-toggle').onclick();
+  assert.equal(dialog.open, true);
+  assert.equal(ui.el('qr-image').src, qrImage('http://192.168.1.42:18124/test-assistive-touch'));
+  assert.match(ui.el('qr-image').src, /^data:image\/gif;base64,/);
+  assert.equal(ui.el('qr-error').hidden, true);
+  ui.state.instance_id = 'restarted';
+  ui.state.connection = {hostname: 'new-mac.local', ip: null, port: 8049};
+  await ui.poll();
+  assert.equal(ui.el('qr-image').src, qrImage('http://new-mac.local:8049/test-assistive-touch'));
+  dialog.onclick({target: dialog, clientX: -1, clientY: -1});
+  assert.equal(dialog.open, false);
+  ui.state.instance_id = 'unavailable';
+  ui.state.connection = null;
+  await ui.poll();
+  assert.equal(ui.el('qr-toggle').disabled, true);
+  ui.el('qr-toggle').onclick();
+  assert.equal(dialog.open, false);
+});
+
+test('phone page keeps code controls live without downloading screenshots or opening QR', async () => {
+  const ui = await createTestPage(0, null, false, true);
+  assert.equal(ui.document.body.classList.contains('phone-view'), true);
+  ui.state.screenshot.sequence++;
+  await ui.poll();
+  assert.equal(ui.image.src, undefined);
+  ui.el('qr-toggle').onclick();
+  assert.notEqual(ui.el('qr-dialog').open, true);
+  await ui.newCode();
+  assert.equal(ui.el('test-code').textContent, ui.state.clipboard.text);
+});
+
+test('switching to a compact viewport closes an open QR dialog', async () => {
+  const ui = await createTestPage();
+  ui.el('qr-toggle').onclick();
+  ui.layout.matches = true;
+  ui.layout.change();
+  assert.equal(ui.el('qr-dialog').open, false);
+  assert.equal(ui.document.body.classList.contains('phone-view'), true);
+  ui.state.screenshot.sequence++;
+  await ui.poll();
+  assert.equal(ui.image.src, undefined);
+});
+
+for (const unavailable of [true, false]) {
+  test(`LAN copy falls back when the Clipboard API is ${unavailable ? 'missing' : 'denied'}`, async () => {
+    const ui = await createTestPage();
+    if (unavailable) ui.navigator.clipboard = undefined;
+    else ui.clipboard.denied = true;
+    ui.clipboard.legacy = true;
+    const button = ui.el('upload-copy');
+    button.focus = () => { ui.document.activeElement = button; };
+    button.focus();
+    await button.onclick();
+    assert.equal(ui.clipboard.text, 'http://test-mac.local:18124/api/bridge/screenshot');
+    assert.equal(button.classList.contains('copied'), true);
+    assert.equal(ui.document.activeElement, button);
+    assert.equal(ui.document.querySelector('textarea'), null);
+  });
+}

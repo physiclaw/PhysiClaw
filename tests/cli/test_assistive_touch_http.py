@@ -271,22 +271,57 @@ def test_extreme_content_length_is_rejected_without_losing_the_response(clients)
     assert state.image == b""
 
 
-def test_local_page_controls_and_phone_routes_are_separate(clients):
+def test_phone_page_shares_controls_but_not_desktop_screenshots(clients):
+    state, desktop, phone = clients
+    page = phone("GET", service.PAGE_PATH)
+    assert page.status == 200
+    assert 'data-phone-view="true"' in page.text
+    assert phone("GET", "/").status == 200
+    assert phone("GET", API).json() == desktop("GET", API).json()
+    assert phone("GET", API).json()["clipboard"]["read_sequence"] == 0
+    previous = state.text
+    generated = phone("POST", API + "/clipboard", "{}")
+    assert generated.status == 200
+    assert generated.json()["clipboard"]["text"] == state.text != previous
+    assert desktop("GET", API).json() == generated.json()
+    assert phone("POST", "/api/bridge/screenshot", PNG).status == 200
+    assert phone("GET", API + "/screenshot/1").status == 404
+    for client in (desktop, phone):
+        script = client("GET", API + "/qrcode.js")
+        assert script.status == 200
+        assert script.headers["Content-Type"] == "text/javascript; charset=utf-8"
+        assert b"qrcode" in script.content
+
+
+def test_page_controls_reject_unrelated_origins_on_both_listeners(clients):
     _, desktop, phone = clients
-    for path in (service.PAGE_PATH, API, "/api/connect-arm", "/mcp", "/setup-hardware"):
+    for path in ("/api/connect-arm", "/mcp", "/setup-hardware"):
         assert phone("GET", path).status == 404
     assert desktop("GET", "/api/bridge/clipboard").status == 404
-    assert desktop("GET", API, headers={"Host": "evil.example"}).status == 421
-    assert (
-        desktop(
-            "POST", API + "/clipboard", "{}", {"Origin": "https://evil.example"}
-        ).status
-        == 403
-    )
+    for client in (desktop, phone):
+        assert client("GET", API, headers={"Host": "evil.example"}).status == 421
+        assert (
+            client(
+                "POST", API + "/clipboard", "{}", {"Origin": "https://evil.example"}
+            ).status
+            == 403
+        )
     page = desktop("GET", service.PAGE_PATH)
     assert page.status == 200
     assert page.headers["Cache-Control"] == "no-store"
     assert "AssistiveTouch Test" in page.text
+    assert 'data-phone-view="true"' not in page.text
+
+
+@pytest.mark.parametrize("host", ["test-mac.local", "192.168.1.42"])
+def test_phone_page_accepts_advertised_lan_address_and_origin(clients, host):
+    state, _, phone = clients
+    port = phone.__kwdefaults__["port"]
+    state.connection = {"hostname": "test-mac.local", "ip": "192.168.1.42", "port": port}
+    headers = {"Host": f"{host}:{port}", "Origin": f"http://{host}:{port}"}
+    assert phone("GET", service.PAGE_PATH, headers=headers).status == 200
+    assert phone("GET", API, headers=headers).status == 200
+    assert phone("POST", API + "/clipboard", "{}", headers).status == 200
 
 
 def test_graceful_interrupt_closes_both_loops():

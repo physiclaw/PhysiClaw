@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#16151a">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta id="theme-color" name="theme-color" content="#16151a">
 <title>PhysiClaw · AssistiveTouch Test</title>
 <style>
 :root{
@@ -23,7 +23,7 @@ body.theme-light{
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   color:var(--txt);background:radial-gradient(1000px 650px at 85% -10%,var(--glow),var(--bg) 65%);
   min-height:100vh;line-height:1.6;-webkit-font-smoothing:antialiased}
-button{font:inherit;cursor:pointer;color:var(--txt);border:1px solid var(--line2);background:var(--card2);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600}
+button{font:inherit;cursor:pointer;color:var(--txt);border:1px solid var(--line2);background:var(--card2);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;touch-action:manipulation}
 button:disabled{opacity:.5;cursor:default}
 button:focus-visible{outline:2px solid var(--accent-lt);outline-offset:4px}
 button:hover:not(:disabled){border-color:var(--accent-lt)}
@@ -31,11 +31,22 @@ button:hover:not(:disabled){border-color:var(--accent-lt)}
 header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:16px;margin-bottom:40px;border-bottom:1px solid var(--line)}
 .brand{font-size:17px;font-weight:700;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
 .brand svg{width:46px;height:auto;display:block;flex:none;filter:drop-shadow(0 3px 9px rgba(212,81,26,.38))}
-.theme{width:34px;height:34px;padding:0;font-size:17px;background:none;border-color:var(--line)}
+.theme{display:grid;place-items:center;width:34px;height:34px;padding:0;background:none;border:0}
+.theme svg{display:block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.theme .theme-moon,.theme-light .theme .theme-sun{display:none}
+.theme-light .theme .theme-moon{display:block}
 .header-tools{display:flex;align-items:center;gap:16px;flex:none}
 .intro-copy{min-width:0}
 h1{font-size:22px;line-height:1.3;font-weight:650;letter-spacing:-.6px;color:var(--strong);margin:0 0 5px}
 .intro-copy p{margin:0;color:var(--muted);font-size:12px}
+.intro{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qr-toggle{display:grid;place-items:center;width:40px;height:40px;padding:9px;background:var(--card);flex:none}
+.qr-toggle svg{width:20px;height:20px}
+.qr-dialog{width:min(250px,calc(100% - 32px));padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--card);color:var(--txt);box-shadow:0 20px 80px #0006;text-align:center}
+.qr-dialog::backdrop{background:rgba(0,0,0,.6)}
+.qr-dialog p{max-width:200px;margin:8px auto 0;color:var(--muted);font-size:11px;line-height:1.45;text-wrap:balance}
+.qr-image{display:block;width:224px;height:224px;max-width:100%;margin:0 auto;background:#fff;border-radius:8px;image-rendering:pixelated}
+.mobile-copy-label,.phone-hint{display:none}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
 .side-column{display:grid;gap:12px;min-width:0;align-content:start}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:18px;min-width:0}
@@ -58,7 +69,7 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
 .test-code:hover:not(:disabled){color:var(--accent-lt)}
 .lan-fields{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;align-items:center;margin:0}
 .lan-fields dt{font-size:12px;font-weight:500;color:var(--muted)}
-.lan-fields dd{margin:0;text-align:right}
+.lan-fields dd{margin:0;text-align:right;min-width:0;overflow-wrap:anywhere}
 .lan-address code{font-size:13px;user-select:all}
 .network-note{margin:0;padding:14px 18px;color:var(--muted);font-size:12px;line-height:1.6;background:var(--bg2);box-shadow:none}
 .method{font-size:10px;letter-spacing:.04em;color:var(--accent-lt);padding:2px 6px;border:1px solid var(--line);border-radius:4px}
@@ -76,7 +87,30 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
 .copy-feedback:empty{display:none}
 .offline{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;white-space:nowrap}
 .offline:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--red)}
-@media(max-width:800px){.wrap{padding:16px}header{flex-wrap:wrap;gap:12px}.header-tools{margin-left:auto}.grid{grid-template-columns:1fr}.screenshot-card{container-type:normal}.preview{width:min(100%,280px)}}
+.phone-view .wrap{max-width:560px;padding:16px;padding-top:max(16px,env(safe-area-inset-top));padding-right:max(16px,env(safe-area-inset-right));padding-bottom:max(24px,env(safe-area-inset-bottom));padding-left:max(16px,env(safe-area-inset-left))}
+.phone-view header{gap:12px;flex-wrap:wrap;margin-bottom:24px;padding-bottom:14px}
+.phone-view .header-tools{margin-left:auto;gap:10px}
+.phone-view .theme{width:44px;height:44px}
+.phone-view .theme svg{width:20px;height:20px}
+.phone-view .grid{grid-template-columns:minmax(0,1fr)}
+.phone-view :is(.screenshot-card,.qr-toggle,.qr-dialog,.test-code-panel,.desktop-hint){display:none}
+.phone-view .side-column{gap:14px}
+.phone-view .intro{margin-bottom:4px}
+.phone-view h1{font-size:25px}
+.phone-view .intro-copy p{font-size:14px}
+.phone-view .phone-hint{display:block}
+.phone-view .card{border-radius:14px}
+.phone-view .card-head{margin-bottom:14px}
+.phone-view .endpoint-address{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;align-items:center;margin-bottom:0}
+.phone-view .method{justify-self:start;grid-column:1;grid-row:1}
+.phone-view .endpoint-address code{grid-column:1 / -1;grid-row:2;font-size:14px;line-height:1.8;-webkit-user-select:all}
+.phone-view .copy-url{grid-column:2;grid-row:1;display:flex;gap:7px;width:auto;min-width:104px;min-height:44px;padding:10px 12px;color:var(--txt);background:var(--card2);border:1px solid var(--line2);border-radius:9px}
+.phone-view .copy-url svg{width:17px;height:17px}
+.phone-view .copy-url.copied{color:var(--accent-lt);border-color:var(--accent-lt)}
+.phone-view .mobile-copy-label{display:inline;font-size:13px}
+.phone-view .copy-feedback{width:1px;height:1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.phone-view .lan-fields dt{font-size:13px}
+@media(max-width:800px){.screenshot-card,.qr-toggle,.qr-dialog,.test-code-panel{display:none}}
 @media(prefers-reduced-motion:no-preference){button{transition:border-color .15s,opacity .15s}}
 </style>
 </head>
@@ -144,24 +178,30 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
 </svg>PhysiClaw</div>
     <div class="header-tools">
       <span id="offline" class="offline" role="status" title="Run physiclaw test-assistive-touch to continue." aria-label="Disconnected. Run physiclaw test-assistive-touch to continue." hidden>Disconnected</span>
-      <button id="theme" class="theme" type="button" aria-label="Switch to light theme" title="Switch theme">☀</button>
+      <button id="theme" class="theme" type="button" aria-label="Switch to light theme" title="Switch theme">
+        <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+      </button>
     </div>
   </header>
   <div class="grid">
     <div class="side-column">
-    <div class="intro-copy"><h1>AssistiveTouch Test</h1><p>Upload screenshots and copy text using AssistiveTouch.</p></div>
+    <div class="intro">
+      <div class="intro-copy"><h1>AssistiveTouch Test</h1><p class="desktop-hint">Upload screenshots and copy text using AssistiveTouch.</p><p class="phone-hint">Copy each URL into its iPhone shortcut.</p></div>
+      <button id="qr-toggle" class="qr-toggle" type="button" aria-label="Open on iPhone" aria-haspopup="dialog" aria-controls="qr-dialog" title="Open on iPhone" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h3v3h3v3h-6v-3m6-5v2M12 3v3m-9 6h3m3 0h6m-3 3v6"/></svg></button>
+    </div>
     <section class="card" aria-labelledby="upload-title">
       <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 16V7m-3 3 3-3 3 3M10 19h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><h2 id="upload-title">Upload screenshot</h2></div>
       <div id="upload-primary" class="endpoint-address" hidden>
         <span class="method">POST</span><code id="upload-hostname" title="Preferred host name URL"></code>
-        <button id="upload-copy" class="copy-url" type="button" aria-label="Copy screenshot upload URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="copy-feedback" role="status"></span></button>
+        <button id="upload-copy" class="copy-url" type="button" aria-label="Copy screenshot upload URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="mobile-copy-label">Copy URL</span><span class="copy-feedback" role="status"></span></button>
       </div>
     </section>
     <section class="card" aria-labelledby="clipboard-title">
-      <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="8" y="2" width="8" height="5" rx="2" stroke="currentColor" stroke-width="1.5"/></svg></span><div><h2 id="clipboard-title">Copy to clipboard</h2><p class="direction">Use the shortcut to copy this code to your iPhone’s clipboard.</p></div></div>
+      <div class="card-head"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="8" y="2" width="8" height="5" rx="2" stroke="currentColor" stroke-width="1.5"/></svg></span><div><h2 id="clipboard-title">Copy to clipboard</h2><p class="direction desktop-hint">Use the shortcut to copy this code to your iPhone’s clipboard.</p></div></div>
       <div id="clipboard-primary" class="endpoint-address" hidden>
         <span class="method">GET</span><code id="clipboard-hostname" title="Preferred host name URL"></code>
-        <button id="clipboard-copy" class="copy-url" type="button" aria-label="Copy clipboard shortcut URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="copy-feedback" role="status"></span></button>
+        <button id="clipboard-copy" class="copy-url" type="button" aria-label="Copy clipboard shortcut URL" title="Copy URL" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="copy-symbol"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></g><path class="copy-check" d="m5 12 4 4L19 6"/></svg><span class="mobile-copy-label">Copy URL</span><span class="copy-feedback" role="status"></span></button>
       </div>
       <div id="code-panel" class="test-code-panel">
         <button id="test-code" class="test-code" type="button" aria-label="Generate another test code" title="Click to generate another code" disabled>PhysiClaw-···-···</button>
@@ -174,7 +214,7 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
         <dt>Port</dt><dd><code id="lan-port"></code></dd>
       </dl>
     </section>
-    <p class="card network-note">Make sure your iPhone and computer are connected to the same Wi-Fi network.</p>
+    <p class="card network-note desktop-hint">Make sure your iPhone and computer are connected to the same Wi-Fi network.</p>
     </div>
     <section id="screenshot-panel" class="card screenshot-card" aria-label="Screenshot preview">
       <div class="preview">
@@ -185,24 +225,79 @@ h2{font-size:16px;font-weight:600;line-height:1.4;margin:0;color:var(--strong);l
     </section>
   </div>
 </main>
+<dialog id="qr-dialog" class="qr-dialog" aria-labelledby="qr-title">
+  <img id="qr-image" class="qr-image" alt="QR code to open this test page on your iPhone" hidden>
+  <p id="qr-error" role="status" hidden>QR code unavailable. Please try again.</p>
+  <p id="qr-title">Open this page on your phone to copy the URLs.</p>
+</dialog>
+<script src="/api/test-assistive-touch/qrcode.js"></script>
 <script>
 const API = '/api/test-assistive-touch';
 const el = id => document.getElementById(id);
 const codeButton = el('test-code');
+const phonePage = document.body.dataset.phoneView === 'true';
+const compactLayout = window.matchMedia('(max-width: 800px)');
+const qrDialog = el('qr-dialog');
+let phonePageURL = '';
 let instance = null, seenSequence = 0, seenClipboardReads = 0, codeRevision = -1;
 let preparing = false, connected = false, stopped = false, timer = null;
 let imageVersion = 0, syncVersion = 0;
 
+function updateLayout() {
+  const phone = phonePage || compactLayout.matches;
+  document.body.classList.toggle('phone-view', phone);
+  if (phone && qrDialog.open) qrDialog.close();
+}
+compactLayout.addEventListener('change', updateLayout);
+updateLayout();
+
+function renderQR() {
+  el('qr-image').hidden = true;
+  el('qr-error').hidden = true;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(phonePageURL);
+    qr.make();
+    // Four white modules on every side keep the code easy to scan.
+    el('qr-image').src = qr.createDataURL(6, 24);
+    el('qr-image').hidden = false;
+  } catch {
+    el('qr-error').hidden = false;
+  }
+}
+el('qr-toggle').onclick = () => {
+  if (!phonePageURL || phonePage || compactLayout.matches) return;
+  renderQR();
+  qrDialog.showModal();
+};
+qrDialog.onclick = event => {
+  if (event.target !== qrDialog) return;
+  const bounds = qrDialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom) qrDialog.close();
+};
+
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+let themePreference = null;
+try {
+  const saved = localStorage.getItem('physiclaw-theme');
+  if (saved === 'light' || saved === 'dark') themePreference = saved;
+} catch {}
+
 function applyTheme(light) {
   document.body.classList.toggle('theme-light', light);
-  el('theme').textContent = light ? '☾' : '☀';
+  el('theme-color').setAttribute('content', light ? '#f7f3ee' : '#16151a');
   el('theme').setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
 }
-try { applyTheme(localStorage.getItem('physiclaw-theme') === 'light'); } catch {}
+applyTheme(themePreference ? themePreference === 'light' : !systemTheme.matches);
+systemTheme.addEventListener('change', () => {
+  if (!themePreference) applyTheme(!systemTheme.matches);
+});
 el('theme').onclick = () => {
   const light = !document.body.classList.contains('theme-light');
+  themePreference = light ? 'light' : 'dark';
   applyTheme(light);
-  try { localStorage.setItem('physiclaw-theme', light ? 'light' : 'dark'); } catch {}
+  try { localStorage.setItem('physiclaw-theme', themePreference); } catch {}
 };
 
 async function request(path = '', body) {
@@ -219,6 +314,13 @@ async function request(path = '', body) {
 }
 
 function showAddresses(connection) {
+  const phoneHost = connection && (connection.ip || connection.hostname);
+  phonePageURL = phoneHost ? `http://${phoneHost}:${connection.port}/test-assistive-touch` : '';
+  el('qr-toggle').disabled = !phonePageURL;
+  if (qrDialog.open) {
+    if (phonePageURL) renderQR();
+    else qrDialog.close();
+  }
   el('shortcut-addresses').hidden = !connection;
   el('upload-primary').hidden = !connection;
   el('clipboard-primary').hidden = !connection;
@@ -243,22 +345,49 @@ function showAddresses(connection) {
   }
 }
 
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {}
+  }
+  // LAN HTTP pages lack the Clipboard API. Select a real text field during
+  // the tap so Safari can still copy, without zooming or scrolling the page.
+  const field = document.createElement('textarea');
+  const focused = document.activeElement;
+  field.value = text;
+  field.readOnly = true;
+  field.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px;pointer-events:none';
+  document.body.appendChild(field);
+  try {
+    field.focus({preventScroll: true});
+    field.select();
+    field.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+    if (focused) focused.focus({preventScroll: true});
+  }
+}
+
 for (const kind of ['upload', 'clipboard']) {
-  const button = el(kind + '-copy'), feedback = button.querySelector('.copy-feedback');
+  const button = el(kind + '-copy');
+  const feedback = button.querySelector('.copy-feedback'), label = button.querySelector('.mobile-copy-label');
   let reset;
   button.onclick = async () => {
     if (button.disabled) return;
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(el(kind + '-hostname').textContent);
-      copied = true;
-    } catch {}
+    const copied = await copyText(el(kind + '-hostname').textContent);
     clearTimeout(reset);
     button.classList.toggle('copied', copied);
-    feedback.textContent = copied ? 'Copied' : 'Copy failed';
+    label.textContent = copied ? 'Copied' : 'Hold URL';
+    feedback.textContent = copied ? 'Copied' : 'Select URL to copy';
     button.title = copied ? 'Copied' : 'Select the URL and copy it manually.';
     reset = setTimeout(() => {
       button.classList.remove('copied');
+      label.textContent = 'Copy URL';
       feedback.textContent = '';
       button.title = 'Copy URL';
     }, 1800);
@@ -288,6 +417,7 @@ function resetPreview() {
 
 function showScreenshot(shot) {
   seenSequence = shot.sequence;
+  if (phonePage || compactLayout.matches) return;
   const version = ++imageVersion, img = el('screenshot'), meta = el('image-meta');
   img.onload = () => {
     if (version !== imageVersion) return;
