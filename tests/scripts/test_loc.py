@@ -240,9 +240,19 @@ def test_errors_are_readable_on_ascii_stderr(repo, monkeypatch):
     assert "\x1b" not in output
 
 
-@pytest.mark.skipif(shutil.which("make") is None, reason="GNU Make is not installed")
-def test_make_loc_in_checkout_with_spaces(repo):
-    checkout = repo.with_name("repo with spaces 中文")
+@pytest.mark.parametrize(
+    ("launcher", "checkout_name"),
+    [
+        ("make", "repo with spaces"),
+        ("python", "repo with spaces 中文"),
+    ],
+)
+def test_loc_in_checkout_with_spaces(repo, launcher, checkout_name):
+    if launcher == "make" and shutil.which("make") is None:
+        pytest.skip("GNU Make is not installed")
+    # Native Windows Make cannot read a Unicode working directory. Exercise
+    # Make's quoting separately from the script's Unicode path handling.
+    checkout = repo.with_name(checkout_name)
     repo.rename(checkout)
     (checkout / "scripts").mkdir()
     shutil.copyfile(loc.ROOT / "scripts/loc.py", checkout / "scripts/loc.py")
@@ -250,24 +260,22 @@ def test_make_loc_in_checkout_with_spaces(repo):
     write(checkout, "tests/test_example.py", "assert True\n")
     write(checkout, "config.json", "{}\n")
     # Use the already-provisioned interpreter; this smoke test needs no network.
-    python = f'"{sys.executable}" -X utf8={sys.flags.utf8_mode}'
+    python_flags = ["-X", f"utf8={sys.flags.utf8_mode}"]
     if sys.flags.warn_default_encoding:
-        python += " -X warn_default_encoding -W error::EncodingWarning"
-    command = [
-        "make",
-        "--no-print-directory",
-        "loc",
-        f"PY={python}",
-        "NO_COLOR=1",
-    ]
-    if os.name == "nt":
-        command.append("SHELL=cmd.exe")
+        python_flags += ["-X", "warn_default_encoding", "-W", "error::EncodingWarning"]
+    if launcher == "make":
+        python = f'"{sys.executable}" {" ".join(python_flags)}'
+        command = ["make", "--no-print-directory", "loc", f"PY={python}"]
+        if os.name == "nt":
+            command.append("SHELL=cmd.exe")
+    else:
+        command = [sys.executable, *python_flags, "scripts/loc.py"]
     result = subprocess.run(
         command,
         cwd=checkout,
         capture_output=True,
         timeout=30,
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        env={**os.environ, "PYTHONIOENCODING": "utf-8", "NO_COLOR": "1"},
     )
 
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
@@ -277,5 +285,5 @@ def test_make_loc_in_checkout_with_spaces(repo):
     rows = [line.split() for line in output.splitlines()]
     actual = {row[0]: int(row[1].replace(",", "")) for row in rows if len(row) == 2}
     assert actual == expected
-    assert "repo with spaces 中文" in output
+    assert checkout_name in output
     assert "\x1b" not in output

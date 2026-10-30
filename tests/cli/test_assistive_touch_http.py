@@ -317,7 +317,11 @@ def test_page_controls_reject_unrelated_origins_on_both_listeners(clients):
 def test_phone_page_accepts_advertised_lan_address_and_origin(clients, host):
     state, _, phone = clients
     port = phone.__kwdefaults__["port"]
-    state.connection = {"hostname": "test-mac.local", "ip": "192.168.1.42", "port": port}
+    state.connection = {
+        "hostname": "test-mac.local",
+        "ip": "192.168.1.42",
+        "port": port,
+    }
     headers = {"Host": f"{host}:{port}", "Origin": f"http://{host}:{port}"}
     assert phone("GET", service.PAGE_PATH, headers=headers).status == 200
     assert phone("GET", API, headers=headers).status == 200
