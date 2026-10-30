@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck help firmware bump build publish release docs-deploy \
+.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release docs-deploy \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -34,6 +34,7 @@ help:
 	@echo "  lint                  — ruff check + format check"
 	@echo "  fmt                   — ruff format (src, tests, hardware, firmware, scripts)"
 	@echo "  typecheck             — mypy on application and hardware port (scope in [tool.mypy])"
+	@echo "  loc                   — Total = Code + Test + Text (NO_COLOR=1 for plain output)"
 	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
 	@echo "  bump [VERSION=X.Y.Z]  — bump version. Defaults to incrementing the last"
 	@echo "                          component split by '.' (0.0.7 → 0.0.8). Override with"
@@ -57,7 +58,7 @@ test-fast: test
 
 # PEP 597 catches implicit encodings at runtime; PEP 686 recommends testing
 # with UTF-8 mode disabled and enabled. Subprocess regressions forward the flags.
-test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/cli/test_session_debug.py tests/hardware/documents/sourcing/test_urls.py
+test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/scripts/test_loc.py tests/cli/test_session_debug.py tests/hardware/documents/sourcing/test_urls.py
 test-encoding:
 	$(PYTHON) -X utf8=0 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
 	$(PYTHON) -X utf8=1 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
@@ -88,6 +89,10 @@ fmt:
 # Scope and settings live in [tool.mypy] in pyproject.toml.
 typecheck:
 	$(PY) mypy
+
+# Standalone report; uv installs only the small counting / display dependencies.
+loc:
+	@$(PY) scripts/loc.py
 
 # Standalone PEP 723 script; uv supplies the image build dependencies.
 # Example: make firmware ARGS="--tag v4.1.0 --out /tmp/fluidnc.zip"
