@@ -179,17 +179,22 @@ def test_merge_conflict_index_entries_count_the_working_file_once(repo):
     assert loc.collect(repo) == {"Code": 2, "Test": 0, "Text": 0}
 
 
-def test_invalid_text_fails_without_printing_a_partial_total(repo, monkeypatch, capsys):
+@pytest.mark.parametrize("columns", [20, 80, 120])
+def test_invalid_text_fails_without_printing_a_partial_total(
+    repo, monkeypatch, capsys, columns
+):
     write(repo, "good.py", "x = 1\n")
     write(repo, "bad.json", b'{"label": "\xff"}\n')
     monkeypatch.setattr(loc, "ROOT", repo)
     monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", str(columns))
 
     assert loc.main() == 1
 
     output = capsys.readouterr()
     assert output.out == ""
     assert "bad.json" in output.err
+    assert str(repo / "bad.json") in output.err
     assert "Cannot count lines" in output.err
 
 
@@ -224,19 +229,22 @@ def test_report_supports_legacy_and_unicode_streams(encoding):
         assert "|  Line count" in output
 
 
-def test_errors_are_readable_on_ascii_stderr(repo, monkeypatch):
+@pytest.mark.parametrize("columns", [20, 80, 120])
+def test_errors_are_readable_on_ascii_stderr(repo, monkeypatch, columns):
     write(repo, "bad-坏.json", b"\xff")
     buffer = io.BytesIO()
     stream = io.TextIOWrapper(buffer, encoding="ascii", write_through=True)
     monkeypatch.setattr(loc.sys, "stderr", stream)
     monkeypatch.setattr(loc, "ROOT", repo)
     monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", str(columns))
 
     assert loc.main() == 1
 
     output = buffer.getvalue().decode("ascii")
     assert "Cannot count lines" in output
     assert "bad-" in output
+    assert "bad-\\u574f.json" in output
     assert "\x1b" not in output
 
 

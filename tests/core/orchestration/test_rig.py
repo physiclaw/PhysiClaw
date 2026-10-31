@@ -71,6 +71,16 @@ def test_ready_false_when_marked_but_hardware_down() -> None:
     assert r.ready is False
 
 
+def test_ready_false_when_work_frame_is_no_longer_pinned(rig, wire_rig) -> None:
+    wire_rig(rig)
+    rig.mark_ready()
+
+    rig._origin_pinned = False
+
+    assert rig.ready is False
+    assert rig.status()["ready"] is False
+
+
 def test_hardware_ready_requires_arm_cam_and_transforms(
     rig, arm_double, cam_double
 ) -> None:

@@ -661,23 +661,158 @@ def installed(official_home, mocker):
     return before
 
 
-def _fail_replace(mocker, official, step, error):
+def _fail_replace(mocker, official, step, error, *, failures=None):
     replace = osk.os.replace
     action, name = step.split(":")
+    attempts = []
 
     def replace_once(source, destination):
         source, destination = Path(source), Path(destination)
-        matches = (
-            source == official / name
-            if action == "park"
-            else destination == official / name
-            and source.parent.name.startswith(osk.STAGING_DIR)
-        )
+        matches = {
+            "park": source == official / name
+            and destination.parent.name.startswith(".sync-backup-"),
+            "install": destination == official / name
+            and source.parent.name.startswith(osk.STAGING_DIR),
+            "uninstall": source == official / name
+            and destination.parent.name.startswith(osk.STAGING_DIR),
+            "restore": destination == official / name
+            and source.parent.name.startswith(".sync-backup-"),
+        }[action]
         if matches:
-            raise error
+            attempts.append((source, destination))
+            if failures is None or len(attempts) <= failures:
+                raise error
         return replace(source, destination)
 
     mocker.patch.object(osk.os, "replace", side_effect=replace_once)
+    return attempts
+
+
+def _windows_permission_error(code):
+    error = PermissionError("native rename blocked")
+    error.winerror = code
+    return error
+
+
+@pytest.fixture
+def windows_rename(mocker):
+    # Exercise the selected native policy on every CI host, without replacing
+    # the sync transaction or changing Path's platform-sensitive construction.
+    mocker.patch.object(osk, "replace_file", windows.replace_file)
+
+
+def _interrupt_target_backoff(mocker, attempts):
+    # Other real renames may encounter native contention too. Keep their
+    # backoff, and interrupt only once after the injected operation failed.
+    native_sleep = windows.time.sleep
+    pending = True
+
+    def sleep(seconds):
+        nonlocal pending
+        if pending and attempts:
+            pending = False
+            raise KeyboardInterrupt("operator stop")
+        native_sleep(seconds)
+
+    mocker.patch.object(windows, "time", SimpleNamespace(sleep=sleep))
+
+
+@pytest.mark.parametrize("step", ["park:skills", "install:skills"])
+@pytest.mark.parametrize("code", [5, 32, 33])
+def test_native_transient_rename_error_retries_then_installs_complete_pack(
+    official_home, installed, mocker, windows_rename, step, code
+):
+    attempts = _fail_replace(
+        mocker, official_home, step, _windows_permission_error(code), failures=1
+    )
+
+    osk.sync()
+
+    assert len(attempts) == 2
+    assert (official_home / "skills" / "new" / "SKILL.md").read_bytes() == _skill_md(
+        "new"
+    )
+    assert not (official_home / "skills" / "old").exists()
+    assert (
+        json.loads((official_home / "source.json").read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "new"
+    )
+    assert (
+        json.loads((official_home / osk.SYNC_STATE_FILE).read_text(encoding="utf-8"))[
+            "commit"
+        ]
+        == "new"
+    )
+    assert not list(official_home.glob(".sync-backup-*"))
+
+
+@pytest.mark.parametrize("code", [5, 32, 33])
+def test_exhausted_native_rename_retries_restore_entire_previous_pack(
+    official_home, installed, mocker, windows_rename, code
+):
+    attempts = _fail_replace(
+        mocker, official_home, "install:source.json", _windows_permission_error(code)
+    )
+
+    with pytest.raises(osk.SyncError, match="native rename blocked"):
+        osk.sync()
+
+    assert len(attempts) == 41
+    assert _snapshot(official_home) == installed
+    assert not list(official_home.glob(".sync-backup-*"))
+    assert not list(official_home.glob(".sync-staging*"))
+
+
+@pytest.mark.parametrize("code", [None, 13])
+def test_other_permission_errors_fail_without_retry_and_restore_previous_pack(
+    official_home, installed, mocker, windows_rename, code
+):
+    attempts = _fail_replace(
+        mocker, official_home, "install:source.json", _windows_permission_error(code)
+    )
+
+    with pytest.raises(osk.SyncError, match="native rename blocked"):
+        osk.sync()
+
+    assert len(attempts) == 1
+    assert _snapshot(official_home) == installed
+
+
+def test_interrupt_during_native_retry_restores_pack_and_propagates(
+    official_home, installed, mocker, windows_rename
+):
+    attempts = _fail_replace(
+        mocker, official_home, "install:skills", _windows_permission_error(5)
+    )
+    _interrupt_target_backoff(mocker, attempts)
+
+    with pytest.raises(KeyboardInterrupt, match="operator stop"):
+        osk.sync()
+
+    assert len(attempts) == 1
+    assert _snapshot(official_home) == installed
+    assert not list(official_home.glob(".sync-backup-*"))
+
+
+@pytest.mark.parametrize("step", ["uninstall:skills", "restore:skills"])
+def test_rollback_also_retries_native_contention_and_preserves_original_error(
+    official_home, installed, mocker, windows_rename, step
+):
+    _fail_replace(
+        mocker, official_home, "install:source.json", OSError("install failed")
+    )
+    attempts = _fail_replace(
+        mocker, official_home, step, _windows_permission_error(32), failures=1
+    )
+
+    with pytest.raises(osk.SyncError, match="install failed"):
+        osk.sync()
+
+    assert len(attempts) == 2
+    assert _snapshot(official_home) == installed
+    assert not list(official_home.glob(".sync-backup-*"))
 
 
 @pytest.mark.parametrize(

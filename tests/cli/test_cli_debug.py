@@ -271,7 +271,11 @@ def test_status_reports_suspended_reference() -> None:
     assert "suspended walk: demo/flow" in result.stdout
 
 
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=30,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(task=st.text(max_size=60), replies=st.lists(st.text(max_size=40), max_size=4))
 def test_seed_roundtrips_task_and_replies(task, replies):
     args = ["debug", "--task", task, "--no-wake"]

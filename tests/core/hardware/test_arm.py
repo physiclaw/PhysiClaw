@@ -190,7 +190,9 @@ def test_init_uses_detect_grbl_when_port_omitted(mocker) -> None:
 
     assert arm.port == "/dev/cu.test"
     detect_spy.assert_called_once()
-    serial_spy.assert_called_once_with("/dev/cu.test", 115200, timeout=3)
+    serial_spy.assert_called_once_with(
+        "/dev/cu.test", 115200, timeout=3, write_timeout=3
+    )
 
 
 def test_init_raises_when_no_grbl_detected(mocker) -> None:
@@ -228,7 +230,36 @@ def test_init_uses_explicit_port_when_provided(mocker) -> None:
 
     assert arm.port == "/dev/cu.explicit"
     detect_spy.assert_not_called()
-    serial_spy.assert_called_once_with("/dev/cu.explicit", 9600, timeout=3)
+    serial_spy.assert_called_once_with(
+        "/dev/cu.explicit", 9600, timeout=3, write_timeout=3
+    )
+
+
+@pytest.mark.parametrize(
+    "stage, error_type",
+    [
+        ("settle", RuntimeError),
+        ("settle", KeyboardInterrupt),
+        ("reset", OSError),
+        ("reset", KeyboardInterrupt),
+    ],
+)
+def test_regression_init_failure_closes_bounded_serial_port(mocker, stage, error_type):
+    fake = FakeSerial()
+    opened = mocker.patch.object(arm_mod.serial, "Serial", return_value=fake)
+    mocker.patch.object(arm_mod.time, "sleep")
+    targets = {
+        "settle": (arm_mod.time, "sleep"),
+        "reset": (fake, "reset_input_buffer"),
+    }
+    target, method = targets[stage]
+    mocker.patch.object(target, method, side_effect=error_type("startup failed"))
+
+    with pytest.raises(error_type, match="startup failed"):
+        StylusArm(port="/dev/cu.fake")
+
+    opened.assert_called_once_with("/dev/cu.fake", 115200, timeout=3, write_timeout=3)
+    assert fake.closed is True
 
 
 def test_regression_serial_open_uses_device_error_taxonomy(mocker) -> None:
@@ -335,6 +366,17 @@ def test_wait_idle_returns_when_idle(mocker) -> None:
     )
 
     arm.wait_idle()  # no raise
+
+
+@pytest.mark.parametrize(
+    "status", [b"<NotIdle|WPos:0,0>\n", b"<Run|MSG:Idle>\n", b"<IdleExtra>\n"]
+)
+def test_regression_wait_idle_requires_exact_machine_state(mocker, status) -> None:
+    arm, serial_port = _arm(mocker, status_replies=[status, b"<Idle>\n"])
+
+    arm.wait_idle()
+
+    assert serial_port.writes == [b"?", b"?"]
 
 
 def test_wait_idle_polls_until_idle(mocker) -> None:

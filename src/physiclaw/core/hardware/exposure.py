@@ -53,8 +53,11 @@ log = logging.getLogger(__name__)
 
 # Frames the caller's meter must let pass after each property set —
 # drivers apply exposure changes with latency, and metering the pre-set
-# frame would misread every step.
-SETTLE_FRAMES = 5
+# frame would misread every step. On the Windows 4K capture path, measured
+# changes first appeared at publication 6–7. Allow one pre-write read to
+# publish after the setter, plus two frames of margin; callers still bound
+# the wait to five seconds. Focus has its own, independent settling budget.
+SETTLE_FRAMES = 10
 
 # Manual-stepping bounds, log2-seconds scale (-8 ≈ 3.9ms, -5 = 31.2ms).
 # This is the shared contract for `set_manual` values: Windows passes it

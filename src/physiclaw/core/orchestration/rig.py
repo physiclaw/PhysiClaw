@@ -85,7 +85,7 @@ class HardwareRig:
     @property
     def ready(self) -> bool:
         """True only after setup has fully completed AND hardware is still up."""
-        return self._ready and self.hardware_ready
+        return self._ready and self.hardware_ready and self._origin_pinned
 
     def mark_ready(self) -> None:
         """Flip the ready flag. Kept pure (tests pin it).

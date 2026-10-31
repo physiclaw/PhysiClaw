@@ -59,10 +59,11 @@ def test_shutdown_delegates_to_rig(mocker, pc: PhysiClaw) -> None:
 
 
 def test_become_ready_settles_camera_before_flipping_ready(
-    mocker, pc: PhysiClaw
+    mocker, pc: PhysiClaw, wire_rig
 ) -> None:
     """The agent polls `ready` and peeks immediately — the flip must not
     be observable before the camera settle has run."""
+    wire_rig(pc.rig)
     order: list[str] = []
     mocker.patch.object(
         pc.perception, "tune_now", side_effect=lambda: order.append("settle")
@@ -198,6 +199,45 @@ def test_become_ready_reports_false_after_shutdown(pc):
     ready = pc.become_ready()
 
     assert ready is False
+
+
+def test_become_ready_without_hardware_does_not_settle_or_mark_ready(mocker, pc):
+    tune = mocker.patch.object(pc.perception, "tune_now")
+
+    ready = pc.become_ready()
+
+    assert ready is False
+    assert pc.rig._ready is False
+    tune.assert_not_called()
+
+
+def test_regression_unpinned_arm_cannot_become_ready(mocker, pc, wire_rig):
+    wire_rig(pc.rig)
+    pc.rig.calibration.pct_to_grbl = np.array([[60, 0, -30], [0, 120, -60]])
+    pc.rig._origin_pinned = False
+    tune = mocker.patch.object(pc.perception, "tune_now")
+
+    ready = pc.become_ready()
+
+    assert ready is False
+    assert pc.rig._ready is False
+    tune.assert_not_called()
+    pc.rig.arm.rapid_to.assert_not_called()
+
+
+def test_become_ready_after_origin_restore_settles_once(mocker, pc, wire_rig):
+    wire_rig(pc.rig)
+    pc.rig.calibration.pct_to_grbl = np.array([[60, 0, -30], [0, 120, -60]])
+    pc.rig._origin_pinned = False
+    tune = mocker.patch.object(pc.perception, "tune_now")
+    pc.become_ready()
+
+    with pc.rig.locked():
+        pc.rig.restore_park_origin()
+    ready = pc.become_ready()
+
+    assert ready is True
+    tune.assert_called_once_with()
 
 
 # ---------- AT guards ----------

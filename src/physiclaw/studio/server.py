@@ -31,6 +31,7 @@ from html import escape
 from pathlib import Path
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
@@ -44,6 +45,7 @@ from starlette.routing import Route
 from physiclaw.agent.trace import viewer
 from physiclaw.agent.trace.store import recent_sessions, resolve_session
 from physiclaw.common import gesture_vocab, paths
+from physiclaw.common.control_gate import ControlGate
 from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.ready import START_HINT
 from physiclaw.common.text import read_text
@@ -477,6 +479,7 @@ def build_app(session: Session, *, review_dir: Path | None = None) -> Starlette:
                 await session.close()
 
     return Starlette(
+        middleware=[Middleware(ControlGate)],
         routes=[
             *review_routes,
             Route("/", handle_page),

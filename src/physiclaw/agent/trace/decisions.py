@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import sys
 from bisect import bisect_right
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -232,8 +233,9 @@ def _latency(events: list[dict]) -> dict:
         e["elapsed_ms"]
         for e in events
         if type(e.get("elapsed_ms")) in (int, float)
-        and math.isfinite(e["elapsed_ms"])
-        and e["elapsed_ms"] >= 0
+        # JSON integers are unbounded; math.isfinite would convert them to
+        # float and can raise instead of marking a damaged sample missing.
+        and 0 <= e["elapsed_ms"] <= sys.float_info.max
     )
 
     def percentile(fraction):

@@ -181,7 +181,9 @@ def test_empty_write_without_existing_state_does_not_create_files(
 
 
 # Each generated example resets both files and both configuration limits.
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+# Disk latency varies under coverage and concurrent suites; this checks state,
+# not filesystem performance.
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     items=st.lists(
         st.text(st.characters(blacklist_categories=("Cs",)), max_size=80), max_size=7

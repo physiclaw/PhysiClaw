@@ -100,6 +100,7 @@ def test_make_docs_deploy_propagates_result(tmp_path, status, docs_hook):
             str(REPO_ROOT / "Makefile"),
             "docs-deploy",
             f"PYTHON={Path(sys.executable).as_posix()}",
+            f"DOCS_DEPLOY_SCRIPT={(REPO_ROOT / 'scripts/docs_deploy.py').as_posix()}",
         ],
     )
 

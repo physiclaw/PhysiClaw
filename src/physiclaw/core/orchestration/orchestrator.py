@@ -96,6 +96,9 @@ class PhysiClaw:
             with self.rig.locked(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
                 if self.rig.ready:
                     return True
+                # A reconnect invalidates the arm's work frame. Settling the
+                # camera cannot make gestures safe until it has been re-pinned.
+                self.rig.require_hardware()
                 try:
                     self.rig.park()
                     self.perception.tune_now()

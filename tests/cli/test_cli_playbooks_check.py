@@ -4,6 +4,8 @@ author never wonders why a file on disk does nothing."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from physiclaw.cli import app
@@ -15,7 +17,8 @@ def _check():
     return runner.invoke(app, ["playbooks", "check"])
 
 
-def test_check_names_prompt_files_no_route_reads() -> None:
+def test_check_names_prompt_files_no_route_reads(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "conductor"))
     from conductor_fakes import FLOW, write_pack, write_prompt
 
     root = write_pack(playbooks={"flow": FLOW})
@@ -29,7 +32,8 @@ def test_check_names_prompt_files_no_route_reads() -> None:
     assert "demo/flow/prompts/own.md is read by no step of flow" in result.output
 
 
-def test_check_fails_on_a_broken_prompt_file_and_a_stray_route() -> None:
+def test_check_fails_on_a_broken_prompt_file_and_a_stray_route(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "conductor"))
     from conductor_fakes import FLOW, write_pack, write_prompt
 
     root = write_pack(playbooks={"flow": FLOW})

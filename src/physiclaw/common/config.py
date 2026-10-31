@@ -558,6 +558,18 @@ def config_path() -> Path:
     return paths.HOME / "config.toml"
 
 
+# Bounds imposed by the consumers' units, rather than tuning policy. Reject
+# these at load/edit time instead of losing images or purging recent journals.
+_INT_RANGES: dict[tuple[str, str], tuple[int, int | None]] = {
+    ("camera", "width"): (1, None),
+    ("camera", "height"): (1, None),
+    ("compact", "max_image_edge_px"): (1, None),
+    ("compact", "jpeg_quality"): (0, 100),
+    ("retention", "trace_days"): (0, None),
+    ("retention", "log_days"): (0, None),
+}
+
+
 def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any:
     """Validate one TOML override against the field's declared type — the
     'type mismatch' half of ConfigError's contract. Without it a quoted
@@ -578,6 +590,15 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
             return value
     elif declared is int:
         if isinstance(value, int) and not isinstance(value, bool):
+            if bounds := _INT_RANGES.get((section, key)):
+                lower, upper = bounds
+                if value < lower or (upper is not None and value > upper):
+                    expected = (
+                        f"in [{lower}, {upper}]" if upper is not None else f">= {lower}"
+                    )
+                    raise ConfigError(
+                        f"[{section}] {key}: expected an integer {expected}"
+                    )
             if (
                 section == "retention"
                 and key in {"log_max_bytes", "log_backup_count"}
@@ -595,6 +616,12 @@ def _check_scalar_type(section: str, key: str, declared: Any, value: Any) -> Any
                 raise ConfigError(f"[{section}] {key}: expected a finite float")
             if section == "decision" and key == "timeout_seconds" and number <= 0:
                 raise ConfigError(f"[{section}] {key}: expected a positive float")
+            if (
+                section == "conductor"
+                and key == "micro_confidence"
+                and not 0 <= number <= 1
+            ):
+                raise ConfigError(f"[{section}] {key}: expected a float in [0, 1]")
             return number
     elif isinstance(value, str):
         if (

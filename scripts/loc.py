@@ -174,7 +174,8 @@ def main() -> int:
             Text(
                 terminal_text(f"Cannot count lines: {exc}", error_console),
                 style="bold red",
-            )
+            ),
+            soft_wrap=True,
         )
         return 1
     show_report(console, counts, ROOT.name)

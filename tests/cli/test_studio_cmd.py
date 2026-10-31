@@ -26,6 +26,7 @@ from typer.testing import CliRunner
 studio_mod = importlib.import_module("physiclaw.cli.studio")
 
 BASE = "http://127.0.0.1:8048"
+STUDIO_URL = "http://127.0.0.1:8058"
 app = typer.Typer()
 app.command()(studio_mod.studio)
 runner = CliRunner()
@@ -83,7 +84,7 @@ def test_regression_studio_review_serves_selected_directory(
     selected = _recording(tmp_path / "export" / dirname, "SELECTED_EXTERNAL")
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])
-    with TestClient(launched[0].config.app) as client:
+    with TestClient(launched[0].config.app, base_url=STUDIO_URL) as client:
         page = client.get(_printed_path(result))
         frame = client.get(_printed_path(result) + "images/frame.jpg")
 
@@ -104,7 +105,7 @@ def test_studio_selected_recording_does_not_replace_internal_browsing(
     selected = _recording(tmp_path / "export" / internal.name, "EXTERNAL")
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])
-    with TestClient(launched[0].config.app) as client:
+    with TestClient(launched[0].config.app, base_url=STUDIO_URL) as client:
         chosen = client.get(_printed_path(result))
         ordinary = client.get(f"/sessions/{internal.name}/")
 
@@ -116,7 +117,7 @@ def test_studio_selected_recording_does_not_replace_internal_browsing(
 
 
 def _state(launched):
-    with TestClient(launched[-1].config.app) as client:
+    with TestClient(launched[-1].config.app, base_url=STUDIO_URL) as client:
         return client.get("/api/state").json()
 
 
@@ -237,7 +238,7 @@ def test_studio_review_without_selection_opens_newest_without_mcp(launched, mock
     probe = mocker.patch("physiclaw.common.ready.check_ready_once")
 
     result = runner.invoke(app, ["--review", "--no-open"])
-    with TestClient(launched[0].config.app) as client:
+    with TestClient(launched[0].config.app, base_url=STUDIO_URL) as client:
         page = client.get(_printed_path(result))
 
     assert result.exit_code == 0
@@ -252,7 +253,7 @@ def test_studio_session_suffix_resolves_to_selected_recording(launched):
     _recording(paths.sessions_dir() / "20260908-100000-abc123", "SUFFIX_SELECTED")
 
     result = runner.invoke(app, ["--review", "--session", "abc123", "--no-open"])
-    with TestClient(launched[0].config.app) as client:
+    with TestClient(launched[0].config.app, base_url=STUDIO_URL) as client:
         page = client.get(_printed_path(result))
 
     assert result.exit_code == 0
@@ -457,7 +458,13 @@ def test_studio_browser_failure_does_not_stop_server(launched, mocker):
     assert "Could not open browser: headless" in result.stderr
 
 
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=20,
+    # This checks path/route identity through filesystem and TestClient threads,
+    # whose scheduling is not a property of the generated directory name.
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(name=st.text(alphabet="abc09记录 #%[]", min_size=1, max_size=12))
 def test_studio_directory_name_does_not_change_review_route(launched, tmp_path, name):
     launched.clear()
@@ -468,7 +475,7 @@ def test_studio_directory_name_does_not_change_review_route(launched, tmp_path, 
     )
 
     result = runner.invoke(app, ["--review", "--session", str(selected), "--no-open"])
-    with TestClient(launched[0].config.app) as client:
+    with TestClient(launched[0].config.app, base_url=STUDIO_URL) as client:
         page = client.get(_printed_path(result))
 
     assert result.exit_code == 0

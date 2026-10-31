@@ -31,6 +31,7 @@ from physiclaw.cli._http import http_get, stream
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
 from physiclaw.common.text import read_text, write_text
+from physiclaw.port.filesystem import replace_file
 from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger(__name__)
@@ -259,18 +260,18 @@ def _install(staging: Path, official: Path) -> None:
         for name in names:
             live = official / name
             if live.exists() or live.is_symlink():
-                os.replace(live, backup / name)
+                replace_file(live, backup / name)
                 parked.append(name)
-            os.replace(staging / name, live)
+            replace_file(staging / name, live)
             installed.append(name)
     except BaseException as error:
         failures: list[str] = []
         for name in reversed(names):
             try:
                 if name in installed:
-                    os.replace(official / name, staging / name)
+                    replace_file(official / name, staging / name)
                 if name in parked:
-                    os.replace(backup / name, official / name)
+                    replace_file(backup / name, official / name)
             except OSError as e:
                 failures.append(f"{name}: {e}")
         if failures:

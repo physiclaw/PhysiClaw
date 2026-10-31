@@ -113,6 +113,24 @@ def _labelled(directory, expected):
     return document
 
 
+@pytest.mark.parametrize("elapsed", [10**400, -(10**400), None, True, "100", -1])
+def test_report_invalid_latency_is_missing_without_losing_the_decision(
+    tmp_path, elapsed
+):
+    projection = _projection(tmp_path, "r0")
+    _write(tmp_path, [projection, _call(projection, elapsed=elapsed)])
+
+    result = report(tmp_path)
+
+    assert result["latency"]["all_attempts"] == {
+        "samples": 0,
+        "missing": 1,
+        "p50_ms": None,
+        "p95_ms": None,
+    }
+    assert result["cases"][0]["status"] == "answered"
+
+
 def test_blind_template_contains_only_original_evidence(tmp_path):
     projection = _projection(tmp_path, "r0")
     answer = _call(projection)

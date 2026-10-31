@@ -26,7 +26,11 @@ from physiclaw.conductor.load import pack as pb
 from physiclaw.conductor.load.pack import discover, load_spec
 from physiclaw.conductor.micro.decision import READ_REPLY, DecisionRequest, MicroOutcome
 from physiclaw.conductor.route import lints, playbook
-from physiclaw.conductor.spec.limits import MAX_MESSAGE_LINES
+from physiclaw.conductor.spec.limits import (
+    MAX_MESSAGE_LINES,
+    MAX_REVISIONS,
+    MAX_RUN_ROUNDS,
+)
 from physiclaw.conductor.spec.live import disabled_macros, live_gap
 from physiclaw.conductor.spec.model import PlaybookError, RunNode, TellNode
 from physiclaw.conductor.spec.pack import qualified_inline
@@ -89,6 +93,14 @@ def test_a_playbook_declares_its_returns_over_its_own_refs() -> None:
         )
 
 
+@pytest.mark.parametrize("reserved", ["done", "miss"])
+def test_run_returns_cannot_shadow_round_bookkeeping(reserved: str) -> None:
+    leg = LEG.replace('  did: "searched {inputs.what}"', f'  {reserved}: "claimed"')
+
+    with pytest.raises(PlaybookError, match="how a round records whether it ran"):
+        _parse(FLOW, flow_leg=leg)
+
+
 @pytest.mark.parametrize(
     "old, new, fragment",
     [
@@ -124,6 +136,63 @@ def test_run_shape_lints(old, new, fragment) -> None:
         _parse(FLOW.replace(old, new))
 
 
+@pytest.mark.parametrize(
+    "each, fragment",
+    [
+        ("[]", "`each` is one mapping"),
+        ("{}", "`each` is one mapping"),
+        ("{what: parse.items, extra: parse.items}", "`each` is one mapping"),
+        ("{unknown: parse.items}", "not an input of playbook"),
+        ("{what: inputs.keyword}", "EARLIER agent returned"),
+    ],
+)
+def test_each_requires_one_declared_input_from_an_earlier_agent(each, fragment) -> None:
+    text = EACH.replace("{what: parse.items}", each)
+
+    with pytest.raises(PlaybookError, match=fragment):
+        _parse(text)
+
+
+def test_each_cannot_overwrite_an_input_already_filled_by_with() -> None:
+    text = EACH.replace("    each:", '    with: {what: "{inputs.keyword}"}\n    each:')
+
+    with pytest.raises(PlaybookError, match="filled by both `with` and `each`"):
+        _parse(text)
+
+
+@pytest.mark.parametrize(
+    "field, fragment",
+    [
+        ("limit: {rounds: 1}", "`limit.rounds` goes with `each`"),
+        ("limit: {revisions: 1}", "`limit.revisions` goes with `revise`"),
+        ("revise: later", "not an EARLIER agent"),
+    ],
+)
+def test_run_rejects_budgets_and_revision_without_the_required_context(
+    field, fragment
+) -> None:
+    text = FLOW.replace("  - run: leg\n", f"  - run: leg\n    {field}\n")
+
+    with pytest.raises(PlaybookError, match=fragment):
+        _parse(text)
+
+
+def test_revision_requires_a_sub_playbook_that_can_ask_for_a_reply() -> None:
+    text = EACH.replace("    limit: {rounds: 2}", "    revise: parse")
+
+    with pytest.raises(PlaybookError, match="`revise` needs an ask inside playbook"):
+        _parse(text)
+
+
+def test_run_cannot_finish_without_checking_its_landing_page() -> None:
+    text = FLOW.replace("  - page: app.pages.results\n", "").replace(
+        "  - run: leg", "  - page: app.pages.home\n  - run: leg"
+    )
+
+    with pytest.raises(PlaybookError, match="a `run` must be followed by the page"):
+        _parse(text)
+
+
 def test_a_leg_that_ends_on_a_move_cannot_be_run() -> None:
     leg = LEG + '  - tell: bye\n    message: "bye"\n'
     with pytest.raises(PlaybookError, match="ends on a move"):
@@ -152,6 +221,26 @@ def test_a_leg_without_its_own_start_needs_the_page_before_the_run() -> None:
     )
     run = spec.nodes[0]
     assert isinstance(run, RunNode) and run.enter == "home" and not run.self_starting
+
+
+def test_run_rejects_a_different_starting_page_for_a_warm_leg() -> None:
+    leg = LEG.replace("  - start: app\n    macro: app.macros.open-app\n", "")
+    text = FLOW.replace("  - run: leg", "  - page: app.pages.results\n  - run: leg")
+
+    with pytest.raises(
+        PlaybookError, match="page before it is 'results'.*starts on 'home'"
+    ):
+        _parse(text, flow_leg=leg)
+
+
+def test_each_requires_a_way_back_to_the_start_for_the_next_round() -> None:
+    leg = LEG.replace("  - start: app\n    macro: app.macros.open-app\n", "")
+    text = EACH.replace("  - run: leg", "  - page: app.pages.home\n  - run: leg")
+
+    with pytest.raises(
+        PlaybookError, match="each round starts where the last one landed"
+    ):
+        _parse(text, flow_leg=leg)
 
 
 def test_the_registry_and_the_readiness_rule_see_the_leg_too() -> None:
@@ -210,6 +299,21 @@ ASKING_LEG = LEG.replace(
     "    resume: app.macros.add-cart\n"
     "  - page: app.pages.results\n",
 )
+
+
+@pytest.mark.parametrize(
+    "leg",
+    [
+        ASKING_LEG,
+        LEG + '  - tell: notify\n    message: "sent"\n  - page: app.pages.results\n',
+    ],
+    ids=["asks", "tells"],
+)
+def test_skip_on_miss_cannot_hide_a_round_that_owes_a_user_action(leg) -> None:
+    text = EACH.replace("    limit: {rounds: 2}", "    miss: skip")
+
+    with pytest.raises(PlaybookError, match="never asks, tells or pays"):
+        _parse(text, flow_leg=leg)
 
 
 def test_a_suspension_inside_a_round_resumes_inside_it() -> None:
@@ -532,6 +636,39 @@ route:
   - tell: report
     message: "done: {leg.did}"
 """
+
+
+@pytest.mark.parametrize("limit", ["0", "-1", "999", "true", "1.5", '"2"', "null"])
+@pytest.mark.parametrize(
+    "field, template, previous",
+    [("rounds", EACH, 2), ("revisions", REVISING, 1)],
+    ids=["rounds", "revisions"],
+)
+def test_run_budgets_reject_non_integer_or_out_of_bounds_values(
+    field, template, previous, limit
+) -> None:
+    text = template.replace(f"{{{field}: {previous}}}", f"{{{field}: {limit}}}")
+
+    with pytest.raises(PlaybookError, match=f"`limit.{field}`"):
+        _parse(text, flow_pay=PAY)
+
+
+@pytest.mark.parametrize("limit", [1, MAX_RUN_ROUNDS])
+def test_each_accepts_both_round_budget_boundaries(limit) -> None:
+    spec = _parse(EACH.replace("{rounds: 2}", f"{{rounds: {limit}}}"))
+
+    run = spec.nodes[1]
+    assert isinstance(run, RunNode) and run.max_rounds == limit
+
+
+@pytest.mark.parametrize("limit", [1, MAX_REVISIONS])
+def test_revising_run_accepts_both_revision_budget_boundaries(limit) -> None:
+    spec = _parse(
+        REVISING.replace("{revisions: 1}", f"{{revisions: {limit}}}"), flow_pay=PAY
+    )
+
+    run = spec.nodes[2]
+    assert isinstance(run, RunNode) and run.revise_limit == limit
 
 
 def _to_confirm(p, h, items: str):

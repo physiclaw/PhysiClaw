@@ -396,6 +396,35 @@ async def test_handle_calibrate_arm_borrow_undone_when_centering_fails(
 
 
 @pytest.mark.asyncio
+async def test_failed_probe_and_cleanup_preserve_original_error_and_release_lock(
+    mocker, caplog
+):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    prior = handler.Calibration(pct_to_grbl=rig.calibration.pct_to_grbl.copy())
+    rig.uninstall_arm_calibration()
+    mocker.patch.object(handler.Calibration, "load", return_value=prior)
+    mocker.patch.object(
+        handler, "calibrate_arm", side_effect=RuntimeError("probe failed")
+    )
+    cleanup = mocker.patch.object(
+        rig, "uninstall_arm_calibration", side_effect=RuntimeError("cleanup failed")
+    )
+    release = mocker.spy(rig, "release")
+
+    response = await handle_calibrate_arm(
+        _fake_request({"from_park": True}), rig, cal, phone
+    )
+
+    assert response.status_code == 500
+    assert _read_json(response)["message"] == "probe failed"
+    cleanup.assert_called_once_with()
+    release.assert_called_once_with()
+    assert "calibration step failure cleanup failed" in caplog.text
+    with rig.locked():
+        rig.assert_locked()
+
+
+@pytest.mark.asyncio
 async def test_handle_calibrate_arm_confirmed_affine_survives_park_failure(
     mocker,
 ) -> None:
@@ -685,6 +714,23 @@ async def test_handle_validate_calibration_arm_not_connected() -> None:
     # Precondition failures are client state, not server faults.
     assert resp.status_code == 409
     assert "Arm not connected" in _read_json(resp)["message"]
+
+
+@pytest.mark.asyncio
+async def test_validate_missing_camera_refuses_motion_and_preserves_page(mocker):
+    rig, cal, bridge, phone = _active_setup(mocker)
+    rig.disconnect_camera()
+    validate = mocker.patch.object(handler, "validate_calibration")
+
+    response = await handle_validate_calibration(_fake_request(), rig, cal, phone)
+
+    assert response.status_code == 409
+    assert _read_json(response)["message"] == "Camera not connected"
+    assert cal.phase == "grid"
+    rig.arm.rapid_to.assert_not_called()
+    rig.arm.tap.assert_not_called()
+    rig.arm.solenoid.tap.assert_not_called()
+    validate.assert_not_called()
 
 
 @pytest.mark.asyncio

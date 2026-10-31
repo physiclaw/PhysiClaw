@@ -250,15 +250,22 @@ def test_chunked_phone_upload(clients):
         == 200
     )
     assert state.image == PNG
-    assert (
-        phone(
-            "POST",
-            "/api/bridge/screenshot",
-            b"no",
-            {"Transfer-Encoding": "chunked", "Content-Length": "2"},
-        ).status
-        == 400
+
+
+def test_conflicting_framing_headers_reject_before_reading_body(clients):
+    state, _, phone = clients
+
+    # Rejection is based on headers alone. Sending bytes after that rejection
+    # races socket closure on Windows and tests TCP timing rather than framing.
+    response = phone(
+        "POST",
+        "/api/bridge/screenshot",
+        headers={"Transfer-Encoding": "chunked", "Content-Length": "2"},
     )
+
+    assert response.status == 400
+    assert state.sequence == 0
+    assert state.image == b""
 
 
 def test_extreme_content_length_is_rejected_without_losing_the_response(clients):

@@ -4,6 +4,12 @@
 PY ?= uv run
 PYTHON ?= $(PY) python
 
+# Like the other targets, docs-deploy runs from the checkout by default.
+# External -f callers can set this path explicitly; the hook stays relative to
+# their working directory. Pass the path as environment data, never shell text.
+DOCS_DEPLOY_SCRIPT ?= scripts/docs_deploy.py
+export DOCS_DEPLOY_SCRIPT
+
 # Hardware CAD pipeline (see hardware/README.md). Geometry stages need the
 # `cad` group; the manual / sourcing / drawing builders are standard-library only.
 # Pass flags through ARGS, e.g.  make hw-build ARGS="--bom --bom-delta"
@@ -22,7 +28,8 @@ export VERSION VERBOSE RELEASE_FLOW
 
 help:
 	@echo "Targets:"
-	@echo "  test                  — fast unit suite (default; excludes slow + integration)"
+	@echo "  help                  — show this list (the default make target)"
+	@echo "  test                  — fast unit suite (excludes slow + integration)"
 	@echo "  test-cov              — fast suite with coverage report (term + html)"
 	@echo "  test-fast             — alias for test"
 	@echo "  test-encoding         — strict encoding regressions with UTF-8 mode off and on"
@@ -76,11 +83,11 @@ test-studio-ui:
 	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs tests/cli/test_assistive_touch_ui.cjs
 
 mutate:
-	@if [ -z "$(MOD)" ]; then echo "usage: make mutate MOD=src/physiclaw/<path>"; exit 2; fi
-	$(PY) mutmut run --paths-to-mutate $(MOD)
+	$(if $(strip $(MOD)),,$(error usage: make mutate MOD=src/physiclaw/<path>))
+	$(PY) mutmut run --paths-to-mutate "$(MOD)"
 
 lint:
-	$(PY) ruff check src/ tests/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+	$(PY) ruff check src/ tests/ scripts/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
 	$(PY) ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
 fmt:
@@ -147,6 +154,7 @@ hw-help:
 	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → trigger docs deploy"
 	@echo "    make hw-preflight HW_VERSION=X.Y     Check Git/GitHub readiness; no upload"
 	@echo "    make docs-deploy                     Trigger only the docs hook; use if that step failed"
+	@echo "      DOCS_DEPLOY_SCRIPT=path overrides the driver location for external -f use"
 	@echo ""
 	@echo '  Build or edit one output (flags through ARGS="..."):'
 	@echo "    make hw-step ARGS=<stem>             Build one assembly step with its BOM"
@@ -246,4 +254,4 @@ _hw-package: hw-publish
 # The Cloudflare Pages deploy hook URL is a secret (anyone holding it can
 # trigger a deploy), so it lives in the gitignored .docs-deploy-hook, one line.
 docs-deploy:
-	@$(PYTHON) "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/docs_deploy.py"
+	@$(PYTHON) -c "import os, runpy; runpy.run_path(os.environ['DOCS_DEPLOY_SCRIPT'], run_name='__main__')"

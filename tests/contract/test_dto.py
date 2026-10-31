@@ -20,6 +20,8 @@ import dataclasses
 import typing
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -197,3 +199,30 @@ def test_collapse_policy_rejects_zero_keep() -> None:
 def test_collapse_policy_rejects_zero_interval() -> None:
     with pytest.raises(ValueError, match="interval=0"):
         CollapsePolicy(first_at=30, keep=10, interval=0)
+
+
+@pytest.mark.parametrize("field", ["first_at", "keep", "interval"])
+@pytest.mark.parametrize(
+    "value", [True, False, 1.5, 10.0, float("inf"), float("nan"), "10", None]
+)
+def test_collapse_policy_noninteger_counts_rejected_before_history_indexing(
+    field, value
+) -> None:
+    counts = {"first_at": 30, "keep": 10, "interval": 20, field: value}
+
+    with pytest.raises(ValueError, match="counts must be integers"):
+        CollapsePolicy(**counts)
+
+
+@given(
+    keep=st.integers(min_value=1, max_value=1000),
+    extra=st.integers(min_value=0, max_value=1000),
+    interval=st.integers(min_value=1, max_value=1000),
+)
+def test_collapse_policy_valid_counts_preserve_history_window(keep, extra, interval):
+    first_at = keep + extra
+
+    policy = CollapsePolicy(first_at=first_at, keep=keep, interval=interval)
+
+    assert list(range(policy.first_at))[-policy.keep] == extra
+    assert policy.keep + policy.interval > policy.keep

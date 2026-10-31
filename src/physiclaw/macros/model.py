@@ -619,7 +619,7 @@ def check_name(name: str, where: str = "name", extra: str = "") -> None:
     """Enforce the identifier rule (the skill-folder convention). Shared by
     `parse.parse_macro` and `macros init`, so a name that scaffolds also
     parses and the two can never drift. Raises MacroError."""
-    if len(name) > MAX_NAME_LEN or not NAME_RE.match(name):
+    if len(name) > MAX_NAME_LEN or not NAME_RE.fullmatch(name):
         raise MacroError(
             f"{where} {name!r} must be lowercase letters/digits/hyphens, "
             f"≤{MAX_NAME_LEN} chars, no leading/trailing/consecutive "

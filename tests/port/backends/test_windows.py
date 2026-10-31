@@ -191,14 +191,18 @@ def test_lock_focus_uses_backend_current_position(accepted) -> None:
     cap.get.assert_not_called()
 
 
-@pytest.mark.parametrize("accepted", [True, False])
-def test_unlock_focus_requests_af_and_reports_refusal(accepted, caplog) -> None:
+@pytest.mark.parametrize("accepted, expected", [(True, None), (False, False)])
+def test_unlock_focus_requests_af_and_reports_refusal(
+    accepted, expected, caplog
+) -> None:
     import cv2
 
     cap = MagicMock()
     cap.set.return_value = accepted
-    windows.camera_unlock_focus(cap)
 
+    result = windows.camera_unlock_focus(cap)
+
+    assert result is expected
     assert cap.set.call_args_list == [call(cv2.CAP_PROP_AUTOFOCUS, 1)]
     assert ("could not re-enable autofocus" in caplog.text) is (not accepted)
 

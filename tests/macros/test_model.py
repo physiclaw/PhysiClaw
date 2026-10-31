@@ -62,7 +62,8 @@ def test_check_name_accepts_kebab_case() -> None:
 
 
 @pytest.mark.parametrize(
-    "bad", ["Bad-Case", "a--b", "-lead", "trail-", "under_score", "a" * 65]
+    "bad",
+    ["Bad-Case", "a--b", "-lead", "trail-", "under_score", "a" * 65, "valid\n"],
 )
 def test_check_name_rejects_bad_names(bad: str) -> None:
     with pytest.raises(MacroError, match="lowercase"):

@@ -207,7 +207,7 @@ def camera_lock_focus(cap) -> bool:
 
 
 def camera_unlock_focus(cap) -> bool | None:
-    """Request continuous autofocus; restoration is best-effort."""
+    """Request continuous autofocus; report refusal so close can retry it."""
     import cv2
 
     if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 1):
@@ -217,6 +217,7 @@ def camera_unlock_focus(cap) -> bool | None:
                 "console_message": "Camera could not re-enable autofocus — lens state is unknown"
             },
         )
+        return False
     return None
 
 

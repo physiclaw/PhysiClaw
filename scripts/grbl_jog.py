@@ -46,7 +46,14 @@ except ImportError:
     raise SystemExit(1) from None
 
 
-# ─── Shared GRBL helpers (identical in scripts/grbl_solenoid_test.py) ─
+# Support both `python scripts/...py` and package imports from tests/tools.
+if __package__:
+    from . import grbl_protocol
+else:
+    import grbl_protocol
+
+
+# ─── GRBL connection helpers ───────────────────────────────────────
 
 BAUD = 115200
 _SKIP = ("bluetooth", "bt-", "debug", "wlan", "wifi", "airpods")
@@ -76,10 +83,10 @@ def find_port() -> str | None:
     for _, dev in candidates:
         log.debug("Probing %s", dev)
         try:
-            with serial.Serial(dev, BAUD, timeout=2) as ser:
+            with serial.Serial(dev, BAUD, timeout=2, write_timeout=2) as ser:
                 time.sleep(2)
                 ser.reset_input_buffer()
-                ser.write(b"$I\r\n")
+                ser.write(b"$I\n")
                 time.sleep(0.5)
                 resp = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore")
                 if "grbl" in resp.lower() or "[VER:" in resp:
@@ -100,63 +107,38 @@ def connect(port: str | None) -> serial.Serial:
         if port is None:
             raise SystemExit("No GRBL device found. Pass --port explicitly.")
     log.info("Opening %s at %d baud", port, BAUD)
-    ser = serial.Serial(port, BAUD, timeout=3)
-    time.sleep(2)  # wait for board reset (DTR pulse on open)
-    banner = ser.read(ser.in_waiting or 256).decode("utf-8", "ignore").strip()
-    if banner:
-        log.debug("Reset banner: %r", banner)
-    ser.reset_input_buffer()
+    ser = serial.Serial(port, BAUD, timeout=3, write_timeout=3)
+    try:
+        time.sleep(2)  # wait for board reset (DTR pulse on open)
+        banner = (
+            ser.read(min(ser.in_waiting or 256, 4096)).decode("utf-8", "ignore").strip()
+        )
+        if banner:
+            log.debug("Reset banner: %r", banner)
+        ser.reset_input_buffer()
+    except BaseException:
+        ser.close()
+        raise
     return ser
 
 
-_OPTIONAL_ERRORS = frozenset(
-    {
-        "error:3",  # setting/command not recognized (GRBL + FluidNC)
-        "error:162",  # FluidNC: setting disabled (now lives in YAML)
-    }
-)
+RESPONSE_TIMEOUT_SECONDS = grbl_protocol.RESPONSE_TIMEOUT_SECONDS
 
 
-def send(ser: serial.Serial, cmd: str, *, optional: bool = False) -> None:
-    """Send one line, block until 'ok'. Raise on error/alarm.
-
-    optional=True swallows error codes that mean "this firmware doesn't
-    take this setting at runtime" (`error:3`, `error:162`) — the value
-    lives in YAML config (FluidNC) or simply isn't supported. Only the
-    error codes we've observed empirically are swallowed.
-    """
-    log.debug("TX %s", cmd)
-    ser.write((cmd + "\r\n").encode())
-    empty = 0
-    while True:
-        line = ser.readline().decode("utf-8", "ignore").strip()
-        if not line:
-            empty += 1
-            if empty > 3:
-                raise RuntimeError(f"no reply to: {cmd}")
-            continue
-        empty = 0
-        log.debug("RX %s", line)
-        if line == "ok":
-            return
-        if line.startswith("error"):
-            if optional and line.replace(" ", "") in _OPTIONAL_ERRORS:
-                log.warning("%s not supported by this firmware — skipping", cmd)
-                return
-            raise RuntimeError(f"GRBL error on {cmd!r}: {line}")
-        if line.startswith("ALARM"):
-            raise RuntimeError(f"GRBL alarm on {cmd!r}: {line} (try $X first)")
+def send(
+    ser: serial.Serial,
+    cmd: str,
+    *,
+    optional: bool = False,
+    timeout: float = RESPONSE_TIMEOUT_SECONDS,
+) -> None:
+    """Send a command through the shared protocol with this diagnostic's logger."""
+    grbl_protocol.send(ser, cmd, log=log, optional=optional, timeout=timeout)
 
 
-def query_status(ser: serial.Serial) -> str:
-    """Send '?' and return the first '<...>' status line."""
-    ser.write(b"?")
-    time.sleep(0.1)
-    resp = ser.read(ser.in_waiting or 64).decode("utf-8", "ignore")
-    for line in resp.splitlines():
-        if line.startswith("<"):
-            return line
-    return ""
+def query_status(ser: serial.Serial, *, timeout: float = 3.0) -> str:
+    """Send '?' and return the first complete status line."""
+    return grbl_protocol.query_status(ser, timeout=timeout)
 
 
 def unlock_if_alarmed(ser: serial.Serial) -> None:
@@ -174,11 +156,12 @@ def unlock_if_alarmed(ser: serial.Serial) -> None:
 def wait_idle(ser: serial.Serial, timeout: float = 10.0) -> None:
     """Poll '?' until status reports 'Idle', or raise."""
     time.sleep(0.05)  # let GRBL transition Idle→Run after buffering
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if "Idle" in query_status(ser):
+    deadline = time.monotonic() + timeout
+    while (remaining := deadline - time.monotonic()) > 0:
+        status = query_status(ser, timeout=min(3.0, remaining))
+        if status == "<Idle>" or status.startswith("<Idle|"):
             return
-        time.sleep(0.1)
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
     raise RuntimeError(f"not idle after {timeout}s")
 
 

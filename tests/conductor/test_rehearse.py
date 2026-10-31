@@ -64,6 +64,39 @@ async def test_rehearsal_closes_its_caller_when_abandonment_fails(mocker) -> Non
     assert provider.closed
 
 
+async def test_turn_exhaustion_bounds_dispatch_and_abandons_with_provider_closed(
+    mocker,
+) -> None:
+    from conductor_fakes import agent_reply, build_program
+
+    from physiclaw.conductor.micro.channel import MicroCaller
+    from physiclaw.conductor.walk.walklog import Outcome
+
+    write_pack(playbooks={"flow": AGENT_FLOW})
+    program = build_program(dry=True, keyword="milk")
+    provider = ScriptedProvider([agent_reply("done", keyword="milk")])
+    caller = MicroCaller.owning(provider, confidence_floor=0.6)
+    mocker.patch.object(rehearsal, "micro_caller", return_value=caller)
+    mocker.patch.object(rehearsal, "REHEARSE_MAX_TURNS", 2)
+    dispatch = mocker.patch.object(
+        rehearsal, "dispatch", new=mocker.AsyncMock(return_value=(HOME, False))
+    )
+    advance = mocker.spy(program, "advance")
+
+    result = await rehearsal.walk(
+        program, {}, _FakeMcp(), emit=lambda line: None, unlock=False
+    )
+
+    assert result == "stopped after 2 turns"
+    assert advance.call_count == 2
+    assert [call.args[1].name for call in dispatch.await_args_list] == [
+        "peek",
+        "run_macro",
+    ]
+    assert program.outcome is Outcome.ABANDONED
+    assert len(provider.calls) == 1 and provider.closed
+
+
 FLOW = """\
 description: two moves
 inputs:

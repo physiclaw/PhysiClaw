@@ -152,7 +152,11 @@ _COLLIDING_NAMES = st.lists(
 )
 
 
-@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=40,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(official_names=_COLLIDING_NAMES, user_names=_COLLIDING_NAMES)
 def test_discover_preserves_each_origin_and_stable_names(
     tmp_path, monkeypatch, official_names, user_names

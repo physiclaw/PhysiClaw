@@ -123,7 +123,7 @@ class StylusArm:
             raise DeviceNotFound("GRBL device not found, please specify port manually")
 
         try:
-            self.ser = serial.Serial(port, baudrate, timeout=3)
+            self.ser = serial.Serial(port, baudrate, timeout=3, write_timeout=3)
         except (serial.SerialException, OSError) as exc:
             raise DeviceNotFound(f"Cannot open GRBL port {port}: {exc}") from exc
         try:
@@ -168,7 +168,7 @@ class StylusArm:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             status = self._query_status()
-            if "Idle" in status:
+            if status == "<Idle>" or status.startswith("<Idle|"):
                 return
             time.sleep(0.1)
         raise DeviceTimeout(f"Arm not idle after {timeout}s")

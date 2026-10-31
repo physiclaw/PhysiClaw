@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+import pytest
 
 from physiclaw.core.vision.colors import (
     CORNER_HSV_RANGES,
@@ -26,6 +27,13 @@ def _hsv_of(color_bgr: tuple[int, int, int]) -> np.ndarray:
 
 
 # ---------- hsv_mask ----------
+
+
+def test_hsv_mask_empty_ranges_rejects_missing_color_definition() -> None:
+    hsv = _hsv_of((0, 255, 0))
+
+    with pytest.raises(ValueError, match="at least one HSV range is required"):
+        hsv_mask(hsv, [])
 
 
 def test_hsv_mask_single_range_matches_in_band_pixels() -> None:

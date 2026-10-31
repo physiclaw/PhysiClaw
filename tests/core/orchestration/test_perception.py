@@ -32,6 +32,42 @@ def per(rig: HardwareRig) -> Perception:
     return Perception(rig)
 
 
+class _DelayedExposureCamera:
+    """Fresh publications can still contain buffered pre-write pixels."""
+
+    exposure_tunable = True
+    focus_pinned = True
+
+    def __init__(self, lag_frames):
+        self.lag_frames = lag_frames
+        self.frame_seq = 0
+        self.exposure = -6
+        self.pending = []
+        self.manual_requests = []
+        self.auto_requests = 0
+        self.waits = []
+
+    def set_manual_exposure(self, value):
+        self.manual_requests.append(value)
+        self.pending.append((self.frame_seq + self.lag_frames, value))
+
+    def set_auto_exposure(self):
+        self.auto_requests += 1
+
+    def wait_frames(self, count, timeout):
+        self.waits.append((count, timeout))
+        self.frame_seq += count
+        while self.pending and self.pending[0][0] <= self.frame_seq:
+            _, self.exposure = self.pending.pop(0)
+        return True
+
+    def peek(self):
+        # The surrounding dark desk must not influence the screen meter.
+        frame = np.zeros((80, 80, 3), dtype=np.uint8)
+        frame[20:60, 20:60] = {-8: 3, -7: 7, -6: 10, -5: 15, -4: 32}[self.exposure]
+        return frame
+
+
 # ---------- lazy detectors ----------
 
 
@@ -544,6 +580,47 @@ def test_tune_now_runs_while_rig_lock_is_held(mocker, rig, per: Perception) -> N
         rig.release()
 
     conv.assert_called_once()
+
+
+@pytest.mark.parametrize("lag_frames", [0, 6, 7])
+def test_regression_tune_now_waits_for_buffered_exposure_before_judging_ceiling(
+    monkeypatch, rig, per, lag_frames
+):
+    cam = _DelayedExposureCamera(lag_frames)
+    rig._cam = cam
+    rig.transforms.bbox_to_pixel_rect.return_value = ((20, 20), (60, 60))
+    monkeypatch.setattr(perception_mod.CONFIG.camera, "auto_exposure", False)
+    monkeypatch.setattr(perception_mod.CONFIG.camera, "exposure", -6)
+
+    with rig.locked():
+        per.tune_now()
+
+    assert per._last_tune.ok is True
+    assert per._last_tune.deferred is False
+    assert per._last_tune.exposure == cam.exposure == -4
+    assert cam.manual_requests == [-6, -5, -4]
+    assert cam.auto_requests == 0
+    assert cam.waits == [(perception_mod.exposure.SETTLE_FRAMES, 5.0)] * 4
+
+
+def test_tune_now_stalled_publications_defer_after_one_bounded_wait(rig, per):
+    rig.cam.exposure_tunable = True
+    rig.cam.wait_frames.return_value = False
+    # A usable cached frame must not hide a stalled publication stream.
+    rig.cam.peek.return_value = np.full((80, 80, 3), 128, dtype=np.uint8)
+
+    with rig.locked():
+        per.tune_now()
+
+    rig.cam.wait_frames.assert_called_once_with(
+        perception_mod.exposure.SETTLE_FRAMES, timeout=5.0
+    )
+    rig.cam.peek.assert_not_called()
+    rig.cam.set_manual_exposure.assert_not_called()
+    rig.cam.set_auto_exposure.assert_not_called()
+    assert per._last_tune.ok is False
+    assert per._last_tune.deferred is True
+    assert per._last_tune.median is None
 
 
 # ---------- focus: no runtime machinery ----------

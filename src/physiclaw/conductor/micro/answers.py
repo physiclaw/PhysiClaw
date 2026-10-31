@@ -58,7 +58,9 @@ def parse_reply(
     if (
         isinstance(confidence, bool)
         or not isinstance(confidence, (int, float))
-        or not 0.0 <= float(confidence) <= 1.0
+        # Compare before converting: JSON integers can exceed float range.
+        # They are invalid replies to repair, not provider failures.
+        or not 0 <= confidence <= 1
     ):
         return None, "confidence must be a number between 0 and 1"
     return (word, reason.strip(), float(confidence), obj), ""

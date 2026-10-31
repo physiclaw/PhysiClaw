@@ -348,7 +348,7 @@ def parse_inputs(raw: Any) -> tuple[MacroInput, ...]:
         raise MacroError(f"too many inputs ({len(raw)} > {MAX_INPUTS})")
     out: list[MacroInput] = []
     for name, spec in raw.items():
-        if not isinstance(name, str) or not INPUT_NAME_RE.match(name):
+        if not isinstance(name, str) or not INPUT_NAME_RE.fullmatch(name):
             raise MacroError(
                 f"input name {name!r} must be lowercase, start with a "
                 "letter, and contain only letters/digits/underscores"

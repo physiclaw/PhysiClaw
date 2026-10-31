@@ -426,7 +426,11 @@ def test_banner_without_stdout_skips_network(public_banner):
     age=st.integers(min_value=-86400, max_value=864000),
     offset=st.integers(min_value=-23, max_value=23),
 )
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=30,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_banner_cache_ttl_depends_on_instant_not_timezone(
     physiclaw_home, public_banner, age, offset
 ):

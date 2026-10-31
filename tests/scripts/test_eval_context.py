@@ -1,5 +1,6 @@
 """The replay must test current production context without changing evidence."""
 
+import asyncio
 import base64
 import importlib.util
 import json
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall
+from physiclaw.provider import OpenAICompatibleProvider
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "eval_context.py"
 spec = importlib.util.spec_from_file_location("eval_context", SCRIPT)
@@ -48,6 +50,123 @@ def write_case(tmp_path, before, after):
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         case[variant] = str(path)
     return case
+
+
+def evaluation_args(tmp_path):
+    case = write_case(tmp_path, request_fixture(), request_fixture())
+    case["actions"] = [{"tool": "peek"}]
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps([case]), encoding="utf-8")
+    return SimpleNamespace(
+        cases=cases, output=tmp_path / "results.json", repeats=1, concurrency=1
+    )
+
+
+class BoundaryProvider(OpenAICompatibleProvider):
+    """Exercise evaluation lifecycle without constructing a network client."""
+
+    def __init__(self, *, chat_error=None, close_error=None):
+        self.chat_error = chat_error
+        self.close_error = close_error
+        self.close_calls = 0
+
+    async def chat(self, history, tools):
+        if self.chat_error is not None:
+            raise self.chat_error
+        return AssistantMessage(
+            "",
+            [ToolCall("n", "note", {}), ToolCall("a", "peek", {})],
+            FinishReason.TOOL_CALLS,
+        )
+
+    async def aclose(self):
+        self.close_calls += 1
+        if self.close_error is not None:
+            raise self.close_error
+
+
+async def test_evaluate_records_factory_failure_and_continues_other_variants(
+    tmp_path, mocker
+):
+    args = evaluation_args(tmp_path)
+    healthy = BoundaryProvider()
+    factory = mocker.patch(
+        "physiclaw.provider.make_chat_provider",
+        side_effect=[RuntimeError("cannot construct"), healthy],
+    )
+
+    result = await replay.evaluate(args)
+
+    rows = json.loads(args.output.read_text(encoding="utf-8"))["results"]
+    assert result == 1
+    assert [row["variant"] for row in rows] == ["before", "after"]
+    assert rows[0]["error"] == "RuntimeError"
+    assert rows[0]["seconds"] >= 0
+    assert rows[1]["failures"] == [] and "error" not in rows[1]
+    assert factory.call_count == 2 and healthy.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    "chat_error, expected_error, keeps_reply",
+    [(None, "OSError", True), (TimeoutError("chat failed"), "TimeoutError", False)],
+    ids=["cleanup-only", "primary-and-cleanup"],
+)
+async def test_evaluate_records_cleanup_failure_without_losing_other_results(
+    tmp_path, mocker, chat_error, expected_error, keeps_reply
+):
+    args = evaluation_args(tmp_path)
+    failed = BoundaryProvider(
+        chat_error=chat_error, close_error=OSError("close failed")
+    )
+    healthy = BoundaryProvider()
+    mocker.patch("physiclaw.provider.make_chat_provider", side_effect=[failed, healthy])
+
+    result = await replay.evaluate(args)
+
+    rows = json.loads(args.output.read_text(encoding="utf-8"))["results"]
+    assert result == 1
+    assert [row["variant"] for row in rows] == ["before", "after"]
+    assert rows[0]["error"] == expected_error
+    assert rows[0]["cleanup_error"] == "OSError"
+    assert ("calls" in rows[0]) is keeps_reply
+    assert rows[1]["failures"] == [] and "error" not in rows[1]
+    assert failed.close_calls == healthy.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    "chat_error, close_error",
+    [
+        (asyncio.CancelledError(), OSError("cleanup after cancellation")),
+        (None, asyncio.CancelledError()),
+    ],
+    ids=["chat-cancelled-cleanup-failed", "cleanup-cancelled"],
+)
+async def test_evaluate_propagates_cancellation_from_chat_or_cleanup(
+    tmp_path, mocker, chat_error, close_error
+):
+    args = evaluation_args(tmp_path)
+    args.concurrency = 2
+    first = BoundaryProvider(chat_error=chat_error, close_error=close_error)
+    second = BoundaryProvider(chat_error=chat_error, close_error=close_error)
+    mocker.patch("physiclaw.provider.make_chat_provider", side_effect=[first, second])
+
+    with pytest.raises(asyncio.CancelledError):
+        await replay.evaluate(args)
+
+    assert first.close_calls == second.close_calls == 1
+    assert not args.output.exists()
+
+
+async def test_evaluate_propagates_factory_cancellation(tmp_path, mocker):
+    args = evaluation_args(tmp_path)
+    mocker.patch(
+        "physiclaw.provider.make_chat_provider", side_effect=asyncio.CancelledError
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await replay.evaluate(args)
+
+    assert not args.output.exists()
 
 
 def test_explicit_requests_preserve_every_message_and_tool_byte(tmp_path):

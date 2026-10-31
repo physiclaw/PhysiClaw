@@ -54,13 +54,16 @@ jobs:
       # everywhere (hardware/ is style-star-import CAD code, format-only).
       - name: Lint
         run: |
-          uv run ruff check src/ tests/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+          uv run ruff check src/ tests/ scripts/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
           uv run ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
       # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
       # pyproject (application and hardware/port; CAD workflows are not gated yet).
       - name: Type check
         run: uv run mypy
+
+      - name: Make target regressions
+        run: uv run --locked pytest -m slow tests/test_makefile.py
 
       # Static cross-artifact consistency for the CAD pipeline (procedure
       # stems / patches / manual figures / sourcing ids) — stdlib-only, no
@@ -114,6 +117,9 @@ jobs:
 
       - name: Type check Windows
         run: uv run --locked mypy --platform win32
+
+      - name: Make target regressions on Windows
+        run: uv run --locked pytest -m slow tests/test_makefile.py
 
       - name: Hardware consistency check
         env:

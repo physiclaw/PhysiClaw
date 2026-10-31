@@ -352,6 +352,82 @@ def test_set_nonfinite_value_does_not_create_config(tmp_path) -> None:
     assert not path.exists()
 
 
+@pytest.mark.parametrize(
+    "section, key, value",
+    [
+        ("camera", "width", 0),
+        ("camera", "height", -1),
+        ("compact", "max_image_edge_px", 0),
+        ("compact", "jpeg_quality", -1),
+        ("compact", "jpeg_quality", 101),
+        ("retention", "trace_days", -1),
+        ("retention", "log_days", -1),
+        ("conductor", "micro_confidence", -0.01),
+        ("conductor", "micro_confidence", 1.01),
+    ],
+)
+def test_load_rejects_invalid_image_retention_and_confidence_ranges(
+    tmp_path, section, key, value
+):
+    path = tmp_path / "config.toml"
+    original = f"[{section}]\n{key} = {value}\n"
+    path.write_text(original, encoding="utf-8")
+
+    with pytest.raises(config.ConfigError, match=key + ": expected"):
+        config.load(path)
+
+    assert path.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "backups").exists()
+
+
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("camera.width", "0"),
+        ("compact.jpeg_quality", "101"),
+        ("retention.trace_days", "-1"),
+        ("conductor.micro_confidence", "2"),
+    ],
+)
+def test_set_invalid_range_preserves_disk_and_effective_config(tmp_path, key, value):
+    path = tmp_path / "config.toml"
+    original = "[camera]\nwidth = 1920\n"
+    path.write_text(original, encoding="utf-8")
+    effective = config.CONFIG
+
+    with pytest.raises(config.ConfigError, match="expected"):
+        config.set_dotted(key, value, path)
+
+    assert path.read_text(encoding="utf-8") == original
+    assert config.CONFIG is effective
+    assert not (tmp_path / "backups").exists()
+
+
+@pytest.mark.parametrize(
+    "section, key, value",
+    [
+        ("camera", "width", 1),
+        ("camera", "height", 1),
+        ("compact", "max_image_edge_px", 1),
+        ("compact", "jpeg_quality", 0),
+        ("compact", "jpeg_quality", 100),
+        ("retention", "trace_days", 0),
+        ("retention", "log_days", 0),
+        ("conductor", "micro_confidence", 0),
+        ("conductor", "micro_confidence", 1),
+    ],
+)
+def test_load_accepts_image_retention_and_confidence_boundaries(
+    tmp_path, section, key, value
+):
+    path = tmp_path / "config.toml"
+    path.write_text(f"[{section}]\n{key} = {value}\n", encoding="utf-8")
+
+    loaded = config.load(path)
+
+    assert getattr(getattr(loaded, section), key) == value
+
+
 @pytest.mark.parametrize("value", ["0", "-0.1", "nan", "inf", "-inf", "1e999"])
 def test_decision_timeout_rejects_invalid_load_and_set(tmp_path, value) -> None:
     path = tmp_path / "config.toml"

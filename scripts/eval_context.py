@@ -175,9 +175,10 @@ async def evaluate(args):
                 "text_chars": len(json.dumps(messages, ensure_ascii=False)),
                 "schema_chars": len(json.dumps(schemas, ensure_ascii=False)),
             }
-            provider = make_chat_provider(case["provider"], model)
+            provider = None
             started = time.monotonic()
             try:
+                provider = make_chat_provider(case["provider"], model)
                 if not isinstance(provider, OpenAICompatibleProvider):
                     raise ValueError("recorded provider is not OpenAI-compatible")
                 wire = restore_images(messages, session)
@@ -195,7 +196,14 @@ async def evaluate(args):
             except Exception as exc:
                 row["error"] = type(exc).__name__
             finally:
-                await provider.aclose()
+                if provider is not None:
+                    try:
+                        await provider.aclose()
+                    except Exception as exc:
+                        row["cleanup_error"] = type(exc).__name__
+                        # Keep the original failure, including cancellation,
+                        # while retaining cleanup diagnostics for this case.
+                        row.setdefault("error", type(exc).__name__)
             row["seconds"] = round(time.monotonic() - started, 2)
             report["results"].append(row)
             args.output.write_text(

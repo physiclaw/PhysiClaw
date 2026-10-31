@@ -235,7 +235,7 @@ def test_parse_macro_too_many_inputs_raises() -> None:
         parse_macro(text, "m")
 
 
-@pytest.mark.parametrize("bad", ["Msg", "1msg", "with-dash"])
+@pytest.mark.parametrize("bad", ["Msg", "1msg", "with-dash", r"msg\n"])
 def test_parse_macro_bad_input_name_raises(bad: str) -> None:
     text = HEAD + f'inputs:\n  "{bad}":\n    description: d\nsteps:\n  - peek\n'
 

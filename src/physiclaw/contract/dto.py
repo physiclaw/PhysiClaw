@@ -358,6 +358,11 @@ class CollapsePolicy:
     interval: int
 
     def __post_init__(self) -> None:
+        if any(
+            type(count) is not int
+            for count in (self.first_at, self.keep, self.interval)
+        ):
+            raise ValueError("CollapsePolicy: counts must be integers")
         if not 1 <= self.keep <= self.first_at:
             raise ValueError(
                 f"CollapsePolicy: keep={self.keep} must be in "

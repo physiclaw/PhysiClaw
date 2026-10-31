@@ -158,6 +158,51 @@ async def test_busy_session_answers_409_one_rig() -> None:
     assert session.acted == []
 
 
+@pytest.mark.parametrize(
+    "headers, status",
+    [
+        ({"Origin": "https://foreign.example"}, 403),
+        ({"Origin": "null"}, 403),
+        ({"Origin": "http://127.0.0.1:9999"}, 403),
+        ({"Sec-Fetch-Site": "cross-site"}, 403),
+        ({"Sec-Fetch-Site": "same-site"}, 403),
+        ({"Host": "foreign.example:8058"}, 421),
+    ],
+)
+async def test_studio_foreign_browser_post_never_executes_phone_action(headers, status):
+    session = FakeSession()
+    app = server.build_app(session)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8058"
+    ) as client:
+        response = await client.post(
+            "/api/act",
+            content='{"tool":"tap","args":{}}',
+            headers={"Content-Type": "text/plain", **headers},
+        )
+
+    assert response.status_code == status
+    assert session.acted == []
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Origin": "http://127.0.0.1:8058", "Sec-Fetch-Site": "same-origin"}],
+)
+async def test_studio_native_and_same_origin_clients_can_act(headers):
+    session = FakeSession()
+    app = server.build_app(session)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8058"
+    ) as client:
+        response = await client.post("/api/act", json={"tool": "peek"}, headers=headers)
+
+    assert response.status_code == 200
+    assert session.acted == [("peek", {})]
+
+
 @pytest.mark.asyncio
 async def test_unrecognized_exceptions_are_bugs_not_refusals() -> None:
     with pytest.raises(TypeError):
@@ -211,7 +256,7 @@ async def test_selected_review_does_not_expose_siblings_or_external_frame_links(
     app = server.build_app(FakeSession(), review_dir=selected)
 
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://studio"
+        transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8058"
     ) as client:
         page = await client.get("/review/")
         linked = await client.get("/review/images/linked.jpg")
@@ -241,15 +286,16 @@ async def test_selected_review_routes_belong_to_one_app_only(tmp_path):
     ordinary_app = server.build_app(FakeSession())
 
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=first_app), base_url="http://studio"
+        transport=httpx.ASGITransport(app=first_app), base_url="http://127.0.0.1:8058"
     ) as client:
         first_page = await client.get("/review/")
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=second_app), base_url="http://studio"
+        transport=httpx.ASGITransport(app=second_app), base_url="http://127.0.0.1:8058"
     ) as client:
         second_page = await client.get("/review/")
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=ordinary_app), base_url="http://studio"
+        transport=httpx.ASGITransport(app=ordinary_app),
+        base_url="http://127.0.0.1:8058",
     ) as client:
         absent = await client.get("/review/")
 
@@ -293,7 +339,7 @@ async def test_regression_shutdown_joins_active_job_before_closing_session(mocke
 
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://studio"
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8058"
         ) as client:
             launched = await client.post("/api/step", json={"ref": "demo/flow"})
             await asyncio.wait_for(started.wait(), 2)

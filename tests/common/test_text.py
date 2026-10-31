@@ -10,6 +10,7 @@ from physiclaw.common.text import (
     append_line,
     append_text,
     iter_jsonl,
+    json_span,
     read_text,
     write_text,
     write_text_atomic,
@@ -131,6 +132,24 @@ def test_iter_jsonl_missing_file_yields_nothing(tmp_path) -> None:
     records = list(iter_jsonl(path))
 
     assert records == []
+
+
+def test_json_span_excessive_nesting_returns_none():
+    text = "[" * 10000 + "0" + "]" * 10000
+
+    result = json_span(text, "[", "]")
+
+    assert result is None
+
+
+def test_iter_jsonl_skips_excessive_nesting_and_keeps_later_records(tmp_path):
+    path = tmp_path / "events.jsonl"
+    nested = '{"payload":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    path.write_text('{"keep": 1}\n' + nested + '\n{"keep": 2}\n', encoding="utf-8")
+
+    records = list(iter_jsonl(path))
+
+    assert records == [{"keep": 1}, {"keep": 2}]
 
 
 @pytest.mark.parametrize(

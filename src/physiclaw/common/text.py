@@ -33,7 +33,7 @@ def json_span(text: str, opener: str, closer: str) -> Any | None:
         return None
     try:
         return json.loads(text[start : end + 1])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return None
 
 
@@ -53,7 +53,7 @@ def iter_jsonl(path: Path, needle: str | None = None) -> Iterator[dict[str, Any]
                 if needle is not None and needle not in line:
                     continue
                 rec = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
             if isinstance(rec, dict):
                 yield rec
