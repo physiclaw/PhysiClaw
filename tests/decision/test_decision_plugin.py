@@ -950,9 +950,20 @@ async def test_active_cancellation_cannot_return_a_proposal(
 @pytest.mark.parametrize("shadow", ["active"], indirect=True)
 @pytest.mark.parametrize("swallow", [False, True])
 async def test_active_timeout_yields_even_if_provider_returns_late(
-    scored_provider, turn, metadata, swallow
+    scored_provider, turn, metadata, swallow, monkeypatch
 ):
+    loop = asyncio.get_running_loop()
+    clock = [loop.time()]
+    monkeypatch.setattr(loop, "time", lambda: clock[0])
+    monkeypatch.setattr(
+        "physiclaw.decision.plugin.time.time",
+        lambda: turn.observation.observed_after,
+    )
+
     async def evaluate(request, **kw):
+        # Expire the real asyncio timeout only after all preflight guards pass
+        # and the provider is entered, independent of Windows clock resolution.
+        clock[0] = kw["deadline"] + 1.0
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -964,12 +975,11 @@ async def test_active_timeout_yields_even_if_provider_returns_late(
     assert (
         await scored_provider.plugin.advance(
             turn,
-            metadata=replace(
-                metadata, deadline=asyncio.get_running_loop().time() + 0.01
-            ),
+            metadata=replace(metadata, deadline=clock[0] + 0.01),
         )
         is None
     )
+    scored_provider.provider.evaluate.assert_awaited_once()
     record = calls(scored_provider)[0]
     assert record["error"] == "TimeoutError"
     assert "proposal_call_id" not in record
