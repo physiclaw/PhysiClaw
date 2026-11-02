@@ -733,3 +733,19 @@ def test_array_at_max_items_boundary_passes(value, limit) -> None:
     schema = {"properties": {"v": {"type": "array", "maxItems": limit}}}
 
     validate_arguments({"v": value}, schema)
+
+
+@pytest.mark.parametrize(
+    "value,schema",
+    [
+        ({}, {"minProperties": 1}),
+        ({"a": 1, "b": 2}, {"maxProperties": 1}),
+        (1, {"oneOf": [{"type": "number"}, {"type": "integer"}]}),
+        ("bad", {"allOf": [{"type": "string"}, {"enum": ["ok"]}]}),
+    ],
+)
+def test_validate_value_enforces_root_and_union_constraints(value, schema):
+    from physiclaw.agent.engine.validator import validate_value
+
+    with pytest.raises(ValidationError):
+        validate_value(value, schema)

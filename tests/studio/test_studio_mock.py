@@ -365,3 +365,24 @@ async def test_regression_mock_serializes_manual_actions_with_driver(tmp_path):
 
     assert completed_while_driving is False
     assert session.busy is False
+
+
+@pytest.mark.parametrize("as_tool_receipt", [False, True])
+def test_responses_wire_only_session_pairs_frame_and_listing(tmp_path, as_tool_receipt):
+    listing = _listing("home")
+    content = [
+        {"type": "input_image", "image_url": "images/a.jpg"},
+        {"type": "input_text", "text": listing},
+    ]
+    message = (
+        {"type": "function_call_output", "call_id": "call-1", "output": content}
+        if as_tool_receipt
+        else {"role": "user", "content": content}
+    )
+    directory = _session_dir(
+        tmp_path, [{"kind": "request", "messages": [message]}], ["a.jpg"]
+    )
+    frames = mock.session_frames(directory)
+    assert [(frame.image.name, frame.listing) for frame in frames] == [
+        ("a.jpg", listing)
+    ]

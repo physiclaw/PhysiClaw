@@ -304,7 +304,7 @@ def test_render_appends_default_state_tip_after_decay_turns() -> None:
         f"⚠ Plan still default after {plan_mod.DEFAULT_STATE_AFTER} "
         "turns — read the user's IM and call update_progress. "
         f"After {plan_mod.PLAN_REQUIRED_AFTER} turns with no plan the engine "
-        "blocks every tool except note / update_progress / "
+        "allows only update_progress / "
         "end_session."
     )
 

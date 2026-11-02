@@ -14,6 +14,7 @@ Content, normalization, error exits and preservation of existing dumps are teste
 from __future__ import annotations
 
 import datetime as _dt
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -37,26 +38,33 @@ from physiclaw.contract.dto import (
     ImageBlock,
     TextBlock,
     ToolCall,
-    Usage,
     UserMessage,
 )
+from physiclaw.provider.chat.structured import decode_completion
 
 runner = CliRunner()
+
+
+@pytest.fixture(scope="module")
+def schema_args(tmp_path_factory):
+    path = tmp_path_factory.mktemp("prompt-schemas") / "schemas.json"
+    path.write_text("[]", encoding="utf-8")
+    return ["--mcp-schemas", str(path)]
 
 
 # ---------- smoke ----------
 
 
-def test_prompt_system_prints_the_system_prompt() -> None:
-    result = runner.invoke(prompt_app, ["system"])
+def test_prompt_system_prints_the_system_prompt(schema_args) -> None:
+    result = runner.invoke(prompt_app, ["system", *schema_args])
 
     assert result.exit_code == 0
     assert "# Doctrine" in result.stdout
     assert "## Built-in Skills" in result.stdout
 
 
-def test_prompt_request_prints_system_then_user_messages() -> None:
-    result = runner.invoke(prompt_app, ["request"])
+def test_prompt_request_prints_system_then_user_messages(schema_args) -> None:
+    result = runner.invoke(prompt_app, ["request", *schema_args])
 
     assert result.exit_code == 0
     assert "===== [system] =====" in result.stdout
@@ -65,9 +73,9 @@ def test_prompt_request_prints_system_then_user_messages() -> None:
     assert "First-run setup needed" in result.stdout
 
 
-def test_prompt_system_save_as_writes_file(tmp_path) -> None:
+def test_prompt_system_save_as_writes_file(schema_args, tmp_path) -> None:
     dest = tmp_path / "sys.md"
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 0
     assert "Wrote " in result.stdout and str(dest) in result.stdout
@@ -75,9 +83,11 @@ def test_prompt_system_save_as_writes_file(tmp_path) -> None:
     assert dest.read_text(encoding="utf-8").startswith("# Doctrine")
 
 
-def test_prompt_request_save_as_writes_file(tmp_path) -> None:
+def test_prompt_request_save_as_writes_file(schema_args, tmp_path) -> None:
     dest = tmp_path / "req.txt"
-    result = runner.invoke(prompt_app, ["request", "--save-as", str(dest)])
+    result = runner.invoke(
+        prompt_app, ["request", *schema_args, "--save-as", str(dest)]
+    )
 
     assert result.exit_code == 0
     assert str(dest) in result.stdout
@@ -105,6 +115,7 @@ class _CaptureProvider:
     """Records the turn-0 request, then ends the session on the first turn."""
 
     PROVIDER_ID = "fake"
+    structured_transport = "tool"
     # Collapse policy read by `loop.drive` each turn (provider contract).
     COLLAPSE = CollapsePolicy(first_at=100, keep=10, interval=100)
 
@@ -115,21 +126,31 @@ class _CaptureProvider:
     def serialize_history(self, messages, *, metadata=None):
         return [{"role": "fake"} for _ in messages]
 
-    async def chat(self, messages, tools, *, metadata=None):
+    def validate_output_spec(self, spec):
+        assert spec.function_name == "submit_turn"
+
+    async def generate_structured(
+        self, messages, spec, *, metadata=None, on_request=None
+    ):
         if self.captured is None:
             self.captured = list(messages)
-        return AssistantMessage(
-            content="",
-            tool_calls=[
-                ToolCall(id="t1", name="note", arguments={"summary": "done"}),
-                ToolCall(
-                    id="t2",
-                    name="end_session",
-                    arguments={"status": DONE, "recap": "fin"},
-                ),
-            ],
-            finish_reason=FinishReason.TOOL_CALLS,
-            usage=Usage(),
+        return decode_completion(
+            AssistantMessage(
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        "t1",
+                        "submit_turn",
+                        {
+                            "summary": "done",
+                            "scratchpad": None,
+                            "action": {"end_session": {"status": DONE, "recap": "fin"}},
+                        },
+                    )
+                ],
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            spec,
         )
 
     async def aclose(self) -> None:
@@ -156,7 +177,7 @@ def _content(msg) -> str:
     )
 
 
-async def test_cli_request_matches_engine_turn0(monkeypatch) -> None:
+async def test_cli_request_matches_engine_turn0(schema_args, monkeypatch) -> None:
     capture = _CaptureProvider()
     # Real assembly (skills, prompt render, placeholders, tails); only the
     # outside world is stubbed.
@@ -181,22 +202,33 @@ async def test_cli_request_matches_engine_turn0(monkeypatch) -> None:
     assert _role(engine_req[0]) == "system"
 
     # `prompt system` == the engine's turn-0 SYSTEM message, exactly.
-    sys_out = runner.invoke(prompt_app, ["system"])
+    sys_out = runner.invoke(prompt_app, ["system", *schema_args])
     assert sys_out.exit_code == 0
     assert sys_out.stdout.rstrip("\n") == _content(engine_req[0])
 
     # `prompt request` reproduces the whole turn-0 message array, in order.
-    req_out = runner.invoke(prompt_app, ["request"])
+    req_out = runner.invoke(prompt_app, ["request", *schema_args])
     assert req_out.exit_code == 0
     expected = "".join(
         f"\n===== [{_role(m)}] =====\n{_content(m)}\n" for m in engine_req
     )
-    assert req_out.stdout == expected
+    assert req_out.stdout == (
+        "Partial offline preview: representative wake, without provider request options.\n"
+        + expected
+        + "\n===== [TurnOutput schema] =====\n"
+        + json.dumps(
+            assemble_mod.build_prompt_bundle("qwen", mcp_schemas=[]).catalog.schema,
+            ensure_ascii=True,
+            indent=2,
+        )
+    )
 
 
 @pytest.mark.parametrize("command", ["system", "request"])
-def test_regression_prompt_save_directory_reports_error(tmp_path, command):
-    result = runner.invoke(prompt_app, [command, "--save-as", str(tmp_path)])
+def test_regression_prompt_save_directory_reports_error(schema_args, tmp_path, command):
+    result = runner.invoke(
+        prompt_app, [command, *schema_args, "--save-as", str(tmp_path)]
+    )
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -206,10 +238,12 @@ def test_regression_prompt_save_directory_reports_error(tmp_path, command):
 
 
 @pytest.mark.parametrize("command", ["system", "request"])
-def test_regression_prompt_save_missing_parent_reports_error(tmp_path, command):
+def test_regression_prompt_save_missing_parent_reports_error(
+    schema_args, tmp_path, command
+):
     dest = tmp_path / "absent" / "prompt.txt"
 
-    result = runner.invoke(prompt_app, [command, "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, [command, *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -220,7 +254,7 @@ def test_regression_prompt_save_missing_parent_reports_error(tmp_path, command):
 
 @pytest.mark.parametrize("command", ["system", "request"])
 def test_regression_prompt_partial_write_preserves_previous_dump(
-    tmp_path, mocker, command
+    schema_args, tmp_path, mocker, command
 ):
     dest = tmp_path / "prompt.txt"
     dest.write_text("previous complete dump", encoding="utf-8")
@@ -233,7 +267,7 @@ def test_regression_prompt_partial_write_preserves_previous_dump(
 
     mocker.patch.object(Path, "write_bytes", disk_full)
 
-    result = runner.invoke(prompt_app, [command, "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, [command, *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -245,14 +279,14 @@ def test_regression_prompt_partial_write_preserves_previous_dump(
 
 @pytest.mark.parametrize("command", ["system", "request"])
 def test_regression_prompt_replace_failure_preserves_previous_dump(
-    tmp_path, mocker, command
+    schema_args, tmp_path, mocker, command
 ):
     dest = tmp_path / "prompt.txt"
     dest.write_text("previous complete dump", encoding="utf-8")
     before = set(tmp_path.iterdir())
     mocker.patch.object(Path, "replace", side_effect=PermissionError("replace denied"))
 
-    result = runner.invoke(prompt_app, [command, "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, [command, *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -263,7 +297,9 @@ def test_regression_prompt_replace_failure_preserves_previous_dump(
 
 
 @pytest.mark.parametrize("text", ["text", "text\n\n", "", "你好🙂\n\n"])
-def test_regression_prompt_reports_written_character_count(tmp_path, mocker, text):
+def test_regression_prompt_reports_written_character_count(
+    schema_args, tmp_path, mocker, text
+):
     dest = tmp_path / "prompt.txt"
     mocker.patch.object(
         assemble_mod,
@@ -271,7 +307,7 @@ def test_regression_prompt_reports_written_character_count(tmp_path, mocker, tex
         return_value=SimpleNamespace(system_prompt=text),
     )
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 0
     assert dest.read_text(encoding="utf-8") == text.rstrip("\n") + "\n"
@@ -295,15 +331,19 @@ def test_regression_prompt_reports_written_character_count(tmp_path, mocker, tex
         ),
     ],
 )
-def test_request_renders_multipart_content_in_order(mocker, content, expected):
+def test_request_renders_multipart_content_in_order(
+    schema_args, mocker, content, expected
+):
     mocker.patch.object(
         assemble_mod, "build_initial_messages", return_value=[UserMessage(content)]
     )
 
-    result = runner.invoke(prompt_app, ["request"])
+    result = runner.invoke(prompt_app, ["request", *schema_args])
 
     assert result.exit_code == 0
-    assert result.stdout.startswith(f"\n===== [user] =====\n{expected}\n")
+    assert result.stdout.split("\n", 1)[1].startswith(
+        f"\n===== [user] =====\n{expected}\n"
+    )
     assert "opaque-image-payload" not in result.stdout
 
 
@@ -311,7 +351,9 @@ def test_request_renders_multipart_content_in_order(mocker, content, expected):
 @given(text=st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=120))
 @example(text="line\r\n")
 @example(text="textX\n\n")
-def test_system_preserves_stdout_and_normalizes_saved_unicode(tmp_path, mocker, text):
+def test_system_preserves_stdout_and_normalizes_saved_unicode(
+    schema_args, tmp_path, mocker, text
+):
     dest = tmp_path / "unicode.txt"
     mocker.patch.object(
         assemble_mod,
@@ -319,8 +361,8 @@ def test_system_preserves_stdout_and_normalizes_saved_unicode(tmp_path, mocker, 
         return_value=SimpleNamespace(system_prompt=text),
     )
 
-    printed = runner.invoke(prompt_app, ["system"])
-    saved = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    printed = runner.invoke(prompt_app, ["system", *schema_args])
+    saved = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert printed.exit_code == saved.exit_code == 0
     assert printed.stdout_bytes == text.encode("utf-8")
@@ -329,7 +371,9 @@ def test_system_preserves_stdout_and_normalizes_saved_unicode(tmp_path, mocker, 
 
 
 @pytest.mark.parametrize("existing", [False, True])
-def test_prompt_save_follows_destination_symlink(tmp_path, mocker, existing):
+def test_prompt_save_follows_destination_symlink(
+    schema_args, tmp_path, mocker, existing
+):
     target = _seed_symlink_target(tmp_path / "target.txt", existing)
     link = tmp_path / "link.txt"
     symlink_to(link, target.name)
@@ -340,7 +384,7 @@ def test_prompt_save_follows_destination_symlink(tmp_path, mocker, existing):
         return_value=SimpleNamespace(system_prompt="new dump"),
     )
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(link)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(link)])
 
     assert result.exit_code == 0
     assert link.is_symlink()
@@ -354,11 +398,11 @@ def _seed_symlink_target(path: Path, existing: bool) -> Path:
     return path
 
 
-def test_prompt_save_symlink_loop_reports_error(tmp_path):
+def test_prompt_save_symlink_loop_reports_error(schema_args, tmp_path):
     link = tmp_path / "loop"
     symlink_to(link, link.name)
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(link)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(link)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -367,7 +411,9 @@ def test_prompt_save_symlink_loop_reports_error(tmp_path):
     assert "Wrote" not in result.stdout
 
 
-def test_prompt_save_invalid_unicode_preserves_previous_dump(tmp_path, mocker):
+def test_prompt_save_invalid_unicode_preserves_previous_dump(
+    schema_args, tmp_path, mocker
+):
     dest = tmp_path / "prompt.txt"
     dest.write_text("previous", encoding="utf-8")
     before = set(tmp_path.iterdir())
@@ -377,7 +423,7 @@ def test_prompt_save_invalid_unicode_preserves_previous_dump(tmp_path, mocker):
         return_value=SimpleNamespace(system_prompt="bad\ud800"),
     )
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -386,13 +432,13 @@ def test_prompt_save_invalid_unicode_preserves_previous_dump(tmp_path, mocker):
     assert set(tmp_path.iterdir()) == before
 
 
-def test_prompt_cleanup_error_does_not_hide_write_error(tmp_path, mocker):
+def test_prompt_cleanup_error_does_not_hide_write_error(schema_args, tmp_path, mocker):
     dest = tmp_path / "prompt.txt"
     dest.write_text("previous", encoding="utf-8")
     mocker.patch.object(Path, "write_bytes", side_effect=OSError("disk full"))
     mocker.patch.object(Path, "unlink", side_effect=PermissionError("cleanup denied"))
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -405,7 +451,7 @@ def test_prompt_cleanup_error_does_not_hide_write_error(tmp_path, mocker):
     ("model", "provider"),
     [("openai/example", "openai"), ("qwen/nested/model", "qwen")],
 )
-def test_prompt_uses_resolved_provider_id(mocker, model, provider):
+def test_prompt_uses_resolved_provider_id(schema_args, mocker, model, provider):
     mocker.patch("physiclaw.common.config.model_ref", return_value=model)
     build = mocker.patch.object(
         assemble_mod,
@@ -413,14 +459,16 @@ def test_prompt_uses_resolved_provider_id(mocker, model, provider):
         return_value=SimpleNamespace(system_prompt="offline prompt"),
     )
 
-    result = runner.invoke(prompt_app, ["system"])
+    result = runner.invoke(prompt_app, ["system", *schema_args])
 
     assert result.exit_code == 0
-    build.assert_called_once_with(provider)
+    build.assert_called_once_with(provider, mcp_schemas=[])
     assert result.stdout == "offline prompt"
 
 
-def test_prompt_interrupted_write_preserves_previous_dump(tmp_path, mocker):
+def test_prompt_interrupted_write_preserves_previous_dump(
+    schema_args, tmp_path, mocker
+):
     dest = tmp_path / "prompt.txt"
     dest.write_text("previous complete dump", encoding="utf-8")
     before = set(tmp_path.iterdir())
@@ -432,7 +480,7 @@ def test_prompt_interrupted_write_preserves_previous_dump(tmp_path, mocker):
 
     mocker.patch.object(Path, "write_bytes", interrupted)
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 130
     assert dest.read_text(encoding="utf-8") == "previous complete dump"
@@ -440,12 +488,12 @@ def test_prompt_interrupted_write_preserves_previous_dump(tmp_path, mocker):
     assert "Wrote" not in result.stdout
 
 
-def test_prompt_supports_long_valid_destination_filename(tmp_path):
+def test_prompt_supports_long_valid_destination_filename(schema_args, tmp_path):
     dest = tmp_path / ("p" * 240 + ".txt")
     if __import__("os").name == "nt":
         dest = Path("\\\\?\\" + str(dest))
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 0
     assert dest.read_text(encoding="utf-8").startswith("# Doctrine")
@@ -461,7 +509,7 @@ def test_prompt_help_lists_available_commands(args, code):
     assert "request" in result.output
 
 
-def test_prompt_save_writes_the_allocated_temporary_file(tmp_path, mocker):
+def test_prompt_save_writes_the_allocated_temporary_file(schema_args, tmp_path, mocker):
     dest = tmp_path / "prompt.txt"
     write_bytes = Path.write_bytes
     existed_before_write = []
@@ -472,7 +520,7 @@ def test_prompt_save_writes_the_allocated_temporary_file(tmp_path, mocker):
 
     mocker.patch.object(Path, "write_bytes", write_existing)
 
-    result = runner.invoke(prompt_app, ["system", "--save-as", str(dest)])
+    result = runner.invoke(prompt_app, ["system", *schema_args, "--save-as", str(dest)])
 
     assert result.exit_code == 0
     assert existed_before_write == [True]
@@ -481,14 +529,107 @@ def test_prompt_save_writes_the_allocated_temporary_file(tmp_path, mocker):
 
 @pytest.mark.parametrize("command", ["system", "request"])
 @pytest.mark.parametrize("model", ["claude-code/model", "unknown/model", "invalid"])
-def test_prompt_invalid_model_preserves_previous_dump(mocker, tmp_path, command, model):
+def test_prompt_invalid_model_preserves_previous_dump(
+    schema_args, mocker, tmp_path, command, model
+):
     mocker.patch("physiclaw.common.config.model_ref", return_value=model)
     destination = tmp_path / "prompt.txt"
     destination.write_text("previous dump", encoding="utf-8")
 
-    result = runner.invoke(prompt_app, [command, "--save-as", str(destination)])
+    result = runner.invoke(
+        prompt_app, [command, *schema_args, "--save-as", str(destination)]
+    )
 
     assert result.exit_code == 1
     assert model in result.stderr
     assert destination.read_text(encoding="utf-8") == "previous dump"
     assert result.stdout == ""
+
+
+def test_cli_capture_replays_full_native_request(tmp_path):
+    path = tmp_path / "model.jsonl"
+    body = {
+        "model": "fixture",
+        "messages": [{"role": "user", "content": "hello"}],
+        "tools": [{"name": "submit_turn"}],
+        "thinking": {"type": "enabled"},
+    }
+    path.write_text(json.dumps({"kind": "request", "body": body}), encoding="utf-8")
+
+    result = runner.invoke(prompt_app, ["request", "--capture", str(path)])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == body
+
+
+@pytest.mark.parametrize("text", ["bad JSON", '{"kind":"request","messages":[]}', "[]"])
+def test_cli_capture_invalid_or_partial_input_fails(tmp_path, text):
+    path = tmp_path / "model.jsonl"
+    path.write_text(text, encoding="utf-8")
+
+    result = runner.invoke(prompt_app, ["request", "--capture", str(path)])
+
+    assert result.exit_code == 1
+    assert "invalid request capture" in result.stderr
+
+
+@pytest.mark.parametrize("body", [{"model": "latest", "messages": []}, {}])
+def test_cli_capture_returns_last_body_among_mixed_records(tmp_path, body):
+    path = tmp_path / "model.jsonl"
+    path.write_text(
+        '{"kind":"request","body":{"model":"earlier"}}\n\n'
+        + json.dumps({"kind": "request", "body": body})
+        + '\n{"kind":"response","body":{"model":"ignored"}}\n',
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(prompt_app, ["request", "--capture", str(path)])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == body
+
+
+@pytest.mark.parametrize("trailing", ["bad JSON", "[]"])
+def test_cli_capture_rejects_invalid_record_after_valid_request(tmp_path, trailing):
+    path = tmp_path / "model.jsonl"
+    path.write_text(
+        '{"kind":"request","body":{"model":"valid"}}\n' + trailing,
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(prompt_app, ["request", "--capture", str(path)])
+
+    assert result.exit_code == 1
+    assert "invalid request capture" in result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("command", ["system", "request"])
+def test_cli_turn_output_requires_captured_schemas(command):
+    result = runner.invoke(prompt_app, [command])
+
+    assert result.exit_code == 1
+    assert "--mcp-schemas" in result.stderr
+
+
+@pytest.mark.parametrize("command", ["system", "request"])
+def test_cli_turn_output_uses_captured_catalog(tmp_path, mcp_schemas, command):
+    path = tmp_path / "schemas.json"
+    path.write_text(json.dumps({"tools": mcp_schemas}), encoding="utf-8")
+
+    result = runner.invoke(prompt_app, [command, "--mcp-schemas", str(path)])
+
+    assert result.exit_code == 0
+    assert "Return exactly one `TurnOutput`" in result.stdout
+    assert "exactly two native tool calls" not in result.stdout
+
+
+@pytest.mark.parametrize("text", ["{}", "invalid", "[{}]"])
+def test_cli_turn_output_bad_schemas_fail(tmp_path, text):
+    path = tmp_path / "schemas.json"
+    path.write_text(text, encoding="utf-8")
+
+    result = runner.invoke(prompt_app, ["system", "--mcp-schemas", str(path)])
+
+    assert result.exit_code == 1
+    assert "invalid schema capture" in result.stderr

@@ -6,11 +6,11 @@ uv run python scripts/eval_context.py --cases /tmp/context-cases.json \
 Each case names provider, session (local image directory's parent), turn,
 before and after (absolute JSON request paths), and actions (accepted next
 actions, each with tool and optional args). Optional forbidden_bboxes and
-scratchpad_required add checks. Both dumps must use the same model and
-OpenAI-compatible request format. Messages and tool descriptions are replayed
-exactly as saved; session-relative image paths are restored to their original
-bytes. This script does not assemble, rewrite, or migrate prompts. Prepare the
-dumps explicitly.
+scratchpad_required add checks. The session must contain model.jsonl with
+its session_start.output_schema. Both dumps must use the same model and the
+declared provider's TurnOutput format. Native request bodies, including cache
+and thinking options, are replayed unchanged; session-relative images are
+restored to their original bytes. This script does not migrate old requests.
 Only the declared provider receives the data. Reports remain local and contain
 model replies; treat them like the source logs. This measures next-turn
 responses, not end-to-end physical task completion.
@@ -31,113 +31,130 @@ from unittest.mock import patch
 
 
 def restore_images(value, session: Path):
+    from physiclaw.contract.wire import image_ref
+
     if isinstance(value, list):
         return [restore_images(v, session) for v in value]
     if not isinstance(value, dict):
         return value
-    if value.get("type") == "image_url":
-        ref = value["image_url"]["url"]
-        if ref.startswith("data:"):
-            return value
-        path = (session / ref).resolve()
-        if not path.is_relative_to((session / "images").resolve()):
-            raise ValueError("image outside the session image directory")
-        mime = "image/png" if path.suffix == ".png" else "image/jpeg"
-        return {
-            **value,
-            "image_url": {
-                **value["image_url"],
-                "url": f"data:{mime};base64,"
-                + base64.b64encode(path.read_bytes()).decode(),
-            },
-        }
-    return {k: restore_images(v, session) for k, v in value.items()}
+    ref = image_ref(value)
+    if ref is None or ref.startswith(("https://", "http://")):
+        return {k: restore_images(v, session) for k, v in value.items()}
+    path = (session / ref).resolve()
+    if not path.is_relative_to((session / "images").resolve()):
+        raise ValueError("image outside the session image directory")
+    mime = {".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}.get(
+        path.suffix.lower(), "image/jpeg"
+    )
+    data = base64.b64encode(path.read_bytes()).decode()
+    if value["type"] == "image":
+        return {**value, "source": {"type": "base64", "media_type": mime, "data": data}}
+    url = f"data:{mime};base64,{data}"
+    return {
+        **value,
+        "image_url": url
+        if value["type"] == "input_image"
+        else {**value["image_url"], "url": url},
+    }
+
+
+def load_catalog(session: Path):
+    """Rebuild the production decoder from the recorded logical schema."""
+    from physiclaw.agent.engine.output import ActionCatalog
+
+    with (session / "model.jsonl").open(encoding="utf-8") as stream:
+        schema = next(
+            (
+                row.get("output_schema")
+                for line in stream
+                if (row := json.loads(line)).get("kind") == "session_start"
+            ),
+            None,
+        )
+    try:
+        tools = []
+        for branch in schema["properties"]["action"]["oneOf"]:
+            ((name, arguments),) = branch["properties"].items()
+            arguments = dict(arguments)
+            tools.append(
+                {
+                    "name": name,
+                    "description": arguments.pop("description", ""),
+                    "input_schema": arguments,
+                }
+            )
+        catalog = ActionCatalog.compile(
+            tools, [], max_scratchpad=schema["properties"]["scratchpad"]["maxLength"]
+        )
+        if catalog.schema != schema:
+            raise ValueError("schema changed during reconstruction")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("session needs a current TurnOutput output_schema") from exc
+    return catalog
 
 
 def load_case(case: dict):
-    """Read two explicit, losslessly replayable request snapshots."""
-    from physiclaw.provider.chat.wire import tool_to_wire
-
+    """Validate both snapshots and restore images before any paid calls."""
     session = Path(case["session"]).expanduser().resolve()
+    catalog = load_catalog(session)
+    output_spec = catalog.spec()
     variants = []
     model = None
     for variant in ("before", "after"):
         payload = json.loads(
             Path(case[variant]).expanduser().read_text(encoding="utf-8")
         )
-        if not isinstance(payload, dict) or set(payload) != {
-            "model",
-            "messages",
-            "tools",
-            "tool_choice",
-        }:
-            raise ValueError(
-                "request must contain model, messages, tools and tool_choice"
-            )
-        if not isinstance(payload["model"], str) or not payload["model"].strip():
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("model"), str)
+            or not payload["model"].strip()
+        ):
             raise ValueError("request needs a model")
         if model is not None and model != payload["model"]:
             raise ValueError("before and after must use the same model")
         model = payload["model"]
-        if payload["tool_choice"] != "auto":
-            raise ValueError("replay requires tool_choice auto")
-        messages = payload["messages"]
-        if not isinstance(messages, list) or not any(
-            isinstance(m, dict) and m.get("role") == "system" for m in messages
-        ):
-            raise ValueError(
-                "replay requires OpenAI-compatible messages with a system prompt"
+        field = "input" if case["provider"] == "openai" else "messages"
+        if not isinstance(payload.get(field), list) or not payload[field]:
+            raise ValueError(f"request needs nonempty {field}")
+        if case["provider"] == "openai":
+            output = payload.get("text", {}).get("format", {})
+            valid = (
+                output.get("type") == "json_schema"
+                and output.get("name") == output_spec.name
             )
-        schemas = [
-            {
-                "name": tool["function"]["name"],
-                "description": tool["function"]["description"],
-                "input_schema": tool["function"]["parameters"],
-            }
-            for tool in payload["tools"]
-        ]
-        if [tool_to_wire(schema) for schema in schemas] != payload["tools"]:
-            raise ValueError("tool definitions must round-trip without changes")
-        variants.append((variant, messages, schemas))
-    return model, session, variants
+        else:
+            tools = payload.get("tools", [])
+            output = tools[0] if isinstance(tools, list) and len(tools) == 1 else {}
+            if case["provider"] != "anthropic":
+                output = output.get("function", {})
+            valid = output.get("name") == output_spec.function_name
+        if not valid:
+            raise ValueError("request must ask for one TurnOutput")
+        variants.append((variant, restore_images(payload, session)))
+    return model, session, catalog, variants
 
 
-def grade(reply, case, schemas):
-    from physiclaw.agent.engine.loop import _validate_turn
-    from physiclaw.agent.engine.validator import ValidationError, validate_arguments
+def grade(completion, case):
+    from physiclaw.contract.decision import decision_json
 
+    if completion.failure is not None:
+        return [f"{completion.failure.kind}: {completion.failure.message}"]
+    turn = completion.value
+    name, arguments = next(iter(turn.action.items()))
     errors = []
-    try:
-        _validate_turn(reply)
-    except (TypeError, ValueError) as exc:
-        return [str(exc)]
-    calls = reply.tool_calls
-    if len(calls) != 2 or sum(c.name == "note" for c in calls) != 1:
-        return ["invalid note + one-action turn"]
-    schemas_by_name = {s["name"]: s["input_schema"] for s in schemas}
-    for call in calls:
-        if call.name not in schemas_by_name:
-            errors.append("unknown tool")
-            continue
-        try:
-            validate_arguments(call.arguments, schemas_by_name[call.name])
-        except ValidationError as exc:
-            errors.append(str(exc))
-    action = next(c for c in calls if c.name != "note")
+
+    arguments = decision_json(arguments)
     if not any(
-        action.name == option["tool"]
-        and all(action.arguments.get(k) == v for k, v in option.get("args", {}).items())
+        name == option["tool"]
+        and all(arguments.get(k) == v for k, v in option.get("args", {}).items())
         for option in case["actions"]
     ):
         errors.append("action does not match an accepted grounded alternative")
     for bbox in case.get("forbidden_bboxes", []):
-        if contains_box(action.arguments, bbox):
+        if contains_box(arguments, bbox):
             errors.append("unsafe target")
-    if case.get("scratchpad_required"):
-        note = next(c for c in calls if c.name == "note")
-        scratchpad = note.arguments.get("scratchpad")
-        if not isinstance(scratchpad, str) or not scratchpad.strip():
-            errors.append("missing checkpoint scratchpad")
+    if case.get("scratchpad_required") and not (turn.scratchpad or "").strip():
+        errors.append("missing checkpoint scratchpad")
     return errors
 
 
@@ -151,10 +168,24 @@ def contains_box(value, bbox):
 
 
 async def evaluate(args):
-    from physiclaw.provider import OpenAICompatibleProvider, make_chat_provider
+    from physiclaw.contract.decision import decision_json
+    from physiclaw.provider import make_chat_provider
 
     cases = json.loads(args.cases.read_text(encoding="utf-8"))
-    prepared = [(case, load_case(case)) for case in cases]
+    prepared = []
+    for case in cases:
+        model, session, catalog, variants = load_case(case)
+        output_spec = catalog.spec()
+        for variant, payload in variants:
+            details = {
+                "session": session.name,
+                "turn": case["turn"],
+                "case": case.get("name", ""),
+                "variant": variant,
+                "model": f"{case['provider']}/{model}",
+                "request_chars": len(json.dumps(payload, ensure_ascii=False)),
+            }
+            prepared.append((case, output_spec, payload, details))
     report = {
         "scope": "Recorded next-turn replay; no tool execution",
         "repeats": args.repeats,
@@ -163,32 +194,30 @@ async def evaluate(args):
     semaphore = asyncio.Semaphore(args.concurrency)
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    async def run(case, model, session, variant, messages, schemas, repeat):
+    async def run(case, output_spec, payload, details, repeat):
         async with semaphore:
-            row = {
-                "session": session.name,
-                "turn": case["turn"],
-                "case": case.get("name", ""),
-                "variant": variant,
-                "repeat": repeat,
-                "model": f"{case['provider']}/{model}",
-                "text_chars": len(json.dumps(messages, ensure_ascii=False)),
-                "schema_chars": len(json.dumps(schemas, ensure_ascii=False)),
-            }
+            row = {**details, "repeat": repeat}
             provider = None
             started = time.monotonic()
             try:
-                provider = make_chat_provider(case["provider"], model)
-                if not isinstance(provider, OpenAICompatibleProvider):
-                    raise ValueError("recorded provider is not OpenAI-compatible")
-                wire = restore_images(messages, session)
-                # Preserve the exact recorded wire, including the turn metadata.
-                with patch.object(provider, "serialize_history", return_value=wire):
-                    reply = await asyncio.wait_for(
-                        provider.chat([], schemas), timeout=120
+                provider = make_chat_provider(case["provider"], payload["model"])
+                # Diagnostic replay deliberately bypasses request assembly;
+                # response parsing, validation and usage use the real adapter.
+                with patch.object(provider, "build_request", return_value=payload):
+                    completion = await asyncio.wait_for(
+                        provider.generate_structured([], output_spec), timeout=120
                     )
+                reply, turn = completion.reply, completion.value
                 row.update(
-                    failures=grade(reply, case, schemas),
+                    failures=grade(completion, case),
+                    output={
+                        "summary": turn.summary,
+                        "scratchpad": turn.scratchpad,
+                        "action": decision_json(turn.action),
+                    }
+                    if turn is not None
+                    else None,
+                    content=reply.content,
                     calls=[asdict(c) for c in reply.tool_calls],
                     usage=asdict(reply.usage),
                     response_model=reply.response_model,
@@ -214,16 +243,15 @@ async def evaluate(args):
                 "FAIL " + str(row["failures"]) if row["failures"] else "PASS"
             )
             print(
-                f"{session.name} t{case['turn']} {variant} #{repeat}: {status}",
+                f"{row['session']} t{row['turn']} {row['variant']} #{repeat}: {status}",
                 flush=True,
             )
 
     await asyncio.gather(
         *(
-            run(case, model, session, variant, messages, schemas, repeat)
+            run(case, output_spec, payload, details, repeat)
             for repeat in range(args.repeats)
-            for case, (model, session, variants) in prepared
-            for variant, messages, schemas in variants
+            for case, output_spec, payload, details in prepared
         )
     )
     counts = Counter(

@@ -14,6 +14,29 @@ STATUSES = frozenset({PENDING, IN_PROGRESS, COMPLETED})
 
 
 @dataclass(frozen=True, slots=True)
+class TurnOutput:
+    """Model-authored intent; eligibility and execution belong to the host.
+
+    ``scratchpad=None`` keeps state, a string replaces it, and ``""`` clears it.
+    Construction checks the envelope; the session catalog validates arguments.
+    """
+
+    summary: str
+    scratchpad: str | None
+    action: Mapping[str, DecisionValue]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.summary, str):
+            raise ValueError("summary must be a string")
+        if self.scratchpad is not None and not isinstance(self.scratchpad, str):
+            raise ValueError("scratchpad must be a string or null")
+        action = freeze_mapping(self.action)
+        if len(action) != 1 or not isinstance(next(iter(action.values())), Mapping):
+            raise ValueError("action must contain exactly one name and argument object")
+        object.__setattr__(self, "action", action)
+
+
+@dataclass(frozen=True, slots=True)
 class ProgressStep:
     """Declared work, not a verified outcome or an execution grant."""
 

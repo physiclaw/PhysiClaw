@@ -43,17 +43,16 @@ class RawLog:
         provider: str,
         model: str,
         prompt_hash: str,
-        tools: list[dict],
+        output_schema: dict,
     ) -> None:
-        # Tools don't change mid-session (engine builds the registry once
-        # at bootstrap), so logging them once at start is sufficient and
-        # keeps per-turn records lean.
+        # The logical output schema is session-stable. Actual provider wire
+        # formats are recorded separately by write_native_request.
         self._emit(
             "session_start",
             provider=provider,
             model=model,
             prompt_hash=prompt_hash,
-            tools=tools,
+            output_schema=output_schema,
         )
 
     def write_request(
@@ -67,6 +66,37 @@ class RawLog:
         )
         extra = {"call": call} if call is not None else {}
         self._emit("request", turn=turn, messages=scrubbed, **extra)
+
+    def write_native_request(
+        self,
+        turn: int,
+        body: dict,
+        *,
+        attempt: int = 1,
+        schema_id: str | None = None,
+        transport: str | None = None,
+        call: UsageCall | None = None,
+    ) -> None:
+        """Capture the actual body from the sending adapter, without headers.
+
+        The viewer reads messages for frames and request deltas. The full body
+        also contains native tools, system blocks and provider request options.
+        """
+        self._turn = turn
+        scrubbed = wire.scrub_request(
+            body,
+            lambda mime, b64: self._images.put(turn, mime, b64),
+        )
+        self._emit(
+            "request",
+            turn=turn,
+            messages=scrubbed.get("input", scrubbed.get("messages", [])),
+            body=scrubbed,
+            attempt=attempt,
+            **({"schema_id": schema_id} if schema_id is not None else {}),
+            **({"transport": transport} if transport is not None else {}),
+            **({"call": call} if call is not None else {}),
+        )
 
     def write_response(
         self,

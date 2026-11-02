@@ -1,8 +1,11 @@
 """Explicit chat and decision API services, grouped by vendor.
 
-provider_base owns credentials and client lifecycle. chat/ owns history,
-cache/accounting and generation protocols. decision/ owns bounded choices.
-vendors/<vendor>/chat.py and decision.py contain service-specific adapters.
+Providers own credentials, client lifecycle, API encoding, cache markers,
+opaque replay, response normalization and usage accounting. Chat and decision
+adapters have separate contracts. Each call makes one transport attempt.
+
+Callers own prompts, history, output schemas, retries and action execution.
+They use shared contract DTOs; native request snapshots are diagnostics only.
 
 Use make_chat_provider or make_decision_provider to select the API kind.
 Each service owns its client and context; neither factory substitutes the
@@ -14,13 +17,6 @@ from physiclaw.provider.chat import discovered
 from physiclaw.provider.chat.anthropic_compat import AnthropicCompatibleProvider
 from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.chat.wire import (
-    assistant_to_wire,
-    mcp_blocks_to_content_blocks,
-    tool_result_to_wire,
-    tool_to_wire,
-    user_content_to_openai,
-)
 from physiclaw.provider.decision.base import BaseDecisionProvider
 from physiclaw.provider.provider_base import BaseAPIProvider
 from physiclaw.provider.registry import (
@@ -70,20 +66,15 @@ __all__ = [
     "OpenRouterDecisionProvider",
     "QwenChatProvider",
     "TypeSafeDecisionProvider",
-    "assistant_to_wire",
     "decision_provider_capabilities",
     "discovered",
     "in_process_provider_ids",
     "is_known",
     "make_chat_provider",
     "make_decision_provider",
-    "mcp_blocks_to_content_blocks",
     "provider_capabilities",
     "provider_class",
     "provider_key_status",
     "register_decision_provider",
-    "tool_result_to_wire",
-    "tool_to_wire",
-    "user_content_to_openai",
     "validate_model_ref",
 ]

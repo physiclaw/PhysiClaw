@@ -165,27 +165,30 @@ def test_distinct_registrations_cannot_share_a_runtime_instance(
 
 
 async def test_default_stack_without_a_playbook_or_decision_uses_the_llm(mocker):
-    from engine_fakes import _asst, _tc
+    from engine_fakes import _reply
 
     from physiclaw.agent.engine.loop import _advance
 
     bindings = plugins_mod.load_plugins()
-    provider = SimpleNamespace(chat=mocker.AsyncMock())
-    answer = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": "DONE"})])
-    provider.chat.return_value = answer
+    provider = SimpleNamespace(respond=mocker.AsyncMock())
+    answer = _reply(None, {"end_session": {"status": "DONE"}})
+    provider.respond.return_value = answer
     try:
         for binding in bindings:
             context = PluginServices(session_provider=provider)
             await binding.plugin.session_setup(context)
         result = await _advance(
-            _arbitration_run(provider.chat, plugins=bindings, attempts=1),
+            _arbitration_run(provider.respond, plugins=bindings, attempts=1),
             Session(),
             _turn_metadata(),
         )
 
-        assert result.binding.id == "physiclaw.llm" and result.message is answer
-        provider.chat.assert_awaited_once()
-        assert provider.chat.call_args.kwargs["metadata"] == _turn_metadata()
+        assert result.binding.id == "physiclaw.llm" and result.message.tool_names() == [
+            "note",
+            "end_session",
+        ]
+        provider.respond.assert_awaited_once()
+        assert provider.respond.call_args.kwargs["metadata"] == _turn_metadata()
     finally:
         for binding in bindings:
             await binding.plugin.aclose()
@@ -198,7 +201,7 @@ async def test_active_decision_uses_generic_arbitration_and_private_contexts(
     import asyncio
     import time
 
-    from engine_fakes import _asst, _tc
+    from engine_fakes import _asst, _reply
 
     from physiclaw.agent.engine import loop
     from physiclaw.contract.decision import DecisionAnswer, DecisionResult
@@ -253,7 +256,7 @@ async def test_active_decision_uses_generic_arbitration_and_private_contexts(
     )
     plugin = DecisionPlugin()
     decision_advance = mocker.spy(plugin, "advance")
-    llm_answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    llm_answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(return_value=llm_answer)
     run = _arbitration_run(
         chat,
@@ -311,7 +314,7 @@ async def test_active_decision_uses_generic_arbitration_and_private_contexts(
             chat.assert_not_awaited()
         else:
             assert result.binding.id == "physiclaw.llm"
-            assert result.message is llm_answer
+            assert result.message.tool_names() == ["note", "peek"]
             llm_advance.assert_awaited_once()
             assert llm_advance.call_args.args[0] is decision_advance.call_args.args[0]
             assert llm_advance.call_args.kwargs["metadata"] is metadata
@@ -344,7 +347,7 @@ def test_bad_paths_do_not_sink_good_ones(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_advance_passes_a_crashing_plugin_to_the_provider() -> None:
-    from engine_fakes import _asst, _tc
+    from engine_fakes import _reply
 
     from physiclaw.agent.engine.loop import _advance
 
@@ -352,7 +355,7 @@ async def test_advance_passes_a_crashing_plugin_to_the_provider() -> None:
         async def advance(self, messages, *, metadata):
             raise RuntimeError("plugin bug")
 
-    spoken = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    spoken = _reply(None, {"peek": {}})
 
     async def chat(messages, tools, *, metadata):
         return spoken
@@ -367,7 +370,7 @@ async def test_advance_passes_a_crashing_plugin_to_the_provider() -> None:
         _turn_metadata(),
     )
 
-    assert turn.message is spoken
+    assert turn.message.tool_names() == ["note", "peek"]
     assert turn.binding.id == "physiclaw.llm"
 
 

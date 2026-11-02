@@ -203,8 +203,8 @@ in the `env` event / `summary.json.env.utc_offset`.
   (sentinel + recap), `crashed`.
 
 - `model.jsonl` — the provider round-trips: `session_start` (provider,
-  model, prompt_hash, tool schemas) once, then per turn `request`
-  (full message array) and `response` (raw provider reply,
+  model, prompt_hash, output_schema) once, then per turn `request`
+  (native body and a message projection) and `response` (raw provider reply,
   elapsed_ms, producer and presentation; a plugin-composed turn has
   no main-LLM request record before it, but may have its own inference
   records). Inline

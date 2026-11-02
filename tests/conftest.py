@@ -34,6 +34,28 @@ def pytest_make_parametrize_id(config, val, argname):
     return None
 
 
+@pytest.fixture(scope="module")
+def mcp_schemas():
+    """Real registered schemas; no hardware or server connection."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from mcp.server.mcpserver import MCPServer
+
+    from physiclaw.core.server.tools import register
+
+    server = MCPServer("test")
+    register(server, MagicMock())
+    return [
+        {
+            "name": tool.name,
+            "description": tool.description or "",
+            "input_schema": tool.input_schema,
+        }
+        for tool in asyncio.run(server.list_tools())
+    ]
+
+
 @pytest.fixture
 def observation_blocks():
     """Fresh, runtime-shaped image/listing pairs with real encoded pixels."""

@@ -17,6 +17,7 @@ from engine_fakes import (
     FakeProvider,
     _asst,
     _registry,
+    _reply,
     _schemas,
     _tc,
     patch_loop_tails,
@@ -137,7 +138,13 @@ async def test_regression_private_macro_dispatch_survives_hidden_schema(
 
     assert outcome.status == DONE
     assert ("home_screen", {}) in state.mcp.tool_calls
-    assert "run_macro" not in {s["name"] for s in state.chat.call_args.args[1]}
+    assert "run_macro" not in {
+        name
+        for branch in state.chat.call_args.args[1].schema["properties"]["action"][
+            "oneOf"
+        ]
+        for name in branch["properties"]
+    }
     assert "run_macro" not in state.chat.call_args.args[0][0].content
     assert state.provider.closed
     state.plugin.aclose.assert_awaited_once()
@@ -155,7 +162,7 @@ async def test_private_macro_hidden_schema_still_validates_arguments(private_mac
     results = [getattr(m, "content", "") for m in state.chat.call_args.args[0]]
     assert (
         "invalid arguments for run_macro: name: expected string, got int (123)"
-        in results
+        in str(results)
     )
 
 
@@ -163,12 +170,7 @@ async def test_private_macro_setup_preserves_remote_tool_dispatch(private_macro_
     state = private_macro_run
     state.provider._responses.insert(
         0,
-        _asst(
-            tool_calls=[
-                _tc("note", {"summary": "remote check"}),
-                _tc("remote_probe", {"value": 5}),
-            ]
-        ),
+        _reply({"summary": "remote check"}, {"remote_probe": {"value": 5}}),
     )
 
     outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
@@ -236,9 +238,7 @@ def _patch_session_deps(mocker):
 @pytest.fixture
 def completed_run(mocker):
     deps = _patch_session_deps(mocker)
-    provider = FakeProvider(
-        [_asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])]
-    )
+    provider = FakeProvider([_reply(None, {"end_session": {"status": DONE}})])
     plugin = SimpleNamespace(
         session_setup=mocker.AsyncMock(return_value=None),
         advance=mocker.AsyncMock(return_value=None),
@@ -288,7 +288,7 @@ async def test_provider_setup_failure_is_saved_before_session_capture_closes(
     assert "Traceback" in text
 
 
-@pytest.mark.parametrize("phase", ["chat", "serialize_history"])
+@pytest.mark.parametrize("phase", ["generate_structured", "serialize_history"])
 async def test_late_provider_configuration_failure_propagates_without_retry(
     completed_run, mocker, phase
 ):
@@ -464,13 +464,13 @@ async def test_session_closes_pending_shadow_before_trace_and_chat_provider(
             return_value=[{"name": "tap", "input_schema": {"type": "object"}}]
         ),
     )
-    original_chat = completed_run.provider.chat
+    original_chat = completed_run.provider.respond
 
     async def chat(messages, tools, *, metadata):
         await asyncio.wait_for(started.wait(), 1)
         return await original_chat(messages, tools, metadata=metadata)
 
-    completed_run.provider.chat = chat
+    completed_run.provider.respond = chat
     session = Session()
     session.plan.update(
         user_said="打开淘宝",
@@ -595,12 +595,7 @@ async def test_regression_curate_read_error_does_not_retry_completed_task(
 @pytest.mark.asyncio
 async def test_run_session_closes_provider_in_finally(mocker) -> None:
     deps = _patch_session_deps(mocker)
-    asst = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "x"}),
-            _tc("end_session", {"status": DONE, "recap": "fin"}),
-        ]
-    )
+    asst = _reply({"summary": "x"}, {"end_session": {"status": DONE, "recap": "fin"}})
     fake_provider = FakeProvider([asst])
     mocker.patch.object(engine_mod, "make_chat_provider", return_value=fake_provider)
 
@@ -867,17 +862,33 @@ async def test_run_budget_exhausted_stuck_not_retried(mocker) -> None:
     assert spy.call_count == 1
 
 
+@pytest.mark.parametrize("status", [400, 401, 403])
+async def test_permanent_provider_failure_does_not_restart_session(
+    completed_run, mocker, status
+):
+    from physiclaw.common.provider_errors import ProviderPermanentError
+
+    mocker.patch.object(engine_mod.CONFIG.engine, "max_attempts", 3)
+    generate = mocker.patch.object(
+        completed_run.provider,
+        "generate_structured",
+        side_effect=ProviderPermanentError(f"HTTP {status}", status_code=status),
+    )
+
+    outcome = await engine_mod.run([Trigger(description="t")], model_ref="fake/model")
+
+    assert outcome.status == "FAIL"
+    assert f"HTTP {status}" in outcome.recap
+    generate.assert_awaited_once()
+    completed_run.factory.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_done_is_recorded_before_the_curation_pass(mocker) -> None:
     # A Ctrl-C during the optional post-session curation call must not
     # cost the summary its outcome: the `done` event is written first.
     deps = _patch_session_deps(mocker)
-    asst = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "x"}),
-            _tc("end_session", {"status": DONE, "recap": "fin"}),
-        ]
-    )
+    asst = _reply({"summary": "x"}, {"end_session": {"status": DONE, "recap": "fin"}})
     mocker.patch.object(
         engine_mod, "make_chat_provider", return_value=FakeProvider([asst])
     )

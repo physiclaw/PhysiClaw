@@ -10,6 +10,7 @@ from engine_fakes import (
     _llm,
     _mk_run,
     _registry,
+    _reply,
     _schemas,
     _tc,
     _turn_metadata,
@@ -23,7 +24,7 @@ from physiclaw.agent.engine.policy import Policies
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import DONE
-from physiclaw.contract.dto import ToolResultMessage
+from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.plugin import ProposedTurn
 
 
@@ -48,7 +49,7 @@ async def test_expired_proposal_falls_through_with_same_input_and_metadata(
             )
         )
     )
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(return_value=answer)
     run = _arbitration_run(
         chat, plugins=(PluginBinding("test.producer", plugin, "Test"),)
@@ -58,7 +59,7 @@ async def test_expired_proposal_falls_through_with_same_input_and_metadata(
 
     result = await loop._advance(run, Session(), metadata)
 
-    assert result.message is answer and result.expires_at is None
+    assert result.message.tool_names() == ["note", "peek"] and result.expires_at is None
     assert llm_advance.call_args.args[0] is plugin.advance.call_args.args[0]
     assert llm_advance.call_args.kwargs["metadata"] is metadata
     assert not run.mcp.tool_calls
@@ -74,9 +75,7 @@ async def test_expiry_during_response_logging_refuses_tool_and_reaches_llm(
     registry["tap"] = LocalTool("tap", "tap", {"type": "object"}, tap)
     proposal = ProposedTurn(_asst(tool_calls=[_tc("tap")]), expires_at=101.0)
     plugin = SimpleNamespace(advance=mocker.AsyncMock(side_effect=[proposal, None]))
-    closing = _asst(
-        tool_calls=[_tc("note"), _tc("end_session", {"status": DONE, "recap": "done"})]
-    )
+    closing = _reply(None, {"end_session": {"status": DONE, "recap": "done"}})
     provider = FakeProvider([closing])
     run = _mk_run(
         provider,
@@ -103,9 +102,10 @@ async def test_expiry_during_response_logging_refuses_tool_and_reaches_llm(
     assert receipt.is_error and not receipt.executed
     assert len(provider.calls) == 1
     assert any(
-        isinstance(message, ToolResultMessage)
-        and message.tool_call_id == receipt.call_id
-        and message.is_error
+        isinstance(message, UserMessage)
+        and "Observed another producer's tap; executed=False; error=True."
+        in str(message.content)
+        and "expired" in str(message.content)
         for message in _llm(run).messages
     )
     assert any(

@@ -67,7 +67,6 @@ class EngineRun:
 
     plugins: tuple[PluginBinding, ...]
     mcp: McpClient
-    tool_schemas: list[dict]
     schema_by_name: dict[str, dict]
     local_registry: dict[str, LocalTool]
     tr: Trace

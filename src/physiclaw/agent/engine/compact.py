@@ -38,6 +38,7 @@ from physiclaw.contract.dto import (
     ContentBlock,
     ImageBlock,
     Message,
+    OutputResultMessage,
     TextBlock,
     ToolCall,
     ToolResultMessage,
@@ -201,7 +202,7 @@ def collapse_pending(
     """True when the turn ABOUT to run will, once complete, trigger
     `collapse_old_turns` — i.e. this is the model's LAST turn with the
     full history in context. The engine uses it to post the checkpoint
-    tail and require a `note(scratchpad=...)` write-down before the
+    tail and require a nonblank `TurnOutput.scratchpad` before the
     folding erases everything but summary lines.
 
     Same threshold as the collapse itself (thread the same
@@ -224,9 +225,9 @@ def inject_checkpoint_tail(messages: list[Message], *, keep: int) -> list[Messag
         UserMessage(
             content=(
                 f"⚠ Context compresses after this turn: turns older than the "
-                f"newest {keep} retain note summaries, loaded skills, and "
+                f"newest {keep} retain turn summaries, loaded skills, and "
                 "memory/log reads; their screens and other results are removed. "
-                "Your `note` this turn REQUIRES `scratchpad`: replace its full "
+                "This turn REQUIRES an updated `scratchpad`: replace its full "
                 "text with the facts, exact values, and unresolved issues still "
                 "needed. Scratchpad and plan survive in full."
             )
@@ -311,11 +312,18 @@ def collapse_old_turns(
         if isinstance(m, ToolResultMessage)
     }
 
+    for result in messages[_FIRST_TURN_INDEX:cut]:
+        if not isinstance(result, (ToolResultMessage, OutputResultMessage)):
+            continue
+        result_by_id.update(
+            {child.tool_call_id: child for child in result.context_results}
+        )
+
     for i in range(_FIRST_TURN_INDEX, cut):
         m = messages[i]
         if not isinstance(m, AssistantMessage):
             continue
-        for tc in m.tool_calls:
+        for tc in m.context_calls or m.tool_calls:
             if tc.name == "note":
                 # Rejected calls remain in history. Salvage a string summary
                 # even when another argument failed validation; never coerce
@@ -386,14 +394,10 @@ def _format_artifact_text(name: str, arguments: dict, content: str) -> str:
 
 
 def _content_to_text(content: str | list[ContentBlock]) -> str:
-    """Pull the first text out of a tool_result content — a plain string
-    or the first `TextBlock` in a multipart list."""
+    """Extract plain text or join every text block in multipart content."""
     if isinstance(content, str):
         return content
-    for block in content:
-        if isinstance(block, TextBlock):
-            return block.text
-    return ""
+    return "\n".join(block.text for block in content if isinstance(block, TextBlock))
 
 
 def _has_image(content: str | list[ContentBlock]) -> bool:
@@ -455,7 +459,8 @@ def drop_stale_screens(messages: list[Message]) -> None:
     view_indices = [
         i
         for i, m in enumerate(messages)
-        if isinstance(m, ToolResultMessage) and _has_image(m.content)
+        if isinstance(m, (ToolResultMessage, OutputResultMessage, UserMessage))
+        and _has_image(m.content)
     ]
     if len(view_indices) <= 1:
         return
@@ -470,13 +475,21 @@ def drop_stale_screens(messages: list[Message]) -> None:
 
     for i in view_indices[:-1]:
         tr = messages[i]
-        assert isinstance(tr, ToolResultMessage)  # guaranteed by the filter
-        name = name_by_id.get(tr.tool_call_id, "view")
+        assert isinstance(tr, (ToolResultMessage, OutputResultMessage, UserMessage))
+        if isinstance(tr, UserMessage):
+            messages[i] = UserMessage(
+                content=f"{STUB_PREFIX}observation){STUB_NOTE}\n{_stub_body(_content_to_text(tr.content))}"
+            )
+            continue
+        name = (
+            name_by_id.get(tr.tool_call_id, "view")
+            if isinstance(tr, ToolResultMessage)
+            else "view"
+        )
         body = _stub_body(_content_to_text(tr.content))
         head = f"{STUB_PREFIX}{name}){STUB_NOTE}"
-        messages[i] = ToolResultMessage(
-            tool_call_id=tr.tool_call_id,
+        messages[i] = replace(
+            tr,
             content=f"{head}\n{body}" if body else head,
-            is_error=tr.is_error,
             is_superseded=True,
         )

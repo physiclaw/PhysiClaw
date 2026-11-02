@@ -177,3 +177,31 @@ test('test_regression_summary_data_cannot_impersonate_a_dom_node', () => {
 
   assert.match(ui.document.getElementById('hdr').textContent, /"nodeType":1/);
 });
+
+
+for (const field of ['messages', 'input']) test(`test_native_request_search_indexes_only_new_messages_once_${field}`, () => {
+  const messages = [{role: 'user', content: 'carried-only'}, {role: 'user', content: 'new-only'}];
+  const rec = {kind: 'request', messages, body: {[field]: messages, model: 'provider-option'}};
+  const original = JSON.stringify(rec);
+  const ui = createViewer([row(rec, 'wire', {new_from: 1, carried: 1})]);
+
+  const searchable = ui.document.getElementById('wire-1').searchable();
+
+  assert.doesNotMatch(searchable, /carried-only/);
+  assert.equal(searchable.split('new-only').length - 1, 1);
+  assert.match(searchable, /provider-option/);
+  assert.equal(JSON.stringify(rec), original);
+});
+
+test('Responses input images and text render in native request and tool receipts', () => {
+  const path = 'images/frame.jpg';
+  const blocks = [{type: 'input_text', text: 'observed labels'}, {type: 'input_image', image_url: path}];
+  const records = [row({kind: 'request', messages: [
+    {role: 'user', content: blocks},
+    {type: 'function_call_output', call_id: 'call-1', output: blocks},
+  ]}, 'wire', {frames: [path]})];
+  const ui = createViewer(records, {files: [{name: path, bytes: 10}]});
+  ui.select('wire-1');
+  assert.ok(ui.detail.includes('observed labels'));
+  assert.equal(ui.document.querySelectorAll('#detail img').length, 2);
+});

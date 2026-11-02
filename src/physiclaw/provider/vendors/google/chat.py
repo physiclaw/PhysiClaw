@@ -3,7 +3,7 @@
 Google maintains a first-party OpenAI-compatible shim at
 `/v1beta/openai/`. We use that rather than the bespoke
 `generativelanguage.googleapis.com` REST API; the shim shares the same
-`chat()` flow as every other vendor here, with two Gemini-3 quirks
+`chat()` flow as other compatibility adapters, with two Gemini-3 quirks
 routed around at the wire boundary:
 
   1. **`image_url` is rejected in `role: tool`** ('Invalid content part
@@ -36,21 +36,24 @@ shape and tool continuations have been checked against Google's reference
 and live Gemini 2.5 / 3 Flash calls through a proxy.
 """
 
+import re
 from typing import Any
+
+import httpx
 
 from physiclaw.contract.dto import (
     AssistantMessage,
-    ContentBlock,
-    ImageBlock,
     Message,
     Thinking,
     ToolResultMessage,
 )
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.retry import retry_after_seconds
 from physiclaw.provider.chat.wire import (
     assistant_to_wire,
-    user_content_to_openai,
+    tool_result_with_user_images,
 )
 
 # Documented escape hatch from Google's thought-signatures doc. Used
@@ -67,6 +70,43 @@ _BUDGETS_25 = {"off": 0, "low": 1024, "medium": 8192, "high": 24576}
 class GoogleChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "google"
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+    def _retry_after(self, response: httpx.Response) -> float | None:
+        delay = super()._retry_after(response)
+        try:
+            payload = response.json()
+        except ValueError:
+            return delay
+        # The compatibility endpoint also returns list-wrapped RPC errors.
+        for item in payload if isinstance(payload, list) else [payload]:
+            error = item.get("error") if isinstance(item, dict) else None
+            details = error.get("details") if isinstance(error, dict) else None
+            for detail in details if isinstance(details, list) else []:
+                if (
+                    not isinstance(detail, dict)
+                    or detail.get("@type") != "type.googleapis.com/google.rpc.RetryInfo"
+                ):
+                    continue
+                value = detail.get("retryDelay")
+                if isinstance(value, str) and re.fullmatch(
+                    r"\d+(?:\.\d{1,9})?s", value
+                ):
+                    seconds = retry_after_seconds(value[:-1])
+                    if seconds is not None:
+                        delay = max(delay or 0.0, seconds)
+        return delay
+
+    def _tool_params(
+        self, spec: OutputSpec | None, *, thinking: Thinking | None
+    ) -> dict:
+        if spec is not None:
+            return {
+                "tool_choice": {
+                    "type": "function",
+                    "function": {"name": spec.function_name},
+                }
+            }
+        return super()._tool_params(spec, thinking=thinking)
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         model = self.model
@@ -114,7 +154,7 @@ class GoogleChatProvider(OpenAICompatibleProvider):
 
     def _encode_message(self, msg: Message) -> dict | list[dict] | None:
         if isinstance(msg, ToolResultMessage):
-            return _encode_tool_result(msg)
+            return tool_result_with_user_images(msg)
         if isinstance(msg, AssistantMessage) and msg.tool_calls:
             entry = assistant_to_wire(msg)
             sig = (msg.vendor_extra.get("google") or {}).get(
@@ -137,42 +177,6 @@ class GoogleChatProvider(OpenAICompatibleProvider):
 
 
 # ---------- helpers ----------
-
-
-def _encode_tool_result(result: ToolResultMessage) -> list[dict]:
-    """Encode a `ToolResultMessage` for the Google shim, splitting if
-    needed.
-
-    The shim rejects `image_url` parts inside `role: tool`. Text-only or
-    superseded results pass through as a single `role: tool` entry; a
-    fresh result carrying images splits into two entries — text portion
-    on `role: tool` (preserving `tool_call_id` pairing) followed by a
-    synthetic `role: user` carrying the image parts. The engine sees
-    one DTO; the wire sees two messages.
-    """
-    text_blocks: list[ContentBlock] = []
-    image_blocks: list[ContentBlock] = []
-    if isinstance(result.content, list):
-        for b in result.content:
-            (image_blocks if isinstance(b, ImageBlock) else text_blocks).append(b)
-    if not image_blocks:
-        return [
-            {
-                "role": "tool",
-                "tool_call_id": result.tool_call_id,
-                "content": user_content_to_openai(result.content),
-            }
-        ]
-    return [
-        {
-            "role": "tool",
-            "tool_call_id": result.tool_call_id,
-            "content": user_content_to_openai(text_blocks)
-            if text_blocks
-            else "(image attached in next message)",
-        },
-        {"role": "user", "content": user_content_to_openai(image_blocks)},
-    ]
 
 
 def _extract_thought_signature(raw: dict) -> str | None:

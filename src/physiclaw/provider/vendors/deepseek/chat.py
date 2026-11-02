@@ -25,6 +25,7 @@ same table.
 from typing import Any
 
 from physiclaw.contract.dto import Thinking
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
@@ -33,6 +34,21 @@ class DeepSeekChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "deepseek"
     BASE_URL = "https://api.deepseek.com/v1"
     CACHE_MARKERS = NO_CACHE_MARKERS
+    # https://api-docs.deepseek.com/guides/thinking_mode/
+    REPLAY_REASONING_CONTENT = True
+
+    def _tool_params(
+        self, spec: OutputSpec | None, *, thinking: Thinking | None
+    ) -> dict:
+        # Thinking is on by default; it rejects required/named tool choice.
+        if spec is not None and thinking == "off":
+            return {
+                "tool_choice": {
+                    "type": "function",
+                    "function": {"name": spec.function_name},
+                }
+            }
+        return super()._tool_params(spec, thinking=thinking)
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         if thinking == "off":

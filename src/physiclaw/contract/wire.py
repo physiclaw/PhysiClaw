@@ -13,10 +13,40 @@ the packages that call them.
 import json
 from typing import Any, Callable, Iterable, Iterator
 
+from physiclaw.contract.dto import ContentBlock, ImageBlock, TextBlock
+
 # persist(mime, b64_data) -> path relative to the session dir, or "" on
 # decode failure (the scrub falls back to a byte-count stub so the raw
 # log still distinguishes an image from a tap result).
 PersistImage = Callable[[str, str], str]
+
+
+def content_record(content: str | list[ContentBlock] | None) -> str | list[dict]:
+    """Encode DTO content for replayable logs, independently of any API adapter."""
+    if isinstance(content, str):
+        return content
+    parts: list[dict] = []
+    for block in content or []:
+        if isinstance(block, TextBlock):
+            parts.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageBlock):
+            parts.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": block.media_type,
+                        "data": block.data_b64,
+                    },
+                }
+            )
+    return parts or ""
+
+
+def scrub_request(body: dict, persist: PersistImage) -> dict:
+    """Scrub images without changing the adapter's native request shape."""
+    field = "input" if "input" in body else "messages"
+    return {**body, field: scrub_messages(body.get(field, []), persist)}
 
 
 def scrub_messages(messages: list[dict], persist: PersistImage) -> list[dict]:
@@ -26,16 +56,18 @@ def scrub_messages(messages: list[dict], persist: PersistImage) -> list[dict]:
     each request is the callback's policy (the session store keeps one
     file per frame).
 
-    Handles two wire shapes (recognized at the block level, not the
+    Handles image wire shapes (recognized at the block level, not the
     provider level):
 
       - OpenAI: `{"type": "image_url", "image_url": {"url": "data:..."}}`
+      - Responses: `{"type": "input_image", "image_url": "data:..."}`
       - Anthropic: `{"type": "image", "source": {"type": "base64",
         "media_type": "...", "data": "..."}}`
     """
     out: list[dict] = []
     for m in messages:
-        c = m.get("content")
+        field = "output" if m.get("type") == "function_call_output" else "content"
+        c = m.get(field)
         if not isinstance(c, list):
             out.append(m)
             continue
@@ -45,25 +77,34 @@ def scrub_messages(messages: list[dict], persist: PersistImage) -> list[dict]:
                 new_c.append(scrub_block(b, persist))
             else:
                 new_c.append(b)
-        out.append({**m, "content": new_c})
+        out.append({**m, field: new_c})
     return out
 
 
 def scrub_block(b: dict, persist: PersistImage) -> dict:
-    """Scrub one content block; handles OpenAI `image_url`, Anthropic
+    """Scrub one content block; handles OpenAI `image_url`/`input_image`, Anthropic
     `image`, and Anthropic `tool_result` (whose nested `content` may
     itself contain image blocks). Pass-through for everything else
     (text, tool_use, …)."""
     bt = b.get("type")
-    if bt == "image_url":
-        url = (b.get("image_url") or {}).get("url", "")
+    if bt in ("image_url", "input_image"):
+        url = (
+            b.get("image_url", "")
+            if bt == "input_image"
+            else (b.get("image_url") or {}).get("url", "")
+        )
         if not url.startswith("data:"):
             return b
         head, _, data = url.partition(",")
         mime = head[5:].partition(";")[0]
         rel = persist(mime, data) if data else ""
         scrubbed = rel or f"{head},<{len(data)}b unreadable>"
-        return {**b, "image_url": {**b["image_url"], "url": scrubbed}}
+        return {
+            **b,
+            "image_url": scrubbed
+            if bt == "input_image"
+            else {**b["image_url"], "url": scrubbed},
+        }
     if bt == "image":
         src = b.get("source") or {}
         if src.get("type") != "base64":
@@ -111,7 +152,10 @@ def iter_request_messages(path) -> Iterator[tuple[str, list[dict]]]:
                     msg.get("role", ""), str
                 ):
                     continue
-                yield msg.get("role", ""), list(leaf_blocks(msg.get("content")))
+                yield (
+                    msg.get("role", ""),
+                    list(leaf_blocks(msg.get("content", msg.get("output")))),
+                )
 
 
 def iter_request_texts(path) -> Iterator[tuple[str, str]]:
@@ -127,9 +171,15 @@ def image_ref(block: dict) -> str | None:
     the session dir), for either wire shape — the reader half of
     `scrub_block`. None for any other block, or an unscrubbed data URL."""
     bt = block.get("type")
-    if bt == "image_url":
+    if bt in ("image_url", "input_image"):
         image = block.get("image_url")
-        url = image.get("url") if isinstance(image, dict) else None
+        url = (
+            image
+            if bt == "input_image"
+            else image.get("url")
+            if isinstance(image, dict)
+            else None
+        )
         return (
             url
             if isinstance(url, str) and url and not url.startswith("data:")
@@ -145,7 +195,8 @@ def image_ref(block: dict) -> str | None:
 
 def leaf_blocks(content: Any) -> Iterable[dict]:
     """A message's content as a flat run of typed blocks, whichever wire
-    shape: a bare string is one text block, a `tool_result` opens into
+    shape: Responses text becomes `text`, a bare string is one text block,
+    and a `tool_result` opens into
     its own blocks. The one flattening every reader of the wire uses."""
     if isinstance(content, str):
         yield {"type": "text", "text": content}
@@ -157,8 +208,9 @@ def leaf_blocks(content: Any) -> Iterable[dict]:
             continue
         if block.get("type") == "tool_result":
             yield from leaf_blocks(block.get("content"))
-        elif block.get("type") == "text" and not isinstance(block.get("text"), str):
-            continue
+        elif block.get("type") in ("text", "input_text", "output_text"):
+            if isinstance(block.get("text"), str):
+                yield {**block, "type": "text"}
         else:
             yield block
 
@@ -169,6 +221,34 @@ def reply_gist(raw: dict) -> dict[str, Any] | None:
     the dict is neither the OpenAI nor the Anthropic shape — the caller
     shows it verbatim."""
     try:
+        output = raw.get("output")
+        if isinstance(output, list):
+            items = [item for item in output if isinstance(item, dict)]
+            parts = [
+                part
+                for item in items
+                if item.get("type") == "message"
+                for part in item.get("content", [])
+                if isinstance(part, dict)
+            ]
+            return {
+                "text": "".join(
+                    part.get("text", "")
+                    for part in parts
+                    if part.get("type") == "output_text"
+                ),
+                "calls": [
+                    {"name": item.get("name", "?"), "args": item.get("arguments", "")}
+                    for item in items
+                    if item.get("type") == "function_call"
+                ],
+                "thinking": "\n".join(
+                    part.get("text", "")
+                    for item in items
+                    if item.get("type") == "reasoning"
+                    for part in item.get("summary", [])
+                ),
+            }
         choices = raw.get("choices")
         if choices:  # the OpenAI shape
             msg = choices[0]["message"]

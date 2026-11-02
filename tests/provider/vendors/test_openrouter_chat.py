@@ -102,14 +102,22 @@ async def test_live_catalog_is_filtered_to_text_chat_models(provider, respx_mock
         ("google/gemini-3.8-flash", False),
     ],
 )
-async def test_only_anthropic_routes_enable_automatic_caching(
+async def test_only_anthropic_routes_anchor_system_and_enable_automatic_caching(
     provider, model, explicit_cache
 ):
     instance = make_chat_provider("openrouter", model)
     try:
         history = [SystemMessage("Stable system prompt"), UserMessage("Task")]
         wire = instance.serialize_history(history)
-        assert "cache_control" not in json.dumps(wire)
+        assert ("cache_control" in json.dumps(wire)) is explicit_cache
+        if explicit_cache:
+            assert wire[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+            assert (
+                wire[0]
+                == instance.serialize_history(
+                    [*history, UserMessage("Changed plan and turn metadata")]
+                )[0]
+            )
         assert (
             "cache_control" in instance._request_params(metadata=None)
         ) is explicit_cache

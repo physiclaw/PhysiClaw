@@ -16,7 +16,13 @@ from contextlib import suppress
 from physiclaw.agent.engine import pitfalls
 from physiclaw.common.config import CONFIG
 from physiclaw.common.text import json_span
-from physiclaw.contract.dto import USAGE_CALL_CURATE, SystemMessage, UserMessage
+from physiclaw.contract.dto import (
+    USAGE_CALL_CURATE,
+    Message,
+    SystemMessage,
+    UserMessage,
+)
+from physiclaw.contract.plugin import SessionChatProvider
 
 log = logging.getLogger(__name__)
 
@@ -54,30 +60,32 @@ def _parse(text: str) -> list[str] | None:
     return [x for x in arr if isinstance(x, str) and x.strip()]
 
 
-async def curate(provider, *, tr=None, rlog=None) -> bool:
+async def curate(provider: SessionChatProvider, *, tr=None, rlog=None) -> bool:
     """Consolidate the pitfalls list in place. Returns True if it was rewritten.
     Fail-open: any error / unparseable / empty reply leaves the list as-is."""
     try:
         current = pitfalls.read()
         if not current:
             return False
-        messages = [
+        messages: list[Message] = [
             SystemMessage(content=_system()),
             UserMessage(content="\n".join(f"- {x}" for x in current)),
         ]
         turn = (tr.turn if tr is not None else None) or 0
-        if rlog is not None:
-            # Record before sending so a failed call keeps its input. Optional
+
+        def record_request(body: dict) -> None:
+            # Observe the adapter's actual body before sending. Optional
             # diagnostics must never prevent consolidation or lose its result.
-            with suppress(Exception):
-                rlog.write_request(
-                    turn, provider.serialize_history(messages), call=USAGE_CALL_CURATE
-                )
+            if rlog is not None:
+                with suppress(Exception):
+                    rlog.write_native_request(turn, body, call=USAGE_CALL_CURATE)
+
         started = time.perf_counter()
         asst = await provider.chat(
             messages,
             [],
             purpose=USAGE_CALL_CURATE,
+            on_request=record_request if rlog is not None else None,
         )
         if rlog is not None:
             with suppress(Exception):

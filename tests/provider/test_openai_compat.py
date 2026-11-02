@@ -106,7 +106,7 @@ def test_normalize_finish_unknown_value_falls_back_to_stop_with_warning(
 ) -> None:
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat"):
         out = _normalize_finish("future_unknown_reason")
 
     assert out == FinishReason.STOP
@@ -418,7 +418,7 @@ async def test_chat_maps_429_to_transient(
         json={"error": "rate limited"},
     )
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat"):
         with pytest.raises(ProviderTransientError, match=r"^HTTP 429: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -451,7 +451,7 @@ async def test_chat_maps_400_to_permanent(
         json={"error": "bad model"},
     )
 
-    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat.openai_compat"):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.provider.chat"):
         with pytest.raises(ProviderPermanentError, match=r"^HTTP 400: "):
             await provider.chat([UserMessage(content="x")], [])
 
@@ -1051,3 +1051,199 @@ async def test_unmeasured_vendor_sends_nothing_extra(
     await provider.chat([UserMessage(content="x")], tools=[], thinking="high")
 
     assert set(json.loads(route.calls.last.request.read())) == {"model", "messages"}
+
+
+@pytest.mark.parametrize(
+    "vendor,model,reasoning",
+    [
+        ("deepseek", "deepseek-flash", "opaque reasoning"),
+        ("deepseek", "deepseek-flash", ""),
+        ("deepseek", "deepseek-flash", None),
+        ("moonshot", "kimi-k2.6", "opaque reasoning"),
+    ],
+)
+async def test_structured_continuation_preserves_reasoning(
+    vendor, model, reasoning, monkeypatch, respx_mock
+):
+    from physiclaw.contract.structured import OutputSpec
+    from physiclaw.provider import provider_class
+
+    monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "test")
+    provider = provider_class(vendor)(model=model, base_url="https://fixture.test")
+    spec = OutputSpec("sample", {"type": "object"}, dict)
+    respx_mock.post("https://fixture.test/chat/completions").respond(
+        json={
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "content": "",
+                        "reasoning_content": reasoning,
+                        "tool_calls": [
+                            {
+                                "id": "envelope",
+                                "type": "function",
+                                "function": {"name": "submit_turn", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+    )
+    try:
+        completed = await provider.generate_structured([], spec)
+        followup = provider.build_request(
+            [completed.reply, ToolResultMessage("envelope", "done")],
+            [],
+            output_spec=spec,
+        )
+    finally:
+        await provider.aclose()
+
+    assistant = next(m for m in followup["messages"] if m["role"] == "assistant")
+    assert assistant["reasoning_content"] == reasoning
+    assert assistant["tool_calls"][0]["id"] == "envelope"
+    assert completed.reply.content == ""
+
+
+@pytest.mark.parametrize(
+    "body,kind",
+    [
+        (
+            {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 20}},
+            "format",
+        ),
+        (
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "t",
+                                    "function": {
+                                        "name": "submit_turn",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ]
+            },
+            "truncation",
+        ),
+        (
+            {"choices": [{"finish_reason": "stop", "message": {"refusal": "blocked"}}]},
+            "refusal",
+        ),
+        (
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "t",
+                                    "function": {
+                                        "name": "submit_turn",
+                                        "arguments": '{"x":1,"x":2}',
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "format",
+        ),
+        (
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {"function": {"name": "submit_turn", "arguments": "{}"}}
+                            ]
+                        }
+                    }
+                ]
+            },
+            "format",
+        ),
+    ],
+)
+@respx.mock
+async def test_generate_structured_rejection_retains_reply_and_accounts_once(
+    provider, body, kind, mocker
+):
+    from physiclaw.contract.structured import OutputSpec
+
+    sink = mocker.Mock()
+    provider.usage_sink = sink
+    respx.post("https://api.openai.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+
+    result = await provider.generate_structured(
+        [], OutputSpec("sample", {"type": "object"}, dict)
+    )
+
+    assert result.failure.kind == kind
+    assert result.reply.raw == body
+    assert result.reply.usage.prompt_tokens == body.get("usage", {}).get(
+        "prompt_tokens", 0
+    )
+    assert sink.write.call_count == 1
+
+
+@respx.mock
+async def test_generate_structured_interleaved_chat_has_no_sticky_options(provider):
+    import json
+
+    from physiclaw.contract.structured import OutputSpec
+
+    body = {
+        "choices": [
+            {
+                "finish_reason": "tool_calls",
+                "message": {
+                    "tool_calls": [
+                        {
+                            "id": "envelope",
+                            "function": {
+                                "name": "submit_turn",
+                                "arguments": '{"ok":true}',
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    route = respx.post("https://api.openai.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    captured = []
+
+    completion = await provider.generate_structured(
+        [], OutputSpec("sample", {"type": "object"}, dict), on_request=captured.append
+    )
+    await provider.chat([completion.reply, ToolResultMessage("envelope", "failed")], [])
+
+    assert captured[0] == json.loads(route.calls[0].request.content)
+    assert captured[0]["tools"][0]["function"]["name"] == "submit_turn"
+    assert "tools" not in json.loads(route.calls[1].request.content)
+    assert (
+        json.loads(route.calls[1].request.content)["messages"][1]["tool_call_id"]
+        == "envelope"
+    )
+
+
+def test_output_spec_does_not_accept_transport_from_caller():
+    from physiclaw.contract.structured import OutputSpec
+
+    with pytest.raises(TypeError, match="transport"):
+        OutputSpec("sample", {}, dict, transport="native")

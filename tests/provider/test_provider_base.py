@@ -17,6 +17,8 @@ Accepted equivalent mutmut survivors:
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -35,10 +37,12 @@ from physiclaw.contract.dto import (
     Message,
     SystemMessage,
     TextBlock,
+    ToolCall,
     ToolResultMessage,
     Usage,
     UserMessage,
 )
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
     NO_CACHE_MARKERS,
@@ -129,12 +133,11 @@ def test_request_error_does_not_imply_provider_failure() -> None:
 
 
 def test_provider_protocol_is_importable() -> None:
-    # Protocol class exists with the expected method shape; we can't
-    # easily isinstance-check Protocols without runtime_checkable, but
-    # we can assert it's a typing.Protocol subclass conceptually.
     assert hasattr(ChatProvider, "chat")
-    assert hasattr(ChatProvider, "serialize_history")
+    assert hasattr(ChatProvider, "generate_structured")
     assert hasattr(ChatProvider, "aclose")
+    assert not hasattr(ChatProvider, "build_request")
+    assert not hasattr(ChatProvider, "serialize_history")
 
 
 def test_ephemeral_cache_control_constant_pinned() -> None:
@@ -344,22 +347,6 @@ def test_missing_key_message_lists_each_env_var_with_slashes() -> None:
         "multi credential not found. Set MULTI_KEY / ALT_MULTI_KEY env var "
         "or [provider] multi_api_key in ~/.physiclaw/config.toml."
     )
-
-
-# ---------- system_prompt_fragment ----------
-
-
-def test_system_prompt_fragment_default_is_empty_string() -> None:
-    assert BaseChatProvider.system_prompt_fragment() == ""
-
-
-def test_system_prompt_fragment_returns_declared_class_attr() -> None:
-    class _Frag(BaseChatProvider):
-        PROVIDER_ID = "frag"
-        BASE_URL = "https://x"
-        SYSTEM_PROMPT_FRAGMENT = "wrap reasoning in <think>"
-
-    assert _Frag.system_prompt_fragment() == "wrap reasoning in <think>"
 
 
 # ---------- serialize_history ----------
@@ -574,6 +561,41 @@ def test_serialize_history_handles_list_form_from_encode() -> None:
     out = _ListEncoder().serialize_history([UserMessage(content="x")])
 
     assert out == [{"role": "tool", "part": 1}, {"role": "user", "part": 2}]
+
+
+@pytest.mark.parametrize("with_tail", [False, True])
+def test_split_images_follow_all_parallel_tool_receipts(with_tail, monkeypatch):
+    from physiclaw.provider.vendors.google.chat import GoogleChatProvider
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    provider = GoogleChatProvider()
+    history: list[Message] = [
+        AssistantMessage(
+            content="",
+            tool_calls=[ToolCall("one", "peek", {}), ToolCall("two", "note", {})],
+            finish_reason=FinishReason.TOOL_CALLS,
+        ),
+        ToolResultMessage(
+            "one", [ImageBlock(media_type="image/jpeg", data_b64="QUJD")]
+        ),
+        ToolResultMessage("two", "noted"),
+    ]
+    if with_tail:
+        history.append(UserMessage("next turn"))
+
+    wire = provider.serialize_history(history)
+
+    assert [message["role"] for message in wire[:4]] == [
+        "assistant",
+        "tool",
+        "tool",
+        "user",
+    ]
+    assert [message["tool_call_id"] for message in wire[1:3]] == ["one", "two"]
+    assert wire[3]["content"][0]["type"] == "image_url"
+    assert len(wire) == 4 + with_tail
+    if with_tail:
+        assert wire[-1]["content"] == "next turn"
 
 
 def test_serialize_history_skips_empty_list_from_encode() -> None:
@@ -820,3 +842,35 @@ async def test_a_failed_call_is_recorded_with_its_error_class(monkeypatch) -> No
     (event,) = sink.events
     assert event["error"] == "TimeoutError" and event["model"] == "stub/m1"
     assert event["input"] == 0 and event["output"] == 0
+
+
+@pytest.mark.parametrize("structured", [False, True])
+async def test_cancelled_request_is_accounted_without_suppressing_cancellation(
+    stub, mocker, structured
+) -> None:
+    entered = asyncio.Event()
+
+    async def pending(*args, **kwargs):
+        entered.set()
+        await asyncio.Future()
+
+    mocker.patch.object(stub, "_chat", side_effect=pending)
+    sink = _Sink()
+    stub.usage_sink = sink
+    task = asyncio.create_task(
+        stub.generate_structured([], OutputSpec("sample", {}, dict))
+        if structured
+        else stub.chat([], [])
+    )
+    await entered.wait()
+    task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        await stub.aclose()
+
+    (event,) = sink.events
+    assert event["error"] == "CancelledError"
+    assert event["input"] == event["output"] == 0
+    assert event["response_id"] == ""

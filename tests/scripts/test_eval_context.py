@@ -9,8 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall
 from physiclaw.provider import OpenAICompatibleProvider
+from physiclaw.provider.chat.structured import decode_completion
+from tests.support.provider_responses import response
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "eval_context.py"
 spec = importlib.util.spec_from_file_location("eval_context", SCRIPT)
@@ -18,33 +21,139 @@ replay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(replay)
 
 
-def request_fixture():
+def catalog_fixture():
+    return ActionCatalog.compile(
+        [
+            {
+                "name": "peek",
+                "description": "Observe",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "tap",
+                "description": "Press",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "bbox": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                        }
+                    },
+                    "required": ["bbox"],
+                    "additionalProperties": False,
+                },
+            },
+        ],
+        [],
+        max_scratchpad=100,
+    )
+
+
+def turn_fixture():
+    return {"summary": "Check", "scratchpad": None, "action": {"peek": {}}}
+
+
+def completion_fixture(value=None, *, finish=FinishReason.TOOL_CALLS, calls=None):
+    return decode_completion(
+        AssistantMessage(
+            "",
+            calls
+            if calls is not None
+            else [
+                ToolCall(
+                    "s", "submit_turn", value if value is not None else turn_fixture()
+                ),
+            ],
+            finish,
+        ),
+        catalog_fixture().spec(),
+    )
+
+
+def request_fixture(provider="deepseek"):
+    schema = catalog_fixture().schema
+    messages = [
+        {"role": "system", "content": "Exact system — 中文 🦀"},
+        {"role": "user", "content": "Exact plan, history and memory"},
+    ]
+    if provider == "openai":
+        from physiclaw.provider.chat.schema import strict_output_schema
+
+        return {
+            "model": "test-model",
+            "input": messages,
+            "store": False,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "turn_output",
+                    "strict": True,
+                    "schema": strict_output_schema(schema),
+                }
+            },
+            "reasoning": {"effort": "low"},
+            "max_output_tokens": 1024,
+            "prompt_cache_options": {"mode": "explicit"},
+        }
+    if provider == "anthropic":
+        return {
+            "model": "test-model",
+            "messages": messages[1:],
+            "system": [
+                {
+                    "type": "text",
+                    "text": messages[0]["content"],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            "tools": [
+                {
+                    "name": "submit_turn",
+                    "description": "Exact description",
+                    "input_schema": schema,
+                }
+            ],
+            "max_tokens": 1024,
+            "tool_choice": {"type": "tool", "name": "submit_turn"},
+        }
     return {
         "model": "test-model",
-        "messages": [
-            {"role": "system", "content": "Exact system — 中文 🦀"},
-            {"role": "user", "content": "Exact plan, history and memory"},
-        ],
+        "messages": messages,
         "tools": [
             {
                 "type": "function",
                 "function": {
-                    "name": name,
-                    "description": description,
-                    "parameters": {"type": "object"},
+                    "name": "submit_turn",
+                    "description": "Exact description",
+                    "parameters": schema,
                 },
             }
-            for name, description in [
-                ("note", "Exact description"),
-                ("peek", "Observe"),
-            ]
         ],
-        "tool_choice": "auto",
+        "tool_choice": "required",
+        "temperature": 0.2,
+        "max_tokens": 1024,
     }
 
 
-def write_case(tmp_path, before, after):
-    case = {"provider": "deepseek", "session": str(tmp_path), "turn": 1}
+def write_case(tmp_path, before, after, *, provider="deepseek", catalog=None):
+    case = {"provider": provider, "session": str(tmp_path), "turn": 1}
+    (tmp_path / "model.jsonl").write_text(
+        json.dumps(
+            {
+                "kind": "session_start",
+                "output_schema": (catalog or catalog_fixture()).schema,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     for variant, payload in [("before", before), ("after", after)]:
         path = tmp_path / f"{variant}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -70,14 +179,10 @@ class BoundaryProvider(OpenAICompatibleProvider):
         self.close_error = close_error
         self.close_calls = 0
 
-    async def chat(self, history, tools):
+    async def generate_structured(self, history, output_spec):
         if self.chat_error is not None:
             raise self.chat_error
-        return AssistantMessage(
-            "",
-            [ToolCall("n", "note", {}), ToolCall("a", "peek", {})],
-            FinishReason.TOOL_CALLS,
-        )
+        return completion_fixture()
 
     async def aclose(self):
         self.close_calls += 1
@@ -169,97 +274,154 @@ async def test_evaluate_propagates_factory_cancellation(tmp_path, mocker):
     assert not args.output.exists()
 
 
-def test_explicit_requests_preserve_every_message_and_tool_byte(tmp_path):
-    from physiclaw.provider.chat.wire import tool_to_wire
-
-    before, after = request_fixture(), request_fixture()
-    after["messages"][0]["content"] = "Current system, supplied explicitly"
-    after["tools"][0]["function"]["description"] = "Current tool"
-    case = write_case(tmp_path, before, after)
-    model, session, variants = replay.load_case(case)
-    assert model == "test-model"
-    assert session == tmp_path
-    for (_, messages, schemas), expected in zip(variants, [before, after], strict=True):
-        assert messages == expected["messages"]
-        assert [tool_to_wire(schema) for schema in schemas] == expected["tools"]
+@pytest.mark.parametrize("provider", ["deepseek", "openai", "anthropic"])
+def test_explicit_requests_preserve_every_field(tmp_path, provider):
+    before, after = request_fixture(provider), request_fixture(provider)
+    field = "input" if provider == "openai" else "messages"
+    after[field][-1]["content"] = "Current prompt, supplied explicitly"
+    case = write_case(tmp_path, before, after, provider=provider)
+    model, session, catalog, variants = replay.load_case(case)
+    assert model == "test-model" and session == tmp_path
+    assert catalog.schema == catalog_fixture().schema
+    assert variants == [("before", before), ("after", after)]
 
 
-@pytest.mark.parametrize("change", ["model", "parameter", "choice", "tool", "messages"])
-def test_unreplayable_requests_fail_before_any_api_call(tmp_path, change):
-    before, after = request_fixture(), request_fixture()
+@pytest.mark.parametrize("change", ["model", "old_tools", "messages", "wrong_endpoint"])
+async def test_unreplayable_requests_fail_before_any_api_call(tmp_path, mocker, change):
+    args = evaluation_args(tmp_path)
+    after = request_fixture()
     if change == "model":
         after["model"] = "another-model"
-    elif change == "parameter":
-        after["temperature"] = 0.2
-    elif change == "choice":
-        after["tool_choice"] = "required"
-    elif change == "tool":
-        after["tools"][0]["function"]["strict"] = True
+    elif change == "old_tools":
+        after["tools"][0]["function"]["name"] = "note"
+    elif change == "wrong_endpoint":
+        after["input"] = after.pop("messages")
     else:
         after["messages"] = []
+    (tmp_path / "after.json").write_text(json.dumps(after), encoding="utf-8")
+    factory = mocker.patch("physiclaw.provider.make_chat_provider")
     with pytest.raises(ValueError):
-        replay.load_case(write_case(tmp_path, before, after))
+        await replay.evaluate(args)
+    factory.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_evaluate_sends_explicit_payloads_without_prompt_rewrites(
-    tmp_path, monkeypatch, respx_mock
+def test_catalog_reconstruction_preserves_full_runtime_schema(tmp_path, mcp_schemas):
+    catalog = ActionCatalog.compile(mcp_schemas, [], max_scratchpad=8000)
+    write_case(tmp_path, request_fixture(), request_fixture(), catalog=catalog)
+    assert replay.load_catalog(tmp_path).schema == catalog.schema
+
+
+@pytest.mark.parametrize("schema", [None, {}, {"type": "object"}])
+def test_replay_requires_recorded_turn_output_schema(tmp_path, schema):
+    (tmp_path / "model.jsonl").write_text(
+        json.dumps(
+            {
+                "kind": "session_start",
+                "output_schema": schema,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="TurnOutput"):
+        replay.load_catalog(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "provider,url",
+    [
+        ("deepseek", "https://api.deepseek.com/v1/chat/completions"),
+        ("openai", "https://api.openai.com/v1/responses"),
+        ("anthropic", "https://api.anthropic.com/v1/messages"),
+        (
+            "google",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        ),
+        ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"),
+        ("moonshot", "https://api.moonshot.cn/v1/chat/completions"),
+        ("openrouter", "https://openrouter.ai/api/v1/chat/completions"),
+    ],
+)
+async def test_evaluate_sends_exact_native_payload_and_records_cache_usage(
+    tmp_path, monkeypatch, respx_mock, provider, url
 ):
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "fixture-only")
-    before, after = request_fixture(), request_fixture()
-    after["messages"][0]["content"] = "Revised system"
-    case = write_case(tmp_path, before, after)
-    case["actions"] = [{"tool": "peek"}]
-    case["name"] = "现场回放 — 🦀"
+    monkeypatch.setenv(f"{provider.upper()}_API_KEY", "fixture-only")
+    before, after = request_fixture(provider), request_fixture(provider)
+    field = "input" if provider == "openai" else "messages"
+    after[field][-1]["content"] = "Revised context"
+    case = write_case(tmp_path, before, after, provider=provider)
+    case.update(actions=[{"tool": "peek"}], name="现场回放 — 🦀")
     cases = tmp_path / "cases.json"
     cases.write_text(json.dumps([case], ensure_ascii=False), encoding="utf-8")
-    route = respx_mock.post("https://api.deepseek.com/v1/chat/completions").respond(
-        200,
-        json={
-            "choices": [
-                {
-                    "finish_reason": "tool_calls",
-                    "message": {
-                        "content": "",
-                        "tool_calls": [
-                            {
-                                "id": "n",
-                                "type": "function",
-                                "function": {"name": "note", "arguments": "{}"},
-                            },
-                            {
-                                "id": "a",
-                                "type": "function",
-                                "function": {"name": "peek", "arguments": "{}"},
-                            },
-                        ],
-                    },
-                }
-            ]
-        },
-    )
+    value = turn_fixture()
+    raw = response(provider, value, 0)
+    if provider == "openai":
+        raw["usage"] = {
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "input_tokens_details": {"cached_tokens": 75},
+        }
+    elif provider == "anthropic":
+        raw["usage"] = {
+            "input_tokens": 25,
+            "output_tokens": 10,
+            "cache_read_input_tokens": 75,
+        }
+    else:
+        raw["usage"] = {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "prompt_tokens_details": {"cached_tokens": 75},
+        }
+    route = respx_mock.post(url).respond(200, json=raw)
     args = SimpleNamespace(
-        cases=cases, output=tmp_path / "results.json", repeats=1, concurrency=1
+        cases=cases, output=tmp_path / "results.json", repeats=2, concurrency=1
     )
     assert await replay.evaluate(args) == 0
-    assert [json.loads(call.request.content) for call in route.calls] == [before, after]
-    report = json.loads(args.output.read_bytes().decode("utf-8"))
-    assert len(report["results"]) == 2
-    assert all(row["case"] == case["name"] for row in report["results"])
+    assert [json.loads(call.request.content) for call in route.calls] == [
+        before,
+        after,
+    ] * 2
+    report = json.loads(args.output.read_text(encoding="utf-8"))
+    assert [row["repeat"] for row in report["results"]] == [0, 0, 1, 1]
+    for row in report["results"]:
+        assert row["case"] == case["name"] and row["output"] == value
+        assert row["usage"]["prompt_tokens"] == 100
+        assert row["usage"]["cached_tokens"] == 75
 
 
-def test_restore_keeps_image_bytes_exact_and_confines_reads(tmp_path):
+@pytest.mark.parametrize("kind", ["image_url", "input_image", "image"])
+def test_restore_keeps_image_bytes_exact_and_confines_reads(tmp_path, kind):
+    from physiclaw.contract.wire import scrub_block
+
     images = tmp_path / "images"
     images.mkdir()
     data = b"synthetic image bytes"
     (images / "screen.jpg").write_bytes(data)
-    block = {"type": "image_url", "image_url": {"url": "images/screen.jpg"}}
-    result = replay.restore_images(block, tmp_path)
-    assert base64.b64decode(result["image_url"]["url"].split(",", 1)[1]) == data
-    assert block["image_url"]["url"] == "images/screen.jpg"
+    encoded = base64.b64encode(data).decode()
+    block = {
+        "image_url": {
+            "type": kind,
+            "image_url": {"url": f"data:image/jpeg;base64,{encoded}", "detail": "high"},
+        },
+        "input_image": {
+            "type": kind,
+            "image_url": f"data:image/jpeg;base64,{encoded}",
+            "detail": "high",
+        },
+        "image": {
+            "type": kind,
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded},
+        },
+    }[kind]
+    scrubbed = scrub_block(block, lambda mime, data: "images/screen.jpg")
+    assert replay.restore_images(scrubbed, tmp_path) == block
+    assert replay.restore_images(block, tmp_path) == block
+    assert replay.restore_images(
+        {"type": "tool_result", "content": [scrubbed]}, tmp_path
+    )["content"] == [block]
     with pytest.raises(ValueError, match="outside"):
         replay.restore_images(
-            {"type": "image_url", "image_url": {"url": "../secret.jpg"}}, tmp_path
+            scrub_block(block, lambda mime, data: "../secret.jpg"), tmp_path
         )
 
 
@@ -268,77 +430,53 @@ def test_grading_accepts_only_grounded_alternatives():
         "actions": [
             {"tool": "tap", "args": {"bbox": [0.1, 0.2, 0.3, 0.4]}},
             {"tool": "peek"},
-        ],
+        ]
     }
-    schemas = [
-        {"name": name, "input_schema": {"type": "object"}}
-        for name in ("note", "tap", "peek")
-    ]
 
     def errors(name, arguments):
-        reply = AssistantMessage(
-            "",
-            [
-                ToolCall("n", "note", {"summary": "Check"}),
-                ToolCall("a", name, arguments),
-            ],
-            FinishReason.TOOL_CALLS,
+        return replay.grade(
+            completion_fixture({**turn_fixture(), "action": {name: arguments}}), case
         )
-        return replay.grade(reply, case, schemas)
 
     assert not errors("tap", {"bbox": [0.1, 0.2, 0.3, 0.4]})
     assert not errors("peek", {})
     assert errors("tap", {"bbox": [0.11, 0.2, 0.3, 0.4]})
     assert errors("tap", {})
+    assert errors("tap", {"bbox": [0.3, 0.2, 0.1, 0.4]})
 
 
-@pytest.mark.parametrize(
-    "action,args",
-    [
-        ("tap", {"bbox": [0.0, 0.0, 0.5, 0.5]}),
-        ("sequence", {"actions": [{"tool_name": "tap", "arg": [0.0, 0.0, 0.5, 0.5]}]}),
-    ],
-)
-def test_grading_rejects_forbidden_box_regardless_of_numeric_spelling(action, args):
-    reply = AssistantMessage(
-        "",
-        [ToolCall("n", "note", {}), ToolCall("a", action, args)],
-        FinishReason.TOOL_CALLS,
+def test_grading_rejects_forbidden_box_regardless_of_numeric_spelling():
+    args = {"bbox": [0.0, 0.0, 0.5, 0.5]}
+    reply = completion_fixture({**turn_fixture(), "action": {"tap": args}})
+    case = {"actions": [{"tool": "tap"}], "forbidden_bboxes": [[0, 0, 0.5, 0.5]]}
+    assert "unsafe target" in replay.grade(reply, case)
+    assert replay.contains_box(
+        {"actions": [{"tool_name": "tap", "arg": args["bbox"]}]}, [0, 0, 0.5, 0.5]
     )
-    schemas = [
-        {"name": name, "input_schema": {"type": "object"}} for name in ["note", action]
-    ]
-    case = {"actions": [{"tool": action}], "forbidden_bboxes": [[0, 0, 0.5, 0.5]]}
-    assert "unsafe target" in replay.grade(reply, case, schemas)
     assert not replay.contains_box(
         {"text": "quoted [0, 0, 0.5, 0.5]"}, [0, 0, 0.5, 0.5]
     )
 
 
-def test_grading_keeps_invalid_scratchpad_as_a_model_failure():
-    reply = AssistantMessage(
-        "",
-        [ToolCall("n", "note", {"scratchpad": 42}), ToolCall("a", "peek", {})],
-        FinishReason.TOOL_CALLS,
-    )
-    schemas = [
-        {"name": name, "input_schema": {"type": "object"}} for name in ["note", "peek"]
-    ]
-    assert "missing checkpoint scratchpad" in replay.grade(
-        reply, {"actions": [{"tool": "peek"}], "scratchpad_required": True}, schemas
+@pytest.mark.parametrize("scratchpad", [42, None, "", "  "])
+def test_grading_keeps_invalid_or_missing_scratchpad_as_a_model_failure(scratchpad):
+    reply = completion_fixture({**turn_fixture(), "scratchpad": scratchpad})
+    assert replay.grade(
+        reply, {"actions": [{"tool": "peek"}], "scratchpad_required": True}
     )
 
 
 @pytest.mark.parametrize(
-    "finish,ident",
-    [
-        (FinishReason.CONTENT_FILTER, "a"),
-        (FinishReason.ERROR, "a"),
-        (FinishReason.TOOL_CALLS, "n"),
-    ],
+    "finish", [FinishReason.CONTENT_FILTER, FinishReason.LENGTH, FinishReason.ERROR]
 )
-def test_grading_rejects_unusable_protocol_results(finish, ident):
-    reply = AssistantMessage(
-        "", [ToolCall("n", "note", {}), ToolCall(ident, "peek", {})], finish
+def test_grading_rejects_unusable_protocol_results(finish):
+    assert replay.grade(
+        completion_fixture(finish=finish), {"actions": [{"tool": "peek"}]}
     )
-    assert replay.grade(reply, {"actions": [{"tool": "peek"}]}, [])
+
+
+def test_replay_rejects_old_two_call_response():
+    reply = completion_fixture(
+        calls=[ToolCall("n", "note", {}), ToolCall("a", "peek", {})]
+    )
+    assert replay.grade(reply, {"actions": [{"tool": "peek"}]})

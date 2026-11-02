@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 import respx
 
+from physiclaw.common.provider_errors import ProviderTransientError
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
@@ -22,10 +23,10 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.wire import tool_result_with_user_images
 from physiclaw.provider.vendors.google.chat import (
     _SIG_BYPASS,
     GoogleChatProvider,
-    _encode_tool_result,
     _extract_thought_signature,
 )
 
@@ -51,6 +52,70 @@ def test_base_url_uses_google_openai_shim() -> None:
     assert GoogleChatProvider.BASE_URL == (
         "https://generativelanguage.googleapis.com/v1beta/openai"
     )
+
+
+@pytest.mark.parametrize(
+    "delay,wrapped,header,expected",
+    [
+        ("51s", False, None, 51),
+        ("84890s", True, None, 84890),
+        ("1.250s", True, "1", 1.25),
+        ("2s", False, "7", 7),
+        ("0s", False, None, 0),
+        ("-1s", False, None, None),
+        ("NaNs", True, None, None),
+        ("51", True, None, None),
+        (51, False, None, None),
+    ],
+)
+async def test_quota_retry_uses_rpc_delay_and_http_header(
+    provider, respx_mock, delay, wrapped, header, expected
+):
+    body = {
+        "error": {
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                    "retryDelay": delay,
+                }
+            ]
+        }
+    }
+    route = respx_mock.route(method="POST").respond(
+        429,
+        json=[body] if wrapped else body,
+        headers={"Retry-After": header} if header else {},
+    )
+    try:
+        with pytest.raises(ProviderTransientError) as caught:
+            await provider.chat([UserMessage("test")], [])
+        assert caught.value.retry_after == expected
+        assert caught.value.status_code == 429
+        assert route.call_count == 1
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "not json",
+        "null",
+        '{"error": null}',
+        '{"error": {"details": null}}',
+        '{"error": {"details": [null, {"retryDelay": "60s"}]}}',
+    ],
+)
+async def test_malformed_quota_body_preserves_header(provider, respx_mock, body):
+    respx_mock.route(method="POST").respond(
+        429, content=body, headers={"Retry-After": "7"}
+    )
+    try:
+        with pytest.raises(ProviderTransientError) as caught:
+            await provider.chat([UserMessage("test")], [])
+        assert caught.value.retry_after == 7
+    finally:
+        await provider.aclose()
 
 
 def test_sig_bypass_constant_pinned() -> None:
@@ -309,7 +374,7 @@ def test_parse_response_preserves_existing_google_vendor_extra(
 def test_encode_tool_result_text_only_returns_single_role_tool() -> None:
     result = ToolResultMessage(tool_call_id="t1", content="ok")
 
-    out = _encode_tool_result(result)
+    out = tool_result_with_user_images(result)
 
     assert out == [{"role": "tool", "tool_call_id": "t1", "content": "ok"}]
 
@@ -320,7 +385,7 @@ def test_encode_tool_result_text_block_only_returns_single_entry() -> None:
         content=[TextBlock(text="caption")],
     )
 
-    out = _encode_tool_result(result)
+    out = tool_result_with_user_images(result)
 
     assert len(out) == 1
     assert out[0]["role"] == "tool"
@@ -335,7 +400,7 @@ def test_encode_tool_result_with_image_splits_into_two_entries() -> None:
         ],
     )
 
-    out = _encode_tool_result(result)
+    out = tool_result_with_user_images(result)
 
     assert len(out) == 2
     # First: role:tool with text content (preserving tool_call_id pairing)
@@ -354,10 +419,10 @@ def test_encode_tool_result_image_only_uses_placeholder_text() -> None:
         content=[ImageBlock(media_type="image/png", data_b64="aGk=")],
     )
 
-    out = _encode_tool_result(result)
+    out = tool_result_with_user_images(result)
 
     assert len(out) == 2
-    assert out[0]["content"] == "(image attached in next message)"
+    assert out[0]["content"] == "(image attached after tool results)"
     assert out[1]["role"] == "user"
 
 

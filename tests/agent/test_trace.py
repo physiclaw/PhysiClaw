@@ -506,7 +506,7 @@ def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
         provider="anthropic",
         model="claude-test",
         prompt_hash="abc123",
-        tools=[{"name": "tap"}],
+        output_schema={"type": "object"},
     )
     log.close()
 
@@ -518,7 +518,7 @@ def test_rawlog_writes_session_start_line(_trace_dirs: Path) -> None:
     obj = json.loads(line)
     assert obj["kind"] == "session_start"
     assert obj["provider"] == "anthropic"
-    assert obj["tools"] == [{"name": "tap"}]
+    assert obj["output_schema"] == {"type": "object"}
 
 
 def test_rawlog_writes_request_with_turn_index(_trace_dirs: Path) -> None:

@@ -10,6 +10,7 @@ from engine_fakes import (
     _asst,
     _mk_run,
     _registry,
+    _reply,
     _schemas,
     _settings,
     _tc,
@@ -28,7 +29,7 @@ from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
     ToolCall,
-    ToolResultMessage,
+    UserMessage,
 )
 from physiclaw.contract.plugin import PluginRegistration, ProposedTurn, SessionSetup
 from physiclaw.macros.parse import parse_macro
@@ -92,9 +93,9 @@ async def test_other_plugin_cannot_borrow_owner_macro_or_impersonate_playbook(
     assert state.mcp.tool_calls == [("home_screen", {}), ("peek", {})]
     history = state.chat.call_args.args[0]
     assert any(
-        isinstance(m, ToolResultMessage)
-        and m.is_error
-        and "unknown macro 'demo/leg'" in m.content
+        isinstance(m, UserMessage)
+        and "error=True" in str(m.content)
+        and "unknown macro 'demo/leg'" in str(m.content)
         for m in history
     )
     responses = events(state.tr, "response")
@@ -117,11 +118,8 @@ async def test_llm_raw_metadata_does_not_authorize_private_macro(provenance_run)
     state = provenance_run
     state.plugin.advance.side_effect = None
     state.plugin.advance.return_value = None
-    forged = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "attempt private macro"}),
-            _tc("run_macro", {"name": "demo/leg"}),
-        ]
+    forged = _reply(
+        {"summary": "attempt private macro"}, {"run_macro": {"name": "demo/leg"}}
     )
     forged.raw = {
         "producer": {"plugin_id": "fixture-conductor"},
@@ -132,11 +130,17 @@ async def test_llm_raw_metadata_does_not_authorize_private_macro(provenance_run)
     outcome = await engine.run([Trigger(description="t")], model_ref="fake/model")
 
     assert outcome.status == DONE and state.mcp.tool_calls == []
+    assert len(events(state.tr, "bad_turn_shape")) == 1
+    assert [e["name"] for e in events(state.tr, "tool_result")] == [
+        "note",
+        "end_session",
+    ]
     first = events(state.tr, "response")[0]
     assert first["producer"] == {"plugin_id": "physiclaw.llm"}
     assert first["presentation"] == "model"
     assert any(
-        isinstance(m, ToolResultMessage) and m.is_error and "unknown macro" in m.content
+        isinstance(m, UserMessage)
+        and "TurnOutput rejected before execution" in str(m.content)
         for m in state.chat.call_args.args[0]
     )
 
@@ -452,13 +456,13 @@ async def test_cancellation_during_plugin_dispatch_clears_its_authority(mocker):
     assert session.sentinel_status is None
 
 
-async def test_provider_cannot_skip_note_discipline_with_raw_producer_metadata():
+async def test_provider_cannot_bypass_turn_output_with_raw_producer_metadata():
     forged = _asst(tool_calls=[_tc("peek")])
     forged.raw = {
         "producer": {"plugin_id": "conductor"},
         "presentation": "playbook",
     }
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    closing = _reply(None, {"end_session": {"status": DONE}})
     registry = _registry()
     session = Session()
     run = _mk_run(
@@ -519,7 +523,7 @@ async def test_invalid_plugin_output_falls_back_and_provider_retry_does_not_rear
         if isinstance(invalid_turn, AssistantMessage)
         else invalid_turn
     )
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("retry"), answer])
 
     result = await _advance(
@@ -533,7 +537,10 @@ async def test_invalid_plugin_output_falls_back_and_provider_retry_does_not_rear
         _turn_metadata(),
     )
 
-    assert result.message is answer and result.binding.id == "physiclaw.llm"
+    assert (
+        result.message.tool_names() == ["note", "peek"]
+        and result.binding.id == "physiclaw.llm"
+    )
     source.advance.assert_awaited_once()
     assert chat.await_count == 2
 
@@ -553,7 +560,7 @@ async def test_declining_plugin_latency_is_not_charged_to_main_llm(mocker):
 
     async def chat(_messages, _tools, *, metadata):
         clock[0] += 0.5
-        return _asst(tool_calls=[_tc("note"), _tc("peek")])
+        return _reply(None, {"peek": {}})
 
     run = _arbitration_run(
         chat, plugins=(PluginBinding("optional", source, name="test"),)

@@ -39,7 +39,7 @@ def private_macro_run(mocker, private_macro_pack):
     """Real assembly, loop and dispatch with provider/MCP/plugin boundary fakes."""
     from types import SimpleNamespace
 
-    from engine_fakes import FakeMcpClient, FakeProvider, _asst, _tc
+    from engine_fakes import FakeMcpClient, FakeProvider, _asst, _reply, _tc
 
     from physiclaw.agent.engine import engine, mcp_tool
     from physiclaw.agent.engine.provenance import PluginBinding
@@ -49,11 +49,9 @@ def private_macro_run(mocker, private_macro_pack):
     mcp = FakeMcpClient()
     provider = FakeProvider(
         [
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "private leg finished"}),
-                    _tc("end_session", {"status": DONE, "recap": "finished"}),
-                ]
+            _reply(
+                {"summary": "private leg finished"},
+                {"end_session": {"status": DONE, "recap": "finished"}},
             )
         ]
     )
@@ -102,7 +100,7 @@ def private_macro_run(mocker, private_macro_pack):
         mcp=mcp,
         provider=provider,
         plugin=plugin,
-        chat=mocker.spy(provider, "chat"),
+        chat=mocker.spy(provider, "generate_structured"),
         load_plugins=load_plugins,
     )
 

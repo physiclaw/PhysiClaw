@@ -53,9 +53,11 @@ def public_macro_state(request):
 def test_regression_private_macros_leave_model_request_unchanged(
     private_macro_pack, public_macro_state, provider_id
 ) -> None:
-    baseline = build_prompt_bundle(provider_id)
+    baseline = build_prompt_bundle(provider_id, mcp_schemas=[])
 
-    armed = build_prompt_bundle(provider_id, pack_macros=private_macro_pack)
+    armed = build_prompt_bundle(
+        provider_id, pack_macros=private_macro_pack, mcp_schemas=[]
+    )
 
     assert "run_macro" in armed.local_registry
     assert armed.local_schemas == baseline.local_schemas
@@ -127,7 +129,7 @@ def test_apply_request_tails_preserves_history_and_replaces_volatile_state(conte
 def test_build_prompt_bundle_wires_enabled_macros() -> None:
     _write_macro()
 
-    bundle = build_prompt_bundle("")
+    bundle = build_prompt_bundle("", mcp_schemas=[])
 
     assert bundle.macro_count == 1
     assert "run_macro" in bundle.local_registry
@@ -139,7 +141,7 @@ def test_build_prompt_bundle_wires_enabled_macros() -> None:
 
 def test_build_prompt_bundle_without_macros_carries_zero_macro_bytes() -> None:
     # Pay only for what's used: no section, no tool, no MACRO.md doctrine.
-    bundle = build_prompt_bundle("")
+    bundle = build_prompt_bundle("", mcp_schemas=[])
 
     assert bundle.macro_count == 0
     assert bundle.layout_incomplete is True
@@ -152,7 +154,7 @@ def test_build_prompt_bundle_without_macros_carries_zero_macro_bytes() -> None:
 def test_build_prompt_bundle_learned_layout_disables_first_run_reminder(mocker):
     mocker.patch("physiclaw.agent.layout.is_learned", return_value=True)
 
-    bundle = build_prompt_bundle("")
+    bundle = build_prompt_bundle("", mcp_schemas=[])
 
     assert bundle.layout_incomplete is False
     assert "report_screen_layout" not in bundle.local_registry
@@ -168,7 +170,7 @@ def test_pitfalls_switch_controls_entire_prompt_surface(
     if not enabled:
         monkeypatch.setattr(pitfalls, "read", lambda: pytest.fail("disabled read"))
 
-    bundle = build_prompt_bundle(provider_id)
+    bundle = build_prompt_bundle(provider_id, mcp_schemas=[])
 
     assert ("add_pitfall" in bundle.local_registry) is enabled
     assert ("add_pitfall" in {s["name"] for s in bundle.local_schemas}) is enabled
@@ -222,3 +224,77 @@ def test_format_triggers_omits_cron_section_when_blank() -> None:
     out = format_triggers([Trigger(description="x", source="phone")])
 
     assert "Scheduled jobs" not in out
+
+
+@pytest.mark.parametrize("provider_id,index", [("qwen", True), ("anthropic", False)])
+def test_turn_output_catalog_drives_index_and_suppresses_free_text_reasoning(
+    provider_id, index
+):
+    tools = [
+        {
+            "name": "live_only",
+            "description": "Inspect live state.",
+            "input_schema": {"type": "object"},
+        }
+    ]
+
+    bundle = build_prompt_bundle(provider_id, mcp_schemas=tools)
+
+    assert "Return exactly one `TurnOutput`" in bundle.system_prompt
+    assert "submit_turn" not in bundle.system_prompt
+    assert ("## Tooling" in bundle.system_prompt) is index
+    assert "<think>" not in bundle.system_prompt
+    assert "exactly two native tool calls" not in bundle.system_prompt
+    assert "note" not in [tool["name"] for tool in bundle.catalog.tools]
+    assert (
+        bundle.catalog.decode(
+            {"summary": "inspect", "scratchpad": None, "action": {"live_only": {}}}
+        ).summary
+        == "inspect"
+    )
+
+
+def test_turn_output_assembly_requires_captured_schemas():
+    with pytest.raises(TypeError, match="mcp_schemas"):
+        build_prompt_bundle("deepseek")
+
+
+def test_turn_output_catalog_rejects_private_macro_even_when_public_macro_exists(
+    private_macro_pack,
+):
+    from physiclaw.agent.engine.validator import ValidationError
+
+    _write_macro()
+    bundle = build_prompt_bundle(
+        "deepseek",
+        pack_macros=private_macro_pack,
+        mcp_schemas=[],
+    )
+
+    with pytest.raises(ValidationError):
+        bundle.catalog.decode(
+            {
+                "summary": "private",
+                "scratchpad": "must not save",
+                "action": {"run_macro": {"name": "demo/leg"}},
+            }
+        )
+
+    assert bundle.catalog.tools[-1]["name"] == "run_macro"
+    assert "demo/leg" not in bundle.system_prompt
+
+
+def test_turn_output_hidden_local_handler_shadows_remote_catalog_entry(
+    private_macro_pack,
+):
+    remote = [{"name": "run_macro", "input_schema": {"type": "object"}}]
+
+    bundle = build_prompt_bundle(
+        "deepseek",
+        pack_macros=private_macro_pack,
+        mcp_schemas=remote,
+    )
+
+    assert "run_macro" in bundle.local_registry
+    assert "run_macro" not in [t["name"] for t in bundle.catalog.tools]
+    assert "**run_macro**" not in bundle.system_prompt

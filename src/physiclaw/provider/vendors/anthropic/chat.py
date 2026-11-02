@@ -39,6 +39,20 @@ _ADAPTIVE_OFF_MODES = {
     "claude-mythos-preview": "adaptive",
 }
 
+_THINKING_OFF_BY_DEFAULT = {
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+}
+
+_AUTO_TOOL_MODELS = {
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-fable-5-1",
+    "claude-mythos-5-1",
+}
+
 
 class AnthropicChatProvider(AnthropicCompatibleProvider):
     PROVIDER_ID = "anthropic"
@@ -46,6 +60,17 @@ class AnthropicChatProvider(AnthropicCompatibleProvider):
     INLINE_TOOL_INDEX = False
     # Informational only — `AsyncAnthropic` manages the URL itself.
     BASE_URL = "https://api.anthropic.com/v1"
+
+    def _output_tool_choice(self, name: str, *, thinking: Thinking | None) -> dict:
+        model = re.sub(r"-\d{8}$", "", self.model)
+        # Default adaptive thinking is active even when no field was supplied.
+        if model in _AUTO_TOOL_MODELS or (
+            thinking is None
+            and model in _ADAPTIVE_OFF_MODES
+            and model not in _THINKING_OFF_BY_DEFAULT
+        ):
+            return {"type": "auto", "disable_parallel_tool_use": True}
+        return super()._output_tool_choice(name, thinking=thinking)
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         model = re.sub(r"-\d{8}$", "", self.model)

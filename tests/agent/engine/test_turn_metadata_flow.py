@@ -10,6 +10,7 @@ from engine_fakes import (
     _llm,
     _mk_run,
     _registry,
+    _reply,
     _schemas,
     _settings,
     _tc,
@@ -21,14 +22,19 @@ from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import DONE
 from physiclaw.common.provider_errors import ProviderTransientError
-from physiclaw.contract.dto import AssistantMessage, ToolResultMessage, UserMessage
+from physiclaw.contract.dto import (
+    AssistantMessage,
+    OutputResultMessage,
+    ToolResultMessage,
+    UserMessage,
+)
 from physiclaw.contract.plugin import ProposedTurn
 
 
 async def test_slots_and_llm_retries_share_metadata_without_sharing_contexts(mocker):
     history = SimpleNamespace(advance=mocker.AsyncMock(return_value=None))
     facts = SimpleNamespace(advance=mocker.AsyncMock(return_value=None))
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("retry"), answer])
     messages = [UserMessage(content="private semantic context")]
     run = _arbitration_run(
@@ -45,7 +51,7 @@ async def test_slots_and_llm_retries_share_metadata_without_sharing_contexts(moc
 
     result = await _advance(run, Session(), metadata)
 
-    assert result.message is answer
+    assert result.message.tool_names() == ["note", "peek"]
     assert history.advance.call_args.args[0] is facts.advance.call_args.args[0]
     assert llm_input.call_args.args[0] is facts.advance.call_args.args[0]
     assert not hasattr(facts.advance.call_args.args[0], "history")
@@ -62,14 +68,11 @@ async def test_slots_and_llm_retries_share_metadata_without_sharing_contexts(moc
 
 
 async def test_turns_start_at_zero_and_count_plugin_turns_before_llm(mocker):
-    closing = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "finished"}),
-            _tc("end_session", {"status": DONE, "recap": "finished"}),
-        ]
+    closing = _reply(
+        {"summary": "finished"}, {"end_session": {"status": DONE, "recap": "finished"}}
     )
     provider = FakeProvider([closing])
-    chat = mocker.spy(provider, "chat")
+    chat = mocker.spy(provider, "respond")
     wire = mocker.spy(provider, "serialize_history")
     history = SimpleNamespace(
         advance=mocker.AsyncMock(
@@ -107,7 +110,7 @@ async def test_turns_start_at_zero_and_count_plugin_turns_before_llm(mocker):
 
 async def test_llm_is_an_ordinary_first_winning_slot(mocker):
     """Reordering a real LLM producer requires no change in the engine."""
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    closing = _reply(None, {"end_session": {"status": DONE}})
     provider = FakeProvider([closing])
     registry = _registry()
     session = Session()
@@ -129,13 +132,13 @@ async def test_llm_is_an_ordinary_first_winning_slot(mocker):
 
 
 async def test_llm_resumes_after_twenty_plugin_turns_with_independent_contexts(mocker):
-    first = _asst(content="private LLM content", tool_calls=[_tc("note"), _tc("peek")])
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    first = _reply(None, {"peek": {}}, content="private LLM content")
+    closing = _reply(None, {"end_session": {"status": DONE}})
 
     class CaptureProvider(FakeProvider):
-        async def chat(self, messages, tools, *, metadata):
+        async def respond(self, messages, tools, *, metadata):
             self.requests = getattr(self, "requests", []) + [deepcopy(messages)]
-            return await super().chat(messages, tools, metadata=metadata)
+            return await super().respond(messages, tools, metadata=metadata)
 
     provider = CaptureProvider([first, closing])
     registry = _registry()
@@ -178,41 +181,36 @@ async def test_llm_resumes_after_twenty_plugin_turns_with_independent_contexts(m
     assert "private plugin" not in repr(resumed)
     assert "private LLM content" not in repr(scripted.advance.call_args.args[0])
     assert "private plugin reasoning" not in repr(session.facts.events)
-    pending = set()
+    pending = None
     for message in resumed:
         if isinstance(message, AssistantMessage):
-            assert not pending
-            pending = {call.id for call in message.tool_calls}
-        elif isinstance(message, ToolResultMessage):
-            assert message.tool_call_id in pending
-            pending.remove(message.tool_call_id)
-    assert not pending
-    assert {call.id for call in first.tool_calls} <= {
-        message.tool_call_id
+            assert pending is None
+            pending = message
+        elif isinstance(message, OutputResultMessage):
+            assert message.reply == pending
+            pending = None
+    assert pending is None
+    assert any(
+        isinstance(message, OutputResultMessage)
+        and message.reply.tool_calls == first.tool_calls
         for message in resumed
-        if isinstance(message, ToolResultMessage)
-    }
+    )
 
 
-async def test_llm_host_rejection_does_not_leave_orphaned_tool_calls(mocker):
+async def test_provider_envelope_id_is_not_reused_for_internal_dispatch(mocker):
     from physiclaw.agent.engine import assemble
     from physiclaw.agent.runtime.hook import Trigger
     from physiclaw.contract.dto import CollapsePolicy
 
-    rejected = _asst(
-        tool_calls=[
-            _tc(
-                "note",
-                {"summary": "checkpoint", "scratchpad": "banked"},
-                tcid="duplicate",
-            ),
-            _tc("peek", tcid="duplicate"),
-        ]
+    reply = _reply(
+        {"summary": "checkpoint", "scratchpad": "banked"},
+        {"peek": {}},
+        call_id="duplicate",
     )
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
-    provider = FakeProvider([rejected, closing])
+    closing = _reply(None, {"end_session": {"status": DONE}})
+    provider = FakeProvider([reply, closing])
     provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=1)
-    chat = mocker.spy(provider, "chat")
+    chat = mocker.spy(provider, "respond")
     registry = _registry()
     session = Session()
     messages = assemble.build_initial_messages(
@@ -248,12 +246,19 @@ async def test_llm_host_rejection_does_not_leave_orphaned_tool_calls(mocker):
     assert session.sentinel_status == DONE
     assert len(provider.calls) == 2
     assert all(value in repr(chat.call_args_list[1].args[0]) for value in values)
-    fallback.advance.assert_awaited_once()
-    assert not any(
-        isinstance(message, AssistantMessage)
-        and any(call.id == "duplicate" for call in message.tool_calls)
+    fallback.advance.assert_not_awaited()
+    assert all(event.call_id != "duplicate" for event in session.facts.events)
+    assert any(
+        isinstance(message, OutputResultMessage)
+        and message.reply.tool_calls == reply.tool_calls
         for message in messages
     )
+    assert [event.tool for event in session.facts.events][-4:] == [
+        "note",
+        "peek",
+        "note",
+        "end_session",
+    ]
 
 
 async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
@@ -262,9 +267,8 @@ async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
     from physiclaw.contract.dto import CollapsePolicy
 
     initial = assemble.build_initial_messages([Trigger(description="resume")], "system")
-    previous = _asst(
-        tool_calls=[_tc("note", {"summary": "earlier summary"}), _tc("peek")]
-    )
+    previous = _reply({"summary": "earlier summary"}, {"peek": {}})
+    previous.context_calls = [_tc("note", {"summary": "earlier summary"}), _tc("peek")]
     initial.extend(
         [
             previous,
@@ -274,10 +278,10 @@ async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
             ),
         ]
     )
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    closing = _reply(None, {"end_session": {"status": DONE}})
     provider = FakeProvider([closing])
     provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=1)
-    chat = mocker.spy(provider, "chat")
+    chat = mocker.spy(provider, "respond")
     session = Session()
     run = _mk_run(provider, session=session, messages=initial)
     values = ["first item costs 30", "second item costs 20", "delivery takes 2 days"]
@@ -290,7 +294,7 @@ async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
         session.facts.snapshot(schemas={}), metadata=_turn_metadata(1)
     )
 
-    assert result.message is closing
+    assert result.message.tool_names() == ["note", "end_session"]
     request = chat.call_args.args[0]
     assert all(value in repr(request) for value in values)
     assert not session.collapsed_once
@@ -299,7 +303,7 @@ async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
 async def test_wire_log_keeps_corrective_replies_without_duplicate_acceptance():
     bad = _asst(tool_calls=[_tc("peek")])
     bad.raw = {"id": "malformed"}
-    closing = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    closing = _reply(None, {"end_session": {"status": DONE}})
     closing.raw = {"id": "accepted"}
     provider = FakeProvider([bad, closing])
     session = Session()
@@ -315,7 +319,7 @@ async def test_wire_log_keeps_corrective_replies_without_duplicate_acceptance():
     await drive(run, session)
 
     assert session.sentinel_status == DONE
-    assert run.rlog.write_request.call_count == 2
+    assert run.rlog.write_native_request.call_count == 2
     assert [call.args[1]["id"] for call in run.rlog.write_response.call_args_list] == [
         "malformed",
         "accepted",

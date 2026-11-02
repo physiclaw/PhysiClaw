@@ -157,8 +157,8 @@ class ResultObserver:
 # turn already saw; names the exact re-issue shape.
 _CHECKPOINT_CORRECTIVE = (
     "Rejected — context compresses after this turn: older turns keep "
-    "only their note summaries (scratchpad and plan survive in full). "
-    "Re-issue the SAME turn with `note` carrying BOTH `summary` and "
+    "only their turn summaries (scratchpad and plan survive in full). "
+    "Re-issue the SAME turn with both `summary` and "
     "`scratchpad` — both strings. Rewrite the scratchpad with the facts and "
     "values collected, the current situation, and what remains. "
     f"Use nonblank text of at most {scratchpad.MAX_CHARS} characters."
@@ -224,7 +224,7 @@ class StuckReflection(TurnGate):
     trajectory-level signal must escalate to enforcement: reject the next
     gesture turn once and demand a re-plan. One rejection per step
     identity, then fail open — same conservative shape as the other
-    gates. Non-gesture turns pass untouched — the `[note, one-other]`
+    gates. Non-gesture turns pass untouched — the internal note/action
     shape (enforced before gates run) means a gesture turn can never
     also carry the update_progress / end_session way out."""
 
@@ -249,7 +249,7 @@ class StuckReflection(TurnGate):
             corrective=(
                 f"Rejected — step ▸ {shown!r} has run {p.step_turns} turns "
                 "with no tick; another gesture continues the loop. Re-issue "
-                "as [note, update_progress]: split the step or insert a "
+                "with update_progress as the action: split the step or insert a "
                 "recovery step — change METHOD, not coordinates. Truly "
                 "blocked → message the user + close WAIT, or "
                 "end_session(STUCK) (CONVENTION § Stuck)."
@@ -402,7 +402,7 @@ class PlanGate(DispatchGuard):
                 "already? user_said verbatim + the full step list through "
                 "end_session. Still navigating to it? Draft the steps you know "
                 "(open app → read IM → re-plan) — steps alone open the gate; "
-                "fill user_said once read. Until then only note / "
+                "fill user_said once read. Until then only "
                 "update_progress / end_session run."
             ),
             event="tool_blocked_no_plan",

@@ -90,8 +90,8 @@ async def _handle_note(session: Session, args: dict) -> str:
     # The note's text lives in the assistant message's tool_calls arguments
     # (in history), not in session state. Handler pairs the call with a
     # tool_result (principle 6) and — if `scratchpad` was passed — also
-    # mutates `session.scratchpad`. Merging scratchpad into note avoids
-    # spending a `[note, one-other]` action slot on a write-down.
+    # mutates `session.scratchpad`. TurnOutput lowers summary/scratchpad
+    # into this internal call before dispatching the selected action.
     summary = (args.get("summary") or "").strip()
     msg = f"noted: {summary}"
     sp_arg = args.get("scratchpad")
@@ -621,7 +621,7 @@ _WAIT = LocalTool(
     name="wait",
     description=(
         "Block 1–60s for a short wait while the user is engaged. "
-        "Next turn, call note + peek. Follow CONVENTION § Wait-retry; "
+        "Next turn, inspect the current screen with peek. Follow CONVENTION § Wait-retry; "
         "schedule the resume with create_job before end_session(WAIT)."
     ),
     input_schema={
@@ -796,13 +796,8 @@ def build_registry(
     skills / enabled macros were discovered (keeps the tool surface minimal
     when none exist).
 
-    **Insertion order matters.** `schemas()` iterates `.values()`, and the
-    engine concatenates MCP tools + these to build `tool_schemas`, so the
-    order here directly determines the order of `tools[]` in the provider
-    request. LLMs show mild position bias — the turn-shape primitives
-    (`note`, `update_progress`) are listed first so they sit near the top
-    of the array. Don't reshuffle, and don't refactor this dict into a
-    set or comprehension.
+    Insertion order determines local action order in the TurnOutput schema
+    and prompt index. `note` is internal and excluded from that catalog.
     """
     tools: dict[str, LocalTool] = {
         _NOTE.name: _NOTE,

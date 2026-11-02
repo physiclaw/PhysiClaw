@@ -2,10 +2,8 @@
 enumerate tool names + first-line descriptions without importing the
 module or requiring the MCP server to be running.
 
-Used by `prompt._render_tooling` so the inline `## Tooling` card is
-complete even when the dump is generated offline (no MCP) and as a
-guaranteed-present baseline at runtime (live MCP tool_schemas can
-augment with richer descriptions but won't drop tools).
+Used by source conformance tests. Runtime prompts and CLI previews use
+the validated action catalog built from live or captured MCP schemas.
 """
 
 import ast
@@ -22,8 +20,7 @@ _TOOLS_PY = Path(__file__).resolve().parents[2] / "core" / "server" / "tools.py"
 def discover_mcp_tools() -> list[dict]:
     """Return `[{"name", "description"}]` for every `@mcp.tool()`-decorated
     function inside `src/physiclaw/core/server/tools.py`. No import, no MCP
-    connection. Returns `[]` if the file is unreadable or unparseable —
-    rendering still succeeds, just with engine-local tools only."""
+    connection. Returns `[]` if the file is unreadable or unparseable."""
     if not _TOOLS_PY.exists():
         log.debug("mcp_inventory: %s missing; skipping static MCP tools", _TOOLS_PY)
         return []

@@ -19,6 +19,7 @@ from physiclaw.conductor.drive import setup as conductor_setup
 from physiclaw.conductor.drive.conductor import Conductor
 from physiclaw.conductor.micro.channel import MicroCaller
 from physiclaw.conductor.walk.program import Program
+from physiclaw.contract.content import mcp_blocks_to_content_blocks
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import Message, ToolResultMessage
 from physiclaw.contract.plugin import (
@@ -28,7 +29,7 @@ from physiclaw.contract.plugin import (
     SessionSetup,
 )
 from physiclaw.contract.turn import TurnInput, TurnMetadata
-from physiclaw.provider import make_chat_provider, mcp_blocks_to_content_blocks
+from physiclaw.provider import make_chat_provider
 
 log = logging.getLogger(__name__)
 

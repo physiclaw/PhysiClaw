@@ -29,6 +29,7 @@ from physiclaw.contract.dto import (
     FinishReason,
     ImageBlock,
     Message,
+    OutputResultMessage,
     SystemMessage,
     TextBlock,
     ToolCall,
@@ -162,10 +163,16 @@ def test_user_message_accepts_string_or_block_list(content) -> None:
     assert msg.content == content
 
 
-def test_message_union_includes_all_four_kinds() -> None:
+def test_message_union_includes_all_kinds() -> None:
     args = set(typing.get_args(Message))
 
-    assert args == {SystemMessage, UserMessage, AssistantMessage, ToolResultMessage}
+    assert args == {
+        SystemMessage,
+        UserMessage,
+        AssistantMessage,
+        ToolResultMessage,
+        OutputResultMessage,
+    }
 
 
 # ---------- CollapsePolicy ----------

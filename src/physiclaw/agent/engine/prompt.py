@@ -9,8 +9,8 @@ provider's cache policy. Wake-volatile content (the cron-fired jobs block,
 the trigger stamps) lives in the wake-trigger user message that follows,
 so those changes do not invalidate the system prefix.
 
-The inline `## Tooling` index card duplicates the schema sent via the
-provider's `tools=` API — open-weight models often miss tools that appear
+The inline `## Tooling` index card lists actions from the TurnOutput
+schema — open-weight models often miss actions that appear
 only in the schema, so the card is a redundant anchor. Providers whose
 models read the schema reliably opt out via `INLINE_TOOL_INDEX = False`
 (see `BaseChatProvider`) and skip the card entirely.
@@ -20,7 +20,7 @@ import hashlib
 from pathlib import Path
 
 from physiclaw.agent import layout
-from physiclaw.agent.engine import mcp_inventory, memory
+from physiclaw.agent.engine import memory
 from physiclaw.common.doctrine import fill_tokens
 from physiclaw.common.text import read_text
 
@@ -53,13 +53,13 @@ DOCTRINE_FILE_ORDER = (
 
 def render_system_prompts(
     *,
-    local_tool_schemas: list[dict] | None = None,
     memory_ctx: str = "",
     builtin_skills_ctx: str = "",
     user_skills_ctx: str = "",
     macros_ctx: str = "",
     pitfalls_ctx: str = "",
     provider_id: str = "",
+    action_catalog: list[dict] | None = None,
 ) -> str:
     """Compose the full SYSTEM for one session — entirely session-stable.
 
@@ -79,9 +79,6 @@ def render_system_prompts(
       ## Available Macros  enabled user macros — name/description/inputs
                            index (executed as one step via run_macro)
       ## Learned pitfalls  opt-in lessons from past runs (add_pitfall appends)
-      ## Reasoning Format  provider-specific reasoning wrapper (e.g. Qwen
-                           `<think>...</think>`); pulled from
-                           `BaseChatProvider.system_prompt_fragment()`
       ## memory.md         session-stable persistent facts — live file
                            dump (the spec lives in the PERSISTENCE.md slot)
 
@@ -98,13 +95,12 @@ def render_system_prompts(
     doctrine_skip = () if macros_ctx else ("MACRO.md",)
     lines: list[str] = [
         *_render_doctrine(skip=doctrine_skip),
-        *_render_tooling(local_tool_schemas or [], provider_id),
+        *_render_tooling(action_catalog or [], provider_id),
         *_render_section(builtin_skills_ctx),
         *_render_screen_layout(),
         *_render_section(user_skills_ctx),
         *_render_section(macros_ctx),
         *_render_section(pitfalls_ctx),
-        *_render_reasoning_format(provider_id),
         *_render_memory(memory_ctx),
     ]
     # No trailing newline: sections end with a separator blank, and the
@@ -155,32 +151,23 @@ def _load_doctrine_files(skip: tuple[str, ...] = ()) -> list[tuple[str, str]]:
     return out
 
 
-def _render_tooling(local_tool_schemas: list[dict], provider_id: str = "") -> list[str]:
-    """Inline tool index card. Each tool gets one line: `- **name** — first
-    sentence`.
+def _render_tooling(action_catalog: list[dict], provider_id: str = "") -> list[str]:
+    """Render the same eligible actions used by the TurnOutput schema.
 
-    MCP tools come from `mcp_inventory.discover_mcp_tools()` (AST parse of
-    `src/physiclaw/core/server/tools.py`) — works offline, no MCP roundtrip. Local
-    engine tools come from the caller. The two sources don't overlap by
-    name, so the merge is a simple concat.
-
-    Why the inline card at all: open-weight models (Qwen, Moonshot)
-    routinely forget tools that appear only in the native `tools=` payload.
-    A provider can skip the card with `INLINE_TOOL_INDEX = False`.
-    Unknown/empty providers keep it; tested native-tool providers opt out."""
+    Providers with INLINE_TOOL_INDEX=False omit this redundant index.
+    An empty catalog renders no index, useful for static doctrine previews.
+    """
     if not _wants_tool_index(provider_id):
         return []
-    all_tools = mcp_inventory.discover_mcp_tools() + local_tool_schemas
-    if not all_tools:
+    if not action_catalog:
         return []
     out: list[str] = [
         "## Tooling",
         "",
-        "All available via the native tool-call API; names are "
-        "case-sensitive — call them exactly as listed.",
+        "Choose exactly one case-sensitive action key in TurnOutput.action.",
         "",
     ]
-    for s in all_tools:
+    for s in action_catalog:
         name = s.get("name") or ""
         if not name:
             continue
@@ -222,21 +209,6 @@ def _render_screen_layout() -> list[str]:
         return []
     md = layout.load_layout_md() or "not set yet"
     return ["## Screen layout", "", md, ""]
-
-
-def _render_reasoning_format(provider_id: str) -> list[str]:
-    """Provider-specific reasoning fragment (e.g. Qwen's `<think>` wrapper),
-    pulled from the vendor class's `system_prompt_fragment()` classmethod.
-    Empty when the provider doesn't override it."""
-    from physiclaw.provider import provider_class
-
-    cls = provider_class(provider_id)
-    if cls is None:
-        return []
-    fragment = cls.system_prompt_fragment()
-    if not fragment:
-        return []
-    return ["## Reasoning Format", fragment, ""]
 
 
 def _render_memory(memory_ctx: str) -> list[str]:
@@ -289,7 +261,7 @@ def prefix_hash(system_prompt: str) -> str:
 
 def dump(
     *,
-    local_tool_schemas: list[dict] | None = None,
+    action_catalog: list[dict] | None = None,
     memory_ctx: str = "",
     builtin_skills_ctx: str = "",
     user_skills_ctx: str = "",
@@ -301,7 +273,7 @@ def dump(
     inputs optional so callers can dump the static skeleton without
     spinning up MCP or loading memory."""
     return render_system_prompts(
-        local_tool_schemas=local_tool_schemas,
+        action_catalog=action_catalog,
         memory_ctx=memory_ctx,
         builtin_skills_ctx=builtin_skills_ctx,
         user_skills_ctx=user_skills_ctx,

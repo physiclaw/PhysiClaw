@@ -9,15 +9,15 @@ stays out of public assistant content. Opaque state needed
 for protocol continuity (such as signed Anthropic thinking blocks) lives
 in `vendor_extra` and is replayed only by the originating provider.
 
-The DTO hierarchy mirrors what every chat-completion API exposes — four
-message kinds and two content-block kinds — without committing to any
-one API's encoding:
+The DTOs define five message kinds and two content-block kinds without
+committing to any one API's encoding:
 
   Message kinds:
     - `SystemMessage`     — the system prompt
     - `UserMessage`       — user-role content (text, optionally + images)
     - `AssistantMessage`  — model response (text + tool_calls + usage)
     - `ToolResultMessage` — paired result of a `ToolCall` by id
+    - `OutputResultMessage` — feedback for a structured generation
 
   Content blocks (inside Message.content when multipart):
     - `TextBlock`   — plain text
@@ -93,7 +93,9 @@ class Usage:
     """Normalized per-call token accounting.
 
     Each provider parses its native usage block into this shape:
-      - DashScope/OpenAI: `usage.prompt_tokens`,
+      - OpenAI Responses: `usage.input_tokens`, `usage.output_tokens`,
+        `usage.input_tokens_details.cached_tokens`
+      - OpenAI-compatible chat: `usage.prompt_tokens`,
         `usage.completion_tokens`,
         `usage.prompt_tokens_details.cached_tokens`,
         `usage.prompt_tokens_details.cache_creation_input_tokens`
@@ -251,6 +253,11 @@ class AssistantMessage:
     raw: dict[str, Any] = field(default_factory=dict)
     vendor_extra: dict[str, Any] = field(default_factory=dict)
 
+    # Host-only compaction projection. Never serialized by provider adapters.
+    context_calls: list[ToolCall] = field(default_factory=list)
+    decode_error: str | None = None
+    refused: bool = False
+
     def tool_names(self) -> list[str]:
         return [tc.name for tc in self.tool_calls]
 
@@ -271,9 +278,27 @@ class ToolResultMessage:
     content: str | list[ContentBlock]
     is_error: bool = False
     is_superseded: bool = False
+    context_results: list["ToolResultMessage"] = field(default_factory=list)
 
 
-Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolResultMessage]
+@dataclass(frozen=True)
+class OutputResultMessage:
+    """Host feedback for an accepted structured reply, independent of its wire format.
+
+    The provider uses the original reply to serialize a function receipt or
+    ordinary user feedback. Compaction owns the content and retained artifacts.
+    """
+
+    reply: AssistantMessage
+    content: str | list[ContentBlock]
+    is_error: bool = False
+    is_superseded: bool = False
+    context_results: list[ToolResultMessage] = field(default_factory=list)
+
+
+Message = Union[
+    SystemMessage, UserMessage, AssistantMessage, ToolResultMessage, OutputResultMessage
+]
 
 
 def role_of(m: Message) -> str:

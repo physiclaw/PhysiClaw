@@ -93,6 +93,29 @@ def test_failed_cancelled_and_partially_reported_decisions_preserve_missing_coun
     assert group["elapsed_ms"] == {"known": 800, "missing": 1}
 
 
+def test_decision_cache_counts_are_preserved_without_adding_to_input():
+    rows = usage_rows(
+        [
+            decision(
+                usage={
+                    "input_tokens": 3094,
+                    "output_tokens": 0,
+                    "cached_tokens": 1893,
+                    "cache_creation_tokens": 0,
+                }
+            ),
+            decision(),
+        ]
+    )
+    tokens = summarize_usage(rows)["groups"][0]["tokens"]
+    assert tokens["input"] == {"known": 3294, "missing": 0}
+    assert tokens["cache_read"] == {"known": 1893, "missing": 1}
+    assert tokens["cache_write"] == {"known": 0, "missing": 1}
+    assert estimate_cost(rows, {"decision": {"vendor/model": {"input": 1}}})[
+        "total_usd"
+    ] == pytest.approx(3294 / 1_000_000)
+
+
 def test_all_zero_chat_is_unreported_but_native_decision_zero_is_known():
     missing_chat = usage_event(
         Usage(), call="turn", model="vendor/model", elapsed_ms=5, error="TimeoutError"

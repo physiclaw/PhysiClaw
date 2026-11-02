@@ -31,7 +31,7 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 from physiclaw.contract.decision import ActionCandidate, DecisionProvider, decision_json
@@ -45,18 +45,24 @@ from physiclaw.contract.dto import (
     ToolCall,
     UsageCall,
 )
+from physiclaw.contract.structured import OutputSpec, StructuredCompletion
 from physiclaw.contract.turn import TurnInput, TurnMetadata
 from physiclaw.macros.model import Macro
 
 
 class SessionChatProvider(Protocol):
-    """The stateless chat service a plugin may borrow —
-    enough to fall back to the session model for scoped playbook calls
-    and to wire-log its round-trips verbatim. Each producer owns its
-    context and compaction; the host owns the transport lifetime.
-    The full interface lives in `physiclaw.provider`; this protocol
-    exists so the contract need not import it (provider imports
-    contract, never the reverse)."""
+    """Stateless generation over caller-owned messages and output schemas.
+
+    Providers choose the API representation; callers own context, retries and
+    execution. `on_request` observes a detached native body for diagnostics,
+    never to construct or alter a request; observer errors are logged without
+    aborting generation. The host owns the client lifetime.
+    """
+
+    @property
+    def structured_transport(self) -> Literal["tool", "native"]:
+        """Adapter-selected transport, exposed for diagnostics only."""
+        ...
 
     async def chat(
         self,
@@ -66,17 +72,23 @@ class SessionChatProvider(Protocol):
         metadata: TurnMetadata | None = None,
         purpose: UsageCall = USAGE_CALL_TURN,
         thinking: Thinking | None = None,
+        on_request: Callable[[dict], None] | None = None,
     ) -> AssistantMessage: ...
 
-    def serialize_history(
-        self, history: list[Message], *, metadata: TurnMetadata | None = None
-    ) -> list[dict]:
-        """Encode a fresh request with metadata and provider cache markers.
+    async def generate_structured[T](
+        self,
+        history: list[Message],
+        output_spec: OutputSpec[T],
+        *,
+        metadata: TurnMetadata | None = None,
+        purpose: UsageCall = USAGE_CALL_TURN,
+        thinking: Thinking | None = None,
+        on_request: Callable[[dict], None] | None = None,
+    ) -> StructuredCompletion[T]: ...
 
-        Chat calls and host wire logs use the same encoder so their requests
-        match. Caller-owned history is never mutated.
-        """
-        ...
+    def validate_output_spec(
+        self, output_spec: OutputSpec, *, thinking: Thinking | None = None
+    ) -> None: ...
 
 
 class EventSink(Protocol):

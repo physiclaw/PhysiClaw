@@ -6,6 +6,8 @@ result/trace records."""
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import replace
 
 import pytest
 from conductor_fakes import FRAME, ScriptedProvider, Sink, agent_reply, make_screen
@@ -948,6 +950,76 @@ async def test_transient_provider_error_gets_one_retry(monkeypatch) -> None:
     ).run(_fields_req())
 
     assert result.outcome is not None and result.outcome.out == "done"
+
+
+@pytest.mark.parametrize("hint,expected", [(None, 2), (0, 2), (7, 7)])
+async def test_transient_retry_respects_provider_wait(monkeypatch, hint, expected):
+    delays = []
+
+    async def sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr("physiclaw.conductor.micro.channel.asyncio.sleep", sleep)
+    monkeypatch.setattr(
+        "physiclaw.conductor.micro.channel.CONFIG.engine.retry_backoff_seconds", 2
+    )
+    provider = ScriptedProvider(
+        [ProviderTransientError("busy", retry_after=hint), _act("done", 0.8)]
+    )
+    result = await MicroCaller(provider, confidence_floor=0.6).run(_fields_req())
+    assert result.outcome is not None
+    assert delays == [expected]
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.parametrize("timing", ["expired", "cannot_wait", "oversleep", "repair"])
+async def test_no_micro_request_starts_after_turn_deadline(monkeypatch, timing):
+    clock = time.monotonic()
+    metadata = TurnMetadata("session", 0, clock + 20, 300)
+    if timing == "expired":
+        metadata = replace(metadata, deadline=clock - 1)
+    delays = []
+
+    async def sleep(delay):
+        nonlocal clock
+        delays.append(delay)
+        clock += 30
+
+    # Patch this caller's clock only, without altering the event loop clock.
+    from types import SimpleNamespace
+
+    from physiclaw.conductor.micro import channel
+
+    monkeypatch.setattr(
+        channel,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock, perf_counter=time.perf_counter),
+    )
+    monkeypatch.setattr(channel.asyncio, "sleep", sleep)
+
+    class Provider(ScriptedProvider):
+        async def chat(self, *args, **kwargs):
+            nonlocal clock
+            if timing == "repair":
+                clock += 30
+            return await super().chat(*args, **kwargs)
+
+    provider = Provider(
+        [
+            "invalid"
+            if timing == "repair"
+            else ProviderTransientError(
+                "busy", retry_after=30 if timing == "cannot_wait" else 1
+            ),
+            _act("done", 0.8),
+        ]
+    )
+    result = await MicroCaller(provider, confidence_floor=0.6).run(
+        _fields_req(), metadata=metadata
+    )
+    assert result.outcome is None
+    assert len(provider.calls) == (0 if timing == "expired" else 1)
+    assert len(delays) == (1 if timing == "oversleep" else 0)
 
 
 @pytest.mark.asyncio

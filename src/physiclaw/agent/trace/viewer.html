@@ -241,8 +241,9 @@
     return el('figure', null, img, el('figcaption', { text: src }));
   }
   const framesBox = (srcs) => srcs.length ? el('div', { class: 'frames' }, ...srcs.map(frame)) : null;
-  const isFrame = (b) => b != null && typeof b === 'object' && (b.type === 'image_url' || b.type === 'image');
+  const isFrame = (b) => b != null && typeof b === 'object' && ['image_url', 'input_image', 'image'].includes(b.type);
   function frameSrc(b) {
+    if (b.type === 'input_image') return b.image_url || '';
     if (b.type === 'image_url') return (b.image_url || {}).url || '';
     const s = b.source || {};
     return s.ref || s.data || (s.byte_count != null ? `${s.byte_count}b (not written)` : '');
@@ -252,7 +253,7 @@
   function block(b) {
     if (typeof b === 'string') return pre(b);
     if (b == null || typeof b !== 'object') return pre(String(b));
-    if (b.type === 'text' && typeof b.text === 'string') return pre(b.text);
+    if (['text', 'input_text', 'output_text'].includes(b.type) && typeof b.text === 'string') return pre(b.text);
     if (isFrame(b)) return framesBox([frameSrc(b)]);
     if (b.type === 'tool_result' && Array.isArray(b.content)) return el('div', null, el('div', { class: 'note', text: `tool result ${b.tool_use_id || ''}` }), ...b.content.map(block));
     return pre(pretty(b));
@@ -261,11 +262,11 @@
   const MSG_KEYS = new Set(['role', 'content', 'text', 'name', 'tool_call_id', 'tool_calls', 'reasoning_content']);
   function message(m, i, isNew) {
     const box = el('div', { class: 'msg' + (isNew ? ' new' : '') });
-    const head = el('div', { class: 'mh' }, tag(ROLE[m.role] || m.role || '?', 'role-' + (m.role || '')), el('span', { text: '#' + i }));
+    const head = el('div', { class: 'mh' }, tag(ROLE[m.role] || m.role || m.type || '?', 'role-' + (m.role || '')), el('span', { text: '#' + i }));
     if (m.name) head.append(el('span', { text: m.name }));
     if (m.tool_call_id) head.append(el('span', { text: 'for ' + m.tool_call_id }));
     box.append(head);
-    const c = m.content !== undefined ? m.content : m.text;  // micro records carry {role, text}
+    const c = m.content ?? m.output ?? m.text;  // Responses tool receipts use output.
     if (typeof c === 'string') { if (c) box.append(pre(c)); }
     else if (Array.isArray(c)) {
       const frames = c.filter(isFrame), rest = c.filter((b) => !isFrame(b));
@@ -328,7 +329,15 @@
     row.id = ref.replace(/\W+/g, '-');  // a link to this record: #events-70
     row.detail = { r, ref, title, sub, opts, body: body || (() => kv(omit(rec, SKIP))) };
     // What the search reads: a request's own news, not the history it carries again.
-    row.searchable = () => (row.searchText ??= JSON.stringify(rec.messages && r.new_from != null ? { ...rec, messages: rec.messages.slice(r.new_from) } : rec).toLowerCase());
+    row.searchable = () => {
+      if (row.searchText != null) return row.searchText;
+      let searchable = rec;
+      if (Array.isArray(rec.messages) && r.new_from != null) {
+        searchable = { ...rec, messages: rec.messages.slice(r.new_from) };
+        if (rec.body) searchable.body = omit(rec.body, new Set(['messages', 'input']));
+      }
+      return row.searchText = JSON.stringify(searchable).toLowerCase();
+    };
     row.addEventListener('click', () => select(row));
     return row;
   }
@@ -421,8 +430,8 @@
     const rec = r.rec;
     switch (rec.kind) {
       case 'session_start':
-        return card(r, `Model ${rec.provider}/${rec.model} and its ${(rec.tools || []).length} tools`, `prompt hash ${String(rec.prompt_hash || '').slice(0, 12)}`,
-          () => el('div', null, kv(omit(rec, new Set(['t', 'kind', 'tools']))), h3('Tool schemas sent with every request'), pre(pretty(rec.tools || []))), { tag: 'setup' });
+        return card(r, `Model ${rec.provider}/${rec.model}`, `prompt hash ${String(rec.prompt_hash || '').slice(0, 12)}`,
+          () => el('div', null, kv(omit(rec, new Set(['t', 'kind', 'output_schema']))), h3('TurnOutput schema'), pre(pretty(rec.output_schema || {}))), { tag: 'setup' });
       case 'request': {
         const msgs = rec.messages || [];
         const fresh = msgs.length - (r.new_from || 0);

@@ -160,6 +160,37 @@ def test_provider_service_packages_do_not_import_each_other() -> None:
     assert not any(module.startswith("physiclaw.contract") for module in imports)
 
 
+def test_provider_callers_use_only_the_public_facade() -> None:
+    """API codecs and transport policy stay behind the provider boundary."""
+    bad = [
+        f"{path.relative_to(SRC_ROOT)} -> {module}"
+        for package in ("agent", "conductor")
+        for path in _files(package)
+        for module in _imported_modules(path)
+        if module.startswith("physiclaw.provider.")
+    ]
+    assert not bad, "callers must use physiclaw.provider:\n" + "\n".join(bad)
+
+
+def test_provider_wire_building_is_internal() -> None:
+    """Callers observe native requests; they never build or encode them."""
+    bad = []
+    for package in ("agent", "conductor", "contract"):
+        for path in _files(package):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                name = (
+                    node.attr
+                    if isinstance(node, ast.Attribute)
+                    else node.name
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    else None
+                )
+                if name in {"build_request", "serialize_history"}:
+                    bad.append(f"{path.relative_to(SRC_ROOT)}:{node.lineno}: {name}")
+    assert not bad, "request encoding belongs to providers:\n" + "\n".join(bad)
+
+
 def test_vendor_adapters_keep_chat_and_decision_imports_separate() -> None:
     for path in (PKG_ROOT / "provider/vendors").rglob("*.py"):
         if path.name not in ("chat.py", "decision.py"):

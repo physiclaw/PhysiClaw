@@ -31,13 +31,13 @@ from physiclaw.agent.trace import (
 from physiclaw.agent.trace.format import brief, note_text
 from physiclaw.common import verdict
 from physiclaw.common.log_style import console_text, format_tool_call
+from physiclaw.contract.content import mcp_blocks_to_content_blocks
 from physiclaw.contract.dto import (
     ContentBlock,
     TextBlock,
     ToolCall,
     ToolResultMessage,
 )
-from physiclaw.provider import mcp_blocks_to_content_blocks
 
 log = logging.getLogger(__name__)
 

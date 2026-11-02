@@ -1,7 +1,7 @@
 """Synthesized turns — the shape the conductor speaks to the loop in.
 
 Everything the conductor does to the phone, it does by MINTING A TURN:
-a ``[note, one-other]`` assistant message, the shape the loop enforces
+an internal note/action assistant message, the shape dispatch consumes
 on model turns, so dispatch, the phone-protection guards, compaction,
 and the wire log see an ordinary turn (the host binding grants the
 conductor's judgment-gate exemptions). The loop dispatches the tool calls and

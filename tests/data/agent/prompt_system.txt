@@ -18,7 +18,7 @@ Macro instructions.
 
 ## Tooling
 
-All available via the native tool-call API; names are case-sensitive — call them exactly as listed.
+Choose exactly one case-sensitive action key in TurnOutput.action.
 
 - **remote** — Remote inspection.
 - **local** — Local operation.
@@ -42,9 +42,6 @@ Enabled macro index.
 ## Learned pitfalls
 
 Remember this pitfall.
-
-## Reasoning Format
-Reasoning instructions.
 
 ## memory.md
 

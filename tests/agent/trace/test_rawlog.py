@@ -181,3 +181,44 @@ def test_wire_close_prevents_late_records_without_raising():
     assert json.loads(wire.path.read_text(encoding="utf-8"))["raw"] == {
         "text": "before close"
     }
+
+
+def test_native_request_retains_full_body_and_legacy_reader_messages():
+    wire = RawLog("structured", Images("structured"))
+    body = {
+        "model": "fixture",
+        "messages": [{"role": "user", "content": "hello"}],
+        "system": [{"type": "text", "text": "rules"}],
+        "tools": [{"name": "submit_turn", "input_schema": {"type": "object"}}],
+    }
+
+    wire.write_native_request(2, body, attempt=3, schema_id="catalog", transport="tool")
+    wire.close()
+
+    record = json.loads(wire.path.read_text(encoding="utf-8"))
+    assert record["body"] == body
+    assert record["messages"] == body["messages"]
+    assert (record["attempt"], record["schema_id"], record["transport"]) == (
+        3,
+        "catalog",
+        "tool",
+    )
+
+
+def test_native_responses_request_keeps_input_and_populates_viewer_messages():
+    wire = RawLog("responses", Images("responses"))
+    body = {
+        "model": "test",
+        "input": [
+            {"role": "user", "content": [{"type": "input_text", "text": "hello"}]}
+        ],
+        "store": False,
+    }
+    wire.write_native_request(
+        1, body, attempt=1, schema_id="catalog", transport="native"
+    )
+    wire.close()
+    record = json.loads(wire.path.read_text(encoding="utf-8"))
+    assert record["body"] == body
+    assert "messages" not in record["body"]
+    assert record["messages"] == body["input"]

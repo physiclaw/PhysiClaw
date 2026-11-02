@@ -47,6 +47,8 @@ from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 class MoonshotChatProvider(OpenAICompatibleProvider):
     PROVIDER_ID = "moonshot"
     BASE_URL = "https://api.moonshot.cn/v1"
+    # https://platform.kimi.ai/docs/guide/use-thinking-models
+    REPLAY_REASONING_CONTENT = True
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         if self.model.startswith("kimi-k2"):

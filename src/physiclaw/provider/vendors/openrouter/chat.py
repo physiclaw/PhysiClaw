@@ -4,16 +4,26 @@ Model IDs pass through unchanged; discovery supplies the live chat catalog.
 Opaque reasoning stays in this provider's metadata for tool continuations.
 """
 
+from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import replace
 from typing import Any
 
-from physiclaw.common.provider_errors import ProviderTransientError
-from physiclaw.contract.dto import AssistantMessage, Message, Thinking, Usage
+from physiclaw.common.provider_errors import ProviderConfigurationError
+from physiclaw.contract.dto import (
+    AssistantMessage,
+    Message,
+    SystemMessage,
+    Thinking,
+)
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat import discovered
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS, token_count
-from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.openai_compat import (
+    OpenAICacheMarkers,
+    OpenAICompatibleProvider,
+)
+from physiclaw.provider.chat.schema import strict_output_schema
 
 
 class OpenRouterChatProvider(OpenAICompatibleProvider):
@@ -21,6 +31,49 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
     BASE_URL = "https://openrouter.ai/api/v1"
     CACHE_MARKERS = NO_CACHE_MARKERS
     _catalog: dict[str, dict] | None = None
+
+    def _supported_parameters(self) -> list[str] | None:
+        supported = (
+            (self._catalog or {}).get(self.model, {}).get("supported_parameters")
+        )
+        return (
+            supported
+            if isinstance(supported, list)
+            and all(isinstance(p, str) for p in supported)
+            else None
+        )
+
+    def validate_output_spec(
+        self, output_spec: OutputSpec, *, thinking: Thinking | None = None
+    ) -> None:
+        super().validate_output_spec(output_spec, thinking=thinking)
+        if self._catalog is None:
+            self._catalog = {m["id"]: m for m in discovered.load(self.PROVIDER_ID)}
+        supported = self._supported_parameters()
+        if supported is not None and "tools" not in supported:
+            raise ProviderConfigurationError(
+                f"{self.ref} does not advertise tool support"
+            )
+        self._output_tool(output_spec)
+
+    def _output_tool(self, spec: OutputSpec) -> dict:
+        tool = super()._output_tool(spec)
+        supported = self._supported_parameters() or []
+        if "structured_outputs" in supported:
+            tool["function"]["parameters"] = strict_output_schema(
+                tool["function"]["parameters"]
+            )
+            tool["function"]["strict"] = True
+        return tool
+
+    def _tool_params(
+        self, spec: OutputSpec | None, *, thinking: Thinking | None
+    ) -> dict:
+        params = super()._tool_params(spec, thinking=thinking)
+        supported = self._supported_parameters() or []
+        if spec is not None and "parallel_tool_calls" in supported:
+            params["parallel_tool_calls"] = False
+        return params
 
     def _request_params(self, *, metadata: TurnMetadata | None) -> dict[str, Any]:
         params: dict[str, Any] = {"provider": {"require_parameters": True}}
@@ -32,8 +85,8 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         model = (self._catalog or {}).get(self.model, {})
-        supported = model.get("supported_parameters")
-        if isinstance(supported, list) and not {
+        supported = self._supported_parameters()
+        if supported is not None and not {
             "reasoning",
             "reasoning_effort",
         }.intersection(supported):
@@ -59,14 +112,23 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
         *,
         metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
+        output_spec: OutputSpec | None = None,
+        on_request: Callable[[dict], None] | None = None,
     ) -> AssistantMessage:
-        if thinking is not None and self._catalog is None:
+        if thinking is not None and self.model not in (self._catalog or {}):
             cached = {m["id"]: m for m in discovered.load(self.PROVIDER_ID)}
             if self.model in cached:
                 self._catalog = cached
             else:
                 await self.list_models()
-        return await super()._chat(history, tools, metadata=metadata, thinking=thinking)
+        return await super()._chat(
+            history,
+            tools,
+            metadata=metadata,
+            thinking=thinking,
+            output_spec=output_spec,
+            on_request=on_request,
+        )
 
     async def list_models(self) -> list[dict]:
         models = await super().list_models()
@@ -81,8 +143,6 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
 
     def _parse_response(self, raw: dict) -> AssistantMessage:
         message = super()._parse_response(raw)
-        if raw.get("error") or raw["choices"][0].get("finish_reason") == "error":
-            raise ProviderTransientError("OpenRouter generation failed")
         native = raw["choices"][0]["message"]
         extra = {
             key: deepcopy(native[key])
@@ -93,20 +153,16 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
             message.vendor_extra[self.PROVIDER_ID] = {"model": self.model, **extra}
         return message
 
-    def _parse_usage(self, raw: dict) -> Usage:
-        usage = super()._parse_usage(raw)
-        native = raw.get("usage")
-        details = (
-            native.get("prompt_tokens_details") if isinstance(native, dict) else None
-        )
-        if isinstance(details, dict) and "cache_write_tokens" in details:
-            return replace(
-                usage, cache_creation_tokens=token_count(details["cache_write_tokens"])
-            )
-        return usage
-
     def _encode_message(self, msg: Message) -> dict | list[dict] | None:
         entry = super()._encode_message(msg)
+        if (
+            isinstance(msg, SystemMessage)
+            and isinstance(entry, dict)
+            and self.model.startswith("anthropic/")
+        ):
+            # Automatic caching lands on volatile per-turn tails. Keep a
+            # reusable system prefix even when those tails and images change.
+            entry = OpenAICacheMarkers().mark_system(entry)
         if isinstance(msg, AssistantMessage) and isinstance(entry, dict):
             extra = msg.vendor_extra.get(self.PROVIDER_ID, {})
             if extra.get("model") == self.model:

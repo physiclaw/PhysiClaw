@@ -15,6 +15,7 @@ from engine_fakes import (
     _llm,
     _mk_run,
     _registry,
+    _reply,
     _schemas,
     _tc,
     _turn_metadata,
@@ -31,7 +32,11 @@ from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE
 from physiclaw.common.verdict import MACRO_OK_META
 from physiclaw.contract.decision import ActionCandidate
-from physiclaw.contract.dto import AssistantMessage, ImageBlock, ToolResultMessage
+from physiclaw.contract.dto import (
+    ImageBlock,
+    ToolResultMessage,
+    UserMessage,
+)
 from physiclaw.contract.observation import OBSERVATION_META, read_observation
 from physiclaw.contract.plugin import PluginServices, ProposedTurn
 from physiclaw.core.orchestration import GestureResult, ViewResult
@@ -181,21 +186,17 @@ async def test_four_pipeline_configurations_preserve_baseline_requests_and_actio
         requests = []
 
         class CaptureProvider(FakeProvider):
-            async def chat(self, messages, tools, *, metadata=None):
-                requests.append(deepcopy((messages, tools)))
-                return await super().chat(messages, tools, metadata=metadata)
+            async def respond(self, messages, tools, *, metadata=None):
+                requests.append(
+                    (self.serialize_history(messages, metadata=metadata), tools.tool())
+                )
+                return await super().respond(messages, tools, metadata=metadata)
 
-        peek = _asst(
-            tool_calls=[
-                _tc("note", {"summary": "observe"}, tcid="note-peek"),
-                _tc("peek", tcid="model-peek"),
-            ]
-        )
-        closing = _asst(
-            tool_calls=[
-                _tc("note", {"summary": "finished"}, tcid="note-end"),
-                _tc("end_session", {"status": DONE, "recap": "finished"}, tcid="end"),
-            ]
+        peek = _reply({"summary": "observe"}, {"peek": {}}, call_id="model-peek")
+        closing = _reply(
+            {"summary": "finished"},
+            {"end_session": {"status": DONE, "recap": "finished"}},
+            call_id="end",
         )
         provider = CaptureProvider(([peek] if not history_enabled else []) + [closing])
         physical_calls = []
@@ -364,7 +365,7 @@ async def test_invalid_fact_proposal_yields_before_dispatch(
     if bad == "wrong_return":
         proposal = _asst(tool_calls=[_tc("tap", dict(action.arguments))])
     probe = SimpleNamespace(advance=mocker.AsyncMock(return_value=proposal))
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(return_value=answer)
     run = _arbitration_run(
         chat, plugins=(PluginBinding("decision", probe, "Decision"),)
@@ -373,7 +374,10 @@ async def test_invalid_fact_proposal_yields_before_dispatch(
 
     result = await _advance(run, session, _turn_metadata())
 
-    assert result.binding.id == "physiclaw.llm" and result.message is answer
+    assert result.binding.id == "physiclaw.llm" and result.message.tool_names() == [
+        "note",
+        "peek",
+    ]
     chat.assert_awaited_once()
     assert not run.mcp.tool_calls
 
@@ -408,7 +412,7 @@ async def test_factual_proposal_is_one_host_bound_call_without_a_fabricated_note
     assert result.message.content == ""
     assert result.message.tool_calls[0].id.startswith("call_")
     assert result.message.tool_calls[0].id != "option-a"
-    run.plugins[-1].plugin.provider.chat.assert_not_awaited()
+    run.plugins[-1].plugin.provider.respond.assert_not_awaited()
 
 
 async def test_fact_plugin_mutation_and_exception_preserve_llm_fallback(
@@ -423,7 +427,7 @@ async def test_fact_plugin_mutation_and_exception_preserve_llm_fallback(
         facts.observation.elements[0].label = "changed"
 
     plugin = SimpleNamespace(advance=mocker.AsyncMock(side_effect=mutate))
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(return_value=answer)
     messages = [_asst(content="private main-model context")]
     run = _arbitration_run(
@@ -434,7 +438,7 @@ async def test_fact_plugin_mutation_and_exception_preserve_llm_fallback(
 
     result = await _advance(run, session, _turn_metadata())
 
-    assert result.message is answer
+    assert result.message.tool_names() == ["note", "peek"]
     assert session.facts.observation.icons[0].label == ""
     assert not hasattr(seen[0], "history")
     chat.assert_awaited_once()
@@ -446,7 +450,7 @@ async def test_transport_retry_does_not_repeat_fact_arbitration(mocker):
     from physiclaw.common.provider_errors import ProviderTransientError
 
     plugin = SimpleNamespace(advance=mocker.AsyncMock(return_value=None))
-    answer = _asst(tool_calls=[_tc("note"), _tc("peek")])
+    answer = _reply(None, {"peek": {}})
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("retry"), answer])
     run = _arbitration_run(
         chat,
@@ -456,7 +460,7 @@ async def test_transport_retry_does_not_repeat_fact_arbitration(mocker):
 
     result = await _advance(run, Session(), _turn_metadata())
 
-    assert result.message is answer
+    assert result.message.tool_names() == ["note", "peek"]
     plugin.advance.assert_awaited_once()
     assert chat.await_count == 2
 
@@ -492,11 +496,8 @@ async def test_fact_action_uses_common_guards_and_remains_visible_to_llm(
         observation.id,
     )
     probe = SimpleNamespace(advance=mocker.AsyncMock(side_effect=[proposal, None]))
-    closing = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "finished"}),
-            _tc("end_session", {"status": DONE, "recap": "finished"}),
-        ]
+    closing = _reply(
+        {"summary": "finished"}, {"end_session": {"status": DONE, "recap": "finished"}}
     )
     provider = FakeProvider([closing])
     registry = _registry()
@@ -528,12 +529,13 @@ async def test_fact_action_uses_common_guards_and_remains_visible_to_llm(
     assert run.mcp.tool_calls == (
         [] if blocked else [("tap", {"bbox": [0.1, 0.2, 0.3, 0.4]})]
     )
-    assert isinstance(history[0], AssistantMessage)
-    assert history[0].tool_names() == ["tap"]
-    assert history[0].content == "" and history[0].raw == {}
-    assert isinstance(history[1], ToolResultMessage)
-    assert history[1].tool_call_id == history[0].tool_calls[0].id
-    assert history[1].is_error is blocked
+    assert isinstance(history[0], UserMessage)
+    assert (
+        history[0].content[0].text
+        == f"Observed another producer's tap; executed={not blocked}; error={blocked}."
+    )
+    assert history[0].content[1].text == ("blocked" if blocked else "mcp-ok")
+    assert not any(isinstance(m, ToolResultMessage) for m in history)
 
 
 async def test_factual_view_precedes_llm_image_resizing(observation_blocks, mocker):

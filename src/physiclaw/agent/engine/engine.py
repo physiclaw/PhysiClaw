@@ -227,11 +227,9 @@ async def _run_session(
         bundle = assemble.build_prompt_bundle(
             provider_id,
             pack_macros=gated_macros or None,
+            mcp_schemas=list(mcp_tools),
         )
-        # Full merged list rides `EngineRun.tool_schemas` to the provider
-        # call; the inline `## Tooling` card pulls MCP names from AST so
-        # it stays complete even offline. Each source has one consumer.
-        tool_schemas = list(mcp_tools) + bundle.local_schemas
+        provider.validate_output_spec(bundle.catalog.spec())
         # Dispatch also validates plugin-only tools that aren't advertised to
         # the model. Local handlers take precedence over MCP names here too.
         schema_by_name = {
@@ -266,13 +264,12 @@ async def _run_session(
             provider=provider_id,
             model=provider.model,
             prompt_hash=prompt_hash,
-            tools=tool_schemas,
+            output_schema=bundle.catalog.schema,
         )
         engine_run = EngineRun(
             # Off-turn curation and transport lifetime remain host resources.
             plugins=tuple(active_plugins),
             mcp=mcp,
-            tool_schemas=tool_schemas,
             schema_by_name=schema_by_name,
             local_registry=bundle.local_registry,
             tr=tr,
@@ -292,6 +289,7 @@ async def _run_session(
             session,
             messages,
             layout_incomplete=bundle.layout_incomplete,
+            catalog=bundle.catalog,
         )
         await llm.session_setup(services)
         llm_binding = PluginBinding("physiclaw.llm", llm, "LLM", presentation="model")

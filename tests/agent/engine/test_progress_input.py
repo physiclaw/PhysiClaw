@@ -10,8 +10,8 @@ import pytest
 from engine_fakes import (
     FakeProvider,
     _arbitration_run,
-    _asst,
     _mk_run,
+    _reply,
     _settings,
     _tc,
     _turn_metadata,
@@ -70,7 +70,7 @@ async def test_snapshot_is_identical_for_all_slots_and_llm_keeps_own_prompt(mock
     earlier = SimpleNamespace(advance=mocker.AsyncMock(return_value=None))
     decision = DecisionPlugin()
     decision_advance = mocker.spy(decision, "advance")
-    chat = mocker.AsyncMock(return_value=_asst(tool_calls=[_tc("note"), _tc("peek")]))
+    chat = mocker.AsyncMock(return_value=_reply(None, {"peek": {}}))
     run = _arbitration_run(
         chat, session=session, messages=[UserMessage(content="private original prompt")]
     )
@@ -139,7 +139,7 @@ async def test_unusable_progress_cannot_break_existing_llm_workflow(content, moc
         user_said="real request", steps=[{"content": content, "status": "in_progress"}]
     )
     assert session.plan.runtime_snapshot() is None
-    chat = mocker.AsyncMock(return_value=_asst(tool_calls=[_tc("note"), _tc("peek")]))
+    chat = mocker.AsyncMock(return_value=_reply(None, {"peek": {}}))
     run = _arbitration_run(chat, session=session)
     await _advance(run, session, _turn_metadata())
     chat.assert_awaited_once()
@@ -150,47 +150,33 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
     observation_blocks, mocker, monkeypatch, shadow_finishes
 ):
     responses = [
-        _asst(
-            tool_calls=[
-                _tc(
-                    "note",
-                    {
-                        "summary": "private checkpoint",
-                        "scratchpad": "private scratchpad",
-                    },
-                    tcid="note-0",
-                ),
-                _tc(
-                    "update_progress",
-                    {
-                        "user_said": "按小王的微信要求买东西",
-                        "understanding": "private interpretation",
-                        "steps": [
-                            {"content": "打开淘宝", "status": "in_progress"},
-                            {"content": "比较商品", "status": "pending"},
-                        ],
-                    },
-                    tcid="progress-0",
-                ),
-            ]
+        _reply(
+            {
+                "summary": "private checkpoint",
+                "scratchpad": "private scratchpad",
+            },
+            {
+                "update_progress": {
+                    "user_said": "按小王的微信要求买东西",
+                    "understanding": "private interpretation",
+                    "steps": [
+                        {"content": "打开淘宝", "status": "in_progress"},
+                        {"content": "比较商品", "status": "pending"},
+                    ],
+                }
+            },
+            call_id="progress-0",
         ),
-        _asst(
-            tool_calls=[
-                _tc("note", {"summary": "look at current screen"}, tcid="note-1"),
-                _tc("peek", tcid="peek-1"),
-            ]
+        _reply({"summary": "look at current screen"}, {"peek": {}}, call_id="peek-1"),
+        _reply(
+            {"summary": "tap the search field"},
+            {"tap": {"bbox": [0.4, 0.2, 0.8, 0.4]}},
+            call_id="tap-2",
         ),
-        _asst(
-            tool_calls=[
-                _tc("note", {"summary": "tap the search field"}, tcid="note-2"),
-                _tc("tap", {"bbox": [0.4, 0.2, 0.8, 0.4]}, tcid="tap-2"),
-            ]
-        ),
-        _asst(
-            tool_calls=[
-                _tc("note", {"summary": "finished"}, tcid="note-3"),
-                _tc("end_session", {"status": DONE, "recap": "finished"}, tcid="end-3"),
-            ]
+        _reply(
+            {"summary": "finished"},
+            {"end_session": {"status": DONE, "recap": "finished"}},
+            call_id="end-3",
         ),
     ]
     blocks = observation_blocks()
@@ -204,7 +190,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
         session = Session()
         provider = FakeProvider(deepcopy(responses))
         requests = []
-        original_chat = provider.chat
+        original_chat = provider.respond
         started, release, finished, cancelled = (asyncio.Event() for _ in range(4))
 
         async def evaluate(request, *, deadline):
@@ -238,7 +224,9 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
         decision_factory = mocker.Mock(return_value=decision_provider)
 
         async def capture(messages, tools, *, metadata):
-            requests.append((deepcopy(messages), deepcopy(tools)))
+            requests.append(
+                (provider.serialize_history(messages, metadata=metadata), tools.tool())
+            )
             if mode == "shadow" and metadata.turn == 2:
                 # The LLM reaches its normal call while shadow inference waits.
                 await asyncio.wait_for(started.wait(), 1)
@@ -247,7 +235,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
                     await asyncio.wait_for(finished.wait(), 1)
             return await original_chat(messages, tools, metadata=metadata)
 
-        provider.chat = capture
+        provider.respond = capture
         registry = build_registry({})
         mcp = SimpleNamespace(
             call_tool=mocker.AsyncMock(

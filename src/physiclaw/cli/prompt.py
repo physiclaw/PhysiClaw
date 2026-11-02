@@ -1,15 +1,14 @@
-"""``physiclaw prompt`` — dump the assembled SYSTEM prompt / full LLM request.
+"""``physiclaw prompt`` — inspect assembled prompts and captured requests.
 
-A debugging aid: `prompt system` prints the SYSTEM prompt exactly as a session
-would build it; `prompt request` prints that plus the turn-0 message array (the
-full request handed to the model). Both go through the engine's own assembly
-(`assemble.build_prompt_bundle` / `assemble.build_initial_messages`) so the
-output can't drift from what the running agent actually sends. Pass
-`--save-as FILE` to write the dump to a file instead of stdout.
+`prompt system` uses the engine's prompt assembly. `prompt request` adds a
+representative turn-0 message array, labeled partial because live inputs and
+provider options are absent. `request --capture model.jsonl` prints the last
+recorded native request body. Pass `--save-as FILE` to write instead of stdout.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -22,7 +21,7 @@ from physiclaw.port import filesystem
 
 prompt_app = typer.Typer(
     no_args_is_help=True,
-    help="Dump the SYSTEM prompt / full LLM request for inspection.",
+    help="Inspect the SYSTEM prompt, an offline preview, or a captured request.",
 )
 
 _SaveAs = Annotated[
@@ -31,9 +30,60 @@ _SaveAs = Annotated[
 ]
 
 
+_McpSchemas = Annotated[
+    Path | None,
+    typer.Option(
+        "--mcp-schemas", help="Captured MCP tool list (JSON) for a TurnOutput preview."
+    ),
+]
+_Capture = Annotated[
+    Path | None,
+    typer.Option(
+        "--capture",
+        help="Replay the last full request body from a model.jsonl capture; no network calls.",
+    ),
+]
+
+
+def _bundle(mcp_schemas: Path | None):
+    if mcp_schemas is None:
+        exit_error(
+            "TurnOutput preview requires --mcp-schemas FILE, or use request --capture model.jsonl for an exact recorded body"
+        )
+    from physiclaw.agent.engine import assemble
+
+    try:
+        data = json.loads(mcp_schemas.read_text(encoding="utf-8"))
+        tools = data.get("tools") if isinstance(data, dict) else data
+        if not isinstance(tools, list):
+            raise ValueError("expected an MCP schema list or an object with tools")
+        return assemble.build_prompt_bundle(_provider_id(), mcp_schemas=tools)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        exit_error(f"invalid schema capture: {exc}")
+
+
+def _captured_body(path: Path) -> str:
+    try:
+        last_body = None
+        with path.open(encoding="utf-8") as capture:
+            for line in capture:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if record.get("kind") == "request" and isinstance(
+                    record.get("body"), dict
+                ):
+                    last_body = record["body"]
+        if last_body is None:
+            raise ValueError("capture has no full native request body")
+        return json.dumps(last_body, ensure_ascii=True, indent=2)
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        exit_error(f"invalid request capture: {exc}")
+
+
 def _provider_id() -> str:
     """The active provider id, or '' when no model is configured (the SYSTEM
-    prompt only uses it to pick the provider's reasoning-format fragment)."""
+    prompt uses it to select the inline action index)."""
     from physiclaw.common.config import model_ref
     from physiclaw.provider import validate_model_ref
 
@@ -81,23 +131,25 @@ def _emit(text: str, save_as: Path | None) -> None:
 
 
 @prompt_app.command()
-def system(save_as: _SaveAs = None) -> None:
+def system(save_as: _SaveAs = None, mcp_schemas: _McpSchemas = None) -> None:
     """Print the SYSTEM prompt (doctrine + tooling + skills + learned screen
     layout + memory)."""
-    from physiclaw.agent.engine import assemble
-
-    _emit(assemble.build_prompt_bundle(_provider_id()).system_prompt, save_as)
+    _emit(_bundle(mcp_schemas).system_prompt, save_as)
 
 
 @prompt_app.command()
-def request(save_as: _SaveAs = None) -> None:
-    """Print the full turn-0 request: the SYSTEM prompt plus the message array
-    (wake trigger + compaction slots + plan/scratchpad/first-run tails)."""
+def request(
+    save_as: _SaveAs = None, mcp_schemas: _McpSchemas = None, capture: _Capture = None
+) -> None:
+    """Print a partial turn-0 preview, or the last full body from --capture."""
+    if capture is not None:
+        _emit(_captured_body(capture), save_as)
+        return
     from physiclaw.agent.engine import assemble
     from physiclaw.agent.engine.session import Session
     from physiclaw.agent.runtime.hook import Trigger
 
-    bundle = assemble.build_prompt_bundle(_provider_id())
+    bundle = _bundle(mcp_schemas)
     # A representative camera wake — the trigger text is runtime-specific.
     triggers = [Trigger(description="phone screen changed", source="phone")]
     messages = assemble.build_initial_messages(triggers, bundle.system_prompt)
@@ -116,4 +168,8 @@ def request(save_as: _SaveAs = None) -> None:
         f"{_content_text(m.content)}\n"
         for m in messages
     )
-    _emit(text, save_as)
+    label = "Partial offline preview: representative wake, without provider request options."
+    text += "\n===== [TurnOutput schema] =====\n" + json.dumps(
+        bundle.catalog.schema, ensure_ascii=True, indent=2
+    )
+    _emit(label + "\n" + text, save_as)

@@ -18,7 +18,7 @@ from physiclaw.contract.dto import UserMessage
 from physiclaw.provider import make_chat_provider, make_decision_provider
 
 URL = "https://api.openai.com/v1/decisions"
-CHAT_URL = "https://api.openai.com/v1/chat/completions"
+CHAT_URL = "https://api.openai.com/v1/responses"
 SECRET = "openai-fixture-not-a-real-key"
 
 
@@ -119,13 +119,17 @@ async def test_same_model_chat_and_decision_call_different_endpoints(
     chat_route = respx_mock.post(CHAT_URL).respond(
         json={
             "id": "chat-r1",
-            "choices": [
+            "status": "completed",
+            "output": [
                 {
-                    "message": {
-                        "role": "assistant",
-                        "content": "Interpret the purchase request",
-                    },
-                    "finish_reason": "stop",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Interpret the purchase request",
+                        }
+                    ],
                 }
             ],
         }
@@ -171,7 +175,7 @@ async def test_decision_response_is_rejected_by_chat_parser(respx_mock):
             await chat.chat([UserMessage(content="Read request")], [])
         assert route.call_count == 1
         assert all(
-            call.request.url.path == "/v1/chat/completions" for call in respx_mock.calls
+            call.request.url.path == "/v1/responses" for call in respx_mock.calls
         )
     finally:
         await chat.aclose()
@@ -261,11 +265,37 @@ async def test_missing_accounting_and_scores_stay_unknown(
     respx_mock.post(URL).respond(json=payload)
     result = await provider.evaluate(decision_request, deadline=deadline())
     assert result.usage.input_tokens is result.usage.output_tokens is None
+    assert result.usage.cached_tokens is result.usage.cache_creation_tokens is None
     assert (
         result.answers["next_action"].confidence
         is result.answers["next_action"].probabilities
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "details,expected",
+    [
+        ({"cached_tokens": 1893, "cache_write_tokens": 0}, (1893, 0)),
+        ({"cached_tokens": 0, "cache_write_tokens": 1893}, (0, 1893)),
+        ({"cached_tokens": -1, "cache_write_tokens": True}, (None, None)),
+        (None, (None, None)),
+        ([], (None, None)),
+    ],
+)
+async def test_cache_usage_preserves_reported_counts(
+    provider, decision_request, respx_mock, details, expected
+):
+    payload = answer()
+    payload["usage"] = {
+        "input_tokens": 3094,
+        "output_tokens": 0,
+        "input_tokens_details": details,
+    }
+    respx_mock.post(URL).respond(json=payload)
+    result = await provider.evaluate(decision_request, deadline=deadline())
+    assert result.usage.input_tokens == 3094
+    assert (result.usage.cached_tokens, result.usage.cache_creation_tokens) == expected
 
 
 async def test_question_limit_precedes_http(provider, decision_request, respx_mock):

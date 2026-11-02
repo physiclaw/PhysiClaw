@@ -256,17 +256,20 @@ def test_rounding_tolerance_and_scores_are_optional(request_dto):
         is result.answers["next_action"].probabilities
         is result.usage.input_tokens
         is result.usage.output_tokens
+        is result.usage.cached_tokens
+        is result.usage.cache_creation_tokens
         is None
     )
     assert DecisionUsage(input_tokens=0).input_tokens == 0
 
 
 @pytest.mark.parametrize(
-    "kwargs", [{"input_tokens": True}, {"output_tokens": -1}, {"input_tokens": 1.5}]
+    "field", ["input_tokens", "output_tokens", "cached_tokens", "cache_creation_tokens"]
 )
-def test_invalid_usage(kwargs):
+@pytest.mark.parametrize("value", [True, -1, 1.5])
+def test_invalid_usage(field, value):
     with pytest.raises(ValueError):
-        DecisionUsage(**kwargs)
+        DecisionUsage(**{field: value})
 
 
 @pytest.mark.parametrize(

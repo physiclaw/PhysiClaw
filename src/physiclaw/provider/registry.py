@@ -235,4 +235,5 @@ def make_chat_provider(
         model=model_id,
         timeout=CONFIG.engine.provider_timeout_seconds,
         usage_sink=usage_sink,
+        max_output_tokens=CONFIG.engine.provider_max_output_tokens or None,
     )

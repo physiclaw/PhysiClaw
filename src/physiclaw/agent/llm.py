@@ -1,12 +1,14 @@
 """The default producer owns its LLM context, retries and response policies."""
 
 import asyncio
-import enum
 import logging
+import random
 import time
+from dataclasses import replace
 
 from physiclaw.agent.engine import assemble, compact
 from physiclaw.agent.engine.facts import CONTEXT_CALLS
+from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
@@ -15,30 +17,28 @@ from physiclaw.common.log_style import console_text
 from physiclaw.common.provider_errors import (
     ProviderConfigurationError,
     ProviderError,
+    ProviderPermanentError,
     ProviderTransientError,
 )
+from physiclaw.contract.content import mcp_blocks_to_content_blocks
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
     AssistantMessage,
-    FinishReason,
+    ContentBlock,
     Message,
+    OutputResultMessage,
     TextBlock,
     ToolCall,
     ToolResultMessage,
     UserMessage,
 )
 from physiclaw.contract.plugin import PluginServices, ProposedTurn, SessionSetup
-from physiclaw.contract.turn import ActionEvent, TurnInput, TurnMetadata
-from physiclaw.provider import ChatProvider, mcp_blocks_to_content_blocks
+from physiclaw.contract.structured import StructuredCompletion
+from physiclaw.contract.turn import ActionEvent, TurnInput, TurnMetadata, TurnOutput
+from physiclaw.provider import ChatProvider
 
 log = logging.getLogger(__name__)
 CORRECTIVE_LIMIT = 5
-
-
-class _Turn(enum.Enum):
-    PROCEED = enum.auto()
-    RETRY = enum.auto()
-    ABORT = enum.auto()
 
 
 class LLMProducer:
@@ -52,6 +52,7 @@ class LLMProducer:
         messages: list[Message],
         *,
         layout_incomplete: bool = False,
+        catalog: ActionCatalog,
     ):
         self.provider = provider
         self.run = run
@@ -59,8 +60,13 @@ class LLMProducer:
         self.messages = list(messages)
         self.layout_incomplete = layout_incomplete
         self._seen_sequence = 0
-        self._pending: set[str] = set()
         self._corrective_streak = 0
+        self.catalog = catalog
+        self._output_spec = catalog.spec()
+        provider.validate_output_spec(self._output_spec)
+        self._schema_id = catalog.identity
+        self._pending_reply: AssistantMessage | None = None
+        self._pending_calls: list[ToolCall] = []
 
     async def session_setup(self, _ctx: PluginServices) -> SessionSetup | None:
         return None
@@ -74,46 +80,85 @@ class LLMProducer:
         events = [
             event for event in turn.events if event.sequence > self._seen_sequence
         ]
-        missing = self._pending - {event.call_id for event in events}
-        if missing:
-            # A rejected proposal must not leave unpaired tool calls in context.
-            self.messages.pop()
-            self.messages.append(
-                UserMessage(
-                    content="The previous proposal has no complete tool receipts. Do not assume "
-                    "it executed; check the current state before retrying."
-                )
-            )
-            self._pending.clear()
-        # Compact only history the model has already seen. Fresh receipts must
-        # reach a request and an executed checkpoint before details can be folded.
-        # Missing receipts mean the proposal's checkpoint was not confirmed.
+        by_id = {event.call_id: event for event in events}
+        pending_ids = {call.id for call in self._pending_calls}
+        missing = pending_ids - by_id.keys()
         if not missing and compact.collapse_old_turns(
             self.messages,
             policy=self.provider.COLLAPSE,
             collapsed_once=self.session.collapsed_once,
         ):
             self.session.collapsed_once = True
+        if self._pending_reply is not None:
+            context_results = []
+            content: list[ContentBlock] = []
+            confirmed_calls = []
+            for call in self._pending_calls:
+                event = by_id.get(call.id)
+                if event is None:
+                    result = ToolResultMessage(
+                        call.id,
+                        "Receipt unavailable. Outcome unknown; do not repeat automatically. Inspect the current state first.",
+                        is_error=True,
+                    )
+                else:
+                    result = context_receipts.get(call.id) or _event_result(event)
+                    if event.executed and not event.is_error:
+                        confirmed_calls.append(call)
+                # Context state is a separate outcome from the selected action.
+                label = "scratchpad/summary" if call.name == "note" else call.name
+                status = "error" if result.is_error else "ok"
+                content.append(TextBlock(text=f"{label}: {status}"))
+                if event is not None:
+                    content.append(TextBlock(text=f"executed: {event.executed}"))
+                content.extend(
+                    [TextBlock(text=result.content)]
+                    if isinstance(result.content, str)
+                    else result.content
+                )
+                if call.name == "Skill" and not result.is_error:
+                    content.append(
+                        TextBlock(
+                            text="Apply this procedure through TurnOutput.action, one action per turn; keep summary and scratchpad as top-level fields."
+                        )
+                    )
+                # Only durable text artifacts need a compaction copy. Never retain
+                # images here: stale-screen projection must not restore old pixels.
+                if call.name in compact.MEMORY_TOOL_NAMES | compact.SKILL_TOOL_NAMES:
+                    context_results.append(result)
+            reply = replace(self._pending_reply, context_calls=confirmed_calls)
+            self.messages[-1] = reply
+            self.messages.append(
+                OutputResultMessage(
+                    reply,
+                    content,
+                    is_error=bool(missing)
+                    or any(
+                        by_id[c.id].is_error
+                        for c in self._pending_calls
+                        if c.id in by_id
+                    ),
+                    context_results=context_results,
+                )
+            )
         for event in events:
             self._seen_sequence = event.sequence
-            own = event.call_id in self._pending
-            if not own and event.tool in CONTEXT_CALLS:
+            if event.call_id in pending_ids or event.tool in CONTEXT_CALLS:
                 continue
-            if not own:
-                arguments = decision_json(event.arguments)
-                assert isinstance(arguments, dict)
-                self.messages.append(
-                    AssistantMessage(
-                        content="",
-                        finish_reason=FinishReason.TOOL_CALLS,
-                        tool_calls=[ToolCall(event.call_id, event.tool, arguments)],
-                    )
+            result = _event_result(event)
+            content = [
+                TextBlock(
+                    text=f"Observed another producer's {event.tool}; executed={event.executed}; error={event.is_error}."
                 )
-            result = context_receipts.get(event.call_id) if own else None
-            if result is None:
-                result = _event_result(event)
-            self.messages.append(result)
-            self._pending.discard(event.call_id)
+            ]
+            content.extend(
+                [TextBlock(text=result.content)]
+                if isinstance(result.content, str)
+                else result.content
+            )
+            self.messages.append(UserMessage(content=content))
+        self._pending_calls.clear()
+        self._pending_reply = None
         compact.drop_stale_screens(self.messages)
 
     async def advance(
@@ -125,7 +170,7 @@ class LLMProducer:
             checkpoint()
             request, imminent = self._prepare_request(metadata.turn)
             try:
-                asst = await self._chat_with_retry(request, metadata)
+                completion = await self._chat_with_retry(request, metadata)
             except ProviderConfigurationError:
                 raise  # The launcher reports setup errors; a fresh session cannot fix them.
             except Exception as exc:
@@ -136,24 +181,62 @@ class LLMProducer:
                         "error": str(exc),
                     }
                 )
-                self.session.sentinel_status = STUCK
+                permanent = isinstance(exc, ProviderPermanentError)
+                self.session.sentinel_status = FAIL if permanent else STUCK
                 self.session.sentinel_recap = f"provider error: {exc}"
+                if permanent:
+                    return None
                 raise
-            self.messages.append(asst)
             self.session.model_turns += 1
-            called = asst.tool_names()
-            shape = self._enforce_shape(asst, called, metadata.turn)
-            if shape is _Turn.ABORT:
-                return None
-            if shape is _Turn.RETRY:
+            if completion.failure is not None:
+                failure = completion.failure
+                self.run.tr.write(
+                    {
+                        "event": "bad_turn_shape",
+                        "turn": metadata.turn,
+                        "failure_kind": failure.kind,
+                        "error": failure.message,
+                    }
+                )
+                if failure.kind in ("refusal", "truncation"):
+                    self.session.sentinel_status = FAIL
+                    self.session.sentinel_recap = failure.message
+                    if failure.kind == "truncation":
+                        self.session.sentinel_recap += (
+                            "; request shorter output or increase engine.provider_max_output_tokens "
+                            "within the model's limit (includes reasoning tokens)"
+                        )
+                    return None
+                self._corrective_streak += 1
+                if self._corrective_streak >= CORRECTIVE_LIMIT:
+                    break
+                # Do not append a rejected reply: removing the complete exchange
+                # avoids replaying malformed calls or signed partial blocks.
+                self.messages.append(
+                    UserMessage(
+                        content=f"TurnOutput rejected before execution: {failure.message}. Submit one corrected TurnOutput with summary, scratchpad and exactly one eligible action."
+                    )
+                )
                 continue
+            assert completion.value is not None
+            asst = self.catalog.lower(completion.value)
+            # Trace/accounting keep the provider reply. Execution uses only fresh
+            # internal IDs; opaque provider metadata stays on the original history.
+            asst.raw = completion.reply.raw
+            asst.usage = completion.reply.usage
+            asst.response_id = completion.reply.response_id
+            asst.response_model = completion.reply.response_model
+            self.messages.append(completion.reply)
+            self._corrective_streak = 0
+            called = asst.tool_names()
             for gate in self.run.policies.turn_gates:
                 gate.observe_turn(self.session, asst)
             if self._apply_turn_gates(
                 asst, called, turn=metadata.turn, compaction_imminent=imminent
             ):
                 continue
-            self._pending = {call.id for call in asst.tool_calls}
+            self._pending_reply = completion.reply
+            self._pending_calls = list(asst.tool_calls)
             for gate in self.run.policies.turn_gates:
                 gate.on_turn_complete()
             return ProposedTurn(asst)
@@ -163,20 +246,30 @@ class LLMProducer:
 
     async def _chat_with_retry(
         self, messages: list[Message], metadata: TurnMetadata
-    ) -> AssistantMessage:
+    ) -> StructuredCompletion[TurnOutput]:
         attempts = self.run.settings.provider_retry_attempts
         backoff = self.run.settings.retry_backoff_seconds
         last_err: Exception | None = None
-        self.run.rlog.write_request(
-            metadata.turn, self.provider.serialize_history(messages, metadata=metadata)
-        )
         for attempt in range(1, attempts + 1):
             checkpoint()
+            if self.run.deadline is not None and time.monotonic() >= self.run.deadline:
+                self.session.budget_exhausted = True
+                raise ProviderError("Provider deadline expired")
             started = time.perf_counter()
             try:
-                asst = await self.provider.chat(
-                    messages, self.run.tool_schemas, metadata=metadata
+                result = await self.provider.generate_structured(
+                    messages,
+                    self._output_spec,
+                    metadata=metadata,
+                    on_request=lambda body: self.run.rlog.write_native_request(
+                        metadata.turn,
+                        body,
+                        attempt=attempt,
+                        schema_id=self._schema_id,
+                        transport=self.provider.structured_transport,
+                    ),
                 )
+                asst = result.reply
                 # Log every actual reply, including malformed or gated replies.
                 # The generic host records accepted proposals in the event trace.
                 self.run.rlog.write_response(
@@ -184,26 +277,42 @@ class LLMProducer:
                     asst.raw,
                     elapsed_ms=int((time.perf_counter() - started) * 1000),
                 )
-                return asst
+                return result
             except ProviderTransientError as exc:
                 checkpoint()
                 last_err = exc
+                failed_reply = getattr(exc, "reply", None)
+                if failed_reply is not None:
+                    self.run.rlog.write_response(
+                        metadata.turn,
+                        failed_reply.raw,
+                        elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    )
                 if attempt < attempts:
+                    delay = retry_delay(exc, attempt, backoff)
+                    if (
+                        self.run.deadline is not None
+                        and time.monotonic() + delay >= self.run.deadline
+                    ):
+                        self.session.budget_exhausted = True
+                        raise ProviderError(
+                            "Provider retry would exceed the session deadline"
+                        ) from exc
                     log.warning(
                         "Provider attempt %d/%d failed: %s — retrying in %.1fs",
                         attempt,
                         attempts,
                         exc,
-                        backoff,
+                        delay,
                         exc_info=True,
                         extra={
                             "event": "provider.retry",
                             "attempt": attempt,
-                            "retry_in_ms": round(backoff * 1000),
-                            "console_message": f"Model request failed ({attempt}/{attempts}): {console_text(exc, 140)} — retrying in {backoff:.1f}s",
+                            "retry_in_ms": round(delay * 1000),
+                            "console_message": f"Model request failed ({attempt}/{attempts}): {console_text(exc, 140)} — retrying in {delay:.1f}s",
                         },
                     )
-                    await asyncio.sleep(backoff)
+                    await asyncio.sleep(delay)
         raise ProviderError(
             f"gave up after {attempts} attempts: {last_err}"
         ) from last_err
@@ -226,56 +335,6 @@ class LLMProducer:
         )
         log.debug("turn %d: %d messages", turn, len(request))
         return request, imminent
-
-    def _enforce_shape(
-        self, asst: AssistantMessage, called: list[str], turn: int
-    ) -> _Turn:
-        if asst.finish_reason == FinishReason.CONTENT_FILTER:
-            log.error("The model provider blocked the response — stopping task")
-            self.session.sentinel_status = FAIL
-            self.session.sentinel_recap = "content filter blocked response"
-            return _Turn.ABORT
-        if len(called) == 2 and called.count("note") == 1:
-            self._corrective_streak = 0
-            return _Turn.PROCEED
-        self.run.tr.write(
-            {"event": "bad_turn_shape", "turn": turn, "tool_calls": called}
-        )
-        log.warning(
-            "turn %d: bad turn shape tool_calls=%s — injecting corrective",
-            turn,
-            called,
-            extra={
-                "console_message": "Model reply has invalid tool calls — requesting a corrected reply"
-            },
-        )
-        corrective = (
-            _corrective_for_bad_shape(called)
-            if called
-            else (
-                "Your last turn had no tool_calls. Every turn must either call tools or call "
-                "end_session(status, recap) to close. Reply again as a tool call — and include "
-                "note(summary=...) alongside."
-            )
-        )
-        self._corrective_streak += 1
-        if self._corrective_streak >= CORRECTIVE_LIMIT:
-            log.warning(
-                "%d consecutive turn-shape correctives — giving up",
-                self._corrective_streak,
-                extra={
-                    "console_message": "The model repeatedly returned invalid tool calls — stopping task"
-                },
-            )
-            self.session.sentinel_status = STUCK
-            self.session.sentinel_recap = (
-                f"{self._corrective_streak} consecutive malformed turns — "
-                "model cannot hold the [note, one-other] shape"
-            )
-            return _Turn.ABORT
-        self.messages.pop()
-        self.messages.append(UserMessage(content=corrective))
-        return _Turn.RETRY
 
     def _apply_turn_gates(
         self,
@@ -320,65 +379,8 @@ def _event_result(event: ActionEvent) -> ToolResultMessage:
     )
 
 
-def _corrective_for_bad_shape(called: list[str]) -> str:
-    """Build a turn-specific corrective for a [note, one-other] shape
-    violation.
-
-    Naming the rejected tool nudges the model to retry the same action
-    on the next turn instead of switching to whatever fits the shape.
-    Without this, models often interpret the generic "re-issue as
-    [note, one-other]" as licence to pick a different second tool —
-    silently dropping the rejected action entirely.
-    """
-    # Each branch tests (n_notes, len(others)) explicitly so the
-    # coverage matrix is readable top-to-bottom: no implicit fallthrough,
-    # no overlap. Caller filters out (0,0) and (1,1) — every other
-    # non-empty shape lands in exactly one branch below.
-    n_notes = called.count("note")
-    others = [c for c in called if c != "note"]
-    n_others = len(others)
-
-    if n_notes == 0 and n_others == 1:
-        # Most common: agent forgot note alongside its action.
-        return (
-            f"Your last turn called `{others[0]}` without `note`. Every "
-            f"turn = exactly `[note, one-other]`. Re-issue as "
-            f"`[note(summary=...), {others[0]}(...)]` with the same arguments."
-        )
-
-    if n_notes == 0 and n_others >= 2:
-        return (
-            f"Your last turn called {called!r} without `note` and with "
-            f"too many action tools. Every turn = exactly `[note, one-other]`. "
-            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
-            f"split {others[1:]!r} into later turns."
-        )
-
-    if n_notes == 1 and n_others == 0:
-        # Naming `peek()` as the default breaks the anchoring loop when
-        # the model has no concrete action in mind (e.g. ambient warm-
-        # start triggers): without a suggestion, models pick `note` again
-        # because every other tool feels unjustified.
-        return (
-            "Your last turn called `note` alone with no action tool. "
-            "Every turn = exactly `[note, one-other]`. If unsure what to "
-            "do next, `peek()` is the safe default — re-issue as "
-            "`[note(summary=...), peek()]`."
-        )
-
-    if n_notes == 1 and n_others >= 2:
-        return (
-            f"Your last turn called {called!r} — `note` plus {n_others} "
-            f"action tools. Every turn = exactly `[note, one-other]`. "
-            f"Keep `[note(summary=...), {others[0]}(...)]` for this turn; "
-            f"split {others[1:]!r} into later turns."
-        )
-
-    if n_notes >= 2:
-        return (
-            f"Your last turn called `note` {n_notes} times. Every turn = "
-            f"exactly `[note, one-other]`. Re-issue with `note(summary=...)` "
-            f"once plus one action tool."
-        )
-
-    raise AssertionError(f"unreachable: called={called!r}")
+def retry_delay(error: ProviderTransientError, attempt: int, base: float) -> float:
+    """Cap local backoff at 60s; a server's Retry-After is a minimum wait."""
+    delay = min(60.0, base * 2 ** min(attempt - 1, 16))
+    delay = min(60.0, delay + random.uniform(0, delay * 0.1))
+    return max(delay, error.retry_after or 0.0)

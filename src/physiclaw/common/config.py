@@ -152,7 +152,7 @@ class EngineConfig:
     # a session ends STUCK. Distinct from `provider_retry_attempts` below.
     max_attempts: int = 3
     # Per-call provider retries on transient errors (rate limit, 5xx) within
-    # one turn, each spaced by `retry_backoff_seconds`.
+    # one turn, using `retry_backoff_seconds` as the exponential backoff base.
     provider_retry_attempts: int = 3
     retry_backoff_seconds: float = 5.0
     # HTTP read timeout for one provider call (seconds). Reasoning models
@@ -160,6 +160,8 @@ class EngineConfig:
     # measured on kimi-k2.6), so a 120s ceiling turned a slow answer into
     # a transient error, a retry, and a conductor handover.
     provider_timeout_seconds: float = 300.0
+    # Total output tokens, including reasoning; 0 retains the provider default.
+    provider_max_output_tokens: int = 0
     wait_default_minutes: int = 15
     react_cooldown_seconds: float = 6.0
     stale_tick_threshold: int = 8
@@ -561,6 +563,7 @@ def config_path() -> Path:
 # Bounds imposed by the consumers' units, rather than tuning policy. Reject
 # these at load/edit time instead of losing images or purging recent journals.
 _INT_RANGES: dict[tuple[str, str], tuple[int, int | None]] = {
+    ("engine", "provider_max_output_tokens"): (0, None),
     ("camera", "width"): (1, None),
     ("camera", "height"): (1, None),
     ("compact", "max_image_edge_px"): (1, None),

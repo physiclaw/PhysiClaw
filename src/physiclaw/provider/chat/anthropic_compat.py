@@ -46,10 +46,12 @@ this metadata. The raw payload remains available for trace inspection.
 
 import logging
 import uuid
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
 from physiclaw.common.provider_errors import (
+    ProviderConfigurationError,
     ProviderPermanentError,
     ProviderTransientError,
 )
@@ -57,6 +59,7 @@ from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
     Message,
+    OutputResultMessage,
     SystemMessage,
     Thinking,
     ToolCall,
@@ -64,6 +67,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
@@ -72,7 +76,12 @@ from physiclaw.provider.chat.base import (
     CacheMarkers,
     token_count,
 )
-from physiclaw.provider.chat.wire import anthropic_image_part, encode_content
+from physiclaw.provider.chat.retry import retry_after_seconds
+from physiclaw.provider.chat.wire import (
+    anthropic_image_part,
+    encode_content,
+    output_result_to_message,
+)
 from physiclaw.provider.provider_base import describe
 
 # `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
@@ -155,6 +164,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
             api_key=key,
             base_url=base_url or provider_base_url_override(self.PROVIDER_ID),
             timeout=timeout,
+            max_retries=0,
         )
 
     async def _close_client(self) -> None:
@@ -179,6 +189,8 @@ class AnthropicCompatibleProvider(BaseChatProvider):
     # ---------- serialize_history hooks (called by BaseChatProvider) ----------
 
     def _encode_message(self, msg: Message) -> dict | None:
+        if isinstance(msg, OutputResultMessage):
+            return self._encode_message(output_result_to_message(msg))
         if isinstance(msg, SystemMessage):
             # Skipped here — system content rides outside the messages
             # array. `chat()` reads it via `_extract_system_text`.
@@ -215,21 +227,25 @@ class AnthropicCompatibleProvider(BaseChatProvider):
             "max_tokens": _DEFAULT_MAX_TOKENS + budget,
         }
 
-    async def _chat(
+    def _output_tool_choice(self, name: str, *, thinking: Thinking | None) -> dict:
+        params = self.thinking_params(thinking) if thinking is not None else {}
+        mode = params.get("thinking", {}).get("type")
+        if mode not in (None, "disabled"):
+            return {"type": "auto", "disable_parallel_tool_use": True}
+        return {"type": "tool", "name": name, "disable_parallel_tool_use": True}
+
+    def build_request(
         self,
         history: list[Message],
         tools: list[dict],
         *,
         metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
-    ) -> AssistantMessage:
-        from anthropic import (
-            APIConnectionError,
-            APIStatusError,
-            APITimeoutError,
-            RateLimitError,
-        )
-
+        output_spec: OutputSpec | None = None,
+    ) -> dict:
+        if output_spec is not None:
+            self.validate_output_spec(output_spec, thinking=thinking)
+            history = self._structured_history(history, output_spec)
         am_messages = self.serialize_history(history, metadata=metadata)
         system = _extract_system_text(history)
         payload: dict = {
@@ -239,6 +255,13 @@ class AnthropicCompatibleProvider(BaseChatProvider):
         }
         if thinking is not None:
             payload.update(self.thinking_params(thinking))
+        if self.max_output_tokens is not None:
+            payload["max_tokens"] = self.max_output_tokens
+        budget = payload.get("thinking", {}).get("budget_tokens", 0)
+        if budget >= payload["max_tokens"]:
+            raise ProviderConfigurationError(
+                "max_output_tokens must exceed the thinking budget"
+            )
         if system:
             # Anthropic's `system` accepts a list of text blocks; a
             # `cache_control` on the trailing block caches the whole
@@ -250,18 +273,58 @@ class AnthropicCompatibleProvider(BaseChatProvider):
                     "cache_control": EPHEMERAL_CACHE_CONTROL,
                 }
             ]
-        if tools:
+        if output_spec is not None:
+            payload["tools"] = [_tool_to_anthropic(output_spec.tool())]
+        elif tools:
             payload["tools"] = [_tool_to_anthropic(t) for t in tools]
+
+        # Forced tool use conflicts with extended thinking. Auto remains valid
+        # there; the completed reply is still required to contain one envelope.
+        if output_spec is not None:
+            payload["tool_choice"] = self._output_tool_choice(
+                output_spec.function_name, thinking=thinking
+            )
+        return payload
+
+    async def _chat(
+        self,
+        history: list[Message],
+        tools: list[dict],
+        *,
+        metadata: TurnMetadata | None = None,
+        thinking: Thinking | None = None,
+        output_spec: OutputSpec | None = None,
+        on_request: Callable[[dict], None] | None = None,
+    ) -> AssistantMessage:
+        from anthropic import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
+
+        payload = self.build_request(
+            history,
+            tools,
+            metadata=metadata,
+            thinking=thinking,
+            output_spec=output_spec,
+        )
+        self._notify_request(payload, on_request)
 
         try:
             resp = await self._client.messages.create(**payload)
         except (APIConnectionError, APITimeoutError) as e:
             raise ProviderTransientError(f"transport: {describe(e)}") from e
         except RateLimitError as e:
-            raise ProviderTransientError(f"rate limited: {e}") from e
+            raise ProviderTransientError(
+                f"rate limited: {e}",
+                status_code=e.status_code,
+                retry_after=retry_after_seconds(e.response.headers.get("retry-after")),
+            ) from e
         except APIStatusError as e:
             text = (e.message or "")[:500]
-            if e.status_code >= 500:
+            if e.status_code in (408, 409) or e.status_code >= 500:
                 log.debug(
                     "HTTP %s (transient): %s",
                     e.status_code,
@@ -271,16 +334,42 @@ class AnthropicCompatibleProvider(BaseChatProvider):
                         "http_status": e.status_code,
                     },
                 )
-                raise ProviderTransientError(f"HTTP {e.status_code}: {text}") from e
+                raise ProviderTransientError(
+                    f"HTTP {e.status_code}: {text}",
+                    status_code=e.status_code,
+                    retry_after=retry_after_seconds(
+                        e.response.headers.get("retry-after")
+                    ),
+                ) from e
             log.debug(
                 "HTTP %s (permanent): %s",
                 e.status_code,
                 text,
                 extra={"event": "provider.http_failed", "http_status": e.status_code},
             )
-            raise ProviderPermanentError(f"HTTP {e.status_code}: {text}") from e
+            raise ProviderPermanentError(
+                f"HTTP {e.status_code}: {text}", status_code=e.status_code
+            ) from e
 
-        return _from_anthropic_response(resp)
+        try:
+            return _from_anthropic_response(resp)
+        except ProviderTransientError as exc:
+            raw = resp.model_dump()
+            reply = AssistantMessage(
+                "",
+                [],
+                _STOP_REASON_MAP.get(raw.get("stop_reason"), FinishReason.STOP),
+                refused=raw.get("stop_reason") == "refusal",
+                usage=_parse_anthropic_usage(resp),
+                response_id=str(raw.get("id") or ""),
+                response_model=str(raw.get("model") or ""),
+                raw=raw,
+                decode_error=str(exc),
+            )
+            if output_spec is None:
+                setattr(exc, "reply", reply)
+                raise
+            return reply
 
 
 # ---------- request translation (DTO → Anthropic blocks) ----------
@@ -414,6 +503,8 @@ def _from_anthropic_response(resp) -> AssistantMessage:
         response_id=str(getattr(resp, "id", "") or ""),
         response_model=str(getattr(resp, "model", "") or ""),
         raw=raw_dict,
+        refused=stop_raw == "refusal"
+        or any(b.get("type") == "refusal" for b in content),
         vendor_extra=vendor_extra,
     )
 

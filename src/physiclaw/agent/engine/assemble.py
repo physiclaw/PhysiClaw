@@ -4,11 +4,12 @@ Everything here runs without an MCP connection or a provider: discover
 skills, build the local tool registry, render the SYSTEM prompt, compose
 the wake user-message, and pin the per-turn tail slots. Shared by the
 engine (`engine._run_session` / `LLMProducer._prepare_request`) and the
-`physiclaw prompt` dump (`cli/prompt.py`), so a dump can never drift from
-the wire the running agent actually sends.
+`physiclaw prompt` dump (`cli/prompt.py`). Both share logical context and
+the action catalog; exact provider wire is available in native request logs.
 """
 
 import datetime as dt
+from copy import deepcopy
 from dataclasses import dataclass
 
 from physiclaw.agent import layout
@@ -24,6 +25,7 @@ from physiclaw.agent.engine import (
     skill,
 )
 from physiclaw.agent.engine.builtin_tool import LocalTool
+from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.common import gesture_vocab
@@ -36,8 +38,8 @@ from physiclaw.macros.model import Macro
 @dataclass(slots=True)
 class PromptBundle:
     """The turn-0 request pieces assembled offline — no MCP or provider needed.
-    Shared by `engine._run_session` and the `physiclaw prompt` dump so the dump
-    matches the real request. `local_registry` contains all dispatchable local
+    Shared by `engine._run_session` and the `physiclaw prompt` dump; providers
+    add their own wire formatting and request options. `local_registry` contains all dispatchable local
     tools; `local_schemas` advertises only the model-visible ones.
     `layout_incomplete` gates the first-run reminder; the skill counts are for
     the session's tools-loaded log line."""
@@ -48,6 +50,7 @@ class PromptBundle:
     layout_incomplete: bool
     builtin_skill_count: int
     user_skill_count: int
+    catalog: ActionCatalog
     pitfall_count: int = 0
     macro_count: int = 0
 
@@ -55,6 +58,8 @@ class PromptBundle:
 def build_prompt_bundle(
     provider_id: str,
     pack_macros: dict[str, Macro] | None = None,
+    *,
+    mcp_schemas: list[dict],
 ) -> PromptBundle:
     """Discover skills, build the local tool registry, and render the SYSTEM
     prompt for a session — the offline half of `engine._run_session`'s setup.
@@ -78,18 +83,36 @@ def build_prompt_bundle(
         for schema in builtin_tool.schemas(local_registry)
         if macros or schema["name"] != gesture_vocab.RUN_MACRO
     ]
+    local_schemas = deepcopy(local_schemas)
+    for tool in local_schemas:
+        if tool["name"] == gesture_vocab.RUN_MACRO:
+            tool["input_schema"]["properties"]["name"]["enum"] = sorted(macros)
+        elif tool["name"] == "Skill":
+            tool["input_schema"]["properties"]["name"]["enum"] = sorted(user_skills)
+    visible_local = {tool["name"] for tool in local_schemas}
+    # A hidden local handler still shadows an MCP name at dispatch. Do not
+    # advertise a remote schema that would actually invoke that handler.
+    visible_mcp = [
+        tool
+        for tool in mcp_schemas
+        if tool["name"] not in local_registry or tool["name"] in visible_local
+    ]
+    catalog = ActionCatalog.compile(
+        visible_mcp, local_schemas, max_scratchpad=scratchpad.MAX_CHARS
+    )
     pitfall_items = pitfalls.read() if CONFIG.pitfalls.enabled else []
     system_prompt = prompt.render_system_prompts(
-        local_tool_schemas=local_schemas,
         memory_ctx=memory.load_persistent(),
         builtin_skills_ctx=skill.render_builtin(builtin_skills),
         user_skills_ctx=skill.render_section(user_skills),
         macros_ctx=macro_store.render_section(macros),
         pitfalls_ctx=pitfalls.render_section(pitfall_items),
         provider_id=provider_id,
+        action_catalog=catalog.tools,
     )
     return PromptBundle(
         system_prompt=system_prompt,
+        catalog=catalog,
         local_registry=local_registry,
         local_schemas=local_schemas,
         layout_incomplete=layout_incomplete,

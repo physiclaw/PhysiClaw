@@ -161,7 +161,7 @@ def _stamp(r: dict[str, Any]) -> None:
             ref
             for m in sent
             if isinstance(m, dict)
-            for b in leaf_blocks(m.get("content"))
+            for b in leaf_blocks(m.get("content", m.get("output")))
             if (ref := image_ref(b))
         ]
     if kind in ("response", "micro") and isinstance(rec.get("raw"), dict):
@@ -248,13 +248,18 @@ def _mark_request_deltas(records: list[dict[str, Any]]) -> None:
 def _without_cache_marks(message: Any) -> Any:
     if not isinstance(message, dict):
         return message
-    content = message.get("content")
+    field = "output" if message.get("type") == "function_call_output" else "content"
+    content = message.get(field)
     if not isinstance(content, list):
         return message
     return {
         **message,
-        "content": [
-            {k: v for k, v in b.items() if k != "cache_control"}
+        field: [
+            {
+                k: v
+                for k, v in b.items()
+                if k not in {"cache_control", "prompt_cache_breakpoint"}
+            }
             if isinstance(b, dict)
             else b
             for b in content

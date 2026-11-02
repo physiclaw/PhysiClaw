@@ -234,7 +234,7 @@ class Plan:
                 f"⚠ Plan still default after {self.turns_since_update} "
                 "turns — read the user's IM and call update_progress. "
                 f"After {PLAN_REQUIRED_AFTER} turns with no plan the engine "
-                "blocks every tool except note / update_progress / "
+                "allows only update_progress / "
                 "end_session."
             )
         if not is_default and self.turns_since_update >= STALE_TICK_AFTER:

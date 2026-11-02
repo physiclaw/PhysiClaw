@@ -39,7 +39,9 @@ def answer(request):
         provider_id="test",
         model_id="actual-model",
         requested_model_id="configured-model",
-        usage=DecisionUsage(input_tokens=123, output_tokens=0),
+        usage=DecisionUsage(
+            input_tokens=123, output_tokens=0, cached_tokens=64, cache_creation_tokens=0
+        ),
         elapsed_seconds=0.01,
         provider_request_id="remote-request",
     )
@@ -144,7 +146,12 @@ async def test_shadow_preserves_request_identity_geometry_and_reported_usage(
     assert record["model"] == "test/configured-model"
     assert record["response_model"] == "actual-model"
     assert record["provider_request_id"] == "remote-request"
-    assert record["usage"] == {"input_tokens": 123, "output_tokens": 0}
+    assert record["usage"] == {
+        "input_tokens": 123,
+        "output_tokens": 0,
+        "cached_tokens": 64,
+        "cache_creation_tokens": 0,
+    }
     assert record["provider_elapsed_ms"] == 10
     assert record["elapsed_ms"] >= 0
     assert record["interpretation"]["reason"] == "hypothetical_action"
@@ -347,7 +354,12 @@ async def test_provider_failure_does_not_retry_or_invent_zero_usage(
     record = calls(shadow)[0]
     assert record["status"] == "error"
     assert record["error"] == "RuntimeError"
-    assert record["usage"] == {"input_tokens": None, "output_tokens": None}
+    assert record["usage"] == {
+        "input_tokens": None,
+        "output_tokens": None,
+        "cached_tokens": None,
+        "cache_creation_tokens": None,
+    }
     assert "private server response" not in json.dumps(shadow.events)
 
 
@@ -473,7 +485,12 @@ async def test_late_answer_keeps_known_cost_evidence_but_is_not_interpreted(
     record = calls(shadow)[0]
     assert record["status"] == "error"
     assert record["error"] == "TimeoutError"
-    assert record["usage"] == {"input_tokens": 123, "output_tokens": 0}
+    assert record["usage"] == {
+        "input_tokens": 123,
+        "output_tokens": 0,
+        "cached_tokens": 64,
+        "cache_creation_tokens": 0,
+    }
     assert record["provider_request_id"] == "remote-request"
     assert "interpretation" not in record
 
@@ -496,7 +513,12 @@ async def test_close_does_not_interpret_a_provider_that_swallows_cancellation(
     await shadow.plugin.aclose()
     record = calls(shadow)[0]
     assert record["status"] == "cancelled"
-    assert record["usage"] == {"input_tokens": 123, "output_tokens": 0}
+    assert record["usage"] == {
+        "input_tokens": 123,
+        "output_tokens": 0,
+        "cached_tokens": 64,
+        "cache_creation_tokens": 0,
+    }
     assert "interpretation" not in record
 
 

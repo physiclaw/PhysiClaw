@@ -10,8 +10,9 @@ Validates each `ToolCall.arguments` against the tool's declared
 On failure, the engine does NOT actuate — it pairs the call with an error
 `ToolResult` so the model sees the issue next turn and self-corrects.
 
-Supported keywords: type, enum, minimum/maximum, minLength/maxLength,
-items, minItems/maxItems, properties, required and additionalProperties.
+Supported keywords: type, enum, const, anyOf/oneOf/allOf, minimum/maximum,
+minLength/maxLength, items, minItems/maxItems, properties, minProperties/maxProperties,
+required and additionalProperties.
 Container constraints also apply to nullable types and schemas without
 an explicit type. Boolean subschemas are supported. Unknown types and
 other keywords remain ignored; this is not a full JSONSchema validator.
@@ -24,7 +25,7 @@ from typing import Any
 from physiclaw.common.bbox import validate_bbox
 
 
-class ValidationError(Exception):
+class ValidationError(ValueError):
     """Raised when arguments don't match the schema. Caller converts this
     into an error ToolResult rather than executing the tool."""
 
@@ -124,6 +125,22 @@ def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
         raise ValidationError(f"{key}: value is not allowed by the schema")
     if prop is True:
         prop = {}
+    for keyword in ("anyOf", "oneOf", "allOf"):
+        if keyword in prop:
+            matches = 0
+            for branch in prop[keyword]:
+                try:
+                    _check_value(key, value, branch)
+                except ValidationError:
+                    continue
+                matches += 1
+            required = 1 if keyword == "oneOf" else len(prop[keyword])
+            if (keyword == "anyOf" and matches == 0) or (
+                keyword != "anyOf" and matches != required
+            ):
+                raise ValidationError(f"{key}: does not match {keyword}")
+    if "const" in prop and not _json_equal(value, prop["const"]):
+        raise ValidationError(f"{key}: does not match const")
     if isinstance(value, float) and not math.isfinite(value):
         raise ValidationError(f"{key}: number must be finite, got {value!r}")
 
@@ -179,4 +196,16 @@ def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
             _check_value(f"{key}[{i}]", elem, items_schema)
 
     if isinstance(value, dict):
+        if len(value) < prop.get("minProperties", 0) or len(value) > prop.get(
+            "maxProperties", len(value)
+        ):
+            raise ValidationError(f"{key}: invalid number of properties")
         _check_object(value, prop, prefix=key + ".")
+
+
+def validate_value(value: Any, schema: dict | bool) -> None:
+    """Validate a complete JSON value, including root and union constraints."""
+    try:
+        _check_value("output", value, schema)
+    except RecursionError as exc:
+        raise ValidationError("output or schema is too deeply nested") from exc

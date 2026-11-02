@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from physiclaw.common.config import CONFIG
 from physiclaw.common.log_style import console_text
-from physiclaw.common.provider_errors import ProviderTransientError
+from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
 from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.compose import messages
@@ -38,10 +38,10 @@ from physiclaw.conductor.micro.decision import (
     Tap,
 )
 from physiclaw.conductor.micro.moves import reply_args
+from physiclaw.contract.content import turn_metadata_message
 from physiclaw.contract.dto import (
     USAGE_CALL_MICRO,
     AssistantMessage,
-    ContentBlock,
     Message,
     MicroRecord,
     UserMessage,
@@ -49,12 +49,8 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.plugin import EventSink, SessionChatProvider, WireSink
 from physiclaw.contract.turn import TurnMetadata
+from physiclaw.contract.wire import content_record
 from physiclaw.provider import ChatProvider
-from physiclaw.provider.chat.wire import (
-    anthropic_image_part,
-    encode_content,
-    turn_metadata_message,
-)
 
 log = logging.getLogger(__name__)
 
@@ -242,7 +238,7 @@ class MicroCaller:
                 answer=parsed[0] if parsed else None,
                 confidence=parsed[2] if parsed else None,
                 request=[
-                    {"role": role_of(m), "content": wire_content(m.content)}
+                    {"role": role_of(m), "content": content_record(m.content)}
                     for m in messages
                 ],
                 raw=asst.raw,
@@ -302,30 +298,23 @@ def _picked_words(outcome: MicroOutcome | None) -> str | None:
     return None
 
 
-def wire_content(content: "str | list[ContentBlock] | Any") -> Any:
-    """A message's content in the wire record's shape: text as is, a
-    block list as typed dicts — the provider codec's dispatch with the
-    base64 `image` part the wire scrubber reads back
-    (`contract.wire.scrub_block` / `image_ref`), so a micro record's
-    frames are filed and shown exactly like a turn's."""
-    return encode_content(
-        content, image_part=anthropic_image_part, empty="", label="micro"
-    )
-
-
 async def _chat(
     provider: SessionChatProvider,
     messages: list[Message],
     req: DecisionRequest,
     metadata: TurnMetadata | None,
 ) -> AssistantMessage:
-    """One provider call with ONE transient retry (the providers' own
-    taxonomy: timeout / 429 / 5xx — permanent 4xx and real bugs fail
-    fast): a blip on the cheap tier is common and permanent escalation
-    is too big a price for it. Raises whatever the second try raises."""
-    # How much the model may think is the step's `think:` (the vendor
-    # translates it, see `BaseChatProvider.thinking_params`); the reply's
-    # `reason` field is the chain of thought the contract always gets.
+    """One call and at most one transient retry, respecting wait hints and deadline."""
+
+    def check_deadline(delay: float = 0) -> None:
+        if (
+            metadata is not None
+            and metadata.deadline is not None
+            and time.monotonic() + delay >= metadata.deadline
+        ):
+            raise ProviderError("Turn deadline prevents another model request")
+
+    check_deadline()
     try:
         return await provider.chat(
             messages,
@@ -334,7 +323,9 @@ async def _chat(
             purpose=USAGE_CALL_MICRO,
             thinking=req.thinking,
         )
-    except ProviderTransientError:
+    except ProviderTransientError as exc:
+        delay = max(CONFIG.engine.retry_backoff_seconds, exc.retry_after or 0.0)
+        check_deadline(delay)
         log.info(
             "micro %s (%s): transient provider error — one retry",
             req.call,
@@ -346,7 +337,8 @@ async def _chat(
                 "console_message": "Decision request interrupted — retrying once",
             },
         )
-        await asyncio.sleep(CONFIG.engine.retry_backoff_seconds)
+        await asyncio.sleep(delay)
+        check_deadline()
         return await provider.chat(
             messages,
             [],

@@ -1,6 +1,6 @@
 """OpenAI-compatible base — `/chat/completions` wire format.
 
-Vendors that speak this shape (Qwen/DashScope, OpenAI, Moonshot,
+Vendors that speak this shape (Qwen/DashScope, OpenRouter, Moonshot,
 DeepSeek, Google)
 inherit from `OpenAICompatibleProvider` and declare `BASE_URL` plus
 any auth quirks. This file owns:
@@ -43,18 +43,17 @@ turn (would break the prefix cache).
 import json
 import logging
 import uuid
+from copy import deepcopy
 from typing import Any, assert_never
 
-import httpx
-
 from physiclaw.common.provider_errors import (
-    ProviderPermanentError,
     ProviderTransientError,
 )
 from physiclaw.contract.dto import (
     AssistantMessage,
     FinishReason,
     Message,
+    OutputResultMessage,
     SystemMessage,
     Thinking,
     ToolCall,
@@ -62,20 +61,22 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
+from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import (
     EPHEMERAL_CACHE_CONTROL,
-    BaseChatProvider,
     CacheMarkers,
     token_count,
 )
+from physiclaw.provider.chat.http import HTTPChatProvider
+from physiclaw.provider.chat.structured import strict_json
 from physiclaw.provider.chat.wire import (
     assistant_to_wire,
+    output_result_to_message,
     tool_result_to_wire,
     tool_to_wire,
     user_content_to_openai,
 )
-from physiclaw.provider.provider_base import describe
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ class OpenAICacheMarkers(CacheMarkers):
         return {**entry, "content": [block]}
 
 
-class OpenAICompatibleProvider(BaseChatProvider):
+class OpenAICompatibleProvider(HTTPChatProvider):
     """Base for providers that speak the OpenAI `/chat/completions` wire
     format. See `BaseChatProvider` for the auth declarations vendors are
     expected to set; this class plugs the wire-shape encoder
@@ -115,20 +116,35 @@ class OpenAICompatibleProvider(BaseChatProvider):
     inherited `serialize_history` template, and adds the HTTP request
     flow in `chat()`."""
 
+    ENDPOINT = "/chat/completions"
     CACHE_MARKERS: CacheMarkers = OpenAICacheMarkers()
+    # Opt in only where the vendor requires this field on tool continuations.
+    REPLAY_REASONING_CONTENT = False
 
     def _request_params(self, *, metadata: TurnMetadata | None) -> dict[str, Any]:
         """Additional vendor request fields; empty for the standard protocol."""
         return {}
 
-    async def _chat(
+    def _output_tool(self, spec: OutputSpec) -> dict:
+        return tool_to_wire(spec.tool())
+
+    def _tool_params(
+        self, spec: OutputSpec | None, *, thinking: Thinking | None
+    ) -> dict:
+        return {"tool_choice": "auto"}
+
+    def build_request(
         self,
         history: list[Message],
         tools: list[dict],
         *,
         metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
-    ) -> AssistantMessage:
+        output_spec: OutputSpec | None = None,
+    ) -> dict:
+        if output_spec is not None:
+            self.validate_output_spec(output_spec, thinking=thinking)
+            history = self._structured_history(history, output_spec)
         wire = self.serialize_history(history, metadata=metadata)
         payload: dict[str, Any] = {
             "model": self.model,
@@ -138,93 +154,70 @@ class OpenAICompatibleProvider(BaseChatProvider):
             # for the vendor default, or a model the vendor's table omits).
             **(self.thinking_params(thinking) if thinking is not None else {}),
         }
-        if tools:
+        if output_spec is not None:
+            payload["tools"] = [self._output_tool(output_spec)]
+        elif tools:
             payload["tools"] = [tool_to_wire(t) for t in tools]
-            # tool_choice "auto" is the OpenAI default; being explicit avoids
-            # provider surprises.
-            payload["tool_choice"] = "auto"
+        if "tools" in payload:
+            payload.update(self._tool_params(output_spec, thinking=thinking))
+        if self.max_output_tokens is not None:
+            payload["max_tokens"] = self.max_output_tokens
 
-        try:
-            r = await self._client.post("/chat/completions", json=payload)
-        except (httpx.TransportError, httpx.TimeoutException) as e:
-            raise ProviderTransientError(f"transport: {describe(e)}") from e
+        return payload
 
-        if r.status_code == 429 or r.status_code >= 500:
-            log.debug(
-                "HTTP %s (transient): %s",
-                r.status_code,
-                r.text[:200],
-                extra={"event": "provider.http_failed", "http_status": r.status_code},
-            )
-            raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:200]}")
-        if r.status_code >= 400:
-            log.debug(
-                "HTTP %s (permanent): %s",
-                r.status_code,
-                r.text[:500],
-                extra={"event": "provider.http_failed", "http_status": r.status_code},
-            )
-            raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:500]}")
-
+    def _decode_response(self, raw: Any, *, structured: bool) -> AssistantMessage:
         try:
-            raw = r.json()
-        except ValueError as e:
-            # A 200 with a non-JSON body (gateway/proxy page mid-restart)
-            # is a retryable provider hiccup, not an engine crash.
-            log.debug(
-                "HTTP 200 with non-JSON body: %s",
-                r.text[:200],
-                extra={
-                    "event": "provider.invalid_response",
-                    "http_status": r.status_code,
-                },
+            reply = self._parse_response(raw)
+        except ProviderTransientError as exc:
+            data = raw if isinstance(raw, dict) else {"unparsed": raw}
+            choices = data.get("choices")
+            choices = choices if isinstance(choices, list) else []
+            choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+            message = choice.get("message")
+            reply = AssistantMessage(
+                "",
+                [],
+                _normalize_finish(choice.get("finish_reason") or "stop"),
+                refused=isinstance(message, dict) and bool(message.get("refusal")),
+                usage=self._parse_usage(data),
+                response_id=str(data.get("id") or ""),
+                response_model=str(data.get("model") or ""),
+                raw=data,
+                decode_error=str(exc),
             )
-            raise ProviderTransientError(f"non-JSON response: {r.text[:200]}") from e
-        return self._parse_response(raw)
-
-    async def list_models(self) -> list[dict]:
-        """OpenAI-compatible providers all expose `GET /models`. Returns
-        the `data` array verbatim — typically a list of dicts with `id`,
-        `object`, `created`, `owned_by`."""
-        try:
-            r = await self._client.get("/models")
-        except (httpx.TransportError, httpx.TimeoutException) as e:
-            raise ProviderTransientError(f"transport: {describe(e)}") from e
-        if r.status_code == 429 or r.status_code >= 500:
-            raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:300]}")
-        if r.status_code >= 400:
-            raise ProviderPermanentError(f"HTTP {r.status_code}: {r.text[:300]}")
-        try:
-            body = r.json()
-        except ValueError as e:
-            raise ProviderTransientError(f"non-JSON response: {r.text[:200]}") from e
-        if not isinstance(body, dict):
-            raise ProviderTransientError("invalid model list response: expected object")
-        models = body.get("data")
-        if models is None:
-            return []
-        if not isinstance(models, list) or any(
-            not isinstance(m, dict)
-            or not isinstance(m.get("id"), str)
-            or not m["id"].strip()
-            for m in models
-        ):
-            raise ProviderTransientError(
-                "invalid model list response: expected model ids"
-            )
-        return models
+            if (
+                not structured
+                or data.get("error")
+                or any(
+                    isinstance(c, dict) and c.get("finish_reason") == "error"
+                    for c in choices
+                )
+            ):
+                setattr(exc, "reply", reply)
+                raise
+        return reply
 
     # ---------- serialize_history hooks (called by BaseChatProvider) ----------
 
     # Return type stays as wide as `BaseChatProvider`'s contract so vendor
     # overrides (google.py splits one DTO into several wire dicts) conform.
     def _encode_message(self, msg: Message) -> dict | list[dict] | None:
+        if isinstance(msg, OutputResultMessage):
+            return self._encode_message(output_result_to_message(msg))
         if isinstance(msg, SystemMessage):
             return {"role": "system", "content": msg.content}
         if isinstance(msg, UserMessage):
             return {"role": "user", "content": user_content_to_openai(msg.content)}
         if isinstance(msg, AssistantMessage):
-            return assistant_to_wire(msg)
+            entry = assistant_to_wire(msg)
+            extra = msg.vendor_extra.get(self.PROVIDER_ID, {})
+            if (
+                self.REPLAY_REASONING_CONTENT
+                and extra.get("model") == self.model
+                and "reasoning_content" in extra
+            ):
+                entry["reasoning_content"] = deepcopy(extra["reasoning_content"])
+            return entry
         if isinstance(msg, ToolResultMessage):
             wire = tool_result_to_wire(msg)
             # Superseded stubs always ride as a one-element text-block
@@ -242,15 +235,18 @@ class OpenAICompatibleProvider(BaseChatProvider):
     # ---------- response parsing (vendor-overridable) ----------
 
     def _parse_response(self, raw: dict) -> AssistantMessage:
-        """OpenAI chat completion → `AssistantMessage`. Drops provider-
-        specific content fields (e.g. Qwen's `reasoning_content`) so
-        they never leak into engine history; the raw dict is preserved
-        on `.raw` for log-side inspection. Vendors with non-standard
-        usage shapes override `_parse_usage`, not this method."""
+        """Parse a completion, retaining raw data for logs and diagnostics.
+
+        Vendors that enable reasoning replay also retain provider/model-scoped
+        metadata; it stays separate from assistant text. Vendors with different
+        usage shapes override `_parse_usage`.
+        """
         # A gateway's empty/malformed completion is not an assistant STOP.
         # Reject the whole response before any partial tool list can dispatch.
         if not isinstance(raw, dict):
             raise ProviderTransientError("invalid response: expected an object")
+        if raw.get("error"):
+            raise ProviderTransientError("provider generation failed")
         choices = raw.get("choices")
         if (
             not isinstance(choices, list)
@@ -259,6 +255,8 @@ class OpenAICompatibleProvider(BaseChatProvider):
         ):
             raise ProviderTransientError("invalid response: missing completion choice")
         choice = choices[0]
+        if choice.get("finish_reason") == "error":
+            raise ProviderTransientError("provider generation failed")
         message = choice.get("message")
         if not isinstance(message, dict):
             raise ProviderTransientError("invalid response: missing assistant message")
@@ -269,6 +267,9 @@ class OpenAICompatibleProvider(BaseChatProvider):
             content = json.dumps(content, ensure_ascii=False)
 
         tool_calls: list[ToolCall] = []
+        decode_error = (
+            "expected exactly one completion choice" if len(choices) != 1 else None
+        )
         calls = message.get("tool_calls")
         if calls is None:
             calls = []
@@ -286,18 +287,22 @@ class OpenAICompatibleProvider(BaseChatProvider):
                 raise ProviderTransientError(
                     "invalid response: tool name and id must be strings"
                 )
+            if not ident:
+                decode_error = "missing provider call ID"
             ident = ident or f"auto_{uuid.uuid4().hex[:8]}"
             args_str = fn.get("arguments", "{}")
             try:
-                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                args = strict_json(args_str) if isinstance(args_str, str) else args_str
                 if not isinstance(args, dict):
+                    decode_error = "tool arguments must be an object"
                     args = {"_raw": args}
-            except json.JSONDecodeError:
+            except (ValueError, RecursionError):
+                decode_error = "invalid JSON tool arguments"
                 # Preserve malformed arguments for the dispatch validator.
                 args = {"_malformed_json": args_str}
             tool_calls.append(ToolCall(id=ident, name=name, arguments=args))
 
-        return AssistantMessage(
+        reply = AssistantMessage(
             content=content,
             tool_calls=tool_calls,
             finish_reason=_normalize_finish(finish_raw),
@@ -305,12 +310,21 @@ class OpenAICompatibleProvider(BaseChatProvider):
             response_id=str(raw.get("id") or ""),
             response_model=str(raw.get("model") or ""),
             raw=raw,
+            refused=bool(message.get("refusal")),
+            decode_error=decode_error,
         )
+        if self.REPLAY_REASONING_CONTENT and "reasoning_content" in message:
+            reply.vendor_extra[self.PROVIDER_ID] = {
+                "model": self.model,
+                "reasoning_content": deepcopy(message["reasoning_content"]),
+            }
+        return reply
 
     def _parse_usage(self, raw: dict) -> Usage:
         """OpenAI-standard `usage` block → normalized `Usage`. Cache
         stats live under `prompt_tokens_details.cached_tokens` and
-        `prompt_tokens_details.cache_creation_input_tokens`; when the
+        `prompt_tokens_details.cache_write_tokens` (some compatible providers
+        call it `cache_creation_input_tokens`); when the
         nested location is empty, two top-of-block spellings are also
         probed — `cached_tokens` (Moonshot K2 sometimes surfaces it
         there) and `prompt_cache_hit_tokens` (DeepSeek's documented
@@ -335,7 +349,9 @@ class OpenAICompatibleProvider(BaseChatProvider):
             completion_tokens=token_count(u.get("completion_tokens")),
             cached_tokens=cached,
             cache_creation_tokens=token_count(
-                details.get("cache_creation_input_tokens")
+                details.get(
+                    "cache_write_tokens", details.get("cache_creation_input_tokens")
+                )
             ),
             reasoning_tokens=token_count(completion.get("reasoning_tokens")),
         )

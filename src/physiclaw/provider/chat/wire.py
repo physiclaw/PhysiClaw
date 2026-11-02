@@ -1,57 +1,25 @@
-"""Wire-format adapters: DTOs ↔ OpenAI `/chat/completions` shape.
+"""Provider-side message projection and wire encoding.
 
-Two transformation directions:
-
-  - **MCP → DTO**: `mcp_blocks_to_content_blocks` converts MCP tool-result
-    content blocks into engine-native `ContentBlock`s (TextBlock,
-    ImageBlock). Used by `engine.dispatch` when wrapping an MCP response
-    into a `ToolResultMessage`. Image bytes get scaled here once, on the
-    way into history.
-
-  - **DTO → OpenAI wire**: `assistant_to_wire`, `tool_result_to_wire`,
-    `user_content_to_openai`, `tool_to_wire` produce OpenAI dicts.
-    `OpenAICompatibleProvider._encode_message` calls them per DTO; the
-    inherited `BaseChatProvider.serialize_history` template assembles the
-    list and places cache markers. Anthropic's message translators live
-    in `provider/chat/anthropic_compat.py`, but its ContentBlock dispatch
-    runs through the shared `encode_content` here — TextBlock/ImageBlock
-    handling (and any future block type or scaling change) lands once,
-    with only the per-shape part dicts differing.
-
-Provider-specific reasoning stays out of public assistant text. Each
-provider controls any metadata its protocol needs to replay: this OpenAI
-encoder omits it, while Anthropic replays signed thinking blocks and
-Google attaches thought signatures in their own encoders.
+Adapters translate shared message DTOs without changing caller-owned history.
+Each vendor owns the opaque state needed to replay its responses.
 """
 
-import base64
 import json
 import logging
 from collections.abc import Callable
-from dataclasses import asdict
 from typing import Any
 
-from physiclaw.common import image
 from physiclaw.contract.dto import (
     AssistantMessage,
     ContentBlock,
     ImageBlock,
+    OutputResultMessage,
     TextBlock,
     ToolResultMessage,
     UserMessage,
 )
-from physiclaw.contract.turn import TurnMetadata
 
 log = logging.getLogger(__name__)
-
-
-def turn_metadata_message(metadata: TurnMetadata) -> UserMessage:
-    """Render host metadata as a fresh model-visible tail, outside its history."""
-    return UserMessage(
-        content="<turn_metadata>"
-        + json.dumps(asdict(metadata), separators=(",", ":"))
-        + "</turn_metadata>"
-    )
 
 
 # ---------- request-side: tool schema → wire ----------
@@ -74,6 +42,32 @@ def tool_to_wire(tool: dict) -> dict:
 
 
 # ---------- DTO → OpenAI history wire ----------
+
+
+def output_result_to_message(
+    result: OutputResultMessage,
+) -> ToolResultMessage | UserMessage:
+    """Project host feedback into the original reply's conversation protocol."""
+    if result.reply.tool_calls:
+        if len(result.reply.tool_calls) != 1:
+            raise ValueError("Structured feedback requires one output function call")
+        return ToolResultMessage(
+            result.reply.tool_calls[0].id,
+            result.content,
+            is_error=result.is_error,
+            is_superseded=result.is_superseded,
+        )
+    label = (
+        "Structured output result (error):"
+        if result.is_error
+        else "Structured output result:"
+    )
+    content: list[ContentBlock] = (
+        [TextBlock(f"{label}\n{result.content}")]
+        if isinstance(result.content, str)
+        else [TextBlock(label), *result.content]
+    )
+    return UserMessage(content=content)
 
 
 def assistant_to_wire(asst: AssistantMessage) -> dict[str, Any]:
@@ -104,6 +98,27 @@ def tool_result_to_wire(result: ToolResultMessage) -> dict[str, Any]:
         "tool_call_id": result.tool_call_id,
         "content": user_content_to_openai(result.content),
     }
+
+
+def tool_result_with_user_images(result: ToolResultMessage) -> list[dict]:
+    """Keep the paired tool receipt and move images to a user message."""
+    text_blocks: list[ContentBlock] = []
+    image_blocks: list[ContentBlock] = []
+    if isinstance(result.content, list):
+        for b in result.content:
+            (image_blocks if isinstance(b, ImageBlock) else text_blocks).append(b)
+    if not image_blocks:
+        return [tool_result_to_wire(result)]
+    return [
+        {
+            "role": "tool",
+            "tool_call_id": result.tool_call_id,
+            "content": user_content_to_openai(text_blocks)
+            if text_blocks
+            else "(image attached after tool results)",
+        },
+        {"role": "user", "content": user_content_to_openai(image_blocks)},
+    ]
 
 
 def encode_content(
@@ -137,9 +152,7 @@ def encode_content(
 
 
 def anthropic_image_part(block: ImageBlock) -> dict:
-    """An `ImageBlock` as Anthropic's base64 `image` part — the shape the
-    Anthropic provider sends and the one `contract.wire.scrub_block`
-    reads back, so the conductor's wire records use it too."""
+    """An `ImageBlock` in Anthropic's base64 image format."""
     return {
         "type": "image",
         "source": {
@@ -165,52 +178,3 @@ def user_content_to_openai(content: str | list[ContentBlock]) -> str | list[dict
         empty="",
         label="user_content_to_openai",
     )
-
-
-# ---------- MCP response → DTO ContentBlocks ----------
-
-
-def mcp_blocks_to_content_blocks(blocks: list[dict]) -> str | list[ContentBlock]:
-    """MCP tool-result content blocks → engine `ContentBlock`s. Image bytes
-    are scaled (JPEG + long-edge cap) on the way through; smaller payload
-    means smaller history footprint thereafter.
-
-    Returns a bare string when no images are present so common text-only
-    tool results stay lightweight (providers fast-path string content).
-    """
-    # Fast path: single text block
-    if len(blocks) == 1 and blocks[0].get("type") == "text":
-        return blocks[0].get("text") or ""
-
-    texts: list[str] = []
-    images: list[ImageBlock] = []
-    for b in blocks:
-        kind = b.get("type")
-        if kind == "text":
-            texts.append(b.get("text") or "")
-        elif kind == "image":
-            try:
-                raw = base64.b64decode(b["data"])
-                scaled, mime = image.scale_image_bytes(raw)
-                if mime == "application/octet-stream":
-                    # The scaler kept the original on a codec failure;
-                    # retain MCP's image type for the provider envelope.
-                    mime = b.get("mime_type") or "image/jpeg"
-                # Steady state returns `raw` itself (byte-identical
-                # pass-through) — the b64 we already hold is the answer.
-                new_b64 = (
-                    b["data"] if scaled is raw else base64.b64encode(scaled).decode()
-                )
-            except Exception:
-                log.info("scale failed; forwarding original image", exc_info=True)
-                new_b64 = b["data"]
-                mime = b.get("mime_type") or "image/jpeg"
-            images.append(ImageBlock(media_type=mime, data_b64=new_b64))
-
-    if images:
-        out: list[ContentBlock] = []
-        if texts:
-            out.append(TextBlock(text="\n".join(texts)))
-        out.extend(images)
-        return out
-    return "\n".join(texts) if texts else "(empty tool result)"

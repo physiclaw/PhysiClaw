@@ -836,3 +836,28 @@ def test_load_inventory_reports_byte_sizes(tmp_path):
     model = viewer.load(tmp_path)
 
     assert model["files"] == [{"name": "notes.md", "bytes": len(payload)}]
+
+
+def test_responses_frames_and_moving_markers_are_visible_without_false_delta():
+    from copy import deepcopy
+
+    message = {
+        "type": "function_call_output",
+        "call_id": "call-1",
+        "output": [
+            {"type": "input_image", "image_url": "images/frame.jpg"},
+            {
+                "type": "input_text",
+                "text": "retained labels",
+                "prompt_cache_breakpoint": {"mode": "explicit"},
+            },
+        ],
+    }
+    original = deepcopy(message)
+    row = {"src": "wire", "rec": {"kind": "request", "messages": [message]}}
+    viewer._stamp(row)
+    assert row["frames"] == ["images/frame.jpg"]
+    unmarked = deepcopy(message)
+    del unmarked["output"][-1]["prompt_cache_breakpoint"]
+    assert viewer._without_cache_marks(message) == unmarked
+    assert message == original

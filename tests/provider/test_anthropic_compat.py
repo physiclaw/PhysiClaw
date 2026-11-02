@@ -111,6 +111,7 @@ def test_build_client_uses_async_anthropic_sdk(mocker) -> None:
     kwargs = fake.call_args.kwargs
     assert kwargs["api_key"] == "sk-test"
     assert kwargs["base_url"] == "https://override"
+    assert kwargs["max_retries"] == 0
 
 
 def test_build_client_applies_config_base_url_override(mocker) -> None:
@@ -1102,3 +1103,50 @@ def test_signed_history_serialization_does_not_mutate_retained_response():
     wire[0]["content"][0]["signature"] = "changed outbound copy"
 
     assert assistant.vendor_extra["anthropic"]["content"][0]["signature"] == "signed"
+
+
+async def test_generate_structured_signed_continuation_keeps_original_envelope(
+    provider,
+):
+    from physiclaw.contract.structured import OutputSpec
+
+    response = AnthropicMessage.model_validate(
+        {
+            "id": "r",
+            "model": "claude-test",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "opaque", "signature": "signed"},
+                {
+                    "type": "tool_use",
+                    "id": "envelope",
+                    "name": "submit_turn",
+                    "input": {"ok": True},
+                },
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 10, "output_tokens": 20},
+        }
+    )
+    provider._client.messages.create.return_value = response
+    spec = OutputSpec("sample", {"type": "object"}, dict)
+    captured = []
+
+    result = await provider.generate_structured(
+        [], spec, thinking="high", on_request=captured.append
+    )
+    following = provider.build_request(
+        [result.reply, ToolResultMessage("envelope", "action failed", is_error=True)],
+        [],
+        output_spec=spec,
+        thinking="high",
+    )
+
+    assert following["messages"][0]["content"] == response.model_dump()["content"]
+    assert following["messages"][1]["content"][0]["tool_use_id"] == "envelope"
+    assert captured[0]["tool_choice"] == {
+        "type": "auto",
+        "disable_parallel_tool_use": True,
+    }
+    assert captured[0]["tools"][0]["name"] == "submit_turn"

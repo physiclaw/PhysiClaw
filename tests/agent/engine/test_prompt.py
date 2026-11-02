@@ -46,14 +46,6 @@ def _stub_memory_user(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _stub_mcp_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default: no MCP tools unless a test overrides."""
-    from physiclaw.agent.engine import mcp_inventory
-
-    monkeypatch.setattr(mcp_inventory, "discover_mcp_tools", list)
-
-
-@pytest.fixture(autouse=True)
 def _stub_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default: setup incomplete → screen-layout section absent, so unrelated
     prompt tests stay hermetic. Tests exercising the section override this."""
@@ -65,7 +57,6 @@ def _stub_layout(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def full_prompt_case(_isolate_context_dir, monkeypatch):
     from physiclaw import provider
-    from physiclaw.agent.engine import mcp_inventory
 
     case = json.loads((_DATA_DIR / "prompt_case.json").read_text(encoding="utf-8"))
     for name, body in case["doctrine"].items():
@@ -74,18 +65,16 @@ def full_prompt_case(_isolate_context_dir, monkeypatch):
     class ProviderMetadata:
         INLINE_TOOL_INDEX = True
 
-        @classmethod
-        def system_prompt_fragment(cls):
-            return case["reasoning"]
-
     monkeypatch.setattr(
         provider, "provider_class", lambda provider_id: ProviderMetadata
     )
     monkeypatch.setattr(memory, "load_user", lambda: case["user_profile"])
-    monkeypatch.setattr(mcp_inventory, "discover_mcp_tools", lambda: case["mcp_tools"])
     monkeypatch.setattr(layout, "is_learned", lambda: True)
     monkeypatch.setattr(layout, "load_layout_md", lambda: case["screen_layout"])
-    return case["inputs"]
+    return {
+        **case["inputs"],
+        "action_catalog": case["mcp_tools"] + case["inputs"]["action_catalog"],
+    }
 
 
 @pytest.mark.parametrize("render", [prompt.render_system_prompts, prompt.dump])
@@ -109,7 +98,7 @@ def test_regression_tool_index_keeps_only_first_description_line(separator) -> N
         {"name": "probe", "description": f"First line{separator}SECOND_LINE_SENTINEL"}
     ]
 
-    rendered = prompt.dump(local_tool_schemas=schemas)
+    rendered = prompt.dump(action_catalog=schemas)
 
     assert "- **probe** — First line" in rendered.splitlines()
     assert "SECOND_LINE_SENTINEL" not in rendered
@@ -131,40 +120,18 @@ def test_tool_index_preserves_unicode_first_line_without_following_lines(
         {"name": "probe", "description": f"{text}{separator}SECOND_LINE_SENTINEL"}
     ]
 
-    rendered = prompt.render_system_prompts(local_tool_schemas=schemas)
+    rendered = prompt.render_system_prompts(action_catalog=schemas)
 
     assert f"- **probe** — {text}" in rendered.splitlines()
     assert "SECOND_LINE_SENTINEL" not in rendered
 
 
-@pytest.mark.parametrize("inline_index", [False, True])
-def test_public_render_includes_provider_fragment_before_memory(
-    monkeypatch, inline_index
-) -> None:
-    from physiclaw import provider
+def test_public_render_has_no_free_text_reasoning_instructions():
+    rendered = prompt.render_system_prompts(provider_id="qwen", memory_ctx="fact")
 
-    class ProviderMetadata:
-        INLINE_TOOL_INDEX = inline_index
-
-        @classmethod
-        def system_prompt_fragment(cls):
-            return "Use <thought>reasoning</thought> before answering."
-
-    monkeypatch.setattr(
-        provider, "provider_class", lambda provider_id: ProviderMetadata
-    )
-
-    rendered = prompt.dump(
-        local_tool_schemas=[{"name": "probe", "description": "Probe data."}],
-        memory_ctx="fixed memory",
-        provider_id="test-provider",
-    )
-
-    assert ("## Tooling" in rendered) is inline_index
-    assert rendered.endswith(
-        "## Reasoning Format\nUse <thought>reasoning</thought> before answering.\n\n"
-        "## memory.md\n\nfixed memory"
-    )
+    assert "Reasoning Format" not in rendered
+    assert "<think>" not in rendered
+    assert rendered == "## memory.md\n\nfact"
 
 
 def test_public_render_rereads_doctrine_between_sessions(_isolate_context_dir) -> None:
@@ -226,7 +193,7 @@ def test_disabled_macro_doctrine_keeps_later_convention_slot(
 def test_tool_index_keeps_named_tools_after_unnamed_entry(unnamed) -> None:
     schemas = [unnamed, {"name": "healthy"}]
 
-    rendered = prompt.dump(local_tool_schemas=schemas)
+    rendered = prompt.dump(action_catalog=schemas)
 
     assert "- **healthy**" in rendered.splitlines()
 
@@ -246,7 +213,7 @@ def test_tool_index_respects_sentence_and_length_boundaries(
 ) -> None:
     schemas = [{"name": "probe", "description": description}]
 
-    rendered = prompt.dump(local_tool_schemas=schemas)
+    rendered = prompt.dump(action_catalog=schemas)
 
     assert f"- **probe** — {summary}" in rendered.splitlines()
 
@@ -465,21 +432,19 @@ def test_deepseek_retains_tool_index_after_replay_review() -> None:
     assert "- **tap** — Tap." in out
 
 
-def test_render_tooling_includes_mcp_inventory_tools(
-    _isolate_context_dir, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_tool_index_uses_only_supplied_catalog(monkeypatch):
     from physiclaw.agent.engine import mcp_inventory
 
     monkeypatch.setattr(
-        mcp_inventory,
-        "discover_mcp_tools",
-        lambda: [{"name": "peek", "description": "Annotated camera frame."}],
+        mcp_inventory, "discover_mcp_tools", lambda: pytest.fail("AST fallback")
+    )
+    rendered = prompt.render_system_prompts(
+        action_catalog=[{"name": "peek", "description": "Look."}]
     )
 
-    out = "\n".join(prompt._render_tooling([{"name": "tap", "description": "Tap."}]))
-
-    assert "- **peek** — Annotated camera frame." in out
-    assert "- **tap** — Tap." in out
+    assert "- **peek** — Look." in rendered
+    assert "TurnOutput.action" in rendered
+    assert "tap" not in rendered
 
 
 # ---------- _render_section ----------
@@ -534,42 +499,6 @@ def test_render_screen_layout_says_not_set_when_learned_but_md_missing(
 
     assert "## Screen layout" in out
     assert "not set yet" in out
-
-
-# ---------- _render_reasoning_format ----------
-
-
-def test_render_reasoning_format_empty_when_provider_unknown(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from physiclaw import provider as provider_pkg
-
-    monkeypatch.setattr(provider_pkg, "provider_class", lambda pid: None)
-
-    assert prompt._render_reasoning_format("mystery") == []
-
-
-def test_render_reasoning_format_empty_when_fragment_blank(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class _FakeProvider:
-        @classmethod
-        def system_prompt_fragment(cls) -> str:
-            return ""
-
-    from physiclaw.provider import registry
-
-    monkeypatch.setattr(registry, "provider_class", lambda pid: _FakeProvider)
-
-    assert prompt._render_reasoning_format("any") == []
-
-
-def test_render_reasoning_format_via_real_anthropic_provider() -> None:
-    # The real AnthropicChatProvider has system_prompt_fragment="" (default)
-    # — so the section is NOT emitted.
-    out = prompt._render_reasoning_format("anthropic")
-
-    assert out == []
 
 
 # ---------- _render_memory ----------
@@ -646,7 +575,7 @@ def test_render_system_assembles_all_present_sections(
     monkeypatch.setattr(memory, "load_user", lambda: "user profile")
 
     out = prompt.render_system_prompts(
-        local_tool_schemas=[{"name": "tap", "description": "Tap."}],
+        action_catalog=[{"name": "tap", "description": "Tap."}],
         memory_ctx="recent fact",
         builtin_skills_ctx="## Built-in Skills\n\n### im\n\nim body",
         user_skills_ctx="## Available skills\n\n- **taobao** — shop",

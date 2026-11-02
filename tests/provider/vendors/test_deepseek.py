@@ -92,3 +92,21 @@ def test_off_sends_the_switch_for_every_id(model) -> None:
     assert DeepSeekChatProvider(model=model).thinking_params("off") == {
         "thinking": {"type": "disabled"}
     }
+
+
+def test_reasoning_metadata_is_not_replayed_by_other_models():
+    from physiclaw.contract.dto import AssistantMessage, FinishReason
+
+    provider = DeepSeekChatProvider(model="deepseek-flash")
+    message = AssistantMessage(
+        "",
+        [],
+        FinishReason.STOP,
+        vendor_extra={
+            "deepseek": {"model": "another-model", "reasoning_content": "private"}
+        },
+    )
+
+    request = provider.build_request([message], [])
+
+    assert "reasoning_content" not in request["messages"][0]

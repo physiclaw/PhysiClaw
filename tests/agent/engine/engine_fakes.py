@@ -8,24 +8,37 @@ from unittest.mock import MagicMock
 
 from physiclaw.agent.engine import policy as policy_mod
 from physiclaw.agent.engine.builtin_tool import LocalTool
+from physiclaw.agent.engine.builtin_tool import schemas as _schemas
+from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
+from physiclaw.agent.engine.scratchpad import MAX_CHARS
 from physiclaw.agent.engine.session import Session
 from physiclaw.agent.llm import LLMProducer
 from physiclaw.contract.dto import (
     AssistantMessage,
     CollapsePolicy,
     FinishReason,
+    OutputResultMessage,
     ToolCall,
+    ToolResultMessage,
     Usage,
 )
 from physiclaw.contract.turn import TurnMetadata
+from physiclaw.provider.chat.structured import decode_completion
+from physiclaw.provider.chat.wire import (
+    assistant_to_wire,
+    output_result_to_message,
+    tool_result_to_wire,
+    user_content_to_openai,
+)
 
 
 class FakeProvider:
     """Scripted provider — pops AssistantMessages from a queue."""
 
     PROVIDER_ID = "fake"
+    structured_transport = "tool"
     COLLAPSE = CollapsePolicy(first_at=100, keep=10, interval=100)
 
     def __init__(self, responses: list[Any]):
@@ -35,10 +48,43 @@ class FakeProvider:
         self.closed = False
 
     def serialize_history(self, messages, *, metadata=None):
-        return [{"role": "fake"} for _ in messages]
+        wire = []
+        for message in messages:
+            if isinstance(message, OutputResultMessage):
+                message = output_result_to_message(message)
+            if isinstance(message, AssistantMessage):
+                wire.append(assistant_to_wire(message))
+            elif isinstance(message, ToolResultMessage):
+                wire.append(tool_result_to_wire(message))
+            else:
+                wire.append(
+                    {
+                        "role": type(message).__name__.removesuffix("Message").lower(),
+                        "content": user_content_to_openai(message.content),
+                    }
+                )
+        return wire
 
-    async def chat(self, messages, tools, *, metadata=None):
-        self.calls.append((len(messages), len(tools)))
+    def validate_output_spec(self, spec):
+        assert spec.function_name == "submit_turn"
+
+    async def generate_structured(
+        self, messages, spec, *, metadata=None, on_request=None
+    ):
+        if on_request:
+            on_request(
+                {
+                    "messages": self.serialize_history(messages, metadata=metadata),
+                    "tools": [spec.tool()],
+                }
+            )
+        reply = await self.respond(messages, spec, metadata=metadata)
+        return decode_completion(reply, spec)
+
+    async def respond(self, messages, spec, *, metadata=None):
+        self.calls.append(
+            (len(messages), len(spec.schema["properties"]["action"]["oneOf"]))
+        )
         if not self._responses:
             raise RuntimeError("FakeProvider exhausted")
         nxt = self._responses.pop(0)
@@ -70,6 +116,34 @@ def _asst(
     )
 
 
+def _reply(
+    fields=None,
+    action=None,
+    *,
+    content="",
+    finish=FinishReason.TOOL_CALLS,
+    usage=None,
+    call_id=None,
+):
+    """Author a native TurnOutput reply; fields may be malformed for rejection tests."""
+    return _asst(
+        content=content,
+        finish=finish,
+        usage=usage,
+        tool_calls=[
+            _tc(
+                "submit_turn",
+                {
+                    "scratchpad": None,
+                    **({"summary": ""} if fields is None else fields),
+                    "action": action,
+                },
+                tcid=call_id,
+            )
+        ],
+    )
+
+
 def _tc(name: str, args: dict | None = None, *, tcid: str = None) -> ToolCall:
     return ToolCall(
         id=tcid or f"tc_{uuid.uuid4().hex[:8]}",
@@ -95,7 +169,7 @@ def _arbitration_run(
     chat, *, plugins=(), attempts=3, backoff=0.0, session=None, messages=None
 ) -> EngineRun:
     provider = FakeProvider([])
-    provider.chat = chat
+    provider.respond = chat
     run = _mk_run(
         provider,
         session=session,
@@ -128,11 +202,10 @@ def _mk_run(
     settings=None,
     deadline=None,
 ) -> EngineRun:
-    tool_schemas = tool_schemas if tool_schemas is not None else []
+    tool_schemas = tool_schemas if tool_schemas is not None else _schemas(_registry())
     run = EngineRun(
         plugins=(),
         mcp=mcp if mcp is not None else FakeMcpClient(),
-        tool_schemas=tool_schemas,
         schema_by_name=(
             schema_by_name
             if schema_by_name is not None
@@ -156,6 +229,7 @@ def _mk_run(
             session if session is not None else Session(),
             messages if messages is not None else [],
             layout_incomplete=layout_incomplete,
+            catalog=ActionCatalog.compile(tool_schemas, [], max_scratchpad=MAX_CHARS),
         )
         run.plugins = (
             PluginBinding("physiclaw.llm", source, "LLM", presentation="model"),
@@ -213,13 +287,6 @@ def _end_session_tool() -> LocalTool:
 
 def _registry() -> dict[str, LocalTool]:
     return {t.name: t for t in (_note_tool(), _peek_tool(), _end_session_tool())}
-
-
-def _schemas(registry: dict[str, LocalTool]) -> list[dict]:
-    return [
-        {"name": t.name, "description": t.description, "input_schema": t.input_schema}
-        for t in registry.values()
-    ]
 
 
 def patch_loop_tails(mocker) -> dict:

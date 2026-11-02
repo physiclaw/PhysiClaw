@@ -273,15 +273,22 @@ class DecisionCapabilities:
 
 @dataclass(frozen=True, slots=True)
 class DecisionUsage:
-    """Unknown accounting stays unknown; zero means a reported zero."""
+    """Unknown stays unknown; cache reads/writes are included in input_tokens."""
 
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cached_tokens: int | None = None
+    cache_creation_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if any(
             n is not None and (type(n) is not int or n < 0)
-            for n in (self.input_tokens, self.output_tokens)
+            for n in (
+                self.input_tokens,
+                self.output_tokens,
+                self.cached_tokens,
+                self.cache_creation_tokens,
+            )
         ):
             raise ValueError(
                 "decision token counts must be nonnegative integers or unknown"

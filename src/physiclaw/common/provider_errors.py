@@ -8,6 +8,17 @@ provider setup without importing provider implementations.
 class ProviderError(Exception):
     """Base for provider failures."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
 
 class ProviderTransientError(ProviderError):
     """Temporary transport, timeout or service failure; later calls may succeed."""

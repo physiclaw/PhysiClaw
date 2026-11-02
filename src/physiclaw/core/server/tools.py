@@ -3,9 +3,9 @@
 Mental model: **See → Act**. Take a photo, pick a bbox, do something there.
 
 Each docstring is consumed twice: the first sentence becomes the inline
-`## Tooling` card bullet (via AST parse in `src/physiclaw/agent/engine/mcp_inventory.py`),
-and the full docstring becomes the JSONSchema `description` sent over the
-native `tools=` API. So the first sentence must carry "what + when" on
+`## Tooling` card bullet from the session action catalog,
+and the full docstring becomes the JSONSchema action `description`
+inside the TurnOutput envelope. So the first sentence must carry "what + when" on
 its own; param semantics and return shape go in the body below.
 
 All tools are async — blocking hardware I/O runs in a thread pool via
@@ -13,9 +13,9 @@ asyncio.to_thread() so the event loop stays free for HTTP routes.
 
 Source order here is wire order. MCPServer registers tools in decorator-
 call order (module top-to-bottom), and the MCP `list_tools()` RPC
-replays them in that order. The engine concatenates MCP tools + local
-tools in `tool_schemas`, so the order in this file directly determines
-where each tool sits in the provider's `tools[]` array. LLMs show mild
+replays them in that order. The engine combines MCP tools with eligible
+local handlers, so this source order determines the action order in the
+TurnOutput schema and Tooling index. LLMs show mild
 position bias, so keep the most-reached-for tools (`peek`, `tap`) near
 the top and don't shuffle without reason.
 
@@ -63,9 +63,9 @@ HINT_VIEW_AFTER_LONG_PRESS = (
 )
 HINT_VIEW_AFTER_SWIPE = "— the attached view shows the page after the swipe"
 HINT_VIEW_AFTER_HOME = (
-    "— the attached view shows where you landed. App Switcher visible "
-    "(you were already home)? Tap an empty area "
-    "(bbox=[0.4, 0.9, 0.6, 0.95]) — don't call `home_screen` again"
+    "— read the attached view. Home screen visible: the gesture is complete; "
+    "no recovery action is needed. Only if App Switcher is visible, dismiss "
+    "it by tapping a visible empty area; do not repeat `home_screen`"
 )
 HINT_VIEW_AFTER_BACK = "— check the attached view: did navigation pop?"
 HINT_VIEW_AFTER_FORCE_QUIT = (

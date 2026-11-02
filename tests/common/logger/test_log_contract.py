@@ -244,6 +244,7 @@ async def test_model_failures_save_the_full_exception_chain(
     from unittest.mock import AsyncMock, MagicMock
 
     from physiclaw.agent.engine.loop import _call_producer
+    from physiclaw.agent.engine.output import ActionCatalog
     from physiclaw.agent.engine.policy import default_policies
     from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.engine.session import Session
@@ -270,24 +271,38 @@ async def test_model_failures_save_the_full_exception_chain(
         session = Session()
         run = SimpleNamespace(
             plugins=(),
-            tool_schemas=[],
             schema_by_name={},
             deadline=None,
             settings=SimpleNamespace(
-                provider_retry_attempts=2, retry_backoff_seconds=0, max_turns=300
+                provider_retry_attempts=2,
+                retry_backoff_seconds=0,
+                max_turns=300,
             ),
             policies=default_policies(layout_incomplete=False),
             rlog=MagicMock(),
             tr=MagicMock(),
         )
         provider = SimpleNamespace(
-            chat=failed_chat,
+            generate_structured=failed_chat,
+            validate_output_spec=lambda spec: None,
             serialize_history=lambda _, **kw: [],
             COLLAPSE=CollapsePolicy(first_at=100, keep=10, interval=100),
         )
         run.plugins = (
             PluginBinding(
-                "physiclaw.llm", LLMProducer(provider, run, session, []), "LLM"
+                "physiclaw.llm",
+                LLMProducer(
+                    provider,
+                    run,
+                    session,
+                    [],
+                    catalog=ActionCatalog.compile(
+                        [{"name": "peek", "input_schema": {"type": "object"}}],
+                        [],
+                        max_scratchpad=100,
+                    ),
+                ),
+                "LLM",
             ),
         )
         assert await _call_producer(run, session, 0) is None

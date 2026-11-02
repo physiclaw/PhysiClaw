@@ -9,6 +9,7 @@ import asyncio
 import base64
 import logging
 import time
+from dataclasses import asdict
 from uuid import uuid4
 
 from physiclaw.common import config
@@ -18,7 +19,7 @@ from physiclaw.common.provider_errors import (
     ProviderPermanentError,
     ProviderRequestError,
 )
-from physiclaw.contract.decision import DecisionProvider, DecisionRequest
+from physiclaw.contract.decision import DecisionProvider, DecisionRequest, DecisionUsage
 from physiclaw.contract.observation import Observation
 from physiclaw.contract.plugin import (
     DecisionProviderFactory,
@@ -272,7 +273,7 @@ class DecisionPlugin:
         event = {
             "event": "decision_call",
             **identity,
-            "usage": {"input_tokens": None, "output_tokens": None},
+            "usage": asdict(DecisionUsage()),
         }
         proposal = None
         timeout = asyncio.timeout_at(valid_until)
@@ -289,10 +290,7 @@ class DecisionPlugin:
                     if result.elapsed_seconds is not None
                     else None
                 ),
-                usage={
-                    "input_tokens": result.usage.input_tokens,
-                    "output_tokens": result.usage.output_tokens,
-                },
+                usage=asdict(result.usage),
                 answers={
                     name: {
                         "selected_id": answer.selected_id,

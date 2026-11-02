@@ -40,7 +40,11 @@ def parse_usage(value: object) -> DecisionUsage:
     def count(item: object) -> int | None:
         return item if type(item) is int and item >= 0 else None
 
+    details = value.get("input_tokens_details")
+    details = details if isinstance(details, dict) else {}
     return DecisionUsage(
         input_tokens=count(value.get("input_tokens")),
         output_tokens=count(value.get("output_tokens")),
+        cached_tokens=count(details.get("cached_tokens")),
+        cache_creation_tokens=count(details.get("cache_write_tokens")),
     )

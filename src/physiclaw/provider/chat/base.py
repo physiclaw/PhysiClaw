@@ -1,16 +1,23 @@
 """Chat interface, history/cache behavior and token accounting."""
 
+import asyncio
 import logging
 import os
 import time
+from collections.abc import Callable
+from copy import deepcopy
+from dataclasses import replace
 from typing import Any, ClassVar, Literal, Protocol
 
+from physiclaw.common.provider_errors import ProviderConfigurationError
+from physiclaw.contract.content import turn_metadata_message
 from physiclaw.contract.dto import (
     USAGE_CALL_TURN,
     AssistantMessage,
     CollapsePolicy,
     ImageBlock,
     Message,
+    OutputResultMessage,
     SystemMessage,
     Thinking,
     ToolResultMessage,
@@ -19,8 +26,9 @@ from physiclaw.contract.dto import (
     usage_event,
 )
 from physiclaw.contract.plugin import EventSink, SessionChatProvider
+from physiclaw.contract.structured import OutputSpec, StructuredCompletion
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat.wire import turn_metadata_message
+from physiclaw.provider.chat.structured import decode_completion
 from physiclaw.provider.provider_base import BaseAPIProvider
 
 log = logging.getLogger(__name__)
@@ -130,8 +138,8 @@ def _tail_anchor_indexes(results: list[tuple[int, bool]]) -> list[int]:
 class BaseChatProvider(BaseAPIProvider):
     """Chat history, cache behavior and usage accounting over the shared client.
 
-    Subclasses (`OpenAICompatibleProvider`, `AnthropicCompatibleProvider`)
-    layer wire-format and request/response flow on top.
+    HTTP and SDK subclasses add native request/response handling. Public
+    chat and structured-generation entry points share accounting here.
 
     Subclass MUST set:
       - `PROVIDER_ID` — short id, also the registry key.
@@ -142,9 +150,6 @@ class BaseChatProvider(BaseAPIProvider):
         wins). Defaults to `("<PROVIDER_ID>_API_KEY",)`. Override only
         when a vendor accepts more than one (e.g. Qwen takes both
         `QWEN_API_KEY` and `DASHSCOPE_API_KEY`).
-      - `SYSTEM_PROMPT_FRAGMENT` — per-vendor reasoning-convention
-        addendum for the system prompt (e.g. Qwen's `<think>...</think>`
-        wrapper).
 
     Subclass MAY override:
       - `_build_client()` if the wire client isn't a stock
@@ -152,8 +157,8 @@ class BaseChatProvider(BaseAPIProvider):
       - `_api_key()` if auth doesn't fit the env-var/config pattern
       - `_missing_key_message()` for a richer error string
       - `_model_env_var()` if the env override isn't `<ID>_MODEL`
-      - `chat()` and `serialize_history()` — provided by the wire-shape
-        intermediate base; vendors normally don't touch them
+      - `build_request()`, `_chat()` and `_encode_message()` for native wire
+        handling; public call entry points and history traversal stay here
 
     `BASE_URL` is overridable per-instance via `~/.physiclaw/config.toml`'s
     `[providers.<id>] base_url = "..."` so users can point at proxies
@@ -163,12 +168,9 @@ class BaseChatProvider(BaseAPIProvider):
     api_kind: ClassVar[Literal["chat"]] = "chat"
     CONTENT_TYPE = "application/json"
 
-    # Per-vendor system-prompt addendum; see `system_prompt_fragment()`.
-    SYSTEM_PROMPT_FRAGMENT: str = ""
-
     # Whether the SYSTEM prompt carries the inline `## Tooling` index card.
     # Open-weight models (Qwen, Moonshot) routinely miss tools that appear
-    # only in the native `tools=` schema, so the card is a redundant anchor
+    # only in the output schema, so the card is a redundant anchor
     # for them — default on. Vendors whose models reliably read the schema
     # set False and save the duplication (~700 tokens per request).
     INLINE_TOOL_INDEX: bool = True
@@ -197,7 +199,15 @@ class BaseChatProvider(BaseAPIProvider):
         timeout: float = 120.0,
         base_url: str | None = None,
         usage_sink: EventSink | None = None,
+        max_output_tokens: int | None = None,
     ):
+        if max_output_tokens is not None and (
+            type(max_output_tokens) is not int or max_output_tokens < 1
+        ):
+            raise ProviderConfigurationError(
+                "max_output_tokens must be a positive integer"
+            )
+        self.max_output_tokens = max_output_tokens
         # Model resolution: explicit arg → env override → empty (chat()
         # will surface a clear API error if invoked without a model).
         super().__init__(
@@ -210,18 +220,43 @@ class BaseChatProvider(BaseAPIProvider):
         # to attach it. None (a one-off CLI probe, a rehearsal) reports
         # nothing.
         self.usage_sink = usage_sink
+        self._structured_transport = self._select_output_transport()
+        self.CACHE_MARKERS = self._select_cache_markers()
+
+    def _select_cache_markers(self) -> CacheMarkers:
+        """Select this adapter/model's cache protocol once."""
+        return self.CACHE_MARKERS
+
+    def _select_output_transport(self) -> Literal["tool", "native"]:
+        """Select once for this adapter/model; never retry with another format."""
+        return "tool"
+
+    @property
+    def structured_transport(self) -> Literal["tool", "native"]:
+        return self._structured_transport
+
+    def _structured_history(
+        self, history: list[Message], spec: OutputSpec
+    ) -> list[Message]:
+        instruction = (
+            f"Return one {spec.name} JSON object matching the response schema."
+            if self.structured_transport == "native"
+            else f"Submit one {spec.name} through the {spec.function_name} function."
+        ) + " Do not include standalone prose."
+        result = list(history)
+        for i, message in enumerate(result):
+            if isinstance(message, SystemMessage):
+                result[i] = replace(
+                    message, content=message.content + "\n\n" + instruction
+                )
+                break
+        else:
+            result.insert(0, SystemMessage(instruction))
+        return result
 
     @classmethod
     def _model_env_var(cls) -> str:
         return f"{cls.PROVIDER_ID.upper()}_MODEL"
-
-    @classmethod
-    def system_prompt_fragment(cls) -> str:
-        """Per-vendor system-prompt addendum (e.g. Qwen's `<think>...</think>`
-        wrapper instructions). Default: empty. Declare
-        `SYSTEM_PROMPT_FRAGMENT` on the vendor class when the model
-        needs an explicit reasoning convention."""
-        return cls.SYSTEM_PROMPT_FRAGMENT
 
     # ---------- DTO → wire (template method, shared across wire shapes) ----------
 
@@ -239,11 +274,10 @@ class BaseChatProvider(BaseAPIProvider):
             next `drop_stale_screens` rewrite — an entry covering the
             live view dies unread the turn a new screen supersedes it),
             and the last `ToolResultMessage` overall (advances every
-            turn, so note-only stretches read for pennies; it dies on
-            the next supersede, which the pre-view anchor then backs
-            up). Models order a turn's results differently ([note,
-            view] vs [view, note]), so "before the live screen" is
-            positional, not type-based. The volatile plan/scratchpad
+            turn, including turns without a new view; it dies on the
+            next supersede, which the pre-view anchor then backs up).
+            Results may group text and images or come from ordinary
+            chat callers, so "before the live screen" is positional. The volatile plan/scratchpad
             tails are UserMessages appended after all anchors, outside
             the cached prefix.
 
@@ -252,7 +286,9 @@ class BaseChatProvider(BaseAPIProvider):
         form is for vendor-specific splits — e.g. Google's shim rejects
         `image_url` parts in `role: tool`, so `GoogleChatProvider` splits a
         ToolResultMessage with images into [text-only tool, synthetic
-        user with images]. Anthropic's `SystemMessage` returns `None`
+        user with images]. Split user messages follow the complete block
+        of tool receipts, so parallel calls stay paired. Anthropic's
+        `SystemMessage` returns `None`
         (system rides outside the messages array). Cache markers attach
         to the first entry of any split; superseded results don't carry
         images, so their list is always single-element."""
@@ -262,9 +298,14 @@ class BaseChatProvider(BaseAPIProvider):
             history = [*history, turn_metadata_message(metadata)]
         markers = self.CACHE_MARKERS
         out: list[dict] = []
+        tool_followups: list[dict] = []
         last_stub_idx: int | None = None
         results: list[tuple[int, bool]] = []  # (out index, carries image)
         for i, msg in enumerate(history):
+            is_result = isinstance(msg, (ToolResultMessage, OutputResultMessage))
+            if not is_result and tool_followups:
+                out.extend(tool_followups)
+                tool_followups.clear()
             entries = self._encode_message(msg)
             if entries is None:
                 continue
@@ -274,11 +315,14 @@ class BaseChatProvider(BaseAPIProvider):
                 continue
             if i == 0 and isinstance(msg, SystemMessage):
                 entries[0] = markers.mark_system(entries[0])
-            elif isinstance(msg, ToolResultMessage):
+            elif isinstance(msg, (ToolResultMessage, OutputResultMessage)):
                 results.append((len(out), _has_image(msg.content)))
                 if msg.is_superseded:
                     last_stub_idx = len(out)
+                tool_followups.extend(entries[1:])
+                entries = entries[:1]
             out.extend(entries)
+        out.extend(tool_followups)
         if last_stub_idx is not None:
             out[last_stub_idx] = markers.mark_stub(out[last_stub_idx])
         for idx in _tail_anchor_indexes(results):
@@ -296,6 +340,17 @@ class BaseChatProvider(BaseAPIProvider):
 
     # ---------- request flow ----------
 
+    @staticmethod
+    def _notify_request(
+        payload: dict, on_request: Callable[[dict], None] | None
+    ) -> None:
+        """Diagnostics cannot mutate or prevent the request; cancellation propagates."""
+        if on_request is not None:
+            try:
+                on_request(deepcopy(payload))
+            except Exception:
+                log.warning("provider request log failed", exc_info=True)
+
     async def chat(
         self,
         history: list[Message],
@@ -304,16 +359,13 @@ class BaseChatProvider(BaseAPIProvider):
         metadata: TurnMetadata | None = None,
         purpose: UsageCall = USAGE_CALL_TURN,
         thinking: Thinking | None = None,
+        on_request: Callable[[dict], None] | None = None,
     ) -> AssistantMessage:
-        """One model call, whatever asks for it. THE door every call
-        passes through — so the account of it (the `usage` event: model,
-        purpose, elapsed time, every token bucket, the reply's id, or the
-        error class when the call failed) is written here and cannot be
-        skipped by a caller. `purpose` names who asked (the turn loop, a
-        conductor decision, curation); `thinking` is the caller's word
-        for how much hidden thinking it wants, None for the vendor's
-        default (the vendor translates a level, see `thinking_params`);
-        the wire-shape subclass does the request in `_chat`.
+        """Ordinary chat with usage accounting, also shared by structured calls.
+
+        `purpose` identifies the caller; `thinking` requests a level of hidden
+        reasoning, or None for the vendor default. The adapter translates
+        those options and sends the request in `_chat`.
 
         Engine turns always supply metadata. Calls outside the turn loop,
         such as doctor probes and post-session curation, have none.
@@ -321,13 +373,72 @@ class BaseChatProvider(BaseAPIProvider):
         t0 = time.perf_counter()
         try:
             asst = await self._chat(
-                history, tools, metadata=metadata, thinking=thinking
+                history,
+                tools,
+                metadata=metadata,
+                thinking=thinking,
+                on_request=on_request,
             )
-        except Exception as e:
-            self._account(purpose, t0, error=type(e).__name__)
+        except (Exception, asyncio.CancelledError) as e:
+            self._account(
+                purpose, t0, getattr(e, "reply", None), error=type(e).__name__
+            )
             raise
         self._account(purpose, t0, asst)
         return asst
+
+    def validate_output_spec(
+        self, output_spec: OutputSpec, *, thinking: Thinking | None = None
+    ) -> None:
+        """Fail before HTTP when the selected adapter cannot represent this schema."""
+
+    def build_request(
+        self,
+        history: list[Message],
+        tools: list[dict],
+        *,
+        metadata: TurnMetadata | None = None,
+        thinking: Thinking | None = None,
+        output_spec: OutputSpec | None = None,
+    ) -> dict:
+        raise NotImplementedError("provider must implement request building")
+
+    async def generate_structured[T](
+        self,
+        history: list[Message],
+        output_spec: OutputSpec[T],
+        *,
+        metadata: TurnMetadata | None = None,
+        purpose: UsageCall = USAGE_CALL_TURN,
+        thinking: Thinking | None = None,
+        on_request: Callable[[dict], None] | None = None,
+    ) -> StructuredCompletion[T]:
+        self.validate_output_spec(output_spec, thinking=thinking)
+        started = time.perf_counter()
+        try:
+            reply = await self._chat(
+                history,
+                [],
+                metadata=metadata,
+                thinking=thinking,
+                output_spec=output_spec,
+                on_request=on_request,
+            )
+        except (Exception, asyncio.CancelledError) as exc:
+            self._account(
+                purpose, started, getattr(exc, "reply", None), error=type(exc).__name__
+            )
+            raise
+        result = decode_completion(
+            reply, output_spec, transport=self.structured_transport
+        )
+        self._account(
+            purpose,
+            started,
+            reply,
+            error=result.failure.kind if result.failure else None,
+        )
+        return result
 
     def _account(
         self,
@@ -371,6 +482,8 @@ class BaseChatProvider(BaseAPIProvider):
         *,
         metadata: TurnMetadata | None = None,
         thinking: Thinking | None = None,
+        output_spec: OutputSpec | None = None,
+        on_request: Callable[[dict], None] | None = None,
     ) -> AssistantMessage:
         raise NotImplementedError(
             f"{type(self).__name__} must inherit from a wire-shape base "

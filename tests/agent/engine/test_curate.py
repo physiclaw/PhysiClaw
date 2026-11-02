@@ -26,6 +26,8 @@ class _FakeProvider:
 
     async def chat(self, history, tools, **kw):
         self.calls.append(history)
+        if kw.get("on_request"):
+            kw["on_request"]({"messages": self._messages(history)})
         text = self._replies.pop(0)
         return AssistantMessage(
             content=text,
@@ -34,7 +36,7 @@ class _FakeProvider:
             raw={"choices": [{"message": {"content": text}}]},
         )
 
-    def serialize_history(self, history):
+    def _messages(self, history):
         return [
             {"role": "system" if i == 0 else "user", "content": message.content}
             for i, message in enumerate(history)
@@ -139,7 +141,8 @@ async def test_curate_saves_complete_request_and_reply_for_session_review(
     ]
     assert request["call"] == response["call"] == "curate"
     assert request["turn"] == response["turn"] == 7
-    assert request["messages"] == provider.serialize_history(provider.calls[0])
+    assert request["messages"] == provider._messages(provider.calls[0])
+    assert request["body"]["messages"] == request["messages"]
     assert response["raw"]["choices"][0]["message"]["content"] == reply
     assert response["elapsed_ms"] >= 0
     records = next(g for g in viewer.load(directory)["groups"] if g["turn"] == 7)[
@@ -155,7 +158,8 @@ async def test_failed_curate_keeps_request_and_error_in_session(caplog):
     pitfalls.add(["original lesson"])
 
     class BrokenProvider(_FakeProvider):
-        async def chat(self, *args, **kwargs):
+        async def chat(self, history, tools, **kw):
+            kw["on_request"]({"messages": self._messages(history)})
             raise RuntimeError("curation failure detail")
 
     images = Images("failed-curate")
@@ -179,10 +183,10 @@ async def test_failed_curate_keeps_request_and_error_in_session(caplog):
 async def test_curate_diagnostic_failure_cannot_prevent_consolidation(mocker):
     pitfalls.add(["original lesson"])
     raw = mocker.Mock()
-    raw.write_request.side_effect = OSError("disk full")
+    raw.write_native_request.side_effect = OSError("disk full")
     raw.write_response.side_effect = OSError("disk full")
 
     assert await curate.curate(_FakeProvider(['["kept lesson"]']), rlog=raw) is True
     assert pitfalls.read() == ["kept lesson"]
-    raw.write_request.assert_called_once()
+    raw.write_native_request.assert_called_once()
     raw.write_response.assert_called_once()

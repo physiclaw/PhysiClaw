@@ -16,6 +16,7 @@ from engine_fakes import (
     _llm,
     _mk_run,
     _registry,
+    _reply,
     _schemas,
     _settings,
     _tc,
@@ -38,7 +39,7 @@ from physiclaw.agent.engine.loop import (
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.llm import CORRECTIVE_LIMIT, _corrective_for_bad_shape
+from physiclaw.agent.llm import CORRECTIVE_LIMIT
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
 from physiclaw.agent.trace import Trace
 from physiclaw.common import config
@@ -47,10 +48,8 @@ from physiclaw.contract.dto import (
     AssistantMessage,
     CollapsePolicy,
     FinishReason,
+    OutputResultMessage,
     SystemMessage,
-    ToolCall,
-    ToolResultMessage,
-    Usage,
     UserMessage,
 )
 from physiclaw.contract.plugin import ProposedTurn
@@ -78,11 +77,9 @@ def _loop_run(provider, registry, **over) -> EngineRun:
 async def test_loop_closes_cleanly_on_end_session(patched_loop_deps) -> None:
     registry = _registry()
 
-    asst = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "closing"}),
-            _tc("end_session", {"status": DONE, "recap": "all done"}),
-        ],
+    asst = _reply(
+        {"summary": "closing"},
+        {"end_session": {"status": DONE, "recap": "all done"}},
         finish=FinishReason.TOOL_CALLS,
     )
     provider = FakeProvider([asst])
@@ -100,9 +97,10 @@ async def test_loop_closes_cleanly_on_end_session(patched_loop_deps) -> None:
     assert session.sentinel_status == DONE
     assert session.sentinel_recap == "all done"
     assert messages[-1] is asst
-    assert [event.call_id for event in session.facts.events] == [
+    assert [event.tool for event in session.facts.events] == ["note", "end_session"]
+    assert {event.call_id for event in session.facts.events}.isdisjoint(
         call.id for call in asst.tool_calls
-    ]
+    )
     assert all(not event.is_error for event in session.facts.events)
 
 
@@ -140,31 +138,20 @@ async def test_closing_a_batch_refuses_later_actions_and_preserves_receipts(
     assert [event.is_error for event in session.facts.events] == [False, True, True]
 
 
-@pytest.mark.parametrize(
-    "call, expected",
-    [
-        (_tc("note", {"summary": 42}), "expected string"),
-        (_tc("update_progress", {"user_said": "   "}), "user_said must not be blank"),
-    ],
-)
 async def test_llm_keeps_its_own_context_errors_private_and_actionable(
-    patched_loop_deps, call, expected
+    patched_loop_deps,
 ):
     registry = build_registry({})
-    companion = (
-        _tc("read_memory")
-        if call.name == "note"
-        else _tc("note", {"summary": "drafting"})
-    )
     session = Session()
+    rejected = _reply(
+        {"summary": "drafting"}, {"update_progress": {"user_said": "   "}}
+    )
     provider = FakeProvider(
         [
-            _asst(tool_calls=[companion, call]),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": IDLE}),
-                ]
+            rejected,
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": IDLE, "recap": "done"}},
             ),
         ]
     )
@@ -175,13 +162,19 @@ async def test_llm_keeps_its_own_context_errors_private_and_actionable(
     reply = next(
         message
         for message in _llm(run).messages
-        if isinstance(message, ToolResultMessage) and message.tool_call_id == call.id
+        if isinstance(message, OutputResultMessage)
     )
-    assert reply.is_error and expected in reply.content
-    shared = next(event for event in session.facts.events if event.call_id == call.id)
+    assert reply.reply.tool_calls == rejected.tool_calls
+    assert reply.is_error and "user_said must not be blank" in str(reply.content)
+    shared = next(
+        event for event in session.facts.events if event.tool == "update_progress"
+    )
     assert shared.result_text == "context update failed"
     assert shared.arguments == {}
-    assert expected not in str(session.facts.snapshot(schemas=run.schema_by_name))
+    assert "user_said must not be blank" not in str(
+        session.facts.snapshot(schemas=run.schema_by_name)
+    )
+    assert session.sentinel_status == IDLE
 
 
 @pytest.mark.asyncio
@@ -191,12 +184,7 @@ async def test_loop_skips_layout_reminder_when_complete(patched_loop_deps) -> No
     spy = patched_loop_deps["layout"]
 
     registry = _registry()
-    asst = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "x"}),
-            _tc("end_session", {"status": DONE, "recap": "done"}),
-        ]
-    )
+    asst = _reply({"summary": "x"}, {"end_session": {"status": DONE, "recap": "done"}})
     session = Session()
 
     run = _loop_run(
@@ -229,7 +217,7 @@ async def test_loop_skips_layout_reminder_when_complete(patched_loop_deps) -> No
 
 @pytest.mark.asyncio
 async def test_loop_stucks_after_consecutive_correctives(patched_loop_deps) -> None:
-    # A model that never holds the [note, one-other] shape must end
+    # A model that never emits the required submit_turn envelope must end
     # STUCK after CORRECTIVE_LIMIT consecutive correctives instead of
     # burning max_turns of round-trips.
     registry = _registry()
@@ -250,7 +238,7 @@ async def test_loop_stucks_after_consecutive_correctives(patched_loop_deps) -> N
     )
 
     assert session.sentinel_status == STUCK
-    assert "malformed turns" in session.sentinel_recap
+    assert "corrective retries exhausted" in session.sentinel_recap
     assert len(provider.calls) == CORRECTIVE_LIMIT
 
 
@@ -258,23 +246,22 @@ async def test_loop_stucks_after_consecutive_correctives(patched_loop_deps) -> N
 
 
 def _state_write_turn() -> AssistantMessage:
-    return _asst(
-        tool_calls=[
-            _tc("note", {"summary": "state saved", "scratchpad": "saved notes"}),
-            _tc(
-                "update_progress",
-                {"steps": [{"content": "old step", "status": "pending"}]},
-            ),
-        ]
+    return _reply(
+        {"summary": "state saved", "scratchpad": "saved notes"},
+        {"update_progress": {"steps": [{"content": "old step", "status": "pending"}]}},
     )
 
 
 @pytest.mark.parametrize(
-    "note_args, progress_args",
+    "note_args, progress_args, rejected_before_dispatch",
     [
-        ({"summary": "old step", "scratchpad": "x" * (scratchpad.MAX_CHARS + 1)}, {}),
-        ({"summary": 123, "scratchpad": "new notes"}, {"steps": "invalid"}),
-        ({"summary": "old step"}, {"user_said": " \t"}),
+        (
+            {"summary": "old step", "scratchpad": "x" * (scratchpad.MAX_CHARS + 1)},
+            {},
+            True,
+        ),
+        ({"summary": 123, "scratchpad": "new notes"}, {"steps": "invalid"}, True),
+        ({"summary": "old step"}, {"user_said": " \t"}, False),
         (
             {"summary": "old step"},
             {
@@ -283,28 +270,22 @@ def _state_write_turn() -> AssistantMessage:
                     {"content": "two", "status": "in_progress"},
                 ]
             },
+            False,
         ),
     ],
 )
 async def test_regression_failed_writes_do_not_replace_trajectory_history(
-    note_args, progress_args, monkeypatch
+    note_args, progress_args, rejected_before_dispatch, monkeypatch
 ) -> None:
     monkeypatch.setattr(config.CONFIG.pitfalls, "enabled", True)
     registry = build_registry({})
     provider = FakeProvider(
         [
             _state_write_turn(),
-            _asst(
-                tool_calls=[
-                    _tc("note", note_args),
-                    _tc("update_progress", progress_args),
-                ]
-            ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply(note_args, {"update_progress": progress_args}),
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -318,7 +299,18 @@ async def test_regression_failed_writes_do_not_replace_trajectory_history(
     assert session.sentinel_status == DONE
     assert session.plan_log == [(0, session.plan.snapshot())]
     assert session.scratchpad_log == [(0, "saved notes")]
-    assert any(isinstance(m, ToolResultMessage) and m.is_error for m in messages)
+    assert (
+        any(
+            isinstance(m, UserMessage)
+            and "TurnOutput rejected before execution" in str(m.content)
+            for m in messages
+        )
+        is rejected_before_dispatch
+    )
+    assert sum(
+        isinstance(m, OutputResultMessage) and m.is_error for m in messages
+    ) == int(not rejected_before_dispatch)
+    assert len(session.facts.events) == 4 + 2 * int(not rejected_before_dispatch)
 
 
 async def test_loop_records_successful_rewrites_even_when_content_is_unchanged(
@@ -330,11 +322,9 @@ async def test_loop_records_successful_rewrites_even_when_content_is_unchanged(
         [
             _state_write_turn(),
             _state_write_turn(),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -355,29 +345,20 @@ async def test_regression_blank_memory_save_keeps_close_checkpoint_active(
     registry = build_registry({})
     provider = FakeProvider(
         [
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "remember: use metric units"}),
-                    _tc("save_memory", {"text": " \n"}),
-                ]
+            _reply(
+                {"summary": "remember: use metric units"},
+                {"save_memory": {"text": " \n"}},
             ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "premature"}),
-                ]
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "premature"}},
             ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "saving"}),
-                    _tc("save_memory", {"text": "use metric units"}),
-                ]
+            _reply(
+                {"summary": "saving"}, {"save_memory": {"text": "use metric units"}}
             ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "saved"}),
-                ]
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "saved"}},
             ),
         ]
     )
@@ -410,9 +391,9 @@ class CheckpointProvider(FakeProvider):
         super().__init__(responses)
         self.requests: list[list] = []
 
-    async def chat(self, messages, tools, *, metadata=None):
+    async def respond(self, messages, tools, *, metadata=None):
         self.requests.append(list(messages))
-        return await super().chat(messages, tools, metadata=metadata)
+        return await super().respond(messages, tools, metadata=metadata)
 
 
 def _scaffold_messages() -> list:
@@ -459,22 +440,15 @@ async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
     registry = build_registry({}) | {"peek": _registry()["peek"]}
     provider = CheckpointProvider(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
-            _asst(tool_calls=[_tc("note", arguments), _tc("peek")]),
-            _asst(
-                tool_calls=[
-                    _tc(
-                        "note",
-                        {"summary": "checkpoint", "scratchpad": "checkpoint=updated"},
-                    ),
-                    _tc("peek"),
-                ]
+            _reply({"summary": "evidence"}, {"peek": {}}),
+            _reply(arguments, {"peek": {}}),
+            _reply(
+                {"summary": "checkpoint", "scratchpad": "checkpoint=updated"},
+                {"peek": {}},
             ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -486,7 +460,7 @@ async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
-    assert "Re-issue the SAME turn" in _req_texts(provider.requests[2])
+    assert "TurnOutput rejected before execution" in _req_texts(provider.requests[2])
     assert provider.requests[2][2].content == compact_mod.SUMMARY_INITIAL
     assert (
         provider.requests[3][2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
@@ -497,7 +471,7 @@ async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
     assert session.scratchpad == "checkpoint=updated"
 
 
-async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() -> None:
+async def test_checkpoint_repeated_oversize_output_never_executes_or_folds() -> None:
     registry = build_registry({}) | {"peek": _registry()["peek"]}
     oversized = {
         "summary": "checkpoint",
@@ -505,14 +479,12 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
     }
     provider = CheckpointProvider(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
-            _asst(tool_calls=[_tc("note", oversized), _tc("peek")]),
-            _asst(tool_calls=[_tc("note", oversized), _tc("peek")]),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply({"summary": "evidence"}, {"peek": {}}),
+            _reply(oversized, {"peek": {}}),
+            _reply(oversized, {"peek": {}}),
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -524,15 +496,15 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
-    assert "Re-issue the SAME turn" in _req_texts(provider.requests[2])
+    assert "TurnOutput rejected before execution" in _req_texts(provider.requests[2])
+    assert provider.requests[3][2].content == compact_mod.SUMMARY_INITIAL
+    assert [e.tool for e in session.facts.events if e.tool != "note"] == [
+        "peek",
+        "end_session",
+    ]
     assert (
-        provider.requests[3][2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
-    )
-    assert any(
-        isinstance(m, ToolResultMessage)
-        and m.is_error
-        and "Summarize before writing" in m.content
-        for m in provider.requests[3]
+        _req_texts(provider.requests[3]).count("TurnOutput rejected before execution")
+        == 2
     )
     assert session.scratchpad == "previous"
 
@@ -541,30 +513,18 @@ async def test_regression_checkpoint_repeated_oversize_note_fails_open_once() ->
     "arguments",
     [{"_raw": 123}, {"_raw": ["bad"]}, {"summary": 123}, {"summary": {"bad": "value"}}],
 )
-async def test_regression_loop_compacts_rejected_note_without_crashing(
+async def test_rejected_summary_never_enters_compaction_history(
     arguments,
 ) -> None:
     registry = build_registry({}) | {"peek": _registry()["peek"]}
     provider = CheckpointProvider(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "evidence"}), _tc("peek")]),
-            _asst(
-                tool_calls=[
-                    ToolCall(id="invalid-note", name="note", arguments=arguments),
-                    _tc("peek"),
-                ]
-            ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "checkpoint", "scratchpad": "saved"}),
-                    _tc("peek"),
-                ]
-            ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply({"summary": "evidence"}, {"peek": {}}),
+            _reply(arguments, {"peek": {}}),
+            _reply({"summary": "checkpoint", "scratchpad": "saved"}, {"peek": {}}),
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -578,13 +538,16 @@ async def test_regression_loop_compacts_rejected_note_without_crashing(
 
     assert session.sentinel_status == DONE
     assert len(provider.requests) == 4
-    assert any(
-        isinstance(m, ToolResultMessage)
-        and m.tool_call_id == "invalid-note"
-        and m.is_error
-        for m in provider.requests[2]
+    assert "TurnOutput rejected before execution" in _req_texts(provider.requests[2])
+    assert not any(
+        isinstance(m, OutputResultMessage) and m.is_error for m in provider.requests[2]
     )
-    assert messages[2].content == f"{compact_mod.SUMMARY_HEADER}\n- evidence"
+    assert messages[2].content == compact_mod.SUMMARY_INITIAL
+    assert [e.tool for e in session.facts.events if e.tool != "note"] == [
+        "peek",
+        "peek",
+        "end_session",
+    ]
     assert session.scratchpad == "saved"
 
 
@@ -595,19 +558,12 @@ async def test_checkpoint_requires_scratchpad_then_collapses() -> None:
     # and the collapse folds turn 0 to its summary line.
     provider, session, messages = await _run_checkpoint_session(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "a"}), _tc("peek")]),
-            _asst(tool_calls=[_tc("note", {"summary": "b"}), _tc("peek")]),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "b", "scratchpad": "cart=3; addr saved"}),
-                    _tc("peek"),
-                ]
-            ),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply({"summary": "a"}, {"peek": {}}),
+            _reply({"summary": "b"}, {"peek": {}}),
+            _reply({"summary": "b", "scratchpad": "cart=3; addr saved"}, {"peek": {}}),
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -634,16 +590,12 @@ async def test_checkpoint_fails_open_when_reminder_ignored() -> None:
     # alone rather than stalling the session.
     provider, session, messages = await _run_checkpoint_session(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "a"}), _tc("peek")]),
-            _asst(tool_calls=[_tc("note", {"summary": "b"}), _tc("peek")]),
-            _asst(
-                tool_calls=[_tc("note", {"summary": "b"}), _tc("peek")]
-            ),  # still none
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply({"summary": "a"}, {"peek": {}}),
+            _reply({"summary": "b"}, {"peek": {}}),
+            _reply({"summary": "b"}, {"peek": {}}),  # still none
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -666,7 +618,7 @@ async def test_checkpoint_corrective_renews_per_collapse_event() -> None:
         COLLAPSE = CollapsePolicy(first_at=2, keep=1, interval=1)
 
     def _plain_turn():
-        return _asst(tool_calls=[_tc("note", {"summary": "s"}), _tc("peek")])
+        return _reply({"summary": "s"}, {"peek": {}})
 
     provider, session, _ = await _run_checkpoint_session(
         [
@@ -675,11 +627,9 @@ async def test_checkpoint_corrective_renews_per_collapse_event() -> None:
             _plain_turn(),  # t1 retry: fail open → collapse #1
             _plain_turn(),  # t2: pending again → corrective #2
             _plain_turn(),  # t2 retry: fail open → collapse #2
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),  # t3: pending but end_session-exempt
         ],
         provider_cls=TightProvider,
@@ -698,12 +648,10 @@ async def test_checkpoint_skipped_on_end_session_turn() -> None:
     # Closing on the checkpoint turn: nothing to preserve — no corrective.
     provider, session, _ = await _run_checkpoint_session(
         [
-            _asst(tool_calls=[_tc("note", {"summary": "a"}), _tc("peek")]),
-            _asst(
-                tool_calls=[
-                    _tc("note", {"summary": "closing"}),
-                    _tc("end_session", {"status": DONE, "recap": "done"}),
-                ]
+            _reply({"summary": "a"}, {"peek": {}}),
+            _reply(
+                {"summary": "closing"},
+                {"end_session": {"status": DONE, "recap": "done"}},
             ),
         ]
     )
@@ -719,12 +667,7 @@ async def test_loop_corrective_counter_resets_on_good_turn(patched_loop_deps) ->
     registry = _registry()
 
     def good(i):
-        return _asst(
-            tool_calls=[
-                _tc("note", {"summary": f"turn {i}"}),
-                _tc("peek"),
-            ]
-        )
+        return _reply({"summary": f"turn {i}"}, {"peek": {}})
 
     responses = []
     for i in range(CORRECTIVE_LIMIT - 1):
@@ -733,12 +676,7 @@ async def test_loop_corrective_counter_resets_on_good_turn(patched_loop_deps) ->
     for i in range(CORRECTIVE_LIMIT - 1):
         responses.append(_asst(tool_calls=[_tc("peek")]))  # bad again
     responses.append(
-        _asst(
-            tool_calls=[
-                _tc("note", {"summary": "closing"}),
-                _tc("end_session", {"status": DONE, "recap": "ok"}),
-            ]
-        )
+        _reply({"summary": "closing"}, {"end_session": {"status": DONE, "recap": "ok"}})
     )
     provider = FakeProvider(responses)
     session = Session()
@@ -773,7 +711,7 @@ async def test_loop_routes_content_filter_to_fail(patched_loop_deps) -> None:
     )
 
     assert session.sentinel_status == FAIL
-    assert "content filter" in session.sentinel_recap
+    assert "refused" in session.sentinel_recap
 
 
 @pytest.mark.asyncio
@@ -798,11 +736,8 @@ async def test_loop_provider_failure_marks_stuck(patched_loop_deps) -> None:
 async def test_loop_no_tool_calls_injects_corrective(patched_loop_deps) -> None:
     registry = _registry()
     asst_no_calls = _asst(content="just talking")
-    asst_close = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "x"}),
-            _tc("end_session", {"status": IDLE, "recap": "nothing"}),
-        ]
+    asst_close = _reply(
+        {"summary": "x"}, {"end_session": {"status": IDLE, "recap": "nothing"}}
     )
     provider = FakeProvider([asst_no_calls, asst_close])
     session = Session()
@@ -815,24 +750,30 @@ async def test_loop_no_tool_calls_injects_corrective(patched_loop_deps) -> None:
     correctives = [
         m
         for m in messages
-        if isinstance(m, UserMessage) and "no tool_calls" in str(m.content)
+        if isinstance(m, UserMessage)
+        and "Expected exactly one output function call" in str(m.content)
     ]
     assert len(correctives) == 1
     assert session.sentinel_status == IDLE
 
 
-@pytest.mark.asyncio
-async def test_loop_bad_turn_shape_injects_corrective(
+@pytest.mark.parametrize(
+    "calls",
+    [
+        [_tc("peek")],
+        [
+            _tc("note", {"summary": "legacy", "scratchpad": "must not save"}),
+            _tc("peek"),
+        ],
+    ],
+)
+async def test_loop_legacy_tool_calls_are_rejected_without_execution(
     patched_loop_deps,
+    calls,
 ) -> None:
     registry = _registry()
-    bad = _asst(tool_calls=[_tc("peek")])
-    good = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "y"}),
-            _tc("end_session", {"status": DONE, "recap": "ok"}),
-        ]
-    )
+    bad = _asst(tool_calls=calls)
+    good = _reply({"summary": "y"}, {"end_session": {"status": DONE, "recap": "ok"}})
     provider = FakeProvider([bad, good])
     session = Session()
     messages: list = [SystemMessage(content="s")]
@@ -844,18 +785,19 @@ async def test_loop_bad_turn_shape_injects_corrective(
     correctives = [
         m
         for m in messages
-        if isinstance(m, UserMessage) and "without `note`" in str(m.content)
+        if isinstance(m, UserMessage)
+        and "TurnOutput rejected before execution" in str(m.content)
     ]
     assert len(correctives) == 1
     assert session.sentinel_status == DONE
+    assert session.scratchpad == ""
+    assert [e.tool for e in session.facts.events] == ["note", "end_session"]
 
 
 @pytest.mark.asyncio
 async def test_loop_max_turns_marks_stuck(patched_loop_deps) -> None:
     registry = _registry()
-    provider = FakeProvider(
-        [_asst(tool_calls=[_tc("note"), _tc("peek")]) for _ in range(2)]
-    )
+    provider = FakeProvider([_reply(None, {"peek": {}}) for _ in range(2)])
     session = Session()
 
     run = _loop_run(
@@ -875,16 +817,16 @@ async def test_loop_max_turns_marks_stuck(patched_loop_deps) -> None:
 
 
 @pytest.mark.asyncio
-async def test_loop_finish_length_logs_warning(patched_loop_deps) -> None:
+async def test_loop_truncated_output_is_rejected_before_execution(
+    patched_loop_deps,
+) -> None:
     registry = _registry()
-    asst = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "x"}),
-            _tc("end_session", {"status": DONE, "recap": "ok"}),
-        ],
+    asst = _reply(
+        {"summary": "x"},
+        {"end_session": {"status": DONE, "recap": "ok"}},
         finish=FinishReason.LENGTH,
     )
-    provider = FakeProvider([asst])
+    provider = FakeProvider([asst, _close(DONE)])
     session = Session()
     tr = MagicMock()
 
@@ -900,8 +842,16 @@ async def test_loop_finish_length_logs_warning(patched_loop_deps) -> None:
         session,
     )
 
-    events = [c.args[0].get("event") for c in tr.write.call_args_list]
-    assert "finish_length_warning" in events
+    rejected = [
+        c.args[0]
+        for c in tr.write.call_args_list
+        if c.args[0].get("event") == "bad_turn_shape"
+    ]
+    assert len(rejected) == 1 and rejected[0]["failure_kind"] == "truncation"
+    assert session.sentinel_status == "FAIL"
+    assert "provider_max_output_tokens" in session.sentinel_recap
+    assert session.facts.events == []
+    assert len(provider.calls) == 1
 
 
 # ---------- pre-close pitfalls gate ----------
@@ -914,20 +864,14 @@ def _registry_with_pitfall() -> dict[str, LocalTool]:
 
 
 def _close(status: str) -> AssistantMessage:
-    return _asst(
-        tool_calls=[
-            _tc("note", {"summary": "closing"}),
-            _tc("end_session", {"status": status, "recap": "r"}),
-        ]
+    return _reply(
+        {"summary": "closing"}, {"end_session": {"status": status, "recap": "r"}}
     )
 
 
 def _pitfall_asst() -> AssistantMessage:
-    return _asst(
-        tool_calls=[
-            _tc("note", {"summary": "banking traps"}),
-            _tc("add_pitfall", {"items": ["京东: avoid Ai搜索"]}),
-        ]
+    return _reply(
+        {"summary": "banking traps"}, {"add_pitfall": {"items": ["京东: avoid Ai搜索"]}}
     )
 
 
@@ -1099,12 +1043,7 @@ def _registry_with_save() -> dict[str, LocalTool]:
 def _note(
     summary: str, other_name: str, other_args: dict | None = None
 ) -> AssistantMessage:
-    return _asst(
-        tool_calls=[
-            _tc("note", {"summary": summary}),
-            _tc(other_name, other_args or {}),
-        ]
-    )
+    return _reply({"summary": summary}, {other_name: other_args or {}})
 
 
 def _memory_correctives(messages) -> list:
@@ -1206,7 +1145,7 @@ def budget_clock():
 @pytest.fixture(params=["provider", "plugin", "local", "mcp"])
 def stalled_run(request, mocker, patched_loop_deps, budget_clock):
     registry = _registry()
-    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    provider = FakeProvider([_reply(None, {"peek": {}})])
     run = _loop_run(
         provider,
         registry,
@@ -1223,7 +1162,7 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
 
     call = mocker.AsyncMock(side_effect=stall)
     if request.param == "provider":
-        run.plugins[-1].plugin.provider.chat = call
+        run.plugins[-1].plugin.provider.respond = call
     elif request.param == "plugin":
         run.plugins = (
             PluginBinding("stalled", SimpleNamespace(advance=call), name="test"),
@@ -1278,7 +1217,7 @@ def expired_before_action(request, mocker, patched_loop_deps, budget_clock):
     registry = _registry()
     end = mocker.AsyncMock(wraps=registry["end_session"].handler)
     registry["end_session"] = replace(registry["end_session"], handler=end)
-    reply = _asst(tool_calls=[_tc("note"), _tc("end_session", {"status": DONE})])
+    reply = _reply(None, {"end_session": {"status": DONE}})
     run = _loop_run(
         FakeProvider([reply]),
         registry,
@@ -1290,7 +1229,7 @@ def expired_before_action(request, mocker, patched_loop_deps, budget_clock):
         return reply if request.param == "provider" else "noted"
 
     if request.param == "provider":
-        run.plugins[-1].plugin.provider.chat = slow_call
+        run.plugins[-1].plugin.provider.respond = slow_call
     else:
         registry["note"] = replace(registry["note"], handler=slow_call)
     return run, end
@@ -1320,7 +1259,7 @@ async def test_budget_does_not_swallow_external_cancellation(
         session=session,
         messages=[],
     )
-    run.plugins[-1].plugin.provider.chat = mocker.AsyncMock(
+    run.plugins[-1].plugin.provider.respond = mocker.AsyncMock(
         side_effect=asyncio.CancelledError("external stop")
     )
 
@@ -1335,7 +1274,7 @@ async def test_budget_does_not_mislabel_an_unrelated_timeout(
 ):
     session = Session()
     run = _loop_run(
-        FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])]),
+        FakeProvider([_reply(None, {"peek": {}})]),
         _registry(),
         deadline=time.monotonic() + 10,
         session=session,
@@ -1364,7 +1303,7 @@ async def test_budget_on_last_tool_of_last_turn_is_not_retryable(
         return "peeked"
 
     registry["peek"] = replace(registry["peek"], handler=peek)
-    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    provider = FakeProvider([_reply(None, {"peek": {}})])
     session = Session()
     run = _loop_run(
         provider,
@@ -1392,7 +1331,7 @@ async def test_budget_does_not_overwrite_a_completed_outcome(
         return "done"
 
     registry["end_session"] = replace(registry["end_session"], handler=finish)
-    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("end_session")])])
+    provider = FakeProvider([_reply(None, {"end_session": {}})])
     session = Session()
     run = _loop_run(
         provider, registry, deadline=time.monotonic() + 1, session=session, messages=[]
@@ -1407,7 +1346,7 @@ async def test_budget_does_not_overwrite_a_completed_outcome(
 async def test_budget_trace_records_the_interrupted_turn(
     patched_loop_deps, budget_clock
 ):
-    provider = FakeProvider([_asst(tool_calls=[_tc("note"), _tc("peek")])])
+    provider = FakeProvider([_reply(None, {"peek": {}})])
     session = Session()
     run = _loop_run(
         provider,
@@ -1420,14 +1359,14 @@ async def test_budget_trace_records_the_interrupted_turn(
     async def stall(*args):
         await asyncio.Event().wait()
 
-    original_chat = provider.chat
+    original_chat = provider.respond
 
     async def chat(messages, tools, *, metadata):
         if provider.calls:
             return await stall()
         return await original_chat(messages, tools, metadata=metadata)
 
-    run.plugins[-1].plugin.provider.chat = chat
+    run.plugins[-1].plugin.provider.respond = chat
 
     await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
 
@@ -1515,24 +1454,26 @@ def test_log_external_stop_never_raises(mem_paths, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_advance_returns_immediately_on_success(mocker) -> None:
-    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
+    asst = _reply(None, {"peek": {}}, content="ok")
     chat = mocker.AsyncMock(return_value=asst)
 
     out = await _advance(_arbitration_run(chat), Session(), _turn_metadata())
 
-    assert out.message is asst
+    assert out.message.tool_names() == ["note", "peek"]
+    assert out.message.tool_calls[1].arguments == {}
     assert chat.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_advance_retries_then_succeeds(mocker) -> None:
     mocker.patch("asyncio.sleep")
-    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
+    asst = _reply(None, {"peek": {}}, content="ok")
     chat = mocker.AsyncMock(side_effect=[ProviderTransientError("transient"), asst])
 
     out = await _advance(_arbitration_run(chat), Session(), _turn_metadata())
 
-    assert out.message is asst
+    assert out.message.tool_names() == ["note", "peek"]
+    assert out.message.tool_calls[1].arguments == {}
     assert chat.await_count == 2
 
 
@@ -1604,7 +1545,7 @@ async def test_plugin_pass_and_crash_both_fall_through_to_the_provider(
     passing.advance = mocker.AsyncMock(return_value=None)
     crashing = mocker.MagicMock()
     crashing.advance = mocker.AsyncMock(side_effect=RuntimeError("plugin bug"))
-    asst = _asst(content="ok", tool_calls=[_tc("note"), _tc("peek")])
+    asst = _reply(None, {"peek": {}}, content="ok")
     chat = mocker.AsyncMock(return_value=asst)
 
     out = await _advance(
@@ -1619,7 +1560,8 @@ async def test_plugin_pass_and_crash_both_fall_through_to_the_provider(
         _turn_metadata(),
     )
 
-    assert out.message is asst
+    assert out.message.tool_names() == ["note", "peek"]
+    assert out.message.tool_calls[1].arguments == {}
     assert passing.advance.await_count == 1
     assert crashing.advance.await_count == 1
 
@@ -1639,20 +1581,14 @@ async def test_call_producer_response_event_carries_elapsed_ms(
     trace_stub,
 ) -> None:
     # Producer selection latency remains available independently of API timing.
-    asst = AssistantMessage(
-        content="",
-        tool_calls=[_tc("note"), _tc("peek")],
-        finish_reason=FinishReason.TOOL_CALLS,
-        usage=Usage(),
-    )
-    provider = mocker.MagicMock()
-    provider.chat = mocker.AsyncMock(return_value=asst)
+    asst = _reply(None, {"peek": {}})
+    provider = FakeProvider([asst])
     rlog = mocker.MagicMock()
     run = _mk_run(provider=provider, tr=trace_stub, rlog=rlog)
 
     out = await _call_producer(run, Session(), turn=0)
 
-    assert out.message == asst
+    assert out.message.tool_names() == ["note", "peek"]
     response_event = next(
         c.args[0]
         for c in trace_stub.write.call_args_list
@@ -1661,49 +1597,6 @@ async def test_call_producer_response_event_carries_elapsed_ms(
     assert isinstance(response_event["elapsed_ms"], int)
     # RawLog got the same number.
     assert isinstance(rlog.write_response.call_args.kwargs["elapsed_ms"], int)
-
-
-# ---------- _corrective_for_bad_shape ----------
-
-
-def test_corrective_for_action_without_note() -> None:
-    out = _corrective_for_bad_shape(["peek"])
-
-    assert "called `peek` without `note`" in out
-    assert "[note(summary=...), peek(...)]" in out
-
-
-def test_corrective_for_action_without_note_with_extras() -> None:
-    out = _corrective_for_bad_shape(["peek", "tap"])
-
-    assert "without `note`" in out
-    assert "too many action tools" in out
-    assert "['tap']" in out
-
-
-def test_corrective_for_note_alone() -> None:
-    out = _corrective_for_bad_shape(["note"])
-
-    assert "`note` alone with no action tool" in out
-    assert "peek()" in out  # default suggestion
-
-
-def test_corrective_for_note_with_too_many_actions() -> None:
-    out = _corrective_for_bad_shape(["note", "peek", "tap"])
-
-    assert "`note` plus 2 action tools" in out
-
-
-def test_corrective_for_multiple_notes() -> None:
-    out = _corrective_for_bad_shape(["note", "note"])
-
-    assert "called `note` 2 times" in out
-
-
-def test_corrective_for_three_notes() -> None:
-    out = _corrective_for_bad_shape(["note", "note", "note"])
-
-    assert "called `note` 3 times" in out
 
 
 # ---------- synthesized turns (conductor legs) ----------
@@ -1741,11 +1634,8 @@ async def test_plugin_turn_skips_model_gates_and_binds_dispatch(
     synthesized = _asst(
         tool_calls=[_tc("note", {"summary": "conductor"}), _tc("peek")],
     )
-    closing = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "done"}),
-            _tc("end_session", {"status": DONE, "recap": "ok"}),
-        ],
+    closing = _reply(
+        {"summary": "done"}, {"end_session": {"status": DONE, "recap": "ok"}}
     )
     provider = FakeProvider([closing])
     policies = policy_mod.Policies(
@@ -1784,11 +1674,8 @@ async def test_producer_trace_and_model_wire_log_are_separate(
 ) -> None:
     registry = _registry()
     synthesized = _asst(tool_calls=[_tc("note", {"summary": "c"}), _tc("peek")])
-    closing = _asst(
-        tool_calls=[
-            _tc("note", {"summary": "done"}),
-            _tc("end_session", {"status": DONE, "recap": "ok"}),
-        ],
+    closing = _reply(
+        {"summary": "done"}, {"end_session": {"status": DONE, "recap": "ok"}}
     )
     provider = FakeProvider([closing])
     tr, rlog = MagicMock(), MagicMock()
@@ -1811,7 +1698,7 @@ async def test_producer_trace_and_model_wire_log_are_separate(
     )
     await drive(run, session)
 
-    rlog.write_request.assert_called_once()
+    rlog.write_native_request.assert_called_once()
     rlog.write_response.assert_called_once()
     assert rlog.write_response.call_args.args[1] == closing.raw
     response_events = [

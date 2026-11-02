@@ -263,6 +263,8 @@ def usage_rows(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 call="decision",
                 input=usage.get("input_tokens"),
                 output=usage.get("output_tokens"),
+                cache_read=usage.get("cached_tokens"),
+                cache_write=usage.get("cache_creation_tokens"),
                 usage_missing=False,
             )
         else:

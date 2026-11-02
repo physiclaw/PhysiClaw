@@ -64,7 +64,10 @@ def test_logs_reads_and_exports_complete_session_after_service_rotation(
             {"event": "wake", "session": sid, "model_ref": "test/model", "triggers": []}
         )
         raw.write_session_start(
-            provider="test", model="model", prompt_hash="hash", tools=[{"name": "peek"}]
+            provider="test",
+            model="model",
+            prompt_hash="hash",
+            output_schema={"type": "object"},
         )
         trace.write({"event": "request", "turn": 0, "message_count": 1})
         raw.write_request(0, [{"role": "system", "content": prompt}])
