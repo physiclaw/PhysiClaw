@@ -305,6 +305,10 @@ async def test_unreplayable_requests_fail_before_any_api_call(tmp_path, mocker, 
     factory.assert_not_called()
 
 
+# OpenCV's config loader uses a default encoding when the real schemas import it.
+@pytest.mark.filterwarnings(
+    r"ignore:'encoding' argument not specified:EncodingWarning:^cv2\.load_config_py3$"
+)
 def test_catalog_reconstruction_preserves_full_runtime_schema(tmp_path, mcp_schemas):
     catalog = ActionCatalog.compile(mcp_schemas, [], max_scratchpad=8000)
     write_case(tmp_path, request_fixture(), request_fixture(), catalog=catalog)
