@@ -35,6 +35,10 @@ _EXPLICIT_CACHE_MODELS = _LOW_MODELS | {"gpt-6-sol", "gpt-6-luna", "gpt-6.1-terr
 class OpenAIPromptCacheMarkers(CacheMarkers):
     """Pin the stable system and compacted feedback prefixes."""
 
+    # Explicit lookup needs the previous boundary present in the new request.
+    # Keep it alongside the newest stub; never pay to cache the volatile view.
+    stub_count = 2
+
     def mark_system(self, entry: dict) -> dict:
         field = "output" if entry.get("type") == "function_call_output" else "content"
         blocks = entry[field]

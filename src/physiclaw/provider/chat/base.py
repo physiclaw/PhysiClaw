@@ -75,26 +75,15 @@ EPHEMERAL_CACHE_CONTROL = {"type": "ephemeral"}
 
 
 class CacheMarkers:
-    """Wire-shape cache-marker mechanics — *how* a `cache_control`
-    attaches to a wire entry. The `serialize_history` template owns
-    *where* markers go (system entry at index 0, latest superseded
-    tool_result, and the two moving tail anchors around the live
-    screen); each wire shape ships one `CacheMarkers` subclass saying
-    how its entries carry the marker, and a provider picks its factory
-    once via the `CACHE_MARKERS` class attribute.
+    """Provider-owned marker shapes and retained stub count.
 
-    All hooks return a marked shallow copy; caller-held dicts are
-    never mutated. Defaults are identity, which makes the base the
-    null object — a provider that must not mark declares
-    `NO_CACHE_MARKERS` (e.g. Google, whose shim ignores the field and
-    whose implicit cache the on/off wrapping would perturb) — and lets
-    a shape override only the placements its cache semantics actually
-    reward (Anthropic marks system on the top-level `system` payload
-    field in `chat()`, not on a messages entry, and is the only shape
-    that needs `mark_tail` — its cache stops at explicit breakpoints,
-    while the OpenAI-shape vendors extend over stable prefixes on
-    their own).
+    History traversal supplies the system, superseded results and tail
+    anchors. Providers mark only the placements their cache rewards.
+    Hooks return shallow copies without mutating caller-owned entries;
+    identity defaults disable marking for automatic-cache providers.
     """
+
+    stub_count: int = 1
 
     def mark_system(self, entry: dict) -> dict:
         return entry
@@ -263,35 +252,18 @@ class BaseChatProvider(BaseAPIProvider):
     def serialize_history(
         self, history: list[Message], *, metadata: TurnMetadata | None = None
     ) -> list[dict]:
-        """Single-pass DTO history → provider wire-format messages, with
-        cache markers attached (via the `CACHE_MARKERS` factory; the
-        default `NO_CACHE_MARKERS` is identity) to:
-          - the `SystemMessage` at index 0,
-          - the latest `ToolResultMessage` flagged `is_superseded`, and
-          - two moving tail anchors (both via `mark_tail`, deduped, so
-            at most 4 breakpoints total): the last `ToolResultMessage`
-            BEFORE the live screen (the deepest point that survives the
-            next `drop_stale_screens` rewrite — an entry covering the
-            live view dies unread the turn a new screen supersedes it),
-            and the last `ToolResultMessage` overall (advances every
-            turn, including turns without a new view; it dies on the
-            next supersede, which the pre-view anchor then backs up).
-            Results may group text and images or come from ordinary
-            chat callers, so "before the live screen" is positional. The volatile plan/scratchpad
-            tails are UserMessages appended after all anchors, outside
-            the cached prefix.
+        """Serialize history and apply the provider's cache policy.
 
-        Subclasses implement `_encode_message` (DTO → wire dict, list of
-        wire dicts, or `None` to skip). Most encodings are 1:1; the list
-        form is for vendor-specific splits — e.g. Google's shim rejects
-        `image_url` parts in `role: tool`, so `GoogleChatProvider` splits a
-        ToolResultMessage with images into [text-only tool, synthetic
-        user with images]. Split user messages follow the complete block
-        of tool receipts, so parallel calls stay paired. Anthropic's
-        `SystemMessage` returns `None`
-        (system rides outside the messages array). Cache markers attach
-        to the first entry of any split; superseded results don't carry
-        images, so their list is always single-element."""
+        Candidates are the leading system message, latest `stub_count`
+        superseded results, and tail anchors around the live screen.
+        Provider hooks choose which candidates to mark; volatile user
+        tails and host metadata follow the anchors.
+
+        Encoders may return one entry, several entries, or None to skip
+        a message. Split results keep all receipts ahead of their image
+        followups so parallel calls stay paired. Markers attach to the
+        first entry; superseded results contain no images.
+        """
         if metadata is not None:
             # A fresh tail keeps producer metadata visible to the model without
             # mutating its conversation or importing another producer's context.
@@ -299,7 +271,7 @@ class BaseChatProvider(BaseAPIProvider):
         markers = self.CACHE_MARKERS
         out: list[dict] = []
         tool_followups: list[dict] = []
-        last_stub_idx: int | None = None
+        stub_indexes: list[int] = []
         results: list[tuple[int, bool]] = []  # (out index, carries image)
         for i, msg in enumerate(history):
             is_result = isinstance(msg, (ToolResultMessage, OutputResultMessage))
@@ -318,15 +290,16 @@ class BaseChatProvider(BaseAPIProvider):
             elif isinstance(msg, (ToolResultMessage, OutputResultMessage)):
                 results.append((len(out), _has_image(msg.content)))
                 if msg.is_superseded:
-                    last_stub_idx = len(out)
+                    stub_indexes.append(len(out))
                 tool_followups.extend(entries[1:])
                 entries = entries[:1]
             out.extend(entries)
         out.extend(tool_followups)
-        if last_stub_idx is not None:
-            out[last_stub_idx] = markers.mark_stub(out[last_stub_idx])
+        marked_stubs = stub_indexes[-markers.stub_count :]
+        for idx in marked_stubs:
+            out[idx] = markers.mark_stub(out[idx])
         for idx in _tail_anchor_indexes(results):
-            if idx != last_stub_idx:
+            if idx not in marked_stubs:
                 out[idx] = markers.mark_tail(out[idx])
         return out
 

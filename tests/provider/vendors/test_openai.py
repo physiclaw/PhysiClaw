@@ -11,7 +11,6 @@ import httpx
 import pytest
 
 from physiclaw.contract.dto import (
-    AssistantMessage,
     FinishReason,
     ImageBlock,
     OutputResultMessage,
@@ -169,24 +168,100 @@ async def test_native_output_keeps_prefix_stable_and_options_call_local(respx_mo
     assert "JSON object" not in json.dumps(ordinary)
 
 
-def test_native_compacted_feedback_survives_moving_cache_marker():
-    provider = OpenAIChatProvider(model="gpt-6.1-sol")
-    reply = AssistantMessage(
-        content="{}", tool_calls=[], finish_reason=FinishReason.STOP
-    )
-    first = OutputResultMessage(reply, "retained screen labels", is_superseded=True)
-    second = OutputResultMessage(reply, "newer screen labels", is_superseded=True)
+@pytest.mark.parametrize("structured", [False, True])
+async def test_cache_prefix_survives_screens_retries_and_compaction(structured):
+    from copy import deepcopy
 
-    marked = provider.serialize_history([reply, first])[-1]
-    moved = provider.serialize_history([reply, first, reply, second])[1]
+    from physiclaw.agent.engine import compact
+    from physiclaw.contract.dto import CollapsePolicy, SystemMessage, ToolCall
+    from physiclaw.contract.turn import TurnMetadata
 
-    assert marked["role"] == moved["role"] == "user"
-    assert len(marked["content"]) == len(moved["content"]) == 1
-    marked_block = dict(marked["content"][0])
-    assert marked_block.pop("prompt_cache_breakpoint") == {"mode": "explicit"}
-    assert marked_block == moved["content"][0]
-    assert "retained screen labels" in marked_block["text"]
-    assert first.content == "retained screen labels"
+    provider = OpenAIChatProvider(model="gpt-6.1-terra")
+    history = [
+        SystemMessage("stable instructions"),
+        UserMessage("task"),
+        UserMessage(compact.SUMMARY_INITIAL),
+        UserMessage(compact.MEMORY_INITIAL),
+        UserMessage(compact.SKILLS_INITIAL),
+    ]
+    previous_prefix = None
+    folds = 0
+    try:
+        for turn in range(14):
+            raw = response(model=provider.model)
+            if structured:
+                raw["output"][0]["id"] = f"msg-{turn}"
+                raw["output"].insert(
+                    0, {"type": "reasoning", "id": f"rs-{turn}", "summary": []}
+                )
+            else:
+                raw["output"] = [
+                    {
+                        "type": "function_call",
+                        "call_id": f"call-{turn}",
+                        "name": "peek",
+                        "arguments": "{}",
+                    }
+                ]
+            reply = provider._decode_response(raw, structured=structured)
+            reply.context_calls = [
+                ToolCall(f"note-{turn}", "note", {"summary": f"observed {turn}"})
+            ]
+            # Mix screen and bookkeeping turns; native replay has multiple items.
+            content = (
+                "noted"
+                if turn % 3 == 1
+                else [TextBlock(f"screen {turn}"), ImageBlock("image/jpeg", "aW1hZ2U=")]
+            )
+            receipt = (
+                OutputResultMessage(reply, content)
+                if structured
+                else ToolResultMessage(f"call-{turn}", content)
+            )
+            history.extend([reply, receipt])
+            compact.drop_stale_screens(history)
+            folded = compact.collapse_old_turns(
+                history,
+                policy=CollapsePolicy(first_at=6, keep=2, interval=4),
+                collapsed_once=folds > 0,
+            )
+            folds += folded
+            request = [*history, UserMessage(f"scratchpad {turn}")]
+            original = deepcopy(request)
+            metadata = TurnMetadata("test-session", turn, None, 20 - turn)
+            wire = provider.serialize_history(request, metadata=metadata)
+            assert provider.serialize_history(request, metadata=metadata) == wire
+            assert request == original
+
+            # Remove only cache annotations to compare the complete cached prefix.
+            boundaries = []
+            image_index = None
+            for i, item in enumerate(wire):
+                for block in item.get("output", item.get("content", [])):
+                    if block["type"] == "input_image":
+                        image_index = i
+                    if "prompt_cache_breakpoint" in block:
+                        assert block.pop("prompt_cache_breakpoint") == {
+                            "mode": "explicit"
+                        }
+                        boundaries.append(i)
+            stubs = sum(getattr(m, "is_superseded", False) for m in history)
+            assert len(boundaries) == 1 + min(2, stubs)
+            assert boundaries[0] == 0
+            # The live image, scratchpad and metadata follow every breakpoint.
+            assert image_index is not None
+            assert boundaries[-1] < image_index < len(wire) - 2
+            if previous_prefix is not None:
+                assert wire[0] == previous_prefix[0]
+                if not folded:
+                    assert len(previous_prefix) - 1 in boundaries
+                    assert wire[: len(previous_prefix)] == previous_prefix
+                else:
+                    assert wire[: len(previous_prefix)] != previous_prefix
+            previous_prefix = deepcopy(wire[: boundaries[-1] + 1])
+        assert folds == 3
+    finally:
+        await provider.aclose()
 
 
 @pytest.mark.parametrize(
