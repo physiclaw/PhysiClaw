@@ -525,14 +525,6 @@ def test_explicit_package_import_tracks_lazy_exports(repo, lazy_package, imports
     assert cache.source_key(STEM) != before
 
 
-@pytest.mark.parametrize("explicit_first", [False, True])
-def test_explicit_initializer_upgrades_implicit_visit(lazy_package, explicit_first):
-    paths = [lazy_package.shared, lazy_package.shared.with_name("__init__.py")]
-    if explicit_first:
-        paths.reverse()
-    assert lazy_package.runtime in cache._closure(*paths)
-
-
 @pytest.mark.parametrize("explicit", [False, True])
 def test_cyclic_imports_preserve_lazy_boundary_in_every_visit_order(
     lazy_package, explicit
@@ -543,10 +535,10 @@ def test_cyclic_imports_preserve_lazy_boundary_in_every_visit_order(
     )
     init = lazy_package.shared.with_name("__init__.py")
     roots = [lazy_package.shared, lazy_package.eager] + ([init] if explicit else [])
+    expected = {init, lazy_package.shared, lazy_package.eager}
+    if explicit:
+        expected.add(lazy_package.runtime)
     for paths in permutations(roots):
-        expected = {init, lazy_package.shared, lazy_package.eager}
-        if explicit:
-            expected.add(lazy_package.runtime)
         assert cache._closure(*paths) == expected
 
 
