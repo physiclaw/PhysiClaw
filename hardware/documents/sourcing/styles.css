@@ -330,7 +330,7 @@ a.report-link {
 }
 /* A mouse-clicked supplier link keeps focus after its new tab closes. Only
    keyboard focus should keep the flag visible once the pointer leaves. */
-.sourcing td:hover .report-link,
+.reportable:hover > .report-link,
 .reportable:has(:focus-visible) > .report-link {
   opacity: 1;
   --flag-offset: 0px;
