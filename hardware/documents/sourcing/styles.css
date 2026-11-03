@@ -1,8 +1,8 @@
 /* PhysiClaw sourcing guide — web-first scrolling document (not paged print).
    Styled to read as a sibling of the assembly manual (styles.css): the same
    design tokens, a white sheet on the gray desk, the accent reserved for the
-   title and class labels, thin uppercase letterspaced table headers, and
-   mono for specs and figures. */
+   title and class labels. Typography follows the docs' plain, untracked
+   headings, with proportional text for prose and specs, and mono for codes. */
 :root {
   --accent:     #d4511a;
   --ink:        #1f1f1f;
@@ -14,11 +14,16 @@
   --mark:       #f6dcd1;  /* ~20% accent on white — the highlight wash */
   --link:       #4a8bc7;
   --ok:         #2e7d4f;
-  --font-sans:  "Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
-  --font-mono:  "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-cjk:   "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC";
+  --font-sans:  Arial, "Helvetica Neue", var(--font-cjk), sans-serif;
+  --font-mono:  "SFMono-Regular", Consolas, "Liberation Mono", var(--font-cjk), monospace;
 }
 
 * { box-sizing: border-box; }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 html, body {
   margin: 0;
   padding: 0;
@@ -26,8 +31,8 @@ html, body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+  line-height: 1.7;
+  font-synthesis: none;
 }
 a, .guide-open { color: var(--link); text-decoration: none; }
 a:hover, .guide-open:hover { text-decoration: underline; }
@@ -51,27 +56,22 @@ a:hover, .guide-open:hover { text-decoration: underline; }
 .mast h1 {
   margin: 0;
   color: var(--accent);
-  font-size: 22px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
+  font-size: 28px;
+  font-weight: 700;
 }
 .mast .url {
   color: var(--ink-faint);
-  font-weight: 400;
-  font-size: 14px;
-  letter-spacing: 0.12em;
+  font-size: 13px;
 }
 
 /* ---- bought-checklist chrome -------------------------------------------- */
 /* The tally and its reset / highlight buttons sit on their own line,
-   left-aligned just above the table; the count is mono so it doesn't
-   jitter as rows tick. */
+   left-aligned just above the table; tabular figures keep the count steady. */
 .checklist { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
 .checklist .tally {
   color: var(--ink-soft);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .checklist button {
   border: none;
@@ -94,9 +94,7 @@ body.hl .checklist .hl { color: var(--accent); }
   margin: 0 0 12px;
   color: var(--accent);
   font-size: 16px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
+  font-weight: 700;
 }
 .optional-tools .table-wrap { margin-top: 0; }
 
@@ -104,14 +102,15 @@ body.hl .checklist .hl { color: var(--accent); }
    Border hierarchy: a containing frame (ink-faint), one strong rule under
    the header (ink), a medium rule opening each class group (ink-faint), and
    a light inner grid (rule). Numbers are tabular so columns of figures
-   align; the type hierarchy is component (semibold ink) > spec (mono soft)
-   > application/notes (small soft). */
+   align; the type hierarchy is component (bold ink) > spec/application/notes
+   (regular soft) > supplier variants (smaller soft). */
 .table-wrap { margin-top: 8px; overflow-x: auto; }
 table.sourcing {
   border-collapse: collapse;
   width: 100%;
   min-width: 1180px;
   border: 1px solid var(--ink-faint);
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .sourcing th, .sourcing td {
@@ -119,7 +118,7 @@ table.sourcing {
   padding: 9px 12px;
   text-align: left;
   vertical-align: middle;
-  line-height: 1.45;
+  line-height: 1.65;
 }
 
 /* Column widths (11 columns, sums to 100%):
@@ -155,24 +154,19 @@ table.sourcing.optional-sourcing {
 .tool-spec {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 400;
 }
 .supplier-offer + .supplier-offer { margin-top: 8px; }
 
-/* Open header in the manual's table idiom — no vertical rules, thin uppercase
-   letterspaced labels, one strong closing rule above the ruled body. */
 .sourcing thead th {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--page-bg);
   color: var(--ink-soft);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 700;
   white-space: nowrap;
   padding: 11px 12px;
   border: none;
@@ -231,47 +225,27 @@ td.get input.ticked:checked { animation: tick-in 0.3s ease; }
 
 td.cls {
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 700;
   white-space: nowrap;
 }
-td.comp { font-weight: 600; font-size: 13px; }
-td.spec {
-  color: var(--ink-soft);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.55;
-}
+td.comp { font-weight: 700; }
+td.spec, td.desc, td.ref, td.note { color: var(--ink-soft); }
 td.qty {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
   text-align: center;
   white-space: nowrap;
 }
-td.desc { color: var(--ink-soft); font-size: 12.5px; }
-td.ref {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
+td.ref { white-space: nowrap; }
 
 /* supplier cells; custom parts show a "询价说明" action line under the shop
    name — hovering fades in a styled tooltip with the inquiry message,
    clicking copies it (the copy icon morphs into a green check). */
-td.offer { font-size: 13px; }
-td.offer .v-vendor { font-weight: 500; }
 td.offer .v-prod {
   color: var(--ink-soft);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   margin-top: 2px;
 }
-td.offer.pending { color: var(--ink-faint); font-size: 12.5px; font-style: italic; }
-td.offer.na { color: var(--ink-faint); }
+td.offer.pending, td.offer.na { color: var(--ink-faint); }
 
 /* Reserve room for the small flag without shifting supplier links. */
 .reportable { position: relative; }
@@ -415,20 +389,20 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 }
 .guide-body { padding: 20px; font-size: 13px; }
 .guide-body p { margin: 0 0 16px; }
-.guide-body h3 { margin: 24px 0 12px; font-size: 15px; font-weight: 600; }
-:is(.guide-parts, .guide-settings) { width: 100%; border-collapse: collapse; font-size: 12px; }
+.guide-body h3 { margin: 24px 0 12px; font-size: 15px; font-weight: 700; }
+:is(.guide-parts, .guide-settings) { width: 100%; border-collapse: collapse; font-size: 13px; }
 :is(.guide-parts, .guide-settings) :is(th, td) {
   padding: 9px 0;
   border-bottom: 1px solid var(--rule);
   text-align: left;
   vertical-align: middle;
 }
-.guide-parts th { color: var(--ink-soft); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.guide-parts th { color: var(--ink-soft); font-size: 12px; font-weight: 700; }
 .guide-parts :is(th, td):nth-child(2) { width: 48px; text-align: right; }
 :is(.guide-parts, .guide-settings) tbody tr:last-child > * { border-bottom: 0; }
 .guide-parts code { font-family: var(--font-mono); overflow-wrap: anywhere; }
-.guide-spec { margin-top: 3px; color: var(--ink-soft); font-size: 11px; }
-.guide-qty { display: inline-block; min-width: 32px; padding: 2px 6px; font-family: var(--font-mono); }
+.guide-spec { margin-top: 3px; color: var(--ink-soft); font-size: 12px; }
+.guide-qty { display: inline-block; min-width: 32px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
 .guide-qty::before { content: "×"; margin-right: 3px; color: var(--ink-soft); }
 .guide-part { display: flex; align-items: flex-start; gap: 6px; }
 .guide-part button.copy { flex-shrink: 0; }
@@ -439,7 +413,7 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .guide-steps { margin: 20px 0 0; padding-left: 24px; }
 .guide-steps > li { padding-left: 6px; margin-bottom: 20px; }
 .guide-steps > li:last-child { margin-bottom: 0; }
-.guide-steps > li::marker { color: var(--ink-soft); font-weight: 600; }
+.guide-steps > li::marker { color: var(--ink-soft); font-weight: 700; }
 .guide-steps h4 { margin: 0 0 6px; font-size: 13px; }
 .guide-steps p { margin: 0 0 12px; }
 .guide-settings :is(th, td) {
@@ -448,7 +422,6 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
   overflow-wrap: anywhere;
 }
 .guide-settings th { width: 36%; color: var(--ink-soft); font-weight: 400; }
-.guide-settings td { font-weight: 500; }
 
 button.copy {
   position: relative;
@@ -534,7 +507,6 @@ button.copy.flip::after { left: auto; right: 0; }
 button.copy.flip::before { left: auto; right: 14px; }
 
 /* notes; an embedded 询价说明 control flows inline with the sentence. */
-td.note { color: var(--ink-soft); font-size: 12.5px; }
 td.note button.copy { margin-top: 0; vertical-align: -1px; }
 .note-accessory {
   margin-top: 10px;
@@ -548,7 +520,7 @@ td.note button.copy { margin-top: 0; vertical-align: -1px; }
   padding-top: 8px;
   border-top: 1px dashed color-mix(in srgb, var(--rule) 65%, transparent);
 }
-.accessory-spec { font-family: var(--font-mono); font-size: 11px; }
+.accessory-spec { font-size: 12px; }
 
 /* Bought dimming. Row-level dimming covers only single-row cells; a cell
    spanning several rows ([rowspan]) greys via its own `done` class, which
