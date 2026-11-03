@@ -342,8 +342,7 @@ a.report-link:hover, a.report-link:focus-visible {
   text-decoration: none;
 }
 a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* Native title tooltips have a browser-controlled delay. Show this short label
-   immediately on the flag itself, including when reached by keyboard. */
+/* Delay hover labels to avoid flashes; hide and keyboard focus stay immediate. */
 .report-link::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -363,7 +362,11 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
   opacity: 0;
   pointer-events: none;
 }
-.report-link:hover::after, .report-link:focus-visible::after { opacity: 1; }
+.report-link:hover::after {
+  opacity: 1;
+  transition: opacity 120ms ease-out 400ms;
+}
+.report-link:focus-visible::after { opacity: 1; transition: none; }
 @media (hover: none), (any-pointer: coarse) {
   a.report-link {
     opacity: 1;
@@ -380,6 +383,7 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 @media (prefers-reduced-motion: reduce) {
   a.report-link, .report-link svg { transition: none; }
   .report-link svg { transform: none; }
+  .report-link:hover::after { transition-duration: 0s; }
 }
 
 /* Long supplier instructions open above the page, leaving the BOM compact. */
