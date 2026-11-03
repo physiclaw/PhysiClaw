@@ -8,6 +8,7 @@ from physiclaw.common.provider_errors import (
     ProviderTransientError,
 )
 from physiclaw.contract.decision import DecisionUsage
+from physiclaw.provider.provider_base import quota_exhausted
 
 
 def check_response_status(response: httpx.Response, *, vendor: str) -> None:
@@ -16,6 +17,8 @@ def check_response_status(response: httpx.Response, *, vendor: str) -> None:
         return
     status = response.status_code
     message = f"{vendor} decision HTTP {status}"
+    if status == 429 and quota_exhausted(response):
+        raise ProviderPermanentError(message, status_code=status)
     if status in {408, 429} or status >= 500:
         raise ProviderTransientError(message)
     if status in {400, 413, 422}:

@@ -14,6 +14,8 @@ from physiclaw.contract.dto import (
     FinishReason,
     ImageBlock,
     SystemMessage,
+    TextBlock,
+    ToolCall,
     ToolResultMessage,
     UserMessage,
 )
@@ -22,6 +24,67 @@ from physiclaw.provider import make_chat_provider, make_decision_provider
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "qwen/chat-model"
+
+
+@pytest.mark.parametrize(
+    "model,explicit",
+    [
+        ("openai/gpt-5.6-terra", True),
+        ("openai/gpt-6.1-terra", True),
+        ("openai/gpt-6-luna-2026-10-01", True),
+        ("openai/gpt-5.5", False),
+        ("openai/gpt-6.99", False),
+        ("qwen/qwen3.8-flash", False),
+    ],
+)
+async def test_openai_cache_protocol_is_model_gated_and_preserves_moving_prefix(
+    provider, model, explicit
+):
+    from physiclaw.agent.engine.compact import drop_stale_screens
+
+    instance = make_chat_provider("openrouter", model)
+    history = [SystemMessage("Stable instructions"), UserMessage("Task")]
+    previous_prefix = None
+    try:
+        for turn in range(7):
+            call = ToolCall(f"call-{turn}", "peek", {})
+            history.extend(
+                [
+                    AssistantMessage("", [call], FinishReason.TOOL_CALLS),
+                    ToolResultMessage(
+                        call.id,
+                        [TextBlock(f"screen {turn}"), ImageBlock("image/png", "eA==")],
+                    ),
+                ]
+            )
+            drop_stale_screens(history)
+            original = deepcopy(history)
+            body = instance.build_request(
+                history, [], metadata=TurnMetadata("session", turn, None, 10 - turn)
+            )
+            assert history == original
+            assert ("prompt_cache_options" in body) is explicit
+            assert "cache_control" not in json.dumps(body)
+            if not explicit:
+                assert "prompt_cache_breakpoint" not in json.dumps(body)
+                continue
+            wire = body["messages"]
+            boundaries = []
+            for i, entry in enumerate(wire):
+                for block in entry.get("content", []):
+                    if isinstance(block, dict) and "prompt_cache_breakpoint" in block:
+                        assert block.pop("prompt_cache_breakpoint") == {
+                            "mode": "explicit"
+                        }
+                        boundaries.append(i)
+            assert len(boundaries) == 1 + min(2, turn)
+            assert boundaries[-1] < len(wire) - 2  # Live screen and metadata.
+            if previous_prefix is not None:
+                assert wire[: len(previous_prefix)] == previous_prefix
+                assert len(previous_prefix) - 1 in boundaries
+            previous_prefix = deepcopy(wire[: boundaries[-1] + 1])
+    finally:
+        await instance.aclose()
 
 
 @pytest.fixture

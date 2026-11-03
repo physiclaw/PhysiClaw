@@ -94,15 +94,19 @@ class Usage:
 
     Each provider parses its native usage block into this shape:
       - OpenAI Responses: `usage.input_tokens`, `usage.output_tokens`,
-        `usage.input_tokens_details.cached_tokens`
+        `usage.input_tokens_details.cached_tokens`,
+        `usage.input_tokens_details.cache_write_tokens`
       - OpenAI-compatible chat: `usage.prompt_tokens`,
         `usage.completion_tokens`,
         `usage.prompt_tokens_details.cached_tokens`,
-        `usage.prompt_tokens_details.cache_creation_input_tokens`
+        `usage.prompt_tokens_details.cache_write_tokens`
+        (or the compatible spelling `cache_creation_input_tokens`)
       - Anthropic: `usage.input_tokens`, `usage.output_tokens`,
         `usage.cache_read_input_tokens`,
         `usage.cache_creation_input_tokens`
-      - Google: the OpenAI shape through its compatibility endpoint
+      - Google: the OpenAI shape through its compatibility endpoint;
+        completion counts are normalized to include paid thinking when the
+        shim reports it only in `total_tokens`.
 
     All zero = "provider didn't report" (e.g. local models, error
     responses). The engine treats zeros as "no data" rather than 0%

@@ -14,7 +14,7 @@ from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import BaseChatProvider
 from physiclaw.provider.chat.retry import retry_after_seconds
-from physiclaw.provider.provider_base import describe
+from physiclaw.provider.provider_base import describe, quota_exhausted
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +49,10 @@ class HTTPChatProvider(BaseChatProvider):
         except (httpx.TransportError, httpx.TimeoutException) as e:
             raise ProviderTransientError(f"transport: {describe(e)}") from e
 
+        if r.status_code == 429 and quota_exhausted(r):
+            raise ProviderPermanentError(
+                f"HTTP 429: {r.text[:500]}", status_code=r.status_code
+            )
         if r.status_code in (408, 409, 429) or r.status_code >= 500:
             log.debug(
                 "HTTP %s (transient): %s",
@@ -99,6 +103,8 @@ class HTTPChatProvider(BaseChatProvider):
             r = await self._client.get("/models")
         except (httpx.TransportError, httpx.TimeoutException) as e:
             raise ProviderTransientError(f"transport: {describe(e)}") from e
+        if r.status_code == 429 and quota_exhausted(r):
+            raise ProviderPermanentError(f"HTTP 429: {r.text[:300]}", status_code=429)
         if r.status_code == 429 or r.status_code >= 500:
             raise ProviderTransientError(f"HTTP {r.status_code}: {r.text[:300]}")
         if r.status_code >= 400:

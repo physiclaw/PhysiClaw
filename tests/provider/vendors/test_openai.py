@@ -21,22 +21,113 @@ from physiclaw.contract.dto import (
 from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
 
 
-def response(text="{}", **extra):
+def response(text="{}", *, commentary=None, **extra):
+    output = [
+        {
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "id": "msg-test",
+            "content": [{"type": "output_text", "text": text, "annotations": []}],
+        }
+    ]
+    if commentary is not None:
+        output[0]["phase"] = "final_answer"
+        output.insert(
+            0,
+            {
+                **output[0],
+                "id": "msg-commentary",
+                "phase": "commentary",
+                "content": [
+                    {"type": "output_text", "text": commentary, "annotations": []}
+                ],
+            },
+        )
     return {
         "id": "resp-test",
         "model": "gpt-6.1-sol",
         "status": "completed",
-        "output": [
-            {
-                "type": "message",
-                "role": "assistant",
-                "status": "completed",
-                "id": "msg-test",
-                "content": [{"type": "output_text", "text": text, "annotations": []}],
-            }
-        ],
+        "output": output,
         **extra,
     }
+
+
+@pytest.mark.parametrize("commentary", ['{"provisional":true}', "Checking the screen."])
+async def test_native_structured_output_uses_final_phase_and_replays_all_items(
+    commentary, respx_mock
+):
+    from physiclaw.contract.structured import OutputSpec
+
+    raw = response('{"ok":true}', commentary=commentary)
+    raw["usage"] = {
+        "input_tokens": 100,
+        "output_tokens": 40,
+        "input_tokens_details": {"cached_tokens": 60, "cache_write_tokens": 20},
+        "output_tokens_details": {"reasoning_tokens": 10},
+    }
+    respx_mock.post("https://api.openai.com/v1/responses").respond(json=raw)
+    provider = OpenAIChatProvider(model="gpt-6-luna")
+    spec = OutputSpec(
+        "sample",
+        {
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": False,
+        },
+        dict,
+    )
+    try:
+        result = await provider.generate_structured([UserMessage("test")], spec)
+        assert result.failure is None
+        assert result.value == {"ok": True}
+        assert result.reply.content == '{"ok":true}'
+        assert result.reply.usage.buckets() == {
+            "input": 100,
+            "input_new": 20,
+            "cache_read": 60,
+            "cache_write": 20,
+            "output": 40,
+            "reasoning": 10,
+        }
+        assert provider.serialize_history([result.reply]) == raw["output"]
+        # Ordinary chat still exposes intermediate visible prose.
+        ordinary = provider._decode_response(raw, structured=False)
+        assert ordinary.content == commentary + '{"ok":true}'
+    finally:
+        await provider.aclose()
+
+
+def test_commentary_without_final_is_not_a_structured_answer():
+    raw = response('{"ok":true}')
+    raw["output"][0]["phase"] = "commentary"
+    provider = OpenAIChatProvider(model="gpt-6-luna")
+    result = provider._decode_response(raw, structured=True)
+    assert result.decode_error == "missing assistant output"
+    assert result.content == ""
+
+
+@pytest.mark.parametrize("final", ["not JSON", '{"ok":true}{"ok":false}'])
+async def test_valid_commentary_cannot_replace_a_malformed_final_answer(
+    final, respx_mock
+):
+    from physiclaw.contract.structured import OutputSpec
+
+    raw = response(final, commentary='{"ok":true}')
+    raw["usage"] = {"input_tokens": 100, "output_tokens": 40}
+    respx_mock.route(method="POST").respond(json=raw)
+    provider = OpenAIChatProvider(model="gpt-6-luna")
+    spec = OutputSpec("sample", {"type": "object", "properties": {}}, dict)
+    try:
+        result = await provider.generate_structured([UserMessage("test")], spec)
+        assert result.failure is not None
+        assert result.failure.kind == "format"
+        assert result.value is None
+        assert result.reply.content == final
+        assert result.reply.usage.completion_tokens == 40
+    finally:
+        await provider.aclose()
 
 
 @pytest.fixture(autouse=True)
@@ -266,7 +357,16 @@ async def test_cache_prefix_survives_screens_retries_and_compaction(structured):
 
 @pytest.mark.parametrize(
     "model",
-    ["gpt-5.5", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna-2026-10-01", "gpt-6.99"],
+    [
+        "gpt-5.5",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra-2026-10-01",
+        "gpt-6.1-sol",
+        "gpt-6.1-terra",
+        "gpt-6-luna-2026-10-01",
+        "gpt-6.99",
+    ],
 )
 def test_cache_protocol_matches_model_and_preserves_write_accounting(model):
     from physiclaw.contract.dto import SystemMessage
@@ -275,7 +375,7 @@ def test_cache_protocol_matches_model_and_preserves_write_accounting(model):
     body = provider.build_request(
         [SystemMessage("stable instructions"), UserMessage("variable tail")], []
     )
-    explicit = model in {"gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna-2026-10-01"}
+    explicit = model not in {"gpt-5.5", "gpt-6.99"}
     assert ("prompt_cache_options" in body) is explicit
     assert ("prompt_cache_breakpoint" in json.dumps(body)) is explicit
     assert "cache_control" not in json.dumps(body)

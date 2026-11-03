@@ -37,6 +37,7 @@ and live Gemini 2.5 / 3 Flash calls through a proxy.
 """
 
 import re
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -46,9 +47,10 @@ from physiclaw.contract.dto import (
     Message,
     Thinking,
     ToolResultMessage,
+    Usage,
 )
 from physiclaw.contract.structured import OutputSpec
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS, token_count_or_none
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.chat.retry import retry_after_seconds
 from physiclaw.provider.chat.wire import (
@@ -61,9 +63,8 @@ from physiclaw.provider.chat.wire import (
 _SIG_BYPASS = "skip_thought_signature_validator"
 
 
-# No line can stop: "off" is the lowest each offers (2.5 Pro's floor is
-# 128 tokens; 3 Flash has `minimal`, 3 Pro only low and high, so it
-# reads "medium" as low — the field exists to bound deliberation).
+# "Off" maps to the model's supported floor. Gemini 2.5 Pro requires at
+# least 128 thinking tokens; Gemini 3/4 floors are selected per model below.
 _BUDGETS_25 = {"off": 0, "low": 1024, "medium": 8192, "high": 24576}
 
 
@@ -110,9 +111,20 @@ class GoogleChatProvider(OpenAICompatibleProvider):
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:
         model = self.model
-        if model.startswith("gemini-3"):
+        if model.startswith(("gemini-3", "gemini-4-argon")):
             if thinking == "off":
-                level = "minimal" if "flash" in model else "low"
+                # Newer Flash models don't necessarily retain the original
+                # Flash floor: 3.8 rejects minimal, as does Gemini 4 Argon.
+                # Keep that setting limited to the documented model lines.
+                minimal = model.startswith(
+                    (
+                        "gemini-3-flash",
+                        "gemini-3.1-flash",
+                        "gemini-3.5-flash",
+                        "gemini-3.6-flash",
+                    )
+                )
+                level = "minimal" if minimal else "low"
             elif thinking == "medium" and model.startswith("gemini-3-pro"):
                 level = "low"
             else:
@@ -135,8 +147,9 @@ class GoogleChatProvider(OpenAICompatibleProvider):
     # the prefix position Gemini's implicit cache wants to anchor on,
     # with zero upside when the shim ignores the field anyway. Hits
     # surface via standard
-    # `usage.prompt_tokens_details.cached_tokens`; the base `_parse_usage`
-    # already reads it. Implicit caching itself is non-deterministic
+    # `usage.prompt_tokens_details.cached_tokens`; the base usage parser
+    # reads it, and the override below normalizes paid output thinking.
+    # Implicit caching itself is non-deterministic
     # across both Flash and Pro (intermittent zero-hit turns on stable
     # prefixes; see issue googleapis/python-genai#2064 and
     # tests/probe_google_cache_*) — don't bank on the theoretical 75%.
@@ -167,6 +180,26 @@ class GoogleChatProvider(OpenAICompatibleProvider):
         return super()._encode_message(msg)
 
     # ---------- response side: capture signature for next turn ----------
+
+    def _parse_usage(self, raw: dict) -> Usage:
+        usage = super()._parse_usage(raw)
+        counters = raw.get("usage")
+        if not isinstance(counters, dict):
+            return usage
+        prompt = token_count_or_none(counters.get("prompt_tokens"))
+        completion = token_count_or_none(counters.get("completion_tokens"))
+        total = token_count_or_none(counters.get("total_tokens"))
+        # Require source counts: Usage's zero fallback also means unreported.
+        if prompt is None or completion is None or total is None:
+            return usage
+        # The shim can include paid thinking only in total_tokens. An already
+        # inclusive completion produces a zero difference and isn't counted twice.
+        missing = max(0, total - prompt - completion)
+        return replace(
+            usage,
+            completion_tokens=usage.completion_tokens + missing,
+            reasoning_tokens=max(usage.reasoning_tokens, missing),
+        )
 
     def _parse_response(self, raw: dict) -> AssistantMessage:
         asst = super()._parse_response(raw)

@@ -13,6 +13,10 @@ from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS, CacheMarkers
 from physiclaw.provider.chat.http import HTTPChatProvider
+from physiclaw.provider.chat.openai_cache import (
+    OpenAIPromptCacheMarkers,
+    supports_explicit_cache,
+)
 from physiclaw.provider.chat.schema import strict_output_schema
 from physiclaw.provider.chat.wire import tool_to_wire
 from physiclaw.provider.vendors.openai.responses import encode_message, parse_response
@@ -29,29 +33,6 @@ _NONE_MODELS = {
     "gpt-6.1-terra",
 }
 _LOW_MODELS = {"gpt-6-astra", "gpt-6.1-sol"}
-_EXPLICIT_CACHE_MODELS = _LOW_MODELS | {"gpt-6-sol", "gpt-6-luna", "gpt-6.1-terra"}
-
-
-class OpenAIPromptCacheMarkers(CacheMarkers):
-    """Pin the stable system and compacted feedback prefixes."""
-
-    # Explicit lookup needs the previous boundary present in the new request.
-    # Keep it alongside the newest stub; never pay to cache the volatile view.
-    stub_count = 2
-
-    def mark_system(self, entry: dict) -> dict:
-        field = "output" if entry.get("type") == "function_call_output" else "content"
-        blocks = entry[field]
-        return {
-            **entry,
-            field: [
-                *blocks[:-1],
-                {**blocks[-1], "prompt_cache_breakpoint": {"mode": "explicit"}},
-            ],
-        }
-
-    def mark_stub(self, entry: dict) -> dict:
-        return self.mark_system(entry)
 
 
 class OpenAIChatProvider(HTTPChatProvider):
@@ -60,10 +41,9 @@ class OpenAIChatProvider(HTTPChatProvider):
     ENDPOINT = "/responses"
 
     def _select_cache_markers(self) -> CacheMarkers:
-        model = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", self.model)
         return (
             OpenAIPromptCacheMarkers()
-            if model in _EXPLICIT_CACHE_MODELS
+            if supports_explicit_cache(self.model)
             else NO_CACHE_MARKERS
         )
 

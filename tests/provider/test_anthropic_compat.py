@@ -429,7 +429,7 @@ async def test_chat_payload_includes_system_with_cache_control_when_present(
     provider: _TestAnthropic,
 ) -> None:
     fake_resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
         model_dump=lambda: {},
@@ -456,7 +456,7 @@ async def test_chat_payload_omits_system_when_no_system_messages(
     provider: _TestAnthropic,
 ) -> None:
     fake_resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
         model_dump=lambda: {},
@@ -474,7 +474,7 @@ async def test_chat_payload_includes_tools_when_present(
     provider: _TestAnthropic,
 ) -> None:
     fake_resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
         model_dump=lambda: {},
@@ -503,7 +503,7 @@ async def test_chat_payload_omits_tools_when_empty(
     provider: _TestAnthropic,
 ) -> None:
     fake_resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
         model_dump=lambda: {},
@@ -857,7 +857,7 @@ def test_from_response_extracts_tool_use_blocks() -> None:
 
 def test_from_response_uses_default_finish_reason_when_stop_unknown() -> None:
     resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="future_unknown_reason",
         usage=None,
         model_dump=lambda: {},
@@ -870,7 +870,7 @@ def test_from_response_uses_default_finish_reason_when_stop_unknown() -> None:
 
 def test_from_response_defaults_stop_reason_to_end_turn_when_none() -> None:
     resp = SimpleNamespace(
-        content=[],
+        content=[SimpleNamespace(type="text", text="OK")],
         stop_reason=None,
         usage=None,
         model_dump=lambda: {},
@@ -886,7 +886,7 @@ def test_from_response_falls_back_to_dict_when_no_model_dump() -> None:
     # isn't a Pydantic model (e.g. a stub in tests).
     class _DictableResp:
         def __init__(self) -> None:
-            self.content = []
+            self.content = [SimpleNamespace(type="text", text="OK")]
             self.stop_reason = "end_turn"
             self.usage = None
 
@@ -894,6 +894,8 @@ def test_from_response_falls_back_to_dict_when_no_model_dump() -> None:
             return ["content", "stop_reason", "usage"]
 
         def __getitem__(self, key: str) -> Any:
+            if key == "content":
+                return [{"type": "text", "text": "OK"}]
             return getattr(self, key)
 
     out = _from_anthropic_response(_DictableResp())

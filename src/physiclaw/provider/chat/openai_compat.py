@@ -9,22 +9,20 @@ any auth quirks. This file owns:
   - DTO → wire serialization (`_encode_message`, delegating block-
     level encoding to `wire.py`; the inherited `serialize_history`
     template assembles the list)
-  - cache-control marker mechanics (`OpenAICacheMarkers`; the base
-    template owns placement and this shape uses two of its four slots —
-    system + latest stubbed tool_result; the moving tail anchors stay
-    identity here)
+  - default cache-control mechanics (`OpenAICacheMarkers`; system + latest
+    stubbed tool_result). Vendor adapters select their own protocol, including
+    automatic caching or the separate explicit OpenAI cache markers.
   - response parsing (`_parse_response` + `_parse_usage` methods).
     `_parse_usage` tolerates the known shape drift among OpenAI-compat
     endpoints (top-level `cached_tokens` / `prompt_cache_hit_tokens`
     when the nested location is empty); a vendor whose `usage` shape
     differs beyond that overrides `_parse_usage` on its own class.
 
-Cache-control marker layout — this shape marks two anchors (of the
-template's four), chosen so cached bytes survive turns AND wakes:
+Default cache-control layout — two anchors (of the template's four),
+chosen so cached bytes survive turns and wakes:
 
-  1. System message (index 0). Session-stable; one cache_creation per
-     `cache_key` ever; cache hits the first turn of every wake within
-     the 5-min TTL.
+  1. System message (index 0). Session-stable; eligible cached prefixes can
+     be reused across wakes while the provider's cache entry remains valid.
   2. Latest superseded screen-obs `tool_result` — found via the typed
      `is_superseded` flag on the source `ToolResultMessage` (set by
      `compact.drop_stale_screens`). Deepest byte-stable point before
@@ -287,6 +285,10 @@ class OpenAICompatibleProvider(HTTPChatProvider):
                 raise ProviderTransientError(
                     "invalid response: tool name and id must be strings"
                 )
+            if not name:
+                raise ProviderTransientError("invalid response: missing tool name")
+            if ident and any(call.id == ident for call in tool_calls):
+                raise ProviderTransientError("invalid response: duplicate tool call ID")
             if not ident:
                 decode_error = "missing provider call ID"
             ident = ident or f"auto_{uuid.uuid4().hex[:8]}"
@@ -313,6 +315,11 @@ class OpenAICompatibleProvider(HTTPChatProvider):
             refused=bool(message.get("refusal")),
             decode_error=decode_error,
         )
+        if (
+            not (reply.content or reply.tool_calls or reply.refused)
+            and reply.finish_reason == FinishReason.STOP
+        ):
+            raise ProviderTransientError("invalid response: missing assistant output")
         if self.REPLAY_REASONING_CONTENT and "reasoning_content" in message:
             reply.vendor_extra[self.PROVIDER_ID] = {
                 "model": self.model,

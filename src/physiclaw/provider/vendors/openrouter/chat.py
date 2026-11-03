@@ -18,7 +18,11 @@ from physiclaw.contract.dto import (
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat import discovered
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.base import NO_CACHE_MARKERS, CacheMarkers
+from physiclaw.provider.chat.openai_cache import (
+    OpenAIPromptCacheMarkers,
+    supports_explicit_cache,
+)
 from physiclaw.provider.chat.openai_compat import (
     OpenAICacheMarkers,
     OpenAICompatibleProvider,
@@ -31,6 +35,13 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
     BASE_URL = "https://openrouter.ai/api/v1"
     CACHE_MARKERS = NO_CACHE_MARKERS
     _catalog: dict[str, dict] | None = None
+
+    def _select_cache_markers(self) -> CacheMarkers:
+        if self.model.startswith("openai/") and supports_explicit_cache(
+            self.model.removeprefix("openai/")
+        ):
+            return OpenAIPromptCacheMarkers()
+        return NO_CACHE_MARKERS
 
     def _supported_parameters(self) -> list[str] | None:
         supported = (
@@ -81,6 +92,8 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
             params["session_id"] = metadata.session_id
         if self.model.startswith("anthropic/"):
             params["cache_control"] = {"type": "ephemeral"}
+        if isinstance(self.CACHE_MARKERS, OpenAIPromptCacheMarkers):
+            params["prompt_cache_options"] = {"mode": "explicit"}
         return params
 
     def thinking_params(self, thinking: Thinking) -> dict[str, Any]:

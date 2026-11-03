@@ -8,6 +8,31 @@ import httpx
 
 from physiclaw.common.provider_errors import ProviderConfigurationError
 
+_EXHAUSTED_QUOTA_CODES = frozenset(
+    {
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "organization_spend_limit_exceeded",
+        "project_spend_limit_exceeded",
+        "organization_usage_limit_exceeded",
+    }
+)
+
+
+def quota_exhausted(response: httpx.Response) -> bool:
+    """Billing/usage limits require account action, unlike a temporary 429."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return False
+    return any(
+        isinstance(code, str) and code in _EXHAUSTED_QUOTA_CODES
+        for code in (error.get("code"), error.get("type"))
+    )
+
 
 def describe(e: BaseException) -> str:
     """`ClassName: message`, or just `ClassName` when the message is

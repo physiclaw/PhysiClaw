@@ -5,18 +5,148 @@ import json
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
+from types import SimpleNamespace
 
 import pytest
 from freezegun import freeze_time
 
 from physiclaw.common.provider_errors import (
     ProviderConfigurationError,
+    ProviderPermanentError,
     ProviderTransientError,
 )
 from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.provider import provider_class
 from physiclaw.provider.chat.retry import retry_after_seconds
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "organization_spend_limit_exceeded",
+        "project_spend_limit_exceeded",
+        "organization_usage_limit_exceeded",
+        None,
+    ],
+)
+@pytest.mark.parametrize("api", ["chat", "models", "decision"])
+async def test_exhausted_quota_is_permanent_not_a_rate_limit(
+    code, api, monkeypatch, respx_mock
+):
+    import httpx
+
+    from physiclaw.provider.decision.wire import check_response_status
+
+    payload = {
+        "error": {
+            "type": "insufficient_quota" if code is None else "billing_error",
+            "code": code,
+            "message": "No credits remaining",
+        }
+    }
+    if api == "decision":
+        with pytest.raises(ProviderPermanentError) as caught:
+            check_response_status(httpx.Response(429, json=payload), vendor="OpenAI")
+        assert caught.value.status_code == 429
+        assert "No credits" not in str(caught.value)
+        return
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    provider = provider_class("openai")(model="gpt-6.1-terra")
+    route = respx_mock.route().respond(429, json=payload, headers={"Retry-After": "1"})
+    try:
+        with pytest.raises(ProviderPermanentError) as caught:
+            if api == "chat":
+                await provider.chat([UserMessage("test")], [])
+            else:
+                await provider.list_models()
+        assert caught.value.status_code == 429
+        assert caught.value.retry_after is None
+        assert route.call_count == 1
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"error": {"type": "rate_limit_error", "code": "slow_down"}},
+        {"error": {"code": ["insufficient_quota"]}},
+        {"error": None},
+        [],
+    ],
+)
+async def test_temporary_or_malformed_429_keeps_rate_limit_retry_hint(
+    payload, monkeypatch, respx_mock
+):
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    provider = provider_class("openai")(model="gpt-6.1-terra")
+    route = respx_mock.route().respond(429, json=payload, headers={"Retry-After": "7"})
+    try:
+        with pytest.raises(ProviderTransientError) as caught:
+            await provider.chat([UserMessage("test")], [])
+        assert caught.value.retry_after == 7
+        assert route.call_count == 1
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize("vendor", ["deepseek", "anthropic"])
+@pytest.mark.parametrize(
+    "malformation", ["empty_stop", "duplicate_call_id", "missing_tool_name"]
+)
+@pytest.mark.parametrize("structured", [False, True])
+async def test_invalid_completion_preserves_paid_usage_without_partial_calls(
+    vendor, malformation, structured, spec, monkeypatch, respx_mock
+):
+    from physiclaw.common.provider_errors import ProviderTransientError
+    from tests.support.provider_responses import response
+
+    monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "test")
+    provider = provider_class(vendor)(model="fixture")
+    events = []
+
+    provider.usage_sink = SimpleNamespace(write=events.append)
+    raw = response(vendor, {"ok": True}, 0)
+    if vendor == "anthropic":
+        calls = [raw["content"][-1]]
+        if malformation == "empty_stop":
+            raw["content"] = []
+            raw["stop_reason"] = "end_turn"
+        elif malformation == "duplicate_call_id":
+            raw["content"] = [calls[0], deepcopy(calls[0])]
+        else:
+            calls[0]["name"] = ""
+    else:
+        message = raw["choices"][0]["message"]
+        if malformation == "empty_stop":
+            message["tool_calls"] = []
+            raw["choices"][0]["finish_reason"] = "stop"
+        elif malformation == "duplicate_call_id":
+            message["tool_calls"].append(deepcopy(message["tool_calls"][0]))
+        else:
+            message["tool_calls"][0]["function"]["name"] = ""
+    route = respx_mock.route(method="POST").respond(json=raw)
+    try:
+        if structured:
+            completion = await provider.generate_structured([UserMessage("test")], spec)
+            assert completion.failure.kind == "format"
+            assert completion.reply.tool_calls == []
+        else:
+            with pytest.raises(ProviderTransientError) as caught:
+                await provider.chat([UserMessage("test")], [])
+            assert caught.value.reply.tool_calls == []
+        assert route.call_count == 1
+        assert len(events) == 1
+        assert events[0]["input"] == 10
+        assert events[0]["output"] == 20
+        assert events[0]["error"] == (
+            "format" if structured else "ProviderTransientError"
+        )
+    finally:
+        await provider.aclose()
 
 
 @pytest.fixture

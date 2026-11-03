@@ -151,7 +151,10 @@ def parse_response(raw: object, *, model: str, structured: bool) -> AssistantMes
                     elif part.get("type") == "output_text" and isinstance(
                         part.get("text"), str
                     ):
-                        reply.content += part["text"]
+                        # Commentary stays in replay and usage, but only the
+                        # final answer belongs to structured output.
+                        if not structured or item.get("phase") != "commentary":
+                            reply.content += part["text"]
                     else:
                         reply.decode_error = "unsupported assistant content"
             elif kind == "function_call":

@@ -479,6 +479,8 @@ def _from_anthropic_response(resp) -> AssistantMessage:
             ):
                 # Inventing an ID would break pairing with signed-content replay.
                 raise ProviderTransientError("invalid response: malformed tool use")
+            if any(call.id == call_id for call in tool_calls):
+                raise ProviderTransientError("invalid response: duplicate tool use ID")
             tool_calls.append(
                 ToolCall(
                     id=call_id,
@@ -491,6 +493,9 @@ def _from_anthropic_response(resp) -> AssistantMessage:
     finish = _STOP_REASON_MAP.get(stop_raw, FinishReason.STOP)
     raw_dict = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
     content = raw_dict.get("content") or []
+    refused = stop_raw == "refusal" or any(b.get("type") == "refusal" for b in content)
+    if not (any(text_parts) or tool_calls or refused) and finish == FinishReason.STOP:
+        raise ProviderTransientError("invalid response: missing assistant output")
     vendor_extra = {}
     if any(b.get("type") in ("thinking", "redacted_thinking") for b in content):
         vendor_extra["anthropic"] = {"content": deepcopy(content)}
@@ -503,8 +508,7 @@ def _from_anthropic_response(resp) -> AssistantMessage:
         response_id=str(getattr(resp, "id", "") or ""),
         response_model=str(getattr(resp, "model", "") or ""),
         raw=raw_dict,
-        refused=stop_raw == "refusal"
-        or any(b.get("type") == "refusal" for b in content),
+        refused=refused,
         vendor_extra=vendor_extra,
     )
 

@@ -15,8 +15,12 @@ inherited `OpenAICacheMarkers` are harmless uniformity, not
 load-bearing. K3's hit collapses (~95% → ~75% on screen turns) are
 `compact.drop_stale_screens` rewriting the previous screen to its stub
 — the compaction trade-off, not a serialization bug. Entries take
-~60–120s to materialize (first 3–4 turns of a session read 0%); TTL is
-5–30 min.
+~60–120s to materialize in that older replay. Current K3/K3.1 API docs
+specify an automatic 5-minute TTL by default, refreshed on hits, with
+an optional 1-hour TTL. Do not infer a guaranteed materialization delay
+from the old measurements. Cache writes and reads are disjoint input
+buckets, reported in `prompt_tokens_details`:
+https://platform.kimi.ai/docs/guide/context-caching
 
 Collapse cadence: inherits the base default `COLLAPSE` policy
 (interval = 20) — same cadence as Anthropic/Qwen. The whole-prefix invalidation

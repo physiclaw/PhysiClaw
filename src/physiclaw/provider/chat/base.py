@@ -34,18 +34,24 @@ from physiclaw.provider.provider_base import BaseAPIProvider
 log = logging.getLogger(__name__)
 
 
+def token_count_or_none(value: Any) -> int | None:
+    """Parse a reported counter without confusing invalid values with zero."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    try:
+        count = int(value)
+    except ValueError:
+        return None
+    return count if count >= 0 else None
+
+
 def token_count(value: Any) -> int:
     """An optional usage counter: accept integers and proxy-stringified integers.
 
     Malformed accounting must not discard an otherwise usable model reply.
     Booleans, fractions, negatives, and missing counts are unreported (zero).
     """
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
-        return 0
-    try:
-        return max(0, int(value))
-    except ValueError:
-        return 0
+    return token_count_or_none(value) or 0
 
 
 class ChatProvider(SessionChatProvider, Protocol):

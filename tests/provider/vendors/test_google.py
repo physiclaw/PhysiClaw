@@ -8,6 +8,8 @@ without going through the network.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import respx
 
@@ -20,6 +22,7 @@ from physiclaw.contract.dto import (
     TextBlock,
     ToolCall,
     ToolResultMessage,
+    Usage,
     UserMessage,
 )
 from physiclaw.provider.chat.base import NO_CACHE_MARKERS
@@ -582,3 +585,130 @@ def test_gemini_3_takes_a_level_each_line_floors_where_it_can():
 
 def test_a_model_outside_both_generations_gets_no_field() -> None:
     assert GoogleChatProvider(model="gemini-1.5-pro").thinking_params("off") == {}
+
+
+@pytest.mark.parametrize(
+    "counters,expected",
+    [
+        (
+            {"prompt_tokens": 10960, "completion_tokens": 20, "total_tokens": 11037},
+            Usage(10960, 77, reasoning_tokens=57),
+        ),
+        (
+            {
+                "prompt_tokens": 11836,
+                "completion_tokens": 20,
+                "total_tokens": 11938,
+                "prompt_tokens_details": {"cached_tokens": 9750},
+            },
+            Usage(11836, 102, cached_tokens=9750, reasoning_tokens=82),
+        ),
+        (
+            {"prompt_tokens": 10409, "completion_tokens": 20, "total_tokens": 10450},
+            Usage(10409, 41, reasoning_tokens=21),
+        ),
+        (
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 70,
+                "total_tokens": 170,
+                "completion_tokens_details": {"reasoning_tokens": 50},
+            },
+            Usage(100, 70, reasoning_tokens=50),
+        ),
+        ({"prompt_tokens": 100, "completion_tokens": 20}, Usage(100, 20)),
+        (
+            {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 90},
+            Usage(100, 20),
+        ),
+        (
+            {"prompt_tokens": "100", "completion_tokens": "20", "total_tokens": "150"},
+            Usage(100, 50, reasoning_tokens=30),
+        ),
+        (
+            {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": True},
+            Usage(100, 20),
+        ),
+        ({"completion_tokens": 20, "total_tokens": 150}, Usage(0, 20)),
+    ],
+)
+async def test_google_paid_thinking_is_included_in_output_and_usage_event(
+    counters, expected, provider, respx_mock
+):
+    events = []
+
+    provider.usage_sink = SimpleNamespace(write=events.append)
+    respx_mock.route(method="POST").respond(
+        json={
+            "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+            "usage": counters,
+        }
+    )
+    try:
+        reply = await provider.chat([UserMessage("test")], [])
+        assert reply.usage == expected
+        assert len(events) == 1
+        assert events[0]["output"] == expected.completion_tokens
+        assert events[0]["reasoning"] == expected.reasoning_tokens
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize(
+    "field", ["prompt_tokens", "completion_tokens", "total_tokens"]
+)
+@pytest.mark.parametrize(
+    "invalid", [None, True, False, -1, "-1", 1.5, "invalid", [], {}]
+)
+async def test_malformed_google_counter_cannot_invent_reasoning_tokens(
+    field, invalid, provider, respx_mock
+):
+    counters = {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 150}
+    counters[field] = invalid
+    raw = {
+        "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+        "usage": counters,
+    }
+    route = respx_mock.route(method="POST").respond(json=raw)
+    events = []
+
+    provider.usage_sink = SimpleNamespace(write=events.append)
+    try:
+        reply = await provider.chat([UserMessage("test")], [])
+        assert reply.content == "OK"
+        assert reply.usage == Usage(
+            0 if field == "prompt_tokens" else 100,
+            0 if field == "completion_tokens" else 20,
+        )
+        assert route.call_count == 1
+        assert len(events) == 1
+        assert events[0]["output"] == reply.usage.completion_tokens
+        assert events[0]["reasoning"] == 0
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize("model", ["gemini-3.8-flash", "gemini-4-argon"])
+async def test_current_gemini_models_use_supported_thinking_floor(model, respx_mock):
+    import json
+
+    provider = GoogleChatProvider(model=model)
+    route = respx_mock.post(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ).respond(
+        json={"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]}
+    )
+    try:
+        for thinking, expected in [
+            ("off", "low"),
+            ("low", "low"),
+            ("medium", "medium"),
+            ("high", "high"),
+        ]:
+            await provider.chat([UserMessage("Reply OK")], [], thinking=thinking)
+            payload = json.loads(route.calls.last.request.content)
+            assert payload["extra_body"]["google"]["thinking_config"] == {
+                "thinking_level": expected
+            }
+    finally:
+        await provider.aclose()
