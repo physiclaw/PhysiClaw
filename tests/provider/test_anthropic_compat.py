@@ -915,6 +915,7 @@ def test_from_response_falls_back_to_dict_when_no_model_dump() -> None:
         {"type": "tool_use", "id": "t2", "name": "peek", "input": []},
     ],
 )
+@pytest.mark.filterwarnings("error:Pydantic serializer warnings:UserWarning")
 async def test_chat_rejects_entire_malformed_signed_tool_response(
     bad_block, respx_mock
 ):
@@ -947,6 +948,7 @@ async def test_chat_rejects_entire_malformed_signed_tool_response(
 
 
 @pytest.mark.parametrize("content", ["invalid", {"type": "text", "text": "invalid"}])
+@pytest.mark.filterwarnings("error:Pydantic serializer warnings:UserWarning")
 async def test_chat_rejects_non_list_content(content, respx_mock):
     respx_mock.post("https://api.anthropic.test/v1/messages").mock(
         return_value=httpx.Response(
@@ -965,8 +967,11 @@ async def test_chat_rejects_non_list_content(content, respx_mock):
     provider = _TestAnthropic(model="test", base_url="https://api.anthropic.test")
 
     try:
-        with pytest.raises(ProviderTransientError, match="content must be a list"):
+        with pytest.raises(
+            ProviderTransientError, match="content must be a list"
+        ) as caught:
             await provider.chat([UserMessage(content="hi")], [])
+        assert caught.value.reply.raw["content"] == content
     finally:
         await provider.aclose()
 

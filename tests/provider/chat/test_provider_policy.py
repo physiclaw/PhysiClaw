@@ -422,6 +422,7 @@ async def test_request_observer_cancellation_stops_before_transport(
 
 @pytest.mark.parametrize("vendor", ["openai", "anthropic"])
 @pytest.mark.parametrize("kind", ["truncation", "refusal"])
+@pytest.mark.filterwarnings("error:Pydantic serializer warnings:UserWarning")
 async def test_terminal_signal_survives_malformed_tool_arguments(
     vendor, kind, spec, monkeypatch, respx_mock
 ):

@@ -354,7 +354,8 @@ class AnthropicCompatibleProvider(BaseChatProvider):
         try:
             return _from_anthropic_response(resp)
         except ProviderTransientError as exc:
-            raw = resp.model_dump()
+            # Preserve the rejected response for diagnostics without serializer warnings.
+            raw = resp.model_dump(warnings=False)
             reply = AssistantMessage(
                 "",
                 [],
