@@ -307,9 +307,11 @@ def test_page_controls_reject_unrelated_origins_on_both_listeners(clients):
     assert desktop("GET", "/api/bridge/clipboard").status == 404
     for client in (desktop, phone):
         assert client("GET", API, headers={"Host": "evil.example"}).status == 421
+        # Origin rejection happens before body parsing. Sending a body can race
+        # the server closing the connection on Windows and hide the 403 response.
         assert (
             client(
-                "POST", API + "/clipboard", "{}", {"Origin": "https://evil.example"}
+                "POST", API + "/clipboard", headers={"Origin": "https://evil.example"}
             ).status
             == 403
         )
