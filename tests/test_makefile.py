@@ -378,7 +378,7 @@ def test_make_studio_ui_routes_all_browser_regression_files(make_project):
     assert result.returncode == 0, result.stdout + result.stderr
     assert (
         result.stdout.strip()
-        == "node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs tests/cli/test_assistive_touch_ui.cjs"
+        == "node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs tests/core/test_bridge_focus_ui.cjs tests/cli/test_assistive_touch_ui.cjs"
     )
     assert records == []
 
