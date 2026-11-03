@@ -64,8 +64,7 @@ reads at the shop) in the accent's light wash; it persists with the
 list and hides, off, while the list is empty. Bought state changes only
 through its checkbox or reset. A small corner mark identifies only the last
 opened supplier cell, remembered with the list, without ticking Bought.
-On narrow screens the lede and disclaimer stack full-width; the table itself
-just scrolls sideways.
+On narrow screens the table scrolls sideways.
 
 ``optional_tools.json`` supplies the optional tools
 section. Each item has localized ``name``, optional ``spec`` (shown beneath the
@@ -139,33 +138,7 @@ DITTO = "Ditto"  # field value: merge this cell with the row above
 UI = {
     "doc_title": {"en": "PhysiClaw.ai Sourcing Guide", "zh": "PhysiClaw.ai 采购指南"},
     "h1": {"en": "Sourcing guide", "zh": "采购指南"},
-    "lede": {
-        "en": "This guide covers every part in the assembly manual's bill "
-        "of materials, with 3 reference suppliers each.<br>"
-        "Reference prices are subtotals for the required quantity "
-        "(not unit prices, shipping excluded). Vendors may change "
-        "prices at any time, so treat the prices as a rough guide.",
-        "zh": "本指南涵盖装配手册物料清单的全部零件，每项列出 3 家参考商家。<br>"
-        "参考价为所需数量的合计（非单价，不含运费）。"
-        "商家随时可能调价，仅作大致参考。",
-    },
     "pending": {"en": "to be found", "zh": "待补充"},
-    "disclaimer": {
-        "en": "<strong>Disclaimer:</strong> The suppliers and product links "
-        "in this guide are for reference only. We are not affiliated "
-        "with any listed vendor and receive no payment from them. We "
-        "make no guarantee about the quality, price, or availability "
-        "of their products. Check the specifications yourself and buy "
-        "from a vendor you trust. If a listed product has a problem, "
-        "or you know a reliable vendor, tell us. We will check and "
-        "update the listing.",
-        "zh": "<strong>免责声明：</strong>本指南所列商家及商品链接仅供采购参考。"
-        "我们与所列商家无任何关联或利益关系，"
-        "对其商品的质量、价格及供货不作任何保证。"
-        "请按规格自行甄选，从您信任的商家购买。"
-        "如所列商品存在问题，或您有可靠的商家推荐，"
-        "欢迎反馈，我们将核实并更新相应条目。",
-    },
     "inquiry_label": {"en": "Inquiry message", "zh": "询价信息"},
     "supplier_n": {"en": "Supplier", "zh": "商家"},
     "close": {"en": "Close", "zh": "关闭"},
@@ -853,8 +826,6 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         '<div class="wrap">'
         f'<header class="mast"><h1>{ui("h1", lang)}</h1>'
         f'<span class="url">{URL_MARK}</span></header>'
-        f'<div class="preamble"><p class="lede">{ui("lede", lang)}</p>'
-        f'<p class="disclaimer">{ui("disclaimer", lang)}</p></div>'
         f"{checklist}{render_table(rows, entries, lang)}"
         f"{render_optional_tools(optional_tools, lang)}</div>"
         f"{render_supplier_guides(entries, lang)}"
