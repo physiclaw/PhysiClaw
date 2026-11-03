@@ -12,7 +12,6 @@ bad while tolerating lens distortion and mild perspective.
 """
 
 import logging
-import math
 import time
 
 import cv2
@@ -95,13 +94,7 @@ def _focus_region(frame: np.ndarray, poly: np.ndarray | None) -> np.ndarray:
 
 
 def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | None:
-    """Calibrate a replayable focus position before measuring the dot grid.
-
-    On the caller's checkerboard page, either search a backend-advertised MF
-    range or settle AF, freeze, and read/reapply its position. Verify the
-    screen-crop sharpness before returning a value for the bundle. Unsupported
-    controls, rejected writes, or failed verification request AF (best-effort).
-    """
+    """Search and verify a focus peak before measuring the dot grid."""
     # Release any previous pin so AF can converge again. Clearing its
     # remembered value also prevents reconnect from replaying it mid-step.
     cam.unlock_focus()
@@ -135,53 +128,16 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
         return score
 
     bounds = cam.focus_search_range
-    if bounds is not None:
-        # Some backends report a cached MF register during AF. An explicit,
-        # optically verified calibration search establishes a replayable value.
-        value = focus.search(bounds, meter, cam.apply_focus, cam.unlock_focus)
-        if value is None or not cam.focus_pinned:
-            cam.unlock_focus()
-            log.warning(
-                "  Focus search did not verify a position — autofocus requested",
-                extra={
-                    "console_message": "Camera focus could not be pinned — autofocus requested"
-                },
-            )
-            return None
-        log.info("  ✓ Focus position verified @ %g", value)
-        return value
-
-    result = focus.lock(meter, cam.lock_focus, cam.unlock_focus)
-    if not result.locked:
+    if bounds is None:
+        log.info("  Manual focus range unavailable — no position saved")
+        return None
+    value = focus.search(bounds, meter, cam.apply_focus, cam.unlock_focus)
+    if value is None or not cam.focus_pinned:
+        cam.unlock_focus()
         log.warning(
-            "  Focus pin: %s",
-            result.detail,
+            "  Focus search did not verify a position — autofocus requested",
             extra={
                 "console_message": "Camera focus could not be pinned — autofocus requested"
-            },
-        )
-        return None
-    log.info("  Focus pin: %s", result.detail)
-    # A successful freeze is useful only if a later session can replay it.
-    value = cam.read_focus()
-    if value is None or not cam.apply_focus(value):
-        cam.unlock_focus()
-        log.warning(
-            "  Focus pin: position not replayable — autofocus requested",
-            extra={
-                "console_message": "Camera focus could not be saved — autofocus requested"
-            },
-        )
-        return None
-    # Re-check sharpness: a junk readback can move the lens despite an
-    # accepted write. Use the same gate as the freeze verification.
-    after = meter()
-    if after is None or not math.isfinite(after) or after < focus.BLUR_THRESHOLD:
-        cam.unlock_focus()
-        log.warning(
-            "  Focus pin: applied position metered soft — autofocus requested",
-            extra={
-                "console_message": "Saved camera focus failed verification — autofocus requested"
             },
         )
         return None

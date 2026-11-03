@@ -155,8 +155,10 @@ def camera_capture_lock(*, timeout_error=TimeoutError):
 
 
 def camera_focus_search_range(index: int) -> tuple[int, int, int] | None:
-    """Retain the existing DirectShow freeze/read/reapply calibration."""
-    return None
+    """Use this device's manual range for optical focus calibration."""
+    from physiclaw.port.backends.dshow import focus_range
+
+    return focus_range(index)
 
 
 def camera_set_auto_exposure(cap) -> None:
@@ -234,7 +236,7 @@ def camera_read_focus(cap) -> float | None:
 
 
 def camera_apply_focus(cap, value: float) -> bool:
-    """Request AF-off, then an absolute position, propagating either refusal.
+    """Apply an absolute position and require matching readback in manual mode.
 
     OpenCV's AF toggle explicitly writes Manual, but its CAP_PROP_FOCUS write
     passes flags=0. Some drivers may reject that write even after AF-off;
@@ -242,11 +244,13 @@ def camera_apply_focus(cap, value: float) -> bool:
     """
     import cv2
 
-    if not math.isfinite(value) or value < 0:
+    if not math.isfinite(value) or not 0 <= value <= 2**31 - 1 or int(value) != value:
         return False
     if not cap.set(cv2.CAP_PROP_AUTOFOCUS, 0):
         return False
-    return bool(cap.set(cv2.CAP_PROP_FOCUS, value))
+    if not cap.set(cv2.CAP_PROP_FOCUS, value):
+        return False
+    return camera_read_focus(cap) == value and cap.get(cv2.CAP_PROP_AUTOFOCUS) == 2
 
 
 # ─── doctor diagnostics ─────────────────────────────────────

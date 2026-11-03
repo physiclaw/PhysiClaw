@@ -136,11 +136,8 @@ def test_linux_context_timeout_uses_callers_error_type():
 
 
 @pytest.mark.parametrize("backend", [windows, darwin])
-def test_other_platforms_keep_plain_lock_and_existing_calibration(backend, mocker):
-    probe = mocker.patch.object(v4l2, "focus_range", side_effect=AssertionError)
+def test_other_platforms_keep_plain_lock(backend):
     assert type(backend.camera_capture_lock()) is type(threading.Lock())
-    assert backend.camera_focus_search_range(0) is None
-    probe.assert_not_called()
 
 
 def test_linux_selects_fair_lock_and_native_metadata(mocker):

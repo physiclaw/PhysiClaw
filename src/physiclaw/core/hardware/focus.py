@@ -1,11 +1,8 @@
 """Calibrate a fixed focus position for the fixed-distance camera/phone rig.
 
-`camera_map._pin_focus` uses a bounded MF search on backends whose AF
-readback can be stale; other backends freeze, read, reapply, and verify.
-Both paths use the checkerboard before saving a position. The checkerboard
-provides enough texture for the sharpness gate; flatter calibration pages
-can score below it even in focus (the corners page measured 14–34 against
-the default gate of 80).
+`camera_map._pin_focus` searches the device's manual range on the checkerboard,
+then reapplies the peak and verifies it against the measured best score.
+Without a usable manual range, calibration leaves autofocus enabled.
 
 `Camera` restores the position at startup and reconnect. A failed apply
 selects AF for that camera session, including later reconnects. Persistent
@@ -13,9 +10,9 @@ blur calls for checking the rig and recalibrating; there is no runtime
 focus search.
 
 Driver acceptance and sharp pixels are both required, but cannot prove
-that firmware honored AF-off. Unreadable or soft frames fail calibration;
-a failed freeze or manual search requests AF again. Injected meter, apply,
-freeze, and unfreeze callables keep this logic testable without hardware.
+that firmware honored AF-off. Missing frames or persistently soft verification
+fail calibration and request AF again. Injected callbacks keep both search
+and the diagnostic freeze helper testable without hardware.
 """
 
 import logging
@@ -24,25 +21,14 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-# The pin gate deliberately rides the session gate: calibration proves
-# the lens clears the same number every session judges views by, and an
-# optics re-tune of `[vision] blur_threshold` moves both scenes
-# together. The checkerboard's wide margin (hundreds vs 80) keeps that
-# coupling safe.
 from physiclaw.core.vision.quality import BLUR_THRESHOLD
 
 log = logging.getLogger(__name__)
 
-# Frames the caller's meter must let pass before each read — the AF
-# loop iterates per frame, so consecutive meters separated by a few
-# frames sample distinct lens positions instead of one.
+# Fresh frames to wait between a lens write and sharpness measurement.
 SETTLE_FRAMES = 5
 
-# Bounded settle loop: the scene must meter sharp on two CONSECUTIVE
-# reads before the freeze — one sharp read can be the instant an AF
-# hunt sweeps through focus. Sharpness clears BLUR_THRESHOLD with a
-# wide margin on a focused phone-screen crop (300+ vs the 80 floor),
-# so two agreeing reads reduce the risk of freezing during a hunt.
+# Bound settling after a focus change; require two consecutive sharp reads.
 CONFIRM_METERS = 4
 
 # Only calibration invokes this search, and only when the platform advertises
@@ -50,6 +36,7 @@ CONFIRM_METERS = 4
 # Leave headroom for page changes and grid detection in the setup request.
 SEARCH_SECONDS = 20.0
 SEARCH_SAMPLES = 64
+SEARCH_MIN_GAIN = 1.5
 
 
 def search(
@@ -63,8 +50,9 @@ def search(
     Sample at most 17 coarse positions, then refine the best neighborhood in
     control-step units. All writes and meters must succeed. Two fresh readings
     of the final re-applied position must clear the gate and retain at least
-    80% of the measured peak. Refusal, timeout, missing frames, cancellation,
-    or a moving/unstable scene restores AF and never saves a candidate.
+    80% of the measured peak. A multi-position search rechecks the worst
+    position to distinguish lens response from settling exposure. Failure
+    restores AF and never saves a candidate.
     """
     low, high, step = bounds
     if low < 0 or high < low or step <= 0:
@@ -74,7 +62,6 @@ def search(
     scores: dict[int, float] = {}
     verified = False
     try:
-        best = 0
         left, right = 0, last
         stride = max(1, math.ceil(last / 16))
         while True:
@@ -97,23 +84,40 @@ def search(
                 break
             left, right = max(0, best - stride), min(last, best + stride)
             stride = max(1, stride // 4)
-        if scores[best] < BLUR_THRESHOLD or time.monotonic() >= deadline:
+        peak = scores[best]
+        if peak < BLUR_THRESHOLD or time.monotonic() >= deadline:
             return None
+
+        def confirm(accept: Callable[[float], bool], consecutive: int) -> bool:
+            agreed = 0
+            for _ in range(CONFIRM_METERS):
+                if time.monotonic() >= deadline:
+                    return False
+                score = meter()
+                if score is None or not math.isfinite(score):
+                    return False
+                if time.monotonic() >= deadline:
+                    return False
+                agreed = agreed + 1 if accept(score) else 0
+                if agreed == consecutive:
+                    return True
+            return False
+
+        if len(scores) > 1:
+            worst = min(scores, key=lambda point: scores[point])
+            if peak < scores[worst] * SEARCH_MIN_GAIN:
+                return None
+            if not apply(float(low + worst * step)):
+                return None
+            if not confirm(lambda score: peak >= score * SEARCH_MIN_GAIN, 1):
+                return None
         value = float(low + best * step)
         if not apply(value):
             return None
-        for _ in range(2):
-            if time.monotonic() >= deadline:
-                return None
-            score = meter()
-            if score is None or not math.isfinite(score):
-                return None
-            if score < max(BLUR_THRESHOLD, scores[best] * 0.8):
-                return None
-        if time.monotonic() >= deadline:
+        if not confirm(lambda score: score >= max(BLUR_THRESHOLD, peak * 0.8), 2):
             return None
         verified = True
-        log.info("Manual focus calibrated @ %g (sharpness %.0f)", value, score)
+        log.info("Manual focus calibrated @ %g (peak sharpness %.0f)", value, peak)
         return value
     finally:
         if not verified:

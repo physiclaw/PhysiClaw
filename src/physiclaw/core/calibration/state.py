@@ -43,10 +43,8 @@ BUNDLE_PATH = paths.calibration_bundle()
 # shape changes so an old on-disk bundle fails loudly at load instead of
 # reconstructing wrong (``from_dict`` raises on mismatch). Bundles
 # written before versioning carry no key and count as version 1.
-# ``cam_focus`` rides version 1: a bundle without the key loads as None
-# (lens left on live AF — degraded, not wrong), so no forced
-# recalibration; re-running the camera-mapping step pins it.
 BUNDLE_VERSION = 1
+FOCUS_CALIBRATION_VERSION = 1
 
 
 def _finite_number(value: object, field: str) -> float:
@@ -245,6 +243,7 @@ class Calibration:
             "cam_index": self.cam_index,
             "screen_dimension": self.screen_dimension,
             "cam_focus": self.cam_focus,
+            "cam_focus_version": FOCUS_CALIBRATION_VERSION,
         }
 
     @classmethod
@@ -276,6 +275,14 @@ class Calibration:
         focus = payload.get("cam_focus")
         if focus is not None and _finite_number(focus, "cam_focus") < 0:
             raise ValueError("cam_focus must be non-negative")
+        focus_version = payload.get("cam_focus_version")
+        if focus is not None and (
+            type(focus_version) is not int or focus_version != FOCUS_CALIBRATION_VERSION
+        ):
+            log.info(
+                "Legacy camera focus discarded — autofocus requested until recalibration"
+            )
+            focus = None
         dimension = payload.get("screen_dimension")
         if dimension is not None:
             if not isinstance(dimension, dict):

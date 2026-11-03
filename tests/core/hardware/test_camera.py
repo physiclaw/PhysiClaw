@@ -103,6 +103,8 @@ class FakeVideoCapture:
         return True
 
     def get(self, prop):
+        if prop == cv2.CAP_PROP_AUTOFOCUS and getattr(self, "dshow_controls", False):
+            return 1 if self._properties.get(prop, 0) else 2
         return self._properties.get(prop, 0.0)
 
     def release(self):
@@ -152,6 +154,8 @@ def capture_controls(request, mocker):
     if request.param == "native":
         return
     backend = importlib.import_module(f"physiclaw.port.backends.{request.param}")
+    if request.param == "windows":
+        mocker.patch.object(FakeVideoCapture, "dshow_controls", True, create=True)
     for name in (
         "camera_set_auto_exposure",
         "camera_set_manual_exposure",
@@ -179,6 +183,8 @@ def test_directshow_negotiation_preserves_mjpg_and_controls(
     yuy2 = cv2.VideoWriter.fourcc(*"YUY2")
 
     class NegotiatingCapture(FakeVideoCapture):
+        dshow_controls = True
+
         def get(self, prop):
             if prop == cv2.CAP_PROP_BACKEND:
                 return cv2.CAP_DSHOW
@@ -226,7 +232,7 @@ def test_directshow_negotiation_preserves_mjpg_and_controls(
     assert cap.get(cv2.CAP_PROP_AUTO_EXPOSURE) == int(exposure_auto)
     if not exposure_auto:
         assert cap.get(cv2.CAP_PROP_EXPOSURE) == -6
-    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == int(focus_value is None)
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == (1 if focus_value is None else 2)
     assert pinned == (focus_value is not None)
     if focus_value is not None:
         assert cap.get(cv2.CAP_PROP_FOCUS) == focus_value

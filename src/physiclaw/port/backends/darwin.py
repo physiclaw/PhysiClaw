@@ -152,8 +152,9 @@ def camera_capture_lock(*, timeout_error=TimeoutError):
 
 
 def camera_focus_search_range(index: int) -> tuple[int, int, int] | None:
-    """Retain the existing UVC freeze/read/reapply calibration."""
-    return None
+    """Query the unambiguously matched UVC terminal's manual focus range."""
+    channel = _camera_terminal()
+    return channel.focus_range() if channel and channel.answers_focus() else None
 
 
 def _camera_terminal():

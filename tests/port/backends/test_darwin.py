@@ -367,6 +367,25 @@ def test_focus_lockable_with_answering_channel(monkeypatch) -> None:
     assert darwin.camera_focus_lockable() is True
 
 
+def test_focus_search_uses_native_uvc_range(monkeypatch):
+    channel = MagicMock()
+    channel.answers_focus.return_value = True
+    channel.focus_range.return_value = (0, 1023, 1)
+    _reset_probe(monkeypatch, channel)
+
+    assert darwin.camera_focus_search_range(0) == (0, 1023, 1)
+    channel.focus_range.assert_called_once_with()
+
+
+def test_missing_focus_control_does_not_query_a_range(monkeypatch):
+    channel = MagicMock()
+    channel.answers_focus.return_value = False
+    _reset_probe(monkeypatch, channel)
+
+    assert darwin.camera_focus_search_range(0) is None
+    channel.focus_range.assert_not_called()
+
+
 def test_lock_focus_delegates_to_channel(monkeypatch) -> None:
     channel = _FakeFocusTerminal()
     _reset_probe(monkeypatch, channel)

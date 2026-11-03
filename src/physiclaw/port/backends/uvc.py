@@ -70,7 +70,7 @@ _INTF_IID = bytes.fromhex("73c97ae89ef311d4b1d0000a27052861")
 # USB / UVC protocol constants (USB Video Class spec 1.1 §4).
 _USB_CLASS_VIDEO, _SUBCLASS_VIDEOCONTROL = 14, 1
 _DONT_CARE = 0xFFFF
-_SET_CUR, _GET_CUR, _GET_MIN, _GET_MAX = 0x01, 0x81, 0x82, 0x83
+_SET_CUR, _GET_CUR, _GET_MIN, _GET_MAX, _GET_RES = 0x01, 0x81, 0x82, 0x83, 0x84
 _CT_AE_MODE, _CT_EXPOSURE_ABS = 0x02, 0x04
 # Focus controls, same camera terminal (UVC 1.1 §4.2.2.1): absolute
 # position is 2 bytes, the continuous-AF toggle 1 byte. Fixed-focus
@@ -483,6 +483,14 @@ class CameraTerminal:
         the read fails. Raw: a junk GET_CUR readback (module docstring's
         firmware quirks) is the caller's to sanity-check."""
         return self._get(_GET_CUR, _CT_FOCUS_ABS, 2)
+
+    def focus_range(self) -> tuple[int, int, int] | None:
+        low = self._get(_GET_MIN, _CT_FOCUS_ABS, 2)
+        high = self._get(_GET_MAX, _CT_FOCUS_ABS, 2)
+        step = self._get(_GET_RES, _CT_FOCUS_ABS, 2)
+        if low is None or high is None or step is None or high < low or step <= 0:
+            return None
+        return low, high, step
 
     def apply_focus(self, position: int) -> bool:
         """Continuous AF off, then drive the lens to a caller-supplied

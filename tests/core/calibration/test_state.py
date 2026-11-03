@@ -245,6 +245,7 @@ def test_to_dict_with_empty_calibration_yields_all_nones() -> None:
         "cam_index": None,
         "screen_dimension": None,
         "cam_focus": None,
+        "cam_focus_version": 1,
     }
 
 
@@ -300,6 +301,30 @@ def test_from_dict_without_cam_focus_key_loads_as_none() -> None:
     restored = Calibration.from_dict({"version": 1})
 
     assert restored.cam_focus is None
+
+
+@pytest.mark.parametrize("revision", [None, 0, 2, True, "1"])
+def test_legacy_focus_is_discarded_without_losing_geometry(revision):
+    original = Calibration(
+        cam_focus=504,
+        cam_index=0,
+        cam_size=(2160, 3840),
+        pct_to_cam=np.eye(2, 3),
+        pct_to_grbl=np.eye(2, 3),
+    )
+    payload = original.to_dict()
+    if revision is None:
+        payload.pop("cam_focus_version")
+    else:
+        payload["cam_focus_version"] = revision
+
+    restored = Calibration.from_dict(payload)
+
+    assert restored.cam_focus is None
+    assert restored.cam_size == original.cam_size
+    assert restored.cam_index == original.cam_index
+    assert np.array_equal(restored.pct_to_cam, original.pct_to_cam)
+    assert np.array_equal(restored.pct_to_grbl, original.pct_to_grbl)
 
 
 def test_from_dict_with_all_nones_returns_empty_calibration() -> None:

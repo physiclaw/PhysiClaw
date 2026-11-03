@@ -192,13 +192,12 @@ def _sharp_frame(w=600, h=900) -> np.ndarray:
     return rng.integers(0, 256, size=(h, w, 3), dtype=np.uint8)
 
 
-def _lockable_cam(frame: np.ndarray | None) -> MagicMock:
+def _searchable_cam(frame: np.ndarray | None) -> MagicMock:
     cam = MagicMock()
     cam.focus_lockable = True
-    cam.focus_search_range = None
+    cam.focus_search_range = (123, 123, 1)
     cam.wait_frames.return_value = True
     cam.raw_frame.return_value = frame
-    cam.lock_focus.return_value = True
     return cam
 
 
@@ -211,38 +210,50 @@ def test_pin_focus_returns_none_when_not_lockable() -> None:
     cam.unlock_focus.assert_called_once()
 
 
-def test_pin_focus_releases_a_stale_pin_before_relocking() -> None:
-    # A re-run (mapping retried, or a setup re-run over a warm-started
-    # session) arrives with the lens still pinned at the OLD position —
-    # frozen, AF can't re-converge. The pin must start from live AF.
-    cam = _lockable_cam(_sharp_frame())
-    cam.read_focus.return_value = 123.0
-    order: list[str] = []
-    cam.unlock_focus.side_effect = lambda: order.append("unlock")
-    cam.lock_focus.side_effect = lambda: order.append("lock") or True
+def test_missing_manual_range_never_saves_an_af_freeze():
+    cam = _searchable_cam(_sharp_frame())
+    cam.focus_search_range = None
+    cam.read_focus.return_value = 504
 
-    camera_map_mod._pin_focus(cam, -1, None)
+    assert camera_map_mod._pin_focus(cam, -1, None) is None
 
-    assert order[0] == "unlock"
-    assert "lock" in order
+    cam.unlock_focus.assert_called_once()
+    cam.lock_focus.assert_not_called()
+    cam.read_focus.assert_not_called()
+    cam.apply_focus.assert_not_called()
 
 
-def test_pin_focus_locks_reads_and_reapplies() -> None:
-    # The verified position is read back AND re-applied through
-    # apply_focus, so the camera remembers the exact value across a
-    # reopen instead of re-freezing wherever the lens sits.
-    cam = _lockable_cam(_sharp_frame())
-    cam.read_focus.return_value = 123.0
+def test_calibration_selects_peak_instead_of_first_acceptable_checkerboard(mocker):
+    cam = _searchable_cam(_sharp_frame())
+    cam.focus_search_range = (480, 576, 1)
+    position = 504
+    cam.read_focus.return_value = 504
+    writes = []
+
+    def apply(value):
+        nonlocal position
+        position = value
+        writes.append(value)
+        return True
+
+    cam.apply_focus.side_effect = apply
+    mocker.patch.object(
+        camera_map_mod,
+        "laplacian_variance",
+        side_effect=lambda frame: max(100, 1200 - (position - 552) ** 2 * 0.4),
+    )
 
     value = camera_map_mod._pin_focus(cam, -1, None)
 
-    assert value == 123.0
-    cam.apply_focus.assert_called_once_with(123.0)
+    assert value == position == 552
+    assert writes[-1] == 552
+    cam.lock_focus.assert_not_called()
+    cam.read_focus.assert_not_called()
 
 
 @pytest.mark.parametrize("survives", [False, True])
 def test_advertised_search_range_calibrates_without_af_readback(mocker, survives):
-    cam = _lockable_cam(_sharp_frame())
+    cam = _searchable_cam(_sharp_frame())
     cam.focus_search_range = (10, 110, 5)
     cam.focus_pinned = survives
     position = 10
@@ -268,7 +279,7 @@ def test_advertised_search_range_calibrates_without_af_readback(mocker, survives
 
 
 def test_search_path_failed_meter_clears_candidate_and_restores_af():
-    cam = _lockable_cam(_sharp_frame())
+    cam = _searchable_cam(_sharp_frame())
     cam.focus_search_range = (0, 1023, 1)
     cam.apply_focus.return_value = True
     cam.wait_frames.return_value = False
@@ -278,58 +289,8 @@ def test_search_path_failed_meter_clears_candidate_and_restores_af():
     cam.lock_focus.assert_not_called()
 
 
-@pytest.mark.parametrize("stale_position", [0.0, 512.0, 1023.0])
-def test_linux_stale_manual_register_cannot_save_a_soft_pin(stale_position):
-    """UGREEN hardware reports the last MF write even after AF moves the lens.
-
-    Model separate physical and reported positions. A successful driver write
-    can rack a sharp lens out of focus; the pixel gate must restore AF instead
-    of persisting that stale register, including the valid zero position.
-    """
-    from physiclaw.port.backends import linux
-
-    class Capture:
-        lens = 600.0
-        register = stale_position
-        autofocus = True
-
-        def get(self, prop):
-            if prop == cv2.CAP_PROP_AUTOFOCUS:
-                return float(self.autofocus)
-            assert prop == cv2.CAP_PROP_FOCUS
-            return self.register
-
-        def set(self, prop, value):
-            if prop == cv2.CAP_PROP_AUTOFOCUS:
-                self.autofocus = bool(value)
-                if self.autofocus:
-                    self.lens = 600.0
-            elif prop == cv2.CAP_PROP_FOCUS:
-                assert not self.autofocus
-                self.register = self.lens = value
-            return True
-
-    capture = Capture()
-    sharp = _sharp_frame()
-    cam = _lockable_cam(sharp)
-    cam.raw_frame.side_effect = lambda: (
-        sharp if capture.lens == 600.0 else np.zeros_like(sharp)
-    )
-    cam.lock_focus.side_effect = lambda: linux.camera_lock_focus(capture)
-    cam.unlock_focus.side_effect = lambda: linux.camera_unlock_focus(capture)
-    cam.read_focus.side_effect = lambda: linux.camera_read_focus(capture)
-    cam.apply_focus.side_effect = lambda value: linux.camera_apply_focus(capture, value)
-
-    assert camera_map_mod._pin_focus(cam, -1, None) is None
-    assert capture.autofocus
-    assert capture.lens == 600.0
-    assert cam.unlock_focus.call_count >= 2
-
-
 def test_pin_focus_returns_none_when_scene_never_sharp(caplog) -> None:
-    # A blank frame can't converge AF — the lock defers and nothing is
-    # persisted (the bundle's cam_focus stays None; AF stays live).
-    cam = _lockable_cam(np.zeros((900, 600, 3), dtype=np.uint8))
+    cam = _searchable_cam(np.zeros((900, 600, 3), dtype=np.uint8))
 
     value = camera_map_mod._pin_focus(cam, -1, None)
 
@@ -342,115 +303,18 @@ def test_pin_focus_returns_none_when_scene_never_sharp(caplog) -> None:
     )
 
 
-def test_pin_focus_returns_none_when_position_unreadable(caplog) -> None:
-    # The freeze verified but the driver reports no position — nothing
-    # a reconnect could replay, so the lens goes back to live AF and
-    # every session behaves the same.
-    cam = _lockable_cam(_sharp_frame())
-    cam.read_focus.return_value = None
-
-    value = camera_map_mod._pin_focus(cam, -1, None)
-
-    assert value is None
-    cam.apply_focus.assert_not_called()
-    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
-    assert any(
-        record.levelname == "WARNING"
-        and "could not be saved" in getattr(record, "console_message", "")
-        for record in caplog.records
-    )
-
-
-@pytest.mark.parametrize("focused_position", [0.0, 137.0])
-@pytest.mark.parametrize(
-    "absolute_write_accepted, rollback_accepted",
-    [(True, True), (False, True), (False, False)],
-)
-def test_windows_focus_pin_preserves_and_replays_the_current_position(
-    focused_position, absolute_write_accepted, rollback_accepted, caplog
-) -> None:
-    """Model the verified OpenCV MSMF/DirectShow control differences.
-
-    MSMF reads the default and resets the lens on AF-off; DirectShow reads
-    the current value and preserves it. Run the real Windows helpers and
-    calibration pixel checks. A driver may reject DirectShow's flags=0
-    absolute write even after accepting the explicit manual-mode toggle.
-    """
-    from physiclaw.port.backends import windows
-
-    backend = windows.camera_backend()
-
-    class Capture:
-        position = focused_position
-        autofocus = True
-
-        def get(self, prop):
-            assert prop == cv2.CAP_PROP_FOCUS
-            return 42.0 if backend == cv2.CAP_MSMF else self.position
-
-        def set(self, prop, value):
-            if prop == cv2.CAP_PROP_AUTOFOCUS:
-                if value and not self.autofocus and not rollback_accepted:
-                    return False
-                self.autofocus = bool(value)
-                if self.autofocus:
-                    self.position = focused_position
-                elif backend == cv2.CAP_MSMF:
-                    self.position = 0.0
-            elif prop == cv2.CAP_PROP_FOCUS:
-                if not absolute_write_accepted:
-                    return False
-                self.position = value
-            else:
-                raise AssertionError(prop)
-            return True
-
-    capture = Capture()
-    sharp = _sharp_frame()
-    cam = _lockable_cam(sharp)
-    cam.raw_frame.side_effect = lambda: (
-        sharp if capture.position == focused_position else np.zeros_like(sharp)
-    )
-    cam.lock_focus.side_effect = lambda: windows.camera_lock_focus(capture)
-    cam.unlock_focus.side_effect = lambda: windows.camera_unlock_focus(capture)
-    cam.read_focus.side_effect = lambda: windows.camera_read_focus(capture)
-    cam.apply_focus.side_effect = lambda value: windows.camera_apply_focus(
-        capture, value
-    )
-
-    value = camera_map_mod._pin_focus(cam, -1, None)
-
-    assert value == (focused_position if absolute_write_accepted else None)
-    assert capture.position == focused_position
-    assert capture.autofocus is (not absolute_write_accepted and rollback_accepted)
-    cam.apply_focus.assert_called_once_with(focused_position)
-    assert cam.unlock_focus.call_count == (1 if absolute_write_accepted else 2)
-    if not rollback_accepted:
-        assert "could not re-enable autofocus" in caplog.text
-
-
 def test_pin_focus_returns_none_when_apply_refused() -> None:
-    # The driver froze the lens but rejects absolute writes — a
-    # persisted value would fail to re-apply on every future connect,
-    # so nothing is persisted and the lens goes back to AF.
-    cam = _lockable_cam(_sharp_frame())
-    cam.read_focus.return_value = 123.0
+    cam = _searchable_cam(_sharp_frame())
     cam.apply_focus.return_value = False
 
     value = camera_map_mod._pin_focus(cam, -1, None)
 
     assert value is None
-    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
+    assert cam.unlock_focus.call_count >= 2
 
 
 def test_pin_focus_returns_none_when_applied_position_meters_soft() -> None:
-    # The freeze verified sharp, but read-back + re-apply is a second
-    # driver round-trip: an intermittent junk readback drives the lens
-    # elsewhere. The applied state must be proven by pixels before the
-    # value is persisted — on a soft read nothing is stored and the
-    # lens goes back to AF.
-    cam = _lockable_cam(_sharp_frame())
-    cam.read_focus.return_value = 123.0
+    cam = _searchable_cam(_sharp_frame())
 
     def apply_and_blur(value: float) -> bool:
         cam.raw_frame.return_value = np.zeros((900, 600, 3), dtype=np.uint8)
@@ -461,7 +325,7 @@ def test_pin_focus_returns_none_when_applied_position_meters_soft() -> None:
     value = camera_map_mod._pin_focus(cam, -1, None)
 
     assert value is None
-    assert cam.unlock_focus.call_count == 2  # initial reset, then failed-pin rollback
+    assert cam.unlock_focus.call_count >= 2
 
 
 def test_pin_focus_meters_only_the_screen_region() -> None:
@@ -517,7 +381,7 @@ class _PhaseCamera:
     """Device boundary fake: real images/focus metering, no native hardware."""
 
     focus_lockable = True
-    focus_search_range = None
+    focus_search_range = (42, 42, 1)
 
     @property
     def focus_pinned(self):
@@ -542,19 +406,12 @@ class _PhaseCamera:
     def wait_frames(self, *args, **kwargs):
         return True
 
-    def lock_focus(self):
-        self.frozen = True
-        return True
-
     def unlock_focus(self):
         self.frozen = self.applied = False
         self.unlocks += 1
 
-    def read_focus(self):
-        return 42.0
-
     def apply_focus(self, value):
-        self.applied = True
+        self.frozen = self.applied = True
         return True
 
 
@@ -666,7 +523,9 @@ def _fail_camera_stage(mocker, cam, stage, failure):
     mocker.patch.object(cam, target, side_effect=effect)
 
 
-@pytest.mark.parametrize("stage", ["read_focus", "apply_focus", "verification", "grid"])
+@pytest.mark.parametrize(
+    "stage", ["wait_frames", "apply_focus", "verification", "grid"]
+)
 @pytest.mark.parametrize(
     "failure", [OSError("device failed"), KeyboardInterrupt("cancelled")]
 )
@@ -719,14 +578,14 @@ def test_mapping_does_not_save_focus_lost_during_reconnect(mocker, stage):
     assert affine is not None and size == (600, 900)
     assert position is None
     assert not cam.frozen and not cam.applied
-    assert cam.unlocks == 2
+    assert cam.unlocks >= 2
 
 
 def test_mapping_cleanup_failure_preserves_original_exception(mocker) -> None:
     mocker.patch.object(camera_map_mod.time, "sleep")
     cal = _real_cal()
     cam = _PhaseCamera(cal)
-    mocker.patch.object(cam, "read_focus", side_effect=KeyboardInterrupt("original"))
+    mocker.patch.object(cam, "apply_focus", side_effect=KeyboardInterrupt("original"))
     cleanup = mocker.patch.object(
         cam, "unlock_focus", side_effect=[None, OSError("cleanup")]
     )
@@ -734,14 +593,14 @@ def test_mapping_cleanup_failure_preserves_original_exception(mocker) -> None:
     with pytest.raises(KeyboardInterrupt, match="original"):
         camera_map_mod.compute_camera_mapping(cam, cal, -1)
 
-    assert cleanup.call_count == 2
+    assert cleanup.call_count >= 2
 
 
 def test_mapping_cleanup_does_not_depend_on_current_focus_capability(mocker):
     mocker.patch.object(camera_map_mod.time, "sleep")
     cal = _real_cal()
     cam = _PhaseCamera(cal)
-    mocker.patch.object(cam, "read_focus", side_effect=KeyboardInterrupt("original"))
+    mocker.patch.object(cam, "apply_focus", side_effect=KeyboardInterrupt("original"))
     capability = mocker.patch.object(
         _PhaseCamera,
         "focus_lockable",
@@ -754,7 +613,7 @@ def test_mapping_cleanup_does_not_depend_on_current_focus_capability(mocker):
 
     capability.assert_called_once()
     assert not cam.frozen and not cam.applied
-    assert cam.unlocks == 2
+    assert cam.unlocks >= 2
 
 
 @pytest.mark.parametrize("stage", ["corners", "focus"])

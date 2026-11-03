@@ -25,7 +25,7 @@ def test_regression_read_nonfinite_focus_is_unavailable(value) -> None:
     assert focus is None
 
 
-@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0, 1.5, 2**31])
 def test_regression_apply_invalid_focus_preserves_autofocus(value) -> None:
     cap = MagicMock()
 
@@ -235,6 +235,7 @@ def test_apply_focus_disables_af_and_propagates_position_write_result(
 
     cap = MagicMock()
     cap.set.side_effect = [True, accepted]
+    cap.get.side_effect = [position, 2]
 
     assert windows.camera_apply_focus(cap, position) is accepted
     assert cap.set.call_args_list == [
@@ -249,3 +250,12 @@ def test_apply_focus_fails_when_af_toggle_refused() -> None:
 
     assert windows.camera_apply_focus(cap, 137.0) is False
     assert cap.set.call_count == 1  # never writes a position over live AF
+
+
+@pytest.mark.parametrize("actual,mode", [(138.0, 2), (137.0, 1), (-1.0, 2)])
+def test_apply_focus_rejects_clamped_ignored_or_unreadable_writes(actual, mode):
+    cap = MagicMock()
+    cap.set.return_value = True
+    cap.get.side_effect = [actual, mode]
+
+    assert windows.camera_apply_focus(cap, 137.0) is False

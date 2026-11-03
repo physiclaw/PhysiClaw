@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.core.hardware.focus` — the lock flow."""
+"""Tests for optical focus search and the diagnostic freeze helper."""
 
 from __future__ import annotations
 
@@ -316,8 +316,84 @@ def test_manual_search_finds_verified_position_within_real_step_grid(bounds, pea
     value = search(bounds, meter, apply, lambda: unfreezes.append(True))
     assert value == peak
     assert writes[-1] == peak
-    assert len(writes) <= focus.SEARCH_SAMPLES + 1
+    assert len(writes) <= focus.SEARCH_SAMPLES + 2
     assert not unfreezes
+
+
+@pytest.mark.parametrize("variation", [0.0, 0.1])
+def test_search_rejects_controls_without_optical_focus_response(variation):
+    position = 0
+    restored = []
+
+    def apply(value):
+        nonlocal position
+        position = value
+        return True
+
+    value = search(
+        (0, 100, 1),
+        lambda: 300 * (1 + variation * position / 100),
+        apply,
+        lambda: restored.append(True),
+    )
+
+    assert value is None
+    assert restored == [True]
+
+
+def test_search_rejects_brightness_settling_mistaken_for_lens_response(search_rig):
+    # Ignored lens writes can still appear to improve while exposure settles.
+    search_rig.meter.side_effect = itertools.chain([50], itertools.repeat(SHARP))
+
+    value = search((0, 4, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+
+    assert value is None
+    search_rig.unfreeze.assert_called_once_with()
+
+
+@pytest.mark.parametrize("failure", [None, float("nan"), float("inf")])
+def test_search_missing_or_invalid_worst_position_recheck_restores_af(
+    search_rig, failure
+):
+    search_rig.meter.side_effect = [50, SHARP, failure]
+
+    assert (
+        search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        is None
+    )
+
+    search_rig.unfreeze.assert_called_once_with()
+
+
+@pytest.mark.parametrize("stage", ["apply", "meter"])
+def test_search_expired_recheck_does_not_reapply_candidate(
+    monkeypatch, search_rig, stage
+):
+    now = 0.0
+    monkeypatch.setattr(focus.time, "monotonic", lambda: now)
+
+    def apply(value):
+        nonlocal now
+        if stage == "apply" and search_rig.apply.call_count == 3:
+            now = focus.SEARCH_SECONDS + 1
+        return True
+
+    def meter():
+        nonlocal now
+        if stage == "meter" and search_rig.meter.call_count == 3:
+            now = focus.SEARCH_SECONDS + 1
+        return SHARP if search_rig.meter.call_count == 2 else 50
+
+    search_rig.apply.side_effect = apply
+    search_rig.meter.side_effect = meter
+
+    assert (
+        search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        is None
+    )
+
+    assert search_rig.apply.call_count == 3
+    search_rig.unfreeze.assert_called_once_with()
 
 
 @pytest.fixture
@@ -357,10 +433,39 @@ def test_search_partial_writes_and_interruption_restore_af(
 def test_search_rejects_final_scene_degradation_even_above_absolute_gate(
     search_rig, final_score
 ):
-    search_rig.meter.side_effect = [500, final_score]
+    search_rig.meter.side_effect = itertools.chain([500], itertools.repeat(final_score))
     value = search((0, 0, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
     assert value is None
     search_rig.unfreeze.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "verification,expected",
+    [([30, 400, 400], 0.0), ([400, 30, 400, 400], 0.0), ([400, 30, 400, 30], None)],
+)
+def test_search_allows_lens_settling_but_requires_two_consecutive_sharp_frames(
+    search_rig, verification, expected
+):
+    search_rig.meter.side_effect = [500, *verification]
+
+    assert (
+        search((0, 0, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        == expected
+    )
+
+    assert search_rig.unfreeze.call_count == int(expected is None)
+
+
+def test_search_allows_settling_after_each_large_verification_move(search_rig):
+    search_rig.meter.side_effect = [50, 500, 500, 50, 30, 500, 500]
+
+    assert (
+        search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        == 1.0
+    )
+
+    assert [call.args[0] for call in search_rig.apply.call_args_list] == [0, 1, 0, 1]
+    search_rig.unfreeze.assert_not_called()
 
 
 @pytest.mark.parametrize("accepted", [[False], [True, False]], ids=["initial", "final"])

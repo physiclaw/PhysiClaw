@@ -414,6 +414,41 @@ def test_request_requires_full_transfer(monkeypatch, done, expected) -> None:
 # ---------- focus controls ----------
 
 
+@pytest.mark.parametrize("low,high,step", [(0, 1023, 1), (10, 110, 5), (0, 0, 1)])
+def test_focus_range_reads_min_max_and_step(monkeypatch, low, high, step):
+    channel, sent = _terminal_with_recorder(
+        monkeypatch,
+        {
+            (uvc._IN, uvc._GET_MIN, uvc._CT_FOCUS_ABS): low,
+            (uvc._IN, uvc._GET_MAX, uvc._CT_FOCUS_ABS): high,
+            (uvc._IN, uvc._GET_RES, uvc._CT_FOCUS_ABS): step,
+        },
+    )
+
+    assert channel.focus_range() == (low, high, step)
+    assert len(sent) == 3
+    assert all(
+        direction == uvc._IN and len(data) == 2 for direction, _, _, data in sent
+    )
+
+
+@pytest.mark.parametrize(
+    "values", [(None, 100, 1), (0, None, 1), (0, 100, None), (0, 100, 0), (100, 0, 1)]
+)
+def test_focus_range_rejects_unavailable_or_invalid_metadata(monkeypatch, values):
+    channel, _ = _terminal_with_recorder(
+        monkeypatch,
+        {
+            (uvc._IN, request, uvc._CT_FOCUS_ABS): value
+            for request, value in zip(
+                (uvc._GET_MIN, uvc._GET_MAX, uvc._GET_RES), values
+            )
+            if value is not None
+        },
+    )
+    assert channel.focus_range() is None
+
+
 def test_answers_focus_requires_both_controls_and_caches(monkeypatch) -> None:
     channel, sent = _terminal_with_recorder(
         monkeypatch,

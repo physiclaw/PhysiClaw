@@ -489,7 +489,7 @@ class Camera:
 
     @property
     def focus_search_range(self) -> tuple[int, int, int] | None:
-        """A device-supported calibration search range, when needed by its backend."""
+        """The device's manual focus range, or None when unavailable."""
         with self._cap_lock:
             self._require_open()
             return platform.camera_focus_search_range(self.index)
