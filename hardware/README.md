@@ -253,6 +253,10 @@ left on disk cannot satisfy a later `--bom` or `--bom-delta` request.
 
 Source checks reuse parsed imports for unchanged contents within each process;
 file reads, dependency resolution and hashing still run on every check.
+Implicit parent-package initializers contribute their source and eager imports,
+but their unused lazy `__getattr__` exports do not pull runtime code into CAD
+dependencies. Explicit package imports still track lazy exports conservatively;
+shared travel dimensions and function-local build imports remain dependencies.
 
 Full builds run two independent CAD batch processes by default. Use
 `build --jobs 1` on a low-memory machine, or up to `--jobs 4` when more

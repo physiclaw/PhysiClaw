@@ -89,16 +89,29 @@ def _module_to_path(mod: str) -> Path | None:
     return init if init.is_file() else None
 
 
-def _imports(path: Path) -> frozenset[str]:
+def _imports(path: Path, *, include_lazy: bool = True) -> frozenset[str]:
     """Read current bytes on every check, including edits that preserve mtime."""
-    return _parsed_imports(path, path.read_bytes(), REPO_ROOT)
+    return _parsed_imports(path, path.read_bytes(), REPO_ROOT, include_lazy)
 
 
 @functools.lru_cache(maxsize=256)
-def _parsed_imports(path: Path, source: bytes, repo_root: Path) -> frozenset[str]:
+def _parsed_imports(
+    path: Path, source: bytes, repo_root: Path, include_lazy: bool
+) -> frozenset[str]:
     """Cache parsing only; dependency resolution and hashing remain live."""
     mods: set[str] = set()
-    for node in ast.walk(ast.parse(source, filename=str(path))):
+    tree = ast.parse(source, filename=str(path))
+    if not include_lazy:
+        # Loading a child module executes its parents' initializers, but does
+        # not request their lazy exports. Keep all other imports conservative,
+        # including function-local imports that ordinary build code may call.
+        tree.body = [
+            node
+            for node in tree.body
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            or node.name != "__getattr__"
+        ]
+    for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module
             if node.level:
@@ -119,24 +132,26 @@ def _parsed_imports(path: Path, source: bytes, repo_root: Path) -> frozenset[str
 
 def _closure(*paths: Path) -> frozenset[Path]:
     """All project source files reachable from ``paths`` through imports."""
-    seen: set[Path] = set()
-    stack = list(paths)
+    seen: dict[Path, bool] = {}
+    stack = [(p, True) for p in paths]
     while stack:
-        p = stack.pop()
-        if p in seen:
+        p, include_lazy = stack.pop()
+        if p in seen and (seen[p] or not include_lazy):
             continue
-        seen.add(p)
+        # An explicit import may revisit an implicitly loaded initializer.
+        # Upgrade it to include lazy exports regardless of traversal order.
+        seen[p] = include_lazy
         # Python executes package initializers before importing their modules.
         for directory in p.parents:
             if directory == REPO_ROOT:
                 break
             init = directory / "__init__.py"
             if init.is_file() and init not in seen:
-                stack.append(init)
-        for mod in _imports(p):
+                stack.append((init, False))
+        for mod in _imports(p, include_lazy=include_lazy):
             dep = _module_to_path(mod)
-            if dep is not None and dep not in seen:
-                stack.append(dep)
+            if dep is not None and not seen.get(dep, False):
+                stack.append((dep, True))
     return frozenset(seen)
 
 

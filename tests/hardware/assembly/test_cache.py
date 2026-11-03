@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from itertools import permutations
 from types import SimpleNamespace
 
 import pytest
@@ -463,6 +464,98 @@ def test_installed_project_import_changes_invalidate_source_cache(repo, tmp_path
     )
     before = cache.source_key(STEM)
     shared.write_text("X_TRAVEL = 120\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
+
+
+@pytest.fixture
+def lazy_package(repo, tmp_path):
+    package = tmp_path / "src" / "physiclaw" / "core"
+    package.mkdir(parents=True)
+    shared = package / "arm_geometry.py"
+    shared.write_text("X_TRAVEL = 110\n", encoding="utf-8")
+    runtime = package / "runtime.py"
+    runtime.write_text("PhysiClaw = 1\n", encoding="utf-8")
+    eager = package / "eager.py"
+    eager.write_text("SIZE = 1\n", encoding="utf-8")
+    (package / "__init__.py").write_text(
+        "from .eager import SIZE\n"
+        "def __getattr__(name):\n"
+        "    from .runtime import PhysiClaw\n"
+        "    return PhysiClaw\n",
+        encoding="utf-8",
+    )
+    repo.helper.write_text(
+        "from src.physiclaw.core.arm_geometry import X_TRAVEL\n",
+        encoding="utf-8",
+    )
+    return SimpleNamespace(shared=shared, runtime=runtime, eager=eager)
+
+
+def test_unused_lazy_export_preserves_geometry_cache(repo, lazy_package):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    before = cache.source_key(STEM)
+
+    lazy_package.runtime.write_text("PhysiClaw = 2\n", encoding="utf-8")
+
+    assert cache.source_key(STEM) == before
+    assert cache.source_cached(STEM, want_bom=True)
+
+    lazy_package.shared.write_text("X_TRAVEL = 120\n", encoding="utf-8")
+    assert not cache.source_cached(STEM, want_bom=True)
+
+
+def test_implicit_initializer_eager_imports_remain_dependencies(repo, lazy_package):
+    before = cache.source_key(STEM)
+    lazy_package.eager.write_text("SIZE = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
+
+
+@pytest.mark.parametrize(
+    "imports",
+    [
+        "from src.physiclaw.core import PhysiClaw\n",
+        "import src.physiclaw.core\n",
+    ],
+)
+def test_explicit_package_import_tracks_lazy_exports(repo, lazy_package, imports):
+    repo.helper.write_text(imports, encoding="utf-8")
+    before = cache.source_key(STEM)
+    lazy_package.runtime.write_text("PhysiClaw = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
+
+
+@pytest.mark.parametrize("explicit_first", [False, True])
+def test_explicit_initializer_upgrades_implicit_visit(lazy_package, explicit_first):
+    paths = [lazy_package.shared, lazy_package.shared.with_name("__init__.py")]
+    if explicit_first:
+        paths.reverse()
+    assert lazy_package.runtime in cache._closure(*paths)
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_cyclic_imports_preserve_lazy_boundary_in_every_visit_order(
+    lazy_package, explicit
+):
+    lazy_package.shared.write_text("from .eager import SIZE\n", encoding="utf-8")
+    lazy_package.eager.write_text(
+        "from .arm_geometry import X_TRAVEL\n", encoding="utf-8"
+    )
+    init = lazy_package.shared.with_name("__init__.py")
+    roots = [lazy_package.shared, lazy_package.eager] + ([init] if explicit else [])
+    for paths in permutations(roots):
+        expected = {init, lazy_package.shared, lazy_package.eager}
+        if explicit:
+            expected.add(lazy_package.runtime)
+        assert cache._closure(*paths) == expected
+
+
+def test_function_local_build_import_remains_a_dependency(repo):
+    repo.procedure.write_text(
+        "def build():\n    import hardware.parts.helper\n", encoding="utf-8"
+    )
+    before = cache.source_key(STEM)
+    repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
     assert cache.source_key(STEM) != before
 
 
