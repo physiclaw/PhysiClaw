@@ -327,28 +327,29 @@ def test_note_reopened_resets_stale_clock() -> None:
     assert time.monotonic() - r._frame_time < 1.0
 
 
-@pytest.mark.slow
-def test_loop_backs_off_on_fail_path() -> None:
-    # Real (short) backoff: two failing ticks must take at least one
-    # READER_BACKOFF_SECONDS interval, not spin at full CPU.
-    r = _reader()
+@pytest.mark.parametrize("raise_on_read", [False, True], ids=["empty", "exception"])
+def test_loop_backs_off_on_fail_path(mocker, raise_on_read) -> None:
+    # Check the requested backoff without depending on the OS timer resolution.
+    r = _reader(raise_on_read=raise_on_read)
     r.READER_BACKOFF_SECONDS = 0.05
     r._frame_time = time.monotonic()  # not stale → no reopen
 
-    ticks = {"n": 0}
-    orig_wait = r._stopped.wait
+    reads = 0
+    original_read = r._read_frame
 
-    def counting_wait(t):
-        ticks["n"] += 1
-        if ticks["n"] >= 2:
+    def read_frame():
+        nonlocal reads
+        reads += 1
+        # Stop independently of wait(), so missing backoff fails without hanging.
+        if reads == 3:
             r._stopped.set()
-        return orig_wait(t)
+        return original_read()
 
-    r._stopped.wait = counting_wait
-    start = time.monotonic()
+    r._read_frame = read_frame
+    wait = mocker.patch.object(r._stopped, "wait", return_value=False)
     r._loop()
 
-    assert time.monotonic() - start >= 0.05
+    assert wait.call_args_list == [mocker.call(r.READER_BACKOFF_SECONDS)] * 2
 
 
 @pytest.mark.parametrize("outcome", ["frame", "failure", "exception"])
