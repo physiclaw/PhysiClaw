@@ -202,9 +202,7 @@ def test_report_opens_encoded_issue_draft_with_listing_context(
     assert bsg.ui("report_link", lang) in link["aria-label"]
     assert supplier["name"] in link["aria-label"]
     assert "title" not in link  # Avoid a second, delayed browser tooltip.
-    assert link["data-tooltip"] == (
-        "Report link issue" if lang == "en" else "反馈链接问题"
-    )
+    assert link["data-tooltip"] == ("Something off?" if lang == "en" else "发现问题？")
     assert '<svg viewBox="0 0 24 24"' in markup
 
 

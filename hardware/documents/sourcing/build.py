@@ -61,10 +61,11 @@ survives sessions but a new guide revision starts a clean list, and the
 EN / ZH pages share one list. Beside the reset control, a "highlight"
 toggle washes the unbought rows' Spec and Qty cells (what the buyer
 reads at the shop) in the accent's light wash; it persists with the
-list and hides, off, while the list is empty. State only ever changes
-by the builder's explicit tick or toggle; browsing (following a
-supplier link) marks nothing. On narrow screens the lede and disclaimer
-stack full-width; the table itself just scrolls sideways.
+list and hides, off, while the list is empty. Bought state changes only
+through its checkbox or reset. A small corner mark identifies only the last
+opened supplier cell, remembered with the list, without ticking Bought.
+On narrow screens the lede and disclaimer stack full-width; the table itself
+just scrolls sideways.
 
 ``optional_tools.json`` supplies the optional tools
 section. Each item has localized ``name``, optional ``spec`` (shown beneath the
@@ -173,7 +174,8 @@ UI = {
         "en": "Report link issue (opens GitHub in a new tab)",
         "zh": "反馈链接问题（在新标签页打开 GitHub）",
     },
-    "report_tip": {"en": "Report link issue", "zh": "反馈链接问题"},
+    "report_tip": {"en": "Something off?", "zh": "发现问题？"},
+    "opened_link": {"en": "Last opened", "zh": "上次打开"},
     "report_prompt": {
         "en": "Please describe the problem (unavailable link, wrong product, "
         "or changed options). If possible, include a replacement link:",
@@ -665,9 +667,8 @@ def render_table(rows: list[dict], entries: list[dict], lang: str) -> str:
     )
 
 
-# Page script: the bought checklist + copy-to-clipboard for the per-row
-# inquiry message. All localized strings arrive via data attributes, so the
-# script itself is language-free and shared verbatim by both files. Both
+# Page script: checklist, last opened link and inquiry-message copying.
+# Both editions share this script; localized text comes from data attributes.
 # file:// and https:// are secure contexts, so navigator.clipboard is always
 # there; localStorage may still be denied (e.g. some file:// policies) — the
 # try/catch degrades to per-visit state instead of breaking the page.
@@ -676,18 +677,19 @@ PAGE_JS = """\
   var KEY = document.body.dataset.storeKey;
   var PREFIX = document.body.dataset.storePrefix;
   var bought = {};
+  var lastOpened = null;
   try {
     Object.keys(localStorage).forEach(function (k) {
       if (k.indexOf(PREFIX) === 0 && k !== KEY)
         localStorage.removeItem(k);  // older guide revisions start clean
     });
-    // Stored shape: {pids: [...], hl: bool}; early builds stored a bare
-    // array of pids — accept both.
+    // Older guides stored only an array of bought part IDs.
     var stored = JSON.parse(localStorage.getItem(KEY) || '[]');
     (Array.isArray(stored) ? stored : stored.pids || []).forEach(function (p) {
       bought[p] = true;
     });
     if (stored.hl) document.body.classList.add('hl');
+    lastOpened = stored.lastOpened || null;
   } catch (e) {}
 
   // The row anatomy, resolved once: the tr, its part id, its checkbox.
@@ -715,7 +717,8 @@ PAGE_JS = """\
     try {
       localStorage.setItem(KEY, JSON.stringify({
         pids: Object.keys(bought),
-        hl: document.body.classList.contains('hl')
+        hl: document.body.classList.contains('hl'),
+        lastOpened: lastOpened
       }));
     } catch (e) {}
   }
@@ -769,6 +772,28 @@ PAGE_JS = """\
     render();
     save();
   });
+
+  var supplierLinks = document.querySelectorAll('.reportable a:not(.report-link)');
+  function renderOpened() {
+    supplierLinks.forEach(function (link, index) {
+      var isLast = !!lastOpened && lastOpened.index === index && lastOpened.url === link.href;
+      link.closest('.reportable').classList.toggle('opened', isLast);
+      if (isLast) link.setAttribute('aria-description', document.body.dataset.openedLabel);
+      else link.removeAttribute('aria-description');
+    });
+  }
+  supplierLinks.forEach(function (link, index) {
+    function markOpened(event) {
+      if (event.type === 'auxclick' && event.button !== 1) return;
+      // The position keeps repeated URLs from marking more than one offer.
+      lastOpened = {index: index, url: link.href};
+      renderOpened();
+      save();
+    }
+    link.addEventListener('click', markOpened);
+    link.addEventListener('auxclick', markOpened);
+  });
+  renderOpened();
   render();
 })();
 
@@ -835,10 +860,8 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         f"{render_supplier_guides(entries, lang)}"
     )
     body = typeset_quantities(body)
-    # Bought marks and the highlight preference persist per manual version
-    # (a revision starts clean); the EN and ZH files share the key, so state
-    # carries across languages. The prefix rides along so the JS stale-key
-    # sweep never restates it.
+    # A revision starts clean; both languages share the same state key.
+    # The prefix lets the script remove stale revisions.
     store_key = f"{STORE_PREFIX}{manual_version()}"
     return (
         f'<!DOCTYPE html>\n<html lang="{HTML_LANG[lang]}">\n<head>\n'
@@ -847,7 +870,8 @@ def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) 
         f"<title>{ui('doc_title', lang)}</title>\n"
         f"<style>\n{css}</style>\n</head>\n"
         f'<body data-store-key="{html.escape(store_key, quote=True)}" '
-        f'data-store-prefix="{html.escape(STORE_PREFIX, quote=True)}">\n{body}\n'
+        f'data-store-prefix="{html.escape(STORE_PREFIX, quote=True)}" '
+        f'data-opened-label="{html.escape(ui("opened_link", lang), quote=True)}">\n{body}\n'
         f"<script>\n{PAGE_JS}</script>\n</body>\n</html>\n"
     )
 

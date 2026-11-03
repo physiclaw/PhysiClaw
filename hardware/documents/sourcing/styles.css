@@ -290,12 +290,22 @@ td.offer .v-prod {
 td.offer.pending { color: var(--ink-faint); font-size: 12.5px; font-style: italic; }
 td.offer.na { color: var(--ink-faint); }
 
-/* Reserve the flag's corner so revealing it never moves a supplier link. */
+/* Reserve room for the small flag without shifting supplier links. */
 .reportable { position: relative; }
-.sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
-  padding-right: 36px;
+/* A quiet folded corner marks the last opened offer without marking it bought. */
+.reportable.opened::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border-left: 8px solid transparent;
+  border-bottom: 8px solid color-mix(in srgb, var(--accent) 35%, var(--page-bg));
+  pointer-events: none;
 }
-.accessory-offer.reportable, .supplier-offer.reportable { min-height: 32px; }
+.sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
+  padding-right: 30px;
+}
+.accessory-offer.reportable, .supplier-offer.reportable { min-height: 28px; }
 a.report-link {
   position: absolute;
   top: 4px;
@@ -304,36 +314,49 @@ a.report-link {
   place-items: center;
   width: 24px;
   height: 24px;
-  border-radius: 4px;
-  color: var(--ink-soft);
-  background: var(--page-bg);
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--ink-soft) 70%, var(--page-bg));
   opacity: 0;
+  --flag-offset: 2px;
   pointer-events: none;
+  transition: opacity 140ms ease-out,
+    color 140ms ease-out, background-color 140ms ease-out;
 }
-.report-link svg { width: 14px; height: 14px; }
+.report-link svg {
+  width: 11px;
+  height: 11px;
+  transform: translateY(var(--flag-offset));
+  transition: transform 140ms ease-out;
+}
+/* A mouse-clicked supplier link keeps focus after its new tab closes. Only
+   keyboard focus should keep the flag visible once the pointer leaves. */
 .sourcing td:hover .report-link,
-.reportable:focus-within > .report-link,
-a.report-link:focus-visible {
+.reportable:has(:focus-visible) > .report-link {
   opacity: 1;
+  --flag-offset: 0px;
   pointer-events: auto;
 }
-a.report-link:hover { color: var(--accent); background: var(--tint); }
+a.report-link:hover, a.report-link:focus-visible {
+  color: var(--accent);
+  background: var(--tint);
+  text-decoration: none;
+}
 a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Native title tooltips have a browser-controlled delay. Show this short label
    immediately on the flag itself, including when reached by keyboard. */
 .report-link::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 4px);
   right: 0;
   z-index: 4;
   width: max-content;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: var(--ink);
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 85%, var(--ink-soft));
   color: #fff;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
@@ -342,11 +365,21 @@ a.report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 }
 .report-link:hover::after, .report-link:focus-visible::after { opacity: 1; }
 @media (hover: none), (any-pointer: coarse) {
-  a.report-link { opacity: 1; pointer-events: auto; width: 32px; height: 32px; }
+  a.report-link {
+    opacity: 1;
+    --flag-offset: 0px;
+    pointer-events: auto;
+    width: 32px;
+    height: 32px;
+  }
   .sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
     padding-right: 44px;
   }
   .accessory-offer.reportable, .supplier-offer.reportable { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  a.report-link, .report-link svg { transition: none; }
+  .report-link svg { transform: none; }
 }
 
 /* Long supplier instructions open above the page, leaving the BOM compact. */
@@ -574,7 +607,7 @@ body.hl tbody tr:not(.done) :is(td.spec, td.qty) { background: var(--mark); }
   .sourcing thead th { position: static; }
   .checklist button { display: none; }
   .guide-open, .guide-close, .guide-part button.copy { display: none; }
-  a.report-link { display: none; }
+  a.report-link, .reportable.opened::after { display: none; }
   .sourcing td.reportable, .accessory-offer.reportable, .supplier-offer.reportable {
     padding-right: 12px;
   }
