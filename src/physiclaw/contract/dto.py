@@ -354,54 +354,6 @@ class MicroRecord:
     args: dict[str, Any] | None = None
 
 
-# ---------- collapse policy ----------
-
-
-@dataclass(frozen=True)
-class CollapsePolicy:
-    """Turn-age collapse cadence — see `compact.collapse_old_turns`.
-
-      first_at  — first collapse fires at this complete-turn count
-      keep      — recent turns kept intact per collapse
-      interval  — cadence between subsequent collapses (keep + interval)
-
-    One value object instead of three loose ints so the invariants are
-    checked where a bad triple is declared: providers construct their
-    `COLLAPSE` as a class attribute, so a vendor override that would
-    IndexError mid-session (`collapse_old_turns` cuts at
-    `turn_starts[-keep]`, so `keep` may not exceed `first_at`) fails at
-    import instead. Default values and the per-vendor economics behind
-    them live on `BaseChatProvider.COLLAPSE`.
-
-    Lives in dto.py rather than compact.py (which owns the collapse
-    semantics) because dto.py is the shared type vocabulary the provider
-    layer already imports for the message DTOs — a config value type
-    belongs with the types, not with the behavior module that consumes
-    it. It's also what keeps dto.py the only engine module providers
-    import: moving the type into compact.py would drag the behavior
-    module (back) across the provider/engine boundary.
-    """
-
-    first_at: int
-    keep: int
-    interval: int
-
-    def __post_init__(self) -> None:
-        if any(
-            type(count) is not int
-            for count in (self.first_at, self.keep, self.interval)
-        ):
-            raise ValueError("CollapsePolicy: counts must be integers")
-        if not 1 <= self.keep <= self.first_at:
-            raise ValueError(
-                f"CollapsePolicy: keep={self.keep} must be in "
-                f"[1, first_at={self.first_at}] — the collapse cuts at "
-                "turn_starts[-keep] once first_at turns accumulate"
-            )
-        if self.interval < 1:
-            raise ValueError(f"CollapsePolicy: interval={self.interval} must be >= 1")
-
-
 # ---------- ToolResult (legacy alias for ToolResultMessage) ----------
 # Pre-DTO-refactor short name. Engine + provider code migrated to the
 # fully-qualified `ToolResultMessage`; only test fixtures still
@@ -422,5 +374,4 @@ __all__ = [
     "ToolResultMessage",
     "ToolResult",  # alias — see note above
     "Message",
-    "CollapsePolicy",
 ]

@@ -36,7 +36,7 @@ from physiclaw.conductor.drive.hooks import (
     Transform,
 )
 from physiclaw.conductor.micro.calltable import has_fallback
-from physiclaw.conductor.micro.decision import DecisionRequest, MicroResult
+from physiclaw.conductor.micro.decision import MicroRequest, MicroResult
 from physiclaw.conductor.spec.limits import REHEARSE_MAX_TURNS
 from physiclaw.conductor.walk.surface import Paused
 from physiclaw.conductor.walk.walklog import Outcome
@@ -113,7 +113,7 @@ async def walk(
             if program.verdict is not None and program.verdict is not shown:
                 shown = program.verdict
                 emit(f"  {describe_verdict(shown)}")
-            while isinstance(step, DecisionRequest):
+            while isinstance(step, MicroRequest):
                 result = await decider.decide(step)
                 step = program.resolve(result.outcome)
             if isinstance(step, Paused):
@@ -183,7 +183,7 @@ class _Decider:
         self._unwired: str | None = None  # why no model can be called, once known
         self._wire = ModelLog()
 
-    async def decide(self, step: DecisionRequest) -> MicroResult:
+    async def decide(self, step: MicroRequest) -> MicroResult:
         if self._micro is None and self._unwired is None:
             try:
                 self._micro = micro_caller(rlog=self._wire)

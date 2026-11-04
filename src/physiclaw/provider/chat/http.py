@@ -13,8 +13,11 @@ from physiclaw.contract.dto import AssistantMessage, Message, Thinking
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.provider.chat.base import BaseChatProvider
-from physiclaw.provider.chat.retry import retry_after_seconds
-from physiclaw.provider.provider_base import describe, quota_exhausted
+from physiclaw.provider.client.http_errors import (
+    describe,
+    quota_exhausted,
+    retry_after_seconds,
+)
 
 log = logging.getLogger(__name__)
 

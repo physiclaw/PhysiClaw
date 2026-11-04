@@ -56,8 +56,6 @@ _AUTO_TOOL_MODELS = {
 
 class AnthropicChatProvider(AnthropicCompatibleProvider):
     PROVIDER_ID = "anthropic"
-    # Native tool schemas already carry names, descriptions, and parameters.
-    INLINE_TOOL_INDEX = False
     # Informational only — `AsyncAnthropic` manages the URL itself.
     BASE_URL = "https://api.anthropic.com/v1"
 

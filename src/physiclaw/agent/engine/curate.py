@@ -16,13 +16,13 @@ from contextlib import suppress
 from physiclaw.agent.engine import pitfalls
 from physiclaw.common.config import CONFIG
 from physiclaw.common.text import json_span
+from physiclaw.contract.chat import SessionChatProvider
 from physiclaw.contract.dto import (
     USAGE_CALL_CURATE,
     Message,
     SystemMessage,
     UserMessage,
 )
-from physiclaw.contract.plugin import SessionChatProvider
 
 log = logging.getLogger(__name__)
 

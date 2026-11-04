@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.provider.registry` — id → class lookups.
+"""Tests for `physiclaw.provider.services.registry` — id → class lookups.
 
 The registry is a tiny dispatch table; tests pin the membership and
 exercise provider construction, validation, and unknown-provider errors.
@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import pytest
 
-from physiclaw.provider import registry
-from physiclaw.provider.registry import (
-    in_process_provider_ids,
+from physiclaw.provider.services import registry
+from physiclaw.provider.services.factory import make_chat_provider, provider_key_status
+from physiclaw.provider.services.registry import (
+    chat_provider_ids,
     is_known,
-    make_chat_provider,
     provider_class,
-    provider_key_status,
-    validate_model_ref,
+    validate_chat_model_ref,
 )
 from physiclaw.provider.vendors.anthropic.chat import (
     AnthropicChatProvider,
@@ -35,7 +34,7 @@ from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 
 
 def test_provider_classes_match_registered_chat_services() -> None:
-    assert set(in_process_provider_ids()) == {
+    assert set(chat_provider_ids()) == {
         "qwen",
         "moonshot",
         "openai",
@@ -64,11 +63,11 @@ def test_provider_classes_each_id_maps_to_its_vendor_class(
     assert registry._VENDORS[provider_id].chat is cls
 
 
-# ---------- in_process_provider_ids ----------
+# ---------- chat_provider_ids ----------
 
 
-def test_in_process_provider_ids_returns_tuple() -> None:
-    out = in_process_provider_ids()
+def test_chat_provider_ids_returns_tuple() -> None:
+    out = chat_provider_ids()
 
     assert isinstance(out, tuple)
     assert set(out) == {
@@ -82,7 +81,7 @@ def test_in_process_provider_ids_returns_tuple() -> None:
 @pytest.mark.parametrize(
     "provider_id", ["qwen", "moonshot", "openai", "anthropic", "google", "deepseek"]
 )
-def test_is_known_true_for_each_in_process_provider(provider_id: str) -> None:
+def test_is_known_true_for_each_registered_chat_provider(provider_id: str) -> None:
     assert is_known(provider_id) is True
 
 
@@ -185,7 +184,7 @@ def test_make_chat_provider_raises_value_error_for_unknown_id() -> None:
         make_chat_provider("mystery", "any-model")
 
 
-def test_make_chat_provider_error_message_lists_each_in_process_id() -> None:
+def test_make_chat_provider_error_message_lists_each_chat_provider_id() -> None:
     with pytest.raises(ValueError) as exc_info:
         make_chat_provider("nope", "model")
 
@@ -197,22 +196,24 @@ def test_make_chat_provider_error_message_lists_each_in_process_id() -> None:
     assert "XX" not in msg
 
 
-@pytest.mark.parametrize("provider", in_process_provider_ids())
-def test_validate_model_ref_accepts_registered_provider_without_credentials(provider):
+@pytest.mark.parametrize("provider", chat_provider_ids())
+def test_validate_chat_model_ref_accepts_registered_provider_without_credentials(
+    provider,
+):
     ref = f"{provider}/org/model-id"
 
-    result = validate_model_ref(ref)
+    result = validate_chat_model_ref(ref)
 
     assert result == (provider, "org/model-id")
 
 
 @pytest.mark.parametrize("ref", ["unknown/model", "claude-code/model"])
-def test_validate_model_ref_rejects_unknown_provider(ref):
+def test_validate_chat_model_ref_rejects_unknown_provider(ref):
     with pytest.raises(ValueError, match="unknown provider"):
-        validate_model_ref(ref)
+        validate_chat_model_ref(ref)
 
 
 @pytest.mark.parametrize("ref", ["bare", "/model", "openai/"])
-def test_validate_model_ref_rejects_malformed_reference(ref):
+def test_validate_chat_model_ref_rejects_malformed_reference(ref):
     with pytest.raises(ValueError):
-        validate_model_ref(ref)
+        validate_chat_model_ref(ref)

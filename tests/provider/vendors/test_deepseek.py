@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.vendors.deepseek.chat import (
     DeepSeekChatProvider,

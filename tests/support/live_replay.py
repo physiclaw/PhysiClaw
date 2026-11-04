@@ -194,7 +194,7 @@ async def main(args):
     from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.engine.runspec import EngineRun, Settings
     from physiclaw.agent.engine.session import Session
-    from physiclaw.agent.llm import LLMProducer
+    from physiclaw.agent.llm.producer import LLMProducer
     from physiclaw.agent.runtime.hook import Trigger
 
     source = args.session.resolve()

@@ -7,7 +7,7 @@ Public entry points:
 * ``state()`` serializes a resumable position; it never serializes an
   in-flight tool call.
 
-Both execution entry points return an assistant tool turn, a DecisionRequest,
+Both execution entry points return an assistant tool turn, a MicroRequest,
 a stepping Paused marker, or None when finished. Conductor handles model
 requests; the engine dispatches tool turns. Steps never dispatch tools here.
 
@@ -375,7 +375,7 @@ class Program:
     # ---- the conductor's two calls ----
 
     def advance(self, history: list[Message]) -> Turn:
-        """The next synthesized turn; a DecisionRequest for the conductor
+        """The next synthesized turn; a MicroRequest for the conductor
         to broker (feed the outcome back via ``resolve``); `Paused` when
         a stepping run is over; or None — spent, hand over to the model.
         A spec-level failure (a ref with no value) hands over with its

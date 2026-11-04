@@ -31,14 +31,14 @@ from physiclaw.common.logger import setup_logging
 from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.proxy import normalize_proxy_env
 from physiclaw.port import processes as process_port
-from physiclaw.provider import validate_model_ref
+from physiclaw.provider import validate_chat_model_ref
 
 log = logging.getLogger(__name__)
 
 
 def engine_label(ref: str) -> str:
     """Human-readable engine, provider, and model label."""
-    provider_id, model_id = validate_model_ref(ref)
+    provider_id, model_id = validate_chat_model_ref(ref)
     return f"engine=physiclaw, provider={provider_id}, model={model_id}"
 
 
@@ -51,7 +51,7 @@ def resolve() -> tuple[str, str]:
     — provider APIs reject unknown ids on the first chat."""
     ref, source = model_ref_with_source()  # raises if not configured
     try:
-        validate_model_ref(ref)
+        validate_chat_model_ref(ref)
     except ValueError as e:
         raise RuntimeError(f"{e} (from {source})") from e
     return ref, source

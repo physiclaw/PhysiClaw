@@ -172,7 +172,7 @@ route:
 
 
 def test_failed_agent_call_hands_over() -> None:
-    from physiclaw.conductor.micro.decision import DecisionRequest
+    from physiclaw.conductor.micro.decision import MicroRequest
 
     write_pack(playbooks={"flow": AGENT_FLOW})
     p = _program(keyword="milk")
@@ -180,7 +180,7 @@ def test_failed_agent_call_hands_over() -> None:
     _feed(h, p.advance(h), HOME)
 
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest)  # the conductor brokers it
+    assert isinstance(req, MicroRequest)  # the conductor brokers it
     summary = _finish(p, h, p.resolve(None))  # a failed call hands over
     assert "call failed or under-confident" in summary
 
@@ -398,14 +398,14 @@ def test_gate_reply_outside_the_declared_words_is_read_in_the_thread() -> None:
     # "那就来一份吧" is a yes in spirit, but the ask declared 好的/不用: the
     # words do not decide, so the model that read the request reads the
     # reply — in the session's thread, with the ask and the replies.
-    from physiclaw.conductor.micro.decision import READ_REPLY, DecisionRequest
+    from physiclaw.conductor.micro.decision import READ_REPLY, MicroRequest
 
     p, h, send = _at_gate()
     ask = send.tool_calls[1].arguments["inputs"]["message"]
 
     step = _reply_arrives(p, h, send, "那就来一份吧")
 
-    assert isinstance(step, DecisionRequest) and step.call == READ_REPLY
+    assert isinstance(step, MicroRequest) and step.call == READ_REPLY
     assert step.material["ask"] == ask and step.listing == "那就来一份吧"
     assert "sent to the user" in step.material["since"]  # the ask, from the ledger
     assert step.thinking == "off"  # the ask's own `think:`
@@ -1781,14 +1781,14 @@ def test_abandon_is_a_no_op_for_unstarted_and_closed_walks() -> None:
 
 
 def test_failed_agent_call_records_handover_with_micro_count() -> None:
-    from physiclaw.conductor.micro.decision import DecisionRequest
+    from physiclaw.conductor.micro.decision import MicroRequest
 
     write_pack(playbooks={"flow": AGENT_FLOW})
     p = _program(keyword="milk")
     h = _history()
     _feed(h, p.advance(h), HOME)
     step = p.advance(h)
-    assert isinstance(step, DecisionRequest)
+    assert isinstance(step, MicroRequest)
 
     _finish(p, h, p.resolve(None))  # the brokered call failed → handover
 

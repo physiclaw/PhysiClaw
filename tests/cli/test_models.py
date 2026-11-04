@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from physiclaw.cli.models import models_app
 from physiclaw.common import config
-from physiclaw.provider import discovered, in_process_provider_ids
+from physiclaw.provider import chat_provider_ids, discovery
 
 runner = CliRunner()
 
@@ -41,7 +41,7 @@ def test_help_lists_public_commands_without_legacy_alias_or_completion(flag):
 @pytest.fixture(autouse=True)
 def isolated_models(monkeypatch, physiclaw_home):
     monkeypatch.setattr(config, "CONFIG", config.Config())
-    monkeypatch.setattr(discovered, "_DIR", physiclaw_home / "discovered")
+    monkeypatch.setattr(discovery, "_DIR", physiclaw_home / "discovered")
     for name in list(os.environ):
         if name.endswith("_API_KEY") or name == "PHYSICLAW_MODEL":
             monkeypatch.delenv(name)
@@ -69,10 +69,9 @@ class DiscoveryClient:
 @pytest.fixture
 def client(mocker):
     instance = DiscoveryClient()
-    factory = mocker.Mock(return_value=instance)
-    lookup = mocker.patch("physiclaw.provider.provider_class", return_value=factory)
-    instance.factory = factory
-    instance.lookup = lookup
+    instance.lookup = mocker.patch(
+        "physiclaw.provider.make_chat_catalog", return_value=instance
+    )
     return instance
 
 
@@ -141,13 +140,13 @@ def test_list_without_cache_prints_provider_specific_hint(provider):
 
 
 def test_list_all_includes_each_provider():
-    discovered.save("openai", [{"id": "openai-model"}])
-    discovered.save("anthropic", [{"id": "anthropic-model"}])
+    discovery.save("openai", [{"id": "openai-model"}])
+    discovery.save("anthropic", [{"id": "anthropic-model"}])
 
     result = runner.invoke(models_app, ["list"])
 
     assert result.exit_code == 0
-    assert all(provider in result.stdout for provider in in_process_provider_ids())
+    assert all(provider in result.stdout for provider in chat_provider_ids())
     assert "openai/openai-model" in result.stdout
     assert "anthropic/anthropic-model" in result.stdout
     assert "claude-code" not in result.stdout
@@ -160,7 +159,7 @@ def test_list_all_includes_each_provider():
     )
 )
 def test_list_cached_ids_are_sorted_and_deduplicated(ids):
-    discovered.save("openai", [{"id": model_id} for model_id in ids])
+    discovery.save("openai", [{"id": model_id} for model_id in ids])
 
     result = runner.invoke(models_app, ["list", "openai"])
 
@@ -192,7 +191,7 @@ def test_use_model_persists_exact_ref_and_preserves_comments(command, cached):
         '# keep this comment\n[agent]\nmodel = "old/model"\n', encoding="utf-8"
     )
     if cached:
-        discovered.save("openai", [{"id": "org/model-v1"}])
+        discovery.save("openai", [{"id": "org/model-v1"}])
 
     result = runner.invoke(models_app, [command, "openai/org/model-v1"])
 
@@ -234,7 +233,7 @@ def test_use_invalid_ref_preserves_config(ref, message):
 def test_regression_config_write_failure_has_diagnostic_and_no_success(
     mocker, client, arguments, error
 ):
-    discovered.save("openai", [{"id": "test-model"}])
+    discovery.save("openai", [{"id": "test-model"}])
     config.write_default()
     before = config.config_path().read_bytes()
     mocker.patch("physiclaw.common.config.write_text_atomic", side_effect=error)
@@ -253,7 +252,7 @@ def test_regression_config_write_failure_has_diagnostic_and_no_success(
     "arguments", [["use", "openai/test-model"], ["key", "openai", "synthetic-key"]]
 )
 def test_invalid_config_is_reported_without_overwriting_it(arguments, client):
-    discovered.save("openai", [{"id": "test-model"}])
+    discovery.save("openai", [{"id": "test-model"}])
     config.config_path().write_text("[broken", encoding="utf-8")
 
     result = runner.invoke(models_app, arguments)
@@ -265,17 +264,16 @@ def test_invalid_config_is_reported_without_overwriting_it(arguments, client):
     client.lookup.assert_not_called()
 
 
-@pytest.mark.parametrize("provider", in_process_provider_ids())
+@pytest.mark.parametrize("provider", chat_provider_ids())
 def test_key_saves_provider_field_and_caches_live_models(client, provider):
     result = runner.invoke(models_app, ["key", provider, "synthetic-key"])
 
     assert result.exit_code == 0
     assert getattr(config.load().provider, f"{provider}_api_key") == "synthetic-key"
-    assert discovered.model_ids(provider) == {"test-model"}
+    assert discovery.model_ids(provider) == {"test-model"}
     assert "synthetic-key" not in result.output
     assert f"physiclaw models use {provider}/" in result.stdout
     client.lookup.assert_called_once_with(provider)
-    client.factory.assert_called_once_with(model="")
     assert client.events == ["fetch", "close"]
 
 
@@ -287,7 +285,7 @@ def test_key_hidden_prompt_does_not_echo_secret(client):
     assert result.exit_code == 0
     assert config.load().provider.openai_api_key == "synthetic-prompt-key"
     assert "synthetic-prompt-key" not in result.output
-    assert discovered.model_ids("openai") == {"test-model"}
+    assert discovery.model_ids("openai") == {"test-model"}
 
 
 def test_key_aborted_prompt_does_not_write_or_connect(client):
@@ -312,7 +310,7 @@ def test_keys_show_masked_config_and_environment_sources():
     assert "openai api key: ********  [OPENAI_API_KEY env]" in result.stdout
     assert "moonshot api key: (unset)" in result.stdout
     assert "synthetic-" not in result.output
-    assert result.stdout.count("api key:") == len(in_process_provider_ids())
+    assert result.stdout.count("api key:") == len(chat_provider_ids())
 
 
 @pytest.mark.parametrize("provider", ["openai", "anthropic"])
@@ -320,7 +318,7 @@ def test_discover_caches_result_and_displays_provider(client, provider):
     result = runner.invoke(models_app, ["discover", provider])
 
     assert result.exit_code == 0
-    assert discovered.model_ids(provider) == {"test-model"}
+    assert discovery.model_ids(provider) == {"test-model"}
     assert f"{provider} — 1 model(s) live" in result.stdout
     assert f"physiclaw models use {provider}/" in result.stdout
     client.lookup.assert_called_once_with(provider)
@@ -328,13 +326,13 @@ def test_discover_caches_result_and_displays_provider(client, provider):
 
 
 def test_discover_empty_response_replaces_stale_cache(client):
-    discovered.save("openai", [{"id": "old-model"}])
+    discovery.save("openai", [{"id": "old-model"}])
     client.models = []
 
     result = runner.invoke(models_app, ["discover", "openai"])
 
     assert result.exit_code == 0
-    assert discovered.model_ids("openai") == set()
+    assert discovery.model_ids("openai") == set()
     assert "0 model(s) live" in result.stdout
     assert client.events == ["fetch", "close"]
 
@@ -347,7 +345,7 @@ def test_discover_empty_response_replaces_stale_cache(client):
 def test_regression_discovery_failure_remains_visible_after_cleanup(
     client, arguments, exit_code, close_error
 ):
-    discovered.save("openai", [{"id": "old-model"}])
+    discovery.save("openai", [{"id": "old-model"}])
     client.fetch_error = RuntimeError("primary discovery failure")
     client.close_error = close_error
 
@@ -355,7 +353,7 @@ def test_regression_discovery_failure_remains_visible_after_cleanup(
 
     assert result.exit_code == exit_code
     assert "primary discovery failure" in result.output
-    assert discovered.model_ids("openai") == {"old-model"}
+    assert discovery.model_ids("openai") == {"old-model"}
     assert client.events == ["fetch", "close"]
 
 
@@ -369,7 +367,7 @@ def test_regression_cleanup_failure_preserves_fetched_catalog(client, arguments)
 
     assert result.exit_code == 0
     assert "couldn't close provider client" in result.stderr
-    assert discovered.model_ids("openai") == {"test-model"}
+    assert discovery.model_ids("openai") == {"test-model"}
     assert "test-model" in result.stdout
     assert client.events == ["fetch", "close"]
 
@@ -383,7 +381,7 @@ def test_regression_discovery_cancellation_survives_cleanup(client, close_error)
         runner.invoke(models_app, ["discover", "openai"])
 
     assert client.events == ["fetch", "close"]
-    assert not discovered.cache_path("openai").exists()
+    assert not discovery.cache_path("openai").exists()
 
 
 def test_cleanup_cancellation_is_not_swallowed(client):
@@ -393,7 +391,7 @@ def test_cleanup_cancellation_is_not_swallowed(client):
         runner.invoke(models_app, ["discover", "openai"])
 
     assert client.events == ["fetch", "close"]
-    assert not discovered.cache_path("openai").exists()
+    assert not discovery.cache_path("openai").exists()
 
 
 @pytest.mark.parametrize("close_error", [None, OSError("secondary close failure")])
@@ -405,7 +403,7 @@ def test_regression_discovery_system_exit_survives_cleanup(client, close_error):
 
     assert result.exit_code == 7
     assert client.events == ["fetch", "close"]
-    assert not discovered.cache_path("openai").exists()
+    assert not discovery.cache_path("openai").exists()
 
 
 @pytest.mark.parametrize("close_error", [None, OSError("secondary close failure")])
@@ -417,11 +415,13 @@ def test_regression_keyboard_interrupt_survives_cleanup(client, close_error):
 
     assert result.exit_code == 130
     assert client.events == ["fetch", "close"]
-    assert not discovered.cache_path("openai").exists()
+    assert not discovery.cache_path("openai").exists()
 
 
 def test_discover_missing_provider_implementation_has_clear_error(mocker):
-    mocker.patch("physiclaw.provider.provider_class", return_value=None)
+    mocker.patch(
+        "physiclaw.provider.services.factory.registry.provider_class", return_value=None
+    )
 
     result = runner.invoke(models_app, ["discover", "openai"])
 
@@ -429,16 +429,12 @@ def test_discover_missing_provider_implementation_has_clear_error(mocker):
     assert "unknown provider 'openai'" in result.output
 
 
-def test_discover_client_construction_failure_has_clear_error(mocker):
-    mocker.patch(
-        "physiclaw.provider.provider_class",
-        return_value=mocker.Mock(side_effect=RuntimeError("missing credential")),
-    )
-
+def test_discover_client_construction_failure_has_clear_error():
     result = runner.invoke(models_app, ["discover", "openai"])
 
     assert result.exit_code == 1
-    assert "missing credential" in result.output
+    assert "openai credential not found" in result.output
+    assert "OPENAI_API_KEY" in result.output
 
 
 def test_discover_cache_write_failure_keeps_live_list(client, physiclaw_home, caplog):
@@ -463,5 +459,5 @@ def test_key_immediately_uses_new_credential_for_real_provider(respx_mock):
     assert (
         route.calls.last.request.headers["authorization"] == "Bearer synthetic-new-key"
     )
-    assert discovered.model_ids("openai") == {"test-model"}
+    assert discovery.model_ids("openai") == {"test-model"}
     assert "synthetic-new-key" not in result.output

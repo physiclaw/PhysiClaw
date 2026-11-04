@@ -22,8 +22,8 @@ from physiclaw.conductor.micro.compose import settled
 from physiclaw.conductor.micro.decision import (
     SINCE,
     Content,
-    DecisionRequest,
     MicroOutcome,
+    MicroRequest,
 )
 from physiclaw.conductor.walk.ledger import Ledger
 from physiclaw.contract.dto import THINKING_LEVELS, ImageBlock, Thinking
@@ -51,7 +51,7 @@ class Thread:
         frame: ImageBlock | None = None,
         context: str = "",
         thinking: Thinking | None = None,
-    ) -> DecisionRequest:
+    ) -> MicroRequest:
         """One call in the thread: the row's material, the ledger's
         delta since the last call, and every settled turn as history."""
         since = ledger.offer()
@@ -65,7 +65,7 @@ class Thread:
             thinking = self.thinking
         elif self.thinking is None:
             self.thinking = thinking
-        return DecisionRequest(
+        return MicroRequest(
             call=call,
             node_id=node_id,
             outcomes=outcomes,
@@ -77,9 +77,7 @@ class Thread:
             thinking=thinking,
         )
 
-    def settle(
-        self, req: DecisionRequest, outcome: MicroOutcome, ledger: Ledger
-    ) -> None:
+    def settle(self, req: MicroRequest, outcome: MicroOutcome, ledger: Ledger) -> None:
         """Append the exchange verbatim — the block exactly as sent, the
         reply in the contract's canonical spelling — and mark the ledger
         reported up to here, so the next call carries only what came

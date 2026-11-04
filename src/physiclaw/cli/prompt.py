@@ -85,14 +85,14 @@ def _provider_id() -> str:
     """The active provider id, or '' when no model is configured (the SYSTEM
     prompt uses it to select the inline action index)."""
     from physiclaw.common.config import model_ref
-    from physiclaw.provider import validate_model_ref
+    from physiclaw.provider import validate_chat_model_ref
 
     try:
         ref = model_ref()
     except RuntimeError:
         return ""
     try:
-        return validate_model_ref(ref)[0]
+        return validate_chat_model_ref(ref)[0]
     except ValueError as e:
         exit_error(str(e))
 

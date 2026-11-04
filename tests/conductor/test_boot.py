@@ -25,7 +25,7 @@ from physiclaw.common import gesture_vocab, paths
 from physiclaw.common.listing import LISTING_HEADER
 from physiclaw.conductor.bench import runs
 from physiclaw.conductor.drive import setup
-from physiclaw.conductor.micro.decision import SCROLL_UP, DecisionRequest, MicroOutcome
+from physiclaw.conductor.micro.decision import SCROLL_UP, MicroOutcome, MicroRequest
 from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.walklog import Outcome
 
@@ -75,7 +75,7 @@ def test_already_on_the_thread_asks_straight_away() -> None:
 
     req = o.advance(h)
 
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     assert req.call == "parse_task" and req.node_id == "parse"
     assert "买牛奶" in req.listing and "demo/flow" in req.material["menu"]
     assert o.outcome is None  # not spent until the answer comes back
@@ -97,7 +97,7 @@ def test_unknown_screen_opens_the_thread_then_asks() -> None:
     assert "(elsewhere)" in opening.tool_calls[0].arguments["summary"]
 
     _feed(h, opening, THREAD)
-    assert isinstance(o.advance(h), DecisionRequest)
+    assert isinstance(o.advance(h), MicroRequest)
 
 
 def test_locked_screen_unlocks_then_continues() -> None:
@@ -128,7 +128,7 @@ def test_unlock_landing_on_the_thread_skips_the_open_macro() -> None:
     _feed(h, unlock, THREAD)
 
     req = o.advance(h)
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     assert not any(
         c.name == gesture_vocab.RUN_MACRO
         for m in h
@@ -245,7 +245,7 @@ def test_scroll_up_swipes_the_thread_and_reasks_merged() -> None:
     o = _boot()
     h = _history()
     _feed(h, o.advance(h), NUDGE_THREAD)
-    assert isinstance(o.advance(h), DecisionRequest)
+    assert isinstance(o.advance(h), MicroRequest)
 
     swipe = o.resolve(SCROLL)
     assert swipe is not None and swipe.tool_names() == ["note", "swipe"]
@@ -255,7 +255,7 @@ def test_scroll_up_swipes_the_thread_and_reasks_merged() -> None:
     _feed(h, swipe, OLDER_THREAD)
     req = o.advance(h)
 
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     # Seamed at the overlapping rows, oldest first, duplicates intact.
     assert req.listing == "MyChat\n买两盒鸡蛋\n继续"
 

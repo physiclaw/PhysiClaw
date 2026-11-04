@@ -4,9 +4,9 @@ import pytest
 
 from physiclaw.agent.engine import assemble, compact
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm.context_policy import CollapsePolicy
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     SystemMessage,
     ToolCall,

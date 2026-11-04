@@ -11,7 +11,7 @@ import pytest
 
 from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.contract.dto import AssistantMessage, FinishReason, ToolCall
-from physiclaw.provider import OpenAICompatibleProvider
+from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 from physiclaw.provider.chat.structured import decode_completion
 from tests.support.provider_responses import response
 

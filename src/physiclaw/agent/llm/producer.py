@@ -11,6 +11,7 @@ from physiclaw.agent.engine.facts import CONTEXT_CALLS
 from physiclaw.agent.engine.output import ActionCatalog
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm.context_policy import DEFAULT_CONTEXT_POLICY, ContextPolicy
 from physiclaw.agent.runtime.sentinel import FAIL, STUCK
 from physiclaw.agent.runtime.stopping import checkpoint
 from physiclaw.common.log_style import console_text
@@ -20,6 +21,7 @@ from physiclaw.common.provider_errors import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from physiclaw.contract.chat import ChatProvider
 from physiclaw.contract.content import mcp_blocks_to_content_blocks
 from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import (
@@ -35,7 +37,6 @@ from physiclaw.contract.dto import (
 from physiclaw.contract.plugin import PluginServices, ProposedTurn, SessionSetup
 from physiclaw.contract.structured import StructuredCompletion
 from physiclaw.contract.turn import ActionEvent, TurnInput, TurnMetadata, TurnOutput
-from physiclaw.provider import ChatProvider
 
 log = logging.getLogger(__name__)
 CORRECTIVE_LIMIT = 5
@@ -53,8 +54,10 @@ class LLMProducer:
         *,
         layout_incomplete: bool = False,
         catalog: ActionCatalog,
+        context_policy: ContextPolicy = DEFAULT_CONTEXT_POLICY,
     ):
         self.provider = provider
+        self.context_policy = context_policy
         self.run = run
         self.session = session
         self.messages = list(messages)
@@ -85,7 +88,7 @@ class LLMProducer:
         missing = pending_ids - by_id.keys()
         if not missing and compact.collapse_old_turns(
             self.messages,
-            policy=self.provider.COLLAPSE,
+            policy=self.context_policy.collapse,
             collapsed_once=self.session.collapsed_once,
         ):
             self.session.collapsed_once = True
@@ -321,14 +324,14 @@ class LLMProducer:
         """Build this producer's prompt tails without mutating its history."""
         imminent = compact.collapse_pending(
             self.messages,
-            policy=self.provider.COLLAPSE,
+            policy=self.context_policy.collapse,
             collapsed_once=self.session.collapsed_once,
         )
         request = assemble.apply_request_tails(
             self.messages,
             self.session,
             layout_incomplete=self.layout_incomplete,
-            compaction_keep=self.provider.COLLAPSE.keep if imminent else None,
+            compaction_keep=self.context_policy.collapse.keep if imminent else None,
         )
         self.run.tr.write(
             {"event": "request", "turn": turn, "message_count": len(request)}

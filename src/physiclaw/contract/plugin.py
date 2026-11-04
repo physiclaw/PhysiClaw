@@ -31,64 +31,19 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
+from physiclaw.contract.chat import SessionChatProvider
 from physiclaw.contract.decision import ActionCandidate, DecisionProvider, decision_json
 from physiclaw.contract.dto import (
-    USAGE_CALL_TURN,
     AssistantMessage,
     FinishReason,
-    Message,
     MicroRecord,
-    Thinking,
     ToolCall,
-    UsageCall,
 )
-from physiclaw.contract.structured import OutputSpec, StructuredCompletion
 from physiclaw.contract.turn import TurnInput, TurnMetadata
 from physiclaw.macros.model import Macro
-
-
-class SessionChatProvider(Protocol):
-    """Stateless generation over caller-owned messages and output schemas.
-
-    Providers choose the API representation; callers own context, retries and
-    execution. `on_request` observes a detached native body for diagnostics,
-    never to construct or alter a request; observer errors are logged without
-    aborting generation. The host owns the client lifetime.
-    """
-
-    @property
-    def structured_transport(self) -> Literal["tool", "native"]:
-        """Adapter-selected transport, exposed for diagnostics only."""
-        ...
-
-    async def chat(
-        self,
-        history: list[Message],
-        tools: list[dict],
-        *,
-        metadata: TurnMetadata | None = None,
-        purpose: UsageCall = USAGE_CALL_TURN,
-        thinking: Thinking | None = None,
-        on_request: Callable[[dict], None] | None = None,
-    ) -> AssistantMessage: ...
-
-    async def generate_structured[T](
-        self,
-        history: list[Message],
-        output_spec: OutputSpec[T],
-        *,
-        metadata: TurnMetadata | None = None,
-        purpose: UsageCall = USAGE_CALL_TURN,
-        thinking: Thinking | None = None,
-        on_request: Callable[[dict], None] | None = None,
-    ) -> StructuredCompletion[T]: ...
-
-    def validate_output_spec(
-        self, output_spec: OutputSpec, *, thinking: Thinking | None = None
-    ) -> None: ...
 
 
 class EventSink(Protocol):

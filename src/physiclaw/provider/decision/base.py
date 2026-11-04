@@ -25,7 +25,7 @@ from physiclaw.contract.decision import (
     DecisionRequest,
     DecisionResult,
 )
-from physiclaw.provider.provider_base import BaseAPIProvider
+from physiclaw.provider.client.base import BaseAPIProvider
 
 
 class BaseDecisionProvider(BaseAPIProvider):

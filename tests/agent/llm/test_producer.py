@@ -12,17 +12,13 @@ from physiclaw.agent.engine import assemble, builtin_tool, loop, policy
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.llm import LLMProducer, retry_delay
+from physiclaw.agent.llm.context_policy import CollapsePolicy, context_policy_for
+from physiclaw.agent.llm.producer import LLMProducer, retry_delay
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.common.provider_errors import ProviderTransientError
-from physiclaw.contract.dto import (
-    AssistantMessage,
-    CollapsePolicy,
-    OutputResultMessage,
-    UserMessage,
-)
+from physiclaw.contract.dto import AssistantMessage, OutputResultMessage, UserMessage
 from physiclaw.contract.turn import ActionEvent, TurnInput, TurnMetadata
-from physiclaw.provider import provider_class
+from physiclaw.provider.services.registry import provider_class
 from tests.support.provider_responses import response
 
 VENDORS = [
@@ -88,8 +84,6 @@ def harness(monkeypatch, mocker, observation_blocks, mcp_schemas):
     def make(vendor="deepseek", model="deepseek-flash", *, fail=False, collapse=None):
         monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "fixture")
         adapter = provider_class(vendor)(model=model, base_url="https://fixture.test")
-        if collapse:
-            adapter.COLLAPSE = collapse
         bundle = assemble.build_prompt_bundle(vendor, mcp_schemas=mcp_schemas)
         sink = Sink()
         adapter.usage_sink = sink
@@ -122,6 +116,9 @@ def harness(monkeypatch, mocker, observation_blocks, mcp_schemas):
                 [Trigger(description="fixture")], bundle.system_prompt
             ),
             catalog=bundle.catalog,
+            context_policy=replace(context_policy_for(vendor), collapse=collapse)
+            if collapse
+            else context_policy_for(vendor),
         )
         run.plugins = (PluginBinding("physiclaw.llm", producer, "LLM"),)
         return adapter, run, session, producer, sink
@@ -447,7 +444,7 @@ async def test_retry_after_controls_host_wait(harness, monkeypatch, vendor, mode
     async def sleep(delay):
         delays.append(delay)
 
-    monkeypatch.setattr("physiclaw.agent.llm.asyncio.sleep", sleep)
+    monkeypatch.setattr("physiclaw.agent.llm.producer.asyncio.sleep", sleep)
     respx.route(method="POST").mock(
         side_effect=[
             rate_limit(vendor, 7),
@@ -493,7 +490,7 @@ async def test_retry_sleep_cannot_start_a_request_after_deadline(harness, monkey
     async def oversleep(delay):
         run.deadline = time.monotonic() - 1
 
-    monkeypatch.setattr("physiclaw.agent.llm.asyncio.sleep", oversleep)
+    monkeypatch.setattr("physiclaw.agent.llm.producer.asyncio.sleep", oversleep)
     route = respx.route(method="POST").mock(
         side_effect=[
             rate_limit("deepseek", 1),
@@ -664,7 +661,7 @@ def count_images(value):
 
 
 def test_backoff_caps_and_respects_server_minimum(monkeypatch):
-    monkeypatch.setattr("physiclaw.agent.llm.random.uniform", lambda a, b: b)
+    monkeypatch.setattr("physiclaw.agent.llm.producer.random.uniform", lambda a, b: b)
     assert retry_delay(ProviderTransientError("busy"), 1, 5) == 5.5
     assert retry_delay(ProviderTransientError("busy"), 2, 5) == 11
     assert retry_delay(ProviderTransientError("busy"), 20, 5) == 60

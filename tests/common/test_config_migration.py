@@ -158,7 +158,7 @@ def test_legacy_qwen_selection_and_key_reach_runtime(
     physiclaw_home, monkeypatch, mocker, caplog, legacy_model
 ):
     from physiclaw.agent.runtime.launcher import resolve
-    from physiclaw.provider.registry import make_chat_provider
+    from physiclaw.provider.services.factory import make_chat_provider
     from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
 
     path = config.config_path()
@@ -173,7 +173,7 @@ def test_legacy_qwen_selection_and_key_reach_runtime(
         monkeypatch.setenv("QWEN_MODEL", legacy_model)
     model = legacy_model or "qwen3.6-plus"
     ref = f"qwen/{model}"
-    for env_var in QwenChatProvider._env_vars():
+    for env_var in QwenChatProvider.credentials().env_vars:
         monkeypatch.delenv(env_var, raising=False)
 
     # Startup resolves settings during imports, before it can persist upgrades.
@@ -213,16 +213,16 @@ def test_legacy_provider_does_not_replace_explicit_model(tmp_path, model):
 def test_full_file_preserves_all_credentials_and_custom_providers(
     physiclaw_home, monkeypatch, caplog, key_field, env_override
 ):
-    from physiclaw.provider import registry
+    from physiclaw.provider.services import registry
 
     provider_id = key_field.removesuffix("_api_key")
     vendor = registry._VENDORS[provider_id]
     adapter = vendor.chat or vendor.decision.create
-    for env_var in adapter._env_vars():
+    for env_var in adapter.credentials().env_vars:
         monkeypatch.delenv(env_var, raising=False)
     monkeypatch.delenv(config.MODEL_ENV_VAR, raising=False)
     if env_override:
-        monkeypatch.setenv(adapter._env_vars()[0], "synthetic-env-key")
+        monkeypatch.setenv(adapter.credentials().env_vars[0], "synthetic-env-key")
         monkeypatch.setenv(config.MODEL_ENV_VAR, "openai/env-model")
 
     cfg = config.Config()
@@ -252,7 +252,9 @@ def test_full_file_preserves_all_credentials_and_custom_providers(
         "synthetic-env-key" if env_override else getattr(cfg.provider, key_field)
     )
     assert (
-        config.resolve_provider_key(adapter._env_vars(), adapter._config_key())[0]
+        config.resolve_provider_key(
+            adapter.credentials().env_vars, adapter.credentials().config_key
+        )[0]
         == expected_key
     )
     assert adapter._resolved_base_url() == "https://proxy.example.test/v1"

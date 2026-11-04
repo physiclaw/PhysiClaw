@@ -248,11 +248,10 @@ async def test_model_failures_save_the_full_exception_chain(
     from physiclaw.agent.engine.policy import default_policies
     from physiclaw.agent.engine.provenance import PluginBinding
     from physiclaw.agent.engine.session import Session
-    from physiclaw.agent.llm import LLMProducer
+    from physiclaw.agent.llm.producer import LLMProducer
     from physiclaw.common.provider_errors import ProviderTransientError
     from physiclaw.conductor.micro.channel import MicroCaller
-    from physiclaw.conductor.micro.decision import AGENT_FIELDS, DecisionRequest
-    from physiclaw.contract.dto import CollapsePolicy
+    from physiclaw.conductor.micro.decision import AGENT_FIELDS, MicroRequest
 
     setup_logging("runtime", file_dir=tmp_path, file_level=logging.DEBUG, force=False)
 
@@ -286,7 +285,6 @@ async def test_model_failures_save_the_full_exception_chain(
             generate_structured=failed_chat,
             validate_output_spec=lambda spec: None,
             serialize_history=lambda _, **kw: [],
-            COLLAPSE=CollapsePolicy(first_at=100, keep=10, interval=100),
         )
         run.plugins = (
             PluginBinding(
@@ -309,7 +307,7 @@ async def test_model_failures_save_the_full_exception_chain(
         assert session.sentinel_status == "STUCK"
     else:
         caller = MicroCaller(SimpleNamespace(chat=failed_chat), confidence_floor=0.6)
-        request = DecisionRequest(
+        request = MicroRequest(
             call=AGENT_FIELDS,
             node_id="test",
             outcomes=(),

@@ -11,14 +11,14 @@ recap standing in when the call fails, is under-confident, or nobody is
 wired to make it: completion never waits on a model.
 """
 
-from physiclaw.conductor.micro.decision import SUMMARIZE, DecisionRequest, MicroOutcome
+from physiclaw.conductor.micro.decision import SUMMARIZE, MicroOutcome, MicroRequest
 from physiclaw.conductor.walk.surface import Step, Turn, Walk
 
 
 class CloseStep(Step[None]):
     def __init__(self, walk: Walk) -> None:
         super().__init__(walk, None)
-        self.sent: DecisionRequest | None = None
+        self.sent: MicroRequest | None = None
         n = len(walk.course)
         self.fallback = walk.ledger.recap(
             f"{walk.ledger.ref} completed ({n}/{n} nodes)"

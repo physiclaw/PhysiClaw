@@ -33,7 +33,6 @@ from physiclaw.agent.runtime.sentinel import DONE
 from physiclaw.cli.prompt import prompt_app
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     ImageBlock,
     TextBlock,
@@ -117,7 +116,6 @@ class _CaptureProvider:
     PROVIDER_ID = "fake"
     structured_transport = "tool"
     # Collapse policy read by `loop.drive` each turn (provider contract).
-    COLLAPSE = CollapsePolicy(first_at=100, keep=10, interval=100)
 
     def __init__(self) -> None:
         self.model = "fake-model"

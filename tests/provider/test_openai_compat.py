@@ -29,7 +29,7 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
+from physiclaw.provider.chat.history import EPHEMERAL_CACHE_CONTROL
 from physiclaw.provider.chat.openai_compat import (
     OpenAICacheMarkers,
     OpenAICompatibleProvider,
@@ -1066,7 +1066,7 @@ async def test_structured_continuation_preserves_reasoning(
     vendor, model, reasoning, monkeypatch, respx_mock
 ):
     from physiclaw.contract.structured import OutputSpec
-    from physiclaw.provider import provider_class
+    from physiclaw.provider.services.registry import provider_class
 
     monkeypatch.setenv(f"{vendor.upper()}_API_KEY", "test")
     provider = provider_class(vendor)(model=model, base_url="https://fixture.test")

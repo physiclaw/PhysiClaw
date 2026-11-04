@@ -16,7 +16,9 @@ from physiclaw.contract.decision import (
     DecisionCapabilities,
     DecisionResult,
 )
-from physiclaw.provider import BaseAPIProvider, BaseChatProvider, BaseDecisionProvider
+from physiclaw.provider.chat.base import BaseChatProvider
+from physiclaw.provider.client.base import BaseAPIProvider
+from physiclaw.provider.decision.base import BaseDecisionProvider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
 

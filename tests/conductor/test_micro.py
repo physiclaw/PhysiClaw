@@ -21,8 +21,8 @@ from physiclaw.conductor.micro.decision import (
     ACT_ARM,
     AGENT_ACT,
     AGENT_FIELDS,
-    DecisionRequest,
     Macro,
+    MicroRequest,
     Tap,
 )
 from physiclaw.conductor.spec.calls import (
@@ -44,7 +44,7 @@ from physiclaw.contract.turn import TurnMetadata
 def _fields_req(prompt: str = "the keyword, please"):
     """A pure-text agent request — the fixed-space call (done /
     escalate) the caller tests ride."""
-    return DecisionRequest(
+    return MicroRequest(
         call=AGENT_FIELDS,
         node_id="parse",
         outcomes=(),
@@ -61,10 +61,10 @@ def _req(
     context: str = "",
     thinking=None,
     frame=None,
-) -> DecisionRequest:
+) -> MicroRequest:
     """A one-shot request over `screen` — the shape `Thread.request` and
     the agent step assemble for real, spelled once for the tests."""
-    return DecisionRequest(
+    return MicroRequest(
         call=call,
         node_id=node_id,
         outcomes=outcomes,
@@ -96,7 +96,7 @@ def _act_req(
     actions = [AGENT_DONE, ESCALATE, *tools.split()]
     if macros:
         actions.append(TOOL_RUN)
-    return DecisionRequest(
+    return MicroRequest(
         call=AGENT_ACT,
         node_id="pick",
         outcomes=tuple(actions),
@@ -659,7 +659,7 @@ async def test_a_floor_miss_on_the_cheap_tier_escalates_without_a_second_model()
 
 @pytest.mark.asyncio
 async def test_agent_fields_row_takes_the_prompt_and_returns_fields() -> None:
-    req = DecisionRequest(
+    req = MicroRequest(
         call=AGENT_FIELDS,
         node_id="parse",
         outcomes=(),

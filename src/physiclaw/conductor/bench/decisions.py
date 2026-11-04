@@ -21,6 +21,7 @@ from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.text import iter_jsonl
 from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.moves import move_key, reply_args
+from physiclaw.contract.chat import SessionChatProvider
 from physiclaw.contract.dto import (
     USAGE_CALL_MICRO,
     ContentBlock,
@@ -30,7 +31,6 @@ from physiclaw.contract.dto import (
     Thinking,
     message_of,
 )
-from physiclaw.contract.plugin import SessionChatProvider
 from physiclaw.contract.wire import image_ref, leaf_blocks
 
 

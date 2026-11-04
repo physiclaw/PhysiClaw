@@ -17,8 +17,8 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.chat.base import token_count
 from physiclaw.provider.chat.structured import strict_json
+from physiclaw.provider.chat.usage import token_count
 from physiclaw.provider.chat.wire import encode_content, output_result_to_message
 
 

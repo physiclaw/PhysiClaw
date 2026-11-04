@@ -17,8 +17,8 @@ from physiclaw.common.provider_errors import (
 )
 from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.structured import OutputSpec
-from physiclaw.provider import provider_class
-from physiclaw.provider.chat.retry import retry_after_seconds
+from physiclaw.provider.client.http_errors import retry_after_seconds
+from physiclaw.provider.services.registry import provider_class
 
 
 @pytest.mark.parametrize(
@@ -231,7 +231,7 @@ async def test_openrouter_only_uses_advertised_capabilities(
 ):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test")
     monkeypatch.setattr(
-        "physiclaw.provider.vendors.openrouter.chat.discovered.load",
+        "physiclaw.provider.vendors.openrouter.chat.discovery.load",
         lambda _: [{"id": "test/model", "supported_parameters": supported}],
     )
     provider = provider_class("openrouter")(model="test/model")

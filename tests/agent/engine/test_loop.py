@@ -39,14 +39,14 @@ from physiclaw.agent.engine.loop import (
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.llm import CORRECTIVE_LIMIT
+from physiclaw.agent.llm.context_policy import CollapsePolicy
+from physiclaw.agent.llm.producer import CORRECTIVE_LIMIT
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
 from physiclaw.agent.trace import Trace
 from physiclaw.common import config
 from physiclaw.common.provider_errors import ProviderError, ProviderTransientError
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     OutputResultMessage,
     SystemMessage,
@@ -385,8 +385,6 @@ class CheckpointProvider(FakeProvider):
     """Collapse knobs small enough to hit the checkpoint turn in a short
     scripted session; records every request for tail assertions."""
 
-    COLLAPSE = CollapsePolicy(first_at=2, keep=1, interval=100)
-
     def __init__(self, responses):
         super().__init__(responses)
         self.requests: list[list] = []
@@ -415,12 +413,16 @@ def _req_texts(request: list) -> str:
     )
 
 
-async def _run_checkpoint_session(responses, provider_cls=CheckpointProvider):
+async def _run_checkpoint_session(
+    responses, *, collapse=CollapsePolicy(first_at=2, keep=1, interval=100)
+):
     registry = _registry()
-    provider = provider_cls(responses)
+    provider = CheckpointProvider(responses)
     session = Session()
     messages = _scaffold_messages()
-    run = _loop_run(provider, registry, session=session, messages=messages)
+    run = _loop_run(
+        provider, registry, collapse=collapse, session=session, messages=messages
+    )
     await drive(run, session)
     messages = _llm(run).messages
     return provider, session, messages
@@ -455,7 +457,13 @@ async def test_regression_checkpoint_corrects_unwritable_note_before_folding(
     session = Session(scratchpad="previous")
     messages = _scaffold_messages()
 
-    run = _loop_run(provider, registry, session=session, messages=messages)
+    run = _loop_run(
+        provider,
+        registry,
+        collapse=CollapsePolicy(first_at=2, keep=1, interval=100),
+        session=session,
+        messages=messages,
+    )
     await drive(run, session)
 
     assert session.sentinel_status == DONE
@@ -491,7 +499,13 @@ async def test_checkpoint_repeated_oversize_output_never_executes_or_folds() -> 
     session = Session(scratchpad="previous")
     messages = _scaffold_messages()
 
-    run = _loop_run(provider, registry, session=session, messages=messages)
+    run = _loop_run(
+        provider,
+        registry,
+        collapse=CollapsePolicy(first_at=2, keep=1, interval=100),
+        session=session,
+        messages=messages,
+    )
     await drive(run, session)
 
     assert session.sentinel_status == DONE
@@ -528,10 +542,12 @@ async def test_rejected_summary_never_enters_compaction_history(
             ),
         ]
     )
-    provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=100)
+    collapse = CollapsePolicy(first_at=3, keep=1, interval=100)
     session = Session()
     messages = _scaffold_messages()
-    run = _loop_run(provider, registry, session=session, messages=messages)
+    run = _loop_run(
+        provider, registry, collapse=collapse, session=session, messages=messages
+    )
 
     await drive(run, session)
     messages = _llm(run).messages
@@ -614,9 +630,6 @@ async def test_checkpoint_corrective_renews_per_collapse_event() -> None:
     # With a tight interval EVERY turn is collapse-pending — the single
     # retry must renew per collapse event (completed turn), not once per
     # session, or every compression after the first gets no checkpoint.
-    class TightProvider(CheckpointProvider):
-        COLLAPSE = CollapsePolicy(first_at=2, keep=1, interval=1)
-
     def _plain_turn():
         return _reply({"summary": "s"}, {"peek": {}})
 
@@ -632,7 +645,7 @@ async def test_checkpoint_corrective_renews_per_collapse_event() -> None:
                 {"end_session": {"status": DONE, "recap": "done"}},
             ),  # t3: pending but end_session-exempt
         ],
-        provider_cls=TightProvider,
+        collapse=CollapsePolicy(first_at=2, keep=1, interval=1),
     )
 
     assert session.sentinel_status == DONE

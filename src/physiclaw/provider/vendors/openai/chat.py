@@ -11,7 +11,7 @@ from physiclaw.contract.decision import decision_json
 from physiclaw.contract.dto import AssistantMessage, Message, Thinking
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS, CacheMarkers
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS, CacheMarkers
 from physiclaw.provider.chat.http import HTTPChatProvider
 from physiclaw.provider.chat.openai_cache import (
     OpenAIPromptCacheMarkers,

@@ -12,8 +12,8 @@ from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.decision import (
     SINCE,
     Content,
-    DecisionRequest,
     MicroOutcome,
+    MicroRequest,
 )
 from physiclaw.conductor.micro.moves import move_of
 from physiclaw.conductor.spec.calls import (
@@ -32,7 +32,7 @@ from physiclaw.contract.dto import (
 )
 
 
-def messages(req: DecisionRequest) -> list[Message]:
+def messages(req: MicroRequest) -> list[Message]:
     """The request as messages: the system contract, an episode's prior
     turns replayed verbatim (append-only — the byte-identical-prefix
     contract the provider cache pays), then the newest user block."""
@@ -45,7 +45,7 @@ def messages(req: DecisionRequest) -> list[Message]:
     return messages
 
 
-def canonical(req: DecisionRequest, outcome: MicroOutcome) -> str:
+def canonical(req: MicroRequest, outcome: MicroOutcome) -> str:
     """A validated outcome re-serialized in the contract's own spelling
     — the assistant turn a history replays. Rebuilt from the outcome
     (never the raw reply), so repair-retry noise can't enter the
@@ -71,7 +71,7 @@ def canonical(req: DecisionRequest, outcome: MicroOutcome) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 
-def settled(req: DecisionRequest, outcome: MicroOutcome) -> list[tuple[str, Content]]:
+def settled(req: MicroRequest, outcome: MicroOutcome) -> list[tuple[str, Content]]:
     """The exchange as a history keeps it: the user block exactly as
     sent (the frame by reference), then the canonical reply — the one
     settle both the agent episode and the session thread append."""
@@ -82,7 +82,7 @@ def settled(req: DecisionRequest, outcome: MicroOutcome) -> list[tuple[str, Cont
     ]
 
 
-def system(req: DecisionRequest) -> str:
+def system(req: MicroRequest) -> str:
     # One skeleton owns the prompt's load-bearing order (contract →
     # material note, when the row has one → answer legend); the row
     # supplies only the texts.
@@ -101,7 +101,7 @@ def system(req: DecisionRequest) -> str:
     return f"{spec.contract}\n{note}{legend}"
 
 
-def user_content(req: DecisionRequest) -> str | list[ContentBlock]:
+def user_content(req: MicroRequest) -> str | list[ContentBlock]:
     """The newest user block of a request: plain text when no frame
     rides, else the typed blocks — text runs joined, the frame where
     the row places it. The one composer: the agent step settles exactly

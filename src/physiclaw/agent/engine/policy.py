@@ -1,6 +1,6 @@
 """Behavioral policies — the judgment layer of the engine loop.
 
-`llm.py` owns conversation shape, corrective turns and provider retries.
+`agent.llm.producer` owns conversation shape, corrective turns and provider retries.
 `loop.py` arbitrates producers; `dispatch.py` validates and executes their
 calls and records receipts. These callers apply each policy's decision
 and emit its trace events. Everything that is a product decision — WHEN

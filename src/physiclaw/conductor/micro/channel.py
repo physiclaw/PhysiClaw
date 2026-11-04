@@ -31,13 +31,14 @@ from physiclaw.conductor.micro.answers import parse_reply
 from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.compose import messages
 from physiclaw.conductor.micro.decision import (
-    DecisionRequest,
     Macro,
     MicroOutcome,
+    MicroRequest,
     MicroResult,
     Tap,
 )
 from physiclaw.conductor.micro.moves import reply_args
+from physiclaw.contract.chat import ChatProvider, SessionChatProvider
 from physiclaw.contract.content import turn_metadata_message
 from physiclaw.contract.dto import (
     USAGE_CALL_MICRO,
@@ -47,10 +48,9 @@ from physiclaw.contract.dto import (
     UserMessage,
     role_of,
 )
-from physiclaw.contract.plugin import EventSink, SessionChatProvider, WireSink
+from physiclaw.contract.plugin import EventSink, WireSink
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.contract.wire import content_record
-from physiclaw.provider import ChatProvider
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class MicroCaller:
             await owned.aclose()
 
     async def run(
-        self, req: DecisionRequest, *, metadata: TurnMetadata | None = None
+        self, req: MicroRequest, *, metadata: TurnMetadata | None = None
     ) -> MicroResult:
         """One decision. `result.outcome` is None when the caller should
         escalate. Never raises."""
@@ -147,7 +147,7 @@ class MicroCaller:
         return result
 
     async def _ask(
-        self, req: DecisionRequest, metadata: TurnMetadata | None
+        self, req: MicroRequest, metadata: TurnMetadata | None
     ) -> "tuple[MicroOutcome | None, str, int]":
         """One decision on the live provider: fresh messages, one repair
         retry, floor judgment. No outcome means escalate — the walk hands
@@ -210,7 +210,7 @@ class MicroCaller:
 
     def _log_wire(
         self,
-        req: DecisionRequest,
+        req: MicroRequest,
         messages: list[Message],
         asst: AssistantMessage,
         allowed: tuple[str, ...],
@@ -247,7 +247,7 @@ class MicroCaller:
             )
         )
 
-    def _trace(self, req: DecisionRequest, result: MicroResult) -> None:
+    def _trace(self, req: MicroRequest, result: MicroResult) -> None:
         """The decision event — one per decision, whatever happened; the
         trace renders it once and mirrors that line into the process
         log. Its tokens are the provider's `usage` event (written by the
@@ -277,7 +277,7 @@ class MicroCaller:
         )
 
 
-def _log_provider_failure(req: DecisionRequest, error: Exception) -> None:
+def _log_provider_failure(req: MicroRequest, error: Exception) -> None:
     log.warning(
         "micro %s (%s): provider failed — %s",
         req.call,
@@ -301,7 +301,7 @@ def _picked_words(outcome: MicroOutcome | None) -> str | None:
 async def _chat(
     provider: SessionChatProvider,
     messages: list[Message],
-    req: DecisionRequest,
+    req: MicroRequest,
     metadata: TurnMetadata | None,
 ) -> AssistantMessage:
     """One call and at most one transient retry, respecting wait hints and deadline."""

@@ -1,7 +1,7 @@
 """One vendor identity, explicit chat and decision service registrations.
 
-Factories select an API capability, never infer it from a model name and
-never fall back to the other service. Metadata lookups construct no client.
+This module owns offline metadata and registration validation. Construction
+lives in factory.py; metadata lookups construct no client.
 """
 
 from collections.abc import Callable
@@ -10,8 +10,8 @@ from typing import Literal, Protocol
 
 from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.contract.decision import DecisionCapabilities, DecisionProvider
-from physiclaw.contract.plugin import EventSink
-from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
+from physiclaw.provider.chat.base import BaseChatProvider
+from physiclaw.provider.client.configuration import CredentialSpec
 from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
 from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
@@ -40,8 +40,7 @@ class DecisionProviderSpec:
 
     create: _DecisionFactory
     capabilities: Callable[[str], DecisionCapabilities]
-    key_env_vars: tuple[str, ...]
-    config_key: str
+    credentials: CredentialSpec
 
 
 @dataclass(frozen=True)
@@ -50,6 +49,12 @@ class VendorServices:
 
     chat: type[BaseChatProvider] | None = None
     decision: DecisionProviderSpec | None = None
+
+    @property
+    def credentials(self) -> CredentialSpec | None:
+        if self.chat is not None:
+            return self.chat.credentials()
+        return self.decision.credentials if self.decision is not None else None
 
 
 _VENDORS: dict[str, VendorServices] = {
@@ -60,8 +65,7 @@ _VENDORS: dict[str, VendorServices] = {
         decision=DecisionProviderSpec(
             OpenAIDecisionProvider,
             OpenAIDecisionProvider.capabilities_for,
-            OpenAIDecisionProvider._env_vars(),
-            OpenAIDecisionProvider._config_key(),
+            OpenAIDecisionProvider.credentials(),
         ),
     ),
     "anthropic": VendorServices(chat=AnthropicChatProvider),
@@ -71,8 +75,7 @@ _VENDORS: dict[str, VendorServices] = {
         decision=DecisionProviderSpec(
             TypeSafeDecisionProvider,
             TypeSafeDecisionProvider.capabilities_for,
-            TypeSafeDecisionProvider._env_vars(),
-            TypeSafeDecisionProvider._config_key(),
+            TypeSafeDecisionProvider.credentials(),
         )
     ),
     "openrouter": VendorServices(
@@ -80,16 +83,14 @@ _VENDORS: dict[str, VendorServices] = {
         decision=DecisionProviderSpec(
             OpenRouterDecisionProvider,
             OpenRouterDecisionProvider.capabilities_for,
-            OpenRouterDecisionProvider._env_vars(),
-            OpenRouterDecisionProvider._config_key(),
+            OpenRouterDecisionProvider.credentials(),
         ),
     ),
     "liquid": VendorServices(
         decision=DecisionProviderSpec(
             LiquidDecisionProvider,
             LiquidDecisionProvider.capabilities_for,
-            LiquidDecisionProvider._env_vars(),
-            LiquidDecisionProvider._config_key(),
+            LiquidDecisionProvider.credentials(),
         )
     ),
 }
@@ -119,10 +120,7 @@ def register_decision_provider(provider_id: str, spec: DecisionProviderSpec) -> 
     if vendor.decision is not None:
         raise ValueError("decision provider already registered")
     _require_kind(spec.create, "decision", provider_id)
-    if vendor.chat is not None and (
-        spec.key_env_vars != vendor.chat._env_vars()
-        or spec.config_key != vendor.chat._config_key()
-    ):
+    if vendor.chat is not None and (spec.credentials != vendor.chat.credentials()):
         raise ProviderConfigurationError(
             "services of one vendor must share credential settings"
         )
@@ -150,29 +148,8 @@ def decision_provider_capabilities(
     )
 
 
-def make_decision_provider(
-    provider_id: str, model_id: str, *, require_images: bool = False
-) -> DecisionProvider:
-    """Construct only a decision service; never substitute a chat adapter."""
-    from physiclaw.common.config import CONFIG
-
-    vendor = _VENDORS.get(provider_id)
-    if vendor is None or vendor.decision is None:
-        raise ValueError(f"unknown decision provider {provider_id!r}")
-    spec = vendor.decision
-    _require_kind(spec.create, "decision", provider_id)
-    if not isinstance(model_id, str) or not model_id.strip():
-        raise ProviderConfigurationError("a decision model ID is required")
-    capabilities = spec.capabilities(model_id)
-    if require_images and not capabilities.images:
-        raise ProviderConfigurationError(
-            "decision provider/model does not support images"
-        )
-    return spec.create(model_id, timeout=CONFIG.engine.provider_timeout_seconds)
-
-
-def in_process_provider_ids() -> tuple[str, ...]:
-    """Chat service IDs in existing menu order; decision-only vendors excluded."""
+def chat_provider_ids() -> tuple[str, ...]:
+    """Chat service IDs in registration order; decision-only vendors excluded."""
     return tuple(
         provider_id
         for provider_id, vendor in _VENDORS.items()
@@ -181,7 +158,7 @@ def in_process_provider_ids() -> tuple[str, ...]:
 
 
 def is_known(provider_id: str) -> bool:
-    """Compatibility lookup for a known chat provider."""
+    """Whether a chat adapter is registered for this vendor."""
     return provider_class(provider_id) is not None
 
 
@@ -190,50 +167,13 @@ def provider_class(provider_id: str) -> type[BaseChatProvider] | None:
     return vendor.chat if vendor else None
 
 
-def provider_key_status(provider_id: str) -> tuple[str | None, str | None]:
-    """Shared vendor key status, always masked; no client construction."""
-    from physiclaw.common.config import resolve_provider_key
-
-    vendor = _VENDORS.get(provider_id)
-    if vendor is None:
-        return None, None
-    if vendor.chat is not None:
-        env_vars, config_key = vendor.chat._env_vars(), vendor.chat._config_key()
-    elif vendor.decision is not None:
-        env_vars, config_key = vendor.decision.key_env_vars, vendor.decision.config_key
-    else:
-        return None, None
-    value, source = resolve_provider_key(env_vars, config_key)
-    return ("********" if value else None), source
-
-
-def validate_model_ref(ref: str) -> tuple[str, str]:
+def validate_chat_model_ref(ref: str) -> tuple[str, str]:
     """Validate a chat model reference; model IDs do not select API kind."""
     from physiclaw.common.model_ref import parse_model_ref
 
     provider_id, model_id = parse_model_ref(ref)
     if provider_class(provider_id) is None:
         raise ValueError(
-            f"unknown provider {provider_id!r} in ref {ref!r} (known: {', '.join(in_process_provider_ids())})"
+            f"unknown provider {provider_id!r} in ref {ref!r} (known: {', '.join(chat_provider_ids())})"
         )
     return provider_id, model_id
-
-
-def make_chat_provider(
-    provider_id: str, model_id: str, *, usage_sink: EventSink | None = None
-) -> ChatProvider:
-    """Construct only a chat service; never substitute a decision adapter."""
-    from physiclaw.common.config import CONFIG
-
-    cls = provider_class(provider_id)
-    if cls is None:
-        raise ValueError(
-            f"unknown provider {provider_id!r} (known: {', '.join(in_process_provider_ids())})"
-        )
-    _require_kind(cls, "chat", provider_id)
-    return cls(
-        model=model_id,
-        timeout=CONFIG.engine.provider_timeout_seconds,
-        usage_sink=usage_sink,
-        max_output_tokens=CONFIG.engine.provider_max_output_tokens or None,
-    )

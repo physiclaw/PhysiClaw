@@ -31,10 +31,10 @@ import logging
 from dataclasses import replace
 
 from physiclaw.agent.engine import memory
+from physiclaw.agent.llm.context_policy import CollapsePolicy
 from physiclaw.common.listing import is_header, parse_row
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     ContentBlock,
     ImageBlock,
     Message,
@@ -254,9 +254,8 @@ def collapse_old_turns(
       - First collapse: when complete-turn count reaches `policy.first_at`.
       - Subsequent: when count reaches `policy.keep + policy.interval`.
 
-    The policy comes from the active provider's `COLLAPSE` class
-    attribute (a validated `CollapsePolicy`). The engine threads it
-    through; this function stays vendor-agnostic.
+    The LLM producer supplies its validated agent-owned `CollapsePolicy`;
+    this function stays independent of provider implementations.
 
     "First vs subsequent" comes from the caller's `collapsed_once`
     session flag. Returns True iff this call actually folded (spliced
@@ -274,10 +273,8 @@ def collapse_old_turns(
         if the agent reloaded the same skill, both copies survive.
 
     Each collapse mutates the prefix bytes between system and the next
-    stub anchor → triggers one cache_creation event. The vendor's
-    defaults amortize this tax against the bounded-prompt savings
-    (EOQ analysis at `BaseChatProvider.COLLAPSE`; `MoonshotChatProvider` for
-    the whole-prefix-invalidation trade-off).
+    stub anchor and can trigger cache creation. The defaults in
+    `agent.llm.context_policy` balance this cost against bounded-prompt savings.
     """
     threshold = _trigger_threshold(
         messages, policy=policy, collapsed_once=collapsed_once

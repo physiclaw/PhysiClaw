@@ -41,9 +41,9 @@ from physiclaw.conductor.micro.decision import (
     LEAD,
     PROMPT,
     Content,
-    DecisionRequest,
     Macro,
     MicroOutcome,
+    MicroRequest,
     Tap,
 )
 from physiclaw.conductor.spec import fence
@@ -86,7 +86,7 @@ class AgentStep(Step[AgentNode]):
         # the per-tap predicates keep checking after the gate's consent
         # is consumed by the first fire.
         self.lead = ""
-        self.sent: DecisionRequest | None = None
+        self.sent: MicroRequest | None = None
         self.history: list[tuple[str, Content]] = []
         self.elements: tuple[Element, ...] = ()
         self.calls = 0
@@ -173,7 +173,7 @@ class AgentStep(Step[AgentNode]):
 
     def _fields_request(self) -> Turn:
         node = self.node
-        return DecisionRequest(
+        return MicroRequest(
             call=AGENT_FIELDS,
             node_id=node.id,
             outcomes=(),
@@ -252,7 +252,7 @@ class AgentStep(Step[AgentNode]):
         actions.extend(t for t in AGENT_TOOLS if t in node.tools)
         if node.macros:
             actions.append(TOOL_RUN)
-        self.sent = DecisionRequest(
+        self.sent = MicroRequest(
             call=AGENT_ACT,
             node_id=node.id,
             outcomes=tuple(actions),

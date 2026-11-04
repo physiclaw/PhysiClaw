@@ -61,13 +61,10 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat.base import (
-    EPHEMERAL_CACHE_CONTROL,
-    CacheMarkers,
-    token_count,
-)
+from physiclaw.provider.chat.history import EPHEMERAL_CACHE_CONTROL, CacheMarkers
 from physiclaw.provider.chat.http import HTTPChatProvider
 from physiclaw.provider.chat.structured import strict_json
+from physiclaw.provider.chat.usage import token_count
 from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     output_result_to_message,
@@ -107,12 +104,12 @@ class OpenAICacheMarkers(CacheMarkers):
 
 
 class OpenAICompatibleProvider(HTTPChatProvider):
-    """Base for providers that speak the OpenAI `/chat/completions` wire
-    format. See `BaseChatProvider` for the auth declarations vendors are
-    expected to set; this class plugs the wire-shape encoder
-    (`_encode_message`) and the `OpenAICacheMarkers` factory into the
-    inherited `serialize_history` template, and adds the HTTP request
-    flow in `chat()`."""
+    """Chat Completions protocol over the shared HTTP chat transport.
+
+    Vendors declare identity and authentication through BaseAPIProvider.
+    This class supplies native encoding, decoding and cache markers;
+    HTTPChatProvider sends requests and BaseChatProvider accounts for usage.
+    """
 
     ENDPOINT = "/chat/completions"
     CACHE_MARKERS: CacheMarkers = OpenAICacheMarkers()

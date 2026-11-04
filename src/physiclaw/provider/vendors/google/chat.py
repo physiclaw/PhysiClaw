@@ -50,13 +50,14 @@ from physiclaw.contract.dto import (
     Usage,
 )
 from physiclaw.contract.structured import OutputSpec
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS, token_count_or_none
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.chat.retry import retry_after_seconds
+from physiclaw.provider.chat.usage import token_count_or_none
 from physiclaw.provider.chat.wire import (
     assistant_to_wire,
     tool_result_with_user_images,
 )
+from physiclaw.provider.client.http_errors import retry_after_seconds
 
 # Documented escape hatch from Google's thought-signatures doc. Used
 # when no captured signature is available for an outbound tool_call.

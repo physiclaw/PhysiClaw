@@ -25,7 +25,7 @@ from physiclaw.contract.dto import (
     Usage,
     UserMessage,
 )
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS
 from physiclaw.provider.chat.wire import tool_result_with_user_images
 from physiclaw.provider.vendors.google.chat import (
     _SIG_BYPASS,

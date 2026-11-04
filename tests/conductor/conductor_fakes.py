@@ -8,7 +8,7 @@ from textwrap import indent
 
 from physiclaw.common.listing import Element, Screen, format_elements
 from physiclaw.conductor.load.pack import load_spec
-from physiclaw.conductor.micro.decision import DecisionRequest
+from physiclaw.conductor.micro.decision import MicroRequest
 from physiclaw.conductor.spec.model import resolve_inputs
 from physiclaw.contract.dto import (
     AssistantMessage,
@@ -146,7 +146,7 @@ def finish(driver, history: list, step) -> str:
     permanently quiet. Returns the note's summary so tests can assert
     on the report itself."""
     assert step is not None, "expected the terminal turn, got quiet"
-    if isinstance(step, DecisionRequest):
+    if isinstance(step, MicroRequest):
         # A completion asks the session thread for its record first; with
         # nobody to answer, the walk's own recap closes it.
         step = driver.resolve(None)

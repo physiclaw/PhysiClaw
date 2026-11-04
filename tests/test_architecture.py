@@ -13,8 +13,8 @@ Shared, domain-agnostic infrastructure lives in ``physiclaw.common``
 layers can depend on it *downward* without depending on *each other*.
 ``common`` is a leaf: it imports neither ``core`` nor ``agent``, which
 keeps the dependency graph acyclic. ``physiclaw.cli`` is the
-composition root and is allowed to import everything — it is not
-covered by these guards. Native mechanisms live in the separate leaf
+composition root and may import both domain layers; provider access still
+uses the public facade. Native mechanisms live in the separate leaf
 ``physiclaw.port``; its independence is guarded in ``test_port_architecture``.
 
 These tests parse the AST of every source file (so docstring / comment
@@ -156,7 +156,7 @@ def test_provider_service_packages_do_not_import_each_other() -> None:
                 module.startswith(f"physiclaw.provider.{forbidden}")
                 for module in _imported_modules(path)
             ), str(path)
-    imports = _imported_modules(PKG_ROOT / "provider/provider_base.py")
+    imports = _imported_modules(PKG_ROOT / "provider/client/base.py")
     assert not any(module.startswith("physiclaw.contract") for module in imports)
 
 
@@ -164,12 +164,96 @@ def test_provider_callers_use_only_the_public_facade() -> None:
     """API codecs and transport policy stay behind the provider boundary."""
     bad = [
         f"{path.relative_to(SRC_ROOT)} -> {module}"
-        for package in ("agent", "conductor")
+        for package in ("agent", "conductor", "cli")
         for path in _files(package)
         for module in _imported_modules(path)
         if module.startswith("physiclaw.provider.")
     ]
     assert not bad, "callers must use physiclaw.provider:\n" + "\n".join(bad)
+
+
+def test_chat_contract_is_independent_of_plugins_and_adapters() -> None:
+    imports = _imported_modules(PKG_ROOT / "contract/chat.py")
+    assert "physiclaw.contract.plugin" not in imports
+    assert not any(module.startswith("physiclaw.provider") for module in imports)
+
+
+def test_provider_configuration_reads_have_one_boundary() -> None:
+    allowed = {
+        PKG_ROOT / "provider/client/configuration.py",
+        PKG_ROOT / "provider/services/factory.py",
+    }
+    for path in _files("provider"):
+        if path in allowed:
+            continue
+        imports = _imported_modules(path)
+        assert "physiclaw.common.config" not in imports, str(path)
+        assert "os" not in imports, str(path)
+
+
+def test_provider_client_and_catalog_are_independent_of_service_assembly() -> None:
+    for package in ("client", "catalog"):
+        prefix = f"physiclaw.provider.{package}"
+        for path in _files(f"provider/{package}"):
+            assert not any(
+                module.startswith("physiclaw.provider")
+                and module != prefix
+                and not module.startswith(prefix + ".")
+                for module in _imported_modules(path)
+            ), str(path)
+
+
+def test_provider_adapters_do_not_import_service_assembly_or_facade() -> None:
+    for package in ("chat", "decision", "vendors"):
+        for path in _files(f"provider/{package}"):
+            assert not any(
+                module == "physiclaw.provider"
+                or module.startswith("physiclaw.provider.services")
+                for module in _imported_modules(path)
+            ), str(path)
+
+
+def test_application_callers_cannot_reach_adapter_classes_through_facade() -> None:
+    """A public re-export must not bypass the implementation import guard."""
+    for package in ("agent", "conductor", "cli"):
+        for path in _files(package):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "physiclaw.provider"
+                ):
+                    assert all(
+                        not alias.name.endswith("Provider")
+                        and alias.name
+                        not in {
+                            "provider_class",
+                            "registry",
+                            "services",
+                            "client",
+                            "catalog",
+                            "VendorServices",
+                            "DecisionProviderSpec",
+                        }
+                        for alias in node.names
+                    ), str(path)
+
+
+def test_provider_adapters_do_not_own_agent_policy() -> None:
+    for path in _files("provider"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = {
+            node.id if isinstance(node, ast.Name) else node.attr
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Name, ast.Attribute))
+        }
+        assert not names & {"COLLAPSE", "INLINE_TOOL_INDEX", "CollapsePolicy"}, str(
+            path
+        )
+    for relative in ("agent/llm/context_policy.py", "agent/engine/prompt.py"):
+        assert not any(
+            module.startswith("physiclaw.provider")
+            for module in _imported_modules(PKG_ROOT / relative)
+        ), relative
 
 
 def test_provider_wire_building_is_internal() -> None:
@@ -191,6 +275,20 @@ def test_provider_wire_building_is_internal() -> None:
     assert not bad, "request encoding belongs to providers:\n" + "\n".join(bad)
 
 
+def test_llm_context_policy_loads_without_runtime_or_provider_dependencies() -> None:
+    for relative in ("agent/llm/__init__.py", "agent/llm/context_policy.py"):
+        assert not any(
+            module.startswith(
+                (
+                    "physiclaw.agent.engine",
+                    "physiclaw.agent.llm.producer",
+                    "physiclaw.provider",
+                )
+            )
+            for module in _imported_modules(PKG_ROOT / relative)
+        ), relative
+
+
 def test_vendor_adapters_keep_chat_and_decision_imports_separate() -> None:
     for path in (PKG_ROOT / "provider/vendors").rglob("*.py"):
         if path.name not in ("chat.py", "decision.py"):
@@ -208,12 +306,13 @@ def test_vendor_adapters_keep_chat_and_decision_imports_separate() -> None:
 
 # The agent packages that ARE the engine or drive it directly — they may
 # import engine internals freely. Everything else under `agent/`
-# (provider, trace, layout, and whatever lands next) is shared across
+# (trace, layout, and whatever lands next) is shared across
 # runtimes: the type vocabulary they used to take from `engine.dto` now
 # lives in `physiclaw.contract`, so they have NO legal engine edge at
 # all. Stated as the exception set so a new shared package is guarded
 # from birth, with no test edit to remember.
-_ENGINE_RUNTIMES = frozenset({"engine", "hooks", "runtime"})
+# llm is the built-in engine producer, now packaged with its context policy.
+_ENGINE_RUNTIMES = frozenset({"engine", "hooks", "llm", "runtime"})
 
 
 def test_shared_agent_packages_do_not_import_the_engine() -> None:

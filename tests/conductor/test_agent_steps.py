@@ -39,9 +39,9 @@ from physiclaw.conductor.micro.decision import (
     AGENT_ACT,
     AGENT_FIELDS,
     SUMMARIZE,
-    DecisionRequest,
     Macro,
     MicroOutcome,
+    MicroRequest,
     Tap,
 )
 from physiclaw.conductor.spec import pages
@@ -294,7 +294,7 @@ def test_a_prompt_is_filled_from_its_given_in_one_pass() -> None:
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest) and req.call == AGENT_FIELDS
+    assert isinstance(req, MicroRequest) and req.call == AGENT_FIELDS
     assert (
         req.material["prompt"]
         == "Derive the keyword.\nThe buyer said: 买 {milk} {{x}} (a {brace})"
@@ -424,7 +424,7 @@ def _boot(playbook: str = AGENTED):
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest) and req.call == AGENT_FIELDS
+    assert isinstance(req, MicroRequest) and req.call == AGENT_FIELDS
     # The brief is the prompt with its given filled once; with no memory
     # and no landmarks, nothing rides beside it.
     assert req.material["prompt"] == AGENTED_PARSE_PROMPT
@@ -470,7 +470,7 @@ def test_declared_context_rides_the_brief_and_nothing_else_does() -> None:
 
     req = p.advance(h)
 
-    assert isinstance(req, DecisionRequest) and req.call == AGENT_FIELDS
+    assert isinstance(req, MicroRequest) and req.call == AGENT_FIELDS
     # The given fills the prompt; the memory part rides the data block
     # under the name the prompt calls it by.
     assert req.material["prompt"] == AGENTED_PARSE_PROMPT
@@ -518,7 +518,7 @@ def _at_episode(playbook: str = AGENTED, screen: str = RESULTS):
     search = p.advance(h)
     _feed(h, search, screen)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest) and req.call == AGENT_ACT
+    assert isinstance(req, MicroRequest) and req.call == AGENT_ACT
     return p, h, req
 
 
@@ -551,7 +551,7 @@ def test_an_episode_that_reads_nothing_gets_no_context_block() -> None:
     assert "Context" not in req.material["lead"]
 
 
-def _spot(req: DecisionRequest, text: str, label: str | None = None) -> Tap:
+def _spot(req: MicroRequest, text: str, label: str | None = None) -> Tap:
     """A tap on the listed element reading `text` — the box the model
     would copy off the listing, with the label in its own words."""
     el = next(e for e in req.elements if e.label == text)
@@ -588,7 +588,7 @@ def test_episode_tap_grounds_and_history_is_append_only() -> None:
 
     _feed(h, tap, RESULTS)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
     # Append-only: the settled turn rides verbatim before the new block —
     # exactly the content micro sent, in the canonical reply's spelling.
     assert len(req2.history) == 2
@@ -634,7 +634,7 @@ def test_an_episodes_context_is_said_once_across_its_turns() -> None:
     )
     _feed(h, tap, RESULTS)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest) and req2.call == AGENT_ACT
+    assert isinstance(req2, MicroRequest) and req2.call == AGENT_ACT
 
     # What the provider sees on the second call, as one text.
     system = compose.system(req2)
@@ -682,7 +682,7 @@ def test_episode_taps_a_box_off_the_listing() -> None:
     ]
     _feed(h, tap, RESULTS)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
     assert req2.material["lead"] == (
         "[you tapped 'the red badge' at [0.100,0.200,0.300,0.400]]"
     )
@@ -696,7 +696,7 @@ def test_episode_frame_rides_the_request_and_settles_into_history() -> None:
     _feed(h, p.resolve(_done_outcome(keyword="milk")), HOME)
     _feed(h, p.advance(h), RESULTS, frame=FRAME)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest) and req.frame is FRAME
+    assert isinstance(req, MicroRequest) and req.frame is FRAME
     sent = user_content(req)
     assert isinstance(sent, list) and sent[1] is FRAME
 
@@ -705,7 +705,7 @@ def test_episode_frame_rides_the_request_and_settles_into_history() -> None:
     _feed(h, tap, RESULTS)  # a text-only result: no frame this time
     req2 = p.advance(h)
 
-    assert isinstance(req2, DecisionRequest) and req2.frame is None
+    assert isinstance(req2, MicroRequest) and req2.frame is None
     assert req2.history[0] == ("user", tuple(sent))
     assert [type(b) for b in req2.history[0][1]] == [TextBlock, ImageBlock, TextBlock]
     assert isinstance(user_content(req2), str)
@@ -719,7 +719,7 @@ def test_episode_taps_an_icon_by_its_listed_box() -> None:
     screen = make_screen(("综合", 0.5, 0.1), ("", 0.9, 0.9), ("Milk 5kg", 0.5, 0.5))
     _feed(h, p.advance(h), screen.text)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     icon = Tap(label="the cart icon", bbox=screen.rows[1].bbox)
 
     tap = p.resolve(
@@ -730,7 +730,7 @@ def test_episode_taps_an_icon_by_its_listed_box() -> None:
     assert tap.tool_calls[1].arguments["bbox"] == list(screen.rows[1].bbox)
     _feed(h, tap, RESULTS)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
     assert (
         req2.material["lead"]
         == "[you tapped 'the cart icon' at [0.850,0.880,0.950,0.920]]"
@@ -748,11 +748,11 @@ def test_episode_runs_a_granted_macro_by_name() -> None:
     p = _program(name="walk", user_said="买牛奶")
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     _feed(h, p.resolve(_done_outcome(keyword="milk")), HOME)
     _feed(h, p.advance(h), RESULTS)
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     # The names ride the system prompt's `run_macro` legend, which is
     # fixed for the episode — said once, never retyped each turn.
     assert req.macros == ("add-cart",)
@@ -769,7 +769,7 @@ def test_episode_runs_a_granted_macro_by_name() -> None:
     assert "ran macro 'add-cart'" in run.tool_calls[0].arguments["summary"]
     _feed(h, run, RESULTS)  # its result view is the next turn's screen
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
     assert req2.material["lead"] == "[you ran macro 'add-cart']"
     assert KIND_MACRO in p._step.kinds
 
@@ -797,7 +797,7 @@ def test_episode_done_is_audited_against_the_verify_page() -> None:
     # done while still on results → rejected, costs a call, continues
     # over the same screen: only the lead changes.
     retry = p.resolve(_done_outcome(total="45"))
-    assert isinstance(retry, DecisionRequest)
+    assert isinstance(retry, MicroRequest)
     assert "done rejected" in retry.material["lead"]
     assert retry.material["block"] == req.material["block"]
 
@@ -806,7 +806,7 @@ def test_episode_done_is_audited_against_the_verify_page() -> None:
     tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=row))
     _feed(h, tap, DONE)
     req3 = p.advance(h)
-    assert isinstance(req3, DecisionRequest)
+    assert isinstance(req3, MicroRequest)
     step = p.resolve(_done_outcome(total="45"))
     summary = _finish(p, h, step)
     assert "completed" in summary
@@ -816,7 +816,7 @@ def test_episode_call_limit_hands_over() -> None:
     p, h, req = _at_episode()
     step: object = req
     for _ in range(10):
-        if not isinstance(step, DecisionRequest):
+        if not isinstance(step, MicroRequest):
             break
         step = p.resolve(_done_outcome(total="45"))  # rejected off-page each time
     summary = _finish(p, h, step)
@@ -829,7 +829,7 @@ def test_episode_scroll_limit_hands_over() -> None:
     swipe = p.resolve(MicroOutcome(out=ACT_SCROLL_DOWN, reason="more", confidence=0.9))
     assert swipe is not None and swipe.tool_names() == ["note", "swipe"]
     _feed(h, swipe, RESULTS)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
 
     step = p.resolve(MicroOutcome(out=ACT_SCROLL_DOWN, reason="more", confidence=0.9))
     summary = _finish(p, h, step)
@@ -853,7 +853,7 @@ def test_declared_recover_hand_runs_then_walk_resumes() -> None:
     _feed(h, hand, RESULTS)  # the hand restored the page
 
     req = p.advance(h)  # VERIFY satisfied → the episode opens
-    assert isinstance(req, DecisionRequest) and req.call == AGENT_ACT
+    assert isinstance(req, MicroRequest) and req.call == AGENT_ACT
 
 
 def test_page_without_recover_hands_over_in_declared_mode() -> None:
@@ -867,7 +867,7 @@ def test_page_without_recover_hands_over_in_declared_mode() -> None:
     p = _program(name="walk", user_said="买牛奶")
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     start = p.resolve(_done_outcome(keyword="milk"))
     _feed(h, start, HOME)
     search = p.advance(h)
@@ -892,7 +892,7 @@ def test_recover_hand_loop_is_bounded_by_the_walk_budget() -> None:
     p = _program(name="walk", user_said="买牛奶")
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     step = p.resolve(_done_outcome(keyword="milk"))
     quits = 0
     for _ in range(60):
@@ -919,7 +919,7 @@ def test_page_recover_limit_stops_the_hand_loop_before_the_walk_budget() -> None
     p = _program(name="walk", user_said="买牛奶")
     h = _history()
     _feed(h, p.advance(h), ELSEWHERE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     step = p.resolve(_done_outcome(keyword="milk"))
     quits = 0
     for _ in range(20):
@@ -999,7 +999,7 @@ def _at_pay_episode(resume_screen: str = SHEET, playbook: str = AGENT_PAY):
 
 def test_payment_episode_taps_under_consent_then_completes() -> None:
     p, h, req = _at_pay_episode()
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     # The consented amount reaches a payment episode where its prompt
     # wrote {total}.
     assert req.material["lead"].startswith("Pay exactly 45, then finish on")
@@ -1010,7 +1010,7 @@ def test_payment_episode_taps_under_consent_then_completes() -> None:
 
     _feed(h, tap, DONE)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
     step = p.resolve(_done_outcome())
     summary = _finish(p, h, step)
     assert "completed" in summary
@@ -1030,7 +1030,7 @@ def test_payment_episode_second_tap_keeps_the_paid_record() -> None:
     )
     assert tap2 is not None and tap2.tool_names() == ["note", "tap"]
     _feed(h, tap2, DONE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     summary = _finish(p, h, p.resolve(_done_outcome()))
 
     assert "completed" in summary and p.ledger.paid == 45.0
@@ -1117,14 +1117,14 @@ def test_payment_episode_fires_only_off_a_verified_page_like_the_move() -> None:
     p, h, req = _at_pay_episode(
         playbook=AGENT_PAY.replace("tools: [tap]", "tools: [tap, scroll]")
     )
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     scroll = p.resolve(MicroOutcome(out=ACT_SCROLL_DOWN, reason="look", confidence=0.9))
     unknown = make_screen(
         ("限时活动", 0.5, 0.3), ("合计 ¥45", 0.5, 0.5), ("领取", 0.5, 0.8)
     )
     _feed(h, scroll, unknown.text)
     req2 = p.advance(h)
-    assert isinstance(req2, DecisionRequest)
+    assert isinstance(req2, MicroRequest)
 
     step = p.resolve(
         MicroOutcome(
@@ -1140,7 +1140,7 @@ def test_payment_episode_fires_only_off_a_verified_page_like_the_move() -> None:
 
 def test_payment_episode_blocks_a_tap_when_the_sheet_changed() -> None:
     p, h, req = _at_pay_episode(resume_screen=SHEET_CHANGED)
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
 
     row = Tap(label="anything", bbox=req.elements[0].bbox)
     step = p.resolve(
@@ -1387,9 +1387,9 @@ def _at_close():
     row = _spot(req, "Milk 5kg")
     tap = p.resolve(MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=row))
     _feed(h, tap, DONE)
-    assert isinstance(p.advance(h), DecisionRequest)
+    assert isinstance(p.advance(h), MicroRequest)
     close = p.resolve(_done_outcome(total="45"))
-    assert isinstance(close, DecisionRequest) and close.call == SUMMARIZE
+    assert isinstance(close, MicroRequest) and close.call == SUMMARIZE
     return p, h, close
 
 
@@ -1592,7 +1592,7 @@ def test_a_granted_macro_tapping_a_target_is_refused_at_run_time() -> None:
         MicroOutcome(out=ACT_ARM, reason="go", confidence=0.9, picked=Macro("pay-bar"))
     )
 
-    assert isinstance(again, DecisionRequest)  # re-asked, NOT run
+    assert isinstance(again, MicroRequest)  # re-asked, NOT run
     assert "refused a macro" in p.ledger.events[-1]
     assert "免密支付" in p.ledger.events[-1]
     assert "'pay-bar'" in str(again.material["lead"])
@@ -1631,7 +1631,7 @@ def test_a_granted_playbook_local_macro_is_named_as_it_dispatches() -> None:
         )
     )
 
-    assert isinstance(again, DecisionRequest)  # found, judged, refused
+    assert isinstance(again, MicroRequest)  # found, judged, refused
     assert "'walk.pay-bar'" in p.ledger.events[-1]
 
 
@@ -1645,7 +1645,7 @@ def test_a_refused_tap_is_journaled_and_the_episode_goes_on() -> None:
         MicroOutcome(out=ACT_ARM, reason="pay", confidence=0.9, picked=row)
     )
 
-    assert isinstance(again, DecisionRequest)  # re-asked, NOT handed over
+    assert isinstance(again, MicroRequest)  # re-asked, NOT handed over
     assert "refused a tap" in p.ledger.events[-1]
     assert "免密支付" in p.ledger.events[-1]
     assert "免密支付" in str(again.material["lead"])

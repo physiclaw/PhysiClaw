@@ -758,10 +758,10 @@ def test_exchange_lines_folds_the_replayed_turns_and_reads_both_shapes() -> None
 
 @pytest.mark.parametrize("repair", [False, True])
 def test_exchanges_keep_the_current_request_after_folding_history(repair) -> None:
-    from physiclaw.conductor.micro.decision import DecisionRequest
+    from physiclaw.conductor.micro.decision import MicroRequest
 
     history = (("user", "old screen"), ("assistant", "old reply"))
-    req = DecisionRequest(
+    req = MicroRequest(
         call="agent_act", node_id="pick", outcomes=(), material={}, history=history
     )
     request = [

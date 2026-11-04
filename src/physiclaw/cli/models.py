@@ -48,11 +48,11 @@ from physiclaw.common import config as _config
 
 
 def _known_provider_ids() -> tuple[str, ...]:
-    """All API provider ids the CLI accepts.
+    """Registered chat provider IDs accepted by the models CLI.
     Lazy-imports `physiclaw.provider` so `physiclaw --help` stays fast."""
-    from physiclaw.provider import in_process_provider_ids
+    from physiclaw.provider import chat_provider_ids
 
-    return in_process_provider_ids()
+    return chat_provider_ids()
 
 
 models_app = typer.Typer(
@@ -94,9 +94,9 @@ def _root(ctx: typer.Context) -> None:
         typer.echo(next_hint("physiclaw models list"))
         return
     try:
-        from physiclaw.provider import validate_model_ref
+        from physiclaw.provider import validate_chat_model_ref
 
-        provider_id, model_id = validate_model_ref(ref)
+        provider_id, model_id = validate_chat_model_ref(ref)
     except ValueError as e:
         typer.echo(warn(f"{ref} (from {source}) — invalid ref: {e}"))
         return
@@ -119,7 +119,7 @@ def _list(
     Reads each provider's discovery cache. If a provider has never been
     discovered, prints a hint to run `physiclaw models discover`.
     """
-    from physiclaw.provider import discovered
+    from physiclaw.provider import discovery
 
     known_all = _known_provider_ids()
     if provider is not None and provider not in known_all:
@@ -131,7 +131,7 @@ def _list(
     targets = (provider,) if provider else known_all
     for pid in targets:
         typer.echo(section(pid))
-        ids = sorted(discovered.model_ids(pid))
+        ids = sorted(discovery.model_ids(pid))
         if not ids:
             typer.echo(
                 f"  (no discovery cache — run `physiclaw models discover {pid}`)"
@@ -153,7 +153,7 @@ def _use(
     ],
 ) -> None:
     """Save an exact `provider/model` ref; the provider API validates the model."""
-    from physiclaw.provider import validate_model_ref
+    from physiclaw.provider import validate_chat_model_ref
 
     if "/" not in ref:
         exit_error(
@@ -163,7 +163,7 @@ def _use(
         )
 
     try:
-        provider_id, model_id = validate_model_ref(ref)
+        provider_id, model_id = validate_chat_model_ref(ref)
     except ValueError as e:
         exit_error(str(e))
 
@@ -224,14 +224,10 @@ def _fetch_live_models(provider: str) -> list[dict]:
     ordinary cleanup errors warn without replacing the discovery outcome."""
     import asyncio
 
-    from physiclaw.provider import provider_class
-
-    cls = provider_class(provider)
-    if cls is None:
-        raise ValueError(f"unknown provider {provider!r}")
-    p = cls(model="")
+    from physiclaw.provider import make_chat_catalog
 
     async def _run():
+        p = make_chat_catalog(provider)
         try:
             return await p.list_models()
         finally:
@@ -251,9 +247,9 @@ def _print_live_models_table(
     models: list[dict],
 ) -> None:
     """Save the live list to the provider's discovery cache and print it."""
-    from physiclaw.provider import discovered
+    from physiclaw.provider import discovery
 
-    discovered.save(provider, models)
+    discovery.save(provider, models)
 
     typer.echo(section(f"{provider} — {len(models)} model(s) live"))
     for m in models:
@@ -269,13 +265,13 @@ def _print_live_models_table(
 
 @models_app.command("keys")
 def _keys() -> None:
-    """List every provider's API-key status (masked, with source —
-    env var or config file). Mirrors `BaseChatProvider._api_key()`
-    resolution so what's shown is what the server will use."""
-    from physiclaw.provider import in_process_provider_ids
+    """List registered chat providers' API-key status (masked, with source —
+    env var or config file). Uses the same credential declaration as provider
+    construction so what's shown is what the server will use."""
+    from physiclaw.provider import chat_provider_ids
 
     typer.echo(section("Provider API keys"))
-    for pid in in_process_provider_ids():
+    for pid in chat_provider_ids():
         typer.echo(_format_key_row(pid, indent=2))
 
 

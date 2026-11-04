@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from physiclaw.conductor.micro.calltable import has_fallback
 from physiclaw.conductor.micro.decision import (
     AGENT_FIELDS,
-    DecisionRequest,
     MicroOutcome,
+    MicroRequest,
 )
 from physiclaw.conductor.spec.calls import AGENT_DONE
 from physiclaw.conductor.spec.limits import MAX_REPLAY_TURNS
@@ -64,7 +64,7 @@ def replay(
     feed = iter(screens)
     for _ in range(MAX_REPLAY_TURNS):
         step = program.advance(history)
-        while isinstance(step, DecisionRequest):
+        while isinstance(step, MicroRequest):
             answer = _answer(program, step, outputs)
             if answer is None and not has_fallback(step.call):
                 return Replay(
@@ -108,7 +108,7 @@ def replay(
 
 
 def _answer(
-    program: Program, req: DecisionRequest, outputs: dict[str, str]
+    program: Program, req: MicroRequest, outputs: dict[str, str]
 ) -> MicroOutcome | None:
     """A pure-text agent's answer from the supplied outputs — every
     declared return field present — else None (the replay stops)."""

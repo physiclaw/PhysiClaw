@@ -27,7 +27,7 @@ the selected Program, which Conductor drives when the boot ends.
 A Program's ``advance(history)`` or ``resolve(outcome)`` returns:
 
     AssistantMessage   [note, action]; dispatch and feed back its result
-    DecisionRequest    call MicroCaller, then pass its outcome to resolve
+    MicroRequest       call MicroCaller, then pass its outcome to resolve
     Paused             stepping stopped before opening the next node
     None               this Program has finished; follow its baton or
                        let the engine's general model take over

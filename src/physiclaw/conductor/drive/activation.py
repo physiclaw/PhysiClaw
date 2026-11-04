@@ -23,8 +23,8 @@ from physiclaw.conductor.micro.decision import (
     MENU,
     NOT_A_TASK,
     PARSE_TASK,
-    DecisionRequest,
     MicroOutcome,
+    MicroRequest,
 )
 from physiclaw.conductor.spec.channel import Channel
 from physiclaw.conductor.spec.model import Playbook, PlaybookError, resolve_inputs
@@ -72,7 +72,7 @@ class Activation:
 
     def request(
         self, walk: "Walk", node_id: str, thinking: "Thinking | None" = None
-    ) -> DecisionRequest:
+    ) -> MicroRequest:
         """The parse_task request over the walk's current screen — the
         thread: the CALLER establishes that (the boot's select step
         knows, its enter check just read it). It opens the session's

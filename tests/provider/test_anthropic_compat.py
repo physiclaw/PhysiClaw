@@ -53,7 +53,7 @@ from physiclaw.provider.chat.anthropic_compat import (
     _parse_anthropic_usage,
     _tool_to_anthropic,
 )
-from physiclaw.provider.chat.base import EPHEMERAL_CACHE_CONTROL
+from physiclaw.provider.chat.history import EPHEMERAL_CACHE_CONTROL
 
 # ---------- a concrete subclass for testing ----------
 

@@ -1,16 +1,12 @@
-"""Tests for `physiclaw.provider.chat.base` — chat interface and base class.
+"""Tests for chat contracts, shared orchestration and inherited client behavior.
 
-The module is mostly contracts (the concrete request/response flow
-lives in `OpenAICompatibleProvider` / `AnthropicCompatibleProvider`).
-Tests use a small `_TestProvider(BaseChatProvider)` stub that satisfies
-PROVIDER_ID / BASE_URL and a minimal `_encode_message` so we can
-exercise the inherited template methods.
+Chat contracts live in `physiclaw.contract.chat`. BaseChatProvider owns
+attempts and usage accounting, and inherits client setup from BaseAPIProvider.
+Tests use a small `_TestProvider(BaseChatProvider)` stub to exercise those
+shared behaviors without a vendor transport.
 
 Accepted equivalent mutmut survivors:
 
-  - `log = logging.getLogger(__name__)` ↔ `log = None` — the module
-    body never calls log.* itself; the import is reserved for
-    subclass use.
   - Local-variable type annotations `Type | None` ↔ `Type & None` —
     not evaluated at runtime.
 """
@@ -29,9 +25,9 @@ from physiclaw.common.provider_errors import (
     ProviderRequestError,
     ProviderTransientError,
 )
+from physiclaw.contract.chat import ChatProvider
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     ImageBlock,
     Message,
@@ -43,12 +39,11 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.structured import OutputSpec
-from physiclaw.provider.chat.base import (
+from physiclaw.provider.chat.base import BaseChatProvider
+from physiclaw.provider.chat.history import (
     EPHEMERAL_CACHE_CONTROL,
     NO_CACHE_MARKERS,
-    BaseChatProvider,
     CacheMarkers,
-    ChatProvider,
 )
 
 # ---------- a minimal concrete stub for inherited-behavior tests ----------
@@ -151,12 +146,6 @@ def test_baseprovider_default_class_attributes_pinned() -> None:
     assert BaseChatProvider.PROVIDER_ID == ""
     assert BaseChatProvider.BASE_URL == ""
     assert BaseChatProvider.API_KEY_ENV_VARS == ()
-
-
-def test_baseprovider_collapse_policy_default_pinned() -> None:
-    assert BaseChatProvider.COLLAPSE == CollapsePolicy(
-        first_at=30, keep=10, interval=20
-    )
 
 
 # ---------- __init__ ----------
@@ -310,11 +299,11 @@ def test_auth_headers_default_uses_bearer_scheme() -> None:
     assert p._auth_headers("xyz") == {"Authorization": "Bearer xyz"}
 
 
-# ---------- _env_vars / _config_key / _model_env_var ----------
+# ---------- credential declarations ----------
 
 
 def test_env_vars_default_is_uppercase_id_underscore_API_KEY() -> None:
-    assert _TestProvider._env_vars() == ("STUB_API_KEY",)
+    assert _TestProvider.credentials().env_vars == ("STUB_API_KEY",)
 
 
 def test_env_vars_uses_explicit_API_KEY_ENV_VARS_when_set() -> None:
@@ -323,18 +312,14 @@ def test_env_vars_uses_explicit_API_KEY_ENV_VARS_when_set() -> None:
         BASE_URL = "https://x"
         API_KEY_ENV_VARS = ("MULTI_KEY", "ALT_MULTI_KEY")
 
-    assert _Multi._env_vars() == ("MULTI_KEY", "ALT_MULTI_KEY")
+    assert _Multi.credentials().env_vars == ("MULTI_KEY", "ALT_MULTI_KEY")
 
 
 def test_config_key_is_lowercase_id_underscore_api_key() -> None:
-    assert _TestProvider._config_key() == "stub_api_key"
+    assert _TestProvider.credentials().config_key == "stub_api_key"
 
 
-def test_model_env_var_is_uppercase_id_underscore_MODEL() -> None:
-    assert _TestProvider._model_env_var() == "STUB_MODEL"
-
-
-# ---------- _missing_key_message ----------
+# ---------- CredentialSpec.missing_message ----------
 
 
 def test_missing_key_message_lists_each_env_var_with_slashes() -> None:
@@ -343,7 +328,7 @@ def test_missing_key_message_lists_each_env_var_with_slashes() -> None:
         BASE_URL = "https://x"
         API_KEY_ENV_VARS = ("MULTI_KEY", "ALT_MULTI_KEY")
 
-    assert _Multi.__bases__[0]._missing_key_message(_Multi.__new__(_Multi)) == (
+    assert _Multi.credentials().missing_message("multi") == (
         "multi credential not found. Set MULTI_KEY / ALT_MULTI_KEY env var "
         "or [provider] multi_api_key in ~/.physiclaw/config.toml."
     )
@@ -636,10 +621,7 @@ async def test_default_chat_raises_not_implemented_error(
 ) -> None:
     with pytest.raises(
         NotImplementedError,
-        match=(
-            r"^_TestProvider must inherit from a wire-shape base "
-            r"\(OpenAICompatibleProvider or AnthropicCompatibleProvider\)$"
-        ),
+        match=r"^_TestProvider must implement _chat$",
     ):
         await stub.chat([], [])
 
@@ -650,7 +632,7 @@ async def test_default_list_models_raises_not_implemented_error(
 ) -> None:
     with pytest.raises(
         NotImplementedError,
-        match=r"^_TestProvider must inherit from a wire-shape base$",
+        match=r"^_TestProvider must implement list_models$",
     ):
         await stub.list_models()
 

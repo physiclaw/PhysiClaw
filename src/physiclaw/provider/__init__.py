@@ -1,80 +1,36 @@
-"""Explicit chat and decision API services, grouped by vendor.
+"""Public provider construction and metadata API.
 
-Providers own credentials, client lifecycle, API encoding, cache markers,
-opaque replay, response normalization and usage accounting. Chat and decision
-adapters have separate contracts. Each call makes one transport attempt.
+Consumers import generation interfaces from physiclaw.contract.chat and
+physiclaw.contract.decision. Adapter implementations and registration live
+in their own modules; callers never build native requests.
 
-Callers own prompts, history, output schemas, retries and action execution.
-They use shared contract DTOs; native request snapshots are diagnostics only.
-
-Use make_chat_provider or make_decision_provider to select the API kind.
-Each service owns its client and context; neither factory substitutes the
-other service.
+Each call makes one inference attempt. Providers own API translation,
+cache markers, opaque replay and usage normalization. Producers own context,
+schemas, retries and interpretation; the host validates and executes actions.
 """
 
-from physiclaw.contract.decision import DecisionProvider
-from physiclaw.provider.chat import discovered
-from physiclaw.provider.chat.anthropic_compat import AnthropicCompatibleProvider
-from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
-from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
-from physiclaw.provider.decision.base import BaseDecisionProvider
-from physiclaw.provider.provider_base import BaseAPIProvider
-from physiclaw.provider.registry import (
-    DecisionProviderSpec,
-    VendorServices,
-    decision_provider_capabilities,
-    in_process_provider_ids,
-    is_known,
+from physiclaw.provider.catalog import cache as discovery
+from physiclaw.provider.services.factory import (
+    make_chat_catalog,
     make_chat_provider,
     make_decision_provider,
-    provider_capabilities,
-    provider_class,
     provider_key_status,
-    register_decision_provider,
-    validate_model_ref,
 )
-from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
-from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
-from physiclaw.provider.vendors.google.chat import GoogleChatProvider
-from physiclaw.provider.vendors.liquid.decision import LiquidDecisionProvider
-from physiclaw.provider.vendors.moonshot.chat import MoonshotChatProvider
-from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
-from physiclaw.provider.vendors.openai.decision import OpenAIDecisionProvider
-from physiclaw.provider.vendors.openrouter.chat import OpenRouterChatProvider
-from physiclaw.provider.vendors.openrouter.decision import OpenRouterDecisionProvider
-from physiclaw.provider.vendors.qwen.chat import QwenChatProvider
-from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
+from physiclaw.provider.services.registry import (
+    chat_provider_ids,
+    decision_provider_capabilities,
+    provider_capabilities,
+    validate_chat_model_ref,
+)
 
 __all__ = [
-    "AnthropicChatProvider",
-    "AnthropicCompatibleProvider",
-    "BaseAPIProvider",
-    "BaseChatProvider",
-    "BaseDecisionProvider",
-    "ChatProvider",
-    "DecisionProvider",
-    "DecisionProviderSpec",
-    "VendorServices",
-    "DeepSeekChatProvider",
-    "GoogleChatProvider",
-    "LiquidDecisionProvider",
-    "MoonshotChatProvider",
-    "OpenAIChatProvider",
-    "OpenAICompatibleProvider",
-    "OpenAIDecisionProvider",
-    "OpenRouterChatProvider",
-    "OpenRouterDecisionProvider",
-    "QwenChatProvider",
-    "TypeSafeDecisionProvider",
     "decision_provider_capabilities",
-    "discovered",
-    "in_process_provider_ids",
-    "is_known",
+    "discovery",
+    "chat_provider_ids",
+    "make_chat_catalog",
     "make_chat_provider",
     "make_decision_provider",
     "provider_capabilities",
-    "provider_class",
     "provider_key_status",
-    "register_decision_provider",
-    "validate_model_ref",
+    "validate_chat_model_ref",
 ]

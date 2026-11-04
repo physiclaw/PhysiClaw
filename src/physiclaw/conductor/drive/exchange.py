@@ -7,7 +7,7 @@ import json
 
 from physiclaw.common.listing import is_header
 from physiclaw.common.verdict import all_text
-from physiclaw.conductor.micro.decision import DecisionRequest, MicroResult
+from physiclaw.conductor.micro.decision import MicroRequest, MicroResult
 from physiclaw.conductor.micro.moves import describe_move, move_of
 from physiclaw.conductor.spec.match import Verdict
 from physiclaw.contract.dto import MicroRecord
@@ -34,7 +34,7 @@ class ModelLog:
         return out
 
 
-def exchanges(drained: list[dict], req: DecisionRequest, decision: str) -> list[dict]:
+def exchanges(drained: list[dict], req: MicroRequest, decision: str) -> list[dict]:
     """The drained round-trips of one decision as debugger records:
     which call and node, the attempt (a repair retry is a second
     round-trip), how many replayed episode turns the request carries
@@ -61,7 +61,7 @@ def exchanges(drained: list[dict], req: DecisionRequest, decision: str) -> list[
 def exchange_lines(record: dict) -> list[str]:
     """Show the system message, current request, repair messages, and reply.
 
-    ``history`` counts individual messages, matching DecisionRequest.history.
+    ``history`` counts individual messages, matching MicroRequest.history.
     Hide only that prefix after the system message; keep the full request
     in the record for inspection.
     """

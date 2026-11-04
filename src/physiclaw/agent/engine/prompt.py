@@ -12,8 +12,8 @@ so those changes do not invalidate the system prefix.
 The inline `## Tooling` index card lists actions from the TurnOutput
 schema — open-weight models often miss actions that appear
 only in the schema, so the card is a redundant anchor. Providers whose
-models read the schema reliably opt out via `INLINE_TOOL_INDEX = False`
-(see `BaseChatProvider`) and skip the card entirely.
+models read the schema reliably opt out through the LLM context policy
+(see `agent.llm.context_policy`) and skip the card entirely.
 """
 
 import hashlib
@@ -21,6 +21,7 @@ from pathlib import Path
 
 from physiclaw.agent import layout
 from physiclaw.agent.engine import memory
+from physiclaw.agent.llm.context_policy import context_policy_for
 from physiclaw.common.doctrine import fill_tokens
 from physiclaw.common.text import read_text
 
@@ -71,7 +72,7 @@ def render_system_prompts(
                            from memory/.
       ## Tooling           inline tool index card — a redundant anchor for
                            models that miss schema-only tools; skipped when
-                           the provider sets INLINE_TOOL_INDEX = False
+                           the LLM context policy disables the inline index
       ## Built-in Skills   built-in skills, FULL bodies (always active)
       ## Screen layout     learned input/keyboard bboxes the skills above use
       ## Available skills  official + user skills (### subsections),
@@ -154,12 +155,10 @@ def _load_doctrine_files(skip: tuple[str, ...] = ()) -> list[tuple[str, str]]:
 def _render_tooling(action_catalog: list[dict], provider_id: str = "") -> list[str]:
     """Render the same eligible actions used by the TurnOutput schema.
 
-    Providers with INLINE_TOOL_INDEX=False omit this redundant index.
+    Context policies with inline_tool_index=False omit this redundant index.
     An empty catalog renders no index, useful for static doctrine previews.
     """
-    if not _wants_tool_index(provider_id):
-        return []
-    if not action_catalog:
+    if not context_policy_for(provider_id).inline_tool_index or not action_catalog:
         return []
     out: list[str] = [
         "## Tooling",
@@ -175,16 +174,6 @@ def _render_tooling(action_catalog: list[dict], provider_id: str = "") -> list[s
         out.append(f"- **{name}** — {desc}" if desc else f"- **{name}**")
     out.append("")
     return out
-
-
-def _wants_tool_index(provider_id: str) -> bool:
-    """Whether the active provider needs the inline `## Tooling` card.
-    Unknown or unset provider → True (dumps and new vendors keep the
-    redundant anchor; only vendors that opt out lose it)."""
-    from physiclaw.provider import provider_class
-
-    cls = provider_class(provider_id)
-    return cls is None or cls.INLINE_TOOL_INDEX
 
 
 def _render_section(ctx: str) -> list[str]:
@@ -239,10 +228,9 @@ def _first_sentence(text: str) -> str:
     return line[:200].rstrip()
 
 
-# Cache-marker placement lives in the provider classes — see
-# `BaseChatProvider.serialize_history` (template) and the per-shape
-# `CacheMarkers` factories. It's a wire-format concern that
-# belongs with the request builder, not the prompt assembly.
+# provider.chat.history.serialize_history places cache markers using each
+# adapter's CacheMarkers strategy. Prompt assembly supplies the content;
+# the provider owns its wire representation.
 
 
 def prefix_hash(system_prompt: str) -> str:

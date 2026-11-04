@@ -16,15 +16,18 @@ from physiclaw.contract.decision import (
     DecisionResult,
 )
 from physiclaw.provider import (
-    DecisionProviderSpec,
+    chat_provider_ids,
     decision_provider_capabilities,
-    in_process_provider_ids,
     make_chat_provider,
     make_decision_provider,
     provider_key_status,
+    validate_chat_model_ref,
+)
+from physiclaw.provider.client.configuration import CredentialSpec
+from physiclaw.provider.services import registry
+from physiclaw.provider.services.registry import (
+    DecisionProviderSpec,
     register_decision_provider,
-    registry,
-    validate_model_ref,
 )
 
 
@@ -61,8 +64,7 @@ def fake_registration(monkeypatch):
     spec = DecisionProviderSpec(
         FakeDecisionProvider,
         FakeDecisionProvider.capabilities_for,
-        ("FAKE_KEY",),
-        "fake_key",
+        CredentialSpec(("FAKE_KEY",), "fake_key"),
     )
     register_decision_provider("fake", spec)
     return spec
@@ -106,7 +108,7 @@ def test_capabilities_per_model_without_constructing_client(
 
 
 def test_decision_only_provider_cannot_be_main_agent(fake_registration):
-    assert in_process_provider_ids() == (
+    assert chat_provider_ids() == (
         "qwen",
         "moonshot",
         "openai",
@@ -117,7 +119,7 @@ def test_decision_only_provider_cannot_be_main_agent(fake_registration):
     )
     for provider_id in ("typesafe", "fake"):
         with pytest.raises(ValueError, match="unknown provider"):
-            validate_model_ref(f"{provider_id}/model")
+            validate_chat_model_ref(f"{provider_id}/model")
         with pytest.raises(ValueError, match="unknown provider"):
             make_chat_provider(provider_id, "model")
     with pytest.raises(ValueError, match="unknown decision provider"):

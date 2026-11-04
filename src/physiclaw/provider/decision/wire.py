@@ -8,7 +8,7 @@ from physiclaw.common.provider_errors import (
     ProviderTransientError,
 )
 from physiclaw.contract.decision import DecisionUsage
-from physiclaw.provider.provider_base import quota_exhausted
+from physiclaw.provider.client.http_errors import quota_exhausted
 
 
 def check_response_status(response: httpx.Response, *, vendor: str) -> None:

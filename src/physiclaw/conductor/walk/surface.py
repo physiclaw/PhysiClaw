@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
-from physiclaw.conductor.micro.decision import DecisionRequest, MicroOutcome
+from physiclaw.conductor.micro.decision import MicroOutcome, MicroRequest
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, Thinking
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ class Paused:
 
 # What every walk call answers: a synthesized turn, a micro request for
 # the conductor to broker, a stepping pause, or None — spent.
-Turn = AssistantMessage | DecisionRequest | Paused | None
+Turn = AssistantMessage | MicroRequest | Paused | None
 
 
 class Activator(Protocol):
@@ -69,7 +69,7 @@ class Activator(Protocol):
 
     def request(
         self, walk: "Walk", node_id: str, thinking: "Thinking | None" = None
-    ) -> DecisionRequest: ...
+    ) -> MicroRequest: ...
 
     def build(
         self, outcome: MicroOutcome | None, thread: "Thread"

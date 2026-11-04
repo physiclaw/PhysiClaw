@@ -56,17 +56,14 @@ def _stub_layout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def full_prompt_case(_isolate_context_dir, monkeypatch):
-    from physiclaw import provider
+    from physiclaw.agent.llm.context_policy import ContextPolicy
 
     case = json.loads((_DATA_DIR / "prompt_case.json").read_text(encoding="utf-8"))
     for name, body in case["doctrine"].items():
         (_isolate_context_dir / name).write_text(body, encoding="utf-8")
 
-    class ProviderMetadata:
-        INLINE_TOOL_INDEX = True
-
     monkeypatch.setattr(
-        provider, "provider_class", lambda provider_id: ProviderMetadata
+        prompt, "context_policy_for", lambda provider_id: ContextPolicy()
     )
     monkeypatch.setattr(memory, "load_user", lambda: case["user_profile"])
     monkeypatch.setattr(layout, "is_learned", lambda: True)
@@ -392,23 +389,16 @@ def test_render_tooling_handles_tool_without_description() -> None:
 def test_render_tooling_skipped_for_provider_that_opts_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _NativeOnly:
-        INLINE_TOOL_INDEX = False
+    from physiclaw.agent.llm.context_policy import ContextPolicy
 
-    from physiclaw import provider as provider_pkg
-
-    monkeypatch.setattr(provider_pkg, "provider_class", lambda pid: _NativeOnly)
+    monkeypatch.setattr(
+        prompt, "context_policy_for", lambda pid: ContextPolicy(inline_tool_index=False)
+    )
 
     assert prompt._render_tooling([{"name": "tap", "description": "Tap."}], "x") == []
 
 
-def test_render_tooling_kept_for_unknown_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from physiclaw import provider as provider_pkg
-
-    monkeypatch.setattr(provider_pkg, "provider_class", lambda pid: None)
-
+def test_render_tooling_kept_for_unknown_provider() -> None:
     out = "\n".join(
         prompt._render_tooling([{"name": "tap", "description": "Tap."}], "mystery")
     )

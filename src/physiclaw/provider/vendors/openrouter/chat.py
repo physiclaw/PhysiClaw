@@ -17,8 +17,8 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat import discovered
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS, CacheMarkers
+from physiclaw.provider.catalog import cache as discovery
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS, CacheMarkers
 from physiclaw.provider.chat.openai_cache import (
     OpenAIPromptCacheMarkers,
     supports_explicit_cache,
@@ -59,7 +59,7 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
     ) -> None:
         super().validate_output_spec(output_spec, thinking=thinking)
         if self._catalog is None:
-            self._catalog = {m["id"]: m for m in discovered.load(self.PROVIDER_ID)}
+            self._catalog = {m["id"]: m for m in discovery.load(self.PROVIDER_ID)}
         supported = self._supported_parameters()
         if supported is not None and "tools" not in supported:
             raise ProviderConfigurationError(
@@ -129,7 +129,7 @@ class OpenRouterChatProvider(OpenAICompatibleProvider):
         on_request: Callable[[dict], None] | None = None,
     ) -> AssistantMessage:
         if thinking is not None and self.model not in (self._catalog or {}):
-            cached = {m["id"]: m for m in discovered.load(self.PROVIDER_ID)}
+            cached = {m["id"]: m for m in discovery.load(self.PROVIDER_ID)}
             if self.model in cached:
                 self._catalog = cached
             else:

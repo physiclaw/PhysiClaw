@@ -199,8 +199,8 @@ async def test_llm_resumes_after_twenty_plugin_turns_with_independent_contexts(m
 
 async def test_provider_envelope_id_is_not_reused_for_internal_dispatch(mocker):
     from physiclaw.agent.engine import assemble
+    from physiclaw.agent.llm.context_policy import CollapsePolicy
     from physiclaw.agent.runtime.hook import Trigger
-    from physiclaw.contract.dto import CollapsePolicy
 
     reply = _reply(
         {"summary": "checkpoint", "scratchpad": "banked"},
@@ -209,7 +209,6 @@ async def test_provider_envelope_id_is_not_reused_for_internal_dispatch(mocker):
     )
     closing = _reply(None, {"end_session": {"status": DONE}})
     provider = FakeProvider([reply, closing])
-    provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=1)
     chat = mocker.spy(provider, "respond")
     registry = _registry()
     session = Session()
@@ -218,6 +217,7 @@ async def test_provider_envelope_id_is_not_reused_for_internal_dispatch(mocker):
     )
     run = _mk_run(
         provider,
+        collapse=CollapsePolicy(first_at=3, keep=1, interval=1),
         local_registry=registry,
         tool_schemas=_schemas(registry),
         session=session,
@@ -263,8 +263,8 @@ async def test_provider_envelope_id_is_not_reused_for_internal_dispatch(mocker):
 
 async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
     from physiclaw.agent.engine import assemble
+    from physiclaw.agent.llm.context_policy import CollapsePolicy
     from physiclaw.agent.runtime.hook import Trigger
-    from physiclaw.contract.dto import CollapsePolicy
 
     initial = assemble.build_initial_messages([Trigger(description="resume")], "system")
     previous = _reply({"summary": "earlier summary"}, {"peek": {}})
@@ -280,10 +280,14 @@ async def test_fresh_plugin_receipts_reach_llm_before_compaction(mocker):
     )
     closing = _reply(None, {"end_session": {"status": DONE}})
     provider = FakeProvider([closing])
-    provider.COLLAPSE = CollapsePolicy(first_at=3, keep=1, interval=1)
     chat = mocker.spy(provider, "respond")
     session = Session()
-    run = _mk_run(provider, session=session, messages=initial)
+    run = _mk_run(
+        provider,
+        collapse=CollapsePolicy(first_at=3, keep=1, interval=1),
+        session=session,
+        messages=initial,
+    )
     values = ["first item costs 30", "second item costs 20", "delivery takes 2 days"]
     for value in values:
         session.facts.record(

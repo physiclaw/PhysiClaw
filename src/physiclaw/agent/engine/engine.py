@@ -18,7 +18,8 @@ from physiclaw.agent.engine.policy import default_policies
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.llm import LLMProducer
+from physiclaw.agent.llm.context_policy import context_policy_for
+from physiclaw.agent.llm.producer import LLMProducer
 from physiclaw.agent.runtime import contract
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import STUCK
@@ -30,10 +31,11 @@ from physiclaw.common.config import CONFIG, parse_model_ref
 from physiclaw.common.logger import bind_log_context, reset_log_context
 from physiclaw.common.provider_errors import ProviderConfigurationError
 from physiclaw.common.text import clip
+from physiclaw.contract.chat import ChatProvider
 from physiclaw.contract.dto import Message
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.macros.model import Macro
-from physiclaw.provider import ChatProvider, make_chat_provider, make_decision_provider
+from physiclaw.provider import make_chat_provider, make_decision_provider
 
 log = logging.getLogger(__name__)
 
@@ -290,6 +292,7 @@ async def _run_session(
             messages,
             layout_incomplete=bundle.layout_incomplete,
             catalog=bundle.catalog,
+            context_policy=context_policy_for(provider_id),
         )
         await llm.session_setup(services)
         llm_binding = PluginBinding("physiclaw.llm", llm, "LLM", presentation="model")

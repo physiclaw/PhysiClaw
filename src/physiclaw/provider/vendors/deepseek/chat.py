@@ -26,7 +26,7 @@ from typing import Any
 
 from physiclaw.contract.dto import Thinking
 from physiclaw.contract.structured import OutputSpec
-from physiclaw.provider.chat.base import NO_CACHE_MARKERS
+from physiclaw.provider.chat.history import NO_CACHE_MARKERS
 from physiclaw.provider.chat.openai_compat import OpenAICompatibleProvider
 
 

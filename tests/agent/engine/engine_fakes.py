@@ -14,10 +14,10 @@ from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun, Settings
 from physiclaw.agent.engine.scratchpad import MAX_CHARS
 from physiclaw.agent.engine.session import Session
-from physiclaw.agent.llm import LLMProducer
+from physiclaw.agent.llm.context_policy import CollapsePolicy, ContextPolicy
+from physiclaw.agent.llm.producer import LLMProducer
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     OutputResultMessage,
     ToolCall,
@@ -39,7 +39,6 @@ class FakeProvider:
 
     PROVIDER_ID = "fake"
     structured_transport = "tool"
-    COLLAPSE = CollapsePolicy(first_at=100, keep=10, interval=100)
 
     def __init__(self, responses: list[Any]):
         self._responses = list(responses)
@@ -201,6 +200,7 @@ def _mk_run(
     policies=None,
     settings=None,
     deadline=None,
+    collapse=CollapsePolicy(first_at=100, keep=10, interval=100),
 ) -> EngineRun:
     tool_schemas = tool_schemas if tool_schemas is not None else _schemas(_registry())
     run = EngineRun(
@@ -230,6 +230,7 @@ def _mk_run(
             messages if messages is not None else [],
             layout_incomplete=layout_incomplete,
             catalog=ActionCatalog.compile(tool_schemas, [], max_scratchpad=MAX_CHARS),
+            context_policy=ContextPolicy(collapse=collapse),
         )
         run.plugins = (
             PluginBinding("physiclaw.llm", source, "LLM", presentation="model"),

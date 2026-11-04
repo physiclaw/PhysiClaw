@@ -1,5 +1,1 @@
-"""Chat-only interfaces, protocols, serialization, and model discovery."""
-
-from physiclaw.provider.chat.base import BaseChatProvider, ChatProvider
-
-__all__ = ["BaseChatProvider", "ChatProvider"]
+"""Internal chat adapters and wire helpers; public interfaces live in contract.chat."""

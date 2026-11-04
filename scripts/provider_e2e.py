@@ -53,11 +53,11 @@ from physiclaw.contract.dto import (
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
 from physiclaw.contract.wire import image_ref
-from physiclaw.provider.registry import (
-    in_process_provider_ids,
+from physiclaw.provider.services.factory import (
     make_chat_provider,
     make_decision_provider,
 )
+from physiclaw.provider.services.registry import chat_provider_ids
 
 
 def rows(path: Path) -> list[dict]:
@@ -746,7 +746,7 @@ class Runner:
         import numpy as np
 
         from physiclaw.agent.engine import compact
-        from physiclaw.contract.dto import CollapsePolicy
+        from physiclaw.agent.llm.context_policy import CollapsePolicy
 
         system = (
             "You are running a synthetic provider integration test. Return answer=OK and count=7 "
@@ -1256,7 +1256,7 @@ async def main(args):
             finally:
                 await provider.aclose()
 
-        await asyncio.gather(*(discover(p) for p in in_process_provider_ids()))
+        await asyncio.gather(*(discover(p) for p in chat_provider_ids()))
         return int(runner.failed)
     refs = args.models
     if not refs:

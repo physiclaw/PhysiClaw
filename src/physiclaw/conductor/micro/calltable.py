@@ -37,9 +37,9 @@ from physiclaw.conductor.micro.decision import (
     SCROLL_UP,
     SUMMARIZE,
     SUMMARY_DONE,
-    DecisionRequest,
     Macro,
     MicroOutcome,
+    MicroRequest,
     Tap,
 )
 from physiclaw.conductor.micro.moves import reply_args
@@ -129,15 +129,15 @@ class CallSpec:
     # The field the call's word rides in and the contract asking for it.
     field: str
     contract: str
-    answer_space: "Callable[[DecisionRequest], tuple[str, ...]]"
+    answer_space: "Callable[[MicroRequest], tuple[str, ...]]"
     # The legend: a `_template(text)` (an optional {allowed} placeholder)
     # or a builder — the episode's is built from the tools its request
     # declares.
-    answer_spec: "Callable[[DecisionRequest, tuple[str, ...]], str]"
+    answer_spec: "Callable[[MicroRequest, tuple[str, ...]], str]"
     # The user block's parts in order: text, and the frame where it
     # sits (None when the request carries none — the part is skipped).
-    user_parts: "Callable[[DecisionRequest], list[str | ImageBlock | None]]"
-    to_outcome: "Callable[[DecisionRequest, str, str, float, dict], MicroOutcome]"
+    user_parts: "Callable[[MicroRequest], list[str | ImageBlock | None]]"
+    to_outcome: "Callable[[MicroRequest, str, str, float, dict], MicroOutcome]"
     # What the call's data block is made of, said once in the system
     # prompt when the shape needs saying (an episode's OCR rows).
     material_note: str = ""
@@ -154,19 +154,19 @@ class CallSpec:
     payload_key: str | None = None
 
 
-def _parse_task_space(req: DecisionRequest) -> tuple[str, ...]:
+def _parse_task_space(req: MicroRequest) -> tuple[str, ...]:
     # The escapes are the ROW's own — a caller (activation)
     # passes only the playbook refs and can never forget the exits.
     return req.outcomes + (SCROLL_UP, NOT_A_TASK)
 
 
-def _fixed(outcomes: tuple[str, ...]) -> "Callable[[DecisionRequest], tuple[str, ...]]":
+def _fixed(outcomes: tuple[str, ...]) -> "Callable[[MicroRequest], tuple[str, ...]]":
     """An answer space fixed whole in the row — nobody's to vary, and
     callers pass empty outcomes."""
     return lambda req: outcomes
 
 
-def _template(text: str) -> "Callable[[DecisionRequest, tuple[str, ...]], str]":
+def _template(text: str) -> "Callable[[MicroRequest, tuple[str, ...]], str]":
     """A static legend; `{allowed}` (when present) fills with the answer
     space, and a JSON legend's doubled braces unescape."""
     return lambda req, allowed: text.format(allowed=", ".join(allowed))
@@ -212,7 +212,7 @@ def _text_value(v: Any) -> str:
 
 
 def _answer_outcome(
-    req: DecisionRequest, answer: str, reason: str, confidence: float, obj: dict
+    req: MicroRequest, answer: str, reason: str, confidence: float, obj: dict
 ) -> MicroOutcome:
     """A question's outcome: the word, and the fields beside it where
     the row keeps them — under `payload_key` (parse_task's `inputs`) or
@@ -231,7 +231,7 @@ def _answer_outcome(
 
 
 def _parse_task_outcome(
-    req: DecisionRequest, answer: str, reason: str, confidence: float, obj: dict
+    req: MicroRequest, answer: str, reason: str, confidence: float, obj: dict
 ) -> MicroOutcome:
     """parse_task: the inputs ride only with a playbook. An escape
     carries none — a `scroll_up` or `not_a_task` answer has read only
@@ -244,7 +244,7 @@ def _parse_task_outcome(
 
 
 def _agent_done_outcome(
-    req: DecisionRequest, action: str, reason: str, confidence: float, obj: dict
+    req: MicroRequest, action: str, reason: str, confidence: float, obj: dict
 ) -> MicroOutcome:
     """done / escalate: done's args are the return fields (the program
     validates them against the node's DECLARED fields; a missing one
@@ -256,7 +256,7 @@ def _agent_done_outcome(
 
 
 def _act_outcome(
-    req: DecisionRequest, action: str, reason: str, confidence: float, obj: dict
+    req: MicroRequest, action: str, reason: str, confidence: float, obj: dict
 ) -> MicroOutcome:
     """A validated tool call to the walk's arm: tap and run_macro
     ground to a pick (`ACT_ARM`), scroll and back to their swipe arms,
@@ -288,7 +288,7 @@ def macro_key(name: str) -> str:
     return f"macro:{name}"
 
 
-def _act_space(req: DecisionRequest) -> tuple[str, ...]:
+def _act_space(req: MicroRequest) -> tuple[str, ...]:
     """The episode's answer space: the tools the request declares (the
     granted ones, the macro run, the two exits) and the granted macro
     names, kind-tagged. Landmarks are tapped by box like anything else,
@@ -301,14 +301,14 @@ def _legend(lines: list[str]) -> str:
     return TOOLS_HEADER + "\n" + "\n".join(f"- {line}" for line in lines)
 
 
-def _fields_legend(req: DecisionRequest, allowed: tuple[str, ...]) -> str:
+def _fields_legend(req: MicroRequest, allowed: tuple[str, ...]) -> str:
     """The pure-text call's tool list: done and escalate, the same
     envelope as an episode's (escalate worded for a call with no
     screen, `TEXT_CALL_LEGEND`)."""
     return _legend([legend_line(t, TEXT_CALL_LEGEND) for t in (AGENT_DONE, ESCALATE)])
 
 
-def _act_legend(req: DecisionRequest, allowed: tuple[str, ...]) -> str:
+def _act_legend(req: MicroRequest, allowed: tuple[str, ...]) -> str:
     """The episode's tool list — one line per tool, the same shape for
     each (name, its args, what they take), read off what the request
     itself declares: the tools in `outcomes`, the macros in `macros`.

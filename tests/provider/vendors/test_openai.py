@@ -264,7 +264,8 @@ async def test_cache_prefix_survives_screens_retries_and_compaction(structured):
     from copy import deepcopy
 
     from physiclaw.agent.engine import compact
-    from physiclaw.contract.dto import CollapsePolicy, SystemMessage, ToolCall
+    from physiclaw.agent.llm.context_policy import CollapsePolicy
+    from physiclaw.contract.dto import SystemMessage, ToolCall
     from physiclaw.contract.turn import TurnMetadata
 
     provider = OpenAIChatProvider(model="gpt-6.1-terra")

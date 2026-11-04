@@ -36,10 +36,10 @@ from physiclaw.agent.engine.compact import (
     new_skills_placeholder,
     new_summary_placeholder,
 )
+from physiclaw.agent.llm.context_policy import CollapsePolicy
 from physiclaw.common.listing import LISTING_HEADER, ROW_RE, format_row, is_header
 from physiclaw.contract.dto import (
     AssistantMessage,
-    CollapsePolicy,
     FinishReason,
     ImageBlock,
     Message,

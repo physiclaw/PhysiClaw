@@ -24,7 +24,7 @@ seen (`merge_labels`).
 from dataclasses import replace
 
 from physiclaw.common import gesture_vocab
-from physiclaw.conductor.micro.decision import SCROLL_UP, DecisionRequest, MicroOutcome
+from physiclaw.conductor.micro.decision import SCROLL_UP, MicroOutcome, MicroRequest
 from physiclaw.conductor.spec.model import SelectNode
 from physiclaw.conductor.walk import speak
 from physiclaw.conductor.walk.surface import Step, Turn, Walk
@@ -43,7 +43,7 @@ class SelectStep(Step[SelectNode]):
         # reads — None until the first scroll.
         self.scrolls = 0
         self.merged: list[str] | None = None
-        self.sent: DecisionRequest | None = None
+        self.sent: MicroRequest | None = None
 
     def open(self) -> Turn:
         walk = self.walk

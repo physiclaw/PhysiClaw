@@ -24,7 +24,7 @@ from conductor_fakes import (
 from physiclaw.conductor.drive import build, setup
 from physiclaw.conductor.load import pack as pb
 from physiclaw.conductor.load.pack import discover, load_spec
-from physiclaw.conductor.micro.decision import READ_REPLY, DecisionRequest, MicroOutcome
+from physiclaw.conductor.micro.decision import READ_REPLY, MicroOutcome, MicroRequest
 from physiclaw.conductor.route import lints, playbook
 from physiclaw.conductor.spec.limits import (
     MAX_MESSAGE_LINES,
@@ -352,7 +352,7 @@ def test_a_suspension_inside_a_round_resumes_inside_it() -> None:
 def _listed(p, h, items: str):
     """Answer the parse step with `items`; returns the first round's start."""
     req = p.advance(h)
-    assert isinstance(req, DecisionRequest)
+    assert isinstance(req, MicroRequest)
     return p.resolve(
         MicroOutcome(out="done", reason="r", confidence=0.9, payload={"items": items})
     )
@@ -569,7 +569,7 @@ def test_a_recover_hand_inside_a_round_never_re_derives_the_rounds_answer() -> N
     feed(h, p.advance(h), ELSEWHERE)
     start = _listed(p, h, "milk")
     plan = start  # the leg's first node is the pure-text agent
-    assert isinstance(plan, DecisionRequest) and plan.node_id == "plan"
+    assert isinstance(plan, MicroRequest) and plan.node_id == "plan"
     step = p.resolve(
         MicroOutcome(out="done", reason="r", confidence=0.9, payload={"key": "milk-1"})
     )
@@ -705,12 +705,12 @@ def test_an_uncovered_reply_revises_from_the_named_agent_and_reuses_finished_rou
     )
 
     read = _reply(p, h, send, "再加 juice，不要 milk")
-    assert isinstance(read, DecisionRequest) and read.call == READ_REPLY
+    assert isinstance(read, MicroRequest) and read.call == READ_REPLY
     replan = p.resolve(MicroOutcome(out="other", reason="a change", confidence=0.9))
 
     # Back at parse, whose prompt now reads the reply and what was
     # searched where it wrote their names.
-    assert isinstance(replan, DecisionRequest) and replan.node_id == "parse"
+    assert isinstance(replan, MicroRequest) and replan.node_id == "parse"
     brief = replan.material["prompt"]
     assert "against 再加 juice，不要 milk;" in brief
     # Its own last answer, and the rounds' returns — a list one per line.
@@ -783,7 +783,7 @@ def test_a_stepping_rebuild_after_a_revision_opens_at_the_revised_agent() -> Non
     send = _to_confirm(p, h, "milk\neggs")
     _reply(p, h, send, "再加 juice，不要 milk")
     replan = p.resolve(MicroOutcome(out="other", reason="a change", confidence=0.9))
-    assert isinstance(replan, DecisionRequest) and replan.node_id == "parse"
+    assert isinstance(replan, MicroRequest) and replan.node_id == "parse"
 
     spec, pack = load_spec("demo", "flow")
     stepped = build.build_program(
@@ -792,14 +792,14 @@ def test_a_stepping_rebuild_after_a_revision_opens_at_the_revised_agent() -> Non
     h2 = history()
     feed(h2, stepped.advance(h2), ELSEWHERE)
     again = stepped.advance(h2)
-    assert isinstance(again, DecisionRequest) and again.node_id == "parse"
+    assert isinstance(again, MicroRequest) and again.node_id == "parse"
     assert "stood at milk\neggs, and" in again.material["prompt"]
 
 
 def test_a_step_reads_its_own_returns_empty_the_first_time() -> None:
     p, h = _walk(flow=REVISING, pay=PAY, keyword="milk and eggs")
     first = p.advance(h)
-    assert isinstance(first, DecisionRequest) and first.node_id == "parse"
+    assert isinstance(first, MicroRequest) and first.node_id == "parse"
     assert "stood at , and  was searched" in first.material["prompt"]
 
 
@@ -815,7 +815,7 @@ def test_a_reply_sent_before_the_ask_landed_revises_at_the_landing() -> None:
     feed(h, send, thread_screen(("再加 eggs", 0.25, 0.2), (ask, 0.75, 0.4)))
     replan = p.advance(h)
 
-    assert isinstance(replan, DecisionRequest) and replan.node_id == "parse"
+    assert isinstance(replan, MicroRequest) and replan.node_id == "parse"
     assert p.gate.replies == ["再加 eggs"]
 
 
@@ -1209,7 +1209,7 @@ def test_a_revision_that_keeps_the_list_re_runs_no_round() -> None:
     send = _to_confirm(p, h, "milk")
     _reply(p, h, send, "就这样，不用改")
     replan = p.resolve(MicroOutcome(out="other", reason="no change", confidence=0.9))
-    assert isinstance(replan, DecisionRequest) and replan.node_id == "parse"
+    assert isinstance(replan, MicroRequest) and replan.node_id == "parse"
 
     resend = p.resolve(
         MicroOutcome(out="done", reason="r", confidence=0.9, payload={"items": "milk"})
@@ -1255,9 +1255,9 @@ def test_a_revision_on_a_resumed_walk_recovers_in_place_inside_the_new_round() -
     peek = resumed.advance(h2)
     feed(h2, peek, thread_screen(*_bubbles(ask), ("再加 eggs", 0.25, 0.6)))
     read = resumed.advance(h2)
-    assert isinstance(read, DecisionRequest) and read.call == READ_REPLY
+    assert isinstance(read, MicroRequest) and read.call == READ_REPLY
     replan = resumed.resolve(MicroOutcome(out="other", reason="more", confidence=0.9))
-    assert isinstance(replan, DecisionRequest) and replan.node_id == "parse"
+    assert isinstance(replan, MicroRequest) and replan.node_id == "parse"
     start2 = resumed.resolve(
         MicroOutcome(
             out="done", reason="r", confidence=0.9, payload={"items": "milk\neggs"}

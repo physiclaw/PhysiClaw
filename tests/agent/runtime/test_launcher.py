@@ -20,7 +20,7 @@ from physiclaw.agent.runtime.launcher import (
 # ---------- engine_label ----------
 
 
-def test_engine_label_for_in_process_provider() -> None:
+def test_engine_label_for_chat_provider() -> None:
     assert engine_label("qwen/qwen3-plus") == (
         "engine=physiclaw, provider=qwen, model=qwen3-plus"
     )
@@ -96,7 +96,7 @@ def test_launch_rejects_invalid_interval_before_startup(monkeypatch, capsys, int
 
 
 @pytest.mark.parametrize("interval", [0.0, 0.125, 1.0])
-def test_launch_runs_engine_path_for_in_process_provider(
+def test_launch_runs_engine_path_for_chat_provider(
     mocker,
     monkeypatch: pytest.MonkeyPatch,
     caplog,

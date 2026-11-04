@@ -14,7 +14,7 @@ playbook-local restrictions do not become engine-wide policies.
 import logging
 
 from physiclaw.conductor.micro.channel import MicroCaller
-from physiclaw.conductor.micro.decision import DecisionRequest
+from physiclaw.conductor.micro.decision import MicroRequest
 from physiclaw.conductor.walk.program import Program
 from physiclaw.conductor.walk.surface import Paused
 from physiclaw.contract.dto import AssistantMessage, Message
@@ -76,7 +76,7 @@ class Conductor:
         """
         try:
             step = program.advance(history)
-            while isinstance(step, DecisionRequest):
+            while isinstance(step, MicroRequest):
                 outcome = None
                 if self._micro is not None:
                     outcome = (await self._micro.run(step, metadata=metadata)).outcome

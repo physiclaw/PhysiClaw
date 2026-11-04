@@ -25,8 +25,8 @@ from physiclaw.conductor.micro.decision import (
     READ_REPLY,
     REPLY_CONFIRM,
     REPLY_DENY,
-    DecisionRequest,
     MicroOutcome,
+    MicroRequest,
 )
 from physiclaw.conductor.spec import reply
 from physiclaw.conductor.spec.conventions import page_id
@@ -61,7 +61,7 @@ class AskStep(Step[AskNode]):
     def __init__(self, walk: Walk, node: AskNode) -> None:
         super().__init__(walk, node)
         # A vague reply's reading in flight, and the replies it read.
-        self.sent: DecisionRequest | None = None
+        self.sent: MicroRequest | None = None
         self.new: list[str] = []
         # Approval needs the current ask's position, including when the
         # model interprets the reply on the next resolve() call.

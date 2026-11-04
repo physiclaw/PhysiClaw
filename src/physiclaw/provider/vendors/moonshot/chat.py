@@ -22,13 +22,6 @@ from the old measurements. Cache writes and reads are disjoint input
 buckets, reported in `prompt_tokens_details`:
 https://platform.kimi.ai/docs/guide/context-caching
 
-Collapse cadence: inherits the base default `COLLAPSE` policy
-(interval = 20) — same cadence as Anthropic/Qwen. The whole-prefix invalidation
-on K2.x makes each collapse more expensive than for anchored caches,
-but a longer interval (was 30) noticeably hurt context-length quality
-on long sessions; 20 keeps the prompt tighter at the cost of one extra
-cache write per ~10 turns.
-
 K2's occasional top-level `usage.cached_tokens` placement is handled
 by the base `_parse_usage` fallback in `openai_compat.py`.
 

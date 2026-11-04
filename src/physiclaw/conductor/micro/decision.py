@@ -2,7 +2,7 @@
 back, and the vocabulary both sides spell the same way: the call names
 (`parse_task`, `read_reply`, `summarize`, `agent_fields`, `agent_act`),
 the material keys a builder fills and a `calltable` row reads, the
-`DecisionRequest` the walk hands the channel, and the `MicroOutcome`
+`MicroRequest` the walk hands the channel, and the `MicroOutcome`
 the channel hands back. Nothing here talks to a provider.
 """
 
@@ -61,7 +61,7 @@ SCROLL_UP = ACT_SCROLL_UP
 # fires at the box the model sent and is journaled by the label it
 # gave — nothing is matched or renamed under the hood. Episode
 # context rides
-# `DecisionRequest.history`,
+# `MicroRequest.history`,
 # append-only and uncompressed (every earlier frame and listing stays),
 # so every call's prefix is byte-identical to the previous call's whole
 # request (the provider prefix cache pays for all but the newest
@@ -112,7 +112,7 @@ Content = str | tuple[ContentBlock, ...]
 
 
 @dataclass(frozen=True)
-class DecisionRequest:
+class MicroRequest:
     """Everything one micro-call needs — the node scalars it reads (never
     the whole node: tooling builds requests without minting fake nodes)
     plus the material assembled from the screen at call time."""

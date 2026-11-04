@@ -6,7 +6,7 @@ https://openrouter.ai/docs/guides/best-practices/prompt-caching
 
 import re
 
-from physiclaw.provider.chat.base import CacheMarkers
+from physiclaw.provider.chat.history import CacheMarkers
 
 _MODELS = {
     "gpt-5.6-luna",

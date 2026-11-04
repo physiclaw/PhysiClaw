@@ -435,7 +435,7 @@ def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[Check]:
         return
 
     from physiclaw.agent.runtime.launcher import resolve
-    from physiclaw.provider import provider_key_status, validate_model_ref
+    from physiclaw.provider import provider_key_status, validate_chat_model_ref
 
     # A running server's environment may differ from this shell's.
     live_ref = live.get("model_ref") if live else None
@@ -448,7 +448,7 @@ def _engine_lines(live: dict | None, *, deep: bool) -> Iterator[Check]:
             active_ref, ref_source = resolve()
         if not isinstance(active_ref, str):
             raise ValueError("model ref must be a string")
-        provider, model = validate_model_ref(active_ref)
+        provider, model = validate_chat_model_ref(active_ref)
     except (RuntimeError, ValueError) as e:
         yield _fmt_error(
             "Model",

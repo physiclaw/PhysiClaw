@@ -69,22 +69,18 @@ from physiclaw.contract.dto import (
 )
 from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnMetadata
-from physiclaw.provider.chat.base import (
-    EPHEMERAL_CACHE_CONTROL,
-    THINKING_BUDGETS,
-    BaseChatProvider,
-    CacheMarkers,
-    token_count,
-)
-from physiclaw.provider.chat.retry import retry_after_seconds
+from physiclaw.provider.chat.base import THINKING_BUDGETS, BaseChatProvider
+from physiclaw.provider.chat.history import EPHEMERAL_CACHE_CONTROL, CacheMarkers
+from physiclaw.provider.chat.usage import token_count
 from physiclaw.provider.chat.wire import (
     anthropic_image_part,
     encode_content,
     output_result_to_message,
 )
-from physiclaw.provider.provider_base import describe
+from physiclaw.provider.client.configuration import configured_base_url
+from physiclaw.provider.client.http_errors import describe, retry_after_seconds
 
-# `anthropic` SDK is lazy-imported inside `_build_client` and `chat()` so
+# `anthropic` SDK is lazy-imported inside `_build_client` and `_chat` so
 # `physiclaw --help` (and any session that doesn't pick this provider)
 # avoids loading the ~3MB SDK + transitive deps.
 
@@ -120,7 +116,7 @@ class AnthropicCacheMarkers(CacheMarkers):
     marking is additive so an entry the anchor has moved off serializes
     byte-identically minus the key. `mark_system` stays the identity —
     Anthropic's system rides outside the messages array and is marked
-    on the top-level `system` payload field in `chat()`."""
+    on the top-level `system` payload field in `build_request()`."""
 
     def mark_stub(self, entry: dict) -> dict:
         return _mark_tool_result(entry)
@@ -130,12 +126,12 @@ class AnthropicCacheMarkers(CacheMarkers):
 
 
 class AnthropicCompatibleProvider(BaseChatProvider):
-    """Base for providers speaking Anthropic's `/v1/messages` shape via
-    `AsyncAnthropic`. See `BaseChatProvider` for the auth declarations
-    vendors are expected to set; this class plugs the wire-shape
-    encoder (`_encode_message`) and the `AnthropicCacheMarkers` factory
-    into the inherited `serialize_history` template, and adds the
-    request flow in `chat()`."""
+    """Anthropic Messages protocol over AsyncAnthropic.
+
+    This adapter owns SDK requests, native encoding, decoding and cache
+    markers. BaseAPIProvider supplies credentials and client lifetime;
+    BaseChatProvider owns generation entry points and usage accounting.
+    """
 
     CACHE_MARKERS: CacheMarkers = AnthropicCacheMarkers()
 
@@ -151,21 +147,17 @@ class AnthropicCompatibleProvider(BaseChatProvider):
         to set that: it would drop the SDK's tuned connection defaults."""
         from anthropic import AsyncAnthropic
 
-        # Explicit arg wins, else the `[providers.anthropic] base_url`
-        # config override — previously ignored (the raw arg is always None
-        # via make_chat_provider). Deliberately NOT _resolved_base_url(): the
-        # class BASE_URL carries a `/v1` suffix (it only satisfies the
-        # base-class non-empty check), and the SDK appends `/v1/...`
-        # itself — feeding it the class default would double the prefix.
-        # None → the SDK's own default endpoint.
-        from physiclaw.common.config import provider_base_url_override
-
         return AsyncAnthropic(
             api_key=key,
-            base_url=base_url or provider_base_url_override(self.PROVIDER_ID),
+            base_url=base_url,
             timeout=timeout,
             max_retries=0,
         )
+
+    @classmethod
+    def _resolved_base_url(cls) -> str | None:
+        # The SDK appends /v1 itself; None preserves its default endpoint.
+        return configured_base_url(cls.PROVIDER_ID, None)
 
     async def _close_client(self) -> None:
         # AsyncAnthropic uses .close(), not .aclose() like httpx.
@@ -193,7 +185,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
             return self._encode_message(output_result_to_message(msg))
         if isinstance(msg, SystemMessage):
             # Skipped here — system content rides outside the messages
-            # array. `chat()` reads it via `_extract_system_text`.
+            # array. `build_request()` reads it via `_extract_system_text`.
             return None
         if isinstance(msg, UserMessage):
             return {"role": "user", "content": _content_to_anthropic(msg.content)}
