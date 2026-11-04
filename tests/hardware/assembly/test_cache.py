@@ -45,7 +45,24 @@ def repo(tmp_path, monkeypatch):
     helper.parent.mkdir(parents=True)
     helper.write_text("SIZE = 1\n", encoding="utf-8")
     (dirs["MARK_DIR"] / "replay.py").write_text("ENGINE = 1\n", encoding="utf-8")
-    return SimpleNamespace(procedure=procedure, helper=helper, **dirs)
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "physiclaw"\nversion = "1.0"\n'
+        'dependencies = ["anthropic>=1"]\n'
+        '[dependency-groups]\ncad = ["build123d>=0.11"]\ndev = ["pytest"]\n',
+        encoding="utf-8",
+    )
+    lock = tmp_path / "uv.lock"
+    lock.write_text(
+        'version = 1\n[[package]]\nname = "build123d"\nversion = "0.11"\n'
+        'dependencies = [{name = "ocp"}]\n'
+        '[[package]]\nname = "ocp"\nversion = "7.8"\n'
+        '[[package]]\nname = "anthropic"\nversion = "1.0"\n',
+        encoding="utf-8",
+    )
+    return SimpleNamespace(
+        procedure=procedure, helper=helper, project=project, lock=lock, **dirs
+    )
 
 
 def write_outputs(repo, *, bom: bool = True, cams: tuple[int, ...] = (0,)):
@@ -397,12 +414,169 @@ def test_added_relative_import_is_hashed_even_after_previous_lookup(repo):
     assert cache.source_key(STEM) != changed
 
 
-def test_dependency_lock_changes_invalidate_source_cache(repo, tmp_path):
-    lock = tmp_path / "uv.lock"
-    lock.write_text("old kernel", encoding="utf-8")
+def replace_text(path, old, new):
+    text = path.read_text(encoding="utf-8")
+    assert old in text, f"Missing test input in {path}: {old!r}"
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "old,new", [("0.11", "0.12"), ("7.8", "7.9")], ids=["kernel", "transitive"]
+)
+def test_dependency_lock_changes_invalidate_source_cache(repo, old, new):
     previous = cache.source_key(STEM)
-    lock.write_text("new kernel", encoding="utf-8")
+    replace_text(repo.lock, f'version = "{old}"', f'version = "{new}"')
     assert cache.source_key(STEM) != previous
+
+
+@pytest.mark.parametrize(
+    "file,old,new",
+    [
+        ("lock", 'version = "1.0"', 'version = "2.0"'),
+        ("project", 'version = "1.0"', 'version = "2.0"'),
+        ("project", "anthropic>=1", "anthropic>=2"),
+        ("project", '["pytest"]', '["pytest", "ruff"]'),
+    ],
+    ids=["agent-lock", "app-version", "app-dependency", "dev"],
+)
+def test_unrelated_project_changes_preserve_cached_outputs(repo, file, old, new):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    before = cache.source_key(STEM), cache.annotation_key(STEM)
+    replace_text(getattr(repo, file), old, new)
+    assert (cache.source_key(STEM), cache.annotation_key(STEM)) == before
+    assert cache.source_cached(STEM, want_bom=True)
+    assert cache.snapshots_cached(STEM)
+
+
+def test_cad_requirements_and_new_transitive_dependencies_invalidate(repo):
+    before = cache.source_key(STEM)
+    replace_text(repo.project, ">=0.11", ">=0.12")
+    assert cache.source_key(STEM) != before
+    before = cache.source_key(STEM)
+    replace_text(
+        repo.lock,
+        'name = "ocp"\nversion = "7.8"',
+        'name = "ocp"\nversion = "7.8"\ndependencies = [{name = "anthropic"}]',
+    )
+    assert cache.source_key(STEM) != before
+    before = cache.source_key(STEM)
+    replace_text(repo.lock, 'version = "1.0"', 'version = "2.0"')
+    assert cache.source_key(STEM) != before
+
+
+def test_replay_only_edits_do_not_invalidate_geometry(repo):
+    (repo.PROCEDURES_DIR.parent / "build_procedures.py").write_text(
+        "from hardware.assembly.mark.replay import replay_one\n", encoding="utf-8"
+    )
+    write_outputs(repo)
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    (repo.MARK_DIR / "replay.py").write_text("ENGINE = 2\n", encoding="utf-8")
+    assert cache.source_cached(STEM, want_bom=True)
+    assert not cache.snapshots_cached(STEM)
+
+
+def test_replay_tracks_helpers_outside_mark(repo):
+    (repo.MARK_DIR / "replay.py").write_text(
+        "import hardware.parts.helper\n", encoding="utf-8"
+    )
+    before = cache.annotation_key(STEM)
+    repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
+    assert cache.annotation_key(STEM) != before
+
+
+def test_direct_geometry_import_of_mark_helper_is_still_tracked(repo):
+    repo.procedure.write_text(
+        "import hardware.assembly.mark.replay\n", encoding="utf-8"
+    )
+    before = cache.source_key(STEM)
+    (repo.MARK_DIR / "replay.py").write_text("ENGINE = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
+
+
+def test_unimported_part_edit_preserves_cache(repo):
+    other = repo.helper.with_name("other.py")
+    other.write_text("SIZE = 1\n", encoding="utf-8")
+    before = cache.source_key(STEM)
+    other.write_text("SIZE = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) == before
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'cad = [{include-group = "kernel"}]\nkernel = ["build123d>=0.11"]',
+        'cad = ["  build123d>=0.11  "]',
+    ],
+    ids=["included-group", "whitespace"],
+)
+def test_requirement_forms_preserve_transitive_tracking(repo, declaration):
+    replace_text(repo.project, 'cad = ["build123d>=0.11"]', declaration)
+    before = cache.source_key(STEM)
+    replace_text(repo.lock, 'version = "7.8"', 'version = "7.9"')
+    assert cache.source_key(STEM) != before
+
+
+@pytest.mark.parametrize("package,invalidates", [("ocp", True), ("anthropic", False)])
+def test_only_cad_artifact_hash_changes_invalidate_cache(repo, package, invalidates):
+    replace_text(
+        repo.lock,
+        f'name = "{package}"\nversion',
+        f'name = "{package}"\nwheels = [{{hash = "sha256:old"}}]\nversion',
+    )
+    before = cache.source_key(STEM)
+    replace_text(repo.lock, "sha256:old", "sha256:new")
+    assert (cache.source_key(STEM) != before) is invalidates
+
+
+def test_malformed_toolchain_cannot_silently_reuse_cache(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    repo.lock.write_text("not valid TOML", encoding="utf-8")
+    with pytest.raises(ValueError):
+        cache.source_cached(STEM, want_bom=True)
+
+
+@pytest.mark.parametrize("name", ["pyproject.toml", "uv.lock"])
+def test_missing_toolchain_file_cannot_produce_a_cache_key(repo, tmp_path, name):
+    (tmp_path / name).unlink()
+    with pytest.raises(FileNotFoundError):
+        cache.source_key(STEM)
+
+
+@pytest.mark.parametrize("package", ["build123d", "ocp"])
+def test_missing_cad_package_record_cannot_produce_a_cache_key(repo, package):
+    replace_text(
+        repo.lock, f'name = "{package}"\nversion', 'name = "unrelated"\nversion'
+    )
+    with pytest.raises(ValueError, match="Missing CAD lock record"):
+        cache.source_key(STEM)
+
+
+def test_missing_included_group_cannot_produce_a_cache_key(repo):
+    repo.project.write_text(
+        '[dependency-groups]\ncad = [{include-group = "missing"}]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Missing CAD dependency group"):
+        cache.source_key(STEM)
+
+
+def test_orchestration_geometry_helper_in_mark_remains_a_dependency(repo):
+    assembly = repo.PROCEDURES_DIR.parent
+    (assembly / "build_procedures.py").write_text(
+        "from .writer import export\n", encoding="utf-8"
+    )
+    (assembly / "writer.py").write_text(
+        "from .mark.geometry import SIZE\n", encoding="utf-8"
+    )
+    helper = repo.MARK_DIR / "geometry.py"
+    helper.write_text("SIZE = 1\n", encoding="utf-8")
+    before = cache.source_key(STEM)
+    helper.write_text("SIZE = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
 
 
 def test_orchestration_dependencies_invalidate_source_cache(repo):

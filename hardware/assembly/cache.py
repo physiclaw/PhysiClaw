@@ -5,9 +5,11 @@ Three output kinds, two invalidation layers (their "subtly different logic"):
   * ``.step`` (geometry) and the raw ``.svg`` (render) share one **source
     key** — a content hash of the procedure's transitive project
     import closure (hardware and shared ``src.physiclaw`` sources) plus
-    the build123d version. The cumulative / delta BOM ``.md`` rides along:
-    it is a pure function of the same parts. Change a part → source key
-    changes → rebuild geometry, re-render, re-aggregate BOM.
+    the CAD dependency group's locked transitive toolchain and platform.
+    Unrelated application metadata and agent/dev dependencies are excluded.
+    Source tracking is conservative at file granularity. The cumulative /
+    delta BOM ``.md`` is a pure function of the same parts. Change a part →
+    source key changes → rebuild geometry, re-render, re-aggregate BOM.
   * the patch-snapshot ``.svg`` (the raw render with the mark-tool
     annotations composited in) carries an extra **patch key** on top: the
     stem's patch JSON(s), the replay engine's own source, and the exact
@@ -46,6 +48,7 @@ import json
 import platform
 import re
 import shutil
+import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -130,7 +133,9 @@ def _parsed_imports(
     return frozenset(mods)
 
 
-def _closure(*paths: Path) -> frozenset[Path]:
+def _closure(
+    *paths: Path, skip_imports: frozenset[tuple[Path, Path]] = frozenset()
+) -> frozenset[Path]:
     """All project source files reachable from ``paths`` through imports."""
     seen: dict[Path, bool] = {}
     stack = [(p, True) for p in paths]
@@ -150,7 +155,11 @@ def _closure(*paths: Path) -> frozenset[Path]:
                 stack.append((init, False))
         for mod in _imports(p, include_lazy=include_lazy):
             dep = _module_to_path(mod)
-            if dep is not None and not seen.get(dep, False):
+            if (
+                dep is not None
+                and (p, dep) not in skip_imports
+                and not seen.get(dep, False)
+            ):
                 stack.append((dep, True))
     return frozenset(seen)
 
@@ -171,31 +180,89 @@ def _hash_files(h: "hashlib._Hash", files) -> None:
         h.update(b"\0")
 
 
+def _cad_toolchain() -> bytes:
+    """Only CAD requirements and their locked transitive package records.
+
+    Application/dev dependencies and project metadata do not affect CAD.
+    Keep every platform variant of reachable packages, including artifact
+    hashes and dependency edges, so kernel and transitive upgrades invalidate.
+    Parse current bytes on each check to detect edits during a build.
+    """
+    project_path = REPO_ROOT / "pyproject.toml"
+    lock_path = REPO_ROOT / "uv.lock"
+    return _parsed_cad_toolchain(project_path.read_bytes(), lock_path.read_bytes())
+
+
+@functools.lru_cache(maxsize=8)
+def _parsed_cad_toolchain(project_source: bytes, lock_source: bytes) -> bytes:
+    """Reuse TOML parsing only for identical contents, never mtime or size."""
+    project = tomllib.loads(project_source.decode("utf-8"))
+    groups = project.get("dependency-groups", {})
+
+    def requirements(group: str, visiting: frozenset[str] = frozenset()) -> list[str]:
+        if group in visiting:
+            raise ValueError(f"Cyclic dependency group: {group}")
+        if group not in groups:
+            raise ValueError(f"Missing CAD dependency group: {group}")
+        result = []
+        for item in groups[group]:
+            if isinstance(item, str):
+                result.append(item.strip())
+            else:
+                result.extend(requirements(item["include-group"], visiting | {group}))
+        return result
+
+    cad = sorted(requirements("cad"))
+    lock = tomllib.loads(lock_source.decode("utf-8"))
+    packages: dict[str, list[dict]] = {}
+    for package in lock.get("package", []):
+        packages.setdefault(package["name"], []).append(package)
+    pending = [re.split(r"[\s\[<>=!~;@]", req, maxsplit=1)[0] for req in cad]
+    selected = {}
+    while pending:
+        name = re.sub(r"[-_.]+", "-", pending.pop()).lower()
+        if name in selected:
+            continue
+        if name not in packages:
+            raise ValueError(f"Missing CAD lock record: {name}")
+        records = packages[name]
+        selected[name] = records
+        for record in records:
+            pending.extend(dep["name"] for dep in record.get("dependencies", []))
+            # Extras can add CAD dependencies (e.g. an alternate exporter).
+            for deps in record.get("optional-dependencies", {}).values():
+                pending.extend(dep["name"] for dep in deps)
+    return json.dumps({"cad": cad, "packages": selected}, sort_keys=True).encode()
+
+
 def source_key(stem: str) -> str:
-    """Content hash of ``stem``'s import closure + kernel version.
+    """Content hash of ``stem``'s import closure, CAD toolchain and platform.
     Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
     h = hashlib.sha256()
-    h.update(b"hardware-cache-v2\n")
+    h.update(b"hardware-cache-v3\n")
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
     h.update(platform.python_version().encode())
     h.update(platform.platform().encode())
+    h.update(_cad_toolchain())
     # Export orchestration and BOM code aren't necessarily imported by the
-    # procedure. Lockfile changes also invalidate transitive OCCT versions.
+    # procedure. Only these known replay imports belong to the other layer.
+    # Follow mark helpers reached by any other importer, including exporters
+    # and BOM code: their location alone cannot prove they are annotation-only.
+    assembly = REPO_ROOT / "hardware/assembly"
     inputs = {
-        REPO_ROOT / name
-        for name in (
-            "hardware/assembly/build_procedures.py",
-            "hardware/assembly/bom.py",
-            "hardware/assembly/cache.py",
-            "uv.lock",
-            "pyproject.toml",
-        )
-        if (REPO_ROOT / name).is_file()
+        assembly / name
+        for name in ("build_procedures.py", "bom.py", "cache.py")
+        if (assembly / name).is_file()
     }
-    sources = _closure(
-        PROCEDURES_DIR / f"{stem}.py", *(p for p in inputs if p.suffix == ".py")
+    annotation_imports = frozenset(
+        (assembly / caller, MARK_DIR / module)
+        for caller in ("build_procedures.py", "cache.py")
+        for module in ("patch.py", "replay.py")
     )
-    _hash_files(h, sources | inputs)
+    sources = _closure(
+        PROCEDURES_DIR / f"{stem}.py", *inputs, skip_imports=annotation_imports
+    )
+    _hash_files(h, sources)
     return h.hexdigest()
 
 
@@ -206,19 +273,10 @@ def _patch_files(stem: str) -> list[Path]:
     return out
 
 
-def _replay_engine_files() -> list[Path]:
-    """Replay-engine source — the ``mark/`` files reachable from ``replay.py``.
-    Taken from the import closure (not a hardcoded list) so a new ``mark/``
-    module the replay path grows is covered automatically; shared
-    ``assembly/`` deps it pulls (base, svg_utils) already ride in every stem's
-    ``source_key`` via ``base``, so only ``mark/`` files are kept here."""
-    return [f for f in _closure(MARK_DIR / "replay.py") if MARK_DIR in f.parents]
-
-
 def annotation_key(stem: str) -> str:
     """Inputs to annotation replay, independent of the cached geometry generation."""
     h = hashlib.sha256()
-    _hash_files(h, _replay_engine_files())
+    _hash_files(h, _closure(MARK_DIR / "replay.py"))
     _hash_files(h, _patch_files(stem))
     return h.hexdigest()
 

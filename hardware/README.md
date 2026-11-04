@@ -232,18 +232,21 @@ Geometry subcommands need `--group cad`; `check`, `manual`, `sourcing` and `draw
 are standard-library only. Each stage module is also runnable on its own (e.g.
 `uv run --group cad python -m hardware.parts.custom.solenoid_mount`).
 
-`build` is incremental: each step's outputs are cached under
-`output/.cache/` keyed by a content hash of its import closure (source +
-parts + predecessors + package initializers), the toolchain lock and platform,
-and its patch JSON. Annotated drawings are also bound to the exact geometry-cache
-manifest, so an interrupted update cannot mix old drawings with new geometry.
+`build` caches each step under `output/.cache/` in two layers. STEP, raw SVG
+and BOM outputs share a source key covering the import closure (parts,
+predecessors and package initializers), CAD toolchain and platform. Annotated
+drawings additionally track patch JSON, replay code and the exact source manifest.
+Patch or replay-only edits reapply annotations without rebuilding CAD; an
+interrupted update cannot pair old annotations with new geometry.
+
+The toolchain fingerprint covers the `cad` group and its transitive `uv.lock`
+records, including artifact hashes. Unrelated app metadata and agent/dev
+dependencies are excluded; shared CAD dependencies such as NumPy remain tracked.
+Missing toolchain files, groups or reachable lock records stop the build.
 Restored files are hash-checked in temporary files before atomic replacement,
-so a cancelled or corrupt copy does not replace a complete output. The resolved
-cache directory is saved in the log. Unchanged
-steps are restored instead of rebuilt+re-rendered — and a patch-only edit
-just re-runs the cheap annotation replay. Pass `--no-cache` to force a full
-rebuild — the rebuilt outputs still refresh the cache. (`step` always
-rebuilds its one stem.)
+so a cancelled or corrupt copy does not replace a complete output. Logs record
+the resolved cache directory. `--no-cache` forces a rebuild and refreshes the
+cache; `step` always rebuilds its one stem.
 
 The dispatcher records source and annotation keys before work and rechecks them
 before success. Cache stores verify those keys and copied bytes before publishing
@@ -257,6 +260,9 @@ Implicit parent-package initializers contribute their source and eager imports,
 but their unused lazy `__getattr__` exports do not pull runtime code into CAD
 dependencies. Explicit package imports still track lazy exports conservatively;
 shared travel dimensions and function-local build imports remain dependencies.
+Source tracking is conservative at file granularity: an edit anywhere in an
+imported CAD source file invalidates its dependent procedures, including comments.
+Unimported application and agent files do not contribute to the key.
 
 Full builds run two independent CAD batch processes by default. Use
 `build --jobs 1` on a low-memory machine, or up to `--jobs 4` when more
