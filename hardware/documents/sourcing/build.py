@@ -63,7 +63,7 @@ toggle washes the unbought rows' Spec and Qty cells (what the buyer
 reads at the shop) in the accent's light wash; it persists with the
 list and hides, off, while the list is empty. Bought state changes only
 through its checkbox or reset. A small corner mark identifies only the last
-opened supplier cell, remembered with the list, without ticking Bought.
+opened supplier cell until reload, without ticking Bought.
 On narrow screens the table scrolls sideways.
 
 ``optional_tools.json`` supplies the optional tools
@@ -650,7 +650,6 @@ PAGE_JS = """\
   var KEY = document.body.dataset.storeKey;
   var PREFIX = document.body.dataset.storePrefix;
   var bought = {};
-  var lastOpened = null;
   try {
     Object.keys(localStorage).forEach(function (k) {
       if (k.indexOf(PREFIX) === 0 && k !== KEY)
@@ -662,7 +661,6 @@ PAGE_JS = """\
       bought[p] = true;
     });
     if (stored.hl) document.body.classList.add('hl');
-    lastOpened = stored.lastOpened || null;
   } catch (e) {}
 
   // The row anatomy, resolved once: the tr, its part id, its checkbox.
@@ -690,8 +688,7 @@ PAGE_JS = """\
     try {
       localStorage.setItem(KEY, JSON.stringify({
         pids: Object.keys(bought),
-        hl: document.body.classList.contains('hl'),
-        lastOpened: lastOpened
+        hl: document.body.classList.contains('hl')
       }));
     } catch (e) {}
   }
@@ -746,27 +743,21 @@ PAGE_JS = """\
     save();
   });
 
-  var supplierLinks = document.querySelectorAll('.reportable a:not(.report-link)');
-  function renderOpened() {
-    supplierLinks.forEach(function (link, index) {
-      var isLast = !!lastOpened && lastOpened.index === index && lastOpened.url === link.href;
-      link.closest('.reportable').classList.toggle('opened', isLast);
-      if (isLast) link.setAttribute('aria-description', document.body.dataset.openedLabel);
-      else link.removeAttribute('aria-description');
-    });
-  }
-  supplierLinks.forEach(function (link, index) {
+  var lastOpened = null;
+  document.querySelectorAll('.reportable a:not(.report-link)').forEach(function (link) {
     function markOpened(event) {
       if (event.type === 'auxclick' && event.button !== 1) return;
-      // The position keeps repeated URLs from marking more than one offer.
-      lastOpened = {index: index, url: link.href};
-      renderOpened();
-      save();
+      if (lastOpened) {
+        lastOpened.closest('.reportable').classList.remove('opened');
+        lastOpened.removeAttribute('aria-description');
+      }
+      link.closest('.reportable').classList.add('opened');
+      link.setAttribute('aria-description', document.body.dataset.openedLabel);
+      lastOpened = link;
     }
     link.addEventListener('click', markOpened);
     link.addEventListener('auxclick', markOpened);
   });
-  renderOpened();
   render();
 })();
 

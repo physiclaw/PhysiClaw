@@ -529,7 +529,7 @@ td.note button.copy { margin-top: 0; vertical-align: -1px; }
    the per-column color rules (td.cls, td.note, td.ref, .v-prod) regardless
    of source order. */
 :is(tr.done td:not([rowspan]), td.done),
-:is(tr.done td:not([rowspan]), td.done) :is(.v-vendor a, .v-prod, button.copy, .note-accessory a:not(.report-link)) {
+:is(tr.done td:not([rowspan]), td.done) :is(a:not(.report-link), .v-prod, button.copy, .guide-open) {
   color: var(--ink-faint);
 }
 

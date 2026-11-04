@@ -445,7 +445,7 @@ show it directly. It opens a GitHub issue draft with the listing, affected parts
 source file, market and guide date. Parts, accessories and optional tools share
 this action. Reporting leaves the checklist unchanged; flags are hidden in print.
 A peach corner triangle marks only the last opened offer, even when URLs repeat.
-It persists for the guide revision independently of the Bought checklist.
+It clears on page reload.
 
 > **Photoreal render — WIP.** A separate Blender render of the full machine
 > (`camera_40_frame`) is being reworked; its scripts were cleared and are not
