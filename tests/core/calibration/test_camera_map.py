@@ -382,6 +382,7 @@ class _PhaseCamera:
 
     focus_lockable = True
     focus_search_range = (42, 42, 1)
+    exposure_tunable = False
 
     @property
     def focus_pinned(self):
@@ -420,6 +421,188 @@ def _real_cal():
     cal.viewport_shift = ViewportShift(0, 0, 1, 600, 900)
     cal.screen_dimension = {"viewport_width": 600, "viewport_height": 900}
     return cal
+
+
+class _WashedGridCamera(_PhaseCamera):
+    """A sharp lens whose firmware AE washes the grid dots to white."""
+
+    exposure_tunable = True
+
+    def __init__(self, cal, *, honors_exposure_writes=True, rotation=-1):
+        super().__init__(cal, grid=np.full((900, 600, 3), 255, np.uint8))
+        recovered = _grid_dot_image()
+        recovered[np.all(recovered == 0, axis=2)] = 215
+        if rotation == cv2.ROTATE_90_COUNTERCLOCKWISE:
+            self.frames = {
+                phase: cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                for phase, frame in self.frames.items()
+            }
+            recovered = cv2.rotate(recovered, cv2.ROTATE_90_CLOCKWISE)
+        self.recovered = recovered
+        self.honors_exposure_writes = honors_exposure_writes
+        self.manual_exposures = []
+        self.auto_requests = 0
+
+    def set_auto_exposure(self):
+        self.auto_requests += 1
+
+    def set_manual_exposure(self, value):
+        self.manual_exposures.append(value)
+        if self.honors_exposure_writes:
+            self.frames["grid"] = self.recovered
+
+
+@pytest.mark.parametrize("rotation", [-1, cv2.ROTATE_90_COUNTERCLOCKWISE])
+def test_mapping_recovers_washed_out_grid_without_changing_verified_focus(
+    mocker, rotation
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal, rotation=rotation)
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, rotation)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900)
+    assert focus == 42
+    assert cam.applied and cam.frozen
+    assert cam.manual_exposures == [camera_map_mod.CONFIG.camera.exposure]
+
+
+@pytest.mark.parametrize("missing_frames", [0, 1, 2, 3])
+def test_grid_checks_recovered_exposure_even_after_earlier_missing_frames(
+    mocker, missing_frames
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal)
+    original_read = cam.raw_frame
+    grid_reads = 0
+
+    def read():
+        nonlocal grid_reads
+        if cal.phase == "grid":
+            grid_reads += 1
+            if grid_reads <= missing_frames:
+                return None
+        return original_read()
+
+    mocker.patch.object(cam, "raw_frame", side_effect=read)
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900) and focus == 42
+    assert cam.applied and cam.frozen
+    assert cam.manual_exposures == [camera_map_mod.CONFIG.camera.exposure]
+
+
+def test_grid_exposure_recovery_remains_available_after_an_incomplete_good_frame(
+    mocker,
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal)
+    incomplete = cam.recovered.copy()
+    incomplete[:300] = 215
+    original_read = cam.raw_frame
+    grid_reads = 0
+
+    def read():
+        nonlocal grid_reads
+        if cal.phase == "grid":
+            grid_reads += 1
+            if grid_reads == 1:
+                return incomplete
+        return original_read()
+
+    mocker.patch.object(cam, "raw_frame", side_effect=read)
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900) and focus == 42
+    assert cam.manual_exposures == [camera_map_mod.CONFIG.camera.exposure]
+
+
+def test_grid_exposure_recovery_handles_clipping_despite_sharp_bezel_texture(mocker):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal)
+    cam.frames["grid"][:, :60] = _sharp_frame(w=60) // 2
+    quality = camera_map_mod.assess(cam.frames["grid"])
+    assert not quality.blown
+    assert quality.clip_pct > camera_map_mod.exposure.TUNE_CLIP_PCT
+
+    affine, size, focus = camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert np.allclose(affine, np.eye(2, 3), atol=1e-6)
+    assert size == (600, 900) and focus == 42
+    assert cam.manual_exposures == [camera_map_mod.CONFIG.camera.exposure]
+
+
+@pytest.mark.parametrize("prefer_auto", [False, True])
+def test_grid_exposure_recovery_is_bounded_when_driver_ignores_writes(
+    mocker, prefer_auto
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(camera_map_mod.CONFIG.camera, "auto_exposure", prefer_auto)
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal, honors_exposure_writes=False)
+    recovery = mocker.spy(camera_map_mod, "_recover_grid_exposure")
+    detection = mocker.spy(camera_map_mod, "detect_red_dots")
+
+    with pytest.raises(RuntimeError, match="15-dot grid"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert 1 <= len(cam.manual_exposures) <= camera_map_mod.exposure.MAX_STEPS
+    assert recovery.call_count == 1
+    assert detection.call_count == 5
+    if prefer_auto:
+        assert cam.auto_requests >= 2
+    else:
+        assert cam.auto_requests == 0
+    assert not cam.applied and not cam.frozen
+
+
+@pytest.mark.parametrize("displaced", [False, True], ids=["missing-dot", "bad-fit"])
+def test_recovered_exposure_still_requires_a_complete_grid_passing_the_fit_gate(
+    mocker, displaced
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal)
+    cv2.circle(cam.recovered, (150, 180), 11, (215, 215, 215), -1)
+    if displaced:
+        cv2.circle(cam.recovered, (300, 850), 10, (0, 0, 255), -1)
+
+    with pytest.raises(RuntimeError, match="clean 15-dot grid passing the fit gate"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    assert cam.manual_exposures == [camera_map_mod.CONFIG.camera.exposure]
+    assert not cam.applied and not cam.frozen
+
+
+@pytest.mark.parametrize("prefer_auto", [False, True])
+def test_grid_exposure_write_failure_restores_mode_and_releases_focus(
+    mocker, prefer_auto
+):
+    mocker.patch.object(camera_map_mod.time, "sleep")
+    mocker.patch.object(camera_map_mod.CONFIG.camera, "auto_exposure", prefer_auto)
+    cal = _real_cal()
+    cam = _WashedGridCamera(cal)
+    mocker.patch.object(
+        cam, "set_manual_exposure", side_effect=OSError("USB write failed")
+    )
+
+    with pytest.raises(OSError, match="USB write failed"):
+        camera_map_mod.compute_camera_mapping(cam, cal, -1)
+
+    if prefer_auto:
+        assert cam.auto_requests >= 2
+    else:
+        assert cam.auto_requests == 0
+    assert not cam.applied and not cam.frozen
 
 
 def _corner_frame(positions):

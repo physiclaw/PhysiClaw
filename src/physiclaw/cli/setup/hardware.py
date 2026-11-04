@@ -339,6 +339,7 @@ def _step_calibrate_camera(auto: bool, cam: int) -> None:
         lambda r: f"Couldn't map the dots: {_msg(r)}",
         "Reduce glare / fix lighting. Retry?",
         auto,
+        timeout=60,
     )
     _done(f"Camera calibrated — found all {m.get('dots', 15)} dots")
 

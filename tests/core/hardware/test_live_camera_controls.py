@@ -3,7 +3,13 @@
 Run with PHYSICLAW_LIVE_CAMERA_INDEX and PHYSICLAW_LIVE_CAMERA_STRESS=1.
 The optional PHYSICLAW_LIVE_CAMERA_ROI is x1,y1,x2,y2 in normalized coordinates;
 it confines quality measurements to the phone screen rather than the dark desk.
-No calibration is saved. Initial focus/exposure modes are restored before close.
+No calibration is saved. Closing the camera releases its focus pin and follows
+the configured exposure-mode policy.
+
+For production focus search, display the checkerboard, release the server's
+camera, and set PHYSICLAW_LIVE_FOCUS_SEARCH=1 with the camera index and screen
+ROI. Optional PHYSICLAW_LIVE_CAMERA_ROTATION sets OpenCV's rotation code;
+the ROI applies to the rotated image.
 """
 
 import json
@@ -17,9 +23,14 @@ import pytest
 from physiclaw.common.config import CONFIG
 from physiclaw.core.hardware import exposure, focus
 from physiclaw.core.hardware.camera import Camera
-from physiclaw.core.vision.quality import BLUR_THRESHOLD, assess
+from physiclaw.core.vision.quality import BLUR_THRESHOLD, assess, laplacian_variance
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
+
+@pytest.fixture(autouse=True)
+def _no_real_uvc():
+    """Allow real USB controls here; both live tests require explicit opt-in."""
 
 
 def _controls(camera):
@@ -33,7 +44,7 @@ def _controls(camera):
         }
 
 
-def _meter(camera, roi, frames=exposure.SETTLE_FRAMES):
+def _fresh_crop(camera, roi, frames=exposure.SETTLE_FRAMES):
     assert camera.wait_frames(frames, timeout=5), "capture stalled after control change"
     sample = camera.snapshot_with_time()
     assert sample is not None, "no fresh frame after control change"
@@ -43,7 +54,11 @@ def _meter(camera, roi, frames=exposure.SETTLE_FRAMES):
         int(y1 * height) : int(y2 * height), int(x1 * width) : int(x2 * width)
     ]
     assert crop.size and crop.any(), "empty camera region"
-    return assess(crop)
+    return crop
+
+
+def _meter(camera, roi, frames=exposure.SETTLE_FRAMES):
+    return assess(_fresh_crop(camera, roi, frames))
 
 
 def _observe(camera, stop, stats):
@@ -215,3 +230,60 @@ def test_live_af_mf_exposure_stress_with_concurrent_capture(tmp_path):
     assert report["ok"]
     assert len(report["cycles"]) == 20
     assert len(report["sessions"]) == 2
+
+
+def test_live_optical_focus_search_across_exposure_and_reconnect(tmp_path):
+    if os.environ.get("PHYSICLAW_LIVE_FOCUS_SEARCH") != "1":
+        pytest.skip("set PHYSICLAW_LIVE_FOCUS_SEARCH=1 with the checkerboard visible")
+    index = os.environ.get("PHYSICLAW_LIVE_CAMERA_INDEX")
+    roi_text = os.environ.get("PHYSICLAW_LIVE_CAMERA_ROI")
+    assert index is not None and roi_text is not None, "choose a camera and screen ROI"
+    roi = tuple(float(part) for part in roi_text.split(","))
+    assert len(roi) == 4 and 0 <= roi[0] < roi[2] <= 1 and 0 <= roi[1] < roi[3] <= 1
+    output = tmp_path / "focus-search-stress.json"
+    rotation = int(os.environ.get("PHYSICLAW_LIVE_CAMERA_ROTATION", "-1"))
+    assert rotation in (
+        -1,
+        cv2.ROTATE_90_CLOCKWISE,
+        cv2.ROTATE_180,
+        cv2.ROTATE_90_COUNTERCLOCKWISE,
+    )
+    report = {"index": int(index), "roi": roi, "rotation": rotation, "cases": []}
+    camera = Camera(index=int(index))
+    camera.rotation = rotation
+    try:
+        bounds = camera.focus_search_range
+        assert bounds is not None, "camera must expose a manual focus range"
+        for cycle, setting in enumerate((None, -8, -7, -6, -5, -4)):
+            if setting is None:
+                camera.set_auto_exposure()
+            else:
+                camera.set_manual_exposure(setting)
+            assert camera.apply_focus(bounds[cycle % 2])
+            _fresh_crop(camera, roi)
+            camera.unlock_focus()
+            record = {"exposure": setting, "samples": []}
+            report["cases"].append(record)
+
+            def meter():
+                sharpness = laplacian_variance(
+                    _fresh_crop(camera, roi, frames=focus.SETTLE_FRAMES)
+                )
+                record["samples"].append(sharpness)
+                return sharpness
+
+            value = focus.search(bounds, meter, camera.apply_focus, camera.unlock_focus)
+            record["focus"] = value
+            output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            assert value is not None and camera.focus_pinned, record
+            assert camera.read_focus() == value
+            if setting in (None, -4):
+                camera._reopen()
+                assert camera.focus_pinned and camera.read_focus() == value
+            record["held"] = [meter() for _ in range(5)]
+            assert min(record["held"]) >= BLUR_THRESHOLD
+            assert camera.health()
+            print(f"Focus search: exposure={setting}, position={value}", flush=True)
+    finally:
+        camera.close()
+        output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

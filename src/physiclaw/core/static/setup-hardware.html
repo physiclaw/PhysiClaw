@@ -1000,7 +1000,7 @@ function calibrateCamera(ctx) {
       (chk.body.issues || []).forEach(i => st.appendChild(note("warn", i)));
       busy(go, true, t("s_camcal_busyDots"));
       frame = false;
-      return api("POST", "/api/calibrate/camera-mapping", null, 30000);
+      return api("POST", "/api/calibrate/camera-mapping");
     },
     onOk: r => st.appendChild(note("ok", t("s_camcal_ok", r.body.dots))),
     err: r => t(frame ? "s_camcal_errCam" : "s_camcal_errMap", r),

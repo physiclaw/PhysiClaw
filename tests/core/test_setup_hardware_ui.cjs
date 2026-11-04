@@ -27,6 +27,40 @@ test('camera coverage advice appears in setup without blocking calibration', asy
   assert.equal(ui.status.ready, true);
 });
 
+test('camera mapping can finish exposure recovery after thirty seconds', async () => {
+  const ui = await createSetup();
+  const pending = Promise.withResolvers();
+  ui.overrides.set('/api/calibrate/camera-mapping', () => pending.promise);
+  await ui.startAuto();
+
+  await ui.advance(45000);
+
+  assert.equal(ui.state().current, 6);
+  assert.equal(ui.state().working, true);
+  assert.equal(calls(ui, '/api/calibrate/camera-mapping').length, 1);
+  assert.equal(ui.el('panel').querySelectorAll('.note.err').length, 0);
+  ui.status.steps.mapping_b = 'OK';
+  pending.resolve({status: 'ok', dots: 15});
+  await ui.drain();
+  assert.equal(ui.status.ready, true);
+});
+
+test('stalled camera mapping times out without retrying or advancing', async () => {
+  const ui = await createSetup();
+  ui.overrides.set('/api/calibrate/camera-mapping', () => new Promise(() => {}));
+  await ui.startAuto();
+
+  await ui.advance(60000);
+  await ui.drain();
+
+  assert.equal(ui.state().current, 6);
+  assert.equal(ui.state().auto, false);
+  assert.equal(ui.state().working, false);
+  assert.equal(calls(ui, '/api/calibrate/camera-mapping').length, 1);
+  assert.equal(calls(ui, '/api/calibrate/validate').length, 0);
+  assert.match(ui.el('panel').querySelector('.note.err').textContent, /timed out/);
+});
+
 test('saved calibration completes the automatic setup in order, once per action', async () => {
   const ui = await createSetup();
 

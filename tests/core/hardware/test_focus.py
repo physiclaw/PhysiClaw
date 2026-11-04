@@ -341,6 +341,43 @@ def test_search_rejects_controls_without_optical_focus_response(variation):
     assert restored == [True]
 
 
+def test_search_remeasures_peak_when_exposure_settles_during_refinement():
+    position = 0
+    readings = itertools.count()
+    restored = []
+
+    def apply(value):
+        nonlocal position
+        position = value
+        return True
+
+    def meter():
+        # A bright coarse pass used to keep its obsolete 576 peak forever,
+        # defeating both finer measurements and verification at normal gain.
+        gain = 2 if next(readings) < 17 else 1
+        return gain * max(1, 500 - (position - 552) ** 2 / 10)
+
+    assert search((0, 1023, 1), meter, apply, lambda: restored.append(True)) == 552
+    assert not restored
+
+
+def test_search_counts_repeated_positions_against_sample_budget(monkeypatch):
+    monkeypatch.setattr(focus, "SEARCH_SAMPLES", 18)
+    positions = []
+    restored = []
+
+    def apply(value):
+        positions.append(value)
+        return True
+
+    assert (
+        search((0, 1023, 1), lambda: 500, apply, lambda: restored.append(True)) is None
+    )
+    assert len(positions) == 18
+    assert positions.count(0) == 2
+    assert restored == [True]
+
+
 def test_search_rejects_brightness_settling_mistaken_for_lens_response(search_rig):
     # Ignored lens writes can still appear to improve while exposure settles.
     search_rig.meter.side_effect = itertools.chain([50], itertools.repeat(SHARP))
@@ -446,7 +483,9 @@ def test_search_rejects_final_scene_degradation_even_above_absolute_gate(
 def test_search_allows_lens_settling_but_requires_two_consecutive_sharp_frames(
     search_rig, verification, expected
 ):
-    search_rig.meter.side_effect = [500, *verification]
+    search_rig.meter.side_effect = itertools.chain(
+        [500, *verification], itertools.repeat(SOFT)
+    )
 
     assert (
         search((0, 0, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
@@ -454,6 +493,43 @@ def test_search_allows_lens_settling_but_requires_two_consecutive_sharp_frames(
     )
 
     assert search_rig.unfreeze.call_count == int(expected is None)
+
+
+@pytest.mark.parametrize(
+    "peak,settling",
+    [
+        (3973, [0, 84, 2784, 3122, 3299, 3510]),
+        (977, [139, 373, 586, 763, 879, 932]),
+        (4571, [1801, 2331, 3034, 3622, 4006, 4261]),
+    ],
+)
+def test_search_verifies_slow_full_range_moves_measured_on_ugreen(
+    search_rig, peak, settling
+):
+    # Real settling traces: the old four-read window ended before the pair
+    # of acceptable frames. Never relax sharpness for a moving lens.
+    search_rig.meter.side_effect = [1, peak, 1, *settling]
+
+    assert (
+        search((0, 1023, 1023), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        == 1023
+    )
+    search_rig.unfreeze.assert_not_called()
+
+
+def test_search_full_range_settling_is_bounded_and_requires_consecutive_reads(
+    search_rig,
+):
+    search_rig.meter.side_effect = itertools.chain(
+        [1, 500, 1], itertools.cycle([500, 30])
+    )
+
+    assert (
+        search((0, 1023, 1023), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+        is None
+    )
+    assert search_rig.meter.call_count == 3 + focus.SEARCH_CONFIRM_METERS
+    search_rig.unfreeze.assert_called_once_with()
 
 
 def test_search_allows_settling_after_each_large_verification_move(search_rig):

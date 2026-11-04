@@ -17,6 +17,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.config import CONFIG
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
     grid_positions,
@@ -25,7 +26,7 @@ from physiclaw.core.calibration._common import (
 )
 from physiclaw.core.calibration.state import ROTATION_NAMES
 from physiclaw.core.geometry import validate_affine
-from physiclaw.core.hardware import focus
+from physiclaw.core.hardware import exposure, focus
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.grid_detect import (
     detect_red_dots,
@@ -34,7 +35,7 @@ from physiclaw.core.vision.grid_detect import (
     sort_dots_to_grid,
 )
 from physiclaw.core.vision.preprocess import grayscale
-from physiclaw.core.vision.quality import laplacian_variance
+from physiclaw.core.vision.quality import assess, laplacian_variance
 
 log = logging.getLogger(__name__)
 
@@ -270,7 +271,11 @@ def _detect_grid_mapping(
     best: tuple[np.ndarray, tuple[int, int]] | None = None
     frame = None
     last_dots = 0
-    for attempt in range(4):
+    exposure_recovery_attempted = False
+    # Four attempts, plus one to check the image after exposure recovery.
+    for attempt in range(5):
+        if attempt == 4 and not exposure_recovery_attempted:
+            break
         f = cam.raw_frame()
         if f is None:
             time.sleep(0.7)
@@ -283,6 +288,11 @@ def _detect_grid_mapping(
             f"found {len(dots)}/{expected} dots inside the screen"
         )
         if len(dots) != expected:
+            # Recover washed-out dots once, then retry detection and fitting.
+            if not exposure_recovery_attempted and cam.exposure_tunable:
+                exposure_recovery_attempted = _recover_grid_exposure(
+                    cam, frame, rotation, screen_poly
+                )
             time.sleep(0.7)
             continue
 
@@ -338,3 +348,40 @@ def _detect_grid_mapping(
         },
     )
     return pct_to_cam, cam_size
+
+
+def _recover_grid_exposure(
+    cam: Camera, frame: np.ndarray, rotation: int, screen_poly: np.ndarray | None
+) -> bool:
+    """Recover a washed-out grid; return whether exposure tuning was attempted."""
+    crop = _focus_region(frame, screen_poly)
+    if not crop.size:
+        return False
+    quality = assess(crop)
+    if not (quality.blown or quality.clip_pct > exposure.TUNE_CLIP_PCT):
+        return False
+
+    def meter():
+        if not cam.wait_frames(exposure.SETTLE_FRAMES, timeout=5):
+            return None
+        raw = cam.raw_frame()
+        if raw is None:
+            return None
+        frame = cv2.rotate(raw, rotation) if rotation >= 0 else raw
+        crop = _focus_region(frame, screen_poly)
+        return assess(crop) if crop.size else None
+
+    result = exposure.converge(
+        meter,
+        cam.set_auto_exposure,
+        cam.set_manual_exposure,
+        start=CONFIG.camera.exposure,
+        prefer_auto=CONFIG.camera.auto_exposure,
+        max_exposure=(
+            exposure.MAX_EXPOSURE
+            if cam.focus_pinned
+            else exposure.UNPINNED_MAX_EXPOSURE
+        ),
+    )
+    log.info("  Grid exposure recovery: %s", result.detail)
+    return True

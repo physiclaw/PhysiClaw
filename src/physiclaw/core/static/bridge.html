@@ -292,7 +292,8 @@ body.mode-bridge #bridge-layer{
           defs.appendChild(pattern);
         };
         addChecker('focus-checker', '#000');
-        addChecker('focus-brand-checker', '#800000');
+        // Blue lettering preserves the checker edges.
+        addChecker('focus-brand-checker', '#0055ff');
         svg.appendChild(defs);
         rect(0, 0, W, H, 'url(#focus-checker)', 0);
 

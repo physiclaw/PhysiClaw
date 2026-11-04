@@ -37,6 +37,9 @@ CONFIRM_METERS = 4
 SEARCH_SECONDS = 20.0
 SEARCH_SAMPLES = 64
 SEARCH_MIN_GAIN = 1.5
+# Full-range moves need longer settling than search increments (UGREEN 4K).
+# Verification still requires two sharp readings within SEARCH_SECONDS.
+SEARCH_CONFIRM_METERS = 8
 
 
 def search(
@@ -48,9 +51,10 @@ def search(
     """Find and verify a replayable MF position without trusting AF readback.
 
     Sample at most 17 coarse positions, then refine the best neighborhood in
-    control-step units. All writes and meters must succeed. Two fresh readings
-    of the final re-applied position must clear the gate and retain at least
-    80% of the measured peak. A multi-position search rechecks the worst
+    control-step units, remeasuring it at each pass so exposure drift cannot
+    preserve an obsolete peak. All writes and meters must succeed. Two fresh
+    readings of the final re-applied position must clear the gate and retain
+    at least 80% of the measured peak. A multi-position search rechecks the worst
     position to distinguish lens response from settling exposure. Failure
     restores AF and never saves a candidate.
     """
@@ -60,6 +64,7 @@ def search(
     last = (high - low) // step
     deadline = time.monotonic() + SEARCH_SECONDS
     scores: dict[int, float] = {}
+    samples = 0
     verified = False
     try:
         left, right = 0, last
@@ -67,9 +72,7 @@ def search(
         while True:
             points = sorted({*range(left, right + 1, stride), right})
             for point in points:
-                if point in scores:
-                    continue
-                if len(scores) >= SEARCH_SAMPLES or time.monotonic() >= deadline:
+                if samples >= SEARCH_SAMPLES or time.monotonic() >= deadline:
                     return None
                 if not apply(float(low + point * step)):
                     return None
@@ -79,7 +82,9 @@ def search(
                 if score is None or not math.isfinite(score):
                     return None
                 scores[point] = score
-            best = max(scores, key=lambda point: scores[point])
+                samples += 1
+            # Compare this pass only: earlier exposure may have been brighter.
+            best = max(points, key=lambda point: scores[point])
             if stride == 1:
                 break
             left, right = max(0, best - stride), min(last, best + stride)
@@ -90,7 +95,7 @@ def search(
 
         def confirm(accept: Callable[[float], bool], consecutive: int) -> bool:
             agreed = 0
-            for _ in range(CONFIRM_METERS):
+            for _ in range(SEARCH_CONFIRM_METERS):
                 if time.monotonic() >= deadline:
                     return False
                 score = meter()

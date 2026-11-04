@@ -1032,6 +1032,33 @@ def test_regression_cli_server_url_normalizes_trailing_slash(wizard_server):
     assert wizard_server.calls[0][4] == "http://server:9000"
 
 
+@pytest.mark.parametrize("seconds,exit_code", [(45, 0), (61, 1)])
+def test_camera_mapping_budget_covers_recovery_and_stops_when_exhausted(
+    wizard_server, seconds, exit_code
+):
+    def mapping(method, path, body, timeout):
+        wizard_server.clock += min(seconds, timeout)
+        return {"status": "ok", "dots": 15} if seconds <= timeout else None
+
+    wizard_server.overrides["/api/calibrate/camera-mapping"] = mapping
+
+    result = runner.invoke(app, ["--auto"])
+
+    assert result.exit_code == exit_code, result.output
+    requests = [
+        call
+        for call in wizard_server.calls
+        if call[1] == "/api/calibrate/camera-mapping"
+    ]
+    assert len(requests) == 1
+    assert requests[0][3] == 60
+    if exit_code:
+        assert "/api/calibrate/validate" not in wizard_server.paths()
+        assert "/api/ready" not in wizard_server.paths()
+    else:
+        assert "PhysiClaw is ready" in result.output
+
+
 def test_setup_interactive_happy_path_uses_verified_steps(
     wizard_server, mocker, tmp_path
 ):

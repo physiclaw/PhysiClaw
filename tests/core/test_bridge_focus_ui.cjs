@@ -59,12 +59,12 @@ test('focus checker and tinted wordmark share the same reusable tile geometry', 
   assert.equal(brandPattern.attributes.height, pattern.attributes.height);
   assert.equal(brandPattern.attributes.patternUnits, pattern.attributes.patternUnits);
   assert.equal(brandPattern.children[0].attributes.d, pattern.children[0].attributes.d);
-  assert.equal(brandPattern.children[0].attributes.fill, '#800000');
+  assert.equal(brandPattern.children[0].attributes.fill, '#0055ff');
   assert.equal(brand.name, 'path');
   assert.equal(brand.attributes.fill, `url(#${brandPattern.attributes.id})`);
 });
 
-test('leaving focus removes the burgundy wordmark before dot-grid calibration', () => {
+test('leaving focus removes the blue wordmark before dot-grid calibration', () => {
   const renderer = focusRenderer(430, 775);
   renderer.renderCalibrate({phase: 'focus'});
   assert.equal(renderer.svg.children.length, 3);
@@ -78,7 +78,7 @@ test('leaving focus removes the burgundy wordmark before dot-grid calibration', 
 
   renderer.renderCalibrate({phase: 'focus'});
   assert.equal(renderer.svg.children.length, 3);
-  assert.equal(renderer.svg.children[0].children[1].children[0].attributes.fill, '#800000');
+  assert.equal(renderer.svg.children[0].children[1].children[0].attributes.fill, '#0055ff');
 });
 
 test('unchanged polls reuse the target and viewport changes rebuild it', () => {
