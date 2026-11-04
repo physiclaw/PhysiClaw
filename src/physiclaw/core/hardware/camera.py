@@ -134,8 +134,13 @@ def configure_capture(
     # Ugreen 4K + DirectShow can accept 1080p/1440p dimensions but silently
     # select YUY2, yielding all-zero buffers over USB. Reassert the format
     # at the final size. Other backends retain their format-first ordering.
-    if cap.get(cv2.CAP_PROP_BACKEND) == cv2.CAP_DSHOW:
+    backend = cap.get(cv2.CAP_PROP_BACKEND)
+    if backend == cv2.CAP_DSHOW:
         cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+    elif backend == cv2.CAP_V4L2:
+        # Match the kernel's focus range and native exposure units even when
+        # OPENCV_VIDEOIO_V4L_RANGE_NORMALIZED enables 0..1 controls by default.
+        cap.set(cv2.CAP_PROP_MODE, 0)
     if exposure_auto:
         platform.camera_set_auto_exposure(cap)
     else:

@@ -191,6 +191,7 @@ def test_directshow_negotiation_preserves_mjpg_and_controls(
             return super().get(prop)
 
         def set(self, prop, value):
+            assert prop != cv2.CAP_PROP_MODE, "V4L2 mode command sent to DirectShow"
             accepted = super().set(prop, value)
             if prop in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT):
                 self._properties[cv2.CAP_PROP_FOURCC] = yuy2
@@ -238,14 +239,68 @@ def test_directshow_negotiation_preserves_mjpg_and_controls(
         assert cap.get(cv2.CAP_PROP_FOCUS) == focus_value
 
 
-def test_other_backends_keep_requested_size_when_format_resets_dimensions(mocker):
+@pytest.mark.parametrize("capture_controls", ["linux"], indirect=True)
+@pytest.mark.parametrize("exposure_auto", [False, True])
+@pytest.mark.parametrize("focus_value", [None, 0.0, 137.0, 1023.0])
+def test_v4l2_configuration_uses_native_control_units(
+    capture_controls, exposure_auto, focus_value
+):
+    """Model OpenCV's optional V4L2 scaling of focus and exposure controls."""
+    ranges = {
+        cv2.CAP_PROP_FOCUS: (0, 1023),
+        cv2.CAP_PROP_EXPOSURE: (1, 5000),
+        cv2.CAP_PROP_AUTO_EXPOSURE: (0, 4),
+    }
+
+    class NormalizedCapture(FakeVideoCapture):
+        normalized = True
+
+        def get(self, prop):
+            if prop == cv2.CAP_PROP_BACKEND:
+                return cv2.CAP_V4L2
+            value = super().get(prop)
+            if self.normalized and prop in ranges:
+                low, high = ranges[prop]
+                return (value - low) / (high - low)
+            return value
+
+        def set(self, prop, value):
+            if prop == cv2.CAP_PROP_MODE:
+                self.normalized = bool(value)
+            elif self.normalized and prop in ranges:
+                low, high = ranges[prop]
+                value = max(low, min(high, round(low + value * (high - low))))
+            return super().set(prop, value)
+
+    cap = NormalizedCapture(0)
+    pinned = camera_mod.configure_capture(
+        cap, exposure_auto=exposure_auto, exposure=-6, focus_value=focus_value
+    )
+
+    assert cap._properties[cv2.CAP_PROP_AUTO_EXPOSURE] == (3 if exposure_auto else 1)
+    if not exposure_auto:
+        assert cap._properties[cv2.CAP_PROP_EXPOSURE] == 156
+    assert cap.get(cv2.CAP_PROP_AUTOFOCUS) == int(focus_value is None)
+    assert pinned == (focus_value is not None)
+    if focus_value is not None:
+        assert cap._properties[cv2.CAP_PROP_FOCUS] == focus_value
+        assert cap.get(cv2.CAP_PROP_FOCUS) == focus_value
+
+
+@pytest.mark.parametrize("backend", [cv2.CAP_MSMF, cv2.CAP_AVFOUNDATION])
+def test_other_backends_keep_requested_size_when_format_resets_dimensions(
+    mocker, backend
+):
     class FormatResetsSizeCapture(FakeVideoCapture):
         def get(self, prop):
             if prop == cv2.CAP_PROP_BACKEND:
-                return cv2.CAP_MSMF
+                return backend
             return super().get(prop)
 
         def set(self, prop, value):
+            assert prop != cv2.CAP_PROP_MODE, (
+                "V4L2 mode command sent to another backend"
+            )
             accepted = super().set(prop, value)
             if prop == cv2.CAP_PROP_FOURCC:
                 self._properties[cv2.CAP_PROP_FRAME_WIDTH] = 640
