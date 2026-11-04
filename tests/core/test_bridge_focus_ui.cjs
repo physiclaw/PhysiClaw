@@ -28,17 +28,23 @@ function focusRenderer(width, height) {
         rectangle.setAttribute(name, value);
       svg.appendChild(rectangle);
     },
+    circle(cx, cy, r, fill) {
+      const dot = new Element('circle');
+      for (const [name, value] of Object.entries({cx, cy, r, fill}))
+        dot.setAttribute(name, value);
+      svg.appendChild(dot);
+    },
   };
   vm.createContext(context);
   vm.runInContext(html.slice(start, end), context);
   return context;
 }
 
-test('fine focus checker uses one reusable SVG tile', () => {
+test('focus checker and tinted wordmark share the same reusable tile geometry', () => {
   const renderer = focusRenderer(430, 775);
   renderer.renderCalibrate({phase: 'focus'});
-  const [defs, rectangle] = renderer.svg.children;
-  const [pattern] = defs.children;
+  const [defs, rectangle, brand] = renderer.svg.children;
+  const [pattern, brandPattern] = defs.children;
   assert.equal(defs.name, 'defs');
   assert.equal(pattern.name, 'pattern');
   assert.equal(pattern.attributes.patternUnits, 'userSpaceOnUse');
@@ -49,6 +55,30 @@ test('fine focus checker uses one reusable SVG tile', () => {
   assert.equal(rectangle.attributes.fill, `url(#${pattern.attributes.id})`);
   assert.equal(Number(rectangle.attributes.width), 430);
   assert.equal(Number(rectangle.attributes.height), 775);
+  assert.equal(brandPattern.attributes.width, pattern.attributes.width);
+  assert.equal(brandPattern.attributes.height, pattern.attributes.height);
+  assert.equal(brandPattern.attributes.patternUnits, pattern.attributes.patternUnits);
+  assert.equal(brandPattern.children[0].attributes.d, pattern.children[0].attributes.d);
+  assert.equal(brandPattern.children[0].attributes.fill, '#800000');
+  assert.equal(brand.name, 'path');
+  assert.equal(brand.attributes.fill, `url(#${brandPattern.attributes.id})`);
+});
+
+test('leaving focus removes the burgundy wordmark before dot-grid calibration', () => {
+  const renderer = focusRenderer(430, 775);
+  renderer.renderCalibrate({phase: 'focus'});
+  assert.equal(renderer.svg.children.length, 3);
+
+  renderer.renderCalibrate({phase: 'grid'});
+  assert.equal(renderer.svg.children.length, 15);
+  for (const dot of renderer.svg.children) {
+    assert.equal(dot.name, 'circle');
+    assert.equal(dot.attributes.fill, '#ef4444');
+  }
+
+  renderer.renderCalibrate({phase: 'focus'});
+  assert.equal(renderer.svg.children.length, 3);
+  assert.equal(renderer.svg.children[0].children[1].children[0].attributes.fill, '#800000');
 });
 
 test('unchanged polls reuse the target and viewport changes rebuild it', () => {
@@ -58,6 +88,6 @@ test('unchanged polls reuse the target and viewport changes rebuild it', () => {
   renderer.W = 600;
   renderer.renderCalibrate({phase: 'focus'});
   assert.equal(renderer.clears, 2);
-  assert.equal(renderer.svg.children.length, 2);
+  assert.equal(renderer.svg.children.length, 3);
   assert.equal(Number(renderer.svg.children[0].children[0].attributes.width), 12);
 });

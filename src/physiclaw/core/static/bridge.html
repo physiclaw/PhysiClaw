@@ -279,18 +279,57 @@ body.mode-bridge #bridge-layer{
       case 'focus':
         var cell = Math.min(W, H) * 0.01;
         var defs = document.createElementNS(svg.namespaceURI, 'defs');
-        var checker = document.createElementNS(svg.namespaceURI, 'pattern');
-        checker.setAttribute('id', 'focus-checker');
-        checker.setAttribute('patternUnits', 'userSpaceOnUse');
-        checker.setAttribute('width', cell*2);
-        checker.setAttribute('height', cell*2);
-        var squares = document.createElementNS(svg.namespaceURI, 'path');
-        squares.setAttribute('d', 'M0 0h'+cell+'v'+cell+'H0z M'+cell+' '+cell+'h'+cell+'v'+cell+'h-'+cell+'z');
-        squares.setAttribute('fill', '#000');
-        checker.appendChild(squares);
-        defs.appendChild(checker);
+        var addChecker = function(id, fill){
+          var pattern = document.createElementNS(svg.namespaceURI, 'pattern');
+          pattern.setAttribute('id', id);
+          pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+          pattern.setAttribute('width', cell*2);
+          pattern.setAttribute('height', cell*2);
+          var squares = document.createElementNS(svg.namespaceURI, 'path');
+          squares.setAttribute('d', 'M0 0h'+cell+'v'+cell+'H0z M'+cell+' '+cell+'h'+cell+'v'+cell+'h-'+cell+'z');
+          squares.setAttribute('fill', fill);
+          pattern.appendChild(squares);
+          defs.appendChild(pattern);
+        };
+        addChecker('focus-checker', '#000');
+        addChecker('focus-brand-checker', '#800000');
         svg.appendChild(defs);
         rect(0, 0, W, H, 'url(#focus-checker)', 0);
+
+        var glyphs = [
+          ['0111110','1111111','1100011','1100011','1100011','1111111','1111110','1100000','1100000','1100000','1100000'], // P
+          ['0100010','1100011','1100011','1100011','1111111','1111111','1100011','1100011','1100011','1100011','1100010'], // H
+          ['1100011','1100011','1100011','0110110','0011100','0011100','0011100','0011100','0011100','0011100','0011100'], // Y
+          ['0011111','0111111','1110001','1100000','1111100','0111110','0000111','0000011','1000011','1111110','1111100'], // S
+          ['0111110','1111111','0011100','0011100','0011100','0011100','0011100','0011100','0011100','1111111','0111110'], // I
+          ['0011111','0111111','1110011','1100001','1100000','1100000','1100000','1100001','1110011','0111111','0011111'], // C
+          ['0100000','1100000','1100000','1100000','1100000','1100000','1100000','1100000','1100011','1111111','1111110'], // L
+          ['0011110','0111111','1110011','1100011','1100011','1111111','1111111','1100011','1100011','1100011','1100010'], // A
+          ['0100010','1100011','1100011','1100011','1100011','1100011','1101011','1101011','1111111','1111111','0110110']  // W
+        ];
+        var glyphHeight = glyphs[0].length;
+        var glyphWidth = glyphs[0][0].length;
+        var glyphAdvance = glyphWidth+1;
+        var wordLength = glyphs.length*glyphAdvance-1;
+        var maxUnit = Math.min(W*0.6/glyphHeight, H*0.9/wordLength);
+        var unit = cell*Math.max(1, Math.floor(maxUnit/cell));
+        var brandX = Math.round((W-glyphHeight*unit)/(2*cell))*cell;
+        var brandY = Math.round((H-wordLength*unit)/(2*cell))*cell;
+        var pixels = '';
+        for(var gi=0; gi<glyphs.length; gi++)
+          for(var gy=0; gy<glyphHeight; gy++)
+            for(var gx=0; gx<glyphWidth; gx++)
+              if(glyphs[gi][gy][gx] === '1'){
+                var px = brandX+(glyphHeight-1-gy)*unit;
+                var py = brandY+(gi*glyphAdvance+gx)*unit;
+                pixels += 'M'+px+' '+py+'h'+unit+'v'+unit+'h-'+unit+'z ';
+              }
+        var brand = document.createElementNS(svg.namespaceURI, 'path');
+        brand.setAttribute('d', pixels);
+        brand.setAttribute('fill', 'url(#focus-brand-checker)');
+        brand.setAttribute('aria-hidden', 'true');
+        brand.setAttribute('pointer-events', 'none');
+        svg.appendChild(brand);
         break;
       case 'grid':
         var grid = data.grid || {cols: [0.25, 0.50, 0.75], rows: [0.20, 0.40, 0.50, 0.60, 0.80]};
