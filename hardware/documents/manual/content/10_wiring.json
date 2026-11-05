@@ -139,10 +139,10 @@
         }
       },
       {
-        "style": "position:absolute; left:18mm; top:118mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
+        "style": "position:absolute; left:18mm; top:115mm; font-size:10pt; font-weight:400; color:var(--accent); z-index:2;",
         "text": {
-          "en": "Solenoid (spindle)",
-          "zh": "电磁铁（主轴）"
+          "en": "Solenoid<br>(spindle)",
+          "zh": "电磁铁<br>（主轴）"
         }
       },
       {

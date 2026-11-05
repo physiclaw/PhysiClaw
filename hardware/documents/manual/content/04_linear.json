@@ -156,7 +156,7 @@
           "zh": "调整远离电机一侧的惰轮支座。确认两根 Y 导轨的末端都紧靠支座。"
         },
         "classes": "note overlay sm",
-        "style": "right:5mm; top:0mm; width:60mm;"
+        "style": "left:0mm; top:0mm; width:70mm;"
       },
       {
         "h3": {
