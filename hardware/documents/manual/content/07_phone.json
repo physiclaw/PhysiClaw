@@ -218,8 +218,8 @@
           "zh": "调整电磁铁高度"
         },
         "body": {
-          "en": "Set the solenoid height so that the stylus tip just makes stable contact with the screen. If the solenoid is too low, it cannot pull in fully. The magnetic force is then too weak to hold the tip down. The tip springs back, so long presses and swipes fail. If the solenoid is too high, the tip cannot reach the screen, or the contact patch is too small.",
-          "zh": "调整电磁铁的安装高度，使触控笔尖刚好触及屏幕，并能保持稳定接触。电磁铁过低时无法完全吸合，吸力不足以压住笔尖，笔尖弹回，长按和滑动都会失败。电磁铁过高时，笔尖够不到屏幕，或接触面太小。"
+          "en": "Set the solenoid height so that, when the solenoid is fully pulled in, the stylus tip just touches the screen and maintains stable contact. If the solenoid is too low, it cannot pull in fully. The magnetic force is then too weak to hold the tip down. The tip springs back, so long presses and swipes fail. If the solenoid is too high, the tip cannot reach the screen, or the contact patch is too small.",
+          "zh": "调整电磁铁的安装高度，使电磁铁完全吸合后，触控笔尖刚好触及屏幕，并能保持稳定接触。电磁铁过低时无法完全吸合，吸力不足以压住笔尖，笔尖弹回，长按和滑动都会失败。电磁铁过高时，笔尖够不到屏幕，或接触面太小。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:80mm; width:90mm;"
