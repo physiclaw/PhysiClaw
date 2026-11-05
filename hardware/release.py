@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from collections.abc import Callable
 from html.parser import HTMLParser
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -126,6 +127,24 @@ class _AssetReferences(HTMLParser):
                     self.refs.append(value)
 
 
+def _document_assets(name: str, data: bytes) -> set[str]:
+    parser = _AssetReferences()
+    parser.feed(data.decode("utf-8"))
+    assets = set()
+    for ref in parser.refs:
+        url = urlsplit(ref)
+        if url.scheme == "data":
+            continue
+        if url.scheme or url.netloc:
+            raise ReleaseError(f"Offline document depends on remote asset: {ref}")
+        local = unquote(url.path)
+        target = Path(name).parent / local
+        if target.is_absolute() or ".." in target.parts or "\\" in local:
+            raise ReleaseError(f"Missing or unsafe document asset: {name}: {ref}")
+        assets.add(target.as_posix())
+    return assets
+
+
 def _validate_members(members: dict[str, bytes]) -> None:
     for name, data in members.items():
         path = Path(name)
@@ -133,24 +152,10 @@ def _validate_members(members: dict[str, bytes]) -> None:
             raise ReleaseError(f"Unsafe archive path: {name}")
         _validate_bytes(name, data)
         if path.suffix == ".html":
-            parser = _AssetReferences()
-            parser.feed(data.decode("utf-8"))
-            for ref in parser.refs:
-                url = urlsplit(ref)
-                if url.scheme == "data":
-                    continue
-                if url.scheme or url.netloc:
+            for target in _document_assets(name, data):
+                if target not in members:
                     raise ReleaseError(
-                        f"Offline document depends on remote asset: {ref}"
-                    )
-                target = path.parent / unquote(url.path)
-                if (
-                    target.is_absolute()
-                    or ".." in target.parts
-                    or target.as_posix() not in members
-                ):
-                    raise ReleaseError(
-                        f"Missing or unsafe document asset: {name}: {ref}"
+                        f"Missing or unsafe document asset: {name}: {target}"
                     )
 
 
@@ -175,6 +180,28 @@ def _required_documents(mapping: dict[str, str], directory: str, pdf: bool) -> s
     return names
 
 
+DOCUMENTS = {
+    MANUAL_ZIP: _required_documents(MANUALS, "manual", True),
+    SOURCING_ZIP: _required_documents(SOURCING, "sourcing", False)
+    | _required_documents(DRAWINGS, "drawing", True),
+}
+
+
+def _document_names(required: set[str], read: Callable[[str], bytes]) -> set[str]:
+    names = set(required)
+    for name in sorted(required):
+        if Path(name).suffix == ".html":
+            names.update(_document_assets(name, read(name)))
+    return names
+
+
+def _document_files(output: Path, required: set[str]) -> list[Path]:
+    for name in sorted(required):
+        _regular(output / name)
+    names = _document_names(required, lambda name: (output / name).read_bytes())
+    return [output / name for name in names]
+
+
 def validate_assets(bundle: Path) -> None:
     for name in ASSETS:
         path = bundle / name
@@ -183,25 +210,30 @@ def validate_assets(bundle: Path) -> None:
             _validate_bytes(name, path.read_bytes())
     print_parts = _read_zip(bundle / PRINT_ZIP)
     guides = {"3d_printed_parts_guide.txt", "3d打印零件说明.txt"}
-    if not guides.issubset(print_parts) or not any(
-        n.endswith(".step") for n in print_parts
-    ):
+    steps = {
+        name
+        for name in print_parts
+        if Path(name).suffix == ".step" and len(Path(name).parts) == 1
+    }
+    if not guides.issubset(print_parts) or not steps:
         raise ReleaseError("Print package is missing its parts or bilingual guides")
+    if set(print_parts) != guides | steps:
+        raise ReleaseError("Print package contains unexpected files")
     frame = _read_zip(bundle / FRAME_ZIP)
     if set(frame) != {FRAME_STEP}:
         raise ReleaseError(
             "Camera-frame archive must contain exactly its assembled STEP"
         )
-    manual = _read_zip(bundle / MANUAL_ZIP)
-    sourcing = _read_zip(bundle / SOURCING_ZIP)
-    if not _required_documents(MANUALS, "manual", True).issubset(manual):
-        raise ReleaseError("Manual must include HTML and PDF in both languages")
-    required = _required_documents(SOURCING, "sourcing", False)
-    required |= _required_documents(DRAWINGS, "drawing", True)
-    if not required.issubset(sourcing):
-        raise ReleaseError("Sourcing package is missing a guide or extrusion drawing")
+    documents = {name: _read_zip(bundle / name) for name in DOCUMENTS}
+    for archive, required in DOCUMENTS.items():
+        members = documents[archive]
+        if not required.issubset(members):
+            raise ReleaseError(f"Document package is missing required files: {archive}")
+        expected = _document_names(required, members.__getitem__)
+        if set(members) != expected:
+            raise ReleaseError(f"Document package contains unexpected files: {archive}")
     for pdf in DRAWING_PDFS.values():
-        if sourcing[f"drawing/{pdf}"] != (bundle / pdf).read_bytes():
+        if documents[SOURCING_ZIP][f"drawing/{pdf}"] != (bundle / pdf).read_bytes():
             raise ReleaseError(f"Direct and bundled extrusion drawings differ: {pdf}")
 
 
@@ -297,14 +329,8 @@ def prepare(version: str) -> Path:
             buildlog.retain_logs(output / "logs")
         shutil.copyfile(output / "print_3d" / PRINT_ZIP, bundle / PRINT_ZIP)
         _zip(bundle / FRAME_ZIP, output / "step", [output / "step" / FRAME_STEP])
-        for name, directories in (
-            (MANUAL_ZIP, ["manual"]),
-            (SOURCING_ZIP, ["sourcing", "drawing"]),
-        ):
-            files = [
-                p for d in directories for p in (output / d).rglob("*") if p.is_file()
-            ]
-            _zip(bundle / name, output, files)
+        for name, required in DOCUMENTS.items():
+            _zip(bundle / name, output, _document_files(output, required))
         for pdf in DRAWING_PDFS.values():
             shutil.copyfile(output / "drawing" / pdf, bundle / pdf)
         validate_assets(bundle)

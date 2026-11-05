@@ -471,10 +471,11 @@ uv run            python -m hardware drawing --pdf                # the extrusio
 Each `physiclaw-hardware-vX.Y` release bundles four zips and two PDFs
 packaged in a private output tree using validated CAD cache entries:
 
-- **Assembly manual** — the whole `manual/` folder (HTML + PDF in English
-  and 中文, plus the step figures).
-- **Sourcing guide** — the `sourcing/` folder (HTML in English and 中文)
-  together with the `drawing/` folder (the extrusion tech drawing, HTML + PDF).
+- **Assembly manual** — HTML + PDF in English and 中文, plus only the local
+  assets referenced by those HTML editions, under `manual/`.
+- **Sourcing guide** — HTML in English and 中文 under `sourcing/`, together
+  with the extrusion tech drawings (HTML + PDF) under `drawing/` and their
+  referenced local assets.
 - **Extrusion tech drawing PDFs** — `physiclaw_extrusion_drawing_en.pdf`
   (EN then ZH, 2 pages) and `_zh.pdf` (ZH, 1 page). The sourcing guide links
   to `releases/latest/download/`; the docs site uses `/downloads/`.
@@ -497,7 +498,10 @@ language editions of the manual, sourcing guide and extrusion drawings. It uses 
 private output directory and shares only the persistent CAD cache. Source keys,
 required files and SHA-256 checksums must match before any cached output is restored;
 changed or damaged entries rebuild automatically. Manual-only edits reuse CAD work.
-Interactive output files are never packaged. Dependencies use `uv --locked`.
+Interactive output files are never packaged. Document archives select the named
+editions and their referenced local assets, rather than entire output directories;
+review reports, previews, logs and unused assets are excluded. Dependencies use
+`uv --locked`.
 Missing Chrome, failed PDFs, annotation errors and incomplete CAD outputs stop the
 command. A small PDF render checks browser launch permissions before CAD work starts.
 
@@ -510,8 +514,10 @@ The resulting bundle is stored at
 `hardware/output/release/physiclaw-hardware-vX.Y/`: four zips, two PDFs and
 `manifest.json`. The manifest records the exact Git commit, a digest of source
 files, the Python/CAD toolchain versions and each asset's SHA-256. Verification
-checks the exact asset set, checksums, basic file integrity, bilingual documents,
-local image references and matching copies of the extrusion PDFs. Repeating preparation
+checks the exact asset set and document archive contents, checksums, basic file
+integrity, bilingual documents, local image references and matching copies of the
+extrusion PDFs. Print archives allow only root-level STEP files and the two parts
+guides; the camera-frame archive contains only its named STEP. Repeating preparation
 reuses an existing bundle only after it passes verification against the current commit
 and sources. Stale or damaged bundles stop the command. To rebuild the same version,
 move its generated directory aside after reviewing why it failed.

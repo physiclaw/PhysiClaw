@@ -30,6 +30,14 @@ def write_zip(path, members):
             archive.writestr(name, data)
 
 
+def rewrite_zip_and_rehash(bundle, archive, members):
+    path = bundle / archive
+    write_zip(path, members)
+    manifest = json.loads((bundle / rel.MANIFEST).read_text(encoding="utf-8"))
+    manifest["artifacts"][archive] = rel.digest(path)
+    (bundle / rel.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
+
+
 def build_outputs(root):
     for directory, mapping, pdf in (
         ("manual", rel.MANUALS, True),
@@ -127,6 +135,54 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
     count = len(preparation)
     assert rel.prepare(VERSION) == bundle
     assert len(preparation) == count
+
+
+def test_prepare_excludes_unrelated_files_but_keeps_referenced_assets(
+    preparation, monkeypatch
+):
+    stage = rel._stage
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+    assets = {
+        f"manual/assets/{name}": svg
+        for name in ("shared.svg", "detail view.svg", "assembled.svg")
+    }
+
+    def stage_with_extras(output, *args):
+        stage(output, *args)
+        if args[0] != "manual":
+            return
+        for name, data in {
+            **assets,
+            "manual/visual-review.json": b'{"result":"pass"}',
+            "manual/.DS_Store": b"Finder metadata",
+            "manual/preview.html": HTML,
+            "manual/assets/unused.svg": svg,
+            "manual/assets/visual-review.json": b"{}",
+            "sourcing/debug.log": b"debug output",
+            "sourcing/preview.html": HTML,
+            "drawing/visual-review.json": b"{}",
+            "drawing/screenshots/preview.png": b"preview",
+        }.items():
+            path = output / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        for lang, image in [("en", "detail%20view.svg"), ("zh", "assembled.svg")]:
+            (output / "manual" / rel.MANUALS[lang]).write_text(
+                '<html><head><link rel="preload" href="assets/shared.svg"></head>'
+                f'<body><img src="assets/{image}"><img src="assets/shared.svg">'
+                '<img src="data:image/svg+xml;base64,PHN2Zy8+"></body></html>',
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(rel, "_stage", stage_with_extras)
+    bundle = rel.prepare(VERSION)
+    manual = rel._read_zip(bundle / rel.MANUAL_ZIP)
+    assert set(manual) == rel.DOCUMENTS[rel.MANUAL_ZIP] | assets.keys()
+    assert all(manual[name] == data for name, data in assets.items())
+    assert (
+        set(rel._read_zip(bundle / rel.SOURCING_ZIP)) == rel.DOCUMENTS[rel.SOURCING_ZIP]
+    )
+    rel.verify(VERSION)
 
 
 def test_stage_failure_never_leaves_a_publishable_bundle(preparation, monkeypatch):
@@ -234,16 +290,32 @@ def test_stale_source_bundle_is_rejected(bundle, monkeypatch):
 
 
 def test_manifest_cannot_bless_broken_offline_document(bundle):
-    path = bundle / rel.MANUAL_ZIP
-    with zipfile.ZipFile(path) as archive:
-        members = {name: archive.read(name) for name in archive.namelist()}
+    members = rel._read_zip(bundle / rel.MANUAL_ZIP)
     name = f"manual/{rel.MANUALS['en']}"
     members[name] = b'<html><img src="assets/missing.svg"></html>'
-    write_zip(path, members)
-    manifest = json.loads((bundle / rel.MANIFEST).read_text(encoding="utf-8"))
-    manifest["artifacts"][rel.MANUAL_ZIP] = rel.digest(path)
-    (bundle / rel.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
+    rewrite_zip_and_rehash(bundle, rel.MANUAL_ZIP, members)
     with pytest.raises(rel.ReleaseError, match="Missing or unsafe"):
+        rel.verify(VERSION)
+
+
+@pytest.mark.parametrize(
+    ("archive", "name", "data"),
+    [
+        (rel.MANUAL_ZIP, "manual/visual-review.json", b"{}"),
+        (rel.MANUAL_ZIP, "manual/preview.html", HTML),
+        (rel.MANUAL_ZIP, "manual/assets/unused.svg", b"<svg/>"),
+        (rel.SOURCING_ZIP, "sourcing/visual-review.json", b"{}"),
+        (rel.SOURCING_ZIP, "drawing/preview.html", HTML),
+        (rel.PRINT_ZIP, "visual-review.json", b"{}"),
+        (rel.PRINT_ZIP, "nested/part_x1.step", STEP),
+        (rel.FRAME_ZIP, "extra.txt", b"unrelated"),
+    ],
+)
+def test_manifest_cannot_bless_unexpected_archive_files(bundle, archive, name, data):
+    members = rel._read_zip(bundle / archive)
+    members[name] = data
+    rewrite_zip_and_rehash(bundle, archive, members)
+    with pytest.raises(rel.ReleaseError, match="unexpected|exactly"):
         rel.verify(VERSION)
 
 
