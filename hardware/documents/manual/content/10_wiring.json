@@ -46,7 +46,7 @@
           "zh": "控制板通电时，切勿插拔驱动。"
         },
         "classes": "note overlay sm",
-        "style": "left:60mm; top:30mm; width:90mm;"
+        "style": "left:30mm; top:30mm; width:90mm;"
       },
       {
         "h3": {
@@ -55,7 +55,7 @@
         },
         "body": {
           "en": "Do not install a TMC2209 reversed. It can burn out when the power comes on. Before you press a driver into its header, make sure that its pin labels match the silkscreen.",
-          "zh": "不要把 TMC2209 装反。否则上电时可能烧毁。压入前，确认每个驱动的引脚标识与板上丝印一致。"
+          "zh": "不要把 TMC2209 装反，否则上电时可能烧毁。压入前，确认每个驱动的引脚标识与板上丝印一致。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:100mm; width:90mm;"
@@ -82,7 +82,7 @@
           "zh": "TMC2209 驱动模块通常自带散热片。把散热片贴在驱动芯片顶部。"
         },
         "classes": "note overlay sm",
-        "style": "left:60mm; bottom:32mm; width:90mm;"
+        "style": "left:30mm; bottom:32mm; width:90mm;"
       }
     ],
     "bom": {
@@ -197,7 +197,7 @@
           "zh": "电磁铁的两根引线可任意接主轴（Spindle）端子。"
         },
         "classes": "note overlay sm",
-        "style": "left:16mm; top:30mm; width:100mm;"
+        "style": "left:30mm; top:30mm; width:100mm;"
       },
       {
         "h3": {
@@ -206,7 +206,7 @@
         },
         "body": {
           "en": "The motor side is a 6-pin PH2.0 (2.0 mm pitch); 2 pins stay empty. The board side is a 4-pin XH2.54 (2.54 mm pitch). Each connector is keyed and fits in one orientation only. Align the key on the plug with the notch on the socket. Do not force the plug in.",
-          "zh": "电机侧为 6 针 PH2.0（2.0 mm 间距），2 针空置。控制板侧为 4 针 XH2.54（2.54 mm 间距）。接头带防呆结构，仅能单向插入。把插头凸起对准插座缺口。切勿强行插入。"
+          "zh": "电机侧为 6 针 PH2.0（2.0 mm 间距），2 针空置。控制板侧为 4 针 XH2.54（2.54 mm 间距）。接头带防呆结构，仅能单向插入。把插头凸起对准插座缺口，切勿强行插入。"
         },
         "classes": "note overlay sm",
         "style": "left:30mm; top:145mm; width:110mm;"
@@ -283,7 +283,7 @@
         },
         "body": {
           "en": "Before you splice, cut the solenoid's stock leads back to 50 mm or less. The joints then sit clear of where the cable bends most. A joint that flexes with every gesture fatigues and snaps.",
-          "zh": "接长前，先把原装引线剪到 50 mm 以内。这样接头就避开了线束弯曲最大的位置。接头若随每次动作弯折，会疲劳断裂。"
+          "zh": "接长前，先把原装引线剪到 50 mm 以内，这样接头就避开了线束弯曲最大的位置。接头若随每次动作弯折，会疲劳断裂。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:25mm; width:100mm;"
@@ -354,7 +354,7 @@
         },
         "body": {
           "en": "The stylus rides on the solenoid's iron core. The metal return spring ties the core to the housing. Do not use the control board's GND. Ground the housing. The core and the stylus tip are then grounded too.",
-          "zh": "触控笔装在电磁铁的铁芯上。铁芯通过金属回位弹簧与外壳相连。不要用控制板的 GND。把外壳接地。铁芯和触控笔尖随之接地。"
+          "zh": "触控笔装在电磁铁的铁芯上，铁芯通过金属回位弹簧与外壳相连。不要用控制板的 GND。把外壳接地，铁芯和触控笔尖随之接地。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:22mm; width:150mm; max-width:150mm;"
@@ -366,7 +366,7 @@
         },
         "body": {
           "en": "A capacitive screen senses a touch through capacitive coupling to ground. A finger works because the body is a large conductor tied to earth. An ungrounded stylus couples to earth too weakly. A tap then shifts the screen's charge distribution only slightly, and the phone registers the touch unreliably. A verified ground restores that coupling and steadies the touch.",
-          "zh": "电容屏通过触摸物与大地的电容耦合感应触摸。手指能触发屏幕，是因为人体是与大地相连的大导体。未接地的触控笔与大地的耦合太弱。点击时屏幕的电荷分布变化很小，识别就不稳定。接到可靠的接地点后，耦合恢复，触摸识别随之稳定。"
+          "zh": "电容屏通过触摸物与大地的电容耦合感应触摸。手指能触发屏幕，是因为人体是与大地相连的大导体。未接地的触控笔与大地的耦合太弱，点击时屏幕的电荷分布变化很小，识别就不稳定。接到可靠的接地点后，耦合恢复，触摸识别随之稳定。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:45mm; width:150mm; max-width:150mm;"
@@ -378,7 +378,7 @@
         },
         "body": {
           "en": "Never put the ground wire into a wall outlet. Connect the housing to earth ground. The simplest option is a desktop PC chassis grounded through a three-prong outlet. Clip the wire to bare metal on the chassis. The chassis reaches earth through the mains and gives a stable reference.",
-          "zh": "切勿把接地线插入墙壁插座。把外壳接到大地。最简单的办法是用台式电脑机箱。电脑经三脚插座接地，把接地线夹在机箱裸露的金属上即可。机箱经市电地线连到大地，接地参考稳定。"
+          "zh": "切勿把接地线插入墙壁插座。把外壳接到大地，最简单的办法是用台式电脑机箱。电脑经三脚插座接地，把接地线夹在机箱裸露的金属上即可。机箱经市电地线连到大地，接地参考稳定。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:82mm; width:150mm; max-width:150mm;"
@@ -402,7 +402,7 @@
         },
         "body": {
           "en": "Never put the ground wire into a wall outlet. Mains voltage (220 V/120 V) is lethal. If the wire touches the live terminal instead of earth, the shock is fatal. The same contact destroys the phone and the equipment instantly. Connect only to a verified ground point.",
-          "zh": "切勿把接地线插入墙壁插座。市电（220 V/120 V）足以致命。接地线一旦碰到火线，会造成致命触电。手机和设备也会瞬间烧毁。只能接到已确认可靠的接地点。"
+          "zh": "切勿把接地线插入墙壁插座。市电（220 V/120 V）足以致命。接地线一旦碰到火线，会造成致命触电，手机和设备也会瞬间烧毁。只能接到已确认可靠的接地点。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:150mm; width:150mm; max-width:150mm; display:flex; gap:4mm; align-items:flex-start;",

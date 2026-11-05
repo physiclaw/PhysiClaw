@@ -207,7 +207,7 @@
         },
         "body": {
           "en": "Put a phone on the bed, against the top-left corner. Slide the X carriage over the whole screen. Make sure that the stylus tip reaches every part of the screen.",
-          "zh": "把手机放到托架上，抵住左上角。在整个屏幕范围内推动 X 滑座。确认触控笔尖能触及屏幕的每个位置。"
+          "zh": "把手机放到托架上，抵住左上角。在整个屏幕范围内推动 X 滑座，确认触控笔尖能触及屏幕的每个位置。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:50mm; width:90mm;"
@@ -219,7 +219,7 @@
         },
         "body": {
           "en": "Set the solenoid height so that the stylus tip just makes stable contact with the screen. If the solenoid is too low, it cannot pull in fully. The magnetic force is then too weak to hold the tip down. The tip springs back, so long presses and swipes fail. If the solenoid is too high, the tip cannot reach the screen, or the contact patch is too small.",
-          "zh": "调整电磁铁高度，使触控笔尖恰好稳定接触屏幕。电磁铁过低时无法完全吸合，吸力不足以压住笔尖。笔尖弹回，长按和滑动都会失败。电磁铁过高时，笔尖够不到屏幕，或接触面太小。"
+          "zh": "调整电磁铁高度，使触控笔尖恰好稳定接触屏幕。电磁铁过低时无法完全吸合，吸力不足以压住笔尖，笔尖弹回，长按和滑动都会失败。电磁铁过高时，笔尖够不到屏幕，或接触面太小。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:80mm; width:90mm;"
@@ -231,7 +231,7 @@
         },
         "body": {
           "en": "The rear camera bump lifts one corner, so the phone does not lie flat. Put a piece of thin card or a few sheets of paper under the low edge. Add more until the screen is level. Make sure that the phone cannot rock or shift when the stylus taps. Any tilt or wobble causes missed taps.",
-          "zh": "后置摄像头的凸起会顶起手机一角，手机无法放平。在较低的一边垫几张纸或一片薄卡纸。垫到屏幕水平为止。确认触控笔点击时手机不晃动、不移位。稍有倾斜或松动，点击就会失准。"
+          "zh": "后置摄像头的凸起会顶起手机一角，手机无法放平。在较低的一边垫几张纸或一片薄卡纸，垫到屏幕水平为止。确认触控笔点击时手机不晃动、不移位。稍有倾斜或松动，点击就会失准。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:135mm; width:90mm; display:flex; gap:4mm; align-items:flex-start;",

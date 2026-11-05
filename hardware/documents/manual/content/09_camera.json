@@ -42,7 +42,7 @@
         },
         "body": {
           "en": "The SHCS and hex nut for the gooseneck are 1/4-20, the imperial tripod thread (≈ 6.35 mm). Do not use an M6 instead.",
-          "zh": "金属软管用 1/4-20 圆柱头螺栓和六角螺母。1/4-20 是英制三脚架螺纹（约 6.35 mm）。不要用 M6 代替。"
+          "zh": "金属软管用 1/4-20 圆柱头螺栓和六角螺母。1/4-20 是英制三脚架螺纹（约 6.35 mm），不要用 M6 代替。"
         },
         "classes": "note overlay sm",
         "style": "left:120mm; top:30mm; width:70mm;"
@@ -54,7 +54,7 @@
         },
         "body": {
           "en": "The 1/4-20 SHCS takes a 3/16\" hex key. The 1/4-20 hex nut takes a 7/16\" (or metric 11 mm) open-end wrench. Needle-nose pliers also do the job. There is no need to buy tools for this.",
-          "zh": "1/4-20 圆柱头螺栓用 3/16\" 内六角扳手。1/4-20 六角螺母用 7/16\"（或公制 11 mm）开口扳手。也可用尖嘴钳代替。无需专门购买工具。"
+          "zh": "1/4-20 圆柱头螺栓用 3/16\" 内六角扳手，1/4-20 六角螺母用 7/16\"（或公制 11 mm）开口扳手。也可用尖嘴钳代替，无需专门购买工具。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:120mm; width:70mm;"

@@ -41,7 +41,7 @@
         },
         "body": {
           "en": "Put the M5 square nut and the M5×10 BHCS into the middle counterbore first. The idler stacks block access to it later.",
-          "zh": "先把 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔。两侧惰轮装上后会挡住这个沉孔。"
+          "zh": "先把 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔，两侧惰轮装上后会挡住这个沉孔。"
         },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"
@@ -77,7 +77,7 @@
         },
         "body": {
           "en": "The print can leave powder in the pocket. If a side square nut does not go in, clear the pocket with a small screwdriver or a pin.",
-          "zh": "打印件方槽内可能有残留粉末。如果侧面四方螺母放不到位，用小螺丝刀或细针清理方槽。"
+          "zh": "打印件方槽内可能有残留粉末，如果侧面四方螺母放不到位，用小螺丝刀或细针清理方槽。"
         },
         "classes": "note overlay sm",
         "style": "left:135mm; top:155mm; width:70mm;"
@@ -190,7 +190,7 @@
         },
         "body": {
           "en": "The middle M5 screw threads into a slide-in T-nut in the extrusion slot. The flat bracket bridges the idler mount and the frame. On the bracket, the longer M5×12 BHCS threads into the captive square nut of the idler mount. The M5×10 BHCS threads into the drop-in T-nut in the extrusion slot.",
-          "zh": "中间的 M5 螺栓拧入型材槽内的滑块螺母。一字连接板连接惰轮支座和框架。连接板上较长的 M5×12 半圆头螺栓拧入惰轮支座的预埋四方螺母。M5×10 半圆头螺栓拧入型材槽内的船形螺母。"
+          "zh": "中间的 M5 螺栓拧入型材槽内的滑块螺母。一字连接板连接惰轮支座和框架。连接板上较长的 M5×12 半圆头螺栓拧入惰轮支座的预埋四方螺母，M5×10 半圆头螺栓拧入型材槽内的船形螺母。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:30mm; width:80mm;"
@@ -278,7 +278,7 @@
         },
         "body": {
           "en": "The idler is 8.5 mm, the spacer 9 mm, a shim 0.5 mm. Use shims and spacers to bring every idler stack to 18 mm.",
-          "zh": "惰轮高 8.5 mm、轴套高 9 mm、垫片厚 0.5 mm。用垫片和轴套把每个惰轮组统一调到 18 mm。"
+          "zh": "惰轮高 8.5 mm、轴套高 9 mm、垫片厚 0.5 mm，用垫片和轴套把每个惰轮组统一调到 18 mm。"
         },
         "classes": "note overlay sm",
         "style": "left:105mm; top:40mm; width:80mm;"
@@ -290,7 +290,7 @@
         },
         "body": {
           "en": "The spacer is 9 mm tall. If you cannot buy a 9 mm spacer, stack shorter spacers to a total of 9 mm.",
-          "zh": "轴套高 9 mm。如果买不到 9 mm 轴套，用较短的轴套叠加到 9 mm。"
+          "zh": "轴套高 9 mm，如果买不到 9 mm 轴套，用较短的轴套叠加到 9 mm。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:82mm; width:80mm;"
@@ -490,7 +490,7 @@
         },
         "body": {
           "en": "This idler carries the Motor A belt. It has no spacer, so it rides on the lower belt plane.",
-          "zh": "这个惰轮承载电机 A 的同步带。不加轴套，因此位于下层同步带平面。"
+          "zh": "这个惰轮承载电机 A 的同步带，不加轴套，因此位于下层同步带平面。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:90mm; width:80mm;"

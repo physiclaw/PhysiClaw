@@ -65,7 +65,7 @@
         },
         "body": {
           "en": "1. Thread all 4 motor screws in by hand. 2. Tighten opposite corners in pairs. This pulls the motor flat against the bracket.",
-          "zh": "1. 先用手拧上 4 颗电机螺栓。2. 按对角成对拧紧。这样电机才能平贴支架。"
+          "zh": "1. 先用手拧上 4 颗电机螺栓。2. 按对角成对拧紧，这样电机才能平贴支架。"
         },
         "classes": "note overlay sm",
         "style": "left:125mm; top:75mm; width:70mm;"
@@ -162,7 +162,7 @@
         },
         "body": {
           "en": "Tighten until snug. After you tension the belt, tighten fully.",
-          "zh": "先拧到贴合。同步带张紧后再拧紧。"
+          "zh": "先拧到贴合，同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:128mm; width:80mm;"
@@ -207,7 +207,7 @@
         },
         "body": {
           "en": "Install it like the left motor, as a mirror image. The motor connector faces right.",
-          "zh": "安装方式与左边电机相同，但左右镜像。接线端子朝右。"
+          "zh": "安装方式与左边电机相同，但左右镜像，接线端子朝右。"
         },
         "classes": "note overlay sm",
         "style": "left:120mm; top:130mm; width:80mm;"
@@ -304,7 +304,7 @@
         },
         "body": {
           "en": "Tighten until snug. After you tension the belt, tighten fully.",
-          "zh": "先拧到贴合。同步带张紧后再拧紧。"
+          "zh": "先拧到贴合，同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:150mm; width:78mm;"
@@ -338,7 +338,7 @@
         },
         "body": {
           "en": "The Motor A belt and the Motor B belt sit at different heights. The pulley of Motor A (left) sits on the lower belt plane. The pulley of Motor B (right) sits on the upper belt plane. Slide each pulley along its motor shaft to its plane.",
-          "zh": "电机 A 和电机 B 的同步带高度不同。电机 A 的同步轮（左）位于下层同步带平面。电机 B 的同步轮（右）位于上层同步带平面。把每个同步轮沿电机轴滑到对应的平面。"
+          "zh": "电机 A 和电机 B 的同步带高度不同。电机 A 的同步轮（左）位于下层同步带平面，电机 B 的同步轮（右）位于上层同步带平面。把每个同步轮沿电机轴滑到对应的平面。"
         },
         "classes": "note overlay sm",
         "style": "left:40mm; top:15mm; width:90mm;"

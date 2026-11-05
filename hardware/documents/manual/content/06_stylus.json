@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "Install the capacitive stylus tip on the push-pull solenoid. Then install the two together onto the X carriage.",
-      "zh": "把电容触控笔尖装到推拉式电磁铁上。再把两者一起装到 X 滑座上。"
+      "zh": "把电容触控笔尖装到推拉式电磁铁上，再把两者一起装到 X 滑座上。"
     }
   },
   {
@@ -54,7 +54,7 @@
         },
         "body": {
           "en": "Before you install the solenoid on the mount, make the positive and negative leads longer. Refer to Wiring — Extend the leads.",
-          "zh": "把电磁铁装到支架上之前，先接长正负极引线。方法见“接线 — 接长引线”。"
+          "zh": "把电磁铁装到支架上之前，先接长正负极引线，方法见“接线 — 接长引线”。"
         },
         "classes": "note overlay sm",
         "style": "left:120mm; top:105mm; width:60mm;"
@@ -118,7 +118,7 @@
         },
         "body": {
           "en": "The mount has 10 pairs of holes, 1 mm apart. Pick one pair now. Later you can raise or lower the stylus in 1 mm steps.",
-          "zh": "支架上有 10 对孔，间距 1 mm。先选一对安装。以后可按 1 mm 步进调整触控笔高度。"
+          "zh": "支架上有 10 对孔，间距 1 mm。先选一对安装，以后可按 1 mm 步进调整触控笔高度。"
         },
         "classes": "note overlay sm",
         "style": "left:50mm; top:20mm; width:80mm;"

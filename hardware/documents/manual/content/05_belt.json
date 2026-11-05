@@ -43,7 +43,7 @@
         },
         "body": {
           "en": "The Motor A belt is a single open length. Both ends clamp to the X carriage. Keep the belt flat in one plane along the whole path. The teeth run on the pulley and the toothed idlers. The smooth back runs on the smooth idlers.",
-          "zh": "电机 A 的同步带是一整条开口带。两端夹在 X 滑座上。同步带全程保持在同一平面。齿面咬合同步轮和带齿惰轮。背面贴着光面惰轮。"
+          "zh": "电机 A 的同步带是一整条开口带，两端夹在 X 滑座上。同步带全程保持在同一平面，齿面咬合同步轮和带齿惰轮，背面贴着光面惰轮。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:20mm; width:90mm;"
@@ -55,7 +55,7 @@
         },
         "body": {
           "en": "1. Feed each belt end into the bottom slot of the clamp. 2. Loop it around the post. 3. Fold it back against itself so that the teeth mesh. The meshed teeth hold the belt with no extra fasteners.",
-          "zh": "1. 把同步带的每一端穿入夹具底部的槽。2. 绕过立柱。3. 折回贴在带身上，让齿与齿咬合。这样即可固定同步带，无需额外紧固件。"
+          "zh": "1. 把同步带的每一端穿入夹具底部的槽。2. 绕过立柱。3. 折回贴在带身上，让齿与齿咬合，这样即可固定同步带，无需额外紧固件。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:120mm; width:70mm;"
@@ -206,7 +206,7 @@
         },
         "body": {
           "en": "After you install both belts, slide the X carriage by hand through its full travel in every direction. The carriage must slide smoothly, with even resistance throughout. That resistance comes only from the motors. Make sure that nothing sticks, interferes, twists, or makes an odd noise. Make sure that the two belts stay on their separate planes.",
-          "zh": "两条同步带装好后，用手推动 X 滑座，沿各个方向走完整个行程。滑座应全程顺畅、阻力均匀。阻力只来自电机。确认没有卡滞、干涉、扭转和异常噪声。确认两条同步带仍各在一层平面内。"
+          "zh": "两条同步带装好后，用手推动 X 滑座，沿各个方向走完整个行程。滑座应全程顺畅、阻力均匀，阻力只来自电机。确认没有卡滞、干涉、扭转和异常噪声，两条同步带仍各在一层平面内。"
         },
         "classes": "note overlay sm",
         "style": "right:60mm; top:105mm; width:100mm;"
@@ -218,7 +218,7 @@
         },
         "body": {
           "en": "The pulleys are now aligned. If their set screws have no threadlocker yet, apply it now.",
-          "zh": "同步轮已对齐。如果紧定螺钉尚未涂螺纹胶，现在涂上。"
+          "zh": "同步轮已对齐，如果紧定螺钉尚未涂螺纹胶，现在涂上。"
         },
         "classes": "note overlay sm",
         "style": "right:60mm; top:155mm; width:100mm;"
@@ -254,7 +254,7 @@
         },
         "body": {
           "en": "Tension the two belts equally. Even a small difference skews the gantry. To adjust the tension of a belt, slide its motor. Then tighten the motor bracket screws fully.",
-          "zh": "两条同步带的张力要一致。张力略有差别，龙门架就会偏斜。微调张力时，滑动对应的电机。调好后，拧紧电机支架的螺栓。"
+          "zh": "两条同步带的张力要一致。张力略有差别，龙门架就会偏斜。微调张力时，滑动对应的电机，调好后拧紧电机支架的螺栓。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:30mm; width:112mm;"
@@ -266,7 +266,7 @@
         },
         "body": {
           "en": "Quick check: 1. Slide the X carriage fully to the motor side. 2. Pluck the two marked belts with a finger. The two belts must feel and sound about the same. The same pitch means about the same tension.",
-          "zh": "快速检查：1. 把 X 滑座推到电机一侧尽头。2. 用手指拨动图中标出的两条同步带。两条同步带的手感和声音应基本相同。音高一致，说明张力大致相等。"
+          "zh": "快速检查：1. 把 X 滑座推到电机一侧尽头。2. 用手指拨动图中标出的两条同步带。两条同步带的手感和声音应基本相同，音高一致，说明张力大致相等。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:75mm; width:112mm;"
