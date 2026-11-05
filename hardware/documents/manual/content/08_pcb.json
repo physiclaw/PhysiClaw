@@ -328,23 +328,11 @@
           "zh": "固定电磁铁引线"
         },
         "body": {
-          "en": "Tie the solenoid leads to the tube holder with a cable tie. Otherwise the solenoid's travel shakes the lead wires at the control board terminals. Constant shaking works the contact loose, and then the solenoid no longer taps the screen.",
-          "zh": "用捆扎带把电磁铁引线固定在导管支架上，否则电磁铁动作时会带动控制板端子处的引线晃动。引线反复晃动会导致端子处的接线松动，使触控笔无法正常点击屏幕。"
+          "en": "Tie the solenoid leads to the tube holder with a cable tie. Otherwise, movement of the X carriage shakes the lead wires at the control board terminals. Constant shaking works the contact loose, and then the solenoid no longer taps the screen.",
+          "zh": "用捆扎带把电磁铁引线固定在导管支架上，否则 X 滑座移动时会带动控制板端子处的引线晃动。引线反复晃动会导致端子处的接线松动，使触控笔无法正常点击屏幕。"
         },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:50mm; width:100mm; max-width:100mm;"
-      },
-      {
-        "h3": {
-          "en": "PTFE vs FEP",
-          "zh": "PTFE 和 FEP"
-        },
-        "body": {
-          "en": "Use either tube, PTFE (milky white) or FEP (clear).",
-          "zh": "PTFE（乳白色）或 FEP（透明）均可。"
-        },
-        "classes": "note overlay sm",
-        "style": "right:30mm; top:80mm; width:100mm; max-width:100mm;"
+        "style": "right:30mm; top:60mm; width:100mm; max-width:100mm;"
       },
       {
         "h3": {
@@ -356,7 +344,7 @@
           "zh": "沿特氟龙管全长，用螺旋缠绕带将电磁铁引线与管子缠绕固定成一束。不要把引线穿入管内。"
         },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:110mm; width:100mm; max-width:100mm;"
+        "style": "right:30mm; top:105mm; width:100mm; max-width:100mm;"
       }
     ],
     "bom": {
