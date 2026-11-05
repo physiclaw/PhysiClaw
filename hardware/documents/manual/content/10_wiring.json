@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "Connect the stepper driver outputs of the control board to the motors. Connect the solenoid to the Spindle output. Ground the solenoid.",
-      "zh": "把控制板的步进电机驱动输出接到电机。把电磁铁接到主轴（Spindle）输出，并接地。"
+      "zh": "将控制板上驱动模块的输出接到电机。把电磁铁接到主轴（Spindle）输出，并接地。"
     }
   },
   {
@@ -43,7 +43,7 @@
         },
         "body": {
           "en": "While the board is powered, never plug in or remove a driver.",
-          "zh": "控制板通电时，切勿插拔驱动。"
+          "zh": "控制板通电时，切勿插拔驱动模块。"
         },
         "classes": "note overlay sm",
         "style": "left:30mm; top:30mm; width:90mm;"
@@ -55,7 +55,7 @@
         },
         "body": {
           "en": "Do not install a TMC2209 reversed. It can burn out when the power comes on. Before you press a driver into its header, make sure that its pin labels match the silkscreen.",
-          "zh": "不要把 TMC2209 装反，否则上电时可能烧毁。压入前，确认每个驱动的引脚标识与板上丝印一致。"
+          "zh": "不要把 TMC2209 驱动模块装反，否则上电时可能烧毁。插入前，确认每个驱动模块的引脚标识与板上丝印一致。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:100mm; width:90mm;"
@@ -63,7 +63,7 @@
       {
         "h3": {
           "en": "Rule of thumb",
-          "zh": "经验法则"
+          "zh": "按颜色对应安装"
         },
         "body": {
           "en": "Match colored to colored, black to black.",
@@ -94,7 +94,7 @@
         {
           "component": {
             "en": "Motor driver",
-            "zh": "电机驱动"
+            "zh": "驱动模块"
           },
           "spec": "TMC2209",
           "qty": "2"
@@ -182,7 +182,7 @@
         },
         "body": {
           "en": "The board uses standard GRBL axis outputs, remapped as follows: the X-axis stepper driver drives Motor B, the Y1-axis stepper driver drives Motor A, and the Spindle output drives the solenoid.",
-          "zh": "控制板使用标准 GRBL 轴输出，映射如下：X 轴步进电机驱动接电机 B，Y1 轴步进电机驱动接电机 A，主轴（Spindle）输出接电磁铁。"
+          "zh": "控制板使用标准 GRBL 轴输出，映射如下：X 轴驱动模块接电机 B，Y1 轴驱动模块接电机 A，主轴（Spindle）输出接电磁铁。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:110mm; width:110mm;"
@@ -194,7 +194,7 @@
         },
         "body": {
           "en": "Connect either solenoid lead to either Spindle terminal.",
-          "zh": "电磁铁的两根引线可任意接主轴（Spindle）端子。"
+          "zh": "电磁铁的两根引线不分正负，分别接到主轴（Spindle）输出的两个端子即可。"
         },
         "classes": "note overlay sm",
         "style": "left:30mm; top:30mm; width:100mm;"
@@ -307,7 +307,7 @@
         },
         "body": {
           "en": "Solder each joint. Cover each joint with heat shrink tubing. If you cannot solder, twist the wires together. Wrap each joint tightly with electrical tape.",
-          "zh": "焊接每个接头，再套上热缩管。没有焊接工具时，先拧紧接头，再用电工胶带缠紧。"
+          "zh": "焊接每个接头，再套上热缩管。没有焊接工具时，先将两根导线拧接牢固，再用电工胶带缠紧接头。"
         },
         "classes": "note overlay sm",
         "style": "left:100mm; top:140mm; width:70mm;"
@@ -378,7 +378,7 @@
         },
         "body": {
           "en": "Never put the ground wire into a wall outlet. Connect the housing to earth ground. The simplest option is a desktop PC chassis grounded through a three-prong outlet. Clip the wire to bare metal on the chassis. The chassis reaches earth through the mains and gives a stable reference.",
-          "zh": "切勿把接地线插入墙壁插座。把外壳接到大地，最简单的办法是用台式电脑机箱。电脑经三脚插座接地，把接地线夹在机箱裸露的金属上即可。机箱经市电地线连到大地，接地参考稳定。"
+          "zh": "切勿把接地线插入墙壁插座。把外壳接到大地，最简单的办法是用台式电脑机箱。电脑经三脚插座接地，把接地线夹在机箱裸露的金属上即可。机箱通过市电地线接地，可作为可靠的接地点。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:82mm; width:150mm; max-width:150mm;"
@@ -390,7 +390,7 @@
         },
         "body": {
           "en": "The solenoid has three wires: positive (+), negative (−), and ground. 1. Bind the ground wire into the bundle with the + and − leads. 2. Run the bundle up to the control board holder. 3. Connect + and − to the control board's Spindle terminals.",
-          "zh": "电磁铁有三根线：正极（+）、负极（−）和接地线。1. 把接地线和正负极引线一起缠入线束。2. 把线束引到控制板支架。3. 把正负极引线接到控制板的主轴（Spindle）端子。"
+          "zh": "电磁铁有三根引线：正极引线（+）、负极引线（−）和接地线。1. 把接地线和正负极引线一起缠入线束。2. 把线束引到控制板支架。3. 把正负极引线接到控制板的主轴（Spindle）端子。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:112mm; width:150mm; max-width:150mm;"

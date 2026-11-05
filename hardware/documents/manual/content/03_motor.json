@@ -41,7 +41,7 @@
         },
         "body": {
           "en": "Make sure that the motor connector faces as shown. That direction sets the wiring clearance later.",
-          "zh": "确认电机接线端子朝向与图一致。朝向决定后续布线的空间。"
+          "zh": "安装时，电机接线端子的朝向应与图示一致，以便为后续接线留出空间。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:130mm; width:80mm;"
@@ -162,7 +162,7 @@
         },
         "body": {
           "en": "Tighten until snug. After you tension the belt, tighten fully.",
-          "zh": "先拧到贴合，同步带张紧后再拧紧。"
+          "zh": "先将螺栓拧至零件刚好贴合，待同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:128mm; width:80mm;"
@@ -207,7 +207,7 @@
         },
         "body": {
           "en": "Install it like the left motor, as a mirror image. The motor connector faces right.",
-          "zh": "安装方式与左边电机相同，但左右镜像，接线端子朝右。"
+          "zh": "右侧电机按左侧电机的镜像方向安装，接线端子朝右。"
         },
         "classes": "note overlay sm",
         "style": "left:120mm; top:130mm; width:80mm;"
@@ -292,7 +292,7 @@
         },
         "body": {
           "en": "The right motor is Motor B, the mirror image of the left.",
-          "zh": "右边的电机是电机 B，与左边镜像。"
+          "zh": "右侧为电机 B，安装方向与左侧电机互为镜像。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:30mm; width:40mm;"
@@ -304,7 +304,7 @@
         },
         "body": {
           "en": "Tighten until snug. After you tension the belt, tighten fully.",
-          "zh": "先拧到贴合，同步带张紧后再拧紧。"
+          "zh": "先将螺栓拧至零件刚好贴合，待同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:150mm; width:78mm;"
@@ -338,7 +338,7 @@
         },
         "body": {
           "en": "The Motor A belt and the Motor B belt sit at different heights. The pulley of Motor A (left) sits on the lower belt plane. The pulley of Motor B (right) sits on the upper belt plane. Slide each pulley along its motor shaft to its plane.",
-          "zh": "电机 A 和电机 B 的同步带高度不同。电机 A 的同步轮（左）位于下层同步带平面，电机 B 的同步轮（右）位于上层同步带平面。把每个同步轮沿电机轴滑到对应的平面。"
+          "zh": "电机 A 和电机 B 的同步带高度不同。电机 A 的同步轮（左）位于下层同步带平面，电机 B 的同步轮（右）位于上层同步带平面。沿电机轴调整各同步轮的高度，使其与对应惰轮处于同一平面。"
         },
         "classes": "note overlay sm",
         "style": "left:40mm; top:15mm; width:90mm;"

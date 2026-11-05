@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "PhysiClaw's CoreXY stage runs on two GT2 belts, the Motor A belt and the Motor B belt. They run on the upper and lower belt planes, so they never cross. The two belts must have equal tension, or the motion is not accurate.",
-      "zh": "PhysiClaw 的 CoreXY 结构由两条 GT2 同步带驱动，即电机 A 的同步带和电机 B 的同步带。两条同步带分别位于上层和下层同步带平面，互不交叉。两条同步带的张力必须一致，运动才能准确。"
+      "zh": "PhysiClaw 的 CoreXY 结构由两条 GT2 同步带驱动，即电机 A 的同步带和电机 B 的同步带。两条同步带上下分层布置，互不交叉。两条同步带的张力必须一致，运动才能准确。"
     }
   },
   {
@@ -43,7 +43,7 @@
         },
         "body": {
           "en": "The Motor A belt is a single open length. Both ends clamp to the X carriage. Keep the belt flat in one plane along the whole path. The teeth run on the pulley and the toothed idlers. The smooth back runs on the smooth idlers.",
-          "zh": "电机 A 的同步带是一整条开口带，两端夹在 X 滑座上。同步带全程保持在同一平面，齿面咬合同步轮和带齿惰轮，背面贴着光面惰轮。"
+          "zh": "电机 A 的同步带是一整条开口带，两端夹在 X 滑座上。同步带应始终保持在同一平面内，齿面与同步轮和带齿惰轮啮合，背面与光面惰轮接触。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:20mm; width:90mm;"
@@ -55,7 +55,7 @@
         },
         "body": {
           "en": "1. Feed each belt end into the bottom slot of the clamp. 2. Loop it around the post. 3. Fold it back against itself so that the teeth mesh. The meshed teeth hold the belt with no extra fasteners.",
-          "zh": "1. 把同步带的每一端穿入夹具底部的槽。2. 绕过立柱。3. 折回贴在带身上，让齿与齿咬合，这样即可固定同步带，无需额外紧固件。"
+          "zh": "1. 把同步带的每一端穿入夹具底部的槽。2. 绕过立柱。3. 折回贴在带身上，使两段同步带的齿面相互啮合，这样即可固定同步带，无需额外紧固件。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:120mm; width:70mm;"
@@ -67,7 +67,7 @@
         },
         "body": {
           "en": "Keep the 2 M5 screws of Motor A snug, not tight. 1. Clamp both belt ends. 2. Slide the motor to tension the belt.",
-          "zh": "电机 A 的 2 颗 M5 螺栓拧到贴合，暂不拧紧。1. 夹入同步带两端。2. 滑动电机张紧同步带。"
+          "zh": "将电机 A 的 2 颗 M5 螺栓拧至零件刚好贴合，暂不拧紧。1. 夹入同步带两端。2. 滑动电机张紧同步带。"
         },
         "classes": "note overlay sm",
         "style": "right:10mm; top:100mm; width:70mm;"
@@ -206,7 +206,7 @@
         },
         "body": {
           "en": "After you install both belts, slide the X carriage by hand through its full travel in every direction. The carriage must slide smoothly, with even resistance throughout. That resistance comes only from the motors. Make sure that nothing sticks, interferes, twists, or makes an odd noise. Make sure that the two belts stay on their separate planes.",
-          "zh": "两条同步带装好后，用手推动 X 滑座，沿各个方向走完整个行程。滑座应全程顺畅、阻力均匀，阻力只来自电机。确认没有卡滞、干涉、扭转和异常噪声，两条同步带仍各在一层平面内。"
+          "zh": "两条同步带装好后，在整个行程范围内沿各方向手动推动 X 滑座。滑动应顺畅、阻力均匀，且阻力仅来自电机。滑动过程中不应出现卡滞、干涉、扭转或异常噪声，两条同步带应始终保持上下分层。"
         },
         "classes": "note overlay sm",
         "style": "right:60mm; top:105mm; width:100mm;"

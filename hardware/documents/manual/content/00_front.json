@@ -205,7 +205,7 @@
         },
         "body": {
           "en": "Cylindrical head, hex drive.",
-          "zh": "圆柱头，内六角驱动。"
+          "zh": "圆柱头，带内六角孔。"
         },
         "ref": {
           "en": "ISO 4762 / DIN 912",
@@ -220,7 +220,7 @@
         },
         "body": {
           "en": "Domed head, hex drive. Use it where you need a low head but not a flush head.",
-          "zh": "半圆头，内六角驱动，用于需要低螺栓头、但不要求齐平的位置。"
+          "zh": "半圆头，带内六角孔，用于需要减小螺栓头凸出高度、但不要求与表面齐平的位置。"
         },
         "ref": {
           "en": "ISO 7380-1",
@@ -235,7 +235,7 @@
         },
         "body": {
           "en": "90° countersunk head, hex drive. The head sits flush with the surface. Use it where nothing can protrude above the part.",
-          "zh": "90° 沉头，内六角驱动，螺栓头与表面齐平，用于零件表面不允许有凸起的位置。"
+          "zh": "90° 沉头，带内六角孔，螺栓头与表面齐平，用于零件表面不允许有凸起的位置。"
         },
         "ref": {
           "en": "ISO 10642 / DIN 7991",
@@ -444,7 +444,7 @@
       {
         "k": {
           "en": "Part Density",
-          "zh": "零件密度"
+          "zh": "内部结构"
         },
         "v": {
           "en": "Solid",
@@ -488,7 +488,7 @@
         },
         "v": {
           "en": "Service default",
-          "zh": "按服务商默认"
+          "zh": "采用打印服务商的默认设置"
         }
       },
       {
@@ -520,7 +520,7 @@
         },
         "body": {
           "en": "A file name that ends in <span class=\"ref\">_x#</span> gives the quantity of that part in the machine. For example, the machine needs two of <span class=\"ref\">idler_mount_front_x2.step</span>.",
-          "zh": "文件名末尾的 <span class=\"ref\">_x#</span> 表示整机需要的数量。例如 <span class=\"ref\">idler_mount_front_x2.step</span> 需要两个。"
+          "zh": "文件名末尾的 <span class=\"ref\">_x#</span> 表示该零件在整机中的用量，其中 # 代表数量。例如，<span class=\"ref\">idler_mount_front_x2.step</span> 表示该零件需准备 2 个。"
         },
         "classes": "note"
       }

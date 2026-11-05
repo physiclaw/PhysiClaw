@@ -195,7 +195,7 @@
         },
         "body": {
           "en": "Thread the camera's 1/4-20 female thread onto the gooseneck's male stud until it stops against the collar.",
-          "zh": "把摄像头的 1/4-20 内螺纹拧到金属软管的外螺纹螺柱上，直到顶住台肩。"
+          "zh": "将摄像头的 1/4-20 内螺纹孔对准金属软管的外螺纹螺柱，旋转摄像头，直至其抵住台肩。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:80mm; width:60mm;"
@@ -255,7 +255,7 @@
         },
         "body": {
           "en": "Bend the gooseneck so that the camera points squarely at the phone screen. Align the sensor's long edge with the phone's long edge.",
-          "zh": "弯折金属软管，使摄像头正对手机屏幕。把传感器长边与手机长边对齐。"
+          "zh": "弯折金属软管，使摄像头正对手机屏幕。调整摄像头方向，使传感器的长边方向与手机的长边方向一致。"
         },
         "classes": "note overlay sm",
         "style": "right:10mm; top:80mm; width:80mm;"

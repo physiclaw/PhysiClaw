@@ -201,7 +201,7 @@
         "url": "https://item.taobao.com/item.htm?id=652783651566&skuId=4937682023482"
       }
     ],
-    "note": "控制板和步进电机驱动为标准件，各厂商规格一致。"
+    "note": "控制板和驱动模块为标准件，各厂商规格一致。"
   },
   {
     "part_id": "tmc2209",
@@ -892,7 +892,7 @@
         "url": "https://detail.tmall.com/item.htm?id=851546806052&skuId=5815653223547"
       }
     ],
-    "note": "如果买不到 9 mm 高的规格，用较短的轴套叠加至 9 mm。"
+    "note": "若买不到 9 mm 高的轴套，可叠放较短的轴套，使总高度达到 9 mm。"
   },
   {
     "part_id": "spacer-6x12x8",

@@ -143,7 +143,7 @@
         },
         "body": {
           "en": "1. Drop each M6×20 SHCS through the counterbore into the end hole of the short extrusion. 2. Tighten all 8 until snug. 3. Square the frame on a flat surface. 4. Tighten fully.",
-          "zh": "1. 把每颗 M6×20 圆柱头螺栓穿过长型材沉孔。2. 全部拧入短型材端面螺纹孔，拧到贴合。3. 在平整台面上把框架校正至四角垂直。4. 全部拧紧。"
+          "zh": "1. 把每颗 M6×20 圆柱头螺栓穿过长型材沉孔。2. 全部拧入短型材端面螺纹孔，拧至零件刚好贴合。3. 将框架放在平整的台面上，调整至四角均为直角。4. 全部拧紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:120mm; width:80mm;"

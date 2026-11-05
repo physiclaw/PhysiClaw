@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "Install one idler assembly at each of the four corners of the frame. All four use smooth idlers. The idlers roll on the flat back of the GT2 belt and turn it around each corner. Every idler mount sits 2 mm clear of the horizontal flat bracket at its corner, so the four corners are symmetric.",
-      "zh": "框架四角各装一个惰轮组，全部用光面惰轮。惰轮贴着 GT2 同步带的平背面滚动，让同步带在转角处转向。每个惰轮支座与转角处的水平一字连接板相距 2 mm，四角因此对称。"
+      "zh": "框架四角各装一个惰轮组，全部用光面惰轮。惰轮贴着 GT2 同步带的平背面滚动，让同步带在转角处转向。四角的安装布局应保持对称，各惰轮支座与转角处的水平一字连接板之间均留 2 mm 间隙。"
     }
   },
   {
@@ -65,7 +65,7 @@
         },
         "body": {
           "en": "Put each square nut in with its flat face toward the screw.",
-          "zh": "放入时平的一面朝向螺栓。"
+          "zh": "放入四方螺母时，让其平面一侧朝向螺栓。"
         },
         "classes": "note overlay sm",
         "style": "left:135mm; top:130mm; width:70mm;"
@@ -290,7 +290,7 @@
         },
         "body": {
           "en": "The spacer is 9 mm tall. If you cannot buy a 9 mm spacer, stack shorter spacers to a total of 9 mm.",
-          "zh": "轴套高 9 mm，如果买不到 9 mm 轴套，用较短的轴套叠加到 9 mm。"
+          "zh": "轴套总高度应为 9 mm。若买不到 9 mm 高的轴套，可叠放较短的轴套，使总高度达到 9 mm。"
         },
         "classes": "note overlay sm",
         "style": "left:110mm; top:82mm; width:80mm;"
@@ -402,7 +402,7 @@
         },
         "body": {
           "en": "Split the screws as at the left idler mount. M5×12 goes into the idler mount, M5×10 into the extrusion slot.",
-          "zh": "螺栓分配与左边的惰轮支座相同。M5×12 拧入惰轮支座，M5×10 拧入型材槽。"
+          "zh": "螺栓的安装位置与左侧惰轮支座相同。M5×12 螺栓拧入惰轮支座，M5×10 螺栓拧入型材槽内。"
         },
         "classes": "note overlay sm",
         "style": "left:139mm; top:40mm; width:45mm;"

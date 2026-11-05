@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "PhysiClaw's X/Y motion is a CoreXY stage on three MGN9H rails. The Y axis uses two rails, one on the left and one on the right. One rail spans between them as the X axis. Each of the two XY joints, where the X axis meets a Y rail, carries two idlers. Keep every carriage on its rail. A carriage that slides off spills its balls and is ruined.",
-      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 结构，由三根 MGN9H 导轨导向。左右两根导轨用作 Y 轴，横跨其间的一根用作 X 轴。X 轴与 Y 导轨相接的两处是 XY 连接件，每个连接件装两个惰轮。每个滑块都要留在导轨上。滑块一旦滑出导轨，钢珠散落，滑块随之损坏。"
+      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 结构，由三根 MGN9H 导轨导向。左右两根导轨用作 Y 轴，横跨其间的一根用作 X 轴。X 轴与两侧 Y 导轨的连接处各装一个 XY 连接件，每个连接件上装两个惰轮。每个滑块都要留在导轨上。滑块一旦滑出导轨，钢珠散落，滑块随之损坏。"
     }
   },
   {
@@ -73,11 +73,11 @@
       {
         "h3": {
           "en": "Load the T-nuts first",
-          "zh": "船形螺母先挂在螺栓上"
+          "zh": "先预装船形螺母"
         },
         "body": {
           "en": "1. Thread an M3×8 BHCS into every hole. 2. Thread a drop-in T-nut onto each screw tip so that it hangs. 3. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 4. Tighten the screws until snug.",
-          "zh": "1. 每个孔拧入一颗 M3×8 半圆头螺栓。2. 每颗螺栓末端挂一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 把螺栓拧到贴合。"
+          "zh": "1. 每个孔拧入一颗 M3×8 半圆头螺栓。2. 在每颗螺栓末端预拧上一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 将螺栓拧至零件刚好贴合。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:80mm; width:74mm;"
@@ -165,7 +165,7 @@
         },
         "body": {
           "en": "Tighten the screws of both Y rails until snug. Install the X beam first. When it slides smoothly, tighten them fully.",
-          "zh": "两根 Y 导轨的螺栓只拧到贴合，先装 X 横梁，横梁滑动顺畅后再拧紧。"
+          "zh": "先将两根 Y 导轨的螺栓拧至零件刚好贴合，再装 X 横梁，待横梁滑动顺畅后再拧紧。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:120mm; width:80mm;"
@@ -351,7 +351,7 @@
         },
         "body": {
           "en": "1. Tighten a few of the Y rail screws until snug. 2. Slide the X beam and feel the resistance. 3. Move the Y rails slightly. 4. Slide the X beam again. 5. When the beam slides freely, tighten the Y rails from the center screw outward. This can take a few minutes.",
-          "zh": "1. 把几颗 Y 导轨螺栓拧到贴合。2. 推动 X 横梁，感受阻力。3. 微调 Y 导轨。4. 再次推动。5. 横梁滑动顺畅后，把螺栓从中间向两端拧紧。此过程可能需要几分钟。"
+          "zh": "1. 将几颗 Y 导轨螺栓拧至零件刚好贴合。2. 推动 X 横梁，感受阻力。3. 微调 Y 导轨。4. 再次推动。5. 横梁滑动顺畅后，把螺栓从中间向两端拧紧。此过程可能需要几分钟。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:100mm; width:60mm;"
@@ -400,7 +400,7 @@
         },
         "body": {
           "en": "Install this rail like the Y rails. 1. Thread the screws in so that the T-nuts hang. 2. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 3. Tighten the screws.",
-          "zh": "安装方式与 Y 导轨相同。1. 拧入螺栓，船形螺母挂在末端。2. 把导轨放到型材上，螺母落入槽内。3. 拧紧螺栓。"
+          "zh": "安装方式与 Y 导轨相同。1. 拧入螺栓，在末端预拧上船形螺母。2. 把导轨放到型材上，螺母落入槽内。3. 拧紧螺栓。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:100mm; width:80mm;"
@@ -464,7 +464,7 @@
         },
         "body": {
           "en": "Make sure that the carriage slides smoothly along the X rail. Make sure that the whole beam still slides freely along the Y rails. If either binds, realign that rail. Then tighten it again.",
-          "zh": "确认滑块能沿 X 导轨顺畅滑动，整根横梁仍能沿 Y 导轨自由滑动。如有卡滞，重新校正那根导轨，再拧紧其螺栓。"
+          "zh": "确认滑块能沿 X 导轨顺畅滑动，整根横梁仍能沿 Y 导轨自由滑动。如有卡滞，重新调整相应导轨的位置，再拧紧固定螺栓。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:60mm; width:60mm;"
@@ -910,7 +910,7 @@
         },
         "body": {
           "en": "Make sure that each idler sits in its correct hole.",
-          "zh": "确认每个惰轮的孔位正确。"
+          "zh": "确认各惰轮的安装孔位正确。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:120mm; width:78mm;"

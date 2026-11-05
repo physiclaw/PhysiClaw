@@ -118,7 +118,7 @@
         },
         "body": {
           "en": "The mount has 10 pairs of holes, 1 mm apart. Pick one pair now. Later you can raise or lower the stylus in 1 mm steps.",
-          "zh": "支架上有 10 对孔，间距 1 mm。先选一对安装，以后可按 1 mm 步进调整触控笔高度。"
+          "zh": "支架上有 10 对孔，间距 1 mm。先选择一对孔安装，之后可按 1 mm 的间隔调节触控笔高度。"
         },
         "classes": "note overlay sm",
         "style": "left:50mm; top:20mm; width:80mm;"
@@ -142,7 +142,7 @@
         },
         "body": {
           "en": "1. Clamp the bare copper of the ground wire between the solenoid housing and the mount. 2. Tighten one of the 2 mount screws to clamp it. 3. Run the ground wire out through the other rectangular hole below to join the power leads.",
-          "zh": "1. 把接地线剥出的铜线夹在电磁铁外壳和支架之间。2. 拧紧其中一颗支架螺栓压住铜线。3. 把接地线从下方另一个方孔穿出，与正负极引线汇合。"
+          "zh": "1. 将接地线末端露出的铜芯夹在电磁铁外壳与支架之间。2. 拧紧其中一颗支架螺栓压住铜芯。3. 把接地线从下方另一个方孔穿出，与正负极引线汇合。"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:60mm;"
@@ -150,7 +150,7 @@
       {
         "h3": {
           "en": "Use 6 <span class=\"unit\">mm</span> long bolts",
-          "zh": "使用 6 <span class=\"unit\">mm</span> 长度螺栓"
+          "zh": "使用 6 <span class=\"unit\">mm</span> 长的螺栓"
         },
         "body": {
           "en": "Longer bolts can push against the coil and cause damage.",

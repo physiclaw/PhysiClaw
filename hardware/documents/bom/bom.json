@@ -31,7 +31,7 @@
     },
     "spec": {
       "en": "Length 190 mm, both ends tapped M6",
-      "zh": "长度 190 mm，两端攻丝 M6"
+      "zh": "长度 190 mm，两端攻 M6 螺纹"
     },
     "qty": "2",
     "desc": {
@@ -71,7 +71,7 @@
     },
     "spec": {
       "en": "Length 230 mm, M5 through-hole 10 mm from each end",
-      "zh": "长度 230 mm，距两端 10 mm 开 M5 通孔"
+      "zh": "长度 230 mm，在距两端各 10 mm 处开 M5 通孔"
     },
     "qty": "2",
     "desc": {
@@ -268,7 +268,7 @@
     },
     "component": {
       "en": "Stepper driver",
-      "zh": "步进电机驱动"
+      "zh": "驱动模块"
     },
     "spec": {
       "en": "TMC2209",
@@ -277,7 +277,7 @@
     "qty": "2",
     "desc": {
       "en": "Motor drivers",
-      "zh": "电机驱动模块"
+      "zh": "驱动步进电机"
     }
   },
   {
