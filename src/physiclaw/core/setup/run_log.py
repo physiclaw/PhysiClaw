@@ -47,10 +47,20 @@ YYYYMMDD-HHMMSS-<6 hex digits> in server local time, matching agent sessions.
 Retries stay in that run until the server confirms readiness. A later setup
 starts a new directory.
 
-Start with summary.json: attention lists current failures and advisories, and
+Start with summary.json: check recording_complete and recording_errors first.
+attention lists current failures and advisories, and
 steps links to each latest attempt's summary and journal. Read the attempt's
 summary.json for its result/error, timings and warning messages, then its
 events.jsonl for measurements, traceback and artifact.saved image paths.
+diagnostics contains summarized decisions with status, reason, thresholds and
+evidence references (seq, frame_id, input_artifact_id and input_path). Failed
+diagnostics appear in attention even when an optional check falls back and the
+step succeeds.
+For focus, camera.focus_search_result links the peak sample and confirmation
+samples, states the search stage and failed gate, and records autofocus cleanup.
+camera.focus_sample labels coarse/refinement, lens-response and final
+verification readings. A frame_id in a decision's peak_sample is the peak
+image; the decision event's own frame_id is only the most recent input.
 All paths in these JSON files are relative to the run directory. An images
 directory is absent when the attempt captured no images. Earlier attempt
 summaries remain beside the latest one; a successful retry does not erase them.
@@ -211,19 +221,33 @@ class SetupAttempt:
         }
         self.latest_frame: str | None = None
         self.latest_input: str | None = None
+        self.latest_input_path: str | None = None
         self.warnings = 0
         self.warning_messages: list[str] = []
+        self.diagnostics: list[dict] = []
         self.result: Any = None
         self.futures: list[Future] = []
 
-    def event(self, event: str, **fields: Any) -> None:
+    def event(self, event: str, *, summarize: bool = False, **fields: Any) -> dict:
+        fields.setdefault("frame_id", self.latest_frame)
+        fields.setdefault("input_artifact_id", self.latest_input)
         fields.update(
             step=self.step,
             attempt=self.number,
-            frame_id=self.latest_frame,
-            input_artifact_id=self.latest_input,
         )
-        self.run.emit(event, self.relative, **fields)
+        with self.run.lock:
+            seq = self.run.emit(event, self.relative, **fields)
+            reference = {
+                "seq": seq,
+                "frame_id": fields["frame_id"],
+                "input_artifact_id": fields["input_artifact_id"],
+                "input_path": self.latest_input_path
+                if fields["input_artifact_id"] == self.latest_input
+                else None,
+            }
+            if summarize:
+                self.diagnostics.append({"event": event, **fields, **reference})
+            return reference
 
     def recording_failure(self, exc: Exception) -> None:
         self.run.recording_failure(exc)
@@ -231,6 +255,7 @@ class SetupAttempt:
     def frame(self, frame: Any, **fields: Any) -> None:
         self.latest_frame = secrets.token_hex(8)
         self.latest_input = self.latest_frame
+        self.latest_input_path = None
         if frame is None:
             self.event("camera.frame_missing", **fields)
             return
@@ -239,6 +264,7 @@ class SetupAttempt:
     def upload(self, data: bytes, **fields: Any) -> None:
         artifact_id = secrets.token_hex(8)
         self.latest_input = artifact_id
+        self.latest_input_path = None
         if data.startswith(b"\x89PNG\r\n\x1a\n"):
             suffix = ".png"
         elif data.startswith(b"\xff\xd8"):
@@ -258,6 +284,7 @@ class SetupAttempt:
             )
             return
         relative = self.relative / "images" / f"{artifact_id}{suffix}"
+        self.latest_input_path = str(relative)
         # Freeze capture metadata here, before a later frame changes the scope.
         captured = {
             **fields,
@@ -437,10 +464,12 @@ class SetupRecorder:
                 self._start()
                 self._write_summary("in_progress")
 
-    def emit(self, event: str, relative: Path | None = None, **fields: Any) -> None:
+    def emit(
+        self, event: str, relative: Path | None = None, **fields: Any
+    ) -> int | None:
         with self.lock:
             if self.directory is None:
-                return
+                return None
             self.sequence += 1
             payload = {
                 "schema_version": 1,
@@ -461,8 +490,10 @@ class SetupRecorder:
                     folder = self.directory / relative
                     folder.mkdir(parents=True, exist_ok=True)
                     append_text(folder / "events.jsonl", line)
+                return self.sequence
             except Exception as exc:
                 self.recording_failure(exc)
+                return None
 
     def _state(self) -> dict:
         try:
@@ -490,6 +521,10 @@ class SetupRecorder:
                         in ("failed", "blocked", "waiting_for_input", "interrupted")
                         or entry.get("warnings")
                         or entry.get("issues")
+                        or any(
+                            d.get("status") == "failed"
+                            for d in entry.get("diagnostics", [])
+                        )
                     ],
                     "recording_complete": self.incomplete == 0,
                     "recording_errors_or_skips": self.incomplete,
@@ -604,6 +639,11 @@ class SetupRecorder:
                         if isinstance(result, dict)
                         else [],
                         **attempt.paths,
+                        **(
+                            self._json_details({"diagnostics": attempt.diagnostics})
+                            if attempt.diagnostics
+                            else {}
+                        ),
                         **(outcome if failure else {}),
                     }
                     self._update_attempt(

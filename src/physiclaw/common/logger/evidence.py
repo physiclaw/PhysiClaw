@@ -14,7 +14,7 @@ from typing import Any, Protocol
 class EvidenceSink(Protocol):
     def recording_failure(self, exc: Exception) -> None: ...
 
-    def event(self, event: str, **fields: Any) -> None: ...
+    def event(self, event: str, **fields: Any) -> dict | None: ...
 
     def frame(self, frame: Any, **fields: Any) -> None: ...
 
@@ -49,11 +49,11 @@ def evidence_scope(sink: EvidenceSink) -> Iterator[None]:
         _sink.reset(token)
 
 
-def _record(method: str, value: Any, fields: dict) -> None:
+def _record(method: str, value: Any, fields: dict) -> Any:
     if (sink := _sink.get()) is None:
         return
     try:
-        getattr(sink, method)(value, **fields)
+        return getattr(sink, method)(value, **fields)
     except Exception as exc:
         # Diagnostics must never replace a device outcome, even when the
         # failure reporter itself is broken. The owner tracks missing evidence.
@@ -63,8 +63,13 @@ def _record(method: str, value: Any, fields: dict) -> None:
             pass
 
 
-def record_event(event: str, **fields: Any) -> None:
-    _record("event", event, fields)
+def record_event(event: str, **fields: Any) -> dict | None:
+    """Record an observation and return its journal/frame reference, if available.
+
+    summarize=True also exposes a decision in the setup summaries. References
+    identify observations, not proof that an asynchronously queued image saved.
+    """
+    return _record("event", event, fields)
 
 
 def record_frame(frame: Any, **fields: Any) -> None:

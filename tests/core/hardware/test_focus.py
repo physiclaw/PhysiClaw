@@ -591,10 +591,11 @@ def test_search_cleanup_failure_preserves_original_error(search_rig):
 
 
 @pytest.mark.parametrize("bounds", [(-1, 10, 1), (10, 0, 1), (0, 10, 0)])
-def test_search_unusable_bounds_do_not_move_the_lens(search_rig, bounds):
+def test_search_unusable_bounds_do_not_move_the_lens(search_rig, bounds, focus_events):
     value = search(bounds, search_rig.meter, search_rig.apply, search_rig.unfreeze)
     assert value is None
     search_rig.apply.assert_not_called()
+    assert focus_events[-1]["reason"] == "invalid_focus_bounds"
 
 
 @pytest.mark.parametrize(
@@ -614,3 +615,132 @@ def test_search_late_final_frame_is_not_saved(monkeypatch, search_rig, late_read
     value = search((0, 0, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
     assert value is None
     search_rig.unfreeze.assert_called_once_with()
+
+
+@pytest.fixture
+def focus_events(mocker, search_rig):
+    events = []
+
+    def capture(event, **fields):
+        frame = f"frame-{search_rig.meter.call_count}"
+        reference = {
+            "seq": len(events) + 1,
+            "frame_id": fields.get("frame_id", frame),
+            "input_artifact_id": fields.get("input_artifact_id", frame),
+        }
+        events.append({"event": event, **fields, **reference})
+        return reference
+
+    mocker.patch.object(focus, "record_event", side_effect=capture)
+    return events
+
+
+def test_search_decision_links_peak_and_consecutive_verification_frames(
+    search_rig, focus_events
+):
+    search_rig.meter.side_effect = [50, 500, 50, 100, 450, 460]
+
+    result = search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+
+    decision = focus_events[-1]
+    assert result == 1.0
+    assert decision["reason"] == "verified_peak"
+    assert decision["peak_sample"]["frame_id"] == "frame-2"
+    assert decision["peak_sample"]["sharpness"] == 500
+    assert decision["thresholds"]["verification_minimum_sharpness"] == 400
+    assert [s["frame_id"] for s in decision["verification_samples"]] == [
+        "frame-4",
+        "frame-5",
+        "frame-6",
+    ]
+    assert [s["consecutive"] for s in decision["verification_samples"]] == [0, 1, 2]
+    assert decision["frame_id"] == "frame-6"
+    assert decision["autofocus_restore"] == {"requested": False}
+
+
+@pytest.mark.parametrize(
+    "readings,bounds,reason,phase",
+    [
+        ([None], (0, 0, 1), "measurement_unavailable", "coarse"),
+        ([float("nan")], (0, 0, 1), "invalid_sharpness", "coarse"),
+        ([30], (0, 0, 1), "peak_below_minimum_sharpness", "coarse"),
+        ([400, 400], (0, 1, 1), "insufficient_lens_response", "lens_response"),
+        (
+            [50, 400, *([400] * 8)],
+            (0, 1, 1),
+            "lens_response_not_reproduced",
+            "lens_response",
+        ),
+        ([400, *([30] * 8)], (0, 0, 1), "verification_not_stable", "verification"),
+    ],
+)
+def test_search_failure_explains_rejected_gate_in_summary_event(
+    search_rig, focus_events, readings, bounds, reason, phase
+):
+    search_rig.meter.side_effect = readings
+
+    result = search(bounds, search_rig.meter, search_rig.apply, search_rig.unfreeze)
+
+    decision = focus_events[-1]
+    assert result is None
+    assert decision["status"] == "failed"
+    assert decision["reason"] == reason
+    assert decision["phase"] == phase
+    assert decision["summarize"] is True
+    assert decision["autofocus_restore"] == {"requested": True, "call_succeeded": True}
+
+
+@pytest.mark.parametrize(
+    "accepted,phase", [([False], "coarse"), ([True, False], "verification")]
+)
+def test_search_driver_rejection_identifies_phase_and_attempted_position(
+    search_rig, focus_events, accepted, phase
+):
+    search_rig.apply.side_effect = accepted
+
+    result = search(
+        (42, 42, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze
+    )
+
+    decision = focus_events[-1]
+    assert result is None
+    assert decision["reason"] == "driver_rejected_focus"
+    assert decision["phase"] == phase
+    assert decision["attempted_position"] == 42
+
+
+@pytest.mark.parametrize(
+    "budget,limit,reason",
+    [
+        ("SEARCH_SECONDS", 0, "deadline_exceeded"),
+        ("SEARCH_SAMPLES", 1, "sample_budget_exhausted"),
+    ],
+)
+def test_search_budget_failure_is_explicit(
+    search_rig, focus_events, monkeypatch, budget, limit, reason
+):
+    monkeypatch.setattr(focus, budget, limit)
+
+    result = search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+
+    assert result is None
+    assert focus_events[-1]["reason"] == reason
+
+
+def test_search_exception_and_failed_autofocus_restore_keep_both_errors(
+    search_rig, focus_events
+):
+    search_rig.apply.side_effect = OSError("focus write failed")
+    search_rig.unfreeze.side_effect = OSError("autofocus write failed")
+
+    with pytest.raises(OSError, match="focus write failed"):
+        search((0, 1, 1), search_rig.meter, search_rig.apply, search_rig.unfreeze)
+
+    decision = focus_events[-1]
+    assert decision["reason"] == "exception"
+    assert decision["message"] == "focus write failed"
+    assert decision["autofocus_restore"] == {
+        "requested": True,
+        "call_succeeded": False,
+        "message": "autofocus write failed",
+    }

@@ -346,6 +346,64 @@ def test_focus_region_full_frame_without_fence() -> None:
     assert camera_map_mod._focus_region(frame, None) is frame
 
 
+@pytest.mark.parametrize(
+    "frame,settled,polygon,reason",
+    [
+        (None, True, None, "frame_unavailable"),
+        (None, False, None, "frame_settle_timeout"),
+        (
+            np.zeros((4, 5, 3), dtype=np.uint8),
+            True,
+            np.array([[20, 20], [30, 20], [30, 30], [20, 30]]),
+            "empty_focus_crop",
+        ),
+    ],
+)
+def test_focus_meter_failure_records_specific_cause(
+    mocker, frame, settled, polygon, reason
+):
+    cam = _searchable_cam(frame)
+    cam.wait_frames.return_value = settled
+    record = mocker.patch.object(camera_map_mod, "record_event")
+
+    result = camera_map_mod._pin_focus(cam, -1, polygon)
+
+    observation = next(
+        c.kwargs for c in record.call_args_list if c.args[0] == "camera.focus_meter"
+    )
+    assert result is None
+    assert observation["reason"] == reason
+    assert observation["status"] == "failed"
+    assert observation["summarize"] is True
+
+
+@pytest.mark.parametrize(
+    "lockable,bounds,reason",
+    [
+        (False, (0, 1, 1), "focus_controls_unavailable"),
+        (True, None, "manual_focus_range_unavailable"),
+    ],
+)
+def test_unavailable_focus_records_skip_and_fallback(mocker, lockable, bounds, reason):
+    cam = _searchable_cam(None)
+    cam.focus_lockable = lockable
+    cam.focus_search_range = bounds
+    record = mocker.patch.object(camera_map_mod, "record_event")
+
+    result = camera_map_mod._pin_focus(cam, -1, None)
+
+    assert result is None
+    assert record.call_args.args == ("camera.focus_result",)
+    assert record.call_args.kwargs == {
+        "summarize": True,
+        "status": "skipped",
+        "reason": reason,
+        "value": None,
+        "pinned": False,
+        "fallback": "autofocus_requested",
+    }
+
+
 def test_compute_camera_mapping_pins_during_the_focus_phase(mocker) -> None:
     # The pin must run while the dedicated checkerboard page is up, with
     # the grid phase following for dot detection (see hardware/focus.py).

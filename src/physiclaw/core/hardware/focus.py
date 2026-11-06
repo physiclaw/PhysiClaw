@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.vision.quality import BLUR_THRESHOLD
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ SEARCH_MIN_GAIN = 1.5
 # Full-range moves need longer settling than search increments (UGREEN 4K).
 # Verification still requires two sharp readings within SEARCH_SECONDS.
 SEARCH_CONFIRM_METERS = 8
+SEARCH_MIN_PEAK_RATIO = 0.8
+SEARCH_REQUIRED_CONSECUTIVE = 2
 
 
 def search(
@@ -59,77 +62,231 @@ def search(
     restores AF and never saves a candidate.
     """
     low, high, step = bounds
+    thresholds = {
+        "minimum_sharpness": BLUR_THRESHOLD,
+        "minimum_lens_response_gain": SEARCH_MIN_GAIN,
+        "minimum_peak_ratio": SEARCH_MIN_PEAK_RATIO,
+        "required_consecutive": SEARCH_REQUIRED_CONSECUTIVE,
+        "maximum_confirmation_reads": SEARCH_CONFIRM_METERS,
+    }
+    record_event(
+        "camera.focus_search_started",
+        bounds=bounds,
+        position_units="device_control_units",
+        thresholds=thresholds,
+        timeout_seconds=SEARCH_SECONDS,
+        maximum_search_samples=SEARCH_SAMPLES,
+    )
     if low < 0 or high < low or step <= 0:
+        record_event(
+            "camera.focus_search_result",
+            summarize=True,
+            status="failed",
+            reason="invalid_focus_bounds",
+            bounds=bounds,
+        )
         return None  # caller has already selected AF
     last = (high - low) // step
-    deadline = time.monotonic() + SEARCH_SECONDS
+    started = time.monotonic()
+    deadline = started + SEARCH_SECONDS
     scores: dict[int, float] = {}
+    observations: dict[int, dict] = {}
+    peak_sample: dict | None = None
+    worst_sample: dict | None = None
+    last_sample: dict | None = None
+    verification_samples: list[dict] = []
+    response_samples: list[dict] = []
     samples = 0
+    reads = 0
+    search_pass = 0
+    phase = "coarse"
+    position: float | None = None
+    reason = "exception"
+    error: dict = {}
     verified = False
+
+    def read() -> float | None:
+        nonlocal reads, last_sample, reason
+        score = meter()
+        reads += 1
+        sample = {
+            "sample": reads,
+            "phase": phase,
+            "search_pass": search_pass,
+            "position": position,
+            "sharpness": score,
+        }
+        reference = record_event(
+            "camera.focus_sample",
+            **sample,
+            **({"frame_id": None, "input_artifact_id": None} if score is None else {}),
+        )
+        last_sample = {**sample, **(reference or {})}
+        if score is None:
+            reason = "measurement_unavailable"
+        elif not math.isfinite(score):
+            reason = "invalid_sharpness"
+        else:
+            return score
+        return None
+
     try:
         left, right = 0, last
         stride = max(1, math.ceil(last / 16))
         while True:
+            search_pass += 1
+            phase = "coarse" if search_pass == 1 else "refinement"
             points = sorted({*range(left, right + 1, stride), right})
             for point in points:
-                if samples >= SEARCH_SAMPLES or time.monotonic() >= deadline:
-                    return None
-                if not apply(float(low + point * step)):
+                if samples >= SEARCH_SAMPLES:
+                    reason = "sample_budget_exhausted"
                     return None
                 if time.monotonic() >= deadline:
+                    reason = "deadline_exceeded"
                     return None
-                score = meter()
-                if score is None or not math.isfinite(score):
+                position = float(low + point * step)
+                if not apply(position):
+                    reason = "driver_rejected_focus"
+                    return None
+                if time.monotonic() >= deadline:
+                    reason = "deadline_exceeded"
+                    return None
+                score = read()
+                if score is None:
                     return None
                 scores[point] = score
+                observations[point] = last_sample or {}
                 samples += 1
             # Compare this pass only: earlier exposure may have been brighter.
             best = max(points, key=lambda point: scores[point])
+            peak_sample = observations[best]
+            record_event(
+                "camera.focus_pass",
+                phase=phase,
+                search_pass=search_pass,
+                stride=step * stride,
+                compared_samples=[observations[point] for point in points],
+                peak_sample=peak_sample,
+                comparison="current_pass_only",
+            )
             if stride == 1:
                 break
             left, right = max(0, best - stride), min(last, best + stride)
             stride = max(1, stride // 4)
         peak = scores[best]
-        if peak < BLUR_THRESHOLD or time.monotonic() >= deadline:
+        if peak < BLUR_THRESHOLD:
+            reason = "peak_below_minimum_sharpness"
             return None
+        if time.monotonic() >= deadline:
+            reason = "deadline_exceeded"
+            return None
+        thresholds["verification_minimum_sharpness"] = max(
+            BLUR_THRESHOLD, peak * SEARCH_MIN_PEAK_RATIO
+        )
+        thresholds["response_maximum_sharpness"] = peak / SEARCH_MIN_GAIN
 
         def confirm(accept: Callable[[float], bool], consecutive: int) -> bool:
+            nonlocal reason
+            checks = (
+                response_samples if phase == "lens_response" else verification_samples
+            )
             agreed = 0
             for _ in range(SEARCH_CONFIRM_METERS):
                 if time.monotonic() >= deadline:
+                    reason = "deadline_exceeded"
                     return False
-                score = meter()
-                if score is None or not math.isfinite(score):
+                score = read()
+                if score is None:
                     return False
                 if time.monotonic() >= deadline:
+                    reason = "deadline_exceeded"
                     return False
-                agreed = agreed + 1 if accept(score) else 0
+                accepted = accept(score)
+                agreed = agreed + 1 if accepted else 0
+                check = {
+                    **(last_sample or {}),
+                    "accepted": accepted,
+                    "consecutive": agreed,
+                }
+                checks.append(check)
+                record_event(
+                    "camera.focus_check",
+                    sample=check,
+                    required_consecutive=consecutive,
+                )
                 if agreed == consecutive:
                     return True
+            reason = (
+                "lens_response_not_reproduced"
+                if phase == "lens_response"
+                else "verification_not_stable"
+            )
             return False
 
         if len(scores) > 1:
+            phase = "lens_response"
             worst = min(scores, key=lambda point: scores[point])
+            worst_sample = observations[worst]
             if peak < scores[worst] * SEARCH_MIN_GAIN:
+                reason = "insufficient_lens_response"
                 return None
-            if not apply(float(low + worst * step)):
+            position = float(low + worst * step)
+            if not apply(position):
+                reason = "driver_rejected_focus"
                 return None
             if not confirm(lambda score: peak >= score * SEARCH_MIN_GAIN, 1):
                 return None
+        phase = "verification"
         value = float(low + best * step)
+        position = value
         if not apply(value):
+            reason = "driver_rejected_focus"
             return None
-        if not confirm(lambda score: score >= max(BLUR_THRESHOLD, peak * 0.8), 2):
+        if not confirm(
+            lambda score: score >= thresholds["verification_minimum_sharpness"],
+            SEARCH_REQUIRED_CONSECUTIVE,
+        ):
             return None
         verified = True
+        reason = "verified_peak"
         log.info("Manual focus calibrated @ %g (peak sharpness %.0f)", value, peak)
         return value
+    except BaseException as exc:
+        error = {"exception_type": type(exc).__name__, "message": str(exc)}
+        reason = "exception" if isinstance(exc, Exception) else "interrupted"
+        raise
     finally:
+        rollback: dict = {"requested": not verified}
         if not verified:
             try:
                 unfreeze()
-            except Exception:
+                rollback["call_succeeded"] = True
+            except Exception as exc:
+                rollback.update(call_succeeded=False, message=str(exc))
                 log.warning("focus search rollback to autofocus failed", exc_info=True)
+        record_event(
+            "camera.focus_search_result",
+            summarize=True,
+            status="succeeded" if verified else "failed",
+            reason=reason,
+            bounds=bounds,
+            position_units="device_control_units",
+            timeout_seconds=SEARCH_SECONDS,
+            maximum_search_samples=SEARCH_SAMPLES,
+            phase=phase,
+            attempted_position=position,
+            selected_position=position if verified else None,
+            peak_sample=peak_sample,
+            worst_sample=worst_sample,
+            last_sample=last_sample,
+            response_samples=response_samples,
+            verification_samples=verification_samples,
+            thresholds=thresholds,
+            search_samples=samples,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            autofocus_restore=rollback,
+            **error,
+        )
 
 
 @dataclass(frozen=True)

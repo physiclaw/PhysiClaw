@@ -139,6 +139,84 @@ def test_warning_message_is_visible_in_run_attention(recorder, caplog):
     assert entry["warning_messages"] == ["Focus readback missing"]
 
 
+def test_optional_failed_check_links_summary_directly_to_its_input_image(recorder):
+    pixels = np.zeros((4, 5, 3), dtype=np.uint8)
+
+    with recorder.operation("camera.mapping"):
+        record_frame(pixels)
+        sample = record_event("camera.focus_sample", position=42, sharpness=2)
+        decision = record_event(
+            "camera.focus_search_result",
+            summarize=True,
+            status="failed",
+            reason="peak_below_minimum_sharpness",
+            peak_sample=sample,
+            thresholds={"minimum_sharpness": 80},
+        )
+
+    entry = summary(recorder)["attention"][0]
+    finding = entry["diagnostics"][0]
+    artifact = next(e for e in events(recorder) if e["event"] == "artifact.saved")
+    assert entry["status"] == "succeeded"
+    assert finding["reason"] == "peak_below_minimum_sharpness"
+    assert finding["seq"] == decision["seq"]
+    assert finding["input_path"] == artifact["path"]
+    assert finding["peak_sample"]["frame_id"] == artifact["artifact_id"]
+    assert finding["peak_sample"]["input_path"] == artifact["path"]
+    assert (recorder.directory / artifact["path"]).is_file()
+    assert summary(recorder, entry["summary_path"])["diagnostics"] == [finding]
+
+
+@pytest.mark.parametrize("status", ["succeeded", "skipped"])
+def test_nonfailing_diagnostics_stay_available_without_entering_attention(
+    recorder, status
+):
+    with recorder.operation("camera.mapping"):
+        record_event(
+            "camera.focus_result", summarize=True, status=status, reason="test"
+        )
+
+    result = summary(recorder)
+
+    assert result["attention"] == []
+    assert result["steps"]["camera.mapping"]["diagnostics"][0]["status"] == status
+
+
+def test_missing_measurement_does_not_claim_the_previous_input_frame(recorder):
+    with recorder.operation("camera.mapping"):
+        record_frame(np.zeros((4, 5, 3), dtype=np.uint8))
+        reference = record_event(
+            "camera.focus_meter",
+            reason="frame_settle_timeout",
+            frame_id=None,
+            input_artifact_id=None,
+        )
+
+    observation = next(
+        e for e in events(recorder) if e["event"] == "camera.focus_meter"
+    )
+
+    assert reference["frame_id"] is None
+    assert reference["input_path"] is None
+    assert observation["frame_id"] is None
+    assert observation["input_artifact_id"] is None
+
+
+def test_cyclic_diagnostic_preserves_physical_exception_and_finalizes_attempt(recorder):
+    details = {}
+    details["cycle"] = details
+
+    with pytest.raises(ValueError, match="physical failure"):
+        with recorder.operation("camera.mapping"):
+            record_event("test.decision", summarize=True, details=details)
+            raise ValueError("physical failure")
+
+    assert recorder.active == 0
+    assert current_evidence() is None
+    assert summary(recorder)["recording_complete"] is False
+    assert summary(recorder)["steps"]["camera.mapping"]["message"] == "physical failure"
+
+
 def test_attempt_summary_is_available_while_worker_runs(recorder):
     with recorder.operation("camera.frame", {"rotation": 2}):
         entry = summary(recorder)["steps"]["camera.frame"]

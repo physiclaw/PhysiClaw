@@ -36,7 +36,7 @@ from physiclaw.core.vision.grid_detect import (
     sort_dots_to_grid,
 )
 from physiclaw.core.vision.preprocess import grayscale
-from physiclaw.core.vision.quality import assess, laplacian_variance
+from physiclaw.core.vision.quality import NORMALIZED_WIDTH, assess, laplacian_variance
 
 log = logging.getLogger(__name__)
 
@@ -103,26 +103,72 @@ def _focus_region(frame: np.ndarray, poly: np.ndarray | None) -> np.ndarray:
     ]
 
 
+def _record_focus_fallback(
+    reason: str,
+    *,
+    status: str = "failed",
+    value: float | None = None,
+    pinned: bool = False,
+) -> None:
+    record_event(
+        "camera.focus_result",
+        summarize=True,
+        status=status,
+        reason=reason,
+        value=value,
+        pinned=pinned,
+        fallback="autofocus_requested",
+    )
+
+
 def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | None:
     """Search and verify a focus peak before measuring the dot grid."""
     # Release any previous pin so AF can converge again. Clearing its
     # remembered value also prevents reconnect from replaying it mid-step.
     cam.unlock_focus()
     if not cam.focus_lockable:
+        _record_focus_fallback("focus_controls_unavailable", status="skipped")
         log.info("  Focus pin: focus control unavailable — no position saved")
         return None
 
     def meter() -> float | None:
         if not cam.wait_frames(focus.SETTLE_FRAMES, timeout=5.0):
+            record_event(
+                "camera.focus_meter",
+                summarize=True,
+                status="failed",
+                reason="frame_settle_timeout",
+                settle_frames=focus.SETTLE_FRAMES,
+                timeout_seconds=5.0,
+                frame_id=None,
+                input_artifact_id=None,
+            )
             log.debug("  Focus meter: no frames within 5s — meter aborts")
             return None
         f = cam.raw_frame()
         if f is None:
+            record_event(
+                "camera.focus_meter",
+                summarize=True,
+                status="failed",
+                reason="frame_unavailable",
+                frame_id=None,
+                input_artifact_id=None,
+            )
             log.debug("  Focus meter: reader returned no frame — meter aborts")
             return None
         frame = cv2.rotate(f, rotation) if rotation >= 0 else f
         region = _focus_region(frame, poly)
         if region.size == 0:
+            record_event(
+                "camera.focus_meter",
+                summarize=True,
+                status="failed",
+                reason="empty_focus_crop",
+                rotation=rotation,
+                screen_polygon=poly,
+                crop_shape=list(region.shape),
+            )
             return None
         gray = grayscale(region)
         score = laplacian_variance(gray)
@@ -131,6 +177,13 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             sharpness=score,
             screen_polygon=poly,
             crop_shape=list(region.shape),
+            rotation=rotation,
+            metric="variance_of_laplacian",
+            normalized_width_px=NORMALIZED_WIDTH,
+            crop_method="clipped_screen_polygon_bounding_rectangle"
+            if poly is not None
+            else "full_frame",
+            settle_frames=focus.SETTLE_FRAMES,
         )
         # The caller reports the focus verdict after metering.
         # Guarded: the full-res median costs more than the (downscaled)
@@ -146,11 +199,16 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
     bounds = cam.focus_search_range
     record_event("camera.focus_search", bounds=bounds)
     if bounds is None:
+        _record_focus_fallback("manual_focus_range_unavailable", status="skipped")
         log.info("  Manual focus range unavailable — no position saved")
         return None
     value = focus.search(bounds, meter, cam.apply_focus, cam.unlock_focus)
-    record_event("camera.focus_result", value=value, pinned=cam.focus_pinned)
     if value is None or not cam.focus_pinned:
+        _record_focus_fallback(
+            "search_not_verified" if value is None else "focus_pin_lost",
+            value=value,
+            pinned=cam.focus_pinned,
+        )
         cam.unlock_focus()
         log.warning(
             "  Focus search did not verify a position — autofocus requested",
@@ -159,6 +217,7 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             },
         )
         return None
+    record_event("camera.focus_result", status="succeeded", value=value, pinned=True)
     log.info(f"  ✓ Focus position verified @ {value:g}")
     return value
 
@@ -248,6 +307,7 @@ def compute_camera_mapping(
         # The reader can reconnect while verification/grid frames arrive.
         # Sharp pixels alone do not prove that the focus restore succeeded.
         if cam_focus is not None and not cam.focus_pinned:
+            _record_focus_fallback("focus_pin_lost_during_mapping", value=cam_focus)
             cam.unlock_focus()
             cam_focus = None
             log.warning(
