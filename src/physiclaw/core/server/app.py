@@ -81,6 +81,12 @@ def build_server(mcp_instance: "MCPServer | None" = None) -> ServerBundle:
             "hardware": pl.rig.status(),
             "calibration": pl.rig.calibration.to_dict(),
             "assistive_touch_position": pl.rig.assistive_touch.at_screen,
+            "assistive_touch_radius": pl.rig.assistive_touch.at_radius_screen,
+            "phone": {
+                "bridge_connected": bridge.connected,
+                "requested_mode": phone.mode,
+                "calibration_page": calib.get_state(),
+            },
         }
     )
 

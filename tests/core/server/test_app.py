@@ -89,6 +89,39 @@ def test_default_assembly_is_a_build_server_product() -> None:
     assert app._phone_app is app.default_bundle.phone_app
 
 
+def test_setup_step_snapshot_includes_phone_state_without_clipboard_text() -> None:
+    import json
+
+    from physiclaw.core.server import app
+
+    bundle = app.build_server()
+    recorder = bundle.physiclaw.rig.setup_recording
+    bundle.calib.screen_dimension = {"viewport_width": 390, "viewport_height": 844}
+    bundle.bridge.send_text("private clipboard contents")
+    try:
+        with recorder.operation("viewport"):
+            bundle.phone.set_mode("calibrate", "screenshot_cal")
+        events = [
+            json.loads(line)
+            for line in (recorder.directory / "events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        before = next(e for e in events if e["event"] == "step.started")["state"]
+        after = next(e for e in events if e["event"] == "step.ended")["state"]
+        assert before["phone"]["requested_mode"] == "bridge"
+        assert after["phone"]["requested_mode"] == "calibrate"
+        assert after["phone"]["bridge_connected"] is False
+        assert after["phone"]["calibration_page"]["phase"] == "screenshot_cal"
+        assert after["phone"]["calibration_page"]["screen_dimension"] == {
+            "viewport_width": 390,
+            "viewport_height": 844,
+        }
+        assert "private clipboard contents" not in json.dumps(events)
+    finally:
+        recorder.close()
+
+
 # ---------- shutdown ----------
 
 

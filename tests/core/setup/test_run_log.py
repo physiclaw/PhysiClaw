@@ -616,6 +616,180 @@ def test_scoped_and_background_device_logs_survive_with_tracebacks(recorder, cap
     assert logs[1]["device_id"] == "Camera-2"
 
 
+def test_bridge_rejection_keeps_structured_status_without_arbitrary_extras(
+    recorder, caplog
+):
+    caplog.set_level(logging.INFO)
+    recorder.begin()
+
+    logging.getLogger("physiclaw.core.bridge.handler").info(
+        "Phone bridge request rejected: upload window expired",
+        extra={
+            "event": "bridge.request_rejected",
+            "http_status": 403,
+            "private_payload": "must not be recorded",
+        },
+    )
+
+    entry = events(recorder)[-1]
+    assert entry["event"] == "diagnostic.log"
+    assert entry["scope"] == "background"
+    assert entry["source_fields"]["http_status"] == 403
+    assert entry["source_fields"]["event"] == "bridge.request_rejected"
+    assert "private_payload" not in json.dumps(entry)
+    assert "step" not in entry
+
+
+@pytest.mark.parametrize("level", [logging.WARNING, logging.ERROR, logging.CRITICAL])
+def test_idle_background_warning_updates_summary_and_retry_run_resets_it(
+    recorder, caplog, level
+):
+    caplog.set_level(logging.WARNING)
+    recorder.begin()
+    logger = logging.getLogger("physiclaw.core.hardware.frame_reader")
+
+    for i in range(23):
+        logger.log(level, "Camera stalled %s", i)
+
+    report = summary(recorder)
+    assert report["status"] == "in_progress"
+    assert report["background_warnings"] == 23
+    assert len(report["background_warning_messages"]) == 20
+    first = report["background_warning_messages"][0]
+    assert first["level"] == logging.getLevelName(level).lower()
+    assert first["message"] == "Camera stalled 0"
+    assert events(recorder)[first["seq"] - 1]["message"] == first["message"]
+    assert "step" not in first
+    assert len([e for e in events(recorder) if e["event"] == "diagnostic.log"]) == 23
+
+    rig = SimpleNamespace(setup_recording=recorder)
+    run_setup_step(rig, "finish.ready", lambda: {"ready": True})
+    run_setup_step(rig, "camera.connect", lambda: None)
+    assert summary(recorder)["background_warnings"] == 0
+    assert summary(recorder)["background_warning_messages"] == []
+
+
+@pytest.mark.parametrize("level", [logging.INFO, logging.WARNING])
+def test_idle_background_journal_failure_refreshes_recording_health(
+    recorder, mocker, level
+):
+    recorder.begin()
+    mocker.patch.object(run_log, "append_text", side_effect=OSError("disk full"))
+    record = logging.LogRecord(
+        "physiclaw.core.hardware.frame_reader",
+        level,
+        __file__,
+        1,
+        "Camera recovered",
+        (),
+        None,
+    )
+
+    recorder.handler.handle(record)
+
+    assert summary(recorder)["recording_complete"] is False
+    assert summary(recorder)["recording_errors"][0]["message"] == "disk full"
+    if level == logging.WARNING:
+        assert summary(recorder)["background_warnings"] == 1
+        assert summary(recorder)["background_warning_messages"][0]["seq"] is None
+
+
+def test_malformed_idle_log_refreshes_recording_health_without_failing_setup(recorder):
+    recorder.begin()
+    malformed = logging.LogRecord(
+        "physiclaw.core.hardware.frame_reader",
+        logging.ERROR,
+        __file__,
+        1,
+        "%d",
+        ("bad",),
+        None,
+    )
+
+    recorder.handler.handle(malformed)
+
+    assert summary(recorder)["recording_complete"] is False
+    assert summary(recorder)["recording_errors"][0]["type"] == "TypeError"
+    assert (
+        run_setup_step(
+            SimpleNamespace(setup_recording=recorder),
+            "camera.connect",
+            lambda: "connected",
+        )
+        == "connected"
+    )
+
+
+def test_background_warning_freezes_fields_before_caller_mutates_them(recorder):
+    recorder.begin()
+    status = {"value": "stalled"}
+    warning = logging.LogRecord(
+        "physiclaw.core.hardware.frame_reader",
+        logging.WARNING,
+        __file__,
+        1,
+        "Camera stalled",
+        (),
+        None,
+    )
+    warning.status = status
+    recorder.handler.handle(warning)
+    status["value"] = "changed after logging"
+
+    run_setup_step(
+        SimpleNamespace(setup_recording=recorder), "camera.connect", lambda: None
+    )
+
+    preview = summary(recorder)["background_warning_messages"][0]
+    journal = events(recorder)[preview["seq"] - 1]
+    assert preview["source_fields"]["status"] == {"value": "stalled"}
+    assert preview["source_fields"] == journal["source_fields"]
+
+
+def test_cyclic_background_fields_cannot_poison_future_summaries(recorder):
+    recorder.begin()
+    status = {}
+    status["cycle"] = status
+    warning = logging.LogRecord(
+        "physiclaw.core.hardware.frame_reader",
+        logging.WARNING,
+        __file__,
+        1,
+        "Camera stalled",
+        (),
+        None,
+    )
+    warning.status = status
+    recorder.handler.handle(warning)
+
+    run_setup_step(
+        SimpleNamespace(setup_recording=recorder), "camera.connect", lambda: "connected"
+    )
+
+    report = summary(recorder)
+    assert report["recording_complete"] is False
+    assert report["steps"]["camera.connect"]["status"] == "succeeded"
+
+
+def test_setup_metadata_records_dependency_versions_and_missing_distributions(
+    recorder, mocker
+):
+    def version(name):
+        if name == "opencv-python-headless":
+            raise run_log.importlib.metadata.PackageNotFoundError(name)
+        return "test-version"
+
+    mocker.patch.object(run_log.importlib.metadata, "version", side_effect=version)
+    recorder.begin()
+
+    versions = summary(recorder, "run.json")["dependency_versions"]
+    assert versions["opencv-python"] == "test-version"
+    assert versions["numpy"] == "test-version"
+    assert versions["pyserial"] == "test-version"
+    assert versions["opencv-python-headless"] is None
+    assert summary(recorder)["recording_complete"] is True
+
+
 async def test_concurrent_worker_scopes_keep_their_own_step_and_order(recorder):
     rig = SimpleNamespace(setup_recording=recorder)
 

@@ -188,10 +188,26 @@ def verify_assistive_touch(
     try:
         bridge.send_text(clip_text)
         log.info("  Long-press AT (iOS Shortcut → fetch bridge text)...")
+        record_event(
+            "assistive_touch.long_press_requested",
+            at_screen=at.at_screen,
+            strike_seconds=arm.LONG_PRESS_DURATION,
+        )
         at.long_press(arm, pct_to_grbl)
 
         log.info("  Waiting for iOS Shortcut to fetch clipboard text...")
-        clip_fetched = bridge.wait_clipboard(timeout=10.0) or bridge.expire_text()
+        timeout_seconds = 10.0
+        started = time.monotonic()
+        clip_fetched = (
+            bridge.wait_clipboard(timeout=timeout_seconds) or bridge.expire_text()
+        )
+        record_event(
+            "assistive_touch.clipboard_wait",
+            fetched=clip_fetched,
+            timeout_seconds=timeout_seconds,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            bridge_connected=bridge.connected,
+        )
         if clip_fetched:
             log.info(f"  ✓ Clipboard fetched from server — text: {clip_text!r}")
             log.info("    Phone now shows the copied text — paste anywhere to verify.")

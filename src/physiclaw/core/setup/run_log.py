@@ -8,6 +8,7 @@ under log/setup/<run-id>/, independent of the wizard's lifetime.
 import dataclasses
 import datetime as dt
 import hashlib
+import importlib.metadata
 import json
 import logging
 import math
@@ -30,6 +31,7 @@ from physiclaw.common.logger import (
     env_snapshot,
     reset_log_context,
 )
+from physiclaw.common.logger.context import record_fields
 from physiclaw.common.logger.evidence import current_evidence, evidence_scope
 from physiclaw.common.logger.retention import purge_old_sessions
 from physiclaw.common.logger.session_artifacts import write_json_atomic
@@ -68,7 +70,15 @@ Warning message previews are capped at 20; the journal retains every message.
 Ignore hidden OS files such as .DS_Store.
 The root events.jsonl joins all attempts with background camera
 and phone-bridge diagnostics in sequence order. run.json records environment,
-camera settings, schema version and capture limits. No browser logging is needed.
+camera settings, schema version and capture limits. Its dependency_versions
+maps diagnostic distribution names to installed versions; null means that
+distribution is absent (for example, an unused OpenCV variant).
+background_warnings counts run-scoped warning/error/critical logs, including
+those between steps. background_warning_messages previews are capped at 20 and
+link to the root journal by seq; they have no invented step. A null seq means
+the journal event could not be saved: inspect recording_errors.
+diagnostic.log.source_fields preserves known structured fields such as bridge
+HTTP status codes. No browser logging is needed.
 Run status is in_progress, succeeded or interrupted. Individual steps can be
 running, succeeded, failed, blocked, waiting_for_input or interrupted.
 
@@ -82,6 +92,10 @@ assistive_touch.screenshot_wait records the deadline, elapsed time, phone pollin
 and page touches. Background bridge.screenshot_upload_started/accepted and
 bridge.request_rejected logs distinguish a missing upload from a rejected one.
 An acknowledged arm command does not prove that iOS registered the touch.
+assistive_touch.long_press_requested and assistive_touch.clipboard_wait record
+the clipboard gesture, deadline, elapsed time, fetch outcome and phone polling.
+Step state includes the requested phone mode, calibration page and screen
+dimensions; this is server state, not confirmation that the phone rendered it.
 input_artifact_id identifies the most recent captured input at an event. Use
 detector/measurement events to find the failing input; later cleanup checkpoints
 retain their own images and never replace earlier artifacts. artifact.saved
@@ -111,6 +125,22 @@ inspect a run before sharing it.
 
 def _now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
+
+
+def _dependency_versions() -> dict[str, str | None]:
+    versions: dict[str, str | None] = {}
+    for name in (
+        "opencv-python",
+        "opencv-python-headless",
+        "numpy",
+        "pyserial",
+        "pillow",
+    ):
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
 
 
 def _failure_status(error: BaseException) -> str:
@@ -173,10 +203,17 @@ class _SetupLogs(logging.Handler):
                 self.run.closed and not self.run.active
             ):
                 return
+            previous_errors = self.run.incomplete
             try:
                 self._emit(record, attempt)
             except Exception as exc:
                 self.run.recording_failure(exc)
+            if self.run.incomplete != previous_errors or (
+                background and record.levelno >= logging.WARNING
+            ):
+                self.run._write_summary(
+                    "interrupted" if self.run.stopped else "in_progress"
+                )
 
     def _emit(self, record: logging.LogRecord, attempt: "SetupAttempt | None") -> None:
         fields: dict[str, Any] = dict(
@@ -184,6 +221,7 @@ class _SetupLogs(logging.Handler):
             logger=record.name,
             message=record.getMessage(),
             source_event=getattr(record, "event", None),
+            source_fields=record_fields(record),
             device_id=getattr(record, "device_id", None),
             source_timestamp=dt.datetime.fromtimestamp(
                 record.created, dt.timezone.utc
@@ -196,6 +234,10 @@ class _SetupLogs(logging.Handler):
             if record.exc_info
             else None,
         )
+        # Journal and summary must retain the same values, even if a caller
+        # later mutates structured fields. Reject unrecordable fields before
+        # retaining them: one cyclic extra must not poison every later summary.
+        fields = _json_value(fields)
         if attempt is not None:
             if record.levelno >= logging.WARNING:
                 attempt.warnings += 1
@@ -205,7 +247,11 @@ class _SetupLogs(logging.Handler):
         else:
             # Reader/phone HTTP tasks outlive individual request contexts.
             # Preserve them at run scope; don't pretend to know their step.
-            self.run.emit("diagnostic.log", scope="background", **fields)
+            seq = self.run.emit("diagnostic.log", scope="background", **fields)
+            if record.levelno >= logging.WARNING:
+                self.run.background_warnings += 1
+                if len(self.run.background_warning_messages) < 20:
+                    self.run.background_warning_messages.append({"seq": seq, **fields})
 
 
 class SetupAttempt:
@@ -398,6 +444,8 @@ class SetupRecorder:
         self.stopped = False
         self.handler: _SetupLogs | None = None
         self.recording_errors: list[dict] = []
+        self.background_warnings = 0
+        self.background_warning_messages: list[dict] = []
         self.slots = threading.BoundedSemaphore(8)
         self.writer = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="setup-images"
@@ -426,6 +474,8 @@ class SetupRecorder:
         self.attempts = {}
         self.steps = {}
         self.recording_errors = []
+        self.background_warnings = 0
+        self.background_warning_messages = []
         self.completion_requested = False
         try:
             purge_old_sessions(root, days=CONFIG.retention.trace_days)
@@ -440,6 +490,7 @@ class SetupRecorder:
                     "started_at": _now(),
                     "pid": os.getpid(),
                     "environment": env_snapshot(),
+                    "dependency_versions": _dependency_versions(),
                     "manual_steps": {"position_rig": "not_observable_by_server"},
                     "capture_policy": "all frames consumed by setup; lossless decoded BGR, not sensor RAW",
                     "max_image_bytes": self.MAX_IMAGE_BYTES,
@@ -530,6 +581,8 @@ class SetupRecorder:
                     "recording_errors_or_skips": self.incomplete,
                     "recording_errors": self.recording_errors,
                     "image_bytes": self.image_bytes,
+                    "background_warnings": self.background_warnings,
+                    "background_warning_messages": self.background_warning_messages,
                 },
             )
         except Exception as exc:

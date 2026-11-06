@@ -409,6 +409,34 @@ def test_clipboard_timeout_resolves_fetch_and_retirement_atomically(
     assert bridge.fetch_text() is None
 
 
+@pytest.mark.parametrize("fetched", [True, False])
+def test_clipboard_diagnostics_record_gesture_wait_and_actual_outcome(mocker, fetched):
+    from physiclaw.common.logger.evidence import evidence_scope
+
+    at, cal, bridge, phone = _real_at_setup(mocker)
+    arm = MagicMock(LONG_PRESS_DURATION=0.75)
+    at.long_press.side_effect = (lambda *_: bridge.fetch_text()) if fetched else None
+    mocker.patch.object(bridge, "wait_clipboard", return_value=fetched)
+    sink = MagicMock()
+
+    with evidence_scope(sink):
+        result = at_verify_mod.verify_assistive_touch(
+            arm, at, bridge, cal, _identity_pct_to_grbl(), phone
+        )
+
+    events = {call.args[0]: call.kwargs for call in sink.event.call_args_list}
+    press = events["assistive_touch.long_press_requested"]
+    wait = events["assistive_touch.clipboard_wait"]
+    assert press["at_screen"] == at.at_screen
+    assert press["strike_seconds"] == 0.75
+    assert wait["fetched"] is fetched
+    assert result["clipboard"]["fetched"] is fetched
+    assert wait["timeout_seconds"] == 10.0
+    bridge.wait_clipboard.assert_called_once_with(timeout=wait["timeout_seconds"])
+    assert wait["elapsed_ms"] >= 0
+    assert wait["bridge_connected"] is False
+
+
 @pytest.mark.parametrize(
     "failure", [OSError("gesture failed"), KeyboardInterrupt("cancelled")]
 )
